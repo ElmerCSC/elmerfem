@@ -2,8 +2,11 @@
 !> Extracts grid information from mesh and converts coordinates
 SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
                                       lon_cells, lat_cells, cell_to_vertex, &
-                                      num_vertices_per_cell, cell_ids, vertex_ids)
+                                      num_vertices_per_cell, cell_ids, &
+                                      vertex_ids, boundary_cell_mask)
   USE Types, ONLY: Mesh_t, Element_t, dp
+  USE DefUtils, ONLY: GetBoundaryEdgeIndex
+  USE Messages, ONLY: FATAL
   USE ProjUtils, ONLY: xy2LonLat, deg2rad
 
   IMPLICIT NONE
@@ -14,12 +17,14 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
   INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
   INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
   INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
+  LOGICAL, ALLOCATABLE, INTENT(OUT) :: boundary_cell_mask(:)
 
   ! Local variables
-  TYPE(Element_t), POINTER :: element
-  INTEGER :: i, n, vertex_offset, v_end
+  TYPE(Element_t), POINTER :: element, left_parent, right_parent
+  INTEGER :: i, n, vertex_offset, v_end, bnd_elem_idx, local_parent_idx, boundary_edge_idx
   INTEGER :: nbr_vertices, nbr_cells
   INTEGER, POINTER :: this_cell_ids(:)
+  LOGICAL :: has_left, has_right
 
   ! Grid arrays for coupling
   REAL(KIND=dp), ALLOCATABLE :: x_vertices(:), y_vertices(:)
@@ -32,10 +37,75 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
 
   nbr_cells = ThisMesh % NumberOfBulkElements
   ALLOCATE(cell_ids(nbr_cells), num_vertices_per_cell(nbr_cells))
+  ALLOCATE(boundary_cell_mask(nbr_cells))
+  boundary_cell_mask = .FALSE.
+
+  IF (ThisMesh % MeshDim /= 2) THEN
+    CALL FATAL('collect_coupling_grid_data', &
+      'boundary_cell_mask is implemented for 2D meshes only')
+  END IF
+
   DO i=1, nbr_cells
     element => ThisMesh % Elements(i)
     cell_ids(i) = element % GElementIndex
     num_vertices_per_cell(i) = element % Type % NumberOfNodes
+  END DO
+
+  ! Mark only true physical domain-boundary cells; partition-only boundaries stay false.
+  DO bnd_elem_idx = ThisMesh % NumberOfBulkElements + 1, &
+                    ThisMesh % NumberOfBulkElements + ThisMesh % NumberOfBoundaryElements
+    element => ThisMesh % Elements(bnd_elem_idx)
+    ! Ensure that all boundary elements are edges (should be the case for 2D meshes)
+    IF (element % Type % NumberOfEdges /= 1) THEN
+      CALL FATAL('collect_coupling_grid_data', &
+        'Expected exactly one edge per 2D boundary element')
+    END IF
+    ! Filter to actual boundary edges only.
+    IF (.NOT. ASSOCIATED(element % BoundaryInfo)) CYCLE
+    ! If element has boundary info, check if it has a left and/or right parent
+    ! element in the bulk
+    left_parent => element % BoundaryInfo % Left
+    right_parent => element % BoundaryInfo % Right
+    has_left = ASSOCIATED(left_parent)
+    has_right = ASSOCIATED(right_parent)
+
+    IF (has_left .EQV. has_right) THEN
+      CALL FATAL('collect_coupling_grid_data', &
+        'Boundary element must have exactly one parent bulk element')
+    END IF
+
+    ! Get index of the single parent that this boundary element has.
+    IF (has_left) THEN
+      local_parent_idx = left_parent % ElementIndex
+    ELSE
+      local_parent_idx = right_parent % ElementIndex
+    END IF
+
+    IF (local_parent_idx < 1 .OR. local_parent_idx > nbr_cells) THEN
+      CALL FATAL('collect_coupling_grid_data', &
+        'Boundary element parent index is outside local bulk-cell range')
+    END IF
+
+    boundary_edge_idx = GetBoundaryEdgeIndex(element, 1)
+    IF (boundary_edge_idx <= 0) THEN
+      CALL FATAL('collect_coupling_grid_data', &
+        'GetBoundaryEdgeIndex returned invalid edge index for boundary element')
+    END IF
+
+    ! Check if this is a parallel mesh
+    IF (ASSOCIATED(ThisMesh % ParallelInfo % EdgeInterface)) THEN
+      IF (boundary_edge_idx > SIZE(ThisMesh % ParallelInfo % EdgeInterface)) THEN
+        CALL FATAL('collect_coupling_grid_data', &
+          'Boundary edge index exceeds ParallelInfo % EdgeInterface size')
+      END IF
+      ! check if boundary edge is a partition boundary edge
+      IF (.NOT. ThisMesh % ParallelInfo % EdgeInterface(boundary_edge_idx)) THEN
+        boundary_cell_mask(local_parent_idx) = .TRUE.
+      END IF
+    ELSE
+      ! For a non-parallel mesh all boundary edges are physical boundaries
+      boundary_cell_mask(local_parent_idx) = .TRUE.
+    END IF
   END DO
 
   ALLOCATE(cell_to_vertex(SUM(num_vertices_per_cell(:))))
@@ -132,6 +202,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
   INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
   INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
+  LOGICAL, ALLOCATABLE :: boundary_cell_mask(:)
 
   ! Variables needed for user output
   CHARACTER(LEN=1024) :: coupling_timestep_in_years_str
@@ -142,7 +213,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   INTERFACE
     SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
                                           lon_cells, lat_cells, cell_to_vertex, &
-                                          num_vertices_per_cell, cell_ids, vertex_ids)
+                                          num_vertices_per_cell, cell_ids, vertex_ids, &
+                                          boundary_cell_mask)
       USE Types, ONLY: Mesh_t, dp
       IMPLICIT NONE
       TYPE(Mesh_t), POINTER :: ThisMesh
@@ -151,6 +223,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
       INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
       INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
+      LOGICAL, ALLOCATABLE, INTENT(OUT) :: boundary_cell_mask(:)
     END SUBROUTINE collect_coupling_grid_data
   END INTERFACE
 
@@ -362,7 +435,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     ! Collect coupling grid data (extract mesh, convert coordinates)
     CALL collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
                     lon_cells, lat_cells, cell_to_vertex, &
-                    num_vertices_per_cell, cell_ids, vertex_ids)
+                    num_vertices_per_cell, cell_ids, vertex_ids, &
+                    boundary_cell_mask)
 
     ! Setup YAC coupling with precomputed lon/lat coordinates (radians)
     CALL coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
@@ -378,6 +452,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
     DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
     DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
+    DEALLOCATE(boundary_cell_mask)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables
