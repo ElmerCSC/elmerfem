@@ -116,6 +116,7 @@ jobs:
             $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "libblas-dev liblapack-dev" || echo "libopenblas-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "without" ] && echo "libmumps-seq-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "librocalution-dev") \
             libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
@@ -141,7 +142,7 @@ jobs:
             ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=ON" || echo "-DWITH_Zoltan=OFF") \
-            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_CHOLMOD=ON" || echo "-DWITH_CHOLMOD=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ROCALUTION=ON" || echo "-DWITH_ROCALUTION=OFF") \
