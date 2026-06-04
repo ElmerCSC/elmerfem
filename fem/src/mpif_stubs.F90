@@ -11,11 +11,10 @@ SUBROUTINE mpi_init(ierr)
 END SUBROUTINE mpi_init
 
 SUBROUTINE mpi_initialized(init, ierr)
-  USE mpi_stub
   LOGICAL :: init
   INTEGER :: ierr
   ierr = 0
-  init = mpi_stub_init
+  init = .FALSE.
 END SUBROUTINE mpi_initialized
 
 SUBROUTINE mpi_init_thread(req, prov, ierr)

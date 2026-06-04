@@ -189,8 +189,8 @@ CONTAINS
     IF(GotNormal) GOTO 100 
 
     ! Only in BC mode we do currently parallel reduction.
-    ! This could be altered too. 
-    IF( BCMode ) THEN
+    ! This could be altered too.
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
 #ifdef ELMER_BROKEN_MPI_IN_PLACE
       buffer = NiNj
       CALL MPI_ALLREDUCE(buffer, &
