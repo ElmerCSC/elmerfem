@@ -108,26 +108,26 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
         sname = "n:2 e:1"
       END IF
     ELSE
-    
-    IF (SecondFamily) THEN
-      CALL Warn(Caller, 'The formulation for Second Kind Basis seems numerically unstable')
-    END IF
-    
-    ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
-    ! utilized by the vector Helmholtz model:
-    IF (SecondOrder) THEN
+      
       IF (SecondFamily) THEN
-        sname = "n:1 e:3 -tri b:3 -tri_face b:3"
-      ELSE
-        sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
+        CALL Warn(Caller, 'The formulation for Second Kind Basis seems numerically unstable')
       END IF
-    ELSE IF( SecondFamily ) THEN
-      sname = "n:1 e:2" 
-    ELSE IF (PiolaVersion) THEN
-      sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
-    ELSE
-      sname = "n:1 e:1"
-    END IF
+
+      ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
+      ! utilized by the vector Helmholtz model:
+      IF (SecondOrder) THEN
+        IF (SecondFamily) THEN
+          sname = "n:1 e:3 -tri b:3 -tri_face b:3"
+        ELSE
+          sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
+        END IF
+      ELSE IF( SecondFamily ) THEN
+        sname = "n:1 e:2" 
+      ELSE IF (PiolaVersion) THEN
+        sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
+      ELSE
+        sname = "n:1 e:1"
+      END IF
     END IF
     CALL Info( Caller,'Setting element type: '//TRIM(sname))
     CALL ListAddString(Params, "Element", TRIM(sname) )      
@@ -979,7 +979,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
-    INTEGER :: i, j, k, n, p, q, nd, normal_ind(1), DOFs, vdofs
+    INTEGER :: i, j, k, n, p, q, nd, normal_ind(1), DOFs, vdofs, np, ndofs
     INTEGER :: Active, t
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Mass(:,:), LForce(:,:), GForce(:,:)  
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
@@ -987,7 +987,8 @@ CONTAINS
     REAL(KIND=dp), POINTER :: FSave(:) => NULL()
     CHARACTER(:), ALLOCATABLE :: eqname    
     REAL(KIND=dp) :: u, v, w, detJ, s, xq, Norm, TotNorm
-    REAL(KIND=dp) :: ReEz, ImEz, ReE(3), ImE(3), ReV(3), ImV(3), Normal(3), ReL(3), ImL(3)
+    REAL(KIND=dp) :: ReEz, ImEz, ReE(3), ImE(3), Normal(3), ReL(3), ImL(3)
+    REAL(KIND=dp) :: ReV, ImV
     REAL(KIND=dp) :: mu0inv, eps0, omega
     COMPLEX(KIND=dp) :: Ez, EigVal
     LOGICAL :: Found, Stat
@@ -1017,7 +1018,12 @@ CONTAINS
       PostSolver % Def_Dofs(:,:,1) = 1
       
       n = Mesh % MaxElementDOFs   
-      dofs = 6
+      IF (UseV) THEN
+        dofs = 8
+      ELSE
+        dofs = 6
+      END IF
+      
       ALLOCATE(MASS(n,n), LFORCE(n,DOFs), WBasis(n,3), &
           CurlWBasis(n,3), Basis(n), dBasisdx(n,3), PermIndexes(n), &
           Re_Local_field(n), Im_Local_field(n))
@@ -1052,9 +1058,14 @@ CONTAINS
     PostSolver % Variable => VariableGet( Mesh % Variables,'EM2D tmp')
     IF(.NOT. ASSOCIATED(PostSolver % Variable)) CALL Fatal(Caller,'Post solver field not found!')
 
-    ! Field including all the nodal components. 
-    CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
-        'EF2D[EF2D Re:3 EF2D Im:3]',6,Perm = NodalPerm, Secondary = .TRUE., Output = .TRUE. )
+    ! Field including all the nodal components.
+    IF (UseV) THEN
+      CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
+          'EF2D[EF2D Re:3 EF2D Im:3 Re V:1 Im V:1]',8,Perm = NodalPerm, Secondary = .TRUE., Output = .TRUE. )
+    ELSE
+      CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
+          'EF2D[EF2D Re:3 EF2D Im:3]',6,Perm = NodalPerm, Secondary = .TRUE., Output = .TRUE. )
+    END IF
     EF => VariableGet( Mesh % Variables,'EF2D')
     IF(.NOT. ASSOCIATED(EF) ) CALL Fatal(Caller,'Could not find field: EF2D!')
     
@@ -1088,8 +1099,11 @@ CONTAINS
       n = GetElementNOFNodes()
       nd = GetElementNOFDOFs(USolver=Solver)
 
+      ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+      np = n * ndofs
+      
       ! The number of DOFs for one vector FE field  
-      vdofs = nd - n
+      vdofs = nd - np
       CALL GetElementNodes( Nodes, Element, Solver )
 
       ! At the moment we assume that the wave propagates in the direction of some
@@ -1120,18 +1134,31 @@ CONTAINS
 
         s = IP % s(i) * detJ
 
-        ReEz = SUM( Re_local_field(1:n) * Basis(1:n) )
-        ImEz = SUM( Im_local_field(1:n) * Basis(1:n) )
-        Ez = CMPLX(ReEz, ImEz, kind=dp) / (im * Beta)
+        ReEz = SUM( Re_local_field(1:np:ndofs) * Basis(1:n) )
+        ImEz = SUM( Im_local_field(1:np:ndofs) * Basis(1:n) )
+        IF (UseV) THEN
+          Ez = CMPLX(ReEz, ImEz, kind=dp) * im * Beta
+        ELSE
+          Ez = CMPLX(ReEz, ImEz, kind=dp) / (im * Beta)
+        END IF
         ReEz = REAL(Ez)
         ImEz = AIMAG(Ez)
 
         ReE(:) = 0.0_dp
         ImE(:) = 0.0_dp
         DO p=1,vdofs
-          ReE(:) = ReE(:) + Re_local_field(n+p) * WBasis(p,:)
-          ImE(:) = ImE(:) + Im_local_field(n+p) * WBasis(p,:)
+          ReE(:) = ReE(:) + Re_local_field(np+p) * WBasis(p,:)
+          ImE(:) = ImE(:) + Im_local_field(np+p) * WBasis(p,:)
         END DO
+
+        IF (UseV) THEN
+          DO j=1,3
+            ReE(j) = ReE(j) - SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j))
+            ImE(j) = ImE(j) - SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j))
+          END DO
+          ReV = SUM(Re_local_field(2:np:ndofs)*Basis(1:n))
+          ImV = SUM(Im_local_field(2:np:ndofs)*Basis(1:n))
+        END IF
         
         ReL = ReE + Normal * ReEz
         IML = ImE + Normal * ImEz
@@ -1142,6 +1169,10 @@ CONTAINS
           END DO
           LForce(p,1:3) = LForce(p,1:3) + s * ReL * Basis(p)
           LForce(p,4:6) = LForce(p,4:6) + s * ImL * Basis(p)
+          IF (UseV) THEN
+            LForce(p,7) = LForce(p,7) + s * ReV * Basis(p)
+            LForce(p,8) = LForce(p,8) + s * ImV * Basis(p)
+          END IF
         END DO
       END DO
 
@@ -1159,7 +1190,7 @@ CONTAINS
 
     END DO
 
-    ! We will assembly until the last mode has been added.
+    ! We will assemble until the last mode has been added.
     IF(PortInd < MaxPort) RETURN
     
     TotNorm = 0.0_dp
