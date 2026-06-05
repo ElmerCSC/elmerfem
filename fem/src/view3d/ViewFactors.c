@@ -61,6 +61,7 @@ typedef struct {
 } pcg32_rng_t;
 
 static pcg32_rng_t **rbuf = NULL;
+static int MPIRank = 0;   /* set by viewfactors3d before parallel region */
 
 static inline uint32_t pcg32_random(pcg32_rng_t *rng)
 {
@@ -101,8 +102,9 @@ void vrand_init()
 }
 
    rbuf[tid] = malloc(sizeof(pcg32_rng_t));
-   rbuf[tid]->state = 0x853c49e6748fea9bULL+ tid;
-   rbuf[tid]->inc   = 0xda3e39cb94b95bdbULL + (tid << 1);
+   /* Include MPI rank in seed so different ranks generate independent streams */
+   rbuf[tid]->state = 0x853c49e6748fea9bULL + (uint64_t)MPIRank * 128 + tid;
+   rbuf[tid]->inc   = 0xda3e39cb94b95bdbULL + (((uint64_t)MPIRank * 128 + tid) << 1);
 }
 /* end copilot code */
 
@@ -188,7 +190,18 @@ Compute viewfactors for elements of the model
 24 Aug 1995
 
 *******************************************************************************/
-static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors)
+/*
+ * iStart : global index of first source row assigned to this MPI rank (0 in serial)
+ * nLocal : number of source rows assigned to this rank (= N in serial)
+ * Factors: sized nLocal*N; row (i - iStart) stored at Factors[(i-iStart)*N + j]
+ *
+ * Cross-rank symmetry is not exploited: each rank computes its own rows fully
+ * (all j != i) without writing to rows owned by other ranks.  Within-rank
+ * symmetry (both i and j in [iStart, iStart+nLocal)) is preserved to halve
+ * within-block computation.
+ */
+static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int LineFlag,
+                                   int N, double *Factors, int iStart, int nLocal)
 {
     double T,s,F,Fmin=DBL_MAX,Fmax=-DBL_MAX,Favg=0.0,*RowSums,Fact,rx,ry,rz,nx,ny,nz,ct,realtime();
     int i,j,k,l,Imin,Imax,Ns;
@@ -214,13 +227,23 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
       vrand_init();
 
       #pragma omp for private(i,j,k,l,Fact) schedule(dynamic,10)
-      for( i=0; i<N; i++ )
+      for( i=iStart; i<iStart+nLocal; i++ )
       {
-         for( j=i; j<N; j++ ) Factors[i*N+j] = 0.0;
+         int li = i - iStart;   /* local (rank-relative) row index */
+
+         /* Zero only entries not pre-filled by within-block symmetry.
+          * Entries j in [iStart, i) are written when row j is processed
+          * (upper-triangle pass, symmetric fill) — do not zero them here.
+          *   j < iStart  : before our block, computed in lower-triangle loop
+          *   j >= i      : standard upper triangle, not yet computed        */
+         for( j=0;      j<iStart; j++ ) Factors[li*N+j] = 0.0;
+         for( j=i;      j<N;      j++ ) Factors[li*N+j] = 0.0;
          if ( lel[i].Area<1.0e-10 ) continue;
 
+         /* upper triangle: j > i — store own entry, also fill symmetric
+          * entry when j is within this rank's local block               */
          for( j=i+1; j<N; j++ )
-         { 
+         {
             if ( lel[j].Area<1.0e-10 ) continue;
 
             FreeLinks( &lel[i] );
@@ -231,8 +254,29 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 
             (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
             Fact = ComputeViewFactorValue( &lel[i],0 );
-            Factors[i*N+j] = Fact / lel[i].Area;
-            Factors[j*N+i] = Fact / lel[j].Area;
+            Factors[li*N+j] = Fact / lel[i].Area;
+
+            /* fill F_ji only when row j is also owned by this rank */
+            if ( j >= iStart && j < iStart+nLocal )
+               Factors[(j-iStart)*N+i] = Fact / lel[j].Area;
+         }
+
+         /* lower triangle: j < i — only needed when j is NOT in our block
+          * (those entries were already filled by symmetry above)         */
+         for( j=0; j<i; j++ )
+         {
+            if ( j >= iStart && j < iStart+nLocal ) continue; /* done via symmetry */
+            if ( lel[j].Area<1.0e-10 ) continue;
+
+            FreeLinks( &lel[i] );
+            FreeLinks( &lel[j] );
+
+            lel[j].Flags |= GEOMETRY_FLAG_LEAF;
+            lel[i].Flags |= GEOMETRY_FLAG_LEAF;
+
+            (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
+            Fact = ComputeViewFactorValue( &lel[i],0 );
+            Factors[li*N+j] = Fact / lel[i].Area;
          }
 
          FreeChilds( lel[i].Left );
@@ -290,26 +334,26 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 
     k = 0;
     Ns = NofRadiators;
-    if ( NofRadiators==0 ) Ns = N;
+    if ( NofRadiators==0 ) Ns = nLocal;   /* only local rows */
     for(i=0; i<Ns; i++ )
     {
          s = 0.0;
-         for( j=0; j<N; j++ ) s += Factors[i*N+j];
+         for( j=0; j<N; j++ ) s += Factors[i*N+j];   /* Factors row i is local row i */
 
          if ( s < Fmin )
          {
             Fmin = s;
-            Imin = i+1;
+            Imin = iStart + i + 1;   /* report global row number */
          }
          if ( s > Fmax )
          {
             Fmax = s;
-            Imax = i+1;
+            Imax = iStart + i + 1;
          }
          Favg += s;
     }
-   fprintf( stdout, "surfs: %d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f, cput=%-4.2f\n", 
-                       N,Imin,Fmin,Imax,Fmax,Favg/Ns, realtime()-ct );
+   fprintf( stdout, "rank %d: surfs: %d/%d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f, cput=%-4.2f\n",
+                       MPIRank, nLocal, N, Imin,Fmin,Imax,Fmax,Favg/Ns, realtime()-ct );
 }
 
 
@@ -609,19 +653,30 @@ void radiatorfactors3d
       int *RT_Perm, int *RT_Type, double *RT_Coord, int *NofRadiators, double *RadiatorCoords, int *LineFlag,
         double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine )
 {
+   /* Radiator factors: no MPI row decomposition (radiators typically few) */
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
        *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
 
-   IntegrateFromGeometry(*NofRadiators,RadiatorCoords,*LineFlag,*N,Factors);
+   IntegrateFromGeometry(*NofRadiators,RadiatorCoords,*LineFlag,*N,Factors,0,*NofRadiators);
 }
 
+/*
+ * MPI-aware entry point.
+ * iStart : 0-based global index of first source row on this rank
+ * nLocal : number of source rows on this rank
+ * mpiRank: MPI rank (for RNG seeding; 0 in serial)
+ * Factors: caller allocates nLocal*N doubles
+ */
 void viewfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0,
        double *RT_Data, int *RT_Perm, int *RT_Type, double *RT_Coord, double *Factors, double *Feps, double *Aeps,
-          double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int  *Combine )
+          double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int *Combine,
+          int *iStart, int *nLocal, int *mpiRank )
 {
+   MPIRank = *mpiRank;
+
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
             *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
 
-   IntegrateFromGeometry(0,NULL,0,*N,Factors);
+   IntegrateFromGeometry(0,NULL,0,*N,Factors,*iStart,*nLocal);
 }

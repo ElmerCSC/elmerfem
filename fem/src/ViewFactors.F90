@@ -100,6 +100,10 @@
      REAL(KIND=dp) :: at, rt, at2, rt2
      INTEGER :: i,j,k,l,t,n,Ni,istat
 
+     ! MPI row-decomposition for view factor computation
+     INTEGER :: nLocal, n_global, iStart_local, myRank, nProcs, vf_comm, mpiErr
+     REAL(KIND=dp), ALLOCATABLE :: Factors_local(:)
+
      ! Radiators on/off, coordinates
      !------------------------------
      INTEGER :: NofRadiators
@@ -133,7 +137,8 @@
 
         SUBROUTINE ViewFactors3D(n, Surf, Type, Coord, Normals, &
           RT_n, RT_Surf, RT_Data, RT_Perm, RT_Type, RT_Coord, &
-              Factors, Feps, Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine) BIND(C)
+              Factors, Feps, Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine, &
+              iStart, nLocal, mpiRank) BIND(C)
 
             USE, INTRINSIC :: ISO_C_BINDING
             IMPLICIT NONE
@@ -148,6 +153,7 @@
 
             REAL(KIND=dp) :: Feps, Aeps, Reps
             INTEGER :: Nr, NInteg2, NInteg3, NInteg4, Combine
+            INTEGER :: iStart, nLocal, mpiRank
         END SUBROUTINE ViewFactors3D
 
 
@@ -161,6 +167,9 @@
      END INTERFACE
 !------------------------------------------------------------------------------
 
+     ! MPI initialisation — must come before any Elmer or MPI calls.
+     ! Sets ParEnv%MyPE, ParEnv%PEs and ELMER_COMM_WORLD.
+     CALL InitMPI()
      CALL Info( Caller, ' ', Level=3 )
      CALL Info( Caller, '==================================================', Level=3 )
      CALL Info( Caller, ' E L M E R  V I E W F A C T O R S,  W E L C O M E',  Level=3  )
@@ -271,7 +280,16 @@
      RadiationBC = .FALSE.
 !------------------------------------------------------------------------------
 
-     DO RadiationBody = 1, MaxRadiationBody      
+     DO RadiationBody = 1, MaxRadiationBody
+
+       ! Initialise MPI context unconditionally so WriteOutputFile guard
+       ! (IF myRank==0) is always valid regardless of geometry path.
+       myRank  = ParEnv % MyPE
+       nProcs  = ParEnv % PEs
+       vf_comm = ParEnv % ActiveComm
+       iStart_local = 0
+       n_global     = 0
+
        IF( MaxRadiationBody > 1) THEN
          CALL Info(Caller,'Computing view factors for radiation body' // I2S(RadiationBody), Level=3)
        END IF
@@ -303,7 +321,8 @@
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surf(2*n), Factors(n*n), STAT=istat )
        ELSE
-         ALLOCATE( Normals(3*n), Factors(n*n), Surf(4*n), Type(n), STAT=istat )
+         ! Factors allocated later, after MPI geometry gather determines n_global
+         ALLOCATE( Normals(3*n), Surf(4*n), Type(n), STAT=istat )
        END IF
        IF ( istat /= 0 ) THEN
          CALL Fatal( Caller, 'Memory allocation error. Aborting' )
@@ -360,8 +379,12 @@
        ElimBB = .NOT. GetLogical( Params,'Viewfactor BBox Shadow', GotIt)
        
        IF ( CylindricSymmetry ) THEN
-         ! axicymmetric case (radiators not implemeted)
-         ! --------------------------------------------
+         ! Axisymmetric case (radiators not implemented).
+         ! MPI row decomposition is not yet implemented for this path;
+         ! the computation runs on every rank but only rank 0 writes output.
+         IF ( nProcs > 1 ) CALL Warn(Caller, &
+             'MPI: axisymmetric view factors computed redundantly on all ranks')
+         n_global = n
          divide = GetInteger( Params, 'Viewfactor divide',GotIt)
          IF ( .NOT. GotIt ) Divide = 1
          CALL ViewFactorsAxis( N, Surf, Coord, Factors, divide, CombineInt )
@@ -376,14 +399,31 @@
          Mesh % Elements => RadElements
          Mesh % NumberOfBoundaryElements = 0
 
-         ! Extract the surfaces from given mesh to arrays passed to the view factor code
+         ! Extract the surfaces from given mesh to arrays passed to the view factor code.
+         ! All ranks load the full mesh (LoadModel uses 1,0), so n is identical on all
+         ! ranks — no geometry communication needed.
          ! -----------------------------------------------------------------------------
          CALL ExtractMeshInfo( Mesh, n, Coord, Surf, Type )
 
+         ! --- MPI: split computation rows evenly across ranks ---
+         ! All ranks have identical geometry; only the C-kernel work is distributed.
+         n_global     = n
+         nLocal       = n / nProcs + MERGE(1, 0, myRank < MOD(n, nProcs))
+         iStart_local = myRank * (n / nProcs) + MIN(myRank, MOD(n, nProcs))
+
+         IF ( nProcs > 1 ) CALL Info(Caller,'MPI: '//I2S(nProcs)//' ranks, '// &
+             'local rows '//I2S(iStart_local)//'..'//I2S(iStart_local+nLocal-1)// &
+             ' of '//I2S(n_global), Level=5)
+
+         ! Allocate local Factors for C kernel (nLocal rows × n_global cols)
+         ALLOCATE( Factors_local(nLocal * n_global), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors_local')
+         Factors_local = 0.0_dp
+
          ! In order to speed up shadowing checks, if requested, reduce the mesh complexity by finding
          ! simply connected planar areas, and replace the mesh within by few quads or triangles. Also
-         ! potentially finds circular planar areas (disabled atm). This scheme fails if the areas are
-         ! not convex or contain holes. Alternatively a surface or volume mesh may be given from disk.
+         ! potentially finds circular planar areas (disabled atm). Alternatively a surface or volume
+         ! mesh may be given from disk.
          !-------------------------------------------------------------------------------------------
          BLOCK
            !------------------------------------------------------
@@ -401,8 +441,8 @@
            RT_Coord => Coord
 
            IF (Combine3D) THEN
-             ! Automatic planar area reduction for a coarser shadow mesh
-             ! ---------------------------------------------------------
+             ! All ranks have the full mesh (LoadModel uses 1,0), so PlanarReduce
+             ! is available in MPI mode — every rank produces the same result.
              RT_Mesh => PlanarReduce(n, Normals, Coord, Mesh)
            ELSE
              ! Given surface OR volume shadow mesh from disk
@@ -413,25 +453,75 @@
            ! Extract possible shadowing surfaces
            ! -----------------------------------
            CALL ExtractMeshInfo( RT_Mesh, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm, ElimBBox = ElimBB )
+
+           ! Shadow mesh is fully available on all ranks:
+           !  - LoadShadowMesh: reads mesh files directly (serial, no MPI)
+           !  - LoadMesh2: called with (1,0) above so all ranks load the full mesh
+           ! No gather needed.
+
            IF ( RT_n > 0 ) THEN
              CALL Info(Caller,'Using separate mesh for shadowing, #elements = '//I2S(RT_n),Level=5)
-             
+
              WRITE (Message,'(A,2F8.2)') 'Shadow mesh defined time (s):',&
                  CPUTime()-at2, Realtime()-rt2
              CALL Info( Caller,Message, Level=3 )
              at2 = CPUTime(); rt2 = RealTime()
            END IF
-             
+
            ! ... and finally the beef:
            ! -------------------------
            IF ( DoRadiators ) THEN
+             ! Radiators: no MPI row decomposition yet; serial path unchanged
+             ALLOCATE( Factors(NofRadiators * n_global), STAT=istat )
+             IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
              CALL RadiatorFactors3d( n, Surf, TYPE, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, NofRadiators, Radiators, LineFlag, &
                        Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
            ELSE
              CALL ViewFactors3D( n, Surf, Type, Coord, Normals, RT_n, RT_Surf, &
-                  RT_Data, RT_Perm, RT_Type, RT_Coord, Factors, AreaEPS, FactEPS, RayEPS, &
-                      Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
+                  RT_Data, RT_Perm, RT_Type, RT_Coord, Factors_local, AreaEPS, FactEPS, RayEPS, &
+                      Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
+                      iStart_local, nLocal, myRank )
+
+             ! Gather local rows to rank 0 only — only rank 0 needs the full
+             ! matrix for normalisation and output.  Non-root ranks send their
+             ! rows but receive nothing, saving O(N²) memory and Newton work.
+             IF ( nProcs > 1 ) THEN
+               BLOCK
+                 INTEGER :: base_n, rem_n
+                 INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
+                 REAL(KIND=dp), ALLOCATABLE :: dummy_recv(:)
+                 ALLOCATE( recvcounts(0:nProcs-1), displs(0:nProcs-1) )
+                 base_n = n_global / nProcs;  rem_n = MOD(n_global, nProcs)
+                 DO i = 0, nProcs-1
+                   recvcounts(i) = (base_n + MERGE(1,0,i<rem_n)) * n_global
+                 END DO
+                 displs(0) = 0
+                 DO i = 1, nProcs-1
+                   displs(i) = displs(i-1) + recvcounts(i-1)
+                 END DO
+                 IF ( myRank == 0 ) THEN
+                   ALLOCATE( Factors(n_global * n_global), STAT=istat )
+                   IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                       Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+                 ELSE
+                   ALLOCATE( dummy_recv(1) )  ! receive buffer ignored on non-root
+                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                       dummy_recv, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+                 END IF
+                 DEALLOCATE( recvcounts, displs )
+               END BLOCK
+             ELSE
+               ALLOCATE( Factors(n_global * n_global), STAT=istat )
+               IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+               Factors = Factors_local
+             END IF
+             DEALLOCATE( Factors_local )
+             ! IterSolv uses ipar=0/dProc=0 → sequential BLAS dot products,
+             ! no MPI.  Non-root ranks skip the IF(myRank==0) normalisation
+             ! block below and loop back; the next body's MPI_Gatherv acts as
+             ! the natural synchronisation point, so no explicit barrier needed.
            END IF
 
            IF (RT_n>0) THEN
@@ -447,37 +537,52 @@
        CALL Info( Caller,Message, Level=3 )
        at2 = CPUTime(); rt2 = RealTime()
 
-       CALL SymmetryReduction(DoRadiators,NofRadiators,n,Ni,Factors)
+       ! Only rank 0 has the full Factors matrix — normalisation and output
+       ! are rank-0-only operations.  Other ranks already did their work.
+       IF ( myRank == 0 ) THEN
+         CALL SymmetryReduction(DoRadiators,NofRadiators,n,Ni,Factors)
 
-       CALL FindInitialMinMax(Ni,N,Factors,RadiationOpen)
-       CALL NormalizeFactors(Model,DoRadiators,NofRadiators,n,Factors,RadiationOpen)
-       CALL FindNormalizedMinMax(Ni,n,Factors)
+         CALL FindInitialMinMax(Ni,N,Factors,RadiationOpen)
+         CALL NormalizeFactors(Model,DoRadiators,NofRadiators,n,Factors,RadiationOpen)
+         CALL FindNormalizedMinMax(Ni,n,Factors)
 
-       WRITE (Message,'(A,2F8.2)') 'View factors manipulated in time (s):',&
-           CPUTime()-at2, realtime()-rt2
-       CALL Info( Caller,Message, Level=3 )
-       at2 = CPUTime(); rt2 = RealTime()
-              
-       IF(InfoActive(12)) CALL ViewFactorsLumping()       
-       CALL WriteOutputFile(DoRadiators,Ni,n,Factors,RadiationBody)
+         WRITE (Message,'(A,2F8.2)') 'View factors manipulated in time (s):',&
+             CPUTime()-at2, realtime()-rt2
+         CALL Info( Caller,Message, Level=3 )
+         at2 = CPUTime(); rt2 = RealTime()
 
-       WRITE (Message,'(A,2F8.2)') 'View factors saved in time (s):',&
-           CPUTime()-at2, realtime()-rt2
-       CALL Info( Caller,Message, Level=3 )
-       at2 = CPUTime(); rt2 = RealTime()
+         IF(InfoActive(12)) CALL ViewFactorsLumping()
+         CALL WriteOutputFile(DoRadiators,Ni,n,Factors,RadiationBody)
 
-       DEALLOCATE( Surf, Factors, Areas )
+         WRITE (Message,'(A,2F8.2)') 'View factors saved in time (s):',&
+             CPUTime()-at2, realtime()-rt2
+         CALL Info( Caller,Message, Level=3 )
+         at2 = CPUTime(); rt2 = RealTime()
+       END IF
+
+       DEALLOCATE( Surf, Areas )
+       IF ( ALLOCATED(Factors) ) DEALLOCATE( Factors )
        IF ( .NOT. CylindricSymmetry ) DEALLOCATE(Normals, Type)
-       
+
      END DO  ! Of radiation RadiationBody
 
      WRITE (Message,'(A,2F8.2)') 'View factors all done in time (s):',&
          CPUTime()-at, realtime()-rt
      CALL Info( Caller,Message, Level=3 )
-     
+
      CALL FLUSH(6)
+     CALL ParallelFinalize()
 
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> Thin wrapper around ParallelInit() so TYPE(ParEnv_t) stays out of the
+!> PROGRAM specification section (avoids parser confusion near INTERFACE).
+!------------------------------------------------------------------------------
+   SUBROUTINE InitMPI()
+     TYPE(ParEnv_t), POINTER :: penv
+     penv => ParallelInit()
+   END SUBROUTINE InitMPI
 
 !------------------------------------------------------------------------------
    SUBROUTINE InitModel(Model,Mesh)
@@ -1116,7 +1221,9 @@ CONTAINS
              GetLogical( Model % Simulation,'Internal Rigid Mesh Mapping', Found )
 
          BoundaryOnly = .NOT. DoMapping          
-         RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, BoundaryOnly, ParEnv % PEs, ParEnv % MyPE )
+         ! Load as non-distributed (1,0) so every MPI rank gets the complete
+         ! shadow mesh independently — all ranks need it for ray testing.
+         RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, BoundaryOnly, 1, 0 )
 
          CALL SymmetryDuplication(RT_Mesh)
          
