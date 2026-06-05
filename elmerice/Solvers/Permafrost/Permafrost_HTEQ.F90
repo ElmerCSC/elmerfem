@@ -29,7 +29,9 @@
 ! *               Keilaranta 14                    
 ! *               02101 Espoo, Finland             
 ! *                                                 
-! *       Original Date:  January 2017  -               
+! *       Original Date:  January 2017
+! *       Modified:       June 2026 - Added nodal averaging of Xi (Nodal Xi)
+! *                       for SaveLine/SaveData output compatibility
 ! * 
 ! *****************************************************************************
 !>  Solver for permafrost heat transfer problem including phase change
@@ -64,6 +66,7 @@ SUBROUTINE PermafrostHeatTransfer_init( Model,Solver,dt,TransientSimulation )
   IF (OutputXi) THEN
     CALL INFO(SolverName,'Output of IP variable "Xi" ',Level=6)
     CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable',SolverParams),'-IP Xi' )
+    CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable',SolverParams),'Nodal Xi' )
   ELSE
     CALL INFO(SolverName,'No output of IP variable "Xi" ',Level=6)
     CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable',SolverParams),'-IP -nooutput Xi' )
@@ -103,6 +106,10 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Params, Material
   TYPE(Variable_t), POINTER :: DummyGWfluxVar
+  TYPE(Variable_t), POINTER :: NodalXiVar => NULL()
+  INTEGER, POINTER :: NodalXiPerm(:)
+  REAL(KIND=dp), POINTER :: NodalXiVals(:)
+  REAL(KIND=dp), ALLOCATABLE :: NodalXiWeight(:)
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat,DepthDOFs
@@ -111,7 +118,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE., FluxOutput = .FALSE.,&
        ComputeDt=.FALSE.,ElementWiseRockMaterial, DepthExists=.FALSE.,&
        InitializeSteadyState=.FALSE.,ActiveMassMatrix=.TRUE.,&
-       NoSalinity=.FALSE.
+       NoSalinity=.FALSE., OutputXi=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostHeatEquation'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, SalinityName, GWfluxName, PhaseChangeModel,&
@@ -122,7 +129,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
 
   SAVE DIM,FirstTime,AllocationsDone,FluxOutput,DepthName,XiAtIPName,&
        CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
-       ElementWiseRockMaterial,ComputeDt,DepthExists,&
+       ElementWiseRockMaterial,ComputeDt,DepthExists,OutputXi,&
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        PressureVelo_h, SalinityVelo_h, Depth_h, &
        Vstar1_h, Vstar2_h, Vstar3_h
@@ -173,6 +180,10 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   !---------------------------------------------------------------  
   IF (FirstTime) &
        InitializeSteadyState = GetLogical(Params,'Initialize Steady State',Found)
+  IF (FirstTime) THEN
+    OutputXi = GetLogical(Params,'Output Xi',Found)
+    IF (.NOT.Found) OutputXi = .FALSE.
+  END IF
   IF (TransientSimulation) THEN
     IF (InitializeSteadyState) THEN
       IF (GetTimeStep() == 1) THEN
@@ -216,6 +227,17 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
+    IF (OutputXi) THEN
+      NodalXiVar => VariableGet( Solver % Mesh % Variables, 'Nodal Xi')
+      IF (ASSOCIATED(NodalXiVar)) THEN
+        NodalXiVals => NodalXiVar % Values
+        NodalXiPerm => NodalXiVar % Perm
+        NodalXiVals = 0.0_dp
+        IF (.NOT.ALLOCATED(NodalXiWeight)) &
+          ALLOCATE( NodalXiWeight(SIZE(NodalXiVals)) )
+        NodalXiWeight = 0.0_dp
+      END IF
+    END IF
     Active = GetNOFActive()
     DO t=1,Active
       Element => GetActiveElement(t)
@@ -267,6 +289,13 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
     END DO
 
     CALL DefaultFinishBulkAssembly()
+
+    IF (OutputXi .AND. ASSOCIATED(NodalXiVar)) THEN
+      DO i=1,SIZE(NodalXiVals)
+        IF (NodalXiWeight(i) > 0.0_dp) &
+          NodalXiVals(i) = NodalXiVals(i) / NodalXiWeight(i)
+      END DO
+    END IF
 
     Active = GetNOFBoundaryElements()
 
@@ -647,6 +676,20 @@ CONTAINS
       END IF
 
       Weight = IP % s(t) * DetJ
+
+      IF (OutputXi .AND. ASSOCIATED(NodalXiVar)) THEN
+        DO p=1,n
+          IF (NodalXiPerm(Element % NodeIndexes(p)) > 0) THEN
+            NodalXiVals(NodalXiPerm(Element % NodeIndexes(p))) = &
+              NodalXiVals(NodalXiPerm(Element % NodeIndexes(p))) + &
+              Weight * Basis(p) * XiAtIP(IPPerm)
+            NodalXiWeight(NodalXiPerm(Element % NodeIndexes(p))) = &
+              NodalXiWeight(NodalXiPerm(Element % NodeIndexes(p))) + &
+              Weight * Basis(p)
+          END IF
+        END DO
+      END IF
+
       !PRINT *, "Weight=", Weight
       !KGTTAtIP = 0
       !KGTTAtIP(1,1) = 3.0_dp
