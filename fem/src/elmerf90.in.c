@@ -43,13 +43,6 @@
 #define ELMERF90_PARMMG_LIBDIR  "@PARMMG_LIBDIR@"
 #define ELMERF90_PARMMG_INCDIR  "@PARMMG_INCLUDE_DIR@"
 
-/* Shared library extension */
-#ifdef _WIN32
-#  define SHL_EXT ".dll"
-#else
-#  define SHL_EXT ".so"
-#endif
-
 /* --- Argument-list helpers ----------------------------------------------- */
 
 #define MAX_ARGS 1024
@@ -134,10 +127,11 @@ int main(int argc, char *argv[])
         push("-Xlinker");
         push(join("-rpath=", elib));
 #endif
-        push(join(elib, "/ElmerIceSolvers" SHL_EXT));
-        push(join(elib, "/ElmerIceUSF" SHL_EXT));
-        push(join(elib, "/ElmerIceUtils" SHL_EXT));
+        push(join("-L", elib));
         free(elib);
+        push("-lElmerIceSolvers");
+        push("-lElmerIceUSF");
+        push("-lElmerIceUtils");
     }
 #else
     fprintf(stderr, "no elmerice\n");
