@@ -114,6 +114,10 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90-nosh.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerf90-nosh)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
+IF(WIN32)
+  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.bat.in.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/elmerld.bat)
+ENDIF()
 
 # Build elmerf90 as a compiled C binary (replaces the shell script / .bat)
 IF(WITH_ElmerIce)
