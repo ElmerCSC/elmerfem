@@ -118,30 +118,41 @@ CONTAINS
 
      INTEGER :: i,j,l
      CHARACTER(LEN=MAX_STRING_LEN) :: pcmd,res
- 
-     IF(nparams==0) THEN
-       pcmd = "tx=0"
+     CHARACTER(LEN=MAX_NAME_LEN) :: varname
+     REAL(KIND=dp) :: zero(1)
+
+     IF(PRESENT(resul)) THEN
+       varname = TRIM(resul)
      ELSE
-#if 0
-       WRITE(pcmd,*)  [(params(i),i=1,nparams)]
-#else
-       ! cray ftn output from above can be somewhat convoluted, do this instead
-       j = 1
-       DO i=1,nparams
-         WRITE(pcmd(j:), *) params(i)
-         DO WHILE(pcmd(j:j) == ' '); j=j+1; END DO
-         DO WHILE(pcmd(j:j) /= ' '); j=j+1; END DO
-         IF(pcmd(j-1:j-1)=='.') pcmd(j-1:j-1) = ' '
-         j = j + 1
-       END DO
-#endif
-       IF(PRESENT(resul)) THEN
-         pcmd = TRIM(resul)//'='//TRIM(pcmd)
+       varname = 'tx'
+     END IF
+
+     ! Names containing '(' (e.g. "tx(0)") are indexed assignments in MATC —
+     ! use the old string-based path which produces "tx(0)=val" and parses
+     ! correctly as an indexed write.  Simple names use the direct C path.
+     IF( INDEX(varname,'(') > 0 ) THEN
+       IF(nparams==0) THEN
+         pcmd = TRIM(varname)//'=0'
        ELSE
-         pcmd = "tx="//TRIM(pcmd)
+         j = 1
+         DO i=1,nparams
+           WRITE(pcmd(j:), *) params(i)
+           DO WHILE(pcmd(j:j) == ' '); j=j+1; END DO
+           DO WHILE(pcmd(j:j) /= ' '); j=j+1; END DO
+           IF(pcmd(j-1:j-1)=='.') pcmd(j-1:j-1) = ' '
+           j = j + 1
+         END DO
+         pcmd = TRIM(varname)//'='//TRIM(pcmd)
+       END IF
+       l = Matc(pcmd,res)
+     ELSE
+       IF(nparams==0) THEN
+         zero(1) = 0.0_dp
+         CALL MatcSetParams(varname, zero, 0)
+       ELSE
+         CALL MatcSetParams(varname, params, nparams)
        END IF
      END IF
-     l = Matc(pcmd,res)
    END SUBROUTINE SetGetMatcParams
 
 
@@ -159,7 +170,7 @@ CONTAINS
      IF (PRESENT(nparams).AND.PRESENT(params))THEN
        CALL SetGetMatcParams(nparams,params,resul)
      END IF
-     l = Matc(cmd,res)
+     l = MatcCached(cmd,res)
      ALLOCATE(g(n,m))
      READ(res(1:l),*) ((g(i,j),j=1,m),i=1,n)
    END FUNCTION GetMatcRealArray
@@ -175,11 +186,11 @@ CONTAINS
 
     INTEGER :: i,j,l
     CHARACTER(LEN=MAX_NAME_LEN) :: res
-   
+
     IF (PRESENT(nparams).AND.PRESENT(params))THEN
       CALL SetGetMatcParams(nparams,params,resul)
     END IF
-    l = Matc(cmd,res)
+    l = MatcCached(cmd,res)
     ALLOCATE(g(n))
     READ(res(1:l),*) (g(i),i=1,n)
   END FUNCTION GetMatcRealVector
@@ -198,7 +209,7 @@ CONTAINS
     IF (PRESENT(nparams).AND.PRESENT(params))THEN
       CALL SetGetMatcParams(nparams,params,resul)
     END IF
-    l = Matc(cmd,res)
+    l = MatcCached(cmd,res)
     READ(res(1:l), *) g
   END FUNCTION GetMatcReal
 !------------------------------------------------------------------------------ 

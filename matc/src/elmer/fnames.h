@@ -9,6 +9,11 @@
 char *doread( void );
 VARIABLE *com_quit( void );
 
+void  *mtc_compile( char *str );
+char  *mtc_eval( void *handle );
+void   mtc_free_compiled( void *handle );
+void   mtc_set_real_array( const char *name, double *values, int n );
+
 /*
  * $Id: fnames.h,v 1.2 2007/06/08 08:12:19 jpr Exp $ 
  *
@@ -181,6 +186,7 @@ void free_treeentry( TREEENTRY *);
 void free_tree( TREE *);
 void free_clause( CLAUSE *);
 
+CLAUSE  *doit_compile( char * );
 VARIABLE *doit( char *);
 
 /* printclause.c */

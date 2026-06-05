@@ -597,6 +597,53 @@ int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
 
 char *mtc_domath(char *);
 void mtc_init(FILE *,FILE *, FILE *);
+void *mtc_compile(char *);
+char *mtc_eval(void *);
+void  mtc_free_compiled(void *);
+void  mtc_set_real_array(const char *, double *, int);
+
+/* Compile-cache for per-element MATC expression evaluation.
+ * Variable-setting calls ("tx=1.5 2.3 ...") are always unique and go through
+ * mtc_domath as before.  Expression strings from ptr%CValue are constant for
+ * the lifetime of a simulation and are compiled once then re-evaluated. */
+
+typedef struct { char *expr; void *handle; } MtcCacheEntry_t;
+static MtcCacheEntry_t *mtc_cache     = NULL;
+static int              mtc_cache_n   = 0;
+static int              mtc_cache_cap = 0;
+static int              mtc_been_here = 0;
+#pragma omp threadprivate(mtc_cache, mtc_cache_n, mtc_cache_cap, mtc_been_here)
+
+static void mtc_init_once(void)
+{
+  char cc[32];
+  if (mtc_been_here) return;
+  mtc_init(NULL, stdout, stderr);
+  strcpy(cc, "format( 12,\"rowform\")");
+  mtc_domath(cc);
+  mtc_been_here = 1;
+}
+
+static void *mtc_cache_lookup(const char *expr)
+{
+  int i;
+  for (i = 0; i < mtc_cache_n; i++)
+    if (strcmp(mtc_cache[i].expr, expr) == 0)
+      return mtc_cache[i].handle;
+  return NULL;
+}
+
+static void mtc_cache_insert(const char *expr, void *handle)
+{
+  if (mtc_cache_n == mtc_cache_cap) {
+    mtc_cache_cap = mtc_cache_cap ? mtc_cache_cap * 2 : 64;
+    mtc_cache = (MtcCacheEntry_t *)realloc(mtc_cache,
+                    mtc_cache_cap * sizeof(MtcCacheEntry_t));
+  }
+  mtc_cache[mtc_cache_n].expr   = strdup(expr);
+  mtc_cache[mtc_cache_n].handle = handle;
+  mtc_cache_n++;
+}
 
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc variable array values
@@ -623,21 +670,14 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
 {
 #define MAXLEN 8192
 
-  static int been_here = 0;
-  char *ptr, c, cc[32], *ccmd;
+  char *ptr, *ccmd;
   int slen, start;
-#pragma omp threadprivate(been_here)
 
   /* MB: Critical section removed since Matc library
    * modified to be thread safe */
 
    slen = *len;
-   if ( been_here==0 ) {
-     mtc_init( NULL, stdout, stderr );
-     strcpy( cc, "format( 12,\"rowform\")" );
-     mtc_domath( cc );
-     been_here = 1;
-   }
+   mtc_init_once();
 
   ccmd = (char *)malloc(slen+1);
   strncpy( ccmd, cmd, slen);
@@ -675,6 +715,102 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
     *result = ' ';
   }
   free(ccmd);
+}
+
+/*--------------------------------------------------------------------------
+  Like matc_c but compiles the expression on first use and re-evaluates the
+  cached parse tree on every subsequent call.  Used for MATC expressions that
+  appear as material/BC parameters — same string, many different variable
+  values per element.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc_c_cached( char *cmd, int *len, char *result, int *reslen )
+#else
+void STDCALLBULL FC_FUNC(matc_c_cached,MATC_C_CACHED) (char *cmd,int *cmdlen,char *result,int *reslen)
+#endif
+{
+  char *ptr, *ccmd;
+  int slen, start;
+  void *handle;
+
+  slen = *len;
+  mtc_init_once();
+
+  ccmd = (char *)malloc(slen + 1);
+  strncpy(ccmd, cmd, slen);
+  ccmd[slen] = '\0';
+
+  start = 0;
+  if (strncmp(ccmd, "nc:", 3) == 0) start = 3;
+
+  handle = mtc_cache_lookup(&ccmd[start]);
+  if (!handle) {
+    handle = mtc_compile(&ccmd[start]);
+    if (handle)
+      mtc_cache_insert(&ccmd[start], handle);
+  }
+
+  /* Failed compile: fall back to mtc_domath so the MATC ERROR message
+   * reaches Elmer's output — same behaviour as the non-cached path. */
+  if (!handle) {
+    ptr = mtc_domath(&ccmd[start]);
+  } else {
+    ptr = (char *)mtc_eval(handle);
+  }
+  if (ptr) {
+    slen = strlen(ptr) - 1; /* ignore linefeed */
+  } else {
+    slen = 0;
+  }
+
+  if (slen >= *reslen) {
+    fprintf(stderr, "MATC result too long %d %d\n", *len, *reslen);
+    exit(0);
+  } else if (slen > 0) {
+    *reslen = slen;
+    strncpy(result, (const char *)ptr, slen);
+
+    if (strncmp(result, "MATC ERROR:", 11) == 0 || strncmp(result, "WARNING:", 8) == 0) {
+      if (start == 0) {
+        fprintf(stderr, "Solver input file error: %s\n", result);
+        fprintf(stderr, "...offending input line: %s\n", ccmd);
+        exit(0);
+      } else {
+        result[0] = ' ';
+        *reslen = 0;
+      }
+    }
+  } else {
+    *reslen = 0;
+    *result = ' ';
+  }
+  free(ccmd);
+}
+
+/*--------------------------------------------------------------------------
+  Set a named MATC real variable directly from a Fortran array, bypassing
+  string formatting and parsing.  Called instead of matc_c for the variable-
+  setting step in SetGetMatcParams.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc_c_set_params( char *name, int *namelen,
+                                    double *values, int *n )
+#else
+void STDCALLBULL FC_FUNC(matc_c_set_params,MATC_C_SET_PARAMS)
+                        ( char *name, int *namelen, double *values, int *n )
+#endif
+{
+  char *cname;
+  int len = *namelen;
+
+  mtc_init_once();
+
+  cname = (char *)malloc(len + 1);
+  strncpy(cname, name, len);
+  cname[len] = '\0';
+
+  mtc_set_real_array(cname, values, *n);
+  free(cname);
 }
 
 /*--------------------------------------------------------------------------

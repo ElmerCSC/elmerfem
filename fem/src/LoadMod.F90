@@ -90,6 +90,23 @@ MODULE LoadMod
         END SUBROUTINE matc_c
     END INTERFACE
 
+    INTERFACE
+        SUBROUTINE matc_c_cached(cmd,cmdlen,res,reslen) BIND(C,name='matc_c_cached')
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: cmdlen,reslen
+            CHARACTER(C_CHAR) :: cmd(*), res(*)
+        END SUBROUTINE matc_c_cached
+    END INTERFACE
+
+    INTERFACE
+        SUBROUTINE matc_c_set_params(name,namelen,values,n) BIND(C,name='matc_c_set_params')
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: namelen, n
+            CHARACTER(C_CHAR) :: name(*)
+            REAL(C_DOUBLE) :: values(*)
+        END SUBROUTINE matc_c_set_params
+    END INTERFACE
+
     ! CPUTime.c
     INTERFACE
         FUNCTION cputime() RESULT(dbl) BIND(C,name='cputime')
@@ -169,6 +186,37 @@ MODULE LoadMod
           END IF
           CALL matc_c(cmd,cmdlen,res,reslen)
         END FUNCTION matc
+
+        ! Set a MATC variable directly from a Fortran array, bypassing
+        ! string formatting and parsing.  On first call allocates the variable;
+        ! on subsequent calls with the same size it is just a memcpy in C.
+        SUBROUTINE MatcSetParams(name, values, n)
+          CHARACTER(*) :: name
+          REAL(KIND=dp) :: values(*)
+          INTEGER :: n
+          INTEGER :: namelen
+          namelen = LEN_TRIM(name)
+          CALL matc_c_set_params(name, namelen, values, n)
+        END SUBROUTINE MatcSetParams
+
+        ! Like matc() but compiles the expression once and re-uses the
+        ! parse tree on subsequent calls with the same expression string.
+        ! Use for MATC material/BC expressions evaluated per element.
+        FUNCTION MatcCached(cmd, res, inlen) RESULT(reslen)
+          INTEGER :: reslen
+          CHARACTER(*) :: cmd, res
+          INTEGER, OPTIONAL :: inlen
+
+          INTEGER :: cmdlen
+
+          reslen = LEN(res)
+          IF(PRESENT(inlen)) THEN
+            cmdlen = inlen
+          ELSE
+            cmdlen = LEN_TRIM(cmd)
+          END IF
+          CALL matc_c_cached(cmd,cmdlen,res,reslen)
+        END FUNCTION MatcCached
 
         SUBROUTINE systemc(cmd)
             IMPLICIT NONE

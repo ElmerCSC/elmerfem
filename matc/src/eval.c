@@ -331,9 +331,17 @@ VARIABLE *evaltree(TREE *root)
 
       if (opres != NULL)
       {
-        tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
-        tmp->this = opres;
-        REFCNT(tmp) = 1;
+        if (opres->nrow == 1 && opres->ncol == 1 && opres->type == TYPE_DOUBLE) {
+          /* Scalar result: use pool block to avoid ALLOCMEM overhead.
+           * opres is at the head of ALLOC_HEAD here so mat_free is O(1). */
+          tmp = var_temp_new(TYPE_DOUBLE, 1, 1);
+          *MATR(tmp) = *opres->data;
+          mat_free(opres);
+        } else {
+          tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
+          tmp->this = opres;
+          REFCNT(tmp) = 1;
+        }
       }
 
       break;

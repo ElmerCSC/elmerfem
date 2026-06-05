@@ -92,6 +92,40 @@ $  usage of the function and type of the parameters
 
 #include "elmer/matc.h"
 
+/* --------------------------------------------------------------------------
+ * Per-thread freelist for combined VARIABLE+MATRIX+double scalar temporaries.
+ * Pool blocks are allocated with malloc() directly (no ALLOC_LIST prefix),
+ * so they must never pass through FREEMEM/mem_free.
+ * --------------------------------------------------------------------------*/
+#define SCALAR_POOL_CAP  32
+#define SCALAR_BLOCK_SZ  (VARIABLESIZE + MATRIXSIZE + sizeof(double))
+
+static VARIABLE *scalar_pool_head  = NULL;
+static int       scalar_pool_count = 0;
+#pragma omp threadprivate(scalar_pool_head, scalar_pool_count)
+
+static VARIABLE *scalar_pool_pop(void)
+{
+    if (scalar_pool_head) {
+        VARIABLE *ptr = scalar_pool_head;
+        scalar_pool_head = (VARIABLE *)NEXT(ptr);
+        scalar_pool_count--;
+        return ptr;
+    }
+    return (VARIABLE *)malloc(SCALAR_BLOCK_SZ);
+}
+
+static void scalar_pool_push(VARIABLE *ptr)
+{
+    if (scalar_pool_count < SCALAR_POOL_CAP) {
+        NEXT(ptr) = (struct variable *)scalar_pool_head;
+        scalar_pool_head = ptr;
+        scalar_pool_count++;
+    } else {
+        free(ptr);
+    }
+}
+
 VARIABLE *const_new(char *name, int type, int nrow, int ncol)
 /*======================================================================
 ?  return a new global VARIABLE given name, type, and matrix size.
@@ -151,7 +185,8 @@ void var_create_vector( char *name, int ntime, int ncol, double *data )
     VARIABLE *var = var_new( name,TYPE_DOUBLE, ntime, ncol );
     int i;
 
-    FREEMEM( MATR(var) );
+    if (!MAT_DATA_EMBEDDED(var->this))
+        FREEMEM( MATR(var) );
     MATR(var) = data;
 }
 
@@ -175,8 +210,15 @@ VARIABLE *var_rename(VARIABLE *ptr, char *str)
   {
     res = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
     NAME(res) = STRCOPY(str);
-    res->this = ptr->this;
-    REFCNT(res)++;
+    if (VAR_SCALAR_COMBINED(ptr)) {
+      /* MATRIX is embedded in ptr's combined block — must copy, not share,
+       * so var_delete_temp(ptr) can safely free the whole block. */
+      res->this = mat_copy(ptr->this);
+      REFCNT(res) = 1;
+    } else {
+      res->this = ptr->this;
+      REFCNT(res)++;
+    }
     lst_addhead(VARIABLES, (LIST *)res);
   }
   else
@@ -193,11 +235,17 @@ VARIABLE *var_rename(VARIABLE *ptr, char *str)
          {
             if (--REFCNT(res) == 0)
             {
-                 FREEMEM( (char *)MATR(res) );
-                 FREEMEM( (char *)res->this );
+                if (!MAT_DATA_EMBEDDED(res->this))
+                    FREEMEM( (char *)MATR(res) );
+                FREEMEM( (char *)res->this );
              }
-             res->this = ptr->this;
-             REFCNT(res)++;
+            if (VAR_SCALAR_COMBINED(ptr)) {
+              res->this = mat_copy(ptr->this);
+              REFCNT(res) = 1;
+            } else {
+              res->this = ptr->this;
+              REFCNT(res)++;
+            }
          }
      }
   }
@@ -315,7 +363,8 @@ void var_delete(char *str)
     {
         if ( --REFCNT(ptr) == 0 )
         {
-            FREEMEM((char *)MATR(ptr));
+            if (!MAT_DATA_EMBEDDED(ptr->this))
+                FREEMEM((char *)MATR(ptr));
             FREEMEM((char *)ptr->this);
         }
         lst_free(VARIABLES, (LIST *)ptr);
@@ -339,7 +388,8 @@ void var_free(void)
     {
         if ( --REFCNT(ptr) == 0 )
         {
-            FREEMEM((char *)MATR(ptr));
+            if (!MAT_DATA_EMBEDDED(ptr->this))
+                FREEMEM((char *)MATR(ptr));
             FREEMEM((char *)ptr->this);
         }
      }
@@ -357,7 +407,8 @@ void const_free(void)
     {
         if ( --REFCNT(ptr) == 0 )
         {
-            FREEMEM((char *)MATR(ptr));
+            if (!MAT_DATA_EMBEDDED(ptr->this))
+                FREEMEM((char *)MATR(ptr));
             FREEMEM((char *)ptr->this);
         }
     }
@@ -463,10 +514,28 @@ VARIABLE *var_temp_new(int type, int nrow, int ncol)
 ^=====================================================================*/
 {
     VARIABLE *ptr;
+    MATRIX   *mat;
 
-    ptr =   (VARIABLE *)ALLOCMEM(VARIABLESIZE); /* list entry */
+    if (type == TYPE_DOUBLE && nrow == 1 && ncol == 1) {
+        /* Pop from per-thread pool (or malloc on first use).
+         * Pool blocks bypass ALLOC_HEAD tracking; never pass to FREEMEM. */
+        ptr = scalar_pool_pop();
+        NEXT(ptr) = NULL;
+        NAME(ptr) = NULL;
+        ptr->changed = 0;
+        mat = (MATRIX *)((char *)ptr + VARIABLESIZE);
+        mat->type     = TYPE_DOUBLE;
+        mat->refcount = 1;
+        mat->nrow     = mat->ncol = 1;
+        mat->data     = (double *)((char *)mat + MATRIXSIZE);
+        *mat->data    = 0.0;
+        ptr->this     = mat;
+        return ptr;
+    }
+
+    ptr = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
     ptr->this = mat_new(type, nrow, ncol);
-    REFCNT( ptr ) = 1;
+    REFCNT(ptr) = 1;
 
     return ptr;
 }
@@ -492,10 +561,23 @@ void var_delete_temp_el( VARIABLE *ptr )
     {
         if ( --REFCNT(ptr) == 0 )
         {
-           FREEMEM((char *)MATR(ptr));
-           FREEMEM((char *)ptr->this);
+            if (VAR_SCALAR_COMBINED(ptr)) {
+                /* Pool-backed block: return to freelist (or free if full). */
+                scalar_pool_push(ptr);
+            } else {
+                if (!MAT_DATA_EMBEDDED(ptr->this))
+                    FREEMEM((char *)MATR(ptr));
+                FREEMEM((char *)ptr->this);
+                FREEMEM((char *)ptr);
+            }
+        } else {
+            /* REFCNT > 0: another variable still references this MATRIX.
+             * Free the VARIABLE wrapper only (not the MATRIX data).
+             * Combined scalars are never shared, so this branch is dead
+             * for them — do nothing rather than corrupt the pool. */
+            if (!VAR_SCALAR_COMBINED(ptr))
+                FREEMEM((char *)ptr);
         }
-        FREEMEM((char *)ptr);
     }
     return;
 }

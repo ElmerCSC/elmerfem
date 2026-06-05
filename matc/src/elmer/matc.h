@@ -184,6 +184,13 @@ typedef struct variable
 #define MATRIXSIZE   sizeof(MATRIX)
 #define MATSIZE(ptr) NROW(ptr)*NCOL(ptr)*sizeof(double)
 
+/* True when MATRIX data is packed immediately after the MATRIX struct
+ * (combined allocation from mat_new for 1x1 double). */
+#define MAT_DATA_EMBEDDED(m)      ((m)->data == (double *)((char *)(m) + MATRIXSIZE))
+/* True when VARIABLE, MATRIX and data are all in one block
+ * (combined allocation from var_temp_new for 1x1 double). */
+#define VAR_SCALAR_COMBINED(v)    ((v)->this == (MATRIX *)((char *)(v) + VARIABLESIZE))
+
 #define TYPE_DOUBLE  0
 #define TYPE_COMPLEX 1       /* this is not */
 #define TYPE_STRING  2
