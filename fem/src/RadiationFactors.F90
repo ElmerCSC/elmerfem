@@ -1353,7 +1353,7 @@
      SUBROUTINE CalculateGebhartFactors()
 
        REAL(KIND=dp) :: MinFactor, MaxOmittedFactor, ConsideredSum
-       INTEGER :: Colj,i,j,k,n,t, ImplicitEntries, MatrixEntries
+       INTEGER :: Colj,i,j,k,n,t, ImplicitEntries, MatrixEntries, previ
        LOGICAL :: gTriv, gSymm, ImplicitLimitIs
        REAL(KIND=dp) :: r,s,st,PrevSelf, MinSum,MaxSum,SolSum,FactorSum,ImplicitSum,&
            ImplicitLimit, NeglectLimit
@@ -1399,6 +1399,7 @@
            Cols => ViewFactors(i) % Elements
            
            if ( gSymm ) r = Reflectivity(i)
+           IF( .NOT. UseFullMatrix ) previ = G % Rows(i)-1
            DO j=1,ViewFactors(i) % NumberOfFactors
              IF (gSymm) THEN
                s = Reflectivity(i)*Reflectivity(Cols(j))
@@ -1408,7 +1409,7 @@
              IF (UseFullMatrix) THEN
                G_full(i,Cols(j)) = G_full(i,Cols(j)) - s*Vals(j)
              ELSE
-               CALL CRS_AddToMatrixElement(G,i,Cols(j),-s*Vals(j))
+               CALL CRS_AddToMatrixElement(G,i,Cols(j),-s*Vals(j),previ)
              END  IF
            END DO
            Diag(i) = r*RelAreas(i)
