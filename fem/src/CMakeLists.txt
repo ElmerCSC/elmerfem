@@ -9,7 +9,7 @@ ADD_SUBDIRECTORY(view3d)
 ADD_SUBDIRECTORY(viewaxis)
 
 IF(WITH_MPI)
-  SET(ELMERSOLVER_OUTPUT_NAME "ElmerSolver_mpi") 
+  SET(ELMERSOLVER_OUTPUT_NAME "ElmerSolver_mpi")
 ELSE()
   SET(ELMERSOLVER_OUTPUT_NAME "ElmerSolver")
 ENDIF()
@@ -27,7 +27,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   MaterialModels.F90 DirectSolve.F90 IterSolve.F90
   IterativeMethods.F90 TimeIntegrate.F90 Types.F90 SolveBand.F90
   ElementUtils.F90 Radiation.F90 fft.c Load.c Differentials.F90
-  FreeSurface.F90 
+  FreeSurface.F90
   Walls.F90 MatrixScaling.F90 SolverBasics.F90 BoundaryConditionUtils.F90 SolveCore.F90 ContactUtils.F90 ProjectorUtils.F90 SolverUtils.F90 SolveSBand.F90 CPUTime.c Interpolation.F90
   MainUtils.F90 Adaptive.F90 EigenSolve.F90 HashTable.F90 MortarUtils.F90
   MeshAllocations.F90 MeshIO.F90 GeometryFitting.F90
@@ -42,8 +42,8 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 VectorHelmholtzUtils.F90 LumpingUtils.F90 
-  ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 VectorHelmholtzUtils.F90 LumpingUtils.F90
+  ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90
   OptimizationUtils.F90 MeshGenerate.F90 ViewUtils.F90)
 
 #SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
@@ -53,8 +53,8 @@ IF(WITH_EXTOPTIM)
   LIST(APPEND solverlib_SOURCES minpack.F90 minpack_kinds.F90
   PowellOptBobyqa.F90 PowellOptNewuoa.F90)
   SET(HAVE_EXTOPTIM TRUE)
-ENDIF() 
-      
+ENDIF()
+
 IF(WITH_LUA)
   INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
   LIST(APPEND solverlib_SOURCES Lua.F90 elmer_lua_iface.c)
@@ -119,7 +119,7 @@ IF(WIN32)
     ${CMAKE_CURRENT_BINARY_DIR}/elmerld.bat @ONLY)
 ENDIF()
 
-# Build elmerf90 as a compiled C binary (replaces the shell script / .bat)
+# Build elmerf90 and elmerld as compiled C binaries (replaces the shell script / .bat)
 IF(WITH_ElmerIce)
   SET(HAVE_ELMERICE_INT 1)
 ELSE()
@@ -137,22 +137,27 @@ ELSE()
 ENDIF()
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.c
-  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90_main.c @ONLY)
-ADD_EXECUTABLE(elmerf90_bin ${CMAKE_CURRENT_BINARY_DIR}/elmerf90_main.c)
+  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90.c @ONLY)
+ADD_EXECUTABLE(elmerf90_bin ${CMAKE_CURRENT_BINARY_DIR}/elmerf90.c)
 SET_TARGET_PROPERTIES(elmerf90_bin PROPERTIES OUTPUT_NAME "elmerf90")
+
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.c
+  ${CMAKE_CURRENT_BINARY_DIR}/elmerld.c @ONLY)
+ADD_EXECUTABLE(elmerld_bin ${CMAKE_CURRENT_BINARY_DIR}/elmerld.c)
+SET_TARGET_PROPERTIES(elmerld_bin PROPERTIES OUTPUT_NAME "elmerld")
 
 # Create pkg-config file if requested and place it under ${PKGCONFIG_PC_PATH}
 # Defaults: PKGCONFIG_PC_PATH = ${CMAKE_INSTALL_PREFIX}/share/pkgconfig
 IF(CREATE_PKGCONFIG_FILE)
-  SET(PKGCONFIG_PC_PATH "${CMAKE_INSTALL_PREFIX}/share/pkgconfig" 
+  SET(PKGCONFIG_PC_PATH "${CMAKE_INSTALL_PREFIX}/share/pkgconfig"
     CACHE PATH "Path where to install elmer pkg-config file")
   CONFIGURE_FILE(elmer.in.pc elmer.pc @ONLY)
-  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc 
+  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc
     DESTINATION ${PKGCONFIG_PC_PATH})
 ENDIF(CREATE_PKGCONFIG_FILE)
 
 # Copy elements.def and SOLVER.KEYWORDS (to enable testing)
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elements.def 
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elements.def
   ${CMAKE_CURRENT_BINARY_DIR}/elements.def COPYONLY)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/SOLVER.KEYWORDS
   ${CMAKE_CURRENT_BINARY_DIR}/SOLVER.KEYWORDS COPYONLY)
@@ -170,7 +175,7 @@ SET_TARGET_PROPERTIES(mpi_stubs
 SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
 
-#We want MMG & Zoltan in the RPATH (if found), but given how many other 
+#We want MMG & Zoltan in the RPATH (if found), but given how many other
 #components use ELMERSOLVER_RPATH_STRING, it seemed best to make
 #a local copy just for ElmerSolver and libelmersolver
 SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING}")
@@ -187,7 +192,7 @@ IF(HAVE_PARMMG)
   SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}:${PARMMG_LIBDIR}")
   #TODO - add to RPath
 ENDIF()
-  
+
 IF(HAVE_ZOLTAN)
   IF(USE_SYSTEM_ZOLTAN)
     TARGET_LINK_LIBRARIES(elmersolver Zoltan::zoltan)
@@ -306,7 +311,7 @@ ELSE()
 ENDIF()
 IF(WITH_ROCALUTION)
   TARGET_LINK_LIBRARIES(elmersolver roc::rocalution)
-ENDIF()  
+ENDIF()
 
 IF(WITH_AMGX)
   TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_C "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
@@ -317,7 +322,7 @@ IF (WITH_CHOLMOD)
   SET(CURR_CFLAGS "-DHAVE_CHOLMOD")
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CHOLMOD_INCLUDE_DIR};${SPQR_INCLUDE_DIR}")
   TARGET_LINK_LIBRARIES(elmersolver "${CHOLMOD_LIBRARIES};${SPQR_LIBRARIES}")
-ENDIF()    
+ENDIF()
 
 # elmersolver -library
 #TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
@@ -330,7 +335,7 @@ ENDIF()
 
 # ElmerSolver
 #ADD_EXECUTABLE(ElmerSolver Solver.F90)
-#TARGET_LINK_LIBRARIES(ElmerSolver ${ELMERSOLVER_LIBRARIES} 
+#TARGET_LINK_LIBRARIES(ElmerSolver ${ELMERSOLVER_LIBRARIES}
                                   #mpi_stubs)
 
 # ViewFactors
@@ -378,9 +383,9 @@ IF(NOT WITH_MPI)
 ENDIF()
 
 INSTALL(TARGETS elmerf90_bin RUNTIME DESTINATION "bin")
-INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION  "bin")
+INSTALL(TARGETS elmerld_bin RUNTIME DESTINATION "bin")
 
-                  
+
 INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
                   DESTINATION "share/elmersolver/include")
 
