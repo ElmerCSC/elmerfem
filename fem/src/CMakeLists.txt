@@ -379,14 +379,17 @@ INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
                   DESTINATION "share/elmersolver/include")
 
 IF(WITH_MPI)
-  IF(NOT(WIN32))
-    # INSTALL(CODE "
-    # EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver
-    # WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/bin)")
-    ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver)
+  IF(NOT(WIN32) OR CMAKE_VERSION VERSION_GREATER_EQUAL "3.13")
+    # Creating symlinks works on Windows with CMake 3.13 or newer:
+    # https://cmake.org/cmake/help/latest/manual/cmake.1.html#cmdoption-cmake-E-arg-create_symlink
+    ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ElmerSolver_mpi${CMAKE_EXECUTABLE_SUFFIX}
+      ElmerSolver${CMAKE_EXECUTABLE_SUFFIX})
     ADD_DEPENDENCIES(elmersolver_link Solver_TGT)
-    INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver DESTINATION "bin")
+    INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver${CMAKE_EXECUTABLE_SUFFIX}
+      DESTINATION "bin")
   ELSE()
+    # This does not work correctly if `DESTDIR` is set.
     INSTALL(CODE "EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E copy
     \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver_mpi.exe
     \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver.exe)")
