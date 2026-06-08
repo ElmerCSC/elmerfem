@@ -18,7 +18,7 @@ jobs:
 
     runs-on: windows-latest
 
-    name: MSYS2 (${{ matrix.dependencies }} dependencies, ${{ matrix.msystem }})
+    name: MSYS2 (${{ matrix.msystem }} ${{ matrix.mpi }} MPI, ${{ matrix.dependencies }} dependencies)
 
     defaults:
       run:
@@ -31,6 +31,7 @@ jobs:
       matrix:
         msystem: [UCRT64]
         dependencies: [bundled, external]
+        mpi: [with, without]
         include:
           - dependencies: external
             external-packages: parpack:p
@@ -59,9 +60,9 @@ jobs:
             cc:p
             fc:p
             cmake:p
-            msmpi:p
+            ${{ matrix.mpi == 'with' && 'msmpi:p' || 'openblas:p' }}
             openblas:p
-            parmetis:p
+            ${{ matrix.mpi == 'with' && 'parmetis:p' || 'openblas:p' }}
             mumps:p
             suitesparse:p
             qt6-declarative:p
@@ -89,6 +90,7 @@ jobs:
             ${{ matrix.external-packages }}
 
       - name: install MSMPI
+        if: matrix.mpi == 'with'
         uses: mpi4py/setup-mpi@v1
         with:
           mpi: msmpi
@@ -99,24 +101,35 @@ jobs:
         run: |
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
+          declare -a _extra_config
+          if [ "${{ matrix.mpi }}" == "with" ]; then
+            _extra_config+=("-DWITH_MPI=ON"
+                            "-DMPI_TEST_MAXPROC=$(nproc)"
+                            "-DMPIEXEC_EXECUTABLE=$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe"
+                            "-DWITH_Zoltan=ON"
+                            "-DWITH_ElmerIce=ON"
+                            "-DParMetis_LIBRARIES=$(pkg-config --libs parmetis)"
+                            "-DParMetis_INCLUDE_DIR=$(pkg-config --cflags parmetis)"
+                            "-DWITH_Mumps=ON"
+                            "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dmo mumps-zmo mumps-smo mumps-cmo)"
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo mumps-zmo mumps-smo mumps-cmo)")
+          else
+            _extra_config+=("-DWITH_MPI=OFF"
+                            "-DWITH_Zoltan=OFF"
+                            "-DWITH_ElmerIce=OFF"
+                            "-DWITH_Mumps=ON"
+                            "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dto mumps-zto mumps-sto mumps-cto)"
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto mumps-zto mumps-sto mumps-cto)")
+          fi
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            "${_extra_config[@]}" \
             -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF \
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
-            -DWITH_MPI=ON \
-            -DMPI_TEST_MAXPROC=$(nproc) \
-            -DMPIEXEC_EXECUTABLE="$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe" \
-            -DWITH_Zoltan=ON \
             -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
-            -DParMetis_LIBRARIES="$(pkg-config --libs parmetis)" \
-            -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
-            -DWITH_Mumps=ON \
-            -DMumps_LIBRARIES="$(pkg-config -libs mumps-dmo);$(pkg-config -libs mumps-zmo);$(pkg-config -libs mumps-smo);$(pkg-config -libs mumps-cmo)" \
-            -DMumps_INCLUDE_DIR="$(pkg-config --variable=includedir mumps-dmo);$(pkg-config --variable=includedir mumps-zmo);$(pkg-config --variable=includedir mumps-smo);$(pkg-config --variable=includedir mumps-cmo)" \
-            -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DWITH_VTK=ON \
