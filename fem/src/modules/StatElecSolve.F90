@@ -121,7 +121,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   USE Integration
   USE ElementDescription
   USE Differentials
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
   USE Adaptive
   USE DefUtils

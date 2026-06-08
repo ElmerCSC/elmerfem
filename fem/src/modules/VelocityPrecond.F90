@@ -43,7 +43,7 @@
 SUBROUTINE VelocityPrecond_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
 
   IMPLICIT NONE
@@ -80,7 +80,7 @@ END SUBROUTINE VelocityPrecond_Init0
 SUBROUTINE VelocityPrecond(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
 
   IMPLICIT NONE

@@ -43,10 +43,10 @@
 MODULE MeshGenerate
 
   USE GeneralUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ModelDescription
   USE LoadMod
-  USE MeshUtils, ONLY : MeshStabParams, ReleaseMesh, ReleaseMeshEdgeTables, &
+  USE MeshBasics, ONLY : MeshStabParams, ReleaseMesh, ReleaseMeshEdgeTables, &
       ReleaseMeshFaceTables, SetCurrentMesh, SetMeshMaxDOFs, &
       TransferCoordAndTime, UpdateSolverMesh, WriteMeshToDisk, WriteMeshToDisk2
   USE MeshRemeshing

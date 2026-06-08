@@ -53,19 +53,23 @@ MODULE MainUtils
   USE ElementDescription, ONLY : SwapRefElemNodes
   USE ElementUtils, ONLY : CreateOdeMatrix, CreateMatrix
   
-  USE MeshUtils, ONLY : BackCoordinateTransformation, Colouring_deallocate, &
-      CoordinateTransformation, CreateDiscontMesh, ElmerColouringToGraph, &
-      ElmerGraphColour, ElmerMeshToDualGraph, Graph_deallocate, LoadMesh2, &
-      MakePermUsingMask, MeshStabParams, ReleaseMesh, SetActivEelementsTable, &
-      SetCurrentMesh, SetMeshMaxDOFs, SplitMeshEqual, TransferCoordAndTime, &
-      UpdateSolverMesh
+  USE MeshBasics, ONLY : CreateDiscontMesh, MakePermUsingMask, MeshStabParams, &
+      ReleaseMesh, SetActivEelementsTable, SetCurrentMesh, SetMeshMaxDOFs, &
+      TransferCoordAndTime, UpdateSolverMesh
+  USE MeshTransform, ONLY : BackCoordinateTransformation, CoordinateTransformation
+  USE MeshGraph, ONLY : Colouring_Deallocate, ElmerColouringToGraph, &
+      ElmerGraphColour, ElmerMeshToDualGraph, Graph_Deallocate
+  USE MeshLoad, ONLY : LoadMesh2
+  USE MeshSplit, ONLY : SplitMeshEqual
   
-  USE SolverUtils, ONLY : CalculateEntityWeights, &
+  USE SolverBasics, ONLY : CalculateEntityWeights, &
       CalculateNodalWeights, CheckStepSize, ComputeChange, &
-      ComputeNorm, CreateIpPerm, GenerateProjectors, GetPassiveBoundary, &
+      ComputeNorm, CreateIpPerm, ScaleLinearSystem, BackScaleLinearSystem, &
       InitializeTimestep, InitializeToZero, InvalidateVariable, &
-      MatrixVectorMultiply, UpdateDependentObjects, UpdateExportedVariables, &
-      FinalizeLumpedMatrix
+      MatrixVectorMultiply, UpdateDependentObjects, UpdateExportedVariables
+  USE SolveCore, ONLY : FinalizeLumpedMatrix
+  USE BoundaryConditionUtils, ONLY : GetPassiveBoundary
+  USE ProjectorUtils, ONLY : GenerateProjectors
 
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
@@ -465,7 +469,7 @@ CONTAINS
       USE SParIterComm
       USE Interpolation
       USE CoordinateSystems
-      USE MeshUtils, ONLY: ReleaseMesh
+      USE MeshBasics, ONLY: ReleaseMesh
       TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
       TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
       LOGICAL, OPTIONAL :: UseQuadrantTree

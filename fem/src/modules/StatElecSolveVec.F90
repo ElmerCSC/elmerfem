@@ -189,7 +189,7 @@ END SUBROUTINE StatElecSolver_Init
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
-  USE MeshUtils, ONLY : FollowCurvedBoundary
+  USE MeshBasics, ONLY : FollowCurvedBoundary
   USE DefUtils
   USE Adaptive
   IMPLICIT NONE
@@ -1225,7 +1225,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GlobalPostAve()
 !------------------------------------------------------------------------------
-    USE MeshUtils, ONLY : CalculateBodyAverage
+    USE MeshBasics, ONLY : CalculateBodyAverage
     INTEGER :: i, Vari
     TYPE(Variable_t), POINTER :: pVar
 

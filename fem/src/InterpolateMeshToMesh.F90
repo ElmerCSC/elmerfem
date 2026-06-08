@@ -47,7 +47,7 @@
        USE SParIterComm
        USE Interpolation
        USE CoordinateSystems
-       USE MeshUtils, ONLY: ReleaseMesh
+       USE MeshBasics, ONLY: ReleaseMesh
 !-------------------------------------------------------------------------------
        TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
        TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
@@ -1879,7 +1879,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE HierarchicPToLagrange(PElement, Degree, PSol, LSol, DOFs, PSolver)
 !------------------------------------------------------------------------------
-    USE MeshUtils, ONLY: AllocateElement
+    USE MeshBasics, ONLY: AllocateElement
     USE ElementDescription
     IMPLICIT NONE
 

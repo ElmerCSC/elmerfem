@@ -51,7 +51,7 @@
      USE Lists
      USE Integration
      USE ElementDescription
-     USE SolverUtils
+     USE SolverBasics
      USE ElementUtils
 
      IMPLICIT NONE

@@ -68,7 +68,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 
   USE Types
   USE Lists
-  USE SolverUtils
+  USE SolverBasics
   USE CRSmatrix
   USE GeneralUtils
   USE Integration

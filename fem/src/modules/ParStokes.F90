@@ -203,7 +203,7 @@ END MODULE AnisotropicMaterialModels
 SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
 
   IMPLICIT NONE
@@ -265,7 +265,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
   USE MaterialModels
   USE AnisotropicMaterialModels

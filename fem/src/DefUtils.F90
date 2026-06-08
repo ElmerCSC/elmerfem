@@ -50,9 +50,13 @@ MODULE DefUtils
 #include "../config.h"
 
    USE MeshGenerate
-   USE MeshUtils, ONLY : AllocateElement, SaveParallelInfo
+   USE MeshBasics, ONLY : AllocateElement, SaveParallelInfo
    USE ElementUtils
-   USE SolverUtils
+   USE SolverBasics
+   USE SolveCore
+   USE ContactUtils
+   USE BoundaryConditionUtils
+   USE ProjectorUtils
    USE CutFEMUtils
 
    IMPLICIT NONE
@@ -3544,8 +3548,10 @@ CONTAINS
      LOGICAL, OPTIONAL :: UseConstantBulk
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
-     INTEGER :: i,n
-     LOGICAL :: Found
+     TYPE(NormalTangential_t), POINTER :: NT
+     CHARACTER(:), ALLOCATABLE :: str
+     INTEGER :: i,n,dim
+     LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3589,6 +3595,49 @@ CONTAINS
      END IF
      
      CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
+
+     IF ( Solver % Variable % DOFs > 1 ) THEN
+       str = 'Normal-Tangential'
+       IF ( SEQL(Solver % Variable % Name, 'flow solution') ) THEN
+         str = TRIM(str) // ' Velocity'
+       ELSE
+         str = TRIM(str) // ' ' // GetVarName(Solver % Variable)
+       END IF
+       AnyNT  = ListGetLogicalAnyBC( CurrentModel, str )
+       AnyProj = ListGetLogicalAnyBC( CurrentModel, 'Mortar BC Nonlinear' )
+
+       IF( AnyNT .OR. AnyProj ) THEN
+         DoDisplaceMesh = ListGetLogical( Solver % Values,'Displace Mesh At Init',Found )
+         IF( DoDisplaceMesh ) THEN
+           CALL Info('DefaultInitialize','Displacing mesh for nonlinear projectors',Level=8)
+           CALL DisplaceMesh( Solver % Mesh, Solver % Variable % Values, 1, &
+               Solver % Variable % Perm, Solver % Variable % Dofs )
+         END IF
+
+         IF( AnyNT ) THEN
+           dim = CoordinateSystemDimension()
+           NT => Solver % NormalTangential
+           NT % NormalTangentialNOFNodes = 0
+           NT % NormalTangentialName = TRIM(str)
+           CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
+               NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+               NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
+           CALL AverageBoundaryNormals( CurrentModel, NT % NormalTangentialName, &
+               NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+               NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, &
+               dim )
+         END IF
+
+         IF( AnyProj ) THEN
+           CALL GenerateProjectors( CurrentModel, Solver, Nonlinear=.TRUE. )
+         END IF
+
+         IF( DoDisplaceMesh ) THEN
+           CALL DisplaceMesh( Solver % Mesh, Solver % Variable % Values, -1, &
+               Solver % Variable % Perm, Solver % Variable % Dofs )
+         END IF
+       END IF
+     END IF
 
      IF(ASSOCIATED(Solver % Matrix % RhsAdjoint) ) THEN
        Solver % Matrix % RhsAdjoint = 0.0_dp

@@ -60,6 +60,7 @@
      USE ViewUtils
      USE DefUtils
      USE ViewFactorGlobals
+     USE MeshTransform, ONLY : RigidMeshMapping
           
      IMPLICIT NONE
 

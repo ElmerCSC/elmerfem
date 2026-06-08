@@ -47,7 +47,7 @@ MODULE PorousMaterials
 
   USE Types
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: POROSITY_DEFAULT=0, &

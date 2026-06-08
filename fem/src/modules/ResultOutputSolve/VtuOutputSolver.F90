@@ -24,8 +24,8 @@
 MODULE VtuXMLFile
 
   USE DefUtils 
-  USE MeshUtils
-  USE SolverUtils
+  USE MeshBasics
+  USE SolverBasics
   USE SaveUtils
   USE MainUtils
   USE ElementDescription
@@ -85,7 +85,7 @@ CONTAINS
   ! and honoring discontinuities. 
   !-----------------------------------------------------------------------
   SUBROUTINE AverageBodyFields( Mesh ) 
-    USE MeshUtils, ONLY : CalculateBodyAverage    
+    USE MeshBasics, ONLY : CalculateBodyAverage    
     TYPE(Mesh_t), POINTER :: Mesh
 
     TYPE(Variable_t), POINTER :: Var, Var1
@@ -258,7 +258,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   USE VtuXMLFile
-  USE MeshUtils, ONLY : CalculateBodyAverage
+  USE MeshBasics, ONLY : CalculateBodyAverage
     
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver

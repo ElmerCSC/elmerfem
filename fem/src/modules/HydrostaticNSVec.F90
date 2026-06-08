@@ -1579,7 +1579,7 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   USE DefUtils
   USE HydrostaticNSUtils
   USE MainUtils
-  USE MeshUtils, ONLY : DetectExtrudedStructure
+  USE MeshTransform, ONLY : DetectExtrudedStructure
   
   IMPLICIT NONE
 !------------------------------------------------------------------------------

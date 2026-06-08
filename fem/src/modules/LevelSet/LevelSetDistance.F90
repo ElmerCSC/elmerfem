@@ -47,7 +47,7 @@
    SUBROUTINE LevelSetDistance( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     USE SolverUtils
+     USE SolverBasics
      USE MaterialModels
      USE Integration
 

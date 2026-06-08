@@ -48,11 +48,12 @@ MODULE CutFemUtils
   USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE ElementDescription
   USE MatrixAssembly
-  USE MeshUtils, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
+  USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
   USE ModelDescription, ONLY : FreeMesh
-  USE SolverUtils, ONLY : GaussPointsAdapt, SolveLinearSystem, VectorValuesRange
+  USE SolverBasics, ONLY : GaussPointsAdapt, VectorValuesRange
+  USE SolveCore, ONLY : SolveLinearSystem
   USE ParallelUtils
-  USE MeshUtils, ONLY : PointInMesh
+  USE MeshBasics, ONLY : PointInMesh
   
   IMPLICIT NONE
 

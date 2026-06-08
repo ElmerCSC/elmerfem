@@ -46,7 +46,7 @@
      USE Integration
      USE ElementDescription
      USE Differentials
-     USE SolverUtils
+     USE SolverBasics
      USE ElementUtils
      USE Adaptive
      USE DefUtils

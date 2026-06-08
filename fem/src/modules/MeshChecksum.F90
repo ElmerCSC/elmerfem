@@ -40,7 +40,7 @@
 SUBROUTINE MeshChecksum_init( Model,Solver,dt,Transient)
 
   USE DefUtils
-  USE MeshUtils
+  USE MeshBasics
 
   IMPLICIT NONE
 
@@ -59,7 +59,7 @@ END SUBROUTINE MeshChecksum_Init
 SUBROUTINE MeshChecksum( Model,Solver,dt,Transient)
 
   USE DefUtils
-  USE MeshUtils
+  USE MeshBasics
 
   IMPLICIT NONE
 

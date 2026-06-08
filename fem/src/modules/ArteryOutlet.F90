@@ -44,7 +44,7 @@
 !------------------------------------------------------------------------------
 SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
 
-  USE MeshUtils
+  USE MeshBasics
   USE DefUtils
 
   IMPLICIT NONE
@@ -89,8 +89,8 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   USE Lists 
   USE Integration
   USE ElementDescription
-  USE SolverUtils
-  USE MeshUtils
+  USE SolverBasics
+  USE MeshBasics
   USE DefUtils
   USE MaterialModels
   USE ElementUtils
@@ -1163,7 +1163,7 @@ FUNCTION OutletdX( Model,n,t ) RESULT(dx)
   
   USE Types
   USE Lists
-  USE MeshUtils
+  USE MeshBasics
   
   IMPLICIT NONE
   TYPE(Model_t) :: Model  
@@ -1247,7 +1247,7 @@ FUNCTION OutletdY( Model,n,t ) RESULT(dy)
   
   USE Types
   USE Lists
-  USE MeshUtils
+  USE MeshBasics
   
   IMPLICIT NONE
   TYPE(Model_t) :: Model  

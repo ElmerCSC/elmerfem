@@ -42,7 +42,7 @@
 !------------------------------------------------------------------------------
      USE Types
      USE DefUtils
-     USE SolverUtils
+     USE SolverBasics
      USE MaterialModels
      USE Integration
 

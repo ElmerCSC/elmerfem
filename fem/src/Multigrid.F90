@@ -51,7 +51,8 @@ MODULE Multigrid
    USE ClusteringMethods
    USE ElementUtils, ONLY : FreeMatrix
    USE ElementDescription, ONLY : ElementBasisDegree, mGetElementDofs
-   USE MeshUtils, ONLY : LoadMesh2, UpdateSolverMesh, SetCurrentmesh
+   USE MeshBasics, ONLY : UpdateSolverMesh, SetCurrentmesh
+   USE MeshLoad, ONLY : LoadMesh2
    
    IMPLICIT NONE
 

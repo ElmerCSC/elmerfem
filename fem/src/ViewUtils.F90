@@ -43,7 +43,7 @@
 !------------------------------------------------------------------------------
 MODULE ViewUtils
 
-     USE MeshUtils
+     USE MeshBasics
 
 CONTAINS
 

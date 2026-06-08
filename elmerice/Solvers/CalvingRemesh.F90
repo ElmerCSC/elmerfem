@@ -282,7 +282,9 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   USE DefUtils
   USE GeneralUtils
   USE ElementDescription
-  USE MeshUtils  
+  USE MeshUtils
+  USE MeshLoad, ONLY : LoadMesh2
+  USE MeshExtrusion, ONLY : MeshExtrude
   USE SParIterComm
   USE CalvingGeometry
 

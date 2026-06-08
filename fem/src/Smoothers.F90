@@ -1150,7 +1150,7 @@ CONTAINS
       SUBROUTINE Direct1dSmoother( n, A, M, x, b, r, f, Rounds )
 !------------------------------------------------------------------------------
         USE DirectSolve, ONLY : DirectSolver
-        USE MeshUtils, ONLY : DetectExtrudedStructure
+        USE MeshTransform, ONLY : DetectExtrudedStructure
         IMPLICIT NONE
 !------------------------------------------------------------------------------
         TYPE(Matrix_t), POINTER :: A, M

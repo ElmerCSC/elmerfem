@@ -89,6 +89,7 @@ SUBROUTINE ComputeGroundingLineFlux( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE MeshUtils
+  USE MeshTransform, ONLY : DetectExtrudedStructure
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t),TARGET :: Solver

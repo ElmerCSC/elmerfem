@@ -730,7 +730,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ChooseClusterNodes(Amat, Solver, Components, EliminateDir, CF)
 
-    USE MeshUtils, ONLY : DetectExtrudedStructure, DetectExtrudedElements
+    USE MeshTransform, ONLY : DetectExtrudedStructure, DetectExtrudedElements
     
     TYPE(Matrix_t), POINTER  :: Amat
     TYPE(solver_t), TARGET :: Solver

@@ -55,7 +55,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
   USE Lists
   USE Integration
   USE ElementDescription
-  USE SolverUtils
+  USE SolverBasics
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------

@@ -67,7 +67,7 @@
    SUBROUTINE AdvectionDiffusionSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
 
-     USE SolverUtils
+     USE SolverBasics
      USE Differentials
      USE DefUtils
 

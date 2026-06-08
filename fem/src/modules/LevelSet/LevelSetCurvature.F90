@@ -40,7 +40,8 @@
    SUBROUTINE LevelSetCurvature( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     USE SolverUtils
+     USE SolverBasics
+     USE SolveCore
      USE Integration
 
      IMPLICIT NONE

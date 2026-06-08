@@ -593,7 +593,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
  SUBROUTINE MagnetoDynamicsCalcFields(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
-   USE MeshUtils, ONLY : MinimalElementalSet, ReduceElementalVar
+   USE MeshBasics, ONLY : MinimalElementalSet, ReduceElementalVar
    USE CircuitUtils
    USE Zirka
    USE ZirkaUtils
@@ -3615,7 +3615,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
-   USE MeshUtils, ONLY : CalculateBodyAverage   
+   USE MeshBasics, ONLY : CalculateBodyAverage
    IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs

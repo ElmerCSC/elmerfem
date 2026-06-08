@@ -40,7 +40,7 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
   
   USE DefUtils
   USE Interpolation
-  USE MeshUtils
+  USE MeshBasics
   USE ElementUtils
   USE ParticleUtils
 

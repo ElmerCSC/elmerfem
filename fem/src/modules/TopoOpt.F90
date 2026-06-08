@@ -107,7 +107,7 @@ END SUBROUTINE TopoOpt_init
 SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE MeshUtils
+  USE MeshBasics
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver

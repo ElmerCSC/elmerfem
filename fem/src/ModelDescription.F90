@@ -47,10 +47,12 @@ MODULE ModelDescription
     USE SParIterGlobals
     USE ParallelUtils, ONLY : ParallelReduction, ParallelIter, ParallelInitMatrix
     USE ElementUtils, ONLY : CreateMatrix, FreeMatrix
-    USE MeshUtils, ONLY : Graph_deallocate, &
-        Loadmesh2, MeshStabParams, PrepareMesh, ReleaseMesh, SetMeshDimension, &
-        SetMeshMaxDOFs, SetMeshPartitionOffSet, SplitMeshEqual, SplitMeshLevelSet, &
+    USE MeshBasics, ONLY : MeshStabParams, ReleaseMesh, SetMeshDimension, &
+        SetMeshMaxDOFs, SetMeshPartitionOffSet, &
         RadiationParallelMeshDistribute, GetDefs
+    USE MeshGraph, ONLY : Graph_Deallocate
+    USE MeshLoad, ONLY : LoadMesh2, PrepareMesh
+    USE MeshSplit, ONLY : SplitMeshEqual, SplitMeshLevelSet
     USE MeshAllocations, ONLY : ReleaseMesh, AllocateMesh
     USE MortarUtils, ONLY : DetectMortarPairs
     USE LoadMod
