@@ -309,7 +309,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMaxima(  Element, n, dpmax, dhmax, nlift )
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     REAL(KIND=dp) :: dpmax, dhmax
     INTEGER :: nlift
@@ -377,7 +377,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalLS( Element, n )
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n), Thickness(n), elemLS(n), DetJ, S, LS
@@ -469,7 +469,7 @@ CONTAINS
   SUBROUTINE LocalMatrix(  STIFF, FORCE, Element, n )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3)

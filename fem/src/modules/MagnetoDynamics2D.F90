@@ -1374,7 +1374,7 @@ END SUBROUTINE ! }}}
   SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),DetJ
     LOGICAL :: Stat
@@ -2461,7 +2461,7 @@ CONTAINS
   RECURSIVE SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),DetJ
     LOGICAL :: Stat
@@ -3982,7 +3982,7 @@ CONTAINS
       IMPLICIT NONE
       REAL(KIND=dp) :: STIFF(:,:)
       INTEGER :: n,n1,n2
-      TYPE(Element_t), POINTER :: Face, P1, P2
+      TYPE(Element_t), TARGET :: Face, P1, P2
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: FaceBasis(n), P1Basis(n1), P2Basis(n2)
       REAL(KIND=dp) :: Jump(n1+n2), detJ, U, V, W, S

@@ -1067,7 +1067,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: NodalSpring(:,:,:),NodalDamp(:,:,:),NodalBeta(:),LOAD(:,:)
    REAL(KIND=dp) :: LOAD_im(:,:),FORCE_im(:),NodalBeta_im(:)
-   TYPE(Element_t),POINTER  :: Element
+   TYPE(Element_t), TARGET :: Element
    TYPE(Nodes_t)    :: Nodes
    REAL(KIND=dp) :: STIFF(:,:),DAMP(:,:),FORCE(:), NodalStress(:,:)
 

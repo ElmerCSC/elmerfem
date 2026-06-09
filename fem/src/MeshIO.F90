@@ -925,7 +925,7 @@ CONTAINS
  ! This could be less conservative also...
  !------------------------------------------------------------------------------    
  SUBROUTINE SetMeshDimension( Mesh )
-   TYPE(Mesh_t), POINTER :: Mesh
+   TYPE(Mesh_t) :: Mesh
    
    REAL(KIND=dp) :: x, y, z
    LOGICAL :: C(3)
@@ -1196,7 +1196,7 @@ CONTAINS
   SUBROUTINE WriteMeshToDisk( NewMesh, Path )
 !------------------------------------------------------------------------------
     CHARACTER(LEN=*) :: Path
-    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t) :: NewMesh
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,MaxNodes,ElmCode,Parent1,Parent2
 !------------------------------------------------------------------------------
@@ -1281,7 +1281,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t) :: NewMesh
     CHARACTER(LEN=*) :: Path
     INTEGER, OPTIONAL :: Partition
 !------------------------------------------------------------------------------
@@ -1512,10 +1512,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     CHARACTER(LEN=*) :: Path
-    INTEGER, POINTER :: ElementPart(:)
-    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+    INTEGER :: ElementPart(:)
+    TYPE(NeighbourList_t), TARGET :: NeighbourList(:)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     INTEGER :: NoBoundaryElements, NoBulkElements, NoNodes, NoPartitions, Partition
@@ -1666,7 +1666,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE PrintMeshSize( Mesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
     INTEGER :: na, nb, nn, ne, nf, no, ns, i
     INTEGER :: napar(0:2), nbpar(0:2), nnpar(0:2), nepar(0:2), nfpar(0:2), nopar(0:2), nspar(0:2)
@@ -1741,7 +1741,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CheckMeshInfo( Mesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
     INTEGER :: na, nb, nn
     INTEGER :: i,j,k,t,ii,jj,maxi,mini

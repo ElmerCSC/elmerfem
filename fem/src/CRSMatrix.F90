@@ -1950,9 +1950,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A             !< Structure holding the master matrix
     TYPE(Matrix_t), POINTER :: B             !< Structure holding the slave matrix
-    TYPE(Matrix_t), POINTER, OPTIONAL :: C   !< Structure holding the sum matrix
-    INTEGER, POINTER, OPTIONAL :: PermA(:)   !< Permutation of the master dofs
-    INTEGER, POINTER, OPTIONAL :: PermB(:)   !< Permutation of the slave dofs
+    TYPE(Matrix_t), OPTIONAL :: C   !< Structure holding the sum matrix
+    INTEGER, OPTIONAL :: PermA(:)   !< Permutation of the master dofs
+    INTEGER, OPTIONAL :: PermB(:)   !< Permutation of the slave dofs
     INTEGER, POINTER, OPTIONAL :: PermC(:)   !< Permutation of the combined dofs
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: ColsA(:),RowsA(:),ColsB(:),RowsB(:),&

@@ -144,7 +144,7 @@ CONTAINS
   ! Map elemental node indexes of Elmer to the order used by VTK.
   !-----------------------------------------------------------------------------------
   SUBROUTINE Elmer2VtkIndexes( Element, DgElem, SaveLinear, NodeIndexes )
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     LOGICAL :: DgElem
     LOGICAL :: SaveLinear
     INTEGER :: NodeIndexes(:)
@@ -331,7 +331,7 @@ CONTAINS
   SUBROUTINE GenerateSaveMask(Mesh,Params,Parallel,GroupId,SaveLinear,&
       NodePerm,ActiveElem,NumberOfGeomNodes,NumberOfElements, &
       ElemFirst,ElemLast)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: Parallel
     INTEGER :: GroupId
@@ -601,7 +601,7 @@ CONTAINS
   !-----------------------------------------------------------------------------  
   SUBROUTINE GenerateSavePermutation(Mesh,DG,DN,LagN,SaveLinear,ActiveElem,NumberOfGeomNodes,&
       NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL :: DG, DN, SaveLinear
     INTEGER :: LagN
     LOGICAL, ALLOCATABLE :: ActiveElem(:)
@@ -1438,8 +1438,8 @@ CONTAINS
   ! We should sort out the direction of the normal for true 3D meshes.
   !-------------------------------------------------------------------
   SUBROUTINE SaveSTLSurface(Mesh,Params)
-       
-    TYPE(Mesh_t), POINTER :: Mesh
+
+    TYPE(Mesh_t) :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
     TYPE(Element_t), POINTER :: Element, Parent

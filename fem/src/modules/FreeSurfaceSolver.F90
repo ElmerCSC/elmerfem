@@ -1020,7 +1020,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
        INTEGER :: nCoord, NodeIndexes(:)
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
        LOGICAL :: TransientSimulation,NormalFlux,SubstantialSurface,ALEFormulation
        !------------------------------------------------------------------------------
        !      internal variables:

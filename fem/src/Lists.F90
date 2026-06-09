@@ -737,7 +737,7 @@ CONTAINS
 
      INTEGER :: t
 
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      TYPE(ValueList_t), POINTER :: BC
      CHARACTER(:), ALLOCATABLE :: RadiationFlag
 
@@ -760,7 +760,7 @@ CONTAINS
 !>   should be solved.
 !---------------------------------------------------------------------------
     FUNCTION CheckElementEquation( Model,Element,Equation ) RESULT(Flag)
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t), TARGET :: Element
       TYPE(Model_t) :: Model
       CHARACTER(LEN=*) :: Equation
       CHARACTER(:), ALLOCATABLE :: PrevEquation
@@ -803,7 +803,7 @@ CONTAINS
 !>   should be solved.
 !---------------------------------------------------------------------------
    FUNCTION CheckElementBC( Model,Element,Equation ) RESULT(Flag)
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Equation
      CHARACTER(:), ALLOCATABLE :: PrevEquation
@@ -5087,9 +5087,9 @@ CONTAINS
  !> we need to solve a small linear system in each element to map the values to
  !> the nodes, and further to the integration point defined by Basis.  
  !------------------------------------------------------------------------------
-   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var, dof ) RESULT ( T ) 
+   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var, dof ) RESULT ( T )
  !------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      REAL(KIND=dp) :: Basis(:)
      TYPE(Variable_t), POINTER :: Var
      INTEGER, OPTIONAL :: dof
@@ -5101,11 +5101,11 @@ CONTAINS
 
      ! We have to provide interface for this as otherwise we would create a
      ! cyclic dependence.
-     INTERFACE 
+     INTERFACE
        SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
          USE Types
-         TYPE(Mesh_t), POINTER :: Mesh
-         TYPE(Element_t), POINTER :: Parent
+         TYPE(Mesh_t) :: Mesh
+         TYPE(Element_t), TARGET :: Parent
          INTEGER :: nip, np
          REAL(KIND=dp) :: fip(:), fdg(:)
        END SUBROUTINE Ip2DgFieldInElement

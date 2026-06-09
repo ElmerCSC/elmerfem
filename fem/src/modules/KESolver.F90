@@ -848,7 +848,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE EpsilonWall( Element, n, STIFF, FORCE )
 !------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      INTEGER :: n
      REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
 !------------------------------------------------------------------------------

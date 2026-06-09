@@ -1213,7 +1213,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
-      TYPE(Element_t), POINTER :: Face
+      TYPE(Element_t), TARGET :: Face
       TYPE(Mesh_t) :: Mesh
       INTEGER :: ngp
 !------------------------------------------------------------------------------

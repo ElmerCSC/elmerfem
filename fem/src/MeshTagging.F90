@@ -52,7 +52,7 @@ CONTAINS
   SUBROUTINE CreateIntersectionBCs(Model, Mesh)
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     TYPE(Element_t), POINTER :: Element, Element2, Enew, Face, Face2, Parent
     INTEGER, POINTER :: NodeIndexes(:), NodeIndexes2(:), EdgeIndexes(:), EdgeIndexes2(:), ParentBCs(:)
     INTEGER :: i,i2,j,j2,k,k2,e,e2,l,n,n2,m,nbc,nbulk,nold,t,t2,istat,newbcs,newcnt,bc_id
@@ -592,7 +592,7 @@ CONTAINS
   SUBROUTINE TagBCsUsingRule(Model, Mesh)
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
 
     TYPE(Element_t), POINTER :: Element, Parent
     INTEGER, POINTER :: NodeIndexes(:)
@@ -1086,7 +1086,7 @@ CONTAINS
   SUBROUTINE TagBodiesUsingCondition(Model, Mesh)
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
 
     TYPE(Element_t), POINTER :: Element
     INTEGER :: i,j,k,n,m,t

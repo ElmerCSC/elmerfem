@@ -973,7 +973,7 @@ CONTAINS
     USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: nn, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn), C(3,3), val, dt
     TYPE(Component_t) :: Comp
 
@@ -1158,7 +1158,7 @@ CONTAINS
   SUBROUTINE GetConductivity(Element, Tcoef, nn)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: Tcoef(3,3,nn)
     REAL(KIND=dp), POINTER, SAVE :: Cwrk(:,:,:)
@@ -2449,7 +2449,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   SUBROUTINE GetConductivity(Element, Tcoef, nn)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     TYPE(Valuelist_t), POINTER :: Material
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     REAL(KIND=dp), POINTER, SAVE :: Cwrk(:,:,:), Cwrk_im(:,:,:) 

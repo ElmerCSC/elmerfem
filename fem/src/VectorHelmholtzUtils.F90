@@ -55,8 +55,8 @@
 !------------------------------------------------------------------------------
   SUBROUTINE DefinePortParameters(Model, Mesh)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE 
-    TYPE(Model_t) :: Model 
+    IMPLICIT NONE
+    TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: ElementNodes

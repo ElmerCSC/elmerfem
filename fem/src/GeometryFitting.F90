@@ -64,9 +64,9 @@ CONTAINS
   !    in the chosen plane to three representative points. Currently the fitting
   !    can only be done in x-y plane. 
   !---------------------------------------------------------------------------
-  SUBROUTINE CylinderFit(PMesh, PParams, BCind, dim, FitParams) 
+  SUBROUTINE CylinderFit(PMesh, PParams, BCind, dim, FitParams)
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: PMesh
+    TYPE(Mesh_t) :: PMesh
     TYPE(Valuelist_t), POINTER :: PParams
     INTEGER, OPTIONAL :: BCind
     INTEGER, OPTIONAL :: dim
@@ -451,10 +451,10 @@ CONTAINS
   ! Computes the center of a mesh or given set of bodies.
   !----------------------------------------------------------------------------  
   SUBROUTINE ComputeEntityCenter(Mesh, Center, TargetBodies, TargetBCs)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Center(3)
-    INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
-    INTEGER, POINTER, OPTIONAL :: TargetBCs(:)
+    INTEGER, OPTIONAL :: TargetBodies(:)
+    INTEGER, OPTIONAL :: TargetBCs(:)
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s
@@ -537,11 +537,11 @@ CONTAINS
   ! Computes the normal of inertia of a mesh or given set of bodies.
   !----------------------------------------------------------------------------  
   SUBROUTINE ComputeEntityInertiaNormal(Mesh, Center, INormal, TargetBodies, TargetBCs)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Center(3)
     REAL(KIND=dp) :: INormal(3)
-    INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
-    INTEGER, POINTER, OPTIONAL :: TargetBCs(:)
+    INTEGER, OPTIONAL :: TargetBodies(:)
+    INTEGER, OPTIONAL :: TargetBCs(:)
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s
@@ -641,9 +641,9 @@ CONTAINS
     
   
   !---------------------------------------------------------------------------
-  SUBROUTINE TorusFit(PMesh, PParams, BCind, FitParams) 
+  SUBROUTINE TorusFit(PMesh, PParams, BCind, FitParams)
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: PMesh
+    TYPE(Mesh_t) :: PMesh
     TYPE(Valuelist_t), POINTER :: PParams
     INTEGER, OPTIONAL :: BCind
     REAL(KIND=dp), OPTIONAL :: FitParams(:)
@@ -689,8 +689,8 @@ CONTAINS
   
   ! Code for fitting a sphere. Not yet used.
   !-------------------------------------------------------------------------
-  SUBROUTINE SphereFit(Mesh, Params, BCind, FitParams ) 
-    TYPE(Mesh_t), POINTER :: Mesh
+  SUBROUTINE SphereFit(Mesh, Params, BCind, FitParams )
+    TYPE(Mesh_t) :: Mesh
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, OPTIONAL :: BCind
     REAL(KIND=dp), OPTIONAL :: FitParams(:)
@@ -789,7 +789,7 @@ CONTAINS
     !------------------------------------------------------------------------
     SUBROUTINE SphereFitfun(n,x,y,z,xc,yc,zc,R)
       INTEGER :: n
-      REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+      REAL(KIND=dp) :: x(:),y(:),z(:)
       REAL(KIND=dp) :: xc,yc,zc,R
       
       REAL(KIND=dp) :: Sx,Sy,Sz,Sxx,Syy,Szz,Sxy,Sxz,Syz,&

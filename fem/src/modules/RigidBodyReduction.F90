@@ -1039,7 +1039,7 @@ CONTAINS
 
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
-    REAL(KIND=dp), POINTER :: Centers(:,:)
+    REAL(KIND=dp) :: Centers(:,:)
     INTEGER :: n, Indx( Model % NumberOfBodies )
 
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff

@@ -509,8 +509,7 @@ CONTAINS
   !> dv: gradient with respect to volume constraint.
   !---------------------------------------------------------------------
   SUBROUTINE ObjectiveGradients(x,ce,dc,dv,obj) 
-    REAL(KIND=dp), POINTER :: x(:)
-    REAL(KIND=dp), POINTER :: ce(:),dc(:),dv(:)
+    REAL(KIND=dp) :: x(:), ce(:), dc(:), dv(:)
     REAL(KIND=dp) :: obj
 
     INTEGER :: i,j,k,l,NoModes, NoActive, sgn, sgn1, sgn2
@@ -650,7 +649,7 @@ CONTAINS
   !--------------------------------------------------------------------------
   SUBROUTINE UpdateDensities(x,dc,dv,g)
 
-    REAL(KIND=dp), POINTER :: x(:), dc(:), dv(:)
+    REAL(KIND=dp) :: x(:), dc(:), dv(:)
     REAL(KIND=dp) :: g
 
     REAL(KIND=dp), ALLOCATABLE :: xnew(:)
@@ -1311,7 +1310,7 @@ CONTAINS
   SUBROUTINE LocalMatrix( Element, n, DoMatrix, Diff, x ) 
 !------------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: DoMatrix
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp) :: Diff(3)

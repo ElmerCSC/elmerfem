@@ -1306,17 +1306,17 @@ END SUBROUTINE InterpolateMeshToMesh
 CONTAINS
 
   FUNCTION LegitInterpVar(Var) RESULT ( IsLegit )
-    TYPE(Variable_t), POINTER :: Var
+    TYPE(Variable_t) :: Var
     LOGICAL :: IsLegit
-        
-    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
+
+    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes )
     IF( Var % Dofs > 1 ) IsLegit = .FALSE.
     !IF( Var % Secondary ) IsLegit = .FALSE.
     IF(LEN(Var % Name) >= 10) THEN
       IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
     END IF
     IF(.NOT. ASSOCIATED(Var % Perm) .AND. SIZE(Var % Values) == 1 ) IsLegit = .FALSE.
-    
+
   END FUNCTION LegitInterpVar
 
   
@@ -1443,9 +1443,9 @@ CONTAINS
     USE MortarUtils, ONLY : PreRotationalProjector, PostRotationalProjector
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t) :: BMesh1, BMesh2
     REAL(KIND=dp) :: PeriodicScale
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
+    INTEGER :: InvPerm1(:), InvPerm2(:)
     LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: NodalJump
@@ -1797,9 +1797,9 @@ CONTAINS
     USE Integration
     USE ElementDescription
     IMPLICIT NONE
-    
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Element
+
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: nip, ndg
     REAL(KIND=dp) :: fip(:), fdg(:)
     !------------------------------------------------------------------------------
@@ -1834,7 +1834,7 @@ CONTAINS
     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
 
     ! We could probably do more to utilize the previous visit to save resources...
-    IF(.NOT. ASSOCIATED( Element, PrevElement ) ) THEN
+    IF(.NOT. ASSOCIATED( PrevElement, Element ) ) THEN
       Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
       Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
@@ -1883,7 +1883,7 @@ CONTAINS
     USE ElementDescription
     IMPLICIT NONE
 
-    TYPE(Element_t), POINTER, INTENT(IN) :: PElement         !< An element structure capable for p-approximation
+    TYPE(Element_t), TARGET, INTENT(IN) :: PElement          !< An element structure capable for p-approximation
     INTEGER, INTENT(IN) :: Degree                            !< The desired order of the Lagrange interpolant
     REAL(KIND=dp), INTENT(IN) :: PSol(:,:)                   !< The DOFs of p-solution
     REAL(KIND=dp), INTENT(INOUT) :: LSol(:,:)                !< The DOFs for the Lagrange interpolation

@@ -301,10 +301,10 @@ CONTAINS
 
   SUBROUTINE GetElementNodeIndex(i, Element, n, FOUND)
     IMPLICIT None
- 
+
     ! variables in function header
     INTEGER :: i, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     Logical :: FOUND
     
     DO i=1, SIZE(Element%NodeIndexes)
@@ -1250,7 +1250,7 @@ CONTAINS
 
     CHARACTER(LEN=*) :: Name
     LOGICAL, OPTIONAL :: ThisOnly
-    TYPE(Solver_t), POINTER, OPTIONAL :: USolver    
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
     TYPE(Variable_t), POINTER :: Var
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Variables
@@ -1664,7 +1664,7 @@ CONTAINS
   SUBROUTINE SetElementProperty( Name, Values, UElement )
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) :: Values(:)
-    TYPE(Element_t), POINTER, OPTIONAL :: UElement
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
     TYPE(ElementData_t), POINTER :: p
 
@@ -1701,7 +1701,7 @@ CONTAINS
   FUNCTION GetElementProperty( Name, UElement ) RESULT(Values)
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp), POINTER :: Values(:)
-    TYPE(Element_t), POINTER, OPTIONAL :: UElement
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
     TYPE(ElementData_t), POINTER :: p
 
@@ -3460,8 +3460,8 @@ CONTAINS
 !-----------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
 !------------------------------------------------------------------------------  
-     TYPE(Solver_t), POINTER :: Solver     
-     CHARACTER(LEN=*) :: SlaveSolverStr 
+     TYPE(Solver_t), TARGET :: Solver
+     CHARACTER(LEN=*) :: SlaveSolverStr
      
      TYPE(Solver_t), POINTER :: SlaveSolver
      TYPE(ValueList_t), POINTER :: Params
@@ -6740,7 +6740,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC  !< The list of boundary condition values
-    TYPE(Element_t), POINTER :: Element !< The boundary element handled
+    TYPE(Element_t), TARGET :: Element !< The boundary element handled
     INTEGER :: n                      !< The number of boundary element nodes
     TYPE(Element_t) :: Parent         !< The parent element of the boundary element
     INTEGER :: np                     !< The number of parent element nodes
@@ -6980,7 +6980,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC     !< The list of boundary condition values
-    TYPE(Element_t), POINTER :: Element  !< The boundary element handled
+    TYPE(Element_t), TARGET :: Element   !< The boundary element handled
     INTEGER :: n                         !< The number of boundary element nodes
     CHARACTER(LEN=*) :: Name             !< The name of boundary condition
     REAL(KIND=dp) :: DOFValues(:)        !< The values of DOFs
@@ -7070,9 +7070,9 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER, INTENT(IN) :: BC    !< The list of boundary condition values
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element !< The boundary element handled
+    TYPE(Element_t), TARGET, INTENT(IN) :: Element  !< The boundary element handled
     INTEGER, INTENT(IN) :: n                        !< The number of boundary element nodes
-    TYPE(Element_t), POINTER, INTENT(IN) :: Parent  !< The parent element of the boundary element
+    TYPE(Element_t), INTENT(IN) :: Parent           !< The parent element of the boundary element
     INTEGER, INTENT(IN) :: FaceId                 !< The parent element face corresponding to Element
     CHARACTER(LEN=*), INTENT(IN) :: Name          !< The variable name in the boundary condition
     REAL(KIND=dp), INTENT(OUT) :: Integral(:)     !< The values of DOFs
@@ -7284,7 +7284,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC     !< The list of boundary condition values
-    TYPE(Element_t), POINTER :: Element  !< The boundary element handled
+    TYPE(Element_t), TARGET :: Element   !< The boundary element handled
     INTEGER :: nd                        !< The number of DOFs in the boundary element
     CHARACTER(LEN=*) :: Name             !< The name of boundary condition
     REAL(KIND=dp) :: STIFF(:,:)          !< The element stiffness matrix
@@ -7782,7 +7782,7 @@ CONTAINS
      ! Parameters
      TYPE(Mesh_t) :: Mesh
      TYPE(Element_t) :: Element
-     TYPE(Element_t), POINTER :: BElement
+     TYPE(Element_t), TARGET :: BElement
      INTEGER :: indSize, lIndexes(:), gIndexes(:)
      ! Variables
      TYPE(Element_t), POINTER :: Edge, Face

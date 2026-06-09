@@ -102,7 +102,7 @@ CONTAINS
     IMPLICIT NONE
     
     INTEGER :: i
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     TYPE(Valuelist_t), POINTER :: ComponentParams, EntityParams
     LOGICAL :: Found
     
@@ -230,7 +230,7 @@ CONTAINS
     IMPLICIT NONE
     
     INTEGER :: ComponentId
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     TYPE(Valuelist_t), POINTER :: BodyParams
     LOGICAL :: Found
     
@@ -1100,7 +1100,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
    FUNCTION ElementAreaNoAxisTreatment( Mesh,Element,N ) RESULT(A)
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), TARGET :: Mesh
      INTEGER :: N
      TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------

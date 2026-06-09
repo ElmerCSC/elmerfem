@@ -314,7 +314,7 @@
 
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), &
             MASS(:,:), Force(:), Load(:), DampingCoef(:), SpringCoef(:), RelaxationAlpha
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
        INTEGER :: n, DOFs
        TYPE(Nodes_t) :: Nodes
        LOGICAL :: KernelVersion

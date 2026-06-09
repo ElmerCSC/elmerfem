@@ -439,7 +439,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER :: Element
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: n   ! The number of background element nodes
     INTEGER :: nd  ! The total count of DOFs (nodal and facial)
     LOGICAL :: SecondFamily

@@ -296,7 +296,7 @@ CONTAINS
        PermOffSet, OffDiagonalMatrix )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model          !< The current model structure
-    TYPE(Matrix_t), POINTER :: A    !< The global matrix
+    TYPE(Matrix_t), TARGET :: A     !< The global matrix
     REAL(KIND=dp) :: b(:)           !< The global RHS vector
     CHARACTER(LEN=*) :: Name        !< Name of the dof to be set
     INTEGER :: DOF                  !< The order number of the dof
@@ -1612,7 +1612,7 @@ CONTAINS
     ! from the parent elements.
     !-------------------------------------------------------------------------
     SUBROUTINE PickDgIndexes(Element,DgIndexes)
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       INTEGER :: DGIndexes(:)
       
       TYPE(Element_t), POINTER :: Parent
@@ -2109,7 +2109,7 @@ CONTAINS
                       Name, DOF, NDOFs, Perm, This, Done )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model        !< The current model structure
-    TYPE(Matrix_t), POINTER :: A  !< The global matrix
+    TYPE(Matrix_t), TARGET :: A   !< The global matrix
     REAL(KIND=dp) :: b(:)         !< The global RHS vector
     CHARACTER(LEN=*) :: Name      !< name of the dof to be set
     LOGICAL :: Done(:)            !< Has the node already been done. 
@@ -2338,7 +2338,7 @@ CONTAINS
                       Name, DOF, NDOFs, Perm, This, Done )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model        !< The current model structure
-    TYPE(Matrix_t), POINTER :: A  !< The global matrix
+    TYPE(Matrix_t), TARGET :: A   !< The global matrix
     REAL(KIND=dp) :: b(:)         !< The global RHS vector
     CHARACTER(LEN=*) :: Name      !< name of the dof to be set
     LOGICAL :: Done(:)            !< Has the node already been done. 
@@ -2453,7 +2453,7 @@ CONTAINS
                       Name, NDOFs, Perm )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model        !< The current model structure
-    TYPE(Matrix_t), POINTER :: A  !< The global matrix
+    TYPE(Matrix_t), TARGET :: A   !< The global matrix
     REAL(KIND=dp) :: b(:)         !< The global RHS vector
     CHARACTER(LEN=*) :: Name      !< name of the dof to be set
     INTEGER :: NDOFs              !< the total number of DOFs for this equation
@@ -2550,7 +2550,7 @@ CONTAINS
        Name, DOF, NDOFs, Perm )
      !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model        !< The current model structure
-     TYPE(Matrix_t), POINTER :: A  !< The global matrix
+     TYPE(Matrix_t), TARGET :: A   !< The global matrix
      REAL(KIND=dp) :: b(:)         !< The global RHS vector
      CHARACTER(LEN=*) :: Name      !< name of the dof to be set
      INTEGER :: DOF                !< The order number of the dof
@@ -2774,7 +2774,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model              !< current model structure
     TYPE(Solver_t), TARGET :: Solver    !< current solver structure 
-    TYPE(Matrix_t), POINTER :: A        !< global matrix
+    TYPE(Matrix_t), TARGET :: A         !< global matrix
     REAL(KIND=dp) :: b(:)               !< global RHS vector
     CHARACTER(LEN=*) :: Name            !< name of the dof to be set
     INTEGER :: NDOFs                    !< the total number of DOFs for this equation
@@ -3133,7 +3133,7 @@ CONTAINS
   SUBROUTINE SetDirichletPoint( A, b,DOF, NDOFs, Perm, NodeIndex, NodeValue) 
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Matrix_t), POINTER :: A
+    TYPE(Matrix_t), TARGET :: A
     REAL(KIND=dp) :: b(:)
     REAL(KIND=dp) :: NodeValue
     INTEGER :: DOF, NDOFs, Perm(:), NodeIndex
@@ -3248,7 +3248,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Solver_t) :: Solver
-    TYPE(Matrix_t), POINTER :: A
+    TYPE(Matrix_t), TARGET :: A
     REAL(KIND=dp) :: b(:)
     LOGICAL, OPTIONAL :: OffDiagonal
     

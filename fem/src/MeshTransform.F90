@@ -57,15 +57,15 @@ CONTAINS
     USE CoordinateSystems
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Solver_t) :: Solver
     TYPE(Variable_t), POINTER, OPTIONAL :: ExtVar
     INTEGER, POINTER, OPTIONAL :: TopNodePointer(:), BotNodePointer(:), &
         UpNodePointer(:), DownNodePointer(:), MidNodePointer(:)
     INTEGER, POINTER, OPTIONAL :: NodeLayer(:)
     INTEGER, OPTIONAL :: NumberOfLayers
     LOGICAL, OPTIONAL :: MidLayerExists
-    TYPE(Variable_t), POINTER, OPTIONAL :: MaskVar
+    TYPE(Variable_t), TARGET, OPTIONAL :: MaskVar
 !-----------------------------------------------------------------------------
     REAL(KIND=dp) :: Direction(3)
     TYPE(ValueList_t), POINTER :: Params
@@ -720,8 +720,8 @@ CONTAINS
     USE CoordinateSystems
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Solver_t) :: Solver
     TYPE(Variable_t), POINTER, OPTIONAL :: ExtVar
     INTEGER, POINTER, OPTIONAL :: TopElemPointer(:), BotElemPointer(:), &
         UpElemPointer(:), DownElemPointer(:)
@@ -1078,7 +1078,7 @@ CONTAINS
 
 
   SUBROUTINE StoreOriginalCoordinates(Mesh)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp), POINTER CONTIG :: NewCoords(:)
     INTEGER :: n
 

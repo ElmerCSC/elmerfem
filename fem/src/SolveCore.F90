@@ -2441,7 +2441,8 @@ CONTAINS
   !------------------------------------------------------------------------  
   FUNCTION XCreateSchurApproximation(A) RESULT ( S ) 
 
-    TYPE(Matrix_t), POINTER :: A, P, Q
+    TYPE(Matrix_t) :: A
+    TYPE(Matrix_t), POINTER :: P, Q
     TYPE(Matrix_t), POINTER :: S
 
     INTEGER :: n, nc, i, j, k, l, j2, k2
@@ -2534,9 +2535,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION LinearSystemMaskedResidualNorm( A, b, x, ActiveRow, ActiveCol ) RESULT ( Nrm )
 
-    REAL(KIND=dp) CONTIG :: b(:)   
-    REAL(KIND=dp) CONTIG :: x(:)   
-    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) CONTIG :: b(:)
+    REAL(KIND=dp) CONTIG :: x(:)
+    TYPE(Matrix_t) :: A
     LOGICAL, DIMENSION(:) :: ActiveRow(:), ActiveCol(:)
     REAL(KIND=dp) :: Nrm
     
@@ -3352,12 +3353,12 @@ END SUBROUTINE FinalizeLumpedMatrix
 ! accounted for correctly and the element is consistently accounted for with the reference
 ! normal.
 !------------------------------------------------------------------------------------------
-SUBROUTINE EdgeElementCirculation( Circ, Mesh, Element, Nodes, Solver, RefNormal, Var ) 
+SUBROUTINE EdgeElementCirculation( Circ, Mesh, Element, Nodes, Solver, RefNormal, Var )
   REAL(KIND=dp) :: Circ(:)
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Element
+  TYPE(Mesh_t) :: Mesh
+  TYPE(Element_t) :: Element
   TYPE(Nodes_t) :: Nodes
-  TYPE(Solver_t), POINTER :: Solver
+  TYPE(Solver_t) :: Solver
   TYPE(Variable_t), POINTER, OPTIONAL :: Var
   REAL(KIND=dp), OPTIONAL :: RefNormal(3)
 
@@ -3442,10 +3443,10 @@ SUBROUTINE EdgeElementCirculation( Circ, Mesh, Element, Nodes, Solver, RefNormal
 END SUBROUTINE EdgeElementCirculation
 
 
-SUBROUTINE BoundaryCirculation( BCCirc, BcInd, Solver, Var ) 
+SUBROUTINE BoundaryCirculation( BCCirc, BcInd, Solver, Var )
   REAL(KIND=dp) :: BCCirc(:)
-  INTEGER :: BcInd 
-  TYPE(Solver_t), POINTER :: Solver
+  INTEGER :: BcInd
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Variable_t), POINTER :: Var
   
   TYPE(Mesh_t), POINTER :: Mesh
@@ -5818,8 +5819,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Get the node from on which the controlled value should be set. 
 !------------------------------------------------------------------------------
-  FUNCTION GetControlNode(Mesh,Perm,Params,iControl) RESULT ( ControlNode ) 
-    TYPE(Mesh_t), POINTER :: Mesh
+  FUNCTION GetControlNode(Mesh,Perm,Params,iControl) RESULT ( ControlNode )
+    TYPE(Mesh_t) :: Mesh
     INTEGER, POINTER :: Perm(:)
     TYPE(ValueList_t), POINTER :: Params    
     INTEGER :: iControl
@@ -5947,7 +5948,7 @@ CONTAINS
     
 
   SUBROUTINE ApplyExplicitControl(Solver)
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
 
     INTEGER :: i, n
     REAL(KIND=dp), POINTER :: Fvec(:)
@@ -5984,7 +5985,7 @@ CONTAINS
 !> long ago. This would hopefully be applicable to wider set of modules. 
 !------------------------------------------------------------------------------
   SUBROUTINE ControlLinearSystem(Solver,PreSolve)
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: PreSolve
 
     TYPE(ValueList_t), POINTER :: Params
@@ -6226,7 +6227,7 @@ CONTAINS
 !> long ago. This would hopefully be applicable to wider set of modules. 
 !------------------------------------------------------------------------------
   SUBROUTINE ControlNonlinearSystem(Solver,PreSolve)
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: PreSolve
 
     TYPE(ValueList_t), POINTER :: Params
@@ -6926,9 +6927,9 @@ CONTAINS
   !> For more information see, for example, 
   !> Dmitri Kuzmin (2008): "Explicit and implicit FEM-FCT algorithms with flux linearization"
   !----------------------------------------------------------------------
-  SUBROUTINE FCT_Correction( Solver  )
+  SUBROUTINE FCT_Correction( Solver )
 
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
 
     TYPE(Valuelist_t), POINTER :: Params
     TYPE(Mesh_t), POINTER :: Mesh

@@ -2360,7 +2360,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LoadGebhartFactors( Mesh,FileName )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     CHARACTER(LEN=*) FileName
 !------------------------------------------------------------------------------
 
@@ -2453,7 +2453,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetCoordinateSystem( Model )
 !------------------------------------------------------------------------------
-     TYPE(Model_t), POINTER :: Model
+     TYPE(Model_t) :: Model
 !------------------------------------------------------------------------------
      LOGICAL :: Found
      TYPE(Mesh_t), POINTER :: Mesh
@@ -3628,7 +3628,7 @@ CONTAINS
   FUNCTION SaveResult( Filename,Mesh,Time,SimulationTime,Binary,SaveAll,&
                        FreeSurface, vList ) RESULT(SaveCount)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: Time,SaveCount
     CHARACTER(LEN=*) :: Filename
     REAL(KIND=dp) :: SimulationTime
@@ -4130,7 +4130,7 @@ CONTAINS
   SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF,SolverId)
     CHARACTER(LEN=*) :: RestartFile
     INTEGER :: TimeCount
-    TYPE(Mesh_T), POINTER :: Mesh
+    TYPE(Mesh_T), TARGET :: Mesh
     LOGICAL, OPTIONAL :: Continuous,EOF
     INTEGER, OPTIONAL :: SolverId
 !------------------------------------------------------------------------------
@@ -5156,7 +5156,7 @@ CONTAINS
    RECURSIVE SUBROUTINE InvalidateVariable( TopMesh,PrimaryMesh,Name )
      !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: Name
-     TYPE(Mesh_t),  POINTER :: TopMesh,PrimaryMesh
+     TYPE(Mesh_t), TARGET :: TopMesh, PrimaryMesh
      !------------------------------------------------------------------------------
      CHARACTER(:), ALLOCATABLE :: tmpname
      INTEGER :: i
@@ -5166,7 +5166,7 @@ CONTAINS
      Mesh => TopMesh
 
      DO WHILE( ASSOCIATED(Mesh) )
-       IF ( .NOT.ASSOCIATED( PrimaryMesh, Mesh) ) THEN
+       IF ( .NOT.ASSOCIATED(Mesh, PrimaryMesh) ) THEN
          Var => VariableGet( Mesh % Variables, Name, .TRUE.)
          IF ( ASSOCIATED( Var ) ) THEN
            Var % Valid = .FALSE.
@@ -5229,7 +5229,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE WritePostFile( PostFile,ResultFile,Model,TimeCount,AppendFlag )
 !------------------------------------------------------------------------------
-    TYPE(Model_t), POINTER :: Model !< Everything. 
+    TYPE(Model_t), TARGET :: Model !< Everything.
     INTEGER :: TimeCount            !< How many steps to save
     LOGICAL, OPTIONAL :: AppendFlag !< Usually we append. This is also a sign that this is not ResultToPost. 
     CHARACTER(LEN=*) :: PostFile    !< Name of the Post file
@@ -6162,7 +6162,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),DetJ,LoadAtIP,Weight
     LOGICAL :: Stat

@@ -200,27 +200,27 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   INTERFACE
     SUBROUTINE StatElecSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Boundary_Residual
     
     SUBROUTINE StatElecSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Edge_Residual
     
     SUBROUTINE StatElecSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Inside_Residual
@@ -1215,7 +1215,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        REAL(KIND=dp) :: PiezoCoeff(:,:,:), Displacement(:,:)
        INTEGER :: n
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
        LOGICAL :: PiezoMaterial
 !------------------------------------------------------------------------------
  
@@ -1414,14 +1414,14 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
    SUBROUTINE StatElecBoundary( BoundaryMatrix, BoundaryVector, &
         LoadVector, Alpha, Beta, OpenBC, Permittivity, Element, n, Nodes )
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: BoundaryMatrix(:,:) 
-     REAL(KIND=dp) :: BoundaryVector(:)  
-     REAL(KIND=dp) :: LoadVector(:) 
+     REAL(KIND=dp) :: BoundaryMatrix(:,:)
+     REAL(KIND=dp) :: BoundaryVector(:)
+     REAL(KIND=dp) :: LoadVector(:)
      REAL(KIND=dp) :: Alpha(:)  !< Coefficient of the Robin BC: g = alpha * u + beta
      REAL(KIND=dp) :: Beta(:)   !< Coefficient of the Robin BC: g = alpha * u + beta
      LOGICAL :: OpenBC
      REAL(KIND=dp) :: Permittivity(:)
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      TYPE(Element_t), POINTER :: PElement
      INTEGER :: n
      TYPE(Nodes_t)   :: Nodes
@@ -1518,8 +1518,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Edge
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Edge
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element
@@ -1768,8 +1768,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2)
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Edge
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Edge
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, EdgeNodes
@@ -1987,8 +1987,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Element
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Element
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes

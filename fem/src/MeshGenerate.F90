@@ -363,7 +363,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION MMG_ReMesh( RefMesh ) RESULT( NewMesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t), TARGET :: RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh, TmpMesh
     INTEGER :: i,j,k,n

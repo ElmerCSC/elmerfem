@@ -52,7 +52,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION PlanarReduce( n, Normals, Coord, Mesh ) RESULT(MeshOut)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh, MeshOut
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Mesh_t), POINTER :: MeshOut
     INTEGER :: n
     REAL(KIND=dp) :: Normals(:), Coord(:)
 !------------------------------------------------------------------------------
@@ -409,7 +410,7 @@ CONTAINS
      INTEGER :: N, i, UsedN, Setn, Set(:)
      LOGICAL :: Used(:)
      REAL(KIND=dp) :: Normals(:)
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
 
      REAL(KIND=dp), PARAMETER :: eps=1d-8
      LOGICAL :: Eqn
@@ -450,7 +451,7 @@ CONTAINS
 
    ! ...  find "edges" of the 1d line elements (used to traverse connected elements)
    SUBROUTINE FindEdges0(Mesh)
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      INTEGER :: i, j, maxi, n2
      TYPE(Element_t), POINTER :: el
 

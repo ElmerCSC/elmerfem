@@ -112,7 +112,7 @@ CONTAINS
   
   
   SUBROUTINE CheckPointElementParents(Mesh)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL :: Found
     INTEGER :: Misses(3)
     TYPE(Element_t), POINTER :: Element, Parent
@@ -276,7 +276,7 @@ CONTAINS
   !-----------------------------------------------------------------------------  
   SUBROUTINE SetMeshSkew(Mesh, Vlist )
     TYPE(ValueList_t), POINTER :: Vlist
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: RotorRad, AngleCoeff, RotorSkew, StatorSkew
     REAL(KIND=dp) :: zmin, zmax, Coord(3), zloc, alpha, minskew, maxskew
     LOGICAL :: Found, GotSkewFun, GotSkew, IsRotor
@@ -424,7 +424,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION MeshExtrude(Mesh_in, Vlist) RESULT(Mesh_out)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
+    TYPE(Mesh_t), TARGET :: Mesh_in
+    TYPE(Mesh_t), POINTER :: Mesh_out
     TYPE(ValueList_t), POINTER :: Vlist
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName
@@ -1120,7 +1121,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION MeshExtrudeSlices(Mesh_in, Vlist) RESULT(Mesh_out)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
+    TYPE(Mesh_t), TARGET :: Mesh_in
+    TYPE(Mesh_t), POINTER :: Mesh_out
     TYPE(ValueList_t), POINTER :: Vlist
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName

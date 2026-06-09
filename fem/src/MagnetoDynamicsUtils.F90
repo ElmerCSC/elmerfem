@@ -35,11 +35,11 @@
  CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetElectricConductivityTensor(Element, n, Part, &
-                   CoilBody,CoilType) RESULT (Tcoef)  
+                   CoilBody,CoilType) RESULT (Tcoef)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: Tcoef(3,3,n)
@@ -100,12 +100,12 @@
 
 !------------------------------------------------------------------------------ 
   FUNCTION GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) &
-                  RESULT (TCoef) 
-!------------------------------------------------------------------------------ 
+                  RESULT (TCoef)
+!------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: TCoef(3,3,n)
     REAL(KIND=dp) :: TCoefRe(3,3,n), TCoefIm(3,3,n)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     LOGICAL :: CoilBody
     CHARACTER(LEN=*) :: CoilType
@@ -131,7 +131,7 @@
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: mu(3,3,n)
@@ -351,7 +351,7 @@
    USE CircuitUtils
    IMPLICIT NONE
    TYPE(Mesh_t), POINTER, SAVE :: Mesh
-   TYPE(Element_t), POINTER :: Element
+   TYPE(Element_t) :: Element
    TYPE(Valuelist_t), POINTER :: CompParams
    INTEGER :: k, l, m, j, n
    REAL(KIND=dp) :: RotM(3,3,n)

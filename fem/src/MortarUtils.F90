@@ -74,7 +74,7 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), TARGET :: Mesh
     INTEGER :: This, Trgt
-    TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     LOGICAL :: Success
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,n1,n2,e1,e2,f1,f2,k1,k2,ind,Constraint,DIM,ii,jj,kk
@@ -728,9 +728,9 @@ CONTAINS
 !> vectors of the first element. Also check that all other elements are
 !> aligned with the first one. Only then is it possible to determine the angle.
 !------------------------------------------------------------------------------
-  SUBROUTINE CheckInterfaceMeshAngle(BMesh1, BMesh2, Angles, GotAngles) 
+  SUBROUTINE CheckInterfaceMeshAngle(BMesh1, BMesh2, Angles, GotAngles)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     REAL(KIND=dp) :: Angles(3)
     LOGICAL :: GotAngles
     !---------------------------------------------------------------------------
@@ -839,7 +839,7 @@ CONTAINS
 !---------------------------------------------------------------------------
   SUBROUTINE OverlayIntefaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t) :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     LOGICAL :: GotIt, GotRotate
@@ -1068,7 +1068,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE PreRotationalProjector(BMesh1, BMesh2, MirrorNode )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t) :: BMesh1, BMesh2
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     !--------------------------------------------------------------------------
     LOGICAL :: AntiPeriodic
@@ -1169,13 +1169,13 @@ CONTAINS
       NodePerm, InvPerm, InvPermM, SumArea ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
-    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Element_t) :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
     LOGICAL :: pElemBasis, Biorthogonal, DualMaster, DualLCoeff
     INTEGER :: NoGaussPoints
     TYPE(Matrix_t) :: Projector
     REAL(KIND=dp) :: NodeScale, SumArea
-    INTEGER, POINTER :: NodePerm(:), InvPerm(:), InvPermM(:)
+    INTEGER :: NodePerm(:), InvPerm(:), InvPermM(:)
     !----------------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: ElementP, ElementLin
@@ -1388,7 +1388,7 @@ CONTAINS
       Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, InvPerm, InvPermM, SumArea ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
-    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Element_t) :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
     INTEGER :: sgn0
     LOGICAL :: pElemBasis, Biorthogonal, CreateDual, DualMaster, DualLCoeff
@@ -1397,7 +1397,7 @@ CONTAINS
     REAL(KIND=dp) :: NodeCoeff, ArcCoeff, NodeScale, SumArea
     INTEGER :: NodePerm(:)
     INTEGER, ALLOCATABLE :: DualNodePerm(:)
-    INTEGER, POINTER :: InvPerm(:), InvPermM(:)
+    INTEGER :: InvPerm(:), InvPermM(:)
     !----------------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IPT
     INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip,Linds(20)
@@ -1590,7 +1590,7 @@ CONTAINS
      NodePerm, InvPerm, InvPermM, SumArea, BC ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
-    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Element_t) :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
     INTEGER :: sgn0
     LOGICAL :: pElemBasis
@@ -1599,7 +1599,7 @@ CONTAINS
     REAL(KIND=dp) :: ArcCoeff, NodeScale, SumArea
     INTEGER :: NodePerm(:)
     INTEGER, ALLOCATABLE :: DualNodePerm(:)
-    INTEGER, POINTER :: InvPerm(:), InvPermM(:)
+    INTEGER :: InvPerm(:), InvPermM(:)
     TYPE(ValueList_t), POINTER :: BC
     !----------------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IPT
@@ -1844,7 +1844,7 @@ CONTAINS
   !---------------------------------------------------------------------------
    FUNCTION NormalProjector(BMesh2, BMesh1, BC) RESULT ( Projector )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -3140,7 +3140,7 @@ CONTAINS
        UseQuadrantTree, Repeating, AntiRepeating ) &
       RESULT ( Projector )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -3205,7 +3205,7 @@ CONTAINS
   !---------------------------------------------------------------------------
    FUNCTION NodalProjectorDiscont( Mesh, bc ) RESULT ( Projector )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     INTEGER :: bc
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -3285,7 +3285,7 @@ CONTAINS
     !---------------------------------------------------------------------------
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t) :: BMesh1, BMesh2
     LOGICAL :: DoNodes, DoEdges
     LOGICAL :: Repeating, AntiRepeating, FullCircle, NotAllQuads, NotAllQuads2
     REAL(KIND=dp) :: Radius, NodeScale, EdgeScale
@@ -6656,7 +6656,7 @@ CONTAINS
 
   SUBROUTINE MarkHaloNodes( Mesh, HaloNode, FoundHaloNodes )
 
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, POINTER :: HaloNode(:)
     LOGICAL :: FoundHaloNodes
 
@@ -6727,7 +6727,7 @@ CONTAINS
 !---------------------------------------------------------------------------
   FUNCTION WeightedProjectorDiscont(Mesh, bc ) RESULT ( Projector )
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: bc
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -7272,7 +7272,7 @@ CONTAINS
   SUBROUTINE RotationalInterfaceMeshes(BMesh1, BMesh2, BParams, Cylindrical, &
       Radius, FullCircle )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     REAL(KIND=dp) :: Radius
     LOGICAL :: FullCircle, Cylindrical
@@ -7630,7 +7630,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE AxialInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
@@ -7788,8 +7788,8 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE RadialInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
-    TYPE(Valuelist_t), POINTER :: BParams
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
+    TYPE(Valuelist_t) :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3), x(3), r, phi, z, &
@@ -7899,7 +7899,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE FlatInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Bmesh
@@ -7995,7 +7995,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE PlaneInterfaceMeshes(BMesh1, BMesh2, BParams )
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Bmesh
@@ -8146,7 +8146,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE MapInterfaceCoordinate(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     LOGICAL :: Found
@@ -8254,9 +8254,9 @@ CONTAINS
           NodalJump ) &
          RESULT ( Projector )
         USE Types
-        TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+        TYPE(Mesh_t) :: BMesh1, BMesh2
         REAL(KIND=dp) :: PeriodicScale
-        INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
+        INTEGER :: InvPerm1(:), InvPerm2(:)
         LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
         TYPE(Matrix_t), POINTER :: Projector
         LOGICAL :: NodalJump
@@ -9429,7 +9429,7 @@ CONTAINS
   !---------------------------------------------------------------------------------
   SUBROUTINE ConformingEdgePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, &
       GradientVersion)
-    TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
+    TYPE(Mesh_t) :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic
@@ -9657,10 +9657,10 @@ CONTAINS
     
     ! Create edge centers for the mapping routines.
     !------------------------------------------------------------------------------
-    SUBROUTINE CreateEdgeCenters( Mesh, EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY, EdgeZ ) 
+    SUBROUTINE CreateEdgeCenters( Mesh, EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY, EdgeZ )
 
-      TYPE(Mesh_t), POINTER :: Mesh
-      TYPE(Mesh_t), POINTER :: EdgeMesh
+      TYPE(Mesh_t) :: Mesh
+      TYPE(Mesh_t) :: EdgeMesh
       INTEGER :: noedges
       INTEGER, ALLOCATABLE :: EdgeInds(:)
       REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeZ(:,:)
@@ -10117,7 +10117,7 @@ CONTAINS
   ! Create a permutation to eliminate nodal DOFs in a conforming case.
   !----------------------------------------------------------------------
   SUBROUTINE ConformingNodePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
-    TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
+    TYPE(Mesh_t) :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER, OPTIONAL :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 

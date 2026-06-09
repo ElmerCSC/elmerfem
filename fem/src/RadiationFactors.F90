@@ -409,7 +409,7 @@
      SUBROUTINE FixGeometryAfter(n,Element, BC, BCind)
        INTEGER :: n, BCind
        TYPE(ValueList_t), POINTER :: BC
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 
        LOGICAL :: Found
        REAL(KIND=dp) :: x0(1), y0(1), MeshU(n)

@@ -662,7 +662,7 @@ CONTAINS
     REAL(KIND=dp) :: Nodalmu(:), NodalAC(:), Nodalrho(:), &
         NodalGap(:), NodalGap0(:), NodalH(:), NodalAcPres(:), NodalVelo(:,:)
     INTEGER :: dim, mdim, n, nd, ntot
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: FirstRound
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3)
@@ -1000,7 +1000,7 @@ CONTAINS
     REAL(KIND=dp), TARGET :: MASS(:,:), STIFF(:,:), FORCE(:), NodalLoad(:,:)
     REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:), NodalGap(:)
     INTEGER :: dim, mdim, n, nd, ntot
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Load(mdim+1)
     REAL(KIND=dp), POINTER :: F(:),M(:,:)

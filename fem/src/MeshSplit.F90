@@ -1697,7 +1697,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE UpdateParallelMesh( Mesh, NewMesh )
 !------------------------------------------------------------------------------
-       TYPE(Mesh_t), POINTER :: Mesh, NewMesh
+       TYPE(Mesh_t), TARGET :: Mesh, NewMesh
 !------------------------------------------------------------------------------
        TYPE(Element_t), POINTER :: Edge, Face, Element, BoundaryElement
        INTEGER :: i,j,k,l,m,n,p,q, istat
@@ -3287,7 +3287,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE UpdateParallelInfo( Mesh, NewMesh )
 !------------------------------------------------------------------------------
-      TYPE(Mesh_t), POINTER :: Mesh, NewMesh
+      TYPE(Mesh_t), TARGET :: Mesh, NewMesh
 !------------------------------------------------------------------------------
       TYPE(Element_t), POINTER :: Edge
       INTEGER :: i,j1,j2,n,n0,m,istat

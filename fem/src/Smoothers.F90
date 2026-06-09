@@ -57,15 +57,15 @@ CONTAINS
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
-      TYPE(Solver_t), POINTER :: Solver
+      TYPE(Solver_t) :: Solver
       TYPE(Matrix_t), POINTER :: A
       TYPE(Mesh_t) :: Mesh
       INTEGER :: Level, DOFs
       REAL(KIND=dp), TARGET CONTIG :: x(:),b(:),r(:)
       REAL(KIND=dp) :: RNorm, rphi=5.0_dp
       LOGICAL, OPTIONAL :: PreSmooth, LowestSmooth
-      INTEGER, POINTER, OPTIONAL :: CF(:)
-      LOGICAL, POINTER, OPTIONAL :: SkipMask(:)
+      INTEGER, OPTIONAL :: CF(:)
+      LOGICAL, OPTIONAL :: SkipMask(:)
 !------------------------------------------------------------------------------
       CHARACTER(:), ALLOCATABLE :: IterMethod
       LOGICAL :: Parallel, Found, Lowest, Pre
@@ -426,7 +426,8 @@ CONTAINS
       SUBROUTINE Jacobi( n, A, M, x, b, r, Rounds)
 !-------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t), POINTER :: A
+        TYPE(Matrix_t) :: M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
 !------------------------------------------------------------------------------
@@ -450,7 +451,8 @@ CONTAINS
       SUBROUTINE SmoothedJacobi( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t), POINTER :: A
+        TYPE(Matrix_t) :: M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -473,11 +475,12 @@ CONTAINS
       SUBROUTINE MaskedJacobi( n, A, M, x, b, r, w, Mask, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t), POINTER :: A
+        TYPE(Matrix_t) :: M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
-        LOGICAL, POINTER :: Mask(:)
+        LOGICAL :: Mask(:)
 !------------------------------------------------------------------------------
         INTEGER :: i,j,n
 !------------------------------------------------------------------------------
@@ -498,7 +501,8 @@ CONTAINS
       SUBROUTINE ComplexJacobi( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER, INTENT(IN) :: A, M
+        TYPE(Matrix_t), POINTER, INTENT(IN) :: A
+        TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: n, Rounds
         REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
         REAL(KIND=dp) CONTIG, INTENT(IN) :: rb(:)
@@ -549,7 +553,7 @@ CONTAINS
       SUBROUTINE GS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG  :: x(:),b(:),r(:)
 !------------------------------------------------------------------------------
@@ -585,7 +589,7 @@ CONTAINS
       SUBROUTINE Richards( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG  :: x(:),b(:),r(:)
 !------------------------------------------------------------------------------
@@ -623,7 +627,7 @@ CONTAINS
       SUBROUTINE BGS( n, A, M, x, b, r, DOFs, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: DOFs, Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
 !------------------------------------------------------------------------------
@@ -663,7 +667,7 @@ CONTAINS
       SUBROUTINE SmoothedGS( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -698,7 +702,7 @@ CONTAINS
       SUBROUTINE SGS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
         INTEGER :: i,j,k,n
@@ -741,7 +745,7 @@ CONTAINS
 !------------------------------------------------------------------------------
         IMPLICIT NONE
 
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: n,Rounds
         REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
 
@@ -818,7 +822,7 @@ CONTAINS
       SUBROUTINE InternalSGS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
         INTEGER :: i,j,k,n
@@ -869,7 +873,7 @@ CONTAINS
       SUBROUTINE MaskedSGS( n, A, M, x, b, r, w, Mask, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         REAL(KIND=dp) :: w
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -877,8 +881,8 @@ CONTAINS
         REAL(KIND=dp) :: s,dia
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        LOGICAL, POINTER :: Mask(:)
-        
+        LOGICAL :: Mask(:)
+
         Rows   => A % Rows
         Cols   => A % Cols 
         Values => A % Values
@@ -924,7 +928,7 @@ CONTAINS
       SUBROUTINE BSGS( n, A, M, x, b, r, DOFs, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: DOFs, Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
         INTEGER :: i,j,k,n,id,dof
@@ -975,7 +979,7 @@ CONTAINS
       SUBROUTINE SmoothedSGS( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1015,7 +1019,8 @@ CONTAINS
       SUBROUTINE ComplexSGS( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER, INTENT(IN) :: A, M
+        TYPE(Matrix_t), POINTER, INTENT(IN) :: A
+        TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: Rounds
         REAL(KIND=dp), INTENT(IN) :: w
         REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
@@ -1081,9 +1086,9 @@ CONTAINS
       SUBROUTINE PostSGS( n, A, M, x, b, r, f, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
-        INTEGER, POINTER :: f(:)
+        INTEGER :: f(:)
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
         INTEGER :: i,j,k,n
         REAL(KIND=dp) :: s
@@ -1153,9 +1158,10 @@ CONTAINS
         USE MeshTransform, ONLY : DetectExtrudedStructure
         IMPLICIT NONE
 !------------------------------------------------------------------------------
-        TYPE(Matrix_t), POINTER :: A, M
+        TYPE(Matrix_t), POINTER :: A
+        TYPE(Matrix_t) :: M
         INTEGER :: Rounds
-        INTEGER, POINTER :: f(:)
+        INTEGER :: f(:)
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
         INTEGER :: i,j,k,kb,n
         REAL(KIND=dp) :: s,rowsum,frac

@@ -601,7 +601,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE OmegaWall( Element,n )
 !------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      INTEGER :: n
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Distance(32), omega_wall, dist, mu(32), rho(32)

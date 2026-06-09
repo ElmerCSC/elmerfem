@@ -776,7 +776,7 @@ CONTAINS
                     N, Factors, RadiationOpen )
      IMPLICIT NONE
 !------------------------------------------------------------------------------
-     TYPE(Model_t), POINTER :: Model
+     TYPE(Model_t) :: Model
      INTEGER :: NofRadiators, N
      REAL(KIND=dp)  :: Factors(:)
      LOGICAL :: DoRadiators, RadiationOpen
@@ -1120,7 +1120,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION DirectedNormalVector(Element, Nrm) RESULT(dir)
 !------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t) :: Element
      REAL(KIND=dp) :: Nrm(3), dir
 !------------------------------------------------------------------------------
      ! normal direction
@@ -1600,7 +1600,8 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 !------------------------------------------------------------------------------
      INTEGER :: body, node
      LOGICAL :: rad
-     TYPE(Element_t), POINTER :: Parent, Element
+     TYPE(Element_t), POINTER :: Parent
+     TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
      LOGICAL :: gotIt
      INTEGER i,j,k, matid

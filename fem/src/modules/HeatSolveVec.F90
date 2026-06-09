@@ -188,27 +188,27 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   INTERFACE
     SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE HeatSolver_Boundary_Residual
 
     SUBROUTINE HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE HeatSolver_Edge_Residual
 
     SUBROUTINE HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
     END SUBROUTINE HeatSolver_Inside_Residual
@@ -491,7 +491,7 @@ CONTAINS
 
 
   SUBROUTINE LocalNitscheBC(Element,n,BC,str)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(:), ALLOCATABLE :: str
@@ -1012,9 +1012,9 @@ CONTAINS
 ! in parallel case only true parents result to assembly, mixed parents gives
 ! assembly fraction of 1/2. 
 !------------------------------------------------------------------------------
-  FUNCTION BCAssemblyFraction( Element ) RESULT ( AssFrac ) 
+  FUNCTION BCAssemblyFraction( Element ) RESULT ( AssFrac )
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: AssFrac
 
     INTEGER :: NoParents, NoOwners
@@ -1244,7 +1244,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE TabulateBoundaryAverages( Mesh, Temps4, Emiss, Absorp, Reflect )
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      REAL(KIND=dp), ALLOCATABLE :: Temps4(:)
      REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: Emiss(:), Absorp(:), Reflect(:)
  !------------------------------------------------------------------------------
@@ -1333,7 +1333,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: n, nd, nb
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: T0,Text, Fj, &
         RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac, cNewton
@@ -1668,7 +1668,7 @@ CONTAINS
   SUBROUTINE LocalJumps( Element,n,LeftParent,nl,RightParent,nr)
 !------------------------------------------------------------------------------
     INTEGER :: n,nl,nr
-    TYPE(Element_t), POINTER :: Element, LeftParent, RightParent
+    TYPE(Element_t) :: Element, LeftParent, RightParent
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),FORCE(:)   
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
@@ -1841,7 +1841,8 @@ CONTAINS
       Parent1,n1,Parent2,n2,InitHandles,BCDone)
 !------------------------------------------------------------------------------
     INTEGER :: n, n1, n2
-    TYPE(Element_t), POINTER :: Element, Parent1, Parent2
+    TYPE(Element_t), TARGET :: Element
+    TYPE(Element_t), POINTER :: Parent1, Parent2
     LOGICAL :: InitHandles, BCDone 
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
@@ -2121,8 +2122,8 @@ END SUBROUTINE HeatSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Edge
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element
@@ -2407,8 +2408,8 @@ END SUBROUTINE HeatSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2)
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Edge
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element
@@ -2597,8 +2598,8 @@ END SUBROUTINE HeatSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes

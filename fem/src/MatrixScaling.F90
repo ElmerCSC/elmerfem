@@ -908,10 +908,10 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ScaleLinearSystemVectors(A, b, n, x, BackScaling)
 !------------------------------------------------------------------------------
-    TYPE(Matrix_t), POINTER, INTENT(IN) :: A
-    REAL(KIND=dp), POINTER, INTENT(INOUT) :: b(:)
+    TYPE(Matrix_t), INTENT(IN) :: A
+    REAL(KIND=dp), INTENT(INOUT) :: b(:)
     INTEGER, INTENT(IN) :: n
-    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(INOUT) :: x(:)
+    REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: x(:)
     LOGICAL, OPTIONAL, INTENT(IN) :: BackScaling
 !------------------------------------------------------------------------------
     LOGICAL :: Backwards

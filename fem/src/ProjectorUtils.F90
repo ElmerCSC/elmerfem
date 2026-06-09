@@ -280,10 +280,10 @@ CONTAINS
    ! This creates a projector that integrates over the BCs on the boundary such that
    ! an integral constraint for Robin type of BCs may be applied.
    !--------------------------------------------------------------------------------------
-   SUBROUTINE RobinProjector(Model, Solver, BCInd, IsBodyForce ) 
+   SUBROUTINE RobinProjector(Model, Solver, BCInd, IsBodyForce )
 
      TYPE(Model_t) :: Model
-     TYPE(Solver_t), POINTER :: Solver    
+     TYPE(Solver_t) :: Solver    
      INTEGER :: BCInd
      LOGICAL :: IsBodyForce
 
@@ -2163,7 +2163,7 @@ CONTAINS
      TYPE ProjTable_t
        TYPE(Matrix_t), POINTER :: Proj
      END TYPE ProjTable_t
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      TYPE(Matrix_t), POINTER :: Proj
      LOGICAL, OPTIONAL :: GotProj
      

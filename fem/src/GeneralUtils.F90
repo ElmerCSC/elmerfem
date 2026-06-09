@@ -2025,7 +2025,7 @@ END FUNCTION ComponentNameVar
 #if defined(ELMER_HAVE_MPI_MODULE)
       USE mpi
 #endif
-      TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
+      TYPE(Matrix_t), INTENT(INOUT) :: Matrix
 #if defined(ELMER_HAVE_MPIF_HEADER)
       INCLUDE "mpif.h"
 #endif

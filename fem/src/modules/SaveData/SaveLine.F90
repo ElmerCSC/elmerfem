@@ -174,8 +174,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       USE ElementDescription
       IMPLICIT NONE
       
-      TYPE(Mesh_t), POINTER :: Mesh
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Mesh_t) :: Mesh
+      TYPE(Element_t), TARGET :: Element
       INTEGER :: nip, ndg
       REAL(KIND=dp) :: fip(:), fdg(:)
     END SUBROUTINE Ip2DgFieldInElement

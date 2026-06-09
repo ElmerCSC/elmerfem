@@ -257,7 +257,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE SetRotatedProperties(Model, Mesh)
      TYPE(Model_t) :: Model
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
 
      LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
      INTEGER :: list_ind
@@ -500,7 +500,7 @@ CONTAINS
      IF(.NOT.ASSOCIATED(NewMesh)) RETURN
 
      NewMesh % Next => Mesh % Next
-     IF(ASSOCIATED(Mesh,  Model % Meshes)) THEN
+     IF(ASSOCIATED(Model % Meshes,Mesh)) THEN
        Model % Meshes => Newmesh
      ELSE
        Tmesh => Model % Meshes
@@ -560,7 +560,7 @@ CONTAINS
 
            
    SUBROUTINE CheckAndCreateDGIndexes( Mesh, ActiveElem ) 
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      LOGICAL, OPTIONAL :: ActiveElem(:)
 
      TYPE(Element_t), POINTER :: Element     
@@ -615,7 +615,7 @@ CONTAINS
    !-----------------------------------------------------------------------------------
    SUBROUTINE CreateDGPerm( Solver, DGPerm, DGCount, MaskName, SecName )
 
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      INTEGER, POINTER :: DGPerm(:)
      INTEGER :: DGCount
      CHARACTER(LEN=*), OPTIONAL :: MaskName, SecName 
@@ -782,7 +782,7 @@ CONTAINS
    !-----------------------------------------------------------------------------------
    SUBROUTINE CreateNodalPerm( Solver, NodalPerm, nSize )
 
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      INTEGER, POINTER :: NodalPerm(:)
      INTEGER :: nSize
      
@@ -830,7 +830,7 @@ CONTAINS
    !> Create permutation for fields on elements, optional using mask
    !-----------------------------------------------------------------
    SUBROUTINE CreateElementsPerm( Solver, Perm, nsize, MaskName, SecName ) 
-     TYPE(Solver_t),POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      INTEGER, POINTER :: Perm(:)
      INTEGER :: nsize
      CHARACTER(LEN=*), OPTIONAL :: MaskName, SecName
@@ -891,10 +891,10 @@ CONTAINS
    !---------------------------------------------------------------------------------
    SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, MaskPerm, nsize, SecName )
 
-     TYPE(Solver_t), POINTER :: Solver
-     INTEGER, POINTER :: FullPerm(:)
+     TYPE(Solver_t) :: Solver
+     INTEGER :: FullPerm(:)
      CHARACTER(LEN=*) :: MaskName
-     INTEGER, POINTER :: MaskPerm(:) 
+     INTEGER, POINTER :: MaskPerm(:)
      INTEGER :: nsize
      CHARACTER(LEN=*), OPTIONAL :: SecName
          
@@ -966,7 +966,7 @@ CONTAINS
    ! at a certain instances during the simulation:
    !------------------------------------------------------------------  
    SUBROUTINE AddExecWhenFlag(Solver)
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
 
      TYPE(ValueList_t), POINTER :: SolverParams
      LOGICAL :: Found
@@ -1169,7 +1169,7 @@ CONTAINS
   SUBROUTINE AddEquationBasics( Solver, Name, Transient )
 !------------------------------------------------------------------------------
     USE CoordinateSystems
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: Transient
     CHARACTER(LEN=*) :: Name
 !------------------------------------------------------------------------------
@@ -2204,7 +2204,7 @@ CONTAINS
   ! for exported variables.
   !---------------------------------------------------------------------------
   SUBROUTINE CreateTimeDerivativeVariables( Solver, Var )
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     TYPE(Variable_t), POINTER, OPTIONAL :: Var
 
     TYPE(Variable_t), POINTER :: pVar
@@ -2314,7 +2314,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddEquationSolution(Solver, Transient )
 !------------------------------------------------------------------------------
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: Transient
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
@@ -3935,7 +3935,7 @@ CONTAINS
       IMPLICIT NONE
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Stiff(:,:), Damp(:,:), Mass(:,:), Force(:)
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t), TARGET :: Element
       INTEGER :: n
 !------------------------------------------------------------------------------
 !    Local variables
@@ -4885,7 +4885,7 @@ CONTAINS
   SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
       RowIndOffset,ColIndOffset)
 !---------------------------------------------------
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: dt
     LOGICAL :: Transient
     INTEGER :: RowVar, ColVar
@@ -5167,7 +5167,7 @@ CONTAINS
   SUBROUTINE ExecSolverInSteps( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
-    TYPE(Solver_t),POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: TransientSimulation
     REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
@@ -5235,7 +5235,7 @@ CONTAINS
   RECURSIVE SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
-     TYPE(Solver_t),POINTER :: Solver
+     TYPE(Solver_t), TARGET :: Solver
      LOGICAL :: TransientSimulation
      REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
@@ -5527,18 +5527,18 @@ END BLOCK
              INTERFACE
                 SUBROUTINE BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator )
                    USE Types
-                   TYPE(Element_t), POINTER :: Edge
+                   TYPE(Element_t) :: Edge
                    TYPE(Model_t) :: Model
-                   TYPE(Mesh_t), POINTER :: Mesh
+                   TYPE(Mesh_t) :: Mesh
                    REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
                    INTEGER :: Perm(:)
                 END SUBROUTINE BoundaryResidual
 
                 SUBROUTINE EdgeResidual( Model,Edge,Mesh,Quant,Perm, Indicator)
                    USE Types
-                   TYPE(Element_t), POINTER :: Edge
+                   TYPE(Element_t) :: Edge
                    TYPE(Model_t) :: Model
-                   TYPE(Mesh_t), POINTER :: Mesh
+                   TYPE(Mesh_t) :: Mesh
                    REAL(KIND=dp) :: Quant(:), Indicator(2)
                    INTEGER :: Perm(:)
                 END SUBROUTINE EdgeResidual
@@ -5546,9 +5546,9 @@ END BLOCK
 
                 SUBROUTINE InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm, Indicator)
                    USE Types
-                   TYPE(Element_t), POINTER :: Element
+                   TYPE(Element_t) :: Element
                    TYPE(Model_t) :: Model
-                   TYPE(Mesh_t), POINTER :: Mesh
+                   TYPE(Mesh_t) :: Mesh
                    REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
                    INTEGER :: Perm(:)
                 END SUBROUTINE InsideResidual
@@ -5639,7 +5639,7 @@ END BLOCK
   RECURSIVE SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
-     TYPE(Solver_t),POINTER :: Solver
+     TYPE(Solver_t), TARGET :: Solver
      LOGICAL :: TransientSimulation
      REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------

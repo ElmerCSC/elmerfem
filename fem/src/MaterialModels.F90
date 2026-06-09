@@ -195,7 +195,7 @@ this ise not in USE
      TYPE(Nodes_t)  :: Nodes
      INTEGER :: n,nd
      INTEGER, OPTIONAL :: LocalIP
-     TYPE(Element_t),POINTER :: Element
+     TYPE(Element_t), POINTER :: Element
 
      !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)

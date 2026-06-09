@@ -48,9 +48,9 @@ CONTAINS
 !> and also to internal partitioning within ElmerSolver. 
 !---------------------------------------------------------------
   SUBROUTINE ClusterNodesByDirection(Params,Mesh,Clustering,MaskActive)
- 
+
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, OPTIONAL :: MaskActive(:)
     INTEGER, POINTER :: Clustering(:)
 !---------------------------------------------------------------
@@ -267,9 +267,9 @@ CONTAINS
 
 
   SUBROUTINE ClusterElementsByDirection(Params,Mesh,Clustering,MaskActive)
- 
+
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, OPTIONAL :: MaskActive(:)
     INTEGER, POINTER :: Clustering(:)
 !---------------------------------------------------------------
@@ -511,7 +511,7 @@ CONTAINS
   SUBROUTINE ClusterElementsUniform(Params,Mesh,Clustering,MaskActive,PartitionDivisions)
  
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER, POINTER :: Clustering(:)
     LOGICAL, OPTIONAL :: MaskActive(:)
     INTEGER, OPTIONAL :: PartitionDivisions(3)
@@ -732,7 +732,7 @@ CONTAINS
 
     USE MeshTransform, ONLY : DetectExtrudedStructure, DetectExtrudedElements
     
-    TYPE(Matrix_t), POINTER  :: Amat
+    TYPE(Matrix_t) :: Amat
     TYPE(solver_t), TARGET :: Solver
     INTEGER :: Components
     LOGICAL :: EliminateDir
@@ -1118,8 +1118,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE CMGBonds(Amat, Bonds, Passive, Fixed, Components, Component1)
       
-      LOGICAL, POINTER :: Bonds(:), Passive(:), Fixed(:)
-      TYPE(Matrix_t), POINTER  :: Amat
+      LOGICAL :: Bonds(:), Passive(:), Fixed(:)
+      TYPE(Matrix_t) :: Amat
       INTEGER :: Components, Component1
       
       REAL(KIND=dp) :: StrongLim
@@ -1249,11 +1249,11 @@ CONTAINS
     !> to which cluster each node belongs to.
     !------------------------------------------------------------------------------
     SUBROUTINE CMGClusterForm(Amat, Bonds, Passive, Fixed, Components, Component1, CF)
-      
-      TYPE(Matrix_t), POINTER :: Amat
+
+      TYPE(Matrix_t) :: Amat
       INTEGER :: Components, Component1
       LOGICAL :: Bonds(:),Passive(:),Fixed(:)
-      INTEGER, POINTER :: CF(:)
+      INTEGER :: CF(:)
       
       INTEGER :: nods, cnods    
       INTEGER :: i,j,k,l,n,k2,cj,ci,nodeci,nodecj, &

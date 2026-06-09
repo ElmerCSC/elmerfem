@@ -650,7 +650,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       INTEGER :: n
       TYPE(Nodes_t) :: Nodes
       REAL(KIND=dp) :: mK
@@ -6749,8 +6749,8 @@ END SUBROUTINE FaceElementBasisOrdering
 SUBROUTINE PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
 !------------------------------------------------------------------------------
   IMPLICIT NONE
-  TYPE(Mesh_t), POINTER, INTENT(IN) :: Mesh  
-  TYPE(Element_t), POINTER, INTENT(IN) :: Parent, Element
+  TYPE(Mesh_t), INTENT(IN) :: Mesh  
+  TYPE(Element_t), INTENT(IN) :: Parent, Element
   TYPE(Element_t), POINTER, INTENT(OUT) :: Face
   INTEGER, INTENT(OUT) :: ActiveFaceId
 !------------------------------------------------------------------------------
@@ -14130,7 +14130,7 @@ BLOCK
   SUBROUTINE CheckNormalDirection( Boundary,Normal,x,y,z,turn )
 !------------------------------------------------------------------------------
 
-    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Element_t) :: Boundary
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp) :: Normal(3),x,y,z
     LOGICAL, OPTIONAL :: turn
@@ -14245,7 +14245,7 @@ BLOCK
   SUBROUTINE CheckNormalDirectionParent( Boundary,Normal,x,y,z,Element,turn )
 !------------------------------------------------------------------------------
 
-    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Element_t) :: Boundary
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp) :: Normal(3),x,y,z
     TYPE(Element_t), POINTER :: Element
@@ -14322,7 +14322,7 @@ BLOCK
 !------------------------------------------------------------------------------
   RECURSIVE FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Element_t) :: Boundary
     TYPE(Nodes_t)   :: BoundaryNodes
     REAL(KIND=dp), OPTIONAL :: u0,v0
     LOGICAL, OPTIONAL :: Check
@@ -14506,7 +14506,7 @@ BLOCK
 !------------------------------------------------------------------------------
   RECURSIVE FUNCTION NormalVectorLinear( Boundary,BoundaryNodes,Parent) RESULT(Normal)
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Element_t) :: Boundary
     TYPE(Nodes_t) :: BoundaryNodes
     TYPE(Element_t), POINTER, OPTIONAL :: Parent
     REAL(KIND=dp) :: Normal(3)
@@ -14707,7 +14707,7 @@ BLOCK
 !------------------------------------------------------------------------------
   FUNCTION SurfaceVector( Boundary,BoundaryNodes,u,v ) RESULT(Surface)
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Element_t) :: Boundary
     TYPE(Nodes_t)   :: BoundaryNodes
     REAL(KIND=dp),OPTIONAL :: u,v
     REAL(KIND=dp) :: Surface(3)
@@ -14752,7 +14752,7 @@ BLOCK
       Rinit,Rfin,u,v) RESULT ( Lambda )
 !---------------------------------------------------------------------------
     TYPE(Nodes_t) :: FaceNodes
-    TYPE(Element_t), POINTER   :: FaceElement
+    TYPE(Element_t) :: FaceElement
     REAL(KIND=dp) :: Rinit(3),Rfin(3)
     REAL(KIND=dp),OPTIONAL :: u,v
     REAL(KIND=dp) :: Lambda
@@ -14832,7 +14832,7 @@ BLOCK
   FUNCTION LineFaceIntersection2(FaceElement,FaceNodes,Rinit,Rfin,Intersect) RESULT ( Lambda ) 
 
     TYPE(Nodes_t) :: FaceNodes
-    TYPE(Element_t), POINTER   :: FaceElement
+    TYPE(Element_t) :: FaceElement
     REAL(KIND=dp) :: Rinit(3), Rfin(3),Lambda
     LOGICAL :: Intersect
 !----------------------------------------------------------------------------
@@ -14962,7 +14962,7 @@ BLOCK
       Coord,Normal,u0,v0) RESULT ( Dist )
 !---------------------------------------------------------------------------
     TYPE(Nodes_t) :: BoundaryNodes
-    TYPE(Element_t), POINTER   :: BoundaryElement
+    TYPE(Element_t) :: BoundaryElement
     REAL(KIND=dp) :: Coord(3),Normal(3)
     REAL(KIND=dp),OPTIONAL :: u0,v0
     REAL(KIND=dp) :: Dist
@@ -15001,7 +15001,7 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: ElementNodes
     REAL(KIND=dp) :: x,y,z,u,v,w
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
     INTEGER, PARAMETER :: MaxIter = 50
     INTEGER :: i,n

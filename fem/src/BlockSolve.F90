@@ -63,7 +63,8 @@ CONTAINS
   !------------------------------------------------------------------------  
   FUNCTION CreateSchurApproximation(A,P,Q) RESULT ( S ) 
 
-    TYPE(Matrix_t), POINTER :: A, P, Q
+    TYPE(Matrix_t), TARGET :: A
+    TYPE(Matrix_t), POINTER :: P, Q
     TYPE(Matrix_t), POINTER :: S, R
 
     INTEGER :: n, i, j, k, l, j2, k2
@@ -131,11 +132,11 @@ CONTAINS
   !-----------------------------------------------------------------------------------
   FUNCTION CreateBlockVariable( Solver, VariableNo, VarName, ExtDofs, ExtPerm ) RESULT ( Var )
     
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t), TARGET :: Solver
     INTEGER :: VariableNo
     CHARACTER(LEN=*) :: VarName
     INTEGER, OPTIONAL :: ExtDofs
-    INTEGER, POINTER, OPTIONAL :: ExtPerm(:)
+    INTEGER, TARGET, OPTIONAL :: ExtPerm(:)
     TYPE(Variable_t), POINTER :: Var
     
     TYPE(Solver_t), POINTER :: PSolver
@@ -213,7 +214,7 @@ CONTAINS
     solver_id = 0
     DO i = 1, CurrentModel % NumberOfSolvers
       PSolver => CurrentModel % Solvers(i)
-      IF( ASSOCIATED( Solver, PSolver ) ) THEN
+      IF( ASSOCIATED( PSolver, Solver ) ) THEN
         solver_id = i
         EXIT
       END IF
@@ -524,9 +525,9 @@ CONTAINS
     IMPLICIT NONE
     
     TYPE(Solver_t), TARGET :: Solver
-    TYPE(BlockMatrix_t), POINTER :: BlockMatrix
-    INTEGER, POINTER, OPTIONAL :: BlockIndex(:)
-    
+    TYPE(BlockMatrix_t) :: BlockMatrix
+    INTEGER, OPTIONAL :: BlockIndex(:)
+
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Matrix_t), POINTER :: Amat
     INTEGER :: i,j,k,n,m,Novar
@@ -642,8 +643,8 @@ CONTAINS
     IMPLICIT NONE
     
     TYPE(Solver_t), TARGET :: Solver
-    TYPE(BlockMatrix_t), POINTER :: BlockMatrix
-    
+    TYPE(BlockMatrix_t), TARGET :: BlockMatrix
+
     TYPE(Matrix_t), POINTER :: Amat
     INTEGER :: i,j,k,n,m,Novar
     TYPE(Variable_t), POINTER :: Var
@@ -829,8 +830,8 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickDofsPhysical( Solver, BlockIndex, NoVar )
     
-    TYPE(Solver_t), POINTER :: Solver
-    INTEGER, POINTER :: BlockIndex(:)
+    TYPE(Solver_t) :: Solver
+    INTEGER :: BlockIndex(:)
     INTEGER :: Novar
     
     INTEGER::i,j,k,t,n,MinBlock,MaxBlock,body_id,bf_id,bc_id,n_bf
@@ -923,8 +924,8 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickHdiv( Solver, BlockIndex, NoVar )
     
-    TYPE(Solver_t), POINTER :: Solver
-    INTEGER, POINTER :: BlockIndex(:)
+    TYPE(Solver_t) :: Solver
+    INTEGER :: BlockIndex(:)
     INTEGER :: Novar
     
     INTEGER :: i,j,n,nn,ne,nf,nb,nnis,neis,nfis,nbis
@@ -997,8 +998,8 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickAV( Solver, BlockIndex, NoVar )
     
-    TYPE(Solver_t), POINTER :: Solver
-    INTEGER, POINTER :: BlockIndex(:)
+    TYPE(Solver_t) :: Solver
+    INTEGER :: BlockIndex(:)
     INTEGER :: Novar
     
     INTEGER :: i,j,n,nn,ne,nf,nb,ais,vis,pis,dofs
@@ -1099,8 +1100,8 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickReIm( Solver, BlockIndex, NoVar )
     
-    TYPE(Solver_t), POINTER :: Solver
-    INTEGER, POINTER :: BlockIndex(:)
+    TYPE(Solver_t) :: Solver
+    INTEGER :: BlockIndex(:)
     INTEGER :: Novar
 
     INTEGER :: dofs
@@ -1125,7 +1126,7 @@ CONTAINS
   SUBROUTINE BlockPickMatrixPerm( Solver, BlockIndex, NoVar, DoAddMatrix )
 
     TYPE(Solver_t) :: Solver
-    INTEGER, POINTER :: BlockIndex(:)
+    INTEGER :: BlockIndex(:)
     INTEGER :: Novar
     LOGICAL :: DoAddMatrix
         
@@ -2556,8 +2557,9 @@ CONTAINS
   ! couples dofs at parallel interfaces. Assume that C := C_ab where a is
   ! associated to A and b to B.
   !------------------------------------------------------------------------
-  FUNCTION CheckParallelCoupling( A, B, C ) RESULT ( Coupled ) 
-    TYPE(Matrix_t), POINTER :: A, B, C
+  FUNCTION CheckParallelCoupling( A, B, C ) RESULT ( Coupled )
+    TYPE(Matrix_t), POINTER :: A, B
+    TYPE(Matrix_t), TARGET :: C
     LOGICAL :: Coupled
     
     LOGICAL :: Acoupled, Bcoupled
@@ -2842,7 +2844,7 @@ CONTAINS
     REAL(KIND=dp) :: x(:)
     INTEGER :: n
     INTEGER, OPTIONAL :: npar
-    TYPE(Matrix_t), POINTER, OPTIONAL :: A
+    TYPE(Matrix_t), TARGET, OPTIONAL :: A
     REAL(KIND=dp) :: nrm
 
     INTEGER :: i,m

@@ -81,9 +81,9 @@ CONTAINS
     INTERFACE
        SUBROUTINE BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator )
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t)  :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
           INTEGER :: Perm(:)
        END SUBROUTINE BoundaryResidual
@@ -91,9 +91,9 @@ CONTAINS
 
        SUBROUTINE EdgeResidual( Model,Edge,Mesh,Quant,Perm, Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t)  :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2)
           INTEGER :: Perm(:)
        END SUBROUTINE EdgeResidual
@@ -101,9 +101,9 @@ CONTAINS
 
        SUBROUTINE InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm, Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Element
+          TYPE(Element_t) :: Element
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
           INTEGER :: Perm(:)
        END SUBROUTINE InsideResidual
@@ -920,7 +920,7 @@ CONTAINS
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
         ErrorLimit, minH, maxH, MaxChange, HValue(:)
     LOGICAL :: Coarsening
-    TYPE(Mesh_t), POINTER :: RefMesh
+    TYPE(Mesh_t) :: RefMesh
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n
     REAL(KIND=dp) :: Lambda, hLimitScale
@@ -1042,7 +1042,7 @@ CONTAINS
   SUBROUTINE ParallelAverageHvalue( RefMesh, HValue ) 
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: HValue(:)
-    TYPE(Mesh_t), POINTER :: RefMesh
+    TYPE(Mesh_t) :: RefMesh
 
     INTEGER :: i,j,k,l,n,minnei,maxnei
     INTEGER, POINTER :: p(:)
@@ -1230,7 +1230,8 @@ CONTAINS
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
            ErrorLimit, minH, maxH, MaxChange, HValue(:)
     LOGICAL :: Coarsening
-    TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t) :: RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh, TmpMesh, GatheredMesh
     INTEGER :: i,j,k,n,ierr
@@ -1430,7 +1431,8 @@ CONTAINS
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
            ErrorLimit, minH, maxH, MaxChange, HValue(:)
     LOGICAL :: Coarsening
-    TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t), TARGET :: RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,n,dim
@@ -1634,7 +1636,8 @@ CONTAINS
        Hvalue, hConvergence, minH, maxH, MaxChange ) RESULT(NewMesh)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), Hvalue(:), MaxChange
-    TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t) :: RefMesh
     REAL(KIND=dp) :: ErrorIndicator(:),ErrorLimit,minH,maxH
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: NewMesh1
@@ -1708,7 +1711,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
-    TYPE( Mesh_t ), POINTER :: RefMesh, NewMesh
+    TYPE( Mesh_t ), POINTER :: NewMesh
+    TYPE( Mesh_t ) :: RefMesh
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: t
     INTEGER :: EdgeNumber,LongestEdge,Node1,Node2
@@ -2305,7 +2309,7 @@ CONTAINS
 
     LOGICAL :: EdgeSplitted(:)
     INTEGER :: MarkedEdges
-    TYPE(Mesh_t), POINTER :: RefMesh
+    TYPE(Mesh_t) :: RefMesh
 !------------------------------------------------------------------------------
     LOGICAL :: MarkedEdgesFound
     INTEGER :: i,j,EdgeNumber,HangingNodes,RGBIterations,Node1,Node2,&
@@ -2414,10 +2418,10 @@ CONTAINS
   SUBROUTINE SetParents( Element, Mesh, Children, Edge )
 !------------------------------------------------------------------------------
     TYPE(Element_t) :: Element
-    TYPE(Element_t), POINTER :: Edge
+    TYPE(Element_t) :: Edge
 
     INTEGER :: Children(:,:)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
 
     INTEGER j,k,l,n,i0,j0,k0
 
@@ -2477,7 +2481,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE UpdateGebhartFactors( RefMesh,NewMesh,Children ) 
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: RefMesh,NewMesh
+    TYPE(Mesh_t) :: RefMesh, NewMesh
     INTEGER :: Children(:,:)
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,NewFactors,TARGET
@@ -2565,7 +2569,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Area, AreaNew
     INTEGER :: Children(:,:)
-    TYPE(Factors_t), POINTER :: Factors, NewFactors
+    TYPE(Factors_t) :: Factors, NewFactors
 !------------------------------------------------------------------------------
     INTEGER k,n,TARGET,NEW
 !------------------------------------------------------------------------------
@@ -2612,27 +2616,27 @@ CONTAINS
     INTERFACE
        SUBROUTINE BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm, Indicator)
          USE Types
-         TYPE(Element_t), POINTER :: Edge
+         TYPE(Element_t) :: Edge
          TYPE(Model_t) :: Model
-         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Mesh_t) :: Mesh
          REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
          INTEGER :: Perm(:)
        END SUBROUTINE BoundaryResidual
 
        SUBROUTINE EdgeResidual( Model,Edge,Mesh,Quant,Perm, Indicator)
          USE Types
-         TYPE(Element_t), POINTER :: Edge
+         TYPE(Element_t) :: Edge
          TYPE(Model_t) :: Model
-         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Mesh_t) :: Mesh
          REAL(KIND=dp) :: Quant(:), Indicator(2)
          INTEGER :: Perm(:)
        END SUBROUTINE EdgeResidual
 
        SUBROUTINE InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm, Indicator)
          USE Types
-         TYPE(Element_t), POINTER :: Element
+         TYPE(Element_t) :: Element
          TYPE(Model_t) :: Model
-         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Mesh_t) :: Mesh
          REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
          INTEGER :: Perm(:)
        END SUBROUTINE InsideResidual
@@ -2775,7 +2779,7 @@ SUBROUTINE FluxRecovery(Model, Solver, Mesh, ErrorIndicator, MaxError)
   IMPLICIT NONE
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
-  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Mesh_t) :: Mesh
   REAL(KIND=dp) :: ErrorIndicator(:), MaxError
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
@@ -3154,7 +3158,7 @@ CONTAINS
       MatParName, ForceName)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), INTENT(IN) :: UK(:)
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element    
+    TYPE(Element_t), INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd
     ! The following four arguments are related only to running a code verification case:
     REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: Err, SolNorm, Est, APostEst
@@ -3565,7 +3569,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION IsLeftHanded(Element) RESULT(LeftHanded)
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), INTENT(IN) :: Element
     LOGICAL :: LeftHanded
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
@@ -3604,9 +3608,9 @@ SUBROUTINE RefineMeshExt(Model,Solver,Quant,Perm,InsideResidual,EdgeResidual,Bou
     INTERFACE
        SUBROUTINE BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator )
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
           INTEGER :: Perm(:)
        END SUBROUTINE BoundaryResidual
@@ -3614,9 +3618,9 @@ SUBROUTINE RefineMeshExt(Model,Solver,Quant,Perm,InsideResidual,EdgeResidual,Bou
 
        SUBROUTINE EdgeResidual( Model,Edge,Mesh,Quant,Perm, Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2)
           INTEGER :: Perm(:)
        END SUBROUTINE EdgeResidual
@@ -3624,9 +3628,9 @@ SUBROUTINE RefineMeshExt(Model,Solver,Quant,Perm,InsideResidual,EdgeResidual,Bou
 
        SUBROUTINE InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm, Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Element
+          TYPE(Element_t) :: Element
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
           INTEGER :: Perm(:)
        END SUBROUTINE InsideResidual

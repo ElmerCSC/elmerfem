@@ -556,7 +556,7 @@ CONTAINS
      REAL(KIND=dp) :: Force(:)          !< Global right-hand-side vector.
      REAL(KIND=dp) :: dt                !< Simulation timestep size
      REAL(KIND=dp), POINTER :: PrevValues(:,:)
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      
      IF( Matrix % Lumped ) THEN
        CALL Fatal('Add2ndOrderTime_CRS','Implement matrix lumping for this!')
@@ -574,7 +574,7 @@ CONTAINS
    SUBROUTINE UpdateTimeForce( StiffMatrix, &
            ForceVector, LocalForce, n, NDOFs, NodeIndexes )
 !------------------------------------------------------------------------------
-     TYPE(Matrix_t), POINTER :: StiffMatrix  !< Global stiffness matrix.
+     TYPE(Matrix_t) :: StiffMatrix  !< Global stiffness matrix.
      REAL(KIND=dp) :: LocalForce(:)     !< Local right-hand-side vector.
      REAL(KIND=dp) :: ForceVector(:)    !< Global right-hand-side vector.
      INTEGER :: n                       !< number of element nodes
@@ -907,7 +907,7 @@ CONTAINS
    SUBROUTINE UpdateMassMatrix( StiffMatrix, LocalMassMatrix, &
               n, NDOFs, DofIndexes, GlobalValues )
 !------------------------------------------------------------------------------
-     TYPE(Matrix_t), POINTER :: StiffMatrix  !< The global matrix structure
+     TYPE(Matrix_t) :: StiffMatrix  !< The global matrix structure
      REAL(KIND=dp) :: LocalMassMatrix(:,:)   !< Local matrix to be added to the global matrix
      INTEGER :: n                            !<  number of nodes in element
      INTEGER :: NDOFs                        !< number of DOFs per node
@@ -970,7 +970,7 @@ CONTAINS
 
      TYPE(Solver_t), POINTER :: Solver
      TYPE(Variable_t), POINTER :: NrmVar
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t) :: Element
      LOGICAL, OPTIONAL :: Found
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      INTEGER, OPTIONAL :: node
@@ -1672,7 +1672,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: dofs
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     REAL(KIND=dp) :: FORCE(:,:)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),ElemSource(:,:)
@@ -1752,7 +1752,7 @@ END SUBROUTINE SetNodalSources
    SUBROUTINE SetNodalLoads( Model, A, b, Name, DOF, NDOFs, Perm )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model         !< The current model structure
-    TYPE(Matrix_t), POINTER :: A   !< The global matrix
+    TYPE(Matrix_t) :: A   !< The global matrix
     REAL(KIND=dp) :: b(:)          !< The global RHS vector
     CHARACTER(LEN=*) :: Name       !< Name of the dof to be set
     INTEGER :: DOF                 !< The order number of the dof
@@ -2058,9 +2058,9 @@ CONTAINS
 !------------------------------------------------------------------------------
      IMPLICIT NONE
      TYPE(Model_t) :: Model                     !< The current model structure
-     INTEGER, POINTER, INTENT(IN) :: Perm(:)    !< The permutation of the associated variable
+     INTEGER, INTENT(IN) :: Perm(:)              !< The permutation of the associated variable
      TYPE(Matrix_t), INTENT(INOUT) :: A         !< The coefficient matrix of the problem
-     REAL(KIND=dp), POINTER, INTENT(INOUT) :: F(:) !< The RHS vector of the problem
+     REAL(KIND=dp), INTENT(INOUT) :: F(:)           !< The RHS vector of the problem
      INTEGER, INTENT(IN) :: Dofs                !< The DOF count of the associated variable
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: Mesh
@@ -2824,7 +2824,7 @@ END FUNCTION SearchNodeL
   RECURSIVE SUBROUTINE InvalidateVariable( TopMesh,PrimaryMesh,Name )
 !------------------------------------------------------------------------------
     CHARACTER(LEN=*) :: Name
-    TYPE(Mesh_t),  POINTER :: TopMesh,PrimaryMesh
+    TYPE(Mesh_t), TARGET  :: TopMesh,PrimaryMesh
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: tmpname
     INTEGER :: i
@@ -2838,7 +2838,7 @@ END FUNCTION SearchNodeL
 
     DO WHILE( ASSOCIATED(Mesh) )
       ! Make the same variable invalid in all other meshes.
-      IF ( .NOT.ASSOCIATED( PrimaryMesh, Mesh) ) THEN
+      IF ( .NOT.ASSOCIATED( Mesh, PrimaryMesh ) ) THEN
         Var => VariableGet( Mesh % Variables, Name, ThisOnly=.TRUE.)
         IF ( ASSOCIATED( Var ) ) THEN
           Var % Valid = .FALSE.
@@ -5312,7 +5312,7 @@ END FUNCTION SearchNodeL
   !-----------------------------------------------------------------------------------
   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName, UpdateOnly )
 
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
     LOGICAL, OPTIONAL :: UpdateOnly
     CHARACTER(*), OPTIONAL :: MaskName, SecName      
@@ -5427,7 +5427,7 @@ END FUNCTION SearchNodeL
 
   SUBROUTINE UpdateIpPerm( Solver, Perm )
 
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     INTEGER, POINTER :: Perm(:)
 
     CALL CreateIpPerm( Solver, Perm, UpdateOnly = .TRUE.)
@@ -6904,10 +6904,10 @@ END SUBROUTINE DerivateExportedVariables
   ! The suffix Int is added for unique naming.
   !-------------------------------------------------------------------------------
   FUNCTION GetElementalDirectorInt(Mesh, Element, &
-      ElementNodes, node) RESULT(DirectorValues) 
-  !-------------------------------------------------------------------------------    
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+      ElementNodes, node) RESULT(DirectorValues)
+  !-------------------------------------------------------------------------------
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t), INTENT(IN) :: Element
     TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
     INTEGER, OPTIONAL :: node
     REAL(KIND=dp), POINTER :: DirectorValues(:)
@@ -6972,7 +6972,7 @@ END SUBROUTINE DerivateExportedVariables
         
     FUNCTION GetElementPropertyInt( Name, Element ) RESULT(Values)
       CHARACTER(LEN=*) :: Name
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       REAL(KIND=dp), POINTER :: Values(:)
 
       TYPE(ElementData_t), POINTER :: p
@@ -8079,17 +8079,17 @@ END SUBROUTINE DerivateExportedVariables
      CHARACTER(:), ALLOCATABLE :: TmpName
      CHARACTER(*), PARAMETER :: Caller = 'Ip2DgSwapper'
 
-     INTERFACE 
+     INTERFACE
        SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
          USE Types
          IMPLICIT NONE
-         TYPE(Mesh_t), POINTER :: Mesh
-         TYPE(Element_t), POINTER :: Parent
+         TYPE(Mesh_t) :: Mesh
+         TYPE(Element_t), TARGET :: Parent
          INTEGER :: nip, np
          REAL(KIND=dp) :: fip(:), fdg(:)
        END SUBROUTINE Ip2DgFieldInElement
      END INTERFACE
-       
+
      IF( FromVar % TYPE /= Variable_on_gauss_points ) THEN
        CALL Warn(Caller,'Only IP fields can be swapped!: '//TRIM(FromVar % Name))
        RETURN
@@ -8304,7 +8304,7 @@ END SUBROUTINE DerivateExportedVariables
    !---------------------------------------------------------------------------------------
    SUBROUTINE p2LagrangeSwapper( Mesh, FromVar, ToVar, LagN, LagPerm, LagSize )
 
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Variable_t), POINTER :: FromVar
      TYPE(Variable_t), POINTER :: ToVar
      INTEGER :: LagN
@@ -8479,20 +8479,20 @@ END SUBROUTINE DerivateExportedVariables
    !-------------------------------------------------------------------------------------
    FUNCTION EvalFieldAtElem( Mesh, Var, Element, Basis, dofi, eigeni, imVal, GotVal ) RESULT ( Val )
 
-     INTERFACE 
+     INTERFACE
        SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
          USE Types
          IMPLICIT NONE
-         TYPE(Mesh_t), POINTER :: Mesh
-         TYPE(Element_t), POINTER :: Parent
+         TYPE(Mesh_t) :: Mesh
+         TYPE(Element_t), TARGET :: Parent
          INTEGER :: nip, np
          REAL(KIND=dp) :: fip(:), fdg(:)
        END SUBROUTINE Ip2DgFieldInElement
      END INTERFACE
 
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Variable_t), POINTER :: Var
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      REAL(KIND=dp), POINTER :: Basis(:)
      INTEGER, OPTIONAL :: dofi
      INTEGER, OPTIONAL :: eigeni

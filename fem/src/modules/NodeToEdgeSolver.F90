@@ -543,7 +543,7 @@ CONTAINS
       EdgeBasisDegree, Anodal, ReadySystemMatrix)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Stiff(:,:), Force(:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, nd, dim
     LOGICAL :: PiolaVersion
     INTEGER :: EdgeBasisDegree

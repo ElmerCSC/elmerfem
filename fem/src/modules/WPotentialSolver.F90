@@ -361,7 +361,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:), Tcoef(:,:,:)
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP, C(3,3), &
                      RotMLoc(3,3), RotM(3,3,n)
@@ -432,7 +432,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(KIND=dp), DIMENSION(:) :: FORCE, LOAD
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !----------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
     REAL(KIND=dp) :: detJ, LoadAtIP,&
@@ -484,7 +484,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   IMPLICIT NONE
   INTEGER :: n, j, k, t
-  TYPE(Element_t), POINTER :: Element
+  TYPE(Element_t), TARGET :: Element
   TYPE(Valuelist_t), POINTER :: Solverparams
   TYPE(Variable_t), POINTER, SAVE :: wpotvar
   TYPE(Variable_t), POINTER, SAVE :: wvecvar
@@ -662,7 +662,7 @@ CONTAINS
     REAL(KIND=dp) :: WnormCoeff, Volume
     
     INTEGER :: Active, n, nd, j
-    TYPE(Element_t),POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: CoilBody, Found, stat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes

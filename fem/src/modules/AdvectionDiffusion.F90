@@ -1173,7 +1173,7 @@ CONTAINS
      INTEGER :: n
 
      TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1539,7 +1539,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, ParentNodes
-     TYPE(Element_t), POINTER :: Element, Parent
+     TYPE(Element_t), TARGET :: Element, Parent
      REAL(KIND=dp) :: BoundaryMatrix(:,:), Ratio
      INTEGER :: n, pn
 
@@ -1803,7 +1803,7 @@ CONTAINS
      INTEGER :: n
 
      TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -2237,7 +2237,7 @@ CONTAINS
 !******************************************************************************
 
      TYPE(Nodes_t)   :: Nodes, ParentNodes
-     TYPE(Element_t), POINTER :: Element, Parent
+     TYPE(Element_t), TARGET :: Element, Parent
      REAL(KIND=dp) :: BoundaryMatrix(:,:), Ratio
      INTEGER :: n, pn
 
@@ -2374,7 +2374,7 @@ CONTAINS
      REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:)
      REAL(KIND=dp) :: LoadVector(:),NodalAlpha(:)
      TYPE(Nodes_t)    :: Nodes
-     TYPE(Element_t),POINTER  :: Element
+     TYPE(Element_t), TARGET  :: Element
 
      INTEGER :: n
 !------------------------------------------------------------------------------

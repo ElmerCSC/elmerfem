@@ -662,7 +662,7 @@ CONTAINS
         Force(:), Lelem(:)
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),ddBasisddx(n,3,3)
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Lambda

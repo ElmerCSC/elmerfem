@@ -335,7 +335,7 @@ CONTAINS
   ! Mark nodes that are associated with at least some boundary element.
   !------------------------------------------------------------------------------
   SUBROUTINE MarkBCNodes(Mesh,BCNode,NoBCNodes)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, ALLOCATABLE :: BCNode(:)
     INTEGER :: NoBCNodes
 
@@ -377,7 +377,7 @@ CONTAINS
  SUBROUTINE CreateDiscontMesh( Model, Mesh, DoAlways )
 
    TYPE(Model_t) :: Model
-   TYPE(Mesh_t), POINTER :: Mesh
+   TYPE(Mesh_t) :: Mesh
    LOGICAL, OPTIONAL :: DoAlways
 
    INTEGER, POINTER :: DisContPerm(:)
@@ -1304,7 +1304,7 @@ CONTAINS
  SUBROUTINE EnlargeParallelInfo( Mesh, DiscontPerm )
 
    TYPE(Mesh_t) :: Mesh
-   INTEGER, POINTER :: DiscontPerm(:)
+   INTEGER, TARGET :: DiscontPerm(:)
 
    INTEGER :: nmax,n0,n1,i,j,istat, goffset
    INTEGER, POINTER :: TmpGlobalDofs(:) 
@@ -1862,8 +1862,8 @@ CONTAINS
   SUBROUTINE CommunicateParallelSystemTag(ParallelInfo,Ltag,Itag,ParOper)
   !-------------------------------------------------------------------------------
      TYPE (ParallelInfo_t), POINTER :: ParallelInfo
-     LOGICAL, POINTER, OPTIONAL :: LTag(:)   !< Logical tag, if used
-     INTEGER, POINTER, OPTIONAL :: ITag(:)   !< Integer tag, if used
+     LOGICAL, OPTIONAL :: LTag(:)   !< Logical tag, if used
+     INTEGER, OPTIONAL :: ITag(:)   !< Integer tag, if used
      INTEGER, OPTIONAL :: ParOper            !< If integer tag is used, we can also have an operator
 
      LOGICAL, POINTER :: IsNeighbour(:)
@@ -2046,7 +2046,7 @@ CONTAINS
  ! for multiple partitions.
  !-------------------------------------------------------------------------------------------------
  SUBROUTINE SetMeshPartitionOffset(Mesh,nParMesh)
-   TYPE(Mesh_t), POINTER :: Mesh  
+   TYPE(Mesh_t), TARGET :: Mesh
    INTEGER :: nParMesh
    
    INTEGER :: Offset
@@ -2546,9 +2546,9 @@ CONTAINS
 
 
   !---------------------------------------------------------------------------
-  SUBROUTINE PolynomBoundaryFit(Mesh, PParams, BCind, Ndeg, FitParams, PatchHeight ) 
+  SUBROUTINE PolynomBoundaryFit(Mesh, PParams, BCind, Ndeg, FitParams, PatchHeight )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     TYPE(Valuelist_t), POINTER :: PParams
     INTEGER, OPTIONAL :: BCind
     INTEGER :: Ndeg
@@ -2861,7 +2861,7 @@ CONTAINS
   
   SUBROUTINE FollowCurvedBoundary(Model, Mesh, SetP )
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh 
+    TYPE(Mesh_t), TARGET :: Mesh 
     LOGICAL :: SetP
 
     LOGICAL :: Found
@@ -3247,11 +3247,11 @@ CONTAINS
   !> and continue as long as there are nodes to find. Typically we would be content with two nodes
   !> on a line, three nodes on a plane, and four nodes on a volume.
   !-------------------------------------------------------------------------------------------------
-  SUBROUTINE FindExtremumNodes(Mesh,CandNodes,NoExt,Inds) 
-    TYPE(Mesh_t), POINTER :: Mesh
+  SUBROUTINE FindExtremumNodes(Mesh,CandNodes,NoExt,Inds)
+    TYPE(Mesh_t), TARGET :: Mesh
     LOGICAL, ALLOCATABLE :: CandNodes(:)
     INTEGER :: NoExt
-    INTEGER, POINTER :: Inds(:)
+    INTEGER, TARGET :: Inds(:)
 
     REAL(KIND=dp) :: Coord(3),dCoord(3),dist,MinDist,MaxDist
     REAL(KIND=dp), ALLOCATABLE :: SetCoord(:,:)
@@ -3532,7 +3532,7 @@ CONTAINS
   !--------------------------------------------------------------------------------------
   SUBROUTINE IncreaseElementOrder( Model, Mesh )
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
     INTEGER :: n0,n1,m1,m2,i,i1,i2,t,ElemType, NewType, Tinds(4)
     INTEGER, POINTER  :: NewIndexes(:)
@@ -4911,7 +4911,7 @@ CONTAINS
   !> a critical angle. 
   !------------------------------------------------------------------------------
   SUBROUTINE MarkSharpEdges( Mesh, SharpEdge, phi0 )
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     LOGICAL, ALLOCATABLE :: SharpEdge(:)
     REAL(KIND=dp) :: phi0
 
@@ -5021,7 +5021,7 @@ CONTAINS
 
 
   SUBROUTINE MarkSharpNodes( Mesh, SharpEdge, SharpNode, phi0 )
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     LOGICAL :: SharpEdge(:)
     REAL(KIND=dp) :: phi0
     LOGICAL, ALLOCATABLE :: SharpNode(:)
@@ -5520,7 +5520,7 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
   SUBROUTINE SetEqualElementIndeces( Mesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: r0(:,:), r1(:,:)
     REAL(KIND=dp) :: eps, dist
@@ -6535,7 +6535,7 @@ END SUBROUTINE FindNeighbourNodes
   !---------------------------------------------------------------------------------
   SUBROUTINE CalculateMeshPieces( Mesh, ElementMode, PieceIndex)
 
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, OPTIONAL :: ElementMode
     INTEGER, OPTIONAL :: PieceIndex(:)
 
@@ -6738,10 +6738,10 @@ END SUBROUTINE FindNeighbourNodes
 !> Compute radius of rotor using only topology information.
 !> Assumes that axis of rotation is z-axis. 
 !------------------------------------------------------------------------------
-  FUNCTION DetermineRotorRadius(Mesh) RESULT( Radius ) 
+  FUNCTION DetermineRotorRadius(Mesh) RESULT( Radius )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE 
-    TYPE(Mesh_t), POINTER :: Mesh
+    IMPLICIT NONE
+    TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Radius
     
     INTEGER, ALLOCATABLE :: PieceIndex(:)
@@ -8026,8 +8026,8 @@ CONTAINS
   SUBROUTINE ReduceElementalVar( Mesh, Var, SetPerm, TakeAverage )
 
     TYPE(Variable_t), POINTER :: Var
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: SetPerm(:)
+    TYPE(Mesh_t), TARGET :: Mesh
+    INTEGER, TARGET :: SetPerm(:)
     LOGICAL :: TakeAverage
 
     TYPE(Element_t), POINTER :: Element
@@ -8104,8 +8104,8 @@ CONTAINS
   !---------------------------------------------------------------------
   SUBROUTINE LumpedElementalVar( Mesh, Var, SetPerm, AlreadySummed )
     TYPE(Variable_t), POINTER :: Var
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: SetPerm(:)
+    TYPE(Mesh_t), TARGET :: Mesh
+    INTEGER, TARGET :: SetPerm(:)
     LOGICAL :: AlreadySummed
 
     TYPE(Element_t), POINTER :: Element
@@ -8279,7 +8279,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetLagrangeIndexes( Mesh, LagN, Element, Indexes )  RESULT(L)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: LagN
     TYPE(Element_t), OPTIONAL, TARGET :: Element
     INTEGER, OPTIONAL :: Indexes(:)

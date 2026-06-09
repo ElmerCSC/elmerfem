@@ -1045,7 +1045,7 @@ CONTAINS
 #if 0    
     SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
 
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t), TARGET :: Element
       INTEGER :: n
       INTEGER :: ElemInds(:)
 
@@ -1103,7 +1103,7 @@ CONTAINS
   !--------------------------------------------------------------------------
   SUBROUTINE DgRadiationIndexes(Element,n,ElemInds,DiffuseGray)
 
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     INTEGER :: ElemInds(:)
     LOGICAL :: DiffuseGray
@@ -1656,7 +1656,7 @@ CONTAINS
   SUBROUTINE InitializeMatrix( Matrix, n, List, DOFs, Reorder, InvInitialReorder )
 !------------------------------------------------------------------------------
     INTEGER :: DOFs, n
-    TYPE(Matrix_t),POINTER :: Matrix
+    TYPE(Matrix_t), TARGET :: Matrix
     TYPE(ListMatrix_t) :: List(:)
     INTEGER, OPTIONAL :: Reorder(:), InvInitialReorder(:)
 !------------------------------------------------------------------------------
@@ -3213,7 +3213,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ElementArea( Mesh,Element,N ) RESULT(A)
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      INTEGER :: N
      TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
@@ -3308,8 +3308,8 @@ CONTAINS
    !------------------------------------------------------------------------------
    !> If element has two of the same indexes regard the element as degenerate.
    !------------------------------------------------------------------------------
-   FUNCTION DegenerateElement( Element ) RESULT ( Stat ) 
-     TYPE(Element_t), POINTER :: Element
+   FUNCTION DegenerateElement( Element ) RESULT ( Stat )
+     TYPE(Element_t), TARGET :: Element
      LOGICAL Stat
 
      INTEGER :: i,n
@@ -3436,7 +3436,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      IMPLICIT NONE
      INTEGER :: n,nedge
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,jb1,jb2,je1,je2
@@ -3479,7 +3479,7 @@ CONTAINS
      IMPLICIT NONE
      INTEGER :: n
      TYPE(Element_t) :: Boundary
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,m
      TYPE(Element_t), POINTER :: Parent, Face
@@ -3511,12 +3511,12 @@ CONTAINS
    SUBROUTINE FindParentUVW( Element, n, Parent, np, U, V, W, Basis ) 
 !------------------------------------------------------------------------------
      IMPLICIT NONE
-     TYPE( Element_t ), POINTER :: Element
-     TYPE( Element_t ), POINTER :: Parent
+     TYPE( Element_t ), TARGET :: Element
+     TYPE( Element_t ), TARGET :: Parent
      INTEGER :: n, np
      REAL( KIND=dp ) :: U, V, W, Basis(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, j, nParent, check 
+    INTEGER :: i, j, nParent, check
     REAL(KIND=dp) :: NodalParentU(n), NodalParentV(n), NodalParentW(n)
 !------------------------------------------------------------------------------
 
@@ -3559,8 +3559,8 @@ CONTAINS
   SUBROUTINE SetParentBasis( Element, n, Basis, Parent, np, Basisp ) 
 !------------------------------------------------------------------------------
      IMPLICIT NONE
-     TYPE( Element_t ), POINTER :: Element
-     TYPE( Element_t ), POINTER :: Parent
+     TYPE( Element_t ), TARGET :: Element
+     TYPE( Element_t ), TARGET :: Parent
      INTEGER :: n, np
      REAL( KIND=dp ) :: Basis(:), Basisp(:)
 !------------------------------------------------------------------------------
@@ -3635,11 +3635,11 @@ CONTAINS
     REAL(KIND=dp), POINTER :: rValues(:)
     COMPLEX(KIND=dp), POINTER :: cValues(:)
 
-    INTERFACE 
+    INTERFACE
       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
         USE Types
-        TYPE(Mesh_t), POINTER :: Mesh
-        TYPE(Element_t), POINTER :: Parent
+        TYPE(Mesh_t) :: Mesh
+        TYPE(Element_t), TARGET :: Parent
         INTEGER :: nip, np
         REAL(KIND=dp) :: fip(:), fdg(:)
       END SUBROUTINE Ip2DgFieldInElement
@@ -4059,8 +4059,8 @@ CONTAINS
       
   CONTAINS
 
-    FUNCTION PickDgIndexes(Element,PParent) RESULT ( PToInds) 
-      TYPE(Element_t), POINTER :: Element
+    FUNCTION PickDgIndexes(Element,PParent) RESULT ( PToInds)
+      TYPE(Element_t), TARGET :: Element
       INTEGER, POINTER :: PtoInds(:)
       TYPE(Element_t), POINTER, OPTIONAL :: PParent
 
@@ -4109,7 +4109,7 @@ CONTAINS
 
      ! Parameters
      TYPE(Mesh_t) :: Mesh
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      INTEGER :: indSize, Indexes(:)
      
      ! Variables
