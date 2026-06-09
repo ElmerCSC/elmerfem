@@ -116,8 +116,8 @@ int main(int argc, char *argv[])
     /* Baked-in compiler flags */
     push_flags(ELMERF90_FFLAGS);
 
-    push(join(join("-I\"", incdir), "\""));
-    push(join(join("-L\"", libdir), "\""));
+    push(join("-I", incdir));
+    push(join("-L", libdir));
 
 #if ELMERF90_HAVE_ELMERICE
     {
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
         push("-Xlinker");
         push(join("-rpath=", elib));
 #endif
-        push(join(join("-L\"", elib), "\""));
+        push(join("-L", elib));
         free(elib);
         push("-lElmerIceSolvers");
         push("-lElmerIceUSF");
@@ -140,8 +140,8 @@ int main(int argc, char *argv[])
 
 #if ELMERF90_HAVE_MMG
     fprintf(stderr, "with MMG\n");
-    if (*ELMERF90_MMG_INCDIR) push(join(join("-I\"", ELMERF90_MMG_INCDIR), "\""));
-    if (*ELMERF90_MMG_LIBDIR) push(join(join("-L\"", ELMERF90_MMG_LIBDIR), "\""));
+    if (*ELMERF90_MMG_INCDIR) push(join("-I", ELMERF90_MMG_INCDIR));
+    if (*ELMERF90_MMG_LIBDIR) push(join("-L", ELMERF90_MMG_LIBDIR));
 #endif
 
 #if ELMERF90_HAVE_PARMMG
@@ -150,11 +150,11 @@ int main(int argc, char *argv[])
         int same_lib = strcmp(ELMERF90_PARMMG_LIBDIR, ELMERF90_MMG_LIBDIR) == 0;
         int same_inc = strcmp(ELMERF90_PARMMG_INCDIR, ELMERF90_MMG_INCDIR) == 0;
         if (!same_lib) {
-            if (*ELMERF90_PARMMG_INCDIR) push(join(join("-I\"", ELMERF90_PARMMG_INCDIR), "\""));
-            if (*ELMERF90_PARMMG_LIBDIR) push(join(join("-L\"", ELMERF90_PARMMG_LIBDIR), "\""));
+            if (*ELMERF90_PARMMG_INCDIR) push(join("-I", ELMERF90_PARMMG_INCDIR));
+            if (*ELMERF90_PARMMG_LIBDIR) push(join("-L", ELMERF90_PARMMG_LIBDIR));
         } else {
             if (!same_inc && *ELMERF90_PARMMG_INCDIR)
-                push(join(join("-I\"", ELMERF90_PARMMG_INCDIR), "\""));
+                push(join("-I", ELMERF90_PARMMG_INCDIR));
             fprintf(stderr, "MMG and ParMMG share the same lib dir\n");
         }
         if (same_inc) fprintf(stderr, "MMG and ParMMG share the same include dir\n");
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 
     /* Print the command (matches shell script behaviour) */
     for (int i = 0; i < nargs; i++)
-        printf("%s ", args[i]);
+        printf("\"%s\" ", args[i]);
     printf("\n");
 
     execvp(fc, args);
