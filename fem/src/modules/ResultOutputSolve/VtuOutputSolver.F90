@@ -719,7 +719,7 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
         NoFields, NoFields2, IndField, iField, iField0, NoModes, NoModes2, NoFieldsWritten, &
-        cumn, iostat, NoTooBig, nofs
+        cumn, iostat, NoTooBig, nofs, nn
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
@@ -782,6 +782,9 @@ CONTAINS
     ! VTU seemingly only works with 3D cases, so enforce it
     dim = 3
 
+    ! Dirty fix for the peculiar elements that use more than one node, e.g. "Element = n:2 e:1"
+    nn = MAX(1,Model % Mesh % MaxNDofs ) 
+    
 
     WRITE( OutStr,'(A)') '<?xml version="1.0"?>'//lf
     CALL AscBinStrWrite( OutStr ) 
@@ -1243,7 +1246,7 @@ CONTAINS
                   IF(i<1 .OR. i>SIZE(Perm)) THEN
                     NoTooBig = NoTooBig + 1
                   ELSE
-                    j = Perm(i)
+                    j = Perm(nn*(i-1)+1)
                   END IF
                 ELSE
                   j = i
@@ -1255,7 +1258,7 @@ CONTAINS
                 IF( ComplementExists ) THEN
                   IF( j == 0 ) THEN
                     Use2 = .TRUE. 
-                    j = PermB(i)
+                    j = PermB(nn*(i-1)+1)
                   END IF
                 END IF
                 
