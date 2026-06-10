@@ -491,7 +491,8 @@ CONTAINS
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
     INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw,IPPermFreshwaterHead
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
-         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE., Interfrost=.FALSE.
+         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE., &
+         Linear = .FALSE., Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -570,10 +571,10 @@ CONTAINS
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
 
-    Swres = GetConstReal( Material, "Interfrost Swres", Found)
-    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
-    IFcomp = GetConstReal( Material, "Interfrost Beta", Found)
-    impedancefactor = GetConstReal( Material, "Interfrost Impedance", Found)
+    Swres = GetConstReal( Material, "Exponential Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
+    IFcomp = GetConstReal( Material, "Exponential Beta", Found)
+    impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
     
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
@@ -674,25 +675,33 @@ CONTAINS
       Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
 
       ! unfrozen pore-water content at IP
+      XiPAtIP = 0.0_dp ! zero for most phase-cahnge models
       SELECT CASE(PhaseChangeModel)
-      CASE('anderson') ! classic simplified Anderson model
+      CASE('powerlaw') ! classic simplified Powerlaw model
         XiAtIP(IPPerm) = &
-             GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
+             GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiTAtIP = &
-             XiAndersonT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
+             XiPowerlawT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiPAtIP   = &
-             XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
+             XiPowerlawP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
-      CASE('interfrost') ! simple Interfrost model
-        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiPAtIP = 0.0_dp
-        InterFrost = .TRUE.
+      CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
+        Swres = GetConstReal( Material, "Exponential Swres", Found)
+        IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
+        IFcomp = GetConstReal( Material, "Exponential Beta", Found)
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        Exponential = .TRUE.
+      CASE('linear') ! even simpler linear law (used in Lunardini)
+        xi0 = GetConstReal( Material, "Linear Xi0", Found)
+        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        Linear = .TRUE.
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -782,12 +791,12 @@ CONTAINS
       ! conductivities at IP
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
-      IF (Interfrost) THEN
+      IF (Exponential) THEN
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost, impedancefactor=impedancefactor)
+             mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential, impedancefactor=impedancefactor)
       ELSE
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
+             mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential)
       END IF
       KgwpTAtIP = 0.0_dp
       KgwppAtIP = 0.0_dp
@@ -810,9 +819,9 @@ CONTAINS
       ! capacities at IP
       IF (HydroGeo) THEN   ! Simplifications: Xip=0 Xi=1 kappas=0
         CgwppAtIP = PorosityAtIP * rhogwPAtIP + rhogwAtIP * kappaGAtIP
-      ELSE IF (Interfrost) THEN
+      ELSE IF (Exponential) THEN
         CgwppAtIP =  PorosityAtIP * rhogwAtIP * IFComp * XiAtIP(IPPerm)
-        !PRINT *, "CgwppAtIP (Interfrost)", CgwppAtIP,"por", PorosityAtIP, "rhogw", rhogwAtIP, "beta", IFComp, "Xi", XiAtIP(IPPerm)
+        !PRINT *, "CgwppAtIP (Exponential)", CgwppAtIP,"por", PorosityAtIP, "rhogw", rhogwAtIP, "beta", IFComp, "Xi", XiAtIP(IPPerm)
       ELSE
         CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
              kappaGAtIP,XiAtIP(IPPerm),XiPAtIP,&

@@ -1152,94 +1152,94 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change in InterFrost suite
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXiInterfrost(T0,Temperature,Swres, deltaT) RESULT(XiInterfrost)
+  FUNCTION GetXiExponential(T0,Temperature,Swres, deltaT) RESULT(XiExponential)
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
-    REAL(KIND=dp) :: XiInterfrost
-    XiInterfrost = (1.0_dp - Swres)*EXP(-((MIN(Temperature,T0) - T0)/deltaT)**2.0_dp) + Swres
-  END FUNCTION GetXiInterfrost
+    REAL(KIND=dp) :: XiExponential
+    XiExponential = (1.0_dp - Swres)*EXP(-((MIN(Temperature,T0) - T0)/deltaT)**2.0_dp) + Swres
+  END FUNCTION GetXiExponential
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiInterfrostT(T0,Temperature,Swres, deltaT) 
+  REAL (KIND=dp) FUNCTION XiExponentialT(T0,Temperature,Swres, deltaT) 
     REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
-    XiInterfrostT = -(1.0_dp - Swres) &
+    XiExponentialT = -(1.0_dp - Swres) &
          * EXP(-((MIN(Temperature,T0) -T0)/deltaT)**2.0_dp) * 2.0_dp*(MIN(Temperature,T0) -T0)/(deltaT*deltaT)
-  END FUNCTION XiInterfrostT
+  END FUNCTION XiExponentialT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXiLunardini(T0,Temperature,Swres, deltaT) RESULT(XiLunardini)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
-    REAL(KIND=dp) :: XiLunardini, mpar, Xi0
-    Xi0 = 0.200_dp
+  FUNCTION GetXiLinear(T0,Temperature,Swres, Xi0, deltaT) RESULT(XiLinear)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,Xi0,deltaT
+    REAL(KIND=dp) :: XiLinear, mpar
+    !Xi0 = 0.200_dp !! READ FROM SIF!!!
     mpar = (Xi0 - Swres)/deltaT
-    !XiLunardini = MAX(mpar*(MIN(Temperature,T0) - T0),Swres)
+    !XiLinear = MAX(mpar*(MIN(Temperature,T0) - T0),Swres)
     IF (Temperature >= T0) THEN
-       XiLunardini = Xi0
+       XiLinear = Xi0
     ELSEIF (Temperature <= T0 - deltaT) THEN
-       XiLunardini = Swres
+       XiLinear = Swres
     ELSE
-       XiLunardini = Swres + mpar * (Temperature - (T0 - deltaT))
+       XiLinear = Swres + mpar * (Temperature - (T0 - deltaT))
     ENDIF
-  END FUNCTION GetXiLunardini
+  END FUNCTION GetXiLinear
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiLunardiniT(T0,Temperature,Swres, deltaT)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
-    REAL(KIND=dp) :: mpar, Xi0
-    Xi0 = 0.200_dp
+  REAL (KIND=dp) FUNCTION XiLinearT(T0,Temperature,Swres,Xi0, deltaT)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,Xi0,deltaT
+    REAL(KIND=dp) :: mpar
+    !Xi0 = 0.200_dp
     mpar = (Xi0 - Swres)/deltaT
     IF ((Temperature - T0 > -deltaT) .AND. (Temperature < T0) )THEN 
-      XiLunardiniT = mpar
+      XiLinearT = mpar
     ELSE
-      XiLunardiniT = 0.0_dp
+      XiLinearT = 0.0_dp
     END IF
-  END FUNCTION XiLunardiniT
+  END FUNCTION XiLinearT
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXiAnderson(A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity) RESULT(XiAnderson)
+  FUNCTION GetXiPowerlaw(A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity) RESULT(XiPowerlaw)
     REAL(KIND=dp), INTENT(IN) :: A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
-    REAL(KIND=dp) :: Tstar, XiAnderson
+    REAL(KIND=dp) :: Tstar, XiPowerlaw
     IF (Porosity <= 0.0) &
-         CALL FATAL("PermafrostMaterials(GetXiAnderson)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiPowerlaw)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
-    XiAnderson =  MAX(MIN((rhos0/rhow)*(A*(Tstar**B)/Porosity),1.0_dp),0.0_dp)
-  END FUNCTION GetXiAnderson
+    XiPowerlaw =  MAX(MIN((rhos0/rhow)*(A*(Tstar**B)/Porosity),1.0_dp),0.0_dp)
+  END FUNCTION GetXiPowerlaw
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiAndersonT(Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity)
+  REAL (KIND=dp) FUNCTION XiPowerlawT(Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity)
     REAL(KIND=dp), INTENT(IN) :: Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
     REAL(KIND=dp) :: Tstar
     IF (Porosity <= 0.0) &
-         CALL FATAL("PermafrostMaterials(GetXiAndersonT)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiPowerlawT)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
     IF (Xi == 1.0_dp .OR. Xi == 0.0_dp) THEN
-      XiAndersonT = 0.0_dp
+      XiPowerlawT = 0.0_dp
     ELSE
-      XiAndersonT = -(rhos0/rhow)*(A*B*(Tstar**(B - 1.0_dp)))/Porosity
+      XiPowerlawT = -(rhos0/rhow)*(A*B*(Tstar**(B - 1.0_dp)))/Porosity
     END IF
-  END FUNCTION XiAndersonT
+  END FUNCTION XiPowerlawT
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiAndersonP(Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity)
+  REAL (KIND=dp) FUNCTION XiPowerlawP(Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity)
     REAL(KIND=dp), INTENT(IN) :: Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
     REAL(KIND=dp) :: Tstar
     IF (Porosity <= 0.0_dp) &
-         CALL FATAL("PermafrostMaterials(GetXiAndersonP)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiPowerlawP)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
     IF (Xi == 1_dp .OR. Xi == 0.0_dp) THEN
-      XiAndersonP = 0.0_dp
+      XiPowerlawP = 0.0_dp
     ELSE
-      XiAndersonP = -Beta*(rhos0/rhow)*(A*B*(Tstar**(B - 1.0_dp)))/Porosity
+      XiPowerlawP = -Beta*(rhos0/rhow)*(A*B*(Tstar**(B - 1.0_dp)))/Porosity
     END IF
-  END FUNCTION XiAndersonP
+  END FUNCTION XiPowerlawP
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiAndersonEta(Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity) 
+  REAL (KIND=dp) FUNCTION XiPowerlawEta(Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity) 
     REAL(KIND=dp), INTENT(IN) :: Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
     REAL(KIND=dp) :: Tstar
     IF (Porosity <= 0.0) &
-         CALL FATAL("PermafrostMaterials(GetXiAndersonEta)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiPowerlawEta)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
     IF (Xi == 1.0_dp .OR. Xi == 0.0_dp) THEN
-      XiAndersonEta = 0.0_dp
+      XiPowerlawEta = 0.0_dp
     ELSE
-      XiAndersonEta =  -(rhos0/rhow)*(A*(Tstar**B))/(Porosity*Porosity)
+      XiPowerlawEta =  -(rhos0/rhow)*(A*(Tstar**B))/(Porosity*Porosity)
     END IF
-  END FUNCTION XiAndersonEta
+  END FUNCTION XiPowerlawEta
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION delta(CurrentSolventMaterial,&
        eps,DeltaT,T0,GasConstant)
@@ -2222,21 +2222,19 @@ CONTAINS
          + rhoi*(hw - hi)*Porosity*XiT
   END FUNCTION GetCGTT
     !---------------------------------------------------------------------------------------------
-  FUNCTION GetCGTTLunardini(c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw)RESULT(CGTT)
+  FUNCTION GetCGTTLinear(c1,c2,c3,Xi,Swres,Xi0,XiT,rhoi,Porosity,hi,hw,dryDensity)RESULT(CGTT)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw
-    REAL(KIND=dp) :: CGTT, Xi0
+    REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw,Xi0,dryDensity
+    REAL(KIND=dp) :: CGTT
     !-------------------------
-    Xi0 = 0.200_dp
     IF (Xi >= Xi0) THEN
       CGTT = c3
     ELSE IF (Xi <= Swres) THEN
       CGTT = c1
     ELSE
-      !CGTT = c2 - (hw - hi)*rhoi*Porosity*XiT
-      CGTT = c2 + (hw - hi)*1680_dp*XiT
+      CGTT = c2 + (hw - hi)*dryDensity*XiT !!TODO: replace 1680_dp with dryDensity input from SIF !!
     END IF
-  END FUNCTION GetCGTTLunardini
+  END FUNCTION GetCGTTLinear
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTp(rhoi,hi,hw,XiP,Porosity)RESULT(CGTp)! All state variables or derived values
     IMPLICIT NONE
@@ -2296,12 +2294,12 @@ CONTAINS
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGTTLunardini(Xi,Swres,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
+  FUNCTION GetKGTTLinear(Xi,Swres,Xi0,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3
-    REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3), Xi0
+    REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3, Xi0
+    REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3)
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
-    Xi0 = 0.200_dp
+    !Xi0 = 0.200_dp
     IF (Xi >= Xi0) THEN
       KGTT = unittensor*k3
     ELSE IF (Xi <= Swres) THEN
@@ -2309,7 +2307,7 @@ CONTAINS
     ELSE
       KGTT = unittensor*k2
     END IF
-  END FUNCTION GetKGTTLunardini
+  END FUNCTION GetKGTTLinear
   !---------------------------------------------------------------------------------------------
   FUNCTION  GetDtd(RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
     IMPLICIT NONE
@@ -2426,13 +2424,13 @@ CONTAINS
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,InterFrost,impedancefactor)RESULT(KGpe)
+  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,Exponential,impedancefactor)RESULT(KGpe)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: Xi
     REAL(KIND=dp) :: KGpe(3,3)
-    LOGICAL :: InterFrost
+    LOGICAL, OPTIONAL :: Exponential
     REAL(KIND=dp), OPTIONAL :: impedancefactor
 !--------------------------
     REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor, relativepermeability
@@ -2445,7 +2443,7 @@ CONTAINS
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
     factor = muw0/(rhow0*gval)
-    IF (InterFrost) THEN
+    IF (Exponential) THEN
       relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
     ELSE
       qexp = GlobalRockMaterial % qexp(RockMaterialID)
@@ -2458,18 +2456,18 @@ CONTAINS
     END DO
   END FUNCTION GetKGpe
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXikG0hy(RockMaterialID,Xi,InterFrost,impedancefactor)RESULT(XikG0hy)
+  FUNCTION GetXikG0hy(RockMaterialID,Xi,Exponential,impedancefactor)RESULT(XikG0hy)
      IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: Xi
     REAL(KIND=dp) :: XikG0hy(3,3)
-    LOGICAL :: InterFrost
+    LOGICAL :: Exponential
     REAL(KIND=dp), OPTIONAL :: impedancefactor
     !--------------------------
     REAL(KIND=dp) :: Kgwh0(3,3), qexp,relativepermeability
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    IF (InterFrost) THEN
+    IF (Exponential) THEN
       relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
     ELSE
       qexp = GlobalRockMaterial % qexp(RockMaterialID)
@@ -2479,14 +2477,14 @@ CONTAINS
     !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
   END FUNCTION GetXikG0hy
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw,InterFrost,impedancefactor) RESULT(Kgw)
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw,Exponential,impedancefactor) RESULT(Kgw)
     
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi,MinKgw,mugw
     REAL(KIND=dp) :: Kgw(3,3)
-    LOGICAL :: InterFrost
+    LOGICAL :: Exponential
     REAL(KIND=dp), OPTIONAL :: impedancefactor
     !--------------------------
     REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor,relativePermeability
@@ -2498,7 +2496,7 @@ CONTAINS
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
 
-    IF (InterFrost) THEN
+    IF (Exponential) THEN
       relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
     ELSE
       qexp = GlobalRockMaterial % qexp(RockMaterialID)

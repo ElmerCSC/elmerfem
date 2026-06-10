@@ -72,7 +72,8 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,GivenGWFlux=.FALSE.,&
        ComputeDt=.FALSE., ElementWiseRockMaterial, ActiveMassMatrix = .TRUE., &
-       InitializeSteadyState = .FALSE., CorrectValues=.FALSE., ExtForce=.FALSE.
+       InitializeSteadyState = .FALSE., CorrectValues=.FALSE., ExtForce=.FALSE., &
+       Linear = .FALSE., Exponential=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostSoluteTransport'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, VarName, TemperatureName, GWfluxName, PhaseChangeModel,&
@@ -301,7 +302,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: vstarAtIP(3)   ! needed in equation
-    REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
+    REAL(KIND=dp) :: Xi0Tilde,Xi0,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
          ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,hiAtIP,hwAtIP  ! function values needed for C's and KGTT
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
@@ -371,8 +372,8 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
 
-    Swres = GetConstReal( Material, "Interfrost Swres", Found)
-    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
+    Swres = GetConstReal( Material, "Exponential Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Epxonential deltaT", Found)
     
     !meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
     !IF (.NOT.Found) THEN
@@ -433,25 +434,32 @@ CONTAINS
       !PRINT *,"Solute: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
 
       ! unfrozen pore-water content at IP
+      XiPAtIP = 0.0_dp ! default in many phase change models
       SELECT CASE(PhaseChangeModel)
-      CASE('anderson')
+      CASE('powerlaw')
         XiAtIP(IPPerm) = &
-             GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
+             GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiTAtIP = &
-             XiAndersonT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
+             XiPowerlawT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiPAtIP   = &
-             XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
+             XiPowerlawP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
-      CASE('interfrost') ! simple Interfrost model
-        XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiPAtIP = 0.0_dp
-        InterFrost = .TRUE.
+      CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
+        Swres = GetConstReal( Material, "Exponential Swres", Found)
+        IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        Exponential = .TRUE.
+      CASE('linear') ! even simpler linear law (used in Lunardini)
+        Xi0 = GetConstReal( Material, "Linear Xi0", Found)
+        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        Linear = .TRUE.
       CASE DEFAULT ! Hartikainen model
         XiBefore =  XiAtIP(IPPerm)
         CALL  GetXiHartikainen(RockMaterialID,&
@@ -485,7 +493,7 @@ CONTAINS
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-           mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
+           mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential)
       !PRINT *, "Solute: Kgw", KgwAtIP(1,1)
       fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
            Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
@@ -738,9 +746,9 @@ CONTAINS
 
         ! unfrozen pore-water content at IP
         SELECT CASE(PhaseChangeModel)
-        CASE('anderson')
+        CASE('powerlaw')
           XiAtIP = &
-               GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
+               GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
                CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           ! NB: XiTAtIP, XiPAtIP not needed

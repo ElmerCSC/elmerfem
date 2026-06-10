@@ -118,7 +118,8 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE., FluxOutput = .FALSE.,&
        ComputeDt=.FALSE.,ElementWiseRockMaterial, DepthExists=.FALSE.,&
        InitializeSteadyState=.FALSE.,ActiveMassMatrix=.TRUE.,&
-       NoSalinity=.FALSE., OutputXi=.FALSE.
+       NoSalinity=.FALSE., OutputXi=.FALSE., &
+       Linear = .FALSE., Exponential=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostHeatEquation'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, SalinityName, GWfluxName, PhaseChangeModel,&
@@ -341,14 +342,14 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DepthAtIP,RefDepth,CGTTAtIP, CgwTTAtIP, CGTpAtIP, CGTycAtIP,KGTTAtIP(3,3)   ! needed in equation
-    REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
+    REAL(KIND=dp) :: Xi0Tilde,Xi0,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
          ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,hiAtIP,hwAtIP  ! function values needed for C's and KGTT
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
     REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3), JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,&
          KgwppAtIP(3,3),fwAtIP,mugwAtIP,DtdAtIP(3,3)!  JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
-    REAL(KIND=dp) :: k1,k2,k3,c1,c2,c3
+    REAL(KIND=dp) :: k1,k2,k3,c1,c2,c3, dryDensity
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,rhogwAtIP,csAtIP,cwAtIP,ciAtIP,ccAtIP ! material properties at IP
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
@@ -361,7 +362,7 @@ CONTAINS
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
-         NoSalinity=.FALSE.,InterFrost=.FALSE.,Lunardini=.FALSE., LunardiniParamsFound=.TRUE.
+         NoSalinity=.FALSE.,Exponential=.FALSE.,Linear=.FALSE., LinearParamsFound=.TRUE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -430,32 +431,10 @@ CONTAINS
       meanfactor = 1.0_dp
     END IF
     
-    Swres = GetConstReal( Material, "Interfrost Swres", Found)
-    IFdeltaT = GetConstReal( Material, "Interfrost deltaT", Found)
-    impedancefactor = GetConstReal( Material, "Interfrost Impedance", Found)
-    Lunardini = GetLogical( Material, "Linear freezing", Found)
+    Swres = GetConstReal( Material, "Exponential Swres", Found)
+    IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
+    impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
 
-    IF (Lunardini) THEN
-      k1 =GetConstReal(Material, "Lunardini k1", Found)
-      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
-      k2 =GetConstReal(Material, "Lunardini k2", Found)
-      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
-      k3 =GetConstReal(Material, "Lunardini k3", Found)
-      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
-      c1 =GetConstReal(Material, "Lunardini c1", Found)
-      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
-      c2 =GetConstReal(Material, "Lunardini c2", Found)
-      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
-      c3 =GetConstReal(Material, "Lunardini c3", Found)
-      LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
-      IF (.NOT.LunardiniParamsFound) &
-           CALL FATAL(FunctionName,"Linear freezing switched on, but not all 3 zone values (Lunardini) found")
-      IF(FirstTime) THEN
-        WRITE(Message,*) 'Read in Lunardini zone-wise parameters (k1..3) ', &
-           k1, ',',k2, ',',k3, ', (c1..c3) ',c1, ',',c2, ',',c3
-        CALL INFO(FunctionName,Message,Level=3)
-      END IF
-    END IF
       
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
@@ -533,31 +512,54 @@ CONTAINS
       ! unfrozen pore-water content at IP
       IPPerm = XiAtIPPerm(ElementID) + t
       !PRINT *, "PhaseChangeModel: ", PhaseChangeModel
+      ! defaults for most laws to follow
+      XiPAtIP = 0.0_dp
+      XiYcAtIP = 0.0_dp
       SELECT CASE(PhaseChangeModel)
-      CASE('anderson')
+      CASE('powerlaw')
         XiAtIP(IPPerm) = &
-             GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
+             GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiTAtIP = &
-             XiAndersonT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
+             XiPowerlawT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiPAtIP   = &
-             XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
+             XiPowerlawP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
-      CASE('interfrost') ! simple Interfrost model
-        IF (.NOT.Lunardini) THEN
-          XiAtIP(IPPerm) = GetXiInterfrost(T0,TemperatureAtIP,Swres,IFdeltaT)
-          XiTAtIP = XiInterfrostT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        ELSE
-          XiAtIP(IPPerm) = GetXiLunardini(T0,TemperatureAtIP,Swres,IFdeltaT)
-          XiTAtIP = XiLunardiniT(T0,TemperatureAtIP,Swres,IFdeltaT)
+      CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        Exponential = .TRUE.
+      CASE('linear') ! even simpler linear law (used in Lunardini)
+        k1 =GetConstReal(Material, "Linear k1", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        k2 =GetConstReal(Material, "Linear k2", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        k3 =GetConstReal(Material, "Linear k3", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        c1 =GetConstReal(Material, "Linear c1", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        c2 =GetConstReal(Material, "Linear c2", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        c3 =GetConstReal(Material, "Linear c3", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        Xi0 =GetConstReal(Material, "Linear Xi0", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        dryDensity=GetConstReal(Material, "Linear dry desnity", Found)
+        LinearParamsFound = (Found .AND. LinearParamsFound)
+        IF (.NOT.LinearParamsFound) &
+             CALL FATAL(FunctionName,"Linear freezing switched on, but not all 3 zone values (Linear) found")
+        IF(FirstTime) THEN
+          WRITE(Message,*) 'Read in Linear zone-wise parameters (k1..3) ', &
+               k1, ',',k2, ',',k3, ', (c1..c3) ',c1, ',',c2, ',',c3, "(Xi0)", Xi0
+          CALL INFO(FunctionName,Message,Level=3)
         END IF
-        XiPAtIP = 0.0_dp
-        XiYcAtIP = 0.0_dp
-        InterFrost = .TRUE.
+        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        Linear = .TRUE.
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -574,6 +576,8 @@ CONTAINS
       rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP(IPPerm),TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
       !PRINT *,"HTEQ: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
 
+      !Linear = GetLogical( Material, "Linear freezing", Found)
+
 
 
       ! latent heat
@@ -583,8 +587,8 @@ CONTAINS
            T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
       
       ! heat conductivity at IP
-      IF (Lunardini) THEN
-        KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),Swres,k1,k2,k3)
+      IF (Linear) THEN
+        KGTTAtIP = GetKGTTLinear(XiAtIP(IPPerm),Swres,Xi0,k1,k2,k3)
       ELSE
         ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
              GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
@@ -597,9 +601,9 @@ CONTAINS
              SalinityATIP,PorosityAtIP,meanfactor)
       END IF
       ! heat capacities at IP
-      IF (Lunardini) THEN
+      IF (Linear) THEN
         !CGTTAtIP = 690360.0_dp - 334720.0_dp*rhoiAtIP*PorosityAtIp*XiTAtIP
-        CGTTAtIP = GetCGTTLunardini(c1,c2,c3,XiAtIP(IPPerm),Swres,XiTAtIP,rhoiAtIP,PorosityAtIP,hiAtIP,hwAtIP)
+        CGTTAtIP = GetCGTTLinear(c1,c2,c3,XiAtIP(IPPerm),Swres,Xi0,XiTAtIP,rhoiAtIP,PorosityAtIP,hiAtIP,hwAtIP,dryDensity)
         cwAtIP   = 0.0_dp
         ccAtIP   = 0.0_dp
       ELSE
@@ -636,12 +640,12 @@ CONTAINS
         mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
         KgwAtIP = 0.0_dp
-        IF (Interfrost) THEN
+        IF (Exponential) THEN
           KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-               mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost, impedancefactor=impedancefactor)
+               mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential, impedancefactor=impedancefactor)
         ELSE
           KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-               mugwAtIP,XiAtIP(IPPerm),MinKgw,InterFrost)
+               mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential)
         END IF
         fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
              Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
