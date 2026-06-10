@@ -820,7 +820,7 @@ CONTAINS
               Omega**2 * Eps * Basis(q) * Basis(p)) * weight 
           
           ! The operator -eps I for the scalar variable related to E_z
-          !Stiff(i,j) = Stiff(i,j) - weight * Eps * &
+          !Mass(i,j) = Mass(i,j) + weight * Eps * &
           !    Basis(p) * Basis(q)
 
         END DO
@@ -898,8 +898,8 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: Stat, Found, GotNu 
-    INTEGER :: m, allocstat, vdofs
-    INTEGER :: t, i
+    INTEGER :: m, allocstat, vdofs, np, ndofs
+    INTEGER :: t, i, j
     REAL(KIND=dp), ALLOCATABLE, SAVE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Re_local_field(:), Im_local_field(:)
     REAL(KIND=dp) :: weight, DetJ
@@ -919,8 +919,11 @@ CONTAINS
 
     CALL GetElementNodes(Nodes, Element)
 
+    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    np = n * ndofs
+    
     ! The number of DOFs for one vector FE field  
-    vdofs = nd - n
+    vdofs = nd - np
 
     CALL GetScalarLocalEigenmode(Re_local_field, UElement = Element, &
           USolver = SolverPtr, NoEigen = ModeIndex, ComplexPart=.FALSE.)
@@ -949,13 +952,29 @@ CONTAINS
 
       EF = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       DO i=1,vdofs
-        EF(:) = EF(:) + CMPLX(Re_local_field(n+i), Im_local_field(n+i), KIND=dp) * WBasis(i,:)
+        EF(:) = EF(:) + CMPLX(Re_local_field(np+i), Im_local_field(np+i), KIND=dp) * WBasis(i,:)
       END DO
 
+      IF (UseV) THEN
+        DO j=1,3
+          EF(j) = EF(j) - CMPLX(SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j)), &
+              SUM(Im_local_field(2:np:ndofs)*dBasisdx(1:n,j)), KIND=dp)
+        END DO
+      END IF
+
       gradEz = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
-      DO i=1,n
-        gradEz(:) = gradEz(:) + CMPLX(Re_local_field(i), Im_local_field(i), KIND=dp) * dBasisdx(i,:)
-      END DO
+      IF (UseV) THEN
+        DO j=1,3
+          gradEz(j) = gradEz(j) + CMPLX(SUM(Re_local_field(1:np:ndofs) * dBasisdx(1:n,j)), &
+              SUM(Im_local_field(1:np:ndofs) * dBasisdx(1:n,j)), KIND=dp)
+        END DO
+        gradEz(:) =  gradEz(:) * im * Beta
+      ELSE
+        DO i=1,n
+          gradEz(:) = gradEz(:) + CMPLX(Re_local_field(i), Im_local_field(i), KIND=dp) * dBasisdx(i,:)
+        END DO
+        gradEz(:) = gradEz(:) / (im * Beta)
+      END IF
       
       E2 = E2 + SUM(EF*CONJG(EF)) * weight
       P = P + Nu*Beta/Omega * SUM(EF*CONJG(EF)) * weight + Nu/(im * omega) * SUM(EF*CONJG(gradEz)) * weight
@@ -1176,8 +1195,12 @@ CONTAINS
         END DO
       END DO
 
-      PermIndexes(1:n) = PostSolver % Variable % Perm(Element % NodeIndexes)
-      
+      IF (UseV) THEN
+        PermIndexes(1:n) = PostSolver % Variable % Perm(2*Element % NodeIndexes-1)
+      ELSE
+        PermIndexes(1:n) = PostSolver % Variable % Perm(Element % NodeIndexes)
+      END IF
+        
       ! Assemble mass matrix and the 1st component      
       CALL UpdateGlobalEquations( PostSolver % Matrix, Mass, PostSolver % Matrix % rhs, &
           LForce(1:n,1),n,1,PermIndexes(1:n), UElement=Element)      
