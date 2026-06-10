@@ -4364,7 +4364,7 @@ CONTAINS
      LOGICAL :: Found, VecAsm, MCAsm
 
      INTEGER :: i, j, n, nd
-     INTEGER(KIND=AddrInt) :: Proc
+     TYPE(C_FUNPTR) :: Proc
      INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
 
      IF ( PRESENT( USolver ) ) THEN
@@ -4388,7 +4388,7 @@ CONTAINS
      ELSE
        Proc = Solver % BulkElementProcedure
      END IF
-     IF ( Proc /= 0 ) THEN
+     IF ( C_ASSOCIATED(Proc) ) THEN
        n  = GetElementNOFNodes( Element )
        nd = GetElementNOFDOFs( Element, Solver )
        CALL ExecLocalProc( Proc, CurrentModel, Solver, &

@@ -216,7 +216,7 @@ this ise not in USE
      TYPE(Variable_t), POINTER :: TempSol 
      REAL(KIND=dp), POINTER :: Temperature(:)
      INTEGER, POINTER :: TempPerm(:)
-     INTEGER(KIND=AddrInt) :: Fnc
+     TYPE(C_FUNPTR) :: Fnc
      TYPE(Variable_t), POINTER :: Var
      REAL(KIND=dp) :: dist,F2,F3
      REAL(KIND=dp) :: KE_K, KE_E, KE_Z, CT, TimeScale,Clip, Cmu, Vals(n)
@@ -644,7 +644,7 @@ this ise not in USE
      ! Temperature is needed for thermal models
      TYPE(Variable_t), POINTER :: TempSol 
 
-     INTEGER(KIND=AddrInt) :: Fnc
+     TYPE(C_FUNPTR) :: Fnc
      CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
      PCond = Conductivity

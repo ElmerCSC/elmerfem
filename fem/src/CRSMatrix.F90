@@ -1546,7 +1546,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Cols   => A % Cols
     Values => A % Values
     
-    IF  ( A % MatvecSubr /= 0 ) THEN
+    IF  ( C_ASSOCIATED(A % MatvecSubr) ) THEN
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN
     END IF
@@ -1788,7 +1788,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Cols   => A % Cols
     Values => A % Values
 
-    IF  ( A % MatvecSubr /= 0 ) THEN
+    IF  ( C_ASSOCIATED(A % MatvecSubr) ) THEN
       ALLOCATE(Abs_Values(SIZE(A % Values)))
       Abs_Values = ABS(Values)
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0)
@@ -4821,7 +4821,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => GlobalMatrix % Values
     ndeg = GlobalMatrix % ndeg
     
-    IF  ( GlobalMatrix % MatVecSubr /= 0 ) THEN
+    IF  ( C_ASSOCIATED(GlobalMatrix % MatVecSubr) ) THEN
       CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
           GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN

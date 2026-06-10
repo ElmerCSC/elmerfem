@@ -90,7 +90,7 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
     Model % Solvers(1:n) = Solvers
 
     DO i=n+1,n+2
-      Model % Solvers(i) % PROCEDURE = 0
+      Model % Solvers(i) % PROCEDURE = C_NULL_FUNPTR
       NULLIFY( Model % Solvers(i) % Matrix )
       NULLIFY( Model % Solvers(i) % Mesh )
       NULLIFY( Model % Solvers(i) % Variable )

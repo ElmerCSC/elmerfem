@@ -1056,7 +1056,7 @@ CONTAINS
                RecursiveAnalysis, CalcLoads, NotParallel
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn, AllocStat
     CHARACTER(:), ALLOCATABLE :: Method, Prec, SaveSlot
-    INTEGER(KIND=AddrInt) :: Proc
+    TYPE(C_FUNPTR) :: Proc
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Px(:), &
                 TempRHS(:), NonlinVals(:)
     REAL(KIND=dp), POINTER :: Diag(:)
@@ -2621,7 +2621,7 @@ CONTAINS
         RestrictionMode, BlockMode, GloNum, FirstLoop
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
-    INTEGER(KIND=AddrInt) :: Proc
+    TYPE(C_FUNPTR) :: Proc
     REAL(KIND=dp) :: Relaxation,Alpha,Beta,Gamma
     REAL(KIND=dp), ALLOCATABLE :: Diag(:), TempVector(:)
     REAL(KIND=dp), POINTER :: bb(:),Res(:)
@@ -2697,7 +2697,7 @@ CONTAINS
       Solver % Variable % NonlinValues = x(1:n)
     END IF
 
-    IF ( Solver % LinBeforeProc /= 0 ) THEN
+    IF ( C_ASSOCIATED(Solver % LinBeforeProc) ) THEN
       CALL Info(Caller,'Calling procedure before solving system',Level=7)
       istat = ExecLinSolveProcs( Solver % LinBeforeProc,CurrentModel,Solver, &
                        A, b, x, n, DOFs, Norm )
@@ -2817,7 +2817,7 @@ CONTAINS
 
 10  CONTINUE
 
-    IF ( Solver % LinAfterProc /= 0 ) THEN
+    IF ( C_ASSOCIATED(Solver % LinAfterProc) ) THEN
       CALL Info(Caller,'Calling procedure after solving system',Level=7)
       istat = ExecLinSolveProcs( Solver % LinAfterProc, CurrentModel, Solver, &
               A, b, x, n, DOFs, Norm )

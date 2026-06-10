@@ -429,22 +429,6 @@ CONTAINS
 
 
 
-!------------------------------------------------------------------------------
-!> Get calling address of the procedure and add it to the Solver structure.
-!------------------------------------------------------------------------------
-  SUBROUTINE AddSolverProcedure( Solver,PROCEDURE  )
-!------------------------------------------------------------------------------
-    TYPE(Solver_t) :: Solver
-    EXTERNAL :: PROCEDURE
-    INTEGER  :: PROCEDURE
-!------------------------------------------------------------------------------
-    INTEGER(KIND=AddrInt) :: AddrFunc
-    EXTERNAL :: AddrFunc
-!------------------------------------------------------------------------------
-    Solver % PROCEDURE = AddrFunc( PROCEDURE )
-!------------------------------------------------------------------------------
-  END SUBROUTINE AddSolverProcedure
-!------------------------------------------------------------------------------
 
 
  
@@ -537,7 +521,7 @@ CONTAINS
          CALL AddEquationBasics( Solver, ListGetString(Solver % Values, &
                   'Variable', Found), Transient )
          CALL AddEquationSolution( Solver, Transient )
-         IF ( Transient .AND. Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+         IF ( Transient .AND. C_ASSOCIATED(Solver % PROCEDURE) ) CALL InitializeTimestep(Solver)
        END IF
      END DO
 
@@ -1175,7 +1159,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
-    INTEGER(KIND=AddrInt) :: InitProc, AssProc
+    TYPE(C_FUNPTR) :: InitProc, AssProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs, MaxDOFsPerNode
     INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat, &
@@ -1380,7 +1364,7 @@ CONTAINS
     IF( IsProcedure ) THEN
       InitProc = GetProcAddr( TRIM(proc_name)//'_Init', abort=.FALSE. )
       CALL Info(Caller,'Checking for _init solver',Level=12)
-      IF ( InitProc /= 0 ) THEN
+      IF ( C_ASSOCIATED(InitProc) ) THEN
         CALL ExecSolver( InitProc, CurrentModel, Solver, &
             Solver % dt, Transient )
       END IF
@@ -1403,7 +1387,7 @@ CONTAINS
       ELSE
         AssProc = GetProcAddr( TRIM(proc_name)//'_bulk', abort=.FALSE. )
         CALL Info(Caller,'Checking for _bulk solver',Level=12)
-        IF ( AssProc /= 0 ) THEN
+        IF ( C_ASSOCIATED(AssProc) ) THEN
           CALL Info(Caller,'Solver will be be performed in steps',Level=8)
           Solver % SolverMode = SOLVER_MODE_STEPS
         END IF        
@@ -2181,16 +2165,16 @@ CONTAINS
       END IF
     END IF
      
-    Solver % LinBeforeProc = 0
+    Solver % LinBeforeProc = C_NULL_FUNPTR
     str = ListGetString( Solver % Values, 'Before Linsolve', Found )
     IF ( Found ) Solver % LinBeforeProc = GetProcAddr( str )
 
-    Solver % LinAfterProc = 0
+    Solver % LinAfterProc = C_NULL_FUNPTR
     str = ListGetString( Solver % Values, 'After Linsolve', Found )
     IF ( Found ) Solver % LinAfterProc = GetProcAddr( str )
 
     IF( ASSOCIATED( Solver % Matrix ) ) THEN
-      Solver % Matrix % MatVecSubr = 0
+      Solver % Matrix % MatVecSubr = C_NULL_FUNPTR
       str = ListGetString( Solver % Values, 'Matrix Vector Proc', Found )
       IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
     END IF
@@ -2967,8 +2951,8 @@ CONTAINS
      
      Solver % MultigridTotal = 0
      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
-     Solver % LinBeforeProc = 0
-     Solver % LinAfterProc = 0
+     Solver % LinBeforeProc = C_NULL_FUNPTR
+     Solver % LinAfterProc = C_NULL_FUNPTR
 
      IF ( Parenv  % PEs >1 ) THEN
        CALL ParallelInitMatrix( Solver, Solver % Matrix )
@@ -3043,7 +3027,7 @@ CONTAINS
     IF ( TransientSimulation ) THEN
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE /= 0 ) THEN
+        IF ( C_ASSOCIATED(Solver % PROCEDURE) ) THEN
           CALL InitializeTimestep(Solver)
          END IF
       END DO
@@ -3065,7 +3049,7 @@ CONTAINS
       CALL Info('SolveEquations','Solvers before timestep',Level=12)
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME .OR. &
             Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
 
@@ -3146,7 +3130,7 @@ CONTAINS
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
 
-          IF ( Solver % PROCEDURE==0 ) CYCLE
+          IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
           IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
 
           RungeKutta = .FALSE.
@@ -3285,7 +3269,7 @@ CONTAINS
       CALL Info('SolveEquations','Solvers after timestep',Level=12)
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_TIME .OR. &
             Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
 
@@ -3364,7 +3348,7 @@ CONTAINS
 !------------------------------------------------------------------------------
           Solver => Model % Solvers(k)
 
-          IF ( Solver % PROCEDURE == 0 ) THEN
+          IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) THEN
             IF( .NOT. ( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
               Solver % SolverMode == SOLVER_MODE_ASSEMBLY .OR. &
               Solver % SolverMode == SOLVER_MODE_BLOCK ) ) THEN
@@ -4906,7 +4890,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), DAMP(:,:), MASS(:,:), FORCE(:)
     REAL(KIND=dp), POINTER :: ForceVector(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: ProcName, RowName, ColName, str
-    INTEGER(KIND=AddrInt) :: ProcPntr    
+    TYPE(C_FUNPTR) :: ProcPntr
     LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
     LOGICAL :: AllocationsDone = .FALSE., Diagonal
     CHARACTER(*), PARAMETER :: Caller="BlockSystemAssembly"   
@@ -5042,7 +5026,7 @@ CONTAINS
     END IF
 
     ProcPntr = GetProcAddr( TRIM(ProcName), abort=.FALSE.)
-    IF ( ProcPntr == 0 ) THEN
+    IF ( .NOT. C_ASSOCIATED(ProcPntr) ) THEN
       CALL Fatal(Caller,'Assembly routine not found: '//TRIM(ProcName))
     ELSE
       CALL Info(Caller,'Using assembly routine: '//TRIM(ProcName),Level=8)
@@ -5171,7 +5155,7 @@ CONTAINS
     LOGICAL :: TransientSimulation
     REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
-    INTEGER(KIND=AddrInt) :: SolverAddr
+    TYPE(C_FUNPTR) :: SolverAddr
     CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
     INTEGER :: iter, MaxIter
     LOGICAL :: Found
@@ -5204,7 +5188,7 @@ CONTAINS
       CALL DefaultFinishBulkAssembly( Solver )
 
       SolverAddr = GetProcAddr( TRIM(ProcName)//'_boundary', abort=.FALSE. )
-      IF( SolverAddr /= 0 ) THEN
+      IF( C_ASSOCIATED(SolverAddr) ) THEN
         CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
       END IF
 
@@ -5243,7 +5227,7 @@ CONTAINS
      INTEGER :: i, j, k, l, col, row, n, BDOFs, maxdim, dsize, size0
      TYPE(Element_t), POINTER :: CurrentElement
      TYPE(ValueList_t), POINTER :: SolverParams
-     INTEGER(KIND=AddrInt) :: SolverAddr
+     TYPE(C_FUNPTR) :: SolverAddr
      CHARACTER(:), ALLOCATABLE :: EquationName
 
      INTEGER, ALLOCATABLE :: memb(:)
@@ -5497,7 +5481,7 @@ END BLOCK
        IF( PostActive ) THEN
          ProcName = ListGetString( Solver % Values,'Procedure', Found )
          SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
-         IF( SolverAddr /= 0 ) THEN
+         IF( C_ASSOCIATED(SolverAddr) ) THEN
            CALL Info(Caller,'Calling solver for postprocessing',Level=10)
            CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
          END IF
@@ -5513,7 +5497,7 @@ END BLOCK
          CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
          LOGICAL :: AdaptiveActive
          TYPE(Variable_t), POINTER :: Var
-         INTEGER(KIND=AddrInt) :: IResidual, EResidual, BResidual
+         TYPE(C_FUNPTR) :: IResidual, EResidual, BResidual
 
          INTERFACE
            SUBROUTINE RefineMeshExt(Model,Solver,Quant,Perm,InsideResidual,EdgeResidual,BoundaryResidual)
@@ -5587,8 +5571,6 @@ END BLOCK
          PROCEDURE(EdgeResidual), POINTER :: EdgePtr
          PROCEDURE(BoundaryResidual), POINTER :: BoundaryPtr
 
-         TYPE(C_FUNPTR) :: IResFunC, EResFunC, BresFunC
-
          AdaptiveActive = ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)
 
          IF (AdaptiveActive) THEN
@@ -5598,14 +5580,10 @@ END BLOCK
            EResidual   = GetProcAddr( TRIM(ProcName)//'_edge_residual', abort=.FALSE. )
            BResidual   = GetProcAddr( TRIM(ProcName)//'_boundary_residual', abort=.FALSE. )
 
-           IF( IResidual/=0 .AND. EResidual /= 0 .AND. BResidual /= 0 ) THEN
-             IResFunC = TRANSFER( Iresidual, IresFunC )
-             EResFunC = TRANSFER( Eresidual, EresFunC )
-             BResFunC = TRANSFER( Bresidual, BresFunC )
-
-             CALL C_F_PROCPOINTER(IresFunC, InsidePtr)
-             CALL C_F_PROCPOINTER(EResFunC, EdgePtr )
-             CALL C_F_PROCPOINTER(BResFunC, BoundaryPtr )
+           IF( C_ASSOCIATED(IResidual) .AND. C_ASSOCIATED(EResidual) .AND. C_ASSOCIATED(BResidual) ) THEN
+             CALL C_F_PROCPOINTER(IResidual, InsidePtr)
+             CALL C_F_PROCPOINTER(EResidual, EdgePtr )
+             CALL C_F_PROCPOINTER(BResidual, BoundaryPtr )
 
              Var => Solver % Variable
              CALL RefineMeshExt( Model, Solver, Var % Values, Var % Perm, InsidePtr, EdgePtr, BoundaryPtr )
@@ -5763,14 +5741,14 @@ END BLOCK
      IF(Found) THEN
        Solver % BoundaryElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
      ELSE
-       Solver % BoundaryElementProcedure = 0
+       Solver % BoundaryElementProcedure = C_NULL_FUNPTR
      END IF
 
      str = ListGetString( Params, 'Bulk Element Procedure', Found)
      IF(Found) THEN
        Solver % BulkElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
      ELSE
-       Solver % BulkElementProcedure = 0
+       Solver % BulkElementProcedure = C_NULL_FUNPTR
      END IF
 
 !------------------------------------------------------------------------------

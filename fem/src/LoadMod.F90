@@ -343,9 +343,7 @@ MODULE LoadMod
             IMPLICIT NONE
             INTEGER :: quiet, abort_not_found, mangle
             CHARACTER :: library(*), fname(*)
-            ! TYPE(C_FUNPTR) :: ptr
-            INTEGER(KIND=AddrInt) :: ptr
-            TYPE(C_PTR) :: cptr
+            TYPE(C_FUNPTR) :: ptr
 
             INTERFACE
                 FUNCTION loadfunction_c(quiet, abort_not_found, library, fname, mangle ) RESULT(cptr) &
@@ -354,20 +352,17 @@ MODULE LoadMod
                     INTEGER(C_INT) :: quiet
                     INTEGER(C_INT) :: abort_not_found, mangle
                     CHARACTER(C_CHAR) :: library(*), fname(*)
-                    ! INTEGER(CAddrInt) :: fptr
-                    TYPE(C_PTR) :: cptr
+                    TYPE(C_FUNPTR) :: cptr
                 END FUNCTION loadfunction_c
             END INTERFACE
 
-            ! Ugly hack, store C function pointer as integer
-            cptr = loadfunction_c(quiet, abort_not_found, library, fname, mangle)
-            ptr = TRANSFER(cptr, ptr)
+            ptr = loadfunction_c(quiet, abort_not_found, library, fname, mangle)
         END FUNCTION loadfunction
 
         ! DYNAMIC FUNCTION CALLS (wrappers via module procedures)
         RECURSIVE FUNCTION execintfunction(fptr, model ) RESULT(intval)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: intval
 
@@ -378,18 +373,15 @@ MODULE LoadMod
                     INTEGER :: intval
                 END FUNCTION ElmerIntFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerIntFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             intval = pptr(model)
         END FUNCTION execintfunction
 
         RECURSIVE FUNCTION execconstrealfunction(fptr, model, x, y, z) RESULT(realval)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             REAL(KIND=dp) :: x, y, z
             REAL(KIND=dp) :: realval
@@ -402,18 +394,15 @@ MODULE LoadMod
                     REAL(KIND=dp) :: realval
                 END FUNCTION ElmerConstRealFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerConstRealFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             realval = pptr(model, x, y, z)
         END FUNCTION execconstrealfunction
 
         RECURSIVE FUNCTION execrealfunction(fptr, model, node, val) RESULT(realval)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: node
             REAL(KIND=dp) :: val(*)
@@ -428,18 +417,15 @@ MODULE LoadMod
                     REAL(KIND=dp) :: realval
                 END FUNCTION ElmerRealFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerRealFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             realval = pptr(model, node, val)
         END FUNCTION execrealfunction
 
         RECURSIVE SUBROUTINE execrealarrayfunction(fptr, model, node, val, arr )
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: node
             REAL(KIND=dp) :: val(*)
@@ -454,18 +440,15 @@ MODULE LoadMod
                     REAL(KIND=dp) :: arr(:,:)
                 END SUBROUTINE ElmerRealArrFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerRealArrFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealarrayfunction
 
         RECURSIVE SUBROUTINE execrealvectorfunction(fptr, model, node, val, arr )
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: node
             REAL(KIND=dp) :: val(*), arr(:)
@@ -478,18 +461,15 @@ MODULE LoadMod
                     REAL(KIND=dp) :: val(*), arr(:)
                 END SUBROUTINE ElmerRealArrFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerRealArrFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealvectorfunction
 
         RECURSIVE SUBROUTINE execsolver(fptr, model, solver, dt, transient)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Solver_t) :: solver
             REAL(KIND=dp) :: dt
@@ -504,19 +484,16 @@ MODULE LoadMod
                     LOGICAL :: transient
                 END SUBROUTINE ElmerSolverFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerSolverFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(model, solver, dt, transient)
         END SUBROUTINE execsolver
 
 
         SUBROUTINE execmortarprojector(fptr, mesh, slavemesh, mastermesh, bcind, projector )
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Mesh_t) :: mesh, slavemesh, mastermesh
             INTEGER :: bcind
             TYPE(Matrix_t) :: projector
@@ -529,12 +506,9 @@ MODULE LoadMod
                     TYPE(Matrix_t) :: projector
                 END SUBROUTINE MortarProjectorFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(MortarProjectorFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(mesh, slavemesh, mastermesh, bcind, projector )
           END SUBROUTINE execmortarprojector
           
@@ -542,7 +516,7 @@ MODULE LoadMod
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip ) &
                                        RESULT(realval)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Element_t), POINTER :: element
             TYPE(Nodes_t) :: nodes
@@ -564,12 +538,9 @@ MODULE LoadMod
                     REAL(KIND=dp) :: realval
                   END FUNCTION ElmerEnhancemntFactorFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerEnhancemntFactorFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             realval = pptr(model, element, nodes, n, nd, &
                            Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip)
         END FUNCTION enhancementfactoruserfunction  
@@ -579,7 +550,7 @@ MODULE LoadMod
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx ) &
                                        RESULT(realval)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Element_t), POINTER :: element
             TYPE(Nodes_t) :: nodes
@@ -601,19 +572,16 @@ MODULE LoadMod
                     REAL(KIND=dp) :: realval
                 END FUNCTION ElmerMaterialFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerMaterialFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             realval = pptr(model, element, nodes, n, nd, &
                            Basis, dBasisdx, Viscosity,Velo, dVelodx)
         END FUNCTION materialuserfunction
 
         SUBROUTINE execsimulationproc(fptr, model)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
 
             INTERFACE
@@ -622,18 +590,15 @@ MODULE LoadMod
                     TYPE(Model_t)   :: model
                 END SUBROUTINE ElmerSimulationFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerSimulationFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(model)
         END SUBROUTINE execsimulationproc
 
         RECURSIVE FUNCTION execlinsolveprocs(fptr, model, solver, mtr, b, x, n, DOFs, nrm) RESULT(intval)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Solver_t) :: solver
             TYPE(Matrix_t), POINTER :: mtr
@@ -652,18 +617,15 @@ MODULE LoadMod
                     INTEGER :: intval
                 END FUNCTION ElmerLinSolveFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerLinSolveFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             intval =  pptr(model, solver, mtr, b, x, n, DOFs, nrm)
         END FUNCTION execlinsolveprocs
 
         SUBROUTINE execlocalproc(fptr, model, solver, G, F, element, n, nd)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t)   :: model
             TYPE(Solver_t)  :: solver
             REAL(KIND=dp) :: G(:,:), F(:)
@@ -680,19 +642,16 @@ MODULE LoadMod
                     INTEGER :: n, nd
                 END SUBROUTINE ElmerLocalFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerLocalFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(model, solver, G, F, element, n, nd)
         END SUBROUTINE execlocalproc
 
         SUBROUTINE execlocalassembly(fptr, model, solver, dt, transient, &
                                      M, D, S, F, element, nrow, ncol)
             IMPLICIT NONE
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t)   :: model
             TYPE(Solver_t)  :: solver
             REAL(KIND=dp)   :: dt
@@ -714,12 +673,9 @@ MODULE LoadMod
                     INTEGER :: nrow, ncol
                 END SUBROUTINE ElmerLocalAssemblyFn
             END INTERFACE
-            TYPE(C_FUNPTR) :: cfptr
             PROCEDURE(ElmerLocalAssemblyFn), POINTER :: pptr
 
-            ! Ugly hack, fptr should be stored as C function pointer
-            cfptr = TRANSFER(fptr, cfptr)
-            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(model, solver, dt, transient, &
                       M, D, S, F, element, nrow, ncol)
         END SUBROUTINE execlocalassembly
@@ -727,7 +683,7 @@ MODULE LoadMod
         SUBROUTINE matvecsubrext(fptr, spmv, n, rows, cols, vals, u, v, reinit)
             IMPLICIT NONE
 
-            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(C_FUNPTR) :: fptr
             INTEGER(KIND=AddrInt) :: spmv
             INTEGER :: n
             INTEGER, POINTER  CONTIG :: rows(:), cols(:)
@@ -735,6 +691,7 @@ MODULE LoadMod
             REAL(KIND=dp), DIMENSION(*) :: u
             REAL(KIND=dp), DIMENSION(*) :: v
             INTEGER :: reinit
+            INTEGER(KIND=CAddrInt) :: ifptr
 
             INTERFACE
                 SUBROUTINE matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit) &
@@ -750,8 +707,8 @@ MODULE LoadMod
                 END SUBROUTINE
             END INTERFACE
 
-            ! TODO: interface should be properly tested
-            CALL matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit)
+            ifptr = TRANSFER(fptr, ifptr)
+            CALL matvecsubrext_c(ifptr, spmv, n, rows, cols, vals, u, v, reinit)
         END SUBROUTINE matvecsubrext
 
         RECURSIVE SUBROUTINE itercallR(fptr, x, b, ipar, dpar, work, &
@@ -936,7 +893,7 @@ MODULE LoadMod
           
           IMPLICIT NONE
           
-          INTEGER(KIND=AddrInt) :: fptr
+          TYPE(C_FUNPTR) :: fptr
           REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
           REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
           REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
@@ -1010,12 +967,9 @@ MODULE LoadMod
           END INTERFACE
 
           
-          TYPE(C_FUNPTR) :: cfptr
           PROCEDURE(UMATsubrtn), POINTER :: pptr
-          
-          ! Ugly hack, fptr should be stored as C function pointer
-          cfptr = TRANSFER(fptr, cfptr)
-          CALL C_F_PROCPOINTER(cfptr, pptr)
+
+          CALL C_F_PROCPOINTER(fptr, pptr)
           
           CALL pptr( STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
               rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &

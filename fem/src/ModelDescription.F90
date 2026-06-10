@@ -77,7 +77,7 @@ CONTAINS
     CHARACTER(LEN=*) :: str
     LOGICAL, OPTIONAL :: Quiet, Abort
 
-    INTEGER(KIND=AddrInt) :: Proc
+    TYPE(C_FUNPTR) :: Proc
     INTEGER   :: i,j,slen,q,a
     CHARACTER :: Libname(MAX_PATH_LEN),Procname(MAX_NAME_LEN)
 !------------------------------------------------------------------------------
@@ -125,7 +125,7 @@ CONTAINS
     Proc = LoadFunction( q,0,Libname,Procname,1 )
 
     ! if no luck, try without fortran name mangling
-    IF(Proc==0) Proc = LoadFunction( q,a,Libname,Procname,0 )
+    IF(.NOT. C_ASSOCIATED(Proc)) Proc = LoadFunction( q,a,Libname,Procname,0 )
   END FUNCTION GetProcAddr
 !------------------------------------------------------------------------------
 
@@ -329,7 +329,7 @@ CONTAINS
 
     INTEGER :: i,j,k,n,Arrayn,TYPE,Sect,N1,N2,BoundaryIndex
 
-    INTEGER(KIND=AddrInt) :: Proc
+    TYPE(C_FUNPTR) :: Proc
 
     CHARACTER(LEN=:), ALLOCATABLE :: section, name, str
 
@@ -1009,7 +1009,7 @@ CONTAINS
           IF ( .NOT.ASSOCIATED( Model % Solvers ) ) THEN
             ALLOCATE( Model % Solvers(Model % NumberOfSolvers) )
             DO i=1,Model % NumberOfSolvers
-              Model % Solvers(i) % PROCEDURE = 0
+              Model % Solvers(i) % PROCEDURE = C_NULL_FUNPTR
               NULLIFY( Model % Solvers(i) % Matrix )
               NULLIFY( Model % Solvers(i) % Variable )
               NULLIFY( Model % Solvers(i) % ActiveElements )
@@ -1024,7 +1024,7 @@ CONTAINS
                 ASolvers(i) = Model % Solvers(i)
               END DO
               DO i=SIZE(Model % Solvers)+1,Model % NumberOfSolvers
-                ASolvers(i) % PROCEDURE = 0
+                ASolvers(i) % PROCEDURE = C_NULL_FUNPTR
                 NULLIFY( ASolvers(i) % Matrix )
                 NULLIFY( ASolvers(i) % Mesh )
                 NULLIFY( ASolvers(i) % Variable )
@@ -1652,7 +1652,7 @@ CONTAINS
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
           Cubic, AllInt, Monotone, Stat, Harmonic
 
-      INTEGER(KIND=AddrInt) :: Proc
+      TYPE(C_FUNPTR) :: Proc
 
       INTEGER :: i,j,j0,k,k2,l,n,slen,str_beg, str_end, n1,n2, TYPE, &
           abuflen=0, maxbuflen=0, partag, iostat
@@ -1726,7 +1726,7 @@ CONTAINS
           CASE('real')
             CALL CheckKeyWord( Name,'real',CheckAbort,FreeNames,Section )
 
-             Proc = 0
+             Proc = C_NULL_FUNPTR
              IF ( SEQL(str(str_beg:),'procedure ') ) THEN
 
                IF ( .NOT. ScanOnly ) THEN
@@ -2066,7 +2066,7 @@ CONTAINS
 
             CALL CheckKeyWord( Name,'integer',CheckAbort,FreeNames,Section )
 
-             Proc = 0
+             Proc = C_NULL_FUNPTR
              IF ( SEQL(str(str_beg:),'procedure ') ) THEN
                IF ( .NOT. ScanOnly ) THEN
                  Proc = GetProcAddr( str(str_beg+10:) )
@@ -2543,7 +2543,7 @@ CONTAINS
     LOGICAL :: stat, single, MeshGrading, Split
     LOGICAL :: DG
     TYPE(Solver_t), POINTER :: Solver
-    INTEGER(KIND=AddrInt) :: InitProc
+    TYPE(C_FUNPTR) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
     REAL(KIND=dp) :: MeshPower
     REAL(KIND=dp), POINTER :: h(:)
@@ -2681,7 +2681,7 @@ CONTAINS
       Name = ListGetString( Solver % Values, 'Procedure', Found )
       IF ( Found ) THEN
         InitProc = GetProcAddr( TRIM(Name)//'_Init0', abort=.FALSE. )
-        IF ( InitProc /= 0 ) THEN
+        IF ( C_ASSOCIATED(InitProc) ) THEN
           CALL ExecSolver( InitProc, Model, Solver, &
                   Solver % dt, Transient )
         END IF
@@ -6279,14 +6279,14 @@ SUBROUTINE FinalizeSolver(model, solver)
   TYPE(Solver_t) :: Solver
   CHARACTER(:), ALLOCATABLE :: Name
   LOGICAL :: Found, Transient
-  INTEGER(Kind=AddrInt) :: FinalProc
+  TYPE(C_FUNPTR) :: FinalProc
 !------------------------------------------------------------------------------
 
   Name = ListGetString( Solver % values, 'Procedure', Found)
   IF(Found) Then
     FinalProc = GetProcAddr( Trim(Name)//'_Finalize', abort=.FALSE.)
 
-    IF (FinalProc /= 0) then 
+    IF (C_ASSOCIATED(FinalProc)) then
       Transient = ListGetString(Model % Simulation, 'Simulation Type',Found)=='transient'
       CALL Info('FreeModel','Finalize Solver: > '//trim(Name) // ' <',Level=20)
       CALL ExecSolver(FinalProc, Model, Solver, Solver% dt, Transient)

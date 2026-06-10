@@ -90,7 +90,7 @@ SUBROUTINE DirectionSolver_Init0(Model,Solver,dt,Transient)
   SolverParams => Solvers(n+1) % Values
   CALL ListAddLogical( SolverParams, 'Discontinuous Galerkin', .TRUE. )
   Solvers(n+1) % DG = .TRUE.
-  Solvers(n+1) % PROCEDURE = 0
+  Solvers(n+1) % PROCEDURE = C_NULL_FUNPTR
   Solvers(n+1) % ActiveElements => NULL()
   CALL ListAddString( SolverParams, 'Exec Solver', 'never' )
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)

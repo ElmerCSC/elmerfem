@@ -334,7 +334,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
   CHARACTER(LEN=MAX_NAME_LEN) :: UMATName 
   CHARACTER(LEN=80) :: UmatModel
-  INTEGER(KIND=AddrInt) :: UMATSubrtn
+  TYPE(C_FUNPTR) :: UMATSubrtn
   
   TYPE(Variable_t), POINTER :: UmatEnergyVar, UmatStressVar, UmatStateVar
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)

@@ -2794,7 +2794,7 @@ REAL(kind=dp) :: s, RealTime
   Cols => InsideMatrix % Cols
   Vals => InsideMatrix % Values
 
-  IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
+  IF  ( C_ASSOCIATED(GlobalMatrix % MatvecSubr) ) THEN
     ALLOCATE(Abs_Vals(SIZE(InsideMatrix % Values)))
     Abs_Vals = ABS(Vals)
     CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &

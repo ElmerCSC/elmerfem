@@ -286,7 +286,7 @@ MODULE Types
     INTEGER(KIND=C_INTPTR_T) :: AMGX=0, AMGXMV=0
     INTEGER(KIND=AddrInt) :: SpMV=0
 
-    INTEGER(KIND=AddrInt) :: MatVecSubr = 0
+    TYPE(C_FUNPTR) :: MatVecSubr = C_NULL_FUNPTR
 
     INTEGER, POINTER CONTIG :: ILURows(:)=>NULL(),ILUCols(:)=>NULL(),ILUDiag(:)=>NULL()
 
@@ -438,7 +438,7 @@ MODULE Types
      LOGICAL :: LValue
      INTEGER, POINTER :: IValues(:) => NULL()
 
-     INTEGER(KIND=AddrInt) :: PROCEDURE
+     TYPE(C_FUNPTR) :: PROCEDURE = C_NULL_FUNPTR
 
      REAL(KIND=dp) :: Coeff = 1.0_dp    
      CHARACTER(:), ALLOCATABLE :: CValue
@@ -929,7 +929,7 @@ MODULE Types
 
       INTEGER :: TimeOrder=0,DoneTime=0,Order=0,NOFEigenValues=0
       INTEGER :: TimesVisited = 0
-      INTEGER(KIND=AddrInt) :: PROCEDURE=0, LinBeforeProc=0, LinAfterProc=0
+      TYPE(C_FUNPTR) :: PROCEDURE = C_NULL_FUNPTR, LinBeforeProc = C_NULL_FUNPTR, LinAfterProc = C_NULL_FUNPTR
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
@@ -957,7 +957,7 @@ MODULE Types
       TYPE(Matrix_t), POINTER :: ConstraintMatrix => NULL()
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., ConstraintMatrixVisited = .FALSE.
-      INTEGER(KIND=AddrInt) :: BoundaryElementProcedure=0, BulkElementProcedure=0
+      TYPE(C_FUNPTR) :: BoundaryElementProcedure = C_NULL_FUNPTR, BulkElementProcedure = C_NULL_FUNPTR
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
       TYPE(Graph_t), POINTER :: BoundaryColourIndexList => NULL()

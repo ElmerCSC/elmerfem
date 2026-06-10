@@ -129,10 +129,10 @@ int main(int argc, char *argv[])
         push(join("-rpath=", elib));
 #endif
         push(join("-L", elib));
+        push(join(elib,"/ElmerIceSolvers.so"));
+        push(join(elib,"/ElmerIceUSF.so"));
+        push(join(elib,"/ElmerIceUtils.so"));
         free(elib);
-        push("-lElmerIceSolvers");
-        push("-lElmerIceUSF");
-        push("-lElmerIceUtils");
     }
 #else
     fprintf(stderr, "no elmerice\n");

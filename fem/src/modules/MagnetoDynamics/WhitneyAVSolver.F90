@@ -211,7 +211,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     Model % Solvers(1:n) = Solvers
 
     DO i=n+1,n+2
-      Model % Solvers(i) % PROCEDURE = 0
+      Model % Solvers(i) % PROCEDURE = C_NULL_FUNPTR
       Model % Solvers(i) % Matrix => Null()
       Model % Solvers(i) % Mesh => Null()
       Model % Solvers(i) % Variable => Null()

@@ -122,7 +122,7 @@
      INTEGER, POINTER, SAVE :: Timesteps(:),OutputIntervals(:) => NULL(), ActiveSolvers(:)
      REAL(KIND=dp), POINTER, SAVE :: TimestepSizes(:,:),TimestepRatios(:,:)
 
-     INTEGER(KIND=AddrInt) :: ControlProcedure
+     TYPE(C_FUNPTR) :: ControlProcedure
 
      LOGICAL :: InitDirichlet, ExecThis, GotTimestepRatios = .FALSE.
 
@@ -702,7 +702,7 @@
 
          DO i=1,CurrentModel % NumberOfSolvers 
            iSolver => CurrentModel % Solvers(i)
-           IF ( iSolver % PROCEDURE == 0 ) CYCLE
+           IF ( .NOT. C_ASSOCIATED(iSolver % PROCEDURE) ) CYCLE
            When = ListGetString( iSolver % Values, 'Exec Solver', Found )
            IF ( Found ) THEN
              DoIt = ( When == 'after control' ) 
@@ -1378,7 +1378,7 @@
        NULLIFY( pSolver % Variable )
        NULLIFY( pSolver % ActiveElements )
        
-       pSolver % PROCEDURE = 0
+       pSolver % PROCEDURE = C_NULL_FUNPTR
        pSolver % NumberOfActiveElements = 0
        j = CurrentModel % NumberOfBodies
        ALLOCATE( pSolver % Def_Dofs(10,j,6),STAT=AllocStat)       
@@ -1603,7 +1603,7 @@
          CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
        END IF
 
-       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+       IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) .OR. InitSolver ) THEN
          IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
            Solver % Mesh => CurrentModel % Meshes
          END IF
@@ -1657,7 +1657,7 @@
          CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
        END IF
 
-       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+       IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) .OR. InitSolver ) THEN
          IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
            Solver % Mesh => CurrentModel % Meshes
          END IF
@@ -2726,7 +2726,7 @@
      nSolvers = CurrentModel % NumberOfSolvers
      DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         DoIt = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL )
         IF(.NOT. DoIt) THEN
           DoIt = ListGetLogical( Solver % Values,'Before All',Found ) .OR. &
@@ -3421,7 +3421,7 @@
            IF ( k == 0 .OR. SteadyStateReached ) THEN
              DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
-               IF ( Solver % PROCEDURE == 0 ) CYCLE
+               IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
                When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
                IF ( GotIt ) ExecThis = ( When == 'before saving') 
@@ -3439,7 +3439,7 @@
 
              DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
-               IF ( Solver % PROCEDURE == 0 ) CYCLE
+               IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
                When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
                IF ( GotIt ) ExecThis = ( When == 'after saving') 
@@ -3518,7 +3518,7 @@
 
      DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
-        IF ( Solver % PROCEDURE == 0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
         IF ( GotIt ) THEN
            IF ( When == 'after simulation' .OR. When == 'after all' ) THEN
@@ -3546,7 +3546,7 @@
      IF ( .NOT.LastSaved ) THEN
        DO i=1,CurrentModel % NumberOfSolvers
          Solver => CurrentModel % Solvers(i)
-         IF ( Solver % PROCEDURE == 0 ) CYCLE
+         IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
          ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
          When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
          IF ( GotIt ) ExecThis = ( When == 'before saving') 
@@ -3562,7 +3562,7 @@
 
        DO i=1,CurrentModel % NumberOfSolvers
          Solver => CurrentModel % Solvers(i)
-         IF ( Solver % PROCEDURE == 0 ) CYCLE
+         IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
          ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
          When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
          IF ( GotIt ) ExecThis = ( When == 'after saving') 
