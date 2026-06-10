@@ -3444,7 +3444,7 @@ END BLOCK
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE Set_MMG2D_Mesh(Mesh,Solver)
     IMPLICIT NONE
-    TYPE(Mesh_t) :: Mesh
+    TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), OPTIONAL :: Solver
     
     CHARACTER(*), PARAMETER :: FuncName="Set_MMG2D_Mesh"
