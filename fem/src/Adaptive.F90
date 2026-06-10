@@ -1231,7 +1231,7 @@ CONTAINS
            ErrorLimit, minH, maxH, MaxChange, HValue(:)
     LOGICAL :: Coarsening
     TYPE(Mesh_t), POINTER :: NewMesh
-    TYPE(Mesh_t) :: RefMesh
+    TYPE(Mesh_t), POINTER :: RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh, TmpMesh, GatheredMesh
     INTEGER :: i,j,k,n,ierr
