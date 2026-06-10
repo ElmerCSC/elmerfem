@@ -2608,7 +2608,7 @@ CONTAINS
     USE CRSMatrix
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: RefMesh
+    TYPE(Mesh_t), TARGET :: RefMesh
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
     REAL(KIND=dp) :: ErrorIndicator(:), Quant(:), MaxError
