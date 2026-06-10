@@ -104,10 +104,6 @@ IF(CMAKE_BUILD_TYPE)
   MARK_AS_ADVANCED(CMAKE_BUILD_TYPE_UPCASE)
 ENDIF(CMAKE_BUILD_TYPE)
 
-# Output elmerf90-nosh
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90-nosh.in
-  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90-nosh @ONLY)
-
 # Build elmerf90 and elmerld as compiled C binaries (replaces the shell script / .bat)
 IF(WITH_ElmerIce)
   SET(HAVE_ELMERICE_INT 1)
