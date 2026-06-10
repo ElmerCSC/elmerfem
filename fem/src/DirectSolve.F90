@@ -374,8 +374,7 @@ CONTAINS
     SUBROUTINE umf4_l_sym( m,n,rows,cols,values,symbolic,control,iinfo ) &
        BIND(C,name='umf4_l_sym')
        USE, INTRINSIC :: ISO_C_BINDING
-       !INTEGER(CAddrInt) ::m,n,rows(*),cols(*) 
-       INTEGER(UMFPACK_LONG_FORTRAN_TYPE) :: m,n,rows(*),cols(*) !TODO: m,n of are called with AddrInt kind
+       INTEGER(UMFPACK_LONG_FORTRAN_TYPE) :: m,n,rows(*),cols(*)
        INTEGER(CAddrInt) ::  symbolic
        REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
     END SUBROUTINE umf4_l_sym
@@ -383,7 +382,6 @@ CONTAINS
     SUBROUTINE umf4_l_num( rows,cols,values,symbolic,numeric, control,iinfo ) &
        BIND(C,name='umf4_l_num')
        USE, INTRINSIC :: ISO_C_BINDING
-       !INTEGER(CAddrInt) :: rows(*),cols(*)
        INTEGER(UMFPACK_LONG_FORTRAN_TYPE) :: rows(*),cols(*)
        INTEGER(CAddrInt) ::  numeric, symbolic
        REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
@@ -392,7 +390,6 @@ CONTAINS
     SUBROUTINE umf4_l_sol( sys, x, b, numeric, control, iinfo ) &
        BIND(C,name='umf4_l_sol')
        USE, INTRINSIC :: ISO_C_BINDING
-       !INTEGER(CAddrInt) :: sys
        INTEGER(UMFPACK_LONG_FORTRAN_TYPE) :: sys
        INTEGER(CAddrInt) :: numeric
        REAL(C_DOUBLE) :: x(*), b(*), control(*), iinfo(*)
@@ -465,7 +462,7 @@ CONTAINS
         LCols(i) = Cols(i)-1
       END DO
 
-      ln = n ! TODO: Kludge: ln is AddrInt and n is regular INTEGER
+      ln = n
       CALL umf4_l_def( Control )
       CALL umf4_l_sym( ln,ln, LRows, LCols, Values, Symbolic, Control, iInfo )
     ELSE
@@ -555,14 +552,14 @@ CONTAINS
         USE Types
         INTEGER :: n, cmplx, Rows(*), Cols(*)
         REAL(KIND=dp) :: Vals(*)
-        INTEGER(KIND=dp) :: chol
+        INTEGER(KIND=AddrInt) :: chol
      END FUNCTION cholmod_ffactorize
 
      SUBROUTINE cholmod_fsolve(chol, n, x,b) BIND(c,NAME="cholmod_fsolve")
         USE Types
         REAL(KIND=dp) :: x(*), b(*)
         INTEGER :: n
-        INTEGER(KIND=dp) :: chol
+        INTEGER(KIND=AddrInt) :: chol
      END SUBROUTINE cholmod_fsolve
   END INTERFACE
 
@@ -1835,21 +1832,15 @@ CONTAINS
      DO i=1,A % NumberOfRows
        A % mumpsIDL % RHS(i) = b(i)
      END DO
-     ! We could use BLAS here..
-     ! CALL DCOPY(A % NumberOfRows, b, 1, A % mumpsIDL % RHS, 1)
 
      ! SOLUTION PHASE
      A % mumpsIDL % job = 3
      CALL DMumps(A % mumpsIDL)
 
-     ! TODO: If solution is not local, redistribute the solution vector here
-
      ! Set local solution
      DO i=1,A % NumberOfRows
        x(i) = A % mumpsIDL % RHS(i)
      END DO
-     ! We could use BLAS here..
-     ! CALL DCOPY(A % NumberOfRows, A % mumpsIDL % RHS, 1, x, 1)
 
      FreeFactorize = ListGetLogical( Solver % Values, &
          'Linear System Free Factorization', stat )
@@ -1904,14 +1895,10 @@ CONTAINS
        j = j + 1
        A % ZmumpsIDL % RHS(j) = CMPLX(b(i), b(i+1), KIND=dp)
      END DO
-     ! We could use BLAS here..
-     ! CALL DCOPY(A % NumberOfRows, b, 1, A % mumpsIDL % RHS, 1)
 
      ! SOLUTION PHASE
      A % ZmumpsIDL % job = 3
      CALL ZMumps(A % ZmumpsIDL)
-
-     ! TODO: If solution is not local, redistribute the solution vector here
 
      ! Set local solution
      j = 0
@@ -1920,8 +1907,6 @@ CONTAINS
        x(i) = REAL(A % ZmumpsIDL % RHS(j) )
        x(i+1) = AIMAG(A % ZmumpsIDL % RHS(j) )
      END DO
-     ! We could use BLAS here..
-     ! CALL DCOPY(A % NumberOfRows, A % mumpsIDL % RHS, 1, x, 1)
 
      FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
      IF (.NOT. stat) FreeFactorize = .TRUE.
@@ -2015,8 +2000,6 @@ CONTAINS
       A % mumpsIDL % CNTL(3) = 1D-9    ! Null pivot detection threshold
       A % mumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
       A % mumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
-      ! TODO: if needed, here set CNTL(3) and CNTL(5) as parameters for
-      ! more accurate null pivot detection
     END IF
 
     ! Set permutation strategy for Mumps
@@ -2025,13 +2008,10 @@ CONTAINS
       A % mumpsIDL % ICNTL(6) = ptype
     END IF
 
-    ! TODO: Change this if system is larger than local.
-    ! For larger than local systems define global->local numbering
     n = A % NumberofRows
     nz = A % Rows(A % NumberOfRows+1)-1
     A % mumpsIDL % N  = n
     A % mumpsIDL % NZ = nz
-    ! A % mumpsIDL % nz_loc = nz
 
     ! Allocate rows and columns for MUMPS
     ALLOCATE( A % mumpsIDL % IRN(nz), &
@@ -2192,21 +2172,16 @@ CONTAINS
       A % ZmumpsIDL % CNTL(3) = 1D-9     ! Null pivot detection threshold
       A % ZmumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
       A % ZmumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
-      ! TODO: if needed, here set CNTL(3) and CNTL(5) as parameters for
-      ! more accurate null pivot detection
     END IF
 
     ! Set permutation strategy for Mumps
     ptype = ListGetInteger(Solver % Values, 'Mumps Permutation Type', stat)
     IF (stat) A % ZmumpsIDL % ICNTL(6) = ptype
 
-    ! TODO: Change this if system is larger than local.
-    ! For larger than local systems define global->local numbering
     n = A % NumberofRows / 2
     nz = (A % Rows(A % NumberOfRows+1)-1) / 4
     A % ZmumpsIDL % N  = n
     A % ZmumpsIDL % nz = nz
-    ! A % mumpsIDL % nz_loc = nz
 
     ! Allocate rows and columns for MUMPS
     ALLOCATE( A % ZmumpsIDL % IRN(nz), &

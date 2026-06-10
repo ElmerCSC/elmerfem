@@ -1791,7 +1791,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     IF  ( A % MatvecSubr /= 0 ) THEN
       ALLOCATE(Abs_Values(SIZE(A % Values)))
       Abs_Values = ABS(Values)
-      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0) ! TODO: (bug) must be ABS(Values)
+      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0)
       DEALLOCATE(Abs_Values)
       RETURN
     END IF
