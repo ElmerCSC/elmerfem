@@ -27,7 +27,6 @@
 !------------------------------------------------------------------------------
    USE Types
    USE Lists
-   USE DefUtils, ONLY : GetElementFamily
    USE ElementUtils, ONLY : SetParentBasis
    USE ElementDescription
    USE ParallelUtils
@@ -335,7 +334,7 @@
          EigenInd = MAX(1,ListGetElementInteger(EigenInd_h, Element, Found))
 
          n = Element % Type % NumberOfNodes
-         ndofs = MAXVAL(EigenSolver % Def_Dofs(GetElementFamily(Element),:,1))
+         ndofs = MAXVAL(EigenSolver % Def_Dofs(Element % TYPE % ElementCode / 100,:,1))
          np = n * ndofs
          
          m = mGetElementDOFs( DofInds, Element, USolver = EigenSolver )
