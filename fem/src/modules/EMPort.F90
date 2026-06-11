@@ -1173,7 +1173,7 @@ CONTAINS
         IF (UseV) THEN
           DO j=1,3
             ReE(j) = ReE(j) - SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j))
-            ImE(j) = ImE(j) - SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j))
+            ImE(j) = ImE(j) - SUM(Im_local_field(2:np:ndofs)*dBasisdx(1:n,j))
           END DO
           ReV = SUM(Re_local_field(2:np:ndofs)*Basis(1:n))
           ImV = SUM(Im_local_field(2:np:ndofs)*Basis(1:n))
