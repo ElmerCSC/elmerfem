@@ -6047,7 +6047,8 @@ CONTAINS
              DO j=1,n
                k = (j-1) * NDOFs + m
                l = x % Perm(gInd(k))
-
+               IF (l <= 0) CYCLE
+          
                l = x % DOFs * (l-1) + DOF
 
                A % ConstrainedDOF(l) = .TRUE.

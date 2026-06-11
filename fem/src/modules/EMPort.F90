@@ -64,10 +64,13 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   INTEGER :: i,j,soln
   TYPE(ValueList_t), POINTER :: Params, BC, PrimaryParams
   LOGICAL :: Found, PiolaVersion, SecondFamily, SecondOrder
+  LOGICAL :: UseV
   CHARACTER(:), ALLOCATABLE :: sname
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
   
   Params => GetSolverParams()
+
+  UseV = GetLogical(Params, 'Use Potential', Found)
   
   CALL ListAddNewLogical(Params, 'Linear System Complex', .TRUE.)
   CALL ListAddNewInteger(Params, 'Variable DOFs', 2)
@@ -98,24 +101,33 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
 
-    IF (SecondFamily) THEN
-      CALL Warn(Caller, 'The formulation for Second Kind Basis seems numerically unstable')
-    END IF
-    
-    ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
-    ! utilized by the vector Helmholtz model:
-    IF (SecondOrder) THEN
-      IF (SecondFamily) THEN
-        sname = "n:1 e:3 -tri b:3 -tri_face b:3"
+    IF (UseV) THEN
+      IF (PiolaVersion) THEN
+        sname = "n:2 e:1 -quad_face b:2 -quad b:2 -brick b:3"
       ELSE
-        sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
+        sname = "n:2 e:1"
       END IF
-    ELSE IF( SecondFamily ) THEN
-      sname = "n:1 e:2" 
-    ELSE IF (PiolaVersion) THEN
-      sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
     ELSE
-      sname = "n:1 e:1"
+      
+      IF (SecondFamily) THEN
+        CALL Warn(Caller, 'The formulation for Second Kind Basis seems numerically unstable')
+      END IF
+
+      ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
+      ! utilized by the vector Helmholtz model:
+      IF (SecondOrder) THEN
+        IF (SecondFamily) THEN
+          sname = "n:1 e:3 -tri b:3 -tri_face b:3"
+        ELSE
+          sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
+        END IF
+      ELSE IF( SecondFamily ) THEN
+        sname = "n:1 e:2" 
+      ELSE IF (PiolaVersion) THEN
+        sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
+      ELSE
+        sname = "n:1 e:1"
+      END IF
     END IF
     CALL Info( Caller,'Setting element type: '//TRIM(sname))
     CALL ListAddString(Params, "Element", TRIM(sname) )      
@@ -174,7 +186,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: Params, BC
   TYPE(Element_t), POINTER :: Element
   LOGICAL :: PiolaVersion, EigenProblem, CalculateNodal, Found, MeActive
-  LOGICAL :: Output_Z
+  LOGICAL :: Output_Z, UseV
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
       EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
@@ -216,6 +228,8 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     CALL Fatal(Caller, 'Complex field, specify two DOFs instead of '//I2S(DOFs))
   END IF
 
+  UseV = GetLogical(Params, 'Use Potential', Found)
+  
   MaxPort = 0
   BetaSum = 0.0_dp
   DO i = 1,Model % NumberOfBCs
@@ -332,8 +346,12 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         END SELECT
       END IF
 #endif
-      
-      CALL LocalMatrix(Element, n, nd)
+
+      IF (UseV) THEN
+        CALL LocalMatrix_With_Potentials(Element, n, nd)
+      ELSE
+        CALL LocalMatrix(Element, n, nd)
+      END IF
     END DO
   
     CALL DefaultFinishBulkAssembly()
@@ -407,7 +425,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
           IF(MaxPort>0) THEN
             IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
           END IF
-
+          
           IF (.NOT. ListGetLogical(BC, 'Calculate Impedance', Found)) CYCLE
         END IF
           
@@ -711,6 +729,160 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+! This assembly routine corresponds to the case where the tangential electric
+! field is decomposed by using potentials as E_T = A_T - grad V.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix_With_Potentials(Element, n, nd)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: n, nd
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP    
+    INTEGER :: m, allocstat, t
+    INTEGER :: i, j, p, q, vdofs
+    LOGICAL :: Stat, Found, GotNu, GotEps
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:), dBasisdx(:,:), WBasis(:,:), CurlWBasis(:,:)
+    COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: Stiff(:,:), Mass(:,:), Force(:)
+    REAL(KIND=dp) :: weight, DetJ, CondAtIp
+    COMPLEX(KIND=dp) :: Nu, Eps
+
+    INTEGER :: ndofs, np
+!------------------------------------------------------------------------------
+    
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree = EdgeBasisDegree)
+      
+    ! Allocate storage if needed
+    IF (.NOT. ALLOCATED(Basis)) THEN
+      m = Mesh % MaxElementDofs
+      ALLOCATE(WBasis(m,3), CurlWBasis(m,3), Basis(m), dBasisdx(m,3), Stiff(m,m), Mass(m,m), &
+          Force(m), STAT=allocstat)      
+      IF (allocstat /= 0) CALL Fatal(Caller, 'Local storage allocation failed')
+    END IF
+
+    CALL GetElementNodes(Nodes, Element)
+
+    Stiff = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+    Mass = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+    Force = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+    GotNu = .FALSE.
+    GotEps = .FALSE.
+
+    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    np = n * ndofs
+    
+    ! The number of DOFs for one vector FE field  
+    vdofs = nd - np
+
+    DO t=1,IP % n
+      !--------------------------------------------------------------
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+          detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr)
+      Weight = IP % s(t) * DetJ
+
+      ! This is a little strange since we may have the parameters defined either in the material
+      ! related to the boundary or its parent.
+      ! For the 2nd etc. integration points we should be consistent. 
+      IF(t==1 .OR. GotNu) THEN
+        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)      
+      END IF
+      IF(.NOT. GotNu) Nu = ListGetElementRealParent(NuCoeff_h, Basis, Element, Found )
+      IF( GotNu .OR. Found ) THEN
+        Nu = mu0inv * Nu
+      ELSE
+        Nu = mu0inv
+      END IF
+
+      IF(t==1 .OR. GotEps) THEN
+        Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, GotEps, GaussPoint = t)        
+      END IF
+      IF(.NOT. GotEps ) Eps = ListGetElementRealParent( EpsCoeff_h, Basis, Element, Found ) 
+      IF( GotEps .OR. Found ) THEN
+        Eps = Eps0 * Eps 
+      ELSE
+        Eps = Eps0 
+      END IF
+      
+      maxmu = MAX(maxmu, REAL(1/Nu))
+      maxeps = MAX(maxeps, REAL(eps))
+      
+      DO p = 1,n
+        i = (p-1)*ndofs + 1
+        DO q = 1,n
+          j = (q-1)*ndofs + 1
+
+          ! The scalar wave equation operator for the scaled E_z:
+          Stiff(i,j) = Stiff(i,j) + (Nu * SUM(dBasisdx(q,:) * dBasisdx(p,:)) - &
+              Omega**2 * Eps * Basis(q) * Basis(p)) * weight 
+          
+          ! The operator -eps I for the scalar variable related to E_z
+          !Mass(i,j) = Mass(i,j) + weight * Eps * &
+          !    Basis(p) * Basis(q)
+
+        END DO
+        
+        ! The coupling between the vector field and the scalar variable E_z
+        DO q = 1,vdofs
+          j = np + q
+          Stiff(i,j) = Stiff(i,j) - Nu * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+        END DO
+
+        DO q = 1,n
+          j = (q-1)*ndofs + 2
+          Stiff(i,j) = Stiff(i,j) + Nu * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
+        END DO
+
+
+        ! The rest of this loop is given by the Lorenz condition:
+        i = (p-1)*ndofs + 2
+        DO q = 1,n
+          j = (q-1)*ndofs + 2
+          Stiff(i,j) = Stiff(i,j) - weight * Omega**2 * Eps / Nu * &
+              Basis(p) * Basis(q)
+        END DO
+        
+        DO q = 1,vdofs
+          j = np + q
+          Stiff(i,j) = Stiff(i,j) + SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+        END DO
+        
+      END DO
+      
+      DO p = 1,vdofs
+        i = np + p
+        DO q = 1,vdofs
+          j = np + q
+          ! The vector wave equation operator:
+          Stiff(i,j) = Stiff(i,j) + weight * (Nu * SUM(CurlWBasis(q,:) * CurlWBasis(p,:)) - &
+              Omega**2 * Eps * SUM(WBasis(q,:) * WBasis(p,:)))
+          ! NOTE the selection of sign (to obtain a semidefinite matrix):
+          Mass(i,j) = Mass(i,j) + weight * Nu * SUM(WBasis(q,:) * WBasis(p,:))
+        END DO
+
+        DO q = 1,n
+          j = (q-1)*ndofs + 1
+          Mass(i,j) = Mass(i,j) - weight * Nu * SUM(dBasisdx(q,:) * WBasis(p,:))
+          
+          j = (q-1)*ndofs + 2
+          Stiff(i,j) = Stiff(i,j) + weight * Omega**2 * Eps * SUM(dBasisdx(q,:) * WBasis(p,:))
+          Mass(i,j) = Mass(i,j) - weight * Nu * SUM(dBasisdx(q,:) * WBasis(p,:))
+        END DO
+      END DO
+    END DO
+
+    !Mass = -Mass
+    
+    CALL DefaultUpdateEquations(Stiff, Force)
+    CALL DefaultUpdateMass(Mass)
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix_With_Potentials
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 ! Calculate integrals over an element on a port surface so that impedance
 ! can be evaluated. 
 !------------------------------------------------------------------------------
@@ -726,8 +898,8 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: Stat, Found, GotNu 
-    INTEGER :: m, allocstat, vdofs
-    INTEGER :: t, i
+    INTEGER :: m, allocstat, vdofs, np, ndofs
+    INTEGER :: t, i, j
     REAL(KIND=dp), ALLOCATABLE, SAVE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Re_local_field(:), Im_local_field(:)
     REAL(KIND=dp) :: weight, DetJ
@@ -747,8 +919,11 @@ CONTAINS
 
     CALL GetElementNodes(Nodes, Element)
 
+    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    np = n * ndofs
+    
     ! The number of DOFs for one vector FE field  
-    vdofs = nd - n
+    vdofs = nd - np
 
     CALL GetScalarLocalEigenmode(Re_local_field, UElement = Element, &
           USolver = SolverPtr, NoEigen = ModeIndex, ComplexPart=.FALSE.)
@@ -777,13 +952,29 @@ CONTAINS
 
       EF = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       DO i=1,vdofs
-        EF(:) = EF(:) + CMPLX(Re_local_field(n+i), Im_local_field(n+i), KIND=dp) * WBasis(i,:)
+        EF(:) = EF(:) + CMPLX(Re_local_field(np+i), Im_local_field(np+i), KIND=dp) * WBasis(i,:)
       END DO
 
+      IF (UseV) THEN
+        DO j=1,3
+          EF(j) = EF(j) - CMPLX(SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j)), &
+              SUM(Im_local_field(2:np:ndofs)*dBasisdx(1:n,j)), KIND=dp)
+        END DO
+      END IF
+
       gradEz = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
-      DO i=1,n
-        gradEz(:) = gradEz(:) + CMPLX(Re_local_field(i), Im_local_field(i), KIND=dp) * dBasisdx(i,:)
-      END DO
+      IF (UseV) THEN
+        DO j=1,3
+          gradEz(j) = gradEz(j) + CMPLX(SUM(Re_local_field(1:np:ndofs) * dBasisdx(1:n,j)), &
+              SUM(Im_local_field(1:np:ndofs) * dBasisdx(1:n,j)), KIND=dp)
+        END DO
+        gradEz(:) =  gradEz(:) * im * Beta
+      ELSE
+        DO i=1,n
+          gradEz(:) = gradEz(:) + CMPLX(Re_local_field(i), Im_local_field(i), KIND=dp) * dBasisdx(i,:)
+        END DO
+        gradEz(:) = gradEz(:) / (im * Beta)
+      END IF
       
       E2 = E2 + SUM(EF*CONJG(EF)) * weight
       P = P + Nu*Beta/Omega * SUM(EF*CONJG(EF)) * weight + Nu/(im * omega) * SUM(EF*CONJG(gradEz)) * weight
@@ -807,7 +998,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
-    INTEGER :: i, j, k, n, p, q, nd, normal_ind(1), DOFs, vdofs
+    INTEGER :: i, j, k, n, p, q, nd, normal_ind(1), DOFs, vdofs, np, ndofs
     INTEGER :: Active, t
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Mass(:,:), LForce(:,:), GForce(:,:)  
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
@@ -815,7 +1006,8 @@ CONTAINS
     REAL(KIND=dp), POINTER :: FSave(:) => NULL()
     CHARACTER(:), ALLOCATABLE :: eqname    
     REAL(KIND=dp) :: u, v, w, detJ, s, xq, Norm, TotNorm
-    REAL(KIND=dp) :: ReEz, ImEz, ReE(3), ImE(3), ReV(3), ImV(3), Normal(3), ReL(3), ImL(3)
+    REAL(KIND=dp) :: ReEz, ImEz, ReE(3), ImE(3), Normal(3), ReL(3), ImL(3)
+    REAL(KIND=dp) :: ReV, ImV
     REAL(KIND=dp) :: mu0inv, eps0, omega
     COMPLEX(KIND=dp) :: Ez, EigVal
     LOGICAL :: Found, Stat
@@ -845,7 +1037,12 @@ CONTAINS
       PostSolver % Def_Dofs(:,:,1) = 1
       
       n = Mesh % MaxElementDOFs   
-      dofs = 6
+      IF (UseV) THEN
+        dofs = 8
+      ELSE
+        dofs = 6
+      END IF
+      
       ALLOCATE(MASS(n,n), LFORCE(n,DOFs), WBasis(n,3), &
           CurlWBasis(n,3), Basis(n), dBasisdx(n,3), PermIndexes(n), &
           Re_Local_field(n), Im_Local_field(n))
@@ -880,9 +1077,14 @@ CONTAINS
     PostSolver % Variable => VariableGet( Mesh % Variables,'EM2D tmp')
     IF(.NOT. ASSOCIATED(PostSolver % Variable)) CALL Fatal(Caller,'Post solver field not found!')
 
-    ! Field including all the nodal components. 
-    CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
-        'EF2D[EF2D Re:3 EF2D Im:3]',6,Perm = NodalPerm, Secondary = .TRUE., Output = .TRUE. )
+    ! Field including all the nodal components.
+    IF (UseV) THEN
+      CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
+          'EF2D[EF2D Re:3 EF2D Im:3 Re V:1 Im V:1]',8,Perm = NodalPerm, Secondary = .TRUE., Output = .TRUE. )
+    ELSE
+      CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
+          'EF2D[EF2D Re:3 EF2D Im:3]',6,Perm = NodalPerm, Secondary = .TRUE., Output = .TRUE. )
+    END IF
     EF => VariableGet( Mesh % Variables,'EF2D')
     IF(.NOT. ASSOCIATED(EF) ) CALL Fatal(Caller,'Could not find field: EF2D!')
     
@@ -916,8 +1118,11 @@ CONTAINS
       n = GetElementNOFNodes()
       nd = GetElementNOFDOFs(USolver=Solver)
 
+      ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+      np = n * ndofs
+      
       ! The number of DOFs for one vector FE field  
-      vdofs = nd - n
+      vdofs = nd - np
       CALL GetElementNodes( Nodes, Element, Solver )
 
       ! At the moment we assume that the wave propagates in the direction of some
@@ -948,18 +1153,31 @@ CONTAINS
 
         s = IP % s(i) * detJ
 
-        ReEz = SUM( Re_local_field(1:n) * Basis(1:n) )
-        ImEz = SUM( Im_local_field(1:n) * Basis(1:n) )
-        Ez = CMPLX(ReEz, ImEz, kind=dp) / (im * Beta)
+        ReEz = SUM( Re_local_field(1:np:ndofs) * Basis(1:n) )
+        ImEz = SUM( Im_local_field(1:np:ndofs) * Basis(1:n) )
+        IF (UseV) THEN
+          Ez = CMPLX(ReEz, ImEz, kind=dp) * im * Beta
+        ELSE
+          Ez = CMPLX(ReEz, ImEz, kind=dp) / (im * Beta)
+        END IF
         ReEz = REAL(Ez)
         ImEz = AIMAG(Ez)
 
         ReE(:) = 0.0_dp
         ImE(:) = 0.0_dp
         DO p=1,vdofs
-          ReE(:) = ReE(:) + Re_local_field(n+p) * WBasis(p,:)
-          ImE(:) = ImE(:) + Im_local_field(n+p) * WBasis(p,:)
+          ReE(:) = ReE(:) + Re_local_field(np+p) * WBasis(p,:)
+          ImE(:) = ImE(:) + Im_local_field(np+p) * WBasis(p,:)
         END DO
+
+        IF (UseV) THEN
+          DO j=1,3
+            ReE(j) = ReE(j) - SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j))
+            ImE(j) = ImE(j) - SUM(Im_local_field(2:np:ndofs)*dBasisdx(1:n,j))
+          END DO
+          ReV = SUM(Re_local_field(2:np:ndofs)*Basis(1:n))
+          ImV = SUM(Im_local_field(2:np:ndofs)*Basis(1:n))
+        END IF
         
         ReL = ReE + Normal * ReEz
         IML = ImE + Normal * ImEz
@@ -970,11 +1188,19 @@ CONTAINS
           END DO
           LForce(p,1:3) = LForce(p,1:3) + s * ReL * Basis(p)
           LForce(p,4:6) = LForce(p,4:6) + s * ImL * Basis(p)
+          IF (UseV) THEN
+            LForce(p,7) = LForce(p,7) + s * ReV * Basis(p)
+            LForce(p,8) = LForce(p,8) + s * ImV * Basis(p)
+          END IF
         END DO
       END DO
 
-      PermIndexes(1:n) = PostSolver % Variable % Perm(Element % NodeIndexes)
-      
+      IF (UseV) THEN
+        PermIndexes(1:n) = PostSolver % Variable % Perm(2*Element % NodeIndexes-1)
+      ELSE
+        PermIndexes(1:n) = PostSolver % Variable % Perm(Element % NodeIndexes)
+      END IF
+        
       ! Assemble mass matrix and the 1st component      
       CALL UpdateGlobalEquations( PostSolver % Matrix, Mass, PostSolver % Matrix % rhs, &
           LForce(1:n,1),n,1,PermIndexes(1:n), UElement=Element)      
@@ -987,7 +1213,7 @@ CONTAINS
 
     END DO
 
-    ! We will assembly until the last mode has been added.
+    ! We will assemble until the last mode has been added.
     IF(PortInd < MaxPort) RETURN
     
     TotNorm = 0.0_dp

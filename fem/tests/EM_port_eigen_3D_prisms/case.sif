@@ -4,8 +4,6 @@
 ! for the 3-D model are then created by using the propagation parameter and the
 ! corresponding eigenfunction determined by the 2-D solution.
 !
-! NOTE: This is WIP and this approach is not yet ready for serious use
-
 ! The original author: M.M. 
 !
 
