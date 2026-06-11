@@ -54,9 +54,9 @@ int main(int argc, char *argv[])
 #endif
         push(join("-L", elib));
         free(elib);
-        push("-lElmerIceSolvers");
-        push("-lElmerIceUSF");
-        push("-lElmerIceUtils");
+        push(join("-l:", ELMERF90_ELMERICESOLVERS_LIB));
+        push(join("-l:", ELMERF90_ELMERICEUSF_LIB));
+        push(join("-l:", ELMERF90_ELMERICEUTILS_LIB));
     }
 #else
     fprintf(stderr, "no elmerice\n");
