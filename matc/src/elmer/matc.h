@@ -190,6 +190,10 @@ typedef struct variable
 /* True when VARIABLE, MATRIX and data are all in one block
  * (combined allocation from var_temp_new for 1x1 double). */
 #define VAR_SCALAR_COMBINED(v)    ((v)->this == (MATRIX *)((char *)(v) + VARIABLESIZE))
+/* True when VARIABLE is a pool-backed view wrapper (borrows its MATRIX pointer).
+ * Stored in a high bit of 'changed' which is only meaningful for named variables. */
+#define VAR_WRAPPER_POOL_FLAG  0x40000000
+#define VAR_WRAPPER_POOLED(v)  ((v)->changed & VAR_WRAPPER_POOL_FLAG)
 
 #define TYPE_DOUBLE  0
 #define TYPE_COMPLEX 1       /* this is not */

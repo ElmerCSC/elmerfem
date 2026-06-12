@@ -210,6 +210,7 @@ void var_print( VARIABLE *);
 
 VARIABLE *var_temp_copy( VARIABLE *);
 VARIABLE *var_temp_new( int, int, int);
+VARIABLE *var_wrapper_new( MATRIX *);
 void var_delete_temp( VARIABLE *);
 void var_delete_temp_el( VARIABLE *);
 

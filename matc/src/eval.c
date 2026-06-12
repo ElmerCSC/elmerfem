@@ -226,9 +226,7 @@ VARIABLE *evaltree(TREE *root)
       */
       else if ((tmp1 = var_check(SDATA(root))) != (VARIABLE *)NULL)
       {
-        tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
-        tmp ->this = tmp1->this;
-        REFCNT(tmp)++;
+        tmp = var_wrapper_new(tmp1->this);
         if (par != NULL)
         {
           subs = par; par = NULL;
@@ -294,9 +292,7 @@ VARIABLE *evaltree(TREE *root)
                     constant matrix
     *******************************************************/
     case ETYPE_CONST:
-      tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
-      tmp->this = CDATA(root)->this;
-      REFCNT(tmp)++;
+      tmp = var_wrapper_new(CDATA(root)->this);
       break;
 
     /******************************************************

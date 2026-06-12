@@ -126,6 +126,49 @@ static void scalar_pool_push(VARIABLE *ptr)
     }
 }
 
+/* --------------------------------------------------------------------------
+ * Per-thread freelist for plain VARIABLE view-wrappers (no embedded MATRIX).
+ * Used for ETYPE_NAME and ETYPE_CONST results that borrow an existing MATRIX.
+ * --------------------------------------------------------------------------*/
+#define WRAPPER_POOL_CAP  32
+
+static VARIABLE *wrapper_pool_head  = NULL;
+static int       wrapper_pool_count = 0;
+#pragma omp threadprivate(wrapper_pool_head, wrapper_pool_count)
+
+static void wrapper_pool_push(VARIABLE *ptr)
+{
+    if (wrapper_pool_count < WRAPPER_POOL_CAP) {
+        NEXT(ptr) = (struct variable *)wrapper_pool_head;
+        wrapper_pool_head = ptr;
+        wrapper_pool_count++;
+    } else {
+        free(ptr);
+    }
+}
+
+VARIABLE *var_wrapper_new(MATRIX *m)
+/*======================================================================
+?  Return a pool-backed VARIABLE view-wrapper borrowing MATRIX m.
+|  Increments m->refcount. Free with var_delete_temp / var_delete_temp_el.
+^=====================================================================*/
+{
+    VARIABLE *ptr;
+    if (wrapper_pool_head) {
+        ptr = wrapper_pool_head;
+        wrapper_pool_head = (VARIABLE *)NEXT(ptr);
+        wrapper_pool_count--;
+    } else {
+        ptr = (VARIABLE *)malloc(VARIABLESIZE);
+    }
+    NEXT(ptr) = NULL;
+    NAME(ptr) = NULL;
+    ptr->changed = VAR_WRAPPER_POOL_FLAG;
+    ptr->this = m;
+    REFCNT(ptr)++;
+    return ptr;
+}
+
 VARIABLE *const_new(char *name, int type, int nrow, int ncol)
 /*======================================================================
 ?  return a new global VARIABLE given name, type, and matrix size.
@@ -382,21 +425,40 @@ VARIABLE *var_vdelete(VARIABLE *var)
 
 void var_free(void)
 {
-    VARIABLE *ptr;
+    VARIABLE *ptr, *ptrn;
 
-    for( ptr = (VARIABLE *)VAR_HEAD; ptr; ptr = NEXT(ptr) )
+    for ( ptr = (VARIABLE *)VAR_HEAD; ptr; )
     {
-        if ( --REFCNT(ptr) == 0 )
-        {
-            if (!MAT_DATA_EMBEDDED(ptr->this))
-                FREEMEM((char *)MATR(ptr));
-            FREEMEM((char *)ptr->this);
+        ptrn = NEXT(ptr);
+        if ( NAME(ptr) ) FREEMEM(NAME(ptr));
+
+        if (VAR_SCALAR_COMBINED(ptr)) {
+            /* VARIABLE+MATRIX+data packed in one plain-malloc block — no ALLOC_LIST
+             * header, so FREEMEM would subtract 16 bytes and corrupt the heap. */
+            free((char *)ptr);
+        } else if (VAR_WRAPPER_POOLED(ptr)) {
+            /* VARIABLE is plain-malloc; MATRIX is shared (owned by another var). */
+            if ( --REFCNT(ptr) == 0 ) {
+                if (!MAT_DATA_EMBEDDED(ptr->this))
+                    FREEMEM((char *)MATR(ptr));
+                FREEMEM((char *)ptr->this);
+            }
+            free((char *)ptr);
+        } else {
+            /* Normal ALLOCMEM-allocated VARIABLE — FREEMEM is correct. */
+            if ( --REFCNT(ptr) == 0 ) {
+                if (!MAT_DATA_EMBEDDED(ptr->this))
+                    FREEMEM((char *)MATR(ptr));
+                FREEMEM((char *)ptr->this);
+            }
+            FREEMEM((char *)ptr);
         }
-     }
+        ptr = ptrn;
+    }
 
-     lst_purge(VARIABLES);
+    listheaders[VARIABLES].next = (LIST *)NULL;
 
-     return;
+    return;
 }
 
 void const_free(void)
@@ -562,8 +624,15 @@ void var_delete_temp_el( VARIABLE *ptr )
         if ( --REFCNT(ptr) == 0 )
         {
             if (VAR_SCALAR_COMBINED(ptr)) {
-                /* Pool-backed block: return to freelist (or free if full). */
+                /* Combined scalar pool block: return VARIABLE+MATRIX+data. */
                 scalar_pool_push(ptr);
+            } else if (VAR_WRAPPER_POOLED(ptr)) {
+                /* View wrapper: MATRIX has no more references — free it,
+                 * then return the bare VARIABLE block to the wrapper pool. */
+                if (!MAT_DATA_EMBEDDED(ptr->this))
+                    FREEMEM((char *)MATR(ptr));
+                FREEMEM((char *)ptr->this);
+                wrapper_pool_push(ptr);
             } else {
                 if (!MAT_DATA_EMBEDDED(ptr->this))
                     FREEMEM((char *)MATR(ptr));
@@ -571,11 +640,13 @@ void var_delete_temp_el( VARIABLE *ptr )
                 FREEMEM((char *)ptr);
             }
         } else {
-            /* REFCNT > 0: another variable still references this MATRIX.
-             * Free the VARIABLE wrapper only (not the MATRIX data).
-             * Combined scalars are never shared, so this branch is dead
-             * for them — do nothing rather than corrupt the pool. */
-            if (!VAR_SCALAR_COMBINED(ptr))
+            /* REFCNT > 0: MATRIX still referenced by another variable.
+             * Recycle the VARIABLE wrapper only (not the MATRIX). */
+            if (VAR_SCALAR_COMBINED(ptr))
+                /* never shared — dead branch */;
+            else if (VAR_WRAPPER_POOLED(ptr))
+                wrapper_pool_push(ptr);
+            else
                 FREEMEM((char *)ptr);
         }
     }
