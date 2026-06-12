@@ -891,7 +891,7 @@ CONTAINS
 !>  lowercase.The logical line can continue the several physical lines by adding
 !>  the backslash (\) mark at the end of a physical line. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ReadAndTrim( Unit,str,echo,literal,noeval ) RESULT(l)
+   FUNCTION ReadAndTrim( Unit,str,echo,literal,noeval ) RESULT(l)
 !------------------------------------------------------------------------------
      INTEGER :: Unit                       !< Fortran unit number to read from
      CHARACTER(LEN=:), ALLOCATABLE :: str  !< The string read from the file
@@ -900,22 +900,24 @@ CONTAINS
      LOGICAL, OPTIONAL :: noeval
      LOGICAL :: l                          !< Success of the read operation
 !------------------------------------------------------------------------------     
-     INTEGER, PARAMETER :: MAXLEN = 163840
+     INTEGER, PARAMETER :: IncludeUnitBase = 28, MAXLEN = 163840
      
      CHARACTER(LEN=:), ALLOCATABLE :: temp
      CHARACTER(LEN=12) :: tmpstr
-     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr = ' ', matcstr=' ' , IncludePath=' '
+     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr, matcstr
+     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' '
 
      LOGICAL :: InsideQuotes, OpenSection=.FALSE., DoEval
-     INTEGER :: i,j,k,m,ValueStarts=0,inlen,ninlen,outlen,IncludeUnit=28,IncludeUnitBase=28
+     INTEGER :: i,j,k,m,ios,ValueStarts=0,inlen,ninlen,outlen,IncludeUnit=IncludeUnitBase
 
      CHARACTER(LEN=MAX_NAME_LEN) :: Prefix = '  '
 
      INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A'),Tab=9
-     CHARACTER(LEN=MAXLEN) :: tmatcstr, tcmdstr
      INTEGER :: tninlen
+     CHARACTER(LEN=MAXLEN) :: tmatcstr, tcmdstr
 
-     SAVE ReadStr, ValueStarts, Prefix, OpenSection
+     SAVE ReadStr, ValueStarts, Prefix, OpenSection, IncludeUnit, IncludePath
+!------------------------------------------------------------------------------     
 
      IF ( PRESENT(literal) ) literal=.FALSE.
      l = .TRUE.
@@ -940,31 +942,33 @@ CONTAINS
         tmpstr = ' '
         DO WHILE( .TRUE. )
           IF ( IncludeUnit < IncludeUnitBase ) THEN
-            READ( IncludeUnit,'(A)',END=1,ERR=1 ) readstr
-            GO TO 2
-1           CLOSE(IncludeUnit)
-            IncludeUnit = IncludeUnit+1
-            READ( IncludeUnit,'(A)',END=10,ERR=10 ) readstr
-2           CONTINUE
+            READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) THEN
+              CLOSE(IncludeUnit)
+              IncludeUnit = IncludeUnit+1
+              READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+              IF ( ios /= 0 ) GO TO 10
+            END IF
           ELSE
-            READ( Unit,'(A)',END=10,ERR=10 ) readstr
+            READ( Unit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) GO TO 10
           END IF
 
           readstr = ADJUSTL(readstr)
 
-          DO k=1,12
+          DO k=1,LEN('include path')
             j = ICHAR(readstr(k:k))
             IF ( j >= A .AND. j<= Z ) THEN
-              Tmpstr(k:k) = CHAR(j+U2L)
+              tmpstr(k:k) = CHAR(j+U2L)
             ELSE
               tmpstr(k:k) = readstr(k:k)
             END IF
           END DO
 
-          IF ( SEQL(Tmpstr, 'include path') ) THEN
+          IF ( SEQL(tmpstr, 'include path') ) THEN
             k = LEN_TRIM(readstr)
             IncludePath(1:k-13) = readstr(14:k)
-            Tmpstr = ''
+            tmpstr = ''
           ELSE
             EXIT
           END IF
@@ -997,12 +1001,13 @@ CONTAINS
           
           CALL OpenIncludeFile( IncludeUnit, TRIM(readstr(9:)), IncludePath )
           
-          READ( IncludeUnit,'(A)',END=3,ERR=3 ) readstr
-          GO TO 4
-3         CLOSE(IncludeUnit)
-          IncludeUnit = IncludeUnit+1
-          READ( Unit,'(A)',END=10,ERR=10 ) readstr
-4         CONTINUE
+          READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+          IF ( ios /= 0 ) THEN
+            CLOSE(IncludeUnit)
+            IncludeUnit = IncludeUnit+1
+            READ( Unit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) GO TO 10
+          END IF
         END IF
         ninlen = LEN_TRIM(readstr)
      ELSE
@@ -1146,14 +1151,14 @@ CONTAINS
 
      IF ( i <= inlen ) THEN
        Prefix = ' '
-       IF ( ReadStr(i:i) == '=' ) THEN
+       IF ( readstr(i:i) == '=' ) THEN
          ValueStarts = i + 1
-       ELSE IF ( ReadStr(i:i) == ';' ) THEN
+       ELSE IF ( readstr(i:i) == ';' ) THEN
          ValueStarts = i + 1
-       ELSE IF ( ReadStr(i:i) == '(' ) THEN
+       ELSE IF ( readstr(i:i) == '(' ) THEN
          ValueStarts = i + 1
          Prefix = 'Size'
-       ELSE IF ( ReadStr(i:i+1) == '::' ) THEN
+       ELSE IF ( readstr(i:i+1) == '::' ) THEN
          ValueStarts = i + 2
          Prefix = '::'
        ELSE IF ( ICHAR(readstr(i:i)) < 32 ) THEN
