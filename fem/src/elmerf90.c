@@ -58,10 +58,10 @@ int main(int argc, char *argv[])
         push(join("-rpath=", elib));
 #endif
         push(join("-L", elib));
-        push(join(elib,"/ElmerIceSolvers.so"));
-        push(join(elib,"/ElmerIceUSF.so"));
-        push(join(elib,"/ElmerIceUtils.so"));
         free(elib);
+        push(join("-l:", ELMERF90_ELMERICESOLVERS_LIB));
+        push(join("-l:", ELMERF90_ELMERICEUSF_LIB));
+        push(join("-l:", ELMERF90_ELMERICEUTILS_LIB));
     }
 #else
     fprintf(stderr, "no elmerice\n");
