@@ -207,10 +207,9 @@ CONTAINS
     END IF
 #else
 
-! This is a dirty fix for Windows compiler (msys2+gfortran+MSMPI) where this
-! caused problems. However, likelihood of this having to be used under
-! Windows is close to zero. 
-#ifndef WIN32
+! MPI_INITIALIZED fails on MSMPI (msys2+gfortran) before MPI_Init is called.
+! Use _WIN32 which is defined by both gfortran-MinGW and MSVC, unlike WIN32.
+#ifndef _WIN32
     CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
     IF ( ierr /= 0 ) RETURN
 #endif

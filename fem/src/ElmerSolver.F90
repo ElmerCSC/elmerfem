@@ -156,6 +156,7 @@
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
 
+     WRITE(*,*) 'Started inside library code'; FLUSH(6)
      ! Start the watches, store later
      !--------------------------------
      RT0 = RealTime()
@@ -163,7 +164,9 @@
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
+!    WRITE(*,*) 'Going parallel initialization'; FLUSH(6)
      IF(FirstTime)  ParallelEnv => ParallelInit()
+!    WRITE(*,*) 'Back from parallel initialization'; FLUSH(6)
 
      OutputPE = -1
      IF( ParEnv % MyPe == 0 ) THEN
