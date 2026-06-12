@@ -164,9 +164,9 @@
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
-!    WRITE(*,*) 'Going parallel initialization'; FLUSH(6)
+     WRITE(*,*) 'Going parallel initialization'; FLUSH(6)
      IF(FirstTime)  ParallelEnv => ParallelInit()
-!    WRITE(*,*) 'Back from parallel initialization'; FLUSH(6)
+     WRITE(*,*) 'Back from parallel initialization'; FLUSH(6)
 
      OutputPE = -1
      IF( ParEnv % MyPe == 0 ) THEN
