@@ -74,9 +74,12 @@ MODULE ElemInfo
              ReorderingAndSignReversionsData, &
              EdgeWhitneyComponents2D, FaceWhitneyComponents2D, WeightedWhitneyForms, &
              GetEdgeBasis, mGetElementDOFs, &
-             CheckMetric, ElementMetric, ElementMetricQP, ElementMetricVec, &
+             ElementMetric, ElementMetricVec, &
              GlobalFirstDerivativesInternal, GlobalFirstDerivatives, &
              GlobalSecondDerivatives
+#ifdef HAVE_QP
+   PUBLIC :: CheckMetric, ElementMetricQP
+#endif
 
 CONTAINS
 
