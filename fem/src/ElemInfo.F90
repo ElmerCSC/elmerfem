@@ -342,7 +342,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
      LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      INTEGER, OPTIONAL :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
-	                                                !! May be used with P element basis functions
+                                                    !! May be used with P element basis functions
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referential description of the spatial curl of B
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
@@ -1358,7 +1358,7 @@ CONTAINS
      ! Get global first derivatives:
      !------------------------------
      IF ( PRESENT(dBasisdx) ) THEN
-       dBasisdx(1:q,1:cdim) = 0.0d0
+       dBasisdx = 0.0d0
        DO k=1,dim
          DO j=1,cdim
            DO i=1,q
@@ -1679,31 +1679,41 @@ CONTAINS
            wWrk(1:ncl) = w(ll:lln)
          END IF
 
-         SELECT CASE(Element % TYPE % ElementCode / 100)
-         CASE(2)
-           nbp = 0; CALL H1Basis_LineNodal(ncl, uWrk, nbmax, BasisWrk, nbp)
-           nbp = 0; CALL H1Basis_dLineNodal(ncl, uWrk, nbmax, dBasisdxWrk, nbp)
-         CASE(3)
-           CALL H1Basis_TriangleNodal(ncl, uWrk, vWrk, nbmax, BasisWrk)
-           CALL H1Basis_dTriangleNodal(ncl, uWrk, vWrk, nbmax, dBasisdxWrk)
-         CASE(4)
-           nbp = 0; CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, nbmax, BasisWrk, nbp)
-           nbp = 0; CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, nbmax, dBasisdxWrk, nbp)
-         CASE(5)
-           CALL H1Basis_TetraNodal(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk)
-           CALL H1Basis_dTetraNodal(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk)
-         CASE(7)
-           CALL H1Basis_WedgeNodal(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk)
-           CALL H1Basis_dWedgeNodal(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk)
-         CASE(8)
-           nbp = 0; CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk, nbp)
-           nbp = 0; CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk, nbp)
-         CASE DEFAULT
+         ! H1Basis vectorized dispatch: only safe for minimum-node (linear) elements
+         ! (type >= nodes means no higher-order nodes to fill).
+         ! Higher-order elements fall through to the scalar loop.
+         IF (Element % TYPE % ElementCode/100 >= MODULO(Element % TYPE % ElementCode, 100)) THEN
+           SELECT CASE(Element % TYPE % ElementCode / 100)
+           CASE(2)
+             nbp = 0; CALL H1Basis_LineNodal(ncl, uWrk, nbmax, BasisWrk, nbp)
+             nbp = 0; CALL H1Basis_dLineNodal(ncl, uWrk, nbmax, dBasisdxWrk, nbp)
+           CASE(3)
+             CALL H1Basis_TriangleNodal(ncl, uWrk, vWrk, nbmax, BasisWrk)
+             CALL H1Basis_dTriangleNodal(ncl, uWrk, vWrk, nbmax, dBasisdxWrk)
+           CASE(4)
+             nbp = 0; CALL H1Basis_QuadNodal(ncl, uWrk, vWrk, nbmax, BasisWrk, nbp)
+             nbp = 0; CALL H1Basis_dQuadNodal(ncl, uWrk, vWrk, nbmax, dBasisdxWrk, nbp)
+           CASE(5)
+             CALL H1Basis_TetraNodal(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk)
+             CALL H1Basis_dTetraNodal(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk)
+           CASE(7)
+             CALL H1Basis_WedgeNodal(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk)
+             CALL H1Basis_dWedgeNodal(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk)
+           CASE(8)
+             nbp = 0; CALL H1Basis_BrickNodal(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk, nbp)
+             nbp = 0; CALL H1Basis_dBrickNodal(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk, nbp)
+           CASE DEFAULT
+             DO l=1,ncl
+               CALL NodalBasisFunctions(n, BasisWrk(l,:), element, uWrk(l), vWrk(l), wWrk(l))
+               CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l))
+             END DO
+           END SELECT
+         ELSE
            DO l=1,ncl
              CALL NodalBasisFunctions(n, BasisWrk(l,:), element, uWrk(l), vWrk(l), wWrk(l))
              CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l))
            END DO
-         END SELECT
+         END IF
          Basis(ll:lln, 1:n) = BasisWrk(1:ncl, 1:n)
 
          ! Element (contravariant) metric and square root of determinant

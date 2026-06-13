@@ -1134,7 +1134,7 @@ CONTAINS
     IF( FaceElement % Type % NumberOfNodes == 4 ) THEN
       IF( third == 3 ) THEN
         third = 4
-	Lambda0 = Lambda
+        Lambda0 = Lambda
         GOTO 100
       END IF
       IF( ABS( Lambda0 ) < ABS( Lambda) ) THEN
@@ -1451,7 +1451,7 @@ END FUNCTION PointFaceDistance
 
     IF ( .NOT. Converged ) THEN        
       IF( err > 1.0e-8 ) THEN
-        IF( i > MaxIter ) THEN	
+        IF( i > MaxIter ) THEN
           CALL Warn( 'GlobalToLocal', 'did not converge.')
           PRINT *,'rst',i,r,s,t
           PRINT *,'err',err,acc,eps

@@ -107,7 +107,7 @@ CONTAINS
    SUBROUTINE AddElementDescription( element,BasisTerms )
 !------------------------------------------------------------------------------
       INTEGER, DIMENSION(:) :: BasisTerms  !< List of terms in the basis function that should be included for this element type. 
-	                                       ! BasisTerms(i) is an integer from 1-27 according to the list below.
+                                           ! BasisTerms(i) is an integer from 1-27 according to the list below.
       TYPE(ElementType_t), TARGET :: element !< Structure holding element type description
 !------------------------------------------------------------------------------
 !     Local variables
@@ -451,7 +451,7 @@ CONTAINS
       fexist = .FALSE.
       IF (  k > 0 ) THEN
          tstr = elmer_home(1:k) // '/elements.def'
-	 INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
+         INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
       END IF
       IF (.NOT. fexist) THEN
         tstr = 'ELMER_HOME'
