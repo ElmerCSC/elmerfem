@@ -900,12 +900,12 @@ CONTAINS
      LOGICAL, OPTIONAL :: noeval
      LOGICAL :: l                          !< Success of the read operation
 !------------------------------------------------------------------------------     
-     INTEGER, PARAMETER :: IncludeUnitBase = 28, MAXLEN = 163840
+     INTEGER, PARAMETER :: IncludeUnitBase = 28, MAXLEN = 163840, ilen = 12
      
      CHARACTER(LEN=:), ALLOCATABLE :: temp
-     CHARACTER(LEN=12) :: tmpstr
-     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr, matcstr
+     CHARACTER(LEN=ilen) :: tmpstr
      CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' '
+     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr, matcstr
 
      LOGICAL :: InsideQuotes, OpenSection=.FALSE., DoEval
      INTEGER :: i,j,k,m,ios,ValueStarts=0,inlen,ninlen,outlen,IncludeUnit=IncludeUnitBase
@@ -939,7 +939,7 @@ CONTAINS
      END IF
 
      IF ( ValueStarts == 0 ) THEN
-        tmpstr = ' '
+        tmpstr = ''
         DO WHILE( .TRUE. )
           IF ( IncludeUnit < IncludeUnitBase ) THEN
             READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
@@ -956,7 +956,7 @@ CONTAINS
 
           readstr = ADJUSTL(readstr)
 
-          DO k=1,LEN('include path')
+          DO k=1,ilen
             j = ICHAR(readstr(k:k))
             IF ( j >= A .AND. j<= Z ) THEN
               tmpstr(k:k) = CHAR(j+U2L)
@@ -967,7 +967,7 @@ CONTAINS
 
           IF ( SEQL(tmpstr, 'include path') ) THEN
             k = LEN_TRIM(readstr)
-            IncludePath(1:k-13) = readstr(14:k)
+            includePath(1:k-ilen-1) = readstr(ilen+2:k)
             tmpstr = ''
           ELSE
             EXIT
