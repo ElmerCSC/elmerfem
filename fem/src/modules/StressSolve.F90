@@ -438,7 +438,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
                  MASS(  STDOFs*N,STDOFs*N ),  &
                  DAMP(  STDOFs*N,STDOFs*N ),  &
                  STIFF( STDOFs*N,STDOFs*N ),  &
-                 NodalDisplacement( 3, N ),   &
+                 NodalDisplacement( 4, N ),   &
                  NodalMeshVelo( 3, N ),       &
                  LOAD( 4,N ), Beta( N ),      &
                  LOAD_im( 4,N ), Beta_im( N ),      &
