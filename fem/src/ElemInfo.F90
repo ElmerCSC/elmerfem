@@ -345,11 +345,11 @@ CONTAINS
      LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
      LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      INTEGER, OPTIONAL :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
-                                                    !! May be used with P element basis functions
+                                                    !< May be used with P element basis functions
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referential description of the spatial curl of B
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
-     INTEGER, OPTIONAL, INTENT(IN) :: ip_index     !< Integration point index for O(1) cache lookup.
+     INTEGER, OPTIONAL, INTENT(IN) :: ip_index      !< Integration point index for O(1) cache lookup.
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
 !------------------------------------------------------------------------------
 !    Local variables
@@ -404,11 +404,11 @@ CONTAINS
      END IF
 
      stat = .TRUE.
-     n    = Element % TYPE % NumberOfNodes
-     dim  = Element % TYPE % DIMENSION
+     n    = Element % Type % NumberOfNodes
+     dim  = Element % Type % Dimension
      cdim = CoordinateSystemDimension()
 
-     IF ( Element % TYPE % ElementCode == 101 ) THEN
+     IF ( Element % Type % ElementCode == 101 ) THEN
         detJ = 1.0d0
         Basis(1) = 1.0d0
         IF ( PRESENT(dBasisdx) ) dBasisdx(1,:) = 0.0d0
@@ -430,16 +430,16 @@ CONTAINS
        IF ( ip_slot > 0 ) THEN
          ! O(1) direct slot lookup
          IF ( ip_slot <= Element % TYPE % BasisCacheCount ) THEN
-           Basis(1:n)       = Element % TYPE % BasisCache(ip_slot, 1:n)
-           dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip_slot, 1:n, :)
+           Basis(1:n)       = Element % Type % BasisCache(ip_slot, 1:n)
+           dLBasisdx(1:n,:) = Element % Type % dBasisCache(ip_slot, 1:n, :)
            EXIT RefBasisBlock
          END IF
        ELSE
          ! Linear scan by (u,v,w) coordinates
          DO ip = 1, Element % TYPE % BasisCacheCount
-           IF ( Element % TYPE % BasisCacheU(ip) == u .AND. &
-                Element % TYPE % BasisCacheV(ip) == v .AND. &
-                Element % TYPE % BasisCacheW(ip) == w ) THEN
+           IF ( Element % Type % BasisCacheU(ip) == u .AND. &
+                Element % Type % BasisCacheV(ip) == v .AND. &
+                Element % Type % BasisCacheW(ip) == w ) THEN
              Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n)
              dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :)
              EXIT RefBasisBlock
@@ -447,30 +447,30 @@ CONTAINS
          END DO
        END IF
 
-       dLBasisdx = 0.0_dp
-       Basis     = 0.0_dp
        CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
        CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
+
 
        ! Store in cache for non-P elements if space available
        IF ( ip_slot > 0 ) THEN
          ip = ip_slot
        ELSE
-         ip = Element % TYPE % BasisCacheCount + 1
+         ip = Element % Type % BasisCacheCount + 1
        END IF
+
        IF ( ip <= ELEM_BASIS_CACHE_SIZE ) THEN
-         Element % TYPE % BasisCacheU(ip) = u
-         Element % TYPE % BasisCacheV(ip) = v
-         Element % TYPE % BasisCacheW(ip) = w
-         Element % TYPE % BasisCache(ip, 1:n)     = Basis(1:n)
-         Element % TYPE % dBasisCache(ip, 1:n, :) = dLBasisdx(1:n, :)
-         Element % TYPE % BasisCacheCount = MAX(Element % TYPE % BasisCacheCount, ip)
+         Element % Type % BasisCacheU(ip) = u
+         Element % Type % BasisCacheV(ip) = v
+         Element % Type % BasisCacheW(ip) = w
+         Element % Type % BasisCache(ip, 1:n)     = Basis(1:n)
+         Element % Type % dBasisCache(ip, 1:n, :) = dLBasisdx(1:n, :)
+         Element % Type % BasisCacheCount = MAX(Element % Type % BasisCacheCount, ip)
        END IF
      END BLOCK RefBasisBlock
 
      q = n
      CALL EvalPElementBasis(Element, pSolver, u, v, w, n, q, Basis, dLBasisdx, &
-         Compute2ndDerivatives, ddLBasisddx, BasisDegree)
+             Compute2ndDerivatives, ddLBasisddx, BasisDegree)
 
 !------------------------------------------------------------------------------
 
@@ -486,9 +486,9 @@ CONTAINS
      IF ( .NOT. stat ) RETURN
      IF ( PRESENT(dBasisdx) ) THEN
        dBasisdx = 0.0d0
-       DO k = 1, dim
-         DO j = 1, cdim
-           DO i = 1, q
+       DO k=1,dim
+         DO j=1,cdim
+           DO i=1,q
              dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k) * LtoGMap(j,k)
            END DO
          END DO
@@ -506,8 +506,8 @@ CONTAINS
            Basis, dBasisdx, Bubbles, stat)
      END IF
 !------------------------------------------------------------------------------
-
    END FUNCTION ElementInfo
+
 
    SUBROUTINE EvalSecondDerivativesRef(Element, pSolver, u, v, w, &
        n, dim, Basis, nalloc, ddLBasisddx)
@@ -9831,12 +9831,12 @@ BLOCK
 !------------------------------------------------------------------------------
      CASE (3)
        dp_DetG = dp_G(1,1) * ( dp_G(2,2)*dp_G(3,3) - dp_G(2,3)*dp_G(3,2) ) + &
-           dp_G(1,2) * ( dp_G(2,3)*dp_G(3,1) - dp_G(2,1)*dp_G(3,3) ) + &
-           dp_G(1,3) * ( dp_G(2,1)*dp_G(3,2) - dp_G(2,2)*dp_G(3,1) )
+                 dp_G(1,2) * ( dp_G(2,3)*dp_G(3,1) - dp_G(2,1)*dp_G(3,3) ) + &
+                 dp_G(1,3) * ( dp_G(2,1)*dp_G(3,2) - dp_G(2,2)*dp_G(3,1) )
 
        qp_DetG = qp_G(1,1) * ( qp_G(2,2)*qp_G(3,3) - qp_G(2,3)*qp_G(3,2) ) + &
-           qp_G(1,2) * ( qp_G(2,3)*qp_G(3,1) - qp_G(2,1)*qp_G(3,3) ) + &
-           qp_G(1,3) * ( qp_G(2,1)*qp_G(3,2) - qp_G(2,2)*qp_G(3,1) )
+                 qp_G(1,2) * ( qp_G(2,3)*qp_G(3,1) - qp_G(2,1)*qp_G(3,3) ) + &
+                 qp_G(1,3) * ( qp_G(2,1)*qp_G(3,2) - qp_G(2,2)*qp_G(3,1) )
      END SELECT
      
      Success = ABS(dp_detG-qp_detG) <= eps*ABS(qp_DetG)
@@ -9906,6 +9906,7 @@ BLOCK
          G(i,j) = s
        END DO
      END DO
+!    G(1:dim,1:dim) = MATMUL( TRANSPOSE(dx(1:cdim,1:dim)),dx(1:cdim,1:dim) )
 !------------------------------------------------------------------------------
 !    Convert the metric to contravariant base, and compute the SQRT(DetG)
 !------------------------------------------------------------------------------
@@ -9940,12 +9941,12 @@ BLOCK
 !------------------------------------------------------------------------------
      CASE (3)
        DetG = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
-           G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
-           G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+              G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+              G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
 
        IF ( DetG <= eps ) GOTO 100
 
-       CALL InvertMatrix3x3( G,GI,detG )
+       CALL InvertMatrix3x3(G,GI,detG)
        Metric = GI
        DetG = SQRT(DetG)
      END SELECT
@@ -9966,6 +9967,7 @@ BLOCK
          LtoGMap(i,j) = s
        END DO
      END DO
+!    LtoGMap(1:cdim,1:dim) = MATMUL(dx(1:cdim,1:dim), Metric(1:dim,1:dim) )
 
      ! Return here also implies success = .TRUE.
      RETURN

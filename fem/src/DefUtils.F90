@@ -7361,7 +7361,6 @@ CONTAINS
     REAL(KIND=dp) :: SScond
     INTEGER :: Order
     TYPE(Matrix_t), POINTER :: A
-    TYPE(ElementType_t), POINTER :: et
 
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
@@ -7438,15 +7437,6 @@ CONTAINS
         END IF
       END IF
     END IF
-    
-     ! Reset basis cache on all element types so ip-slot assignments from this
-     ! solver do not corrupt lookups by the next solver (which may use a
-     ! different integration scheme).
-     et => ElementTypeList
-     DO WHILE ( ASSOCIATED(et) )
-       et % BasisCacheCount = 0
-       et => et % NextElementType
-     END DO
   END SUBROUTINE DefaultFinishBulkAssembly
 
 
@@ -7466,7 +7456,6 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: str, name
     TYPE(Variable_t), POINTER ::  x
     INTEGER :: dof
-    TYPE(ElementType_t), POINTER :: et
     
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
@@ -7544,14 +7533,6 @@ CONTAINS
         END IF
       END IF
     END IF
-     ! Reset basis cache on all element types so ip-slot assignments from this
-     ! solver do not corrupt lookups by the next solver (which may use a
-     ! different integration scheme).
-     et => ElementTypeList
-     DO WHILE ( ASSOCIATED(et) )
-       et % BasisCacheCount = 0
-       et => et % NextElementType
-     END DO
 
   END SUBROUTINE DefaultFinishBoundaryAssembly
 

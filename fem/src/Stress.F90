@@ -256,7 +256,7 @@ MODULE StressLocal
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,dBasisdx ) ! ,ip_index=t )
+       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx )
 
        s = detJ * S_Integ(t)
 !------------------------------------------------------------------------------
@@ -846,7 +846,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,dBasisdx ) !,ip_index=t )
+       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,dBasisdx )
        s = detJ * S_Integ(t)
 !------------------------------------------------------------------------------
        IF ( NeedHeat ) THEN
@@ -1123,8 +1123,7 @@ CONTAINS
 
      ! Basis function values & derivatives at the integration point:
      !--------------------------------------------------------------
-     stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
-        Basis, dBasisdx ) ! , ip_index=t )
+     stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
 
      s = detJ * S_Integ(t)
      IF ( Csymm ) s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
