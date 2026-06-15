@@ -67,11 +67,8 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1.0e-8
   Nonlinear System Max Iterations = 1
 
-  Linear System Solver = iterative
-  Linear System Max Iterations = 1
-  Linear System Convergence Tolerance = 1
-  Linear System Abort Not Converged = False
-  Linear System Direct Method = umfpack
+  Linear System Solver = Direct
+  Linear System Direct Method = MUMPS
 
   Linear System Timing = True
   Solver Timing = True
