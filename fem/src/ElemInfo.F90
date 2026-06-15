@@ -329,7 +329,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ElementInfo( Element, Nodes, u, v, w, detJ, &
        Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree, &
-       EdgeBasis, RotBasis, USolver ) RESULT(stat)
+       EdgeBasis, RotBasis, USolver, ip_index ) RESULT(stat)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -349,32 +349,28 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referential description of the spatial curl of B
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
+     INTEGER, OPTIONAL, INTENT(IN) :: ip_index     !< Integration point index for O(1) cache lookup.
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: PSolver => NULL(), PrevSolver => NULL()
-     REAL(KIND=dp) :: BubbleValue, dBubbledx(3), t, s, LtoGMap(3,3)
-     LOGICAL :: invert, degrees, Compute2ndDerivatives
-     INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
-          tmp(4), direction(4), GIndexes(Element % Type % NumberOfNodes)
-     INTEGER :: BodyId, EDOFs, BDOFs, Deg_Bubble, tetraType
-     REAL(KIND=dp) :: LinBasis(8), dLinBasisdx(8,3), ElmMetric(3,3)
+
+     LOGICAL :: Compute2ndDerivatives
+
+     INTEGER :: i, j, k, q, n, dim, cdim, ip_slot
+     REAL(KIND=dp) :: ElmMetric(3,3), LtoGMap(3,3)
 
      REAL(KIND=dp) :: NodalBasis(Element % TYPE % NumberOfNodes), &
              dLBasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3)
 
      REAL(KIND=dp), ALLOCATABLE :: ddlBasisddx(:,:,:)
 
-     TYPE(Element_t) :: Bubble
-     TYPE(Element_t), POINTER :: Parent, Edge, Face
      INTEGER :: EdgeBasisDegree
+     LOGICAL :: SecondFamily, GradVersion
      LOGICAL :: PerformPiolaTransform, Found, SerendipityPBasis
-     LOGICAL :: SecondFamily
-     LOGICAL :: GradVersion
      
-     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily, &
-         GradVersion
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily, GradVersion
      !$OMP THREADPRIVATE(PrevSolver, EdgeBasisDegree, PerformPiolaTransform, SecondFamily, &
      !$OMP               GradVersion)
 !------------------------------------------------------------------------------
@@ -422,950 +418,78 @@ CONTAINS
      Compute2ndDerivatives = PRESENT(SecondDerivatives) .AND. PRESENT(ddBasisddx)
      IF(Compute2ndDerivatives) Compute2ndDerivatives = SecondDerivatives
 
-     IF(Compute2ndDerivatives) THEN
-       ALLOCATE(ddLBasisddx(MAX(SIZE(Nodes % x),SIZE(ddBasisddx)),3,3))
-       Basis = 0
-       ddLBasisddx = 0._dp
-       DO i=1,n
-         Basis(i) = 1
-         SELECT CASE(dim)
-         CASE(1)
-           ddLBasisddx(i,1,1) = SecondDerivatives1D(element,basis,u)
-         CASE(2)
-           ddLBasisddx(i,1:2,1:2) = SecondDerivatives2D(element,basis,u,v)
-         CASE(3)
-           SELECT CASE(Element % Type % ElementCode)
-           CASE(605)
-             IF(isActivePElement(Element,pSolver)) THEN
-               ddLBasisddx(i,:,:) = ddPyramidNodalPBasis(i,u,v,w)
-             ELSE
-               ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
-             END IF
-           CASE(706)
-             IF(isActivePElement(element,pSolver)) THEN
-               ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
-             ELSE
-               ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
-             END IF
-           CASE DEFAULT
-             ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
-           END SELECT
-         END SELECT
-         Basis(i) = 0
-       END DO
-     END IF
+     IF (Compute2ndDerivatives) &
+       CALL EvalSecondDerivativesRef(Element, pSolver, u, v, w, n, dim, Basis, &
+           MAX(SIZE(Nodes % x),SIZE(ddBasisddx)), ddLBasisddx)
 
-     Basis = 0.0d0
-     dLbasisdx = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
+     ip_slot = 0
+     IF (PRESENT(ip_index)) ip_slot = ip_index
+     ! Evaluate reference basis functions and local gradients at (u,v,w).
+     RefBasisBlock: BLOCK
+       INTEGER :: ip
+       IF ( ip_slot > 0 ) THEN
+         ! O(1) direct slot lookup
+         IF ( ip_slot <= Element % TYPE % BasisCacheCount ) THEN
+           Basis(1:n)       = Element % TYPE % BasisCache(ip_slot, 1:n)
+           dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip_slot, 1:n, :)
+           EXIT RefBasisBlock
+         END IF
+       ELSE
+         ! Linear scan by (u,v,w) coordinates
+         DO ip = 1, Element % TYPE % BasisCacheCount
+           IF ( Element % TYPE % BasisCacheU(ip) == u .AND. &
+                Element % TYPE % BasisCacheV(ip) == v .AND. &
+                Element % TYPE % BasisCacheW(ip) == w ) THEN
+             Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n)
+             dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :)
+             EXIT RefBasisBlock
+           END IF
+         END DO
+       END IF
+
+       dLBasisdx = 0.0_dp
+       Basis     = 0.0_dp
+       CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
+       CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
+
+       ! Store in cache for non-P elements if space available
+       IF ( ip_slot > 0 ) THEN
+         ip = ip_slot
+       ELSE
+         ip = Element % TYPE % BasisCacheCount + 1
+       END IF
+       IF ( ip <= ELEM_BASIS_CACHE_SIZE ) THEN
+         Element % TYPE % BasisCacheU(ip) = u
+         Element % TYPE % BasisCacheV(ip) = v
+         Element % TYPE % BasisCacheW(ip) = w
+         Element % TYPE % BasisCache(ip, 1:n)     = Basis(1:n)
+         Element % TYPE % dBasisCache(ip, 1:n, :) = dLBasisdx(1:n, :)
+         Element % TYPE % BasisCacheCount = MAX(Element % TYPE % BasisCacheCount, ip)
+       END IF
+     END BLOCK RefBasisBlock
 
      q = n
-
-!	dbasisdx(1:n,:) = dlbasisdx(1:n,:)
-!	if (compute2ndderivatives) ddbasisddx(1:n,:,:) = ddlbasisddx(1:n,:,:)
-!	detj = 1
-!	return
-
-     ! P ELEMENT CODE:
-     ! ---------------
-     IF ( isActivePElement(element,pSolver) ) THEN
-      !
-      ! Check whether the polynomial degree of each basis functions is asked
-      ! and, if so, initialize by the degree of linear basis:
-      ! ---------------------------------------------------
-      degrees = .FALSE.
-      IF ( PRESENT(BasisDegree)) THEN 
-        degrees = .TRUE.
-        BasisDegree = 0
-        BasisDegree(1:n) = 1
-      END IF
-
-      BodyId = Element % BodyId
-      IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
-        Parent => Element % PDefs % LocalParent         
-        IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
-        IF( BodyId == 0 ) THEN
-          Parent => Element % BoundaryInfo % Left
-          IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
-        END IF
-        IF(BodyId == 0) THEN
-          Parent => Element % BoundaryInfo % Right
-          IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
-        END IF
-      END IF
-
-      IF (BodyId==0) THEN
-        CALL Warn('ElementInfo', 'Element '//I2S(Element % ElementIndex)//' of type '//&
-            I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
-        BodyId = 1
-      END IF
-
-      ! If running in parallel use global indexing in orienting degrees of freedom
-      GIndexes = Element % NodeIndexes
-      IF (ASSOCIATED(pSolver % Mesh % ParallelInfo % GlobalDOFs)) &
-        GIndexes = pSolver % Mesh % ParallelInfo % GlobalDOFs(GIndexes)
-
-      SerendipityPBasis = Element % PDefs % Serendipity
+     CALL EvalPElementBasis(Element, pSolver, u, v, w, n, q, Basis, dLBasisdx, &
+         Compute2ndDerivatives, ddLBasisddx, BasisDegree)
 
 !------------------------------------------------------------------------------
-     SELECT CASE( Element % TYPE % ElementCode ) 
-!------------------------------------------------------------------------------
-
-     ! P element code for line element:
-     ! --------------------------------
-     CASE(202)
-        ! Get element p
-        p = pSolver % Def_Dofs(2,BodyId,6)
-        BDOFs = MAX(GetBubbleDOFs(Element, p), pSolver % Def_Dofs(2,BodyId,5))
-
-        ! Bubbles of line element
-        IF (BDOFs > 0) THEN
-           ! For boundary element integration check direction
-           invert = .FALSE.
-           IF ( Element % PDefs % isEdge .AND. &
-                   GIndexes(1)>GIndexes(2) ) invert = .TRUE.
-
-           ! For each bubble get the value of basis function
-           DO i=1, BDOFs
-              IF (q >= SIZE(Basis)) EXIT
-              q = q + 1
-              
-              Basis(q) = LineBubblePBasis(i+1,u,invert)
-              dLBasisdx(q,1) = dLineBubblePBasis(i+1,u,invert)
-              IF(Compute2ndDerivatives) THEN
-                ddLBasisddx(q,1,1) = ddLineBubblePBasis(i+1,u,invert)
-              END IF
-              
-              ! Polynomial degree of basis function to vector
-              IF (degrees) BasisDegree(q) = 1+i
-           END DO
-        END IF
-
-!------------------------------------------------------------------------------
-     ! P element code for triangles:
-     CASE(303)
-        EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(3,BodyId,6))
-        ! Edges of triangle
-        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
-           
-           ! For each edge calculate the value of edge basis function
-           edges_triangle: DO i=1,3
-              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
-
-              ! Get local number of edge start and endpoint nodes
-              tmp(1:2) = getTriangleEdgeMap(i)
-              locali = tmp(1)
-              localj = tmp(2)
-
-              ! Invert edge for parity if needed
-              invert = .FALSE.
-              IF ( GIndexes(locali)>GIndexes(localj) ) invert=.TRUE.
-
-              ! For each edge DOF get the value of p-basis function
-              ! NOTE: Edges may not have correct information about the count of DOFs
-              !        per edge, so the following would not work:
-              !       EDOFs = GetEdgeDOFs(Edge, pSolver % Def_Dofs(2,BodyId,6))
-              !
-              DO k=1,EDOFs
-                 IF (q >= SIZE(Basis)) EXIT edges_triangle
-                 q = q + 1
-                 
-                 ! Value of basis functions for edge=i and i=k+1 by parity
-                 Basis(q) = TriangleEdgePBasis(i, k+1, u, v, invert)
-                 dLBasisdx(q,1:2) = dTriangleEdgePBasis(i, k+1, u, v, invert)
-                 IF(Compute2ndDerivatives) THEN
-                   ddLBasisddx(q,1:2,1:2) = ddTriangleEdgePBasis(i,k+1,u,v,invert)
-                 END IF
-                 
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = 1+k
-              END DO
-           END DO edges_triangle
-        END IF
-
-        ! Bubbles of p triangle      
-
-        ! Get element p
-        p = pSolver % Def_Dofs(3,BodyId,6)
-        nb = pSolver % Def_Dofs(3,BodyId,5)
-        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
-
-        IF (BDOFs > 0) THEN
-           p = getEffectiveBubbleP(element,p,bdofs)
-           
-           ! For boundary element direction needs to be calculated
-           IF (Element % PDefs % isEdge) THEN
-              direction = 0
-              ! Get direction of this face (mask for face = boundary element nodes)
-              direction(1:3) = getTriangleFaceDirection(Element, [ 1,2,3 ], GIndexes)
-           END IF
-
-           bubbles_triangle: DO i = 0,p-3
-              DO j = 0,p-i-3
-                 IF ( q >= SIZE(Basis) ) EXIT bubbles_triangle
-                 q = q + 1
-
-                 ! Get bubble basis functions and their derivatives
-                 ! 3d Boundary element has a direction
-                 IF (Element % PDefs % isEdge) THEN
-                    Basis(q) = TriangleEBubblePBasis(i,j,u,v,direction) 
-                    dLBasisdx(q,1:2) = dTriangleEBubblePBasis(i,j,u,v,direction)
-
-                    IF(Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = ddTriangleEBubblePBasis(i,j,u,v,direction)
-                    END IF
-                 ELSE
-                 ! 2d element bubbles have no direction
-                    Basis(q) = TriangleBubblePBasis(i,j,u,v) 
-                    dLBasisdx(q,1:2) = dTriangleBubblePBasis(i,j,u,v)
-
-                    IF(Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,j,u,v)
-                    END IF
-                 END IF
-                 
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = 3+i+j
-              END DO
-           END DO bubbles_triangle
-        END IF
-!------------------------------------------------------------------------------
-     ! P element code for quads:
-     CASE(404)
-        ! Edges of p quadrilateral
-        EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(4,BodyId,6))
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge calculate the values of edge basis functions 
-           edges_quad: DO i=1,4
-              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
-
-              ! Choose correct parity by global edge dofs
-              tmp(1:2) = getQuadEdgeMap(i)
-              locali = tmp(1)
-              localj = tmp(2)
-              
-              ! Invert parity if needed
-              invert = .FALSE.
-              IF (GIndexes(locali) > GIndexes(localj)) invert = .TRUE. 
-
-              ! For each DOF in edge calculate the value of p-basis function
-              DO k=1,EDOFs
-                 IF ( q >= SIZE(Basis) ) EXIT edges_quad
-                 q = q + 1
-
-                 ! Get values of basis functions for edge=i and i=k+1 by parity
-                 IF (SerendipityPBasis) THEN
-                   Basis(q) = SD_QuadEdgePBasis(i,k+1,u,v,invert)
-                   ! Get value of derivatives of basis functions
-                   dLBasisdx(q,1:2) = SD_dQuadEdgePBasis(i,k+1,u,v,invert)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,1:2,1:2) = SD_ddQuadEdgePBasis(i,k+1,u,v,invert)
-                   END IF
-                 ELSE
-                   Basis(q) = QuadEdgePBasis(i,k+1,u,v,invert)
-                   ! Get value of derivatives of basis functions
-                   dLBasisdx(q,1:2) = dQuadEdgePBasis(i,k+1,u,v,invert)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,1:2,1:2) = ddQuadEdgePBasis(i,k+1,u,v,invert)
-                   END IF
-                 END IF
-                 
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = 1+k
-              END DO              
-           END DO edges_quad
-        END IF
-
-        ! Bubbles of p quadrilateral, the number of which may have been defined explicitly or
-        ! be determined by the specified degree of approximation. However, we never omit bubbles
-        ! which are part of the FE space of the specified degree
-  
-        ! Get the specified element P:
-        p = pSolver % Def_Dofs(4,BodyId,6)
-        nb = pSolver % Def_Dofs(4,BodyId,5)
-        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
-
-        IF (BDOFs > 0) THEN
-           p = getEffectiveBubbleP(element,p,bdofs)
-
-           ! For boundary element direction needs to be calculated
-           IF (Element % PDefs % isEdge) THEN
-              direction = getSquareFaceDirection(Element, [ 1,2,3,4 ], GIndexes )
-           END IF
-          
-           ! For each bubble calculate the value of p basis function
-           ! and its derivatives for index pairs i,j>=2, i+j=4,...,p
-           IF(SerendipityPBasis) THEN
-             SD_bubbles_quad: DO i=2,p-2
-                DO j=2,p-i
-                  IF ( q >= SIZE(Basis) ) EXIT SD_bubbles_quad
-                  q = q + 1
-                 
-                  ! Get values of bubble functions
-                  ! 3D boundary elements have a direction
-                  IF (Element % PDefs % isEdge) THEN
-                    Basis(q) = SD_QuadBubblePBasis(i,j,u,v,direction)
-                    dLBasisdx(q,1:2) = SD_dQuadBubblePBasis(i,j,u,v,direction)
-                    IF (Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = SD_ddQuadBubblePBasis(i,j,u,v)
-                    END IF
-                  ELSE
-                    ! 2d element bubbles have no direction
-                    Basis(q) = SD_QuadBubblePBasis(i,j,u,v)
-                    dLBasisdx(q,1:2) = SD_dQuadBubblePBasis(i,j,u,v)
-                    IF (Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = SD_ddQuadBubblePBasis(i,j,u,v)
-                    END IF
-                  END IF
-                  ! Polynomial degree of basis function to vector
-                  IF (degrees) BasisDegree(q) = i+j
-                END DO
-             END DO SD_bubbles_quad
-           ELSE
-             bubbles_quad: DO i=0,p-2
-                DO j=0,p-2
-                  IF ( q >= SIZE(Basis) ) EXIT bubbles_quad
-                  q = q + 1
-                 
-                  ! Get values of bubble functions
-                  ! 3D boundary elements have a direction
-                  IF (Element % PDefs % isEdge) THEN
-                    Basis(q) = QuadBubblePBasis(i,j,u,v,direction)
-                    dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v,direction)
-                    IF (Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = ddQuadBubblePBasis(i,j,u,v)
-                    END IF
-                  ELSE
-                    ! 2d element bubbles have no direction
-                    Basis(q) = QuadBubblePBasis(i,j,u,v)
-                    dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v)
-                    IF (Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = ddQuadBubblePBasis(i,j,u,v)
-                    END IF
-                  END IF
-                  ! Polynomial degree of basis function to vector
-                  IF (degrees) BasisDegree(q) = 2+i+j
-                END DO
-             END DO bubbles_quad
-           END IF
-        END IF
-!------------------------------------------------------------------------------
-     ! P element code for tetrahedra:
-     CASE(504)
-        p = pSolver % Def_Dofs(5,BodyId,6)
-        EDOFs = GetEdgeDOFs(Element, p)
-        tetraType = Element % PDefs % TetraType
-
-        ! Edges of p tetrahedron
-        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN   
-           ! For each edge i calculate the values of edge functions
-           edges_tetrahedron: DO i=1,6
-              Edge => pSolver % Mesh % Edges (Element % EdgeIndexes(i))
-              
-              ! For each edge DOF k calculate the value of edge function
-              ! and its derivatives
-              DO k=1, EDOFs
-                 IF (q >= SIZE(Basis)) EXIT edges_tetrahedron
-                 q = q + 1
-
-                 Basis(q) = TetraEdgePBasis(i,k+1,u,v,w,tetraType)
-                 dLBasisdx(q,:) = dTetraEdgePBasis(i,k+1,u,v,w,tetraType)
-                 IF(Compute2ndDerivatives) THEN
-                    ddLBasisddx(q,:,:) = ddTetraEdgePBasis(i,k+1,u,v,w,tetraType)
-                 END IF
-
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = 1+k
-              END DO
-           END DO edges_tetrahedron
-        END IF
-
-        ! Faces of p tetrahedron
-        IF ( ASSOCIATED( Element % FaceIndexes )) THEN
-           ! For each face calculate values of face functions
-           faces_tetrahedron: DO F=1,4
-              Face => pSolver % Mesh % Faces (Element % FaceIndexes(F))
-
-              ! Get face p 
-              !p = MAX(pSolver % Def_Dofs(5,BodyId,6), Face % PDefs % P)
-
-              ! Do not solve face DOFs if there is not any
-              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
-
-              tmp(1:3) = getTetraFaceMap(F,tetraType)
-              direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), GIndexes )
-
-              ! For each DOF in face calculate values of face function and 
-              ! its derivatives for index pairs 
-              ! i,j=0,..,p-3, i+j=0,..,p-3
-              DO i=0,p-3
-                 DO j=0,p-i-3
-                    IF (q >= SIZE(Basis)) EXIT faces_tetrahedron
-                    q = q + 1 
-                  
-                    Basis(q) = TetraFacePBasis(F,i,j,u,v,w, tetraType )
-                    dLBasisdx(q,:) = dTetraFacePBasis(F,i,j,u,v,w, tetraType )
-                    IF(Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,:,:) = ddTetraFacePBasis(F,i,j,u,v,w,tetraType )
-                    END IF
-
-                    ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = 3+i+j
-                 END DO
-              END DO
-           END DO faces_tetrahedron
-        END IF
-
-        ! Bubbles of p tetrahedron
-        nb = pSolver % Def_Dofs(5,BodyId,5)
-        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
-        IF ( BDOFs > 0 ) THEN
-           p = getEffectiveBubbleP(element,p,bdofs)
-
-           ! For each bubble DOF calculate the value of bubble function
-           ! and its derivatives for index pairs
-           ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
-           bubbles_tetrahedron: DO i=0,p-4
-              DO j=0,p-i-4
-                 DO k=0,p-i-j-4
-                    IF (q >= SIZE(Basis)) EXIT bubbles_tetrahedron
-                    q = q + 1
-
-                    Basis(q) = TetraBubblePBasis(i,j,k,u,v,w)
-                    dLBasisdx(q,:) = dTetraBubblePBasis(i,j,k,u,v,w)
-                    IF(Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,:,:) = ddTetraBubblePBasis(i,j,k,u,v,w)
-                    END IF
-                    ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = 4+i+j+k
-                 END DO
-              END DO
-           END DO bubbles_tetrahedron
-           
-        END IF
-!------------------------------------------------------------------------------
-     ! P element code for pyramids:
-     CASE(605)
-
-        IF(SerendipityPBasis) THEN
-          CALL Fatal('ElementInfo', 'p-Pyramid not implemented for serendipity scheme, ' // &
-                      'please use the full scheme instead.')
-        END IF
-
-        ! Edges of P Pyramid
-        p = pSolver % Def_Dofs(6,BodyId,6)
-        EDOFs = GetEdgeDOFs(Element, p)
-        IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
-           ! For each edge calculate values of edge functions
-           edges_pyramid: DO i=1,8
-              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
-
-              ! Get local indexes of current edge
-              tmp(1:2) = getPyramidEdgeMap(i)
-              locali = tmp(1)
-              localj = tmp(2)
-
-              ! Determine edge direction
-              invert = .FALSE.
-              
-              ! Invert edge if local first node has greater global index than second one
-              IF ( GIndexes(locali) > GIndexes(localj) ) invert = .TRUE.
-
-              ! For each edge DOF k calculate the value of edge function
-              ! and its derivatives
-              DO k=1,EDOFs
-                 IF ( q >= SIZE(Basis) ) EXIT edges_pyramid
-                 q = q + 1
-
-                 ! Get values of edge basis functions and their derivatives
-                 Basis(q) = PyramidEdgePBasis(i,k+1,u,v,w,invert)
-                 dLBasisdx(q,:) = dPyramidEdgePBasis(i,k+1,u,v,w,invert)
-                 IF (Compute2ndDerivatives) THEN
-                   ddLBasisddx(q,:,:) = ddPyramidEdgePBasis(i,k+1,u,v,w,invert)
-                 END IF
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = 1+k
-              END DO
-           END DO edges_pyramid
-        END IF
-
-        
-        ! Faces of P Pyramid
-        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-           ! For each face in pyramid, calculate the values of face functions
-           faces_pyramid: DO F=1,5
-              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
-              
-              ! Get face p
-              !p = MAX(pSolver % Def_Dofs(6,BodyId,6), Face % PDefs % P) 
-
-              ! Do not solve face dofs, if there is not any
-              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
-              
-              ! Handle triangle and square faces separately
-              SELECT CASE(F)
-              CASE (1)
-                 direction = 0; invert=.FALSE.
-                 ! Get global direction vector for enforcing parity
-                 tmp(1:4) = getPyramidFaceMap(F)
-                 direction(1:4) = getSquareFaceDirection( Element, tmp(1:4), GIndexes )
-
-                 ! For each face calculate the values of functions for index
-                 ! pairs i,j=2,..,p-2 i+j=4,..,p
-
-!                DO i=0,p-2
-!                   DO j=0,p-i-2
-                 DO i=0,p-2
-                    DO j=0,p-2
-                       IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
-                       q = q + 1
-                       
-                       Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
-                       dLBasisdx(q,:) = dPyramidFacePBasis(F,i,j,u,v,w,direction)
-                       IF (Compute2ndDerivatives) THEN
-                         ddLBasisddx(q,:,:) = ddPyramidFacePBasis(F,i,j,u,v,w,direction)
-                       END IF
-                       
-                       ! Polynomial degree of basis function to vector
-                       IF (degrees) BasisDegree(q) = 2+i+j
-                    END DO
-                 END DO
-
-              CASE (2,3,4,5)
-                 direction = 0
-                 ! Get global direction vector for enforcing parity
-                 tmp(1:4) = getPyramidFaceMap(F) 
-                 direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), GIndexes )
-
-                 ! For each face calculate the values of functions for index
-                 ! pairs i,j=0,..,p-3 i+j=0,..,p-3
-                 DO i=0,p-3
-                    DO j=0,p-i-3
-                       IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
-                       q = q + 1
-
-                       Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
-                       dLBasisdx(q,:) = dPyramidFacePBasis(F,i,j,u,v,w,direction)
-                       IF (Compute2ndDerivatives) THEN
-                         ddLBasisddx(q,:,:) = ddPyramidFacePBasis(F,i,j,u,v,w,direction)
-                       END IF
-
-                       ! Polynomial degree of basis function to vector
-                       IF (degrees) BasisDegree(q) = 3+i+j
-                    END DO
-                 END DO
-              END SELECT    
-           END DO faces_pyramid
-        END IF
-
-        ! Bubbles of P Pyramid
-        nb = pSolver % Def_Dofs(6,BodyId,5)
-        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
-        IF ( BDOFs > 0 ) THEN
-           p = getEffectiveBubbleP(element,p,bdofs)
- 
-           ! Calculate the values of bubble functions for indexes
-           ! i,j,k=0,..,p-3 i+j+k=0,..,p-3
-           bubbles_pyramid: DO i=0,p-3
-              DO j=0,p-i-3
-                 DO k=0,p-i-j-3
-                    IF ( q >= SIZE(Basis)) EXIT bubbles_pyramid
-                    q = q + 1
-
-                    Basis(q) = PyramidBubblePBasis(i,j,k,u,v,w)
-                    dLBasisdx(q,:) = dPyramidBubblePBasis(i,j,k,u,v,w)
-                    IF (Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,:,:) = ddPyramidBubblePBasis(i,j,k,u,v,w)
-                    END IF
-                    
-                    ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = 3+i+j+k
-                 END DO
-              END DO
-           END DO bubbles_pyramid
-        END IF
-        
-!------------------------------------------------------------------------------
-     ! P element code wedges:
-     CASE(706)
-        p = pSolver % Def_Dofs(7,BodyId,6)
-        EDOFs = GetEdgeDOFs(Element, p)
-        ! Edges of P Wedge
-        IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
-           ! For each edge i calculate the values of edge functions
-           edges_prism: DO i=1,9
-              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
-              
-              ! Get local indexes of current edge
-              tmp(1:2) = getWedgeEdgeMap(i)
-              locali = tmp(1)
-              localj = tmp(2)
-
-              ! Determine edge direction
-              invert = .FALSE.
-              ! Invert edge if local first node has greater global index than second one
-              IF ( GIndexes(locali) > GIndexes(localj) ) invert = .TRUE.
-       
-              ! For each edge DOF k calculate the value of edge function
-              ! and its derivatives
-              DO k=1,EDOFs
-                 IF ( q >= SIZE(Basis) ) EXIT edges_prism
-                 q = q + 1
-
-                 ! Get values of edge basis functions and their derivatives
-                 IF(SerendipityPBasis) THEN
-                   Basis(q) = SD_WedgeEdgePBasis(i,k+1,u,v,w,invert)
-                   dLBasisdx(q,:) = SD_dWedgeEdgePBasis(i,k+1,u,v,w,invert)
-                   IF(Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = SD_ddWedgeEdgePBasis(i,k+1,u,v,w,invert)
-                   END IF
-                 ELSE
-                   Basis(q) = WedgeEdgePBasis(i,k+1,u,v,w,invert)
-                   dLBasisdx(q,:) = dWedgeEdgePBasis(i,k+1,u,v,w,invert)
-                   IF(Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = ddWedgeEdgePBasis(i,k+1,u,v,w,invert)
-                   END IF
-                 END IF
-
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = 1+k
-              END DO
-           END DO edges_prism
-        END IF
-
-        ! The faces of p-wedge 
-        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-           ! For each face in wedge, calculate the values of face functions
-           faces_prism: DO F=1,5
-              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
-
-              !p = MAX(pSolver % Def_Dofs(7,BodyId,6), Face % PDefs % P) 
-
-              ! Do not solve face dofs, if there is not any
-              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
-              
-              ! Handle triangle and square faces separately
-              SELECT CASE(F)
-              CASE (1,2)
-                 direction = 0
-                 ! Get global direction vector for enforcing parity
-                 tmp(1:4) = getWedgeFaceMap(F) 
-                 direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), GIndexes )
-                 
-                 ! For each face calculate the values of functions for index
-                 ! pairs i,j=0,..,p-3 i+j=0,..,p-3
-                 DO i=0,p-3
-                    DO j=0,p-i-3
-                       IF ( q >= SIZE(Basis) ) EXIT faces_prism
-                       q = q + 1
-
-                       IF(SerendipityPBasis) THEN
-                         Basis(q) = SD_WedgeFacePBasis(F,i,j,u,v,w,direction)
-                         dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,i,j,u,v,w,direction)
-                         IF(Compute2ndDerivatives) THEN
-                            ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,i,j,u,v,w,direction)
-                         END IF
-                       ELSE
-                         Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
-                         dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
-                         IF(Compute2ndDerivatives) THEN
-                            ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
-                         END IF
-                       END IF
-
-                       ! Polynomial degree of basis function to vector
-                       IF (degrees) BasisDegree(q) = 3+i+j
-                    END DO
-                 END DO
-              CASE (3,4,5)
-                 direction = 0
-                 ! Get global direction vector for enforcing parity
-                 invert = .FALSE.
-                 tmp(1:4) = getWedgeFaceMap(F)
-                 direction(1:4) = getSquareFaceDirection( Element, tmp(1:4), GIndexes )
-                 
-                 ! First and second node must form a face in upper or lower triangle
-                 IF (.NOT. wedgeOrdering(direction)) THEN
-                    invert = .TRUE.
-                    tmp(1) = direction(2)
-                    direction(2) = direction(4)
-                    direction(4) = tmp(1)
-                 END IF
-
-                 ! For each face calculate values of functions from index
-                 ! pairs i,j=2,..,p-2 i+j=4,..,p
-                 IF(SerendipityPBasis) THEN
-                   DO i=2,p-2
-                      DO j=2,p-i
-                         IF ( q >= SIZE(Basis) ) EXIT faces_prism
-                         q = q + 1
-
-                         IF (.NOT. invert) THEN
-                            Basis(q) = SD_WedgeFacePBasis(F,i,j,u,v,w,direction)
-                            dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,i,j,u,v,w,direction)
-                            IF(Compute2ndDerivatives) THEN
-                               ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,i,j,u,v,w,direction)
-                            END IF
-                         ELSE
-                            Basis(q) = SD_WedgeFacePBasis(F,j,i,u,v,w,direction)
-                            dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,j,i,u,v,w,direction)
-                            IF(Compute2ndDerivatives) THEN
-                               ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,j,i,u,v,w,direction)
-                            END IF
-                         END IF
-                         ! Polynomial degree of basis function to vector
-                         IF (degrees) BasisDegree(q) = i+j
-                      END DO
-                   END DO
-                 ELSE
-                   DO i=0,p-2
-                      DO j=0,p-2
-                         IF ( q >= SIZE(Basis) ) EXIT faces_prism
-                         q = q + 1
-
-                         Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
-                         dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
-                         IF(Compute2ndDerivatives) THEN
-                            ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
-                         END IF
-  
-                         ! Polynomial degree of basis function to vector
-                         IF (degrees) BasisDegree(q) = 2+i+j
-                      END DO
-                   END DO
-                 END IF
-              END SELECT
-           END DO faces_prism
-        END IF
-
-        ! Bubbles of P Wedge
-        nb = pSolver % Def_Dofs(7,BodyId,5)
-        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
-        IF ( BDOFs > 0 ) THEN
-
-           p = getEffectiveBubbleP(element,p,bdofs)
-           
-           IF(SerendipityPBasis) THEN
-             ! For each bubble calculate the value of basis function and its derivative
-             ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
-             SD_bubbles_prism: DO i=0,p-5
-                DO j=0,p-5-i
-                   DO k=2,p-3-i-j
-                      IF ( q >= SIZE(Basis) ) EXIT SD_bubbles_prism
-                      q = q + 1
-
-                      Basis(q) = SD_WedgeBubblePBasis(i,j,k,u,v,w)
-                      dLBasisdx(q,:) = SD_dWedgeBubblePBasis(i,j,k,u,v,w)
-                      IF(Compute2ndDerivatives) THEN
-                        ddLBasisddx(q,:,:) = SD_ddWedgeBubblePBasis(i,j,k,u,v,w)
-                      END IF
-
-                      ! Polynomial degree of basis function to vector
-                      IF (degrees) BasisDegree(q) = 3+i+j+k
-                   END DO
-                END DO
-             END DO SD_bubbles_prism
-           ELSE
-             bubbles_prism: DO i=0,p-3
-                DO j=0,p-i-3
-                   DO k=0,p-2
-                      IF ( q >= SIZE(Basis) ) EXIT bubbles_prism
-                      q = q + 1
-
-                      Basis(q) = WedgeBubblePBasis(i,j,k,u,v,w)
-                      dLBasisdx(q,:) = dWedgeBubblePBasis(i,j,k,u,v,w)
-                      IF(Compute2ndDerivatives) THEN
-                        ddLBasisddx(q,:,:) = ddWedgeBubblePBasis(i,j,k,u,v,w)
-                      END IF
-
-                      ! Polynomial degree of basis function to vector
-                      IF (degrees) BasisDegree(q) = 2+i+j+k
-                   END DO
-                END DO
-             END DO bubbles_prism
-           END IF
-        END IF
-
-!------------------------------------------------------------------------------
-     ! P element code for bricks:
-     CASE(808) 
-        p = pSolver % Def_Dofs(8,BodyId,6)
-        EDOFs = GetEdgeDOFs(Element, p)
-        ! Edges of P brick
-        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
-           ! For each edge i calculate the values of edge functions 
-           edges_brick: DO i=1,12
-              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
-              
-              ! Get local indexes of current edge
-              tmp(1:2) = getBrickEdgeMap(i)
-              locali = tmp(1)
-              localj = tmp(2)
-              
-              ! Determine edge direction
-              invert = .FALSE.
-              
-              ! Invert edge if local first node has greater global index than second one
-              IF (GIndexes(locali)>GIndexes(localj)) invert = .TRUE.
-              
-              ! For each edge DOF k calculate the values of edge function
-              ! and its derivatives
-              DO k=1,EDOFs
-                 IF ( q >= SIZE(Basis) ) EXIT edges_brick
-                 q = q + 1
-
-                 ! Get values of edge basis functions and their derivatives
-                 IF(SerendipityPBasis) THEN
-                   Basis(q) = SD_BrickEdgePBasis(i,k+1,u,v,w,invert)
-                   dLBasisdx(q,:) = SD_dBrickEdgePBasis(i,k+1,u,v,w,invert)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = SD_ddBrickEdgePBasis(i,k+1,u,v,w,invert)
-                   END IF
-                 ELSE
-                   Basis(q) = BrickEdgePBasis(i,k+1,u,v,w,invert)
-                   dLBasisdx(q,:) = dBrickEdgePBasis(i,k+1,u,v,w,invert)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = ddBrickEdgePBasis(i,k+1,u,v,w,invert)
-                   END IF
-                 END IF
-
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = 1+k
-              END DO
-           END DO edges_brick
-        END IF
-
-        ! Faces of P brick
-        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-          ! For each face in brick, calculate values of face functions
-          faces_brick: DO F=1,6
-             Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
-
-             ! Get p for face
-             !p = MAX(pSolver % Def_Dofs(8,BodyId,6), Face % PDefs % P)
-                          
-             ! Do not calculate face values if no dofs
-             !IF (GetFaceDOFs(Element, p, F)<= 0) CYCLE
-              
-             ! Generate direction vector for this face
-             tmp(1:4) = getBrickFaceMap(F)
-             direction(1:4) = getSquareFaceDirection(Element, tmp, GIndexes)
-
-             ! For each face calculate the values of functions for index
-             ! pairs i,j=2,..,p-2 i+j=4,..,p
-             IF(SerendipityPBasis) THEN
-               DO i=2,p-2
-                 DO j=2,p-i
-                   IF ( q >= SIZE(Basis) ) EXIT faces_brick
-
-                   q = q + 1
-                   Basis(q) = SD_BrickFacePBasis(F,i,j,u,v,w,direction)
-                   dLBasisdx(q,:) = SD_dBrickFacePBasis(F,i,j,u,v,w,direction)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = SD_ddBrickFacePBasis(F,i,j,u,v,w,direction)
-                   END IF
-                   ! Polynomial degree of basis function to vector
-                   IF (degrees) BasisDegree(q) = i+j
-                  END DO
-               END DO
-             ELSE
-               DO i=0,p-2
-                 DO j=0,p-2
-                   IF ( q >= SIZE(Basis) ) EXIT faces_brick
- 
-                   q = q + 1
-                   Basis(q) = BrickFacePBasis(F,i,j,u,v,w,direction)
-                   dLBasisdx(q,:) = dBrickFacePBasis(F,i,j,u,v,w,direction)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = ddBrickFacePBasis(F,i,j,u,v,w,direction)
-                   END IF
-                   ! Polynomial degree of basis function to vector
-                   IF (degrees) BasisDegree(q) = 2+i+j
-                 END DO
-               END DO
-             END IF
-          END DO faces_brick
-        END IF
-
-        ! Bubbles of p brick
-        nb = pSolver % Def_Dofs(8,BodyId,5)
-        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
-        IF ( BDOFs > 0 ) THEN
-          p = getEffectiveBubbleP(element,p,bdofs)
-
-          IF(SerendipityPBasis) THEN
-            SD_bubbles_brick: DO i=2,p-4
-              DO j=2,p-i-2
-                DO k=2,p-i-j
-                   IF ( q >= SIZE(Basis)) EXIT SD_bubbles_brick
-                   q = q + 1
-
-                   Basis(q) = SD_BrickBubblePBasis(i,j,k,u,v,w)
-                   dLBasisdx(q,:) = SD_dBrickBubblePBasis(i,j,k,u,v,w)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = SD_ddBrickBubblePBasis(i,j,k,u,v,w)
-                   END IF
-                    
-                   ! Polynomial degree of basis function to vector
-                   IF (degrees) BasisDegree(q) = i+j+k
-                END DO
-              END DO
-            END DO SD_bubbles_brick
-          ELSE 
-            bubbles_brick: DO i=0,p-2
-              DO j=0,p-2
-                DO k=0,p-2
-                  IF ( q >= SIZE(Basis)) EXIT bubbles_brick
-                  q = q + 1
-
-                   Basis(q) = BrickBubblePBasis(i,j,k,u,v,w)
-                   dLBasisdx(q,:) = dBrickBubblePBasis(i,j,k,u,v,w)
-                   IF (Compute2ndDerivatives) THEN
-                     ddLBasisddx(q,:,:) = ddBrickBubblePBasis(i,j,k,u,v,w)
-                   END IF
-                    
-                   ! Polynomial degree of basis function to vector
-                   IF (degrees) BasisDegree(q) = 2+i+j+k
-                END DO
-              END DO
-            END DO bubbles_brick
-          END IF
-        END IF
-
-     END SELECT
-     END IF ! P element flag check
-!------------------------------------------------------------------------------
-
 
      ! Element (contravariant) metric and square root of determinant
      !--------------------------------------------------------------
 #ifdef HAVE_QP
      IF(Element % Status==0) THEN
        stat = CheckMetric(q, Element, Nodes, dLBasisdx)
-       IF (stat) THEN
-         Element % Status = 1 ! good!!
-       ELSE
-         Element % Status = 2 ! bad !!
-       END IF
+       Element % Status = MERGE(1, 2, stat)
      END IF
 #endif
-
-     stat = .TRUE.
-     IF ( .NOT. ElementMetric( q, Element, Nodes, &
-           ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
-        stat = .FALSE.
-        RETURN
-     END IF
-
-     ! Get global first derivatives:
-     !------------------------------
+     stat = ElementMetric(q,Element,Nodes,ElmMetric,detJ,dLBasisdx,LtoGMap)
+     IF ( .NOT. stat ) RETURN
      IF ( PRESENT(dBasisdx) ) THEN
        dBasisdx = 0.0d0
-       DO k=1,dim
-         DO j=1,cdim
-           DO i=1,q
-             dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LtoGMap(j,k)
+       DO k = 1, dim
+         DO j = 1, cdim
+           DO i = 1, q
+             dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k) * LtoGMap(j,k)
            END DO
          END DO
        END DO
@@ -1373,20 +497,76 @@ CONTAINS
 
      ! Get matrix of second derivatives, if needed:
      !---------------------------------------------
-     IF ( Compute2ndDerivatives ) THEN
-       CALL GlobalSecondDerivatives(Element,Nodes, &
-           ddBasisddx,u,v,w,ElmMetric,dLBasisdx,ddLBasisddx,q )
-     END IF
+     IF (Compute2ndDerivatives) &
+       CALL GlobalSecondDerivatives(Element,Nodes,ddBasisddx,u,v,w,ElmMetric,dLBasisdx,ddLBasisddx,q)
 
 !------------------------------------------------------------------------------
-!    Generate bubble basis functions, if requested. Bubble basis is as follows:
-!    B_i (=(N_(i+n)) = B * N_i, where N_i:s are the nodal basis functions of
-!    the element, and B the basic bubble, i.e. the product of nodal basis
-!    functions of the corresponding linear element for triangles and tetras,
-!    and product of two diagonally opposed nodal basisfunctions of the
-!    corresponding (bi-,tri-)linear element for 1d-elements, quads and hexas.
+     IF ( PRESENT(Bubbles) .AND. .NOT. isActivePElement(Element, pSolver) ) THEN
+       CALL EvalBubbleBasis(Element, Nodes, u, v, w, detJ, n, cdim, &
+           Basis, dBasisdx, Bubbles, stat)
+     END IF
 !------------------------------------------------------------------------------
-     IF ( PRESENT( Bubbles ) .AND. .NOT. isActivePElement(Element,pSolver)) THEN
+
+   END FUNCTION ElementInfo
+
+   SUBROUTINE EvalSecondDerivativesRef(Element, pSolver, u, v, w, &
+       n, dim, Basis, nalloc, ddLBasisddx)
+     IMPLICIT NONE
+     TYPE(Element_t), TARGET, INTENT(IN) :: Element
+     TYPE(Solver_t), POINTER, INTENT(IN) :: pSolver
+     REAL(KIND=dp), INTENT(IN) :: u, v, w
+     INTEGER, INTENT(IN) :: n, dim, nalloc
+     REAL(KIND=dp), INTENT(INOUT) :: Basis(:)
+     REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: ddLBasisddx(:,:,:)
+     INTEGER :: i
+     ALLOCATE(ddLBasisddx(nalloc,3,3))
+     Basis = 0
+     ddLBasisddx = 0._dp
+     DO i=1,n
+       Basis(i) = 1
+       SELECT CASE(dim)
+       CASE(1)
+         ddLBasisddx(i,1,1) = SecondDerivatives1D(element,basis,u)
+       CASE(2)
+         ddLBasisddx(i,1:2,1:2) = SecondDerivatives2D(element,basis,u,v)
+       CASE(3)
+         SELECT CASE(Element % Type % ElementCode)
+         CASE(605)
+           IF(isActivePElement(Element,pSolver)) THEN
+             ddLBasisddx(i,:,:) = ddPyramidNodalPBasis(i,u,v,w)
+           ELSE
+             ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+           END IF
+         CASE(706)
+           IF(isActivePElement(element,pSolver)) THEN
+             ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
+           ELSE
+             ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+           END IF
+         CASE DEFAULT
+           ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+         END SELECT
+       END SELECT
+       Basis(i) = 0
+     END DO
+   END SUBROUTINE EvalSecondDerivativesRef
+
+
+   SUBROUTINE EvalBubbleBasis(Element, Nodes, u, v, w, detJ, n, cdim, &
+       Basis, dBasisdx, Bubbles, stat)
+     IMPLICIT NONE
+     TYPE(Element_t), TARGET, INTENT(IN) :: Element
+     TYPE(Nodes_t), INTENT(IN) :: Nodes
+     REAL(KIND=dp), INTENT(IN) :: u, v, w
+     REAL(KIND=dp), INTENT(INOUT) :: detJ
+     INTEGER, INTENT(IN) :: n, cdim
+     REAL(KIND=dp), INTENT(INOUT) :: Basis(:), dBasisdx(:,:)
+     LOGICAL, INTENT(IN) :: Bubbles
+     LOGICAL, INTENT(INOUT) :: stat
+     REAL(KIND=dp) :: BubbleValue, LinBasis(8), dLinBasisdx(8,3)
+     TYPE(Element_t) :: Bubble
+     INTEGER :: i, j
+
        Bubble % BDOFs = 0
        NULLIFY( Bubble % PDefs )
        NULLIFY( Bubble % EdgeIndexes )
@@ -1548,9 +728,896 @@ CONTAINS
 
          END SELECT
        END IF
-     END IF
+   END SUBROUTINE EvalBubbleBasis
+
+
+   SUBROUTINE EvalPElementBasis(Element, pSolver, u, v, w, n, q, Basis, dLBasisdx, &
+       Compute2ndDerivatives, ddLBasisddx, BasisDegree)
+     IMPLICIT NONE
+     TYPE(Element_t), TARGET, INTENT(IN) :: Element
+     TYPE(Solver_t), POINTER, INTENT(IN) :: pSolver
+     REAL(KIND=dp), INTENT(IN) :: u, v, w
+     INTEGER, INTENT(IN) :: n
+     INTEGER, INTENT(INOUT) :: q
+     REAL(KIND=dp), INTENT(INOUT) :: Basis(:), dLBasisdx(:,:)
+     LOGICAL, INTENT(IN) :: Compute2ndDerivatives
+     REAL(KIND=dp), ALLOCATABLE, INTENT(INOUT) :: ddLBasisddx(:,:,:)
+     INTEGER, OPTIONAL, INTENT(INOUT) :: BasisDegree(:)
+     LOGICAL :: degrees, invert, SerendipityPBasis
+     INTEGER :: i, j, k, f, p, nb, EDOFs, BDOFs, BodyId, tetraType, locali, localj
+     INTEGER :: tmp(4), direction(4)
+     INTEGER :: GIndexes(Element % Type % NumberOfNodes)
+     TYPE(Element_t), POINTER :: Parent, Edge, Face
+      ! P ELEMENT CODE:
+      ! ---------------
+       !
+       ! Check whether the polynomial degree of each basis functions is asked
+       ! and, if so, initialize by the degree of linear basis:
+       ! ---------------------------------------------------
+     IF ( isActivePElement(element,pSolver) ) THEN
+       degrees = .FALSE.
+       IF ( PRESENT(BasisDegree)) THEN 
+         degrees = .TRUE.
+         BasisDegree = 0
+         BasisDegree(1:n) = 1
+       END IF
+
+       BodyId = Element % BodyId
+       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+         Parent => Element % PDefs % LocalParent         
+         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         IF( BodyId == 0 ) THEN
+           Parent => Element % BoundaryInfo % Left
+           IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         END IF
+         IF(BodyId == 0) THEN
+           Parent => Element % BoundaryInfo % Right
+           IF( ASSOCIATED(Parent)) BodyId = Parent % BodyId
+         END IF
+       END IF
+
+       IF (BodyId==0) THEN
+         CALL Warn('ElementInfo', 'Element '//I2S(Element % ElementIndex)//' of type '//&
+             I2S(Element % TYPE % ElementCode)//' has 0 BodyId, assuming index 1')
+         BodyId = 1
+       END IF
+
+       ! If running in parallel use global indexing in orienting degrees of freedom
+       GIndexes = Element % NodeIndexes
+       IF (ASSOCIATED(pSolver % Mesh % ParallelInfo % GlobalDOFs)) &
+         GIndexes = pSolver % Mesh % ParallelInfo % GlobalDOFs(GIndexes)
+
+       SerendipityPBasis = Element % PDefs % Serendipity
+
 !------------------------------------------------------------------------------
-   END FUNCTION ElementInfo
+      SELECT CASE( Element % TYPE % ElementCode ) 
+!------------------------------------------------------------------------------
+
+      ! P element code for line element:
+      ! --------------------------------
+      CASE(202)
+         ! Get element p
+         p = pSolver % Def_Dofs(2,BodyId,6)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), pSolver % Def_Dofs(2,BodyId,5))
+
+         ! Bubbles of line element
+         IF (BDOFs > 0) THEN
+            ! For boundary element integration check direction
+            invert = .FALSE.
+            IF ( Element % PDefs % isEdge .AND. &
+                    GIndexes(1)>GIndexes(2) ) invert = .TRUE.
+
+            ! For each bubble get the value of basis function
+            DO i=1, BDOFs
+               IF (q >= SIZE(Basis)) EXIT
+               q = q + 1
+               
+               Basis(q) = LineBubblePBasis(i+1,u,invert)
+               dLBasisdx(q,1) = dLineBubblePBasis(i+1,u,invert)
+               IF(Compute2ndDerivatives) THEN
+                 ddLBasisddx(q,1,1) = ddLineBubblePBasis(i+1,u,invert)
+               END IF
+               
+               ! Polynomial degree of basis function to vector
+               IF (degrees) BasisDegree(q) = 1+i
+            END DO
+         END IF
+
+!------------------------------------------------------------------------------
+      ! P element code for triangles:
+      CASE(303)
+         EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(3,BodyId,6))
+         ! Edges of triangle
+         IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+            
+            ! For each edge calculate the value of edge basis function
+            edges_triangle: DO i=1,3
+               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
+
+               ! Get local number of edge start and endpoint nodes
+               tmp(1:2) = getTriangleEdgeMap(i)
+               locali = tmp(1)
+               localj = tmp(2)
+
+               ! Invert edge for parity if needed
+               invert = .FALSE.
+               IF ( GIndexes(locali)>GIndexes(localj) ) invert=.TRUE.
+
+               ! For each edge DOF get the value of p-basis function
+               ! NOTE: Edges may not have correct information about the count of DOFs
+               !        per edge, so the following would not work:
+               !       EDOFs = GetEdgeDOFs(Edge, pSolver % Def_Dofs(2,BodyId,6))
+               !
+               DO k=1,EDOFs
+                  IF (q >= SIZE(Basis)) EXIT edges_triangle
+                  q = q + 1
+                  
+                  ! Value of basis functions for edge=i and i=k+1 by parity
+                  Basis(q) = TriangleEdgePBasis(i, k+1, u, v, invert)
+                  dLBasisdx(q,1:2) = dTriangleEdgePBasis(i, k+1, u, v, invert)
+                  IF(Compute2ndDerivatives) THEN
+                    ddLBasisddx(q,1:2,1:2) = ddTriangleEdgePBasis(i,k+1,u,v,invert)
+                  END IF
+                  
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 1+k
+               END DO
+            END DO edges_triangle
+         END IF
+
+         ! Bubbles of p triangle      
+
+         ! Get element p
+         p = pSolver % Def_Dofs(3,BodyId,6)
+         nb = pSolver % Def_Dofs(3,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+
+         IF (BDOFs > 0) THEN
+            p = getEffectiveBubbleP(element,p,bdofs)
+            
+            ! For boundary element direction needs to be calculated
+            IF (Element % PDefs % isEdge) THEN
+               direction = 0
+               ! Get direction of this face (mask for face = boundary element nodes)
+               direction(1:3) = getTriangleFaceDirection(Element, [ 1,2,3 ], GIndexes)
+            END IF
+
+            bubbles_triangle: DO i = 0,p-3
+               DO j = 0,p-i-3
+                  IF ( q >= SIZE(Basis) ) EXIT bubbles_triangle
+                  q = q + 1
+
+                  ! Get bubble basis functions and their derivatives
+                  ! 3d Boundary element has a direction
+                  IF (Element % PDefs % isEdge) THEN
+                     Basis(q) = TriangleEBubblePBasis(i,j,u,v,direction) 
+                     dLBasisdx(q,1:2) = dTriangleEBubblePBasis(i,j,u,v,direction)
+
+                     IF(Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,1:2,1:2) = ddTriangleEBubblePBasis(i,j,u,v,direction)
+                     END IF
+                  ELSE
+                  ! 2d element bubbles have no direction
+                     Basis(q) = TriangleBubblePBasis(i,j,u,v) 
+                     dLBasisdx(q,1:2) = dTriangleBubblePBasis(i,j,u,v)
+
+                     IF(Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,j,u,v)
+                     END IF
+                  END IF
+                  
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 3+i+j
+               END DO
+            END DO bubbles_triangle
+         END IF
+!------------------------------------------------------------------------------
+      ! P element code for quads:
+      CASE(404)
+         ! Edges of p quadrilateral
+         EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(4,BodyId,6))
+         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
+            ! For each edge calculate the values of edge basis functions 
+            edges_quad: DO i=1,4
+               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
+
+               ! Choose correct parity by global edge dofs
+               tmp(1:2) = getQuadEdgeMap(i)
+               locali = tmp(1)
+               localj = tmp(2)
+               
+               ! Invert parity if needed
+               invert = .FALSE.
+               IF (GIndexes(locali) > GIndexes(localj)) invert = .TRUE. 
+
+               ! For each DOF in edge calculate the value of p-basis function
+               DO k=1,EDOFs
+                  IF ( q >= SIZE(Basis) ) EXIT edges_quad
+                  q = q + 1
+
+                  ! Get values of basis functions for edge=i and i=k+1 by parity
+                  IF (SerendipityPBasis) THEN
+                    Basis(q) = SD_QuadEdgePBasis(i,k+1,u,v,invert)
+                    ! Get value of derivatives of basis functions
+                    dLBasisdx(q,1:2) = SD_dQuadEdgePBasis(i,k+1,u,v,invert)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = SD_ddQuadEdgePBasis(i,k+1,u,v,invert)
+                    END IF
+                  ELSE
+                    Basis(q) = QuadEdgePBasis(i,k+1,u,v,invert)
+                    ! Get value of derivatives of basis functions
+                    dLBasisdx(q,1:2) = dQuadEdgePBasis(i,k+1,u,v,invert)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddQuadEdgePBasis(i,k+1,u,v,invert)
+                    END IF
+                  END IF
+                  
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 1+k
+               END DO              
+            END DO edges_quad
+         END IF
+
+         ! Bubbles of p quadrilateral, the number of which may have been defined explicitly or
+         ! be determined by the specified degree of approximation. However, we never omit bubbles
+         ! which are part of the FE space of the specified degree
+  
+         ! Get the specified element P:
+         p = pSolver % Def_Dofs(4,BodyId,6)
+         nb = pSolver % Def_Dofs(4,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+
+         IF (BDOFs > 0) THEN
+            p = getEffectiveBubbleP(element,p,bdofs)
+
+            ! For boundary element direction needs to be calculated
+            IF (Element % PDefs % isEdge) THEN
+               direction = getSquareFaceDirection(Element, [ 1,2,3,4 ], GIndexes )
+            END IF
+           
+            ! For each bubble calculate the value of p basis function
+            ! and its derivatives for index pairs i,j>=2, i+j=4,...,p
+            IF(SerendipityPBasis) THEN
+              SD_bubbles_quad: DO i=2,p-2
+                 DO j=2,p-i
+                   IF ( q >= SIZE(Basis) ) EXIT SD_bubbles_quad
+                   q = q + 1
+                  
+                   ! Get values of bubble functions
+                   ! 3D boundary elements have a direction
+                   IF (Element % PDefs % isEdge) THEN
+                     Basis(q) = SD_QuadBubblePBasis(i,j,u,v,direction)
+                     dLBasisdx(q,1:2) = SD_dQuadBubblePBasis(i,j,u,v,direction)
+                     IF (Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,1:2,1:2) = SD_ddQuadBubblePBasis(i,j,u,v)
+                     END IF
+                   ELSE
+                     ! 2d element bubbles have no direction
+                     Basis(q) = SD_QuadBubblePBasis(i,j,u,v)
+                     dLBasisdx(q,1:2) = SD_dQuadBubblePBasis(i,j,u,v)
+                     IF (Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,1:2,1:2) = SD_ddQuadBubblePBasis(i,j,u,v)
+                     END IF
+                   END IF
+                   ! Polynomial degree of basis function to vector
+                   IF (degrees) BasisDegree(q) = i+j
+                 END DO
+              END DO SD_bubbles_quad
+            ELSE
+              bubbles_quad: DO i=0,p-2
+                 DO j=0,p-2
+                   IF ( q >= SIZE(Basis) ) EXIT bubbles_quad
+                   q = q + 1
+                  
+                   ! Get values of bubble functions
+                   ! 3D boundary elements have a direction
+                   IF (Element % PDefs % isEdge) THEN
+                     Basis(q) = QuadBubblePBasis(i,j,u,v,direction)
+                     dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v,direction)
+                     IF (Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,1:2,1:2) = ddQuadBubblePBasis(i,j,u,v)
+                     END IF
+                   ELSE
+                     ! 2d element bubbles have no direction
+                     Basis(q) = QuadBubblePBasis(i,j,u,v)
+                     dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v)
+                     IF (Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,1:2,1:2) = ddQuadBubblePBasis(i,j,u,v)
+                     END IF
+                   END IF
+                   ! Polynomial degree of basis function to vector
+                   IF (degrees) BasisDegree(q) = 2+i+j
+                 END DO
+              END DO bubbles_quad
+            END IF
+         END IF
+!------------------------------------------------------------------------------
+      ! P element code for tetrahedra:
+      CASE(504)
+         p = pSolver % Def_Dofs(5,BodyId,6)
+         EDOFs = GetEdgeDOFs(Element, p)
+         tetraType = Element % PDefs % TetraType
+
+         ! Edges of p tetrahedron
+         IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN   
+            ! For each edge i calculate the values of edge functions
+            edges_tetrahedron: DO i=1,6
+               Edge => pSolver % Mesh % Edges (Element % EdgeIndexes(i))
+               
+               ! For each edge DOF k calculate the value of edge function
+               ! and its derivatives
+               DO k=1, EDOFs
+                  IF (q >= SIZE(Basis)) EXIT edges_tetrahedron
+                  q = q + 1
+
+                  Basis(q) = TetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                  dLBasisdx(q,:) = dTetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                  IF(Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = ddTetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                  END IF
+
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 1+k
+               END DO
+            END DO edges_tetrahedron
+         END IF
+
+         ! Faces of p tetrahedron
+         IF ( ASSOCIATED( Element % FaceIndexes )) THEN
+            ! For each face calculate values of face functions
+            faces_tetrahedron: DO F=1,4
+               Face => pSolver % Mesh % Faces (Element % FaceIndexes(F))
+
+               ! Get face p 
+               !p = MAX(pSolver % Def_Dofs(5,BodyId,6), Face % PDefs % P)
+
+               ! Do not solve face DOFs if there is not any
+               !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
+
+               tmp(1:3) = getTetraFaceMap(F,tetraType)
+               direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), GIndexes )
+
+               ! For each DOF in face calculate values of face function and 
+               ! its derivatives for index pairs 
+               ! i,j=0,..,p-3, i+j=0,..,p-3
+               DO i=0,p-3
+                  DO j=0,p-i-3
+                     IF (q >= SIZE(Basis)) EXIT faces_tetrahedron
+                     q = q + 1 
+                   
+                     Basis(q) = TetraFacePBasis(F,i,j,u,v,w, tetraType )
+                     dLBasisdx(q,:) = dTetraFacePBasis(F,i,j,u,v,w, tetraType )
+                     IF(Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,:,:) = ddTetraFacePBasis(F,i,j,u,v,w,tetraType )
+                     END IF
+
+                     ! Polynomial degree of basis function to vector
+                     IF (degrees) BasisDegree(q) = 3+i+j
+                  END DO
+               END DO
+            END DO faces_tetrahedron
+         END IF
+
+         ! Bubbles of p tetrahedron
+         nb = pSolver % Def_Dofs(5,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+         IF ( BDOFs > 0 ) THEN
+            p = getEffectiveBubbleP(element,p,bdofs)
+
+            ! For each bubble DOF calculate the value of bubble function
+            ! and its derivatives for index pairs
+            ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
+            bubbles_tetrahedron: DO i=0,p-4
+               DO j=0,p-i-4
+                  DO k=0,p-i-j-4
+                     IF (q >= SIZE(Basis)) EXIT bubbles_tetrahedron
+                     q = q + 1
+
+                     Basis(q) = TetraBubblePBasis(i,j,k,u,v,w)
+                     dLBasisdx(q,:) = dTetraBubblePBasis(i,j,k,u,v,w)
+                     IF(Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,:,:) = ddTetraBubblePBasis(i,j,k,u,v,w)
+                     END IF
+                     ! Polynomial degree of basis function to vector
+                     IF (degrees) BasisDegree(q) = 4+i+j+k
+                  END DO
+               END DO
+            END DO bubbles_tetrahedron
+            
+         END IF
+!------------------------------------------------------------------------------
+      ! P element code for pyramids:
+      CASE(605)
+
+         IF(SerendipityPBasis) THEN
+           CALL Fatal('ElementInfo', 'p-Pyramid not implemented for serendipity scheme, ' // &
+                       'please use the full scheme instead.')
+         END IF
+
+         ! Edges of P Pyramid
+         p = pSolver % Def_Dofs(6,BodyId,6)
+         EDOFs = GetEdgeDOFs(Element, p)
+         IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+            ! For each edge calculate values of edge functions
+            edges_pyramid: DO i=1,8
+               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
+
+               ! Get local indexes of current edge
+               tmp(1:2) = getPyramidEdgeMap(i)
+               locali = tmp(1)
+               localj = tmp(2)
+
+               ! Determine edge direction
+               invert = .FALSE.
+               
+               ! Invert edge if local first node has greater global index than second one
+               IF ( GIndexes(locali) > GIndexes(localj) ) invert = .TRUE.
+
+               ! For each edge DOF k calculate the value of edge function
+               ! and its derivatives
+               DO k=1,EDOFs
+                  IF ( q >= SIZE(Basis) ) EXIT edges_pyramid
+                  q = q + 1
+
+                  ! Get values of edge basis functions and their derivatives
+                  Basis(q) = PyramidEdgePBasis(i,k+1,u,v,w,invert)
+                  dLBasisdx(q,:) = dPyramidEdgePBasis(i,k+1,u,v,w,invert)
+                  IF (Compute2ndDerivatives) THEN
+                    ddLBasisddx(q,:,:) = ddPyramidEdgePBasis(i,k+1,u,v,w,invert)
+                  END IF
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 1+k
+               END DO
+            END DO edges_pyramid
+         END IF
+
+         
+         ! Faces of P Pyramid
+         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+            ! For each face in pyramid, calculate the values of face functions
+            faces_pyramid: DO F=1,5
+               Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
+               
+               ! Get face p
+               !p = MAX(pSolver % Def_Dofs(6,BodyId,6), Face % PDefs % P) 
+
+               ! Do not solve face dofs, if there is not any
+               !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
+               
+               ! Handle triangle and square faces separately
+               SELECT CASE(F)
+               CASE (1)
+                  direction = 0; invert=.FALSE.
+                  ! Get global direction vector for enforcing parity
+                  tmp(1:4) = getPyramidFaceMap(F)
+                  direction(1:4) = getSquareFaceDirection( Element, tmp(1:4), GIndexes )
+
+                  ! For each face calculate the values of functions for index
+                  ! pairs i,j=2,..,p-2 i+j=4,..,p
+
+!                DO i=0,p-2
+!                   DO j=0,p-i-2
+                  DO i=0,p-2
+                     DO j=0,p-2
+                        IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
+                        q = q + 1
+                        
+                        Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
+                        dLBasisdx(q,:) = dPyramidFacePBasis(F,i,j,u,v,w,direction)
+                        IF (Compute2ndDerivatives) THEN
+                          ddLBasisddx(q,:,:) = ddPyramidFacePBasis(F,i,j,u,v,w,direction)
+                        END IF
+                        
+                        ! Polynomial degree of basis function to vector
+                        IF (degrees) BasisDegree(q) = 2+i+j
+                     END DO
+                  END DO
+
+               CASE (2,3,4,5)
+                  direction = 0
+                  ! Get global direction vector for enforcing parity
+                  tmp(1:4) = getPyramidFaceMap(F) 
+                  direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), GIndexes )
+
+                  ! For each face calculate the values of functions for index
+                  ! pairs i,j=0,..,p-3 i+j=0,..,p-3
+                  DO i=0,p-3
+                     DO j=0,p-i-3
+                        IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
+                        q = q + 1
+
+                        Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
+                        dLBasisdx(q,:) = dPyramidFacePBasis(F,i,j,u,v,w,direction)
+                        IF (Compute2ndDerivatives) THEN
+                          ddLBasisddx(q,:,:) = ddPyramidFacePBasis(F,i,j,u,v,w,direction)
+                        END IF
+
+                        ! Polynomial degree of basis function to vector
+                        IF (degrees) BasisDegree(q) = 3+i+j
+                     END DO
+                  END DO
+               END SELECT    
+            END DO faces_pyramid
+         END IF
+
+         ! Bubbles of P Pyramid
+         nb = pSolver % Def_Dofs(6,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+         IF ( BDOFs > 0 ) THEN
+            p = getEffectiveBubbleP(element,p,bdofs)
+  
+            ! Calculate the values of bubble functions for indexes
+            ! i,j,k=0,..,p-3 i+j+k=0,..,p-3
+            bubbles_pyramid: DO i=0,p-3
+               DO j=0,p-i-3
+                  DO k=0,p-i-j-3
+                     IF ( q >= SIZE(Basis)) EXIT bubbles_pyramid
+                     q = q + 1
+
+                     Basis(q) = PyramidBubblePBasis(i,j,k,u,v,w)
+                     dLBasisdx(q,:) = dPyramidBubblePBasis(i,j,k,u,v,w)
+                     IF (Compute2ndDerivatives) THEN
+                       ddLBasisddx(q,:,:) = ddPyramidBubblePBasis(i,j,k,u,v,w)
+                     END IF
+                     
+                     ! Polynomial degree of basis function to vector
+                     IF (degrees) BasisDegree(q) = 3+i+j+k
+                  END DO
+               END DO
+            END DO bubbles_pyramid
+         END IF
+         
+!------------------------------------------------------------------------------
+      ! P element code wedges:
+      CASE(706)
+         p = pSolver % Def_Dofs(7,BodyId,6)
+         EDOFs = GetEdgeDOFs(Element, p)
+         ! Edges of P Wedge
+         IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+            ! For each edge i calculate the values of edge functions
+            edges_prism: DO i=1,9
+               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
+               
+               ! Get local indexes of current edge
+               tmp(1:2) = getWedgeEdgeMap(i)
+               locali = tmp(1)
+               localj = tmp(2)
+
+               ! Determine edge direction
+               invert = .FALSE.
+               ! Invert edge if local first node has greater global index than second one
+               IF ( GIndexes(locali) > GIndexes(localj) ) invert = .TRUE.
+        
+               ! For each edge DOF k calculate the value of edge function
+               ! and its derivatives
+               DO k=1,EDOFs
+                  IF ( q >= SIZE(Basis) ) EXIT edges_prism
+                  q = q + 1
+
+                  ! Get values of edge basis functions and their derivatives
+                  IF(SerendipityPBasis) THEN
+                    Basis(q) = SD_WedgeEdgePBasis(i,k+1,u,v,w,invert)
+                    dLBasisdx(q,:) = SD_dWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = SD_ddWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                    END IF
+                  ELSE
+                    Basis(q) = WedgeEdgePBasis(i,k+1,u,v,w,invert)
+                    dLBasisdx(q,:) = dWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                    END IF
+                  END IF
+
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 1+k
+               END DO
+            END DO edges_prism
+         END IF
+
+         ! The faces of p-wedge 
+         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+            ! For each face in wedge, calculate the values of face functions
+            faces_prism: DO F=1,5
+               Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
+
+               !p = MAX(pSolver % Def_Dofs(7,BodyId,6), Face % PDefs % P) 
+
+               ! Do not solve face dofs, if there is not any
+               !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
+               
+               ! Handle triangle and square faces separately
+               SELECT CASE(F)
+               CASE (1,2)
+                  direction = 0
+                  ! Get global direction vector for enforcing parity
+                  tmp(1:4) = getWedgeFaceMap(F) 
+                  direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), GIndexes )
+                  
+                  ! For each face calculate the values of functions for index
+                  ! pairs i,j=0,..,p-3 i+j=0,..,p-3
+                  DO i=0,p-3
+                     DO j=0,p-i-3
+                        IF ( q >= SIZE(Basis) ) EXIT faces_prism
+                        q = q + 1
+
+                        IF(SerendipityPBasis) THEN
+                          Basis(q) = SD_WedgeFacePBasis(F,i,j,u,v,w,direction)
+                          dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          IF(Compute2ndDerivatives) THEN
+                             ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          END IF
+                        ELSE
+                          Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
+                          dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          IF(Compute2ndDerivatives) THEN
+                             ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          END IF
+                        END IF
+
+                        ! Polynomial degree of basis function to vector
+                        IF (degrees) BasisDegree(q) = 3+i+j
+                     END DO
+                  END DO
+               CASE (3,4,5)
+                  direction = 0
+                  ! Get global direction vector for enforcing parity
+                  invert = .FALSE.
+                  tmp(1:4) = getWedgeFaceMap(F)
+                  direction(1:4) = getSquareFaceDirection( Element, tmp(1:4), GIndexes )
+                  
+                  ! First and second node must form a face in upper or lower triangle
+                  IF (.NOT. wedgeOrdering(direction)) THEN
+                     invert = .TRUE.
+                     tmp(1) = direction(2)
+                     direction(2) = direction(4)
+                     direction(4) = tmp(1)
+                  END IF
+
+                  ! For each face calculate values of functions from index
+                  ! pairs i,j=2,..,p-2 i+j=4,..,p
+                  IF(SerendipityPBasis) THEN
+                    DO i=2,p-2
+                       DO j=2,p-i
+                          IF ( q >= SIZE(Basis) ) EXIT faces_prism
+                          q = q + 1
+
+                          IF (.NOT. invert) THEN
+                             Basis(q) = SD_WedgeFacePBasis(F,i,j,u,v,w,direction)
+                             dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                             IF(Compute2ndDerivatives) THEN
+                                ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                             END IF
+                          ELSE
+                             Basis(q) = SD_WedgeFacePBasis(F,j,i,u,v,w,direction)
+                             dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,j,i,u,v,w,direction)
+                             IF(Compute2ndDerivatives) THEN
+                                ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,j,i,u,v,w,direction)
+                             END IF
+                          END IF
+                          ! Polynomial degree of basis function to vector
+                          IF (degrees) BasisDegree(q) = i+j
+                       END DO
+                    END DO
+                  ELSE
+                    DO i=0,p-2
+                       DO j=0,p-2
+                          IF ( q >= SIZE(Basis) ) EXIT faces_prism
+                          q = q + 1
+
+                          Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
+                          dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          IF(Compute2ndDerivatives) THEN
+                             ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          END IF
+   
+                          ! Polynomial degree of basis function to vector
+                          IF (degrees) BasisDegree(q) = 2+i+j
+                       END DO
+                    END DO
+                  END IF
+               END SELECT
+            END DO faces_prism
+         END IF
+
+         ! Bubbles of P Wedge
+         nb = pSolver % Def_Dofs(7,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+         IF ( BDOFs > 0 ) THEN
+
+            p = getEffectiveBubbleP(element,p,bdofs)
+            
+            IF(SerendipityPBasis) THEN
+              ! For each bubble calculate the value of basis function and its derivative
+              ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
+              SD_bubbles_prism: DO i=0,p-5
+                 DO j=0,p-5-i
+                    DO k=2,p-3-i-j
+                       IF ( q >= SIZE(Basis) ) EXIT SD_bubbles_prism
+                       q = q + 1
+
+                       Basis(q) = SD_WedgeBubblePBasis(i,j,k,u,v,w)
+                       dLBasisdx(q,:) = SD_dWedgeBubblePBasis(i,j,k,u,v,w)
+                       IF(Compute2ndDerivatives) THEN
+                         ddLBasisddx(q,:,:) = SD_ddWedgeBubblePBasis(i,j,k,u,v,w)
+                       END IF
+
+                       ! Polynomial degree of basis function to vector
+                       IF (degrees) BasisDegree(q) = 3+i+j+k
+                    END DO
+                 END DO
+              END DO SD_bubbles_prism
+            ELSE
+              bubbles_prism: DO i=0,p-3
+                 DO j=0,p-i-3
+                    DO k=0,p-2
+                       IF ( q >= SIZE(Basis) ) EXIT bubbles_prism
+                       q = q + 1
+
+                       Basis(q) = WedgeBubblePBasis(i,j,k,u,v,w)
+                       dLBasisdx(q,:) = dWedgeBubblePBasis(i,j,k,u,v,w)
+                       IF(Compute2ndDerivatives) THEN
+                         ddLBasisddx(q,:,:) = ddWedgeBubblePBasis(i,j,k,u,v,w)
+                       END IF
+
+                       ! Polynomial degree of basis function to vector
+                       IF (degrees) BasisDegree(q) = 2+i+j+k
+                    END DO
+                 END DO
+              END DO bubbles_prism
+            END IF
+         END IF
+
+!------------------------------------------------------------------------------
+      ! P element code for bricks:
+      CASE(808) 
+         p = pSolver % Def_Dofs(8,BodyId,6)
+         EDOFs = GetEdgeDOFs(Element, p)
+         ! Edges of P brick
+         IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+            ! For each edge i calculate the values of edge functions 
+            edges_brick: DO i=1,12
+               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
+               
+               ! Get local indexes of current edge
+               tmp(1:2) = getBrickEdgeMap(i)
+               locali = tmp(1)
+               localj = tmp(2)
+               
+               ! Determine edge direction
+               invert = .FALSE.
+               
+               ! Invert edge if local first node has greater global index than second one
+               IF (GIndexes(locali)>GIndexes(localj)) invert = .TRUE.
+               
+               ! For each edge DOF k calculate the values of edge function
+               ! and its derivatives
+               DO k=1,EDOFs
+                  IF ( q >= SIZE(Basis) ) EXIT edges_brick
+                  q = q + 1
+
+                  ! Get values of edge basis functions and their derivatives
+                  IF(SerendipityPBasis) THEN
+                    Basis(q) = SD_BrickEdgePBasis(i,k+1,u,v,w,invert)
+                    dLBasisdx(q,:) = SD_dBrickEdgePBasis(i,k+1,u,v,w,invert)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = SD_ddBrickEdgePBasis(i,k+1,u,v,w,invert)
+                    END IF
+                  ELSE
+                    Basis(q) = BrickEdgePBasis(i,k+1,u,v,w,invert)
+                    dLBasisdx(q,:) = dBrickEdgePBasis(i,k+1,u,v,w,invert)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddBrickEdgePBasis(i,k+1,u,v,w,invert)
+                    END IF
+                  END IF
+
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 1+k
+               END DO
+            END DO edges_brick
+         END IF
+
+         ! Faces of P brick
+         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+           ! For each face in brick, calculate values of face functions
+           faces_brick: DO F=1,6
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
+
+              ! Get p for face
+              !p = MAX(pSolver % Def_Dofs(8,BodyId,6), Face % PDefs % P)
+                           
+              ! Do not calculate face values if no dofs
+              !IF (GetFaceDOFs(Element, p, F)<= 0) CYCLE
+               
+              ! Generate direction vector for this face
+              tmp(1:4) = getBrickFaceMap(F)
+              direction(1:4) = getSquareFaceDirection(Element, tmp, GIndexes)
+
+              ! For each face calculate the values of functions for index
+              ! pairs i,j=2,..,p-2 i+j=4,..,p
+              IF(SerendipityPBasis) THEN
+                DO i=2,p-2
+                  DO j=2,p-i
+                    IF ( q >= SIZE(Basis) ) EXIT faces_brick
+
+                    q = q + 1
+                    Basis(q) = SD_BrickFacePBasis(F,i,j,u,v,w,direction)
+                    dLBasisdx(q,:) = SD_dBrickFacePBasis(F,i,j,u,v,w,direction)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = SD_ddBrickFacePBasis(F,i,j,u,v,w,direction)
+                    END IF
+                    ! Polynomial degree of basis function to vector
+                    IF (degrees) BasisDegree(q) = i+j
+                   END DO
+                END DO
+              ELSE
+                DO i=0,p-2
+                  DO j=0,p-2
+                    IF ( q >= SIZE(Basis) ) EXIT faces_brick
+  
+                    q = q + 1
+                    Basis(q) = BrickFacePBasis(F,i,j,u,v,w,direction)
+                    dLBasisdx(q,:) = dBrickFacePBasis(F,i,j,u,v,w,direction)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddBrickFacePBasis(F,i,j,u,v,w,direction)
+                    END IF
+                    ! Polynomial degree of basis function to vector
+                    IF (degrees) BasisDegree(q) = 2+i+j
+                  END DO
+                END DO
+              END IF
+           END DO faces_brick
+         END IF
+
+         ! Bubbles of p brick
+         nb = pSolver % Def_Dofs(8,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+         IF ( BDOFs > 0 ) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
+
+           IF(SerendipityPBasis) THEN
+             SD_bubbles_brick: DO i=2,p-4
+               DO j=2,p-i-2
+                 DO k=2,p-i-j
+                    IF ( q >= SIZE(Basis)) EXIT SD_bubbles_brick
+                    q = q + 1
+
+                    Basis(q) = SD_BrickBubblePBasis(i,j,k,u,v,w)
+                    dLBasisdx(q,:) = SD_dBrickBubblePBasis(i,j,k,u,v,w)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = SD_ddBrickBubblePBasis(i,j,k,u,v,w)
+                    END IF
+                     
+                    ! Polynomial degree of basis function to vector
+                    IF (degrees) BasisDegree(q) = i+j+k
+                 END DO
+               END DO
+             END DO SD_bubbles_brick
+           ELSE 
+             bubbles_brick: DO i=0,p-2
+               DO j=0,p-2
+                 DO k=0,p-2
+                   IF ( q >= SIZE(Basis)) EXIT bubbles_brick
+                   q = q + 1
+
+                    Basis(q) = BrickBubblePBasis(i,j,k,u,v,w)
+                    dLBasisdx(q,:) = dBrickBubblePBasis(i,j,k,u,v,w)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddBrickBubblePBasis(i,j,k,u,v,w)
+                    END IF
+                     
+                    ! Polynomial degree of basis function to vector
+                    IF (degrees) BasisDegree(q) = 2+i+j+k
+                 END DO
+               END DO
+             END DO bubbles_brick
+           END IF
+         END IF
+
+      END SELECT
+      END IF
+     END SUBROUTINE EvalPElementBasis
+
 !------------------------------------------------------------------------------
    
    ! SUBROUTINE ElementInfoVec_InitWork(m, n)

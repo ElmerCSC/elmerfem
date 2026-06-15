@@ -3551,6 +3551,7 @@ CONTAINS
      TYPE(NormalTangential_t), POINTER :: NT
      CHARACTER(:), ALLOCATABLE :: str
      INTEGER :: i,n,dim
+     TYPE(ElementType_t), POINTER :: et
      LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      
      IF ( PRESENT( USolver ) ) THEN
@@ -3562,6 +3563,15 @@ CONTAINS
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
        CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
      END IF     
+
+     ! Reset basis cache on all element types so ip-slot assignments from this
+     ! solver do not corrupt lookups by the next solver (which may use a
+     ! different integration scheme).
+     et => ElementTypeList
+     DO WHILE ( ASSOCIATED(et) )
+       et % BasisCacheCount = 0
+       et => et % NextElementType
+     END DO
 
      IF( PRESENT( UseConstantBulk ) ) THEN
        IF ( UseConstantBulk ) THEN
@@ -7537,6 +7547,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultFinishAssembly( Solver )
 !------------------------------------------------------------------------------
+    USE ElementBasis, ONLY: ElementTypeList
     TYPE(Solver_t), OPTIONAL, TARGET :: Solver
 
     INTEGER :: order, n
@@ -7544,6 +7555,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Matrix_t), POINTER :: A
+    TYPE(ElementType_t), POINTER :: et
     REAL(KIND=dp) :: sscond
     CHARACTER(:), ALLOCATABLE :: str
     
@@ -7614,7 +7626,16 @@ CONTAINS
         CALL SaveLinearSystem( PSolver ) 
       END IF
     END IF
-        
+
+    ! Reset basis cache on all element types so ip-slot assignments from this
+    ! solver do not corrupt lookups by the next solver (which may use a
+    ! different integration scheme).
+    et => ElementTypeList
+    DO WHILE ( ASSOCIATED(et) )
+      et % BasisCacheCount = 0
+      et => et % NextElementType
+    END DO
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultFinishAssembly
 !------------------------------------------------------------------------------

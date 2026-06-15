@@ -337,6 +337,15 @@ CONTAINS
       END IF
 
 !------------------------------------------------------------------------------
+     ! Allocate reference basis cache on the list node
+     n = ElementTypeList % NumberOfNodes
+     ALLOCATE( ElementTypeList % BasisCacheU(ELEM_BASIS_CACHE_SIZE), &
+               ElementTypeList % BasisCacheV(ELEM_BASIS_CACHE_SIZE), &
+               ElementTypeList % BasisCacheW(ELEM_BASIS_CACHE_SIZE), &
+               ElementTypeList % BasisCache(ELEM_BASIS_CACHE_SIZE, n), &
+               ElementTypeList % dBasisCache(ELEM_BASIS_CACHE_SIZE, n, 3) )
+     ElementTypeList % BasisCacheCount = 0
+!------------------------------------------------------------------------------
 
 CONTAINS
 

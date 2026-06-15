@@ -400,8 +400,10 @@ MODULE Types
 
 
    !
-   ! Element type description 
+   ! Element type description
    !
+   INTEGER, PARAMETER :: ELEM_BASIS_CACHE_SIZE = 64
+
    TYPE ElementType_t
      TYPE(ElementType_t),POINTER :: NextElementType ! this is a list of types
 
@@ -422,6 +424,14 @@ MODULE Types
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: NodeU, NodeV, NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: P_NodeU, P_NodeV, P_NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: N_NodeU, N_NodeV, N_NodeW
+     ! Reference basis function cache — keyed by (u,v,w), shared across all
+     ! elements of this type.  BasisCacheCount=0 means empty.
+     INTEGER :: BasisCacheCount = 0
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheU(:)       ! (ELEM_BASIS_CACHE_SIZE)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheV(:)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheW(:)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCache(:,:)      ! (ELEM_BASIS_CACHE_SIZE, n_nodes)
+     REAL(KIND=dp), ALLOCATABLE :: dBasisCache(:,:,:)   ! (ELEM_BASIS_CACHE_SIZE, n_nodes, 3)
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------

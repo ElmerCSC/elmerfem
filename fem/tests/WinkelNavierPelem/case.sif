@@ -67,16 +67,19 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1.0e-8
   Nonlinear System Max Iterations = 1
 
-  Linear System Solver = Direct
-  Linear System Direct Method = MUMPS
+  Linear System Solver = iterative
+  Linear System Max Iterations = 1
+  Linear System Convergence Tolerance = 1
+  Linear System Abort Not Converged = False
+  Linear System Direct Method = umfpack
 
   Linear System Timing = True
   Solver Timing = True
  
   Linear System Symmetric = True
   Optimize Bandwidth = False
-  Nonlinear System Consistent Norm = Logical True
   Linear System Scaling = True
+  Nonlinear System Consistent Norm = Logical True
 
   Displace Mesh = Logical False
 
