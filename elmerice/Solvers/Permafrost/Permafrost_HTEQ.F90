@@ -548,7 +548,7 @@ CONTAINS
         LinearParamsFound = (Found .AND. LinearParamsFound)
         Xi0 =GetConstReal(Material, "Linear Xi0", Found)
         LinearParamsFound = (Found .AND. LinearParamsFound)
-        dryDensity=GetConstReal(Material, "Linear dry desnity", Found)
+        dryDensity=GetConstReal(Material, "Linear dry density", Found)
         LinearParamsFound = (Found .AND. LinearParamsFound)
         IF (.NOT.LinearParamsFound) &
              CALL FATAL(FunctionName,"Linear freezing switched on, but not all 3 zone values (Linear) found")
