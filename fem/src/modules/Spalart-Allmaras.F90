@@ -51,12 +51,13 @@
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER  :: StiffMatrix
-     INTEGER :: i,j,k,n,iter,t,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
+     INTEGER :: i,j,k,n,nd,nb,iter,t,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
      REAL(KIND=dp) :: RelativeChange,Norm
      LOGICAL :: Stabilize = .TRUE.,gotIt
      LOGICAL :: AllocationsDone = .FALSE.
+     LOGICAL :: Bubbles
      TYPE(Variable_t), POINTER :: FlowSol, KE
      INTEGER, POINTER :: KinPerm(:)
      INTEGER :: NonlinearIter
@@ -108,6 +109,9 @@
 
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
+     Bubbles = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+     IF ( .NOT.GotIt ) Bubbles = .TRUE.
+
 !------------------------------------------------------------------------------
       DO i=1,Model % NumberOFBCs
         BC => Model % BCs(i) % Values
@@ -157,16 +161,23 @@
          Material => GetMaterial()
 
          n = GetElementNOFNodes()
+         nd = GetElementNOFDOFs()
+         IF ( Bubbles ) nd = 2*n
+         nb = GetElementNOFBDOFs()
          CALL GetElementNodes( ElementNodes )
 !------------------------------------------------------------------------------
 !        Get element local matrices, and RHS vectors
 !------------------------------------------------------------------------------
-         CALL LocalMatrix( MASS,STIFF,FORCE,LOAD,Element,n,ElementNodes )
+         CALL LocalMatrix( MASS,STIFF,FORCE,LOAD,Element,n,nd+nb,ElementNodes )
          TimeForce = 0.0_dp
          IF ( TransientSimulation ) THEN
             CALL Default1stOrderTime( MASS, STIFF, FORCE )
          END IF
-         CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+         IF ( Bubbles ) THEN
+           CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+         ELSE IF ( nb > 0 ) THEN
+           CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
+         END IF
 !------------------------------------------------------------------------------
 !        Update global matrices from local matrices
 !------------------------------------------------------------------------------
@@ -206,7 +217,7 @@
 CONTAINS
 
 !------------------------------------------------------------------------------
-   SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, LOAD, Element,n,Nodes )
+   SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, LOAD, Element,n,nd,Nodes )
 !------------------------------------------------------------------------------
 !
 !  REAL(KIND=dp) :: MASS(:,:)
@@ -239,7 +250,7 @@ CONTAINS
      REAL(KIND=dp), DIMENSION(:)   :: FORCE
      REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
 
-     INTEGER :: n
+     INTEGER :: n, nd
 
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t) :: Element
@@ -248,9 +259,9 @@ CONTAINS
 !    Local variables
 !------------------------------------------------------------------------------
 !
-     REAL(KIND=dp) :: ddBasisddx(2*n,3,3)
-     REAL(KIND=dp) :: Basis(2*n)
-     REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
+     REAL(KIND=dp) :: ddBasisddx(nd,3,3)
+     REAL(KIND=dp) :: Basis(nd)
+     REAL(KIND=dp) :: dBasisdx(nd,3),detJ
 
      REAL(KIND=dp) :: UX(n), UY(n), UZ(n), Velo(3), dVelodx(3,3),Tviscosity(n), &
                       Distance(n), Density(n), Viscosity(n)
@@ -266,7 +277,7 @@ CONTAINS
 
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
-     LOGICAL :: stat, Bubbles
+     LOGICAL :: stat
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
 !------------------------------------------------------------------------------
@@ -287,8 +298,7 @@ CONTAINS
      STIFF = 0.0_dp
      MASS  = 0.0_dp
 
-     NBasis = 2*n
-     Bubbles = .TRUE.
+     NBasis = nd
 
 !------------------------------------------------------------------------------
 !    Integration stuff
@@ -359,7 +369,7 @@ CONTAINS
        rho  = SUM( Density(1:n) * Basis(1:n) )
        dist = SUM( Distance(1:n) * Basis(1:n) )
 
-       Cb1 = 0.1335_dp
+       Cb1 = 0.1355_dp
        Cb2 = 0.6220_dp
        Cv1 = 7.1_dp
        Sigma = 2._dp/3._dp
