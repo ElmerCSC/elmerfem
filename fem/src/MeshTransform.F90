@@ -1301,7 +1301,7 @@ CONTAINS
         TranslateBeforeRotate, WholeMode
     LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
         AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
-    LOGICAL, POINTER :: NodeDone(:)
+    LOGICAL, POINTER :: NodeDone(:), FixedNode(:)
     TYPE(Element_t), POINTER :: Element
     TYPE(ValueList_t),POINTER :: ValueList, PrevValueList     
     CHARACTER(LEN=MAX_NAME_LEN) :: sname
@@ -1378,8 +1378,9 @@ CONTAINS
     END IF
 
     NoNodes = Mesh % NumberOfNodes
-    ALLOCATE( NodeDone(NoNodes) )
+    ALLOCATE( NodeDone(NoNodes), FixedNode(NoNodes))
     NodeDone = .FALSE.
+    FixedNode = .FALSE.
     NodeIndex => CurrentNode
 
     Identity = 0.0d0
@@ -1401,6 +1402,41 @@ CONTAINS
     GotScale = .FALSE.
     GotMatrix = .FALSE.
 
+
+
+    ! Implement moving and fixed BCs
+    ! ------------------------------
+    DO elem = 1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      Element => Mesh % Elements(elem)
+      Model % CurrentElement => Element
+      n = Element % Type % NumberOfNodes
+
+      IF( Element % BodyId > 0 ) THEN
+        i = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found )
+        IF(Found) THEN
+          ValueList => Model % BodyForces(i) % Values
+          IF(ListGetLogical(ValueList,'Fixed Body',Found ) ) THEN
+            FixedNode(Element % NodeIndexes) = .TRUE.
+          END IF
+        END IF
+      END IF
+        
+      IF(elem > Mesh % NumberOfBulkElements ) THEN        
+        DO i = 1, CurrentModel % NumberOfBCs 
+          IF( Element % BoundaryInfo % Constraint == CurrentModel % BCs(i) % Tag ) THEN
+            IF( ListGetLogical( CurrentModel % BCs(i) % Values,'Fixed Boundary',Found ) ) THEN
+              FixedNode(Element % NodeIndexes) = .TRUE.
+            END IF
+            EXIT
+          END IF            
+        END DO
+      END IF
+    END DO
+
+    n = COUNT(FixedNode) 
+    IF(n>0) CALL Info(Caller,'Number of Fixed nodes: '//I2S(n))
+    
     
     DO elem = 1,Mesh % NumberOfBulkElements      
 
@@ -1426,8 +1462,9 @@ CONTAINS
         NodeI = NodeIndex(1)
 
         IF(NodeDone(NodeI)) CYCLE
-        NodeDone(NodeI) = .TRUE.
 
+        IF(FixedNode(NodeI)) CYCLE 
+        
         ! This is to save time. If we have exactly same mapping as last time then
         ! there is no use doing the same ListGet operation things again.
         !-------------------------------------------------------------------------
@@ -1603,7 +1640,7 @@ CONTAINS
         ELSE
           CYCLE
         END IF
-        
+
         ! Now do the actual mapping!
         X(NodeI) = dx(1) + X(NodeI)
         Y(NodeI) = dx(2) + Y(NodeI)
@@ -1619,7 +1656,7 @@ CONTAINS
     WRITE(Message,* ) 'Coordinate mapping time: ',at1-at0
     CALL Info(Caller,Message,Level=7)
 
-    DEALLOCATE( NodeDone )
+    DEALLOCATE( NodeDone, FixedNode )
 
     CALL Info(Caller,'Performed internal rigid mesh mapping!',Level=10)
     
