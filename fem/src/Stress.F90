@@ -116,7 +116,7 @@ MODULE StressLocal
      INTEGER :: ndim
      LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE.
      REAL(KIND=dp) :: Pres, Pres0, dt
-     REAL(KIND=dp) :: PSOL(4,ntot), SOL(4,ntot), ShearModulus, Viscosity, PrevStress(3,3)
+     REAL(KIND=dp) :: PSOL(4,ntot), SOL(4,ntot), Viscosity
      CHARACTER :: DimensionString
 !------------------------------------------------------------------------------
 
@@ -244,8 +244,7 @@ MODULE StressLocal
          CALL Fatal( 'StressCompose', 'Unkown coordinate system dimension' ) 
        END SELECT
 
-       PrevStress = 0._dp
-     END IF
+      END IF
 
      ! Now we start integrating:
      ! -------------------------
@@ -464,7 +463,7 @@ MODULE StressLocal
        IF(MaxwellMaterial) THEN
          Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
 BLOCK
-REAL(KIND=dp) :: muder0
+         REAL(KIND=dp) :: muder0
 
          Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
             Element, Nodes, n, ntot, u, v, w,  muder0, LocalIP=t )
@@ -704,42 +703,20 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ViscoElasticLoad(ve_stress, ip, StressLoad) RESULT(xPhi)
 !------------------------------------------------------------------------------
-      TYPE(Variable_t) :: ve_stress
-     INTEGER :: ip, nonl
-     REAL(KIND=dp) :: StressLoad(6), Xphi
+     TYPE(Variable_t) :: ve_stress
+     INTEGER :: ip
+     REAL(KIND=dp) :: StressLoad(6), xPhi
 !------------------------------------------------------------------------------
      INTEGER :: i
-     REAL(KIND=dp) :: ElasticStress(3,3), VEStress(3,3), PrevStress(3,3), Pres, Pres0, &
-            ShearModulus, PrevElasticStress(3,3)
+     REAL(KIND=dp) :: ElasticStress(3,3), D_new(3,3), PrevD(3,3), Pres, Pres0, ShearModulus
 
      i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
 
-     ! Update timederivatives at the start of timesteps:
-     ! -------------------------------------------------
+     ! Save converged lag stress at the start of each new timestep:
      IF ( GetNonlinIter()==1 .AND. GetCoupledIter()==1 ) THEN
        ve_stress % prevvalues(i+1:i+dim**2,1) = ve_stress % values(i+1:i+dim**2)
      END IF
 
-     ! Elastic deviatoric stress from previous timestep:
-     ! -------------------------------------------------
-     PrevElasticStress = 0._dp
-     CALL LocalStress( PrevElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
-          NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
-          PSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
-
-     ! Elastic deviatoric stress from current timestep:
-     ! ------------------------------------------------
-     ElasticStress = 0._dp
-     CALL LocalStress( ElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
-          NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
-          SOL, Basis, dBasisdx, Nodes, dim, n, ntot, .FALSE. )
-
-     ! + the time derivative ...
-     ! -------------------------
-     ElasticStress = ElasticStress - PrevElasticStress
-
-     ! Pressure terms:
-     ! ---------------
      IF(Incompressible) THEN
        ShearModulus = Young / 3
        Pres  = SUM( Basis(1:n) * SOL(ndim,1:n) )
@@ -750,17 +727,23 @@ CONTAINS
      END IF
 
      xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
-     PrevStress(1:dim,1:dim) = RESHAPE(ve_stress % prevvalues(i+1:i+dim**2,1), [dim,dim])
 
-     ! Viscoelastic load from the previous timestep:
-     ! ----------------------------------------------
-     StressTensor = xPhi * (PrevElasticStress - PrevStress - Pres0 * Ident)
+     ! Lag stress from previous timestep: d = C:u - sigma_VE
+     PrevD(1:dim,1:dim) = RESHAPE(ve_stress % prevvalues(i+1:i+dim**2,1), [dim,dim])
+
+     ! RHS contribution from stored lag stress (no LocalStress call needed):
+     StressTensor = xPhi * (PrevD - Pres0 * Ident)
      CALL Tensor26Vector( StressTensor, StressLoad, dim, CSymmetry )
 
-     ! ... + update stresses for current timestep:
-     ! -------------------------------------------
-     VEStress = xPhi * (ElasticStress + PrevStress + Pres0*Ident) - Pres*Ident 
-     ve_stress % values(i+1:i+dim**2) = RESHAPE( VEStress(1:dim,1:dim), [dim**2] )
+     ! Elastic stress at current iterate:
+     ElasticStress = 0._dp
+     CALL LocalStress( ElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
+          NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
+          SOL, Basis, dBasisdx, Nodes, dim, n, ntot, .FALSE. )
+
+     ! Update lag stress: d_new = (1-xPhi)*C:u + xPhi*(d_prev - p0*I) + p*I
+     D_new = (1._dp - xPhi)*ElasticStress + xPhi*(PrevD - Pres0*Ident) + Pres*Ident
+     ve_stress % values(i+1:i+dim**2) = RESHAPE( D_new(1:dim,1:dim), [dim**2] )
 !------------------------------------------------------------------------------
    END FUNCTION ViscoElasticLoad
 !------------------------------------------------------------------------------
