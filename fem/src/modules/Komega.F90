@@ -443,10 +443,10 @@ CONTAINS
              DO i=1,dim
                DO j=1,dim
                   A(1,1) = A(1,1) + Metric(i,j) * Effmu(1) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                       dBasisdx(q,i) * dBasisdx(p,j)
 
                   A(2,2) = A(2,2) + Metric(i,j) * Effmu(2) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                       dBasisdx(q,i) * dBasisdx(p,j)
                END DO
              END DO
           END IF

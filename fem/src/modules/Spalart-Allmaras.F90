@@ -417,7 +417,7 @@ CONTAINS
           ELSE
              DO i=1,dim
                DO j=1,dim
-                  A = A + Metric(i,j) * Effmu * dBasisdx(q,i) * dBasisdx(p,i)
+                  A = A + Metric(i,j) * Effmu * dBasisdx(q,i) * dBasisdx(p,j)
                END DO
              END DO
           END IF
