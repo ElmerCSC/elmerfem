@@ -361,6 +361,10 @@ MODULE Types
   END TYPE IfLColsT
 
 
+  TYPE RealBuf_t
+    REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
+  END TYPE RealBuf_t
+
   TYPE SplittedMatrixT
      TYPE (BasicMatrix_t), DIMENSION(:), POINTER :: IfMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: InsideMatrix=>NULL()
@@ -375,6 +379,13 @@ MODULE Types
      TYPE (ResBufferT), DIMENSION(:), POINTER :: ResBuf=>NULL()
      REAL(KIND=dp), POINTER CONTIG :: &
            Work(:,:)=>NULL(),TmpXVec(:)=>NULL(),TmpRVec(:)=>NULL()
+     ! Persistent MPI communication buffers for SParMatrixVector (allocated once at setup)
+     INTEGER, ALLOCATABLE :: MVNeigh(:)
+     INTEGER, ALLOCATABLE :: MVSendSize(:)
+     INTEGER, ALLOCATABLE :: MVRecvSize(:)
+     TYPE(RealBuf_t), ALLOCATABLE :: MVSendBuf(:)
+     TYPE(RealBuf_t), ALLOCATABLE :: MVRecvBuf(:)
+     INTEGER, ALLOCATABLE :: MVRequests(:)
   END TYPE SplittedMatrixT
 
 

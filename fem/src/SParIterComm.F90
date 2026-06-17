@@ -84,10 +84,6 @@ MODULE SParIterComm
   INCLUDE "mpif.h"
 #endif
 
-  TYPE Buff_t
-    REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
-  END TYPE Buff_t
-
   TYPE iBuff_t
     INTEGER, ALLOCATABLE :: ibuf(:)
   END TYPE iBuff_t
@@ -2530,17 +2526,19 @@ tstart = realtime()
         !--------------------------------
         IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
            IF( SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours) < 1 ) THEN
-              PRINT *,'PE, node: ***** This node is missing the owner ****',ParEnv % MyPE+1, i
+              WRITE(Message,'(A,I0,A,I0)') 'PE ',ParEnv % MyPE+1,': node ',i
+              CALL Warn('SParGlobalNumbering','Node missing owner: '//TRIM(Message))
            END IF
-           
+
            IF (ANY(Mesh % ParallelInfo % NeighbourList(i) % Neighbours < 0 ) .OR. &
                 ANY(Mesh % ParallelInfo % NeighbourList(i) % Neighbours > ParEnv % PEs-1 ) ) THEN
-              PRINT *,'PE, node: ***** This node has a bad owner ****',ParEnv % MyPE+1, i
-              PRINT *, Mesh % ParallelInfo % NeighbourList(i) % Neighbours
-              Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPE              
+              WRITE(Message,'(A,I0,A,I0)') 'PE ',ParEnv % MyPE+1,': node ',i
+              CALL Warn('SParGlobalNumbering','Node has bad owner, resetting to self: '//TRIM(Message))
+              Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPE
            END IF
         ELSE
-           PRINT *,'PE, node: ***** This node is missing the owner ****',ParEnv % MyPE+1, i
+           WRITE(Message,'(A,I0,A,I0)') 'PE ',ParEnv % MyPE+1,': node ',i
+           CALL Warn('SParGlobalNumbering','Node missing owner: '//TRIM(Message))
         END IF
      END DO
 
@@ -4330,323 +4328,11 @@ END SUBROUTINE BuildRevVecIndices
 !
 !> Send our part of the interface matrix blocks to neighbours.
 !----------------------------------------------------------------------
-SUBROUTINE Send_LocIf_Old( SplittedMatrix )
 
-  IMPLICIT NONE
 
-  TYPE (SplittedMatrixT) :: SplittedMatrix
 
-  ! Local variables
 
-  INTEGER :: i, j, k, ierr, TotalL
-  TYPE (BasicMatrix_t), POINTER :: IfM
-  TYPE (IfVecT), POINTER :: IfV
-  INTEGER, ALLOCATABLE :: L(:)
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: VecL(:,:)
 
-  !*********************************************************************
-
-  ALLOCATE( L(ParEnv % PEs) )
-  L = 0
-  TotalL = 0
-
-  DO i = 1, ParEnv % PEs
-     IfM => SplittedMatrix % IfMatrix(i)
-
-     DO j=1,ParEnv % PEs
-        IF ( .NOT. ParEnv % IsNeighbour(j) ) CYCLE
-
-        DO k=1,IfM % NumberOfRows
-           IF ( IfM % RowOwner(k) == j-1 ) THEN
-              L(j) = L(j) + 1
-              TotalL = TotalL + 1
-           END IF
-        END DO
-     END DO
-  END DO
-
-  ALLOCATE( VecL( MAXVAL(L), ParEnv % PEs ) )
-  L = 0
-  VecL = 0
-
-  CALL CheckBuffer( 8*TotalL + ParEnv % NumOfNeighbours*(1+MPI_BSEND_OVERHEAD) )
-
-  DO i = 1, ParEnv % PEs
-     IfM => SplittedMatrix % IfMatrix(i)
-     IfV => SplittedMatrix % IfVecs(i)
-
-     DO j=1, ParEnv % PEs
-        IF ( .NOT. ParEnv % IsNeighbour(j) ) CYCLE
-
-        DO k=1,IfM % NumberOfRows
-           IF ( IfM % RowOwner(k) == j-1 ) THEN
-              L(j) = L(j) + 1
-              VecL(L(j),j) = IfV % IfVec(k)
-           END IF
-        END DO
-     END DO
-  END DO
-
-  DO j=1,ParEnv % PEs
-     IF ( .NOT. ParEnv % IsNeighbour(j) ) CYCLE
-
-     CALL MPI_BSEND( L(j), 1, MPI_INTEGER, J-1, 6000, &
-                ELMER_COMM_WORLD, IERR )
-
-     IF ( L(j) > 0 ) THEN
-        CALL MPI_BSEND( VecL(1:L(j),j), L(j), MPI_DOUBLE_PRECISION, &
-                 J-1, 6001, ELMER_COMM_WORLD, ierr )
-     END IF
-  END DO
-
-  IF ( ALLOCATED(VecL) ) DEALLOCATE( VecL, L )
-
-!*********************************************************************
-END SUBROUTINE Send_LocIf_Old
-!*********************************************************************
-
-
-!*********************************************************************
-!*********************************************************************
-!
-!> Receive interface block contributions to vector from neighbours.
-!----------------------------------------------------------------------
-SUBROUTINE Recv_LocIf_Old( SplittedMatrix, ndim, v )
-
-  IMPLICIT NONE
-
-  TYPE (SplittedMatrixT) :: SplittedMatrix
-  INTEGER :: ndim
-  REAL(KIND=dp), DIMENSION(*) :: v
-  REAL(KIND=dp), ALLOCATABLE :: DPBuffer(:)
-
-  SAVE DPBuffer
-
-  ! Local variables
-
-  integer :: i, j, k, ierr, sproc
-  integer, dimension(MPI_STATUS_SIZE) :: status
-
-  INTEGER, POINTER :: RevInd(:)
-  INTEGER :: VecLen, TotLen
-
-  !*********************************************************************
-
-  IF ( .NOT. ALLOCATED(DPBuffer) ) ALLOCATE(DPBuffer(ndim)) 
-
-  DO i = 1, ParEnv % NumOfNeighbours
-     CALL MPI_RECV( VecLen, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-              6000, ELMER_COMM_WORLD, status, ierr )
-
-     IF ( VecLen > 0 ) THEN
-        sproc = status(MPI_SOURCE)
-        RevInd => SplittedMatrix % VecIndices(sproc+1) % RevInd
-
-        IF ( VecLen > SIZE( DPBuffer ) ) THEN
-           DEALLOCATE( DPBuffer )
-           ALLOCATE( DPBuffer( VecLen ) )
-        END IF
-
-        CALL MPI_RECV( DPBuffer, VecLen, MPI_DOUBLE_PRECISION, &
-               sproc, 6001, ELMER_COMM_WORLD, status, ierr )
-
-        DO k = 1, VecLen
-           IF ( RevInd(k) > 0 ) &
-              v(RevInd(k)) = v(RevInd(k)) + DPBuffer(k)
-        END DO
-     END IF
-  END DO
-!*********************************************************************
-END SUBROUTINE Recv_LocIf_Old
-!*********************************************************************
-
-
-
-
-
-!*********************************************************************
-!*********************************************************************
-!> Send our part of the interface matrix blocks to neighbours.
-!----------------------------------------------------------------------
-SUBROUTINE Send_LocIf_size( SplittedMatrix, n, neigh )
-
-  IMPLICIT NONE
-
-  INTEGER :: n, neigh(:)
-  TYPE (SplittedMatrixT) :: SplittedMatrix
-
-  ! Local variables
-
-  INTEGER :: i, j, k, ni, nj, ierr, TotalL
-  TYPE (IfVecT), POINTER :: IfV
-  TYPE (BasicMatrix_t), POINTER :: IfM
-
-  INTEGER :: L(n)
-  !*********************************************************************
-
-  L = 0
-  TotalL = 0
-
-  DO ni = 1,n
-     i = neigh(ni)+1
-     IfM => SplittedMatrix % IfMatrix(i)
-     DO nj=1,n
-        j = neigh(nj)
-        DO k=1,IfM % NumberOfRows
-          IF ( IfM % RowOwner(k)==j ) L(nj) = L(nj)+1
-        END DO
-     END DO
-  END DO
-
-  DO nj=1,n
-    j = neigh(nj)
-    CALL MPI_BSEND(L(nj),1,MPI_INTEGER,j,6000,ELMER_COMM_WORLD, ierr)
-  END DO
-!*********************************************************************
-END SUBROUTINE Send_LocIf_size
-!*********************************************************************
-
-
-!*********************************************************************
-!*********************************************************************
-!> Send our part of the interface matrix blocks to neighbours.
-!
-SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
-
-  IMPLICIT NONE
-
-  INTEGER :: n,neigh(:)
-  TYPE (SplittedMatrixT) :: SplittedMatrix
-
-  ! Local variables
-
-  INTEGER :: i, j, k, ni, nj, ierr, TotalL
-  TYPE (IfVecT), POINTER :: IfV
-  TYPE (BasicMatrix_t), POINTER :: IfM
-
-  TYPE(Buff_t), ALLOCATABLE:: VecL(:)
-
-  INTEGER :: L(n)
-  !*********************************************************************
-
-  L = 0
-  TotalL = 0
-
-  DO ni = 1, n
-     i = neigh(ni)+1
-     IfM => SplittedMatrix % IfMatrix(i)
-
-     DO nj=1,n
-        j = neigh(nj) 
-        DO k=1,IfM % NumberOfRows
-           IF ( IfM % RowOwner(k) == j ) THEN
-              L(nj) = L(nj) + 1
-              TotalL = TotalL + 1
-           END IF
-        END DO
-     END DO
-  END DO
-
-  CALL CheckBuffer( 8*TotalL + n+ n*MPI_BSEND_OVERHEAD )
-
-  ALLOCATE( VecL(n) )
-  DO i=1,n
-    ALLOCATE( VecL(i) % Rbuf(L(i)) )
-  END DO
-
-  L = 0
-  DO ni = 1, n
-     i = neigh(ni)+1
-     IfV => SplittedMatrix % IfVecs(i)
-     IfM => SplittedMatrix % IfMatrix(i)
-
-     DO nj=1, n
-        j = neigh(nj)
-        DO k=1,IfM % NumberOfRows
-           IF ( IfM % RowOwner(k) == j ) THEN
-              L(nj) = L(nj) + 1
-              VecL(nj) % rbuf(L(nj)) = IfV % IfVec(k)
-           END IF
-        END DO
-     END DO
-  END DO
-
-  DO nj=1,n
-     IF ( L(nj) > 0 ) THEN
-       CALL MPI_BSEND( VecL(nj) % rbuf, L(nj), MPI_DOUBLE_PRECISION, &
-                Neigh(nj), 6001, ELMER_COMM_WORLD, Ierr )
-     END IF
-  END DO
-!*********************************************************************
-END SUBROUTINE Send_LocIf
-!*********************************************************************
-
-
-!*********************************************************************
-!*********************************************************************
-!
-!> Receive interface block contributions to vector from neighbours
-!
-SUBROUTINE Recv_LocIf_size( n, neigh, sizes )
-  IMPLICIT NONE
-
-  INTEGER :: sizes(:), neigh(:), n
-
-  ! Local variables
-
-  integer :: i, j, k, ni,nj,ierr, sproc
-  integer, dimension(MPI_STATUS_SIZE) :: status
-
-  INTEGER :: VecLen
-  !*********************************************************************
-  DO i=1, ParEnv % NumOfNeighbours
-     CALL MPI_RECV( Veclen, 1, MPI_INTEGER, neigh(i), &
-            6000, ELMER_COMM_WORLD, status, ierr )
-     sizes(i) = Veclen
-  END DO
-!*********************************************************************
-END SUBROUTINE Recv_LocIf_size
-!*********************************************************************
-
-
-!*********************************************************************
-!*********************************************************************
-!
-!> Receive interface block contributions to vector from neighbours
-!
-SUBROUTINE Recv_LocIf( SplittedMatrix, n, neigh, sizes, requests, buffer )
-  uSE Types
-  IMPLICIT NONE
-
-  TYPE (SplittedMatrixT) :: SplittedMatrix
-  TYPE(Buff_t) ::  buffer(:)
-  INTEGER :: n, sizes(:), requests(:), neigh(:)
-
-  ! Local variables
-
-  INTEGER :: VecLen, TotLen
-  integer :: i, j, k, ni, ierr, sproc
-
-  INTERFACE 
-    SUBROUTINE MPI_IRECV( buf,size,type,proc,tag,comm,req,ierr )
-       USE Types
-       REAL(KIND=dp)::buf(*)
-       INTEGER :: size,type,proc,tag,comm,req,ierr
-    END SUBROUTINE MPI_IRECV
-  END INTERFACE
-
-  !*********************************************************************
-
-  DO ni = 1, n
-    IF ( sizes(ni)>0 ) THEN
-      i = neigh(ni)
-      CALL MPI_iRECV( buffer(ni) % rbuf,sizes(ni),MPI_DOUBLE_PRECISION, &
-              i, 6001, ELMER_COMM_WORLD, requests(ni), Ierr)
-    END IF
-  END DO
-!*********************************************************************
-END SUBROUTINE Recv_LocIf
-!*********************************************************************
 
 
 !*********************************************************************
@@ -4660,34 +4346,26 @@ SUBROUTINE Recv_LocIf_Wait( SplittedMatrix, ndim, v, n, neigh, &
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
   REAL(KIND=dp), DIMENSION(*) :: v
-  TYPE(Buff_t) ::  buffer(:)
+  TYPE(RealBuf_t) :: buffer(:)
   INTEGER :: ndim, n, neigh(:), sizes(:), requests(:)
 
   ! Local variables
 
-  integer :: i, j, k, ni, nj, ierr, sproc
-  integer, dimension(MPI_STATUS_SIZE) :: status
-
-  INTEGER :: Completed, Flag, active_req(n), active_n(n), active_cnt
-
-  INTEGER :: VecLen, TotLen
+  integer :: i, j, k, ni, ierr
+  INTEGER :: active_req(n), active_n(n), active_cnt
   INTEGER, POINTER :: RevInd(:)
 
   !*********************************************************************
 
-  completed  = 0
   active_cnt = 0
   DO ni=1,n
-    IF ( sizes(ni) <= 0 ) THEN
-      completed = completed+1
-    ELSE
+    IF ( sizes(ni) > 0 ) THEN
       active_cnt = active_cnt + 1
       active_n(active_cnt) = ni
       active_req(active_cnt) = requests(ni)
     END IF
   END DO
 
-#if 1
   CALL MPI_Waitall( active_cnt, active_req, MPI_STATUSES_IGNORE, ierr )
 
   DO j=1,active_cnt
@@ -4699,20 +4377,6 @@ SUBROUTINE Recv_LocIf_Wait( SplittedMatrix, ndim, v, n, neigh, &
          v(RevInd(k)) = v(RevInd(k))+buffer(ni) % rbuf(k)
     END DO
   END DO
-#else
-  DO WHILE( completed<n )
-    CALL MPI_Waitany( active_cnt, active_req, ni, status, ierr )
-
-    ni = active_n(ni)
-    i = neigh(ni) + 1
-    RevInd => SplittedMatrix % VecIndices(i) % RevInd
-    DO k = 1, sizes(ni)
-      IF ( RevInd(k) > 0 ) &
-         v(RevInd(k)) = v(RevInd(k))+buffer(ni) % rbuf(k)
-    END DO
-    completed = completed + 1
-  END DO
-#endif
 !*********************************************************************
 END SUBROUTINE Recv_LocIf_Wait
 !*********************************************************************
@@ -4942,9 +4606,7 @@ FUNCTION SParCDotProd( ndim, x, xind, y, yind ) result (dres)
 
   ! Local variables
 
-  COMPLEX(KIND=dp) :: dsum
-  INTEGER :: ierr, i, MinActive
-  INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
+  INTEGER :: i
 
   !*********************************************************************
   dres = 0.0d0
@@ -4953,14 +4615,12 @@ FUNCTION SParCDotProd( ndim, x, xind, y, yind ) result (dres)
      DO i = 1, ndim
         dres = dres + dconjg(x(i)) * y(i)
      END DO
-     !$OMP END PARALLEL DO 
+     !$OMP END PARALLEL DO
   ELSE
      CALL Fatal( 'SParCDotProd', 'xind or yind not 1' )
   END IF
 
-  dsum = dres
-  CALL MPI_ALLREDUCE( dsum, dres, 1, MPI_DOUBLE_COMPLEX, &
-            MPI_SUM, ParEnv % ActiveComm, ierr )
+  CALL SParActiveSUMComplex( dres, 0 )
 !*********************************************************************
 END FUNCTION SParCDotProd
 !*********************************************************************

@@ -62,10 +62,6 @@ MODULE SParIterSolve
 
 CONTAINS
 
-  
-  SUBROUTINE Dummy
-  END SUBROUTINE Dummy
-
 
   SUBROUTINE DPCond( u,v,ipar )
     REAL(KIND=dp) :: u(*),v(*)
@@ -909,10 +905,72 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
 END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 
+!----------------------------------------------------------------------
+!> Pre-compute and store persistent MPI communication context for
+!> SParMatrixVector. Called once after matrix structure is finalised.
+!----------------------------------------------------------------------
+  SUBROUTINE SParMatVecCommSetup( SplittedMatrix )
+    TYPE(SplittedMatrixT), POINTER :: SplittedMatrix
+
+    INTEGER :: i, j, k, ni, nj, nneigh, ierr
+    TYPE(BasicMatrix_t), POINTER :: IfM
+    INTEGER, ALLOCATABLE :: reqs(:)
+
+    nneigh = ParEnv % NumOfNeighbours
+    ALLOCATE( SplittedMatrix % MVNeigh(nneigh) )
+    ALLOCATE( SplittedMatrix % MVSendSize(nneigh) )
+    ALLOCATE( SplittedMatrix % MVRecvSize(nneigh) )
+    ALLOCATE( reqs(nneigh) )
+
+    ! Build compact neighbour list directly into persistent storage
+    j = 0
+    DO i = 1, ParEnv % PEs
+      IF ( ParEnv % IsNeighbour(i) ) THEN
+        j = j + 1
+        SplittedMatrix % MVNeigh(j) = i - 1
+        IF ( j == nneigh ) EXIT
+      END IF
+    END DO
+
+    ! Count send sizes directly into MVSendSize
+    SplittedMatrix % MVSendSize = 0
+    DO ni = 1, nneigh
+      i = SplittedMatrix % MVNeigh(ni) + 1
+      IfM => SplittedMatrix % IfMatrix(i)
+      DO nj = 1, nneigh
+        j = SplittedMatrix % MVNeigh(nj)
+        DO k = 1, IfM % NumberOfRows
+          IF ( IfM % RowOwner(k) == j ) &
+            SplittedMatrix % MVSendSize(nj) = SplittedMatrix % MVSendSize(nj) + 1
+        END DO
+      END DO
+    END DO
+
+    ! Exchange: each PE learns how many values it will receive from each neighbour
+    DO nj = 1, nneigh
+      CALL MPI_ISEND( SplittedMatrix % MVSendSize(nj), 1, MPI_INTEGER, &
+                      SplittedMatrix % MVNeigh(nj), 6007, ELMER_COMM_WORLD, reqs(nj), ierr )
+    END DO
+    DO nj = 1, nneigh
+      CALL MPI_RECV( SplittedMatrix % MVRecvSize(nj), 1, MPI_INTEGER, &
+                     SplittedMatrix % MVNeigh(nj), 6007, ELMER_COMM_WORLD, MPI_STATUS_IGNORE, ierr )
+    END DO
+    CALL MPI_Waitall( nneigh, reqs, MPI_STATUSES_IGNORE, ierr )
+
+    ALLOCATE( SplittedMatrix % MVSendBuf(nneigh) )
+    ALLOCATE( SplittedMatrix % MVRecvBuf(nneigh) )
+    DO i = 1, nneigh
+      ALLOCATE( SplittedMatrix % MVSendBuf(i) % rbuf( MAX(1, SplittedMatrix % MVSendSize(i)) ) )
+      ALLOCATE( SplittedMatrix % MVRecvBuf(i) % rbuf( MAX(1, SplittedMatrix % MVRecvSize(i)) ) )
+    END DO
+    ALLOCATE( SplittedMatrix % MVRequests(nneigh) )
+    SplittedMatrix % MVRequests = MPI_REQUEST_NULL
+  END SUBROUTINE SParMatVecCommSetup
+!----------------------------------------------------------------------
 
 
 !----------------------------------------------------------------------
-! Get Hypre parameters in one central place. 
+! Get Hypre parameters in one central place.
 !----------------------------------------------------------------------
   SUBROUTINE SetHypreParameters(Params, hypremethod, Ilun, hypre_dppara, hypre_intpara )
     TYPE(ValueList_t), POINTER :: Params
@@ -1400,6 +1458,10 @@ END SUBROUTINE ZeroSplittedMatrix
          ALLOCATE( SplittedMatrix % TmpRVec( SplittedMatrix %  &
                     InsideMatrix % NumberOfRows ) )
          SplittedMAtrix % TmpRVec = 0
+      END IF
+
+      IF ( .NOT. ALLOCATED( SplittedMatrix % MVNeigh ) ) THEN
+        CALL SParMatVecCommSetup( SplittedMatrix )
       END IF
 
       DEALLOCATE(OrderList)
@@ -2500,6 +2562,10 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
     SplittedMatrix % InsideMatrix % ConstraintMatrix => CM
   END IF
 
+  IF ( .NOT. ALLOCATED( SplittedMatrix % MVNeigh ) ) THEN
+    CALL SParMatVecCommSetup( SplittedMatrix )
+  END IF
+
   IF ( .NOT. SourceMatrix % COMPLEX ) THEN
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
         TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
@@ -2571,116 +2637,94 @@ END SUBROUTINE SolveHutiter
 
   IMPLICIT NONE
 
-  ! Input parameters
-
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
 
-  ! Local parameters
-
-  INTEGER :: i, j, k, l, n, ii, colind, rowind
-  TYPE( IfVecT), POINTER :: IfV
-  TYPE( IfLColsT), POINTER :: IfL, IfO
-  TYPE (BasicMatrix_t), POINTER :: CurrIf
-  TYPE (Matrix_t), POINTER :: InsideMatrix
-
-  INTEGER :: nneigh
-  TYPE(Buff_t), POINTER ::  buffer(:)
-  REAL(KIND=dp) :: rsum
-  REAL(KIND=dp), POINTER CONTIG :: Vals(:)
-  INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
-  INTEGER, ALLOCATABLE :: neigh(:), recv_size(:), requests(:)
-  REAL(kind=dp) :: s, scum = 0
-  !*******************************************************************
+  INTEGER :: i, j, k, l, n, ni, nj, nneigh, ColInd, ierr
+  TYPE(IfVecT),       POINTER :: IfV
+  TYPE(IfLColsT),     POINTER :: IfL
+  TYPE(BasicMatrix_t),POINTER :: CurrIf, IfM
+  TYPE(Matrix_t),     POINTER :: InsideMatrix
+  TYPE(SplittedMatrixT), POINTER :: SP
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
-  n = InsideMatrix % NumberOfRows
+  SP           => GlobalData % SplittedMatrix
+  n            =  InsideMatrix % NumberOfRows
+  nneigh       =  SIZE(SP % MVNeigh)
 
-  !----------------------------------------------------------------------
-  !
-  ! Compute the interface contribution for each neighbour
-  !
-  !----------------------------------------------------------------------
-
-  nneigh = ParEnv % NumOfNeighbours
-  ALLOCATE( neigh(nneigh) )
-
-  j = 0
-  DO i=1,Parenv % Pes
-    IF ( ParEnv % IsNeighbour(i) ) THEN
-      j = j + 1
-      neigh(j) = i-1
-      IF ( j==nneigh ) EXIT
+  ! Post non-blocking receives into persistent buffers
+  DO ni = 1, nneigh
+    SP % MVRequests(ni) = MPI_REQUEST_NULL
+    IF ( SP % MVRecvSize(ni) > 0 ) THEN
+      CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
+          ELMER_COMM_WORLD, SP % MVRequests(ni), ierr )
     END IF
   END DO
 
-  CALL Send_LocIf_size( GlobalData % SplittedMatrix, nneigh, neigh )
-  ALLOCATE( recv_size(nneigh) )
-  CALL Recv_LocIf_size( nneigh, neigh, recv_size )
-
-  ALLOCATE( buffer(nneigh) )
-  DO i=1,nneigh
-    ALLOCATE( buffer(i) % rbuf(recv_size(i)) ) 
-  END DO
-
-  ALLOCATE( requests(nneigh) )
-  CALL Recv_LocIf( GlobalData % SplittedMatrix, &
-      nneigh, neigh, recv_size, requests, buffer )
-
   !$OMP PARALLEL DO
-  DO i=1,n
-     v(i) = 0.0
+  DO i = 1, n
+    v(i) = 0.0_dp
   END DO
   !$OMP END PARALLEL DO
-  DO i = 1, ParEnv % PEs
-     CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
 
-     IF ( CurrIf % NumberOfRows /= 0 ) THEN
-        IfV => GlobalData % SplittedMatrix % IfVecs(i)
-        IfL => GlobalData % SplittedMatrix % IfLCols(i)
-        IfO => GlobalData % SplittedMatrix % IfORows(i)
+  ! Compute interface contributions into IfVec arrays
+  DO ni = 1, nneigh
+    i      = SP % MVNeigh(ni) + 1
+    CurrIf => SP % IfMatrix(i)
+    IF ( CurrIf % NumberOfRows == 0 ) CYCLE
+    IfV    => SP % IfVecs(i)
+    IfL    => SP % IfLCols(i)
 
-        !$OMP PARALLEL PRIVATE(ColInd,j,k)
-        !$OMP DO
-        DO j=1,CurrIf % NumberOfRows
-           IfV % IfVec(j) = 0.0
+    !$OMP PARALLEL PRIVATE(ColInd,j,k)
+    !$OMP DO
+    DO j = 1, CurrIf % NumberOfRows
+      IfV % IfVec(j) = 0.0_dp
+    END DO
+    !$OMP END DO
+    !$OMP DO
+    DO j = 1, CurrIf % NumberOfRows
+      IF ( CurrIf % RowOwner(j) /= ParEnv % MyPE ) THEN
+        DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
+          ColInd = IfL % IfVec(k)
+          IF ( ColInd > 0 ) &
+            IfV % IfVec(j) = IfV % IfVec(j) + CurrIf % Values(k) * u(ColInd)
         END DO
-        !$OMP END DO
-        !$OMP DO
-        DO j = 1, CurrIf % NumberOfRows
-           IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
-             DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
-               Colind = IfL % IfVec(k)
-               IF ( ColInd > 0 ) THEN
-                 IfV % IfVec(j)=IfV % IfVec(j)+CurrIf % Values(k)*u(colind)
-               END IF
-             END DO
-           END IF
-        END DO
-        !$OMP END DO
-        !$OMP END PARALLEL
-     END IF
+      END IF
+    END DO
+    !$OMP END DO
+    !$OMP END PARALLEL
   END DO
 
-  CALL Send_LocIf( GlobalData % SplittedMatrix, nneigh, neigh )
-  !----------------------------------------------------------------------
-  !
-  ! Compute the local part
-  !
-  !----------------------------------------------------------------------
+  ! Pack persistent send buffers and dispatch
+  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
+  DO nj = 1, nneigh
+    IF ( SP % MVSendSize(nj) > 0 ) THEN
+      l = 0
+      DO ni = 1, nneigh
+        i   = SP % MVNeigh(ni) + 1
+        IfV => SP % IfVecs(i)
+        IfM => SP % IfMatrix(i)
+        j   =  SP % MVNeigh(nj)
+        DO k = 1, IfM % NumberOfRows
+          IF ( IfM % RowOwner(k) == j ) THEN
+            l = l + 1
+            SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
+          END IF
+        END DO
+      END DO
+      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+    END IF
+  END DO
+
+  ! Local SpMV (overlaps with MPI)
   CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
 
-  CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
-       nneigh, neigh, recv_size, requests, buffer )
+  ! Wait for receives and accumulate into v
+  CALL Recv_LocIf_Wait( SP, n, v, nneigh, SP % MVNeigh, &
+       SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
 
-  DEALLOCATE( neigh, recv_size, requests )
-  DO i=1,SIZE(buffer)
-    DEALLOCATE( buffer(i) % rbuf )
-  END DO
-  DEALLOCATE( buffer )
-
-  CALL SParIterActiveBarrier 
-!----------------------------------------------------------------------
 END SUBROUTINE SParMatrixVector
 !----------------------------------------------------------------------
 
@@ -2696,134 +2740,102 @@ END SUBROUTINE SParMatrixVector
 
   IMPLICIT NONE
 
-  ! Input parameters
-
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
 
-  ! Local parameters
-
-  INTEGER :: i, j, k, l, n, ii, colind, rowind
-  TYPE( IfVecT), POINTER :: IfV
-  TYPE( IfLColsT), POINTER :: IfL, IfO
-  TYPE (BasicMatrix_t), POINTER :: CurrIf
-  TYPE (Matrix_t), POINTER :: InsideMatrix
-
-  INTEGER :: nneigh
-
-  TYPE(Buff_t), POINTER ::  buffer(:)
+  INTEGER :: i, j, k, l, n, ni, nj, ColInd, nneigh, ierr
+  TYPE(IfVecT),        POINTER :: IfV
+  TYPE(IfLColsT),      POINTER :: IfL
+  TYPE(BasicMatrix_t), POINTER :: CurrIf, IfM
+  TYPE(Matrix_t),      POINTER :: InsideMatrix
+  TYPE(SplittedMatrixT), POINTER :: SP
 
   REAL(KIND=dp) :: rsum
-
   REAL(KIND=dp), POINTER CONTIG :: Vals(:), Abs_Vals(:)
-! REAL(KIND=dp), POINTER :: Vals(:)
-
-  INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
-! INTEGER, POINTER :: Cols(:),Rows(:)
-
-  INTEGER, ALLOCATABLE :: neigh(:), recv_size(:), requests(:)
-
-REAL(kind=dp) :: s, RealTime
-  !*******************************************************************
+  INTEGER, POINTER CONTIG :: Cols(:), Rows(:)
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
-  n = InsideMatrix % NumberOfRows
+  SP           => GlobalData % SplittedMatrix
+  n            =  InsideMatrix % NumberOfRows
+  nneigh       =  SIZE(SP % MVNeigh)
 
-  !----------------------------------------------------------------------
-  !
-  ! Compute the interface contribution for each neighbour
-  !
-  !----------------------------------------------------------------------
-
-  nneigh = ParEnv % NumOfNeighbours
-  ALLOCATE( neigh(nneigh) )
-
-  j = 0
-  DO i=1,Parenv % Pes
-    IF ( ParEnv % IsNeighbour(i) ) THEN
-      j = j + 1
-      neigh(j) = i-1
-      IF ( j==nneigh ) EXIT
+  DO ni = 1, nneigh
+    SP % MVRequests(ni) = MPI_REQUEST_NULL
+    IF ( SP % MVRecvSize(ni) > 0 ) THEN
+      CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
+          ELMER_COMM_WORLD, SP % MVRequests(ni), ierr )
     END IF
   END DO
 
-  CALL Send_LocIf_size( GlobalData % SplittedMatrix, nneigh, neigh )
-  ALLOCATE( recv_size(nneigh) )
-  CALL Recv_LocIf_size( nneigh, neigh, recv_size )
+  !$OMP PARALLEL DO
+  DO i = 1, n; v(i) = 0.0_dp; END DO
+  !$OMP END PARALLEL DO
 
-  ALLOCATE( buffer(nneigh) )
-  DO i=1,nneigh
-    ALLOCATE( buffer(i) % rbuf(recv_size(i)) ) 
-  END DO
-
-  ALLOCATE( requests(nneigh) )
-  CALL Recv_LocIf( GlobalData % SplittedMatrix, &
-      nneigh, neigh, recv_size, requests, buffer )
-
-  v(1:n) = 0.0
-  DO i = 1, ParEnv % PEs
-     CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
-
-     IF ( CurrIf % NumberOfRows /= 0 ) THEN
-       IfV => GlobalData % SplittedMatrix % IfVecs(i)
-       IfL => GlobalData % SplittedMatrix % IfLCols(i)
-       IfO => GlobalData % SplittedMatrix % IfORows(i)
-
-        IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
-        DO j = 1, CurrIf % NumberOfRows
-           IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
-             DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
-               Colind = IfL % IfVec(k)
-               IF ( ColInd > 0 ) &
-                 IfV % IfVec(j)=IfV % IfVec(j)+ABS(CurrIf % Values(k))*u(colind)
-             END DO
-           END IF
+  DO ni = 1, nneigh
+    i = SP % MVNeigh(ni) + 1; CurrIf => SP % IfMatrix(i)
+    IF ( CurrIf % NumberOfRows == 0 ) CYCLE
+    IfV => SP % IfVecs(i); IfL => SP % IfLCols(i)
+    !$OMP PARALLEL PRIVATE(ColInd,j,k)
+    !$OMP DO
+    DO j = 1, CurrIf % NumberOfRows; IfV % IfVec(j) = 0.0_dp; END DO
+    !$OMP END DO
+    !$OMP DO
+    DO j = 1, CurrIf % NumberOfRows
+      IF ( CurrIf % RowOwner(j) /= ParEnv % MyPE ) THEN
+        DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
+          ColInd = IfL % IfVec(k)
+          IF ( ColInd > 0 ) IfV % IfVec(j) = IfV % IfVec(j) + ABS(CurrIf % Values(k)) * u(ColInd)
         END DO
-     END IF
+      END IF
+    END DO
+    !$OMP END DO
+    !$OMP END PARALLEL
   END DO
 
-  CALL Send_LocIf( GlobalData % SplittedMatrix, nneigh, neigh )
-  !----------------------------------------------------------------------
-  !
-  ! Compute the local part
-  !
-  !----------------------------------------------------------------------
-
+  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
+  DO nj = 1, nneigh
+    IF ( SP % MVSendSize(nj) > 0 ) THEN
+      l = 0
+      DO ni = 1, nneigh
+        i = SP % MVNeigh(ni) + 1; IfV => SP % IfVecs(i); IfM => SP % IfMatrix(i)
+        j = SP % MVNeigh(nj)
+        DO k = 1, IfM % NumberOfRows
+          IF ( IfM % RowOwner(k) == j ) THEN
+            l = l + 1; SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
+          END IF
+        END DO
+      END DO
+      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+    END IF
+  END DO
 
   Rows => InsideMatrix % Rows
   Cols => InsideMatrix % Cols
   Vals => InsideMatrix % Values
 
-  IF  ( C_ASSOCIATED(GlobalMatrix % MatvecSubr) ) THEN
+  IF ( C_ASSOCIATED(GlobalMatrix % MatvecSubr) ) THEN
     ALLOCATE(Abs_Vals(SIZE(InsideMatrix % Values)))
     Abs_Vals = ABS(Vals)
     CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
         GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
     DEALLOCATE(Abs_Vals)
   ELSE
-!$omp parallel do private(j,rsum)
+    !$OMP PARALLEL DO PRIVATE(j,rsum)
     DO i = 1, n
       rsum = 0._dp
       DO j = Rows(i), Rows(i+1) - 1
         rsum = rsum + ABS(Vals(j)) * u(Cols(j))
       END DO
-      v(i)=v(i)+rsum
+      v(i) = v(i) + rsum
     END DO
-!$omp end parallel do
+    !$OMP END PARALLEL DO
   END IF
 
+  CALL Recv_LocIf_Wait( SP, n, v, nneigh, SP % MVNeigh, &
+       SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
 
-  CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
-       nneigh, neigh, recv_size, requests, buffer )
-
-  DEALLOCATE( neigh, recv_size, requests )
-
-  DO i=1,SIZE(buffer)
-    DEALLOCATE( buffer(i) % rbuf )
-  END DO
-  DEALLOCATE( buffer )
-
-  CALL SParIterActiveBarrier 
 !----------------------------------------------------------------------
 END SUBROUTINE SParABSMatrixVector
 !----------------------------------------------------------------------
@@ -2838,110 +2850,113 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
 
   IMPLICIT NONE
 
-  ! Input parameters
-
   INTEGER, DIMENSION(*) :: ipar
   COMPLEX(KIND=dp), DIMENSION(*) :: u, v
 
-
-  ! Local parameters
-
-  INTEGER :: i, j, k, l, n, colind, rowind
-  TYPE (BasicMatrix_t), POINTER :: CurrIf
-  TYPE (Matrix_t), POINTER :: InsideMatrix
-  TYPE( IfVecT), POINTER :: IfV
-  TYPE( IfLColsT), POINTER :: IfL, IfO
+  INTEGER :: i, j, k, l, n, ni, nj, ci, ColInd, nneigh, ierr
+  TYPE(IfVecT),        POINTER :: IfV
+  TYPE(IfLColsT),      POINTER :: IfL
+  TYPE(BasicMatrix_t), POINTER :: CurrIf, IfM
+  TYPE(Matrix_t),      POINTER :: InsideMatrix
+  TYPE(SplittedMatrixT), POINTER :: SP
+  INTEGER, POINTER :: RevInd(:)
 
   COMPLEX(KIND=dp) :: A, rsum
-
   REAL(KIND=dp), POINTER :: Vals(:)
-  INTEGER, POINTER :: Cols(:),Rows(:)
-  REAL(KIND=dp), ALLOCATABLE :: buf(:)
-
-  !*******************************************************************
+  INTEGER, POINTER :: Cols(:), Rows(:)
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
-  n = InsideMatrix % NumberOfRows/2
+  SP           => GlobalData % SplittedMatrix
+  n            =  InsideMatrix % NumberOfRows / 2
+  nneigh       =  SIZE(SP % MVNeigh)
 
-  !----------------------------------------------------------------------
-  !
-  ! Compute the interface contribution for each neighbour
-  !
-  !----------------------------------------------------------------------
-
-  v(1:n) = 0.0
-  DO i = 1, ParEnv % PEs
-     CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
-
-     IF ( CurrIf % NumberOfRows /= 0 ) THEN
-        IfV => GlobalData % SplittedMatrix % IfVecs(i)
-        IfL => GlobalData % SplittedMatrix % IfLCols(i)
-        IfO => GlobalData % SplittedMatrix % IfORows(i)
-
-        IfV % IfVec(1:CurrIf % NumberOfRows) = 0._dp
-        DO j = 1, CurrIf % NumberOfRows / 2
-          IF ( Currif % RowOwner(2*j-1) == ParEnv % MyPE ) THEN
-!
-! This is now dealt with in the matrix initialization, by adding the entries
-! to 'InsideMatrix'...
-!            rowind = (IfO % IfVec(2*j-1)+1)/2
-!            DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1,2
-!              Colind = (IfL % IfVec(k)+1)/2
-!              IF ( ColInd > 0 ) THEN
-!                A = CMPLX( CurrIf % Values(k), -CurrIf % Values(k+1), KIND=dp )
-!                v(rowind) = v(rowind) + A * u(ColInd)
-!              END IF
-!            END DO
-          ELSE
-            DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
-               IF ( IfL % IfVec(k) > 0 ) THEN
-                 ColInd = (IfL % IfVec(k)+1)/2
-                 A = CMPLX( CurrIf % Values(k), -CurrIf % Values(k+1), KIND=dp )
-                 A = A * u(ColInd)
-                 IfV % IfVec(2*j-1) = IfV % IfVec(2*j-1) + REAL(A)
-                 IfV % IfVec(2*j-0) = IfV % IfVec(2*j-0) + AIMAG(A)
-               END IF
-            END DO
-          END IF
-        END DO
-     END IF
+  DO ni = 1, nneigh
+    SP % MVRequests(ni) = MPI_REQUEST_NULL
+    IF ( SP % MVRecvSize(ni) > 0 ) THEN
+      CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
+          ELMER_COMM_WORLD, SP % MVRequests(ni), ierr )
+    END IF
   END DO
 
-  CALL Send_LocIf_Old( GlobalData % SplittedMatrix )
+  !$OMP PARALLEL DO
+  DO i = 1, n; v(i) = (0.0_dp, 0.0_dp); END DO
+  !$OMP END PARALLEL DO
 
-  !----------------------------------------------------------------------
-  !
-  ! Compute the local part
-  !
-  !----------------------------------------------------------------------
+  DO ni = 1, nneigh
+    i = SP % MVNeigh(ni) + 1; CurrIf => SP % IfMatrix(i)
+    IF ( CurrIf % NumberOfRows == 0 ) CYCLE
+    IfV => SP % IfVecs(i); IfL => SP % IfLCols(i)
+    DO j = 1, CurrIf % NumberOfRows; IfV % IfVec(j) = 0.0_dp; END DO
+    DO j = 1, CurrIf % NumberOfRows / 2
+      IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+        DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+          IF ( IfL % IfVec(k) > 0 ) THEN
+            ColInd = (IfL % IfVec(k)+1) / 2
+            A = CMPLX( CurrIf % Values(k), -CurrIf % Values(k+1), KIND=dp ) * u(ColInd)
+            IfV % IfVec(2*j-1) = IfV % IfVec(2*j-1) + REAL(A, KIND=dp)
+            IfV % IfVec(2*j  ) = IfV % IfVec(2*j  ) + AIMAG(A)
+          END IF
+        END DO
+      END IF
+    END DO
+  END DO
+
+  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
+  DO nj = 1, nneigh
+    IF ( SP % MVSendSize(nj) > 0 ) THEN
+      l = 0
+      DO ni = 1, nneigh
+        i = SP % MVNeigh(ni) + 1; IfV => SP % IfVecs(i); IfM => SP % IfMatrix(i)
+        j = SP % MVNeigh(nj)
+        DO k = 1, IfM % NumberOfRows
+          IF ( IfM % RowOwner(k) == j ) THEN
+            l = l + 1; SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
+          END IF
+        END DO
+      END DO
+      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+    END IF
+  END DO
 
   Rows => InsideMatrix % Rows
   Cols => InsideMatrix % Cols
   Vals => InsideMatrix % Values
 
-!$omp parallel do private(j,A,rsum)
+  !$OMP PARALLEL DO PRIVATE(j,A,rsum)
   DO i = 1, n
-     rsum=0._dp
-     DO j = Rows(2*i-1), Rows(2*i)-1, 2
-        A = CMPLX( Vals(j), -Vals(j+1), KIND=dp )
-        rsum = rsum + A * u(Cols(j+1)/2)
-     END DO
-     v(i)=v(i)+rsum
+    rsum = (0.0_dp, 0.0_dp)
+    DO j = Rows(2*i-1), Rows(2*i)-1, 2
+      A = CMPLX( Vals(j), -Vals(j+1), KIND=dp )
+      rsum = rsum + A * u(Cols(j+1)/2)
+    END DO
+    v(i) = v(i) + rsum
   END DO
-!$omp end parallel do
-  !----------------------------------------------------------------------
-  !
-  ! Receive interface parts of the vector and sum them to vector v
-  !
-  !----------------------------------------------------------------------
-  ALLOCATE( buf(2*n) )
-  buf = 0._dp
-  CALL Recv_LocIf_Old( GlobalData % SplittedMatrix, 2*n, buf )
+  !$OMP END PARALLEL DO
 
-  DO i=1,n
-    v(i) = v(i) + CMPLX( buf(2*i-1), buf(2*i), KIND=dp )
+  ! MPI_REQUEST_NULL entries are completed immediately per MPI standard
+  CALL MPI_Waitall( nneigh, SP % MVRequests, MPI_STATUSES_IGNORE, ierr )
+
+  ! Scatter received real-interleaved data into complex v:
+  ! RevInd(k) is 1-based into a 2n real array; odd = real part, even = imag part
+  DO ni = 1, nneigh
+    IF ( SP % MVRecvSize(ni) <= 0 ) CYCLE
+    i = SP % MVNeigh(ni) + 1
+    RevInd => SP % VecIndices(i) % RevInd
+    DO k = 1, SP % MVRecvSize(ni)
+      l = RevInd(k)
+      IF ( l > 0 ) THEN
+        ci = (l + 1) / 2
+        IF ( MOD(l, 2) == 1 ) THEN
+          v(ci) = v(ci) + SP % MVRecvBuf(ni) % rbuf(k)
+        ELSE
+          v(ci) = v(ci) + CMPLX(0.0_dp, SP % MVRecvBuf(ni) % rbuf(k), KIND=dp)
+        END IF
+      END IF
+    END DO
   END DO
-  DEALLOCATE( buf )
+
 !*********************************************************************
 END SUBROUTINE SParCMatrixVector
 !*********************************************************************
@@ -3402,15 +3417,15 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
 
                  IF ( .NOT. Found ) THEN
                    IF(RecvdIfMatrix(i) % Values(k) /= 0._dp ) THEN
-                     PRINT*,ParEnv % MyPE,  'GlueFinalize: This should not happen 0'
-                     PRINT*,ParEnv % MyPE, i-1, RecvdIfMatrix(i) % GRows(j), RowInd, &
-                                 RecvdIfMatrix(i) % Cols(k), ColIndA, recvdifmatrix(i) % values(k)
+                     WRITE(Message,'(A,I0,4(A,I0))') 'PE ',ParEnv % MyPE, &
+                         ' pe/row/col: ',i-1,' ',RecvdIfMatrix(i) % GRows(j),' ',ColIndA
+                     CALL Warn('GlueFinalize','Interface entry not found: '//TRIM(Message))
                    END IF
                  END IF
               END DO
            ELSE
-              PRINT*,ParEnv % MyPE, 'GlueFinalize: This should not happen 1', RowInd
-              CALL FLUSH(6)
+              WRITE(Message,'(A,I0,A,I0)') 'PE ',ParEnv % MyPE,': row index not found: ',RowInd
+              CALL Warn('GlueFinalize', Message)
            END IF
         END IF
      END DO

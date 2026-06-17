@@ -141,48 +141,44 @@ CONTAINS
        
        IF(i==1) THEN
          CALL Fatal('ParallelInitMatrix','Only Perm or InvPerm is associated!')
-       END IF       
-       IF(i==2) THEN
-         CALL Info('ParallelInitMatrix','Skipping generation of Perm and InvPerm',Level=20)
-         GOTO 1
-       END IF
+       ELSE IF(i==0) THEN
+         CALL Info('ParallelInitMatrix','Allocating communication structures for matrix!',Level=5)
+         j = MAXVAL(Perm)*DOFs + Matrix % ExtraDOFs
+         ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
 
-       CALL Info('ParallelInitMatrix','Allocating communication structures for matrix!',Level=5)
-       j = MAXVAL(Perm)*DOFs + Matrix % ExtraDOFs
-       ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
+         BLOCK
+           LOGICAL :: DoConf = .FALSE.
 
-       BLOCK
-         LOGICAL :: DoConf = .FALSE.
+           DoConf = ListGetLogical( Solver % Values, 'Apply Conforming BCs',Found )
+           DoConf = DoConf .AND. ASSOCIATED(Mesh % PeriodicPerm)
 
-         DoConf = ListGetLogical( Solver % Values, 'Apply Conforming BCs',Found )
-         DoConf = DoConf .AND. ASSOCIATED(Mesh % PeriodicPerm)
+           Matrix % Perm = 0
+           DO i=1,n
+             IF ( DoConf ) THEN
+               IF ( Mesh % PeriodicPerm(i) /= 0 ) CYCLE
+             END IF
 
-         Matrix % Perm = 0
-         DO i=1,n
-           IF ( DoConf ) THEN
-             IF ( Mesh % PeriodicPerm(i) /= 0 ) CYCLE
-           END IF
+             IF ( Perm(i) /= 0 ) THEN
+               DO j=1,DOFs
+                 Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
+               END DO
+             END IF
+           END DO
+         END BLOCK
 
-           IF ( Perm(i) /= 0 ) THEN
-             DO j=1,DOFs
-               Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
-             END DO
+         DO i=n*DOFs+1,SIZE(Matrix % Perm)
+           Matrix % Perm(i) = i
+         END DO
+
+         Matrix % INVPerm = 0
+         DO i=1,SIZE(Matrix % Perm)
+           IF ( Matrix % Perm(i) /= 0 ) THEN
+             Matrix % InvPerm(Matrix % Perm(i)) = i
            END IF
          END DO
-       END BLOCK
-
-       DO i=n*DOFs+1,SIZE(Matrix % Perm)
-         Matrix % Perm(i) = i
-       END DO
-
-       Matrix % INVPerm = 0
-       DO i=1,SIZE(Matrix % Perm)
-         IF ( Matrix % Perm(i) /= 0 ) THEN
-           Matrix % InvPerm(Matrix % Perm(i)) = i
-         END IF
-       END DO
-
-1      CONTINUE
+       ELSE
+         CALL Info('ParallelInitMatrix','Skipping generation of Perm and InvPerm',Level=20)
+       END IF
 
        IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
          CALL Fatal('ParallelInitMatrix','ParallelInfo already created!')
@@ -1550,7 +1546,6 @@ CONTAINS
         ELSE
           CustomComm0 = ELMER_COMM_WORLD
         END IF
-        PRINT *,'Creating SlicesComm:',ParEnv % MyPe, iSlice, iTime
         Visited = .TRUE.
       END IF
 
@@ -1581,7 +1576,6 @@ CONTAINS
         ELSE
           CustomComm0 = ELMER_COMM_WORLD
         END IF
-        PRINT *,'Creating TimesComm:',ParEnv % MyPe, iSlice, iTime
         Visited = .TRUE.
       END IF
 
@@ -1595,9 +1589,7 @@ CONTAINS
     FUNCTION ParallelPieceRank(CustomComm) RESULT (CommRank)
       INTEGER :: CustomComm, CommRank, ierr
 #ifdef PARALLEL_FOR_REAL
-      PRINT *,'GetRank:',ParEnv % MyPe, CustomComm
       CALL MPI_Comm_rank(CustomComm, CommRank, ierr)
-      PRINT *,'GotRank:',ParEnv % MyPe, CommRank
 #else
       CommRank = -1
 #endif
@@ -1606,11 +1598,9 @@ CONTAINS
     FUNCTION ParallelPieceSize(CustomComm) RESULT (CommSize)
       INTEGER :: CustomComm, CommSize, ierr
 #ifdef PARALLEL_FOR_REAL
-      PRINT *,'GetSize:',ParEnv % MyPe, CustomComm
       CALL MPI_Comm_size(CustomComm, CommSize, ierr)
-      PRINT *,'GotSize:',ParEnv % MyPe, CommSize
 #else
-      CommRank = -1
+      CommSize = -1
 #endif
     END FUNCTION ParallelPieceSize
 
