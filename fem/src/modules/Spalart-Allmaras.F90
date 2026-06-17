@@ -330,7 +330,7 @@ CONTAINS
          x = SUM( Nodes % x(1:n)*Basis(1:n) )
          y = SUM( Nodes % y(1:n)*Basis(1:n) )
          z = SUM( nodes % z(1:n)*Basis(1:n) )
-         xALL CoordinateSystemInfo(Metric,SqrtMetric,Symb,dSymb,X,Y,Z)
+         CALL CoordinateSystemInfo(Metric,SqrtMetric,Symb,dSymb,X,Y,Z)
          s = s * SqrtMetric
        END IF
 
