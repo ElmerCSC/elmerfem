@@ -74,7 +74,7 @@ CONTAINS
      SUBROUTINE ParallelArpackEigenSolve( Solver,A,N,NEIG,EigValues,EigVectors )
 !------------------------------------------------------------------------------
 
-! the suit the needs of ELMER.
+! to suit the needs of ELMER.
 !
 !  Oct 21 2000, Juha Ruokolainen 
 !
@@ -142,9 +142,6 @@ CONTAINS
       REAL(KIND=dp), POINTER :: SaveValues(:)
       CHARACTER(:), ALLOCATABLE :: str, Method
 
-      INTEGER :: me
-      TYPE(NeighbourList_t), POINTER :: OwnerList(:)
-
 !     %-----------------------%
 !     | Executable Statements |
 !     %-----------------------%
@@ -159,7 +156,7 @@ CONTAINS
       CALL ParallelInitSolve( A, Solution, ForceVector, Residual )
 
       PMatrix => ParallelMatrix(A) 
-      PN = PMatrix % NumberOFRows
+      PN = PMatrix % NumberOfRows
 
 !     %----------------------------------------------------%
 !     | The number N is the dimension of the matrix. A     |
@@ -221,43 +218,7 @@ CONTAINS
 !
       ishfts = 1
       BMAT  = 'G'
-      IF ( A % Lumped ) THEN
-         Mode  =  2
-         SELECT CASE( ListGetString(Solver % Values,'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'SM'
-         CASE( 'largest magnitude')
-              Which = 'LM'
-         CASE( 'smallest real part')
-              Which = 'SR'
-         CASE( 'largest real part')
-              Which = 'LR'
-         CASE( 'smallest imag part' )
-              Which = 'SI'
-         CASE( 'largest imag part' )
-              Which = 'LI'
-         CASE DEFAULT
-              Which = 'SM'
-         END SELECT
-      ELSE
-         Mode  = 3
-         SELECT CASE( ListGetString(Solver % Values,'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'LM'
-         CASE( 'largest magnitude')
-              Which = 'SM'
-         CASE( 'smallest real part')
-              Which = 'LR'
-         CASE( 'largest real part')
-              Which = 'SR'
-         CASE( 'smallest imag part' )
-              Which = 'LI'
-         CASE( 'largest imag part' )
-              Which = 'SI'
-         CASE DEFAULT
-              Which = 'LM'
-         END SELECT
-      END IF
+      CALL ArpackSetWhich( Solver % Values, A % Lumped, Mode, Which )
 
       Maxitr = ListGetInteger( Solver % Values, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
@@ -309,8 +270,8 @@ CONTAINS
         IF ( .NOT. Stat ) LinIter = 1000
         LinConv = ListGetConstReal( Solver % Values, 'Linear System Convergence Tolerance', stat )
         IF ( .NOT. Stat ) LinConv = 1.0D-9
-!        Preconditiong:
-!        --------------
+!        Preconditioning:
+!        ----------------
         str = ListGetString( Solver % Values, 'Linear System Preconditioning', stat )
 
         k = 0
@@ -347,9 +308,6 @@ CONTAINS
       IF ( Iterative .AND. Stat ) &
         CALL ListAddLogical(Solver % Values, 'No Precondition Recompute', .FALSE.)
 
-      me = ParEnv % MyPe
-      OwnerList =>  A % ParallelInfo % NeighbourList
-
       DO WHILE( ido /= 99 )
 !
 !        %---------------------------------------------%
@@ -368,8 +326,6 @@ CONTAINS
          END IF
 !
          IF (ido == -1 .OR. ido == 1) THEN
-!           WRITE( Message, * ) ' Arnoldi iteration: ', Iter
-!           CALL Info( 'ParallelEigenSolve', Message, Level=5 )
             CALL Info( 'ParallelEigenSolve', '.', .TRUE., Level=5 )
             iter = iter + 1
 !---------------------------------------------------------------------
@@ -377,76 +333,50 @@ CONTAINS
 !                      ido =-1 inv(A-sigmaR*M)*M*x 
 !                      ido = 1 inv(A-sigmaR*M)*z
 !---------------------------------------------------------------------
-            IF ( .NOT. A % Lumped .AND. ido == 1 ) THEN
-               x => Solution
-               b => ForceVector
-
-               CALL PartitionVector(A, x, WORKD(IPNTR(2):IPNTR(2)+PN-1))
-               CALL PartitionVector(A, b, WORKD(IPNTR(3):IPNTR(3)+PN-1))
-
-               ! Some strategies (such as 'block') may depend on that these are set properly
-               ! to reflect the linear problem under study.
-               SaveRhs => A % rhs
-               A % rhs => ForceVector
-
-               SELECT CASE( Method )
-               CASE('multigrid')
-                 CALL MultiGridSolve( A, x, b, &
-                     DOFs, Solver, Solver % MultiGridLevel, NewSystem )
-               CASE('iterative')
-                 CALL ParallelIter( A, A % ParallelInfo, DOFs, &
-                        x,b, Solver, A % ParMatrix )
-               CASE('block')
-                 CALL BlockSolveExt( A, x,b, Solver )
-               CASE ('direct')
-                 CALL DirectSolver( A, x,b, Solver )
-               CASE DEFAULT
-                 CALL Fatal('ParallelEigenSolve','Unknown linear system method: '//TRIM(Method))
-               END SELECT
-               CALL ParallelInitSolve( A, x, b, Residual )
-
-               A % rhs => SaveRhs
-
-               CALL ParallelVector(A, WORKD(IPNTR(2):IPNTR(2)+PN-1), x)
-            ELSE
+            IF ( ido == -1 .OR. A % Lumped ) THEN
+               ! ido==-1: need M*x first; lumped always needs M*x regardless of ido
                x => WORKD(IPNTR(1):IPNTR(1)+PN-1)
                b => WORKD(IPNTR(2):IPNTR(2)+PN-1)
                CALL MGmv( A, x, b, .FALSE., .TRUE. )
                DO i=1,PN
                  x(i) = b(i)
                END DO
-
-               x => Solution
-               b => ForceVector
-
-               CALL PartitionVector(A, x, WORKD(IPNTR(2):IPNTR(2)+PN-1))
-               CALL PartitionVector(A, b, WORKD(IPNTR(1):IPNTR(1)+PN-1))
-
-               ! Some strategies (such as 'block') may depend on that these are set properly
-               ! to reflect the linear problem under study.
-               SaveRhs => A % rhs
-               A % rhs => ForceVector
-
-               SELECT CASE( Method )
-               CASE('multigrid')
-                 CALL MultiGridSolve( A, x, b, &
-                     DOFs, Solver, Solver % MultiGridLevel, NewSystem )
-               CASE('iterative')
-                 CALL ParallelIter( A, A % ParallelInfo, DOFs, &
-                        x, b, Solver, A % ParMatrix )
-               CASE('block')
-                 CALL BlockSolveExt( A, x, b, Solver )
-               CASE ('direct')
-                 CALL DirectSolver( A, x, b, Solver )
-               CASE DEFAULT
-                 CALL Fatal('ParallelEigenSolve','Unknown linear system method: '//TRIM(Method))
-               END SELECT
-               CALL ParallelInitSolve( A, x, b, Residual )
-
-               A % rhs => SaveRhs
-
-               CALL ParallelVector(A, WORKD(IPNTR(2):IPNTR(2)+PN-1), x)
             END IF
+
+            x => Solution
+            b => ForceVector
+
+            CALL PartitionVector(A, x, WORKD(IPNTR(2):IPNTR(2)+PN-1))
+            IF ( ido == 1 .AND. .NOT. A % Lumped ) THEN
+               CALL PartitionVector(A, b, WORKD(IPNTR(3):IPNTR(3)+PN-1))
+            ELSE
+               CALL PartitionVector(A, b, WORKD(IPNTR(1):IPNTR(1)+PN-1))
+            END IF
+
+            ! Some strategies (such as 'block') may depend on that these are set properly
+            ! to reflect the linear problem under study.
+            SaveRhs => A % rhs
+            A % rhs => ForceVector
+
+            SELECT CASE( Method )
+            CASE('multigrid')
+              CALL MultiGridSolve( A, x, b, &
+                  DOFs, Solver, Solver % MultiGridLevel, NewSystem )
+            CASE('iterative')
+              CALL ParallelIter( A, A % ParallelInfo, DOFs, &
+                     x, b, Solver, A % ParMatrix )
+            CASE('block')
+              CALL BlockSolveExt( A, x, b, Solver )
+            CASE ('direct')
+              CALL DirectSolver( A, x, b, Solver )
+            CASE DEFAULT
+              CALL Fatal('ParallelEigenSolve','Unknown linear system method: '//TRIM(Method))
+            END SELECT
+            CALL ParallelInitSolve( A, x, b, Residual )
+
+            A % rhs => SaveRhs
+
+            CALL ParallelVector(A, WORKD(IPNTR(2):IPNTR(2)+PN-1), x)
          ELSE IF (ido == 2) THEN
 !
 !           %-----------------------------------------%
@@ -651,7 +581,7 @@ CONTAINS
      SUBROUTINE ParallelArpackEigenSolveComplex( Solver,Matrix,N,NEIG,EigValues,EigVectors )
 !------------------------------------------------------------------------------
 
-! the suit the needs of ELMER.
+! to suit the needs of ELMER.
 !
 !  Oct 21 2000, Juha Ruokolainen 
 !
@@ -809,43 +739,7 @@ CONTAINS
 !
       ishfts = 1
       BMAT  = 'G'
-      IF ( Matrix % Lumped ) THEN
-         Mode  =  2
-         SELECT CASE( ListGetString(Solver % Values,'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'SM'
-         CASE( 'largest magnitude')
-              Which = 'LM'
-         CASE( 'smallest real part')
-              Which = 'SR'
-         CASE( 'largest real part')
-              Which = 'LR'
-         CASE( 'smallest imag part' )
-              Which = 'SI'
-         CASE( 'largest imag part' )
-              Which = 'LI'
-         CASE DEFAULT
-              Which = 'SM'
-         END SELECT
-      ELSE
-         Mode  = 3
-         SELECT CASE( ListGetString(Solver % Values,'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'LM'
-         CASE( 'largest magnitude')
-              Which = 'SM'
-         CASE( 'smallest real part')
-              Which = 'LR'
-         CASE( 'largest real part')
-              Which = 'SR'
-         CASE( 'smallest imag part' )
-              Which = 'LI'
-         CASE( 'largest imag part' )
-              Which = 'SI'
-         CASE DEFAULT
-              Which = 'LM'
-         END SELECT
-      END IF
+      CALL ArpackSetWhich( Solver % Values, Matrix % Lumped, Mode, Which )
 
       Maxitr = ListGetInteger( Solver % Values, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
@@ -916,8 +810,8 @@ CONTAINS
         IF ( .NOT. Stat ) LinIter = 1000
         LinConv = ListGetConstReal( Solver % Values, 'Linear System Convergence Tolerance', stat )
         IF ( .NOT. Stat ) LinConv = 1.0d-9
-!        Preconditiong:
-!        --------------
+!        Preconditioning:
+!        ----------------
         str = ListGetString( Solver % Values, 'Linear System Preconditioning', stat )
 
         k = 0
@@ -967,8 +861,6 @@ CONTAINS
 
          IF (ido == -1 .OR. ido == 1) THEN
             iter = iter + 1
-!           WRITE( Message, * ) ' Arnoldi iteration: ', Iter
-!           CALL Info( 'ParallelEigenSolve', Message, Level=5 )
             CALL Info( 'ParallelEigenSolve', '.', .TRUE., Level=5 )
 !---------------------------------------------------------------------
 !             Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
@@ -1414,8 +1306,6 @@ CONTAINS
           IF ( RNorm < Conv ) EXIT
        END DO
 
-!      WRITE( Message, * ) 'Iters: ', i, RNorm
-!      CALL Info( 'BiCGParEigen', Message, Level=4 ) 
 
 
        DEALLOCATE( Ri,P,V,T,T1,T2,S )
@@ -1504,6 +1394,43 @@ CONTAINS
        END DO
 !------------------------------------------------------------------------------
     END SUBROUTINE CMGmv
+!------------------------------------------------------------------------------
+!> Set ARPACK Which/Mode from "Eigen System Select" keyword.
+!> Lumped (mode 2): natural ordering; shift-invert (mode 3): ordering inverts.
+!------------------------------------------------------------------------------
+  SUBROUTINE ArpackSetWhich( Params, Lumped, Mode, Which )
+    TYPE(ValueList_t), POINTER :: Params
+    LOGICAL,          INTENT(IN)  :: Lumped
+    INTEGER,          INTENT(OUT) :: Mode
+    CHARACTER(LEN=2), INTENT(OUT) :: Which
+    LOGICAL :: stat
+
+    IF ( Lumped ) THEN
+      Mode = 2
+      SELECT CASE( ListGetString( Params, 'Eigen System Select', stat ) )
+      CASE( 'smallest magnitude' ); Which = 'SM'
+      CASE( 'largest magnitude'  ); Which = 'LM'
+      CASE( 'smallest real part' ); Which = 'SR'
+      CASE( 'largest real part'  ); Which = 'LR'
+      CASE( 'smallest imag part' ); Which = 'SI'
+      CASE( 'largest imag part'  ); Which = 'LI'
+      CASE DEFAULT;                 Which = 'SM'
+      END SELECT
+    ELSE
+      Mode = 3
+      SELECT CASE( ListGetString( Params, 'Eigen System Select', stat ) )
+      CASE( 'smallest magnitude' ); Which = 'LM'
+      CASE( 'largest magnitude'  ); Which = 'SM'
+      CASE( 'smallest real part' ); Which = 'LR'
+      CASE( 'largest real part'  ); Which = 'SR'
+      CASE( 'smallest imag part' ); Which = 'LI'
+      CASE( 'largest imag part'  ); Which = 'SI'
+      CASE DEFAULT;                 Which = 'LM'
+      END SELECT
+    END IF
+  END SUBROUTINE ArpackSetWhich
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
 END MODULE ParallelEigenSolve
 
