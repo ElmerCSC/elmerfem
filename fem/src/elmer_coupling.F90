@@ -662,7 +662,8 @@ MODULE elmer_coupling
   USE yac, ONLY: yac_fmpi_handshake, yac_fget_mpi_handshake_group_name, &
     yac_finit_comm, yac_fread_config_yaml, yac_fdef_comp, yac_fdef_grid, &
     yac_fset_global_index, yac_fdef_points, yac_fsync_def, yac_fenddef, &
-    yac_ffinalize, YAC_LOCATION_CELL, YAC_LOCATION_CORNER
+    yac_ffinalize, YAC_LOCATION_CELL, YAC_LOCATION_CORNER, &
+    yac_fdef_calendar, YAC_YEAR_OF_365_DAYS
   USE elmer_ebfm_coupling, ONLY: construct_elmer_ebfm_coupling, &
     construct_elmer_ebfm_coupling_post_sync, destruct_elmer_ebfm_coupling
   USE elmer_icon_coupling, ONLY: construct_elmer_icon_coupling, &
@@ -744,6 +745,10 @@ CONTAINS
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
     CALL yac_finit_comm (yac_comm)
+
+    ! define calendar
+    ! * currently hard-coded to 365 day calendar; can be made configurable if needed
+    CALL yac_fdef_calendar(YAC_YEAR_OF_365_DAYS)
 
     ! read configuration file
     ! * contains calendar, start- and end-date
