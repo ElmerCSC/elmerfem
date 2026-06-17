@@ -372,7 +372,6 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
-        !WRITE (*,*) Element % ElementIndex
         totelem = totelem + 1
         IF(ActiveBoundaryElement(Element)) THEN
           n  = GetElementNOFNodes(Element)
@@ -964,10 +963,10 @@ CONTAINS
       ! -----------------------------------
       PerfRateAtIp = ListGetElementReal( PerfRate_h, Basis, Element, Found )
       IF( Found ) THEN
-        PerfDensAtIp = ListGetElementReal( PerfRate_h, Basis, Element, Found )
+        PerfDensAtIp = ListGetElementReal( PerfDens_h, Basis, Element, Found )
         PerfCpAtIp = ListGetElementReal( PerfCp_h, Basis, Element, Found )
         PerfRefTempAtIp = ListGetElementReal( PerfRefTemp_h, Basis, Element, Found )
-        PerfCoeff = PerfrateAtIp * PerfDensAtIp * PerfCpAtIp 
+        PerfCoeff = PerfRateAtIp * PerfDensAtIp * PerfCpAtIp
         DO p=1,nd
           DO q=1,nd        
             STIFF(p,q) = STIFF(p,q) + Weight * PerfCoeff
@@ -1283,7 +1282,7 @@ CONTAINS
        ELSE
          NodalTemp(1:n) = Temperature(TempPerm(Element % NodeIndexes))
        END IF
-       Temps4(j) = ( SUM( NodalTemp(1:n)**4 )/ n )**(1._dp/4._dp)       
+       Temps4(j) = SUM( NodalTemp(1:n)**4 ) / n
 
        IF( PRESENT( Emiss ) ) THEN
          NodalVal(1:n) = GetReal(BC,'Emissivity',Found)
@@ -1495,7 +1494,7 @@ CONTAINS
           ! of the element, so take average of nodal temperatures
           !-------------------------------------------------------------
           bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
-          Text = Temps4(bindex)
+          Text = Temps4(bindex)**(0.25_dp)
 
           IF( j <= nf_imp ) THEN        
             ! Linearization of the G_jiT^4_j term
@@ -1562,7 +1561,7 @@ CONTAINS
 
           RadElement => Mesh % Elements(ElementList(j))
           bindex = RadElement % ElementIndex - Solver % Mesh % NumberOfBulkElements
-          Text = Text + Fj*Temps4(bindex)**4 / Emis1
+          Text = Text + Fj*Temps4(bindex) / Emis1
 
           IF(Radiators) THEN
             IF(ALLOCATED(RadElement % BoundaryInfo % Radiators)) THEN
@@ -1582,7 +1581,7 @@ CONTAINS
         IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
 
         IF( AngleFraction < 1.0_dp ) THEN
-          Topen = (SUM( Atext(1:n)**2 ) )**0.25_dp
+          Topen = (SUM( Atext(1:n)**4 ) )**0.25_dp
           IF( Newton ) THEN        
             RadLoadAtIp = (1.0_dp-AngleFraction) * Emis1 * Topen**4 * StefBoltz
             DO p=1,n
