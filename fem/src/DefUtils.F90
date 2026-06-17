@@ -2274,7 +2274,7 @@ CONTAINS
     TYPE(Element_t), POINTER  :: CurrElement
     TYPE(Solver_t), POINTER :: Solver
     LOGICAL :: Found, GB, UpdateRequested,Bubbles
-    INTEGER :: k, p, ElemFamily
+    INTEGER :: k, p, id, ElemFamily
 
     IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2294,8 +2294,21 @@ CONTAINS
       CurrElement => GetCurrentElement(Element)
       ElemFamily = GetElementFamily(CurrElement)
 
-      k = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 5) 
-      p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
+      id = CurrElement % BodyId
+      IF ( Id==0 .AND. ASSOCIATED(CurrElement % BoundaryInfo) ) THEN
+        IF ( ASSOCIATED(CurrElement % BoundaryInfo % Left) ) &
+            id = CurrElement % BoundaryInfo % Left % BodyId
+        IF (id == 0) THEN
+          IF ( ASSOCIATED(CurrElement % BoundaryInfo % Right) ) &
+              id = CurrElement % BoundaryInfo % Right % BodyId
+        END IF
+      END IF
+      ! This is risky business, see mGetElementDofs()
+      IF(id==0) id=1
+      
+  
+      k = Solver % Def_Dofs(ElemFamily, id, 5) 
+      p = Solver % Def_Dofs(ElemFamily, id, 6) 
 
       IF (k >= 0 .OR. p >= 1) THEN
         ! Apparently an "Element" command has been read from a solver section.

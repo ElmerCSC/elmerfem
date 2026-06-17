@@ -267,7 +267,8 @@
      END IF
 
      IF(UpdateGeometry) THEN
-       IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) ) THEN 
+       IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) .OR. &
+           ListGetLogicalAnySolver(Model,'Viewfactor Mapping Solver') ) THEN 
          CALL Info(Caller,'Viewfactor geometry will be changed by its own rigid mesh mapping!',Level=4)
          UpdateGeometry = .FALSE.
        END IF
@@ -688,12 +689,14 @@
        ! Compute the factors using an external program call
        IF (ComputeViewFactors .OR.  .NOT.FirstTime .AND. UpdateViewFactors ) THEN
          cmd = 'ViewFactors '//TRIM(GetSifName())
+         CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
          CALL SystemCommand( cmd )
        END IF
 
        IF( RadiatorsFound ) THEN
          IF (ComputeRadiatorFactors .OR. .NOT.FirstTime .AND. UpdateRadiatorFactors ) THEN
            cmd = 'Radiators '//TRIM(GetSifName())
+           CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
            CALL SystemCommand( cmd )
          END IF
        END IF

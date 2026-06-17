@@ -297,14 +297,19 @@ CONTAINS
 
         ! Open chain = truly broken topology, cannot repair
         IF ( ind2(m,2) /= ind2(1,1) ) THEN
-          PRINT*,'no luck, open boundary chain, using the orignal mesh.'
-          DO j=1,nn
-            DEALLOCATE(MeshOut % Elements(j) % NodeIndexes)
+          CALL Info('PlanarReduce','Could not construct superelement? Using original elements.',Level=10)
+          DO j=1,Setn
+            nn = nn + 1
+            
+            MeshOut % Elements(nn) = Mesh % Elements(Set(j)) 
+            k = Mesh % Elements(Set(j)) % TYPE % NumberOfNodes
+            MeshOut % Elements(nn) % TYPE => Mesh % Elements(Set(j)) % Type
+            
+            ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(k))
+            MeshOut % Elements(nn) % NodeIndexes = &
+                Mesh % Elements(Set(j)) % NodeIndexes
           END DO
-          DEALLOCATE(MeshOut % Elements)
-          DEALLOCATE(MeshOut)
-          MeshOut => Null()
-          RETURN
+          GOTO 1 
         END IF
 
         ! Multiple closed loops: outer boundary + hole(s)
@@ -434,14 +439,30 @@ CONTAINS
           END IF
         END IF  ! handled
       END BLOCK
+
+1     CONTINUE
+
       i = 1
     END DO
 
+    IF(nn == Mesh % NumberOfBulkElements ) THEN
+      CALL Info('PlanaReduce','No reduction in the element count! Using the orignal mesh!')
+      DO i=1,nn
+        DEALLOCATE(MeshOut % Elements(i) % NodeIndexes)
+      END DO
+      DEALLOCATE(MeshOut % Elements)
+      DEALLOCATE(MeshOut)
+      MeshOut => NULL()
+      RETURN     
+    END IF
+    
     MeshOut % NumberOfBulkElements = nn
     MeshOut % NumberOfBoundaryElements = 0
 
-    t0 = cputime() - t0
-    PRINT*,' Shadow elments,and time spent ', nn, t0
+    CALL Info('PlanarReduce','Reduced mesh number of elements: '//I2S(nn))
+   
+    !t0 = cputime() - t0
+    !PRINT*,' Shadow elments,and time spent ', nn, t0
 
 CONTAINS
 
@@ -464,7 +485,7 @@ CONTAINS
      DO l = 1,el % Type % NumberOfEdges
        ed => Mesh % Edges(el % EdgeIndexes(l)) 
 
-       pel => ed % BoundaryInfo %  Left
+       pel => ed % BoundaryInfo % Left
        IF ( ASSOCIATED(pel, el) ) THEN
          pel => ed % BoundaryInfo % Right
        END IF
