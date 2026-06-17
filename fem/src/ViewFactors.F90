@@ -1951,12 +1951,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      MinFactor = MinFactor / 10.0_dp
          
      BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
-
-     IF( BinaryMode ) THEN
-       SinglePrec = getLogical( Params,'Viewfactor single precision',GotIt)
-     ELSE
-       SinglePrec = .FALSE.
-     END IF
+     SinglePrec = getLogical( Params,'Viewfactor single precision',GotIt)
      
      SaveMask = ( Factors > MinFactor )
      
@@ -1968,38 +1963,35 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        
        WRITE( VFUnit ) n
 
-       IF(SinglePrec) THEN
-         DO i=1,Ni
-           k = COUNT( SaveMask((i-1)*n+1:i*n) )
-           WRITE( VFUnit ) k 
-           DO j=1,n
-             IF( SaveMask((i-1)*N+j ) ) THEN
+       DO i=1,Ni
+         k = COUNT( SaveMask((i-1)*n+1:i*n) )
+         WRITE( VFUnit ) k 
+         DO j=1,n
+           IF( SaveMask((i-1)*N+j ) ) THEN
+             IF(SinglePrec) THEN
                sval = Factors((i-1)*N+j)
                WRITE( VFUnit ) j,sval
-             END IF
-           END DO
-         END DO
-       ELSE
-         DO i=1,Ni
-           k = COUNT( SaveMask((i-1)*n+1:i*n) )
-           WRITE( VFUnit ) k 
-           DO j=1,n
-             IF( SaveMask((i-1)*N+j ) ) THEN
+             ELSE
                WRITE( VFUnit ) j,Factors((i-1)*N+j)
              END IF
-           END DO
+           END IF
          END DO
-       END IF
+       END DO
      ELSE
        CALL Info(Caller,'Saving view factors in ascii mode',Level=5)
-
-       OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), STATUS='unknown' )
+       
+       OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), STATUS='unknown', ACTION='write' )
        DO i=1,Ni
          k = COUNT( SaveMask((i-1)*n+1:i*n) )
          WRITE( VFUnit,* ) k
          DO j=1,n
            IF ( SaveMask((i-1)*N+j) ) THEN
-             WRITE( VFUnit,* ) i,j,Factors((i-1)*n+j)
+             IF(SinglePrec) THEN
+               sval = Factors((i-1)*N+j)
+               WRITE( VFUnit,* ) i,j,sval
+             ELSE
+               WRITE( VFUnit,* ) i,j,Factors((i-1)*n+j)
+             END IF
            END IF
          END DO
        END DO
