@@ -65,7 +65,7 @@
      LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
 !
      LOGICAL :: AllocationsDone = .FALSE.
-     LOGICAL :: Bubbles
+     LOGICAL :: Bubbles, BubblesDefault
 
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
@@ -151,8 +151,8 @@
 
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
-     Bubbles = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
-     IF ( .NOT.GotIt ) Bubbles = .TRUE.
+     BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+     IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
 
 !------------------------------------------------------------------------------
 
@@ -190,6 +190,7 @@
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
+         Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
          IF ( Element % BodyId /= body_id ) THEN
             Material => GetMaterial()
             Equation => GetEquation()

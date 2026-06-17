@@ -60,7 +60,7 @@
      LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
 
      LOGICAL :: AllocationsDone = .FALSE.
-     LOGICAL :: Bubbles
+     LOGICAL :: Bubbles, BubblesDefault
 
      TYPE(Variable_t), POINTER :: FlowSol, KE
 
@@ -127,8 +127,8 @@
 
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
-     Bubbles = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
-     IF ( .NOT.GotIt ) Bubbles = .TRUE.
+     BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+     IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
 
 !------------------------------------------------------------------------------
       DO i=1,Model % NumberOFBCs
@@ -176,6 +176,7 @@
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
+         Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
          Material => GetMaterial()
 
          n = GetElementNOFNodes()

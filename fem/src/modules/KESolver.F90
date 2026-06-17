@@ -62,7 +62,7 @@
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: NewtonLinearization = .FALSE.,gotIt
 !
-     LOGICAL :: AllocationsDone = .FALSE., Bubbles
+     LOGICAL :: AllocationsDone = .FALSE., Bubbles, BubblesDefault
 
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
@@ -162,9 +162,10 @@
 
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
-     Bubbles = GetString(GetSolverParams(), &
+     BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+     IF ( .NOT. GotIt ) BubblesDefault = GetString(GetSolverParams(), &
                'Stabilization method', GotIt ) == 'bubbles'
-     IF ( .NOT. GotIt ) Bubbles = .TRUE.
+     IF ( .NOT. GotIt ) BubblesDefault = .TRUE.
 
 !------------------------------------------------------------------------------
       DO i=1,Model % NumberOFBCs
@@ -212,6 +213,7 @@
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
+         Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
          IF ( Element % BodyId /= body_id ) THEN
             Material => GetMaterial()
             Equation => GetEquation()

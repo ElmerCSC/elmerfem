@@ -57,7 +57,7 @@
      REAL(KIND=dp) :: RelativeChange,Norm
      LOGICAL :: Stabilize = .TRUE.,gotIt
      LOGICAL :: AllocationsDone = .FALSE.
-     LOGICAL :: Bubbles
+     LOGICAL :: Bubbles, BubblesDefault
      TYPE(Variable_t), POINTER :: FlowSol, KE
      INTEGER, POINTER :: KinPerm(:)
      INTEGER :: NonlinearIter
@@ -109,8 +109,8 @@
 
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
-     Bubbles = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
-     IF ( .NOT.GotIt ) Bubbles = .TRUE.
+     BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+     IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
 
 !------------------------------------------------------------------------------
       DO i=1,Model % NumberOFBCs
@@ -158,6 +158,7 @@
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
+         Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
          Material => GetMaterial()
 
          n = GetElementNOFNodes()
@@ -326,11 +327,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        s = detJ * IntegStuff % s(t)
        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-         X = SUM( Nodes % x(1:n)*Basis(1:n) )
-         Y = SUM( Nodes % y(1:n)*Basis(1:n) )
-         Z = SUM( nodes % z(1:n)*Basis(1:n) )
-         CALL CoordinateSystemInfo(Metric,SqrtMetric,Symb,dSymb,X,Y,Z)
-
+         x = SUM( Nodes % x(1:n)*Basis(1:n) )
+         y = SUM( Nodes % y(1:n)*Basis(1:n) )
+         z = SUM( nodes % z(1:n)*Basis(1:n) )
+         xALL CoordinateSystemInfo(Metric,SqrtMetric,Symb,dSymb,X,Y,Z)
          s = s * SqrtMetric
        END IF
 
