@@ -899,6 +899,7 @@ CONTAINS
       IF ( LondonEquations ) THEN
         LondonLambda_ip = SUM( Basis(1:nn) * LondonLambda(1:nn) )
 
+        val = 0.0_dp
         IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*grads_coeff**2*circ_eq_coeff
         val = val * Comp % VoltageFactor
         ! Phi (beta grad phi_0, grad phi')
@@ -915,9 +916,11 @@ CONTAINS
           ! Phi * ( beta * grad phi, a')
           ! where phi is the node flux scalar potential
           ! -------------------------------------------
+          val = 0.0_dp
           IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff*circ_eq_coeff
           CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), val)
 
+          val = 0.0_dp
           IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff
           val = val * Comp % VoltageFactor
           CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, val)
@@ -2109,6 +2112,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF ( LondonEquations ) THEN
         LondonLambda_ip = SUM( Basis(1:nn) * LondonLambda(1:nn) )
 
+        val = 0.0_dp
         IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*grads_coeff**2*circ_eq_coeff
         val = val * Comp % VoltageFactor
         ! Phi (beta grad phi_0, grad phi')
@@ -2121,14 +2125,16 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
- 
+
         IF ( LondonEquations ) THEN
           ! Phi * ( beta * grad phi, a')
           ! where phi is the node flux scalar potential
           ! -------------------------------------------
+          val = 0.0_dp
           IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff*circ_eq_coeff
           CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), val, 0._dp)
 
+          val = 0.0_dp
           IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff
           val = val * Comp % VoltageFactor
           CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, val, 0._dp)
