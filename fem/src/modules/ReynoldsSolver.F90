@@ -352,6 +352,7 @@ CONTAINS
 
       Velocity = 0.0_dp
       UseVelocity = .FALSE.
+      GotIt = .FALSE.; GotIt2 = .FALSE.; GotIt3 = .FALSE.
       IF( ListCheckPrefix( Equation,'Surface Velocity') ) THEN
         Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
         Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
