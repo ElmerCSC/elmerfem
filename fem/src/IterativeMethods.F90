@@ -772,6 +772,14 @@ CONTAINS
         CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: nrm0 = NaN.' )
       END IF
 
+      ! Zero RHS: exact solution is x=0, avoid 0/0 in errorind
+      IF (bnrm == 0.0d0) THEN
+        Converged = .TRUE.
+        x = 0.0d0
+        DEALLOCATE(work)
+        RETURN
+      END IF
+
       errorind = rnrm0 / bnrm
       IF(errorind /= errorind ) THEN
         CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: errorind = NaN.' )
@@ -2753,6 +2761,14 @@ CONTAINS
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
+      ! Zero RHS: exact solution is x=0, avoid 0/0 in errorind
+      IF (bnrm == 0.0d0) THEN
+        Converged = .TRUE.
+        x = zzero
+        DEALLOCATE(work, rwork)
+        RETURN
+      END IF
+
       errorind = rnrm0 / bnrm
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
