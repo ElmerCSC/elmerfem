@@ -54,6 +54,10 @@ MODULE SParIterComm
   USE XIOS
 #endif
 
+#ifdef HAVE_PDAF
+  USE PDAFUtils, ONLY : init_parallel_pdaf,finalize_pdaf,PDAF_INITIALISED
+#endif
+
 #ifndef HAVE_PARMMG
 #  if defined(ELMER_HAVE_MPI_MODULE)
   USE mpi
@@ -255,6 +259,11 @@ CONTAINS
        CALL MPI_Finalize( ierr )
     ELSE
        CALL MPI_COMM_RANK( ELMER_COMM_WORLD, ParEnv % MyPE, ierr )
+
+#ifdef HAVE_PDAF
+       CALL init_parallel_pdaf(1, ELMER_COMM_WORLD, ParEnv % MyPe, ParEnv % PEs)
+#endif
+
        OutputPE = ParEnv % MyPe
 
        IF( ParEnv % MyPe < 2 .OR. ParEnv % MyPe >= ParEnv % PEs - 2 ) THEN
@@ -5013,6 +5022,10 @@ SUBROUTINE ParEnvFinalize()
 
   !*********************************************************************
   CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+
+#ifdef HAVE_PDAF
+  IF (PDAF_INITIALISED) CALL finalize_pdaf()
+#endif 
 
 #ifdef HAVE_XIOS
   IF (USE_XIOS) THEN

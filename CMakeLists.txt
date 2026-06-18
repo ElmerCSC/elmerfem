@@ -95,6 +95,7 @@ SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
 SET(WITH_NETCDF FALSE CACHE BOOL "Include NetCDF")
+SET(WITH_PDAF FALSE CACHE BOOL "Compile with PDAF library.")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
@@ -537,6 +538,34 @@ IF (WITH_XIOS)
 
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
+
+#PDAF
+IF (WITH_PDAF)
+  IF(NOT WITH_MPI)
+     MESSAGE(FATAL_ERROR "Building with PDAF requires MPI")
+  ENDIF()	
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for PDAF LIBRARY ")  
+  FIND_PACKAGE(PDAF)
+
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  PDAF_FOUND: ${PDAF_FOUND}")
+
+  IF(PDAF_FOUND)
+    SET(HAVE_PDAF TRUE)	  
+    MARK_AS_ADVANCED(HAVE_PDAF)
+    INCLUDE_DIRECTORIES(${PDAF_INCLUDE_DIR})
+    ADD_DEFINITIONS(-DHAVE_PDAF)
+
+    MESSAGE(STATUS "  PDAF_LIB: ${PDAF_LIBRARIES}")
+    MESSAGE(STATUS "  PDAF_INC: ${PDAF_INCLUDE_DIR}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ELSE(PDAF_FOUND)
+    MESSAGE(STATUS "  ${PDAF_FAILMSG}")	  
+  ENDIF()
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
+
 
 # Set environment variable ADIOS2_ROOT to point installation directory of adios (e.g. "/opt/adios/2.11")
 IF(WITH_ADIOS2)

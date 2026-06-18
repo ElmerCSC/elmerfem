@@ -91,6 +91,7 @@
       INTEGER,PARAMETER :: Connect_Fill=-1
       LOGICAL :: ok
 
+      CHARACTER(len=MAX_NAME_LEN) :: CExecID
       CHARACTER(LEN=MAX_NAME_LEN) :: strg_var
       TYPE(xios_duration) :: dtime,time_units
       TYPE(xios_duration) :: sync_freq,out_freq
@@ -100,7 +101,7 @@
       TYPE(xios_duration) :: dtvisit
       REAL(KIND=dp) :: ndt,dt1,dt2
       REAL(KIND=dp) :: tol
-      CHARACTER(len=20) :: date_str
+      CHARACTER(len=25) :: date_str
       INTEGER :: ts,ol
 
       INTEGER, SAVE :: Olevel=4
@@ -247,8 +248,10 @@
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! XIOS context definition
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        CALL xios_context_initialize(TRIM(ExecID),ELMER_COMM_WORLD)
-        CALL xios_set_current_context(TRIM(ExecID))
+        CExecID=ListGetString( Params,'Context id',GotIt)
+        IF (.NOT.GotIt) CExecID=ExecID
+        CALL xios_context_initialize(TRIM(CExecID),ELMER_COMM_WORLD)
+        CALL xios_set_current_context(TRIM(CExecID))
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! check that mandatory fields have been defined
@@ -372,6 +375,9 @@
       CALL SendMeshVariables()
       CALL SendGlobalVariables()
       CALL SendVariables()
+
+      CALL Info(Caller,"All done", &
+                Level=Olevel)
 
       CONTAINS 
 
