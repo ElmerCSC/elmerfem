@@ -4252,14 +4252,20 @@ CONTAINS
     MinIter = ListGetInteger( Params,'Linear System Min Iterations',GotIt)
     LinTol = ListGetConstReal( Params,'Linear System Convergence Tolerance',GotIt)
     BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
-    
+    Relax = ListGetConstReal( Params,'Block Relaxation Factor',GotIt)
+    IF(.NOT. GotIt) Relax = 1.0_dp
+
     CALL ListPushNamespace('block:')
 
     ! We don't want compute change externally
     CALL ListAddNewLogical( Params,'Skip compute nonlinear change',.TRUE.)
-    
-    Relax = 1.0_dp
-    
+
+    j = 0
+    DO i = 1, NoVar
+      j = MAX( j, SIZE( TotMatrix % SubVector(i) % Var % Values ) )
+    END DO
+    ALLOCATE( dx(j) )
+
     DO iter = 1, LinIter
 
       ! Store the iteration count
@@ -4310,37 +4316,36 @@ CONTAINS
         Var => TotMatrix % SubVector(RowVar) % Var
         Solver % Variable => Var
         
-        A => TotMatrix % Submatrix(i,i) % PrecMat
+        A => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat
         IF( A % NumberOfRows == 0 ) THEN
-          A => TotMatrix % Submatrix(i,i) % Mat
+          A => TotMatrix % Submatrix(RowVar,RowVar) % Mat
         ELSE
-          CALL Info('BlockStandardIter','Using preconditioning block: '//I2S(i),Level=8)
+          CALL Info('BlockStandardIter','Using preconditioning block: '//I2S(RowVar),Level=8)
         END IF
-        
+
         !Solver % Matrix => A
 
         ! Use the newly computed residual rather than original r.h.s. to solve the equation!!
         rhs_save => A % rhs ! Solver % Matrix % RHS
         A % RHS => b
-        
+
         ! Solving the subsystem
         !-----------------------------------
-        ALLOCATE( dx( SIZE( Var % Values ) ) )
         dx = 0.0_dp
 
-        CALL ListPushNamespace('block '//i2s(11*RowVar)//':')          
+        CALL ListPushNamespace('block '//i2s(11*RowVar)//':')
 
-        IF( BlockScaling ) CALL DoBlockMatrixScaling(.TRUE.,i,i,b)
-              
+        IF( BlockScaling ) CALL DoBlockMatrixScaling(.TRUE.,RowVar,RowVar,b)
+
         !IF( ListGetLogical( Solver % Values,'Linear System Complex', Found ) ) A % Complex = .TRUE.
 
         !ScaleSystem = ListGetLogical( Solver % Values,'block: Linear System Scaling', Found )
         !IF(.NOT. Found) ScaleSystem = .TRUE.
 
-        
+
         CALL SolveLinearSystem( A, b, dx, Var % Norm, Var % DOFs, Solver )
 
-        IF( BlockScaling ) CALL DoBlockMatrixScaling(.FALSE.,i,i,b)
+        IF( BlockScaling ) CALL DoBlockMatrixScaling(.FALSE.,RowVar,RowVar,b)
 
         CALL ListPopNamespace()
 
@@ -4349,9 +4354,9 @@ CONTAINS
         !Solver % Matrix => mat_save
 
         IF( iter > 1 ) THEN
-          Var % Values = Var % Values + Relax * dx
+          Var % Values = Var % Values + Relax * dx(1:A % NumberOfRows)
         ELSE
-          Var % Values = Var % Values + dx
+          Var % Values = Var % Values + dx(1:A % NumberOfRows)
         END IF
 
         dxnorm = CompNorm(dx,A % NumberOfRows, A=A)
@@ -4362,13 +4367,13 @@ CONTAINS
 
         WRITE(Message,'(A,2ES12.3)') 'Block '//I2S(RowVar)//' norms: ',xnorm, dxnorm / xnorm
         CALL Info('BlockStandardIter',Message,Level=5)
-        
+
         IF( InfoActive( 20 ) ) THEN
-          PRINT *,'dx'//I2S(i)//':',SQRT( SUM(dx**2) ), MINVAL( dx ), MAXVAL( dx ), SUM( dx ), SUM( ABS( dx ) )
+          PRINT *,'dx'//I2S(i)//':',SQRT( SUM(dx(1:A%NumberOfRows)**2) ), &
+              MINVAL( dx(1:A%NumberOfRows) ), MAXVAL( dx(1:A%NumberOfRows) ), &
+              SUM( dx(1:A%NumberOfRows) ), SUM( ABS( dx(1:A%NumberOfRows) ) )
         END IF
       
-        DEALLOCATE( dx )
-          
         TotNorm = TotNorm + Var % Norm
         MaxChange = MAX( MaxChange, Var % NonlinChange )        
       END DO
@@ -4382,6 +4387,8 @@ CONTAINS
       END IF
       
     END DO
+    DEALLOCATE( dx )
+
     CALL ListPopNamespace('block:')
 
     CALL ListAddLogical( Params,'No Precondition Recompute',.FALSE.)
@@ -4547,15 +4554,14 @@ CONTAINS
       mvProc = AddrFunc(BlockMatrixVectorProd)       
     END IF
       
-    prevXnorm = CompNorm(b,ndim)
-    WRITE( Message,'(A,ES12.5)') 'Rhs norm at start: ',PrevXnorm
-    CALL Info(Caller,Message,Level=10)    
-    IF( PrevXNorm < EPSILON( PrevXNorm ) ) THEN
+    xnorm = CompNorm(b,ndim)
+    WRITE( Message,'(A,ES12.5)') 'Rhs norm at start: ',xnorm
+    CALL Info(Caller,Message,Level=10)
+    IF( xnorm < EPSILON( xnorm ) ) THEN
       CALL Warn(Caller,"With zero'ish r.h.s. it does not make sense to call the solver!")
       RETURN
     END IF
 
-    
     prevXnorm = CompNorm(x,ndim)
     WRITE( Message,'(A,ES12.5)') 'Solution norm at start: ',PrevXnorm
     CALL Info(Caller,Message,Level=10)
@@ -4631,10 +4637,12 @@ CONTAINS
     IF( TotMatrix % GotBlockStruct ) THEN
       SVar => CurrentModel % Solver % Variable
       i = SIZE(SVar % Values)
-      Svar % Values(TotMatrix % BlockPerm(1:i)) = x(1:i)      
+      Svar % Values(TotMatrix % BlockPerm(1:i)) = x(1:i)
     ELSE IF (BlockAV ) THEN
       i = SIZE(SolverVar % Values)
       SolverVar % Values = x(1:i)
+    ELSE
+      i = offset(NoVar+1)
     END IF
 
     j = SIZE(x)
