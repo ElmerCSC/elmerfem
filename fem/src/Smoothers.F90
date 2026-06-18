@@ -76,7 +76,7 @@ CONTAINS
       REAL(KIND=dp) :: Omega, Bnorm, TOL
       REAL(KIND=dp), POINTER :: TmpArray(:,:)
       REAL(KIND=dp), ALLOCATABLE :: Q(:), Z(:), Ri(:), T(:), &
-             T1(:), T2(:), S(:), V(:), Pr(:), dx(:),diag(:)
+             T1(:), T2(:), S(:), V(:), Pr(:), dx(:),diag(:),invdiag(:)
 !------------------------------------------------------------------------------
       TYPE( IfLColsT), POINTER :: IfL, IfO
       INTEGER :: row
@@ -96,16 +96,21 @@ CONTAINS
         Mr => r
 
         n = A % NumberOfRows
-        ALLOCATE(Diag(n))
+        ALLOCATE(Diag(n), InvDiag(n))
         Diag = A % Values(A % Diag)
       ELSE
         CALL ParallelUpdateSolve( A,x,r )
         M => ParallelMatrix( A, Mx, Mb, Mr )
 
         n = M % NumberOfRows
-        ALLOCATE(Diag(n))
+        ALLOCATE(Diag(n), InvDiag(n))
         Diag = M % Values(M % Diag)
       END IF
+      WHERE (Diag /= 0.0_dp)
+        InvDiag = 1.0_dp / Diag
+      ELSEWHERE
+        InvDiag = 0.0_dp
+      END WHERE
       
       InvLevel = MAX(1,1 + Solver % MultiGridTotal - Level)
 
@@ -437,9 +442,7 @@ CONTAINS
           CALL MGmv(A, x, r)
           DO j=1,n
             r(j) = b(j) - r(j)
-            IF( Diag(j) > EPSILON( Diag(j) ) ) THEN
-              x(j) = x(j) + r(j) / Diag(j)
-            END IF
+            x(j) = x(j) + r(j) * InvDiag(j)
           END DO
         END DO
 !------------------------------------------------------------------------------
@@ -463,7 +466,7 @@ CONTAINS
           CALL MGmv( A, x, r )
           DO j=1,n
             r(j) = b(j) - r(j)
-            x(j) = x(j) + w * r(j) / Diag(j)
+            x(j) = x(j) + w * r(j) * InvDiag(j)
           END DO
         END DO
 !------------------------------------------------------------------------------
@@ -487,9 +490,9 @@ CONTAINS
         DO i=1,Rounds
           CALL MGmv( A, x, r )
           DO j=1,n
-            IF( Mask(i) ) CYCLE
+            IF( Mask(j) ) CYCLE
             r(j) = b(j) - r(j)
-            x(j) = x(j) + w * r(j) / Diag(j)
+            x(j) = x(j) + w * r(j) * InvDiag(j)
           END DO
         END DO
 !------------------------------------------------------------------------------
@@ -574,7 +577,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
         END DO
@@ -651,8 +654,8 @@ CONTAINS
               END DO
             END DO
             DO dof=1,DOFs
-              id = (i-1)*DOFs + dof             
-              r(id) = (b(id)-s(dof)) / Diag(j)
+              id = (i-1)*DOFs + dof
+              r(id) = (b(id)-s(dof)) * InvDiag(id)
               x(id) = x(id) + r(id)
             END DO
           END DO
@@ -689,7 +692,7 @@ CONTAINS
               s = s + x(Cols(j)) * Values(j)
             END DO
             
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + w * r(i)
           END DO
         END DO
@@ -720,7 +723,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
           
@@ -729,7 +732,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
         END DO
@@ -951,7 +954,7 @@ CONTAINS
             END DO
             DO dof = 1,DOFs
               id = (i-1)*DOFs + dof
-              r(id) = (b(id)-s(dof)) / Diag(id)
+              r(id) = (b(id)-s(dof)) * InvDiag(id)
               x(id) = x(id) + r(id)
             END DO
           END DO
@@ -966,7 +969,7 @@ CONTAINS
             END DO
             DO dof = 1,DOFs
               id = (i-1)*DOFs + dof
-              r(id) = (b(id)-s(dof)) / Diag(id)
+              r(id) = (b(id)-s(dof)) * InvDiag(id)
               x(id) = x(id) + r(id)
             END DO
           END DO
@@ -998,7 +1001,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + w * r(i)
           END DO
           
@@ -1007,7 +1010,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + w * r(i)
           END DO
         END DO
@@ -1107,7 +1110,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
           DO i=1,n
@@ -1116,7 +1119,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
           
@@ -1126,7 +1129,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
           DO i=n,1,-1
@@ -1135,7 +1138,7 @@ CONTAINS
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / Diag(i)
+            r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
           
@@ -1608,7 +1611,6 @@ DO it=1,200
 
          CALL MGMv( A,x,r )
          r(1:n) = b(1:n) - r(1:n)
-         PRINT*,'AAAAAAAAAA: ', it, Rounds, st_norm*0.5_dp, SQRT(SUM(r**2))
 
          IF ( it > Rounds ) THEN
            IF ( SQRT(SUM(r**2)) < 0.5_dp*st_norm ) EXIT

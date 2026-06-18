@@ -2352,14 +2352,14 @@ CONTAINS
           END DO
 
           ! Check if there exist possible new connections
-          IF(measind == 0 .OR. measlim > 1.0d-50) EXIT
+          IF(measind == 0 .OR. measlim < 1.0d-50) EXIT
 
           IF(measures(measind-Rows(ind)+1) < 0.0) THEN
             negnew = negnew + 1
           ELSE
             posnew = posnew + 1
           END IF
-          Bonds(measind) = .TRUE.          
+          Bonds(measind) = .TRUE.
         END DO
       END IF
 
@@ -2683,6 +2683,7 @@ CONTAINS
 
     Bonds = .FALSE.
     negbonds = 0
+    elimnods = 0
 
     DO ind=1,nods
 
@@ -2767,10 +2768,10 @@ CONTAINS
           END DO
 
           ! Check if there exist possible new connections
-          IF(measind == 0 .OR. measlim > 1.0d-50) EXIT
+          IF(measind == 0 .OR. measlim < 1.0d-50) EXIT
 
           negnew = negnew + 1
-          Bonds(measind) = .TRUE.          
+          Bonds(measind) = .TRUE.
         END DO
       END IF
       negbonds = negbonds + negnew
