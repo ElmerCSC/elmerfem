@@ -501,7 +501,7 @@ CONTAINS
          row = row + Ctmp % NumberOfRows
          Ctmp => Ctmp % ConstraintMatrix
 
-         IF( InfoActive(32) ) THEN           
+         IF( InfoActive(32) .AND. ASSOCIATED(Ctmp) ) THEN
            CALL VectorValuesRange(Ctmp % Values,SIZE(Ctmp % Values),'Ctmp'//I2S(mcount))
            IF( ASSOCIATED( Ctmp % InvPerm ) ) THEN
              PRINT *,'InvPerm range:',MINVAL(Ctmp % InvPerm), MAXVAL(Ctmp % InvPerm), SUM(Ctmp % InvPerm)

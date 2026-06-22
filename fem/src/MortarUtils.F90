@@ -414,7 +414,7 @@ CONTAINS
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
 
         ELSE IF( ElemCode == 409 ) THEN
-          SplitSizes(1:n) = [ 4,4,4,4 ]
+          SplitSizes(1:nSplit) = [ 4,4,4,4 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
@@ -441,7 +441,7 @@ CONTAINS
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
           
         ELSE IF( ElemCode == 306 ) THEN
-          SplitSizes(1:n) = [ 3,3,3,3 ]
+          SplitSizes(1:nSplit) = [ 3,3,3,3 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
@@ -457,7 +457,7 @@ CONTAINS
               SplitMap(1:m) = [ 4, 5, 6 ]
             END SELECT
 
-            CALL AllocateVector(PMesh % Elements(j) % NodeIndexes, m )
+            CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
             PMesh % Elements(jj) % NodeIndexes(1:m) = &
                 Element % NodeIndexes(SplitMap(1:m))
             PMesh % Elements(jj) % TYPE => GetElementType(101*m)
@@ -674,7 +674,7 @@ CONTAINS
 
         IF (BPerm2(i)>0) THEN
           k2 = k2 + 1
-          BMesh1 % InvPerm(k2 + l + e2) =  j + Mesh % NumberOfEdges + i
+          BMesh2 % InvPerm(k2 + l + e2) =  j + Mesh % NumberOfEdges + i
         END IF
       END DO
         
@@ -1212,7 +1212,7 @@ CONTAINS
       
     nM = ElementM % TYPE % NumberOfNodes
     neM = ElementM % TYPE % ElementCode / 100      
-    ElemCodeM = Element % TYPE % ElementCode 
+    ElemCodeM = ElementM % TYPE % ElementCode
     LinCodeM = 101 * neM
     IF( pElemBasis ) THEN
       ndM = mGetElementDOFs(pIndexesM,ElementM,notDG=.TRUE.)
@@ -1533,7 +1533,7 @@ CONTAINS
           IF(i<=nM) ii=InvPermM(ii)
           Linds(i) = ii
         END DO
-        LVals(1:nd) = -sgn0 * NodeScale * BasisM(1:ndM) * val 
+        LVals(1:ndM) = -sgn0 * NodeScale * BasisM(1:ndM) * val
         CALL List_AddMatrixRow(Projector % ListMatrix,nrow,ndM,Linds,Lvals,KeepOrder=BiOrthogonal)
         
         IF(Biorthogonal) THEN
@@ -1558,7 +1558,7 @@ CONTAINS
           Lvals(1:nM) = sgn0 * BasisM(1:nM) * val
           CALL List_AddMatrixRow(DualProjector % ListMatrix,nrow,nM,Linds,Lvals)
 
-          Linds(1:n) = InvPerm(IndexesM(1:nM))
+          Linds(1:n) = InvPerm(Indexes(1:n))
           Lvals(1:n) = -NodeScale * Basis(1:n) * val
           CALL List_AddMatrixRow(DualProjector % ListMatrix,nrow,n,Linds,Lvals)
         END DO
@@ -1810,7 +1810,7 @@ CONTAINS
           IF(i<=nM) ii = InvPermM(ii)
 
           LCols(i) = ii
-          LVals(i) = sgns(1) * SUM(dBasisdxM(Ind(j),:)*NrmM) * BasisM(i) &
+          LVals(i) = sgns(1) * SUM(dBasisdxM(IndM(j),:)*NrmM) * BasisM(i) &
               + sgns(2) * SUM(dBasisdxM(IndM(i),:)*NrmM) * BasisM(j) &
               + BasisM(i) * BasisM(j) / EsizeM / Gamma 
         END DO
@@ -2631,7 +2631,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -2660,7 +2660,7 @@ CONTAINS
       CALL Info(Caller,'Number of edge intersections: '&
           //I2S(EdgeHits),Level=10)
       CALL Info(Caller,'Number of corners inside element: '&
-          //I2S(EdgeHits),Level=10)
+          //I2S(CornerHits),Level=10)
 
       CALL Info(Caller,'Number of initial corners: '&
           //I2S(InitialHits),Level=10)
@@ -3087,7 +3087,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -4717,16 +4717,16 @@ CONTAINS
           
           IF(DoNodes .AND. .NOT. pElemBasis) ndM = nM
 
-          ElemCodeM = Element % TYPE % ElementCode 
+          ElemCodeM = ElementM % TYPE % ElementCode
           LinCodeM = 101 * neM
-            
+
           IF( DebugElem ) THEN
             PRINT *,'Candidate Elem:',indM,nM,NeM, ElemCodeM,LinCodeM
           END IF
  
           IF( HaveMaxDistance ) THEN
             zminm = MINVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:neM)) )
-            zmaxm = MINVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:neM)) )
+            zmaxm = MAXVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:neM)) )
             IF( zmaxm < zmin - MaxDistance ) CYCLE
             IF( zminm > zmax + MaxDistance ) CYCLE
           END IF
@@ -4796,7 +4796,7 @@ CONTAINS
               END DO
               IF( CenterJM > 0 ) THEN
                 alphaM(CenterJM) = 0.0_dp
-                alphaM(CenterJM) = SUM( AlphaM(1:ne) ) / ( ne - 1 ) 
+                alphaM(CenterJM) = SUM( AlphaM(1:neM) ) / ( neM - 1 )
               END IF
               aminm = MINVAL( AlphaM(1:neM) )
               amaxm = MAXVAL( AlphaM(1:neM) )                        
@@ -5465,7 +5465,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -5512,7 +5512,7 @@ CONTAINS
       CALL Info(Caller,'Number of edge intersections: '&
           //I2S(EdgeHits),Level=10)
       CALL Info(Caller,'Number of corners inside element: '&
-          //I2S(EdgeHits),Level=10)
+          //I2S(CornerHits),Level=10)
 
       CALL Info(Caller,'Number of initial corners: '&
           //I2S(InitialHits),Level=10)
@@ -6611,7 +6611,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -7534,7 +7534,7 @@ CONTAINS
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
     END IF
 
-    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh2:',err1
+    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh2:',err2
     IF( err2 > eps_rad ) THEN
       CALL Info('RotationalInterfaceMeshes',Message,Level=3)    
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
@@ -8134,7 +8134,8 @@ CONTAINS
       END IF
     END DO
 
-    Bmesh % MeshDim = 2
+    BMesh1 % MeshDim = 2
+    BMesh2 % MeshDim = 2
 
   END SUBROUTINE PlaneInterfaceMeshes
   !------------------------------------------------------------------------------
@@ -9599,7 +9600,7 @@ CONTAINS
       IF(dim==3) THEN
         zm1 = EdgeMZ(1,em)
         zm2 = EdgeMZ(2,em)
-        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) + (z1-z1)*(zm1-zm2)
+        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) + (z1-z2)*(zm1-zm2)
       ELSE
         coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) 
       END IF
@@ -9787,7 +9788,7 @@ CONTAINS
     nofaces = BMesh1 % NumberOfBulkElements
     nofacesm = BMesh2 % NumberOfBulkElements
 
-    IF (nofaces == 0 .OR. nofaces == 0) RETURN
+    IF (nofaces == 0 .OR. nofacesm == 0) RETURN
 
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
