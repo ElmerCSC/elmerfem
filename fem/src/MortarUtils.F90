@@ -1820,7 +1820,7 @@ CONTAINS
           IF(i<=n) ii = InvPerm(ii)
 
           LCols(ndM+i) = ii
-          LVals(ndM+i) = -NodeScale * ( sgns(3) * SUM(dBasisdxM(Ind(j),:)*NrmM) * Basis(i) &
+          LVals(ndM+i) = -NodeScale * ( sgns(3) * SUM(dBasisdxM(IndM(j),:)*NrmM) * Basis(i) &
               + sgns(4) * SUM(dBasisdx(Ind(i),:)*Nrm) * BasisM(j) &
               + Basis(i) * BasisM(j) / EsizeM / Gamma )
         END DO        

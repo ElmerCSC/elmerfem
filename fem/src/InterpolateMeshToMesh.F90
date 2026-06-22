@@ -646,7 +646,7 @@ END SUBROUTINE InterpolateMeshToMesh
        INTEGER, POINTER :: Indexes(:)
        REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
        TYPE(Variable_t), POINTER :: OldSol, NewSol, Var
-       REAL(KIND=dp), POINTER :: OldValue(:), NewValue(:), ElementValues(:)
+       REAL(KIND=dp), POINTER :: ElementValues(:)
        TYPE(Quadrant_t), POINTER :: LeafQuadrant
        TYPE(Element_t),POINTER :: Element, Parent
        
@@ -1062,7 +1062,7 @@ END SUBROUTINE InterpolateMeshToMesh
                     END IF
                   END IF
                 ELSE
-                  IF ( NewPerm(i)/=0 ) NewValue(NewPerm(i))=0.0_dp
+                  IF ( NewPerm(i)/=0 ) NewSol % Values(NewPerm(i)) = 0.0_dp
                 END IF
 
 !------------------------------------------------------------------------------
@@ -1264,7 +1264,7 @@ END SUBROUTINE InterpolateMeshToMesh
 !         ------------------------------------------ 
           Projector % TMatrix => NULL()
           IF(.NOT.EdgeBasis) THEN
-            IF ( Found ) THEN
+            IF ( FoundCnt > 0 ) THEN
               n = OldMesh % NumberOfNodes
               ! Needed for some matrices
               n = MAX( n, MAXVAL( Projector % Matrix % Cols ) )
