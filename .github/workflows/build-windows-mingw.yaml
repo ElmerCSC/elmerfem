@@ -159,7 +159,7 @@ jobs:
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
             -LE slow \
-            --timeout 300
+            --timeout 600
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')

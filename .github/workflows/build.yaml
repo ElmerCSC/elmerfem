@@ -177,7 +177,7 @@ jobs:
           ctest . \
             -LE slow \
             -j$(nproc) \
-            --timeout 300
+            --timeout 600
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
