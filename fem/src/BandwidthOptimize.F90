@@ -268,7 +268,7 @@ use spariterglobals
 
          IF ( j > MaxLevel ) THEN
            NewRoot = .TRUE.
-           StartNode = j
+           StartNode = k
          END IF
        END IF
      END DO
@@ -305,7 +305,7 @@ use spariterglobals
            END IF
          END DO
        END IF
-       CALL Renumber(ListMatrix(PermLocal(i)) % Head)
+       IF ( PermLocal(i) > 0 ) CALL Renumber(ListMatrix(PermLocal(i)) % Head)
      END DO
 !-------------------------------------------------------------------------------
 !    Store it the other way round for FEM, and reverse order for profile
