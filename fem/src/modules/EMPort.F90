@@ -1424,10 +1424,16 @@ CONTAINS
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
       
-      EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
+      EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )
       IF(.NOT. Found) THEN
-        CALL SetParentBasis( Element, n, Basis, Parent, Parent % TYPE % NumberOfNodes, ParentBasis)
-        EpsAtIp = ListGetElementReal( EpsCoeff_h, ParentBasis, Parent, Found )
+        IF( ASSOCIATED(Parent) ) THEN
+          CALL SetParentBasis( Element, n, Basis, Parent, Parent % TYPE % NumberOfNodes, ParentBasis)
+          EpsAtIp = ListGetElementReal( EpsCoeff_h, ParentBasis, Parent, Found )
+        END IF
+        IF(.NOT. Found) THEN
+          CALL Warn('EMPortPotential','Relative Permittivity not found, using 1.')
+          EpsAtIp = 1.0_dp
+        END IF
       END IF
       
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
