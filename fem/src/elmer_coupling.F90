@@ -100,7 +100,8 @@ MODULE elmer_ebfm_coupling
     YAC_TIME_UNIT_ISO_FORMAT, &
     YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
     YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
-    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
+    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET, &
+    YAC_REDUCTION_TIME_NONE
 
   USE elmer_coupling_utils, ONLY: yac_action_to_string
 
@@ -432,13 +433,18 @@ MODULE elmer_icon_coupling
   USE yac, ONLY: yac_fdef_field, yac_fdef_field_mask, yac_fget_role_from_field_id, &
     yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
     yac_ffield_has_metadata, yac_fget_field_metadata, yac_fget_points_size, &
-    yac_fget_field_source, yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
+    yac_fget_field_source, yac_fget, yac_fput, yac_fexchange, &
+    yac_fupdate, yac_fget_action, &
+    yac_fdef_couple, yac_string, &
     YAC_TIME_UNIT_ISO_FORMAT, &
     YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
     YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
-    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
+    YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET, YAC_NNN_AVG, &
+    YAC_REDUCTION_TIME_NONE
 
   USE elmer_coupling_utils, ONLY: yac_action_to_string
+
+  USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE
 
   IMPLICIT NONE
 
@@ -449,46 +455,148 @@ MODULE elmer_icon_coupling
   PUBLIC :: destruct_elmer_icon_coupling
   PUBLIC :: elmer_icon_interface
 
+  ! Temperature field received from ICON; only mapped onto boundary region via mask
   INTEGER :: t_oce_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: t_oce_field_name = "temp_oce"
-  INTEGER :: t_oce_collection_size = 1
-  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: t_oce_field(:,:)
 
+  ! Fields for internal mapping from boundary region to internal domain
+  ! Source
+  INTEGER :: t_oce_pre_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: t_oce_pre_field_name = "temp_oce_pre"
+  ! Target
+  INTEGER :: t_oce_post_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: t_oce_post_field_name = "temp_oce_post"
+
+  ! All fields with t_oce prefix use the same collection size.
+  INTEGER :: t_oce_collection_size = 1
+
+  ! Buffer for receiving `temp_oce` from ICON; used as input for creep mapping
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: t_oce_pre_field(:,:)
+  ! Buffer for output of creep mapping on internal domain
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: t_oce_post_field(:,:)
+
+  ! Salinity field received from ICON; only mapped onto boundary region via mask
   INTEGER :: sal_oce_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: sal_oce_field_name = "sal_oce"
+
+  ! Fields for internal mapping from boundary region to internal domain
+  ! Source
+  INTEGER :: sal_oce_pre_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: sal_oce_pre_field_name = &
+    "sal_oce_pre"
+  ! Target
+  INTEGER :: sal_oce_post_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: sal_oce_post_field_name = "sal_oce_post"
+
+  ! All fields with sal_oce prefix use the same collection size.
   INTEGER :: sal_oce_collection_size = 1
-  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: sal_oce_field(:,:)
+
+  INTEGER :: interp_stack_config_id = -1
+
+  ! Buffer for receiving `sal_oce` from ICON; used as input for creep mapping
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: sal_oce_pre_field(:,:)
+  ! Buffer for output of creep mapping on internal domain
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: sal_oce_post_field(:,:)
 
 CONTAINS
 
   SUBROUTINE construct_elmer_icon_coupling( &
-        comp_id, corner_point_id, iso8601_timestep, cell_point_id, boundary_corner_mask_id)
+        comp_id, corner_point_id, iso8601_timestep, cell_point_id, &
+        boundary_corner_mask_name, elmer_comp_name, elmer_grid_name)
 
     INTEGER, INTENT(IN) :: comp_id
     INTEGER, INTENT(IN) :: corner_point_id
     INTEGER, INTENT(IN) :: cell_point_id
     CHARACTER(LEN=*), INTENT(IN) :: iso8601_timestep
-    INTEGER, INTENT(IN) :: boundary_corner_mask_id
+    CHARACTER(LEN=*), INTENT(IN) :: boundary_corner_mask_name
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+    CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
 
     INTEGER :: nbr_vertices
 
+    REAL(kind=C_DOUBLE), PARAMETER :: nnn_max_search_distance = 1e-5_C_DOUBLE
+    REAL(kind=C_DOUBLE), PARAMETER :: nnn_scale = 0.0_C_DOUBLE
+
     nbr_vertices = yac_fget_points_size(corner_point_id)
 
-    ! register ocean temperature field in YAC
-    CALL yac_fdef_field_mask( &
-      t_oce_field_name, comp_id, (/corner_point_id/), (/boundary_corner_mask_id/), 1, &
+    ! register ocean temperature field in YAC (masked on boundary)
+    CALL yac_fdef_field( &
+      t_oce_field_name, comp_id, (/corner_point_id/), 1, &
       t_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, t_oce_field_id)
 
-    ! allocate and initialise ocean temperature field buffer
-    ALLOCATE(t_oce_field(nbr_vertices, t_oce_collection_size))
+    ALLOCATE(t_oce_pre_field(nbr_vertices, t_oce_collection_size))
 
-    ! register ocean salinity field in YAC
-    CALL yac_fdef_field_mask( &
-      sal_oce_field_name, comp_id, (/corner_point_id/), (/boundary_corner_mask_id/), 1, &
-      sal_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, sal_oce_field_id)
+    ! register internal temperature fields (Elmer internal mapping from boundary to
+    ! internal domain)
 
-    ! allocate and initialise ocean salinity field buffer
-    ALLOCATE(sal_oce_field(nbr_vertices, sal_oce_collection_size))
+    CALL yac_fdef_field( &
+      t_oce_pre_field_name, comp_id, (/corner_point_id/), 1, &
+      t_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, &
+      t_oce_pre_field_id)
+
+    CALL yac_fdef_field( &
+      t_oce_post_field_name, comp_id, (/corner_point_id/), 1, &
+      t_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, &
+      t_oce_post_field_id)
+
+    ! register ocean salinity field in YAC (masked on boundary)
+    CALL yac_fdef_field( &
+      sal_oce_field_name, comp_id, (/corner_point_id/), 1, &
+      sal_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, &
+      sal_oce_field_id)
+
+    ALLOCATE(sal_oce_pre_field(nbr_vertices, sal_oce_collection_size))
+
+    ! TODO move into own function construct_elmer_coupling_preproc?
+
+    ! register internal salinity fields (Elmer internal mapping from boundary to
+    ! internal domain)
+
+    CALL yac_fdef_field( &
+      sal_oce_pre_field_name, comp_id, (/corner_point_id/), 1, &
+      sal_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, &
+      sal_oce_pre_field_id)
+
+    CALL yac_fdef_field( &
+      sal_oce_post_field_name, comp_id, (/corner_point_id/), 1, &
+      sal_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, &
+      sal_oce_post_field_id)
+
+    CALL yac_fget_interp_stack_config(interp_stack_config_id)
+
+    ! Use a very small search distance to ensure only neighbors with a direct
+    ! match in the src field are considered. Both fields use the same grid, so
+    ! the non-boundary points should remain unset and will be filled with the
+    ! creep algorithm in a second step.
+
+    ! Map boundary points with NNN
+    CALL yac_fadd_interp_stack_config_nnn( &
+      interp_stack_config_id, YAC_NNN_AVG, 1_c_int, nnn_max_search_distance, nnn_scale)
+    ! Set remaining points with creep algorithm
+    CALL yac_fadd_interp_stack_config_creep( &
+      interp_stack_config_id, -1_c_int)
+    ! Use -3.0 as sentinel value for points not covered by creep.
+    CALL yac_fadd_interp_stack_config_fixed( &
+      interp_stack_config_id, -3.0_c_double)
+
+    CALL yac_fdef_couple( &
+      elmer_comp_name, elmer_grid_name, t_oce_pre_field_name, &
+      elmer_comp_name, elmer_grid_name, t_oce_post_field_name, &
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, YAC_REDUCTION_TIME_NONE, &
+      interp_stack_config_id, &
+      src_mask_names=(/yac_string(boundary_corner_mask_name)/))
+
+    CALL yac_fdef_couple( &
+      elmer_comp_name, elmer_grid_name, sal_oce_pre_field_name, &
+      elmer_comp_name, elmer_grid_name, sal_oce_post_field_name, &
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, YAC_REDUCTION_TIME_NONE, &
+      interp_stack_config_id, &
+      src_mask_names=(/yac_string(boundary_corner_mask_name)/))
+
+    CALL yac_ffree_interp_stack_config(interp_stack_config_id)
+
+    ALLOCATE(t_oce_post_field(nbr_vertices, t_oce_collection_size))
+    ALLOCATE(sal_oce_post_field(nbr_vertices, sal_oce_collection_size))
 
   END SUBROUTINE construct_elmer_icon_coupling
 
@@ -535,31 +643,25 @@ CONTAINS
         src_field_name = field_name
 #endif
 
-        IF (yac_fget_field_role( &
-              elmer_comp_name, elmer_grid_name, field_name) == &
-              YAC_EXCHANGE_TYPE_TARGET) THEN
+        src_field_timestep = &
+          yac_fget_field_timestep( &
+            src_comp_name, src_grid_name, src_field_name)
 
-          src_field_timestep = &
-            yac_fget_field_timestep( &
-              elmer_comp_name, elmer_grid_name, src_field_name)
-
-          IF (yac_ffield_has_metadata( &
-                src_comp_name, src_grid_name, src_field_name)) THEN
-            src_field_metadata = &
-              yac_fget_field_metadata( &
-                src_comp_name, src_grid_name, src_field_name)
-          ELSE
-            src_field_metadata = "N/A"
-          END IF
-
-          PRINT *, "ELMER: field ", field_name, ":"
-          PRINT *, "ELMER:  - source:"
-          PRINT *, "ELMER:    - component: ", src_comp_name
-          PRINT *, "ELMER:    - grid:      ", src_grid_name
-          PRINT *, "ELMER:    - timestep:  ", src_field_timestep
-          PRINT *, "ELMER:    - metadata:  ", src_field_metadata
-
+        IF (yac_ffield_has_metadata( &
+              src_comp_name, src_grid_name, src_field_name)) THEN
+          src_field_metadata = &
+            yac_fget_field_metadata( &
+              src_comp_name, src_grid_name, src_field_name)
+        ELSE
+          src_field_metadata = "N/A"
         END IF
+
+        PRINT *, "ELMER: field ", field_name, ":"
+        PRINT *, "ELMER:  - source:"
+        PRINT *, "ELMER:    - component: ", src_comp_name
+        PRINT *, "ELMER:    - grid:      ", src_grid_name
+        PRINT *, "ELMER:    - timestep:  ", src_field_timestep
+        PRINT *, "ELMER:    - metadata:  ", src_field_metadata
 
       END IF
 
@@ -593,8 +695,12 @@ CONTAINS
       !   been received
       ! * if this is not a coupling timestep, ocean temperature field buffer
       !   is left untouched and routine will return immediately
+
+      ! initialize with sentinel value
+      t_oce_pre_field(:,:) = -1.0
+
       CALL yac_fget( &
-        t_oce_field_id, SIZE(t_oce_field, 1), SIZE(t_oce_field, 2), t_oce_field, &
+        t_oce_field_id, SIZE(t_oce_pre_field, 1), SIZE(t_oce_pre_field, 2), t_oce_pre_field, &
         info, err)
 
       ! if this was a coupling timestep
@@ -606,6 +712,19 @@ CONTAINS
         ! update elmer internal ocean temperature field
 
       END IF
+
+      ! initialize with sentinel value
+      t_oce_post_field(:,:) = -2.0
+
+      CALL yac_fexchange( &
+        t_oce_pre_field_id, t_oce_post_field_id, &
+        SIZE(t_oce_pre_field, 1), SIZE(t_oce_post_field, 1), &
+        SIZE(t_oce_pre_field, 2), &
+        t_oce_pre_field, t_oce_post_field, &
+        info, info, err)
+
+      ! TODO: ignore info?
+
     END IF
 
     ! checks whether the ocean salinity field is defined as a target
@@ -628,8 +747,14 @@ CONTAINS
       !   been received
       ! * if this is not a coupling timestep, ocean salinity field buffer
       !   is left untouched and routine will return immediately
+
+      ! initialize with sentinel value
+      sal_oce_pre_field(:,:) = -1.0
+
       CALL yac_fget( &
-        sal_oce_field_id, SIZE(sal_oce_field, 1), SIZE(sal_oce_field, 2), sal_oce_field, &
+        sal_oce_field_id, &
+        SIZE(sal_oce_pre_field, 1), SIZE(sal_oce_pre_field, 2), &
+        sal_oce_pre_field, &
         info, err)
 
       ! if this was a coupling timestep
@@ -641,6 +766,19 @@ CONTAINS
         ! update elmer internal ocean salinity field
 
       END IF
+
+      ! initialize with sentinel value
+      sal_oce_post_field(:,:) = -2.0
+
+      CALL yac_fexchange( &
+        sal_oce_pre_field_id, sal_oce_post_field_id, &
+        SIZE(sal_oce_pre_field, 1), SIZE(sal_oce_post_field, 1), &
+        SIZE(sal_oce_pre_field, 2), &
+        sal_oce_pre_field, sal_oce_post_field, &
+        info, info, err)
+
+      ! TODO: ignore info?
+
     END IF
 
   END SUBROUTINE elmer_icon_interface
@@ -648,7 +786,8 @@ CONTAINS
   SUBROUTINE destruct_elmer_icon_coupling()
 
     ! clean up
-    DEALLOCATE(t_oce_field, sal_oce_field)
+    DEALLOCATE(t_oce_pre_field, t_oce_post_field, &
+               sal_oce_pre_field, sal_oce_post_field)
 
   END SUBROUTINE destruct_elmer_icon_coupling
 
@@ -690,6 +829,10 @@ MODULE elmer_coupling
   CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_COMP_NAME = "elmerice"
   CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: ELMER_GRID_NAME = "elmer_grid"
 
+  CHARACTER(LEN=MAX_CHARLEN), PARAMETER :: BOUNDARY_CORNER_MASK_NAME = &
+    "boundary_corner_mask"
+
+
   INTEGER :: comp_id
 
   ! True if this is the ROOT_RANK of this component.
@@ -726,6 +869,7 @@ CONTAINS
 
     IMPLICIT NONE
 
+    CHARACTER(LEN=*), INTENT(IN) :: coupling_config_file
     INTEGER, INTENT(IN) :: elmer_rank
     INTEGER, INTENT(IN) :: yac_comm
 
@@ -846,13 +990,13 @@ CONTAINS
     ! register boundary corner mask in YAC
     CALL yac_fdef_mask_named( &
       grid_id, nbr_vertices, YAC_LOCATION_CORNER, boundary_corner_mask, &
-      "boundary_corner_mask", boundary_corner_mask_id)
+      BOUNDARY_CORNER_MASK_NAME, boundary_corner_mask_id)
 
     ! construct coupling between Elmer/Ice and ICON
     IF (couple_to_icon) THEN
         CALL construct_elmer_icon_coupling( &
           comp_id, corner_point_id, iso8601_timestep, cell_point_id, &
-          boundary_corner_mask_id)
+          BOUNDARY_CORNER_MASK_NAME, ELMER_COMP_NAME, ELMER_GRID_NAME)
     END IF
     IF (couple_to_ebfm) THEN
         CALL construct_elmer_ebfm_coupling( &

@@ -7,6 +7,7 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
   USE Types, ONLY: Mesh_t, Element_t, dp
   USE DefUtils, ONLY: GetBoundaryEdgeIndex
   USE Messages, ONLY: FATAL
+  USE MeshUtils, ONLY: FindMeshEdges
 
   IMPLICIT NONE
 
@@ -48,6 +49,9 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
     cell_ids(i) = element % GElementIndex
     num_vertices_per_cell(i) = element % Type % NumberOfNodes
   END DO
+
+  ! Ensure edge tables are built (needed for GetBoundaryEdgeIndex)
+  IF (.NOT. ASSOCIATED(ThisMesh % Edges)) CALL FindMeshEdges(ThisMesh)
 
   ! Mark only true physical domain-boundary cells; partition-only boundaries stay false.
   DO bnd_elem_idx = ThisMesh % NumberOfBulkElements + 1, &
@@ -143,7 +147,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE elmer_coupling, ONLY: coupling_setup, is_root_rank
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
-  USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_field, sal_oce_field
+  USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_post_field, &
+                                 sal_oce_post_field
 
   IMPLICIT NONE
 
@@ -423,7 +428,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
               TRIM(yac_start_time), &
               TRIM(yac_end_time), &
               TRIM(coupling_timestep), &
-              couple_to_ebfm, couple_to_icon)
+              couple_to_ebfm, couple_to_icon, &
+              boundary_corner_mask)
 
     DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
     DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
@@ -467,8 +473,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         t_ocePerm(i) = i
         sal_ocePerm(i) = i
       END DO
-      CALL DefaultVariableAdd('temp_oce', dofs=1, Perm = t_ocePerm)
-      CALL DefaultVariableAdd('sal_oce', dofs=1, Perm = sal_ocePerm)
+      CALL DefaultVariableAdd('temp_oce_post', dofs=1, Perm = t_ocePerm)
+      CALL DefaultVariableAdd('sal_oce_post', dofs=1, Perm = sal_ocePerm)
 
     END IF
 
@@ -491,6 +497,25 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       CALL INFO(SolverName, 'AFTER GETTING VARIABLES', Level=3)
       IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
         CALL FATAL(SolverName,'Elmer variables not associated')
+      END IF
+
+      ! Validate element variable permutations. In a parallel run, element
+      ! variables declared via "Exported Variable = -elem" in the SIF get a
+      ! proper parallel Perm (built by SetActiveElementsTable). Without that
+      ! declaration, the variable may end up with an invalid Perm.
+
+      ! ! "smb" is known to require this declaration
+      IF (MINVAL(smbVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
+        CALL FATAL(SolverName, &
+          'smb variable has zero/invalid Perm entries. ' // &
+          'Add  Exported Variable = -elem "smb"  to the YAC2Elmer solver block in the SIF.')
+      END IF
+
+      ! "runoff" did not cause issues, but adding the same check for safety
+      IF (MINVAL(runoffVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
+        CALL FATAL(SolverName, &
+          'runoff variable has zero/invalid Perm entries. ' // &
+          'Add  Exported Variable = -elem "runoff"  to the YAC2Elmer solver block in the SIF.')
       END IF
 
       CALL INFO(SolverName, 'BEFORE WRITING NODAL VALUES', Level=3)
@@ -516,15 +541,15 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)
       CALL INFO(SolverName, 'AFTER ELMER ICON-O INTERFACE', Level=3)
-      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
-      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
+      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce_post' )
+      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce_post' )
       IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
         CALL FATAL(SolverName,'Elmer variables not associated')
       END IF
       ! write over values for nodes
       DO i=1, Mesh % NumberOfNodes
-        t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_field(i,1)
-        sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_field(i,1)
+        t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_post_field(i,1)
+        sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_post_field(i,1)
       END DO
       ! TODO: stub implementation for ICON coupling
       ! CALL elmer_icon_interface(is_root_rank)
