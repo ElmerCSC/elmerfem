@@ -968,24 +968,27 @@ CONTAINS
     
     n = GetElementDOFs( Indexes, Element, pSolver )
 
+    sol(1:n) = 0.0_dp
+    dsol(1:n) = 0.0_dp
+    ddsol(1:n) = 0.0_dp
+
     IF( EigenAnalysis ) THEN
       DO i=1,n
-        j = pVar % Perm( Indexes(i) )       
+        j = pVar % Perm( Indexes(i) )
         IF ( j > 0 ) THEN
           sol(i) = REAL(pVar % EigenVectors(iEigen,j))
           dsol(i) = AIMAG(pVar % EigenVectors(iEigen,j))
-          ddsol(i) = 0.0_dp
         END IF
       END DO
     ELSE
       DO i=1,n
-        j = pVar % Perm( Indexes(i) )       
+        j = pVar % Perm( Indexes(i) )
         IF ( j > 0 ) THEN
           sol(i) = pVar % Values(j)
           ! These are only applicable as we know this is 2nd order PDE
           IF( AnyTimeDer ) THEN
-            dsol(i) = pVar % PrevValues(j,1) 
-            ddsol(i) = pVar % PrevValues(j,2)         
+            dsol(i) = pVar % PrevValues(j,1)
+            ddsol(i) = pVar % PrevValues(j,2)
           END IF
         END IF
       END DO
@@ -1120,7 +1123,7 @@ CONTAINS
    DO i=1,m
       dofs = dofs+1
       x = b(1:n,dofs)
-      CALL LUSolve(n,MASS,x,pivot)
+      CALL LUSolve(n,A,x,pivot)
       
       IF(EigenAnalysis ) THEN
         IF(i<=3) THEN

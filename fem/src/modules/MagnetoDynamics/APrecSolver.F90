@@ -418,7 +418,7 @@ CONTAINS
         Weight = IP % s(t) * DetJ
         DO i=1,3      
           LoadAtIP = SUM( Basis(1:n) * LOAD(i,1:n) )
-          FORCE(i:3:3*n) = FORCE(i:3:3*n) + Weight * LoadAtIP * Basis(1:n)
+          FORCE(i:3*n:3) = FORCE(i:3*n:3) + Weight * LoadAtIP * Basis(1:n)
         END DO
       END DO
 
