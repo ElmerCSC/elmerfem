@@ -651,17 +651,17 @@ CONTAINS
            rho = SUM( density(1:n) * Basis(1:n) ) 
            IF( rho > EPSILON( rho ) ) THEN
              IA = IA + Weight
-             U = U + Weight * r * rho
+             IMoment = IMoment + Weight * r * rho
            END IF
          END IF
        END IF
      END DO
    END DO
-     
+
 
    ! Finally perform parallel reduction if needed, and
    ! store the results for saving by SaveScalars.
-   !-------------------------------------------------------------------------   
+   !-------------------------------------------------------------------------
    IF( CalcPot ) THEN
      IF( ParEnv % PEs > 1 ) THEN
        DO i=1,nbf
@@ -2038,13 +2038,13 @@ CONTAINS
            rho = SUM( density(1:n) * Basis(1:n) ) 
            IF( rho > EPSILON( rho ) ) THEN
              IA = IA + Weight
-             U = U + Weight * r * rho
+             IMoment = IMoment + Weight * r * rho
            END IF
          END IF
        END IF
      END DO
    END DO
-     
+
 
    ! Finally perform parallel reduction if needed, and
    ! store the results for saving by SaveScalars.
@@ -2382,9 +2382,9 @@ CONTAINS
         FR = 0._dp + im*0._dp
         mu0 = 4d-7 * pi
         skindepth = sqrt(2._dp/(omega * C_ip * mu0))
-        FR = C_ip * foilthickness * skindepth * omega * (1_dp + im)/8._dp
-        FR = FR*(-im)*SIN(im*(1_dp+im)*foilthickness/skindepth)
-        FR = FR/(-im * SIN(im*(1_dp+im)*foilthickness/skindepth/2._dp))**2._dp
+        FR = C_ip * foilthickness * skindepth * omega * (1.0_dp + im)/8._dp
+        FR = FR*(-im)*SIN(im*(1.0_dp+im)*foilthickness/skindepth)
+        FR = FR/(-im * SIN(im*(1.0_dp+im)*foilthickness/skindepth/2._dp))**2._dp
         nu_tensor(1,1) = nu_tensor(1,1) + FR - 1._dp/mu0
         nu_tensor(2,2) = nu_tensor(2,2) + FR - 1._dp/mu0
       END IF
@@ -3123,7 +3123,7 @@ CONTAINS
     IF (BodyICompute) THEN
       NofComponents = SIZE(Model % Components)
       ALLOCATE(BodyCurrent(2, Model % NumberOfBodies))
-      ALLOCATE(CirCompCurrent(2, Model % NumberOfBodies))
+      ALLOCATE(CirCompCurrent(2, NofComponents))
       BodyCurrent = 0.0_dp
       CirCompCurrent = 0.0_dp
     END IF

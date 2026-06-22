@@ -893,19 +893,6 @@ END BLOCK
      END IF
    END DO
 
-   zzforce = 0
-   IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-     DO i=1,Mesh % NumberOFBoundaryElements
-       Element => GetBoundaryElement(i)
-       IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
-
-       Parent => Element % BoundaryInfo % Left
-       n  = GetELementNofNodes(Parent)
-       nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
-     END DO
-   END IF
-
    IF( CalcPotential ) THEN
      DO i=1,nbf
        a(i) = ParallelReduction(a(i))
@@ -933,19 +920,33 @@ END BLOCK
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) re', REAL(zforce))
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) im', AIMAG(zforce))
 
-   zzforce = 0
-   IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-     DO i=1,Mesh % NumberOFBoundaryElements
-       Element => GetBoundaryElement(i)
-       IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
-
-       Parent => Element % BoundaryInfo % Left
-       n  = GetELementNofNodes(Parent)
-       nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
-     END DO
-   END IF
+     zzforce = 0
      IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
+       DO i=1,Mesh % NumberOFBoundaryElements
+         Element => GetBoundaryElement(i)
+         IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
+
+         Parent => Element % BoundaryInfo % Left
+         n  = GetELementNofNodes(Parent)
+         nd = GetELementNofDOFs(Parent)
+         CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
+       END DO
+       zzforce = ParallelReduction(zzforce)
+       CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) re', REAL(zzforce))
+       CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) im', AIMAG(zzforce))
+     END IF
+   ELSE
+     zzforce = 0
+     IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
+       DO i=1,Mesh % NumberOFBoundaryElements
+         Element => GetBoundaryElement(i)
+         IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
+
+         Parent => Element % BoundaryInfo % Left
+         n  = GetELementNofNodes(Parent)
+         nd = GetELementNofDOFs(Parent)
+         CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
+       END DO
        zzforce = ParallelReduction(zzforce)
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) re', REAL(zzforce))
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) im', AIMAG(zzforce))
@@ -1201,13 +1202,13 @@ END BLOCK
     LOGICAL :: stat, WbaseFound
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
+    !$OMP THREADPRIVATE(Nodes)
 
     CALL GetElementNodes( Nodes )
 
     Omega = GetAngularFrequency(UElement=Element)
     CALL GetLocalSolution(POT,UElement=Element)
-    POTC = Omega*CMPLX( POT(2,1:nd), POT(1,1:nd), KIND=dp )
+    POTC = im*Omega*CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
 
     CALL GetLocalSolution(Wpot,'W',UElement=Element)
     W = [0._dp, 0._dp, 1._dp]
@@ -2240,7 +2241,7 @@ END BLOCK
         j = j + 1
         dMap(j) = Ltmp % Index; Ltmp => Ltmp % Next
       END DO
-      IF ( j<= 0 ) CYCLE
+      IF ( j<= 1 ) CYCLE
 
       !
       ! Orient edges to form a polygonal path:
@@ -2425,6 +2426,7 @@ END BLOCK
     IF (.NOT.ASSOCIATED(Element)) RETURN
 
     n=FaceMap(Element % ElementIndex)
+    IF (n == 0) RETURN
     IF (UsedFaces(n)) THEN
       Found=.TRUE.; RETURN
     END IF
