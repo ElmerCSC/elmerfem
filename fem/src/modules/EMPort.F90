@@ -312,6 +312,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
     CALL DefaultInitialize()
 
+    maxmu = 0.0_dp
+    maxeps = 0.0_dp
+
     IF(MaxPort==0) THEN
       ModeIndex = ListGetInteger(Params, 'Eigenfunction Index', Found)
       IF(.NOT. Found ) ModeIndex = 1            
@@ -360,8 +363,8 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     CALL DefaultDirichletBCs()
     
     IF(ListGetLogical( Params,'Eigen System Shift Automatic',Found ) ) THEN
-      maxeps = ParallelReduction(maxeps)
-      maxmu = ParallelReduction(maxmu)    
+      maxeps = ParallelReduction(maxeps, 2)
+      maxmu = ParallelReduction(maxmu, 2)
       betalim = Omega * SQRT(maxeps*maxmu)    
       CALL ListAddConstReal( Params,'Eigen System Shift', -betalim**2 )
       WRITE(Message,'(A,ES15.6)') 'Propagation constant beta upper limit: ',betalim
