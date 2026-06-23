@@ -47,7 +47,7 @@
 
 #include "../config.h"
 
-#if defined(WIN32) | defined(MINGW32)
+#if defined(WIN32) || defined(MINGW32)
 #  include <direct.h>
 #  include <windows.h>
 #define ELMER_PATH_SEPARATOR ";"
@@ -113,8 +113,7 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
   int n = 0;
 
   /* Get the full module file name  */
-  GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
-  if(appPath == NULL) return;
+  if(GetModuleFileName(NULL, appPath, MAX_PATH_LEN) == 0) return;
   exeName = strrchr(appPath, '\\');
   if(exeName == NULL) return;
   n = (int)(exeName - appPath);
@@ -156,6 +155,7 @@ void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY)
     }
 }
 
+#ifdef OBSOLITE
 #ifndef USE_ISO_C_BINDINGS
 /*--------------------------------------------------------------------------
   This routine execute a operating system command.
@@ -180,6 +180,7 @@ void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
     }
 }
 #endif
+#endif /* OBSOLITE */
 
 /*--------------------------------------------------------------------------
   Internal: convert function names into to fortran mangled form for dynamical
@@ -274,7 +275,7 @@ static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
 #ifdef HAVE_DLOPEN_API
         if ((*Handle = dlopen(dl_names[i], RTLD_NOW)) == NULL) {
             strncat(errorBuf, dlerror(), MAX_PATH_LEN-1);
-            strncat(errorBuf, "\n", MAX_PATH_LEN)-1;
+            strncat(errorBuf, "\n", MAX_PATH_LEN-1);
         } else {
             break;
         }
@@ -402,7 +403,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    try_open_solver(ElmerLib, Library, &Handle, ErrorBuffer);
    if ( Handle == NULL ) {
       fprintf(stderr, "%s", ErrorBuffer);
-      exit(0);
+      exit(1);
    }
 
 #ifdef HAVE_DLOPEN_API
@@ -410,7 +411,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    if ( (Function = (void(*)())dlsym( Handle,NewName)) == NULL && *abort_not_found )
    {
       fprintf( stderr, "Load: FATAL: Can't find procedure [%s]\n", NewName );
-      exit(0);
+      exit(1);
    }
 
 #elif defined(HAVE_LOADLIBRARY_API)
@@ -618,9 +619,15 @@ static void mtc_init_once(void)
 {
   char cc[32];
   if (mtc_been_here) return;
-  mtc_init(NULL, stdout, stderr);
-  strcpy(cc, "format( 12,\"rowform\")");
-  mtc_domath(cc);
+  /* mtc_init() must run in every thread (MATC uses per-thread state via
+   * the threadprivate cache), but concurrent first-use calls from different
+   * threads corrupt shared MATC initialisation state.  Serialise them. */
+#pragma omp critical (matc_init)
+  {
+    mtc_init(NULL, stdout, stderr);
+    strcpy(cc, "format( 12,\"rowform\")");
+    mtc_domath(cc);
+  }
   mtc_been_here = 1;
 }
 
@@ -665,7 +672,7 @@ void var_copy_transpose(char *name,double *values,int nrows,int ncols);
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL matc_c( char *cmd, int *len, char *result, int *reslen )
 #else
-void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*reslen)
+void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,int *reslen)
 #endif
 {
 #define MAXLEN 8192
@@ -704,7 +711,7 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
       if (start==0) {
           fprintf( stderr, "Solver input file error: %s\n", result );
           fprintf( stderr, "...offending input line: %s\n", ccmd );
-          exit(0);
+          exit(1);
       } else {
         result[0]=' ';
         *reslen = 0;
@@ -774,7 +781,7 @@ void STDCALLBULL FC_FUNC(matc_c_cached,MATC_C_CACHED) (char *cmd,int *cmdlen,cha
       if (start == 0) {
         fprintf(stderr, "Solver input file error: %s\n", result);
         fprintf(stderr, "...offending input line: %s\n", ccmd);
-        exit(0);
+        exit(1);
       } else {
         result[0] = ' ';
         *reslen = 0;
