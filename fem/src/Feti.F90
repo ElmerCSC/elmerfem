@@ -107,7 +107,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE FetiSend(proc, nin, buf, ifg, tag)
 !------------------------------------------------------------------------------
-     INTEGER, OPTIONAL :: tag,ifg(:)
+     INTEGER :: tag
+     INTEGER, OPTIONAL :: ifg(:)
      INTEGER :: proc, nin
      REAL(KIND=dp), OPTIONAL :: buf(:)
 !------------------------------------------------------------------------------
@@ -641,7 +642,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,p,q,n,sz,nrows,proc,lproc,totnLC=0
     TYPE(NeighbourList_t), POINTER :: nb(:)
-    LOGICAL :: Found, Own
+    LOGICAL :: Found
     INTEGER, POINTER :: gtags(:)
     LOGICAL, POINTER :: ig(:)
     INTEGER, ALLOCATABLE :: gdofs(:), ldofs(:), procs(:)
@@ -888,17 +889,18 @@ CONTAINS
     REAL(KIND=dp),ALLOCATABLE :: x(:),b(:),P(:),Q(:)
 !------------------------------------------------------------------------------
     integer :: ierr,stat(mpi_status_size),l_n,g_n, &
-          n_nbr,comm,i_type,d_type,me,mactive,maxnz,proc
+          n_nbr,comm,i_type,d_type,maxnz,proc
+    integer, save :: me=0, mactive=0
     logical :: iterative, found
-    integer,allocatable :: l_nz(:),g_nz(:),gg_nz(:),l_i(:),g_i(:),l_nbr(:)
-    real(kind=dp), allocatable :: l_g(:,:),l_gtg(:,:),g_x(:),g_b(:),g_gtg(:,:)
+    integer,allocatable :: l_nz(:),g_nz(:),l_i(:),g_i(:),l_nbr(:)
+    real(kind=dp), allocatable :: l_g(:,:),l_gtg(:,:),g_x(:),g_b(:)
 
     type(matrix_t), pointer :: gtg_m => null()
 
     integer,save :: size, mygroup, grpsize, subsize, comm_group,solv_group,solv_comm,ir=0
     integer, allocatable, save :: ranks(:,:),subsizes(:)
 
-    save :: g_nz,gg_nz,g_i,gtg_m,g_gtg,g_n,g_x,g_b,me,mactive
+    save :: g_nz,g_i,gtg_m,g_n,g_x,g_b
 !------------------------------------------------------------------------------
 !!call resettimer('project')
 
@@ -1351,11 +1353,11 @@ END SUBROUTINE FetiProject
 
     EXTERNAL matvecsubr, precsubr, dotprodfun, normfun
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,m,iter,nnz,nLC,nrows,maxit,ipar(50), output,Restart,Saven
-    REAL(KIND=dp) :: beta,alpha,rho,prevrho,bnorm,err0,err1,err2,TOL,dpar(1)
-    LOGICAL :: Found,prec
+    INTEGER :: i,j,m,iter,nLC,nrows,maxit,ipar(50),output,Restart,Saven
+    REAL(KIND=dp) :: beta,alpha,rho,prevrho,bnorm,err0,err1,TOL
+    LOGICAL :: Found
     REAL(KIND=dp), ALLOCATABLE :: Ri(:),S(:),T(:),P(:), &
-           Ssave(:,:), Psave(:,:), srho(:), rr(:)
+           Ssave(:,:), Psave(:,:), srho(:)
 !------------------------------------------------------------------------------
 !call resettimer('cpg')
     nrows=A % NumberOfRows
@@ -1373,7 +1375,7 @@ END SUBROUTINE FetiProject
       x=0; RETURN;
     END IF
 
-    ALLOCATE(T(n),S(n),Ri(n),rr(n))
+    ALLOCATE(T(n),S(n),Ri(n))
 
     x=0
     IF (nz>0) THEN
@@ -1490,7 +1492,7 @@ END SUBROUTINE FetiProject
     INTEGER :: i,j,k,n,m,dofs,neigs,dim,FixNodes(0:6)
     REAL(KIND=dp), POINTER :: coord_x(:),coord_y(:),coord_z(:), dscale(:)
     LOGICAL :: Found
-    REAL(KIND=dp) :: xc,yc,zc,hc,ss
+    REAL(KIND=dp) :: xc,yc,zc,hc
     INTEGER, ALLOCATABLE :: floatinds(:)
     COMPLEX(KIND=dp) :: EigValues(maxnz)
     COMPLEX(KIND=dp), ALLOCATABLE :: EigVectors(:,:)
@@ -1604,7 +1606,8 @@ END SUBROUTINE FetiProject
       j=nz
       nz=0
       DO i=1,j
-        tz(i,:) = tz(i,:)/MAXVAL(ABS(tz(i,:)))
+        hc = MAXVAL(ABS(tz(i,:)))
+        IF( hc > 0._dp ) tz(i,:) = tz(i,:) / hc
         CALL MatrixVectorMultiply(A,tz(i,:),x)
         IF (ALL(ABS(x)<floatEps)) THEN
           nz=nz+1
@@ -1780,6 +1783,7 @@ END SUBROUTINE FetiProject
       WRITE(1,*) abeg+i, a % RHS(i)
     END DO
     CLOSE(2)
+    CLOSE(1)
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveKandF
 !------------------------------------------------------------------------------
@@ -1935,12 +1939,10 @@ END SUBROUTINE FetiProject
     REAL(KIND=dp), target :: x(:),b(:)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE,target :: y(:)
-    REAL(KIND=dp) :: alpha(maxnz), zz, TOL,mind,maxd
+    REAL(KIND=dp) :: alpha(maxnz), TOL,mind,maxd
     INTEGER :: i,j,k,l,m,n,nd,q,d,nLC
 
-    TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL  :: Found, Floating=.FALSE., FetiInit, QR, MumpsLU, MumpsNS
-    REAL(KIND=dp), POINTER :: xtmp(:),btmp(:),rtmp(:)
+    LOGICAL  :: Found, Floating=.FALSE., QR, MumpsLU
     INTEGER(KIND=AddrInt) :: mvProc, dotProc, nrmProc, stopcProc, precProc
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
@@ -1952,8 +1954,6 @@ END SUBROUTINE FetiProject
     SAVE SaveValues, SaveCols,  SaveRows
 
     INTEGER, ALLOCATABLE :: Indexes(:)
-    REAL(KIND=dP), ALLOCATABLE :: vals(:)
-
     TYPE(Element_t), POINTER :: EL
     TYPE(ValueList_t), POINTER :: BC
 
@@ -1993,11 +1993,19 @@ END SUBROUTINE FetiProject
       nd = GetElementDOFs(Indexes)
       DO j=1,d
         IF (d>1) THEN
-          IF(ListCheckPresent(BC,ComponentName(Solver % Variable,j))) &
-            DirichletDOFs(d*(p(Indexes(1:nd))-1)+j)=.TRUE.
+          IF(ListCheckPresent(BC,ComponentName(Solver % Variable,j))) THEN
+            DO k=1,nd
+              IF( p(Indexes(k)) <= 0 ) CYCLE
+              DirichletDOFs(d*(p(Indexes(k))-1)+j) = .TRUE.
+            END DO
+          END IF
         ELSE
-          IF(ListCheckPresent(BC,Solver % Variable % Name)) &
-            DirichletDOFs(d*(p(Indexes(1:nd))-1)+j)=.TRUE.
+          IF(ListCheckPresent(BC,Solver % Variable % Name)) THEN
+            DO k=1,nd
+              IF( p(Indexes(k)) <= 0 ) CYCLE
+              DirichletDOFs(d*(p(Indexes(k))-1)+j) = .TRUE.
+            END DO
+          END IF
         END IF
       END DO
     END DO
@@ -2011,10 +2019,6 @@ END SUBROUTINE FetiProject
     ! Check whether to use the 'total' FETI scheme:
     ! ---------------------------------------------
 
-    TOL=GetCReal( Params,'Linear System Convergence Tolerance')
-
-    ! Check whether to use the 'total' FETI scheme:
-    ! ---------------------------------------------
     TotalFeti  = GetLogical(Params, 'Total Feti', Found)
     FetiAsPrec = GetLogical(Params, 'Feti Use As Preconditioner', Found)
 
@@ -2342,58 +2346,6 @@ END SUBROUTINE FetiProject
 !call checktimer('prec',delete=.true.)
 !------------------------------------------------------------------------------
   END SUBROUTINE  FetiPrec
-!------------------------------------------------------------------------------
-
-
-  ! -------------------------------------------------------------------------
-  !> Stop condition for the iteration. Use ||Ax-b||/||b|| from the
-  !> originating system.
-  !> Called from the CG iterator.
-!------------------------------------------------------------------------------
-  FUNCTION FetiStopc(lx,lb,lr,ipar,dpar) RESULT(err)
-!------------------------------------------------------------------------------
-     INTEGER :: ipar(*)
-     REAL(KIND=dp) :: lx(HUTI_NDIM),lb(HUTI_NDIM),lr(HUTI_NDIM),dpar(*),err
-  ! -------------------------------------------------------------------------
-     TYPE(Solver_t), POINTER :: Solver
-     INTEGER :: n
-     TYPE(Matrix_t), POINTER :: A,M
-     REAL(KIND=dp), ALLOCATABLE :: x(:),y(:)
-     REAL(KIND=dp), POINTER :: xtmp(:),b(:),r(:)
-
-     REAL(KIND=dp) :: llx(HUTI_NDIM)
-
-     Solver => GetSolver()
-     A => GetMatrix()
-     b => A % RHS
-     n = A % NumberOfRows
-
-     ALLOCATE(x(n),y(n))
-
-     CALL FetiSendRecvLC(A,y,lx)
-     y = y + b
-     CALL FetiDirectSolver(A,x,y,Solver)
-
-     CALL ParallelActiveBarrier()
-     ! For floating domains:
-     ! ---------------------
-     call FetiMV(lx,llx,ipar)
-     llx=-(llx-lb)
-     CALL FetiProject(A,HUTI_NDIM,llx,OP=2,TOL=1d-12)
-
-     IF (nz>0) THEN
-       x = x + MATMUL(llx(1:nz),z)
-     END IF
-
-     M => ParallelMatrix(A,xtmp,b,r)
-     n = M % NumberOfRows
-
-     CALL ParallelUpdateSolve(A,x,y)
-     CALL ParallelMatrixVector(A,xtmp,r)
-     r = r - b
-     err = ParallelNorm(n,r)/ParallelNorm(n,b)
-!------------------------------------------------------------------------------
-  END FUNCTION  FetiStopc
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
