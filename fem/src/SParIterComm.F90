@@ -191,6 +191,38 @@ CONTAINS
     ParEnv % ExternalInit = .FALSE.
 
     ierr = 0
+
+#ifdef HAVE_XIOS
+!------------------------------------------------------------------------------
+! XIOS in server mode (a separate xios_server.exe with using_server=true in
+! iodef.xml) requires that MPI is initialised with MPI_THREAD_MULTIPLE *before*
+! xios_initialize() is called further down. Otherwise the client/server
+! handshake deadlocks during initialisation (and no XIOS log files are even
+! created). We only force this level when an iodef.xml is present, so that
+! non-XIOS runs of an XIOS-enabled build keep their previous behaviour.
+! NOTE: the MPI stack must also be permitted to deliver this level at runtime,
+! e.g. Cray MPICH needs MPICH_MAX_THREAD_SAFETY=multiple in the environment.
+!------------------------------------------------------------------------------
+    INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
+    IF (USE_XIOS) THEN
+#ifndef _WIN32
+      CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
+      IF ( ierr /= 0 ) RETURN
+#endif
+      IF (.NOT. ParEnv % ExternalInit) THEN
+        req = MPI_THREAD_MULTIPLE
+        CALL MPI_Init_Thread(req, prov, ierr)
+        IF (prov < req) THEN
+          WRITE( Message, '(A,I0,A,I0,A)' ) &
+                  'XIOS server mode needs MPI_THREAD_MULTIPLE but the MPI '//&
+                  'stack only provided level ', prov, ' (requested ', req, &
+                  '). Attached mode may still work; for server mode make '//&
+                  'sure the MPI library is allowed to deliver thread-multiple.'
+          CALL Warn( 'ParCommInit', Message )
+        END IF
+      END IF
+    ELSE
+#endif
 #ifdef _OPENMP
     req = MPI_THREAD_FUNNELED
     CALL MPI_Init_Thread(req, prov, ierr)
@@ -211,6 +243,9 @@ CONTAINS
 #endif
     IF (.NOT. ParEnv % ExternalInit) THEN
         CALL MPI_INIT( ierr )
+    END IF
+#endif
+#ifdef HAVE_XIOS
     END IF
 #endif
     IF ( ierr /= 0 ) RETURN
