@@ -2,8 +2,8 @@
  * fft_test.c — correctness + OpenMP thread-safety test for fft.c
  *
  * Compile:
- *   gcc -O2 -fopenmp -I/home/claude/elmerobj/fem \
- *       fft_test.c /home/claude/elmerfem/fem/src/fft.c \
+ *   gcc -O2 -fopenmp -I$ELMER_BUILD/fem \
+ *       fft_test.c $ELMER_SRC/fem/src/fft.c \
  *       -lm -o fft_test
  * Run:
  *   OMP_NUM_THREADS=8 ./fft_test
