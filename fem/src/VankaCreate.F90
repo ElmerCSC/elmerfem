@@ -311,15 +311,15 @@
          IF(l==0) CYCLE
          
          A % Values => TotValues
-         DO j=1,nn*dofs
-           DO k=1,nn*dofs
+         DO j=1,l
+           DO k=1,l
              al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
            END DO
          END DO
-         CALL InvertMatrix(al,nn*dofs)
+         CALL InvertMatrix(al,l)
          A % Values => ILUValues
-         DO j=1,nn*dofs
-           DO k=1,nn*dofs
+         DO j=1,l
+           DO k=1,l
              CALL CRS_AddToMatrixElement( A,ind(j),ind(k),AL(j,k) )
            END DO
          END DO
@@ -405,6 +405,7 @@
              DO i2=1,2
                j2 = Edge % NodeIndexes(i2)
                IF( ALL( Indexes(1:l) /= j2 ) )  THEN
+                 IF( l+1 > SIZE(Indexes) ) CALL GrowBuffers()
                  l = l+1
                  Indexes(l) = j2
                END IF
@@ -414,6 +415,7 @@
            ! Then add the edges
            DO k=EdgeGraph % Rows(i), EdgeGraph % Rows(i+1)-1
              j = EdgeGraph % Cols(k)
+             IF( l+1 > SIZE(Indexes) ) CALL GrowBuffers()
              l = l+1
              indexes(l) = j + n0
            END DO
@@ -621,7 +623,19 @@
 
 
    CONTAINS
-     
+
+     ! Double the capacity of Indexes, ind, and al when the current size is exhausted.
+     SUBROUTINE GrowBuffers()
+       INTEGER, POINTER :: tmpI(:)
+       INTEGER :: newsz
+       newsz = 2*SIZE(Indexes)
+       ALLOCATE(tmpI(newsz))
+       tmpI(1:SIZE(Indexes)) = Indexes
+       DEALLOCATE(Indexes); Indexes => tmpI
+       DEALLOCATE(ind); ALLOCATE(ind(newsz*dofs))
+       DEALLOCATE(al); ALLOCATE(al(newsz*dofs, newsz*dofs))
+     END SUBROUTINE GrowBuffers
+
      SUBROUTINE AssembleVankaBlock()
        
        INTEGER :: jj, kk
