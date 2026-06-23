@@ -204,8 +204,9 @@ CONTAINS
 #else
 
 ! MPI_INITIALIZED fails on MSMPI (msys2+gfortran) before MPI_Init is called.
-! Use _WIN32 which is defined by both gfortran-MinGW and MSVC, unlike WIN32.
-#ifndef _WIN32
+! WIN32 set by CMake ADD_DEFINITIONS on MSVC builds; MINGW32 set likewise for
+! MinGW builds.  _WIN32 is a C-only predefined macro, not seen by gfortran.
+#if !defined(WIN32) && !defined(MINGW32)
     CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
     IF ( ierr /= 0 ) RETURN
 #endif
