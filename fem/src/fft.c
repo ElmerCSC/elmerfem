@@ -327,15 +327,8 @@ struct {
     int FBin;
     } FREQ;
 
-static double _FFT_PI = 3.14159265358979323844;
+#define _FFT_PI acos(-1.0)
 
-#define _FFT_MAX_LEVELS 30
-
-static double _FFT_SIN[_FFT_MAX_LEVELS];
-static double _FFT_COS[_FFT_MAX_LEVELS];
-
-static int _FFT_I;
-static int _FFT_Level;
 
 /*
  * log2: base two logarithm of an (power of two!!!) integer.
@@ -473,34 +466,6 @@ void sort(int N, double *Key, int *Ord)
 }
 
 /*
- * FFTInit: initialize internal sin & cos tables for (pi / N)
- *          N being power of two up to _FFT_MAX_LEVELS.
- *
- * Parameters: NONE.
- */
-static void FFTInit(void)
-{
-    static int InitDone = FALSE;
-
-    int k;
-    int n;
-
-    if ( InitDone ) {
-        return;
-        }
-
-    n = ( 1 << _FFT_MAX_LEVELS );
-    for( k = 0; k < _FFT_MAX_LEVELS; k++ ) {
-        _FFT_COS[k] =  cos( _FFT_PI / n );
-        _FFT_SIN[k] = -sin( _FFT_PI / n );
-        n /= 2;
-        }
-
-    InitDone = TRUE;
-}
-
-
-/*
  * FFTKernel: discrete fourier transform. output is in bitreversed order.
  *
  * Parameters:
@@ -513,7 +478,7 @@ static void FFTInit(void)
  * T(n) = sum(F(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N-1
  *
  */
-static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
+static void FFTKernel(int N, COMPLEX *F, COMPLEX *T, int *fft_i)
 {
     double ExpR;
     double ExpI;
@@ -550,23 +515,23 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
 
         TempR = F[0].Real; TempI = F[0].Imag;
 
-        T[_FFT_I].Real = TempR + F[1].Real;
-        T[_FFT_I].Imag = TempI + F[1].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR + F[1].Real;
+        T[*fft_i].Imag = TempI + F[1].Imag;
+        (*fft_i)++;
 
-        T[_FFT_I].Real = TempR - F[1].Real;
-        T[_FFT_I].Imag = TempI - F[1].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR - F[1].Real;
+        T[*fft_i].Imag = TempI - F[1].Imag;
+        (*fft_i)++;
 
         TempR = F[2].Real; TempI = F[2].Imag;
 
-        T[_FFT_I].Real = TempR + F[3].Real;
-        T[_FFT_I].Imag = TempI + F[3].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR + F[3].Real;
+        T[*fft_i].Imag = TempI + F[3].Imag;
+        (*fft_i)++;
 
-        T[_FFT_I].Real = TempR - F[3].Real;
-        T[_FFT_I].Imag = TempI - F[3].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR - F[3].Real;
+        T[*fft_i].Imag = TempI - F[3].Imag;
+        (*fft_i)++;
 
         return;
         }
@@ -576,8 +541,8 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
     /*
      *  ExpR + i*ExpI = exp(-i*2*pi*k/N ) = exp(-i*2*pi/N)^(k)
      */
-    ExpR = CO = _FFT_COS[_FFT_Level];
-    ExpI = SI = _FFT_SIN[_FFT_Level];
+    ExpR = CO = cos( _FFT_PI / N );
+    ExpI = SI = -sin( _FFT_PI / N );
 
     TempR = F[0].Real;
     TempI = F[0].Imag;
@@ -603,12 +568,8 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
         ExpI = CO * ExpI + SI * t;
         }
 
-    _FFT_Level++;
-
-    FFTKernel( N, &F[0], T );
-    FFTKernel( N, &F[N], T );
-
-    _FFT_Level--;
+    FFTKernel( N, &F[0], T, fft_i );
+    FFTKernel( N, &F[N], T, fft_i );
 }
 
 /*
@@ -624,21 +585,14 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
  */
 void cfftf(int N, COMPLEX *T, COMPLEX *F)
 {
-    int logN;
     int k;
-
-    FFTInit( );
-
-    log2( logN, N );
-    _FFT_Level = _FFT_MAX_LEVELS - logN + 1;
-
-    _FFT_I = 0;
+    int fft_i = 0;
 
     if ( F != T ) {
         for( k = 0; k < N; k++ ) F[k] = T[k];
         }
 
-    FFTKernel( N, F, F );
+    FFTKernel( N, F, F, &fft_i );
     BitReverseArray( N, F );
 }
 
