@@ -212,6 +212,8 @@ CONTAINS
       IF (.NOT. ParEnv % ExternalInit) THEN
         req = MPI_THREAD_MULTIPLE
         CALL MPI_Init_Thread(req, prov, ierr)
+        WRITE(*,*) 'ParCommInit: XIOS init path taken; MPI_Init_Thread '// &
+                   'requested level=', req, ' provided level=', prov; FLUSH(6)
         IF (prov < req) THEN
           WRITE( Message, '(A,I0,A,I0,A)' ) &
                   'XIOS server mode needs MPI_THREAD_MULTIPLE but the MPI '//&
