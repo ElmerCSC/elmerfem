@@ -686,18 +686,31 @@
          CLOSE(VFUnit)
        END IF
 
-       ! Compute the factors using an external program call
+       ! Compute the factors using an external program call.
+       ! Only rank 0 spawns the subprocess; other ranks wait at a barrier.
+       ! Set ELMER_NO_MPI in the process environment so the child ViewFactors
+       ! does not try to join the parent's MPI job via inherited PMI/PMIx vars.
        IF (ComputeViewFactors .OR.  .NOT.FirstTime .AND. UpdateViewFactors ) THEN
-         cmd = 'ViewFactors '//TRIM(GetSifName())
-         CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
-         CALL SystemCommand( cmd )
+         IF ( ParEnv % MyPE == 0 ) THEN
+           cmd = 'ViewFactors '//TRIM(GetSifName())
+           CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
+           CALL ElmerSetNoMPI( 1 )
+           CALL SystemCommand( cmd )
+           CALL ElmerSetNoMPI( 0 )
+         END IF
+         IF ( ParEnv % PEs > 1 ) CALL MPI_Barrier( ELMER_COMM_WORLD, i )
        END IF
 
        IF( RadiatorsFound ) THEN
          IF (ComputeRadiatorFactors .OR. .NOT.FirstTime .AND. UpdateRadiatorFactors ) THEN
-           cmd = 'Radiators '//TRIM(GetSifName())
-           CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
-           CALL SystemCommand( cmd )
+           IF ( ParEnv % MyPE == 0 ) THEN
+             cmd = 'Radiators '//TRIM(GetSifName())
+             CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
+             CALL ElmerSetNoMPI( 1 )
+             CALL SystemCommand( cmd )
+             CALL ElmerSetNoMPI( 0 )
+           END IF
+           IF ( ParEnv % PEs > 1 ) CALL MPI_Barrier( ELMER_COMM_WORLD, i )
          END IF
        END IF
      
@@ -1090,13 +1103,14 @@
 
        TYPE(Element_t), POINTER :: Element
        LOGICAL :: DG, Found
-       INTEGER :: i,n
+       INTEGER :: i,j,n,m
+       REAL(KIND=dp) :: s
        INTEGER, POINTER :: Inds(:)
        INTEGER, TARGET :: DGInds(27)
 
-       DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. & 
-            ListGetLogical(Params, 'DG Reduced Basis',Found ) 
- 
+       DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. &
+            ListGetLogical(Params, 'DG Reduced Basis',Found )
+
        DO i=1,RadiationSurfaces
          Element => Mesh % Elements(ElementNumbers(i))
          n = GetElementNOFNodes(Element)
@@ -1106,7 +1120,14 @@
          ELSE
            Inds => Element % NodeIndexes(1:n)
          END IF
-         SurfT(i) = SUM(T(Tperm(Inds)))/n
+         s = 0.0_dp; m = 0
+         DO j=1,n
+           IF (Tperm(Inds(j)) > 0) THEN
+             s = s + T(Tperm(Inds(j)))
+             m = m + 1
+           END IF
+         END DO
+         IF (m > 0) SurfT(i) = s / m
        END DO
      END SUBROUTINE TabulateSurfaceTemperatures
 
@@ -2108,9 +2129,13 @@
            
            ! Initialize matrix equation
            Diag = 0.0_dp
-           RHS = 0.0_dp         
-           G % Values = 0.0_dp
-           
+           RHS = 0.0_dp
+           IF ( UseFullMatrix ) THEN
+             G_full = 0.0_dp
+           ELSE
+             G % Values = 0.0_dp
+           END IF
+
            CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.TRUE.,SimpleTdep)
            CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
            DO i=1,RadiationSurfaces

@@ -714,7 +714,21 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE InitMPI()
      TYPE(ParEnv_t), POINTER :: penv
-     penv => ParallelInit()
+     CHARACTER(LEN=4) :: val
+     INTEGER :: vlen, vstat
+     ! When spawned from within ElmerSolver via SystemCommand, the subprocess
+     ! inherits the parent's PMI/PMIx environment, which can cause MPI_Init to
+     ! hang waiting for a rendezvous that never comes.  The caller sets
+     ! ELMER_NO_MPI=1 to request serial-only operation in this case.
+     CALL GET_ENVIRONMENT_VARIABLE('ELMER_NO_MPI', val, vlen, vstat)
+     IF (vstat == 0 .AND. vlen > 0) THEN
+       ParEnv % MyPE = 0
+       ParEnv % PEs  = 1
+       ParEnv % ActiveComm = 0
+       ParEnv % ExternalInit = .FALSE.
+     ELSE
+       penv => ParallelInit()
+     END IF
    END SUBROUTINE InitMPI
 
 !------------------------------------------------------------------------------

@@ -183,6 +183,24 @@ void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
 #endif /* OBSOLITE */
 
 /*--------------------------------------------------------------------------
+  Set or clear ELMER_NO_MPI in the process environment.  Used by
+  RadiationFactors before/after spawning ViewFactors or Radiators so the
+  child does not try to join the parent's MPI job via inherited PMI vars.
+  Avoids shell-syntax tricks (VAR=1 cmd) that do not work on Windows.
+  ---------------------------------------------------------------------------*/
+void elmersetnompi( int *set )
+{
+#ifdef _WIN32
+    _putenv( *set ? "ELMER_NO_MPI=1" : "ELMER_NO_MPI=" );
+#else
+    if ( *set )
+        setenv( "ELMER_NO_MPI", "1", 1 );
+    else
+        unsetenv( "ELMER_NO_MPI" );
+#endif
+}
+
+/*--------------------------------------------------------------------------
   Internal: convert function names into to fortran mangled form for dynamical
   loading
   ---------------------------------------------------------------------------*/

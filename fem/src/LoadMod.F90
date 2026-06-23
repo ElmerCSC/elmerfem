@@ -70,6 +70,13 @@ MODULE LoadMod
         END SUBROUTINE makedirectory
     END INTERFACE
 
+    INTERFACE
+        SUBROUTINE ElmerSetNoMPI(set) BIND(C,name='elmersetnompi')
+            USE, INTRINSIC :: iso_c_binding
+            INTEGER(C_INT) :: set
+        END SUBROUTINE ElmerSetNoMPI
+    END INTERFACE
+
     ! MATC
 
     INTERFACE
