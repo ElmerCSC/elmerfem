@@ -170,10 +170,12 @@ FUNCTION LevelSetTimestep( Model ) RESULT( dt )
         Velo(i) = SUM( Basis(1:n) * NodalVelo(i,1:n) )
       END DO
       
-      GradAbs = SQRT( SUM( Grad(1:dim) * Grad(1:dim) ) )         
-      NormalVelo = SUM( Grad(1:dim) * Velo(1:dim) ) / GradAbs
-      NormalVelo = NormalVelo / SQRT(detJ)
-      MaxNormVelo = MAX(MaxNormVelo, ABS(NormalVelo))
+      GradAbs = SQRT( SUM( Grad(1:dim) * Grad(1:dim) ) )
+      IF( GradAbs > 10*AEPS ) THEN
+        NormalVelo = SUM( Grad(1:dim) * Velo(1:dim) ) / GradAbs
+        NormalVelo = NormalVelo / SQRT(detJ)
+        MaxNormVelo = MAX(MaxNormVelo, ABS(NormalVelo))
+      END IF
       
       AbsVelo = SQRT(SUM (Velo(1:dim) * Velo(1:dim)) )
       AbsVelo = AbsVelo / SQRT(detJ)

@@ -549,7 +549,7 @@ CONTAINS
     LOGICAL :: stat
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
-    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), CP(3)
+    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), AveNormal(3)
     REAL(KIND=dp) :: EigWrk(20)
     INTEGER :: EigInfo, Three
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -557,6 +557,7 @@ CONTAINS
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )   
     Imoment = 0.0_dp
+    AveNormal = 0.0_dp
 
     IF(PRESENT(TargetBCs)) THEN
       t1 = Mesh % NumberOfBulkElements+1
@@ -570,6 +571,10 @@ CONTAINS
       Element => Mesh % Elements(t)
       IF( PRESENT( TargetBodies ) ) THEN
         IF( ALL( TargetBodies /= Element % BodyId ) ) CYCLE
+      END IF
+      IF( PRESENT( TargetBCs ) ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+        IF( ALL( TargetBCs /= Element % BoundaryInfo % Constraint ) ) CYCLE
       END IF
 
       n  = Element % Type % NumberOfNodes
@@ -586,10 +591,11 @@ CONTAINS
         
         r(1) = SUM(Nodes % x(1:n) * Basis(1:n))
         r(2) = SUM(Nodes % y(1:n) * Basis(1:n))
-        r(3) = SUM(Nodes % z(1:n) * Basis(1:n))        
+        r(3) = SUM(Nodes % z(1:n) * Basis(1:n))
         s = IP % s(k) * detJ
         r = r - Center
-        
+        AveNormal = AveNormal + s * NormalVector( Element, Nodes, IP % U(k), IP % V(k), .TRUE. )
+
         DO i=1,3
           Imoment(3*(i-1)+i) = Imoment(3*(i-1)+i) + s * SUM( r**2 )
           DO j=1,3
@@ -602,6 +608,8 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
       Imoment = ParTmp
+      CALL MPI_ALLREDUCE(AveNormal,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+      AveNormal = ParTmp(1:3)
     END IF
 
     s = 1.0_dp    
@@ -624,14 +632,8 @@ CONTAINS
     CALL Info('ComputeEntityIntertiaNormal',Message,Level=30)
     INormal = EigVec(:,3)  ! axis of maximum inertia
 
-    ! Check the sign of the normal using the right-hand-rule.
-    ! This is not generic but a rule is still a rule
-    CP = CrossProduct( Center, INormal )
-    j = 1 
-    DO i = 2, 3
-      IF( ABS( CP(i) ) > ABS( CP(j) ) ) j = i
-    END DO
-    IF( CP(j) < 0 ) THEN
+    ! Check the sign of the normal by aligning with the average outward surface normal.
+    IF( SUM( AveNormal * INormal ) < 0.0_dp ) THEN
       CALL Info('ComputeEntityIntertiaNormal','Inverting sign of normal',Level=20)
       INormal = -INormal
     END IF    
@@ -677,10 +679,12 @@ CONTAINS
     Rmajor = ListGetConstReal( PParams,'Torus Radius',UnfoundFatal=.TRUE.)
     Rminor = ListGetConstReal( PParams,'Torus Minor Radius',UnfoundFatal=.TRUE.)    
 
-    FitParams(1:3) = Center
-    FitParams(4:6) = Normal
-    FitParams(7) = Rmajor
-    FitParams(8) = Rminor
+    IF( PRESENT( FitParams ) ) THEN
+      FitParams(1:3) = Center
+      FitParams(4:6) = Normal
+      FitParams(7) = Rmajor
+      FitParams(8) = Rminor
+    END IF
 
     DEALLOCATE(EntityInds)
     
@@ -817,7 +821,8 @@ CONTAINS
         Szzz = ParallelReduction(Szzz); Sxyy = ParallelReduction(Sxyy);
         Sxzz = ParallelReduction(Sxzz); Sxxy = ParallelReduction(Sxxy);
         Sxxz = ParallelReduction(Sxxz); Syyz = ParallelReduction(Syyz);
-        Syzz = ParallelReduction(Syzz);       
+        Syzz = ParallelReduction(Syzz);
+        N = NINT( ParallelReduction( REAL(N, dp) ) )
       END IF
            
       A1 = Sxx +Syy +Szz;

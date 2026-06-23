@@ -63,8 +63,8 @@
      LOGICAL :: Visited = .FALSE., GotIt
      REAL(KIND=dp), POINTER :: Surface(:), NodalSurf(:)
      INTEGER :: body_id, dim
-     REAL(KIND=dp) :: TotVolume, TotArea, Alpha, Relax, InitVolume, dSurface, dt, &
-         Moment(3)
+     REAL(KIND=dp) :: TotVolume, TotArea, Alpha, Relax, dSurface, dt, Moment(3)
+     REAL(KIND=dp) :: InitVolume = 0.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
      TYPE(ValueList_t), POINTER :: Params
 
@@ -149,7 +149,7 @@
        ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
        ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
          
-       NodalSurf = Surface( SurfPerm(NodeIndexes) )
+       NodalSurf(1:n) = Surface( SurfPerm(NodeIndexes) )
 
        CALL HeavisideIntegrate( NodalSurf, CurrentElement, n, ElementNodes, &
            Alpha, TotVolume, TotArea, Moment)      
@@ -163,7 +163,7 @@
        TotArea = ParallelReduction(TotArea)
      END IF
      
-     Moment = Moment / TotVolume
+     IF( TotVolume > 0.0d0 ) Moment = Moment / TotVolume
      
      IF(dim == 3) THEN
        WRITE(Message,'(a,ES12.3)') 'Center 3',Moment(3)
@@ -207,7 +207,11 @@
        Relax = ListGetConstReal(Params,'Conserve Volume Relaxation',GotIt)
        IF(.NOT. GotIt) Relax = 1.0d0
       
-       dSurface = Relax * (InitVolume - TotVolume) / TotArea
+       IF( TotArea <= 0.0d0 ) THEN
+         dSurface = 0.0d0
+       ELSE
+         dSurface = Relax * (InitVolume - TotVolume) / TotArea
+       END IF
        IF(ABS(dSurface) > AEPS) THEN
           Surface = Surface + dSurface
        END IF
