@@ -259,7 +259,6 @@ CONTAINS
     INTEGER :: ierr
     INTEGER :: req, prov
     CHARACTER(LEN=*), PARAMETER :: xios_config_file = "iodef.xml"
-    CHARACTER(LEN=*), PARAMETER :: yac_config_file = "coupling.yaml"
 
 
     !******************************************************************
@@ -312,13 +311,7 @@ CONTAINS
 #endif
 
 #ifdef HAVE_YAC
-    WRITE(Message,'(A,A)') "Check for YAC config file", yac_config_file
-    INQUIRE(FILE=yac_config_file, EXIST=USE_YAC)
-    IF (USE_YAC) THEN
-        WRITE(Message,'(A,A)') "Use YAC with config file", yac_config_file
-    ELSE
-        WRITE(Message,'(A)') "YAC config file not found, not using YAC"
-    END IF
+    USE_YAC = .TRUE.
 #endif
 
 #ifdef ELMER_USE_MPI_HANDSHAKE
@@ -434,16 +427,11 @@ ParEnv % MyPE,ELMER_COMM_WORLD,ierr)
         CALL Fatal( 'ParCommInit', Message )
       END IF
 
-      WRITE(Message,'(A,A)') &
-        "Using YAC coupler with config-file:", &
-        TRIM(yac_config_file)
-
       CALL INFO("SparIterComm",Message,Level=25)
       ! TODO: Refactor to also provide GROUP_NAMES(XIOS_GROUP_IDX) here
-      ! CALL coupling_init(yac_config_file, ParEnv % MyPE ,&
+      ! CALL coupling_init(ParEnv % MyPE ,&
       ! GROUP_COMMS(COUPLER_GROUP_IDX), GROUP_NAMES(ELMER_GROUP_IDX))
-      CALL coupling_init(yac_config_file, ParEnv % MyPE ,&
-      GROUP_COMMS(COUPLER_GROUP_IDX))
+      CALL coupling_init(ParEnv % MyPE, GROUP_COMMS(COUPLER_GROUP_IDX))
     END IF
 #endif
 !-----------------------------------------------------------------------
