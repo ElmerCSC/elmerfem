@@ -97,7 +97,7 @@ MODULE elmer_ebfm_coupling
     yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
     yac_ffield_has_metadata, yac_fget_field_metadata, yac_fget_points_size, &
     yac_fget_field_source, yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
-    YAC_TIME_UNIT_HOUR, &
+    YAC_TIME_UNIT_ISO_FORMAT, &
     YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
     YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
     YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
@@ -140,12 +140,12 @@ MODULE elmer_ebfm_coupling
 CONTAINS
 
   SUBROUTINE construct_elmer_ebfm_coupling( &
-        comp_id, corner_point_id, timestepstring, cell_point_id)
+        comp_id, corner_point_id, iso8601_timestep, cell_point_id)
 
     INTEGER, INTENT(IN) :: comp_id
     INTEGER, INTENT(IN) :: corner_point_id
     INTEGER, INTENT(IN) :: cell_point_id
-    CHARACTER(LEN=*), INTENT(IN) :: timestepstring
+    CHARACTER(LEN=*), INTENT(IN) :: iso8601_timestep
 
     INTEGER :: nbr_vertices, nbr_cells
 
@@ -155,7 +155,7 @@ CONTAINS
     ! register T_ice field in YAC
     CALL yac_fdef_field( &
       t_ice_field_name, comp_id, (/corner_point_id/), 1, t_ice_collection_size, &
-      timestepstring, YAC_TIME_UNIT_HOUR, t_ice_field_id);
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, t_ice_field_id);
 
     ! allocate and initialise T_ice field buffer
     ALLOCATE(t_ice_field(nbr_vertices, t_ice_collection_size))
@@ -164,7 +164,7 @@ CONTAINS
     ! register smb field in YAC
     CALL yac_fdef_field( &
       smb_field_name, comp_id, (/cell_point_id/), 1, smb_collection_size, &
-      timestepstring, YAC_TIME_UNIT_HOUR, smb_field_id);
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, smb_field_id);
 
     ! allocate and initialise smb field buffer
     ALLOCATE(smb_field(nbr_cells, smb_collection_size))
@@ -173,7 +173,7 @@ CONTAINS
     ! register runoff field in YAC
     CALL yac_fdef_field( &
       runoff_field_name, comp_id, (/cell_point_id/), 1, runoff_collection_size, &
-      timestepstring, YAC_TIME_UNIT_HOUR, runoff_field_id);
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, runoff_field_id);
 
     ! allocate and initialise runoff field buffer
     ALLOCATE(runoff_field(nbr_cells, runoff_collection_size))
@@ -182,7 +182,7 @@ CONTAINS
     ! register surface_height field in YAC
     CALL yac_fdef_field( &
       surface_height_field_name, comp_id, (/corner_point_id/), 1, surface_height_collection_size, &
-      timestepstring, YAC_TIME_UNIT_HOUR, surface_height_field_id);
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, surface_height_field_id);
 
     ! allocate and initialise surface_height field buffer
     ALLOCATE(surface_height_field(nbr_vertices, surface_height_collection_size))
@@ -433,7 +433,7 @@ MODULE elmer_icon_coupling
     yac_fget_field_datetime, yac_fget_field_role, yac_fget_field_timestep, &
     yac_ffield_has_metadata, yac_fget_field_metadata, yac_fget_points_size, &
     yac_fget_field_source, yac_fget, yac_fput, yac_fupdate, yac_fget_action, &
-    YAC_TIME_UNIT_HOUR, &
+    YAC_TIME_UNIT_ISO_FORMAT, &
     YAC_ACTION_COUPLING, YAC_ACTION_GET_FOR_RESTART, &
     YAC_ACTION_PUT_FOR_RESTART, YAC_ACTION_REDUCTION, YAC_ACTION_NONE, &
     YAC_EXCHANGE_TYPE_SOURCE, YAC_EXCHANGE_TYPE_TARGET
@@ -462,12 +462,12 @@ MODULE elmer_icon_coupling
 CONTAINS
 
   SUBROUTINE construct_elmer_icon_coupling( &
-        comp_id, corner_point_id, timestepstring, cell_point_id)
+        comp_id, corner_point_id, iso8601_timestep, cell_point_id)
 
     INTEGER, INTENT(IN) :: comp_id
     INTEGER, INTENT(IN) :: corner_point_id
     INTEGER, INTENT(IN) :: cell_point_id
-    CHARACTER(LEN=*), INTENT(IN) :: timestepstring
+    CHARACTER(LEN=*), INTENT(IN) :: iso8601_timestep
 
     INTEGER :: nbr_vertices, nbr_cells
 
@@ -477,7 +477,7 @@ CONTAINS
     ! register total cloud cover field in YAC
     CALL yac_fdef_field( &
       clt_field_name, comp_id, (/corner_point_id/), 1, clt_collection_size, &
-      timestepstring, YAC_TIME_UNIT_HOUR, clt_field_id);
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, clt_field_id);
 
     ! allocate and initialise total cloud cover field buffer
     ALLOCATE(clt_field(nbr_vertices, clt_collection_size))
@@ -486,7 +486,7 @@ CONTAINS
     ! register precipitation flux field in YAC
     CALL yac_fdef_field( &
       pr_field_name, comp_id, (/cell_point_id/), 1, pr_collection_size, &
-      timestepstring, YAC_TIME_UNIT_HOUR, pr_field_id)
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, pr_field_id)
 
     ! allocate and initialise precipitation flux field buffer
     ALLOCATE(pr_field(nbr_cells, pr_collection_size))
@@ -663,7 +663,8 @@ MODULE elmer_coupling
     yac_finit_comm, yac_fread_config_yaml, yac_fdef_comp, yac_fdef_grid, &
     yac_fset_global_index, yac_fdef_points, yac_fsync_def, yac_fenddef, &
     yac_ffinalize, YAC_LOCATION_CELL, YAC_LOCATION_CORNER, &
-    yac_fdef_calendar, YAC_YEAR_OF_365_DAYS
+    yac_fdef_calendar, YAC_PROLEPTIC_GREGORIAN, YAC_YEAR_OF_360_DAYS, &
+    YAC_YEAR_OF_365_DAYS
   USE elmer_ebfm_coupling, ONLY: construct_elmer_ebfm_coupling, &
     construct_elmer_ebfm_coupling_post_sync, destruct_elmer_ebfm_coupling
   USE elmer_icon_coupling, ONLY: construct_elmer_icon_coupling, &
@@ -721,12 +722,11 @@ CONTAINS
   END SUBROUTINE coupler_get_code_id
 
   ! TODO: Refactor to also accept comp_name here
-  ! SUBROUTINE coupling_init(coupling_config_file, elmer_rank, yac_comm, comp_name)
-  SUBROUTINE coupling_init(coupling_config_file, elmer_rank, yac_comm)
+  ! SUBROUTINE coupling_init(elmer_rank, yac_comm, comp_name)
+  SUBROUTINE coupling_init(elmer_rank, yac_comm)
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN) :: coupling_config_file
     INTEGER, INTENT(IN) :: elmer_rank
     INTEGER, INTENT(IN) :: yac_comm
 
@@ -745,15 +745,6 @@ CONTAINS
     !     https://dkrz-sw.gitlab-pages.dkrz.de/yac/d4/d40/init_yac_detail.html)
     ! * will call MPI_Init, if not yet called by the user
     CALL yac_finit_comm (yac_comm)
-
-    ! define calendar
-    ! * currently hard-coded to 365 day calendar; can be made configurable if needed
-    CALL yac_fdef_calendar(YAC_YEAR_OF_365_DAYS)
-
-    ! read configuration file
-    ! * contains calendar, start- and end-date
-    ! * defines couplings
-    CALL yac_fread_config_yaml(TRIM(coupling_config_file))
 
     ! define component
     ! * is collective operation for all processes that initialised YAC
@@ -774,13 +765,22 @@ CONTAINS
   !> @param cell_ids Global cell IDs
   !> @param vertex_ids Global vertex IDs
   !> @param grid_crs Coordinate reference system (CRS) of the grid (e.g., "EPSG:3413")
-  !> @param timestepstring Timestep configuration string for YAC
+  !> @param coupling_config_file YAC coupling YAML configuration file
+  !> @param calendar Calendar type (e.g., "proleptic_gregorian")
+  !> @param iso8601_start_time Start time in ISO 8601 format (e.g., "2024-01-01T00:00:00Z")
+  !> @param iso8601_end_time End time in ISO 8601 format (e.g., "2024-12-31T23:59:59Z")
+  !> @param iso8601_timestep Timestep configuration string for YAC (e.g., "PT1H" for 1 hour)
   !> @param couple_to_ebfm_in Enable coupling to EBFM
   !> @param couple_to_icon_in Enable coupling to ICON
   SUBROUTINE coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
                             cell_to_vertex, num_vertices_per_cell, &
                             cell_ids, vertex_ids, &
-                            grid_crs, timestepstring, &
+                            grid_crs, &
+                            coupling_config_file, &
+                            calendar, &
+                            iso8601_start_time, &
+                            iso8601_end_time, &
+                            iso8601_timestep, &
                             couple_to_ebfm_in, couple_to_icon_in)
 
     USE, INTRINSIC :: iso_c_binding, ONLY: C_INT, C_DOUBLE, C_CHAR
@@ -797,16 +797,48 @@ CONTAINS
     INTEGER, INTENT(IN) :: cell_ids(:)
     INTEGER, INTENT(IN) :: vertex_ids(:)
     CHARACTER(LEN=*), INTENT(IN) :: grid_crs
-    CHARACTER(LEN=*), INTENT(IN) :: timestepstring
+    CHARACTER(LEN=*), INTENT(IN) :: coupling_config_file
+
+    ! Parameters for definition of time frame (must be consistent with other components)
+    CHARACTER(LEN=*), INTENT(IN) :: calendar
+    CHARACTER(LEN=*), INTENT(IN) :: iso8601_start_time
+    CHARACTER(LEN=*), INTENT(IN) :: iso8601_end_time
+    CHARACTER(LEN=*), INTENT(IN) :: iso8601_timestep
+
     LOGICAL, INTENT(IN) :: couple_to_ebfm_in, couple_to_icon_in
 
     ! Local variables
     INTEGER :: grid_id, corner_point_id, cell_point_id
     INTEGER(KIND=C_INT) :: nbr_vertices, nbr_cells
+    INTEGER :: yac_calendar
 
     ! Store coupling flags in module variables for later use
     couple_to_ebfm = couple_to_ebfm_in
     couple_to_icon = couple_to_icon_in
+
+    SELECT CASE (TRIM(ADJUSTL(calendar)))
+      CASE ("proleptic_gregorian")
+        yac_calendar = YAC_PROLEPTIC_GREGORIAN
+      CASE ("year_360")
+        yac_calendar = YAC_YEAR_OF_360_DAYS
+      CASE ("year_365")
+        yac_calendar = YAC_YEAR_OF_365_DAYS
+      CASE DEFAULT
+        IF (is_root_rank) THEN
+          WRITE(*,'(A,A,A)') "ELMER: unsupported calendar '", &
+            TRIM(calendar), "'. Accepted values are proleptic_gregorian, year_360, year_365."
+        END IF
+        ERROR STOP "ELMER: invalid calendar setting for YAC"
+    END SELECT
+
+    ! define calendar before reading YAML config
+    CALL yac_fdef_calendar(yac_calendar)
+
+    ! define start and end time
+    CALL yac_fdef_datetime(iso8601_start_time, iso8601_end_time)
+
+    ! read coupling configuration file
+    CALL yac_fread_config_yaml(TRIM(coupling_config_file))
 
     ! Infer sizes from input arrays
     nbr_vertices = SIZE(lon_vertices)
@@ -836,10 +868,10 @@ CONTAINS
 
     ! construct coupling between Elmer/Ice and ICON
     IF (couple_to_icon) THEN
-        CALL construct_elmer_icon_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
+        CALL construct_elmer_icon_coupling(comp_id, corner_point_id, iso8601_timestep, cell_point_id)
     END IF
     IF (couple_to_ebfm) THEN
-        CALL construct_elmer_ebfm_coupling(comp_id, corner_point_id, timestepstring, cell_point_id)
+        CALL construct_elmer_ebfm_coupling(comp_id, corner_point_id, iso8601_timestep, cell_point_id)
     END IF
     ! sychronizes all definitions between all components
     ! * afterwards the exchange information can be queried

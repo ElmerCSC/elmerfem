@@ -114,8 +114,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! parameters to be read in from this solvers section in the sif
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
 
-  CHARACTER(LEN=1024) ::  config_file, model_tstep, coupling_timestep, grid_crs, proj_type
-  INTEGER :: i, t, ierr, dt_hours, coupling_hours
+  CHARACTER(LEN=1024) ::  config_file, coupling_timestep, grid_crs, proj_type
+  CHARACTER(LEN=1024) ::  yac_calendar, yac_start_time, yac_end_time
+  INTEGER :: i, t
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   REAL(KIND=dp) :: central_meridian, latitude_of_origin
   REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
@@ -154,6 +155,39 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   IF (.NOT. Found) THEN
      CALL FATAL(SolverName,'No keyword >Config File Name< found in yac2elmer solver')
   END IF
+
+  ! read YAC calendar
+  yac_calendar = GetString(SolverParams, 'Calendar', Found)
+  IF (.NOT. Found) THEN
+     CALL FATAL(SolverName,'No keyword >Calendar< found in yac2elmer solver')
+  END IF
+  yac_calendar = TRIM(ADJUSTL(yac_calendar))
+  SELECT CASE (yac_calendar)
+    CASE ('proleptic_gregorian', 'year_360', 'year_365')
+      CONTINUE
+    CASE DEFAULT
+      CALL FATAL(SolverName, "Unsupported >Calendar< value: '" // TRIM(yac_calendar) // &
+        "'. Accepted values are proleptic_gregorian, year_360, year_365.")
+  END SELECT
+
+  ! read YAC coupling start time (ISO 8601)
+  yac_start_time = GetString(SolverParams, 'Coupling Start Time', Found)
+  IF (.NOT. Found) THEN
+     CALL FATAL(SolverName,'No keyword >Coupling Start Time< found in yac2elmer solver')
+  END IF
+  IF (LEN_TRIM(yac_start_time) == 0) THEN
+    CALL FATAL(SolverName,'Keyword >Coupling Start Time< must not be empty')
+  END IF
+
+  ! read YAC coupling end time (ISO 8601)
+  yac_end_time = GetString(SolverParams, 'Coupling End Time', Found)
+  IF (.NOT. Found) THEN
+     CALL FATAL(SolverName,'No keyword >Coupling End Time< found in yac2elmer solver')
+  END IF
+  IF (LEN_TRIM(yac_end_time) == 0) THEN
+    CALL FATAL(SolverName,'Keyword >Coupling End Time< must not be empty')
+  END IF
+
   ! check if config file actually exists
   INQUIRE(FILE=TRIM(config_file), EXIST=USE_YAC)
   IF (.NOT. USE_YAC) THEN
@@ -177,18 +211,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   IF (.NOT. Found) THEN
      CALL FATAL(SolverName,'No keyword >Coupling Time Step< found in yac2elmer solver')
   END IF
-  ! Consistency check: Coupling Time Step must be ISO 8601 duration string like 'PT3H', 'PT24H', etc.
-  IF (.NOT. (LEN_TRIM(coupling_timestep) >= 4 .AND. &
-       coupling_timestep(1:2) == 'pt' .AND. &
-       coupling_timestep(LEN_TRIM(coupling_timestep):LEN_TRIM(coupling_timestep)) == 'h')) THEN
-  CALL FATAL(SolverName, &
-    "'Coupling Time Step' must be provided as ISO 8601 duration string of the form " // &
-    "'PT3H', 'PT24H', etc. Other formats are currently not supported.")
-  END IF
-  ! Extract the number between 'PT' and 'H' and convert to integer
-  READ(coupling_timestep(3:LEN_TRIM(coupling_timestep)-1), *, IOSTAT=ierr) coupling_hours
-  IF (ierr /= 0) THEN
-     CALL FATAL(SolverName,"Could not parse number of hours from 'Coupling Time Step'")
+  IF (LEN_TRIM(coupling_timestep) == 0) THEN
+      CALL FATAL(SolverName, "Keyword >Coupling Time Step< must not be empty")
   END IF
 
 
@@ -240,21 +264,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  ! retrieve the timestep in hours
   Mesh => Solver % Mesh
 
-  dt_hours = int(dt * 8760)
-  write(model_tstep, *) dt_hours
-  CALL INFO(SolverName, &
-    'ELMER timestep size in hours:' // I2S(dt_hours), Level=3)
-  ! Check if coupling_hours is greater than or equal to dt_hours
-  IF (coupling_hours < dt_hours) THEN
-     CALL FATAL(SolverName,"'Coupling Time Step' must be greater than or equal to Elmer time step size in hours")
-  END IF
-  ! Check if coupling_hours is an integer multiple of dt_hours
-  IF (MOD(coupling_hours, dt_hours) /= 0) THEN
-     CALL FATAL(SolverName,"'Coupling Time Step' must be an integer multiple of Elmer time step size in hours")
-  END IF
   IF (FirstTime) THEN
 
 
@@ -278,7 +289,12 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     CALL coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
               cell_to_vertex, num_vertices_per_cell, &
               cell_ids, vertex_ids, &
-              TRIM(grid_crs), TRIM(ADJUSTL(I2S(coupling_hours))), &
+              TRIM(grid_crs), &
+              TRIM(config_file), &
+              TRIM(yac_calendar), &
+              TRIM(yac_start_time), &
+              TRIM(yac_end_time), &
+              TRIM(coupling_timestep), &
               couple_to_ebfm, couple_to_icon)
 
     DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
