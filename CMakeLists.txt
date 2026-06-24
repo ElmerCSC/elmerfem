@@ -595,11 +595,6 @@ IF (WITH_YAC)
     ENDIF()
   ENDIF()
 
-
-
-  ELSE()
-  ENDIF()
-
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for YAC ")
 
