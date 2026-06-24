@@ -83,7 +83,8 @@ jobs:
             openslide:p
             openvdb:p
             pdal:p
-            scnlib:p 
+            scnlib:p
+            seacas:p
             unixodbc:p
             utf8cpp:p
             opencascade:p
