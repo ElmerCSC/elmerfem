@@ -957,6 +957,7 @@ CONTAINS
   SUBROUTINE WriteFieldsAtElement( Element, BC_id, &
       node_id, dgnode_id, Basis, UseNode, NodalFlux, LocalCoord, &
       GlobalCoord, linepos, ParNode )
+    USE IEEE_ARITHMETIC, ONLY: IEEE_IS_NAN
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), TARGET, OPTIONAL :: Basis(:)
@@ -1066,7 +1067,7 @@ CONTAINS
     END IF
 
     DO j=1,NoResults
-      IF( ISNAN(Values(j)) ) THEN
+      IF( IEEE_IS_NAN(Values(j)) ) THEN
         FoundNan = FoundNan + 1
         Values(j) = -1.0_dp
       END IF
