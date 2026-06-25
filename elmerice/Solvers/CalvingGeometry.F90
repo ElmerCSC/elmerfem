@@ -6684,7 +6684,7 @@ CONTAINS
         WorkReal = 0.0_dp
         WorkPerm = [(i,i=1,n)]
         CALL VariableRemove(Mesh % Variables, "isoline id", .TRUE.)
-        CALL VariableAdd(Mesh % Variables, Mesh, NULL(), "isoline id", 1, WorkReal, WorkPerm)
+        CALL VariableAdd(Mesh % Variables, Mesh, Name="isoline id", DOFs=1, Values=WorkReal, Perm=WorkPerm)
         NULLIFY(WorkPerm, WorkReal) ! new variables points to these allocations
       END IF ! end onside
 
