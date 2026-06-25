@@ -129,7 +129,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
         sname = "n:1 e:1"
       END IF
     END IF
-    CALL Info( Caller,'Setting element type: '//TRIM(sname))
+    CALL Info(Caller, 'Setting element type: '//TRIM(sname), Level=5)
     CALL ListAddString(Params, "Element", TRIM(sname) )      
   END IF
 
@@ -157,7 +157,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   CALL ListAddNewLogical( Params,'post: Linear System Complex',.FALSE.)
   CALL ListAddNewLogical( Params,'post: Variable Output',.FALSE.)
 
-  CALL Info('EMPortSolver','Setting default sorting and normalization for eigenmodes!')
+  CALL Info(Caller, 'Setting default sorting and normalization for eigenmodes!', Level=7)
   CALL ListAddNewString( Params,'Eigen System Sorting','smallest real part')
   CALL ListAddNewLogical( Params,'Eigen System Normalize To Unity',.TRUE.)
   CALL ListAddNewLogical( Params,'Eigen System Shift Automatic',.TRUE.)
@@ -188,7 +188,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   LOGICAL :: PiolaVersion, EigenProblem, CalculateNodal, Found, MeActive
   LOGICAL :: Output_Z, UseV
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
-      EFamily, NoPorts, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
+      EFamily, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: Beta, Zet
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
@@ -207,10 +207,10 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
 
  
-  CALL Info(Caller,'',Level=8)
-  CALL Info(Caller,'------------------------------------------------',Level=6)
-  CALL Info(Caller,'Solving electromagnetic port equations over a surface')
-  CALL Info(Caller,'------------------------------------------------',Level=6)
+  CALL Info(Caller,'',Level=6)
+  CALL Info(Caller,'-----------------------------------------------------',Level=6)
+  CALL Info(Caller,'Solving electromagnetic port equations over a surface',Level=4)
+  CALL Info(Caller,'-----------------------------------------------------',Level=6)
 
   CALL ListInitElementKeyword(NuCoeff_h, 'Material', 'Relative Reluctivity', InitIm=.TRUE.)
   CALL ListInitElementKeyword(EpsCoeff_h, 'Material', 'Relative Permittivity', InitIm=.TRUE.)
@@ -234,10 +234,10 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   BetaSum = 0.0_dp
   DO i = 1,Model % NumberOfBCs
     BC => Model % BCs(i) % Values
-    j = ListgetInteger( BC,"Port Index", Found )
+    j = ListGetInteger( BC,"Port Index", Found )
     IF(.NOT. Found ) THEN
       IF(ListGetString( BC,'Port Type',Found) == 'eigenmode' ) THEN
-        j = ListgetInteger( BC,"Constraint Mode", Found )
+        j = ListGetInteger( BC,"Constraint Mode", Found )
         IF(j>0) CALL ListAddInteger( BC,"Port Index", j)
       END IF
     END IF
@@ -250,7 +250,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
  
   EMVar => Solver % Variable
   IF( MaxPort > 1) THEN
-    CALL Info(Caller,'Creating separate matrices for each of '//I2S(MaxPort)//' ports!')
+    CALL Info(Caller,'Creating separate matrices for each of '//I2S(MaxPort)//' ports!', Level=5)
     ! We cannot really use the original matrix that solves all ports together.
     CALL FreeMatrix(Solver % Matrix)
     Solver % Matrix => Null()
@@ -368,7 +368,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       betalim = Omega * SQRT(maxeps*maxmu)    
       CALL ListAddConstReal( Params,'Eigen System Shift', -betalim**2 )
       WRITE(Message,'(A,ES15.6)') 'Propagation constant beta upper limit: ',betalim
-      CALL Info('EMPortSolver',Message,Level=7)
+      CALL Info(Caller, Message, Level=7)
     END IF
 
     ! Solve the eigenmodes
@@ -387,7 +387,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     DO i = 1,Model % NumberOfBCs
       BC => Model % BCs(i) % Values
       IF(ListGetString( BC,'Port Type',Found) == 'eigenmode' ) THEN
-        j = ListgetInteger( BC,"Port Index", Found )
+        j = ListGetInteger( BC,"Port Index", Found )
         IF(j==PortInd .OR. MaxPort == 0) THEN
           CALL ListAddConstReal( BC,'Port Beta',REAL(Beta))
           CALL ListAddConstReal( BC,'Port Beta Im',AIMAG(Beta))
@@ -400,13 +400,44 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
           END IF        
         END IF
       END IF
-      j = ListgetInteger( BC,"Port Beta Parent", Found )
+      j = ListGetInteger( BC,"Port Beta Parent", Found )
       IF(Found .AND. j==PortInd) THEN
         CALL ListAddConstReal( BC,'Port Beta',REAL(Beta))
         CALL ListAddConstReal( BC,'Port Beta Im',AIMAG(Beta))
       END IF
     END DO
 
+
+    ! The standard eigenmodes always satisfy homogeneous BCs. Solving a nonhomogeneous
+    ! problem needs an additional step.
+    !
+    i = ListGetInteger(Params, 'Number of Nonhomogeneous Modes', Found, &
+        maxv = SIZE(Solver % Variable % EigenValues))
+    IF (i > 0) THEN
+      CALL Info(Caller, 'Solving an additional component to satisfy nonhomogeneous BCs', Level=5) 
+      IF (MaxPort > 0) CALL Fatal(Caller, 'Implementation for several ports is missing')
+      CALL ListAddLogical(Params, 'Eigen Analysis', .FALSE.)
+
+      m = SIZE(Solver % Variable % Values)/2
+      DO j=1,i
+        Solver % Matrix % Values = Solver % Matrix % Values - &
+            Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
+        
+        Solver % Variable % Values = 0.0_dp
+        Norm = DefaultSolve()
+
+        DO k=1,m
+          Solver % Variable % EigenVectors(j,k) = Solver % Variable % EigenVectors(j,k) + &
+              CMPLX(Solver % Variable % Values(2*k-1), Solver % Variable % Values(2*k), KIND=dp)
+        END DO
+        
+        Solver % Matrix % Values = Solver % Matrix % Values + &
+            Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
+      END DO
+      CALL ListAddLogical(Params, 'Eigen Analysis', .TRUE.)
+    END IF
+    
+    
     ! Integrations to evaluate the impedance:
     !
     IF (ListCheckPresentAnyBC(Model, 'Calculate Impedance') .OR. &
@@ -479,7 +510,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
   IF(MaxPort > 1) THEN
     EMVar % Perm = SavePerm
-    ! Eigenvectors is most likely of different size.
+    ! Eigenvectors are most likely of different sizes.
     ! Use the original full eigenvectors. 
     DEALLOCATE(EMVar % EigenVectors)
     EMVar % EigenVectors => SaveEigenVectors
