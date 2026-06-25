@@ -1,0 +1,182 @@
+! Test for SubShelfMeltLinearTF solver
+! Verifies branch-sensitive behaviour of linear thermal forcing melt:
+!   1) floating shelf with water-column scaling enabled
+!   2) grounding-line nodes masked out when grounding line melt = False
+!   3) grounded nodes masked out regardless of grounding line melt setting
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "mesh"
+End
+
+Constants
+  Ice Density    = Real 917.0     ! kg/m3
+  Water Density  = Real 1028.0    ! kg/m3
+  Latent Heat SI = Real 335500.0  ! J/kg
+  SW Cp          = Real 3974.0    ! J/(kg K)
+End
+
+!---------------------------------------------------
+!---------------- SIMULATION -----------------------
+!---------------------------------------------------
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  max output level = 4
+End
+
+!---------------------------------------------------
+!---------------- BODIES ---------------------------
+!---------------------------------------------------
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+!---------------------------------------------------
+!---------------- MATERIAL -------------------------
+!---------------------------------------------------
+
+Material 1
+  Density = Real 917.0
+End
+
+!---------------------------------------------------
+!---------------- SOLVERS --------------------------
+!---------------------------------------------------
+
+! Solver 1: initialise floating-shelf scenario with bedrock for scaling.
+Solver 1
+  Exec Solver = Before All
+  Equation = "InitOceanVarsFloating"
+  Procedure = "InitOceanVarsSolver" "InitOceanVarsSolver"
+  Variable = -nooutput InitDummy
+  Variable DOFs = 1
+
+  Exported Variable 1 = -dofs 1 "Zb"
+  Exported Variable 2 = -dofs 1 "GroundedMask"
+  Exported Variable 3 = -dofs 1 "temp_oce_post"
+  Exported Variable 4 = -dofs 1 "sal_oce_post"
+  Exported Variable 5 = -dofs 1 "bedrock"
+
+  Zb Value            = Real -500.0
+  GroundedMask Value  = Real -1.0
+  temp_oce_post Value = Real -1.0
+  sal_oce_post Value  = Real 34.0
+  bedrock Value       = Real -510.0
+End
+
+Solver 2
+  Exec Solver = Before Timestep
+  Equation = "Shelf melt scaled"
+  Procedure = "ElmerIceSolvers" "SubShelfMeltLinearTF"
+  Variable = bmb_scaled
+  Variable DOFs = 1
+
+  lower surface variable name  = String "Zb"
+  grounded mask name           = String "GroundedMask"
+  grounding line melt          = Logical False
+  gamma T                      = Real 1.0e-4
+  water column scaling         = Logical True
+  water column scaling factor  = Real 75.0
+  bedrock variable name        = String "bedrock"
+End
+
+! Solver 3: set all nodes to grounding-line mask value (0).
+Solver 3
+  Exec Solver = Before Timestep
+  Equation = "InitOceanVarsGL"
+  Procedure = "InitOceanVarsSolver" "InitOceanVarsSolver"
+  Variable = -nooutput InitDummyGL
+  Variable DOFs = 1
+
+  Exported Variable 1 = -dofs 1 "Zb"
+  Exported Variable 2 = -dofs 1 "GroundedMask"
+  Exported Variable 3 = -dofs 1 "temp_oce_post"
+  Exported Variable 4 = -dofs 1 "sal_oce_post"
+
+  Zb Value            = Real -500.0
+  GroundedMask Value  = Real 0.0
+  temp_oce_post Value = Real -1.0
+  sal_oce_post Value  = Real 34.0
+End
+
+Solver 4
+  Exec Solver = Before Timestep
+  Equation = "Shelf melt gl masked"
+  Procedure = "ElmerIceSolvers" "SubShelfMeltLinearTF"
+  Variable = bmb_glmask
+  Variable DOFs = 1
+
+  lower surface variable name  = String "Zb"
+  grounded mask name           = String "GroundedMask"
+  grounding line melt          = Logical False
+  gamma T                      = Real 1.0e-4
+  water column scaling         = Logical False
+End
+
+! Solver 5: set all nodes to grounded mask value (>0).
+Solver 5
+  Exec Solver = Before Timestep
+  Equation = "InitOceanVarsGrounded"
+  Procedure = "InitOceanVarsSolver" "InitOceanVarsSolver"
+  Variable = -nooutput InitDummyGrounded
+  Variable DOFs = 1
+
+  Exported Variable 1 = -dofs 1 "Zb"
+  Exported Variable 2 = -dofs 1 "GroundedMask"
+  Exported Variable 3 = -dofs 1 "temp_oce_post"
+  Exported Variable 4 = -dofs 1 "sal_oce_post"
+
+  Zb Value            = Real -500.0
+  GroundedMask Value  = Real 1.0
+  temp_oce_post Value = Real -1.0
+  sal_oce_post Value  = Real 34.0
+End
+
+Solver 6
+  Exec Solver = Before Timestep
+  Equation = "Shelf melt grounded masked"
+  Procedure = "ElmerIceSolvers" "SubShelfMeltLinearTF"
+  Variable = bmb_grounded
+  Variable DOFs = 1
+
+  lower surface variable name  = String "Zb"
+  grounded mask name           = String "GroundedMask"
+  grounding line melt          = Logical True
+  gamma T                      = Real 1.0e-4
+  water column scaling         = Logical False
+End
+
+!---------------------------------------------------
+!---------------- EQUATIONS ------------------------
+!---------------------------------------------------
+
+Equation 1
+  Active Solvers(6) = 1 2 3 4 5 6
+End
+
+!---------------------------------------------------
+!---------------- REFERENCE NORM -------------------
+!---------------------------------------------------
+
+! Scenario 1 (Solver 2): all floating + scaling enabled.
+! Base melt m0 = 52.19234573 m/yr
+! wct = Zb - bedrock = 10 m
+! scaling = tanh(10 / (75/e)) = 0.3473593091
+! m = m0 * scaling = 18.12949715 m/yr
+Solver 2 :: Reference Norm = Real 1.81294972E+01
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+
+! Scenario 2 (Solver 4): all nodes at grounding line with grounding line melt = False.
+Solver 4 :: Reference Norm = Real 0.0
+Solver 4 :: Reference Norm Tolerance = Real 1E-12
+
+! Scenario 3 (Solver 6): all nodes grounded (>0), always masked.
+Solver 6 :: Reference Norm = Real 0.0
+Solver 6 :: Reference Norm Tolerance = Real 1E-12
