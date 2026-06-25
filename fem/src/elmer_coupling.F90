@@ -869,7 +869,6 @@ CONTAINS
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN) :: coupling_config_file
     INTEGER, INTENT(IN) :: elmer_rank
     INTEGER, INTENT(IN) :: yac_comm
 
