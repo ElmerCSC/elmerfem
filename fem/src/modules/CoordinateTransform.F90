@@ -269,6 +269,8 @@ CONTAINS
    SUBROUTINE ComputeRotM(Element,CoordSys_ijk,CoordSys_ref,nn,nd, &
                    UsePDecomp, PDMaxIter, PDDetTol)
 !------------------------------------------------------------------------------
+    ! nvfortran workaround: ISNAN is a gfortran extension; use IEEE_IS_NAN.
+    USE IEEE_ARITHMETIC, ONLY: IEEE_IS_NAN
     INTEGER :: nn, nd, ind
     TYPE(Element_t) :: Element
  
@@ -332,13 +334,13 @@ CONTAINS
       ! -----------------------------------------------------
       IF (LocalSystemBetaRefAndGamma) THEN
         CoordSys(3,1:3) = MATMUL(gamma(1:3,1:nn), basis(1:nn)) ! Assume this is from normalized coil current
-        IF (ANY(ISNAN(CoordSys(3,:)))) THEN
+        IF (ANY(IEEE_IS_NAN(CoordSys(3,:)))) THEN
           print *, "Element index = ", GetElementIndex(Element)
           print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
           CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
             due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system alpha vector.') 
           CoordSys(3,1:3) = NormalOfDegenerateElement(Model, Element)
-          IF (ANY(ISNAN(CoordSys(3,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+          IF (ANY(IEEE_IS_NAN(CoordSys(3,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
         END IF
 
         CoordSys(2,1:3) = CoordSys_ref(2,1:3)
@@ -347,23 +349,23 @@ CONTAINS
 !        print "('>',3(F5.1,x),/,x)", CoordSys
       ELSE
         CoordSys(1,1:3) = normalized(MATMUL( alpha(1:nn), dBasisdx(1:nn,:)))
-        IF (ANY(ISNAN(CoordSys(1,:)))) THEN
+        IF (ANY(IEEE_IS_NAN(CoordSys(1,:)))) THEN
           print *, "Element index = ", GetElementIndex(Element)
           print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
           CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
             due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system alpha vector.') 
           CoordSys(1,1:3) = NormalOfDegenerateElement(Model, Element)
-          IF (ANY(ISNAN(CoordSys(1,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+          IF (ANY(IEEE_IS_NAN(CoordSys(1,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
         END IF
 
         CoordSys(2,1:3) = normalized(MATMUL( beta(1:nn), dBasisdx(1:nn,:)))
-        IF (ANY(ISNAN(CoordSys(2,:)))) THEN
+        IF (ANY(IEEE_IS_NAN(CoordSys(2,:)))) THEN
           print *, "Element index = ", GetElementIndex(Element)
           print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
           CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
             due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system beta vector.') 
           CoordSys(2,1:3) = NormalOfDegenerateElement(Model, Element)
-          IF (ANY(ISNAN(CoordSys(2,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+          IF (ANY(IEEE_IS_NAN(CoordSys(2,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
         END IF
 
         CoordSys(3,1:3) = normalized(crossproduct(CoordSys(1,1:3), CoordSys(2,1:3)))
@@ -438,6 +440,8 @@ CONTAINS
 !------------------------------------------------------------------------------ 
   SUBROUTINE PolarDecomposition(RotMLoc, PDMaxIter, PDDetTol)
 !------------------------------------------------------------------------------ 
+    ! nvfortran workaround: ISNAN is a gfortran extension; use IEEE_IS_NAN.
+    USE IEEE_ARITHMETIC, ONLY: IEEE_IS_NAN
     USE DefUtils
     IMPLICIT NONE
     REAL(KIND=dp) :: RotMLoc(3,3), RotMLocInv(3,3)
@@ -448,7 +452,7 @@ CONTAINS
     INTEGER :: PDMaxIter
     LOGICAL :: Converged
     
-    IF (ANY(ISNAN(RotMloc))) RETURN
+    IF (ANY(IEEE_IS_NAN(RotMloc))) RETURN
 
     Converged=.FALSE. 
     DO i=1,PDMaxIter
