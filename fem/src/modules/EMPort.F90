@@ -64,7 +64,8 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   INTEGER :: i,j,soln
   TYPE(ValueList_t), POINTER :: Params, BC, PrimaryParams
   LOGICAL :: Found, PiolaVersion, SecondFamily, SecondOrder
-  LOGICAL :: UseV
+  LOGICAL :: UseV, Ground, UnitVoltage
+  REAL(KIND=dp) :: c
   CHARACTER(:), ALLOCATABLE :: sname
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
   
@@ -136,12 +137,28 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   ! Set the port field to zero at BCs which are defined as port ground
   DO i = 1,Model % NumberOfBCs
     BC => Model % BCs(i) % Values
-    IF( ListGetLogical( BC,"Port Ground", Found ) ) THEN
-      CALL Info(Caller,'Setting "Eport" to zero where "Port Ground" is set True',Level=10)
-      CALL ListAddConstReal( BC,'Eport re',0.0_dp)
-      CALL ListAddConstReal( BC,'Eport im',0.0_dp)
-      CALL ListAddConstReal( BC,'Eport re {e}',0.0_dp)
-      CALL ListAddConstReal( BC,'Eport im {e}',0.0_dp)
+    Ground = ListGetLogical(BC, "Port Ground", Found)
+    UnitVoltage = ListGetLogical(BC, "Unit Voltage", Found)
+    IF (Ground .OR. UnitVoltage) THEN
+      IF (Ground) THEN
+        CALL Info(Caller,'Setting tangential electric field to zero where "Port Ground" is True',Level=10)
+        c = 0.0_dp
+      ELSE
+        CALL Info(Caller,'Setting unit scalar potential where "Unit Voltage" is True',Level=10)
+        c = 1.0_dp
+      END IF
+      
+      IF (UseV) THEN
+        CALL ListAddConstReal(BC, 'Eport re {n} 1', 0.0_dp)
+        CALL ListAddConstReal(BC, 'Eport re {n} 2', c)
+        CALL ListAddConstReal(BC, 'Eport im {n} 1', 0.0_dp)
+        CALL ListAddConstReal(BC, 'Eport im {n} 2', 0.0_dp)
+      ELSE
+        CALL ListAddConstReal(BC, 'Eport re', 0.0_dp)
+        CALL ListAddConstReal(BC, 'Eport im', 0.0_dp)
+      END IF
+      CALL ListAddConstReal(BC, 'Eport re {e}', 0.0_dp)
+      CALL ListAddConstReal(BC, 'Eport im {e}', 0.0_dp)
     END IF
   END DO
   
@@ -255,7 +272,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     CALL FreeMatrix(Solver % Matrix)
     Solver % Matrix => Null()
 
-    ! Let's store the original permutation matrix.
+    ! Let's store the original permutation vector.
     ALLOCATE( SavePerm(SIZE(EMVar % Perm)))
     SavePerm = EMVar % Perm     
 
@@ -415,7 +432,6 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         maxv = SIZE(Solver % Variable % EigenValues))
     IF (i > 0) THEN
       CALL Info(Caller, 'Solving an additional component to satisfy nonhomogeneous BCs', Level=5) 
-      IF (MaxPort > 0) CALL Fatal(Caller, 'Implementation for several ports is missing')
       CALL ListAddLogical(Params, 'Eigen Analysis', .FALSE.)
 
       m = SIZE(Solver % Variable % Values)/2
