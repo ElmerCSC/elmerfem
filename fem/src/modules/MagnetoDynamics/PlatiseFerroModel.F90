@@ -41,6 +41,7 @@
 
 FUNCTION PlatiseFerroModel( model, n, B ) RESULT( H )
   USE DefUtils
+  USE IEEE_ARITHMETIC, ONLY: IEEE_IS_NAN
   IMPLICIT NONE
   TYPE(Model_t)   :: model
   INTEGER         :: n, k
@@ -112,7 +113,7 @@ FUNCTION PlatiseFerroModel( model, n, B ) RESULT( H )
       B_ii_    = SUM( Bs*Hm_sqr*HHm_sqrt/(HHm_sqr**2) ) + u0
       H        = H - B_ii / B_ii_
 
-      IF (IsNaN(H)) THEN
+      IF (IEEE_IS_NAN(H)) THEN
         CALL Fatal('PlatiseFerroModel', 'Inverse of Double Term Method diverged')
       END IF
       IF (ABS(B_ii) < tol_abs) THEN
