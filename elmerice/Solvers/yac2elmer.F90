@@ -5,6 +5,7 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
                                       num_vertices_per_cell, cell_ids, &
                                       vertex_ids, boundary_corner_mask)
   USE Types, ONLY: Mesh_t, Element_t, dp
+  USE ProjUtils, ONLY: xy2LonLat, deg2rad
   USE DefUtils, ONLY: GetBoundaryEdgeIndex
   USE Messages, ONLY: FATAL
   USE MeshUtils, ONLY: FindMeshEdges

@@ -955,10 +955,35 @@ CONTAINS
     ! Local variables
     INTEGER :: grid_id, corner_point_id, cell_point_id, boundary_corner_mask_id
     INTEGER(KIND=C_INT) :: nbr_vertices, nbr_cells
+    INTEGER :: yac_calendar
 
     ! Store coupling flags in module variables for later use
     couple_to_ebfm = couple_to_ebfm_in
     couple_to_icon = couple_to_icon_in
+
+    SELECT CASE (TRIM(ADJUSTL(calendar)))
+      CASE ("proleptic_gregorian")
+        yac_calendar = YAC_PROLEPTIC_GREGORIAN
+      CASE ("year_360")
+        yac_calendar = YAC_YEAR_OF_360_DAYS
+      CASE ("year_365")
+        yac_calendar = YAC_YEAR_OF_365_DAYS
+      CASE DEFAULT
+        IF (is_root_rank) THEN
+          WRITE(*,'(A,A,A)') "ELMER: unsupported calendar '", &
+            TRIM(calendar), "'. Accepted values are proleptic_gregorian, year_360, year_365."
+        END IF
+        ERROR STOP "ELMER: invalid calendar setting for YAC"
+    END SELECT
+
+    ! define calendar before reading YAML config
+    CALL yac_fdef_calendar(yac_calendar)
+
+    ! define start and end time
+    CALL yac_fdef_datetime(iso8601_start_time, iso8601_end_time)
+
+    ! read coupling configuration file
+    CALL yac_fread_config_yaml(TRIM(coupling_config_file))
 
     ! Infer sizes from input arrays
     nbr_vertices = SIZE(lon_vertices)
