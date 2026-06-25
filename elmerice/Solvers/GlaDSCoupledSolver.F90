@@ -54,6 +54,7 @@
      USE Differentials
      USE MaterialModels
      USE DefUtils
+     USE IEEE_ARITHMETIC, ONLY: IEEE_IS_NAN
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -1445,7 +1446,7 @@
                      END IF
                    END IF
                    IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
-                   IF(ISNAN(AreaSolution(k))) AreaSolution(k) = 0.0
+                   IF(IEEE_IS_NAN(AreaSolution(k))) AreaSolution(k) = 0.0
                  END IF
 
                  ! Save Qc if variable exists
