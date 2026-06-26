@@ -146,6 +146,10 @@ jobs:
             ${{ matrix.external-cmake-flags }} \
             ..
 
+      - name: exclude build output from Windows Defender scanning
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+
       - name: build
         run: |
           cd ${GITHUB_WORKSPACE}/build
