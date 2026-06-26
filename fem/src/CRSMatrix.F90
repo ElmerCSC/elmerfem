@@ -1576,7 +1576,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ! indirect memory addressing a little.
     !-------------------------------------------------------------------------------------------
     SELECT CASE( A % ndeg )
-      
+
     CASE( 5, 10 )
       !$omp parallel do private(j,l,r1,r2,r3,r4,r5) schedule(guided)
       DO i=1,n

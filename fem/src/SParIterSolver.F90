@@ -839,6 +839,9 @@ CONTAINS
 
   DEALLOCATE( OwnIfMatrix, RecvdIfMatrix )
 !if ( parenv % mype==0 ) print*, 'REST TIME: ', realtime()-st; st=realtime()
+
+  SplittedMatrix % InsideMatrix % Ndeg = SourceMatrix % Ndeg
+
 !********************************************************************
 END FUNCTION SplitMatrix
 !********************************************************************

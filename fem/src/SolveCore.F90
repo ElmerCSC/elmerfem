@@ -1460,6 +1460,10 @@ CONTAINS
           CALL Info(Caller,'CRS matrix passed the dense test of size '//I2S(A % ndeg),Level=12)
         END IF
       END IF
+      IF( Parallel .AND. ASSOCIATED(A % ParMatrix) ) THEN
+        IF( ASSOCIATED(A % ParMatrix % SplittedMatrix) ) &
+          A % ParMatrix % SplittedMatrix % InsideMatrix % Ndeg = A % Ndeg
+      END IF
     END IF
      
     IF( InfoActive(30) ) THEN
