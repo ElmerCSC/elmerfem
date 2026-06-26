@@ -153,66 +153,91 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! read config file
   config_file = GetString(SolverParams, 'Config File Name',  Found )
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >Config File Name< found in yac2elmer solver')
+    CALL FATAL(SolverName, &
+      "No keyword >Config File Name< found in yac2elmer solver" &
+    )
   END IF
 
   ! read YAC calendar
   yac_calendar = GetString(SolverParams, 'Calendar', Found)
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >Calendar< found in yac2elmer solver')
+    CALL FATAL(SolverName, &
+      "No keyword >Calendar< found in yac2elmer solver" &
+    )
   END IF
   yac_calendar = TRIM(ADJUSTL(yac_calendar))
   SELECT CASE (yac_calendar)
-    CASE ('proleptic_gregorian', 'year_360', 'year_365')
+    CASE ("proleptic_gregorian", "year_360", "year_365")
       CONTINUE
     CASE DEFAULT
-      CALL FATAL(SolverName, "Unsupported >Calendar< value: '" // TRIM(yac_calendar) // &
-        "'. Accepted values are proleptic_gregorian, year_360, year_365.")
+      CALL FATAL(SolverName, &
+        "Unsupported >Calendar< value: '" // TRIM(yac_calendar) // "'. " // &
+        "Accepted values are proleptic_gregorian, year_360, year_365." &
+      )
   END SELECT
 
   ! read YAC coupling start time (ISO 8601)
   yac_start_time = GetString(SolverParams, 'Coupling Start Time', Found)
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >Coupling Start Time< found in yac2elmer solver')
+    CALL FATAL(SolverName, &
+      "No keyword >Coupling Start Time< found in yac2elmer solver" &
+    )
   END IF
   IF (LEN_TRIM(yac_start_time) == 0) THEN
-    CALL FATAL(SolverName,'Keyword >Coupling Start Time< must not be empty')
+    CALL FATAL(SolverName, &
+      "Keyword >Coupling Start Time< must not be empty" &
+    )
   END IF
 
   ! read YAC coupling end time (ISO 8601)
   yac_end_time = GetString(SolverParams, 'Coupling End Time', Found)
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >Coupling End Time< found in yac2elmer solver')
+    CALL FATAL(SolverName, &
+      "No keyword >Coupling End Time< found in yac2elmer solver" &
+    )
   END IF
   IF (LEN_TRIM(yac_end_time) == 0) THEN
-    CALL FATAL(SolverName,'Keyword >Coupling End Time< must not be empty')
+    CALL FATAL(SolverName, &
+      "Keyword >Coupling End Time< must not be empty" &
+    )
   END IF
 
   ! check if config file actually exists
   INQUIRE(FILE=TRIM(config_file), EXIST=USE_YAC)
   IF (.NOT. USE_YAC) THEN
-    CALL FATAL(SolverName,'Coupling config file not found')
+    CALL FATAL(SolverName, &
+      "Coupling config file not found" &
+    )
   END IF
 
   ! check if it is coupled to EBFM
   couple_to_ebfm = GetLogical(SolverParams, 'Couple To EBFM',  Found )
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >Couple To EBFM< found in yac2elmer solver')
+    CALL FATAL(SolverName, &
+      "No keyword >Couple To EBFM< found in yac2elmer solver" &
+    )
   END IF
 
   ! check if it is coupled to ICON
   couple_to_icon = GetLogical(SolverParams, 'Couple To ICON',  Found )
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >Couple To ICON< found in yac2elmer solver')
+    CALL FATAL(SolverName, &
+      "No keyword >Couple To ICON< found in yac2elmer solver. " &
+    )
   END IF
 
   ! read coupling timestep as ISO 8601 string
-  coupling_timestep = GetString(SolverParams, 'Coupling Time Step', Found)
+  coupling_timestep = GetString(SolverParams, &
+    "Coupling Time Step", Found)
   IF (.NOT. Found) THEN
-     CALL FATAL(SolverName,'No keyword >Coupling Time Step< found in yac2elmer solver')
+    CALL FATAL(SolverName, &
+      "No keyword >Coupling Time Step< found in yac2elmer solver" &
+    )
   END IF
   IF (LEN_TRIM(coupling_timestep) == 0) THEN
-      CALL FATAL(SolverName, "Keyword >Coupling Time Step< must not be empty")
+    CALL FATAL(SolverName, &
+      "Keyword >Coupling Time Step< must not be empty. " &
+    )
   END IF
 
 
@@ -251,16 +276,21 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   CALL INFO(SolverName, &
-    'Using coordinate reference system (CRS): ' // TRIM(grid_crs) // ' (from projection type: ' // &
-    TRIM(proj_type) // ')', Level=3)
+    "Using coordinate reference system (CRS): " // TRIM(grid_crs) // " " // &
+    "(from projection type: " // TRIM(proj_type) // ")", Level=3 &
+  )
 
   IF (.NOT. (couple_to_ebfm .OR. couple_to_icon)) THEN
-    CALL FATAL(SolverName,'At least one of >Couple To EBFM< or >Couple To ICON< must be TRUE')
+    CALL FATAL(SolverName, &
+      "At least one of >Couple To EBFM< or >Couple To ICON< must be TRUE" &
+    )
   END IF
 
   ! TODO: remove this check when ICON coupling is implemented
   IF (couple_to_icon) THEN
-    CALL FATAL(SolverName,'>Couple To ICON< is currently not supported. Please set to FALSE')
+    CALL FATAL(SolverName, &
+      ">Couple To ICON< is currently not supported. Please set to FALSE" &
+    )
   END IF
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
