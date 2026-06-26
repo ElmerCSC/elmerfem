@@ -89,7 +89,7 @@ END SUBROUTINE collect_coupling_grid_data
 
 SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
-    DefaultVariableAdd, GetLogical, GetLogical, GetString, &
+    DefaultVariableAdd, GetLogical, GetString, GetConstReal, &
     ListGetString, ListGetConstReal, &
     GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements
   USE GeneralUtils, ONLY: I2S
@@ -114,7 +114,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! parameters to be read in from this solvers section in the sif
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
 
-  CHARACTER(LEN=1024) ::  config_file, coupling_timestep, grid_crs, proj_type
+  CHARACTER(LEN=1024) ::  config_file, grid_crs, proj_type
+  CHARACTER(LEN=1024) ::  coupling_timestep
+  REAL(KIND=dp) :: coupling_timestep_in_years
   CHARACTER(LEN=1024) ::  yac_calendar, yac_start_time, yac_end_time
   INTEGER :: i, t
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
@@ -130,6 +132,10 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
   INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
   INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
+
+  ! Variables needed for user output
+  CHARACTER(LEN=1024) :: coupling_timestep_in_years_str
+  CHARACTER(LEN=1024) :: dt_str
 
   LOGICAL        :: Found
 
@@ -231,15 +237,45 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     "Coupling Time Step", Found)
   IF (.NOT. Found) THEN
     CALL FATAL(SolverName, &
-      "No keyword >Coupling Time Step< found in yac2elmer solver" &
+      "No keyword >Coupling Time Step< found in yac2elmer solver. " // &
+      "IMPORTANT: User has to ensure that >Coupling Time Step< and " // &
+      ">Coupling Time Step in yrs< are consistent." &
     )
   END IF
   IF (LEN_TRIM(coupling_timestep) == 0) THEN
     CALL FATAL(SolverName, &
-      "Keyword >Coupling Time Step< must not be empty. " &
+      "Keyword >Coupling Time Step< must not be empty. " // &
+      "IMPORTANT: User has to ensure that >Coupling Time Step< and " // &
+      ">Coupling Time Step in yrs< are consistent." &
     )
   END IF
 
+  ! read coupling timestep in years (used for Elmer-internal consistency checks)
+  !
+  ! This is a duplication of 'Coupling Time Step' and the user is responsible to
+  ! ensure that both values are consistent. The reason for this duplication is
+  ! that the coupling timestep in years is needed for Elmer-internal consistency
+  ! checks, while the ISO 8601 string is needed for YAC coupling setup.
+  !
+  ! Conversion of ISO 8601 string to years is not trivial and would require
+  ! additional parsing logic that is able to consider edge cases (leap years).
+
+  coupling_timestep_in_years = GetConstReal(SolverParams, &
+    "Coupling Time Step in yrs", Found)
+  IF (.NOT. Found) THEN
+    CALL FATAL(SolverName, &
+      "No keyword >Coupling Time Step in yrs< found in yac2elmer solver. " // &
+      "IMPORTANT: User has to ensure that >Coupling Time Step< and " // &
+      ">Coupling Time Step in yrs< are consistent." &
+    )
+  END IF
+  IF (LEN_TRIM(coupling_timestep) == 0) THEN
+    CALL FATAL(SolverName, &
+      "Keyword >Coupling Time Step in yrs< must not be empty. " // &
+      "IMPORTANT: User has to ensure that >Coupling Time Step< and " // &
+      ">Coupling Time Step in yrs< are consistent." &
+    )
+  END IF
 
   ! infer grid CRS (coordinate reference system) from projection type in Simulation
   proj_type = ListGetString(GetSimulation(),'projection type',UnFoundFatal=.True.)
@@ -295,6 +331,26 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   Mesh => Solver % Mesh
+
+  WRITE(coupling_timestep_in_years_str,'(G0)') coupling_timestep_in_years
+  WRITE(dt_str,'(G0)') dt
+
+  ! Check if coupling_timestep_in_years is greater than or equal to dt
+  IF (coupling_timestep_in_years < dt) THEN
+    CALL FATAL( SolverName, &
+      "'Coupling Time Step' must be greater than or equal to Elmer time step size " // &
+      "('Coupling Time Step in yrs': " // TRIM(coupling_timestep_in_years_str) // &
+      " and Elmer dt = " // TRIM(dt_str) // ")" &
+    )
+  END IF
+  ! Check if coupling_timestep_in_years is an integer multiple of dt
+  IF (MOD(coupling_timestep_in_years, dt) /= 0) THEN
+    CALL FATAL( SolverName, &
+      "'Coupling Time Step' must be an integer multiple of Elmer time step size " // &
+      "('Coupling Time Step in yrs': " // TRIM(coupling_timestep_in_years_str) // &
+      " and Elmer dt = " // TRIM(dt_str) // ")" &
+    )
+  END IF
 
   IF (FirstTime) THEN
 
