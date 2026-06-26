@@ -344,7 +344,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     )
   END IF
   ! Check if coupling_timestep_in_years is an integer multiple of dt
-  IF (MOD(coupling_timestep_in_years, dt) /= 0) THEN
+  IF (MOD(coupling_timestep_in_years, dt) > 1.0e-6_dp) THEN
     CALL FATAL( SolverName, &
       "'Coupling Time Step' must be an integer multiple of Elmer time step size " // &
       "('Coupling Time Step in yrs': " // TRIM(coupling_timestep_in_years_str) // &
