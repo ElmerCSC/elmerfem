@@ -47,6 +47,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      - name: unshallow Zoltan submodule
+        shell: bash
+        run: git -C contrib/Zoltan_v3.83 fetch --unshallow 2>/dev/null || true
 
       - name: install dependencies
         uses: msys2/setup-msys2@v2

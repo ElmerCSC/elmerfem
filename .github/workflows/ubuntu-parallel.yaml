@@ -43,7 +43,19 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
+          fetch-depth: 0
+
+      - name: init and update Zoltan submodule
+        run: |
+          git submodule init
+          # Self-hosted runners keep the workspace between runs.  If a previous
+          # run left a shallow Zoltan clone at an old commit, unshallow it before
+          # updating to the new pointer — otherwise git refuses to fetch a commit
+          # not reachable from the shallow root ("refusing to merge unrelated
+          # histories").  The command is a no-op on a fresh workspace.
+          git -C contrib/Zoltan_v3.83 fetch --unshallow 2>/dev/null || true
+          git submodule update
 
       - name: install dependencies
         run: |

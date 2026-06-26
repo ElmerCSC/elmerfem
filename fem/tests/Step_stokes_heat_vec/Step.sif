@@ -53,7 +53,7 @@ Solver 1
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
   Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStab
+  Linear System Iterative Method = BiCGStabL
   Linear System Max Iterations = 500
 
   Linear System Convergence Tolerance = 1.0e-8
@@ -75,7 +75,7 @@ Solver 2
   Variable = "Temperature"
 
   Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStab
+  Linear System Iterative Method = BiCGStabL
   Linear System Max Iterations = 500
 
   Element = p:1 b:4

@@ -331,11 +331,10 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   END IF
 
 
-  
+  itime = GetTimestep()
   IF( CalcHeating) THEN
     ! If we are visiting the same timestep several times only compute the nodal heat flux once.
     ! Hence we need to subtract the previous values from the simulation. 
-    itime = GetTimestep()
     IF( itime-itime0 == 0 ) THEN
       IF (CalcFrictionHeating .AND. CalcPressureHeating) THEN        
         HeatingEnergy = HeatingEnergy - dt * MAX(FrictionHeatFlux  + PressureHeatFlux, 0.0_dp)
