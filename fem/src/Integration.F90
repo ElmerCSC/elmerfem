@@ -1526,12 +1526,15 @@ CONTAINS
      ! table lookup + init); this lazy init crashes inside MPI-spawned
      ! processes.  The unnamed form uses a pre-allocated global lock.
      !$OMP CRITICAL
+     IF ( .NOT. GInit ) THEN
+       DO n=1,MAXN
+         CALL ComputeGaussPoints1D( Points(1:n,n),Weights(1:n,n),n )
+       END DO
        ALLOCATE( IntegStuff(nthreads) )
-       GInit = .TRUE.
-       ALLOCATE( IntegStuff(nthreads) )
-       ! Per the Fortran standard, pointer components of freshly allocated
-       ! objects have processor-defined association status (not guaranteed null).
-       ! Explicitly nullify so that the ASSOCIATED guard below is reliable.
+       DO n=1,nthreads
+         NULLIFY( IntegStuff(n) % u, IntegStuff(n) % v, &
+                  IntegStuff(n) % w, IntegStuff(n) % s )
+       END DO
        GInit = .TRUE.
      END IF
      !$OMP END CRITICAL
