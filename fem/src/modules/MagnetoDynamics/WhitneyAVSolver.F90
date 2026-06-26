@@ -1661,7 +1661,7 @@ END BLOCK
      ! Numerical integration:
      !-----------------------
      IF( dim == 3 ) THEN
-       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+       IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
            EdgeBasisDegree=EdgeBasisDegree)       
      ELSE
        IP = GaussPoints(Element)
@@ -1749,8 +1749,8 @@ END BLOCK
    END IF
    
    IF( CalcTorque ) THEN   
-     ! Arkkios formula assumes that rinner and router are nicely aligned with elements.
-     ! This may not the case, so the 1st time we make a geomeric correction. 
+     ! Arkkio's formula assumes that rinner and router are nicely aligned with elements.
+     ! This may not be the case, so at the 1st time we make a geometric correction. 
      IF(.NOT. Visited ) THEN
        WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
        CALL Info(Caller,Message,Level=6)
@@ -1871,7 +1871,7 @@ END BLOCK
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
          EdgeBasisDegree=EdgeBasisDegree)
 
     DO t=1,IP % n
@@ -1950,7 +1950,7 @@ SUBROUTINE LocalConstraintMatrix( Element, n, nd, PiolaVersion, SecondOrder )
 
   !Numerical integration:
   !----------------------
-  IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+  IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
     EdgeBasisDegree=EdgeBasisDegree )
 
   np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)

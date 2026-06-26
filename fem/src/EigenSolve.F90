@@ -1124,7 +1124,7 @@ END SUBROUTINE CheckResiduals
               END IF
            END DO
            
-           ! Normalizatin moved to ScaleEigenVectors
+           ! Normalization moved to ScaleEigenVectors
         END DO
 
         CALL Info( Caller, '--------------------------------',Level=4 )
