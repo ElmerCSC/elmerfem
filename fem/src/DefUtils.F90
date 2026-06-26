@@ -1538,10 +1538,9 @@ CONTAINS
          IF ( ListCheckPresent( Material,Name) ) THEN
            BLOCK
              TYPE(Element_t), POINTER :: se
-             se => CurrentModel % CurrentElement
-             CurrentModel % CurrentElement => Element
+             se => SetCurrentElement(Element)
              x(1:n) = ListGetReal(Material, Name, n, Indexes)
-             CurrentModel % CurrentElement => se
+             se => SetCurrentElement(se)
            END BLOCK
            IF( PRESENT( UParent ) ) UParent => Parent
            Gotit = .TRUE.
