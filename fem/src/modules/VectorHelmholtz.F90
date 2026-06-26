@@ -129,7 +129,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
 
 
   ! These use one flag to call library features to compute automatically
-  ! a capacitance matrix.
+  ! S parameters.
   IF( ListGetLogical( SolverParams,'Calculate S Matrix',Found ) ) THEN
     CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S Matrix')
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
