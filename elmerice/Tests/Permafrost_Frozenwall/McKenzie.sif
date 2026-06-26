@@ -103,7 +103,7 @@ Solver 3
   Procedure = "ElmerIceSolvers" "PermaFrostHeatTransfer"
   Output Xi = Logical True
   Linear System Solver = Iterative
-  Linear System Iterative Method  = BiCGStab
+  Linear System Iterative Method  = BiCGStabL
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1.0e-07
   Nonlinear System Convergence Tolerance = 1.0e-05
