@@ -79,6 +79,7 @@ jobs:
             cgns:p
             cli11:p
             eigen3:p
+            exprtk:p
             fast_float:p
             ffmpeg:p
             gl2ps:p
