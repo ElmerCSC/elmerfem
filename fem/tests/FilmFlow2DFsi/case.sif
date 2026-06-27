@@ -163,8 +163,8 @@ Material 2
   Artificial Compressibility = $1.5/k0
 
   Gap Height = Variable "Disp 3"
-    Real LUA "tx[0]+h0"
-!   Real MATC "tx(0)+h0"
+    Real MATC "tx(0)+h0"
+!   Real LUA "tx[0]+h0"
 End
 
 
@@ -177,8 +177,8 @@ Body Force 2
   Fsi Velocity = Equals "Disp Velocity 3"
 
   Gap Height = Variable "Disp 3"
-    Real LUA "tx[0]+h0"
-!   Real MATC "tx(0)+h0"
+    Real MATC "tx(0)+h0"
+!   Real LUA "tx[0]+h0"
 
 ! Additional force in direction of the strip
   FilmFlow Bodyforce 1 = Real 1.0
