@@ -2,9 +2,9 @@ Elmer Release Notes for version 26.1
 ====================================
 
 Previous release: **9.0**  
-Period covered: **Nov 11, 2020 - Jan 19, 2025**  
+Period covered: **Nov 11, 2020 - Jan 19, 2026**  
 
-These release notes provide information only on the most essential changes. Over the period there has been ~3500 commits (merge commits excluded). 
+These release notes provide information only on the most essential changes. Over the period there have been ~3500 commits (merge commits excluded). 
 You can get a complete listing of commit messages, for example, with the command git log --since="2020-11-11"  > log.txt
 
 It is unfortunate that the new release has been lagging. 
@@ -25,9 +25,9 @@ The features have opened the door for more extensive use of adaptivity and remes
 ### New Versioning Scheme
 
 From this version onward we migrate to Calendar Versioning such that
-- First number (major) is the year of the 21st century, e.g. 26
-- Second number (minor) is an ordinal number of releases in that year
-- Third number (micro) is a growing number which for releases is always 0 and may be omitted.  
+- The first number (major) is the year of the 21st century, e.g. 26
+- The second number (minor) is an ordinal number of releases in that year
+- The third number (micro) is a growing number which for releases is always 0 and may be omitted.  
 
 
 I. New Solver Modules
@@ -43,13 +43,13 @@ I. New Solver Modules
 - See Models Manual for more details. 
 
 ### HydrostaticNSVec.F90
--  Module for the solution of Stokes equation with hydrostatic 1st order assumption a.k.a. Blatter-Patyn equation. 
-- Utilizes multithreading and vectorization features in the same manner as IncomressibleNSVec, and inherits most keywords and physics from that solver. 
+- Module for the solution of Stokes equation with a hydrostatic 1st order assumption a.k.a. Blatter-Patyn equation. 
+- Utilizes multithreading and vectorization features in the same manner as IncompressibleNSVec, and inherits most keywords and physics from that solver. 
 - For the equations look at (5.70) and (5.71) in Ralf Greve & Heinz Blatter: Dynamics of Ice Sheets and Glaciers, Springer, 2009. 
-- Intended use case is 3D simulation of large ice sheets when some features of full Stokes is ignored. 
+- Intended use case is 3D simulation of large ice sheets when some features of full Stokes are ignored. 
 
 ### BatterySolver/*.F90
-- Solver equations for Lithium-Ion battery from two equations for electric potential and two equations for ion concentrations.
+- Solves equations for a Lithium-Ion battery from two equations for electric potential and two equations for ion concentrations.
 - These equations are strongly coupled by the Butler-Volmer equation that provides the fluxes between the phases.
 - The solid phase has additionally a 1D finite element equation embedded in each finite element node of the finite element mesh.
 - The equation has been used in the Master's Thesis of Timo Uinonen from Univ. of Vaasa and may be considered partly experimental.
@@ -57,7 +57,7 @@ I. New Solver Modules
 - See Models Manual for more details. 
 
 ### CyclicConvergence.F90
-- This is an auxiliary solver that can be used to study whether transient and cyclic simulation has converged. It is assumed that all the cycles are saved and therefore the values from the current cycle can be compared to the previous cycle. The initial application case for this solver was synchronous electrical machines. 
+- This is an auxiliary solver that can be used to study whether transient and cyclic simulation has converged. It is assumed that all the cycles are saved and therefore the values from the current cycle can be compared to the previous cycle. The initial application for this solver was the case of synchronous electrical machines. 
 
 ### EMPort.F90
 - Module for computing eigen modes from a special wave equation model posed over a 2-D region, typically corresponding to an electromagnetic port
@@ -71,18 +71,17 @@ I. New Solver Modules
 
 ### StatElecSolveVec.F90
 - Vectorized version of StatEleSolve.
-- Has the additional term with the time derivative. 
 
 ### SunAngle.F90
 - Simple solver that for each node computes the maximum elevation at which the sun is still seen from a given direction.
-- Intended use is in ice sheet
+- Intended use is related to ice sheets
 
 ### CahnHilliard.F90
 - New equation for Cahn-Hilliard interface equations (with minimal testing).
 
 ### TopoOpt.F90
 - Runner for topology optimization.
-- Includes many filter types of which the PDE filter works also well in parallel and enables large parallel runs. 
+- Includes many filter types of which the PDE filter works well also in parallel and enables large parallel runs. 
 - Has been tested in conjunction with elasticity and heat equation but the implementation should be generic.
 
 ### VectorHelmholtzNodal.F90
@@ -147,15 +146,13 @@ New keywords for creating a local coordinate system without the direction solver
 - The original use case was to read data on boundaries that hierarchically couple to other BCs.
 
 ### HeatSolveVec.F90
-- Enabled discontinuities between bodies.
+- Discontinuities enabled between bodies.
 - Enable modeling of radiation heat transfer using the concept of "Radiosity". 
 - Enable computation of diffuse gray radiative heat transfer in parallel.
 - Except for the 1st feature these are available also in the legacy HeatSolve.F90 
 
 ### HelmholtzSolve.F90
 - Preconditioning of shifted Laplacian type is now possible
-
-### IncompressibleNSVec.F90
 
 ### MagnetoDynamics
   - A-V solution with a user-defined reluctivity function
@@ -172,7 +169,7 @@ New keywords for creating a local coordinate system without the direction solver
   - The implementation of the London equations added; see the test cases fem/tests/circuits2D_*_london
 
 ### ParticleAdvector.F90
-  - Improved robustness and path integration that. 
+  - Improved robustness and path integration 
 
 ### ResultOutputSolve
   - High-order visualization for the p-version of FEM
@@ -181,7 +178,7 @@ New keywords for creating a local coordinate system without the direction solver
 
 
 ### SaveData
-  - Enable saving of data on segments of lines also with p- and Hcurl elements.
+  - Enable saving of data on segments of lines also with p- and H(curl) elements.
 
 ### SaveGridData.F90
   - Support for NETCDF output files
@@ -313,16 +310,19 @@ III. ElmerSolver library functionality
   - Feature to "calculate mesh pieces" to ensure conformity of meshes. 
 
 
-
 IV. ElmerGrid
 -------------
 - Add reading Gmsh input format 4.1 in binary.  
-- Add calculate mesh pieces function.
-- Report size of bounding box.
+- Add calculate mesh pieces function, which checks for conformity of each mesh.
+- Report size of bounding box, and give hint to user if mesh may be in millimeters.
 - Numerous small fixes.
 
 V. ElmerGUI
 -----------
+- Users can add their own material libraries by putting xml files in edf-extra directory.
+- Tango-based icons for better visibility in high resolution monitors
+- Add reading Gmsh input format 4.1 in binary.
+- Add reading STL input format in binary.
 - Numerous small improvement and fixes
 - Library versions updated
 
@@ -345,7 +345,7 @@ VII. Elmer/Ice
 - New features in Elmer/Ice are documented elsewhere
 
 
-IX. Obsolete code
+VIII. Obsolete code
 ------------------
 - ElmerPost moved to separate repository "ElmerPost"
 - Obsolete Trilinos interface removed

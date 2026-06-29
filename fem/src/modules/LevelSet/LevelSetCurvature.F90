@@ -40,7 +40,7 @@
    SUBROUTINE LevelSetCurvature( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     USE SolverUtils
+     USE SolverBasics
      USE Integration
 
      IMPLICIT NONE
@@ -57,13 +57,13 @@
      TYPE(Element_t),POINTER :: Element, Parent
      TYPE(Variable_t), POINTER :: SurfSol
 
-     INTEGER :: i,j,k,n,pn,t,istat,bf_id,CoordinateSystem
+     INTEGER :: i,j,k,n,pn,t,istat,bf_id
      REAL(KIND=dp) :: Norm, Coeff, Diff, Alpha, Val, Delta
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER, POINTER :: CurvPerm(:), SurfPerm(:)
      REAL(KIND=dp), POINTER :: Curvature(:),ForceVector(:), Curv(:),Surface(:) 
      REAL(KIND=dp), ALLOCATABLE :: LocalStiffMatrix(:,:),LocalForce(:),Surf(:)
-     REAL(KIND=dp) :: at,totat,st,totst
+     REAL(KIND=dp) :: at,st
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
      LOGICAL :: GotIt, Stat, AllocationsDone = .FALSE.
 
@@ -73,8 +73,6 @@
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-
-     CoordinateSystem = CurrentCoordinateSystem()
 
      Curvature => Solver % Variable % Values
      CurvPerm => Solver % Variable % Perm
@@ -122,9 +120,6 @@
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
 
-     totat = 0.0d0
-     totst = 0.0d0
-
      at = CPUTime()
      
      CALL Info( 'LevelSetCurvature','-------------------------------------', Level=4 )
@@ -148,7 +143,7 @@
        ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
        ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
 
-       Surf = Surface( SurfPerm(NodeIndexes) )
+       Surf(1:n) = Surface( SurfPerm(NodeIndexes) )
 
        CALL LocalMatrix( LocalStiffMatrix, LocalForce, &
            Surf, Element, n, ElementNodes )
@@ -193,7 +188,7 @@
              Parent => Element % BoundaryInfo % Right
              
             stat = ASSOCIATED( Parent )
-            IF ( stat ) stat = ALL(CurvPerm(Parent % NodeIndexes(1:pn)) > 0)
+            IF ( stat ) stat = ALL(CurvPerm(Parent % NodeIndexes) > 0)
             
             IF ( .NOT. stat )  THEN
               CALL Warn( 'LevelSetCurvature', &
@@ -235,8 +230,7 @@
 !    Solve the system and we are done.
 !------------------------------------------------------------------------------
      st = CPUTime()
-     CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, &
-         Curvature, Norm, 1, Solver )
+     Norm = DefaultSolve()
      
      st = CPUTIme()-st
      WRITE(Message,'(a,F8.2)') 'Solution done in time (s):',st
@@ -290,7 +284,7 @@ CONTAINS
      REAL(KIND=dp) :: Basis(n)
      REAL(KIND=dp) :: dBasisdx(n,3),detJ
      REAL(KIND=dp) :: Grad(3),GradAbs,A,B,xpos
-     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ
+     INTEGER :: i,p,q,t,dim,N_Integ
      REAL(KIND=dp) :: s,u,v,w
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
@@ -385,7 +379,7 @@ CONTAINS
      REAL(KIND=dp) :: u,v,w,s,x(n),y(n),z(n),xpos, Force
      REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
 
-     INTEGER :: i,j,k,t,p,q,N_Integ,dim
+     INTEGER :: i,j,t,p,q,N_Integ,dim
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 

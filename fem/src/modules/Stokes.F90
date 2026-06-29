@@ -40,7 +40,7 @@
 SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
 
   IMPLICIT NONE
@@ -684,7 +684,7 @@ CONTAINS
   FUNCTION ComputePressureError(ElementSol, Element, n, nd, tp, mu) RESULT(Err)
   !------------------------------------------------------------------------------
     REAL(KIND=dp) :: ElementSol(:,:), Err, tp, mu
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, nd
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3), &
@@ -740,7 +740,7 @@ CONTAINS
   FUNCTION ComputeVelocityError(ElementSol, Element, n, nd, tp, mu) RESULT(Err)
   !------------------------------------------------------------------------------
     REAL(KIND=dp) :: ElementSol(:,:), Err, tp, mu
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, nd
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3), &
@@ -801,7 +801,7 @@ CONTAINS
     REAL(KIND=dp), TARGET :: STIFF(:,:), Mass(:,:), FORCE(:), LOAD(:,:)
     REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:), NodalVelo(:,:), GradDivParam
     INTEGER :: dim, n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: Stabilization, Convect
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3), &
@@ -1289,7 +1289,7 @@ CONTAINS
     REAL(KIND=dp), TARGET :: STIFF(:,:), FORCE(:), ABlock(:,:)
     REAL(KIND=dp) :: Velocity(:,:), rho
     INTEGER :: dim, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: BlockPreconditioning
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3), &
@@ -1638,7 +1638,7 @@ CONTAINS
     REAL(KIND=dp), TARGET :: MLocal(:,:), Plocal(:,:) 
     REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:)
     INTEGER :: dim, n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp), OPTIONAL :: dt    
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3), ddBasisddx(nd,3,3), DetJ

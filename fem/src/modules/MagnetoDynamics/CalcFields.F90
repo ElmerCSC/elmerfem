@@ -593,7 +593,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
  SUBROUTINE MagnetoDynamicsCalcFields(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
-   USE MeshUtils, ONLY : MinimalElementalSet, ReduceElementalVar
+   USE MeshBasics, ONLY : MinimalElementalSet, ReduceElementalVar
    USE CircuitUtils
    USE Zirka
    USE ZirkaUtils
@@ -2317,7 +2317,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
            EdgeBasisDegree=EdgeBasisDegree)
        FORCE = 0.0_dp
-       
+       localV = 0.0_dp
+
        ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
        IF (CircuitDrivenBC) THEN
          CompParams => GetComponentParams( Element )
@@ -2987,6 +2988,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !da/dt part
            IF (Transient) THEN
              E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           ELSE
+             E(1,:) = 0.0_dp
            END IF
 
            !grad V part
@@ -3098,6 +3101,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !da/dt part
            IF (Transient) THEN
              E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           ELSE
+             E(1,:) = 0.0_dp
            END IF
 
            !grad V part
@@ -3313,8 +3318,12 @@ CONTAINS
       BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
       IF(.NOT. ActiveBoundaryElement(BElement, uSolver=pSolver)) CYCLE
 
-      LeftBodyID = BElement % BoundaryInfo % Left % BodyID
-      RightBodyID = BElement % BoundaryInfo % Right % BodyID
+      HasLeft  = ASSOCIATED(BElement % BoundaryInfo % Left)
+      HasRight = ASSOCIATED(BElement % BoundaryInfo % Right)
+      LeftBodyID  = 0
+      RightBodyID = 0
+      IF(HasLeft)  LeftBodyID  = BElement % BoundaryInfo % Left % BodyID
+      IF(HasRight) RightBodyID = BElement % BoundaryInfo % Right % BodyID
       IF(LeftBodyID == RightBodyID) THEN
         CALL Warn(Caller, 'Airgap in the middle of single body Id')
         CYCLE
@@ -3593,7 +3602,7 @@ CONTAINS
              axisvector = axes(LocalGroups(ng), 1:3)
            END IF
            v1 = P - origin
-           v1 = (1 - SUM(axisvector*v1))*v1
+           v1 = v1 - SUM(axisvector*v1)*axisvector
            v2 = CrossProduct(v1,F)
            T(LocalGroups(ng)) = T(LocalGroups(ng)) + sum(axisvector*v2)
          END IF
@@ -3615,7 +3624,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
-   USE MeshUtils, ONLY : CalculateBodyAverage   
+   USE MeshBasics, ONLY : CalculateBodyAverage
    IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
@@ -3699,7 +3708,7 @@ CONTAINS
       IF( ElementalMode == 2 .OR. ElementalMode == 4 ) THEN
         ! Perform total lumping 
         s = SUM(MASS(1:nd,1:nd))
-        x(1:nd) = SUM(b(1:nd,dofs)) / s
+        x(1:nd) = b(1:nd,dofs) / s
       ELSE
         x(1:nd) = b(1:nd,dofs)
         CALL LUSolve(nd,MASS,x,pivot)

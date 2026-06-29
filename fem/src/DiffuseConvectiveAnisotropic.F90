@@ -676,7 +676,7 @@ MODULE DiffuseConvective
                     LoadVector(:),NodalAlpha(:),NodalCond(:),NodalExt(:)
      LOGICAL :: OpenBC
      TYPE(Nodes_t)   :: Nodes
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
 
      INTEGER :: n
 

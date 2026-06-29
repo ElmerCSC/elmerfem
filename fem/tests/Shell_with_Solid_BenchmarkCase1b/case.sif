@@ -69,6 +69,7 @@ Body Force 1
   Name = "Transverse load"
   Normal Pressure = Variable Coordinate
      Real LUA "-t * 1.0e+5 * (1-2*tx[0]*tx[0])"
+!    Real MATC "-t * 1.0e+5 * (1-2*tx(0)*tx(0))"
 End 
 
 Equation 1
@@ -168,6 +169,7 @@ Boundary Condition 7
   Target Boundaries(1) = 5 
   Normal Force = Variable Coordinate
     Real LUA "-t/2.0 * 1.0e+5 * (1-2*tx[0]*tx[0]/(tx[0]*tx[0]+(1-tx[2])^2))"
+!   Real MATC "-t/2.0 * 1.0e5 * (1-2*tx(0)*tx(0)/(tx(0)*tx(0)+(1-tx(2))^2))"
 End
 
 Boundary Condition 8
@@ -175,6 +177,7 @@ Boundary Condition 8
   Target Boundaries(1) = 6
   Normal Force = Variable Coordinate
     Real LUA "t/2.0 * 1.0e+5 * (1-2*tx[0]*tx[0]/(tx[0]*tx[0]+(1-tx[2])^2))"
+!   Real MATC "t/2.0 * 1.0e5 * (1-2*tx(0)*tx(0)/(tx(0)*tx(0)+(1-tx(2))^2))"
 End
 
 

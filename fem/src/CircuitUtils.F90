@@ -102,7 +102,7 @@ CONTAINS
     IMPLICIT NONE
     
     INTEGER :: i
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     TYPE(Valuelist_t), POINTER :: ComponentParams, EntityParams
     LOGICAL :: Found
     
@@ -230,7 +230,7 @@ CONTAINS
     IMPLICIT NONE
     
     INTEGER :: ComponentId
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     TYPE(Valuelist_t), POINTER :: BodyParams
     LOGICAL :: Found
     
@@ -1100,7 +1100,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
    FUNCTION ElementAreaNoAxisTreatment( Mesh,Element,N ) RESULT(A)
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), TARGET :: Mesh
      INTEGER :: N
      TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
@@ -1572,8 +1572,8 @@ END FUNCTION isComponentName
       nv = 0; ni = 0
       DO i=1,n
         Cvar => Circuit % CircuitVariables(i)
-        IF(Cvar % isIvar ) nv = nv + 1
-        IF(Cvar % isVvar) ni = ni + 1
+        IF(Cvar % isIvar) ni = ni + 1
+        IF(Cvar % isVvar) nv = nv + 1
       END DO
       
       IF( nv + ni == 0 ) THEN
@@ -2070,7 +2070,7 @@ CONTAINS
                 ! ------------------------------------
                 CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), IvarId)
                 DO jj = 1, Cvar % pdofs
-                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), VvarId + AddIndex(j))
+                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), VvarId + AddIndex(jj))
                 END DO
               END IF
             END DO

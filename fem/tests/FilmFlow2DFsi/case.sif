@@ -2,12 +2,13 @@
 ! For true use increase timesteps and coupled system iterations. 
 ! P.R. 28.11.2023 
 
-#rhoi=1000.0
-#rhow=1000.0
-#nu = 1.0
-#h0 = 0.1
-#gravity=0*9.81
-#k0=1.0e5
+$rhoi=1000.0
+$rhow=1000.0
+$nu = 1.0
+$h0 = 0.1
+$gravity=0*9.81
+$k0=1.0e5
+ 
 
 echo on
 
@@ -100,7 +101,7 @@ Solver 1
 
   Number of Integration Points = 16
 
-  Min Gap Height = Real #h0
+  Min Gap Height = Real $h0
   Lateral Strain = Logical True
 !  Use Gap Average = Logical True
 !  Convect = Logical True
@@ -126,7 +127,7 @@ Solver 2
   Nonlinear System Relaxation Factor = $erelax
 
   Linear System Solver = Direct 
-  Linear System Direct Method = umfpack
+  Linear System Direct Method = Umfpack
 
   Steady State Convergence Tolerance = 1.0e-4
 
@@ -150,24 +151,25 @@ End
 Material 1
   Name = "Ice"
   Youngs modulus = 1.0e9 ! 1e9
-  Density = #rhoi
+  Density = $rhoi
   Poisson ratio = $1.0/3.0
 End
 
 Material 2
   Name = "Water"
-  Density = #rhow
-  Viscosity = #nu
+  Density = $rhow
+  Viscosity = $nu
 
-  Artificial Compressibility = #1.5/k0
+  Artificial Compressibility = $1.5/k0
 
   Gap Height = Variable "Disp 3"
-    Real LUA "tx[0]+h0"
+    Real MATC "tx(0)+h0"
+!   Real LUA "tx[0]+h0"
 End
 
 
 Body Force 1
-  Stress Bodyforce 3 = #-gravity*rhoi
+  Stress Bodyforce 3 = $-gravity*rhoi
 End
 
 Body Force 2
@@ -175,7 +177,8 @@ Body Force 2
   Fsi Velocity = Equals "Disp Velocity 3"
 
   Gap Height = Variable "Disp 3"
-    Real LUA "tx[0]+h0"
+    Real MATC "tx(0)+h0"
+!   Real LUA "tx[0]+h0"
 
 ! Additional force in direction of the strip
   FilmFlow Bodyforce 1 = Real 1.0
@@ -236,7 +239,7 @@ End
 Boundary Condition 6  
   Name = Top
   Target Boundaries(1) = 6
-  Spring 3 = #k0
+  Spring 3 = $k0
 End
 
 Solver 1 :: Reference Norm = 2.26994935E-01

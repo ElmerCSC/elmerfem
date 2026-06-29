@@ -50,7 +50,7 @@
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER  :: StiffMatrix
-     INTEGER :: i,j,k,n,iter,t,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
+     INTEGER :: i,j,k,n,nd,nb,iter,t,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
 
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
@@ -59,6 +59,7 @@
      LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
 
      LOGICAL :: AllocationsDone = .FALSE.
+     LOGICAL :: Bubbles, BubblesDefault
 
      TYPE(Variable_t), POINTER :: FlowSol, KE
 
@@ -122,6 +123,9 @@
 
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
+     BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+     IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
+
 !------------------------------------------------------------------------------
       DO i=1,Model % NumberOFBCs
         BC => Model % BCs(i) % Values
@@ -164,19 +168,27 @@
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
+         Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
          Material => GetMaterial()
 
          n = GetElementNOFNodes()
+         nd = GetElementNOFDOFs()
+         IF ( Bubbles ) nd = 2*n
+         nb = GetElementNOFBDOFs()
          CALL GetElementNodes( ElementNodes )
 !------------------------------------------------------------------------------
 !        Get element local matrices, and RHS vectors
 !------------------------------------------------------------------------------
-         CALL LocalMatrix( MASS,STIFF,FORCE,LOAD,Element,n,ElementNodes )
+         CALL LocalMatrix( MASS,STIFF,FORCE,LOAD,Element,n,nd+nb,ElementNodes )
          TimeForce = 0.0_dp
          IF ( TransientSimulation ) THEN
             CALL Default1stOrderTime( MASS, STIFF, FORCE )
          END IF
-         CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+         IF ( Bubbles ) THEN
+           CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+         ELSE IF ( nb > 0 ) THEN
+           CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
+         END IF
 !------------------------------------------------------------------------------
 !        Update global matrices from local matrices
 !------------------------------------------------------------------------------
@@ -242,7 +254,7 @@
 CONTAINS
 
 !------------------------------------------------------------------------------
-   SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, LOAD, Element,n,Nodes )
+   SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, LOAD, Element,n,nd,Nodes )
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -281,7 +293,7 @@ CONTAINS
      REAL(KIND=dp), DIMENSION(:)   :: FORCE
      REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
 
-     INTEGER :: n
+     INTEGER :: n, nd
 
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t) :: Element
@@ -290,9 +302,9 @@ CONTAINS
 !    Local variables
 !------------------------------------------------------------------------------
 !
-     REAL(KIND=dp) :: ddBasisddx(2*n,3,3)
-     REAL(KIND=dp) :: Basis(2*n)
-     REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
+     REAL(KIND=dp) :: ddBasisddx(nd,3,3)
+     REAL(KIND=dp) :: Basis(nd)
+     REAL(KIND=dp) :: dBasisdx(nd,3),detJ
 
      REAL(KIND=dp) :: UX(n), UY(n), UZ(n), Velo(3), dVelodx(3,3), Energy(n), &
                       Dissipation(n), Distance(n), Density(n), Viscosity(n)
@@ -308,7 +320,7 @@ CONTAINS
 
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
-     LOGICAL :: stat, Bubbles
+     LOGICAL :: stat
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
 !------------------------------------------------------------------------------
@@ -329,8 +341,7 @@ CONTAINS
      STIFF = 0.0D0
      MASS  = 0.0D0
 
-     NBasis = 2*n
-     Bubbles = .TRUE.
+     NBasis = nd
 
 !------------------------------------------------------------------------------
 !    Integration stuff
@@ -399,7 +410,7 @@ CONTAINS
        rho  = SUM( Density(1:n) * Basis(1:n) )
 
        Beta   = 0.075_dp
-       SigmaK = 1.176_dp
+       SigmaK = 2.000_dp
        SigmaO = 2.000_dp
        rGamma = 5._dp/9._dp
 
@@ -433,10 +444,10 @@ CONTAINS
              DO i=1,dim
                DO j=1,dim
                   A(1,1) = A(1,1) + Metric(i,j) * Effmu(1) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                       dBasisdx(q,i) * dBasisdx(p,j)
 
                   A(2,2) = A(2,2) + Metric(i,j) * Effmu(2) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                       dBasisdx(q,i) * dBasisdx(p,j)
                END DO
              END DO
           END IF
@@ -479,7 +490,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE OmegaWall( Element,n )
 !------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      INTEGER :: n
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: omega_wall,dist,mu(32),rho(32),x0(n),y0(n),z0(n),x,y,z

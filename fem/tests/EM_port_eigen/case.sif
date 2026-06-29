@@ -145,7 +145,7 @@ Solver 3
   Procedure = "SaveData" "SaveScalars"
   Save EigenValues = True
 
-! Compare the norm of the 8th eigenvalue
+! Compare the norm of the first eigenvalue
   Show Norm Index = 1
 End
 

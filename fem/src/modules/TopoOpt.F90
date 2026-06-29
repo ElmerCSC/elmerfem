@@ -107,7 +107,7 @@ END SUBROUTINE TopoOpt_init
 SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE MeshUtils
+  USE MeshBasics
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -509,8 +509,7 @@ CONTAINS
   !> dv: gradient with respect to volume constraint.
   !---------------------------------------------------------------------
   SUBROUTINE ObjectiveGradients(x,ce,dc,dv,obj) 
-    REAL(KIND=dp), POINTER :: x(:)
-    REAL(KIND=dp), POINTER :: ce(:),dc(:),dv(:)
+    REAL(KIND=dp) :: x(:), ce(:), dc(:), dv(:)
     REAL(KIND=dp) :: obj
 
     INTEGER :: i,j,k,l,NoModes, NoActive, sgn, sgn1, sgn2
@@ -650,7 +649,7 @@ CONTAINS
   !--------------------------------------------------------------------------
   SUBROUTINE UpdateDensities(x,dc,dv,g)
 
-    REAL(KIND=dp), POINTER :: x(:), dc(:), dv(:)
+    REAL(KIND=dp) :: x(:), dc(:), dv(:)
     REAL(KIND=dp) :: g
 
     REAL(KIND=dp), ALLOCATABLE :: xnew(:)
@@ -665,10 +664,10 @@ CONTAINS
     ! maximum update of density
 
     move = ListGetCReal(Params,'Bisection search max change',Found )
-    IF(.NOT. Found) move = 0.2    
+    IF(.NOT. Found) move = 0.2_dp
     
     tol = ListGetCReal(Params,'Bisection search tolerance',Found )
-    IF(.NOT. Found) tol = 1.0e-6
+    IF(.NOT. Found) tol = 1.0d-6
 
     damp = ListGetCReal(Params,'Bisection search damping exponent',Found )
     IF(.NOT. Found) damp = 0.5_dp
@@ -681,7 +680,7 @@ CONTAINS
     xnew = 0.0_dp
         
     DO k=1,1000            
-      lmid = 0.5*(l2+l1)
+      lmid = 0.5_dp*(l2+l1)
       
       ! Note: xnew in [0,1]
       ! Suggested new density
@@ -1311,7 +1310,7 @@ CONTAINS
   SUBROUTINE LocalMatrix( Element, n, DoMatrix, Diff, x ) 
 !------------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: DoMatrix
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp) :: Diff(3)

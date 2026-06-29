@@ -47,7 +47,7 @@
    SUBROUTINE LevelSetDistance( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     USE SolverUtils
+     USE SolverBasics
      USE MaterialModels
      USE Integration
 
@@ -65,13 +65,12 @@
      TYPE(ValueList_t), POINTER :: Material
      TYPE(Variable_t), POINTER :: SurfSol, DistanceSol
  
-     INTEGER :: i,j,k,l,n,t,iter,istat,body_id,mat_id,bf_id,&
+     INTEGER :: i,j,k,l,n,t,istat,body_id,mat_id,bf_id,&
           CoordinateSystem, TimesVisited = 0
-     REAL(KIND=dp) :: Norm,x,y,s,a,b,c,d,x0,x1,y0,y1
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: GotIt, Convect, ExtractAllocated = .FALSE., DistanceAllocated=.FALSE.
      INTEGER, POINTER :: SurfPerm(:)
-     REAL(KIND=dp), POINTER :: Surface(:),Distance(:), Surf(:)
+     REAL(KIND=dp), POINTER :: Surface(:),Distance(:)
      REAL(KIND=dp), ALLOCATABLE :: ZeroNodes(:,:,:), Direction(:)
      REAL(KIND=dp), ALLOCATABLE :: send(:),recv(:),recZeroNodes(:,:,:)
      INTEGER, POINTER :: DistancePerm(:)
@@ -258,11 +257,13 @@
      st = CPUTIme()
      IF(Convect) THEN
        DO i=1,Solver % Mesh % NumberOfNodes
+         IF( DistancePerm(i) == 0 .OR. SurfPerm(i) == 0 ) CYCLE
          Distance(DistancePerm(i)) =  ComputeDistanceWithDirection( Solver % Mesh % Nodes % x(i), &
-             Solver % Mesh % Nodes % y(i), 0.0d0, Surface(i) )
+             Solver % Mesh % Nodes % y(i), 0.0d0, Surface(SurfPerm(i)) )
        END DO
      ELSE
        DO i=1,Solver % Mesh % NumberOfNodes
+         IF( DistancePerm(i) == 0 ) CYCLE
          Distance(DistancePerm(i)) =  ComputeDistance( Solver % Mesh % Nodes % x(i), &
              Solver % Mesh % Nodes % y(i), 0.0d0 )
        END DO
@@ -520,7 +521,7 @@ CONTAINS
       IF( m /= NumberOfFields ) THEN
 	IF( NumberOfFields > 0 ) THEN
   	  CALL Warn('ExtractZeroLevel','Mismacth in number of fields')
-          PRINT *,j,' vs. ',NumberOfFields
+          PRINT *,m,' vs. ',NumberOfFields
 	END IF
 	NumberOfFields = m
 
@@ -619,7 +620,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: xp,yp,zp,dist
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: x0,y0,x1,y1,a,b,c,d,s
+     REAL(KIND=dp) :: x0,y0,x1,y1,a,b,c,d,s,x,y
      INTEGER :: i,j,k,n
 !------------------------------------------------------------------------------
      dist = HUGE(dist)
@@ -658,7 +659,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: xp,yp,zp,prevdist,mindist
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: x0,y0,x1,y1,a,b,c,d,s,dist,r1x,r1y,r2x,r2y,angle,angle0
+     REAL(KIND=dp) :: x0,y0,x1,y1,a,b,c,d,s,dist,r1x,r1y,r2x,r2y,angle,angle0,x,y
      INTEGER :: i,j,k,n
 !------------------------------------------------------------------------------
 
@@ -671,6 +672,7 @@ CONTAINS
      END IF
 
      mindist = HUGE(mindist)
+     angle0 = 0.0d0
 
      DO i=1,ZeroLevels
        x0 = ZeroNodes(i,1,1)

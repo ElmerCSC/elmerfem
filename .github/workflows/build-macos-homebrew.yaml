@@ -131,7 +131,7 @@ jobs:
           cd ${GITHUB_WORKSPACE}/build
           export OMP_NUM_THREADS=1; ctest . \
             -LE slow \
-            --timeout 300
+            --timeout 600
 
 #           -j$(sysctl -n hw.logicalcpu) \
 

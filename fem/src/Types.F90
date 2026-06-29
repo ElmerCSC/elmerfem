@@ -45,7 +45,7 @@
 
 MODULE Types
  
-   USE Messages
+!  USE Messages
    USE, INTRINSIC :: ISO_C_BINDING
 #ifdef _OPENMP
    USE omp_lib 
@@ -286,7 +286,7 @@ MODULE Types
     INTEGER(KIND=C_INTPTR_T) :: AMGX=0, AMGXMV=0
     INTEGER(KIND=AddrInt) :: SpMV=0
 
-    INTEGER(KIND=AddrInt) :: MatVecSubr = 0
+    TYPE(C_FUNPTR) :: MatVecSubr = C_NULL_FUNPTR
 
     INTEGER, POINTER CONTIG :: ILURows(:)=>NULL(),ILUCols(:)=>NULL(),ILUDiag(:)=>NULL()
 
@@ -361,6 +361,10 @@ MODULE Types
   END TYPE IfLColsT
 
 
+  TYPE RealBuf_t
+    REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
+  END TYPE RealBuf_t
+
   TYPE SplittedMatrixT
      TYPE (BasicMatrix_t), DIMENSION(:), POINTER :: IfMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: InsideMatrix=>NULL()
@@ -375,6 +379,13 @@ MODULE Types
      TYPE (ResBufferT), DIMENSION(:), POINTER :: ResBuf=>NULL()
      REAL(KIND=dp), POINTER CONTIG :: &
            Work(:,:)=>NULL(),TmpXVec(:)=>NULL(),TmpRVec(:)=>NULL()
+     ! Persistent MPI communication buffers for SParMatrixVector (allocated once at setup)
+     INTEGER, ALLOCATABLE :: MVNeigh(:)
+     INTEGER, ALLOCATABLE :: MVSendSize(:)
+     INTEGER, ALLOCATABLE :: MVRecvSize(:)
+     TYPE(RealBuf_t), ALLOCATABLE :: MVSendBuf(:)
+     TYPE(RealBuf_t), ALLOCATABLE :: MVRecvBuf(:)
+     INTEGER, ALLOCATABLE :: MVRequests(:)
   END TYPE SplittedMatrixT
 
 
@@ -382,7 +393,6 @@ MODULE Types
      TYPE (SplittedMatrixT), POINTER :: SplittedMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: Matrix=>NULL()
      INTEGER :: DOFs, RelaxIters
-     TYPE(ParEnv_t) :: ParEnv
      TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
   END TYPE SParIterSolverGlobalD_t
 
@@ -401,8 +411,10 @@ MODULE Types
 
 
    !
-   ! Element type description 
+   ! Element type description
    !
+   INTEGER, PARAMETER :: ELEM_BASIS_CACHE_SIZE = 64
+
    TYPE ElementType_t
      TYPE(ElementType_t),POINTER :: NextElementType ! this is a list of types
 
@@ -423,6 +435,14 @@ MODULE Types
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: NodeU, NodeV, NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: P_NodeU, P_NodeV, P_NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: N_NodeU, N_NodeV, N_NodeW
+     ! Reference basis function cache — keyed by (u,v,w), shared across all
+     ! elements of this type.  BasisCacheCount=0 means empty.
+     INTEGER :: BasisCacheCount = 0
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheU(:)       ! (ELEM_BASIS_CACHE_SIZE)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheV(:)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheW(:)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCache(:,:)      ! (ELEM_BASIS_CACHE_SIZE, n_nodes)
+     REAL(KIND=dp), ALLOCATABLE :: dBasisCache(:,:,:)   ! (ELEM_BASIS_CACHE_SIZE, n_nodes, 3)
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------
@@ -439,7 +459,7 @@ MODULE Types
      LOGICAL :: LValue
      INTEGER, POINTER :: IValues(:) => NULL()
 
-     INTEGER(KIND=AddrInt) :: PROCEDURE
+     TYPE(C_FUNPTR) :: PROCEDURE = C_NULL_FUNPTR
 
      REAL(KIND=dp) :: Coeff = 1.0_dp    
      CHARACTER(:), ALLOCATABLE :: CValue
@@ -930,7 +950,7 @@ MODULE Types
 
       INTEGER :: TimeOrder=0,DoneTime=0,Order=0,NOFEigenValues=0
       INTEGER :: TimesVisited = 0
-      INTEGER(KIND=AddrInt) :: PROCEDURE=0, LinBeforeProc=0, LinAfterProc=0
+      TYPE(C_FUNPTR) :: PROCEDURE = C_NULL_FUNPTR, LinBeforeProc = C_NULL_FUNPTR, LinAfterProc = C_NULL_FUNPTR
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
@@ -958,7 +978,7 @@ MODULE Types
       TYPE(Matrix_t), POINTER :: ConstraintMatrix => NULL()
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., ConstraintMatrixVisited = .FALSE.
-      INTEGER(KIND=AddrInt) :: BoundaryElementProcedure=0, BulkElementProcedure=0
+      TYPE(C_FUNPTR) :: BoundaryElementProcedure = C_NULL_FUNPTR, BulkElementProcedure = C_NULL_FUNPTR
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
       TYPE(Graph_t), POINTER :: BoundaryColourIndexList => NULL()
@@ -978,6 +998,7 @@ MODULE Types
       INTEGER :: LocalSystemMode = -1
       TYPE(LocalSystemStorage_t), POINTER :: LocalSystem(:) => NULL()
 
+      TYPE(ParEnv_t) :: ParEnv
       REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
     END TYPE Solver_t
 

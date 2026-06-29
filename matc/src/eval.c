@@ -226,9 +226,7 @@ VARIABLE *evaltree(TREE *root)
       */
       else if ((tmp1 = var_check(SDATA(root))) != (VARIABLE *)NULL)
       {
-        tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
-        tmp ->this = tmp1->this;
-        REFCNT(tmp)++;
+        tmp = var_wrapper_new(tmp1->this);
         if (par != NULL)
         {
           subs = par; par = NULL;
@@ -294,9 +292,7 @@ VARIABLE *evaltree(TREE *root)
                     constant matrix
     *******************************************************/
     case ETYPE_CONST:
-      tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
-      tmp->this = CDATA(root)->this;
-      REFCNT(tmp)++;
+      tmp = var_wrapper_new(CDATA(root)->this);
       break;
 
     /******************************************************
@@ -331,9 +327,17 @@ VARIABLE *evaltree(TREE *root)
 
       if (opres != NULL)
       {
-        tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
-        tmp->this = opres;
-        REFCNT(tmp) = 1;
+        if (opres->nrow == 1 && opres->ncol == 1 && opres->type == TYPE_DOUBLE) {
+          /* Scalar result: use pool block to avoid ALLOCMEM overhead.
+           * opres is at the head of ALLOC_HEAD here so mat_free is O(1). */
+          tmp = var_temp_new(TYPE_DOUBLE, 1, 1);
+          *MATR(tmp) = *opres->data;
+          mat_free(opres);
+        } else {
+          tmp = (VARIABLE *)ALLOCMEM(VARIABLESIZE);
+          tmp->this = opres;
+          REFCNT(tmp) = 1;
+        }
       }
 
       break;
@@ -486,7 +490,7 @@ VARIABLE *evalclause(CLAUSE *root)
          *   allocate mem for FUNCTION structure and add it
          *   to the the FUNCTIONS list
          */
-        if (fnc = fnc_check(name)) fnc_free_entry(fnc);
+        if ((fnc = fnc_check(name))) fnc_free_entry(fnc);
         fnc = (FUNCTION *)ALLOCMEM(sizeof(FUNCTION));
         NAME(fnc) = STRCOPY(name);
         lst_add(FUNCTIONS, (LIST *)fnc);

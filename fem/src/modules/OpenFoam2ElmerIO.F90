@@ -41,7 +41,7 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   
   USE DefUtils
   USE Interpolation
-  USE MeshUtils
+  USE MeshBasics
   USE ElementUtils
   USE ParticleUtils
 
@@ -266,10 +266,10 @@ CONTAINS
   !------------------------------------------------------------------------
   !> Open file in OpenFOAM format and read the cell centers from there.
   !-------------------------------------------------------------------------
-  SUBROUTINE CreateFOAMMesh( Filename, Mesh ) 
-    
+  SUBROUTINE CreateFOAMMesh( Filename, Mesh )
+
     CHARACTER(LEN=MAX_NAME_LEN) :: FileName
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
    
     INTEGER :: line,i,j,k,n
     REAL(KIND=dp) :: x,y,z

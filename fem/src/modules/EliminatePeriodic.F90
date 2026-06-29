@@ -43,7 +43,8 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
 !------------------------------------------------------------------------------
   USE Types
   USE Lists
-  USE SolverUtils
+  USE SolverBasics
+  USE SolveCore, ONLY : SolveLinearSystem
   USE CRSmatrix
   USE GeneralUtils
 
@@ -79,7 +80,7 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
     INTEGER FUNCTION EliminateDirichlet( Model, Solver, A, b, x, n, DOFs, Norm )
        USE Types
        USE Lists
-       USE SolverUtils
+       USE SolverBasics
        USE CRSmatrix
        USE GeneralUtils
        TYPE(model_t)  :: Model

@@ -314,7 +314,8 @@ CONTAINS
   SUBROUTINE BoundaryLocalMatrix( Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element, Parent
+    TYPE(Element_t), TARGET :: Element
+    TYPE(Element_t), POINTER :: Parent
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: MASS(3*nd,3*nd), STIFF(3*nd,3*nd), FORCE(3*nd)
     REAL(KIND=dp), POINTER :: A(:,:),M(:,:)

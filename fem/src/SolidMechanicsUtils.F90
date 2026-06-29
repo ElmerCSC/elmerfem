@@ -57,7 +57,7 @@ CONTAINS
       CombineWithShell, ApplyRotation, DrillingDOFs)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), TARGET, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, nb
     LOGICAL, INTENT(IN) :: TransientSimulation
     LOGICAL, INTENT(IN) :: MassAssembly               ! To activate mass matrix integration

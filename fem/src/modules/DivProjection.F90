@@ -41,7 +41,7 @@ SUBROUTINE DivProjection( Model,Solver,dt,TransientSimulation )
 !
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
 
   IMPLICIT NONE

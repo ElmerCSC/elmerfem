@@ -63,9 +63,9 @@ TYPE :: RevCurve_t  ! {{{
 END TYPE RevCurve_t ! }}}
 
 type, public :: ZirkaABC_t ! {{{
-  REAL(KIND=dp), dimension(1:4) :: Coeffs = [7.73,2.76,-28.63,28.36]
-  REAL(KIND=dp) :: b_mult = 0.22
-  REAL(KIND=dp) :: c_mult = 0.125
+  REAL(KIND=dp), dimension(1:4) :: Coeffs = [7.73_Dp,2.76_Dp,-28.63_Dp,28.36_Dp]
+  REAL(KIND=dp) :: b_mult = 0.22_dp
+  REAL(KIND=dp) :: c_mult = 0.125_dp
   contains
   procedure, public :: GetABC
 end type ! }}}

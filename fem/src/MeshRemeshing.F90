@@ -35,7 +35,8 @@ MODULE MeshRemeshing
 USE Types
 USE Lists
 USE Messages
-USE MeshUtils, ONLY : PrepareMesh, MarkSharpEdges, MarkSharpNodes, GetDefs
+USE MeshBasics, ONLY : MarkSharpEdges, MarkSharpNodes, GetDefs
+USE MeshLoad, ONLY : PrepareMesh
 USE MeshPartition
 USE SparIterComm
 
@@ -85,7 +86,7 @@ CONTAINS
   
 SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount, Solver)
 
-  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Mesh_t), TARGET :: Mesh
   LOGICAL :: Parallel
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
@@ -1082,7 +1083,7 @@ END SUBROUTINE Get_MMG3D_Mesh
 ! Assumes that NewMesh doesn't have any nodes which are both *shared* and *unmarked*
 !-----------------------------------------------------------------------------------
 SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
-  TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
+  TYPE(Mesh_t), TARGET :: OldMesh, NewMesh
   !----------------------
   INTEGER :: i,j,k,n,counter, OldNN, NewNN, nglobal_pool, nlocal_pool,&
        ierr, my_maxgdof, mingdof, maxgdof, request,unused,&
@@ -1339,7 +1340,7 @@ END SUBROUTINE RenumberGDOFs
 ! NOTE: won't work for halo elems
 !---------------------------------------------------------
 SUBROUTINE RenumberGElems(Mesh)
-  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Mesh_t) :: Mesh
   !---------------------------------
   INTEGER :: i,NElem,MyStart,ierr
   INTEGER, ALLOCATABLE :: PNElem(:)
@@ -1363,7 +1364,7 @@ END SUBROUTINE RenumberGElems
 ! whose partition boundaries remain as they were. e.g. CalvingRemeshMMG.F90
 !---------------------------------------------------------------------------------------------
 SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
-  TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
+  TYPE(Mesh_t), TARGET :: OldMesh, NewMesh
   !---------------------------------
   INTEGER, ALLOCATABLE :: GtoNewLMap(:)
   INTEGER :: i,k,n,MaxNGDof, MinNGDof
@@ -1430,7 +1431,8 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     NodeFixed,ElemFixed,Params,Hvar,Solver,Success)
 
   TYPE(Model_t) :: Model
-  TYPE(Mesh_t), POINTER :: InMesh, OutMesh
+  TYPE(Mesh_t), TARGET :: InMesh
+  TYPE(Mesh_t), POINTER :: OutMesh
   TYPE(ValueList_t), POINTER, OPTIONAL :: Params
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
@@ -1802,7 +1804,8 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
     NodeFixed,ElemFixed,Params)
 
  TYPE(Model_t) :: Model
-  TYPE(Mesh_t), POINTER :: InMesh, OutMesh
+  TYPE(Mesh_t), TARGET :: InMesh
+  TYPE(Mesh_t), POINTER :: OutMesh
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Boss
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
@@ -2110,7 +2113,7 @@ END SUBROUTINE SequentialRemeshParMMG
 
 SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount, FreezeInternalArg)
 
-  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Mesh_t), TARGET :: Mesh
   LOGICAL :: Parallel
   LOGICAL, OPTIONAL :: FreezeInternalArg
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
@@ -2678,7 +2681,8 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     NodeFixed,ElemFixed,Params,HVar,Angle)
 
   TYPE(Model_t) :: Model
-  TYPE(Mesh_t), POINTER :: InMesh, OutMesh
+  TYPE(Mesh_t), TARGET :: InMesh
+  TYPE(Mesh_t), POINTER :: OutMesh
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)

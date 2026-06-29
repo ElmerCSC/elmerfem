@@ -159,21 +159,9 @@ CONTAINS
     IF ( isDamp ) &
       isDamp = isDamp .AND. SIZE(A % DampValues) == SIZE(A % Values)
 
-    DO i=A % Rows(n),A % Rows(n+1)-1
-      A % Values(i) = 0.0_dp
-    END DO
-
-    IF ( isMass ) THEN
-      DO i=A % Rows(n),A % Rows(n+1)-1
-         A % MassValues(i) = 0.0_dp
-      END DO
-    END IF
-
-    IF ( isDamp )  THEN
-      DO i=A % Rows(n),A % Rows(n+1)-1
-        A % DampValues(i) = 0.0_dp
-      END DO
-    END IF
+    A % Values(A % Rows(n):A % Rows(n+1)-1) = 0.0_dp
+    IF ( isMass ) A % MassValues(A % Rows(n):A % Rows(n+1)-1) = 0.0_dp
+    IF ( isDamp )  A % DampValues(A % Rows(n):A % Rows(n+1)-1) = 0.0_dp
 
   END SUBROUTINE CRS_ZeroRow
 !------------------------------------------------------------------------------
@@ -706,7 +694,7 @@ CONTAINS
     END DO
 
     IF( PRESENT( movecoeff ) ) THEN      
-      DO i = A % Rows(n2), A % Rows(n2)-1
+      DO i = A % Rows(n2), A % Rows(n2+1)-1
         i2 = i - A % Rows(n2) + 1 
         j = A % Cols(i)
         val = Row2(i2)
@@ -758,22 +746,14 @@ CONTAINS
          DO j=1,n
            Col = Indeces(j)
            IF ( Col <= 0 ) CYCLE
-           IF (Col >= Row ) THEN
-             DO c=Diag(Row),Rows(Row+1)-1
-               IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                 Values(c) = Values(c) + LocalMatrix(i,j)
-                 EXIT
-               END IF
-             END DO
+           IF (Col >= Row) THEN
+             c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
            ELSE
-             DO c=Rows(Row),Diag(Row)-1
-               IF ( Cols(c) == Col ) THEN
+             c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+           END IF
+           IF (c > 0) THEN
 !$omp atomic
-                 Values(c) = Values(c) + LocalMatrix(i,j)
-                 EXIT
-               END IF
-             END DO
+             Values(c) = Values(c) + LocalMatrix(i,j)
            END IF
          END DO
        END DO
@@ -788,27 +768,50 @@ CONTAINS
                    IF ( Indeces(j) <= 0 ) CYCLE
                    Col  = Dofs * Indeces(j) - l
                    IF ( Col >= Row ) THEN
-                     DO c=Diag(Row),Rows(Row+1)-1
-                        IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
+                     c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
                    ELSE
-                     DO c=Rows(Row),Diag(Row)-1
-                        IF ( Cols(c) == Col ) THEN
+                     c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+                   END IF
+                   IF (c > 0) THEN
 !$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
+                     Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
                    END IF
                 END DO
              END DO
           END DO
        END DO
      END IF
+
+  CONTAINS
+
+    PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: arr(:)
+      INTEGER, INTENT(IN) :: key, lind, tind
+      INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
+      INTEGER :: keyloc
+      INTEGER :: li, ti, mi
+      li = lind
+      ti = tind
+      DO WHILE ((li+LINSEARCHTHRESH)<ti)
+        mi = li + ((ti - li) / 2)
+        IF (arr(mi)<key) THEN
+          li = mi + 1
+        ELSE
+          ti = mi
+        END IF
+      END DO
+      IF (li<ti) THEN
+        keyloc = 0
+        DO mi=li,ti
+          IF (arr(mi)==key) keyloc = mi
+        END DO
+      ELSE IF (li == ti .AND. arr(li)==key) THEN
+        keyloc = li
+      ELSE
+        keyloc = 0
+      END IF
+    END FUNCTION BinarySearch
 
   END SUBROUTINE CRS_GlueLocalMatrix
 !------------------------------------------------------------------------------
@@ -862,6 +865,7 @@ CONTAINS
             ! Get row pointers
             rli = gia(ri)
             rti = gia(ri+1)-1
+            pnidx = rli - 9
             DO j=1,N
               ! Get global matrix index for entry (ri,Indices(j)).
               IF (Indices(pind(j)) > 0) THEN
@@ -895,6 +899,7 @@ CONTAINS
               ! Get row pointers
               rli = gia(ri)
               rti = gia(ri+1)-1
+              pnidx = rli - 9
               DO j=1,N
                 IF (Indices(pind(j)) > 0) THEN
                   DO cdof=1,NDOFs
@@ -934,6 +939,7 @@ CONTAINS
           ! Get row pointers
           rli = gia(ri)
           rti = gia(ri+1)-1
+          pnidx = rli - 9
           DO j=1,N
             ! Get global matrix index for entry (ri,Indices(j)).
 !DIR$ INLINE
@@ -963,6 +969,7 @@ CONTAINS
             ! Get row pointers
             rli = gia(ri)
             rti = gia(ri+1)-1
+            pnidx = rli - 9
             DO j=1,N
               DO cdof=1,NDOFs
                 ci = NDOFs*(Indices(pind(j))-1)+cdof
@@ -989,6 +996,7 @@ CONTAINS
     ! The actual contribution loop
     IF (MCAssembly) THEN
       !_ELMER_OMP_SIMD
+!DIR$ IVDEP
       DO i=1,nzind
         gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
       END DO
@@ -1114,47 +1122,53 @@ CONTAINS
         DO k=0,RowDofs-1
            IF ( RowInds(i) <= 0 ) CYCLE
            Row  = Row0 + RowDofs * RowInds(i) - k
-
            DO j=1,Ncol
               DO l=0,ColDofs-1
                  IF ( ColInds(j) <= 0 ) CYCLE
                  Col  = Col0 + ColDofs * ColInds(j) - l
-
-! If Diag does not exist then one cannot separate the gluing into two parts
-! In fact this cannot be guarateed for the off-diagonal block matrices and hence 
-! this condition is set active.
-                IF( .TRUE. ) THEN
-                    DO c=Rows(Row),Rows(Row+1)-1
-                       IF ( Cols(c) == Col ) THEN
+                 c = BinarySearch(Cols, Col, Rows(Row), Rows(Row+1)-1)
+                 IF (c > 0) THEN
 !$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
-                     IF( Cols(c) /= Col ) PRINT *,'NO HIT 1',Row,Col
-                 ELSE IF ( Col >= Row ) THEN
-                    DO c=Diag(Row),Rows(Row+1)-1
-                       IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                          Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-                          EXIT
-                       END IF
-                    END DO
-                    IF( Cols(c) /= Col ) PRINT *,'NO HIT 2',Row,Col
+                   Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
                  ELSE
-                    DO c=Rows(Row),Diag(Row)-1
-                       IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
-                     IF( Cols(c) /= Col ) PRINT *,'NO HIT 3',Row,Col
-                  END IF
+                   PRINT *, 'NO HIT', Row, Col
+                 END IF
                END DO
             END DO
          END DO
       END DO
+
+  CONTAINS
+
+    PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: arr(:)
+      INTEGER, INTENT(IN) :: key, lind, tind
+      INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
+      INTEGER :: keyloc
+      INTEGER :: li, ti, mi
+      li = lind
+      ti = tind
+      DO WHILE ((li+LINSEARCHTHRESH)<ti)
+        mi = li + ((ti - li) / 2)
+        IF (arr(mi)<key) THEN
+          li = mi + 1
+        ELSE
+          ti = mi
+        END IF
+      END DO
+      IF (li<ti) THEN
+        keyloc = 0
+        DO mi=li,ti
+          IF (arr(mi)==key) keyloc = mi
+        END DO
+      ELSE IF (li == ti .AND. arr(li)==key) THEN
+        keyloc = li
+      ELSE
+        keyloc = 0
+      END IF
+    END FUNCTION BinarySearch
+
     END SUBROUTINE CRS_GlueLocalSubMatrix
 !------------------------------------------------------------------------------
 
@@ -1469,7 +1483,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! First touch matrix values with similar access pattern as in sparse dgemv
       !$OMP DO
       DO i=1,N+1
-        A % Rows(i) = REAL(0,dp)
+        A % Rows(i) = 0
       END DO
       !$OMP END DO
     END IF
@@ -1490,13 +1504,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     !$OMP DO
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i), A % Rows(i+1)-1
-        A % Cols(j) = REAL(0,dp)
+        A % Cols(j) = 0
       END DO
     END DO
     !$OMP END DO NOWAIT
     !$OMP DO
     DO i=1,n
-      A % Diag(i) = REAL(0,dp)
+      A % Diag(i) = 0
     END DO
     !$OMP END DO
 #else
@@ -1546,7 +1560,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Cols   => A % Cols
     Values => A % Values
     
-    IF  ( A % MatvecSubr /= 0 ) THEN
+    IF  ( C_ASSOCIATED(A % MatvecSubr) ) THEN
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN
     END IF
@@ -1562,9 +1576,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ! indirect memory addressing a little.
     !-------------------------------------------------------------------------------------------
     SELECT CASE( A % ndeg )
-      
+
     CASE( 5, 10 )
-      !$omp parallel do private(j,l,r1,r2,r3,r4,r5)
+      !$omp parallel do private(j,l,r1,r2,r3,r4,r5) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
         !DIR$ IVDEP
@@ -1581,7 +1595,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       !$omp end parallel do
 
     CASE( 4, 8 )
-      !$omp parallel do private(j,l,r1,r2,r3,r4)
+      !$omp parallel do private(j,l,r1,r2,r3,r4) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
         !DIR$ IVDEP
@@ -1597,7 +1611,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       !$omp end parallel do
 
     CASE( 3, 6 )
-      !$omp parallel do private(j,l,r1,r2,r3)
+      !$omp parallel do private(j,l,r1,r2,r3) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
         !DIR$ IVDEP
@@ -1610,9 +1624,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         v(i) = r1 + r2 + r3
       END DO
       !$omp end parallel do
-      
+
     CASE( 2 )
-      !$omp parallel do private(j,l,r1,r2)
+      !$omp parallel do private(j,l,r1,r2) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp
         !DIR$ IVDEP
@@ -1624,18 +1638,25 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         v(i) = r1 + r2
       END DO
       !$omp end parallel do
-      
-    CASE DEFAULT      
-      !$omp parallel do private(j,r1)
+
+    CASE DEFAULT
+      !$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
       DO i=1,n
-        r1 = 0.0_dp
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+        k = Rows(i+1) - Rows(i)
         !DIR$ IVDEP
-        DO j=Rows(i),Rows(i+1)-1
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          r1 = r1 + u(Cols(j))   * Values(j)
+          r2 = r2 + u(Cols(j+1)) * Values(j+1)
+          r3 = r3 + u(Cols(j+2)) * Values(j+2)
+          r4 = r4 + u(Cols(j+3)) * Values(j+3)
+        END DO
+        DO j=Rows(i)+4*(k/4),Rows(i+1)-1
           r1 = r1 + u(Cols(j)) * Values(j)
         END DO
-        v(i) = r1 
+        v(i) = r1 + r2 + r3 + r4
       END DO
-      !$omp end parallel do      
+      !$omp end parallel do
     END SELECT
 #endif
 !------------------------------------------------------------------------------
@@ -1651,12 +1672,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
     REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
     TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
-    REAL(KIND=dp), OPTIONAL :: c                   !< multiplier    
+    REAL(KIND=dp), OPTIONAL :: c                   !< multiplier
     !------------------------------------------------------------------------------
      INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
      REAL(KIND=dp), POINTER  CONTIG :: Values(:)
-     INTEGER :: i,j,n
-     REAL(KIND=dp) :: rsum
+     INTEGER :: i,j,k,n,l
+     REAL(KIND=dp) :: r1,r2,r3,r4,r5,cval
 
 !------------------------------------------------------------------------------
 
@@ -1665,21 +1686,96 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Cols   => A % Cols
      Values => A % Values
 
-     !$omp parallel do private(j,rsum)
-     DO i=1,n
-       rsum = 0.0d0
-       !DIR$ IVDEP
-       DO j=Rows(i),Rows(i+1)-1
-         rsum = rsum + u(Cols(j)) * Values(j)
+     IF( PRESENT(c) ) THEN
+       cval = c
+     ELSE
+       cval = 1.0_dp
+     END IF
+
+     SELECT CASE( A % ndeg )
+
+     CASE( 5, 10 )
+       !$omp parallel do private(j,l,r1,r2,r3,r4,r5) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,5
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+           r3 = r3 + u(l+2) * Values(j+2)
+           r4 = r4 + u(l+3) * Values(j+3)
+           r5 = r5 + u(l+4) * Values(j+4)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3 + r4 + r5)
        END DO
-       
-       IF( PRESENT(c) ) THEN
-         v(i) = v(i) + c * rsum
-       ELSE
-         v(i) = v(i) + rsum
-       END IF
-     END DO
-     !$omp end parallel do
+       !$omp end parallel do
+
+     CASE( 4, 8 )
+       !$omp parallel do private(j,l,r1,r2,r3,r4) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,4
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+           r3 = r3 + u(l+2) * Values(j+2)
+           r4 = r4 + u(l+3) * Values(j+3)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3 + r4)
+       END DO
+       !$omp end parallel do
+
+     CASE( 3, 6 )
+       !$omp parallel do private(j,l,r1,r2,r3) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,3
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+           r3 = r3 + u(l+2) * Values(j+2)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3)
+       END DO
+       !$omp end parallel do
+
+     CASE( 2 )
+       !$omp parallel do private(j,l,r1,r2) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,2
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2)
+       END DO
+       !$omp end parallel do
+
+     CASE DEFAULT
+       !$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+         k = Rows(i+1) - Rows(i)
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+           r1 = r1 + u(Cols(j))   * Values(j)
+           r2 = r2 + u(Cols(j+1)) * Values(j+1)
+           r3 = r3 + u(Cols(j+2)) * Values(j+2)
+           r4 = r4 + u(Cols(j+3)) * Values(j+3)
+         END DO
+         DO j=Rows(i)+4*(k/4),Rows(i+1)-1
+           r1 = r1 + u(Cols(j)) * Values(j)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3 + r4)
+       END DO
+       !$omp end parallel do
+
+     END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE CRS_AdditiveMatrixVectorMultiply
 !------------------------------------------------------------------------------
@@ -1779,8 +1875,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp), POINTER  CONTIG :: Values(:), Abs_Values(:)
 
     
-    INTEGER :: i,j,n
-    REAL(KIND=dp) :: rsum
+    INTEGER :: i,j,k,n
+    REAL(KIND=dp) :: r1,r2,r3,r4
 !------------------------------------------------------------------------------
 
     n = A % NumberOfRows
@@ -1788,22 +1884,28 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Cols   => A % Cols
     Values => A % Values
 
-    IF  ( A % MatvecSubr /= 0 ) THEN
+    IF  ( C_ASSOCIATED(A % MatvecSubr) ) THEN
       ALLOCATE(Abs_Values(SIZE(A % Values)))
       Abs_Values = ABS(Values)
-      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0) ! TODO: (bug) must be ABS(Values)
+      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0)
       DEALLOCATE(Abs_Values)
       RETURN
     END IF
 
-!$omp parallel do private(j,rsum)
+!$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
     DO i=1,n
-      rsum = 0.0d0
-!DIR$ IVDEP
-      DO j=Rows(i),Rows(i+1)-1
-        rsum = rsum + u(Cols(j)) * ABS(Values(j))
+      r1=0.0_dp; r2=0.0_dp; r3=0.0_dp; r4=0.0_dp
+      k = Rows(i+1) - Rows(i)
+      DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+        r1=r1+u(Cols(j))*ABS(Values(j))
+        r2=r2+u(Cols(j+1))*ABS(Values(j+1))
+        r3=r3+u(Cols(j+2))*ABS(Values(j+2))
+        r4=r4+u(Cols(j+3))*ABS(Values(j+3))
       END DO
-      v(i) = rsum
+      DO j=Rows(i)+4*(k/4),Rows(i+1)-1
+        r1 = r1 + u(Cols(j)) * ABS(Values(j))
+      END DO
+      v(i) = r1 + r2 + r3 + r4
     END DO
 !$omp end parallel do
 !------------------------------------------------------------------------------
@@ -1906,16 +2008,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      INTEGER :: i,j,k,n,m
      REAL(KIND=dp) :: rsum
 #ifdef HAVE_MKL
-	INTERFACE
-		SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-	 		USE Types
-	 		CHARACTER :: transa
-	 		INTEGER :: m
-	 		REAL(KIND=dp) :: a(*)
-	 		INTEGER :: ia(*), ja(*)
-	 		REAL(KIND=dp) :: x(*), y(*)
-	 	END SUBROUTINE mkl_dcsrgemv
-	END INTERFACE
+     INTERFACE
+       SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
+         USE Types
+         CHARACTER :: transa
+         INTEGER :: m
+         REAL(KIND=dp) :: a(*)
+         INTEGER :: ia(*), ja(*)
+         REAL(KIND=dp) :: x(*), y(*)
+       END SUBROUTINE mkl_dcsrgemv
+     END INTERFACE
 #endif
 !------------------------------------------------------------------------------
 
@@ -1950,9 +2052,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A             !< Structure holding the master matrix
     TYPE(Matrix_t), POINTER :: B             !< Structure holding the slave matrix
-    TYPE(Matrix_t), POINTER, OPTIONAL :: C   !< Structure holding the sum matrix
-    INTEGER, POINTER, OPTIONAL :: PermA(:)   !< Permutation of the master dofs
-    INTEGER, POINTER, OPTIONAL :: PermB(:)   !< Permutation of the slave dofs
+    TYPE(Matrix_t), OPTIONAL :: C   !< Structure holding the sum matrix
+    INTEGER, OPTIONAL :: PermA(:)   !< Permutation of the master dofs
+    INTEGER, OPTIONAL :: PermB(:)   !< Permutation of the slave dofs
     INTEGER, POINTER, OPTIONAL :: PermC(:)   !< Permutation of the combined dofs
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: ColsA(:),RowsA(:),ColsB(:),RowsB(:),&
@@ -2394,10 +2496,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        GlobalMatrix % Ordered = .TRUE.
     END IF
 
+    !$OMP PARALLEL DO PRIVATE(A)
     DO i=1,n/2
        A = CMPLX( Values(Diag(2*i-1)), -Values(Diag(2*i-1)+1), KIND=dp )
        u(i) = v(i) / A
     END DO
+    !$OMP END PARALLEL DO
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_ComplexDiagPrecondition
 !------------------------------------------------------------------------------
@@ -3477,10 +3581,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status            !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     LOGICAL :: Warned, Retry, Found
-    INTEGER :: i,j,k,l,m,n,istat
+    INTEGER :: i,j,k,l,m,n,p,istat
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER :: ILUValues(:), Values(:)
-    REAL(KIND=dp) :: st, tx, scl, cFactor
+    REAL(KIND=dp) :: st, tx, scl, cFactor, r1, r2, r3, r4
     LOGICAL, ALLOCATABLE :: C(:), D(:)
     REAL(KIND=dp), ALLOCATABLE ::  S(:), T(:)
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
@@ -3605,12 +3709,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        S(i) = Scl * T(i)
        DO m=ILURows(i),ILUDiag(i)-1
          j = ILUCols(m)
-         S(j) = T(j)
-         DO l = ILURows(j),ILUDiag(j)-1
-           k = ILUCols(l)
-           S(j) = S(j) - S(k) * ILUValues(l)
+         r1 = T(j); r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+         p = ILUDiag(j) - ILURows(j)
+!DIR$ IVDEP
+         DO l = ILURows(j),ILURows(j)+4*(p/4)-1,4
+           r1 = r1 - S(ILUCols(l))   * ILUValues(l)
+           r2 = r2 - S(ILUCols(l+1)) * ILUValues(l+1)
+           r3 = r3 - S(ILUCols(l+2)) * ILUValues(l+2)
+           r4 = r4 - S(ILUCols(l+3)) * ILUValues(l+3)
          END DO
-         S(j) = S(j) * ILUValues(ILUDiag(j))
+         DO l = ILURows(j)+4*(p/4),ILUDiag(j)-1
+           r1 = r1 - S(ILUCols(l)) * ILUValues(l)
+         END DO
+         S(j) = (r1 + r2 + r3 + r4) * ILUValues(ILUDiag(j))
          S(i) = S(i) - S(j)**2
        END DO
 
@@ -3672,8 +3783,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          IF ( S(k) == 0._dp ) CYCLE
 
          IF ( ABS(ILUValues(ILUDiag(k))) > AEPS ) &
-           S(k) = S(k) / ILUValues(ILUDiag(k)) 
+           S(k) = S(k) / ILUValues(ILUDiag(k))
 
+!DIR$ IVDEP
          DO l = ILUDiag(k)+1, ILURows(k+1)-1
            j = ILUCols(l)
            IF ( C(j) ) THEN
@@ -3854,13 +3966,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, INTENT(IN) :: ILUn   !< Order of fills allowed 0-9
     LOGICAL :: Status  !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,m,n,istat
+    INTEGER :: i,j,k,l,m,n,p,istat
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER ::  Values(:)
     COMPLEX(KIND=dp), POINTER :: ILUValues(:)
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
     TYPE(Matrix_t), POINTER :: A1
     REAL(KIND=dp) :: st
+    COMPLEX(KIND=dp) :: r1, r2, r3, r4
     LOGICAL, ALLOCATABLE :: C(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: S(:), T(:)
 !------------------------------------------------------------------------------
@@ -3982,12 +4095,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        S(i) = T(i)
        DO m=ILURows(i),ILUDiag(i)-1
          j = ILUCols(m)
-         S(j) = T(j)
-         DO l = ILURows(j),ILUDiag(j)-1
-           k = ILUCols(l)
-           S(j) = S(j) - S(k) * CONJG(ILUValues(l))
+         r1 = T(j); r2 = (0.0_dp,0.0_dp); r3 = (0.0_dp,0.0_dp); r4 = (0.0_dp,0.0_dp)
+         p = ILUDiag(j) - ILURows(j)
+!DIR$ IVDEP
+         DO l = ILURows(j),ILURows(j)+4*(p/4)-1,4
+           r1 = r1 - S(ILUCols(l))   * CONJG(ILUValues(l))
+           r2 = r2 - S(ILUCols(l+1)) * CONJG(ILUValues(l+1))
+           r3 = r3 - S(ILUCols(l+2)) * CONJG(ILUValues(l+2))
+           r4 = r4 - S(ILUCols(l+3)) * CONJG(ILUValues(l+3))
          END DO
-         S(j) = S(j) * ILUValues(ILUDiag(j))
+         DO l = ILURows(j)+4*(p/4),ILUDiag(j)-1
+           r1 = r1 - S(ILUCols(l)) * CONJG(ILUValues(l))
+         END DO
+         S(j) = (r1 + r2 + r3 + r4) * ILUValues(ILUDiag(j))
          S(i) = S(i) - S(j)*CONJG(S(j))
        END DO
 
@@ -4030,8 +4150,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          IF ( S(k) == 0._dp ) CYCLE
 
          IF ( ABS(ILUValues(ILUDiag(k))) > AEPS ) &
-           S(k) = S(k) / ILUValues(ILUDiag(k)) 
+           S(k) = S(k) / ILUValues(ILUDiag(k))
 
+!DIR$ IVDEP
          DO l = ILUDiag(k)+1, ILURows(k+1)-1
            j = ILUCols(l)
            IF ( C(j) ) THEN
@@ -4231,13 +4352,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       TYPE(Matrix_t) :: A
 !------------------------------------------------------------------------------
       INTEGER, PARAMETER :: WORKN = 128
-      INTEGER :: i,j,k,l,istat, RowMin, RowMax
+      INTEGER :: i,j,k,l,m,istat, RowMin, RowMax
       REAL(KIND=dp) :: NORMA
       REAL(KIND=dp), POINTER CONTIG :: Values(:), ILUValues(:), CWork(:)
       INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:), &
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
       LOGICAL :: C(n)
       REAL(KIND=dp) :: S(n), cptime, ttime, t
+      REAL(KIND=dp), ALLOCATABLE :: RowNorms(:)
 !------------------------------------------------------------------------------
 
       ttime  = CPUTime()
@@ -4264,6 +4386,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       IF ( istat /= 0 ) THEN
          CALL Fatal( 'CRS_ILUT', 'Memory allocation error.' )
       END IF
+!     Precompute row norms for drop tolerance (original A, not modified during factorization)
+      ALLOCATE( RowNorms(n) )
+      !$OMP PARALLEL DO
+      DO i=1,n
+        RowNorms(i) = NORM2( Values(Rows(i):Rows(i+1)-1) )
+      END DO
+      !$OMP END PARALLEL DO
+
 !
 !     The factorization row by row:
 !     -----------------------------
@@ -4308,7 +4438,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !        This is the ILUT part, drop element ILU(i,j), if
 !        ABS(ILU(i,j)) <= NORM(A(i,:))*TOL:
 !        -------------------------------------------------
-         NORMA = SQRT( SUM( ABS(Values(Rows(i):Rows(i+1)-1))**2 ) )
+         NORMA = RowNorms(i)
 
          j = ILURows(i)-1
          DO k=RowMin, RowMax
@@ -4336,22 +4466,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
                t = CPUTime()
 !              k = ILURows(i+1) + MIN( WORKN, n-i ) * n
                k = ILURows(i+1) + MIN( 0.75d0*ILURows(i+1), (n-i)*(1.0d0*n) )
+               m = ILURows(i+1) - 1
                ALLOCATE( IWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 IWork(j) = ILUCols(j)
-               END DO
+               IWork(1:m) = ILUCols(1:m)
                DEALLOCATE( ILUCols )
 
                ALLOCATE( CWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 CWork(j) = ILUValues(j)
-               END DO
+               CWork(1:m) = ILUValues(1:m)
                DEALLOCATE( ILUValues )
 
                ILUCols   => IWork
@@ -4375,6 +4502,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
       A % ILUCols   => ILUCols
       A % ILUValues => ILUValues
+      DEALLOCATE( RowNorms )
 !------------------------------------------------------------------------------
     END SUBROUTINE ComputeILUT
 !------------------------------------------------------------------------------
@@ -4434,7 +4562,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
       INTEGER, PARAMETER :: WORKN = 128
 
-      INTEGER :: i,j,k,l,istat,RowMin,RowMax
+      INTEGER :: i,j,k,l,m,istat,RowMin,RowMax
       REAL(KIND=dp) :: NORMA
 
       REAL(KIND=dp), POINTER CONTIG :: Values(:)
@@ -4445,6 +4573,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
       LOGICAL :: C(n)
       COMPLEX(KIND=dp) :: S(n)
+      REAL(KIND=dp), ALLOCATABLE :: RowNorms(:)
 !------------------------------------------------------------------------------
 
       Diag => A % Diag
@@ -4468,6 +4597,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       IF ( istat /= 0 ) THEN
          CALL Fatal( 'CRS_ComplexILUT', 'Memory allocation error.' )
       END IF
+!     Precompute row norms for drop tolerance
+      ALLOCATE( RowNorms(n) )
+      !$OMP PARALLEL DO
+      DO i=1,n
+        RowNorms(i) = NORM2( Values(Rows(2*i-1):Rows(2*i)-1) )
+      END DO
+      !$OMP END PARALLEL DO
+
 !
 !     The factorization row by row:
 !     -----------------------------
@@ -4513,11 +4650,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !        This is the ILUT part, drop element ILUT(i,j), if
 !        ABS(ILUT(i,j)) <= NORM(A(i,:))*TOL:
 !        -------------------------------------------------
-         NORMA = 0.0d0
-         DO k = Rows(2*i-1), Rows(2*i)-1, 2
-            NORMA = NORMA + Values(k)**2 + Values(k+1)**2
-         END DO
-         NORMA = SQRT(NORMA)
+         NORMA = RowNorms(i)
 
          j = ILURows(i)-1
          DO k=RowMin, RowMax
@@ -4543,23 +4676,20 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
             IF ( SIZE(ILUCols) < ILURows(i+1) + n ) THEN
 !              k = ILURows(i+1) + MIN( WORKN, n-i ) * n
                k = ILURows(i+1) + MIN( 0.75d0*ILURows(i+1), (n-i)*(1.0d0*n) )
+               m = ILURows(i+1) - 1
 
                ALLOCATE( IWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ComplexILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 IWork(j) = ILUCols(j)
-               END DO
+               IWork(1:m) = ILUCols(1:m)
                DEALLOCATE( ILUCols )
 
                ALLOCATE( CWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ComplexILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 CWork(j) = ILUValues(j)
-               END DO
+               CWork(1:m) = ILUValues(1:m)
                DEALLOCATE( ILUValues )
 
                ILUCols   => IWork
@@ -4581,6 +4711,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       A % ILUCols    => ILUCols
       A % CILUValues => ILUValues
       NULLIFY( ILUCols, ILUValues )
+      DEALLOCATE( RowNorms )
 !------------------------------------------------------------------------------
     END SUBROUTINE ComplexComputeILUT
 !------------------------------------------------------------------------------
@@ -4639,10 +4770,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, INTENT(IN) :: N   !< Size of the system
     DOUBLE PRECISION :: b(n)   !< on entry the RHS vector, on exit the solution vector.
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,row,col,nn
-    DOUBLE PRECISION :: s
+    INTEGER :: i,j,k
+    DOUBLE PRECISION :: s1,s2,s3,s4
     DOUBLE PRECISION, POINTER CONTIG :: Values(:)
     INTEGER, POINTER CONTIG :: Cols(:),Rows(:),Diag(:)
+#ifdef HAVE_MKL
+    INTERFACE
+      SUBROUTINE mkl_dcsrtrsv(uplo, transa, diag, m, a, ia, ja, x, y)
+        USE Types
+        CHARACTER :: uplo, transa, diag
+        INTEGER :: m
+        REAL(KIND=dp) :: a(*)
+        INTEGER :: ia(*), ja(*)
+        REAL(KIND=dp) :: x(*), y(*)
+      END SUBROUTINE mkl_dcsrtrsv
+    END INTERFACE
+    DOUBLE PRECISION, ALLOCATABLE :: tmp(:)
+#endif
 !------------------------------------------------------------------------------
 
     Diag => A % ILUDiag
@@ -4655,26 +4799,51 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !   -------------------------------------
     IF ( .NOT. ASSOCIATED( Values ) ) THEN
        DO i=1,A % NumberOfRows
-         s = A % Values(A % Diag(i))
-         IF(s /= 0 ) b(i) = b(i) / s
+         s1 = A % Values(A % Diag(i))
+         IF(s1 /= 0 ) b(i) = b(i) / s1
        END DO
        RETURN
     END IF
+
+#ifdef HAVE_MKL
+    IF ( .NOT. A % Cholesky ) THEN
+      ALLOCATE(tmp(n))
+      ! Forward: L is unit lower triangular
+      CALL mkl_dcsrtrsv('L', 'N', 'U', n, Values, Rows, Cols, b, tmp)
+      b(1:n) = tmp(1:n)
+      ! Backward: unit upper triangular solve, then apply pre-inverted diagonal
+      CALL mkl_dcsrtrsv('U', 'N', 'U', n, Values, Rows, Cols, b, tmp)
+      !$OMP PARALLEL DO
+      DO i=1,n
+        b(i) = Values(Diag(i)) * tmp(i)
+      END DO
+      !$OMP END PARALLEL DO
+      DEALLOCATE(tmp)
+      RETURN
+    END IF
+#endif
 
     IF ( A % Cholesky ) THEN
       !
       ! Forward substitute (solve z from Lz = b)
       DO i=1,n
-        s = b(i)
+        s1 = b(i); s2 = 0.0d0; s3 = 0.0d0; s4 = 0.0d0
+        k = Diag(i) - Rows(i)
 !DIR$ IVDEP
-        DO j=Rows(i),Diag(i)-1
-           s = s - Values(j) * b(Cols(j))
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
         END DO
-        b(i) = s * Values(Diag(i))
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = (s1 + s2 + s3 + s4) * Values(Diag(i))
       END DO
 
       !
-      ! Backward substitute (solve x from L^Tx = z)
+      ! Backward substitute (solve x from L^Tx = z) — scatter, no unrolling
       DO i=n,1,-1
         b(i) = b(i) * Values(Diag(i))
 !DIR$ IVDEP
@@ -4684,25 +4853,39 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
     ELSE
       !
-      ! Forward substitute (solve z from Lz = b)
+      ! Forward substitute (solve z from Lz = b), L unit lower triangular
       DO i=1,n
-         s = b(i)
+        s1 = b(i); s2 = 0.0d0; s3 = 0.0d0; s4 = 0.0d0
+        k = Diag(i) - Rows(i)
 !DIR$ IVDEP
-         DO j=Rows(i),Diag(i)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = s 
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = s1 + s2 + s3 + s4
       END DO
 
       !
-      ! Backward substitute (solve x from UDx = z)
+      ! Backward substitute (solve x from UDx = z), D is pre-inverted
       DO i=n,1,-1
-         s = b(i)
+        s1 = b(i); s2 = 0.0d0; s3 = 0.0d0; s4 = 0.0d0
+        k = Rows(i+1) - Diag(i) - 1
 !DIR$ IVDEP
-         DO j=Diag(i)+1,Rows(i+1)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = Values(Diag(i)) * s
+        DO j=Diag(i)+1,Diag(i)+4*(k/4),4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Diag(i)+4*(k/4)+1,Rows(i+1)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = Values(Diag(i)) * (s1 + s2 + s3 + s4)
       END DO
     END IF
 
@@ -4717,14 +4900,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !>    iterative solver.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_ComplexLUSolve( N,A,b )
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
     TYPE(Matrix_t), INTENT(IN) :: A   !< Structure holding input matrix
     INTEGER, INTENT(IN) :: N          !< Size of the system
     COMPLEX(KIND=dp) :: b(N)          !< on entry the RHS vector, on exit the solution vector.
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), POINTER :: Values(:)
-    INTEGER :: i,j
-    COMPLEX(KIND=dp) :: x, s
+    INTEGER :: i,j,k
+    COMPLEX(KIND=dp) :: s1,s2,s3,s4
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
 
@@ -4742,15 +4925,22 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       !
       ! Forward substitute
       DO i=1,n
-         s = b(i)
-         DO j=Rows(i),Diag(i)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = s * Values(Diag(i))
+        s1 = b(i); s2 = (0.0_dp,0.0_dp); s3 = (0.0_dp,0.0_dp); s4 = (0.0_dp,0.0_dp)
+        k = Diag(i) - Rows(i)
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = (s1 + s2 + s3 + s4) * Values(Diag(i))
       END DO
 
       !
-      ! Backward substitute
+      ! Backward substitute — scatter, no unrolling
       DO i=n,1,-1
          b(i) = b(i) * Values(Diag(i))
          DO j=Rows(i),Diag(i)-1
@@ -4759,23 +4949,37 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
     ELSE
       !
-      ! Forward substitute
+      ! Forward substitute, L unit lower triangular
       DO i=1,n
-         s = b(i)
-         DO j=Rows(i),Diag(i)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = s
+        s1 = b(i); s2 = (0.0_dp,0.0_dp); s3 = (0.0_dp,0.0_dp); s4 = (0.0_dp,0.0_dp)
+        k = Diag(i) - Rows(i)
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = s1 + s2 + s3 + s4
       END DO
 
       !
-      ! Backward substitute
+      ! Backward substitute, D is pre-inverted
       DO i=n,1,-1
-         s = b(i)
-         DO j=Diag(i)+1,Rows(i+1)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = Values(Diag(i)) * s
+        s1 = b(i); s2 = (0.0_dp,0.0_dp); s3 = (0.0_dp,0.0_dp); s4 = (0.0_dp,0.0_dp)
+        k = Rows(i+1) - Diag(i) - 1
+        DO j=Diag(i)+1,Diag(i)+4*(k/4),4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Diag(i)+4*(k/4)+1,Rows(i+1)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = Values(Diag(i)) * (s1 + s2 + s3 + s4)
       END DO
     END IF
 
@@ -4792,128 +4996,20 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< Structure holding info HUTIter-iterative solver package
     REAL(KIND=dp), INTENT(IN) :: u(*)  !< vector to multiply u
     REAL(KIND=dp) :: v(*)              !< result vector
-
 !------------------------------------------------------------------------------
-    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
-    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
-
-#ifdef HAVE_MKL
-    INTERFACE
-      SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-        USE Types
-        CHARACTER :: transa
-        INTEGER :: m
-        REAL(KIND=dp) :: a(*)
-        INTEGER :: ia(*), ja(*)
-        REAL(KIND=dp) :: x(*), y(*)
-      END SUBROUTINE mkl_dcsrgemv
-    END INTERFACE
-#endif
-
-    INTEGER :: i,j,l,n,ndeg
-    REAL(KIND=dp) :: s,r1,r2,r3,r4,r5
-    
+    INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
+    INTEGER :: i,j,n
+    REAL(KIND=dp) :: s
 !------------------------------------------------------------------------------
 
-    n = GlobalMatrix % NumberOfRows
+    n      =  GlobalMatrix % NumberOfRows
     Rows   => GlobalMatrix % Rows
     Cols   => GlobalMatrix % Cols
     Values => GlobalMatrix % Values
-    ndeg = GlobalMatrix % ndeg
-    
-    IF  ( GlobalMatrix % MatVecSubr /= 0 ) THEN
-      CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-          GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
-      RETURN
-    END IF
 
     IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
-#ifdef HAVE_MKL
-      CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
-#else
-
-    ! There may be a small structured block in the CRS matrix that is due to the problem
-    ! being initially vector valued. For example, in 3D elasticity we usually have dofs related
-    ! to (x,y,z) displacements following each other. Using this small dense block we may reduce
-    ! indirect memory addressing a little.
-    !-------------------------------------------------------------------------------------------
-      SELECT CASE( ndeg )
-      
-      CASE( 5, 10 )
-        !$omp parallel do private(j,l,r1,r2,r3,r4,r5)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1,5
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-            r3 = r3 + u(l+2) * Values(j+2)
-            r4 = r4 + u(l+3) * Values(j+3)
-            r5 = r5 + u(l+4) * Values(j+4)
-          END DO
-          v(i) = r1 + r2 + r3 + r4 + r5
-        END DO
-        !$omp end parallel do
-        
-      CASE( 4, 8 )
-        !$omp parallel do private(j,l,r1,r2,r3,r4)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1,4
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-            r3 = r3 + u(l+2) * Values(j+2)
-            r4 = r4 + u(l+3) * Values(j+3)
-          END DO
-          v(i) = r1 + r2 + r3 + r4
-        END DO
-        !$omp end parallel do
-        
-      CASE( 3, 6 )
-        !$omp parallel do shared(n,rows,cols,values) private(i,j,l,r1,r2,r3)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
-          DO j=Rows(i),Rows(i+1)-1,3
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-            r3 = r3 + u(l+2) * Values(j+2)
-          END DO
-          v(i) = r1 + r2 + r3
-        END DO
-        !$omp end parallel do
-        
-      CASE( 2 )
-        !$omp parallel do private(j,l,r1,r2)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1,2
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-          END DO
-          v(i) = r1 + r2
-        END DO
-        !$omp end parallel do
-        
-      CASE DEFAULT      
-        !$omp parallel do private(j,r1)
-        DO i=1,n
-          r1 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1
-            r1 = r1 + u(Cols(j)) * Values(j)
-          END DO
-          v(i) = r1
-        END DO        
-        !$omp end parallel do      
-
-      END SELECT
-#endif
+      CALL CRS_MatrixVectorMultiply( GlobalMatrix, u, v )
     ELSE
       v(1:n) = 0.0d0
       DO i=1,n
@@ -4923,30 +5019,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         END DO
       END DO
     END IF
-
-!    IF ( ASSOCIATED( GlobalMatrix % EMatrix ) ) THEN
-!       n = GlobalMatrix % EMatrix % NumberOFRows
-!       Rows   => GlobalMatrix % EMatrix % Rows
-!       Cols   => GlobalMatrix % EMatrix % Cols
-!       Values => GlobalMatrix % EMatrix % Values
-!
-!       allocate( w(n) )
-!       DO i=1,n
-!          s = 0.0d0
-!          DO j=Rows(i),Rows(i+1)-1
-!             s = s + Values(j) * u(Cols(j))
-!          END DO
-!          w(i) = s
-!       END DO
-!
-!       DO i=1,n
-!          s = w(i)
-!          DO j=Rows(i),Rows(i+1)-1
-!             v(Cols(j)) = v(Cols(j)) + s * Values(j)
-!          END DO
-!       END DO
-!       deallocate( w )
-!    END IF
 
   END SUBROUTINE CRS_MatrixVectorProd
 !------------------------------------------------------------------------------
@@ -4959,11 +5031,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_ComplexMatrixVectorProd( u,v,ipar )
 !------------------------------------------------------------------------------
-
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar      !< Structure holding info HUTIter-iterative solver package
-    COMPLEX(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)      !< vector to multiply u
-    COMPLEX(KIND=dp) :: v(HUTI_NDIM)  !< result vector
-
+    COMPLEX(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)   !< vector to multiply u
+    COMPLEX(KIND=dp) :: v(HUTI_NDIM)               !< result vector
 !------------------------------------------------------------------------------
     INTEGER, POINTER :: Cols(:),Rows(:)
     INTEGER :: i,j,n
@@ -4971,32 +5041,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp), POINTER :: Values(:)
 !------------------------------------------------------------------------------
 
-    n = HUTI_NDIM
+    n      =  HUTI_NDIM
     Rows   => GlobalMatrix % Rows
     Cols   => GlobalMatrix % Cols
     Values => GlobalMatrix % Values
 
     IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
-!$omp parallel do private(rsum,j,s)
-       DO i=1,n
-          rsum = CMPLX( 0.0d0, 0.0d0, KIND=dp )
-          DO j=Rows(2*i-1),Rows(2*i)-1,2
-             s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-             rsum = rsum + s * u((Cols(j)+1)/2)
-          END DO
-          v(i) = rsum
-       END DO
-!$omp end parallel do
+      CALL CRS_ComplexMatrixVectorMultiply( GlobalMatrix, u, v )
     ELSE
-       v = CMPLX( 0.0d0, 0.0d0, KIND=dp )
-       DO i=1,n
-          rsum = u(i)
+      v = CMPLX( 0.0d0, 0.0d0, KIND=dp )
+      DO i=1,n
+        rsum = u(i)
 !DIR$ IVDEP
-          DO j=Rows(2*i-1),Rows(2*i)-1,2
-             s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-             v((Cols(j)+1)/2) = v((Cols(j)+1)/2) + s * rsum
-          END DO
-       END DO
+        DO j=Rows(2*i-1),Rows(2*i)-1,2
+          s = CMPLX( Values(j), -Values(j+1), KIND=dp )
+          v((Cols(j)+1)/2) = v((Cols(j)+1)/2) + s * rsum
+        END DO
+      END DO
     END IF
 
   END SUBROUTINE CRS_ComplexMatrixVectorProd

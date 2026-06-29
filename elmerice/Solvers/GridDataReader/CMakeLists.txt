@@ -24,5 +24,7 @@ IF(NOT(WIN32))
                           INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
 ENDIF()
 
-INSTALL(TARGETS ${BASENAME} LIBRARY DESTINATION "share/elmersolver/lib"
-            RUNTIME DESTINATION "share/elmersolver/lib")
+INSTALL(TARGETS ${BASENAME}
+  RUNTIME DESTINATION "share/elmersolver/lib"
+  LIBRARY DESTINATION "share/elmersolver/lib"
+  ARCHIVE DESTINATION "share/elmersolver/lib")

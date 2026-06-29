@@ -96,14 +96,6 @@ CONTAINS
 !> is, that the "value" entries may be whatsoever as you manage them
 !> yourself...)
 ! 
-!  (Again, the C-version:
-!  The third and fourth arguments may be used to give user routines to
-!  compare equality of two keys and provide an index to the bucket array
-!  given key and array size respectively (these are the only place where
-!  any reference to the format of the keys is made). If given as NULL
-!  pointers, the default string comparison and hash functions routines
-!  respectively are implied. )
-! 
 !-----------------------------------------------------------------------
   FUNCTION HashCreate( InitialBucketSize, MaxAvgEntries ) RESULT(hash)
     TYPE(HashTable_t), POINTER :: Hash
@@ -118,21 +110,12 @@ CONTAINS
        RETURN
     END IF
 
-!   /*
-!    *  Round bucket size up to next largest power of two...
-!    */
     RoundBits = CEILING( LOG(1.0d0*InitialBucketSize) / LOG(2.0d0) )
- 
-!   /*
-!    * Allocate the table and initialize the table entries...
-!    */
+
     ALLOCATE( Hash )
 
-    Hash % BucketSize = 2**RoundBits;
+    Hash % BucketSize = 2**RoundBits
 
-!   /*
-!    *  Allocate the bucket array
-!    */
     ALLOCATE( Hash % Bucket( Hash % BucketSize ), STAT=stat )
 
     IF ( stat /= 0 ) THEN
@@ -149,23 +132,7 @@ CONTAINS
     END DO
 
     Hash % TotalEntries  = 0
-    Hash % MaxAvgEntries = MaxAvgEntries;
-
-!   /*
-!   *  the key comparison routine
-!    */
-!   if ( EqualKeys )
-!     hash->EqualKeys = EqualKeys;
-!   else
-!     hash->EqualKeys = (int (*)(void *,void *))HashEqualKeys;
-!
-!   /*
-!    *  the hash table index generation routine
-!    */
-!   if ( HashFunc )
-!     hash->HashFunc = HashFunc;
-!   else
-!     hash->HashFunc = (int (*)(void *,int))HashStringFunc;
+    Hash % MaxAvgEntries = MaxAvgEntries
    END FUNCTION HashCreate
 
 !--------------------------------------------------------------------------
@@ -178,15 +145,12 @@ CONTAINS
      CHARACTER(LEN=*) :: key
      INTEGER :: Size, Ind
 
-     INTEGER :: i,keylen
+     INTEGER :: i, keylen
 
-     DO keylen=LEN(key),1,-1
-       IF ( key(keylen:keylen) /= ' ' ) EXIT
-     END DO
-
+     keylen = LEN_TRIM(key)
      Ind = 0
      DO i=1,keylen
-        Ind = Ind*8 + ICHAR(key(i:i))
+        Ind = Ind*31 + ICHAR(key(i:i))
      END DO
 
      Ind = IAND( Ind, size-1 ) + 1
@@ -269,7 +233,7 @@ CONTAINS
     TYPE(HashValue_t), POINTER :: Value
 
     INTEGER :: stat
-    INTEGER :: n, keylen, count = 0
+    INTEGER :: n, keylen
     TYPE(HashEntry_t), POINTER :: Entry
 
     Success = .TRUE.
@@ -295,10 +259,8 @@ CONTAINS
 
        Entry % Next  => Hash % Bucket(n) % Head
        Entry % Value => Value
+       keylen = LEN_TRIM(key)
        Entry % Key = ' '
-       DO keylen=LEN(key),1,-1
-          IF ( key(keylen:keylen) /= ' ' ) EXIT
-       END DO
        Entry % Key(1:keylen) = key(1:keylen)
 
        Hash % Bucket(n) % Head => Entry
@@ -505,48 +467,6 @@ CONTAINS
    Entry => Hash % CurrentEntry
  END FUNCTION HashNext
 
-!--------------------------------------------------------------------------
-!! Call: void HashStats( HashTable_t *hash )
-!!
-!! Print info about the hash table organization.
-!--------------------------------------------------------------------------
-!void HashStats( HashTable_t *hash )
-!{
-!   HashEntry_t *entry;
-!   int *BucketEntries;
-!   int n,i,j,MaxEntries=0,MinEntries=1<<30;
-!  
-!   for( i=0; i<hash->BucketSize; i++ )
-!   {
-!      n = 0;
-!      for( entry = hash->Bucket[i]; entry; entry=entry->next ) n++;
-!      MaxEntries = MAX( MaxEntries,n );
-!      MinEntries = MIN( MinEntries,n );
-!   }
-!
-!   BucketEntries = (int *)calloc( MaxEntries+1,sizeof(int) );
-!
-!   for( i=0; i<hash->BucketSize; i++ )
-!   {
-!      n = 0;
-!      for( entry = hash->Bucket[i]; entry; entry=entry->next ) n++;
-!      BucketEntries[n]++;
-!   }
-!
-!   fprintf( stdout, "\n\nHash table statistics:\n\n" );
-!   fprintf( stdout, "Buckets: % 4d\n", hash->BucketSize );
-!   fprintf( stdout, "Entries: % 4d\n", hash->TotalEntries );
-!   fprintf( stdout, "Min / Bucket: %d\n", MinEntries );
-!   fprintf( stdout, "Max / Bucket: %d\n\n", MaxEntries );
-!
-!
-!   for( n=MinEntries; n<=MaxEntries; n++ )
-!      if ( BucketEntries[n] )
-!        fprintf( stdout, "% 4d entries in % 4d buckets.\n",
-!            n,BucketEntries[n] );
-!
-!   free( BucketEntries );
-!}
 END MODULE HashTable
 
 

@@ -1048,7 +1048,7 @@ CONTAINS
   !-------------------------------------------------------------- 
   SUBROUTINE SaveGmshGeo2D(Mesh)
     
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename
     LOGICAL :: Found, SaveNode
     LOGICAL, ALLOCATABLE :: NodeUsed(:)

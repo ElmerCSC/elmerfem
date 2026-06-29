@@ -334,7 +334,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
   CHARACTER(LEN=MAX_NAME_LEN) :: UMATName 
   CHARACTER(LEN=80) :: UmatModel
-  INTEGER(KIND=AddrInt) :: UMATSubrtn
+  TYPE(C_FUNPTR) :: UMATSubrtn
   
   TYPE(Variable_t), POINTER :: UmatEnergyVar, UmatStressVar, UmatStateVar
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)
@@ -362,27 +362,27 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTERFACE
     SUBROUTINE ElasticSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm, Gnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE ElasticSolver_Boundary_Residual
 
     SUBROUTINE ElasticSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE ElasticSolver_Edge_Residual
 
     SUBROUTINE ElasticSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
     END SUBROUTINE ElasticSolver_Inside_Residual
@@ -2996,7 +2996,7 @@ CONTAINS
     LOGICAL :: GotSpring, NormalSpring
     REAL(KIND=dp) :: NodalAlpha(:,:), NodalBeta(:)
     REAL(KIND=dp) :: LocalDisplacement(:,:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, ntot
     TYPE(Element_t), POINTER :: Parent
     INTEGER :: pn, pntot
@@ -4588,8 +4588,8 @@ END SUBROUTINE ElasticSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Edge
+     TYPE( Mesh_t ) :: Mesh
+     TYPE( Element_t ) :: Edge
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, EdgeNodes
@@ -4910,8 +4910,8 @@ CONTAINS
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2)
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Edge
+     TYPE( Mesh_t ) :: Mesh
+     TYPE( Element_t ) :: Edge
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, EdgeNodes
@@ -5190,8 +5190,8 @@ CONTAINS
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Element
+     TYPE( Mesh_t )  :: Mesh
+     TYPE( Element_t ) :: Element
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes

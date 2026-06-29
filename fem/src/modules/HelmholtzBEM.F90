@@ -366,7 +366,7 @@
        INTEGER :: n
        LOGICAL :: PotentialKnown(:)
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: LX,LY,LZ,x,y,z
@@ -598,7 +598,7 @@
        COMPLEX(KIND=dp) :: Pot(:), Flx(:), Potential(:)
        INTEGER :: n
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: LX,LY,LZ,x,y,z

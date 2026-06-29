@@ -864,7 +864,7 @@
      SUBROUTINE StressBoundary( STIFF, FORCE, LOAD, Element, n, Nodes )
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:,:)
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
        INTEGER :: n
        TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
@@ -925,7 +925,7 @@
        LOGICAL :: LargeDeflection, StabilityAnalysis
        INTEGER :: N, ElementNumber
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        INTEGER, PARAMETER :: MaxNodes = 4
        INTEGER, PARAMETER :: MaxDofs = 6*MaxNodes
@@ -1545,7 +1545,7 @@
             NodalYoung(:) , NodalPoisson(:), NodalThickness(:)
        INTEGER :: n
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
        INTEGER, PARAMETER :: MaxNodes = 4, MaxDofs = 6*MaxNodes
        LOGICAL :: LargeDeflection
 !------------------------------------------------------------------------------

@@ -163,8 +163,10 @@ IF(HAVE_PROJ)
   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${FORTRANGIS_LIBRARY})
 ENDIF()
 
-INSTALL(TARGETS ElmerIceSolvers LIBRARY DESTINATION "share/elmersolver/lib"
-	    RUNTIME DESTINATION "share/elmersolver/lib")
+INSTALL(TARGETS ElmerIceSolvers
+  RUNTIME DESTINATION "share/elmersolver/lib"
+  LIBRARY DESTINATION "share/elmersolver/lib"
+  ARCHIVE DESTINATION "share/elmersolver/lib")
 
 IF(HAVE_NETCDF)
   ADD_SUBDIRECTORY(GridDataReader)

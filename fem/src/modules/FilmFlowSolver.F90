@@ -161,7 +161,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   LOGICAL :: AllocationsDone = .FALSE., Newton = .FALSE., Found, Convect, CSymmetry
   TYPE(Element_t),POINTER :: Element
   INTEGER :: i,n, nb, nd, t, istat, dim, mdim, BDOFs=1,Active,iter,maxiter,CoupledIter
-  REAL(KIND=dp) :: Norm = 0, mingap, Grav, time, time0=-1.0_dp, MeltHeat, Cp, Ct, s
+  REAL(KIND=dp) :: Norm = 0, mingap, Grav, MeltHeat, Cp, Ct, s
   TYPE(ValueList_t), POINTER :: Params, BodyForce, Material, BC
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), &
@@ -170,17 +170,18 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   REAL(KIND=dp), POINTER :: gWork(:,:), HeatingEnergy(:), FrictionHeatFlux(:), &
       PressureHeatFlux(:), HeatingW(:)
   LOGICAL :: GradP, LateralStrain, GotAc, SurfAc, UsePrevGap, GotGrav, GotHeight, &
-      CalcFrictionHeating, CalcPressureHeating, CalcHeating, UseHeating, DoneWeight = .FALSE.
+      CalcFrictionHeating, CalcPressureHeating, CalcHeating, UseHeating, &
+      UseGravity, DoneWeight = .FALSE.
   TYPE(Variable_t), POINTER :: pVar, thisVar, hVar
-  INTEGER :: GapDirection, FrictionModel 
-  REAL(KIND=dp) :: GapFactor, Nm, TotHeating
+  INTEGER :: GapDirection, FrictionModel, itime, itime0=-1
+  REAL(KIND=dp) :: GapFactor, Nm, TotHeating, FsiMult
   CHARACTER(:), ALLOCATABLE :: str, DensityName, ViscosityName 
   CHARACTER(*), PARAMETER :: Caller = 'FilmFlowSolver'
   LOGICAL :: Debug, FirstRound=.TRUE.
   
   SAVE STIFF, MASS, LOAD, FORCE, rho, ac, gap, gap0, mu, height, AcPres, Velocity, &
       AcPrevPressure, AllocationsDone, pVar, GotAc, SurfAC, FsiRhs, PrevGap, &
-      FrictionModel, time0, hVar, HeatingEnergy, FrictionHeatFlux, PressureHeatFlux, &
+      FrictionModel, itime0, hVar, HeatingEnergy, FrictionHeatFlux, PressureHeatFlux, &
       HeatingW, FirstRound
 !------------------------------------------------------------------------------
 
@@ -248,11 +249,16 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   
   
   grav = 0.0_dp
+  GotGrav = .FALSE.
+  UseGravity = ListGetLogical( Params,'Use Gravity',Found ) 
   gWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',GotGrav)
   IF(GotGrav) THEN
     grav = ABS(gWork(SIZE(gWork,1),1))
+    IF(.NOT. Found) UseGravity = .TRUE.
+  ELSE
+    IF(UseGravity) CALL Fatal( Caller,'Gravity requested but not given as constant!')
   END IF
-
+    
   IF( ANY( FrictionModel == [3,4] ) ) THEN
     IF(.NOT. GotGrav) CALL Fatal(Caller,'Manning equation not possible without gravity!')
     IF(CSymmetry) CALL Fatal(Caller,'Manning equation not applicable to axial symmetry!')
@@ -316,13 +322,20 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     END IF
           
     AllocationsDone = .TRUE.
+
+    IF(ListGetLogical( Params,'Skip First Solution', Found ) ) THEN
+      CALL Info(Caller,'Skipping first solution phase completely!',Level=5)
+      RETURN
+    END IF
+
   END IF
 
+
+  itime = GetTimestep()
   IF( CalcHeating) THEN
     ! If we are visiting the same timestep several times only compute the nodal heat flux once.
     ! Hence we need to subtract the previous values from the simulation. 
-    time = GetTime()
-    IF(ABS(time-time0) < TINY(time)) THEN
+    IF( itime-itime0 == 0 ) THEN
       IF (CalcFrictionHeating .AND. CalcPressureHeating) THEN        
         HeatingEnergy = HeatingEnergy - dt * MAX(FrictionHeatFlux  + PressureHeatFlux, 0.0_dp)
       ELSE
@@ -337,7 +350,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     IF( CalcFrictionHeating ) FrictionHeatFlux = 0.0_dp
     IF( CalcPressureHeating ) PressureHeatFlux = 0.0_dp
     IF(.NOT. DoneWeight) HeatingW = 0.0_dp
-    time0 = time
+    itime0 = itime
   END IF
       
   IF(GotAc) THEN  
@@ -352,6 +365,16 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
   ! Because the heating uses previous values of velocity we need at least two iterations!
   IF (CalcHeating) maxiter = MAX(2,maxiter)
+
+
+  FsiMult = ListGetCReal( Params,'Fsi Velocity Multiplier',Found )
+  IF(.NOT. Found) FsiMult = 1.0_dp
+  IF(itime == 1) THEN
+    IF( ListGetLogical( Params,'Steady State Fsi Start', Found )  ) THEN
+      CALL Info(Caller,'Ignoring FSI velocity for the 1st timestep',Level=7)
+      FsiMult = 0.0_dp
+    END IF
+  END IF
 
   
   DO iter=1,maxiter    
@@ -380,7 +403,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
         Load(1,1:n) = GetReal( BodyForce, 'FilmFlow Bodyforce 1', Found )
         IF(mdim>1) Load(2,1:n) = GetReal( BodyForce, 'FilmFlow Bodyforce 2', Found )
         Load(mdim+1,1:n) = GetReal( BodyForce, 'Normal Velocity', Found )
-        Load(mdim+2,1:n) = GetReal( BodyForce, 'Fsi Velocity', Found )
+        Load(mdim+2,1:n) = FsiMult * GetReal( BodyForce, 'Fsi Velocity', Found )
 
         ! We are slightly misusing "Load" here to store these quantities. 
         Load(mdim+3,1:n) = GetReal( BodyForce, 'Flow Admittance', Found)
@@ -638,7 +661,7 @@ CONTAINS
     REAL(KIND=dp) :: Nodalmu(:), NodalAC(:), Nodalrho(:), &
         NodalGap(:), NodalGap0(:), NodalH(:), NodalAcPres(:), NodalVelo(:,:)
     INTEGER :: dim, mdim, n, nd, ntot
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: FirstRound
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3)
@@ -976,7 +999,7 @@ CONTAINS
     REAL(KIND=dp), TARGET :: MASS(:,:), STIFF(:,:), FORCE(:), NodalLoad(:,:)
     REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:), NodalGap(:)
     INTEGER :: dim, mdim, n, nd, ntot
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Load(mdim+1)
     REAL(KIND=dp), POINTER :: F(:),M(:,:)

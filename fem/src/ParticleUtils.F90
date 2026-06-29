@@ -49,7 +49,7 @@ MODULE ParticleUtils
   USE Lists
   USE ElementUtils, ONLY : FreeMatrix
   USE Interpolation, ONLY : CopyElementNodesFromMesh
-  USE MeshUtils, ONLY : FindMeshEdges
+  USE MeshBasics, ONLY : FindMeshEdges
   USE GeneralUtils
   USE SaveUtils
   
@@ -3508,8 +3508,8 @@ RETURN
   SUBROUTINE SegmentElementIntersection(Mesh,BulkElement,&
       Rinit,Rfin,MinLambda,FaceElement)
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER   :: BulkElement
+    TYPE(Mesh_t), TARGET :: Mesh
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Rinit(3), Rfin(3), MinLambda
     TYPE(Element_t), POINTER :: FaceElement
     
@@ -3599,8 +3599,8 @@ RETURN
   SUBROUTINE SegmentElementIntersection2(Mesh,BulkElement,&
       Rinit,Rfin,MinLambda,FaceElement)
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER   :: BulkElement
+    TYPE(Mesh_t), TARGET :: Mesh
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Rinit(3), Rfin(3), MinLambda
     TYPE(Element_t), POINTER :: FaceElement
     
@@ -3664,8 +3664,8 @@ RETURN
   !---------------------------------------------------------------------------
   FUNCTION SegmentElementInside(Mesh,BulkElement,Rfin,Debug) RESULT ( Inside )
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER   :: BulkElement
+    TYPE(Mesh_t), TARGET :: Mesh
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Rfin(3)
     LOGICAL :: Debug
     LOGICAL :: Inside
@@ -4900,7 +4900,7 @@ RETURN
       BulkElement2, VolumeFraction ) RESULT ( Property )
     
     CHARACTER(LEN=*) :: PropertyName
-    TYPE(Element_t), POINTER :: BulkElement
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Basis(:)
     TYPE(Element_t), POINTER, OPTIONAL :: BulkElement2
     REAL(KIND=dp), OPTIONAL :: VolumeFraction
@@ -6456,7 +6456,7 @@ RETURN
   SUBROUTINE ParticleVariableInitialize( Particles, Mesh, ToName, FromName )
 !------------------------------------------------------------------------------
     TYPE(Particle_t), POINTER :: Particles
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     CHARACTER(LEN=*) :: ToName
     CHARACTER(LEN=*), OPTIONAL :: FromName
 !------------------------------------------------------------------------------

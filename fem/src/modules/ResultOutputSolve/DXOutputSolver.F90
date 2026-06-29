@@ -25,7 +25,7 @@
 !------------------------------------------------------------------------------
    MODULE DXFile
 
-      USE MeshUtils
+      USE MeshBasics
       USE ElementDescription
       
       IMPLICIT NONE

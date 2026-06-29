@@ -57,12 +57,13 @@ Solver 1
   Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
   Stabilize = True
+
   Linear System Solver = iterative
 
   Radiation Solver = Logical True
 
-  Linear System Direct Method = Mumps
-  mumps percentage increase working space = 100000
+! Linear System Direct Method = Mumps
+! mumps percentage increase working space = 100000
 
   Linear System Symmetric = True
   Linear System Iterative Method = BiCGStabL

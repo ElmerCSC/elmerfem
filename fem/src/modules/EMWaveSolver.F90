@@ -600,7 +600,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams, 'Discontinuous Galerkin', .TRUE. )
   Solvers(n+1) % DG = .TRUE.
   Solvers(n+1) % Values => SolverParams
-  Solvers(n+1) % PROCEDURE = 0
+  Solvers(n+1) % PROCEDURE = C_NULL_FUNPTR
   Solvers(n+1) % ActiveElements => NULL()
   CALL ListAddString( SolverParams, 'Exec Solver', 'never' )
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
@@ -968,24 +968,27 @@ CONTAINS
     
     n = GetElementDOFs( Indexes, Element, pSolver )
 
+    sol(1:n) = 0.0_dp
+    dsol(1:n) = 0.0_dp
+    ddsol(1:n) = 0.0_dp
+
     IF( EigenAnalysis ) THEN
       DO i=1,n
-        j = pVar % Perm( Indexes(i) )       
+        j = pVar % Perm( Indexes(i) )
         IF ( j > 0 ) THEN
           sol(i) = REAL(pVar % EigenVectors(iEigen,j))
           dsol(i) = AIMAG(pVar % EigenVectors(iEigen,j))
-          ddsol(i) = 0.0_dp
         END IF
       END DO
     ELSE
       DO i=1,n
-        j = pVar % Perm( Indexes(i) )       
+        j = pVar % Perm( Indexes(i) )
         IF ( j > 0 ) THEN
           sol(i) = pVar % Values(j)
           ! These are only applicable as we know this is 2nd order PDE
           IF( AnyTimeDer ) THEN
-            dsol(i) = pVar % PrevValues(j,1) 
-            ddsol(i) = pVar % PrevValues(j,2)         
+            dsol(i) = pVar % PrevValues(j,1)
+            ddsol(i) = pVar % PrevValues(j,2)
           END IF
         END IF
       END DO
@@ -1054,7 +1057,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
-   USE MeshUtils, ONLY : CalculateBodyAverage
+   USE MeshBasics, ONLY : CalculateBodyAverage
    IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
@@ -1120,7 +1123,7 @@ CONTAINS
    DO i=1,m
       dofs = dofs+1
       x = b(1:n,dofs)
-      CALL LUSolve(n,MASS,x,pivot)
+      CALL LUSolve(n,A,x,pivot)
       
       IF(EigenAnalysis ) THEN
         IF(i<=3) THEN
@@ -1184,7 +1187,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:)
     INTEGER :: n,n1,n2
-    TYPE(Element_t), POINTER :: Face, P1, P2
+    TYPE(Element_t), TARGET :: Face, P1, P2
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: FaceBasis(n), P1Basis(n1), P2Basis(n2)
     REAL(KIND=dp) :: Jump(n1+n2), detJ, U, V, W, S

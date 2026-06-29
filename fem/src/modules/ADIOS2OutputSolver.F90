@@ -414,9 +414,11 @@ end subroutine
         call writer % write_data('num_verts', num_elem_nodes)
         call writer % write_data('cell_types', elem_types)
         call writer % write_data('connectivity', connectivity)
-        call writer % write_data('points_x', variable % primarymesh % nodes % x)
-        call writer % write_data('points_y', variable % primarymesh % nodes % y)
-        call writer % write_data('points_z', variable % primarymesh % nodes % z)
+        associate(nnodes => variable % primarymesh % NumberOfNodes)
+          call writer % write_data('points_x', variable % primarymesh % nodes % x(1:nnodes))
+          call writer % write_data('points_y', variable % primarymesh % nodes % y(1:nnodes))
+          call writer % write_data('points_z', variable % primarymesh % nodes % z(1:nnodes))
+        end associate
   end subroutine
 END SUBROUTINE
 

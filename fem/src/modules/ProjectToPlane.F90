@@ -256,7 +256,7 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
     LimitRadius = ListGetLogical(Solver % Values,'Limit Radius',GotIt)
     IF(GotIt) THEN
       MaxRelativeRadius = ListGetConstReal( Solver % Values,'Max Relative Radius',GotIt)
-      IF(.NOT. GotIt) MaxRelativeRadius = 0.9999
+      IF(.NOT. GotIt) MaxRelativeRadius = 0.9999_dp
     END IF
 
     MinimumHits = ListGetInteger(Solver % Values,'Minimum Hits At Radius',GotIt) 
@@ -588,14 +588,14 @@ CONTAINS
   SUBROUTINE GetLinearTriangleFaces( Element, face, inds, GotIt )
     IMPLICIT NONE
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     INTEGER :: face, inds(:)
     LOGICAL :: GotIt
 !------------------------------------------------------------------------------
     LOGICAL :: Visited
-    INTEGER :: faces, elemfamily     
+    INTEGER :: faces, elemfamily
     INTEGER, POINTER :: FaceMap(:,:)
-    INTEGER, TARGET  :: TetraFaceMap(4,3), BrickFaceMap(12,3), WedgeFaceMap(8,3), PyramidFaceMap(6,3)    
+    INTEGER, TARGET  :: TetraFaceMap(4,3), BrickFaceMap(12,3), WedgeFaceMap(8,3), PyramidFaceMap(6,3)
 
     SAVE Visited, TetraFaceMap, BrickFaceMap, WedgeFaceMap, PyramidFaceMap, FaceMap, faces
 
@@ -683,7 +683,7 @@ CONTAINS
 !---------------------------------------------------------------------------
 
     TYPE(Nodes_t) :: Plane, Line
-    TYPE(Element_t), POINTER   :: Element
+    TYPE(Element_t) :: Element
     INTEGER :: dim,n
     LOGICAL :: Inside
     REAL (KIND=dp) :: up,vp,cp
@@ -1759,7 +1759,7 @@ CONTAINS
 !---------------------------------------------------------------------------
 
     TYPE(Nodes_t) :: Plane, Line
-    TYPE(Element_t), POINTER   :: Element
+    TYPE(Element_t) :: Element
     INTEGER :: dim,n
     LOGICAL :: Inside
     REAL (KIND=dp) :: up,vp,cp

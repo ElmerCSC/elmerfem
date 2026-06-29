@@ -945,7 +945,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: NumberOfNodes
     TYPE(ValueList_t), POINTER, INTENT(IN) :: SolverPars
     TYPE(Variable_t), POINTER, INTENT(IN) :: Director
-    INTEGER, POINTER :: ActiveElements(:)
+    INTEGER, TARGET :: ActiveElements(:)
     !------------------------------------------------------------------------------
     LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
     INTEGER :: n, iostat, i, j, k, i0, NumberOfLines, Family
@@ -1118,7 +1118,7 @@ CONTAINS
   FUNCTION GetElementalDirector(Element, ElementNodes) RESULT(DirectorValues) 
 !-------------------------------------------------------------------------------    
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), INTENT(IN) :: Element
     TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     !-------------------------------------------------------------------------------
@@ -1660,7 +1660,7 @@ CONTAINS
 !----------------------------------------------------------------------------
     IMPLICIT NONE
 
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element  !< Element structure
+    TYPE(Element_t), INTENT(IN) :: Element  !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes               !< Data corresponding to the element nodes
     REAL(KIND=dp), INTENT(IN) :: u                   !< The 1st coordinate of the reference p-element
     REAL(KIND=dp), INTENT(IN) :: v                   !< The 2nd coordinate of the reference p-element
@@ -2439,7 +2439,7 @@ CONTAINS
       SaveProperties, SizeRadiusRatio, ReparametrizeMesh)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: xi1, xi2
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: e1(3), e2(3), e3(3)
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: o(3)
@@ -3070,9 +3070,9 @@ CONTAINS
       Family, PlanarSurface, Umbilical, ZNodes)
 !-----------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), TARGET, INTENT(IN) :: LocalFrameNodes(MaxPatchNodes,2)
-    REAL(KIND=dp), POINTER, INTENT(IN) :: TaylorParams(:)
+    REAL(KIND=dp), INTENT(IN) :: TaylorParams(:)
     INTEGER, INTENT(IN) :: Family
     LOGICAL, OPTIONAL, INTENT(IN) :: PlanarSurface
     LOGICAL, INTENT(IN) :: Umbilical
@@ -3252,7 +3252,7 @@ CONTAINS
 !-----------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: x, y
-    REAL(KIND=dp), POINTER, INTENT(IN) :: TaylorParams(:)
+    REAL(KIND=dp), INTENT(IN) :: TaylorParams(:)
     REAL(KIND=dp), INTENT(IN) :: e1(3), e2(3), e3(3), o(3)
     REAL(KIND=dp), INTENT(OUT) :: a1(3), a2(3), a3(3)
     REAL(KIND=dp), INTENT(OUT) :: A11, A22, SqrtDetA, B11, B22
@@ -3457,7 +3457,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
+    TYPE(Element_t), INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component (after
                                                        ! static condensation if bubbles are used)
@@ -4695,16 +4695,16 @@ CONTAINS
       CartesianFormulation, SkipBlending)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
+    TYPE(Element_t), INTENT(IN) :: BGElement  ! A boundary element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
-    INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component 
+    INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component
     INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
     LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
     LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
-    TYPE(Element_t), POINTER, INTENT(IN) :: Parent     ! The parent of the boundary element
+    TYPE(Element_t), POINTER, INTENT(IN) :: Parent      ! The parent of the boundary element
     INTEGER, INTENT(IN) :: nd_parent                   ! The number of parent DOFs per component   
     LOGICAL, INTENT(IN) :: CartesianFormulation        ! Defines the way how the surface basis is obtained
     LOGICAL, INTENT(IN) :: SkipBlending                ! Informs whether surface reconstruction has been done
@@ -4945,7 +4945,7 @@ CONTAINS
 
     TYPE(Model_t), INTENT(IN) :: Model                 !< The current model structure
     TYPE(Solver_t), INTENT(INOUT) :: Solver            !< The shell solver
-    TYPE(Variable_t), POINTER, INTENT(INOUT) :: Displacement !< The variable of 3-D elasticity 
+    TYPE(Variable_t), INTENT(INOUT) :: Displacement !< The variable of 3-D elasticity
 ! ---------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Matrix_t), POINTER :: ShellMatrix, A
@@ -5212,7 +5212,7 @@ SUBROUTINE RetrieveLocalFrame(BGElement, TaylorParams, PatchNodes, e1, e2, e3, &
     o, PlateBody, SphericalSurface, GElement)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement         ! The target element for retrieval
+    TYPE(Element_t), INTENT(IN) :: BGElement         ! The target element for retrieval
     REAL(KIND=dp), POINTER, INTENT(OUT) :: TaylorParams(:)    ! The coefficients of the Taylor polynomial
     REAL(KIND=dp), INTENT(OUT) :: PatchNodes(MaxPatchNodes,2) ! The nodes of principal coordinate patch
     REAL(KIND=dp), INTENT(OUT) :: e1(3), e2(3), e3(3)         ! The basis of the local frame
@@ -5269,7 +5269,7 @@ END SUBROUTINE RetrieveLocalFrame
       MembraneStrains)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
+    TYPE(Element_t), INTENT(IN) :: BGElement ! An element of background mesh
     INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
     LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
     INTEGER, INTENT(OUT) :: ReducedStrainDim          ! The number of basis functions for strain interpolation
@@ -5419,7 +5419,7 @@ END SUBROUTINE RetrieveLocalFrame
       PNodes, GElement)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
+    TYPE(Element_t), TARGET, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs (per component)
     TYPE(Element_t), POINTER, INTENT(OUT) :: Element   ! A Lagrange element data structure
     TYPE(Nodes_t), INTENT(OUT) :: Nodes                ! A nodes data structure for the Lagrange element
@@ -5526,10 +5526,10 @@ END SUBROUTINE RetrieveLocalFrame
       PNodes, PatchNodes)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
-    TYPE(Element_t), POINTER, INTENT(IN) :: GElement  ! A Lagrange element for surface reconstruction
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element   ! The element type for which nodes are written
-    TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! A nodes data structure for Element     
+    TYPE(Element_t), INTENT(IN) :: BGElement           ! An element of background mesh
+    TYPE(Element_t), INTENT(IN) :: GElement  ! A Lagrange element for surface reconstruction
+    TYPE(Element_t), TARGET, INTENT(IN) :: Element   ! The element type for which nodes are written
+    TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! A nodes data structure for Element
     TYPE(Nodes_t), INTENT(INOUT) :: PNodes            ! A nodes data structure for p-version
     REAL(KIND=dp), INTENT(IN) :: PatchNodes(:,:)      ! The nodes data of coordinate domain
 !------------------------------------------------------------------------------
@@ -6567,7 +6567,7 @@ END SUBROUTINE RetrieveLocalFrame
   FUNCTION AverageDirector(Element, n, PlanarSurface) RESULT(d)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n
     LOGICAL, OPTIONAL, INTENT(OUT) :: PlanarSurface
     REAL(KIND=dp) :: d(3)
@@ -6621,7 +6621,7 @@ END SUBROUTINE RetrieveLocalFrame
   SUBROUTINE MappedBGMeshArea(Element, LocalFrameNodes, Area)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), TARGET, INTENT(IN) :: LocalFrameNodes(MaxPatchNodes,3)
     REAL(KIND=dp), INTENT(INOUT) :: Area
 !------------------------------------------------------------------------------
@@ -6669,7 +6669,7 @@ END SUBROUTINE RetrieveLocalFrame
   SUBROUTINE ComputeSurfaceArea(Element, SurfaceArea)
 !--------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), INTENT(INOUT) :: SurfaceArea
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
@@ -6711,8 +6711,8 @@ END SUBROUTINE RetrieveLocalFrame
   FUNCTION EdgeMidNode(Element, e) RESULT(X)
 !-----------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element
-    INTEGER, INTENT(IN) :: e     ! Edge identifier 
+    TYPE(Element_t), TARGET, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: e     ! Edge identifier
     REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
 !-----------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
@@ -6923,7 +6923,7 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
+    TYPE(Element_t), TARGET, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component (after
                                                        ! static condensation if bubbles are used)
@@ -7660,10 +7660,10 @@ END SUBROUTINE RetrieveLocalFrame
   SUBROUTINE SolveNodesVariables(Element, Nodes, nd, GElement, PatchNodes)
 ! -----------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element   ! The element type for which nodes are written
+    TYPE(Element_t), TARGET, INTENT(IN) :: Element   ! The element type for which nodes are written
     TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! The nodes data structure to be updated
     INTEGER, INTENT(IN) :: nd                         ! The number of coordinate entries written
-    TYPE(Element_t), POINTER, INTENT(IN) :: GElement  ! A Lagrange element used in surface reconstruction
+    TYPE(Element_t), INTENT(IN) :: GElement  ! A Lagrange element used in surface reconstruction
     REAL(KIND=dp), INTENT(IN) :: PatchNodes(:,:)      ! The nodes data compatible with GElement
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP

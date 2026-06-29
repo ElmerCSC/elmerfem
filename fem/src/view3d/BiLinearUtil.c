@@ -290,7 +290,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double BiLinearIntegrateDiffToArea( Geometry_t *GB,
+double BiLinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl, 
     double FX,double FY,double FZ, double NFX,double NFY,double NFZ )
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
@@ -306,14 +306,16 @@ double BiLinearIntegrateDiffToArea( Geometry_t *GB,
 
     int i,j;
 
-    Rs = NFX*NFX + NFY*NFY + NFZ*NFZ;
-    if ( Rs != 0 && ABS(1-Rs)>1.0E-08 )
-    {
-       Rs = 1.0/sqrt(Rs);
-       NFX *= Rs;
-       NFY *= Rs;
-       NFZ *= Rs;
+    R = NFX*NFX + NFY*NFY + NFZ*NFZ;
+    if ( !Cyl ) {
+      if ( R != 0 ) {
+         R = 1.0/sqrt(R);
+         NFX *= R;
+         NFY *= R;
+         NFZ *= R;
+      }
     }
+    Rs = R;
 
     F  = 0.0;
     cosA = 1;
@@ -340,11 +342,15 @@ double BiLinearIntegrateDiffToArea( Geometry_t *GB,
        DZ  = BiLinearValue(U,V,BZ) - FZ;
        R = sqrt(DX*DX + DY*DY + DZ*DZ);
 
+       if ( Cyl ) {
+         CylinderNormal(FX,FY,FZ,DX,DY,DZ,Cyl,&NFX,&NFY,&NFZ );
+       }
+
+
        if ( Rs != 0) {
          cosA = (DX*NFX + DY*NFY + DZ*NFZ) / R;
          if ( cosA < 1.0E-8 ) continue;
        }
-
 
        cosB = (-DX*NTX - DY*NTY - DZ*NTZ) / R;
        if ( cosB < 1.0E-8 ) continue;
@@ -369,7 +375,7 @@ view between the elements is resolved by ray tracing.
 *******************************************************************************/
 void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int LevelB)
 {
-    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double R,FX,FY,FZ,DX,DY,DZ,U,V,W,Hit;
     double F,Fa,Fb,EA,PI=2*acos(0.0);
 
     double *X  = GA->BiLinear->PolyFactors[0];
@@ -403,7 +409,7 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
     DY = BiLinearValue( U,V,NY );
     DZ = BiLinearValue( U,V,NZ );
 
-    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,FX,FY,FZ,DX,DY,DZ );
+    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
 
     if ( GA != GB ) 
     {
@@ -418,7 +424,7 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
        DY = FunctionValue( GB,U,V,4 );
        DZ = FunctionValue( GB,U,V,5 );
 
-       Fb = BiLinearIntegrateDiffToArea( GA,FX,FY,FZ,DX,DY,DZ );
+       Fb = BiLinearIntegrateDiffToArea( GA,NULL,FX,FY,FZ,DX,DY,DZ );
     }
 
     if ( Fa < 1.0E-10 && Fb < 1.0E-10 ) return;
@@ -430,19 +436,20 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
         Hit = Nrays;
         for( i=0; i<Nrays; i++ )
         {
-            U = drand48(); V = drand48();
-
+            U = vrand();
+	    V = vrand();
             FX = BiLinearValue(U,V,X);
             FY = BiLinearValue(U,V,Y);
             FZ = BiLinearValue(U,V,Z);
 
-            U = drand48(); V = drand48();
+	    W = U;
+	    U=1-V; V=1-W;
             if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-                while( U+V>1 ) { U=drand48(); V=drand48(); }
+                while( U+V>1 ) { U=1-U; V=1-V; }
 
-            DX = FunctionValue( GB,U,V,0 ) - FX;
-            DY = FunctionValue( GB,U,V,1 ) - FY;
-            DZ = FunctionValue( GB,U,V,2 ) - FZ;
+            DX = FunctionValue(GB,U,V,0) - FX;
+            DY = FunctionValue(GB,U,V,1) - FY;
+            DZ = FunctionValue(GB,U,V,2) - FZ;
 
             Hit -= RayHitGeometry( FX,FY,FZ,DX,DY,DZ );
         }
@@ -468,7 +475,7 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
 
                 EA = BiLinearEofA(U,V,X,Y,Z);
                 F += S_Integ[i]*EA*
-                    (*IntegrateDiffToArea[GB->GeometryType])( GB,FX,FY,FZ,DX,DY,DZ );
+                    (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
             }
 
             F = Hit*F / (PI*Nrays);
@@ -575,11 +582,11 @@ view between the elements is resolved by ray tracing.
 
 *******************************************************************************/
 void
-BiLinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
-			      double dz, int LevelA)
+BiLinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double dy,
+    double dz, double nx, double ny, double nz, int LevelA)
 {
   double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
-  double F, Fa, Fb, EA, PI = 2 * acos (0.0);
+  double F, Fa, Fb, EA, PI = 2 * acos (0.0), EPS=1e-12;
 
   double *X = GA->BiLinear->PolyFactors[0];
   double *Y = GA->BiLinear->PolyFactors[1];
@@ -589,16 +596,37 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
   double *aY = GA->BiLinear->PolyFactors[4];
   double *aZ = GA->BiLinear->PolyFactors[5];
 
-  int i, j;
+  Cylinder_t *Cyl = NULL, CylS;
+
+  int i, j, Ident;
 
   if (LevelA & 1)
     {
       Fa = 0;
       Fb = 0;
-        goto subdivide;
+      goto subdivide;
     }
 
-    Fa = Fb = BiLinearIntegrateDiffToArea( GA,dx,dy,dz,0.0,0.0,0.0);
+    R = nx*nx + ny*ny +nz*nz;
+    if (LineFlag &&  R != 0) {
+      R = sqrt(R);
+      Cyl = &CylS;
+      Cyl->Radius = R/25;
+      Cyl->CenterPoint.x = (2*dx+nx)/2;
+      Cyl->CenterPoint.y = (2*dy+ny)/2;
+      Cyl->CenterPoint.z = (2*dz+nz)/2;
+      GetMatrixToRotateVectorToZAxis(nx/R,ny/R,nz/R,Cyl->RotationMatrix,&Ident);
+
+      Fa = 0;
+      for( i=0; i<N_Integ1d; i++ )
+      {
+	 U = U_Integ1d[i];
+         Fa += S_Integ1d[i]*BiLinearIntegrateDiffToArea(GA,Cyl,dx+U*nx,dy+U*ny,dz+U*nz,nx,ny,nz);
+      }
+      Fb = Fa;
+    } else {
+      Fa = Fb = BiLinearIntegrateDiffToArea( GA,Cyl,dx,dy,dz,nx,ny,nz );
+    }
 
     if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
 
@@ -609,8 +637,8 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48();
-          V = drand48();
+          U = vrand();
+          V = vrand();
 
           FX = BiLinearValue(U,V,X);
           FY = BiLinearValue(U,V,Y);
@@ -619,6 +647,12 @@ BiLinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
           GX = dx - FX;
           GY = dy - FY;
           GZ = dz - FZ;
+	  if ( Cyl ) {
+            U = 1-V;
+	    GX += U*nx;
+	    GY += U*ny;
+	    GZ += U*nz;
+	  }
 
            if ( RayHitGeometry( FX,FY,FZ,GX,GY,GZ ) ) Hit-=1.0;
         }
@@ -658,7 +692,7 @@ subdivide:
             }
         }
 
-        BiLinearComputeRadiatorFactors( GA->Left,dx,dy,dz,LevelA+1 );
-        BiLinearComputeRadiatorFactors( GA->Right,dx,dy,dz,LevelA+1 );
+        BiLinearComputeRadiatorFactors( GA->Left,LineFlag, dx,dy,dz,nx,ny,nz,LevelA+1 );
+        BiLinearComputeRadiatorFactors( GA->Right,LineFlag, dx,dy,dz,nx,ny,nz,LevelA+1 );
 }
 

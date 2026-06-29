@@ -43,11 +43,11 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE Types
   USE Lists
-  USE MeshUtils
+  USE MeshBasics
   USE DefUtils
   USE Integration
   USE ElementDescription
-  USE SolverUtils
+  USE SolverBasics
   USE MaterialModels
 
   IMPLICIT NONE

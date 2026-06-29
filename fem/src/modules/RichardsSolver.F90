@@ -47,7 +47,7 @@ MODULE PorousMaterials
 
   USE Types
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: POROSITY_DEFAULT=0, &
@@ -560,7 +560,7 @@ END MODULE PorousMaterials
 !> differential of water content with time will be consistent.
 !------------------------------------------------------------------------------------
     FUNCTION WaterContentDerivative( Element, Material, Basis, elemMatric, elemPrevMatric ) RESULT ( dtetadmatric )
-      
+
       TYPE(Element_t), POINTER :: Element
       TYPE(ValueList_t), POINTER :: Material
       REAL(KIND=dp) :: Basis(:),ElemMatric(:),ElemPrevMatric(:)
@@ -678,7 +678,7 @@ END MODULE PorousMaterials
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:), ElemFlux(:)
        INTEGER :: n, nd
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: x,y,z,detJ,SqrtMetric

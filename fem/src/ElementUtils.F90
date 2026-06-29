@@ -65,9 +65,10 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), POINTER :: Matrix
 !------------------------------------------------------------------------------
-     TYPE(Solver_t) :: Solver
+     TYPE(Solver_t), POINTER :: Solver
      REAL(KIND=dp) :: x(1), b(1)
      INTEGER :: i
+     LOGICAL :: Active
 
      TYPE(SplittedMatrixT), POINTER :: s
      TYPE(BasicMatrix_t), POINTER :: m
@@ -92,6 +93,7 @@ CONTAINS
 
      IF ( .NOT. ASSOCIATED( Matrix ) ) RETURN
 
+     Solver => Matrix % Solver
      CALL DirectSolver( Matrix,x,b,Solver,Free_Fact=.TRUE.)
 
      IF ( ASSOCIATED( Matrix % Perm ) )        DEALLOCATE( Matrix % Perm )
@@ -295,12 +297,26 @@ CONTAINS
        END IF
        DEALLOCATE(s)
 
-       IF(ASSOCIATED(p % ParEnv % Active)) THEN
-         DEALLOCATE(p % ParEnv % Active)
+       IF(ASSOCIATED(Solver % ParEnv % Active)) THEN
+         active = .FALSE.
+         DO i=1,CurrentModel % NumberOfSolvers
+           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
+           IF ( ASSOCIATED(Solver  % ParEnv % Active, CurrentModel % Solvers(i) % ParEnv % Active) ) &
+                   active = .TRUE.
+         END DO
+         IF( .NOT. active ) DEALLOCATE(Solver % ParEnv % Active)
+         Solver % ParEnv % Active => Null()
        END IF
 
-       IF(ASSOCIATED(p % ParEnv % Isneighbour)) THEN
-         DEALLOCATE(p % ParEnv % Isneighbour)
+       IF(ASSOCIATED(Solver % ParEnv % Isneighbour)) THEN
+         active = .FALSE.
+         DO i=1,CurrentModel % NumberOfSolvers
+           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
+           IF ( ASSOCIATED(Solver  % ParEnv % IsNeighbour, CurrentModel % Solvers(i) % ParEnv % IsNeighbour) ) &
+                   Active = .TRUE.
+         END DO
+         IF ( .NOT. Active ) DEALLOCATE(Solver % ParEnv % Isneighbour)
+         Solver % ParEnv % IsNeighbour => Null()
        END IF
 
        DEALLOCATE(p)
@@ -441,7 +457,8 @@ CONTAINS
           END DO
 
           IF( Elm % DGDofs /= Elm % TYPE % NumberOfNodes ) THEN
-            CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG!')
+            CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG: '&
+                //I2S(Elm % DGDofs)//', '//I2S(Elm % TYPE % NumberOfNodes))
           END IF
 
           IF( PSA ) THEN
@@ -1028,7 +1045,7 @@ CONTAINS
 #if 0    
     SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
 
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t), TARGET :: Element
       INTEGER :: n
       INTEGER :: ElemInds(:)
 
@@ -1086,7 +1103,7 @@ CONTAINS
   !--------------------------------------------------------------------------
   SUBROUTINE DgRadiationIndexes(Element,n,ElemInds,DiffuseGray)
 
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     INTEGER :: ElemInds(:)
     LOGICAL :: DiffuseGray
@@ -1639,7 +1656,7 @@ CONTAINS
   SUBROUTINE InitializeMatrix( Matrix, n, List, DOFs, Reorder, InvInitialReorder )
 !------------------------------------------------------------------------------
     INTEGER :: DOFs, n
-    TYPE(Matrix_t),POINTER :: Matrix
+    TYPE(Matrix_t), TARGET :: Matrix
     TYPE(ListMatrix_t) :: List(:)
     INTEGER, OPTIONAL :: Reorder(:), InvInitialReorder(:)
 !------------------------------------------------------------------------------
@@ -1966,23 +1983,24 @@ CONTAINS
      END IF
 
      
-     IF( ParEnv % PEs > 1 .AND. &
-         ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
-       CALL Info(Caller,'Skipping pure halo nodes',Level=14)
-       j = 0
-       DO i=1,Mesh % NumberOfNodes 
-         ! These are pure halo nodes that need not be communicated. They are created only 
-         ! for sufficient geometric information on the boundaries.
-         IF( .NOT. ANY( ParEnv % Mype == Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
-           Perm(i) = 0
-         ELSE IF( Perm(i) > 0 ) THEN
-           j = j + 1
-           Perm(i) = j
-         END IF
-       END DO
-       PRINT *,'Eliminating '//I2S(k-j)//' halo nodes out of '&
-           //I2S(k)//' in partition '//I2S(ParEnv % MyPe)
-       k = j
+     IF( ParEnv % PEs > 1 ) THEN
+       IF (  ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
+         CALL Info(Caller,'Skipping pure halo nodes',Level=14)
+         j = 0
+         DO i=1,Mesh % NumberOfNodes 
+           ! These are pure halo nodes that need not be communicated. They are created only 
+           ! for sufficient geometric information on the boundaries.
+           IF( .NOT. ANY( ParEnv % Mype == Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+             Perm(i) = 0
+           ELSE IF( Perm(i) > 0 ) THEN
+             j = j + 1
+             Perm(i) = j
+           END IF
+         END DO
+         PRINT *,'Eliminating '//I2S(k-j)//' halo nodes out of '&
+             //I2S(k)//' in partition '//I2S(ParEnv % MyPe)
+         k = j
+       END IF
      END IF
 
      
@@ -2046,7 +2064,7 @@ CONTAINS
          CALL Fatal(Caller,'Multithreaded startup only supports CRS matrix format')
        END IF
        
-       CALL Info(Caller,'Sparse atrix created',Level=14)
+       CALL Info(Caller,'Sparse matrix created',Level=14)
 
        CALL ListMatrixArray_Free( ListMatrixArray )       
      ELSE
@@ -2315,7 +2333,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-#if 1
 !------------------------------------------------------------------------------
    SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
        Normals,Tangent1,Tangent2 )
@@ -2405,75 +2422,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE RotateMatrix
 !------------------------------------------------------------------------------
-#else
-
-! This should be the same as above but more economical but it does not work...
-!------------------------------------------------------------------------------
-  SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
-                   Normals,Tangent1,Tangent2 )
-!------------------------------------------------------------------------------
-
-    REAL(KIND=dp) :: Matrix(:,:),Vector(:)
-    REAL(KIND=dp), POINTER :: Normals(:,:), Tangent1(:,:),Tangent2(:,:)
-    INTEGER :: n,DIM,DOFs,NodeIndexes(:)
-!------------------------------------------------------------------------------
-
-    INTEGER :: i,ii,j,k,l
-    REAL(KIND=dp) :: s,R(DOFs,DOFs),Force0(Dofs),Force(Dofs),SubMat(Dofs,Dofs), &
-        SubMat0(Dofs,Dofs),N1(dofs),T1(dofs),T2(dofs)
-    INTEGER :: iInds(n),jInds(n)
-    LOGICAL :: Found
-!------------------------------------------------------------------------------
-    DO i=1,MIN(n,SIZE(NodeIndexes))
-      ii = NodeIndexes(i)
-      IF ( ii <= 0 .OR. ii > SIZE(Normals,1) ) CYCLE
-
-      IF(ASSOCIATED(CurrentModel % Mesh % PeriodicPerm)) THEN
-        j = CurrentModel % Mesh % PeriodicPerm(i)
-        IF(j>0) THEN
-          IF( ListGetLogical( CurrentModel % Solver % Values, &
-              'Apply Conforming BCs',Found ) ) ii = NodeIndexes(j)
-        END IF
-      END IF
-      
-      SELECT CASE(DIM)
-      CASE (2)
-        R(1,1:2) = Normals(ii,1:2)
-        R(2,1) = -R(1,2)
-        R(2,2) = R(1,1)
-      CASE (3)
-        R(1,1:3) = Normals(ii,:)
-        R(2,1:3) = Tangent1(ii,:)
-        R(3,1:3) = Tangent2(ii,:)
-      END SELECT
-
-      DO k=1,Dofs
-        iInds(k) = Dofs*(i-1)+k
-      END DO
-
-      DO j=1,n
-        DO k=1,Dofs
-          jInds(k) = Dofs*(j-1)+k
-        END DO
-
-        SubMat0 = Matrix(iInds,jInds)
-        SubMat = MATMUL(R,SubMat0)
-        Matrix(iInds,jInds) = SubMat
-        
-        SubMat0 = Matrix(jInds,iInds)
-        SubMat = MATMUL(SubMat0,TRANSPOSE(R))
-        Matrix(jInds,iInds) = SubMat
-      END DO
-
-      Force0 = Vector(iInds)
-      Force = MATMUL(R,Force0)
-      Vector(iInds) = Force
-      
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE RotateMatrix
-!------------------------------------------------------------------------------
-#endif
 
 
 !------------------------------------------------------------------------------
@@ -3195,7 +3143,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ElementArea( Mesh,Element,N ) RESULT(A)
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      INTEGER :: N
      TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
@@ -3290,8 +3238,8 @@ CONTAINS
    !------------------------------------------------------------------------------
    !> If element has two of the same indexes regard the element as degenerate.
    !------------------------------------------------------------------------------
-   FUNCTION DegenerateElement( Element ) RESULT ( Stat ) 
-     TYPE(Element_t), POINTER :: Element
+   FUNCTION DegenerateElement( Element ) RESULT ( Stat )
+     TYPE(Element_t), TARGET :: Element
      LOGICAL Stat
 
      INTEGER :: i,n
@@ -3418,7 +3366,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      IMPLICIT NONE
      INTEGER :: n,nedge
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,jb1,jb2,je1,je2
@@ -3461,7 +3409,7 @@ CONTAINS
      IMPLICIT NONE
      INTEGER :: n
      TYPE(Element_t) :: Boundary
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,m
      TYPE(Element_t), POINTER :: Parent, Face
@@ -3493,12 +3441,12 @@ CONTAINS
    SUBROUTINE FindParentUVW( Element, n, Parent, np, U, V, W, Basis ) 
 !------------------------------------------------------------------------------
      IMPLICIT NONE
-     TYPE( Element_t ), POINTER :: Element
-     TYPE( Element_t ), POINTER :: Parent
+     TYPE( Element_t ), TARGET :: Element
+     TYPE( Element_t ), TARGET :: Parent
      INTEGER :: n, np
      REAL( KIND=dp ) :: U, V, W, Basis(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, j, nParent, check 
+    INTEGER :: i, j, nParent, check
     REAL(KIND=dp) :: NodalParentU(n), NodalParentV(n), NodalParentW(n)
 !------------------------------------------------------------------------------
 
@@ -3511,6 +3459,7 @@ CONTAINS
           NodalParentU(i) = Parent % Type % NodeU(j)
           NodalParentV(i) = Parent % Type % NodeV(j)
           NodalParentW(i) = Parent % Type % NodeW(j)
+          EXIT
         END IF
       END DO
     END DO
@@ -3530,6 +3479,49 @@ CONTAINS
     W = SUM( Basis(1:n) * NodalParentW(1:n) )
 !------------------------------------------------------------------------------      
   END SUBROUTINE FindParentUVW
+!------------------------------------------------------------------------------      
+
+
+!-----------------------------------------------------------------------------   
+!> Given basis function values at surface element set the corresponding basis
+!> functions in the parent element.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetParentBasis( Element, n, Basis, Parent, np, Basisp ) 
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE( Element_t ), TARGET :: Element
+     TYPE( Element_t ), TARGET :: Parent
+     INTEGER :: n, np
+     REAL( KIND=dp ) :: Basis(:), Basisp(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, nParent, check 
+    REAL(KIND=dp) :: NodalParentU(n), NodalParentV(n), NodalParentW(n)
+!------------------------------------------------------------------------------
+
+    Basisp(1:np) = 0.0_dp        
+    Check = 0
+    DO i = 1,n
+      DO j = 1,np
+        IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+          Check = Check + 1
+          Basisp(j) = Basis(i)
+          EXIT
+        END IF
+      END DO
+    END DO
+
+    IF( Check /= n ) THEN
+      IF(n /= Element % TYPE % NumberOfNodes ) THEN
+        CALL Warn('SetParentBasis','Inconsistent size for "n"!')
+      END IF
+      IF(np /= Parent % TYPE % NumberOfNodes ) THEN
+        CALL Warn('SetParentBasis','Inconsistent size for "np"!')
+      END IF
+      CALL Fatal('SetParentBasis','Could not find all nodes in parent!') 
+    END IF
+
+!------------------------------------------------------------------------------      
+  END SUBROUTINE SetParentBasis
 !------------------------------------------------------------------------------      
 
 
@@ -3573,11 +3565,11 @@ CONTAINS
     REAL(KIND=dp), POINTER :: rValues(:)
     COMPLEX(KIND=dp), POINTER :: cValues(:)
 
-    INTERFACE 
+    INTERFACE
       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
         USE Types
-        TYPE(Mesh_t), POINTER :: Mesh
-        TYPE(Element_t), POINTER :: Parent
+        TYPE(Mesh_t) :: Mesh
+        TYPE(Element_t), TARGET :: Parent
         INTEGER :: nip, np
         REAL(KIND=dp) :: fip(:), fdg(:)
       END SUBROUTINE Ip2DgFieldInElement
@@ -3997,8 +3989,8 @@ CONTAINS
       
   CONTAINS
 
-    FUNCTION PickDgIndexes(Element,PParent) RESULT ( PToInds) 
-      TYPE(Element_t), POINTER :: Element
+    FUNCTION PickDgIndexes(Element,PParent) RESULT ( PToInds)
+      TYPE(Element_t), TARGET :: Element
       INTEGER, POINTER :: PtoInds(:)
       TYPE(Element_t), POINTER, OPTIONAL :: PParent
 
@@ -4047,7 +4039,7 @@ CONTAINS
 
      ! Parameters
      TYPE(Mesh_t) :: Mesh
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      INTEGER :: indSize, Indexes(:)
      
      ! Variables
@@ -4059,6 +4051,7 @@ CONTAINS
      Indexes = 0
      indSize = 0
 
+     IF ( .NOT. ASSOCIATED(Element % pDefs) ) RETURN
      Parent => Element % pDefs % localParent
      IF ( .NOT. ASSOCIATED(Parent) ) RETURN
              

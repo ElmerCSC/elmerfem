@@ -43,7 +43,7 @@
 SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
 
   IMPLICIT NONE
@@ -308,7 +308,7 @@ CONTAINS
     REAL(KIND=dp) :: Nodalmu(:), NodalT(:), Nodalrho(:), NodalVelo(:,:), &
          gamma, cv, k, la, T0, rho0
     INTEGER :: dim, n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: Stabilization, PicardIteration
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3), &

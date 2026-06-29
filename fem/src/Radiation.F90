@@ -55,7 +55,7 @@ CONTAINS
    FUNCTION ComputeRadiationLoad( Model, Mesh, Element, Temperature, &
                  Reorder, Emissivity, AngleFraction, Areas, Emiss ) RESULT(T)
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      TYPE(Model_t) :: Model
      TYPE(Element_t)  :: Element
      INTEGER :: Reorder(:)
@@ -124,7 +124,7 @@ CONTAINS
    FUNCTION ComputeRadiationCoeff( Model,Mesh,Element,k ) RESULT(T)
 !------------------------------------------------------------------------------
 
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      TYPE(Model_t)  :: Model
      TYPE(Element_t) :: Element
      INTEGER :: k

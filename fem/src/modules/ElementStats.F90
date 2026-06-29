@@ -265,7 +265,7 @@ CONTAINS
   SUBROUTINE ElementSizeStudy( Element, n, ElemSize, HaveNan )
 !------------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: ElemSize
     LOGICAL :: HaveNan
 !------------------------------------------------------------------------------
@@ -317,7 +317,7 @@ CONTAINS
   SUBROUTINE ElementRatioStudy( Element, n, q, HaveNan )
 !------------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: q
     LOGICAL :: HaveNan 
 !------------------------------------------------------------------------------
@@ -369,7 +369,7 @@ CONTAINS
   SUBROUTINE ElementSkewStudy( Element, n, alpha, HaveNan )
 !------------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: alpha
     LOGICAL :: HaveNan 
 !------------------------------------------------------------------------------

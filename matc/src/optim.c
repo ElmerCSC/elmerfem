@@ -143,7 +143,7 @@ TREE *optimtree(TREE *root)
 
       if ((com = com_check(SDATA(tptr))) != NULL && constargs)
       {
-        if (com -> flags && CMDFLAG_CE)
+        if (com -> flags & CMDFLAG_CE)
         {
 
           if (argcount < com->minp || argcount > com->maxp)

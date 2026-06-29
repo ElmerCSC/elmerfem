@@ -39,6 +39,7 @@
 !     INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(12)  ! If not using
                                                          ! with Elmer   
       USE Types    ! If using with Elmer 
+      USE Messages
       
       Real, Parameter :: kmin=0.002_dp ! valeur de ki mimum
       Integer, Parameter :: Ndiv=30    ! Ndiv+2 Number of points along ik1
@@ -702,6 +703,7 @@
       subroutine R2Ro(a2,dim,ai,Euler)
 
       use Types    ! types d'Elmer
+      USE Messages
 
       implicit none
 

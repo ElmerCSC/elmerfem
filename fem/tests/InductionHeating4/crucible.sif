@@ -82,12 +82,11 @@ Solver 1
 
   Linear System Solver = Iterative
   Linear System Symmetric=True
-  Linear System Convergence Tolerance = 1.e-10
+  Linear System Convergence Tolerance = 1.e-8
   Linear System Max Iterations=1000
   Linear System Residual Output=10
   Linear System Abort not Converged=False
   Linear System preconditioning=ilu
-  Linear System ILUT Tolerance=1e-8
   Linear System Iterative Method = BicgstabL
 
   Nonlinear System Max Iterations = 1
@@ -108,12 +107,11 @@ Solver 2
 
   Linear System Solver = Iterative
   Linear System Symmetric=True
-  Linear System Convergence Tolerance = 1.e-10
+  Linear System Convergence Tolerance = 1.e-8
   Linear System Max Iterations=1000
   Linear System Residual Output=10
   Linear System Abort not Converged=False
   Linear System preconditioning=ilu
-  Linear System ILUT Tolerance=1e-8
   Linear System Iterative Method = BicgstabL
 
   Nonlinear System Max Iterations = 1
@@ -172,5 +170,6 @@ End
 
 Solver 1 :: Reference Norm = 8.85766857E-06
 Solver 2 :: Reference Norm = 1.66648054E-04
+
 
 

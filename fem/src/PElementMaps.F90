@@ -47,7 +47,7 @@
 
 MODULE PElementMaps
   USE Types
-  Use GeneralUtils, ONLY : I2S
+  Use GeneralUtils
 
   IMPLICIT NONE
 
@@ -936,7 +936,28 @@ CONTAINS
   END FUNCTION getBubbleDOFs
 !------------------------------------------------------------------------------
 
-
+!------------------------------------------------------------------------------
+!> Checks whether any solver of the given model has been associated with
+!> p-element definitions  
+!------------------------------------------------------------------------------
+  FUNCTION isActivePModel(Model) RESULT(Active)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Model_t) :: Model
+    LOGICAL :: Active
+!------------------------------------------------------------------------------
+    INTEGER :: i
+!------------------------------------------------------------------------------    
+    Active = .FALSE.
+    
+    DO i=1,Model % NumberOfSolvers
+      Active = isActivePSolver(Model % Solvers(i))
+      IF (Active) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION isActivePModel
+!------------------------------------------------------------------------------    
+    
 !------------------------------------------------------------------------------
 !> Checks if given element is a p-element active in a particular solver.   
 !------------------------------------------------------------------------------
@@ -953,7 +974,8 @@ CONTAINS
         
     retVal = isPelement(Element)
 
-    ! The solver can have active p-element only if we have p-elements!
+    ! The solver can have an active p-element only when p-element information
+    ! is associated
     IF(.NOT. retVal) RETURN
     
     IF( PRESENT( USolver ) ) THEN
@@ -1191,7 +1213,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
-      TYPE(Element_t), POINTER :: Face
+      TYPE(Element_t), TARGET :: Face
       TYPE(Mesh_t) :: Mesh
       INTEGER :: ngp
 !------------------------------------------------------------------------------

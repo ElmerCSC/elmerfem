@@ -57,6 +57,7 @@
 
 MODULE EigenSolve
 
+   USE Messages
    IMPLICIT NONE
 
 CONTAINS
@@ -105,7 +106,7 @@ CONTAINS
     ELSE IF( Which(2:2) == 'I') THEN
       EigMeas = AIMAG( EigValues )
     ELSE
-      EIgMeas = ABS( EigValues )
+      EigMeas = ABS( EigValues )
     END IF
 
     ! Largest or smallest first 
@@ -274,43 +275,7 @@ CONTAINS
 !
       ishfts = 1
       BMAT  = 'G'
-      IF ( Matrix % Lumped ) THEN
-         Mode  =  2
-         SELECT CASE( ListGetString(Params,'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'SM'
-         CASE( 'largest magnitude')
-              Which = 'LM'
-         CASE( 'smallest real part')
-              Which = 'SR'
-         CASE( 'largest real part')
-              Which = 'LR'
-         CASE( 'smallest imag part' )
-              Which = 'SI'
-         CASE( 'largest imag part' )
-              Which = 'LI'
-         CASE DEFAULT
-              Which = 'SM'
-         END SELECT
-      ELSE
-         Mode  = 3
-         SELECT CASE( ListGetString(Params,'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'LM'
-         CASE( 'largest magnitude')
-              Which = 'SM'
-         CASE( 'smallest real part')
-              Which = 'LR'
-         CASE( 'largest real part')
-              Which = 'SR'
-         CASE( 'smallest imag part' )
-              Which = 'LI'
-         CASE( 'largest imag part' )
-              Which = 'SI'
-         CASE DEFAULT
-              Which = 'LM'
-         END SELECT
-      END IF
+      CALL ArpackSetWhich( Params, Matrix % Lumped, Mode, Which )
 
       Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
@@ -347,7 +312,7 @@ CONTAINS
               'Linear System Direct Method', stat )
           
           SELECT CASE( DirectMethod )
-          CASE('umfpack', 'big umfpack', 'mumps', 'superlu', 'pardiso', 'cholmod')
+          CASE('umfpack', 'big umfpack', 'mumps', 'zmumps', 'superlu', 'pardiso', 'cholmod')
           CASE DEFAULT
             Stat = CRS_ILUT(Matrix, 0.0d0)
           END SELECT
@@ -756,96 +721,6 @@ CONTAINS
     END SUBROUTINE ScaleEigenVectors
 !------------------------------------------------------------------------------
 
-#if 0
-!------------------------------------------------------------------------------
-!> Rotate complex valued eigenvectors such that real component is maximized.
-!------------------------------------------------------------------------------
-    SUBROUTINE RotateComplexEigenVectors( Matrix, EigVectors, NoEigen )
-
-      USE Multigrid
-
-      IMPLICIT NONE
-
-      TYPE(Matrix_t), TARGET :: Matrix
-      COMPLEX(KIND=dp) :: EigVectors(:,:)
-      INTEGER :: n, NoEigen
-      LOGICAL :: NormalizeToUnity
-      INTEGER :: i,j,k,l, mk, mj
-      REAL(KIND=dp) :: r
-      COMPLEX(KIND=dp) :: s, s1, mx
-      CHARACTER(*), PARAMETER :: Caller = 'RotateComplexEigenVectors'
-
-      
-      IF( .NOT. Matrix % COMPLEX ) RETURN
-
-      
-      CALL Info(Caller,'Rotating Eigenvectors to maximize normal component!',Level=10)
-      
-      n = Matrix % NumberOfRows
-      IF ( Matrix % Complex ) n = n / 2
-
-      DO i = 1, NoEigen
-
-        s = 0.0_dp
-        IF( NormalizeToUnity ) THEN
-          ReImSum = REAL(EigVectors(i,1:n)) * AIMAG(CONJG(EigVectors(i,j))
-            IF( ABS( s1 ) > ABS( s ) ) s = s1
-          END DO
-        END IF
-
-        s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ), KIND=dp )
-
-        IF ( ABS(s) > 0 ) THEN
-          s = SQRT(s) 
-          WRITE(Message,'(A,2ES12.3)') 'Normalizing Eigenvector with: ',REAL(s),AIMAG(s)
-          CALL Info(Caller,Message,Level=12)
-          EigVectors(i,1:n) = EigVectors(i,1:n) / s
-        ELSE
-          CALL Warn(Caller,'Eigenmode has zero amplitude!')
-        END IF
-
-
-
-
-        ELSE          
-          r = 0.0_dp
-          IF( NormalizeToUnity ) THEN
-            DO j=1,n
-              r = MAX( r, ABS(EigVectors(i,j))**2 )
-            END DO
-          ELSE IF ( Matrix % Lumped ) THEN
-            DO j=1,n
-              r= r + ABS(EigVectors(i,j))**2 * &
-                  Matrix % MassValues(Matrix % Diag(j))
-            END DO
-          ELSE
-            r = 0
-            DO j=1,n
-              DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
-                r = r +  CONJG(EigVectors(i,j)) * Matrix % MassValues(l) * EigVectors(i,Matrix % Cols(l))
-              END DO
-            END DO
-          END IF
-          
-          r = ParallelReduction(r) 
-
-          IF( ABS(r - 1) < EPSILON( r ) ) THEN
-            CALL Info(Caller,'Eigenmode already normalized!',Level=12)              
-          ELSE IF ( ABS(r) > 0 ) THEN            
-            r = SQRT( r ) 
-            WRITE(Message,'(A,ES12.3)') 'Normalizing Eigenvector with: ',r
-            CALL Info(Caller,Message,Level=12)
-            EigVectors(i,:) = EigVectors(i,:) / r
-          ELSE
-            CALL Warn(Caller,'Eigenmode has zero amplitude!')
-          END IF
-        END IF
-          
-      END DO
-
-    END SUBROUTINE ScaleEigenVectors
-!------------------------------------------------------------------------------
-#endif
     
 
 !------------------------------------------------------------------------------
@@ -1072,7 +947,7 @@ END SUBROUTINE CheckResiduals
          DirectMethod = ListGetString( Params,'Linear System Direct Method', stat )
 
          SELECT CASE( DirectMethod )
-         CASE('umfpack', 'big umfpack','mumps', 'superlu', 'pardiso', 'cholmod' )
+         CASE('umfpack', 'big umfpack','mumps', 'zmumps', 'superlu', 'pardiso', 'cholmod' )
          CASE DEFAULT
             Stat = CRS_ILUT(Matrix, 0.0d0)
          END SELECT
@@ -1249,7 +1124,7 @@ END SUBROUTINE CheckResiduals
               END IF
            END DO
            
-           ! Normalizatin moved to ScaleEigenVectors
+           ! Normalization moved to ScaleEigenVectors
         END DO
 
         CALL Info( Caller, '--------------------------------',Level=4 )
@@ -1399,44 +1274,8 @@ END SUBROUTINE CheckResiduals
 !
       ishfts = 1
       BMAT  = 'G'
-      IF ( Matrix % Lumped ) THEN
-         Mode  =  2
-         SELECT CASE(ListGetString( Params, 'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'SM'
-         CASE( 'largest magnitude')
-              Which = 'LM'
-         CASE( 'smallest real part')
-              Which = 'SR'
-         CASE( 'largest real part')
-              Which = 'LR'
-         CASE( 'smallest imag part' )
-              Which = 'SI'
-         CASE( 'largest imag part' )
-              Which = 'LI'
-         CASE DEFAULT
-              Which = 'SM'
-         END SELECT
-      ELSE
-         Mode  = 3
-         SELECT CASE(ListGetString( Params, 'Eigen System Select',stat) )
-         CASE( 'smallest magnitude' )
-              Which = 'LM'
-         CASE( 'largest magnitude')
-              Which = 'SM'
-         CASE( 'smallest real part')
-              Which = 'LR'
-         CASE( 'largest real part')
-              Which = 'SR'
-         CASE( 'smallest imag part' )
-              Which = 'LI'
-         CASE( 'largest imag part' )
-              Which = 'SI'
-         CASE DEFAULT
-              Which = 'LM'
-         END SELECT
-      END IF
-!
+      CALL ArpackSetWhich( Params, Matrix % Lumped, Mode, Which )
+
       Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
 
@@ -1476,7 +1315,7 @@ END SUBROUTINE CheckResiduals
               'Linear System Direct Method', stat )
           
           SELECT CASE( DirectMethod )
-          CASE('umfpack', 'big umfpack', 'mumps', 'superlu', 'pardiso', 'cholmod')
+          CASE('umfpack', 'big umfpack', 'mumps', 'zmumps', 'superlu', 'pardiso', 'cholmod')
           CASE DEFAULT
             Stat = CRS_ComplexILUT(Matrix, 0._dp)
           END SELECT
@@ -1698,9 +1537,6 @@ END SUBROUTINE CheckResiduals
 
          EigVectors = -1.0_dp
 
-         !PRINT *,'NEIG:',NEIG,n,SIZE(EigVectors,1),SIZE(EigVectors,2),&
-         !    SIZE(V,1),SIZE(V,2)
-         
          k = 1
          DO i=1,NEIG
             p = Perm(i)
@@ -1912,7 +1748,6 @@ END SUBROUTINE CheckResidualsComplex
                      'Eigen System Use Identity', Stat )
 
       IF ( .NOT. Stat ) UseI = .TRUE.
-!      IF ( .NOT. Stat ) UseI = .FALSE.   Changed by Antti 2004-02-18
 
       IDO   = 0
       kinfo = 0
@@ -1996,7 +1831,7 @@ END SUBROUTINE CheckResidualsComplex
               str == 'ilut' .OR. str == 'multigrid' ) THEN
 
            ILU = 0
-           CALL Warn( Caller, 'Useing ILU0 preconditioning' )
+           CALL Warn( Caller, 'Using ILU0 preconditioning' )
          ELSE IF ( SEQL(str,'ilu') ) THEN
            IF(LEN(str)>=4) ILU = ICHAR(str(4:4)) - ICHAR('0')
            IF ( ILU  < 0 .OR. ILU > 9 ) ILU = 0
@@ -2434,6 +2269,45 @@ END SUBROUTINE CheckResidualsComplex
       CALL CRS_MatrixVectorMultiply( MMatrix, x(n+1:2*n), b(n+1:2*n) )
 !------------------------------------------------------------------------------
     END SUBROUTINE EigenMGmv2
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Set ARPACK Which/Mode from "Eigen System Select" keyword.
+!> Lumped (mode 2): natural ordering; shift-invert (mode 3): ordering inverts.
+!------------------------------------------------------------------------------
+  SUBROUTINE ArpackSetWhich( Params, Lumped, Mode, Which )
+    USE Types
+    USE Lists, ONLY : ListGetString
+    TYPE(ValueList_t), POINTER :: Params
+    LOGICAL,          INTENT(IN)  :: Lumped
+    INTEGER,          INTENT(OUT) :: Mode
+    CHARACTER(LEN=2), INTENT(OUT) :: Which
+    LOGICAL :: stat
+
+    IF ( Lumped ) THEN
+      Mode = 2
+      SELECT CASE( ListGetString( Params, 'Eigen System Select', stat ) )
+      CASE( 'smallest magnitude' ); Which = 'SM'
+      CASE( 'largest magnitude'  ); Which = 'LM'
+      CASE( 'smallest real part' ); Which = 'SR'
+      CASE( 'largest real part'  ); Which = 'LR'
+      CASE( 'smallest imag part' ); Which = 'SI'
+      CASE( 'largest imag part'  ); Which = 'LI'
+      CASE DEFAULT;                 Which = 'SM'
+      END SELECT
+    ELSE
+      Mode = 3
+      SELECT CASE( ListGetString( Params, 'Eigen System Select', stat ) )
+      CASE( 'smallest magnitude' ); Which = 'LM'
+      CASE( 'largest magnitude'  ); Which = 'SM'
+      CASE( 'smallest real part' ); Which = 'LR'
+      CASE( 'largest real part'  ); Which = 'SR'
+      CASE( 'smallest imag part' ); Which = 'LI'
+      CASE( 'largest imag part'  ); Which = 'SI'
+      CASE DEFAULT;                 Which = 'LM'
+      END SELECT
+    END IF
+  END SUBROUTINE ArpackSetWhich
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

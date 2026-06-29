@@ -410,7 +410,7 @@
        REAL(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:), &
                   LOAD(:), Velo(:,:), Gamma(:), MVelo(:,:)
        INTEGER :: n
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: detJ,U,V,W,S,A,L,cu(3),g,divMVelo
@@ -481,7 +481,7 @@
       IMPLICIT NONE
       REAL(KIND=dp) :: STIFF(:,:), Velo(:,:)
       INTEGER :: n,n1,n2
-      TYPE(Element_t), POINTER :: Face, LeftParent, RightParent
+      TYPE(Element_t), TARGET :: Face, LeftParent, RightParent
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: FaceBasis(n), FacedBasisdx(n,3)
       REAL(KIND=dp) :: LeftBasis(n1), LeftdBasisdx(n1,3)
@@ -574,7 +574,7 @@
      REAL(KIND=dp) :: STIFF(:,:),  FORCE(:), LOAD(:), Velo(:,:)
      INTEGER :: n, np
      LOGICAL :: InFlowBC
-     TYPE(Element_t), POINTER :: Element, ParentElement
+     TYPE(Element_t), TARGET :: Element, ParentElement
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(n), dBasisdx(n,3)
      REAL(KIND=dp) :: ParentBasis(np), ParentdBasisdx(np,3)
@@ -653,7 +653,7 @@
      TYPE(ValueList_t), POINTER :: Material,Equation
      TYPE(Solver_t), TARGET :: Solver
      TYPE(Model_t), TARGET :: Model
-     TYPE(Element_t),POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      !------------------------------------------------------------------------------
      CHARACTER(LEN=MAX_NAME_LEN) :: ConvectionFlag, FlowSolName
      INTEGER :: i,j,k,N,FlowDOFs

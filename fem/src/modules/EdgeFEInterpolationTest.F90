@@ -239,7 +239,7 @@ CONTAINS
   SUBROUTINE LocalMatrix(  STIFF, FORCE, NodalMatPar, Element, n, nd, dim)
 !---------------------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), NodalMatPar(:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, nd, dim
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MatPar
@@ -357,7 +357,7 @@ CONTAINS
   SUBROUTINE ComputeApproximationError(LOAD, Element, n, nd, dim, EK, SolNorm, UseCurlNorm)
 !----------------------------------------------------------------------------------
     REAL(KIND=dp) :: Load(:,:), EK, SolNorm
-    TYPE(Element_t), POINTER :: Element    
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, nd, dim
     LOGICAL :: UseCurlNorm
 !--------------------------------------------------------------------------------
