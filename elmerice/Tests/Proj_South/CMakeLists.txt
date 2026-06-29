@@ -1,4 +1,3 @@
-IF(HAVE_PROJ)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
   CONFIGURE_FILE(Case.sif Case.sif COPYONLY)
@@ -7,4 +6,4 @@ IF(HAVE_PROJ)
 
   ADD_ELMERICE_TEST(Proj_South)
   ADD_ELMERICE_LABEL(Proj_South elmerice-fast)
-ENDIF()
+  ADD_ELMERICE_LABEL(Proj_South elmerice-proj)

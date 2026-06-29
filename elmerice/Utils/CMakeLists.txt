@@ -1,12 +1,15 @@
-SET(ElmerIceUtils_SRC ProjUtils.F90 SSAMaterialModels.F90 ComputeFluxUtils.F90 PorousMaterialModels.F90)
+SET(ElmerIceUtils_SRC SSAMaterialModels.F90 ComputeFluxUtils.F90 PorousMaterialModels.F90)
+
+IF(HAVE_PROJ)
+	LIST(APPEND ElmerIceUtils_SRC proj6_interface.F90)
+ENDIF()
+
+LIST(APPEND ElmerIceUtils_SRC ProjUtils.F90)
 
 ADD_LIBRARY(ElmerIceUtils SHARED ${ElmerIceUtils_SRC})
 
 IF(HAVE_PROJ)
-  INCLUDE_DIRECTORIES(${PROJ_INCLUDE_DIR})
-  INCLUDE_DIRECTORIES(${FORTRANGIS_INCLUDE_DIR})
-  TARGET_LINK_LIBRARIES(ElmerIceUtils ${PROJ_LIBRARY})
-  TARGET_LINK_LIBRARIES(ElmerIceUtils ${FORTRANGIS_LIBRARY})
+	TARGET_LINK_LIBRARIES(ElmerIceUtils ${PROJ_LIBRARIES})
 ENDIF()
 
 # Library object

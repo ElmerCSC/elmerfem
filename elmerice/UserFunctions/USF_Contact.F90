@@ -48,7 +48,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
   TYPE(variable_t), POINTER :: TimeVar, NormalVar, VarSurfResidual, GroundedMaskVar, HydroVar, DistanceVar, FrictionVar
-  TYPE(ValueList_t), POINTER :: BC
+  TYPE(ValueList_t), POINTER :: BC, ElemBC
   TYPE(Element_t), POINTER :: Element, CurElement, BoundaryElement
   TYPE(Nodes_t), SAVE :: Nodes
 
@@ -62,6 +62,8 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, MSum, ZSum
 
   LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction, UnFoundFatal=.TRUE.
+  LOGICAL :: ApplyFrontFriction = .FALSE.
+  LOGICAL, ALLOCATABLE :: IceFrontNode(:)
 
   REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb
 
@@ -73,6 +75,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   SAVE DIM, USF_Name, Normal, Fwater, Fbase, relChangeOld, Sl_Law
   SAVE FrictionVar, FrictionValues, FrictionValue, FrictionPerm, BC, FlowLoadsName
   SAVE FlowSolutionName
+  SAVE ApplyFrontFriction, IceFrontNode
 
 !----------------------------------------------------------------------------
 
@@ -161,6 +164,41 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
         CALL INFO( USF_Name, 'This works with the DistanceSolver', Level=3)
      ELSE
         CALL INFO( USF_Name, 'far inland nodes will not detach', level=3)
+     END IF
+
+     ! Add-on to the "discontinuous" GL definition:
+     ! optionally re-apply basal friction under elements whose only floating
+     ! (GroundedMask = -1) nodes lie on the ice front. These are typically
+     ! one-element-wide numerical shelves (the grounding line a single element
+     ! behind the calving front) that otherwise run away through the Glen
+     ! shear-thinning feedback (strain rate explodes, viscosity collapses).
+     ! The ice-front nodes are flagged once, here.
+     ! Requires "Ice Front = Logical True" on the calving-front BC.
+     ApplyFrontFriction = GetLogical( BC, 'Tiny shelf drag', GotIt )
+     IF (.NOT. GotIt) ApplyFrontFriction = .FALSE.
+     IF (ApplyFrontFriction) THEN
+        IF (TRIM(GLtype) /= 'discontinuous') THEN
+           CALL Warn(USF_Name, '"Tiny shelf drag" only active with &
+                &"Grounding Line Definition = discontinuous"; switching it off')
+           ApplyFrontFriction = .FALSE.
+        ELSE
+           CALL Info(USF_Name, 'Applying friction under ice-front slivers &
+                &(discontinuous add-on)', Level=3)
+           ALLOCATE( IceFrontNode( Model % Mesh % NumberOfNodes ) )
+           IceFrontNode = .FALSE.
+           CurElement => Model % CurrentElement
+           DO tt = 1, Model % NumberOfBoundaryElements
+              Element => GetBoundaryElement(tt)
+              IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+              ElemBC => GetBC(Element)
+              IF (.NOT. ASSOCIATED(ElemBC)) CYCLE
+              IF (GetLogical(ElemBC, 'Ice Front', GotIt)) THEN
+                 n = GetElementNOFNodes(Element)
+                 IceFrontNode( Element % NodeIndexes(1:n) ) = .TRUE.
+              END IF
+           END DO
+           Model % CurrentElement => CurElement
+        END IF
      END IF
   ENDIF
   
@@ -349,7 +387,24 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
         IF (cond > 0.5) Friction = .TRUE. 
      CASE('discontinuous')
         BoundaryElement => Model % CurrentElement
-        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))>-0.5)) Friction = .TRUE. 
+        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))>-0.5)) THEN
+           Friction = .TRUE.
+        ELSE IF (ApplyFrontFriction) THEN
+           ! sliver add-on: keep friction if every floating node of this
+           ! element sits on the ice front, otherwise leave it free-slip
+           Friction = .TRUE.
+           DO ii = 1, GetElementNOFNodes(BoundaryElement)
+              jj = BoundaryElement % NodeIndexes(ii)
+              Nn = GroundedMaskPerm(jj)
+              IF (Nn == 0) CYCLE
+              IF (GroundedMask(Nn) < -0.5_dp) THEN
+                 IF (.NOT. IceFrontNode(jj)) THEN
+                    Friction = .FALSE.
+                    EXIT
+                 END IF
+              END IF
+           END DO
+        END IF
      CASE DEFAULT
         WRITE(Message, '(A,A)') 'GL type not recognised ', GLtype 
         CALL FATAL( USF_Name, Message)
