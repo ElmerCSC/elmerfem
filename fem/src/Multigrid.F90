@@ -51,7 +51,8 @@ MODULE Multigrid
    USE ClusteringMethods
    USE ElementUtils, ONLY : FreeMatrix
    USE ElementDescription, ONLY : ElementBasisDegree, mGetElementDofs
-   USE MeshUtils, ONLY : LoadMesh2, UpdateSolverMesh, SetCurrentmesh
+   USE MeshBasics, ONLY : UpdateSolverMesh, SetCurrentmesh
+   USE MeshLoad, ONLY : LoadMesh2
    
    IMPLICIT NONE
 
@@ -2191,7 +2192,7 @@ CONTAINS
     IF(debug) CALL Info('AMGBonds','Making a list of strong matrix connections')
 
     NegLim = ListGetConstReal(Params,'MG Strong Connection Limit',GotIt)
-    IF(.NOT. GotIt) NegLim = 0.06
+    IF(.NOT. GotIt) NegLim = 0.06_dp
 
     ! Negative connections are more useful for the interpolation, but also 
     ! positive strong connection may be taken into account
@@ -2351,14 +2352,14 @@ CONTAINS
           END DO
 
           ! Check if there exist possible new connections
-          IF(measind == 0 .OR. measlim > 1.0d-50) EXIT
+          IF(measind == 0 .OR. measlim < 1.0d-50) EXIT
 
           IF(measures(measind-Rows(ind)+1) < 0.0) THEN
             negnew = negnew + 1
           ELSE
             posnew = posnew + 1
           END IF
-          Bonds(measind) = .TRUE.          
+          Bonds(measind) = .TRUE.
         END DO
       END IF
 
@@ -2682,6 +2683,7 @@ CONTAINS
 
     Bonds = .FALSE.
     negbonds = 0
+    elimnods = 0
 
     DO ind=1,nods
 
@@ -2766,10 +2768,10 @@ CONTAINS
           END DO
 
           ! Check if there exist possible new connections
-          IF(measind == 0 .OR. measlim > 1.0d-50) EXIT
+          IF(measind == 0 .OR. measlim < 1.0d-50) EXIT
 
           negnew = negnew + 1
-          Bonds(measind) = .TRUE.          
+          Bonds(measind) = .TRUE.
         END DO
       END IF
       negbonds = negbonds + negnew
@@ -3342,7 +3344,7 @@ CONTAINS
        IF(Debug) CALL Info('InterpolateF2C','Starting interpolation')
        
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
-       IF(.NOT. GotIt) ProjLim = 0.6
+       IF(.NOT. GotIt) ProjLim = 0.6_dp
 
        Lumping = ListGetLogical(Params,'MG Projection Lumping',GotIt)
 
@@ -3856,10 +3858,10 @@ CONTAINS
        IF(Debug) CALL Info('InterpolateF2CDistance','Starting interpolation')
        
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
-       IF(.NOT. GotIt) ProjLim = 0.5
+       IF(.NOT. GotIt) ProjLim = 0.5_dp
 
        Pow = ListGetConstReal(Params,'MG Geometric Power',GotIt)
-       IF(.NOT. GotIt) Pow = 1.0d0
+       IF(.NOT. GotIt) Pow = 1.0_dp
 
        DirectInterpolate = ListGetLogical(Params,'MG Direct Interpolate',GotIt)
        DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)      
@@ -4105,7 +4107,7 @@ CONTAINS
 
        
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
-       IF(.NOT. GotIt) ProjLim = 0.5
+       IF(.NOT. GotIt) ProjLim = 0.5_dp
 
        Lumping = ListGetLogical(Params,'MG Projection Lumping',GotIt)
 
@@ -5286,6 +5288,7 @@ CONTAINS
         CALL CRS_SortMatrix( Matrix2, .TRUE. ) 
         
         ! Finalize creation of parallel structures
+        Matrix2 % Solver => Solver
         Matrix2 % ParMatrix => ParInitMatrix( Matrix2, Matrix2 % ParallelInfo )        
       ELSE              
         !      CALL CRS_InspectMatrix( Matrix1 )         

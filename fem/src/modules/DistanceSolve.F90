@@ -139,7 +139,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ, &
             SOL(nd),Grad(3),SU(nd),stab,uabs,hscale

@@ -40,8 +40,8 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Output File = "ismip_step$Step".result"
-  Post File = "ismip_step$Step".vtu"
+ ! Output File = "ismip_step$Step".result"
+ ! Post File = "ismip_step$Step".vtu"
   max output level = 4
 End
 
@@ -133,28 +133,11 @@ Solver 4
   Exec Solver = After All
   Equation = SaveScalars
   Procedure = File "SaveData" "SaveScalars"
-  Filename = "results.dat"
-  Variable 1 = String "Time"
+  !Filename = "results.dat"
+  Show Norm Index = 1
 
-  Variable 2 = String "Flow Solution"
-  Operator 2 = String "int"
-  Variable 3 = String "Flow Solution"
-  Operator 3 = String "max"
-  Variable 4 = String "Flow Solution"
-  Operator 4 = String "min"
-  Variable 5 = String "Stress"
-  Operator 5 = String "int"
-
-  Variable 6 = String "Stress"
-  Operator 6 = String "max"
-
-  Variable 7 = String "Stress"
-  Operator 7 = String "min"
-
-  Variable 8 = String "Von Mises Stress"
-  Operator 8 = String "max"
-
-  Variable 9 = String "cpu time"
+  Variable 1 = "Von Mises Stress"
+  Operator 1 = String "max"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -202,5 +185,5 @@ Boundary Condition 4
   Flux integrate = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 0.43380119E-01
-Solver 3 :: Reference Norm Tolerance = Real 1E-06
+Solver 4 :: Reference Norm = Real 1.324331037156E+001
+Solver 4 :: Reference Norm Tolerance = Real 1E-06

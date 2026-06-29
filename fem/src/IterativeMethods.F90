@@ -772,6 +772,14 @@ CONTAINS
         CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: nrm0 = NaN.' )
       END IF
 
+      ! Zero RHS: exact solution is x=0, avoid 0/0 in errorind
+      IF (bnrm == 0.0d0) THEN
+        Converged = .TRUE.
+        x = 0.0d0
+        DEALLOCATE(work)
+        RETURN
+      END IF
+
       errorind = rnrm0 / bnrm
       IF(errorind /= errorind ) THEN
         CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: errorind = NaN.' )
@@ -977,23 +985,23 @@ CONTAINS
             rwork(1,y0), 1, zero, rwork(1,y), 1)
         kappa0 = ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1)
 
-        ! If untreated this would result to NaN's
-        IF( kappa0 <= 0.0 ) THEN
+        ! If untreated this would result to NaN's; .NOT.(x>0) also catches NaN
+        IF( .NOT. (kappa0 > 0.0) ) THEN
           CALL Warn('RealBiCGStab(l)','kappa0^2 is non-positive, iteration halted')
           Halted = .TRUE.
           GOTO 100
         END IF
-        kappa0 = SQRT( kappa0 ) 
+        kappa0 = SQRT( kappa0 )
 
         CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
             rwork(1,yl), 1, zero, rwork(1,y), 1)
         kappal = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1 )
-        
-        ! If untreated this would result to NaN's
-        IF( kappal <= 0.0 ) THEN
+
+        ! If untreated this would result to NaN's; .NOT.(x>0) also catches NaN
+        IF( .NOT. (kappal > 0.0) ) THEN
           CALL Warn('RealBiCGStab(l)','kappal^2 is non-positive, iteration halted')
           Halted = .TRUE.
-          GOTO 100 
+          GOTO 100
         END IF
         kappal = SQRT( kappal )
 
@@ -1002,8 +1010,9 @@ CONTAINS
 
         varrho = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) / &
             (kappa0*kappal)
-        
-        hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
+
+        ! SIGN(one,varrho) avoids 0/0 NaN when varrho=0
+        hatgamma = SIGN(one,varrho) * MAX(ABS(varrho),7d-1) * &
             kappa0/kappal
         DO i=1,l+1
            rwork(i,y0) = rwork(i,y0) - hatgamma * rwork(i,yl)
@@ -2753,6 +2762,14 @@ CONTAINS
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
+      ! Zero RHS: exact solution is x=0, avoid 0/0 in errorind
+      IF (bnrm == 0.0d0) THEN
+        Converged = .TRUE.
+        x = zzero
+        DEALLOCATE(work, rwork)
+        RETURN
+      END IF
+
       errorind = rnrm0 / bnrm
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
@@ -2860,12 +2877,22 @@ CONTAINS
          call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,yl), rwork(1:l+1,y), l+1 )
          kappal = SQRT( ABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )  ! replace zdotc
 
+         ! .NOT.(x>0) catches both zero and NaN; ABS() needed since kappa is COMPLEX
+         IF( .NOT. (ABS(kappa0) > 0.0) .OR. .NOT. (ABS(kappal) > 0.0) ) THEN
+           CALL Warn('ComplexBiCGStab(l)','kappa^2 is zero or NaN, iteration halted')
+           EXIT
+         END IF
+
          call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
          varrho = zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &           ! replace zdotc
               (kappa0*kappal)
 
-         hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
-              kappa0/kappal
+         ! Guard varrho=0 to avoid 0/0 NaN; treat zero varrho as unit direction
+         IF( ABS(varrho) > 0.0 ) THEN
+           hatgamma = (varrho/ABS(varrho)) * MAX(ABS(varrho),7d-1) * kappa0/kappal
+         ELSE
+           hatgamma = 7d-1 * kappa0/kappal
+         END IF
          rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
 
          !  --- Update

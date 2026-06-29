@@ -364,7 +364,7 @@ at = CPUTime()
        INTEGER :: n
        REAL(KIND=dp) :: Source(n), Force(:)
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        LOGICAL :: Stat
@@ -428,7 +428,7 @@ at = CPUTime()
        INTEGER :: n
        LOGICAL :: PotentialKnown(:)
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: R,LX,LY,LZ,x,y,z,dWdN
@@ -533,7 +533,7 @@ at = CPUTime()
        REAL(KIND=dp) :: Pot(:), Flx(:), Potential(:)
        INTEGER :: n
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: R,LX,LY,LZ,x,y,z,dWdN,LPOT,LFLX

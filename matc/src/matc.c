@@ -908,6 +908,142 @@ VARIABLE *com_apply(VARIABLE *ptr)
   return res;
 }
 
+typedef struct {
+    CLAUSE *root;
+    LIST   *alloc_head;
+} MTC_COMPILED;
+
+void *mtc_compile(char *str)
+{
+    MTC_COMPILED *compiled;
+    LIST *saved;
+    jmp_buf jmp, *savejmp;
+
+    if (!str || !*str) return NULL;
+
+    setlocale(LC_ALL, "C");
+
+    /* Isolate parse-tree allocations so they survive across eval calls */
+    saved = (LIST *)ALLOC_HEAD;
+    ALLOC_HEAD = (LIST *)NULL;
+
+    savejmp = jmpbuf;
+    jmpbuf = &jmp;
+
+    compiled = (MTC_COMPILED *)malloc(sizeof(MTC_COMPILED));
+
+    switch (setjmp(jmp))
+    {
+        case 0:
+            compiled->root       = doit_compile(str);
+            compiled->alloc_head = (LIST *)ALLOC_HEAD;
+        break;
+
+        default:
+            /* error_matc already freed ALLOC_HEAD and wrote to math_out_str */
+            free(compiled);
+            compiled = NULL;
+        break;
+    }
+
+    jmpbuf     = savejmp;
+    ALLOC_HEAD = saved;
+
+    return (void *)compiled;
+}
+
+char *mtc_eval(void *handle)
+{
+    MTC_COMPILED *compiled = (MTC_COMPILED *)handle;
+    VARIABLE *headsave;
+    jmp_buf jmp, *savejmp;
+
+    if (!compiled) return NULL;
+
+    savejmp = jmpbuf;
+    jmpbuf = &jmp;
+
+    if (math_out_str) math_out_str[0] = '\0';
+    math_out_count = 0;
+
+    ALLOC_HEAD = (LIST *)NULL;
+    headsave = (VARIABLE *)VAR_HEAD;
+
+    switch (setjmp(*jmpbuf))
+    {
+        case 0:
+            (void)evalclause(compiled->root);
+            longjmp(*jmpbuf, 1);
+        break;
+
+        case 1:
+        break;
+
+        case 2:
+            VAR_HEAD = (LIST *)headsave;
+        break;
+
+        case 3:
+        break;
+    }
+
+    jmpbuf = savejmp;
+    return math_out_str;
+}
+
+void mtc_set_real_array(const char *name, double *values, int n)
+/*
+ * Directly set a named MATC variable to a 1×n real array, bypassing the
+ * string/parse/eval cycle.  On first call the variable is allocated in
+ * isolation so it persists across mtc_eval's ALLOC_HEAD resets.  On every
+ * subsequent call with the same size it is just a memcpy — no allocation.
+ */
+{
+    VARIABLE *ptr;
+    LIST *saved;
+    int target_n = (n > 0) ? n : 1;
+
+    ptr = var_check((char *)name);
+
+    if (ptr && NROW(ptr) == 1 && NCOL(ptr) == target_n) {
+        if (n > 0)
+            memcpy(MATR(ptr), values, n * sizeof(double));
+        else
+            M(ptr, 0, 0) = 0.0;
+        return;
+    }
+
+    /* First call or size change: allocate in isolation so the variable
+     * survives the ALLOC_HEAD = NULL reset inside mtc_eval. */
+    saved = (LIST *)ALLOC_HEAD;
+    ALLOC_HEAD = (LIST *)NULL;
+
+    /* var_new() calls var_delete() internally, safe to call unconditionally */
+    ptr = var_new((char *)name, TYPE_DOUBLE, 1, target_n);
+    if (n > 0)
+        memcpy(MATR(ptr), values, n * sizeof(double));
+    else
+        M(ptr, 0, 0) = 0.0;
+
+    ALLOC_HEAD = saved;
+}
+
+void mtc_free_compiled(void *handle)
+{
+    MTC_COMPILED *compiled = (MTC_COMPILED *)handle;
+    LIST *saved;
+
+    if (!compiled) return;
+
+    /* Expose compile-time allocations so mem_free_all() can bulk-free them */
+    saved = (LIST *)ALLOC_HEAD;
+    ALLOC_HEAD = compiled->alloc_head;
+    mem_free_all();
+    ALLOC_HEAD = saved;
+
+    free(compiled);
+}
+
 void mem_free(void *mem)
 /*======================================================================
 ?  Free memory given by argument, and unlink it from allocation list.

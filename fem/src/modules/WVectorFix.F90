@@ -180,7 +180,7 @@ CONTAINS
   SUBROUTINE LocalCorrMatrix( Element, n, nd )
     !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,L(3),Lfix(3,nd),Tcoef(nd)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), C
@@ -236,7 +236,7 @@ CONTAINS
   SUBROUTINE LocalCorrCurrent( Element, n, nd )
     !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),NodalPot(nd),DetJ,Weight,Tcoef(nd)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd,3),x(nd),C

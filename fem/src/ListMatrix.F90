@@ -356,9 +356,6 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry, Dummy
 !-------------------------------------------------------------------------------
 
-     INTEGER :: i, istat
-
-     
      IF ( .NOT. ASSOCIATED(List) ) List=>List_AllocateMatrix(k1)
 
      IF ( k1>SIZE(List) ) THEN
@@ -416,7 +413,7 @@ CONTAINS
 
      TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry, Dummy
 !-------------------------------------------------------------------------------
-     INTEGER :: i,k2,k2i,j, k,prevind
+     INTEGER :: i,k2,k2i,j,prevind
 
      IF (k1>SIZE(List)) THEN
        List => List_EnlargeMatrix(List,MAX(k1, &
@@ -520,7 +517,7 @@ CONTAINS
      INTEGER, ALLOCATABLE :: OrigInd(:)
      REAL(KIND=dp), ALLOCATABLE :: OrigVals(:)
      LOGICAL :: DoSort, DoOrder
-     INTEGER :: i,k2,k2i,j, k,prevind
+     INTEGER :: i,k2,k2i,j,prevind
 
      DoSort = .TRUE.
      DoOrder = .FALSE.
@@ -777,8 +774,8 @@ CONTAINS
      REAL(KIND=dp) :: Val
      LOGICAL, OPTIONAL :: SetVal 
 !-------------------------------------------------------------------------------
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
-     LOGICAL :: Set     
+     TYPE(ListMatrixEntry_t), POINTER :: Entry
+     LOGICAL :: Set
 
      Set = .FALSE.
      IF( PRESENT(SetVal)) Set = SetVal
@@ -799,8 +796,7 @@ CONTAINS
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
 !-------------------------------------------------------------------------------
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
-     LOGICAL :: Set     
+     TYPE(ListMatrixEntry_t), POINTER :: Entry
 
      Entry => List_GetMatrixIndex(List,k1,k2)
 !-------------------------------------------------------------------------------
@@ -813,9 +809,8 @@ CONTAINS
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
      REAL(KIND=dp) :: Val
-     LOGICAL, OPTIONAL :: SetVal 
+     LOGICAL, OPTIONAL :: SetVal
 
      CALL List_AddToMatrixElement( List,k1,k2,Val,.TRUE.)
 !-------------------------------------------------------------------------------
@@ -828,7 +823,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
+     TYPE(ListMatrixEntry_t), POINTER :: CList
      REAL(KIND=dp) :: Val
 !-------------------------------------------------------------------------------
 
@@ -837,13 +832,12 @@ CONTAINS
      IF ( .NOT. ASSOCIATED(List) ) RETURN
      IF ( k1>SIZE(List) ) RETURN
      Clist => List(k1) % Head
-     IF ( .NOT. ASSOCIATED(Clist) ) RETURN
 
-     NULLIFY( Prev )
      DO WHILE( ASSOCIATED(CList) )
-        IF ( Clist % INDEX == k2 ) Val = CList % Val
-        IF ( Clist % INDEX >= k2 ) RETURN
-        Prev  => Clist
+        IF ( Clist % INDEX >= k2 ) THEN
+          IF ( Clist % INDEX == k2 ) Val = CList % Val
+          RETURN
+        END IF
         CList => CList % Next
      END DO
 !-------------------------------------------------------------------------------
@@ -893,7 +887,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      INTEGER :: k2
      REAL(KIND=dp) :: val, c, d
-     TYPE(ListMatrixEntry_t), POINTER :: CList
+     TYPE(ListMatrixEntry_t), POINTER :: p1, p2, prev2, Entry
 
      IF( PRESENT(coeff)) THEN
        c = coeff
@@ -906,32 +900,63 @@ CONTAINS
      ELSE
        d = 0.0_dp
      END IF
-              
+
      IF ( .NOT. ASSOCIATED(List) ) THEN
        CALL Warn('List_MoveRow','No List matrix present!')
        RETURN
      END IF
-     
+
      IF ( n1 > SIZE(List) ) THEN
        CALL Warn('List_MoveRow','No row to move!')
        RETURN
      END IF
-     
-     Clist => List(n1) % Head
-     IF ( .NOT. ASSOCIATED(Clist) ) THEN
+
+     p1 => List(n1) % Head
+     IF ( .NOT. ASSOCIATED(p1) ) THEN
        CALL Warn('List_MoveRow','Row not associated!')
        RETURN
      END IF
-     
-     DO WHILE( ASSOCIATED(CList) )
-       k2 = Clist % Index
-       Val = Clist % Val
-       Clist % VAL = d * Val 
 
-! This could be made more optimal as all the entries are for the same row!
-       CALL List_AddToMatrixElement(List,n2,k2,c*Val)
+     ! Ensure row n2 is within the list bounds
+     IF ( n2 > SIZE(List) ) THEN
+       List => List_EnlargeMatrix(List, MAX(n2, SIZE(List)+LISTMATRIX_GROWTH))
+     END IF
 
-       CList => CList % Next
+     ! Merge-walk: both rows are sorted so p2 only advances forward — O(d1+d2)
+     NULLIFY(prev2)
+     p2 => List(n2) % Head
+
+     DO WHILE( ASSOCIATED(p1) )
+       k2  = p1 % Index
+       val = p1 % Val
+       p1 % Val = d * val
+
+       ! Advance p2 to the first entry with Index >= k2
+       DO WHILE( ASSOCIATED(p2) )
+         IF ( p2 % Index >= k2 ) EXIT
+         prev2 => p2
+         p2    => p2 % Next
+       END DO
+
+       IF ( ASSOCIATED(p2) .AND. p2 % Index == k2 ) THEN
+         ! Entry already exists in row n2 — accumulate and advance past it
+         p2 % Val = p2 % Val + c * val
+         prev2 => p2
+         p2    => p2 % Next
+       ELSE
+         ! Insert before p2 (or append if p2 is NULL)
+         Entry => List_GetMatrixEntry(k2, p2)
+         Entry % Val = c * val
+         IF ( ASSOCIATED(prev2) ) THEN
+           prev2 % Next => Entry
+         ELSE
+           List(n2) % Head => Entry
+         END IF
+         List(n2) % Degree = List(n2) % Degree + 1
+         prev2 => Entry
+       END IF
+
+       p1 => p1 % Next
      END DO
 
 !-------------------------------------------------------------------------------

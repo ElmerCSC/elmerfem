@@ -1227,7 +1227,7 @@ CONTAINS
       IF(Found) THEN
         g = ABS(gWork(SIZE(gWork,1),1))
       ELSE
-        CALL Warn('HydrostaticNSVec','"Gravity" not found in simulation section, setting to 1')
+        CALL Warn('HydrostaticNSVec','"Gravity" not found in Constants section, setting to 1')
       END IF      
       PressureCorr = ListGetLogical( Params,'Pressure Correction',Found ) 
     END IF
@@ -1531,7 +1531,7 @@ SUBROUTINE HydrostaticNSSolver_init(Model, Solver, dt, Transient)
     CALL Fatal( Caller,'Use >Surface Traction 1< instead of >Pressure 1<')
   END IF
   IF( ListCheckPresentAnyBC( Model, 'Pressure 2' ) ) THEN
-    CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 2<')
+    CALL Fatal( Caller,'Use >Surface Traction 2< instead of >Pressure 2<')
   END IF
   IF( ListCheckPresentAnyBC( Model, 'Pressure 3' ) ) THEN
     CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 3<')
@@ -1579,7 +1579,7 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   USE DefUtils
   USE HydrostaticNSUtils
   USE MainUtils
-  USE MeshUtils, ONLY : DetectExtrudedStructure
+  USE MeshTransform, ONLY : DetectExtrudedStructure
   
   IMPLICIT NONE
 !------------------------------------------------------------------------------

@@ -42,6 +42,25 @@
 ! *  Original Date: 10.11.2014
 ! *
 ! ****************************************************************************/
+!------------------------------------------------------------------------------
+ SUBROUTINE Find_Calving_Init0(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+      USE DefUtils
+      IMPLICIT NONE
+!------------------------------------------------------------------------------
+      TYPE(Solver_t) :: Solver
+      TYPE(Model_t) :: Model
+      REAL(KIND=dp) :: dt
+      LOGICAL :: Transient
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: SolverParams
+
+        SolverParams => GetSolverParams()
+
+        CALL ListAddNewLogical( SolverParams,'No Matrix',.TRUE.)
+
+END SUBROUTINE Find_Calving_Init0
+
 SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
 
    USE types

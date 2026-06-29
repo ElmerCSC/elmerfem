@@ -47,7 +47,7 @@
 
 #include "../config.h"
 
-#if defined(WIN32) | defined(MINGW32)
+#if defined(WIN32) || defined(MINGW32)
 #  include <direct.h>
 #  include <windows.h>
 #define ELMER_PATH_SEPARATOR ";"
@@ -113,8 +113,7 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
   int n = 0;
 
   /* Get the full module file name  */
-  GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
-  if(appPath == NULL) return;
+  if(GetModuleFileName(NULL, appPath, MAX_PATH_LEN) == 0) return;
   exeName = strrchr(appPath, '\\');
   if(exeName == NULL) return;
   n = (int)(exeName - appPath);
@@ -156,6 +155,7 @@ void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY)
     }
 }
 
+#ifdef OBSOLITE
 #ifndef USE_ISO_C_BINDINGS
 /*--------------------------------------------------------------------------
   This routine execute a operating system command.
@@ -180,6 +180,25 @@ void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
     }
 }
 #endif
+#endif /* OBSOLITE */
+
+/*--------------------------------------------------------------------------
+  Set or clear ELMER_NO_MPI in the process environment.  Used by
+  RadiationFactors before/after spawning ViewFactors or Radiators so the
+  child does not try to join the parent's MPI job via inherited PMI vars.
+  Avoids shell-syntax tricks (VAR=1 cmd) that do not work on Windows.
+  ---------------------------------------------------------------------------*/
+void elmersetnompi( int *set )
+{
+#ifdef _WIN32
+    _putenv( *set ? "ELMER_NO_MPI=1" : "ELMER_NO_MPI=" );
+#else
+    if ( *set )
+        setenv( "ELMER_NO_MPI", "1", 1 );
+    else
+        unsetenv( "ELMER_NO_MPI" );
+#endif
+}
 
 /*--------------------------------------------------------------------------
   Internal: convert function names into to fortran mangled form for dynamical
@@ -274,7 +293,7 @@ static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
 #ifdef HAVE_DLOPEN_API
         if ((*Handle = dlopen(dl_names[i], RTLD_NOW)) == NULL) {
             strncat(errorBuf, dlerror(), MAX_PATH_LEN-1);
-            strncat(errorBuf, "\n", MAX_PATH_LEN)-1;
+            strncat(errorBuf, "\n", MAX_PATH_LEN-1);
         } else {
             break;
         }
@@ -402,7 +421,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    try_open_solver(ElmerLib, Library, &Handle, ErrorBuffer);
    if ( Handle == NULL ) {
       fprintf(stderr, "%s", ErrorBuffer);
-      exit(0);
+      exit(1);
    }
 
 #ifdef HAVE_DLOPEN_API
@@ -410,7 +429,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    if ( (Function = (void(*)())dlsym( Handle,NewName)) == NULL && *abort_not_found )
    {
       fprintf( stderr, "Load: FATAL: Can't find procedure [%s]\n", NewName );
-      exit(0);
+      exit(1);
    }
 
 #elif defined(HAVE_LOADLIBRARY_API)
@@ -597,6 +616,59 @@ int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
 
 char *mtc_domath(char *);
 void mtc_init(FILE *,FILE *, FILE *);
+void *mtc_compile(char *);
+char *mtc_eval(void *);
+void  mtc_free_compiled(void *);
+void  mtc_set_real_array(const char *, double *, int);
+
+/* Compile-cache for per-element MATC expression evaluation.
+ * Variable-setting calls ("tx=1.5 2.3 ...") are always unique and go through
+ * mtc_domath as before.  Expression strings from ptr%CValue are constant for
+ * the lifetime of a simulation and are compiled once then re-evaluated. */
+
+typedef struct { char *expr; void *handle; } MtcCacheEntry_t;
+static MtcCacheEntry_t *mtc_cache     = NULL;
+static int              mtc_cache_n   = 0;
+static int              mtc_cache_cap = 0;
+static int              mtc_been_here = 0;
+#pragma omp threadprivate(mtc_cache, mtc_cache_n, mtc_cache_cap, mtc_been_here)
+
+static void mtc_init_once(void)
+{
+  char cc[32];
+  if (mtc_been_here) return;
+  /* mtc_init() must run in every thread (MATC uses per-thread state via
+   * the threadprivate cache), but concurrent first-use calls from different
+   * threads corrupt shared MATC initialisation state.  Serialise them. */
+#pragma omp critical (matc_init)
+  {
+    mtc_init(NULL, stdout, stderr);
+    strcpy(cc, "format( 12,\"rowform\")");
+    mtc_domath(cc);
+  }
+  mtc_been_here = 1;
+}
+
+static void *mtc_cache_lookup(const char *expr)
+{
+  int i;
+  for (i = 0; i < mtc_cache_n; i++)
+    if (strcmp(mtc_cache[i].expr, expr) == 0)
+      return mtc_cache[i].handle;
+  return NULL;
+}
+
+static void mtc_cache_insert(const char *expr, void *handle)
+{
+  if (mtc_cache_n == mtc_cache_cap) {
+    mtc_cache_cap = mtc_cache_cap ? mtc_cache_cap * 2 : 64;
+    mtc_cache = (MtcCacheEntry_t *)realloc(mtc_cache,
+                    mtc_cache_cap * sizeof(MtcCacheEntry_t));
+  }
+  mtc_cache[mtc_cache_n].expr   = strdup(expr);
+  mtc_cache[mtc_cache_n].handle = handle;
+  mtc_cache_n++;
+}
 
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc variable array values
@@ -618,26 +690,19 @@ void var_copy_transpose(char *name,double *values,int nrows,int ncols);
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL matc_c( char *cmd, int *len, char *result, int *reslen )
 #else
-void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*reslen)
+void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,int *reslen)
 #endif
 {
 #define MAXLEN 8192
 
-  static int been_here = 0;
-  char *ptr, c, cc[32], *ccmd;
+  char *ptr, *ccmd;
   int slen, start;
-#pragma omp threadprivate(been_here)
 
   /* MB: Critical section removed since Matc library
    * modified to be thread safe */
 
    slen = *len;
-   if ( been_here==0 ) {
-     mtc_init( NULL, stdout, stderr );
-     strcpy( cc, "format( 12,\"rowform\")" );
-     mtc_domath( cc );
-     been_here = 1;
-   }
+   mtc_init_once();
 
   ccmd = (char *)malloc(slen+1);
   strncpy( ccmd, cmd, slen);
@@ -664,7 +729,7 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
       if (start==0) {
           fprintf( stderr, "Solver input file error: %s\n", result );
           fprintf( stderr, "...offending input line: %s\n", ccmd );
-          exit(0);
+          exit(1);
       } else {
         result[0]=' ';
         *reslen = 0;
@@ -675,6 +740,102 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
     *result = ' ';
   }
   free(ccmd);
+}
+
+/*--------------------------------------------------------------------------
+  Like matc_c but compiles the expression on first use and re-evaluates the
+  cached parse tree on every subsequent call.  Used for MATC expressions that
+  appear as material/BC parameters — same string, many different variable
+  values per element.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc_c_cached( char *cmd, int *len, char *result, int *reslen )
+#else
+void STDCALLBULL FC_FUNC(matc_c_cached,MATC_C_CACHED) (char *cmd,int *cmdlen,char *result,int *reslen)
+#endif
+{
+  char *ptr, *ccmd;
+  int slen, start;
+  void *handle;
+
+  slen = *len;
+  mtc_init_once();
+
+  ccmd = (char *)malloc(slen + 1);
+  strncpy(ccmd, cmd, slen);
+  ccmd[slen] = '\0';
+
+  start = 0;
+  if (strncmp(ccmd, "nc:", 3) == 0) start = 3;
+
+  handle = mtc_cache_lookup(&ccmd[start]);
+  if (!handle) {
+    handle = mtc_compile(&ccmd[start]);
+    if (handle)
+      mtc_cache_insert(&ccmd[start], handle);
+  }
+
+  /* Failed compile: fall back to mtc_domath so the MATC ERROR message
+   * reaches Elmer's output — same behaviour as the non-cached path. */
+  if (!handle) {
+    ptr = mtc_domath(&ccmd[start]);
+  } else {
+    ptr = (char *)mtc_eval(handle);
+  }
+  if (ptr) {
+    slen = strlen(ptr) - 1; /* ignore linefeed */
+  } else {
+    slen = 0;
+  }
+
+  if (slen >= *reslen) {
+    fprintf(stderr, "MATC result too long %d %d\n", *len, *reslen);
+    exit(0);
+  } else if (slen > 0) {
+    *reslen = slen;
+    strncpy(result, (const char *)ptr, slen);
+
+    if (strncmp(result, "MATC ERROR:", 11) == 0 || strncmp(result, "WARNING:", 8) == 0) {
+      if (start == 0) {
+        fprintf(stderr, "Solver input file error: %s\n", result);
+        fprintf(stderr, "...offending input line: %s\n", ccmd);
+        exit(1);
+      } else {
+        result[0] = ' ';
+        *reslen = 0;
+      }
+    }
+  } else {
+    *reslen = 0;
+    *result = ' ';
+  }
+  free(ccmd);
+}
+
+/*--------------------------------------------------------------------------
+  Set a named MATC real variable directly from a Fortran array, bypassing
+  string formatting and parsing.  Called instead of matc_c for the variable-
+  setting step in SetGetMatcParams.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc_c_set_params( char *name, int *namelen,
+                                    double *values, int *n )
+#else
+void STDCALLBULL FC_FUNC(matc_c_set_params,MATC_C_SET_PARAMS)
+                        ( char *name, int *namelen, double *values, int *n )
+#endif
+{
+  char *cname;
+  int len = *namelen;
+
+  mtc_init_once();
+
+  cname = (char *)malloc(len + 1);
+  strncpy(cname, name, len);
+  cname[len] = '\0';
+
+  mtc_set_real_array(cname, values, *n);
+  free(cname);
 }
 
 /*--------------------------------------------------------------------------

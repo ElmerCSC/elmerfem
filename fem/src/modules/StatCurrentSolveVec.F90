@@ -170,27 +170,27 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   INTERFACE
     SUBROUTINE StatCurrentSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatCurrentSolver_Boundary_Residual
 
     SUBROUTINE StatCurrentSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE StatCurrentSolver_Edge_Residual
 
     SUBROUTINE StatCurrentSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatCurrentSolver_Inside_Residual
@@ -1007,8 +1007,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalPostSolve( Element, n, A, b )
-!------------------------------------------------------------------------------    
-    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     REAL(KIND=dp) :: b(:,:), A(:,:)
 !------------------------------------------------------------------------------
@@ -1199,8 +1199,8 @@ END SUBROUTINE StatCurrentSolver_Post
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
     REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Edge
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Edge
   !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes, EdgeNodes
     TYPE(Element_t), POINTER :: Element
@@ -1427,8 +1427,8 @@ END SUBROUTINE StatCurrentSolver_Post
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
     REAL(KIND=dp) :: Quant(:), Indicator(2)
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Edge
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Edge
   !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes, EdgeNodes
     TYPE(Element_t), POINTER :: Element
@@ -1628,8 +1628,8 @@ END SUBROUTINE StatCurrentSolver_Post
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
     REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Element
   !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
     INTEGER :: i, j, k, l, n, t, dim, nd

@@ -93,12 +93,10 @@ Solver 2
   Linear System Preconditioning = ILU2
   Linear System Residual Output = 20
   Linear System Max Iterations = 500
-  Linear System Iterative Method = BiCGStab2
-!GCR
+  Linear System Iterative Method = BiCGStabL
   BicGStabL Polynomial Degree = 4
-  Linear System GCR Restart = 600
-  Linear System Convergence Tolerance = 1e-10
   Linear System Abort Not Converged = False
+  Linear System Convergence Tolerance = 1e-7
 
   Edge Basis = Logical True
   Apply Mortar BCs = Logical True

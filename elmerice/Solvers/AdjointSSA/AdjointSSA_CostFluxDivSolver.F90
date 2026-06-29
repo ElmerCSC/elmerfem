@@ -176,7 +176,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
 !!!!!!! Check for parallel run 
     Parallel = .FALSE.
     IF ( ASSOCIATED( Solver % Matrix % ParMatrix ) ) THEN
-            IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 )  THEN
+            IF ( Solver %  ParEnv % PEs > 1 )  THEN
                     Parallel = .TRUE.
             END IF
     END IF
@@ -406,7 +406,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
                   MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
 
-          IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
+          IF (Solver % ParEnv % MyPE == 0) then
                  OPEN (12, FILE=CostFile,POSITION='APPEND')
                  write(12,'(3(e13.5,2x))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/area)
                  CLOSE(12)

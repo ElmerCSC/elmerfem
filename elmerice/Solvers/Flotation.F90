@@ -92,6 +92,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE CoordinateSystems
   USE MeshUtils
+  USE MeshTransform, ONLY : DetectExtrudedStructure
   USE DefUtils
 
   IMPLICIT NONE
@@ -108,7 +109,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   TYPE(Variable_t),POINTER :: Var
   TYPE(Variable_t),POINTER :: ZbVar,ZsVar
   TYPE(Variable_t),POINTER :: HVar,BedVar
-  TYPE(Variable_t),POINTER :: GLMask,HafVar
+  TYPE(Variable_t),POINTER :: GLMask,HafVar,HafVar0
   TYPE(Variable_t),POINTER :: sftgif,sftgrf,sftflf
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t),POINTER :: BodyForce,Material, Params
@@ -139,7 +140,6 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   LOGICAL,SAVE :: Initialized = .FALSE.
   LOGICAL,SAVE :: ExtrudedMesh=.False.
   LOGICAL :: Found,GotIt
-  LOGICAL :: BoundarySolver
   LOGICAL :: ComputeIceMasks,LimitedSolution,IceFree
   LOGICAL :: stat
   LOGICAL :: SEP
@@ -152,9 +152,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   Mesh => Model % Mesh
 
   Params => Solver % Values
-
-  BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
-
+  
 !!! get required variables Zb,Zs,H
   ZbName = ListGetString(Params, 'Bottom Surface Name', UnFoundFatal=.TRUE.)
   zbVar => VariableGet( Model % Mesh % Variables, ZbName,UnFoundFatal=.TRUE.)
@@ -186,6 +184,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
      Message='<Haf> not found; do not compute height above flotation'
      CALL INFO(SolverName,Message,level=5)
   END IF
+  HafVar0 => VariableGet( Model % Mesh % Variables, 'Haf0')
 
   !! compute ice area farctions
   ComputeIceMasks = ListGetLogical(Params,"compute ice area fractions",Gotit)
@@ -208,7 +207,25 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
            CALL FATAL(SolverName,"sftflf type should be on_elements")
 
     ! change number of IPs for partially grounded elements
-    GLnIP=ListGetInteger( Params,'GL integration points number',SEP)
+    SEP=GetLogical( Params, 'Sub-Element GL parameterization',GotIt)
+    GLnIP=ListGetInteger( Params,'GL integration points number',Gotit)
+    IF (GLnIP > 0) SEP=.TRUE.
+    IF (SEP) THEN
+     IF (GLnIP == 0) THEN
+       IF (.NOT.ASSOCIATED(HafVar0)) &
+            CALL FATAL(SolverName,"SEP requested but var <Haf0> not existing")    
+       IF (.NOT. ListCheckPrefix(Params,'Adaptive Integration') ) THEN
+          CALL ListAddString(Params,'Adaptive Integration Variable','haf0')
+          CALL ListAddLogical(Params,'Adaptive Integration Split', .True.)
+          CALL ListAddConstReal(Params,'Adaptive Integration Split Limit',0._dp)
+       END IF
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=4)
+     ELSE
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=4)
+     END IF
+    ELSE
+       CALL INFO(SolverName,'No Sub-Element GL parameterization')     
+    END IF
 
     ! check if we have a limited solution
     ! internal Elmer limiters...
@@ -218,7 +235,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   ENDIF
 
 !!! Do some initialisation/allocation
-  IF ((.NOT.Initialized) .OR. Mesh % Changed) THEN
+  IF ((.NOT.Initialized).OR.Mesh%Changed) THEN
 
     ActiveDirection = ListGetInteger(Params,'Active Coordinate',ExtrudedMesh)
     IF (ExtrudedMesh) THEN
@@ -239,28 +256,21 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   END IF
 !!
 
- zsea = ListGetCReal( Model % Constants, 'Sea Level', UnFoundFatal=.TRUE. )
- rhow = ListGetCReal( Model % Constants, 'water density', UnFoundFatal=.TRUE. )
+  zsea = ListGetCReal( Model % Constants, 'Sea Level', UnFoundFatal=.TRUE. )
+  rhow = ListGetCReal( Model % Constants, 'water density', UnFoundFatal=.TRUE. )
 
- IF (ASSOCIATED(GLMask)) GLMask%Values = -1.0
+  IF (ASSOCIATED(GLMask)) GLMask%Values = +1.0
+  
+  Active = GetNOFActive(Solver)
+ 
+  IF (ASSOCIATED(HafVar)) HafVar%Values = 0._dp
+  IF (ASSOCIATED(HafVar0)) HafVar0%Values = 0._dp
+   
+  ActiveLoop: DO t=1,Active
 
-   IF (BoundarySolver) THEN
-     Active = GetNOFBoundaryElements()
-   ELSE
-     Active = Solver % Mesh % NumberOfBulkElements
-   ENDIF
-
-   IF (ASSOCIATED(HafVar)) HafVar%Values = 0._dp
-
-   Do t=1,Active
-
-    IF (BoundarySolver) THEN
-      Element => GetBoundaryElement(t,Solver)
-    ELSE
-      Element => Solver % Mesh % Elements(t)
-      CurrentModel % CurrentElement => Element
-    ENDIF
-
+    Element => GetActiveElement(t)
+    CurrentModel % CurrentElement => Element
+ 
     Eindex = Element%ElementIndex
     n = GetElementNOFNodes(Element)
     NodeIndexes => Element % NodeIndexes
@@ -284,30 +294,33 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
       IF (.NOT.Gotit) &
        MinH = ListGetConstReal(Material,'Min '//TRIM(HName), Gotit)
       IF (.NOT.GotIt) CALL FATAL(SolverName,TRIM(HName)//" not found...but was supposed to be limited")
-      IF (ALL((NodalH(1:n)-MinH(1:n)) <= EPS)) IceFree=.TRUE.
+      IF (ALL((NodalH(1:n)-MinH(1:n)).LE.EPS)) IceFree=.TRUE.
     END IF
 
     Density(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,UnFoundFatal=.TRUE.)
 
     GroundedNode=0
     GL=-1
-    Do i=1,n 
+    ElementNodeLoop: DO i=1,n 
 
        H=NodalH(i)
        rhoi=Density(i)
        zb=zsea-H*rhoi/rhow
       ! if bedrock defined check flotation criterion
        IF(ASSOCIATED(BedVar)) THEN
-         bedrock=BedVar%Values(BedVar%Perm(NodeIndexes(i)))
-         IF (zb <= bedrock) THEN
-           zb=bedrock
-           GL(i)=1
-           GroundedNode=GroundedNode+1
-         END IF
-         IF (ASSOCIATED(HafVar)) THEN
-           Hf=MAX(zsea-bedrock,0._dp)*rhow/rhoi
-           HafVar%Values(HafVar%Perm(NodeIndexes(i)))=H-Hf
-         END IF
+          bedrock=BedVar%Values(BedVar%Perm(NodeIndexes(i)))
+          Hf=max(zsea-bedrock,0._dp)*rhow/rhoi
+          IF (ASSOCIATED(HafVar0)) THEN
+             HafVar0%Values(HafVar0%Perm(NodeIndexes(i)))=H-Hf
+          END IF
+          IF (zb.LE.bedrock) THEN
+             zb=bedrock
+             GL(i)=1
+             GroundedNode=GroundedNode+1
+             IF (ASSOCIATED(HafVar)) THEN
+                HafVar%Values(HafVar%Perm(NodeIndexes(i)))=H-Hf
+             END IF
+          END IF
        END IF
 
        zs=zb+H
@@ -320,27 +333,32 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
           ZsVar%Values(ZsVar%Perm(topnode))=zs
        END IF
 
-    End do
-    IF (ASSOCIATED(GLMask)) THEN
-       IF ((GroundedNode > 0).AND.(GroundedNode < n)) THEN
-           WHERE(GL > 0._dp) GL=0._dp
+     END DO ElementNodeLoop
+
+     IF (ASSOCIATED(GLMask)) THEN
+       IF ((GroundedNode.GT.0).AND.(GroundedNode.LT.n)) THEN
+           WHERE(GL.GT.0._dp) GL=0._dp
        END IF
        GLMask%Values(GLMask%Perm(NodeIndexes(1:n)))= GL(1:n) * ABS(GLMask%Values(GLMask%Perm(NodeIndexes(1:n))))
     END IF
 
 
     IF (ComputeIceMasks) THEN
-      IF (GroundedNode == 0) THEN
+      IF (GroundedNode.EQ.0) THEN
           !floating element
           IF (sftgrf % Perm(Eindex) > 0 ) &
            sftgrf % Values ( sftgrf % Perm(Eindex)) = 0._dp
           IF (sftflf % Perm(Eindex) > 0 ) &
            sftflf % Values ( sftflf % Perm(Eindex)) = 1._dp
-      ELSEIF (GroundedNode < n) THEN
+      ELSEIF (GroundedNode.LT.n) THEN
          !partly grounded
          CALL GetElementNodes( ElementNodes, Element )
-         IF (SEP .AND. GLnIP > 0 ) THEN
-           IP = GaussPoints( Element ,np=GLnIP )
+         IF (SEP) THEN
+           IF( GLnIP == 0 ) THEN
+              IP = GaussPointsAdapt( Element, Solver)
+           ELSE
+              IP = GaussPoints( Element ,np=GLnIP )
+           END IF
          ELSE
            IP = GaussPoints( Element )
          ENDIF
@@ -355,7 +373,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
            bedrock=SUM(BedVar%Values(BedVar%Perm(NodeIndexes(1:n)))*Basis(1:n))
            Hf=(zsea-bedrock)*rhow/rhoi
            IParea=detJ*IP % s(ll)
-           IF (H < Hf) THEN
+           IF (H.LT.Hf) THEN
              flarea=flarea+IParea
            ELSE
              grarea=grarea+IParea
@@ -383,7 +401,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
           sftflf % Values ( sftflf % Perm(Eindex)) = FillValue
       END IF
     ENDIF
- End Do
+  END DO ActiveLoop
 
  IF (ASSOCIATED(GLMask).AND.( ParEnv % PEs>1 )) CALL ParallelSumVector( Solver % Matrix, GLMask%Values ,1 )
 

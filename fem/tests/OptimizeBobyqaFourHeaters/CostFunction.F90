@@ -3,13 +3,7 @@
 ! is known to be 20, 30, 40 and 50 degs.
 !------------------------------------------------------------------------------
 FUNCTION CostFunction( Model, n, x ) RESULT( s )
-
-  USE Types
-  USE Lists
-  USE Integration
-  USE ElementDescription
-  USE SolverUtils
-
+  USE DefUtils
   IMPLICIT NONE
 
   TYPE(Model_t) :: Model

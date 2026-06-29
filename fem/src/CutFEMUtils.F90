@@ -48,11 +48,12 @@ MODULE CutFemUtils
   USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE ElementDescription
   USE MatrixAssembly
-  USE MeshUtils, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
+  USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
   USE ModelDescription, ONLY : FreeMesh
-  USE SolverUtils, ONLY : GaussPointsAdapt, SolveLinearSystem, VectorValuesRange
+  USE SolverBasics, ONLY : GaussPointsAdapt, VectorValuesRange
+  USE SolveCore, ONLY : SolveLinearSystem
   USE ParallelUtils
-  USE MeshUtils, ONLY : PointInMesh
+  USE MeshBasics, ONLY : PointInMesh
   
   IMPLICIT NONE
 
@@ -287,7 +288,7 @@ CONTAINS
     j = 0
 
     ! This is an add'hoc value that represents the maximum aspect ratio of elements in the mesh.
-    MaxRat = 2.0
+    MaxRat = 2.0_dp
     
     DO i=1, Mesh % NumberOfEdges
       NodeIndexes => Mesh % Edges(i) % NodeIndexes
@@ -786,7 +787,7 @@ CONTAINS
   ! This is a routine that just checks whether an element is cut.
   !----------------------------------------------------------------
   SUBROUTINE CutInterfaceCheck( Element, IsCut, IsActive, ExtPerm )
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: IsCut, IsActive
     INTEGER, POINTER, OPTIONAL :: ExtPerm(:)
 
@@ -826,7 +827,8 @@ CONTAINS
   ! is cut and if it, should we call the routine again for the next split. 
   !----------------------------------------------------------------------------------------------
   FUNCTION CutInterfaceBulk( Element, IsCut, IsMore ) RESULT ( pElement )
-    TYPE(Element_t), POINTER :: Element, pElement
+    TYPE(Element_t), POINTER :: pElement
+    TYPE(Element_t), TARGET :: Element
     LOGICAL :: IsCut
     LOGICAL :: IsMore
 
@@ -1568,7 +1570,7 @@ CONTAINS
   SUBROUTINE LocalFitMatrix( Element, n )
     !------------------------------------------------------------------------------
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: weight, dcoeff 
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
@@ -3754,7 +3756,7 @@ CONTAINS
     END SUBROUTINE ReduceLocalIntersectMemory
 
     SUBROUTINE DeallocateMeshLines(Mesh, RemoveLines)
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t), TARGET :: Mesh
       LOGICAL :: RemoveLines(:,:)
       !------------------------------
       TYPE(Element_t), POINTER :: Element,WorkElements(:)

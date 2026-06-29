@@ -122,7 +122,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Interpolation
   USE ElementUtils
-  USE MeshUtils, ONLY : ClosestElementInMesh, ClosestNodeInMesh, NodeToDGIndex
+  USE MeshBasics, ONLY : ClosestElementInMesh, ClosestNodeInMesh, NodeToDGIndex
   USE SaveUtils
   
   IMPLICIT NONE

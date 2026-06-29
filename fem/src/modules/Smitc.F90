@@ -83,10 +83,11 @@
          Poisson(:), Thickness(:), Young(:), Tension(:), &
          MASS(:,:), DAMP(:,:), Density(:), &
          DampingCoef(:), HoleFraction(:), HoleSize(:), SpringCoef(:)
-
+     REAL(KIND=dp), POINTER :: gWork(:,:)
+     
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
-     LOGICAL :: GotIt, GotHoleType
-     REAL(KIND=dp) :: RelaxationAlpha, at, st
+     LOGICAL :: GotIt, GotHoleType, UseGravity
+     REAL(KIND=dp) :: RelaxationAlpha, grav, at, st
 
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
@@ -122,8 +123,9 @@
      CALL Info( 'SmitcSolver', 'Solving the Reissner-Mindlin equations for plates',Level=4 )     
      CALL Info( 'SmitcSolver', '--------------------------------------------------',Level=4 )
 
-     SolverParams => GetSolverParams()
      
+     SolverParams => GetSolverParams()
+
      RelaxationAlpha = ListGetCReal(SolverParams, 'Shear Relaxation Alpha', Found)
      IF (.NOT. Found) RelaxationAlpha = 1.0d0
 
@@ -135,6 +137,17 @@
      !
      KernelVersion = ListGetLogical(SolverParams, 'Kernel Interpolation', Found)
 
+     grav = 0.0_dp
+     IF( ListGetLogical(SolverParams,'Use Gravity', Found ) ) THEN
+       gWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',Found)
+       IF(Found) THEN
+         grav = ABS(gWork(SIZE(gWork,1),1)) 
+       ELSE
+         CALL Fatal('SmitcSolver','Gravity requested but not given as constant!')
+       END IF
+     END IF
+       
+         
      CALL DefaultStart()     
      
      MaxIter = GetInteger( SolverParams, &
@@ -301,7 +314,7 @@
 
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), &
             MASS(:,:), Force(:), Load(:), DampingCoef(:), SpringCoef(:), RelaxationAlpha
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
        INTEGER :: n, DOFs
        TYPE(Nodes_t) :: Nodes
        LOGICAL :: KernelVersion
@@ -427,7 +440,14 @@
 !        ------------
          DO p=1,n
             i = DOFs*(p-1)+1
-            Force(i) = Force(i) + Pressure * Basis(p) * s
+            Force(i) = Force(i) + Pressure * Basis(p) * s 
+         END DO
+
+!        Gravity in direction down:
+!        -------------------------
+         DO p=1,n
+            i = DOFs*(p-1)+1
+            Force(i) = Force(i) - grav * rho * h * Basis(p) * s 
          END DO
 !
 !        Mass matrix:

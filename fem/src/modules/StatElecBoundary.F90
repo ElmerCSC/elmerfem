@@ -190,16 +190,16 @@ CONTAINS
       SELECT CASE(holemodel)
         
       CASE ('slot')
-        c1 = 2.3198
-        c2 = 0.2284 
+        c1 = 2.3198_dp
+        c2 = 0.2284_dp
         
       CASE ('round')
-        c1 = 4.2523d0
-        c2 = 0.4133d0
+        c1 = 4.2523_dp
+        c2 = 0.4133_dp
         
       CASE ('square')
-        c1 = 3.8434 
-        c2 = 0.3148
+        c1 = 3.8434_dp
+        c2 = 0.3148_dp
         
       CASE DEFAULT 
         alpha = 1.0

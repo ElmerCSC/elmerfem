@@ -25,7 +25,7 @@
 !------------------------------------------------------------------------------
 MODULE VtkLegacyFile
 
-  USE MeshUtils
+  USE MeshBasics
   USE ElementDescription
   USE SaveUtils, ONLY : SolverOutputDirectory
   

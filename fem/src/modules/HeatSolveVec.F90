@@ -174,41 +174,41 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, InitDiscontHandles, AxiSymmetric, &
       DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, &
-      Converged, PostCalc = .FALSE.
+      HaveRadNewtonRelax, Converged, PostCalc = .FALSE.
   TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: Temperature(:)
   INTEGER, POINTER :: TempPerm(:)
   REAL(KIND=dp), ALLOCATABLE :: Temps4(:), Emiss(:), Absorp(:), Reflect(:),RadiatorPowers(:)
-  REAL(KIND=dp) :: Norm, StefBoltz
+  REAL(KIND=dp) :: Norm, StefBoltz, RadNewtonRelax
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
   INTERFACE
     SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE HeatSolver_Boundary_Residual
 
     SUBROUTINE HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE HeatSolver_Edge_Residual
 
     SUBROUTINE HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
     END SUBROUTINE HeatSolver_Inside_Residual
@@ -231,6 +231,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   Radiosity = GetLogical( Params, 'Radiosity Model', Found )
   Spectral = GetLogical( Params,'Spectral Model',Found )
   IF( Spectral ) Radiosity = .TRUE. 
+  RadNewtonRelax = ListGetCReal( Params,&
+      'Radiosity Newton Relaxation Factor',HaveRadNewtonRelax)
   
   IF(.NOT.Radiosity) CALL RadiationFactors( Solver, .FALSE.,.FALSE.) 
 
@@ -370,7 +372,6 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
-        !WRITE (*,*) Element % ElementIndex
         totelem = totelem + 1
         IF(ActiveBoundaryElement(Element)) THEN
           n  = GetElementNOFNodes(Element)
@@ -489,7 +490,7 @@ CONTAINS
 
 
   SUBROUTINE LocalNitscheBC(Element,n,BC,str)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(:), ALLOCATABLE :: str
@@ -962,10 +963,10 @@ CONTAINS
       ! -----------------------------------
       PerfRateAtIp = ListGetElementReal( PerfRate_h, Basis, Element, Found )
       IF( Found ) THEN
-        PerfDensAtIp = ListGetElementReal( PerfRate_h, Basis, Element, Found )
+        PerfDensAtIp = ListGetElementReal( PerfDens_h, Basis, Element, Found )
         PerfCpAtIp = ListGetElementReal( PerfCp_h, Basis, Element, Found )
         PerfRefTempAtIp = ListGetElementReal( PerfRefTemp_h, Basis, Element, Found )
-        PerfCoeff = PerfrateAtIp * PerfDensAtIp * PerfCpAtIp 
+        PerfCoeff = PerfRateAtIp * PerfDensAtIp * PerfCpAtIp
         DO p=1,nd
           DO q=1,nd        
             STIFF(p,q) = STIFF(p,q) + Weight * PerfCoeff
@@ -1010,9 +1011,9 @@ CONTAINS
 ! in parallel case only true parents result to assembly, mixed parents gives
 ! assembly fraction of 1/2. 
 !------------------------------------------------------------------------------
-  FUNCTION BCAssemblyFraction( Element ) RESULT ( AssFrac ) 
+  FUNCTION BCAssemblyFraction( Element ) RESULT ( AssFrac )
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: AssFrac
 
     INTEGER :: NoParents, NoOwners
@@ -1242,7 +1243,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE TabulateBoundaryAverages( Mesh, Temps4, Emiss, Absorp, Reflect )
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      REAL(KIND=dp), ALLOCATABLE :: Temps4(:)
      REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: Emiss(:), Absorp(:), Reflect(:)
  !------------------------------------------------------------------------------
@@ -1281,7 +1282,7 @@ CONTAINS
        ELSE
          NodalTemp(1:n) = Temperature(TempPerm(Element % NodeIndexes))
        END IF
-       Temps4(j) = ( SUM( NodalTemp(1:n)**4 )/ n )**(1._dp/4._dp)       
+       Temps4(j) = SUM( NodalTemp(1:n)**4 ) / n
 
        IF( PRESENT( Emiss ) ) THEN
          NodalVal(1:n) = GetReal(BC,'Emissivity',Found)
@@ -1331,10 +1332,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: n, nd, nb
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: T0,Text, Fj, &
-        RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac
+        RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac, cNewton
     REAL(KIND=dp) :: Basis(nd),DetJ,Atext(12),Base(12),S,RadCoeffAtIP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp
     REAL(KIND=dp), POINTER :: Fact(:) 
@@ -1428,9 +1429,14 @@ CONTAINS
         RadLoadAtIp =  (3 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)) * TempAtIp &
              + Fact(1) 
         RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)
+        
+        IF( HaveRadNewtonRelax ) THEN
+          RadLoadAtIp = RadNewtonRelax * RadLoadAtIp + (1-RadNewtonRelax) * Fact(1)
+          RadCoeffAtIp = RadNewtonRelax * RadCoeffAtIp + (1-RadNewtonRelax) * Emis1 * StefBoltz * TempAtIp**3          
+        END IF
       ELSE
-        RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
         RadLoadAtIp = Fact(1)
+        RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
       END IF
       
       DO t=1,IP % n
@@ -1488,7 +1494,7 @@ CONTAINS
           ! of the element, so take average of nodal temperatures
           !-------------------------------------------------------------
           bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
-          Text = Temps4(bindex)
+          Text = Temps4(bindex)**(0.25_dp)
 
           IF( j <= nf_imp ) THEN        
             ! Linearization of the G_jiT^4_j term
@@ -1555,7 +1561,7 @@ CONTAINS
 
           RadElement => Mesh % Elements(ElementList(j))
           bindex = RadElement % ElementIndex - Solver % Mesh % NumberOfBulkElements
-          Text = Text + Fj*Temps4(bindex)**4 / Emis1
+          Text = Text + Fj*Temps4(bindex) / Emis1
 
           IF(Radiators) THEN
             IF(ALLOCATED(RadElement % BoundaryInfo % Radiators)) THEN
@@ -1575,7 +1581,7 @@ CONTAINS
         IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
 
         IF( AngleFraction < 1.0_dp ) THEN
-          Topen = (SUM( Atext(1:n)**2 ) )**0.25_dp
+          Topen = (SUM( Atext(1:n)**4 ) )**0.25_dp
           IF( Newton ) THEN        
             RadLoadAtIp = (1.0_dp-AngleFraction) * Emis1 * Topen**4 * StefBoltz
             DO p=1,n
@@ -1661,7 +1667,7 @@ CONTAINS
   SUBROUTINE LocalJumps( Element,n,LeftParent,nl,RightParent,nr)
 !------------------------------------------------------------------------------
     INTEGER :: n,nl,nr
-    TYPE(Element_t), POINTER :: Element, LeftParent, RightParent
+    TYPE(Element_t) :: Element, LeftParent, RightParent
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),FORCE(:)   
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
@@ -1689,7 +1695,7 @@ CONTAINS
       END IF
 
       gamma = ListGetCReal( Params,'Dg Continuity Penalty',Found )
-      IF(.NOT. Found ) gamma = 0.001
+      IF(.NOT. Found ) gamma = 0.001_dp
 
       AllocationsDone = .TRUE.
     END IF
@@ -1834,7 +1840,8 @@ CONTAINS
       Parent1,n1,Parent2,n2,InitHandles,BCDone)
 !------------------------------------------------------------------------------
     INTEGER :: n, n1, n2
-    TYPE(Element_t), POINTER :: Element, Parent1, Parent2
+    TYPE(Element_t), TARGET :: Element
+    TYPE(Element_t), POINTER :: Parent1, Parent2
     LOGICAL :: InitHandles, BCDone 
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
@@ -2114,8 +2121,8 @@ END SUBROUTINE HeatSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Edge
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element
@@ -2400,8 +2407,8 @@ END SUBROUTINE HeatSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2)
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Edge
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element
@@ -2590,8 +2597,8 @@ END SUBROUTINE HeatSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes

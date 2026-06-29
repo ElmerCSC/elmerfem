@@ -400,19 +400,15 @@ CONTAINS
         mass(i::dofs, i::dofs) = mass(i::dofs, i::dofs) + VelocityMass(1:ntot, 1:ntot)
       END DO
 
-      !mass(dofs::dofs, dofs::dofs) = mass(dofs::dofs, dofs::dofs) + PressureMass(1:ntot,1:ntot)
-
-      ! These loop unrolls look bad, maybe do nicer weight precomputation?
-      weight_a(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,1)
-      weight_b(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,2)
-      weight_c(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,3)
+      ! Accumulate convection block once, then scatter to diagonal velocity blocks
+      VelocityMass = 0._dp
+      DO k = 1, dim
+        weight_a(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,k)
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            basisvec, dbasisdxvec(:,:,k), detJvec, VelocityMass, weight_a)
+      END DO
       DO i = 1, dim
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            basisvec, dbasisdxvec(:,:,1), detJvec, stifford(:,:,i,i), weight_a)
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            basisvec, dbasisdxvec(:,:,2), detJvec, stifford(:,:,i,i), weight_b)
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            basisvec, dbasisdxvec(:,:,3), detJvec, stifford(:,:,i,i), weight_c)
+        stifford(1:ntot,1:ntot,i,i) = stifford(1:ntot,1:ntot,i,i) + VelocityMass(1:ntot,1:ntot)
       END DO
 
       IF ( Newton ) THEN
@@ -553,7 +549,7 @@ CONTAINS
       LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
       CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
      
-!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
+!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec,TempVec,EhfVec)
      
       IF(InitHandles ) THEN
         CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
@@ -1033,7 +1029,8 @@ CONTAINS
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
     REAL(KIND=dp), INTENT(IN) :: dt
-    LOGICAL, INTENT(INOUT) :: SpecificLoad, InitHandles, FrictionNewton 
+    LOGICAL, INTENT(IN) :: SpecificLoad, FrictionNewton
+    LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------    
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
@@ -1159,11 +1156,9 @@ CONTAINS
     no_slip_comp = 0
     
     ! There is no elemental routine for this.
-    ! So whereas this breaks the beuty it does not cost too much.
+    ! So whereas this breaks the beauty it does not cost too much.
     FSSAFlag = GetString(BC, 'FSSA Flag', Found)
-    IF (.NOT.Found) THEN
-      WRITE (FSSAFlag,*) "none"
-    END IF
+    IF (.NOT.Found) FSSAFlag = 'none'
     
     HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient') 
     HaveFrictionU = ListCheckPresent( BC,'Friction Coefficient')
@@ -1174,36 +1169,36 @@ CONTAINS
       FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element ) 
     END IF
     
-    FSSAtheta = ListGetElementReal( FSSAtheta_h,  Basis, Element, HaveFSSA, GaussPoint = t )
-    IF (HaveFSSA) THEN
-      IF (FSSAtheta == 0.0) HaveFSSA=.FALSE.
-      rho = ListGetElementRealParent( Dens_h, Basis, Element, Found )
-      IF (.NOT.Found) THEN
-        CALL WARN('IncompressibleNSSolver (FSSA)','"Density" in Parent element not found!')          
-        HaveFSSA = .FALSE.
-      END IF
-    END IF
-
-    DO t=1,ngp      
+    DO t=1,ngp
 !------------------------------------------------------------------------------
 !    Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
       stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t), detJ, Basis )
 
       s = detJ * IP % s(t)
-      
+
       ! Given force on a boundary componentwise
       !----------------------------------------
-      SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )      
-      
+      SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )
+
       ! Given force to the normal direction
       !------------------------------------
-      ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )      
+      ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )
 
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )
       NormalSlipCoeff = ListGetElementReal( NormalSlipCoeff_h, Basis, Element, HaveNormalSlip, GaussPoint = t )
+
+      FSSAtheta = ListGetElementReal( FSSAtheta_h, Basis, Element, HaveFSSA, GaussPoint = t )
+      IF (HaveFSSA) THEN
+        IF (FSSAtheta == 0.0) HaveFSSA = .FALSE.
+        rho = ListGetElementRealParent( Dens_h, Basis, Element, Found )
+        IF (.NOT.Found .AND. t==1) THEN
+          CALL WARN('IncompressibleNSSolver (FSSA)','"Density" in Parent element not found!')
+          HaveFSSA = .FALSE.
+        END IF
+      END IF
 
       IF (HaveFSSA) THEN
         ! Flow bodyforce if present
@@ -1217,7 +1212,7 @@ CONTAINS
           END IF
         END DO
         IF (.NOT.FoundLoad) THEN
-          CALL WARN('IncompressibleNSSolver (FSSA)','No component of "Flow Body Force" in Parent element not found!')
+          CALL WARN('IncompressibleNSSolver (FSSA)','No component of "Flow Body Force" in Parent element found!')
           HaveFSSA = .FALSE.
         END IF
       END IF
@@ -1322,13 +1317,6 @@ CONTAINS
         END IF
       END IF
 
-      IF(t==0 ) THEN
-        PRINT *,'Normal:',Element % ElementIndex, Normal,un,ut,norm_comp
-        PRINT *,'wexp:',wexp,wcoeff,wut0,HaveFrictionW,HaveFrictionU,HaveSlip,HaveNormalSlip
-        PRINT *,'Velo:',dim,Velo,NormalTangential, LocalNewton
-        PRINT *,'Slip:',SlipCoeff,NormalSlipCoeff,TanFrictionCoeff
-      END IF
-      
       ! Project external pressure to the normal direction
       IF( HavePres ) THEN
         IF( NormalTangential ) THEN
@@ -1454,14 +1442,12 @@ CONTAINS
       IF ( HaveFSSA ) THEN
         SELECT CASE(FSSAFlag)
           ! version 1,  approximation with normal pointing into z-direction
-        CASE ('normal')          
+        CASE ('normal')
           DO p=1,nd
             DO q=1,nd
-              DO i=dim,dim
-                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
-                    STIFF( (p-1)*c+dim,(q-1)*c+i )  &
-                    - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
-              END DO
+              STIFF( (p-1)*c+dim,(q-1)*c+dim ) = &
+                  STIFF( (p-1)*c+dim,(q-1)*c+dim )  &
+                  - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(dim)
             END DO
           END DO
           ! version 2, transposed
@@ -1757,7 +1743,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! block solver.
     CALL ListAddNewString( Params,'Block Matrix Schur Variable','schur')
 
-    ! Create solver that only acts as a container for the shcur complement
+    ! Create solver that only acts as a container for the schur complement
     ! matrix used in the block preconditioning solver of the library.
     IF( .NOT. ASSOCIATED( SchurSolver ) ) THEN
       SchurSolver => CreateChildSolver( Solver,'schur', 1,'schur:') 

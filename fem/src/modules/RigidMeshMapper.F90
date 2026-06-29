@@ -49,7 +49,8 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   USE ParallelUtils
   USE Types
   USE Lists
-  USE MeshUtils, ONLY: SetMeshSkew, StoreOriginalCoordinates
+  USE MeshExtrusion, ONLY: SetMeshSkew
+  USE MeshTransform, ONLY: StoreOriginalCoordinates
   USE DefUtils
 
   
@@ -91,7 +92,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   CHARACTER(*), PARAMETER :: Caller = 'RigidMeshMapper'
 
   
-  SAVE Parray,Visited
+  SAVE Parray,Visited,RelaxField,RelaxPerm
    
   CALL Info( Caller,'---------------------------------------',Level=4 )
   CALL Info( Caller,'Performing analytic mesh mapping ',Level=4 )
@@ -312,20 +313,20 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       Solver % Variable % Values = Solver % Variable % Values / MaxDeform
     END IF
     
-    DEALLOCATE( FORCE, STIFF )
-  END IF
-
-  RelaxVar => Solver % Variable
-  IF( ASSOCIATED( RelaxVar ) ) THEN
-    IF( ASSOCIATED( RelaxVar % Values ) ) THEN
-      IF( SIZE( RelaxVar % Values ) > 0 ) THEN
-        GotRelaxField = .TRUE.
-        RelaxField => Solver % Variable % Values
-        RelaxPerm => Solver % Variable % Perm
+    RelaxVar => Solver % Variable
+    IF( ASSOCIATED( RelaxVar ) ) THEN
+      IF( ASSOCIATED( RelaxVar % Values ) ) THEN
+        IF( SIZE( RelaxVar % Values ) > 0 ) THEN
+          GotRelaxField = .TRUE.
+          RelaxField => Solver % Variable % Values
+          RelaxPerm => Solver % Variable % Perm
+        END IF
       END IF
     END IF
-  END IF
 
+    DEALLOCATE( FORCE, STIFF )
+  END IF
+    
     
   ! Initialize the mapping matrices
   Identity = 0.0d0
@@ -395,7 +396,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       NodeI = NodeIndex(1)
      
       IF(NodeDone(NodeI)) CYCLE
-      NodeDone(NodeI) = .TRUE.
 
       ! This is to save time. If we have exactly same mapping as last time then
       ! there is no use doing the same ListGet operation things again.
@@ -643,21 +643,45 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Grad(3),Cond,LocalRelax(n)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Grad(3),Cond,LocalRelax(n),s
     LOGICAL :: Stat
-    INTEGER :: i,j,t
+    INTEGER :: i,j,t,p,q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
+    REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
+    REAL(KIND=dp) :: ElemYoungs(3,n), Youngs(3)
+    LOGICAL :: GotYoungs
+    TYPE(ValueList_t), POINTER :: Material
+    SAVE Nodes, Hwrk
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0.0d0
     FORCE = 0.0d0
     
     CALL GetScalarLocalSolution( LocalRelax )
-
+    
+    Youngs = 1.0_dp
+    GotYoungs = .FALSE.
+    Material => GetMaterial(Element)
+    IF( ASSOCIATED(Material) ) THEN
+      CALL ListGetRealArray( Material,'Mesh Youngs Modulus',Hwrk,n,Element % NodeIndexes, GotYoungs )
+      IF( GotYoungs ) THEN
+        k = SIZE(Hwrk,1)
+        IF ( k == 1 ) THEN
+          DO i=1,3
+            ElemYoungs(i,i:n) = Hwrk( 1,1,1:n )
+          END DO
+        ELSE 
+          DO i=1,MIN(3,k)
+            ElemYoungs(i,1:n) = Hwrk(i,1,1:n)
+          END DO
+          IF(k<3) ElemYoungs(3,1:n) = 0.0_dp
+        END IF
+      END IF
+    END IF
+      
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
@@ -669,15 +693,25 @@ CONTAINS
       DO i=1,3
         Grad(i) = SUM( dBasisdx(:,i) * LocalRelax(1:n) )
       END DO
-
+      IF(GotYoungs) THEN
+        DO i=1,3
+          Youngs(i) = SUM(Basis(1:n) * ElemYoungs(i,1:n))
+        END DO      
+      END IF
       Cond = 1.0_dp + Coeff * SQRT( SUM( Grad * Grad ) )
       
       ! Laplace operator
       !------------------
-      STIFF(1:n,1:n) = STIFF(1:n,1:n) + Cond * IP % s(t) * DetJ * &
-          MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
-
-      FORCE(1:n) = FORCE(1:n) + Source * IP % s(t) * DetJ * Basis(1:n)
+      s = IP % s(t) * DetJ
+      DO i=1,3
+        DO p=1,n
+          DO q=1,n
+            STIFF(p,q) = STIFF(p,q) + Youngs(i) * Cond * s * dBasisdx(p,i) * dBasisdx(q,i)
+          END DO
+        END DO
+      END DO
+        
+      FORCE(1:n) = FORCE(1:n) + Source * s * Basis(1:n)
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix

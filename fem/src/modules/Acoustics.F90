@@ -4479,12 +4479,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    This subroutine computes the element matrix for the preconditioning
 !    equation of velocities. The coordinate system can be either orthogonal
-!    Cartesian or axially symmetric.       
+!    Cartesian or axially symmetric.
 !-------------------------------------------------------------------------------
      REAL(KIND=dp), TARGET :: StiffMatrix(:,:)
      REAL(KIND=dp) :: Viscosity(:), AngularFrequency, Density(:)
      INTEGER :: dim, n
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
      COMPLEX(kind=dp) :: CStiff(dim*n,dim*n)
      REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), DetJ, r, &
@@ -4577,14 +4577,14 @@ CONTAINS
    SUBROUTINE PressureLaplaceMatrix(  StiffMatrix, Viscosity, AngularFrequency, &
        Density, Element, n, dim)
 !------------------------------------------------------------------------------
-!   This subroutine computes the element matrix for the Laplacian type 
-!   term arising in the consistent splitting approach. The coordinate system can 
-!   be either orthogonal Cartesian or axially symmetric.       
+!   This subroutine computes the element matrix for the Laplacian type
+!   term arising in the consistent splitting approach. The coordinate system can
+!   be either orthogonal Cartesian or axially symmetric.
 !-------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: StiffMatrix(:,:)
     REAL(KIND=dp) :: Viscosity(:), AngularFrequency, Density(:)
     INTEGER :: dim, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     COMPLEX(kind=dp) :: CStiff(n,n)
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), DetJ, r, &
@@ -4651,14 +4651,14 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE PressureMassMatrix(  StiffMatrix, Element, n, dim)
 !------------------------------------------------------------------------------
-!   This subroutine computes the element matrix for the mass matrix which is 
-!   needed in the consistent splitting approach to compute the continuous 
-!   approximation of residual. The coordinate system can be either orthogonal 
-!   Cartesian or axially symmetric.       
+!   This subroutine computes the element matrix for the mass matrix which is
+!   needed in the consistent splitting approach to compute the continuous
+!   approximation of residual. The coordinate system can be either orthogonal
+!   Cartesian or axially symmetric.
 !-------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: StiffMatrix(:,:)
     INTEGER :: dim, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     COMPLEX(kind=dp) :: CStiff(n,n)
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), DetJ, r, s
@@ -4720,13 +4720,13 @@ CONTAINS
         Element, n, dim)
 !------------------------------------------------------------------------------
 !     This subroutine computes the element matrix for the preconditioning
-!     equation of temperature and pressure. The coordinate system can be either 
-!     orthogonal Cartesian or axially symmetric.       
+!     equation of temperature and pressure. The coordinate system can be either
+!     orthogonal Cartesian or axially symmetric.
 !-------------------------------------------------------------------------------
       REAL(KIND=dp), TARGET :: StiffMatrix(:,:)
       REAL(KIND=dp) :: AngularFrequency, SpecificHeat(:), HeatRatio(:), Density(:), &
-          Pressure(:),  Temperature(:), Conductivity(:), Viscosity(:), Lambda(:) 
-      TYPE(Element_t), POINTER :: Element
+          Pressure(:),  Temperature(:), Conductivity(:), Viscosity(:), Lambda(:)
+      TYPE(Element_t), TARGET :: Element
       INTEGER :: n, dim
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), ddBasisddx(n,3,3), DetJ, r, &
@@ -4839,13 +4839,13 @@ CONTAINS
       Density, Impedance, Element, n, Nodes, dim)
 !------------------------------------------------------------------------------
 !   This subroutine computes the contribution of the impedance boundary
-!   condition to the preconditioning equation of velocities. The coordinate 
-!   system can be either orthogonal Cartesian or axially symmetric.       
+!   condition to the preconditioning equation of velocities. The coordinate
+!   system can be either orthogonal Cartesian or axially symmetric.
 !-------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: StiffMatrix(:,:)
     REAL(KIND=dp) :: AngularFrequency, Density(:), Impedance(:,:)
     INTEGER :: dim, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     COMPLEX(kind=dp) :: CStiff(dim*n,dim*n)
@@ -4924,14 +4924,14 @@ CONTAINS
       Element, n, Nodes, dim)
 !------------------------------------------------------------------------------
 !   This subroutine computes the contribution of the impedance boundary
-!   conditions to the preconditioning equation of temperature and pressure. 
-!   The coordinate system can be either orthogonal Cartesian or axially symmetric.       
+!   conditions to the preconditioning equation of temperature and pressure.
+!   The coordinate system can be either orthogonal Cartesian or axially symmetric.
 !-------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: StiffMatrix(:,:)
     REAL(KIND=dp) :: Impedance(:,:), AngularFrequency, SpecificHeat(:), &
         HeatRatio(:), Density(:), Conductivity(:)
     INTEGER :: dim, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     COMPLEX(kind=dp) :: CStiff(2*n,2*n), K1, ZT
@@ -5016,7 +5016,7 @@ CONTAINS
     REAL(KIND=dp) :: SpecificHeat(:), HeatRatio(:), Density(:), &
         Temperature(:), AngularFrequency, WallTemperature(:), SlipCoefficient1
     INTEGER :: dim, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     COMPLEX(kind=dp) :: CStiff(dim*n,dim*n)    
@@ -5112,7 +5112,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE SchurComplementSlipMatrix( StiffMatrix, SpecificHeat, &
-      HeatRatio, Density, Temperature, AngularFrequency, Conductivity, & 
+      HeatRatio, Density, Temperature, AngularFrequency, Conductivity, &
       WallTemperature, SlipCoefficient2, &
       Element, n, Nodes, dim)
 !------------------------------------------------------------------------------
@@ -5120,7 +5120,7 @@ CONTAINS
     REAL(KIND=dp) :: SpecificHeat(:), HeatRatio(:), Density(:), Temperature(:), &
         AngularFrequency, Conductivity(:), WallTemperature(:), SlipCoefficient2
     INTEGER :: dim, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     COMPLEX(kind=dp) :: CStiff(2*n,2*n)
@@ -5202,18 +5202,18 @@ CONTAINS
       Temperature, Conductivity, Viscosity, Lambda,             &
       HeatSource, Load, Bubbles, Mini_Bubbles, Element, n, Nodes, Dofs, nb )
 !------------------------------------------------------------------------------
-!    This subroutine computes the element stiffness matrix. The coordinate 
-!    system can be either orthogonal Cartesian or axially symmetric.       
+!    This subroutine computes the element stiffness matrix. The coordinate
+!    system can be either orthogonal Cartesian or axially symmetric.
 !    The bubble basis can be specified by the user.
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), AngularFrequency, &
-        SpecificHeat(:), HeatRatio(:), Density(:),    &       
+        SpecificHeat(:), HeatRatio(:), Density(:),    &
         Temperature(:), Conductivity(:), Viscosity(:), Lambda(:),  &
         HeatSource(:,:), Load(:,:)
     LOGICAL :: Bubbles, Mini_Bubbles
     INTEGER :: n, Dofs, nb
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(2*n), dBasisdx(2*n,3), ddBasisddx(n,3,3)
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, L(6), &
@@ -5840,13 +5840,13 @@ CONTAINS
       Temperature, Conductivity, Impedance, Load, &
       Element, n, Nodes, Dofs )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), AngularFrequency, & 
+    REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), AngularFrequency, &
         SpecificHeat(:), HeatRatio(:), Density(:), Pressure(:),    &
         Temperature(:), Conductivity(:), Impedance(:,:), &
         Load(:,:)
     INTEGER :: n, Dofs
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, Impedance1, Impedance2, &
         Impedance3, Impedance4, CV, gamma, rho0, P0, T0, kappa, K1, L(6),   & 
@@ -5964,13 +5964,13 @@ CONTAINS
       Temperature, Conductivity, Impedance, Load, &
       Element, n, Nodes, Dofs )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), AngularFrequency, & 
+    REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), AngularFrequency, &
         SpecificHeat(:), HeatRatio(:), Density(:), Pressure(:),    &
         Temperature(:), Conductivity(:), Impedance(:,:), &
         Load(:,:)
     INTEGER :: n, Dofs
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, Impedance1, Impedance2, &
         Impedance3, Impedance4, CV, gamma, rho0, P0, T0, kappa, K1, L(6),   & 
@@ -6053,13 +6053,13 @@ CONTAINS
       WallVelocity, SlipCoefficient1, SlipCoefficient2, SlipCoefficient3, &
       Element, n, Nodes, Dofs )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), & 
+    REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), &
         SpecificHeat(:), HeatRatio(:), Density(:), Conductivity(:), &
         Pressure(:), Temperature(:), AngularFrequency, WallTemperature(:), &
         WallVelocity(:,:), SlipCoefficient1, SlipCoefficient2, SlipCoefficient3
     INTEGER :: n, Dofs
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, Impedance1, Impedance2, &
         Impedance3, Impedance4, CV, gamma, rho0, P0, T0, ReV0(3), ImV0(3), &
@@ -6514,7 +6514,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ComputeAverageVelocity( Element, n, WallVelo, res)
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     REAL(KIND=dp) :: WallVelo(:,:)
     COMPLEX(KIND=dp) :: res   
@@ -6576,13 +6576,13 @@ CONTAINS
       HeatSource, Load, Bubbles, Element, n, Nodes, Dofs, NodeOnBoundary )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: StiffMatrix(:,:), Force(:), AngularFrequency, &
-        SpecificHeat(:), HeatRatio(:), Density(:),    &       
+        SpecificHeat(:), HeatRatio(:), Density(:),    &
         Temperature(:), Conductivity(:), Viscosity(:), Lambda(:),  &
         HeatSource(:,:), Load(:,:)
     LOGICAL :: Bubbles, NodeOnBoundary(:)
     INTEGER :: n, Dofs
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(2*n), dBasisdx(2*n,3), ddBasisddx(n,3,3)
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, L(6), &
@@ -6692,7 +6692,7 @@ CONTAINS
   SUBROUTINE SurfaceForceIntegration(Element, Parent, Traction, Moment, MomentAbout, Area, &
      CalculateMoment, Velo, Pressure, Viscosity, BulkViscosity, Nodes, ParentNodes, np)
 !----------------------------------------------------------------------------------
-  TYPE(Element_t), POINTER :: Element, Parent  
+  TYPE(Element_t), TARGET :: Element, Parent
   REAL(kind=dp) :: Traction(6), Moment(6), MomentAbout(3), Area, Velo(:,:), &
       Pressure(:,:), Viscosity(:), BulkViscosity(:)
   LOGICAL :: CalculateMoment
@@ -6822,7 +6822,7 @@ END SUBROUTINE SurfaceForceIntegration
 SUBROUTINE SurfaceImpedanceIntegration(Element, Velo, Pressure, Nodes, n, Impedance1, Impedance2, &
      C3, C4, Area)
 !---------------------------------------------------------------------------------------
-  TYPE(Element_t), POINTER :: Element  
+  TYPE(Element_t), TARGET :: Element
   REAL(kind=dp) :: Velo(:,:), Pressure(:,:), Area
   TYPE(Nodes_t) :: Nodes
   INTEGER :: n
@@ -6896,7 +6896,7 @@ END SUBROUTINE SurfaceImpedanceIntegration
 FUNCTION DiscontIndexes( Solver, Element, n ) RESULT(GapIndexes)
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     INTEGER :: GapIndexes(n)
 !------------------------------------------------------------------------------
@@ -7076,7 +7076,7 @@ END SUBROUTINE AcousticShellInterface
 !---------------------------------------------------------------------------------------
 SUBROUTINE FSIIntegration(Element, Velo, Pressure, Nodes, n, uf, wf, Area)
 !---------------------------------------------------------------------------------------
-  TYPE(Element_t), POINTER :: Element  
+  TYPE(Element_t), TARGET :: Element
   REAL(kind=dp) :: Velo(:,:), Pressure(:,:), Area
   TYPE(Nodes_t) :: Nodes
   INTEGER :: n

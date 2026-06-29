@@ -50,9 +50,13 @@ MODULE DefUtils
 #include "../config.h"
 
    USE MeshGenerate
-   USE MeshUtils, ONLY : AllocateElement, SaveParallelInfo
+   USE MeshBasics, ONLY : AllocateElement, SaveParallelInfo
    USE ElementUtils
-   USE SolverUtils
+   USE SolverBasics
+   USE SolveCore
+   USE ContactUtils
+   USE BoundaryConditionUtils
+   USE ProjectorUtils
    USE CutFEMUtils
 
    IMPLICIT NONE
@@ -297,10 +301,10 @@ CONTAINS
 
   SUBROUTINE GetElementNodeIndex(i, Element, n, FOUND)
     IMPLICIT None
- 
+
     ! variables in function header
     INTEGER :: i, n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t) :: Element
     Logical :: FOUND
     
     DO i=1, SIZE(Element%NodeIndexes)
@@ -1246,7 +1250,7 @@ CONTAINS
 
     CHARACTER(LEN=*) :: Name
     LOGICAL, OPTIONAL :: ThisOnly
-    TYPE(Solver_t), POINTER, OPTIONAL :: USolver    
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
     TYPE(Variable_t), POINTER :: Var
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Variables
@@ -1310,7 +1314,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      CHARACTER(:), ALLOCATABLE :: str
 
-     str = TRIM(ListGetString(List, Name, Found))
+     str = ListGetString(List, Name, Found)
   END FUNCTION GetString
 
 
@@ -1534,10 +1538,9 @@ CONTAINS
          IF ( ListCheckPresent( Material,Name) ) THEN
            BLOCK
              TYPE(Element_t), POINTER :: se
-             se => CurrentModel % CurrentElement
-             CurrentModel % CurrentElement => Element
+             se => SetCurrentElement(Element)
              x(1:n) = ListGetReal(Material, Name, n, Indexes)
-             CurrentModel % CurrentElement => se
+             se => SetCurrentElement(se)
            END BLOCK
            IF( PRESENT( UParent ) ) UParent => Parent
            Gotit = .TRUE.
@@ -1660,7 +1663,7 @@ CONTAINS
   SUBROUTINE SetElementProperty( Name, Values, UElement )
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) :: Values(:)
-    TYPE(Element_t), POINTER, OPTIONAL :: UElement
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
     TYPE(ElementData_t), POINTER :: p
 
@@ -1697,7 +1700,7 @@ CONTAINS
   FUNCTION GetElementProperty( Name, UElement ) RESULT(Values)
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp), POINTER :: Values(:)
-    TYPE(Element_t), POINTER, OPTIONAL :: UElement
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
     TYPE(ElementData_t), POINTER :: p
 
@@ -2270,7 +2273,7 @@ CONTAINS
     TYPE(Element_t), POINTER  :: CurrElement
     TYPE(Solver_t), POINTER :: Solver
     LOGICAL :: Found, GB, UpdateRequested,Bubbles
-    INTEGER :: k, p, ElemFamily
+    INTEGER :: k, p, id, ElemFamily
 
     IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -2290,8 +2293,21 @@ CONTAINS
       CurrElement => GetCurrentElement(Element)
       ElemFamily = GetElementFamily(CurrElement)
 
-      k = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 5) 
-      p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
+      id = CurrElement % BodyId
+      IF ( Id==0 .AND. ASSOCIATED(CurrElement % BoundaryInfo) ) THEN
+        IF ( ASSOCIATED(CurrElement % BoundaryInfo % Left) ) &
+            id = CurrElement % BoundaryInfo % Left % BodyId
+        IF (id == 0) THEN
+          IF ( ASSOCIATED(CurrElement % BoundaryInfo % Right) ) &
+              id = CurrElement % BoundaryInfo % Right % BodyId
+        END IF
+      END IF
+      ! This is risky business, see mGetElementDofs()
+      IF(id==0) id=1
+      
+  
+      k = Solver % Def_Dofs(ElemFamily, id, 5) 
+      p = Solver % Def_Dofs(ElemFamily, id, 6) 
 
       IF (k >= 0 .OR. p >= 1) THEN
         ! Apparently an "Element" command has been read from a solver section.
@@ -3456,8 +3472,8 @@ CONTAINS
 !-----------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
 !------------------------------------------------------------------------------  
-     TYPE(Solver_t), POINTER :: Solver     
-     CHARACTER(LEN=*) :: SlaveSolverStr 
+     TYPE(Solver_t), TARGET :: Solver
+     CHARACTER(LEN=*) :: SlaveSolverStr
      
      TYPE(Solver_t), POINTER :: SlaveSolver
      TYPE(ValueList_t), POINTER :: Params
@@ -3517,7 +3533,7 @@ CONTAINS
 
          IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
            IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
-             ParEnv => SlaveSolver % Matrix % ParMatrix % ParEnv
+             ParEnv => SlaveSolver % ParEnv
            ELSE
              ParEnv % ActiveComm = SlaveSolver % Matrix % Comm
            END IF
@@ -3549,8 +3565,11 @@ CONTAINS
      LOGICAL, OPTIONAL :: UseConstantBulk
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
-     INTEGER :: i,n
-     LOGICAL :: Found
+     TYPE(NormalTangential_t), POINTER :: NT
+     CHARACTER(:), ALLOCATABLE :: str
+     INTEGER :: i,n,dim
+     TYPE(ElementType_t), POINTER :: et
+     LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3561,6 +3580,15 @@ CONTAINS
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
        CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
      END IF     
+
+     ! Reset basis cache on all element types so ip-slot assignments from this
+     ! solver do not corrupt lookups by the next solver (which may use a
+     ! different integration scheme).
+     et => ElementTypeList
+     DO WHILE ( ASSOCIATED(et) )
+       et % BasisCacheCount = 0
+       et => et % NextElementType
+     END DO
 
      IF( PRESENT( UseConstantBulk ) ) THEN
        IF ( UseConstantBulk ) THEN
@@ -3594,6 +3622,49 @@ CONTAINS
      END IF
      
      CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
+
+     IF ( Solver % Variable % DOFs > 1 ) THEN
+       str = 'Normal-Tangential'
+       IF ( SEQL(Solver % Variable % Name, 'flow solution') ) THEN
+         str = TRIM(str) // ' Velocity'
+       ELSE
+         str = TRIM(str) // ' ' // GetVarName(Solver % Variable)
+       END IF
+       AnyNT  = ListGetLogicalAnyBC( CurrentModel, str )
+       AnyProj = ListGetLogicalAnyBC( CurrentModel, 'Mortar BC Nonlinear' )
+
+       IF( AnyNT .OR. AnyProj ) THEN
+         DoDisplaceMesh = ListGetLogical( Solver % Values,'Displace Mesh At Init',Found )
+         IF( DoDisplaceMesh ) THEN
+           CALL Info('DefaultInitialize','Displacing mesh for nonlinear projectors',Level=8)
+           CALL DisplaceMesh( Solver % Mesh, Solver % Variable % Values, 1, &
+               Solver % Variable % Perm, Solver % Variable % Dofs )
+         END IF
+
+         IF( AnyNT ) THEN
+           dim = CoordinateSystemDimension()
+           NT => Solver % NormalTangential
+           NT % NormalTangentialNOFNodes = 0
+           NT % NormalTangentialName = TRIM(str)
+           CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
+               NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+               NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
+           CALL AverageBoundaryNormals( CurrentModel, NT % NormalTangentialName, &
+               NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+               NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, &
+               dim )
+         END IF
+
+         IF( AnyProj ) THEN
+           CALL GenerateProjectors( CurrentModel, Solver, Nonlinear=.TRUE. )
+         END IF
+
+         IF( DoDisplaceMesh ) THEN
+           CALL DisplaceMesh( Solver % Mesh, Solver % Variable % Values, -1, &
+               Solver % Variable % Perm, Solver % Variable % Dofs )
+         END IF
+       END IF
+     END IF
 
      IF(ASSOCIATED(Solver % Matrix % RhsAdjoint) ) THEN
        Solver % Matrix % RhsAdjoint = 0.0_dp
@@ -3815,11 +3886,26 @@ CONTAINS
          REAL(KIND=dp), POINTER :: AdjSol(:)
          TYPE(Variable_t), POINTER :: aVar
          TYPE(Mesh_t), POINTER :: Mesh
+         LOGICAL :: LFact, FreeFact
          
          n = SIZE(Solver % Matrix % rhs)
-         CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
 
+         LFact = ListGetLogical( Params,'Linear System Refacrtorize', Found )
+         IF(.NOT. Found) LFact = .TRUE.
+         FreeFact = ListGetLogical( Params,'Linear System Free Factorization', Found )
 
+         CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
+         CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.TRUE.)
+         CALL ListAddLogical( Params, 'Linear System Constant Matrix', .TRUE.)
+         CALL ListAddLogical( Params, 'Linear System Refactorize', .FALSE. )
+
+         str = ListGetString( Params,'Adjoint Source Name', Found )
+         IF( Found ) THEN
+           CALL Info('DefaultFinish','Creating adjoint solution with source: '//TRIM(str))
+           CALL AssembleAdjointRhs( Solver, str )
+         END IF
+         
+         
          Mesh => Solver % Mesh
          aVar => VariableGet( Mesh % Variables,TRIM(Solver % Variable % Name)//' adjoint')
          IF(.NOT. ASSOCIATED(aVar)) THEN
@@ -3834,15 +3920,25 @@ CONTAINS
                  TRIM(Solver % Variable % Name)//' adjoint rhs',Solver % Variable % Dofs,&
                  Solver % Matrix % rhsAdjoint, Solver % Variable % Perm, &
                  Output = .TRUE., Secondary = .TRUE.)
+         ELSE
+           AdjSol => avar % Values
+           AdjSol = 0.0_dp           
          END IF
-         AdjSol => avar % Values
+           
+         ! Dirichlet conditions are not sensitive because they are constant
+         WHERE( Solver % Matrix % ConstrainedDOF )
+           Solver % Matrix % RhsAdjoint = 0.0_dp
+         END WHERE
 
-         
          CALL SolveSystem( Solver % Matrix, ParMatrix, Solver % Matrix % rhsAdjoint, &
              AdjSol, Norm, Solver % Variable % DOFs,Solver )
-
              
          CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
+         CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.FALSE.)
+         CALL ListAddLogical( Params, 'Linear System Constant Matrix', .FALSE.)
+         CALL ListAddLogical( Params, 'Linear System Refactorize', LFact )
+         CALL ListAddLogical( Params, 'Linear System Free Factorization', FreeFact )
+
        END BLOCK
      END IF
        
@@ -4139,6 +4235,7 @@ CONTAINS
       END IF
     END IF
 
+
     
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
@@ -4302,7 +4399,7 @@ CONTAINS
      LOGICAL :: Found, VecAsm, MCAsm
 
      INTEGER :: i, j, n, nd
-     INTEGER(KIND=AddrInt) :: Proc
+     TYPE(C_FUNPTR) :: Proc
      INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
 
      IF ( PRESENT( USolver ) ) THEN
@@ -4326,7 +4423,7 @@ CONTAINS
      ELSE
        Proc = Solver % BulkElementProcedure
      END IF
-     IF ( Proc /= 0 ) THEN
+     IF ( C_ASSOCIATED(Proc) ) THEN
        n  = GetElementNOFNodes( Element )
        nd = GetElementNOFDOFs( Element, Solver )
        CALL ExecLocalProc( Proc, CurrentModel, Solver, &
@@ -5761,6 +5858,7 @@ CONTAINS
      SAVE gInd, lInd, STIFF, Work
 !-------------------------------------------------------------------------------------------- 
 
+
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
@@ -5984,7 +6082,8 @@ CONTAINS
              DO j=1,n
                k = (j-1) * NDOFs + m
                l = x % Perm(gInd(k))
-
+               IF (l <= 0) CYCLE
+          
                l = x % DOFs * (l-1) + DOF
 
                A % ConstrainedDOF(l) = .TRUE.
@@ -6677,7 +6776,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC  !< The list of boundary condition values
-    TYPE(Element_t), POINTER :: Element !< The boundary element handled
+    TYPE(Element_t), TARGET :: Element !< The boundary element handled
     INTEGER :: n                      !< The number of boundary element nodes
     TYPE(Element_t) :: Parent         !< The parent element of the boundary element
     INTEGER :: np                     !< The number of parent element nodes
@@ -6917,7 +7016,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC     !< The list of boundary condition values
-    TYPE(Element_t), POINTER :: Element  !< The boundary element handled
+    TYPE(Element_t), TARGET :: Element   !< The boundary element handled
     INTEGER :: n                         !< The number of boundary element nodes
     CHARACTER(LEN=*) :: Name             !< The name of boundary condition
     REAL(KIND=dp) :: DOFValues(:)        !< The values of DOFs
@@ -7007,9 +7106,9 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER, INTENT(IN) :: BC    !< The list of boundary condition values
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element !< The boundary element handled
+    TYPE(Element_t), TARGET, INTENT(IN) :: Element  !< The boundary element handled
     INTEGER, INTENT(IN) :: n                        !< The number of boundary element nodes
-    TYPE(Element_t), POINTER, INTENT(IN) :: Parent  !< The parent element of the boundary element
+    TYPE(Element_t), INTENT(IN) :: Parent           !< The parent element of the boundary element
     INTEGER, INTENT(IN) :: FaceId                 !< The parent element face corresponding to Element
     CHARACTER(LEN=*), INTENT(IN) :: Name          !< The variable name in the boundary condition
     REAL(KIND=dp), INTENT(OUT) :: Integral(:)     !< The values of DOFs
@@ -7221,7 +7320,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC     !< The list of boundary condition values
-    TYPE(Element_t), POINTER :: Element  !< The boundary element handled
+    TYPE(Element_t), TARGET :: Element   !< The boundary element handled
     INTEGER :: nd                        !< The number of DOFs in the boundary element
     CHARACTER(LEN=*) :: Name             !< The name of boundary condition
     REAL(KIND=dp) :: STIFF(:,:)          !< The element stiffness matrix
@@ -7363,7 +7462,6 @@ CONTAINS
         END IF
       END IF
     END IF
-    
   END SUBROUTINE DefaultFinishBulkAssembly
 
 
@@ -7473,6 +7571,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultFinishAssembly( Solver )
 !------------------------------------------------------------------------------
+    USE ElementBasis, ONLY: ElementTypeList
     TYPE(Solver_t), OPTIONAL, TARGET :: Solver
 
     INTEGER :: order, n
@@ -7480,6 +7579,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Matrix_t), POINTER :: A
+    TYPE(ElementType_t), POINTER :: et
     REAL(KIND=dp) :: sscond
     CHARACTER(:), ALLOCATABLE :: str
     
@@ -7550,7 +7650,16 @@ CONTAINS
         CALL SaveLinearSystem( PSolver ) 
       END IF
     END IF
-        
+
+    ! Reset basis cache on all element types so ip-slot assignments from this
+    ! solver do not corrupt lookups by the next solver (which may use a
+    ! different integration scheme).
+    et => ElementTypeList
+    DO WHILE ( ASSOCIATED(et) )
+      et % BasisCacheCount = 0
+      et => et % NextElementType
+    END DO
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultFinishAssembly
 !------------------------------------------------------------------------------
@@ -7719,7 +7828,7 @@ CONTAINS
      ! Parameters
      TYPE(Mesh_t) :: Mesh
      TYPE(Element_t) :: Element
-     TYPE(Element_t), POINTER :: BElement
+     TYPE(Element_t), TARGET :: BElement
      INTEGER :: indSize, lIndexes(:), gIndexes(:)
      ! Variables
      TYPE(Element_t), POINTER :: Edge, Face

@@ -49,7 +49,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   USE Lists
   USE Integration
   USE ElementDescription
-  USE SolverUtils
+  USE SolverBasics
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -130,7 +130,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   ManningModel = GetLogical( Params,'Manning Model',GotIt)
   IF( ManningModel ) THEN
     GravityCoeff = GetCReal( CurrentModel % Constants,'Gravity Coefficient',GotIt)
-    IF(.NOT. GotIt) GravityCoeff = 9.81
+    IF(.NOT. GotIt) GravityCoeff = 9.81_dp
   END IF
     
   AnyBC = ListGetLogicalAnyBC( Model,'Open Side') .OR. &
@@ -352,6 +352,7 @@ CONTAINS
 
       Velocity = 0.0_dp
       UseVelocity = .FALSE.
+      GotIt = .FALSE.; GotIt2 = .FALSE.; GotIt3 = .FALSE.
       IF( ListCheckPrefix( Equation,'Surface Velocity') ) THEN
         Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
         Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
@@ -497,7 +498,7 @@ CONTAINS
     REAL(KIND=dp) :: MassMatrix(:,:), StiffMatrix(:,:), ForceVector(:)
     INTEGER :: n, nd
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: SensMode
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), detJ
@@ -849,7 +850,7 @@ CONTAINS
     REAL(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ,U,V,W,S
     REAL(KIND=dp) :: Basis(n)
@@ -1011,7 +1012,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   USE Lists
   USE Integration
   USE ElementDescription
-  USE SolverUtils
+  USE SolverBasics
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -1094,7 +1095,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     ELSE
       GravityCoeff = GetCReal( CurrentModel % Constants,'Gravity Coefficient',GotIt)
     END IF
-    IF(.NOT. GotIt) GravityCoeff = 9.81
+    IF(.NOT. GotIt) GravityCoeff = 9.81_dp
   END IF
 
   MinGap = ListGetCReal( Params,'Min Gap Height',GotMinGap)
@@ -1402,7 +1403,7 @@ CONTAINS
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), DetJ
     REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)

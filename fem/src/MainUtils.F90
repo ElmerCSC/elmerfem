@@ -43,6 +43,7 @@
 !------------------------------------------------------------------------------
 MODULE MainUtils
 !------------------------------------------------------------------------------
+  USE Messages
   USE BlockSolve
   USE IterSolve, ONLY : NumericalError
   USE LoadMod, ONLY : ExecLocalAssembly, ExecSolver
@@ -52,19 +53,23 @@ MODULE MainUtils
   USE ElementDescription, ONLY : SwapRefElemNodes
   USE ElementUtils, ONLY : CreateOdeMatrix, CreateMatrix
   
-  USE MeshUtils, ONLY : BackCoordinateTransformation, Colouring_deallocate, &
-      CoordinateTransformation, CreateDiscontMesh, ElmerColouringToGraph, &
-      ElmerGraphColour, ElmerMeshToDualGraph, Graph_deallocate, LoadMesh2, &
-      MakePermUsingMask, MeshStabParams, ReleaseMesh, SetActivEelementsTable, &
-      SetCurrentMesh, SetMeshMaxDOFs, SplitMeshEqual, TransferCoordAndTime, &
-      UpdateSolverMesh
+  USE MeshBasics, ONLY : CreateDiscontMesh, MakePermUsingMask, MeshStabParams, &
+      ReleaseMesh, SetActivEelementsTable, SetCurrentMesh, SetMeshMaxDOFs, &
+      TransferCoordAndTime, UpdateSolverMesh
+  USE MeshTransform, ONLY : BackCoordinateTransformation, CoordinateTransformation
+  USE MeshGraph, ONLY : Colouring_Deallocate, ElmerColouringToGraph, &
+      ElmerGraphColour, ElmerMeshToDualGraph, Graph_Deallocate
+  USE MeshLoad, ONLY : LoadMesh2
+  USE MeshSplit, ONLY : SplitMeshEqual
   
-  USE SolverUtils, ONLY : CalculateEntityWeights, &
+  USE SolverBasics, ONLY : CalculateEntityWeights, &
       CalculateNodalWeights, CheckStepSize, ComputeChange, &
-      ComputeNorm, CreateIpPerm, GenerateProjectors, GetPassiveBoundary, &
+      ComputeNorm, CreateIpPerm, ScaleLinearSystem, BackScaleLinearSystem, &
       InitializeTimestep, InitializeToZero, InvalidateVariable, &
-      MatrixVectorMultiply, UpdateDependentObjects, UpdateExportedVariables, &
-      FinalizeLumpedMatrix
+      MatrixVectorMultiply, UpdateDependentObjects, UpdateExportedVariables
+  USE SolveCore, ONLY : FinalizeLumpedMatrix
+  USE BoundaryConditionUtils, ONLY : GetPassiveBoundary
+  USE ProjectorUtils, ONLY : GenerateProjectors
 
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
@@ -252,7 +257,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE SetRotatedProperties(Model, Mesh)
      TYPE(Model_t) :: Model
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
 
      LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
      INTEGER :: list_ind
@@ -424,22 +429,6 @@ CONTAINS
 
 
 
-!------------------------------------------------------------------------------
-!> Get calling address of the procedure and add it to the Solver structure.
-!------------------------------------------------------------------------------
-  SUBROUTINE AddSolverProcedure( Solver,PROCEDURE  )
-!------------------------------------------------------------------------------
-    TYPE(Solver_t) :: Solver
-    EXTERNAL :: PROCEDURE
-    INTEGER  :: PROCEDURE
-!------------------------------------------------------------------------------
-    INTEGER(KIND=AddrInt) :: AddrFunc
-    EXTERNAL :: AddrFunc
-!------------------------------------------------------------------------------
-    Solver % PROCEDURE = AddrFunc( PROCEDURE )
-!------------------------------------------------------------------------------
-  END SUBROUTINE AddSolverProcedure
-!------------------------------------------------------------------------------
 
 
  
@@ -464,7 +453,7 @@ CONTAINS
       USE SParIterComm
       USE Interpolation
       USE CoordinateSystems
-      USE MeshUtils, ONLY: ReleaseMesh
+      USE MeshBasics, ONLY: ReleaseMesh
       TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
       TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
       LOGICAL, OPTIONAL :: UseQuadrantTree
@@ -495,7 +484,7 @@ CONTAINS
      IF(.NOT.ASSOCIATED(NewMesh)) RETURN
 
      NewMesh % Next => Mesh % Next
-     IF(ASSOCIATED(Mesh,  Model % Meshes)) THEN
+     IF(ASSOCIATED(Model % Meshes,Mesh)) THEN
        Model % Meshes => Newmesh
      ELSE
        Tmesh => Model % Meshes
@@ -532,7 +521,7 @@ CONTAINS
          CALL AddEquationBasics( Solver, ListGetString(Solver % Values, &
                   'Variable', Found), Transient )
          CALL AddEquationSolution( Solver, Transient )
-         IF ( Transient .AND. Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+         IF ( Transient .AND. C_ASSOCIATED(Solver % PROCEDURE) ) CALL InitializeTimestep(Solver)
        END IF
      END DO
 
@@ -555,7 +544,7 @@ CONTAINS
 
            
    SUBROUTINE CheckAndCreateDGIndexes( Mesh, ActiveElem ) 
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      LOGICAL, OPTIONAL :: ActiveElem(:)
 
      TYPE(Element_t), POINTER :: Element     
@@ -610,7 +599,7 @@ CONTAINS
    !-----------------------------------------------------------------------------------
    SUBROUTINE CreateDGPerm( Solver, DGPerm, DGCount, MaskName, SecName )
 
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      INTEGER, POINTER :: DGPerm(:)
      INTEGER :: DGCount
      CHARACTER(LEN=*), OPTIONAL :: MaskName, SecName 
@@ -777,7 +766,7 @@ CONTAINS
    !-----------------------------------------------------------------------------------
    SUBROUTINE CreateNodalPerm( Solver, NodalPerm, nSize )
 
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      INTEGER, POINTER :: NodalPerm(:)
      INTEGER :: nSize
      
@@ -825,7 +814,7 @@ CONTAINS
    !> Create permutation for fields on elements, optional using mask
    !-----------------------------------------------------------------
    SUBROUTINE CreateElementsPerm( Solver, Perm, nsize, MaskName, SecName ) 
-     TYPE(Solver_t),POINTER :: Solver
+     TYPE(Solver_t) :: Solver
      INTEGER, POINTER :: Perm(:)
      INTEGER :: nsize
      CHARACTER(LEN=*), OPTIONAL :: MaskName, SecName
@@ -886,10 +875,10 @@ CONTAINS
    !---------------------------------------------------------------------------------
    SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, MaskPerm, nsize, SecName )
 
-     TYPE(Solver_t), POINTER :: Solver
-     INTEGER, POINTER :: FullPerm(:)
+     TYPE(Solver_t) :: Solver
+     INTEGER :: FullPerm(:)
      CHARACTER(LEN=*) :: MaskName
-     INTEGER, POINTER :: MaskPerm(:) 
+     INTEGER, POINTER :: MaskPerm(:)
      INTEGER :: nsize
      CHARACTER(LEN=*), OPTIONAL :: SecName
          
@@ -961,7 +950,7 @@ CONTAINS
    ! at a certain instances during the simulation:
    !------------------------------------------------------------------  
    SUBROUTINE AddExecWhenFlag(Solver)
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t) :: Solver
 
      TYPE(ValueList_t), POINTER :: SolverParams
      LOGICAL :: Found
@@ -1164,13 +1153,13 @@ CONTAINS
   SUBROUTINE AddEquationBasics( Solver, Name, Transient )
 !------------------------------------------------------------------------------
     USE CoordinateSystems
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: Transient
     CHARACTER(LEN=*) :: Name
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
-    INTEGER(KIND=AddrInt) :: InitProc, AssProc
+    TYPE(C_FUNPTR) :: InitProc, AssProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs, MaxDOFsPerNode
     INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat, &
@@ -1375,7 +1364,7 @@ CONTAINS
     IF( IsProcedure ) THEN
       InitProc = GetProcAddr( TRIM(proc_name)//'_Init', abort=.FALSE. )
       CALL Info(Caller,'Checking for _init solver',Level=12)
-      IF ( InitProc /= 0 ) THEN
+      IF ( C_ASSOCIATED(InitProc) ) THEN
         CALL ExecSolver( InitProc, CurrentModel, Solver, &
             Solver % dt, Transient )
       END IF
@@ -1398,7 +1387,7 @@ CONTAINS
       ELSE
         AssProc = GetProcAddr( TRIM(proc_name)//'_bulk', abort=.FALSE. )
         CALL Info(Caller,'Checking for _bulk solver',Level=12)
-        IF ( AssProc /= 0 ) THEN
+        IF ( C_ASSOCIATED(AssProc) ) THEN
           CALL Info(Caller,'Solver will be be performed in steps',Level=8)
           Solver % SolverMode = SOLVER_MODE_STEPS
         END IF        
@@ -1648,7 +1637,7 @@ CONTAINS
                      ' < exists but it is not associated to any equation')
         END IF
         
-        ! Computate the size of the permutation vector
+        ! Compute the size of the permutation vector
         !-----------------------------------------------------------------------------------------
         CALL Info(Caller,'Computing size of permutation vector',Level=12)
         Ndeg = 0
@@ -2176,16 +2165,16 @@ CONTAINS
       END IF
     END IF
      
-    Solver % LinBeforeProc = 0
+    Solver % LinBeforeProc = C_NULL_FUNPTR
     str = ListGetString( Solver % Values, 'Before Linsolve', Found )
     IF ( Found ) Solver % LinBeforeProc = GetProcAddr( str )
 
-    Solver % LinAfterProc = 0
+    Solver % LinAfterProc = C_NULL_FUNPTR
     str = ListGetString( Solver % Values, 'After Linsolve', Found )
     IF ( Found ) Solver % LinAfterProc = GetProcAddr( str )
 
     IF( ASSOCIATED( Solver % Matrix ) ) THEN
-      Solver % Matrix % MatVecSubr = 0
+      Solver % Matrix % MatVecSubr = C_NULL_FUNPTR
       str = ListGetString( Solver % Values, 'Matrix Vector Proc', Found )
       IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
     END IF
@@ -2199,7 +2188,7 @@ CONTAINS
   ! for exported variables.
   !---------------------------------------------------------------------------
   SUBROUTINE CreateTimeDerivativeVariables( Solver, Var )
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     TYPE(Variable_t), POINTER, OPTIONAL :: Var
 
     TYPE(Variable_t), POINTER :: pVar
@@ -2309,7 +2298,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddEquationSolution(Solver, Transient )
 !------------------------------------------------------------------------------
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: Transient
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
@@ -2962,8 +2951,8 @@ CONTAINS
      
      Solver % MultigridTotal = 0
      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
-     Solver % LinBeforeProc = 0
-     Solver % LinAfterProc = 0
+     Solver % LinBeforeProc = C_NULL_FUNPTR
+     Solver % LinAfterProc = C_NULL_FUNPTR
 
      IF ( Parenv  % PEs >1 ) THEN
        CALL ParallelInitMatrix( Solver, Solver % Matrix )
@@ -3038,7 +3027,7 @@ CONTAINS
     IF ( TransientSimulation ) THEN
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE /= 0 ) THEN
+        IF ( C_ASSOCIATED(Solver % PROCEDURE) ) THEN
           CALL InitializeTimestep(Solver)
          END IF
       END DO
@@ -3060,7 +3049,7 @@ CONTAINS
       CALL Info('SolveEquations','Solvers before timestep',Level=12)
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME .OR. &
             Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
 
@@ -3141,7 +3130,7 @@ CONTAINS
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
 
-          IF ( Solver % PROCEDURE==0 ) CYCLE
+          IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
           IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
 
           RungeKutta = .FALSE.
@@ -3280,7 +3269,7 @@ CONTAINS
       CALL Info('SolveEquations','Solvers after timestep',Level=12)
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_TIME .OR. &
             Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
 
@@ -3304,7 +3293,8 @@ CONTAINS
     ParEnv_Common = ParEnv_Save
     ParEnv => ParEnv_Common
     IF(ParEnv % PEs>1) THEN
-      IF(.NOT.ASSOCIATED(ParEnv % Active)) ALLOCATE(ParEnv % Active(ParEnv % PEs))
+!     IF(.NOT.ASSOCIATED(ParEnv % Active)) ALLOCATE(ParEnv % Active(ParEnv % PEs))
+      ALLOCATE(ParEnv % Active(ParEnv % PEs))
       ParEnv % Active = .TRUE.
       ParEnv % ActiveComm = ELMER_COMM_WORLD
     END IF
@@ -3358,7 +3348,7 @@ CONTAINS
 !------------------------------------------------------------------------------
           Solver => Model % Solvers(k)
 
-          IF ( Solver % PROCEDURE == 0 ) THEN
+          IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) THEN
             IF( .NOT. ( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
               Solver % SolverMode == SOLVER_MODE_ASSEMBLY .OR. &
               Solver % SolverMode == SOLVER_MODE_BLOCK ) ) THEN
@@ -3929,7 +3919,7 @@ CONTAINS
       IMPLICIT NONE
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Stiff(:,:), Damp(:,:), Mass(:,:), Force(:)
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t), TARGET :: Element
       INTEGER :: n
 !------------------------------------------------------------------------------
 !    Local variables
@@ -4530,8 +4520,8 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL ParallelInitMatrix(Solver,Amat)
 
-            Amat % ParMatrix % ParEnv % ActiveComm = Amat % Comm
-            ParEnv => Amat % ParMatrix % ParEnv
+            Amat % Solver % ParEnv % ActiveComm = Amat % Comm
+            ParEnv => Amat % Solver % ParEnv
             CALL ParallelActive( .TRUE.)
           END DO
         END DO
@@ -4879,7 +4869,7 @@ CONTAINS
   SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
       RowIndOffset,ColIndOffset)
 !---------------------------------------------------
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: dt
     LOGICAL :: Transient
     INTEGER :: RowVar, ColVar
@@ -4900,7 +4890,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), DAMP(:,:), MASS(:,:), FORCE(:)
     REAL(KIND=dp), POINTER :: ForceVector(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: ProcName, RowName, ColName, str
-    INTEGER(KIND=AddrInt) :: ProcPntr    
+    TYPE(C_FUNPTR) :: ProcPntr
     LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
     LOGICAL :: AllocationsDone = .FALSE., Diagonal
     CHARACTER(*), PARAMETER :: Caller="BlockSystemAssembly"   
@@ -5036,7 +5026,7 @@ CONTAINS
     END IF
 
     ProcPntr = GetProcAddr( TRIM(ProcName), abort=.FALSE.)
-    IF ( ProcPntr == 0 ) THEN
+    IF ( .NOT. C_ASSOCIATED(ProcPntr) ) THEN
       CALL Fatal(Caller,'Assembly routine not found: '//TRIM(ProcName))
     ELSE
       CALL Info(Caller,'Using assembly routine: '//TRIM(ProcName),Level=8)
@@ -5161,11 +5151,11 @@ CONTAINS
   SUBROUTINE ExecSolverInSteps( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
-    TYPE(Solver_t),POINTER :: Solver
+    TYPE(Solver_t) :: Solver
     LOGICAL :: TransientSimulation
     REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
-    INTEGER(KIND=AddrInt) :: SolverAddr
+    TYPE(C_FUNPTR) :: SolverAddr
     CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
     INTEGER :: iter, MaxIter
     LOGICAL :: Found
@@ -5198,7 +5188,7 @@ CONTAINS
       CALL DefaultFinishBulkAssembly( Solver )
 
       SolverAddr = GetProcAddr( TRIM(ProcName)//'_boundary', abort=.FALSE. )
-      IF( SolverAddr /= 0 ) THEN
+      IF( C_ASSOCIATED(SolverAddr) ) THEN
         CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
       END IF
 
@@ -5229,7 +5219,7 @@ CONTAINS
   RECURSIVE SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
-     TYPE(Solver_t),POINTER :: Solver
+     TYPE(Solver_t), TARGET :: Solver
      LOGICAL :: TransientSimulation
      REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
@@ -5237,7 +5227,7 @@ CONTAINS
      INTEGER :: i, j, k, l, col, row, n, BDOFs, maxdim, dsize, size0
      TYPE(Element_t), POINTER :: CurrentElement
      TYPE(ValueList_t), POINTER :: SolverParams
-     INTEGER(KIND=AddrInt) :: SolverAddr
+     TYPE(C_FUNPTR) :: SolverAddr
      CHARACTER(:), ALLOCATABLE :: EquationName
 
      INTEGER, ALLOCATABLE :: memb(:)
@@ -5277,7 +5267,7 @@ CONTAINS
              IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
-               ParEnv => Solver % Matrix % ParMatrix % ParEnv
+               ParEnv => Solver % ParEnv
                ParEnv % ActiveComm = Solver % Matrix % Comm
              END IF
            END IF           
@@ -5326,7 +5316,7 @@ BLOCK
 
        IF ( ASSOCIATED(Solver  % Matrix) ) THEN
           IF ( ASSOCIATED(Solver  % Matrix % ParMatrix) ) THEN
-            ParEnv => Solver % Matrix % ParMatrix % ParEnv
+            ParEnv => Solver % ParEnv
           END IF
        END IF
 
@@ -5418,7 +5408,7 @@ END BLOCK
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-           ParEnv => Solver % Matrix % ParMatrix % ParEnv
+           ParEnv => Solver % ParEnv
            ParEnv % ActiveComm = Solver % Matrix % Comm
 
 #if 0
@@ -5491,7 +5481,7 @@ END BLOCK
        IF( PostActive ) THEN
          ProcName = ListGetString( Solver % Values,'Procedure', Found )
          SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
-         IF( SolverAddr /= 0 ) THEN
+         IF( C_ASSOCIATED(SolverAddr) ) THEN
            CALL Info(Caller,'Calling solver for postprocessing',Level=10)
            CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
          END IF
@@ -5507,7 +5497,7 @@ END BLOCK
          CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
          LOGICAL :: AdaptiveActive
          TYPE(Variable_t), POINTER :: Var
-         INTEGER(KIND=AddrInt) :: IResidual, EResidual, BResidual
+         TYPE(C_FUNPTR) :: IResidual, EResidual, BResidual
 
          INTERFACE
            SUBROUTINE RefineMeshExt(Model,Solver,Quant,Perm,InsideResidual,EdgeResidual,BoundaryResidual)
@@ -5521,18 +5511,18 @@ END BLOCK
              INTERFACE
                 SUBROUTINE BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator )
                    USE Types
-                   TYPE(Element_t), POINTER :: Edge
+                   TYPE(Element_t) :: Edge
                    TYPE(Model_t) :: Model
-                   TYPE(Mesh_t), POINTER :: Mesh
+                   TYPE(Mesh_t) :: Mesh
                    REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
                    INTEGER :: Perm(:)
                 END SUBROUTINE BoundaryResidual
 
                 SUBROUTINE EdgeResidual( Model,Edge,Mesh,Quant,Perm, Indicator)
                    USE Types
-                   TYPE(Element_t), POINTER :: Edge
+                   TYPE(Element_t) :: Edge
                    TYPE(Model_t) :: Model
-                   TYPE(Mesh_t), POINTER :: Mesh
+                   TYPE(Mesh_t) :: Mesh
                    REAL(KIND=dp) :: Quant(:), Indicator(2)
                    INTEGER :: Perm(:)
                 END SUBROUTINE EdgeResidual
@@ -5540,9 +5530,9 @@ END BLOCK
 
                 SUBROUTINE InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm, Indicator)
                    USE Types
-                   TYPE(Element_t), POINTER :: Element
+                   TYPE(Element_t) :: Element
                    TYPE(Model_t) :: Model
-                   TYPE(Mesh_t), POINTER :: Mesh
+                   TYPE(Mesh_t) :: Mesh
                    REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
                    INTEGER :: Perm(:)
                 END SUBROUTINE InsideResidual
@@ -5581,8 +5571,6 @@ END BLOCK
          PROCEDURE(EdgeResidual), POINTER :: EdgePtr
          PROCEDURE(BoundaryResidual), POINTER :: BoundaryPtr
 
-         TYPE(C_FUNPTR) :: IResFunC, EResFunC, BresFunC
-
          AdaptiveActive = ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)
 
          IF (AdaptiveActive) THEN
@@ -5592,14 +5580,10 @@ END BLOCK
            EResidual   = GetProcAddr( TRIM(ProcName)//'_edge_residual', abort=.FALSE. )
            BResidual   = GetProcAddr( TRIM(ProcName)//'_boundary_residual', abort=.FALSE. )
 
-           IF( IResidual/=0 .AND. EResidual /= 0 .AND. BResidual /= 0 ) THEN
-             IResFunC = TRANSFER( Iresidual, IresFunC )
-             EResFunC = TRANSFER( Eresidual, EresFunC )
-             BResFunC = TRANSFER( Bresidual, BresFunC )
-
-             CALL C_F_PROCPOINTER(IresFunC, InsidePtr)
-             CALL C_F_PROCPOINTER(EResFunC, EdgePtr )
-             CALL C_F_PROCPOINTER(BResFunC, BoundaryPtr )
+           IF( C_ASSOCIATED(IResidual) .AND. C_ASSOCIATED(EResidual) .AND. C_ASSOCIATED(BResidual) ) THEN
+             CALL C_F_PROCPOINTER(IResidual, InsidePtr)
+             CALL C_F_PROCPOINTER(EResidual, EdgePtr )
+             CALL C_F_PROCPOINTER(BResidual, BoundaryPtr )
 
              Var => Solver % Variable
              CALL RefineMeshExt( Model, Solver, Var % Values, Var % Perm, InsidePtr, EdgePtr, BoundaryPtr )
@@ -5633,7 +5617,7 @@ END BLOCK
   RECURSIVE SUBROUTINE SolverActivate( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
-     TYPE(Solver_t),POINTER :: Solver
+     TYPE(Solver_t), TARGET :: Solver
      LOGICAL :: TransientSimulation
      REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
@@ -5757,14 +5741,14 @@ END BLOCK
      IF(Found) THEN
        Solver % BoundaryElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
      ELSE
-       Solver % BoundaryElementProcedure = 0
+       Solver % BoundaryElementProcedure = C_NULL_FUNPTR
      END IF
 
      str = ListGetString( Params, 'Bulk Element Procedure', Found)
      IF(Found) THEN
        Solver % BulkElementProcedure = GetProcAddr( Str, abort=.FALSE., quiet=.TRUE. )
      ELSE
-       Solver % BulkElementProcedure = 0
+       Solver % BulkElementProcedure = C_NULL_FUNPTR
      END IF
 
 !------------------------------------------------------------------------------

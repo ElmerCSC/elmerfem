@@ -76,12 +76,14 @@
          ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
          CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc
 #endif
-     USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables, &
-         UpdateIpPerm, VectorValuesRange
-     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, &
-         CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
+     USE SolverBasics, ONLY: UpdateExportedVariables, UpdateIpPerm, VectorValuesRange
+     USE SolveCore, ONLY: GetControlValue, FinalizeLumpedMatrix
+     USE MeshBasics, ONLY : InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
-         MarkSharpEdges, TagBodiesUsingCondition
+         MarkSharpEdges
+     USE MeshTransform, ONLY : CoordinateTransformation, RigidMeshMapping
+     USE MeshTagging, ONLY : TagBodiesUsingCondition
+     USE MeshExtrusion, ONLY : MeshExtrude, MeshExtrudeSlices
      USE MortarUtils, ONLY : PeriodicProjector
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
@@ -120,7 +122,7 @@
      INTEGER, POINTER, SAVE :: Timesteps(:),OutputIntervals(:) => NULL(), ActiveSolvers(:)
      REAL(KIND=dp), POINTER, SAVE :: TimestepSizes(:,:),TimestepRatios(:,:)
 
-     INTEGER(KIND=AddrInt) :: ControlProcedure
+     TYPE(C_FUNPTR) :: ControlProcedure
 
      LOGICAL :: InitDirichlet, ExecThis, GotTimestepRatios = .FALSE.
 
@@ -154,6 +156,7 @@
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
 
+     WRITE(*,*) 'Started inside library code'; FLUSH(6)
      ! Start the watches, store later
      !--------------------------------
      RT0 = RealTime()
@@ -161,7 +164,9 @@
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
+     WRITE(*,*) 'Going parallel initialization'; FLUSH(6)
      IF(FirstTime)  ParallelEnv => ParallelInit()
+     WRITE(*,*) 'Back from parallel initialization'; FLUSH(6)
 
      OutputPE = -1
      IF( ParEnv % MyPe == 0 ) THEN
@@ -307,6 +312,9 @@
 #ifdef HAVE_ROCALUTION
          CALL Info( 'MAIN', ' ROCALUTION library linked in.' )
 #endif
+#ifdef HAVE_ADIOS2
+         CALL Info( 'MAIN', ' ADIOS2 library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
@@ -447,6 +455,10 @@
                CurrentModel % Simulation, .TRUE. )
          END IF
 
+         IF( ListGetLogical( CurrentModel % Simulation,'Internal Rigid Mesh Mapping', Found ) ) THEN       
+           CALL RigidMeshMapping( CurrentModel, Mesh, .FALSE.)
+         END IF
+                  
          IF( ListGetLogical( CurrentModel % Simulation,'Mark Sharp Edges',GotIt) ) THEN
            BLOCK
              LOGICAL, ALLOCATABLE :: SharpEdge(:)
@@ -693,7 +705,7 @@
 
          DO i=1,CurrentModel % NumberOfSolvers 
            iSolver => CurrentModel % Solvers(i)
-           IF ( iSolver % PROCEDURE == 0 ) CYCLE
+           IF ( .NOT. C_ASSOCIATED(iSolver % PROCEDURE) ) CYCLE
            When = ListGetString( iSolver % Values, 'Exec Solver', Found )
            IF ( Found ) THEN
              DoIt = ( When == 'after control' ) 
@@ -1369,7 +1381,7 @@
        NULLIFY( pSolver % Variable )
        NULLIFY( pSolver % ActiveElements )
        
-       pSolver % PROCEDURE = 0
+       pSolver % PROCEDURE = C_NULL_FUNPTR
        pSolver % NumberOfActiveElements = 0
        j = CurrentModel % NumberOfBodies
        ALLOCATE( pSolver % Def_Dofs(10,j,6),STAT=AllocStat)       
@@ -1594,7 +1606,7 @@
          CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
        END IF
 
-       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+       IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) .OR. InitSolver ) THEN
          IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
            Solver % Mesh => CurrentModel % Meshes
          END IF
@@ -1648,7 +1660,7 @@
          CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
        END IF
 
-       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+       IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) .OR. InitSolver ) THEN
          IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
            Solver % Mesh => CurrentModel % Meshes
          END IF
@@ -2040,7 +2052,7 @@
    SUBROUTINE InitCond()
 !------------------------------------------------------------------------------
      USE Integration, ONLY : GaussIntegrationPoints_t
-     USE SolverUtils, ONLY : GaussPointsAdapt
+     USE SolverBasics, ONLY : GaussPointsAdapt
      USE ElementDescription, ONLY : ElementInfo
      
      TYPE(Element_t), POINTER :: Edge
@@ -2717,7 +2729,7 @@
      nSolvers = CurrentModel % NumberOfSolvers
      DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         DoIt = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL )
         IF(.NOT. DoIt) THEN
           DoIt = ListGetLogical( Solver % Values,'Before All',Found ) .OR. &
@@ -3412,7 +3424,7 @@
            IF ( k == 0 .OR. SteadyStateReached ) THEN
              DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
-               IF ( Solver % PROCEDURE == 0 ) CYCLE
+               IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
                When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
                IF ( GotIt ) ExecThis = ( When == 'before saving') 
@@ -3430,7 +3442,7 @@
 
              DO i=1,nSolvers
                Solver => CurrentModel % Solvers(i)
-               IF ( Solver % PROCEDURE == 0 ) CYCLE
+               IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
                ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
                When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
                IF ( GotIt ) ExecThis = ( When == 'after saving') 
@@ -3509,7 +3521,7 @@
 
      DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
-        IF ( Solver % PROCEDURE == 0 ) CYCLE
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
         IF ( GotIt ) THEN
            IF ( When == 'after simulation' .OR. When == 'after all' ) THEN
@@ -3537,7 +3549,7 @@
      IF ( .NOT.LastSaved ) THEN
        DO i=1,CurrentModel % NumberOfSolvers
          Solver => CurrentModel % Solvers(i)
-         IF ( Solver % PROCEDURE == 0 ) CYCLE
+         IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
          ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
          When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
          IF ( GotIt ) ExecThis = ( When == 'before saving') 
@@ -3553,7 +3565,7 @@
 
        DO i=1,CurrentModel % NumberOfSolvers
          Solver => CurrentModel % Solvers(i)
-         IF ( Solver % PROCEDURE == 0 ) CYCLE
+         IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
          ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
          When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
          IF ( GotIt ) ExecThis = ( When == 'after saving') 

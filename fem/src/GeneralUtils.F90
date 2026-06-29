@@ -44,6 +44,7 @@
 !-----------------------------------------------------------------------------
 MODULE GeneralUtils
 
+USE Messages
 USE LoadMod
 
 #ifdef HAVE_LUA
@@ -164,9 +165,11 @@ CONTAINS
      IF(ival>=0) THEN
        v = ival
        IF (v<10) THEN
+         ALLOCATE(CHARACTER(1)::s)
          s = DIGITS(v)
        ELSE IF (ival<100) THEN
          i = v/10
+         ALLOCATE(CHARACTER(2)::s)
          s = DIGITS(i)//DIGITS(v-10*i)
        ELSE
          n=3
@@ -187,8 +190,10 @@ CONTAINS
      ELSE
        v = -ival
        IF (v<10) THEN
+        ALLOCATE(CHARACTER(2)::s)
          s = '-'//DIGITS(v)
        ELSE IF (v<100) THEN
+         ALLOCATE(CHARACTER(3)::s)
          i = v/10
          s = '-'//DIGITS(i)//DIGITS(v-10*i)
        ELSE
@@ -886,7 +891,7 @@ CONTAINS
 !>  lowercase.The logical line can continue the several physical lines by adding
 !>  the backslash (\) mark at the end of a physical line. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ReadAndTrim( Unit,str,echo,literal,noeval ) RESULT(l)
+   FUNCTION ReadAndTrim( Unit,str,echo,literal,noeval ) RESULT(l)
 !------------------------------------------------------------------------------
      INTEGER :: Unit                       !< Fortran unit number to read from
      CHARACTER(LEN=:), ALLOCATABLE :: str  !< The string read from the file
@@ -895,22 +900,24 @@ CONTAINS
      LOGICAL, OPTIONAL :: noeval
      LOGICAL :: l                          !< Success of the read operation
 !------------------------------------------------------------------------------     
-     INTEGER, PARAMETER :: MAXLEN = 163840
+     INTEGER, PARAMETER :: IncludeUnitBase = 28, MAXLEN = 163840, ilen = 12
      
      CHARACTER(LEN=:), ALLOCATABLE :: temp
-     CHARACTER(LEN=12) :: tmpstr
-     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr = ' ', matcstr=' ' , IncludePath=' '
+     CHARACTER(LEN=ilen) :: tmpstr
+     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' '
+     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr, matcstr
 
      LOGICAL :: InsideQuotes, OpenSection=.FALSE., DoEval
-     INTEGER :: i,j,k,m,ValueStarts=0,inlen,ninlen,outlen,IncludeUnit=28,IncludeUnitBase=28
+     INTEGER :: i,j,k,m,ios,ValueStarts=0,inlen,ninlen,outlen,IncludeUnit=IncludeUnitBase
 
      CHARACTER(LEN=MAX_NAME_LEN) :: Prefix = '  '
 
      INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A'),Tab=9
-     CHARACTER(LEN=MAXLEN) :: tmatcstr, tcmdstr
      INTEGER :: tninlen
+     CHARACTER(LEN=MAXLEN) :: tmatcstr, tcmdstr
 
-     SAVE ReadStr, ValueStarts, Prefix, OpenSection
+     SAVE ReadStr, ValueStarts, Prefix, OpenSection, IncludeUnit, IncludePath
+!------------------------------------------------------------------------------     
 
      IF ( PRESENT(literal) ) literal=.FALSE.
      l = .TRUE.
@@ -932,34 +939,36 @@ CONTAINS
      END IF
 
      IF ( ValueStarts == 0 ) THEN
-        tmpstr = ' '
+        tmpstr = ''
         DO WHILE( .TRUE. )
           IF ( IncludeUnit < IncludeUnitBase ) THEN
-            READ( IncludeUnit,'(A)',END=1,ERR=1 ) readstr
-            GO TO 2
-1           CLOSE(IncludeUnit)
-            IncludeUnit = IncludeUnit+1
-            READ( IncludeUnit,'(A)',END=10,ERR=10 ) readstr
-2           CONTINUE
+            READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) THEN
+              CLOSE(IncludeUnit)
+              IncludeUnit = IncludeUnit+1
+              READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+              IF ( ios /= 0 ) GO TO 10
+            END IF
           ELSE
-            READ( Unit,'(A)',END=10,ERR=10 ) readstr
+            READ( Unit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) GO TO 10
           END IF
 
           readstr = ADJUSTL(readstr)
 
-          DO k=1,12
+          DO k=1,ilen
             j = ICHAR(readstr(k:k))
             IF ( j >= A .AND. j<= Z ) THEN
-              Tmpstr(k:k) = CHAR(j+U2L)
+              tmpstr(k:k) = CHAR(j+U2L)
             ELSE
               tmpstr(k:k) = readstr(k:k)
             END IF
           END DO
 
-          IF ( SEQL(Tmpstr, 'include path') ) THEN
+          IF ( SEQL(tmpstr, 'include path') ) THEN
             k = LEN_TRIM(readstr)
-            IncludePath(1:k-13) = readstr(14:k)
-            Tmpstr = ''
+            includePath(1:k-ilen-1) = readstr(ilen+2:k)
+            tmpstr = ''
           ELSE
             EXIT
           END IF
@@ -992,12 +1001,13 @@ CONTAINS
           
           CALL OpenIncludeFile( IncludeUnit, TRIM(readstr(9:)), IncludePath )
           
-          READ( IncludeUnit,'(A)',END=3,ERR=3 ) readstr
-          GO TO 4
-3         CLOSE(IncludeUnit)
-          IncludeUnit = IncludeUnit+1
-          READ( Unit,'(A)',END=10,ERR=10 ) readstr
-4         CONTINUE
+          READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+          IF ( ios /= 0 ) THEN
+            CLOSE(IncludeUnit)
+            IncludeUnit = IncludeUnit+1
+            READ( Unit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) GO TO 10
+          END IF
         END IF
         ninlen = LEN_TRIM(readstr)
      ELSE
@@ -1141,14 +1151,14 @@ CONTAINS
 
      IF ( i <= inlen ) THEN
        Prefix = ' '
-       IF ( ReadStr(i:i) == '=' ) THEN
+       IF ( readstr(i:i) == '=' ) THEN
          ValueStarts = i + 1
-       ELSE IF ( ReadStr(i:i) == ';' ) THEN
+       ELSE IF ( readstr(i:i) == ';' ) THEN
          ValueStarts = i + 1
-       ELSE IF ( ReadStr(i:i) == '(' ) THEN
+       ELSE IF ( readstr(i:i) == '(' ) THEN
          ValueStarts = i + 1
          Prefix = 'Size'
-       ELSE IF ( ReadStr(i:i+1) == '::' ) THEN
+       ELSE IF ( readstr(i:i+1) == '::' ) THEN
          ValueStarts = i + 2
          Prefix = '::'
        ELSE IF ( ICHAR(readstr(i:i)) < 32 ) THEN
@@ -1220,6 +1230,18 @@ CONTAINS
        character(kind=c_char, len=:), pointer :: lua_result
        integer :: result_len
        logical :: closed_region, first_bang
+
+        BLOCK
+          INTERFACE
+            SUBROUTINE setlocale(category,locale) BIND(c,name="setlocale")
+              USE iso_c_binding
+              integer(c_int), value :: category
+              character(kind=c_char), dimension(*) :: locale
+            END SUBROUTINE  setlocale
+          END INTERFACE
+          CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+        END BLOCK
+
        closed_region = .false.
        first_bang = .true.
        m = i
@@ -1641,6 +1663,52 @@ END FUNCTION ComponentNameVar
 
 
 !------------------------------------------------------------------------------
+!> Interpolate values in a curve given by linear table or splines.
+!------------------------------------------------------------------------------
+   PURE FUNCTION InterpolateCurves( TValues, FValues, m, T, CubicCoeff) RESULT( F )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(iN) :: TValues(:),FValues(:,:),T
+     INTEGER, INTENT(IN) :: m
+     REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
+     REAL(KIND=dp) :: F(m)
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,n 
+     LOGICAL :: Cubic
+     REAL(KIND=dp) :: q
+!------------------------------------------------------------------------------
+
+     n = SIZE(TValues)
+
+     ! This is a misuse of the interpolation in case of standard dependency
+     ! of type y=a*x.  
+     IF( n == 1 ) THEN
+       F(1:m) = FValues(1:m,1) * T
+       RETURN
+     END IF
+
+     i = SearchInterval( Tvalues, t )
+     
+     Cubic = .FALSE.
+     IF( PRESENT(CubicCoeff) ) THEN
+       Cubic = ( T>=Tvalues(1) .AND. T<=Tvalues(n) .AND. ASSOCIATED(CubicCoeff) )
+     END IF
+
+     IF ( Cubic ) THEN
+       DO j=1,m
+         F(j) = CubicSplineVal(Tvalues(i:i+1),FValues(j,i:i+1),CubicCoeff(i:i+1),T)
+       END DO
+     ELSE
+       q = (T-TValues(i)) / (TValues(i+1)-TValues(i))
+       DO j=1,m
+         F(j) = (1-q)*FValues(j,i) + q*FValues(j,i+1)
+       END DO
+     END IF
+   END FUNCTION InterpolateCurves
+!------------------------------------------------------------------------------
+
+   
+
+!------------------------------------------------------------------------------
 !> Derivate a curve given by linear table or splines.
 !------------------------------------------------------------------------------
    PURE FUNCTION DerivateCurve( TValues,FValues,T,CubicCoeff ) RESULT( F )
@@ -1962,7 +2030,7 @@ END FUNCTION ComponentNameVar
 #if defined(ELMER_HAVE_MPI_MODULE)
       USE mpi
 #endif
-      TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
+      TYPE(Matrix_t), INTENT(INOUT) :: Matrix
 #if defined(ELMER_HAVE_MPIF_HEADER)
       INCLUDE "mpif.h"
 #endif
@@ -2615,8 +2683,8 @@ END MODULE GeneralUtils
 !---------------------------------------------------------
 MODULE AscBinOutputUtils
   
-  
   USE Types
+  USE Messages
   IMPLICIT NONE
   
   LOGICAL, PRIVATE :: AsciiOutput, SinglePrec, CalcSum = .FALSE.
@@ -2712,12 +2780,11 @@ CONTAINS
     CHARACTER(LEN=1024) :: Str 
     INTEGER, PARAMETER :: VtuUnit = 58
     
-    WRITE( VtuUnit ) TRIM(Str)        
+    WRITE( VtuUnit ) TRIM(Str)
     IF( CalcSum ) THEN
       Scount = Scount + 1
       Ssum = Ssum + len_trim( Str ) 
     END IF
-    
     
   END SUBROUTINE AscBinStrWrite
   

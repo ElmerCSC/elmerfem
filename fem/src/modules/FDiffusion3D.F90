@@ -55,7 +55,7 @@ SUBROUTINE FourierDiffusion3DSolver( Model,Solver,dt,TransientSimulation )
   USE Lists
   USE Integration
   USE ElementDescription
-  USE SolverUtils
+  USE SolverBasics
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -405,7 +405,7 @@ CONTAINS
     LOGICAL :: Bubbles
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(2*n),dBasisdx(2*n,3)
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Conductivity,M,D,LRe(3),LIm(3)
@@ -556,7 +556,7 @@ CONTAINS
     REAL(KIND=dp) :: AngularFrequency
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Impedance1,Impedance2,L1,L2
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),X,Y,Z

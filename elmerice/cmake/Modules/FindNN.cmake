@@ -21,17 +21,17 @@ ENDIF()
 
 SET(NN_FOUND FALSE)
 SET(NNINCLUDE
-  "${NNROOT}/"
-  "$ENV{NNROOT}/"
-  "${NN_ROOT}/"
-  "$ENV{NN_ROOT}/"
+  "${NNROOT}/include"
+  "$ENV{NNROOT}/include"
+  "${NN_ROOT}/include"
+  "$ENV{NN_ROOT}/include"
   "${CMAKE_SOURCE_DIR}/nn-c/"
   INTERNAL
   )
 
 # Try to find NN
 FIND_PATH(NN_INCLUDE_DIR
-  nan.h 
+  nn.h 
   HINTS 
   ${NNINCLUDE}
   )

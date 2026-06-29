@@ -480,7 +480,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double BiCubicIntegrateDiffToArea( Geometry_t *GB,
+double BiCubicIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
   double FX,double FY,double FZ,double NFX,double NFY,double NFZ)
 {
     double F,R,cosA,cosB,EA,EAF,EAT,PI=2*acos(0.0);
@@ -547,7 +547,7 @@ Blocking of the view between the elements is resolved by ray traceing.
 *******************************************************************************/
 void BiCubicComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int LevelB )
 {
-    double FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double FX,FY,FZ,DX,DY,DZ,U,V,Hit,W;
     double F,Fa,Fb,EA,PI=2*acos(0.0);
 
     double *AX = GA->BiCubic->PolyFactors[0];
@@ -579,15 +579,16 @@ void BiCubicComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Leve
         Hit = N_Integ;
         for( i=0; i<N_Integ; i++ )
         {
-            U = drand48();
-            V = drand48();
+            U = vrand();
+            V = vrand();
 
             FX = BiCubicValue( U,V,AX );
             FY = BiCubicValue( U,V,AY );
             FZ = BiCubicValue( U,V,AZ );
 
-            U = drand48();
-            V = drand48();
+	    W = U;
+            U = 1-V;
+            V = 1-W;
 
             DX = BiCubicValue( U,V,BX ) - FX;
             DY = BiCubicValue( U,V,BY ) - FY;

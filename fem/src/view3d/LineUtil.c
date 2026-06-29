@@ -209,7 +209,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double LinearIntegrateDiffToArea( Geometry_t *GB,
+double LinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     double FX,double FY,double FZ, double NFX,double NFY,double NFZ )
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
@@ -348,7 +348,7 @@ view between the elements is resolved by ray tracing.
 *******************************************************************************/
 void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int LevelB)
 {
-    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit;
+    double R,FX,FY,FZ,DX,DY,DZ,U,V,Hit,W;
     double F,Fa,Fb,EA,PI=2*acos(0.0);
 
     double *X  = GA->Linear->PolyFactors[0];
@@ -382,7 +382,7 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
     DY = LinearValue( U,NY );
     DZ = 0.0;
 
-    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,FX,FY,FZ,DX,DY,DZ );
+    Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
 
     if ( GA != GB ) 
     {
@@ -397,7 +397,7 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
        DY = FunctionValue( GB,U,V,4 );
        DZ = 0.0;
 
-       Fb = LinearIntegrateDiffToArea( GA,FX,FY,FZ,DX,DY,DZ );
+       Fb = LinearIntegrateDiffToArea( GA,NULL,FX,FY,FZ,DX,DY,DZ );
     }
 
     if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
@@ -409,15 +409,16 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48(); V = drand48();
+          U = vrand();
+          V = vrand();
 
           FX = LinearValue(U,X);
           FY = LinearValue(U,Y);
           FZ = 0.0;
 
-           U = drand48(); V = drand48();
+	   W = U; U = 1-V; V=1-W;
            if ( GB->GeometryType == GEOMETRY_TRIANGLE )
-               while( U+V>1 ) { U=drand48(); V=drand48(); }
+               while( U+V>1 ) { U=1-U; V=1-V;}
 
            DX = FunctionValue(GB,U,V,0)-FX;
            DY = FunctionValue(GB,U,V,1)-FY;
@@ -555,8 +556,8 @@ view between the elements is resolved by ray tracing.
 
 *******************************************************************************/
 void
-LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
-         double dz, int LevelA)
+LinearComputeRadiatorFactors (Geometry_t * GA, int LineFlag, double dx, double dy,
+         double dz, double nx, double ny, double nz, int LevelA)
 {
   double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
   double F, Fa, Fb, EA, PI = 2 * acos (0.0);
@@ -574,7 +575,7 @@ LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
         goto subdivide;
     }
 
-    Fa = Fb = LinearIntegrateDiffToArea( GA,dx,dy,dz,0.0,0.0,0.0);
+    Fa = Fb = LinearIntegrateDiffToArea( GA,NULL,dx,dy,dz,nx,ny,nz );
 
     if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
 
@@ -585,7 +586,7 @@ LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
        Hit = Nrays;
        for( i=0; i<Nrays; i++ )
        {
-          U = drand48();
+          U = vrand();
 
           FX = LinearValue(U,X);
           FY = LinearValue(U,Y);
@@ -633,6 +634,6 @@ subdivide:
             }
         }
 
-        LinearComputeRadiatorFactors( GA->Left,dx,dy,dz,LevelA+1 );
-        LinearComputeRadiatorFactors( GA->Right,dx,dy,dz,LevelA+1 );
+        LinearComputeRadiatorFactors( GA->Left,LineFlag, dx,dy,dz,nx,ny,nz,LevelA+1 );
+        LinearComputeRadiatorFactors( GA->Right,LineFlag, dx,dy,dz,nx,ny,nz,LevelA+1 );
 }

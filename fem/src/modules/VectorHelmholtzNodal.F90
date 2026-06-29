@@ -61,7 +61,7 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzNodal_init'
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, PrecUse, CurlCurlForm, Monolithic
+  LOGICAL :: Found, PrecUse, CurlCurlForm, Monolithic, FindEigen
   INTEGER :: soln, i, j
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
 !------------------------------------------------------------------------------
@@ -107,13 +107,23 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
     END IF
   END IF
 
+  
   CALL ListAddNewLogical( Params, "Linear System Complex", .TRUE.)  
   CALL ListAddInteger( Params,'Time Derivative Order', 0 )  
-  
+
+
   !
   ! The following is for creating sources from pre-computed eigenfunctions:
   !
-  IF (ListGetLogicalAnyBC(Model, 'Eigenfunction BC')) THEN
+  FindEigen = .FALSE.
+  DO i=1,Model % NumberOfBCs
+    IF( ListGetString( Model % BCs(i) % Values,'Port Type', Found ) == 'eigenmode' ) THEN
+      FindEigen = .TRUE.
+      EXIT
+    END IF
+  END DO
+  
+  IF ( FindEigen ) THEN
     soln = 0
     DO i=1,Model % NumberOfSolvers
       sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
@@ -130,8 +140,8 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
       CALL Info('VectorHelmholtzNodal_Init','The eigensolver index is: '//I2S(soln), Level=12)
       CALL ListAddInteger(Params, 'Eigensolver Index', soln)
     END IF
-  END IF  
-    
+  END IF
+  
   !IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
   !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
   !      'Electric Energy Density' )
@@ -158,9 +168,10 @@ END SUBROUTINE VectorHelmholtzNodal_Init
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
-  USE MeshUtils, ONLY : FollowCurvedBoundary
-  USE CRSMatrix, ONLY : CRS_TransposeMatrixVectorMultiply
   USE DefUtils
+  USE MeshBasics, ONLY : FollowCurvedBoundary
+  USE CRSMatrix, ONLY : CRS_TransposeMatrixVectorMultiply
+  USE VectorHelmholtzUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
@@ -178,12 +189,11 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
       Monolithic, Segregated, CurlCurlForm, HasPrecDampCoeff, &
       EigenfunctionSource
   TYPE(ValueList_t), POINTER :: Params, EdgeSolverParams
-  TYPE(Solver_t), POINTER :: Eigensolver => NULL()
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Variable_t), POINTER :: EF, EiVar, EdgeResVar, EdgeSolVar
   REAL(KIND=dp) :: Norm(3)
   REAL(KIND=dp) :: mu0inv, eps0, rob0, omega
-  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+!  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: PrecDampCoeff
   TYPE(Matrix_t), POINTER, SAVE :: Proj => NULL()
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
@@ -221,7 +231,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found ) 
   CurlCurlForm = ListGetLogical( Params,'curl-curl Form',Found )
-  
+
   IF( PrecUse ) THEN
     IF (.NOT. Monolithic) CALL Fatal(Caller, 'The use as a preconditioner needs Monolithic Solver = True')
     
@@ -266,15 +276,6 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     CALL Fatal(Caller,'Variable for Electric field not found!')
   END IF  
 
-  EigenfunctionSource = ListGetLogicalAnyBC(Model, 'Eigenfunction BC')
-  IF (EigenfunctionSource) THEN
-    soln = ListGetInteger(Params, 'Eigensolver Index', Found) 
-    IF (soln == 0) THEN
-      CALL Fatal(Caller, 'We should know > Eigensolver Index <')
-    END IF
-    Eigensolver => Model % Solvers(soln)
-  END IF
-  
   IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
     CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
   END IF
@@ -616,15 +617,16 @@ CONTAINS
 !    COMPLEX(KIND=dp) :: STIFF(nd,nd,3), FORCE(nd,3)
     COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:,:), FORCE(:,:)
     COMPLEX(KIND=dp) :: muInvAtIp, muinv, Cond, SurfImp, TemGrad(3), L(3), B 
-    LOGICAL :: Stat,Found,RobinBC,NT,EigenBC,GoodConductor
-    INTEGER :: i,j,k,m,p,q,t,allocstat,EigenInd
+    LOGICAL :: Stat,Found,RobinBC,NT,GoodConductor,Absorb,GotPort,GotSome
+    INTEGER :: i,j,k,m,p,q,t,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: ElRobin_h, MagLoad_h, Absorb_h, TemRe_h, TemIm_h, MuCoeff_h
-    TYPE(ValueHandle_t), SAVE :: GoodConductor_h, EigenvectorSource, EigenvectorInd
-    TYPE(ValueHandle_t), SAVE :: RelNu_h, CondCoeff_h
+    TYPE(ValueHandle_t), SAVE :: GoodConductor_h, RelNu_h, CondCoeff_h
+
+    SAVE GotPort
     
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
@@ -635,12 +637,13 @@ CONTAINS
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
       CALL ListInitElementKeyword( GoodConductor_h,'Boundary Condition','Good Conductor BC')
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
-      CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
+      CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im') 
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
-      CALL ListInitElementKeyword( EigenvectorSource,'Boundary Condition','Eigenfunction BC')
-      CALL ListInitElementKeyword( EigenvectorInd,'Boundary Condition','Eigenfunction Index')
+
+      ! Lumped ports
+      CALL ElectricPortModel(1,Solver)
       InitHandles = .FALSE.
     END IF
     
@@ -668,19 +671,14 @@ CONTAINS
     END IF
 
     GoodConductor = ListGetElementLogical(GoodConductor_h, Element, Found)
+    Absorb = ListGetElementLogical(Absorb_h, Element, Found)
     
-    ! Check whether BC should be created in terms of pre-computed eigenfunction:
-    EigenBC = ListGetElementLogical(EigenvectorSource, Element, Found)
-    IF (EigenBC) THEN
-      EigenInd = ListGetElementInteger(EigenvectorInd, Element, Found)
-      IF (EigenInd < 1) CALL Fatal(Caller, 'Eigenfunction Index must be positive')
-    END IF
-
-    
+    CALL ElectricPortModel(2,Solver,Element,GotPort)
+        
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
-    
+
     Parent => GetBulkElementAtBoundary(Element)
     
     DO t=1,IP % n
@@ -690,7 +688,6 @@ CONTAINS
               IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
 
-      Found = .FALSE.
       IF( ASSOCIATED( Parent ) ) THEN        
         muinvAtIp = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
       END IF
@@ -700,38 +697,45 @@ CONTAINS
         muinvAtIp = mu0inv
       END IF
 
-      IF( .NOT. PrecUse ) THEN
-        L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
-        TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
-            ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found),KIND=dp )
-        L = L + TemGrad
-        DO i=1,dim
-          FORCE(1:nd,i) = FORCE(1:nd,i) - muinvAtIp * L(i) * Basis(1:nd) * Weight
-        END DO
-      END IF
-
-      IF (EigenBC) THEN
-        B = CMPLX(0.0_dp, 1.0_dp, kind=dp) * SQRT(-Eigensolver % Variable % Eigenvalues(EigenInd))
-        Found = .TRUE.
-      ELSE
-        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          B = CMPLX(0.0_dp, rob0, KIND=dp ) 
-        ELSE IF (GoodConductor) THEN
-          Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
-          muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
-          IF ( Found ) THEN
-            muinv = muinv * mu0inv
-          ELSE
-            muinv = mu0inv
-          END IF
-          SurfImp = CMPLX(1.0_dp, -1.0_dp, KIND=dp) * SQRT(omega/(2.0_dp * Cond * muinv))
-          B = 1.0_dp/SurfImp    
+      L = 0.0_dp
+      GotSome = .TRUE.  ! by default we get some bc, if not this will be set False
+      IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+        B = CMPLX(0.0_dp, rob0, KIND=dp ) 
+      ELSE IF (GoodConductor) THEN
+        Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
+        muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+        IF ( Found ) THEN
+          muinv = muinv * mu0inv
         ELSE
-          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+          muinv = mu0inv
         END IF
+        SurfImp = CMPLX(1.0_dp, -1.0_dp, KIND=dp) * SQRT(omega/(2.0_dp * Cond * muinv))
+        B = 1.0_dp/SurfImp    
+      ELSE IF(GotPort) THEN
+        IF(PrecUse) THEN
+          CALL ElectricPortModel(3,Solver,Element,GotPort,B,Basis=Basis,dBasisdx=dBasisdx) 
+        ELSE
+          CALL ElectricPortModel(3,Solver,Element,GotPort,B,L,Basis=Basis,dBasisdx=dBasisdx) 
+        END IF
+      ELSE        
+        IF( .NOT. PrecUse ) THEN
+          L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
+          TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
+              ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found),KIND=dp )
+          L = L + TemGrad          
+        END IF
+        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        GotSome = Found
       END IF
 
-      IF( Found ) THEN
+      
+      IF( GotSome ) THEN
+        IF( .NOT. PrecUse ) THEN
+          DO i=1,dim
+            FORCE(1:nd,i) = FORCE(1:nd,i) - muinvAtIp * L(i) * Basis(1:nd) * Weight
+          END DO
+        END IF
+        
         IF (CurlCurlForm) THEN
           Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
           DO p=1,nd

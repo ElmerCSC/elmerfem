@@ -83,7 +83,8 @@ END SUBROUTINE StructuredProjectToPlane_init
 SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE CoordinateSystems
-  USE MeshUtils
+  USE MeshBasics
+  USE MeshTransform, ONLY : DetectExtrudedStructure
   USE DefUtils
 
   IMPLICIT NONE

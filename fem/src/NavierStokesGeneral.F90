@@ -680,7 +680,7 @@ MODULE NavierStokesGeneral
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LoadVector(:,:), &
        NodalAlpha(:),NodalBeta(:),NodalSlipCoeff(:,:), NodalExtPressure(:)
 
-   TYPE(Element_t),POINTER  :: Element
+   TYPE(Element_t), TARGET :: Element
    TYPE(Nodes_t)    :: Nodes
 
    INTEGER :: n

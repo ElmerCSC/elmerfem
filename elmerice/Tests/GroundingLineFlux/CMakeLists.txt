@@ -1,0 +1,12 @@
+
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+CONFIGURE_FILE(case.sif case.sif COPYONLY)
+CONFIGURE_FILE(gmInit.F90 gmInit.F90 COPYONLY)
+
+FILE(COPY ELMERSOLVER_STARTINFO square-tri.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICETEST_MODULE(GroundingLineFlux gmInit ./gmInit.F90)
+
+ADD_ELMERICE_TEST(GroundingLineFlux)
+ADD_ELMERICE_LABEL(GroundingLineFlux elmerice-fast)

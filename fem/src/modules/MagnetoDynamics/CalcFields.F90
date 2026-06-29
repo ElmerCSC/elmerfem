@@ -593,7 +593,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
  SUBROUTINE MagnetoDynamicsCalcFields(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
-   USE MeshUtils, ONLY : MinimalElementalSet, ReduceElementalVar
+   USE MeshBasics, ONLY : MinimalElementalSet, ReduceElementalVar
    USE CircuitUtils
    USE Zirka
    USE ZirkaUtils
@@ -656,7 +656,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
               ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DoAve, &
-              HomogenizationModel, CalculateFluxLinkage
+              HomogenizationModel, CalculateFluxLinkage, NodalForceJxB
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, pRef
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
@@ -885,7 +885,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    JXB => VariableGet( Mesh % Variables, 'JxB')
    EL_JXB => VariableGet( Mesh % Variables, 'JxB E')
-
+   NodalForceJXB = .FALSE.
+   IF(ASSOCIATED(JXB) .OR. ASSOCIATED(EL_JXB)) THEN
+     NodalForceJxB = ListGetLogical( SolverParams,'Nodal Force JxB', Found ) 
+   END IF
+   
    MST => variableGet( Mesh % Variables, 'Maxwell stress' )
    EL_MST => variableGet( Mesh % Variables, 'Maxwell stress E' )
 
@@ -2244,7 +2248,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_VP,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_EF,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_CD,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_JXB,  3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       IF( NodalForceJxB ) THEN
+         CALL LocalCopy(EL_JXB,  3*vdofs, eq_n, FORCE, Dofs)
+       ELSE
+         CALL LocalSol(EL_JXB,  3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       END IF
        CALL LocalSol(EL_FWP,  1*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MPerm,  1*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JH,   1, n, eq_n, MASS, FORCE, pivot, Dofs)
@@ -2309,7 +2317,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
            EdgeBasisDegree=EdgeBasisDegree)
        FORCE = 0.0_dp
-       
+       localV = 0.0_dp
+
        ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
        IF (CircuitDrivenBC) THEN
          CompParams => GetComponentParams( Element )
@@ -2427,7 +2436,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(VP ,  3*vdofs, Gforce, Dofs, EL_VP)
      CALL GlobalSol(EF,   3*vdofs, Gforce, Dofs, EL_EF)
      CALL GlobalSol(CD,   3*vdofs, Gforce, Dofs, EL_CD)
-     CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs, EL_JXB)
+     IF(NodalForceJxB ) THEN
+       DO i=1,3*vdofs
+         dofs = dofs + 1
+         JXB % Values(i::3*vdofs) = Gforce(:,dofs)
+       END DO
+     ELSE
+       CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs, EL_JXB)
+     END IF
      CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs, EL_FWP)
      CALL GlobalSol(MPerm,  1*vdofs, Gforce, Dofs, EL_MPerm)
      
@@ -2972,6 +2988,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !da/dt part
            IF (Transient) THEN
              E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           ELSE
+             E(1,:) = 0.0_dp
            END IF
 
            !grad V part
@@ -3083,6 +3101,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !da/dt part
            IF (Transient) THEN
              E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           ELSE
+             E(1,:) = 0.0_dp
            END IF
 
            !grad V part
@@ -3298,8 +3318,12 @@ CONTAINS
       BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
       IF(.NOT. ActiveBoundaryElement(BElement, uSolver=pSolver)) CYCLE
 
-      LeftBodyID = BElement % BoundaryInfo % Left % BodyID
-      RightBodyID = BElement % BoundaryInfo % Right % BodyID
+      HasLeft  = ASSOCIATED(BElement % BoundaryInfo % Left)
+      HasRight = ASSOCIATED(BElement % BoundaryInfo % Right)
+      LeftBodyID  = 0
+      RightBodyID = 0
+      IF(HasLeft)  LeftBodyID  = BElement % BoundaryInfo % Left % BodyID
+      IF(HasRight) RightBodyID = BElement % BoundaryInfo % Right % BodyID
       IF(LeftBodyID == RightBodyID) THEN
         CALL Warn(Caller, 'Airgap in the middle of single body Id')
         CYCLE
@@ -3578,7 +3602,7 @@ CONTAINS
              axisvector = axes(LocalGroups(ng), 1:3)
            END IF
            v1 = P - origin
-           v1 = (1 - SUM(axisvector*v1))*v1
+           v1 = v1 - SUM(axisvector*v1)*axisvector
            v2 = CrossProduct(v1,F)
            T(LocalGroups(ng)) = T(LocalGroups(ng)) + sum(axisvector*v2)
          END IF
@@ -3600,7 +3624,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
-   USE MeshUtils, ONLY : CalculateBodyAverage   
+   USE MeshBasics, ONLY : CalculateBodyAverage
    IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
@@ -3684,7 +3708,7 @@ CONTAINS
       IF( ElementalMode == 2 .OR. ElementalMode == 4 ) THEN
         ! Perform total lumping 
         s = SUM(MASS(1:nd,1:nd))
-        x(1:nd) = SUM(b(1:nd,dofs)) / s
+        x(1:nd) = b(1:nd,dofs) / s
       ELSE
         x(1:nd) = b(1:nd,dofs)
         CALL LUSolve(nd,MASS,x,pivot)

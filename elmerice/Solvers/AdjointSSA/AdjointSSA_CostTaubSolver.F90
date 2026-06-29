@@ -157,7 +157,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
 !!!!!!! Check for parallel run 
     Parallel = .FALSE.
     IF ( ASSOCIATED( Solver % Matrix % ParMatrix ) ) THEN
-            IF ( Solver %  Matrix % ParMatrix % ParEnv % PEs > 1 )  THEN
+            IF ( Solver % ParEnv % PEs > 1 )  THEN
                     Parallel = .TRUE.
             END IF
     END IF
@@ -337,7 +337,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
          Else
              CostVar % Values(1)=CostVar % Values(1)+Lambda*Cost_S
          Endif
-         IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
+         IF (Solver % ParEnv % MyPE == 0) then
             OPEN (12, FILE=TRIM(CostFile),POSITION='APPEND')
               WRITE(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
             CLOSE(12)

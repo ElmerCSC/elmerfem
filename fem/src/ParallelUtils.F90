@@ -87,7 +87,7 @@ CONTAINS
     SUBROUTINE ParallelInitMatrix( Solver, Matrix, inPerm )
 !-------------------------------------------------------------------------------
        INTEGER, POINTER, OPTIONAL :: inPerm(:)
-       TYPE(Solver_t) :: Solver
+       TYPE(Solver_t), TARGET :: Solver
        TYPE(Matrix_t), POINTER :: Matrix
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
@@ -113,14 +113,12 @@ CONTAINS
        INTEGER :: Ierr, status(MPI_STATUS_SIZE)
 
 !-------------------------------------------------------------------------------
-
-
 !tt = realtime()
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
 
        CALL Info('ParallelInitMatrix','Creating communication structures for matrix!',Level=5)
-       
+
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
 
@@ -143,48 +141,44 @@ CONTAINS
        
        IF(i==1) THEN
          CALL Fatal('ParallelInitMatrix','Only Perm or InvPerm is associated!')
-       END IF       
-       IF(i==2) THEN
-         CALL Info('ParallelInitMatrix','Skipping generation of Perm and InvPerm',Level=20)
-         GOTO 1
-       END IF
+       ELSE IF(i==0) THEN
+         CALL Info('ParallelInitMatrix','Allocating communication structures for matrix!',Level=5)
+         j = MAXVAL(Perm)*DOFs + Matrix % ExtraDOFs
+         ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
 
-       CALL Info('ParallelInitMatrix','Allocating communication structures for matrix!',Level=5)
-       j = MAXVAL(Perm)*DOFs + Matrix % ExtraDOFs
-       ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
+         BLOCK
+           LOGICAL :: DoConf = .FALSE.
 
-       BLOCK
-         LOGICAL :: DoConf = .FALSE.
+           DoConf = ListGetLogical( Solver % Values, 'Apply Conforming BCs',Found )
+           DoConf = DoConf .AND. ASSOCIATED(Mesh % PeriodicPerm)
 
-         DoConf = ListGetLogical( Solver % Values, 'Apply Conforming BCs',Found )
-         DoConf = DoConf .AND. ASSOCIATED(Mesh % PeriodicPerm)
+           Matrix % Perm = 0
+           DO i=1,n
+             IF ( DoConf ) THEN
+               IF ( Mesh % PeriodicPerm(i) /= 0 ) CYCLE
+             END IF
 
-         Matrix % Perm = 0
-         DO i=1,n
-           IF ( DoConf ) THEN
-             IF ( Mesh % PeriodicPerm(i) /= 0 ) CYCLE
-           END IF
+             IF ( Perm(i) /= 0 ) THEN
+               DO j=1,DOFs
+                 Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
+               END DO
+             END IF
+           END DO
+         END BLOCK
 
-           IF ( Perm(i) /= 0 ) THEN
-             DO j=1,DOFs
-               Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
-             END DO
+         DO i=n*DOFs+1,SIZE(Matrix % Perm)
+           Matrix % Perm(i) = i
+         END DO
+
+         Matrix % INVPerm = 0
+         DO i=1,SIZE(Matrix % Perm)
+           IF ( Matrix % Perm(i) /= 0 ) THEN
+             Matrix % InvPerm(Matrix % Perm(i)) = i
            END IF
          END DO
-       END BLOCK
-
-       DO i=n*DOFs+1,SIZE(Matrix % Perm)
-         Matrix % Perm(i) = i
-       END DO
-
-       Matrix % INVPerm = 0
-       DO i=1,SIZE(Matrix % Perm)
-         IF ( Matrix % Perm(i) /= 0 ) THEN
-           Matrix % InvPerm(Matrix % Perm(i)) = i
-         END IF
-       END DO
-
-1      CONTINUE
+       ELSE
+         CALL Info('ParallelInitMatrix','Skipping generation of Perm and InvPerm',Level=20)
+       END IF
 
        IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
          CALL Fatal('ParallelInitMatrix','ParallelInfo already created!')
@@ -408,7 +402,11 @@ CONTAINS
            DO j=1,DOFs
               k = Matrix % Perm((i-1)*DOFs+j)
               IF ( k<=0 ) CYCLE
-
+              IF (k > SIZE(Matrix % ParallelInfo % GlobalDOFs)) THEN
+                CALL Fatal('ParallelInitMatrix','Matrix % ParallelInfo % GlobalDOFs bounds error.'//&
+                    ' Matrix vs Solver perm scope conflict is a possible cause.')
+              END IF
+              
               Matrix % ParallelInfo % GlobalDOFs(k) = &
                 DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
 
@@ -564,6 +562,7 @@ CONTAINS
          IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix % ParallelInfo)
          IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix % ParallelInfo % &
                              NeighbourList)
+
 
          j=0
          DO i=Matrix % NumberOFRows-Matrix % ExtraDOFs+1,Matrix % NumberOfRows
@@ -780,7 +779,8 @@ CONTAINS
            IF (ListGetString(CurrentModel % Bcs(i) % Values, 'Radiation',Found)=='diffuse gray' .OR. &
                 ListGetLogical( CurrentModel % Bcs(i) % Values, 'Radiator BC', Found)) SkipActiveCheck=.TRUE.
          END DO
-         Matrix % ParMatrix => ParInitMatrix( Matrix, Matrix % ParallelInfo, SkipActiveCheck)
+         Matrix % Solver => Solver
+         Matrix % ParMatrix => ParInitMatrix(Matrix, Matrix % ParallelInfo, SkipActiveCheck)
        END BLOCK
        
        ! We can make many routines quicker if we know there is nothing to share.
@@ -904,7 +904,7 @@ CONTAINS
        IF(.NOT. ASSOCIATED(Matrix % ParMatrix)) THEN
          CALL Fatal('ParallelInitSolve','ParMatrix not associated!')
        END IF
-       ParEnv => Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % Solver % ParEnv
        IF(.NOT. ASSOCIATED(ParEnv)) THEN
          CALL Fatal('ParallelInitSolve','ParEnv not associated!')
        END IF
@@ -928,7 +928,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % Solver % ParEnv
        IF(.NOT.ASSOCIATED(Parenv % Active)) THEN
          ParEnv = ParEnv_Common
        END IF
@@ -950,7 +950,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % ParMatrix % ParEnv
+       ParEnv => Matrix % Solver % ParEnv
        ParEnv % ActiveComm = Matrix % Comm
 
        CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
@@ -974,7 +974,7 @@ CONTAINS
       ! We can inherit the ParEnv from the primary matrix even
       ! though the variable is not directly associated to it!
       IF( PRESENT( Matrix ) ) THEN
-        ParEnv => Matrix % ParMatrix % ParEnv
+        ParEnv => Matrix % Solver % ParEnv
         ParEnv % ActiveComm = Matrix % Comm
       END IF
 
@@ -1024,7 +1024,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalData % ParEnv
+      ParEnv => GlobalMatrix % Solver % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
 
       UpdateL = .FALSE.
@@ -1134,7 +1134,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalData % ParEnv
+      ParEnv => GlobalMatrix % Solver % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
       IF ( PRESENT( Update ) ) THEN
         CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > Update <')
@@ -1409,6 +1409,7 @@ CONTAINS
       INTEGER, OPTIONAL :: oper_arg
 !-------------------------------------------------------------------------------
       INTEGER :: oper
+      LOGICAL :: alloc
 !-------------------------------------------------------------------------------
       rsum = r
 #ifdef PARALLEL_FOR_REAL
@@ -1420,9 +1421,13 @@ CONTAINS
           oper = 0
         END IF
 
-        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
-          CALL ParallelActive(.TRUE.)
+        alloc = ASSOCIATED(ParEnv % Active)
+        IF (.NOT.alloc) CALL ParallelActive(.TRUE.)
         CALL SparActiveSUM(rsum,oper)
+        IF(.NOT.alloc) THEN
+!         DEALLOCATE(ParEnv % active)
+!         PArEnv % Active => null()
+        END IF
       END IF
 #endif
 !-------------------------------------------------------------------------------
@@ -1439,6 +1444,7 @@ CONTAINS
       INTEGER, OPTIONAL :: oper_arg
 !-------------------------------------------------------------------------------
       INTEGER :: oper
+      LOGICAL :: alloc
 !-------------------------------------------------------------------------------
       isum = i
 #ifdef PARALLEL_FOR_REAL
@@ -1450,8 +1456,13 @@ CONTAINS
           oper = 0
         END IF
 
-        IF (.NOT.ASSOCIATED(ParEnv % Active)) CALL ParallelActive(.TRUE.)
+        alloc = ASSOCIATED(ParEnv % Active)
+        IF (.NOT.alloc) CALL ParallelActive(.TRUE.)
         CALL SparActiveSUMInt(isum,oper)
+        IF(.NOT.alloc) THEN
+!         DEALLOCATE(ParEnv % active)
+!         PArEnv % Active => null()
+        END IF
       END IF
 #endif
 !-------------------------------------------------------------------------------
@@ -1468,6 +1479,7 @@ CONTAINS
       INTEGER, OPTIONAL :: oper_arg
 !-------------------------------------------------------------------------------
       INTEGER :: oper
+      LOGICAL :: alloc
 !-------------------------------------------------------------------------------
       zsum = z
 #ifdef PARALLEL_FOR_REAL
@@ -1479,9 +1491,13 @@ CONTAINS
           oper = 0
         END IF
 
-        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
-            CALL ParallelActive(.TRUE.)
+        alloc = ASSOCIATED(ParEnv % Active)
+        IF (.NOT.alloc) CALL ParallelActive(.TRUE.)
         CALL SparActiveSUMComplex(zsum,oper)
+        IF(.NOT.alloc) THEN
+!         DEALLOCATE(ParEnv % active)
+!         PArEnv % Active => null()
+        END IF
       END IF
 #endif
 !-------------------------------------------------------------------------------
@@ -1530,7 +1546,6 @@ CONTAINS
         ELSE
           CustomComm0 = ELMER_COMM_WORLD
         END IF
-        PRINT *,'Creating SlicesComm:',ParEnv % MyPe, iSlice, iTime
         Visited = .TRUE.
       END IF
 
@@ -1561,7 +1576,6 @@ CONTAINS
         ELSE
           CustomComm0 = ELMER_COMM_WORLD
         END IF
-        PRINT *,'Creating TimesComm:',ParEnv % MyPe, iSlice, iTime
         Visited = .TRUE.
       END IF
 
@@ -1575,9 +1589,7 @@ CONTAINS
     FUNCTION ParallelPieceRank(CustomComm) RESULT (CommRank)
       INTEGER :: CustomComm, CommRank, ierr
 #ifdef PARALLEL_FOR_REAL
-      PRINT *,'GetRank:',ParEnv % MyPe, CustomComm
       CALL MPI_Comm_rank(CustomComm, CommRank, ierr)
-      PRINT *,'GotRank:',ParEnv % MyPe, CommRank
 #else
       CommRank = -1
 #endif
@@ -1586,11 +1598,9 @@ CONTAINS
     FUNCTION ParallelPieceSize(CustomComm) RESULT (CommSize)
       INTEGER :: CustomComm, CommSize, ierr
 #ifdef PARALLEL_FOR_REAL
-      PRINT *,'GetSize:',ParEnv % MyPe, CustomComm
       CALL MPI_Comm_size(CustomComm, CommSize, ierr)
-      PRINT *,'GotSize:',ParEnv % MyPe, CommSize
 #else
-      CommRank = -1
+      CommSize = -1
 #endif
     END FUNCTION ParallelPieceSize
 
@@ -1599,7 +1609,7 @@ CONTAINS
 !--------------------------------'-----------------------------------------------
     SUBROUTINE ParallelMergeMatrix( Solver, A, A1, A2 )
 !-------------------------------------------------------------------------------
-      TYPE(Solver_t) :: Solver
+      TYPE(Solver_t), TARGET :: Solver
       TYPE(Matrix_t), POINTER :: A, A1, A2
 !-------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: Ai
@@ -1715,6 +1725,7 @@ BLOCK
 END BLOCK
 
      ! Finalize creation of parallel structures
+     A % Solver => Solver
      A % ParMatrix => ParInitMatrix( A, A % ParallelInfo )
 #endif
 !-------------------------------------------------------------------------------

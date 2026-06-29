@@ -191,4 +191,6 @@
 
 #cmakedefine HAVE_EXTOPTIM 
 
+#cmakedefine HAVE_ADIOS2
+
 #endif

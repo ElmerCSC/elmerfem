@@ -1,7 +1,6 @@
 
   FUNCTION InitCircle( Model, n, t ) RESULT(f)
-    USE Types
-    USE SolverUtils
+    USE DefUtils
     IMPLICIT NONE
     
     TYPE(Model_t) :: Model
@@ -34,9 +33,7 @@
 
 
   FUNCTION Viscosity( Model, n, fii ) RESULT(r)
-   USE Types
-   USE SolverUtils
-
+   USE DefUtils
    IMPLICIT NONE
 
    TYPE(Model_t) :: Model

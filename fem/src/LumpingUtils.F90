@@ -70,16 +70,16 @@ MODULE LumpingUtils
 !> optional SetPerm reordering for minimal discontinuous set. 
 !------------------------------------------------------------------------------
    SUBROUTINE ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
-       Force, Moment, Torque, SetPerm ) 
+       Force, Moment, Torque, SetPerm )
 !------------------------------------------------------------------------------
      USE Interpolation, ONLY : CopyElementNodesFromMesh
 
      TYPE(Model_t) :: Model
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      TYPE(ValueList_t), POINTER :: CompParams
-     TYPE(Variable_t), POINTER :: NF
+     TYPE(Variable_t) :: NF
      REAL(KIND=dp), OPTIONAL :: Moment(3), Force(3), Torque
-     INTEGER, POINTER, OPTIONAL :: SetPerm(:)
+     INTEGER, OPTIONAL :: SetPerm(:)
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
@@ -335,9 +335,9 @@ MODULE LumpingUtils
    FUNCTION ComponentNodalReduction(Model, Mesh, CompParams, Var, OperName ) RESULT ( OperX )
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      TYPE(ValueList_t), POINTER :: CompParams
-     TYPE(Variable_t), POINTER :: Var
+     TYPE(Variable_t) :: Var
      REAL(KIND=dp) :: OperX
      CHARACTER(LEN=*) :: OperName
 !------------------------------------------------------------------------------
@@ -540,10 +540,10 @@ MODULE LumpingUtils
    FUNCTION ComponentIntegralReduction(Model, Mesh, CompParams, Var, &
        OperName, CoeffName, GotCoeff ) RESULT ( OperX )
 !------------------------------------------------------------------------------
-     TYPE(Model_t) :: Model 
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(ValueList_t), POINTER :: CompParams 
-     TYPE(Variable_t), POINTER :: Var 
+     TYPE(Model_t) :: Model
+     TYPE(Mesh_t) :: Mesh
+     TYPE(ValueList_t), POINTER :: CompParams
+     TYPE(Variable_t) :: Var
      CHARACTER(LEN=*) :: OperName, CoeffName
      LOGICAL :: GotCoeff
      REAL(KIND=dp) :: OperX
@@ -757,7 +757,7 @@ MODULE LumpingUtils
 !> after the solver (or the nonlinear iteration related to it) has been executed.
 !------------------------------------------------------------------------------
   SUBROUTINE UpdateDependentComponents( ComponentList )
-    INTEGER, POINTER :: ComponentList(:)
+    INTEGER :: ComponentList(:)
 
     INTEGER :: i,j,NoVar
     CHARACTER(:), ALLOCATABLE :: OperName, VarName, CoeffName, TmpOper
@@ -871,12 +871,12 @@ MODULE LumpingUtils
 !> Given a vector field compute line integral of Stokes theorem using
 !> some geometric heuristics. 
 !------------------------------------------------------------------------------
-  FUNCTION ComponentStokesTheorem(Model, Mesh, Vlist, AVar, Surf ) RESULT ( FL ) 
+  FUNCTION ComponentStokesTheorem(Model, Mesh, Vlist, AVar, Surf ) RESULT ( FL )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     TYPE(ValueList_t), POINTER :: Vlist
-    TYPE(Variable_t), POINTER :: aVar
+    TYPE(Variable_t), TARGET :: aVar
     LOGICAL :: Surf
     REAL(KIND=dp) :: FL
          
@@ -1617,12 +1617,12 @@ MODULE LumpingUtils
 !> This is actually not energy, but twice the energy, since the values are
 !> used to computed inductance matrix. 
 !------------------------------------------------------------------------------
-  FUNCTION ComponentCoilEnergy(Model, Mesh, MasterEntities, AVar, CVar, BCMode ) RESULT ( AIintRe ) 
+  FUNCTION ComponentCoilEnergy(Model, Mesh, MasterEntities, AVar, CVar, BCMode ) RESULT ( AIintRe )
 !------------------------------------------------------------------------------
-    TYPE(Model_t) :: Model    
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: MasterEntities(:) 
-    TYPE(Variable_t), POINTER :: AVar, CVar
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t) :: Mesh
+    INTEGER, POINTER :: MasterEntities(:)
+    TYPE(Variable_t) :: AVar, CVar
     LOGICAL, OPTIONAL :: BCMode 
     REAL(KIND=dp) :: AIintRe
 !------------------------------------------------------------------------------
@@ -1800,13 +1800,13 @@ MODULE LumpingUtils
 !> Compute integrals for determining the S parameters.
 !------------------------------------------------------------------------------
   FUNCTION BoundaryWaveFlux(Model, Mesh, MasterEntities, Avar, InFlux, PortImp, PortBC ) &
-      RESULT ( OutFlux ) 
+      RESULT ( OutFlux )
 !------------------------------------------------------------------------------
 
-    TYPE(Model_t) :: Model    
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: MasterEntities(:) 
-    TYPE(Variable_t), POINTER :: Avar
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t) :: Mesh
+    INTEGER, POINTER :: MasterEntities(:)
+    TYPE(Variable_t) :: Avar
     COMPLEX(KIND=dp) :: OutFlux
     COMPLEX(KIND=dp) :: InFlux
     COMPLEX(KIND=dp) :: PortImp
@@ -2061,12 +2061,19 @@ MODULE LumpingUtils
         muinv = mur * mu0inv
         
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
-        
-        L = (0_dp, 0_dp)
 
+        ! If we need EdgeBasis get it already here since it is needed in evaluation of some port models
+        IF( EdgeBasis ) THEN
+          stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, &
+              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
+        END IF
+
+        L = (0_dp, 0_dp)          
         IF(GotPort) THEN
-          CALL ElectricPortModel(3,pSolver,Element,GotPort,WBasis,L,B)
+          CALL ElectricPortModel(3,pSolver,Element,GotPort,B,L,Basis,dBasisdx,WBasis)
 
+          !IF(t==1) PRINT *,'B1:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         ELSE IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
           epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
           IF( .NOT. Found ) epsr = 1.0_dp
@@ -2081,19 +2088,16 @@ MODULE LumpingUtils
           TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
               ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
 
-          IF (ABS(B) > AEPS) THEN
-            L = ( MagLoad + TemGrad ) / ( 2*B) 
-          END IF
-          
-          ! We sum the components here, since continutation is a little cleaner then...
-          ElSurfCurr = L + (0_dp, 1_dp)*omega*ElSurfCurr
+          L = MagLoad + TemGrad - (0_dp, 1_dp)*omega/muinv*ElSurfCurr
+                   
+          !IF(t==1) PRINT *,'B2:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         END IF
-
-          
+        
+        IF (ABS(B) > AEPS) THEN
+          L = L / ( 2*B) 
+        END IF
+                
         IF( EdgeBasis ) THEN
-          stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis, dBasisdx, &
-              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
           e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)), KIND=dp)
         ELSE
           DO i=1,3

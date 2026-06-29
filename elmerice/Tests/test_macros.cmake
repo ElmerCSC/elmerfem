@@ -73,9 +73,15 @@ MACRO(RUN_ELMERICE_TEST)
       SET(ENV{OMP_NUM_THREADS} ${PHYS_CPU})
     ENDIF()
 
-    EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
-      OUTPUT_FILE "test-stdout.log"
-      ERROR_FILE "test-stderr.log")
+    IF(WITH_MPI)
+      EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+        OUTPUT_FILE "test-stdout.log"
+        ERROR_FILE "test-stderr.log")
+    ELSE()
+      EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
+        OUTPUT_FILE "test-stdout.log"
+        ERROR_FILE "test-stderr.log")
+    ENDIF()
   ELSEIF("${LIST_VAR}" STREQUAL "WITH_MPI" AND WITH_MPI)
     # Macro has been called with WITH_MPI argument and MPI is enabled
     SET(N "${NPROCS}")

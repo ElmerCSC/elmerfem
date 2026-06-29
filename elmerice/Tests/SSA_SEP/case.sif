@@ -1,0 +1,228 @@
+!----------------------------------------------------------------------
+!                            PHYSICAL PARAMETERS
+!----------------------------------------------------------------------
+! the SI units are kg (kilogram) - m (meter) - s (second)
+!  Conversion to Elmer units in MPa (Megapascal) - m (meter) - a (years)
+!----------------------------------------------------------------------
+$yearinsec = 31536000                          ! time with calendar in s
+
+$rhoi_SI   = 900.0                            ! Ice density (kg.m^-3)
+$rhoi      = rhoi_SI / (1.0e6 * yearinsec^2)  ! Ice density (MPa.m^-2.a^2)
+
+$zsl       = 0.0                              ! Sea level elevation (m). under sea level z<0.
+
+$rhosw_SI  = 1000.0                           ! Sea water density (kg.m^-3)
+$rhow      = rhosw_SI / (1.0e6 * yearinsec^2) ! Sea water density (MPa.m^-2.a^2)
+
+$grav_SI   = 9.80                             ! Gravity (m.s^-2)
+$gravity   = -grav_SI * yearinsec^2           ! Gravity (m.a^-2)
+
+$n         = 3.0                              ! Glen exponent (-)
+$A=1.0e-7*yearinsec
+$eta = (2.0*A)^(-1.0/n)               ! eta viscosity (Glen's law)
+$C = 1.0e-1*yearinsec^(-1.0/3.0)         ! C  friction coefficient (MPa m^{-1/3}a^{+1/3})
+
+! critical thickness
+$Hcr = 1.0
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Header
+  Mesh DB "." "mesh"
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = Steady
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+!##
+!  Post File = "Case_SSA.vtu"
+!##
+  max output level = 4
+End
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Initial Condition 1
+
+ Bedrock = Variable Coordinate 1
+   REAL MATC "-100.0-tx/1.0e3"
+ 
+ H = Real 300.0
+
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Body Force 1
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Material 1
+! Material properties
+  Viscosity Exponent = Real $1/n
+  Critical Shear Rate = Real 1.0e-16
+
+  SSA Mean Viscosity = Real $eta
+  SSA Mean Density = Real $rhoi
+  SSA Critical Thickness = Real $Hcr
+
+! slip coeff for the SSA
+  SSA Friction Law = String "Weertman"
+  SSA Friction Exponent = Real $ 1.0/3.0
+  SSA Friction Parameter = Real $C
+  SSA Friction Linear Velocity = Real 1.0e-4
+End
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!#-----------------------------------------------------------------------
+!#    Main Steady State iterations
+!#-----------------------------------------------------------------------
+Solver 1
+   Equation = "Flotation"
+   Procedure = "ElmerIceSolvers" "Flotation"
+   Variable = GroundedMask
+
+   Exported Variable 1 = Zs
+   Exported Variable 2 = Zb
+   Exported Variable 3 = bedrock
+   Exported Variable 4 = Haf
+   Exported Variable 5 = Haf0
+
+  
+   ! options
+   ! secondary variables (output): surface and base altitude, heigh above flotation
+   !                               ice mask, floated and grounded fraction
+   compute ice area fractions = Logical TRUE
+
+   
+   Exported Variable 6 = -elem "sftgif"
+   Exported Variable 7 = -elem "sftgrf"
+   Exported Variable 8 = -elem "sftflf"
+
+   Exported Variable 9 = H
+End
+
+Solver 2
+  Equation = "SSA"
+  Procedure = "ElmerIceSolvers" "SSABasalSolver"
+  Variable = -dofs 2 "SSAVelocity"
+
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ! numerical settings
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 300
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+
+
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance  = 1.0e-06
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-04
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State convergence tolerance = Real 1.0e-5
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ! Secondary variable (output)
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ! grounding line flux [m/y] wrt cell area
+  Compute grounding line flux = Logical TRUE
+  Exported Variable 1 = -elem "ligroundf"
+  Exported Variable 2 = -global "tendligroundf"
+  ! calving front flux [m/y] wrt cell area
+  Compute calving front flux = Logical TRUE
+  Exported Variable 3 = -elem "calving_front_flux"
+  Exported Variable 4 = -global "tendcff"
+ ! if variables with this names exist compute the
+ ! element average basal stress
+ ! and nodal effective friction coefficient
+  Exported Variable 5 = -elem "strbasemag"
+  Exported Variable 6 = "Ceff"
+End
+
+Solver 3
+  Equation = SaveScalars
+  Procedure =  "SaveData" "SaveScalars"
+!  FileName = f.dat
+  Show Norm Index = Integer 2
+  Variable 1 = String "ligroundf"
+  Operator 1 = int
+  Variable 2 = String "tendligroundf"
+  Variable 3 = String "calving_front_flux"
+  Operator 3 = int
+  Variable 4 = String "tendcff"
+End
+
+!!######################
+Equation 1
+  Active Solvers(2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  name = "Sides"
+  Target Boundaries(2) = 1 3
+
+  SSAVelocity 2 = Real 0.0
+End
+
+Boundary Condition 2
+  name = "Front"
+  Target Boundaries(1) = 2
+
+  Calving Front = Logical True 
+End
+
+Boundary Condition 3
+  name = "Divide"
+  Target Boundaries(1) = 4
+
+  SSAVelocity 1 = Real 0.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Validation check groundlineflux
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SEP2
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$fprintf( stderr, "TEST CASE 1\n");
+Solver 1 :: Sub-Element GL parameterization = Logical True
+Solver 2 :: Sub-Element GL parameterization = Logical True
+Solver 3 :: Reference Norm = Real 8.215149251275E+009
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=8.215149251275E+009,EPS:1E-06\n" );
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SEP3 nIP=20
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$fprintf( stderr, "TEST CASE 2\n");
+Solver 1 :: GL integration points number = Integer 20
+Solver 2 :: Sub-Element GL parameterization = Logical True
+Solver 2 :: GL integration points number = Integer 20
+Solver 3 :: Reference Norm = Real 8.269208549538E+009
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+RUN
+$fprintf( stderr, "END TEST CASE 2: Target NRM=8.269208549538E+009,EPS:1E-06\n" );

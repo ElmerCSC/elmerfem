@@ -147,6 +147,14 @@ MACRO(RUN_ELMER_TEST)
 
   # Query number of physical CPU cores of the host
   cmake_host_system_information(RESULT PHYS_CPU QUERY NUMBER_OF_PHYSICAL_CORES)
+
+  # Set OpenMP thread stack size to match the Linux default (~8 MB from ulimit -s)
+  # if not already specified. GOMP on Windows defaults to a much smaller per-thread
+  # stack, which can cause silent stack overflows or SEGFAULTs in assembly routines.
+  IF(NOT DEFINED ENV{OMP_STACKSIZE})
+    SET(ENV{OMP_STACKSIZE} "8M")
+  ENDIF()
+
   IF(WITH_MPI)
     IF(NOT DEFINED ENV{OMP_NUM_THREADS})
       # Limit number of OpenMP threads to a sensible value

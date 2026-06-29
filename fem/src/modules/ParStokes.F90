@@ -64,13 +64,13 @@ CONTAINS
      TYPE(Nodes_t)  :: Nodes
      INTEGER :: n,nd
      INTEGER, OPTIONAL :: LocalIP
-     TYPE(Element_t),POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
 
      !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
      REAL(KIND=dp) :: ss,s,SqrtMetric,SqrtElementMetric,Velo(3)
      REAL(KIND=dp) :: Metric(3,3), dVelodx(3,3), CtrMetric(3,3), &
-          Symb(3,3,3), dSymb(3,3,3,3) 
+          Symb(3,3,3), dSymb(3,3,3,3)
 
      INTEGER :: i,j,k
      LOGICAL :: stat,GotIt,UseEUsrf=.FALSE.
@@ -203,7 +203,7 @@ END MODULE AnisotropicMaterialModels
 SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
 
   IMPLICIT NONE
@@ -265,7 +265,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ElementUtils
   USE MaterialModels
   USE AnisotropicMaterialModels
@@ -1933,7 +1933,7 @@ CONTAINS
        NodalSlipCoeff(:,:), NodalExtPressure(:)
 
    INTEGER :: n, nd, pn
-   TYPE(Element_t),POINTER  :: Element
+   TYPE(Element_t), TARGET :: Element
    TYPE(Nodes_t) :: Nodes
    LOGICAL :: NormalTangential
 

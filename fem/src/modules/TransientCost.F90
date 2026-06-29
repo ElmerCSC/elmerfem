@@ -62,7 +62,7 @@ END SUBROUTINE TransientCost_init
 !------------------------------------------------------------------------------
 SUBROUTINE TransientCost( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  USE MeshUtils, ONLY : ClosestElementInMesh
+  USE MeshBasics, ONLY : ClosestElementInMesh
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------

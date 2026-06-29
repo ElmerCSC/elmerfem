@@ -211,7 +211,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     Model % Solvers(1:n) = Solvers
 
     DO i=n+1,n+2
-      Model % Solvers(i) % PROCEDURE = 0
+      Model % Solvers(i) % PROCEDURE = C_NULL_FUNPTR
       Model % Solvers(i) % Matrix => Null()
       Model % Solvers(i) % Mesh => Null()
       Model % Solvers(i) % Variable => Null()
@@ -600,8 +600,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
        n_n = COUNT(Perm(1:n)>0)
        n_e = COUNT(Perm(n+1:)>0)
        ALLOCATE( Avals(n_e), Vvals(n_n) )
-       Vvals = Vecpot(1:n)
-       Avals = Vecpot(n+1:)
+       Vvals = Vecpot(1:n_n)
+       Avals = Vecpot(n_n+1:)
 
        ALLOCATE(Aperm(SIZE(Perm)),Vperm(SIZE(Perm)))
        Aperm = 0; Vperm = 0
@@ -1585,7 +1585,7 @@ END BLOCK
        
        IF(TorqueElem(i)) THEN
          zmin = MIN(MINVAL(Nodes % z(1:n)), zmin)
-         zmax = MAX(MAXVAL(Nodes % z(1:n)), zmin)
+         zmax = MAX(MAXVAL(Nodes % z(1:n)), zmax)
        END IF
      END DO
               
@@ -1661,7 +1661,7 @@ END BLOCK
      ! Numerical integration:
      !-----------------------
      IF( dim == 3 ) THEN
-       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+       IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
            EdgeBasisDegree=EdgeBasisDegree)       
      ELSE
        IP = GaussPoints(Element)
@@ -1721,7 +1721,7 @@ END BLOCK
            rho = SUM( density(1:n) * Basis(1:n) ) 
            IF( rho > EPSILON( rho ) ) THEN
              IA = IA + Weight
-             U = U + Weight * r * rho
+             IMoment = IMoment + Weight * r * rho
            END IF
          END IF
        END IF
@@ -1749,8 +1749,8 @@ END BLOCK
    END IF
    
    IF( CalcTorque ) THEN   
-     ! Arkkios formula assumes that rinner and router are nicely aligned with elements.
-     ! This may not the case, so the 1st time we make a geomeric correction. 
+     ! Arkkio's formula assumes that rinner and router are nicely aligned with elements.
+     ! This may not be the case, so at the 1st time we make a geometric correction. 
      IF(.NOT. Visited ) THEN
        WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
        CALL Info(Caller,Message,Level=6)
@@ -1871,7 +1871,7 @@ END BLOCK
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
          EdgeBasisDegree=EdgeBasisDegree)
 
     DO t=1,IP % n
@@ -1898,7 +1898,7 @@ END BLOCK
       Bx =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,1)) 
       By =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,2))
       Bz =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,3))
-      U = U + IP % s(t) * detJ * (Bx*Bz + By*Bz) /(PI*4.0d-7) !/ 2
+      U = U + IP % s(t) * detJ * (Bx*Bz*x + By*Bz*y) /(PI*4.0d-7) !/ 2
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AxialForceSurf
@@ -1950,7 +1950,7 @@ SUBROUTINE LocalConstraintMatrix( Element, n, nd, PiolaVersion, SecondOrder )
 
   !Numerical integration:
   !----------------------
-  IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+  IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
     EdgeBasisDegree=EdgeBasisDegree )
 
   np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
@@ -3041,7 +3041,7 @@ END SUBROUTINE LocalConstraintMatrix
         j = j + 1
         dMap(j) = Ltmp % Index; Ltmp => Ltmp % Next
       END DO
-      IF ( j<= 0 ) CYCLE
+      IF ( j<= 1 ) CYCLE
 
       !
       ! Orient edges to form a polygonal path:
@@ -3078,7 +3078,13 @@ END SUBROUTINE LocalConstraintMatrix
           END DO
         END DO
         L1 = m==3
-        IF ( .NOT. L1 ) Element=>Edge % BoundaryInfo % Right
+        IF ( .NOT. L1 ) THEN
+          Element => Edge % BoundaryInfo % Right
+          IF ( .NOT. ASSOCIATED(Element) ) THEN
+            CALL Warn('DirichletAfromB','Right boundary element not associated, skipping.')
+            CYCLE
+          END IF
+        END IF
         S = Bn(FaceMap(Element % ElementIndex))
       ELSE
         ! If not a triangle, try a (planar) polygonal test. This
@@ -3136,8 +3142,8 @@ END SUBROUTINE LocalConstraintMatrix
           q(m) = Mesh % Nodes % y(je2)
           q(n) = Mesh % Nodes % z(je2)
 
-          IF ((q(2)>cx(2)).NEQV.(p(2)>cx(2))) THEN
-            IF (cx(1)<(p(1)-q(1))*(cx(2)-q(2))/(p(2)-q(2))+q(1)) L1=.NOT.L1
+          IF ((q(m)>cx(m)).NEQV.(p(m)>cx(m))) THEN
+            IF (cx(l)<(p(l)-q(l))*(cx(m)-q(m))/(p(m)-q(m))+q(l)) L1=.NOT.L1
           END IF
         END DO
         IF (.NOT.L1) THEN
@@ -3229,6 +3235,7 @@ END SUBROUTINE LocalConstraintMatrix
     IF (.NOT.ASSOCIATED(Element)) RETURN
 
     n=FaceMap(Element % ElementIndex)
+    IF (n == 0) RETURN
     IF (UsedFaces(n)) THEN
       Found=.TRUE.; RETURN
     END IF
@@ -3242,11 +3249,9 @@ END SUBROUTINE LocalConstraintMatrix
 
       e => Mesh % Edges(j) % BoundaryInfo % Right
       IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)) RETURN
-!     L=FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)
 
       e => Mesh % Edges(j) % BoundaryInfo % Left
       IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)) RETURN
-!     L=FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)
     END DO
     Found=.TRUE.; RETURN
 !------------------------------------------------------------------------------

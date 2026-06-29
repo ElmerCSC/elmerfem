@@ -170,7 +170,7 @@ CONTAINS
   SUBROUTINE LocalMatrix( Element, n, nd, CutElem )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL, OPTIONAL :: CutElem
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: diff_coeff(n), conv_coeff(n), react_coeff(n), &
@@ -302,10 +302,10 @@ CONTAINS
 
 ! Assembly of the matrix entries arising from the Neumann and Robin conditions
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC( Element, n, nd, CutElem ) 
+  SUBROUTINE LocalMatrixBC( Element, n, nd, CutElem )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     LOGICAL, OPTIONAL :: CutElem
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Flux(n), Coeff(n), Ext_t(n), F,C,Ext, Weight

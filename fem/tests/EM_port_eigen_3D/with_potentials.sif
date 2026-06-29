@@ -1,0 +1,246 @@
+!
+! This is a 3-D application of the 2-D test case ../EM_port_eigen. Here the 2-D
+! port model is first solved over a surface of a 3-D mesh. Boundary conditions
+! for the 3-D model are then created by using the propagation parameter and the
+! corresponding eigenfunction determined by the 2-D solution.
+!
+! This differs from the root case in that the port model is formulated in
+! terms of potentials.
+!
+! The original author: M.M. 
+!
+
+Check Keywords "Warn"
+
+$ epsr = 2.25
+$ wref = 3
+
+Header
+  Mesh DB "." "waveguide3D"
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Max Output Level = 7
+End
+
+Constants
+  Permeability of Vacuum = 1.0
+  Permittivity of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 2
+  Material = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 2
+End
+
+Body 3
+  Equation = 1
+End
+
+Body 4
+  Equation = 1
+End
+
+Material 1
+  Name = "higher_eps"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = $ epsr
+End 
+
+Material 2
+  Name = "Vacuum"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = 1.0
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Active Solvers(2) = 2 3
+End
+
+Solver 1
+  Equation = "Port mode"
+  Procedure = "EMPort" "EMPortSolver"
+
+  Angular Frequency = $wref
+  Use Piola Transform = True
+  Use Potential = Logical True
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack ! use mumps if available
+
+!  Eigen System Shift = -1.0
+!  Eigen System Shift Im = Real 0
+  Eigen Analysis = True
+  Eigen System Values = 30
+  Eigen System Convergence Tolerance = Real 1.0e-8
+!  Eigen System Compute Residuals = True
+
+! defaulted these
+!  Eigen System Sorting = string "smallest real part"
+!  Eigen System Normalize To Unity = True
+!  Mode Index = Integer 1
+
+
+!  Eigen System Select = smallest real part
+!  Eigen System Select = largest real part
+!  Eigen System Select = smallest imag part
+!  Eigen System Select = largest imag part
+!  Eigen System Select = smallest magnitude
+!  Eigen System Select = largest magnitude
+!  Eigen System Lanczos Vectors = 180
+!  Eigen System Max Iterations = 1
+
+  Calculate Nodal Field = Logical True
+  post: linear system solver = direct
+  post: linear system direct method = umfpack
+End
+
+
+Solver 2
+  Equation = "VectorHelmholtz"
+  Use Piola Transform = Logical True
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+  Angular Frequency = $wref
+
+  Linear System Block Mode = True
+  Block Nested System = True
+  Block Preconditioner = True
+  Block Scaling = True
+
+  Linear System Preconditioning Damp Coefficient = Real 0.0
+  Linear System Preconditioning Damp Coefficient Im = Real -1.0
+  Mass-proportional Damping = True
+
+! Linear system solver for the outer loop:
+!-----------------------------------------
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Convergence Tolerance = 1e-7
+!  Outer: Linear System Normwise Backward Error = True
+  Outer: Linear System Iterative Method = gcr
+  Outer: Linear System GCR Restart = 100
+  Outer: Linear System Residual Output = 1
+  Outer: Linear System Max Iterations = 100
+  Outer: Linear System Pseudo Complex = True
+
+! Linear system solver for the inner solution:
+!---------------------------------------------
+  $blocktol = 5.0e-2
+  
+  block 11: Linear System Solver = "Iterative"
+  block 11: Linear System Complex = True
+  block 11: Linear System Row Equilibration = False
+  block 11: Linear System Preconditioning = ILUT
+  block 11: Linear System ILUT Tolerance = 3.0e-1
+  block 11: Linear System Residual Output = 5
+  block 11: Linear System Max Iterations = 200
+  block 11: Linear System Iterative Method = GCR
+  block 11: Linear System GCR Restart = 50
+!  block 11: BiCGstabl polynomial degree = 4
+  block 11: Linear System Normwise Backward Error = False
+  block 11: Linear System Convergence Tolerance = $blocktol
+
+  Linear System Abort not Converged = False
+
+  Steady State Convergence Tolerance = 1e-9
+  Linear System Residual Output = 10
+End
+
+Solver 3
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+
+  Calculate Elemental Fields = Logical False
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Magnetic Flux Density = Logical False
+  Calculate Poynting vector = Logical False
+  Calculate Electric field = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 4
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = with_potentials
+  Vtu Format = Logical True
+  Save Geometry IDs = True
+  Ascii Output = True
+
+  Eigen Analysis = False
+End
+
+Solver 5
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+
+! Compare the 1st eigenvalue when sorted from smallest (negative real)
+  Show Norm Index = 1 
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(6) = 1 2 3 4 5 6
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+
+! This sets nodal and edge dofs to zero for the port dofs.
+! The following doesn't yet work for the potential-variable formulation,
+! so we give BCs otherwise:
+!  Port Ground = True
+
+  Eport re {n} 1 = Real 0.0
+  Eport re {n} 2 = Real 0.0
+  Eport im {n} 1 = Real 0.0
+  Eport im {n} 2 = Real 0.0
+  Eport re {e} = Real 0.0
+  Eport im {e} = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(2) = 7 8
+
+  Body Id = 3
+  Port Type = "eigenmode"
+  Eigenfunction Index = Integer 2
+
+  ! If we are doing lumping then "Constraint Mode" works also instead of "Port Index"
+  Port Index = Integer 1
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 9 10
+  
+  Body Id = 3
+  Port Type = "eigenmode"
+  Eigenfunction Index = Integer 2
+  
+  Port Index = Integer 2
+  Port Passive = Logical True
+End
+
+Solver 2 :: Reference Norm = 1.48351281E-01
+Solver 5 :: Reference Norm = 1.46479527E+01
