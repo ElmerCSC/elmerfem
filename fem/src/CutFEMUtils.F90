@@ -682,6 +682,8 @@ CONTAINS
     Mesh => Solver % Mesh
     CutDofs = Solver % Variable % Dofs
     dofs = CutDofs
+
+    PRINT *,'CutDofs1:',cutdofs, TRIM(Solver % Variable % Name)
     
     ! Create new matrix
     A => AllocateMatrix()
@@ -1633,6 +1635,8 @@ CONTAINS
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
     dofs = Solver % Variable % Dofs !CutDofs 
+
+    PRINT *,'CutDofs2:',CutDofs, Solver % Variable % Dofs, TRIM(Solver % Variable % Name)
     
     ! If we solve some other equation in between store the original norm.
     Norm = Solver % Variable % Norm
