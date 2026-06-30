@@ -1624,7 +1624,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: pElement, Element
     INTEGER :: i,j,k,l,n,t,active,nn,ne,i1,i2,dofs
-    LOGICAL :: IsCut, IsMore, Found
+    LOGICAL :: IsCut, IsMore, Found, CopyBack
     REAL(KIND=dp) :: s, r, dval, norm
     REAL(KIND=dp), ALLOCATABLE :: NodeWeigth(:)
     REAL(KIND=dp), POINTER :: CutValues(:)
@@ -1639,16 +1639,22 @@ CONTAINS
     CutValues => Solver % Variable % Values
      
     ! Set values at shared nodes that have been computed. 
-    CALL Info('CutFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
-    DO l=1,dofs
-      DO i=1,nn
-        j = CutPerm(i)
-        k = Solver % OrigPerm(i)
-        IF(j==0 .OR. k==0) CYCLE
-        Solver % OrigValues(dofs*(k-1)+l) = CutValues(dofs*(j-1)+l)
-      END DO
-    END DO
+    CopyBack = ListGetLogical( Solver % Values,'Copy Back Values', Found ) 
+    IF(.NOT. Found) CopyBack = .TRUE.
 
+    IF( CopyBack ) THEN
+      CALL Info('CutFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
+PRINT *,'dofs:',dofs,nn,ne
+      DO l=1,dofs
+        DO i=1,nn
+          j = CutPerm(i)
+          k = Solver % OrigPerm(i)
+          IF(j==0 .OR. k==0) CYCLE
+          Solver % OrigValues(dofs*(k-1)+l) = CutValues(dofs*(j-1)+l)
+        END DO
+      END DO
+    END IF
+      
     
     ! We can only extrapolate using the edges that are cut since they have also one
     ! known nodal value. 
