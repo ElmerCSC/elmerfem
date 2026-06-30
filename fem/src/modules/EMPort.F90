@@ -211,7 +211,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
   REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum, Scale
   REAL(KIND=dp) :: Y, Z_port
-  COMPLEX(KIND=dp) :: E2, Power
+  COMPLEX(KIND=dp) :: E2, Power, V2
 
   TYPE(Variable_t), POINTER :: EMVar
   INTEGER, ALLOCATABLE :: SavePerm(:)
@@ -460,6 +460,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         (CoordinateSystemDimension() == 2 .AND. ListGetLogical(Params, 'Calculate Impedance', Found))) THEN
 
       E2 = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      V2 = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       Power = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       Output_Z = .FALSE.
       DO t=1,Active
@@ -482,19 +483,26 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
 
-        CALL CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, Power)
+        CALL CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, V2, Power)
         IF (.NOT. Output_Z) Output_Z = .TRUE.
       END DO
 
       IF (Output_Z) THEN
-        Y = REAL(Power)/REAL(E2)
-        Z_port = 1.0_dp/Y
+        IF (UseV) THEN
+          Z_port = REAL(V2)/REAL(Power)
+        ELSE
+          Y = REAL(Power)/REAL(E2)
+          Z_port = 1.0_dp/Y
+        END IF
 
         !WRITE(Message,'(A,2ES15.6)') 'Port (wave) impedance: ', Z_port
         WRITE(Message,'(A,2ES15.6)') 'Port power: ', 0.5_dp*REAL(Power)
         CALL Info(Caller, Message, Level=5)
         CALL ListAddConstReal(Model % Simulation,'res: Port Power '//I2S(PortInd), 0.5_dp*REAL(Power))
         CALL ListAddConstReal(Model % Simulation,'res: Port Impedance '//I2S(PortInd), Z_port)
+        IF (UseV) THEN
+          CALL ListAddConstReal(Model % Simulation,'res: Port RMS Voltage '//I2S(PortInd), SQRT(REAL(V2))/SQRT(2.0_dp))
+        END IF
       END IF
     END IF
     
@@ -936,13 +944,13 @@ CONTAINS
 ! Calculate integrals over an element on a port surface so that impedance
 ! can be evaluated. 
 !------------------------------------------------------------------------------
-  SUBROUTINE CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, P) 
+  SUBROUTINE CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, V2, P) 
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ModeIndex
     COMPLEX(KIND=dp), INTENT(IN) :: Beta
-    COMPLEX(KIND=dp), INTENT(INOUT) :: E2
+    COMPLEX(KIND=dp), INTENT(INOUT) :: E2, V2
     COMPLEX(KIND=dp), INTENT(INOUT) :: P   ! The integral of -[E x conjg(H)].n
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -953,7 +961,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Re_local_field(:), Im_local_field(:)
     REAL(KIND=dp) :: weight, DetJ
-    COMPLEX(KIND=dp) :: Nu, EF(3), gradEz(3)
+    COMPLEX(KIND=dp) :: Nu, EF(3), gradEz(3), V
 !------------------------------------------------------------------------------    
 
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -1010,6 +1018,8 @@ CONTAINS
           EF(j) = EF(j) - CMPLX(SUM(Re_local_field(2:np:ndofs)*dBasisdx(1:n,j)), &
               SUM(Im_local_field(2:np:ndofs)*dBasisdx(1:n,j)), KIND=dp)
         END DO
+        V = CMPLX(SUM(Re_local_field(2:np:ndofs)*Basis(1:n)), &
+            SUM(Im_local_field(2:np:ndofs)*Basis(1:n)), KIND=dp)
       END IF
 
       gradEz = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
@@ -1028,6 +1038,7 @@ CONTAINS
       
       E2 = E2 + SUM(EF*CONJG(EF)) * weight
       P = P + Nu*Beta/Omega * SUM(EF*CONJG(EF)) * weight + Nu/(im * omega) * SUM(EF*CONJG(gradEz)) * weight
+      IF (UseV) V2 = V2 + V*CONJG(V) * weight
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE CalculatePortImpedance
