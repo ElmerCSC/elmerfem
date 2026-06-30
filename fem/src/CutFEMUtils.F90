@@ -632,7 +632,7 @@ CONTAINS
 
     DO i=1,dofs
       WHERE(CutPerm(1:nn) > 0 )        
-        CutValues(dofs*(CutPerm-1)+i) = Solver % OrigValues(dofs*(Solver % OrigPerm-1)+i) 
+        CutValues(dofs*(CutPerm(1:nn)-1)+i) = Solver % OrigValues(dofs*(Solver % OrigPerm(1:nn)-1)+i) 
       END WHERE
     END DO
 
@@ -1637,7 +1637,7 @@ CONTAINS
     ! If we solve some other equation in between store the original norm.
     Norm = Solver % Variable % Norm
     CutValues => Solver % Variable % Values
-    
+     
     ! Set values at shared nodes that have been computed. 
     CALL Info('CutFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
     DO l=1,dofs

@@ -91,6 +91,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: SEM ! Sub-element melting for Grounding line
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element melting
   LOGICAL :: ComputeResidual
+  LOGICAL :: CutFEMOn
   CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
 
   !-----------------------------------------------------------------------------
@@ -347,6 +348,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
       acabf % Values = 0._dp
       libmassbf % Values = 0._dp
      ENDIF
+     
+     CutFEMOn = .FALSE.
 
      !------------------------------------------------------------------------------
      !    Do the assembly
@@ -386,14 +389,16 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
       ! get lower limit for solution 
       !-----------------------------
-      LowerLimit(Nodeindexes(1:N)) = &
-          ListGetReal(Material,'Min ' // TRIM(VariableName),n,NodeIndexes, Found) 
-      IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 1) = Found
-      ! get upper limit for solution 
-      !-----------------------------
-      UpperLimit(Nodeindexes(1:N)) = &
-          ListGetReal(Material,'Max ' // TRIM(VariableName),n,Element % NodeIndexes, Found)              
-      IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 2) = Found
+      IF(.NOT. CutFEMon) THEN
+        LowerLimit(Nodeindexes(1:N)) = &
+            ListGetReal(Material,'Min ' // TRIM(VariableName),n,NodeIndexes, Found) 
+        IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 1) = Found
+        ! get upper limit for solution 
+        !-----------------------------
+        UpperLimit(Nodeindexes(1:N)) = &
+            ListGetReal(Material,'Max ' // TRIM(VariableName),n,Element % NodeIndexes, Found)              
+        IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 2) = Found
+      END IF
 
         ! get flow soulution and velocity field from it
         !----------------------------------------------
@@ -403,29 +408,29 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         ! get velocity profile
         IF (ConvectionVar) THEN
           DO i=1,n
-             j = NSDOFs*FlowPerm(NodeIndexes(i))
-              !2D problem - 1D Thickness evolution
-              IF((DIM == 2) .AND. (NSDOFs == 1)) THEN 
-                 Velo(1,i) = FlowSolution( j ) 
-                 Velo(2,i) = 0.0_dp
+            j = NSDOFs*FlowPerm(NodeIndexes(i))
+            !2D problem - 1D Thickness evolution
+            IF((DIM == 2) .AND. (NSDOFs == 1)) THEN 
+              Velo(1,i) = FlowSolution( j ) 
+              Velo(2,i) = 0.0_dp
               !2D problem - 2D Thickness evolution (plane view pb)
-              ELSE IF ((DIM == 2) .AND. (NSDOFs == 2)) THEN
-                 Velo(1,i) = FlowSolution( j-1 ) 
-                 Velo(2,i) = FlowSolution( j ) 
+            ELSE IF ((DIM == 2) .AND. (NSDOFs == 2)) THEN
+              Velo(1,i) = FlowSolution( j-1 ) 
+              Velo(2,i) = FlowSolution( j ) 
               !3D problem - 2D Thickness evolution 
-              ELSE IF ((DIM == 3) .AND. (NSDOFs == 2)) THEN
-                 Velo(1,i) = FlowSolution( j-1 ) 
-                 Velo(2,i) = FlowSolution( j ) 
-              ELSE
-                 WRITE(Message,'(a,i0,a,i0,a)')&
-                      'DIM=', DIM, ' NSDOFs=', NSDOFs, ' does not combine. Aborting'
-                 CALL Fatal( SolverName, Message)
-              END IF
-           END DO
-       ELSE
+            ELSE IF ((DIM == 3) .AND. (NSDOFs == 2)) THEN
+              Velo(1,i) = FlowSolution( j-1 ) 
+              Velo(2,i) = FlowSolution( j ) 
+            ELSE
+              WRITE(Message,'(a,i0,a,i0,a)')&
+                  'DIM=', DIM, ' NSDOFs=', NSDOFs, ' does not combine. Aborting'
+              CALL Fatal( SolverName, Message)
+            END IF
+          END DO
+        ELSE
           IF (ASSOCIATED( BodyForce ) ) THEN
-               Velo(1,1:n) = GetReal( BodyForce, 'Convection Velocity 1',Found )
-               IF (NSDOFs == 2) Velo(2,1:n) = GetReal( BodyForce, 'Convection Velocity 2',Found )
+            Velo(1,1:n) = GetReal( BodyForce, 'Convection Velocity 1',Found )
+            IF (NSDOFs == 2) Velo(2,1:n) = GetReal( BodyForce, 'Convection Velocity 2',Found )
           END IF
         END IF
       !------------------------------------------------------------------------------
@@ -501,6 +506,13 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !    transient simulations.
      !------------------------------------------------------------------------------
 
+     ! Tentative code for dealing with calving front using cutFEM. 
+     IF(DefaultCutFEM()) THEN
+       CutFEMOn = .TRUE.
+       PRINT *,'going back for interface elements!'
+       GOTO 100
+     END IF
+     
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 
