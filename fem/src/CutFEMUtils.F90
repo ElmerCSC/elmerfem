@@ -1632,7 +1632,7 @@ CONTAINS
     Mesh => Solver % Mesh
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
-    dofs = CutDofs 
+    dofs = Solver % Variable % Dofs !CutDofs 
     
     ! If we solve some other equation in between store the original norm.
     Norm = Solver % Variable % Norm
