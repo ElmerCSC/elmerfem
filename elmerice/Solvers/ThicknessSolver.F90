@@ -407,6 +407,10 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
         ! get velocity profile
         IF (ConvectionVar) THEN
+#if 1
+          ! more generic routine is needed for CutFEM
+          CALL GetLocalSolution( Velo,UElement=Element,UVariable=FlowSol)
+#else
           DO i=1,n
             j = NSDOFs*FlowPerm(NodeIndexes(i))
             !2D problem - 1D Thickness evolution
@@ -427,6 +431,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
               CALL Fatal( SolverName, Message)
             END IF
           END DO
+#endif
         ELSE
           IF (ASSOCIATED( BodyForce ) ) THEN
             Velo(1,1:n) = GetReal( BodyForce, 'Convection Velocity 1',Found )

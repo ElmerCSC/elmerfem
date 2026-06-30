@@ -586,7 +586,7 @@ CONTAINS
     
     ! This is just counter for different split cases while developing the code. 
     nCase = 0
-    Solver % CutInterp => CutInterp 
+!    Solver % CutInterp => CutInterp 
     
   END SUBROUTINE CreateCutFEMPerm
 
@@ -658,6 +658,8 @@ CONTAINS
       END DO
       Solver % Variable % PrevValues => PrevCutValues
     END IF
+
+    Solver % CutInterp => CutInterp 
     
   END SUBROUTINE CreateCutFEMVariable
       
@@ -683,8 +685,6 @@ CONTAINS
     CutDofs = Solver % Variable % Dofs
     dofs = CutDofs
 
-    PRINT *,'CutDofs1:',cutdofs, TRIM(Solver % Variable % Name)
-    
     ! Create new matrix
     A => AllocateMatrix()
     A % FORMAT = MATRIX_LIST
@@ -1635,8 +1635,6 @@ CONTAINS
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
     dofs = Solver % Variable % Dofs !CutDofs 
-
-    PRINT *,'CutDofs2:',CutDofs, Solver % Variable % Dofs, TRIM(Solver % Variable % Name)
     
     ! If we solve some other equation in between store the original norm.
     Norm = Solver % Variable % Norm
@@ -1648,7 +1646,6 @@ CONTAINS
 
     IF( CopyBack ) THEN
       CALL Info('CutFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
-PRINT *,'dofs:',dofs,nn,ne
       DO l=1,dofs
         DO i=1,nn
           j = CutPerm(i)
@@ -1799,8 +1796,10 @@ PRINT *,'dofs:',dofs,nn,ne
 
       Solver % ActiveElements => Solver % OrigActiveElements
       Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
-     
 
+      !SlaveSolver % CutInterp => Solver % CutInterp
+
+     
       IF(SlaveSolverId > 0 ) THEN
         CALL Info('CutFEMVariableFinalize','Reverting slave cut field back to original: '&
             //TRIM(SlaveSolver % Variable % Name),Level=20)
@@ -1823,7 +1822,7 @@ PRINT *,'dofs:',dofs,nn,ne
 
         SlaveSolver % ActiveElements => SlaveSolver % OrigActiveElements
         SlaveSolver % NumberOfActiveElements = SIZE(SlaveSolver % ActiveElements)
-
+        
       END IF
         
     END IF
