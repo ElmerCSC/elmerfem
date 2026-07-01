@@ -1000,6 +1000,10 @@ MODULE Types
 
       TYPE(ParEnv_t) :: ParEnv
       REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
+      ! These are the original perm and values when using CutFEM.
+      REAL(KIND=dp), POINTER :: OrigValues(:) => NULL(), OrigPrevValues(:,:) => NULL()
+      INTEGER, POINTER :: OrigActiveElements(:) => NULL()
+      INTEGER, POINTER :: OrigPerm(:) => NULL()
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------

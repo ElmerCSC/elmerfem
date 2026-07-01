@@ -76,9 +76,9 @@
 
   LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: stat
-  LOGICAL :: Newton, Converged
+  LOGICAL :: Newton, Converged, MeActive
 
-  INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs
+  INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs, iLev
   INTEGER :: NonlinearIter, NewtonIter, iter, other_body_id
 
   INTEGER, POINTER :: Permutation(:), ZsPerm(:), ZbPerm(:), &
@@ -116,6 +116,10 @@
   VeloSol => Solver % Variable 
   STDOFs = VeloSol % DOfs
   VariableValues => VeloSol % Values
+
+  iLev = 4
+  IF(AllocationsDone) iLev=20
+
   
   !------------------------------------------------------------------------------
   !    Get variables needed for solution
@@ -129,9 +133,9 @@
 
   ZbName = GetString(SolverParams, 'Bottom Surface Name', GotIt)
   IF (GotIt) THEN
-    CALL INFO(SolverName, 'Bottom Surface Name found', level=4)            
+    CALL INFO(SolverName, 'Bottom Surface Name found: '//TRIM(ZbName), level=iLev)            
   ELSE
-    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=4) 
+    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=iLev) 
     WRITE(ZbName,'(A)') 'Zb'
   END IF
   ZbSol => VariableGet( Solver % Mesh % Variables, ZbName,UnFoundFatal=UnFoundFatal)
@@ -140,9 +144,9 @@
 
   ZsName = GetString(SolverParams, 'Top Surface Name', GotIt)
   IF (GotIt) THEN
-    CALL INFO(SolverName, 'Top Surface Name found', level=4)            
+    CALL INFO(SolverName, 'Top Surface Name found: '//TRIM(ZsName), level=iLev)            
   ELSE
-    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=4) 
+    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=iLev) 
     WRITE(ZsName,'(A)') 'Zs'
   END IF
   ZsSol => VariableGet( Solver % Mesh % Variables, ZsName,UnFoundFatal=UnFoundFatal)
@@ -162,9 +166,9 @@
           CALL ListAddLogical(SolverParams,'Adaptive Integration Split', .True.)
           CALL ListAddConstReal(SolverParams,'Adaptive Integration Split Limit',0._dp)
        END IF
-       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=4)
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=iLev)
      ELSE
-       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=4)
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=iLev)
      END IF
   ELSE
        CALL INFO(SolverName,'No Sub-Element GL parameterization')     
@@ -173,7 +177,7 @@
   sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )
   IF (.NOT.Found) THEN
     WRITE(Message,'(A)') 'Constant >Sea Level< not found. Setting to zero.'
-    CALL INFO(SolverName, Message, level=20)
+    CALL INFO(SolverName, Message, level=iLev)
   END IF
 
   !--------------------------------------------------------------
@@ -186,7 +190,7 @@
     If (.NOT.Found) Then
       rhow = 1.03225e-18_dp
       WRITE(Message,*) 'Constant Water Density not found. Setting to: ',rhow
-      CALL INFO(SolverName, Message, level=20)
+      CALL INFO(SolverName, Message, level=iLev)
     End if
 
     ! Allocate
@@ -235,9 +239,11 @@
   if (.NOT.Gotit) NewtonIter = NonlinearIter + 1
 
   Newton=.FALSE.
-  
+  MeActive = .TRUE.
   !------------------------------------------------------------------------------
   DO iter=1,NonlinearIter
+
+    IF(.NOT. MeActive) EXIT
 
     at  = CPUTime()
     at0 = RealTime()
@@ -256,10 +262,13 @@
 
     !Initialize the system and do the assembly:
     !------------------------------------------
-100 CALL DefaultInitialize()
+100 IF(Solver % Matrix % NumberOfRows > 0) CALL DefaultInitialize()
 
     ! bulk assembly
-200 DO t=1,Solver % NumberOfActiveElements
+200 MeActive = Solver % Matrix % NumberOfRows > 0
+    IF(iter == 1) CALL ParallelActiveSubset(MeActive)
+
+    DO t=1,Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
       !IF (ParEnv % myPe  /=  Element % partIndex) CYCLE
       n = GetElementNOFNodes()
@@ -426,7 +435,9 @@
 
     ! Tentative code for dealing with calving front using cutFEM. 
     IF(DefaultCutFEM()) GOTO 200
-    
+
+    IF(.NOT. MeActive) EXIT
+
     CALL DefaultFinishAssembly()
 
     ! Dirichlet 
@@ -438,7 +449,7 @@
     IF( DefaultLinesearch( Converged ) ) GOTO 100
     IF( Converged ) EXIT
 
-    
+
     !------------------------------------------------------------------------------
     !     Solve the system and check for convergence
     !------------------------------------------------------------------------------
@@ -577,6 +588,9 @@
     END DO
   END IF
 
+  IF(ParEnv % PEs > 1) CALL ParallelActive(.TRUE.)
+  ParEnv % ActiveComm = ELMER_COMM_WORLD
+  Solver % Matrix % Comm = ELMER_COMM_WORLD
   CALL DefaultFinish()
   
 !!! reset Model Dimension to dim
@@ -862,6 +876,105 @@ CONTAINS
     END IF
     !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBCSSA
+
+
+  SUBROUTINE ParallelActiveSubset(MeActive)
+
+    LOGICAL :: MeActive    
+    INTEGER :: n
+    INTEGER, ALLOCATABLE :: memb(:)
+    TYPE(Matrix_t), POINTER :: M
+    INTEGER :: comm_active, group_active, group_world, ierr
+
+    IF(ParEnv % PEs == 1 ) RETURN
+    
+    CALL ParallelActive(MeActive)
+    n = COUNT( ParEnv % Active ) 
+
+    M => Solver % Matrix
+    
+    IF ( n>0 .AND. n<ParEnv % PEs ) THEN
+      IF ( ASSOCIATED(Solver % Matrix) ) THEN
+        IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
+            CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
+      END IF
+
+      CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
+      ALLOCATE(memb(n))
+      n = 0
+      DO i=1,ParEnv % PEs
+        IF ( ParEnv % Active(i) ) THEN
+          n=n+1
+          memb(n)=i-1
+        END IF
+      END DO
+      CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
+      DEALLOCATE(memb)
+      CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, comm_active, ierr)
+
+      M => Solver % Matrix
+      DO WHILE(ASSOCIATED(M))
+        M % Comm = comm_active
+        M => M % Parent
+      END DO
+      ParEnv % ActiveComm = comm_active
+
+
+      IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
+        ! If any of the active output partitions in active just use it.
+        ! Typically the 1st one. Others are passive. 
+        IF( ParEnv % MyPe >= MinOutputPE .AND. ParEnv % MyPe <= MaxOutputPE ) THEN 
+          OutputPE = ParEnv % MyPE
+        ELSE
+          OutputPE = -1
+        END IF
+      ELSE         
+        ! Otherwise find the 1st active partition and if found use it.
+        ! Otherwise use the 0:th partition. 
+        DO i=1,ParEnv % PEs
+          IF ( ParEnv % Active(i) ) EXIT
+        END DO
+
+        OutputPE = -1
+        IF ( i-1 == ParEnv % MyPE ) THEN
+          OutputPE = i-1 
+        ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+          OutputPE = 0
+        END IF
+      END IF
+    ELSE
+      M => Solver % Matrix
+      DO WHILE( ASSOCIATED(M) )
+        M % Comm = ELMER_COMM_WORLD
+        M => M % Parent
+      END DO
+
+      IF(.NOT.ASSOCIATED(Solver % Matrix)) ParEnv % Active = .TRUE.
+
+      ! Here set the default partitions active. 
+      IF( ParEnv % MyPe >= MinOutputPE .AND. &
+          ParEnv % MyPe <= MaxOutputPE ) THEN 
+        OutputPE = ParEnv % MyPE
+      ELSE
+        OutputPE = -1
+      END IF
+    END IF
+
+    IF ( ASSOCIATED(Solver % Matrix) ) THEN
+      IF ( Solver % Parallel .AND. MeActive ) THEN
+        IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
+          ParEnv % ActiveComm = Solver % Matrix % Comm
+
+          IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) then
+            CALL ParallelInitMatrix(Solver, Solver % Matrix )
+          END IF 
+          ParEnv % ActiveComm = Solver % Matrix % Comm
+        END IF
+     END IF
+   END IF
+
+
+  END SUBROUTINE ParallelActiveSubset
 
 
   !------------------------------------------------------------------------------

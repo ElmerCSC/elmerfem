@@ -5243,6 +5243,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
+     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) MeActive = .TRUE.
 
      Parallel = Solver % Parallel 
      !------------------------------------------------------------------------------
