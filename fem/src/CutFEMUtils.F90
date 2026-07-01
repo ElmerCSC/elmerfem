@@ -828,15 +828,16 @@ CONTAINS
   ! Given Element, levelset function and the CutDof field return information whether the element
   ! is cut and if it, should we call the routine again for the next split. 
   !----------------------------------------------------------------------------------------------
-  FUNCTION CutInterfaceBulk( Element, IsCut, IsMore ) RESULT ( pElement )
+  FUNCTION CutInterfaceBulk( Element, IsCut, IsMore, Sweep ) RESULT ( pElement )
     TYPE(Element_t), POINTER :: pElement
     TYPE(Element_t), TARGET :: Element
     LOGICAL :: IsCut
     LOGICAL :: IsMore
+    INTEGER, OPTIONAL :: Sweep
 
     TYPE(Element_t), TARGET :: Elem303, Elem404, Elem706, Elem808
     TYPE(Element_t), POINTER :: prevElement
-    INTEGER :: SgnNode, i, n, nn, ElemType, body_out, body_in, CutCnt
+    INTEGER :: SgnNode, i, n, nn, ElemType, body_out, body_in, CutCnt, PSweep
     LOGICAL :: Found
     REAL(KIND=dp), POINTER :: x(:), y(:), z(:)
     CHARACTER(:), ALLOCATABLE :: str       
@@ -851,7 +852,7 @@ CONTAINS
         
     SAVE Mesh, Solver, x, y, z, Elem303, Elem404, body_in, body_out, &
         nn, CutCnt, PhiVar, ElemNodes, ElemInds, ElemCut, ElemType, LocalInds, &
-        prevElement
+        prevElement, PSweep
     
     IF(.NOT. ASSOCIATED( Solver, CurrentModel % Solver ) ) THEN
       Mesh => CurrentModel % Solver % Mesh
@@ -886,8 +887,15 @@ CONTAINS
       IF(.NOT. Found) body_in = CurrentModel % NumberOfBodies
       body_out = ListGetInteger( Solver % Values,'CutFem Outside Body',Found )
       IF(.NOT. Found) body_out = body_in+1
+      PSweep = 0
     END IF
 
+    IF(PRESENT(Sweep)) THEN
+      IF(PSweep /= Sweep) THEN
+        PSweep = Sweep
+        prevElement => NULL()
+      END IF
+    END IF
     
     ! This is the counter for splitting.
     IF(.NOT. ASSOCIATED(prevElement,Element)) THEN
@@ -1956,7 +1964,7 @@ CONTAINS
           CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )          
           !IF(.NOT. IsActive) CYCLE      
           IF(IsCut) THEN
-10          pElement => CutInterfaceBulk(Element,isCut,isMore)        
+10          pElement => CutInterfaceBulk(Element,isCut,isMore,Sweep)        
             IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
               nBulk = nBulk + 1
               IF(Sweep==1) CALL AddElementData(pElement,nBulk)
@@ -2379,7 +2387,7 @@ CONTAINS
 
       ! Deallocate data, next time this will be different.
       DO i=1,ParEnv % PEs
-        IF(PolylineData(i) % nLines > 0) THEN
+        IF(PolylineData(i) % nLines > 0 .OR. i==ParEnv % MyPE+1) THEN
           DEALLOCATE(PolylineData(i) % Vals)
           DEALLOCATE(PolylineData(i) % Prev, &
               PolylineData(i) % Next)
@@ -2482,7 +2490,7 @@ CONTAINS
 
     ! Deallocate data, next time this will be different.
     DO i=1,ParEnv % PEs 
-      IF(PolylineData(i) % nLines > 0) THEN
+      IF(PolylineData(i) % nLines > 0 .OR. i==ParEnv % MyPE+1) THEN
         DEALLOCATE(PolylineData(i) % Vals)
         DEALLOCATE(PolylineData(i) % Prev, &
               PolylineData(i) % Next)
@@ -3844,7 +3852,7 @@ CONTAINS
         DO j=1, PolylineData(k) % nLines
           IF(RemoveLines(k,j)) CYCLE
           counter = counter + 1
-          WorkInt2(k,j) = counter
+          WorkInt2(i,j) = counter
         END DO
       END DO
 
