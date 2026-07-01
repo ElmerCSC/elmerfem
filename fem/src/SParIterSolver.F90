@@ -98,7 +98,7 @@ CONTAINS
 
     pes = ParEnv % PEs
     ALLOCATE( SParMatrixDesc )
-    ! nvfortran 24.7 ICE workaround: structure assignment of a derived type with
+    ! nvhpc ICE workaround: structure assignment of a derived type with
     ! pointer array components triggers "Lowering Error" in the compiler backend.
     ! Copy scalar fields explicitly; Active and IsNeighbour are handled below.
     SParMatrixDesc % ParEnv % PEs             = ParEnv % PEs
@@ -110,7 +110,7 @@ CONTAINS
     SParMatrixDesc % ParEnv % ExternalInit    = ParEnv % ExternalInit
 
     ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
-    ! nvfortran 24.7 ICE workaround: whole-array assignment of a DIMENSION(:),POINTER
+    ! nvhpc ICE workaround: whole-array assignment of a DIMENSION(:),POINTER
     ! component triggers "array upper bound is not a symbol" Lowering Error.
     ! SIZE() produces a concrete integer symbol the compiler backend can handle.
     BLOCK
@@ -3068,12 +3068,12 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 
   ! Local variables
 
-  ! nvfortran 24.7 ICE workaround: nrows2 is a plain local scalar used instead
+  ! nvhpc ICE workaround: nrows2 is a plain local scalar used instead
   ! of Smat2 % NumberOfRows as an array bound — derived-type component accesses
   ! as bounds trigger "array numelm is not a symbol" Lowering Error.
   INTEGER :: i, j, k, i1, i2, j1, j2, ind, ind1, ind2, DRows, DCols, row, col, nrows2
 
-  ! nvfortran 24.7 ICE workaround: ALLOCATE of a POINTER(:) with a non-trivial
+  ! nvhpc ICE workaround: ALLOCATE of a POINTER(:) with a non-trivial
   ! extent expression triggers "array numelm is not a symbol" Lowering Error.
   ! ALLOCATABLE has the same semantics here and avoids the compiler bug.
   INTEGER, ALLOCATABLE :: cols(:)
@@ -3087,7 +3087,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 
   ELSE IF ( SMat1 % NumberOfRows == 0 ) THEN
 
-     ! nvfortran 24.7 ICE workaround: whole-array assignments to derived-type
+     ! nvhpc ICE workaround: whole-array assignments to derived-type
      ! POINTER array components trigger "array numelm" Lowering Error.
      ! Use local scalars and element-wise loops instead.
      nrows2 = SMat2 % NumberOfRows
@@ -3111,7 +3111,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 
   ELSE IF ( SMat2 % NumberOfRows == 0 ) THEN
 
-     ! nvfortran 24.7 ICE workaround: same as above for SMat1 branch.
+     ! nvhpc ICE workaround: same as above for SMat1 branch.
      nrows2 = SMat1 % NumberOfRows
      ALLOCATE( DMat % Rows( nrows2 + 1) )
      ALLOCATE( DMat % GRows( nrows2 ) )
@@ -3161,7 +3161,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
   !----------------------------------------------------------------------
 
   row = 1; col = 1; i1 = 1; i2 = 1
-  ! nvfortran 24.7 ICE workaround: any whole-array assignment to an ALLOCATABLE
+  ! nvhpc ICE workaround: any whole-array assignment to an ALLOCATABLE
   ! triggers "array numelm is not a symbol" Lowering Error. Use a scalar loop.
   nrows2 = Smat2 % NumberOfRows
   ALLOCATE( Done( nrows2 ) )
