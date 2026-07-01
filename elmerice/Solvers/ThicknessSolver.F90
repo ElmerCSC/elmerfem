@@ -78,7 +78,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        MASS(:,:), Velo(:,:),  LowerLimit(:), UpperLimit(:), &
        OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:)
 
-  CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName, StabilizeFlag
+  CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName, StabilizeFlag, PassName
 
   TYPE(Nodes_t)   :: ElementNodes
   TYPE(Element_t),POINTER :: Element
@@ -515,6 +515,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      IF(DefaultCutFEM()) THEN
        CutFEMOn = .TRUE.
        PRINT *,'going back for interface elements!'
+       PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'
+       IF(ListCheckPresentAnyBodyForce(Model, PassName)) CALL FATAL(SolverName, 'Cannot have passive variable and use CutFEM')
        GOTO 100
      END IF
      
@@ -799,7 +801,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        END IF
        
        UseLinear = GetLogical( GetSolverParams(), 'Use linear elements', Stat )
-       UseLinear = UseLinear .OR. ANY(ActiveNode(NodeIndexes,:))
+       IF(.NOT. CutFEMOn) UseLinear = UseLinear .OR. ANY(ActiveNode(NodeIndexes,:))
        UseLinear = UseLinear .AND. Element % TYPE % BasisFunctionDegree==2
 
        IF ( UseLinear ) THEN
