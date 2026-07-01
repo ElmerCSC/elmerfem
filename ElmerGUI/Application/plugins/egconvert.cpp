@@ -3884,7 +3884,7 @@ static int LoadGmshInput1(struct FemType *data,struct BoundaryType *bound,
   int noknots = 0,noelements = 0,maxnodes,dim;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, regphys, regelem, elemnodes,maxelemtype;
+  int elemno, gmshtype, regphys, regelem, elemnodes=0,maxelemtype;
   FILE *in;
   char *cp,line[MAXLINESIZE];
 
@@ -4044,7 +4044,7 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags,nodenum;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes=0,maxelemtype;
   int tagmat,verno,frcount;
   int physvolexist, physsurfexist;
   FILE *in;
@@ -4356,7 +4356,7 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes=0,maxelemtype;
   int tagmat,verno;
   int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
   FILE *in;
@@ -4799,7 +4799,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes=0,maxelemtype;
   int tagmat,verno,meshdim,tagdim,frcount;
   int physvolexist, physsurfexist,**tagmap,tagsize;
   int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4];
