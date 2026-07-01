@@ -958,13 +958,14 @@ CONTAINS
   ! be changed. This includes also wedges even if the above does not just to model how they could
   ! work in 3D. 
   !----------------------------------------------------------------------------------------------
-  FUNCTION CutInterfaceBC( Element, IsCut, IsMore ) RESULT ( pElement )
+  FUNCTION CutInterfaceBC( Element, IsCut, IsMore, Sweep ) RESULT ( pElement )
     TYPE(Element_t), POINTER :: Element, pElement
     LOGICAL :: IsCut, IsMore
+    INTEGER, OPTIONAL :: Sweep
 
     TYPE(Element_t), TARGET :: Elem202, Elem303, Elem404
     TYPE(Element_t), POINTER, SAVE :: prevElement
-    INTEGER :: m, n, n_split, n_cut, i, j, j2, j3, j4, nn, SplitCase
+    INTEGER :: m, n, n_split, n_cut, i, j, j2, j3, j4, nn, SplitCase, PSweep
     INTEGER, POINTER :: nIndexes(:), eIndexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Visited = .FALSE., Found, VerticalCut
@@ -973,7 +974,7 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'CutInterfaceBC'
 
     SAVE Visited, Mesh, Solver, nn, x, y, z, n_split, n_cut, &
-        Elem202, Elem303, Elem404, VerticalCut, m
+        Elem202, Elem303, Elem404, VerticalCut, m, PSweep
 
 
     IF(.NOT. Visited) THEN      
@@ -1009,10 +1010,18 @@ CONTAINS
 
         VerticalCut = .FALSE.
       END IF
-      
+
+      PSweep=0
       Visited = .TRUE.
     END IF
 
+    IF(PRESENT(Sweep)) THEN
+      IF(PSweep /=Sweep) THEN
+        PSWeep = Sweep
+        prevElement => NULL()
+      END IF
+    END IF
+    
     nIndexes => Element % NodeIndexes
     eIndexes => Element % EdgeIndexes
     
@@ -1984,7 +1993,7 @@ CONTAINS
           Element => Mesh % Elements(t)
           !CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )
           !IF(.NOT. IsActive) CYCLE
-20        pElement => CutInterfaceBC(Element,isCut,isMore)        
+20        pElement => CutInterfaceBC(Element,isCut,isMore,Sweep)        
           IF(isCut) THEN
             IF(ASSOCIATED(pElement)) THEN          
               IF(ASSOCIATED(Perm)) THEN
