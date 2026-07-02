@@ -47,6 +47,7 @@
 ! *  Required Elmer variables:
 ! *    temp_oce_post : nodal ocean temperature (degC)
 ! *    sal_oce_post  : nodal ocean salinity (PSU)
+! *    ice_thickness : ice thickness (m)
 ! *
 ! *  Output variables (created automatically):
 ! *    <var>_flux : integrated melt flux per element (m3/yr), element variable
@@ -82,7 +83,7 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
   LOGICAL                :: Transient
 
   ! Elmer variables
-  TYPE(Variable_t), POINTER :: z_iceBase, z_bedrock, groundedMask, T_oce_var, sal_oce_var
+  TYPE(Variable_t), POINTER :: z_iceBase, z_bedrock, groundedMask, T_oce_var, sal_oce_var, ice_thickness_var
   INTEGER, POINTER          :: T_oce_Perm(:), sal_oce_Perm(:)
   REAL(KIND=dp), POINTER    :: T_oce_vals(:), sal_oce_vals(:)
 
@@ -99,10 +100,10 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
   REAL(KIND=dp), PARAMETER :: cc            = 7.61e-4_dp
 
   ! Local variables
-  TYPE(ValueList_t), POINTER :: SolverParams
-  REAL(KIND=dp) :: T_freeze, T_far, S_far, meltRate, meltScaling, wct, wct_factor, T_oce_default, sal_oce_default
+  TYPE(ValueList_t), POINTER :: SolverParams, Material
+  REAL(KIND=dp) :: T_freeze, T_far, S_far, meltRate, meltScaling, wct, wct_factor, min_ice_thickness
   LOGICAL       :: found, T_oce_found, sal_oce_found
-  INTEGER       :: ii
+  INTEGER       :: ii, ii_mat, nZeroedNodes, ierr
 
   ! For element-based integrated melt flux
   TYPE(Variable_t), POINTER         :: meltFlux_var
@@ -111,10 +112,10 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
   TYPE(Element_t), POINTER          :: Element
   TYPE(Nodes_t)                     :: ElementNodes
   TYPE(GaussIntegrationPoints_t)    :: IntegStuff
-  REAL(KIND=dp) :: Basis(MAX_ELEMENT_NODES), dBasisdx(MAX_ELEMENT_NODES, 3)
+  REAL(KIND=dp) :: Basis(MAX_ELEMENT_NODES)
   REAL(KIND=dp) :: detJ, U, V, W, Sw, meltRate_gp, elemFlux
-  INTEGER       :: element_id, n_el, jj, kk
   LOGICAL       :: stat
+  INTEGER       :: element_id, n_el, jj, kk
 
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName = 'SubShelfMeltLinearTF'
 
@@ -143,6 +144,15 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
      IF (.NOT. Found) CALL FATAL(SolverName, 'No keyword >bedrock variable name< found')
   END IF
 
+  ! Read Min H from Material section (minimum ice thickness for melt computation)
+  Found = .FALSE.
+  DO ii_mat = 1, CurrentModel % NumberOfMaterials
+     Material => CurrentModel % Materials(ii_mat) % Values
+     min_ice_thickness = GetConstReal(Material, 'Min H', Found)
+     IF (Found) EXIT
+  END DO
+  IF (.NOT. Found) CALL FATAL(SolverName, 'Minimal ice thickness >Min H< not found in any Material section')
+
   !----------------------------------------------------------------------------
   ! Read physical constants
   !----------------------------------------------------------------------------
@@ -170,28 +180,37 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
   groundedMask => VariableGet( Solver % Mesh % Variables, TRIM(groundedMaskName) )
   IF (.NOT. ASSOCIATED(groundedMask)) CALL FATAL(SolverName, 'Failed to find grounded mask variable')
 
-  T_oce_var   => VariableGet( Solver % Mesh % Variables, 'temp_oce_post' )
+  T_oce_var   => VariableGet( Solver % Mesh % Variables, 'temp_oce' )
   T_oce_found = ASSOCIATED(T_oce_var)
-  IF (.NOT. ASSOCIATED(T_oce_var)) CALL FATAL(SolverName, 'Variable temp_oce_post not found')
-  IF (T_oce_found) THEN
-     T_oce_vals => T_oce_var % Values
-     T_oce_Perm => T_oce_var % Perm
-     CALL INFO(SolverName, 'Variable temp_oce found; using nodal ocean temperatures', Level=3)
-  END IF
+  IF (.NOT. ASSOCIATED(T_oce_var)) CALL FATAL(SolverName, &
+      'Variable temp_oce not found. Please make sure it is a defined variable in your .sif')
+  T_oce_vals => T_oce_var % Values
+  T_oce_Perm => T_oce_var % Perm
 
-  sal_oce_var   => VariableGet( Solver % Mesh % Variables, 'sal_oce_post' )
+  sal_oce_var   => VariableGet( Solver % Mesh % Variables, 'sal_oce' )
   sal_oce_found = ASSOCIATED(sal_oce_var)
-  IF (.NOT. ASSOCIATED(sal_oce_var)) CALL FATAL(SolverName, 'Variable sal_oce_post not found')
-  IF (sal_oce_found) THEN
-     sal_oce_vals => sal_oce_var % Values
-     sal_oce_Perm => sal_oce_var % Perm
-     CALL INFO(SolverName, 'Variable sal_oce found; using nodal ocean salinity', Level=3)
-  END IF
+  IF (.NOT. ASSOCIATED(sal_oce_var)) CALL FATAL(SolverName, &
+      'Variable sal_oce not found. Please make sure it is a defined variable in your .sif')
+  sal_oce_vals => sal_oce_var % Values
+  sal_oce_Perm => sal_oce_var % Perm
 
   IF (wct_sc) THEN
-     z_bedrock => VariableGet( Solver % Mesh % Variables, TRIM(bedrockName) )
-     IF (.NOT. ASSOCIATED(z_bedrock)) CALL FATAL(SolverName, 'Failed to find bedrock variable')
+    z_bedrock => VariableGet( Solver % Mesh % Variables, TRIM(bedrockName) )
+    IF (.NOT. ASSOCIATED(z_bedrock)) THEN
+      CALL FATAL(SolverName, &
+        'Failed to find bedrock variable' &
+      )
+    END IF
   END IF
+
+  ice_thickness_var => VariableGet(Solver % Mesh % Variables, 'H')
+  IF (.NOT. ASSOCIATED(ice_thickness_var)) THEN
+    CALL FATAL(SolverName, &
+      'Failed to find ice thickness variable >H<. Please make sure it is ' // &
+      'a defined variable in your .sif' &
+    )
+  END IF
+
 
   !----------------------------------------------------------------------------
   ! Automatically create element-based flux variable if absent
@@ -223,6 +242,7 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
   !----------------------------------------------------------------------------
   ! Loop over nodes to compute nodal melt rate
   !----------------------------------------------------------------------------
+  nZeroedNodes = 0
   DO ii = 1, Model % NumberOfNodes
 
      IF (Solver % Variable % Perm(ii) .LE. 0) CYCLE
@@ -230,6 +250,12 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
      IF (groundedMask % Values(groundedMask % Perm(ii)) .GT. 0) CYCLE
      IF (groundedMask % Values(groundedMask % Perm(ii)) .EQ. 0) THEN
         IF (.NOT. glMelt) CYCLE
+     END IF
+
+     IF (ice_thickness_var % Values(ice_thickness_var % Perm(ii)) .LE. min_ice_thickness) THEN
+         Solver % Variable % Values(Solver % Variable % Perm(ii)) = 0.0_dp
+         nZeroedNodes = nZeroedNodes + 1
+         CYCLE
      END IF
 
      S_far = sal_oce_vals(sal_oce_Perm(ii))
@@ -250,6 +276,14 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
      Solver % Variable % Values(Solver % Variable % Perm(ii)) = meltRate * meltScaling
 
   END DO
+  IF (ParEnv % PEs > 1) CALL MPI_Allreduce(MPI_IN_PLACE, nZeroedNodes, 1, &
+       MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr)
+  IF (ParEnv % MyPE == 0) THEN
+   CALL INFO(SolverName, &
+     'SubShelfMeltLinearTF: nodes set to zero due to >Min H<:' // &
+     I2S(nZeroedNodes) &
+     )
+  END IF
 
   !----------------------------------------------------------------------------
   ! Loop over active elements to integrate nodal melt rate -> element flux
@@ -267,7 +301,7 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
         V  = IntegStuff % v(jj)
         W  = IntegStuff % w(jj)
         Sw = IntegStuff % s(jj)
-        stat = ElementInfo(Element, ElementNodes, U, V, W, detJ, Basis, dBasisdx)
+        stat = ElementInfo(Element, ElementNodes, U, V, W, detJ, Basis)
 
         ! Interpolate nodal melt rate to this Gauss point
         meltRate_gp = 0.0_dp
