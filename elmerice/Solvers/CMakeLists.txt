@@ -35,6 +35,9 @@ MESSAGE(STATUS "Elmer/Ice package: Looking for YAC libraries")
 IF(WITH_YAC)
 
   FIND_PACKAGE(YAC CONFIG)
+  # Check for Fortran target; not supported yet (YAC 3.18)
+  # FIND_PACKAGE(YAC REQUIRED COMPONENTS Fortran)
+
 
   IF(YAC_FOUND)
     MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
