@@ -600,6 +600,7 @@ CONTAINS
     INTEGER :: i,j,dofs,nn,ne
     REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
     CHARACTER(*), PARAMETER :: Caller = 'CreateCutFEMVariable'
+    NULLIFY(CutValues, PrevCutValues)
 
     IF(.NOT. ASSOCIATED(Solver % Variable)) THEN
       CALL Info(Caller,'Solver % Variable not associated, doing nothing!')
@@ -3306,9 +3307,9 @@ CONTAINS
             k = neighbours(neighbour)
 
             ! part not in BB
-            IF(PolylineData(MyPE) % IsoLineBB(MyPE) < xmin0 .OR. &
+            IF(PolylineData(k) % IsoLineBB(2) < xmin0 .OR. &
                 xmax0 < PolylineData(k) % IsoLineBB(1)) CYCLE
-            IF(PolylineData(MyPe) % IsoLineBB(MyPE) < ymin0 .OR. &
+            IF(PolylineData(k) % IsoLineBB(4) < ymin0 .OR. &
                 ymax0 < PolylineData(k) % IsoLineBB(3)) CYCLE
 
             DO j=1, PolylineData(k) % NLines
