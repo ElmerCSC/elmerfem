@@ -498,6 +498,13 @@ MODULE elmer_icon_coupling
   ! Buffer for output of creep mapping on internal domain
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: sal_oce_post_field(:,:)
 
+  ! Fields Elmer sends to ICON
+
+  INTEGER :: liquid_flux_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: liquid_flux_field_name = "liquid_flux"
+  INTEGER :: liquid_flux_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: liquid_flux_field(:,:)
+
 CONTAINS
 
   SUBROUTINE construct_elmer_icon_coupling( &
@@ -512,12 +519,22 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
     CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
 
-    INTEGER :: nbr_vertices
+    INTEGER :: nbr_vertices, nbr_cells
 
     REAL(kind=C_DOUBLE), PARAMETER :: nnn_max_search_distance = 1e-5_C_DOUBLE
     REAL(kind=C_DOUBLE), PARAMETER :: nnn_scale = 0.0_C_DOUBLE
 
     nbr_vertices = yac_fget_points_size(corner_point_id)
+    nbr_cells = yac_fget_points_size(cell_point_id)
+
+
+    ! register liquid flux field in YAC
+    CALL yac_fdef_field( &
+      liquid_flux_field_name, comp_id, (/cell_point_id/), 1, liquid_flux_collection_size, &
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, liquid_flux_field_id);
+
+    ! allocate and liquid flux field buffer
+    ALLOCATE(liquid_flux_field(nbr_cells, liquid_flux_collection_size))
 
     ! register ocean temperature field in YAC (masked on boundary)
     CALL yac_fdef_field( &
