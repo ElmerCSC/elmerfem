@@ -588,6 +588,40 @@
        FirstLoad = .FALSE.
        IF ( Initialize == 1 ) EXIT
 
+
+       BLOCK
+         TYPE(Mesh_t), POINTER :: Mesh
+         INTEGER :: i,j,imin,imax
+
+         j = CurrentModel % NumberOfSolvers
+         imax = 0
+         imin = j
+         DO i=1,j
+           IF(ListGetLogical(CurrentModel % Solvers(i) % Values,'CutFEM',Found ) ) THEN
+             imax = MAX(imax,i)
+             imin = MIN(imin,i)
+           END IF
+         END DO
+         IF(imin <= imax ) THEN
+           !CALL Info(Caller,'We have CutFEM used in some Solver!')
+           ! Create the CutFEM mesh just before 1st cutfem solver
+           i = ListGetInteger(CurrentModel % Simulation,'CutFEM Create Solver Index',Found )
+           IF(.NOT. Found) i=imin
+           CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'CutFEM Create',.TRUE.)
+
+           ! Interpolate the CutFEM results just after the last cutfem solver
+           i = ListGetInteger(CurrentModel % Simulation,'CutFEM Interpolate Solver Index',Found )
+           IF(.NOT. Found) i=imax
+           CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'CutFEM Interpolate',.TRUE.)
+
+           ! Destroy the temporal stuff after all solvers
+           i = ListGetInteger(CurrentModel % Simulation,'CutFEM Destroy Solver Index',Found )
+           IF(.NOT. Found) i=j
+           CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'CutFEM Destroy',.TRUE.)
+         END IF
+       END BLOCK
+
+
        ! Check whether we are using external optimization routine that
        ! needs to have basically Elmer given as a function that returns
        ! the cost function. Hence this is treated separately from the internal
@@ -1388,6 +1422,7 @@
        IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 3')
        pSolver % Def_Dofs = -1
        pSolver % Def_Dofs(:,:,1) =  1
+       pSolver % SolverId = n
        
        ! Create empty list to add some keywords to 
        pSolver % Values => ListAllocate()
@@ -3107,7 +3142,9 @@
            END IF
          END BLOCK
 
+!------------------------------------------------------------------------------
 
+                  
 !------------------------------------------------------------------------------
          IF ( ParEnv % MyPE == 0 ) THEN
            CALL Info( 'MAIN', ' ', Level=3 )

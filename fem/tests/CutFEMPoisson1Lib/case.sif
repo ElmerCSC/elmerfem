@@ -11,7 +11,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 25
   Coordinate System = String Cartesian
   Simulation Type = Transient 
   Steady State Max Iterations = 1
@@ -27,6 +27,44 @@ Simulation
 !  vtu: Save Bulk Only = Logical True
 
   Mesh Levels = 3
+
+
+
+
+! This should be generalized. 
+  Levelset Velocity 1 = Real $0.006
+  Levelset Velocity 2 = Real $0.002
+  
+  CutFem = logical True
+  CutFem Epsilon = Real 1.0e-3
+!  CutFem Epsilon Absolute = Logical True
+
+! What BC index will be given for on-the-fly BC. 
+  CutFem Interface BC = Integer 4
+! What index will be given for negative levelset.
+  CutFEM inside body = integer 1
+! for positive levelset.   
+  CutFEM outside body = integer 0
+
+! Should we extend using FEM
+  CutFem extend = logical true
+! Should be extrapolate using edges (alternative). 
+!  CutFEM extrapolate = Logical True
+
+! Which variables to project to isoline
+  Isoline Variable 1 = String "Potential"
+  Isoline Variable 2 = String "Surface"
+
+! Which variables to project to 2D viz. mesh.
+  Project Variable 1 = Potential
+  Project Variable 2 = Surface
+
+! Should we save the actural splitted mesh in 2D? 
+!  CutFEM Mesh Save = Logical True
+
+! We define a levelset to be used.
+  Levelset Variable = String "Surface"
+
 End
 
 Body 1
@@ -78,9 +116,11 @@ Solver 1
   Linear System Preconditioning = "ILU0"
   Linear System Residual Output = 20
 
-! We define a levelset to be used.
   Exported Variable 1 = Surface
-  Levelset Variable = String "Surface"
+
+
+  CutFEM = Logical True
+
 
 ! This should be generalized. 
   Levelset Velocity 1 = Real $0.006
@@ -112,6 +152,10 @@ Solver 1
 
 ! Should we save the actural splitted mesh in 2D? 
 !  CutFEM Mesh Save = Logical True
+
+! We define a levelset to be used.
+  Levelset Variable = String "Surface"
+
 End
 
 

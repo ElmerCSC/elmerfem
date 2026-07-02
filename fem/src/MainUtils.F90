@@ -47,7 +47,7 @@ MODULE MainUtils
   USE BlockSolve
   USE IterSolve, ONLY : NumericalError
   USE LoadMod, ONLY : ExecLocalAssembly, ExecSolver
-  USE ModelDescription, ONLY : GetProcAddr
+  USE ModelDescription, ONLY : GetProcAddr, FreeMesh
   USE MatrixAssembly, ONLY : CreateChildMatrix, GlueLocalSubMatrix, MoveRow, &
       SetMatrixElement
   USE ElementDescription, ONLY : SwapRefElemNodes
@@ -71,6 +71,11 @@ MODULE MainUtils
   USE BoundaryConditionUtils, ONLY : GetPassiveBoundary
   USE ProjectorUtils, ONLY : GenerateProjectors
 
+
+  USE CutFEMUtils, ONLY: CreateCutFEMMatrix, CreateCutFEMMesh, CreateCutFEMAddMesh, &
+      CutFEMSetOrigMesh, CreateCutFEMPerm, CreateCutFEMVariable, CutFEMVariableRevert, &
+      LevelsetUpdate, CutFEMVariableFinalize
+  
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
       GetBodyForce, GetBC, Default2ndOrderTime, DefaultFinishBulkAssembly, &
@@ -3108,12 +3113,12 @@ CONTAINS
 !------------------------------------------------------------------------------
       CALL Info('SolveEquations','Solvers in main iteration loop',Level=12)
 
-      TimeVar => VariableGet( Model % Variables, 'Time')
+      TimeVar => VariableGet( Model % Mesh % Variables, 'Time' )
       sTime => TimeVar % Values(1)
 
       RungeKutta = ListGetString( Model % Simulation, &
           'Timestepping Method', Found ) == 'runge-kutta'
-
+      
       IF( .NOT. RungeKutta ) THEN
         ! Without Runge-Kutta the cycling over equations is pretty easy
         CALL SolveCoupled()
@@ -3340,14 +3345,14 @@ CONTAINS
          Mesh % OutputActive = .FALSE.
          Mesh => Mesh % Next
        END DO
-
+       
 !------------------------------------------------------------------------------
 !      Go through number of solvers (heat,laminar or turbulent flow, etc...)
 !------------------------------------------------------------------------------
        DO k=1,Model % NumberOfSolvers
 !------------------------------------------------------------------------------
           Solver => Model % Solvers(k)
-
+          
           IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) THEN
             IF( .NOT. ( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
               Solver % SolverMode == SOLVER_MODE_ASSEMBLY .OR. &
@@ -4798,7 +4803,8 @@ CONTAINS
       Success = ( PrevResidual - Residual > Myy * Alpha * PrevResidual)
       
       IF( Success ) THEN      
-        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter', &
+            ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
         niter = NINT(iterV % Values(1))
         
         DO i=1,BlockMatrix % NoVar
@@ -5243,12 +5249,14 @@ CONTAINS
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
-     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) MeActive = .TRUE.
 
      Parallel = Solver % Parallel 
      !------------------------------------------------------------------------------
 
-     IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
+     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) THEN
+       CALL Info('SingleSolver','Skipping some initializations done in CutFEM already!',Level=20)
+
+     ELSE IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
@@ -5642,9 +5650,10 @@ END BLOCK
 !------------------------------------------------------------------------------
      sOutputPE = OutputPE
 
-
+     Params => ListGetSolverParams(Solver)
+     Model % Solver => Solver
+     
      Mesh => Solver % Mesh 
-
      IF( ASSOCIATED( Mesh % Child ) .AND. .NOT. Mesh % OutputActive ) THEN
        i = 0
        pMesh => Mesh
@@ -5654,7 +5663,7 @@ END BLOCK
          IF(pMesh % OutputActive) EXIT 
        END DO
        IF( .NOT. ASSOCIATED(pMesh,Mesh) .AND. ASSOCIATED(pMesh) ) THEN
-         IF( .NOT. ListCheckPresent( Solver % Values,'Relative Mesh Level') ) THEN
+         IF( .NOT. ListCheckPresent( Params,'Relative Mesh Level') ) THEN
            CALL Info('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
            CALL Info('SolverActivate','Changing Solver '//I2S(Solver % SolverId)//&
                ' mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
@@ -5663,12 +5672,31 @@ END BLOCK
          END IF
        END IF
      END IF
+
+     IF(ListGetLogical(Params,'CutFEM',Found ) ) THEN
+       BLOCK 
+         LOGICAL :: DoCreate
+         TYPE(Matrix_t), POINTER :: pMatrix
+
+         pMatrix => Solver % Matrix
+         DoCreate = ListGetLogical(Params,'CutFEM Create',Found )
+
+         IF(DoCreate) CALL CreateCutFEMPerm(Solver,.TRUE.)       
+
+         CALL CreateCutFEMVariable(Solver)
+         Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
+         CALL FreeMatrix(pMatrix)
+
+         IF(DoCreate) THEN
+           CALL CreateCutFEMAddMesh(Solver) 
+         ELSE
+           CALL CutFEMSetOrigMesh(Solver)
+         END IF
+       END BLOCK
+     END IF
      
      CALL SetCurrentMesh( Model, Solver % Mesh )
-
-     Model % Solver => Solver
-     Params => ListGetSolverParams(Solver)
-
+     
      CoordTransform = ListGetString(Params,'Coordinate Transformation',&
          GotCoordTransform )
      IF( GotCoordTransform ) THEN
@@ -5707,12 +5735,14 @@ END BLOCK
        ExecIntervals =>  ListGetIntegerArray( Params,'Exec Interval', Found )
      END IF
      IF ( Found ) THEN
-       TimeVar => VariableGet( Model % Variables, 'Timestep Interval' )
+       TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep Interval',&
+           ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
        timei = NINT(Timevar % Values(1))
 
        IF( ExecIntervals(timei) == 0 ) RETURN
 
-       TimeVar => VariableGet( Model % Variables, 'Timestep' )
+       TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep', &
+           ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
        timestep = NINT(TimeVar % Values(1))
 
        ExecIntervalsOffset =>  ListGetIntegerArray( Params,&
@@ -5889,6 +5919,49 @@ END BLOCK
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
 
+
+     ! Set the original mesh back, to be on the safe side...
+     IF(ListGetLogical(Params,'CutFEM',Found ) ) THEN
+       CALL CutFEMSetOrigMesh(Solver)
+       CALL CutFEMVariableFinalize(Solver)         
+     END IF
+     
+     ! We do not need the old meshes. When we reach a new timestep
+     ! they have already been saved. 
+     IF(ListGetLogical(Params,'CutFEM Interpolate',Found ) ) THEN
+       CALL Info('SolverActive','Interpolating CutFEM data!',Level=10)
+
+       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
+       ! The Mesh % Next is saved normally in the VTU files etc. 
+       CALL LevelSetUpdate(Solver,Solver % Mesh)
+
+       ! We do not need to create the actual CutFEM Mesh, but we might want to have it
+       ! for visualization purposes. 
+       IF( ListGetLogical( Model % Simulation,'CutFEM Mesh Save', Found ) )  THEN
+         ! This 2D mesh becomes Mesh % Next % Next
+         Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+             .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
+       END IF
+   
+       CALL Info('SolverActive','Reverting CutFEM fields to normal!',Level=10)
+       CALL CutFEMVariableRevert(Model,Solver % Mesh)         
+       !Solver % CutInterp => NULL()  
+     END IF
+            
+     ! This takes place after all visualization etc. had been done.
+     ! We do not need the old meshes any more.
+     IF(ListGetLogical(Params,'CutFEM Destroy',Found ) ) THEN
+       CALL Info('SolverActive','Destroing CutFEM additional meshes!',Level=10)
+       Mesh => Solver % Mesh         
+       IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
+         IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
+           CALL FreeMesh(Solver % Mesh % Next % Next )
+         END IF
+         CALL FreeMesh(Solver % Mesh % Next)
+       END IF
+       Solver % Mesh % CutInterp => NULL()
+     END IF
+     
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested
 !------------------------------------------------------------------------------
