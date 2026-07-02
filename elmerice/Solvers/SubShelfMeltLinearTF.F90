@@ -22,8 +22,8 @@
 ! *
 ! *  where Tf = lambda1 * S + lambda2 + cc * z  is the salinity- and
 ! *  pressure-dependent freezing temperature (ISOMIP+ linearisation),
-! *  Tw is the ocean temperature read from variable temp_oce_post,
-! *  S  is the ocean salinity read from variable sal_oce_post, and
+! *  Tw is the ocean temperature read from variable temp_oce,
+! *  S  is the ocean salinity read from variable sal_oce, and
 ! *  gammaT is a heat exchange velocity (m/s).
 ! *  The result is converted to m/yr.
 ! *
@@ -45,8 +45,8 @@
 ! *    bedrock variable name        = string "bedrock"   ! required if water column scaling = True
 ! *
 ! *  Required Elmer variables:
-! *    temp_oce_post : nodal ocean temperature (degC)
-! *    sal_oce_post  : nodal ocean salinity (PSU)
+! *    temp_oce      : nodal ocean temperature (degC)
+! *    sal_oce       : nodal ocean salinity (PSU)
 ! *    ice_thickness : ice thickness (m)
 ! *
 ! *  Output variables (created automatically):

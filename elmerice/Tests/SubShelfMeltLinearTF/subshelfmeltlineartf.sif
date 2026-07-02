@@ -60,14 +60,14 @@ Solver 1
 
   Exported Variable 1 = -dofs 1 "Zb"
   Exported Variable 2 = -dofs 1 "GroundedMask"
-  Exported Variable 3 = -dofs 1 "temp_oce_post"
-  Exported Variable 4 = -dofs 1 "sal_oce_post"
+  Exported Variable 3 = -dofs 1 "temp_oce"
+  Exported Variable 4 = -dofs 1 "sal_oce"
   Exported Variable 5 = -dofs 1 "bedrock"
 
   Zb Value            = Real -500.0
   GroundedMask Value  = Real -1.0
-  temp_oce_post Value = Real -1.0
-  sal_oce_post Value  = Real 34.0
+  temp_oce Value      = Real -1.0
+  sal_oce Value       = Real 34.0
   bedrock Value       = Real -510.0
 End
 
@@ -97,13 +97,13 @@ Solver 3
 
   Exported Variable 1 = -dofs 1 "Zb"
   Exported Variable 2 = -dofs 1 "GroundedMask"
-  Exported Variable 3 = -dofs 1 "temp_oce_post"
-  Exported Variable 4 = -dofs 1 "sal_oce_post"
+  Exported Variable 3 = -dofs 1 "temp_oce"
+  Exported Variable 4 = -dofs 1 "sal_oce"
 
   Zb Value            = Real -500.0
   GroundedMask Value  = Real 0.0
-  temp_oce_post Value = Real -1.0
-  sal_oce_post Value  = Real 34.0
+  temp_oce Value      = Real -1.0
+  sal_oce Value       = Real 34.0
 End
 
 Solver 4
@@ -130,13 +130,13 @@ Solver 5
 
   Exported Variable 1 = -dofs 1 "Zb"
   Exported Variable 2 = -dofs 1 "GroundedMask"
-  Exported Variable 3 = -dofs 1 "temp_oce_post"
-  Exported Variable 4 = -dofs 1 "sal_oce_post"
+  Exported Variable 3 = -dofs 1 "temp_oce"
+  Exported Variable 4 = -dofs 1 "sal_oce"
 
   Zb Value            = Real -500.0
   GroundedMask Value  = Real 1.0
-  temp_oce_post Value = Real -1.0
-  sal_oce_post Value  = Real 34.0
+  temp_oce Value      = Real -1.0
+  sal_oce Value       = Real 34.0
 End
 
 Solver 6

@@ -457,15 +457,15 @@ MODULE elmer_icon_coupling
 
   ! Temperature field received from ICON; only mapped onto boundary region via mask
   INTEGER :: t_oce_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: t_oce_field_name = "temp_oce"
+  CHARACTER(LEN=*), PARAMETER :: temp_oce_field_name = "temp_oce"
 
   ! Fields for internal mapping from boundary region to internal domain
   ! Source
   INTEGER :: t_oce_pre_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: t_oce_pre_field_name = "temp_oce_pre"
+  CHARACTER(LEN=*), PARAMETER :: temp_oce_pre_field_name = "temp_oce_pre"
   ! Target
   INTEGER :: t_oce_post_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: t_oce_post_field_name = "temp_oce_post"
+  CHARACTER(LEN=*), PARAMETER :: temp_oce_post_field_name = "temp_oce_post"
 
   ! All fields with t_oce prefix use the same collection size.
   INTEGER :: t_oce_collection_size = 1
@@ -521,7 +521,7 @@ CONTAINS
 
     ! register ocean temperature field in YAC (masked on boundary)
     CALL yac_fdef_field( &
-      t_oce_field_name, comp_id, (/corner_point_id/), 1, &
+      temp_oce_field_name, comp_id, (/corner_point_id/), 1, &
       t_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, t_oce_field_id)
 
     ALLOCATE(t_oce_pre_field(nbr_vertices, t_oce_collection_size))
@@ -530,12 +530,12 @@ CONTAINS
     ! internal domain)
 
     CALL yac_fdef_field( &
-      t_oce_pre_field_name, comp_id, (/corner_point_id/), 1, &
+      temp_oce_pre_field_name, comp_id, (/corner_point_id/), 1, &
       t_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, &
       t_oce_pre_field_id)
 
     CALL yac_fdef_field( &
-      t_oce_post_field_name, comp_id, (/corner_point_id/), 1, &
+      temp_oce_post_field_name, comp_id, (/corner_point_id/), 1, &
       t_oce_collection_size, iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, &
       t_oce_post_field_id)
 
@@ -580,8 +580,8 @@ CONTAINS
       interp_stack_config_id, -3.0_c_double)
 
     CALL yac_fdef_couple( &
-      elmer_comp_name, elmer_grid_name, t_oce_pre_field_name, &
-      elmer_comp_name, elmer_grid_name, t_oce_post_field_name, &
+      elmer_comp_name, elmer_grid_name, temp_oce_pre_field_name, &
+      elmer_comp_name, elmer_grid_name, temp_oce_post_field_name, &
       iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, YAC_REDUCTION_TIME_NONE, &
       interp_stack_config_id, &
       src_mask_names=(/yac_string(boundary_corner_mask_name)/))
@@ -612,7 +612,7 @@ CONTAINS
 
     IF (.NOT. is_root_rank) RETURN
 
-    CALL print_field_info(elmer_comp_name, elmer_grid_name, t_oce_field_name)
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, temp_oce_field_name)
     CALL print_field_info(elmer_comp_name, elmer_grid_name, sal_oce_field_name)
 
   CONTAINS
@@ -685,7 +685,7 @@ CONTAINS
         ! get the action executed by YAC in the next get operation called for
         ! the total cloud cover field and print out some information
         CALL yac_fget_action(t_oce_field_id, info)
-        PRINT *, "call get for field: ", TRIM(t_oce_field_name), &
+        PRINT *, "call get for field: ", TRIM(temp_oce_field_name), &
                  " datatime: ", TRIM(yac_fget_field_datetime(t_oce_field_id)), &
                  " action: ", TRIM(yac_action_to_string(info))
       END IF

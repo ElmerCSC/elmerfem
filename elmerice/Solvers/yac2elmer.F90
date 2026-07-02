@@ -474,9 +474,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         t_ocePerm(i) = i
         sal_ocePerm(i) = i
       END DO
-      CALL DefaultVariableAdd('temp_oce_post', dofs=1, Perm = t_ocePerm)
-      CALL DefaultVariableAdd('sal_oce_post', dofs=1, Perm = sal_ocePerm)
-
+      CALL DefaultVariableAdd('temp_oce', dofs=1, Perm = t_ocePerm)
+      CALL DefaultVariableAdd('sal_oce', dofs=1, Perm = sal_ocePerm)
     END IF
 
     FirstTime = .FALSE.
@@ -542,8 +541,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)
       CALL INFO(SolverName, 'AFTER ELMER ICON-O INTERFACE', Level=3)
-      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce_post' )
-      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce_post' )
+      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
+      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
       IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
         CALL FATAL(SolverName,'Elmer variables not associated')
       END IF
