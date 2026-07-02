@@ -50,7 +50,6 @@ IF (YAC_INCLUDE_DIR AND YAC_LIBRARY)
 
   # List of YAC static libraries
   SET(YACLIB_NAMES
-    libyac.a
     libyac_core.a
     libyac_mci.a
     libyac_mtime.a
