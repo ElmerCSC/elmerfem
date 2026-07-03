@@ -600,6 +600,7 @@
            IF(ListGetLogical(CurrentModel % Solvers(i) % Values,'CutFEM',Found ) ) THEN
              imax = MAX(imax,i)
              imin = MIN(imin,i)
+             CurrentModel % Solvers(i) % CutFEM = .TRUE.
            END IF
          END DO
          IF(imin <= imax ) THEN
@@ -607,17 +608,20 @@
            ! Create the CutFEM mesh just before 1st cutfem solver
            i = ListGetInteger(CurrentModel % Simulation,'CutFEM Create Solver Index',Found )
            IF(.NOT. Found) i=imin
+           CALL Info('MAIN','CutFEM to be created before solver: '//I2S(i))
            CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'CutFEM Create',.TRUE.)
 
            ! Interpolate the CutFEM results just after the last cutfem solver
            i = ListGetInteger(CurrentModel % Simulation,'CutFEM Interpolate Solver Index',Found )
            IF(.NOT. Found) i=imax
            CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'CutFEM Interpolate',.TRUE.)
+           CALL Info('MAIN','CutFEM to be interpolated after solver: '//I2S(i))
 
            ! Destroy the temporal stuff after all solvers
            i = ListGetInteger(CurrentModel % Simulation,'CutFEM Destroy Solver Index',Found )
            IF(.NOT. Found) i=j
            CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'CutFEM Destroy',.TRUE.)
+           CALL Info('MAIN','CutFEM to be destroyed after solver: '//I2S(i))
          END IF
        END BLOCK
 

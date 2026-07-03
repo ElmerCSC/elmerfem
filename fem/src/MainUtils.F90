@@ -5673,10 +5673,12 @@ END BLOCK
        END IF
      END IF
 
-     IF(ListGetLogical(Params,'CutFEM',Found ) ) THEN
+     IF(Solver % CutFEM) THEN
        BLOCK 
          LOGICAL :: DoCreate
          TYPE(Matrix_t), POINTER :: pMatrix
+
+         Solver % CutFEMActive = .TRUE.
 
          pMatrix => Solver % Matrix
          DoCreate = ListGetLogical(Params,'CutFEM Create',Found )
@@ -5945,7 +5947,6 @@ END BLOCK
    
        CALL Info('SolverActive','Reverting CutFEM fields to normal!',Level=10)
        CALL CutFEMVariableRevert(Model,Solver % Mesh)         
-       !Solver % CutInterp => NULL()  
      END IF
             
      ! This takes place after all visualization etc. had been done.
@@ -5959,7 +5960,7 @@ END BLOCK
          END IF
          CALL FreeMesh(Solver % Mesh % Next)
        END IF
-       Solver % Mesh % CutInterp => NULL()
+       Model % CutInterp => NULL()
      END IF
      
 !------------------------------------------------------------------------------

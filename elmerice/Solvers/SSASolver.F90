@@ -397,7 +397,7 @@
           BodyForce => GetBodyForce(ParentElement)
         ELSE
           ! This will happen in CutFEM!
-          IF(Solver %  Variable % TYPE == Variable_on_cutfem ) THEN
+          IF( ASSOCIATED( Solver % CutFEM ) THEN
             i = LIstGetInteger( SolverParams,'CutFEM inside body',Found )
             IF(.NOT. Found) i=1
             j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Material')

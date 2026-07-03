@@ -1837,6 +1837,8 @@ CONTAINS
       
       Solver % ActiveElements => Solver % OrigActiveElements
       Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
+
+      Solver % CutFEMActive = .FALSE.
     END DO
       
   END SUBROUTINE CutFEMVariableRevert

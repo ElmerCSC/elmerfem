@@ -34,7 +34,9 @@ Simulation
   Dirty Finish  = Logical True
 
 
-
+!------------------------------------------------
+! Keywords for CutFEM
+!------------------------------------------------
   Levelset Variable = String "Surface"
 
 ! This should be generalized. 
@@ -56,8 +58,10 @@ Simulation
 ! Should be extrapolate using edges (alternative). 
 !  CutFEM extrapolate = Logical True
 
-! Which variables to project to isoline
+! Should we save the actural splitted mesh in 2D? 
+!  CutFEM Mesh Save = Logical True
 
+! Which variables to project to isoline
   Isoline Variable 1 = String "Potential"
   Isoline Variable 2 = String "PotentialB"
   Isoline Variable 3 = String "Surface"
@@ -66,7 +70,6 @@ Simulation
   Project Variable 1 = String "Potential"
   Project Variable 2 = String "PotentialB"
   Project Variable 3 = String "Surface"
-
 End
 
 Body 1
@@ -100,7 +103,7 @@ End
 
 
 Solver 1
-  Equation = "CutFem"
+  Equation = "ModelPDE"
   Variable = Potential
   Procedure = "ModelPDE" "AdvDiffSolver"
 
@@ -115,20 +118,13 @@ Solver 1
   Linear System Solver = direct 
   Linear System Direct Method = umfpack
 
-! We define a levelset to be used.
+! We define a levelset to be used and request this solver to use CutFEM. 
   Exported Variable 1 = Surface
   CutFem = logical True
-
-
-! Should we save the actural splitted mesh in 2D? 
-!  CutFEM Mesh Save = Logical True
-
-!  Post Solvers(1) = 2
-
 End
 
 Solver 2
-  Equation = "CutFemB"
+  Equation = "ModelPDEB"
   Variable = PotentialB
   Procedure = "ModelPDE" "AdvDiffSolver"
 
@@ -144,10 +140,6 @@ Solver 2
   Linear System Direct Method = umfpack 
 
   CutFem = logical True
-!  CutFEM Slave = Logical True
-! Exec Solver = never
-
-  
 End
 
 

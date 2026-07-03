@@ -514,7 +514,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      ! Tentative code for dealing with calving front using cutFEM. 
      IF(DefaultCutFEM()) THEN
        CutFEMOn = .TRUE.
-       PRINT *,'going back for interface elements!'
+       CALL Info(Caller,'Going back for CutFEM interface elements!')
        GOTO 100
      END IF
      

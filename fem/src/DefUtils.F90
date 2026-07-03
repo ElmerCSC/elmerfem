@@ -645,7 +645,7 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( Variable % TYPE == Variable_on_cutfem ) THEN
+     ELSE IF( Solver % CutFEMActive ) THEN
        ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
 
        n = Element % TYPE % NumberOfNodes
@@ -667,11 +667,11 @@ CONTAINS
                x(i) = Values(j)
              END IF
            END IF
-           IF(.NOT. Found0) THEN
+           IF(.NOT. Found0 ) THEN
              ! This is an additional node of the fictitious domain method. 
              ! When we know where the isoline cuts the edge we can use linear interpolation
              ! on the edge to get the value at the intersetion on-the-fly.
-             r = Solver % Mesh % CutInterp(j-nn)
+             r = CurrentModel % CutInterp(j-nn)
              j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
              j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
              IF(j1 > 0 .AND. j2 > 0) THEN
@@ -852,7 +852,7 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( Variable % TYPE == Variable_on_cutfem ) THEN
+     ELSE IF( Solver % CutFEMActive ) THEN
         ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
         
         n = Element % TYPE % NumberOfNodes
@@ -882,7 +882,7 @@ CONTAINS
               ! This is an additional node of the fictious domain method. 
               ! When we know where the isoline cuts the edge we can use linear interpolation
               ! on the edge to get the value at the intersetion on-the-fly.
-              r = Solver % Mesh % CutInterp(j-nn)
+              r = CurrentModel % CutInterp(j-nn)
               j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
               j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
               IF(j1 > 0 .AND. j2 > 0) THEN
@@ -4051,7 +4051,7 @@ CONTAINS
        
      
      ! Nothing to do. 
-     IF(.NOT. ListGetLogical( pSolver % Values,'CutFEM',Found ) ) RETURN
+     IF(.NOT. pSolver % CutFEM ) RETURN
      
      Counter = Counter+1
 
