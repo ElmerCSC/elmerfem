@@ -645,7 +645,7 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( ASSOCIATED(Solver % CutInterp) ) THEN
+     ELSE IF( Variable % TYPE == Variable_on_cutfem ) THEN
        ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
 
        n = Element % TYPE % NumberOfNodes
@@ -655,9 +655,10 @@ CONTAINS
          INTEGER :: nn,j1,j2
          REAL(KIND=dp) :: r
          nn = SIZE(Variable % Perm)
-         
+
          DO i=1,n
            j = Indexes(i)
+           Found0 = .FALSE.
            IF ( j>0 .AND. j<=nn ) THEN
              ! This is an original node.
              j = Variable % Perm(j)
@@ -665,11 +666,12 @@ CONTAINS
                Found0 = .TRUE.
                x(i) = Values(j)
              END IF
-           ELSE
+           END IF
+           IF(.NOT. Found0) THEN
              ! This is an additional node of the fictitious domain method. 
              ! When we know where the isoline cuts the edge we can use linear interpolation
              ! on the edge to get the value at the intersetion on-the-fly.
-             r = Solver % CutInterp(j-nn)
+             r = Solver % Mesh % CutInterp(j-nn)
              j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
              j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
              IF(j1 > 0 .AND. j2 > 0) THEN
@@ -850,7 +852,7 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( ASSOCIATED(Solver % CutInterp) ) THEN
+     ELSE IF( Variable % TYPE == Variable_on_cutfem ) THEN
         ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
         
         n = Element % TYPE % NumberOfNodes
@@ -863,31 +865,34 @@ CONTAINS
           dofs = Variable % Dofs
           
           DO i=1,n
-             j = Indexes(i)
-             IF ( j>0 .AND. j<=nn ) THEN
-                ! This is an original node.
-                j = Variable % Perm(j)
-                IF ( j>0 ) THEN
-                   Found0 = .TRUE.
-                   DO k=1,dofs
-                      x(k,i) = Values(dofs*(j-1)+k)
-                   END DO
-                END IF
-             ELSE
-                ! This is an additional node of the fictitious domain method. 
-                ! When we know where the isoline cuts the edge we can use linear interpolation
-                ! on the edge to get the value at the intersetion on-the-fly.
-                r = Solver % CutInterp(j-nn)
-                j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
-                j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
-                IF(j1 > 0 .AND. j2 > 0) THEN
-                   Found0 = .TRUE.
-                   DO k=1,dofs
-                      x(k,i) = r*Variable % Values(dofs*(j1-1)+k) + &
-                           (1-r)*Variable % Values(dofs*(j2-1)+k)
-                   END DO
-                END IF
-             END IF
+            j = Indexes(i)
+            Found0 = .FALSE.
+            IF ( j>0 .AND. j<=nn ) THEN
+              ! This is an original node,
+              ! or enriched one associated with edge assuming cutfem field
+              j = Variable % Perm(j)
+              IF ( j>0 ) THEN
+                Found0 = .TRUE.
+                DO k=1,dofs
+                  x(k,i) = Values(dofs*(j-1)+k)
+                END DO
+              END IF
+            END IF
+            IF(.NOT. Found0) THEN
+              ! This is an additional node of the fictious domain method. 
+              ! When we know where the isoline cuts the edge we can use linear interpolation
+              ! on the edge to get the value at the intersetion on-the-fly.
+              r = Solver % Mesh % CutInterp(j-nn)
+              j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
+              j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
+              IF(j1 > 0 .AND. j2 > 0) THEN
+                Found0 = .TRUE.
+                DO k=1,dofs
+                  x(k,i) = r*Variable % Values(dofs*(j1-1)+k) + &
+                      (1-r)*Variable % Values(dofs*(j2-1)+k)
+                END DO
+              END IF
+            END IF
           END DO
         END BLOCK
         RETURN
@@ -3555,11 +3560,6 @@ CONTAINS
 
        CALL Info('DefaultSlaveSolvers','Calling slave solver: '//I2S(k),Level=8)
 
-       IF( ListGetLogical( SlaveSolver % Values,'CutFEM Slave',Found ) ) THEN
-         CALL Info('DefaultSlaveSolvers','Reverting to original mesh for CutFEM slave solvers!')
-         CALL CutFEMSetOrigMesh(Solver)         
-       END IF
-       
        IF( ListGetLogical( Solver % Values,'Monolithic Slave',Found )  ) THEN
          IF(.NOT. ListCheckPresent( SlaveSolver % Values,'Linear System Solver Disabled') ) THEN
            CALL Info('DefaultSlaveSolvers','Disabling linear system solver for slave: '//I2S(k),Level=6)
@@ -3736,7 +3736,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver     
      TYPE(Solver_t), POINTER :: Solver
-     LOGICAL :: Found, CutFEMSlave
+     LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: Params
      INTEGER :: i,j,n
      TYPE(Matrix_t), POINTER :: pMatrix
@@ -3751,27 +3751,7 @@ CONTAINS
      
      CALL Info('DefaultStart','Starting solver: '//&
         GetString(Params,'Equation'),Level=10)
-
-     ! Code for splitting the mesh to be able to integrate accurately over discontinuous
-     ! fields defined by zero levelset.     
-     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
-       ! We may have other solver use the same splitted mesh, these slave solvers need not do all steps themselves. 
-       CutFEMSlave = ListGetLogical( Params,'CutFEM Slave',Found )
-       pMatrix => Solver % Matrix
-       IF(.NOT. CutFEMSlave) THEN
-          CALL CreateCutFEMPerm(Solver,.TRUE.)       
-       END IF
-       CALL CreateCutFEMVariable(Solver)
-       Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
-       CALL FreeMatrix(pMatrix)
-       IF(.NOT. ListGetLogical( Params,'CutFEM Solver',Found ) ) THEN
-         IF(.NOT. CutFEMSlave) CALL CreateCutFEMAddMesh(Solver) 
-       END IF
-       IF(CutFEMSlave) THEN
-         CALL CutFEMSetOrigMesh(Solver)
-       END IF       
-     END IF
-
+     
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -3891,7 +3871,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      TYPE(Mesh_t), POINTER :: Mesh
      CHARACTER(:), ALLOCATABLE :: str
-     LOGICAL :: Found, SolveAdjoint, CutFEMSlave
+     LOGICAL :: Found, SolveAdjoint
      
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -4042,38 +4022,6 @@ CONTAINS
        END IF
      END IF
 
-          
-     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
-       CutFEMSlave = ListGetLogical( Params,'CutFEM Slave',Found )
-       IF(.NOT. CutFEMSlave) THEN
-         Mesh => Solver % Mesh
-         
-         ! We do not need the old meshes. When we reach a new timestep
-         ! they have already been saved. 
-         IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
-           IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
-             CALL FreeMesh(Solver % Mesh % Next % Next )
-           END IF
-           CALL FreeMesh(Solver % Mesh % Next)
-         END IF
-
-         ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
-         ! The Mesh % Next is saved normally in the VTU files etc. 
-         CALL LevelSetUpdate(Solver,Solver % Mesh)
-
-         ! We do not need to create the actual CutFEM Mesh, but we might want to have it
-         ! for visualization purposes. 
-         IF( ListGetLogical( Solver % Values,'CutFEM Mesh Save', Found ) )  THEN
-           ! This 2D mesh becomes Mesh % Next % Next
-           Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
-               .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
-         END IF
-       END IF
-         
-       CALL CutFEMVariableFinalize(Solver)         
-       Solver % CutInterp => NULL()  
-     END IF
-     
      IF( ListGetLogical( Params,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)
      END IF
@@ -4105,12 +4053,6 @@ CONTAINS
      ! Nothing to do. 
      IF(.NOT. ListGetLogical( pSolver % Values,'CutFEM',Found ) ) RETURN
      
-     ! If we have special solver where we use the on-the-fly splitting do not swap the mesh.
-     IF(ListGetLogical( pSolver % Values,'CutFEM Solver',Found ) ) THEN
-       CALL Info('DefaultCutFEM','Skipping mesh swapping for modified CutFEM solver!',Level=10)
-       RETURN
-     END IF
-
      Counter = Counter+1
 
      IF(MODULO(Counter,2) == 1 ) THEN
@@ -4123,9 +4065,7 @@ CONTAINS
      END IF
      
    END FUNCTION DefaultCutFEM
-   
-
-   
+      
 
 !> Solver the matrix equation related to the active solver
 !------------------------------------------------------------------------------

@@ -1542,7 +1542,7 @@ CONTAINS
          IF ( ThisOnly ) THEN
             IF ( PRESENT(UnfoundFatal) ) THEN
                IF ( UnfoundFatal ) THEN
-                 CALL Fatal("VariableGet","Failed to find variable "//TRIM(Name))
+                 CALL Fatal('VariableGet','Failed to find variable: '//TRIM(Name))
                END IF
             END IF
             RETURN
@@ -1567,7 +1567,7 @@ CONTAINS
       IF (.NOT.ASSOCIATED( PVar ) ) THEN
          IF ( PRESENT(UnfoundFatal) ) THEN
             IF ( UnfoundFatal ) THEN
-              CALL Fatal("VariableGet","Failed to find or interpolate variable: "//TRIM(Name))
+              CALL Fatal('VariableGet','Failed to find or interpolate variable: '//TRIM(Name))
             END IF
          END IF
          RETURN
@@ -4126,8 +4126,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal('ListGetInteger','Failed to find integer: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4167,8 +4166,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal('ListGetInteger', 'Failed to find integer: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4229,8 +4227,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find integer array: ",Name
-           CALL Fatal("ListGetIntegerArray", Message)
+           CALL Fatal('ListGetIntegerArray', 'Failed to find integer array: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4313,8 +4310,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find logical: ",Name
-           CALL Fatal("ListGetLogical", Message)
+           CALL Fatal('ListGetLogical', 'Failed to find logical: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4396,8 +4392,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find string: ",Name
-           CALL Fatal("ListGetString", Message)
+           CALL Fatal('ListGetString','Failed to find string: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4439,8 +4434,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find constant real: ",Name
-           CALL Fatal("ListGetConstReal", Message)
+           CALL Fatal('ListGetConstReal', 'Failed to find constant real: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -5563,8 +5557,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find real: ",Name
-           CALL Fatal("ListGetReal", Message)
+           CALL Fatal('ListGetReal', 'Failed to find real: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -7386,7 +7379,7 @@ CONTAINS
            IF ( ptr % LuaFun ) THEN
              CALL Fatal('ListGetElementReal','No routine for constant scalars LUA available!')
            ELSE
-             TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+             TVar => VariableGet( CurrentModel % Variables, 'Time')
              F(1) = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % values,'st')
            END IF
 
@@ -8161,7 +8154,7 @@ CONTAINS
 
        CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
 
-         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+         TVar => VariableGet( CurrentModel % Variables, 'Time')
          Handle % ValuesVec = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
 
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
@@ -9004,7 +8997,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetConstRealArray", "Failed to find: "//TRIM(Name) )
+           CALL Fatal('ListGetConstRealArray', 'Failed to find real array: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -9051,7 +9044,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetConstRealArray1","Failed to find: "//TRIM(Name))
+           CALL Fatal('ListGetConstRealArray1','Failed to find: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -9098,7 +9091,7 @@ CONTAINS
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetRealArray","Failed to find: "//TRIM(Name))
+           CALL Fatal('ListGetRealArray','Failed to find real array: '//TRIM(Name))
          END IF
        END IF
        RETURN

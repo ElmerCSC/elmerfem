@@ -4252,11 +4252,10 @@ END FUNCTION SearchNodeL
           CALL Fatal('GaussPointsAdapt','Wrong type of integration variable!')
         END IF
         AdaptSplit = ListGetLogical( pSolver % Values,'Adaptive Integration Split',Found )          
-        IF(AdaptSplit .AND. Element % TYPE % ElementCode > 500 ) THEN
-          CALL Warn('GaussPointsAdapt','Adaptive Integration Split only implemented in 2D!')
-        END IF
-        
-        IF( AdaptSplit ) THEN
+        IF(AdaptSplit ) THEN
+          IF( Element % TYPE % ElementCode > 500 ) THEN
+            CALL Warn('GaussPointsAdapt','Adaptive Integration Split only implemented in 2D!')
+          END IF
           MinLim = ListGetCReal( pSolver % Values,'Adaptive Integration Split Limit', Found )
           MaxLim = MinLim
         ELSE
@@ -4354,12 +4353,12 @@ END FUNCTION SearchNodeL
             IF ( j>0 ) THEN
               ElemPhi(i) = IntegVar % Values(j)
             END IF
-          ELSE IF( ASSOCIATED( Solver % CutInterp ) ) THEN
+          ELSE IF( ASSOCIATED( Solver % Mesh % CutInterp ) ) THEN
             nn = SIZE(IntegVar % Perm)
             j1 = IntegVar % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
             j2 = IntegVar % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
             IF(j1 > 0 .AND. j2 > 0) THEN
-              r = Solver % CutInterp(j-nn)
+              r = Solver % Mesh % CutInterp(j-nn)
               ElemPhi(i) = r*IntegVar % Values(j1) + (1-r)*IntegVar % Values(j2)
             END IF
           END IF
@@ -4415,10 +4414,12 @@ END FUNCTION SearchNodeL
                   
                 m = COUNT(LocalInds > 0)
                 IF(m<3 .OR. m>4) CALL Fatal('GaussPointsAdapt','This is neither triangle or quad?')
-                
+
+                ! Create a local temporal element
                 PieceElement % TYPE => GetElementType( 101*m )   
                 IP = GaussPoints( PieceElement, PReferenceElement = .FALSE. )
 
+                ! Nodes for the temporal element. 
                 PieceNodes % x(1:m) = ElemNodes % x(LocalInds(1:m))
                 PieceNodes % y(1:m) = ElemNodes % y(LocalInds(1:m))
                 PieceNodes % z(1:m) = ElemNodes % z(LocalInds(1:m))
@@ -4427,12 +4428,14 @@ END FUNCTION SearchNodeL
                   i = i+1
                   stat = ElementInfo( PieceElement, PieceNodes, &
                       IP % u(t), IP % v(t), IP % w(t), detJ, Basis )
-                  
+
+                  ! Global coordinates of the temporal element
                   x = SUM(Basis(1:m)*PieceNodes % x(1:m))
                   y = SUM(Basis(1:m)*PieceNodes % y(1:m))
                   z = SUM(Basis(1:m)*PieceNodes % z(1:m))
-
                   pElement => PieceElement
+
+                  ! Find the corresponding local coordinates of the real element.
                   CALL GlobalToLocal( u, v, w, x, y, z, pElement, ElemNodes ) 
 
                   ! We need temporal space since IP and IntegStuff refer to the same arrays!
@@ -4446,9 +4449,9 @@ END FUNCTION SearchNodeL
                 IF(.NOT. IsMore) EXIT                                
               END DO
 
+              ! Copy the IP points from the temporal arrays
               IntegStuff % n = i
               ssum = SUM(IPtmp(4,1:i))
-
               IntegStuff % u(1:i) = IPtmp(1,1:i) 
               IntegStuff % v(1:i) = IPtmp(2,1:i) 
               IntegStuff % w(1:i) = IPtmp(3,1:i) 

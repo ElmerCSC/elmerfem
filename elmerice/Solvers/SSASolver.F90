@@ -162,8 +162,8 @@
   IF (SEP) THEN
      IF (GLnIP == 0) THEN
        IF (.NOT. ListCheckPrefix(SolverParams,'Adaptive Integration') ) THEN
-          CALL ListAddString(SolverParams,'Adaptive Integration Variable','haf0')
-          CALL ListAddLogical(SolverParams,'Adaptive Integration Split', .True.)
+          CALL ListAddNewString(SolverParams,'Adaptive Integration Variable','haf0')
+          CALL ListAddNewLogical(SolverParams,'Adaptive Integration Split', .True.)
           CALL ListAddConstReal(SolverParams,'Adaptive Integration Split Limit',0._dp)
        END IF
        CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=iLev)
@@ -367,7 +367,6 @@
              'It is not possible to compute SSA with SSA var DOFs=',&
              STDOFs, '. Aborting'
         CALL Fatal( SolverName, Message)
-        STOP
       END IF
 
 
@@ -398,7 +397,7 @@
           BodyForce => GetBodyForce(ParentElement)
         ELSE
           ! This will happen in CutFEM!
-          IF( ASSOCIATED( Solver % CutInterp ) ) THEN
+          IF(Solver %  Variable % TYPE == Variable_on_cutfem ) THEN
             i = LIstGetInteger( SolverParams,'CutFEM inside body',Found )
             IF(.NOT. Found) i=1
             j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Material')
