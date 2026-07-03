@@ -4123,15 +4123,13 @@ CONTAINS
         DO i = 1,nVar
           IF(i==iAvoid) CYCLE
           str = ListGetString( Params,'isoline variable '//I2S(i), Found )
+
+          Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
           
-          IF(i==iSolver) THEN
+          IF(Var2D % TYPE == Variable_on_cutfem) THEN
             j = Solver % OrigPerm(node)
             dofs = Solver % Variable % Dofs
             pValues => Solver % OrigValues
-          ELSE IF(i==jSolver) THEN
-            j = SlaveSolver % OrigPerm(node)
-            dofs = SlaveSolver % Variable % Dofs
-            pValues => SlaveSolver % OrigValues
           ELSE
             Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
             j = Var2D % Perm(node)
