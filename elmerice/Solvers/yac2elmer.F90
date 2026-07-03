@@ -149,7 +149,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
   USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_post_field, &
-                                 sal_oce_post_field, liquid_flux_field
+                                 sal_oce_post_field, liquid_ice_sheet_flux_field
 
   IMPLICIT NONE
 
@@ -479,9 +479,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! Initialize bmb_flux_field for first time step
       bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
       DO t=1, GetNOFActive(Solver)
-        liquid_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
+        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
       END DO
->>>>>>> Stashed changes
     END IF
 
     FirstTime = .FALSE.
@@ -547,7 +546,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! Update bmb_flux_field before sending to ICON
       bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
       DO t=1, GetNOFActive(Solver)
-        liquid_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
+        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
       END DO
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)
