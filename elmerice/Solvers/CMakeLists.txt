@@ -83,7 +83,7 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     CostSolver_Adjoint.F90  DJDBeta_Robin.F90  DJDmu_Robin.F90
     CostSolver_Robin.F90  m1qn3.F  Grid2DInterpolator.F90
     Optimize_m1qn3Parallel.F90  OutputStrainHeating.F90  UpdateExport.F90
-    IntegrateVertically.F90 EnthalpySolver.F90 SubShelfMelt.F90
+    IntegrateVertically.F90 EnthalpySolver.F90 SubShelfMelt.F90 SubShelfMeltLinearTF.F90
     ./Adjoint/Adjoint_LinearSolver.F90 ./Adjoint/Adjoint_CostDiscSolver.F90
     ./Adjoint/Adjoint_CostContSolver.F90 ./Adjoint/Adjoint_CostRegSolver.F90
     ./Adjoint/Adjoint_GradientValidation.F90

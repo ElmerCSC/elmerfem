@@ -2,9 +2,13 @@
 !> Extracts grid information from mesh and converts coordinates
 SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
                                       lon_cells, lat_cells, cell_to_vertex, &
-                                      num_vertices_per_cell, cell_ids, vertex_ids)
+                                      num_vertices_per_cell, cell_ids, &
+                                      vertex_ids, boundary_corner_mask)
   USE Types, ONLY: Mesh_t, Element_t, dp
   USE ProjUtils, ONLY: xy2LonLat, deg2rad
+  USE DefUtils, ONLY: GetBoundaryEdgeIndex
+  USE Messages, ONLY: FATAL
+  USE MeshUtils, ONLY: FindMeshEdges
 
   IMPLICIT NONE
 
@@ -14,10 +18,11 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
   INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
   INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
   INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
+  LOGICAL, ALLOCATABLE, INTENT(OUT) :: boundary_corner_mask(:)
 
   ! Local variables
   TYPE(Element_t), POINTER :: element
-  INTEGER :: i, n, vertex_offset, v_end
+  INTEGER :: i, n, vertex_offset, v_end, bnd_elem_idx, boundary_edge_idx
   INTEGER :: nbr_vertices, nbr_cells
   INTEGER, POINTER :: this_cell_ids(:)
 
@@ -32,10 +37,55 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
 
   nbr_cells = ThisMesh % NumberOfBulkElements
   ALLOCATE(cell_ids(nbr_cells), num_vertices_per_cell(nbr_cells))
+  ALLOCATE(boundary_corner_mask(nbr_vertices))
+  boundary_corner_mask = .FALSE.
+
+  IF (ThisMesh % MeshDim /= 2) THEN
+    CALL FATAL('collect_coupling_grid_data', &
+      'boundary_corner_mask is implemented for 2D meshes only')
+  END IF
+
   DO i=1, nbr_cells
     element => ThisMesh % Elements(i)
     cell_ids(i) = element % GElementIndex
     num_vertices_per_cell(i) = element % Type % NumberOfNodes
+  END DO
+
+  ! Ensure edge tables are built (needed for GetBoundaryEdgeIndex)
+  IF (.NOT. ASSOCIATED(ThisMesh % Edges)) CALL FindMeshEdges(ThisMesh)
+
+  ! Mark only true physical domain-boundary cells; partition-only boundaries stay false.
+  DO bnd_elem_idx = ThisMesh % NumberOfBulkElements + 1, &
+                    ThisMesh % NumberOfBulkElements + ThisMesh % NumberOfBoundaryElements
+    element => ThisMesh % Elements(bnd_elem_idx)
+    ! Ensure that all boundary elements are edges (should be the case for 2D meshes)
+    IF (element % Type % NumberOfEdges /= 1) THEN
+      CALL FATAL('collect_coupling_grid_data', &
+        'Expected exactly one edge per 2D boundary element')
+    END IF
+    ! Filter to actual boundary edges only.
+    IF (.NOT. ASSOCIATED(element % BoundaryInfo)) CYCLE
+
+    boundary_edge_idx = GetBoundaryEdgeIndex(element, 1)
+    IF (boundary_edge_idx <= 0) THEN
+      CALL FATAL('collect_coupling_grid_data', &
+        'GetBoundaryEdgeIndex returned invalid edge index for boundary element')
+    END IF
+
+    ! Check if this is a parallel mesh
+    IF (ASSOCIATED(ThisMesh % ParallelInfo % EdgeInterface)) THEN
+      IF (boundary_edge_idx > SIZE(ThisMesh % ParallelInfo % EdgeInterface)) THEN
+        CALL FATAL('collect_coupling_grid_data', &
+          'Boundary edge index exceeds ParallelInfo % EdgeInterface size')
+      END IF
+      ! check if boundary edge is a partition boundary edge
+      IF (.NOT. ThisMesh % ParallelInfo % EdgeInterface(boundary_edge_idx)) THEN
+        boundary_corner_mask(element % NodeIndexes(1:element % Type % NumberOfNodes)) = .TRUE.
+      END IF
+    ELSE
+      ! For a non-parallel mesh all boundary edges are physical boundaries
+      boundary_corner_mask(element % NodeIndexes(1:element % Type % NumberOfNodes)) = .TRUE.
+    END IF
   END DO
 
   ALLOCATE(cell_to_vertex(SUM(num_vertices_per_cell(:))))
@@ -98,7 +148,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE elmer_coupling, ONLY: coupling_setup, is_root_rank
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
-  ! USE elmer_icon_coupling, ONLY: elmer_icon_interface, clt_field, pr_field
+  USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_post_field, &
+                                 sal_oce_post_field
 
   IMPLICIT NONE
 
@@ -120,18 +171,19 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=1024) ::  yac_calendar, yac_start_time, yac_end_time
   INTEGER :: i, t
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
+  INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
   REAL(KIND=dp) :: central_meridian, latitude_of_origin
   REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
   CHARACTER(LEN=16) :: expected_central_meridian_str, expected_latitude_of_origin_str
-  ! INTEGER, POINTER :: cltPerm(:), prPerm(:)  ! ICON is not supported at the moment
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
-  ! TYPE(Variable_t), POINTER :: cltVar, prVar  ! ICON is not supported at the moment
+  TYPE(Variable_t), POINTER :: t_oceVar, sal_oceVar
   REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
   INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
   INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
+  LOGICAL, ALLOCATABLE :: boundary_corner_mask(:)
 
   ! Variables needed for user output
   CHARACTER(LEN=1024) :: coupling_timestep_in_years_str
@@ -142,7 +194,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   INTERFACE
     SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
                                           lon_cells, lat_cells, cell_to_vertex, &
-                                          num_vertices_per_cell, cell_ids, vertex_ids)
+                                          num_vertices_per_cell, cell_ids, vertex_ids, &
+                                          boundary_corner_mask)
       USE Types, ONLY: Mesh_t, dp
       IMPLICIT NONE
       TYPE(Mesh_t), POINTER :: ThisMesh
@@ -151,6 +204,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_to_vertex(:)
       INTEGER, ALLOCATABLE, INTENT(OUT) :: num_vertices_per_cell(:)
       INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
+      LOGICAL, ALLOCATABLE, INTENT(OUT) :: boundary_corner_mask(:)
     END SUBROUTINE collect_coupling_grid_data
   END INTERFACE
 
@@ -322,13 +376,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     )
   END IF
 
-  ! TODO: remove this check when ICON coupling is implemented
-  IF (couple_to_icon) THEN
-    CALL FATAL(SolverName, &
-      ">Couple To ICON< is currently not supported. Please set to FALSE" &
-    )
-  END IF
-
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   Mesh => Solver % Mesh
 
@@ -369,7 +416,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     ! Collect coupling grid data (extract mesh, convert coordinates)
     CALL collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
                     lon_cells, lat_cells, cell_to_vertex, &
-                    num_vertices_per_cell, cell_ids, vertex_ids)
+                    num_vertices_per_cell, cell_ids, vertex_ids, &
+                    boundary_corner_mask)
 
     ! Setup YAC coupling with precomputed lon/lat coordinates (radians)
     CALL coupling_setup(lon_vertices, lat_vertices, lon_cells, lat_cells, &
@@ -381,10 +429,12 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
               TRIM(yac_start_time), &
               TRIM(yac_end_time), &
               TRIM(coupling_timestep), &
-              couple_to_ebfm, couple_to_icon)
+              couple_to_ebfm, couple_to_icon, &
+              boundary_corner_mask)
 
     DEALLOCATE(lon_vertices, lat_vertices, lon_cells, lat_cells)
     DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
+    DEALLOCATE(boundary_corner_mask)
 
     IF (couple_to_ebfm) THEN
       ! setting up Elmer-side variables for receiving YAC variables
@@ -419,21 +469,13 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF (couple_to_icon) THEN
-      CALL FATAL(SolverName,'ICON coupling not yet implemented')
-
-      ! ALLOCATE(cltPerm(Mesh % NumberOfNodes), prPerm(GetNOFActive(Solver)))
-      ! DO i=1,Mesh % NumberOfNodes
-      !   cltPerm(i) = i
-      ! END DO
-
-      ! DO t=1,GetNOFActive(Solver)
-      !   prPerm(t) = t
-      ! END DO
-
-      ! CALL DefaultVariableAdd('tas', dofs=1, Perm = cltPerm)
-
-      ! ! element wise (cell) variable
-      ! CALL DefaultVariableAdd('pr_snow', dofs=1, VariableType = Variable_on_elements, Perm = prPerm)
+      ALLOCATE(t_ocePerm(Mesh % NumberOfNodes), sal_ocePerm(Mesh % NumberOfNodes))
+      DO i=1,Mesh % NumberOfNodes
+        t_ocePerm(i) = i
+        sal_ocePerm(i) = i
+      END DO
+      CALL DefaultVariableAdd('temp_oce', dofs=1, Perm = t_ocePerm)
+      CALL DefaultVariableAdd('sal_oce', dofs=1, Perm = sal_ocePerm)
     END IF
 
     FirstTime = .FALSE.
@@ -457,6 +499,25 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         CALL FATAL(SolverName,'Elmer variables not associated')
       END IF
 
+      ! Validate element variable permutations. In a parallel run, element
+      ! variables declared via "Exported Variable = -elem" in the SIF get a
+      ! proper parallel Perm (built by SetActiveElementsTable). Without that
+      ! declaration, the variable may end up with an invalid Perm.
+
+      ! ! "smb" is known to require this declaration
+      IF (MINVAL(smbVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
+        CALL FATAL(SolverName, &
+          'smb variable has zero/invalid Perm entries. ' // &
+          'Add  Exported Variable = -elem "smb"  to the YAC2Elmer solver block in the SIF.')
+      END IF
+
+      ! "runoff" did not cause issues, but adding the same check for safety
+      IF (MINVAL(runoffVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
+        CALL FATAL(SolverName, &
+          'runoff variable has zero/invalid Perm entries. ' // &
+          'Add  Exported Variable = -elem "runoff"  to the YAC2Elmer solver block in the SIF.')
+      END IF
+
       CALL INFO(SolverName, 'BEFORE WRITING NODAL VALUES', Level=3)
        !write over values for nodes
       DO i=1, Mesh % NumberOfNodes
@@ -476,11 +537,20 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF (couple_to_icon) THEN
-      CALL FATAL(SolverName,'ICON coupling not yet implemented')
-      ! TODO: stub implementation for ICON coupling
-      ! CALL elmer_icon_interface(is_root_rank)
-      ! cltVar => VariableGet( Mesh % Variables, 'tas' )
-      ! prVar => VariableGet( Mesh % Variables, 'pr_snow' )
+      CALL INFO(SolverName, 'BEFORE ELMER ICON-O INTERFACE', Level=3)
+      ! couple with ICON-O
+      CALL elmer_icon_interface(is_root_rank)
+      CALL INFO(SolverName, 'AFTER ELMER ICON-O INTERFACE', Level=3)
+      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
+      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
+      IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
+        CALL FATAL(SolverName,'Elmer variables not associated')
+      END IF
+      ! write over values for nodes
+      DO i=1, Mesh % NumberOfNodes
+        t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_post_field(i,1)
+        sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_post_field(i,1)
+      END DO
   END IF
 
   CALL INFO(SolverName,'Coupling step done', Level=1)
