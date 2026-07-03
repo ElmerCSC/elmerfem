@@ -397,7 +397,7 @@
           BodyForce => GetBodyForce(ParentElement)
         ELSE
           ! This will happen in SplitFEM!
-          IF( ASSOCIATED( Solver % SplitFEM ) THEN
+          IF( Solver % SplitFEM ) THEN
             i = LIstGetInteger( SolverParams,'SplitFEM inside body',Found )
             IF(.NOT. Found) i=1
             j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Material')

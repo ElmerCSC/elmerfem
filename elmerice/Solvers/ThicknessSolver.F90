@@ -514,7 +514,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      ! Tentative code for dealing with calving front using SplitFEM. 
      IF(DefaultSplitFEM()) THEN
        SplitFEMOn = .TRUE.
-       CALL Info(Caller,'Going back for SplitFEM interface elements!')
+       CALL Info(SolverName,'Going back for SplitFEM interface elements!')
        GOTO 100
      END IF
      
