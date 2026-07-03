@@ -354,7 +354,15 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      !    Do the assembly
      !------------------------------------------------------------------------------
-100  DO t=1,Solver % NumberOfActiveElements
+100   Thick => Solver % Variable % Values
+      ThickPerm => Solver % Variable % Perm
+      SystemMatrix => Solver % Matrix
+      ForceVector => Solver % Matrix % RHS
+      IF(CutFEMOn) THEN
+         DEALLOCATE(StiffVector)
+         ALLOCATE(StiffVector(SIZE( SystemMatrix % RHS )))
+      END IF
+      DO t=1,Solver % NumberOfActiveElements
         Element => GetActiveElement(t)
         Passive=CheckPassiveElement(Element)
         n = GetElementNOFNodes()
@@ -564,7 +572,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           DHDT => DHDTSol % Values
 
           Do i=1,Solver % Mesh % NumberOfNodes
-             IF ( DHDTSol % Perm(i) .ge. 1 ) THEN
+             IF ( DHDTSol % Perm(i) .ge. 1 .AND. ThickPerm(i) > 0) THEN
                 DHDT(DHDTSol % Perm(i))=(Solver % Variable % Values(ThickPerm(i))-PreH(ThickPerm(i),1))/dt
              END IF
           End Do
