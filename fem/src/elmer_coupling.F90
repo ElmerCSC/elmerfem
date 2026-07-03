@@ -500,10 +500,10 @@ MODULE elmer_icon_coupling
 
   ! Fields Elmer sends to ICON
 
-  INTEGER :: liquid_flux_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: liquid_flux_field_name = "liquid_flux"
-  INTEGER :: liquid_flux_collection_size = 1
-  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: liquid_flux_field(:,:)
+  INTEGER :: liquid_ice_sheet_flux_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: liquid_ice_sheet_flux_field_name = "liquid_ice_sheet_flux"
+  INTEGER :: liquid_ice_sheet_flux_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: liquid_ice_sheet_flux_field(:,:)
 
 CONTAINS
 
@@ -530,11 +530,11 @@ CONTAINS
 
     ! register liquid flux field in YAC
     CALL yac_fdef_field( &
-      liquid_flux_field_name, comp_id, (/cell_point_id/), 1, liquid_flux_collection_size, &
-      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, liquid_flux_field_id);
+      liquid_ice_sheet_flux_field_name, comp_id, (/cell_point_id/), 1, liquid_ice_sheet_flux_collection_size, &
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, liquid_ice_sheet_flux_field_id);
 
     ! allocate and liquid flux field buffer
-    ALLOCATE(liquid_flux_field(nbr_cells, liquid_flux_collection_size))
+    ALLOCATE(liquid_ice_sheet_flux_field(nbr_cells, liquid_ice_sheet_flux_collection_size))
 
     ! register ocean temperature field in YAC (masked on boundary)
     CALL yac_fdef_field( &
@@ -631,6 +631,9 @@ CONTAINS
 
     CALL print_field_info(elmer_comp_name, elmer_grid_name, temp_oce_field_name)
     CALL print_field_info(elmer_comp_name, elmer_grid_name, sal_oce_field_name)
+    WRITE(*,*) 'DEBUG: Before print_field_info for liquid_ice_sheet_flux'
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, liquid_ice_sheet_flux_field_name)
+    WRITE(*,*) 'DEBUG: After print_field_info for liquid_ice_sheet_flux'
 
   CONTAINS
 
@@ -646,6 +649,8 @@ CONTAINS
       CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
       CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
 
+      WRITE(*,*) 'DEBUG: Field_name: ', field_name, yac_fget_field_role( &
+            elmer_comp_name, elmer_grid_name, field_name)
       IF (yac_fget_field_role( &
             elmer_comp_name, elmer_grid_name, field_name) == &
             YAC_EXCHANGE_TYPE_TARGET) THEN
@@ -797,6 +802,42 @@ CONTAINS
       ! TODO: ignore info?
 
     END IF
+    ! checks whether the liquid ice sheet flux field is defined as a source
+    ! in a couple
+    IF (yac_fget_role_from_field_id(liquid_ice_sheet_flux_field_id) == &
+        YAC_EXCHANGE_TYPE_SOURCE) THEN
+
+      CALL yac_fget_action(liquid_ice_sheet_flux_field_id, info)
+
+      IF (is_root_rank) THEN
+
+        ! get the action executed by YAC in the next put operation called for
+        ! the liquid_ice_sheet_flux and print out some information
+        PRINT *, "ELMER: call put for field: ", TRIM(liquid_ice_sheet_flux_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(liquid_ice_sheet_flux_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
+          (info == YAC_ACTION_REDUCTION)) THEN
+
+        ! get data to be sent from elmer
+
+        ! execute put operation for liquid_ice_sheet_flux field
+        ! * if this is a coupling timestep, this will block until the data has
+        !   been received
+        ! * if this is not a coupling timestep, liquid_ice_sheet_flux field buffer
+        !   is left untouched and routine will return immediately
+        CALL yac_fput( &
+          liquid_ice_sheet_flux_field_id, SIZE(liquid_ice_sheet_flux_field, 1), &
+          SIZE(liquid_ice_sheet_flux_field, 2), liquid_ice_sheet_flux_field, &
+          info, err)
+      ELSE IF (info == YAC_ACTION_NONE) THEN
+        CALL yac_fupdate(liquid_ice_sheet_flux_field_id)
+      END IF
+    END IF
 
   END SUBROUTINE elmer_icon_interface
 
@@ -804,7 +845,8 @@ CONTAINS
 
     ! clean up
     DEALLOCATE(t_oce_pre_field, t_oce_post_field, &
-               sal_oce_pre_field, sal_oce_post_field)
+               sal_oce_pre_field, sal_oce_post_field, &
+               liquid_ice_sheet_flux_field)
 
   END SUBROUTINE destruct_elmer_icon_coupling
 
