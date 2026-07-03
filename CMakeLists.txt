@@ -598,12 +598,36 @@ IF (WITH_YAC)
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for YAC ")
 
-  FIND_PACKAGE(YAC CONFIG)
+  # 1) Base package (must exist and have CMake config support)
+  FIND_PACKAGE(YAC 3.15 CONFIG QUIET)
+  IF(NOT YAC_FOUND)
+    MESSAGE(FATAL_ERROR
+      "YAC >= 3.15.0 with CMake support is required. "
+      "Hint: install/build YAC so YACConfig.cmake is available.")
+  ENDIF()
+
+  # 2) If version is 3.19+, require Fortran explicitly
+  IF(DEFINED YAC_VERSION AND YAC_VERSION VERSION_GREATER_EQUAL 3.19)
+    # If YAC >= 3.19, require Fortran component
+    UNSET(YAC_FOUND)
+    FIND_PACKAGE(YAC 3.19 CONFIG QUIET COMPONENTS Fortran)
+
+    # Robust check: imported target existence
+    IF(NOT YAC_FOUND)
+      MESSAGE(FATAL_ERROR
+        "YAC ${YAC_VERSION} found, but Fortran component is missing. "
+        "Please rebuild YAC with Fortran enabled (for example -DYAC_ENABLE_FORTRAN=ON).")
+    ENDIF()
+  ELSE()
+    # For YAC < 3.19, cannot check for Fortran component; assuming it is available
+    MESSAGE(WARNING "YAC version " ${YAC_VERSION} " < 3.19 detected. YAC >= 3.19 is recommended for more robust checks.")
+  ENDIF()
 
   GET_TARGET_PROPERTY(YAC_INCLUDE_DIR YAC::yac_mci INTERFACE_INCLUDE_DIRECTORIES)
   SET(YAC_LIBRARIES YAC::yac_mci)
 
   MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
+  MESSAGE(STATUS "  YAC_VER:       " "${YAC_VERSION}")
   MESSAGE(STATUS "  YAC_INC:       " "${YAC_INCLUDE_DIR}")
   MESSAGE(STATUS "  YAC_LIB :      " "${YAC_LIBRARIES}")
 
@@ -612,9 +636,6 @@ IF (WITH_YAC)
     MARK_AS_ADVANCED(HAVE_YAC)
     INCLUDE_DIRECTORIES(${YAC_INCLUDE_DIR})
     ADD_DEFINITIONS(-DHAVE_YAC)
-  ELSE()
-    MESSAGE(STATUS "YAC not found")
-    MESSAGE(WARNING "YAC >= 3.15.0 with CMake support is required")
   ENDIF()
 
   MESSAGE(STATUS "------------------------------------------------")
