@@ -72,9 +72,9 @@ MODULE MainUtils
   USE ProjectorUtils, ONLY : GenerateProjectors
 
 
-  USE CutFEMUtils, ONLY: CreateCutFEMMatrix, CreateCutFEMMesh, CreateCutFEMAddMesh, &
-      CutFEMSetOrigMesh, CreateCutFEMPerm, CreateCutFEMVariable, CutFEMVariableRevert, &
-      LevelsetUpdate, CutFEMVariableFinalize
+  USE SplitFEMUtils, ONLY: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMAddMesh, &
+      SplitFEMSetOrigMesh, CreateSplitFEMPerm, CreateSplitFEMVariable, SplitFEMVariableRevert, &
+      LevelsetUpdate, SplitFEMVariableFinalize
   
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
@@ -5253,8 +5253,8 @@ CONTAINS
      Parallel = Solver % Parallel 
      !------------------------------------------------------------------------------
 
-     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) THEN
-       CALL Info('SingleSolver','Skipping some initializations done in CutFEM already!',Level=20)
+     IF( ListGetLogical( Solver % Values,'SplitFEM',Found ) ) THEN
+       CALL Info('SingleSolver','Skipping some initializations done in SplitFEM already!',Level=20)
 
      ELSE IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
@@ -5407,7 +5407,7 @@ BLOCK
 END BLOCK
      END IF
 
-     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) GOTO 1
+     IF( ListGetLogical( Solver % Values,'SplitFEM',Found ) ) GOTO 1
 
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        IF ( Parallel .AND. MeActive ) THEN
@@ -5673,26 +5673,26 @@ END BLOCK
        END IF
      END IF
 
-     IF(Solver % CutFEM) THEN
+     IF(Solver % SplitFEM) THEN
        BLOCK 
          LOGICAL :: DoCreate
          TYPE(Matrix_t), POINTER :: pMatrix
 
-         Solver % CutFEMActive = .TRUE.
+         Solver % SplitFEMActive = .TRUE.
 
          pMatrix => Solver % Matrix
-         DoCreate = ListGetLogical(Params,'CutFEM Create',Found )
+         DoCreate = ListGetLogical(Params,'SplitFEM Create',Found )
 
-         IF(DoCreate) CALL CreateCutFEMPerm(Solver,.TRUE.)       
+         IF(DoCreate) CALL CreateSplitFEMPerm(Solver,.TRUE.)       
 
-         CALL CreateCutFEMVariable(Solver)
-         Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
+         CALL CreateSplitFEMVariable(Solver)
+         Solver % Matrix => CreateSplitFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
          CALL FreeMatrix(pMatrix)
 
          IF(DoCreate) THEN
-           CALL CreateCutFEMAddMesh(Solver) 
+           CALL CreateSplitFEMAddMesh(Solver) 
          ELSE
-           CALL CutFEMSetOrigMesh(Solver)
+           CALL SplitFEMSetOrigMesh(Solver)
          END IF
        END BLOCK
      END IF
@@ -5923,36 +5923,36 @@ END BLOCK
 
 
      ! Set the original mesh back, to be on the safe side...
-     IF(ListGetLogical(Params,'CutFEM',Found ) ) THEN
-       CALL CutFEMSetOrigMesh(Solver)
-       CALL CutFEMVariableFinalize(Solver)         
+     IF(ListGetLogical(Params,'SplitFEM',Found ) ) THEN
+       CALL SplitFEMSetOrigMesh(Solver)
+       CALL SplitFEMVariableFinalize(Solver)         
      END IF
      
      ! We do not need the old meshes. When we reach a new timestep
      ! they have already been saved. 
-     IF(ListGetLogical(Params,'CutFEM Interpolate',Found ) ) THEN
-       CALL Info('SolverActive','Interpolating CutFEM data!',Level=10)
+     IF(ListGetLogical(Params,'SplitFEM Interpolate',Found ) ) THEN
+       CALL Info('SolverActive','Interpolating SplitFEM data!',Level=10)
 
        ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
        ! The Mesh % Next is saved normally in the VTU files etc. 
        CALL LevelSetUpdate(Solver,Solver % Mesh)
 
-       ! We do not need to create the actual CutFEM Mesh, but we might want to have it
+       ! We do not need to create the actual SplitFEM Mesh, but we might want to have it
        ! for visualization purposes. 
-       IF( ListGetLogical( Model % Simulation,'CutFEM Mesh Save', Found ) )  THEN
+       IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) )  THEN
          ! This 2D mesh becomes Mesh % Next % Next
-         Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+         Solver % Mesh % Next % Next => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
              .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
        END IF
    
-       CALL Info('SolverActive','Reverting CutFEM fields to normal!',Level=10)
-       CALL CutFEMVariableRevert(Model,Solver % Mesh)         
+       CALL Info('SolverActive','Reverting SplitFEM fields to normal!',Level=10)
+       CALL SplitFEMVariableRevert(Model,Solver % Mesh)         
      END IF
             
      ! This takes place after all visualization etc. had been done.
      ! We do not need the old meshes any more.
-     IF(ListGetLogical(Params,'CutFEM Destroy',Found ) ) THEN
-       CALL Info('SolverActive','Destroing CutFEM additional meshes!',Level=10)
+     IF(ListGetLogical(Params,'SplitFEM Destroy',Found ) ) THEN
+       CALL Info('SolverActive','Destroing SplitFEM additional meshes!',Level=10)
        Mesh => Solver % Mesh         
        IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
          IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN

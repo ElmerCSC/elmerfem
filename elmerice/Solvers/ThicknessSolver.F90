@@ -91,7 +91,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: SEM ! Sub-element melting for Grounding line
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element melting
   LOGICAL :: ComputeResidual
-  LOGICAL :: CutFEMOn
+  LOGICAL :: SplitFEMOn
   CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
 
   !-----------------------------------------------------------------------------
@@ -349,7 +349,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
       libmassbf % Values = 0._dp
      ENDIF
      
-     CutFEMOn = .FALSE.
+     SplitFEMOn = .FALSE.
 
      !------------------------------------------------------------------------------
      !    Do the assembly
@@ -389,7 +389,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
       ! get lower limit for solution 
       !-----------------------------
-      IF(.NOT. CutFEMon) THEN
+      IF(.NOT. SplitFEMon) THEN
         LowerLimit(Nodeindexes(1:N)) = &
             ListGetReal(Material,'Min ' // TRIM(VariableName),n,NodeIndexes, Found) 
         IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 1) = Found
@@ -408,7 +408,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         ! get velocity profile
         IF (ConvectionVar) THEN
 #if 1
-          ! more generic routine is needed for CutFEM
+          ! more generic routine is needed for SplitFEM
           CALL GetLocalSolution( Velo,UElement=Element,UVariable=FlowSol)
 #else
           DO i=1,n
@@ -511,10 +511,10 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !    transient simulations.
      !------------------------------------------------------------------------------
 
-     ! Tentative code for dealing with calving front using cutFEM. 
-     IF(DefaultCutFEM()) THEN
-       CutFEMOn = .TRUE.
-       CALL Info(Caller,'Going back for CutFEM interface elements!')
+     ! Tentative code for dealing with calving front using SplitFEM. 
+     IF(DefaultSplitFEM()) THEN
+       SplitFEMOn = .TRUE.
+       CALL Info(Caller,'Going back for SplitFEM interface elements!')
        GOTO 100
      END IF
      

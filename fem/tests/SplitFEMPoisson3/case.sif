@@ -3,7 +3,9 @@
 !
 ! This version includes almost everything in the library. 
 !
-! P.R. 24.2.2025
+! This is modification with upper limit active.
+!
+! P.R. 12.3.2025
 
 Header
   Mesh DB "." "square-tri"
@@ -11,7 +13,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 30
+  Max Output Level = 7
   Coordinate System = String Cartesian
   Simulation Type = Transient 
   Steady State Max Iterations = 1
@@ -22,11 +24,48 @@ Simulation
   Timestep Sizes = 1.0
   Timestepping Method = implicit euler
 
-  Post File = File "ref.vtu"
+  Post File = File "case-2d.vtu"
   Ascii Output = True
 !  vtu: Save Bulk Only = Logical True
 
   Mesh Levels = 3
+
+
+!-----------------------------------------------------------
+! Keywords for SplitFEM
+!-----------------------------------------------------------
+! This should be generalized. 
+  Levelset Velocity 1 = Real $0.006
+  Levelset Velocity 2 = Real $0.002
+  
+  SplitFem = logical True
+  SplitFem Epsilon = Real 1.0e-3
+!  SplitFem Epsilon Absolute = Logical True
+
+! What BC index will be given for on-the-fly BC. 
+  SplitFem Interface BC = Integer 4
+! What index will be given for negative levelset.
+  SplitFEM inside body = integer 1
+! for positive levelset.   
+  SplitFEM outside body = integer 0
+
+! Should we extend using FEM
+  SplitFem extend = logical true
+! Should be extrapolate using edges (alternative). 
+!  SplitFEM extrapolate = Logical True
+
+! Which variables to project to isoline
+  Isoline Variable 1 = String "Potential"
+  Isoline Variable 2 = String "Surface"
+
+! Which variables to project to 2D viz. mesh.
+  Project Variable 1 = Potential
+  Project Variable 2 = Surface
+
+! Should we save the actural splitted mesh in 2D? 
+!  SplitFEM Mesh Save = Logical True
+
+  Levelset Variable = String "Surface"
 End
 
 Body 1
@@ -60,14 +99,15 @@ End
 
 
 Solver 1
-  Equation = "CutFem"
+  Equation = "ModelPDE"
   Variable = Potential
   Procedure = "ModelPDE" "AdvDiffSolver"
 
   Time Derivative Order = 1
   Time Order = 1
 
-  Nonlinear System Max Iterations = 1
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Convergence Tolerance = 1.0e-4
 
   Optimize Bandwidth = False
 
@@ -78,40 +118,11 @@ Solver 1
   Linear System Preconditioning = "ILU0"
   Linear System Residual Output = 20
 
+  SplitFem = logical True
+
 ! We define a levelset to be used.
   Exported Variable 1 = Surface
-  Levelset Variable = String "Surface"
-
-! This should be generalized. 
-  Levelset Velocity 1 = Real $0.006
-  Levelset Velocity 2 = Real $0.002
-  
-  CutFem = logical True
-  CutFem Epsilon = Real 1.0e-3
-!  CutFem Epsilon Absolute = Logical True
-
-! What BC index will be given for on-the-fly BC. 
-  CutFem Interface BC = Integer 4
-! What index will be given for negative levelset.
-  CutFEM inside body = integer 1
-! for positive levelset.   
-  CutFEM outside body = integer 0
-
-! Should we extend using FEM
-  CutFem extend = logical true
-! Should be extrapolate using edges (alternative). 
-!  CutFEM extrapolate = Logical True
-
-! Which variables to project to isoline
-  Isoline Variable 1 = String "Potential"
-  Isoline Variable 2 = String "Surface"
-
-! Which variables to project to 2D viz. mesh.
-  Project Variable 1 = Potential
-  Project Variable 2 = Surface
-
-! Should we save the actural splitted mesh in 2D? 
-!  CutFEM Mesh Save = Logical True
+  Apply Limiter = True
 End
 
 
@@ -141,7 +152,8 @@ End
 
 Body Force 1
   Name = "InsideSource"
-  Field Source = Real 1.0
+  Field Source = Real 10.0
+  Potential Upper Limit = Real 1.0
 End 
 
 Body Force 2
@@ -165,21 +177,17 @@ End
 Boundary Condition 3
   Name = String "Sides"
   Target Boundaries(2) = 2 4
-!  CutFEM Forbidden Boundary = Logical True
+!  SplitFEM Forbidden Boundary = Logical True
 End
 
 Boundary Condition 4
-  Name = String "CutFEM"
+  Name = String "SplitFEM"
 !  Field Flux = Real 1.0
-  Robin Coefficient = Real 1.0
+  Robin Coefficient = Real 10.0
   External Field = Real 0.0
 !  Potential = 0.0
 End
 
-! after 100 timesteps x mesh levels 5
-!Solver 1 :: Reference Norm = 4.93622297E-01
-!Solver 2 :: Reference Norm = 5.96345919E-01
-
 ! after 3 timesteps x mesh levels 3
-Solver 1 :: Reference Norm = 3.74375920E-01
-Solver 2 :: Reference Norm = 4.64944891E-01
+Solver 1 :: Reference Norm = 5.95868518E-01
+Solver 2 :: Reference Norm = 1.00000000E+00

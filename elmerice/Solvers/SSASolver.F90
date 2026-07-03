@@ -56,7 +56,7 @@
   USE DefUtils
   USE SSAMaterialModels
   USE ComputeFluxUtils
-  USE CutFEMUtils
+  USE SplitFEMUtils
   
   IMPLICIT NONE
   !------------------------------------------------------------------------------
@@ -109,7 +109,7 @@
   !------------------------------------------------------------------------------
 
 
-  ! We need this early on since Solver % Variable structures will be affected by CutFEM stuff
+  ! We need this early on since Solver % Variable structures will be affected by SplitFEM stuff
   ! that is called within this slot. 
   CALL DefaultStart()
 
@@ -316,7 +316,7 @@
       NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,Found,&
            UnFoundFatal=UnFoundFatal)
 
-      ! Get the Nodal value of Zb and Zs. For CutFEM we need something special tricks. 
+      ! Get the Nodal value of Zb and Zs. For SplitFEM we need something special tricks. 
       CALL GetLocalSolution( NodalZb,UElement=Element,UVariable=ZbSol)
       CALL GetLocalSolution( NodalZs,UElement=Element,UVariable=ZsSol)
       
@@ -396,9 +396,9 @@
           ! Read the gravity in the Body Force Section 
           BodyForce => GetBodyForce(ParentElement)
         ELSE
-          ! This will happen in CutFEM!
-          IF( ASSOCIATED( Solver % CutFEM ) THEN
-            i = LIstGetInteger( SolverParams,'CutFEM inside body',Found )
+          ! This will happen in SplitFEM!
+          IF( ASSOCIATED( Solver % SplitFEM ) THEN
+            i = LIstGetInteger( SolverParams,'SplitFEM inside body',Found )
             IF(.NOT. Found) i=1
             j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Material')
             Material => CurrentModel % Materials(j) % Values
@@ -432,8 +432,8 @@
       END IF
     END DO
 
-    ! Tentative code for dealing with calving front using cutFEM. 
-    IF(DefaultCutFEM()) GOTO 200
+    ! Tentative code for dealing with calving front using SplitFEM. 
+    IF(DefaultSplitFEM()) GOTO 200
 
     IF(.NOT. MeActive) EXIT
 

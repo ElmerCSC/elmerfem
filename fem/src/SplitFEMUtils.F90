@@ -38,10 +38,10 @@
 !> \{
 
 !------------------------------------------------------------------------------
-!>  Module containing utilities for CutFEM style of strategies.
+!>  Module containing utilities for SplitFEM style of strategies.
 !------------------------------------------------------------------------------
 
-MODULE CutFemUtils
+MODULE SplitFemUtils
   USE Types
   USE Lists
   USE ElementUtils, ONLY : FreeMatrix
@@ -67,7 +67,7 @@ MODULE CutFemUtils
   INTEGER, POINTER :: AddActiveElements(:), UnsplitActiveElements(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CutInterp(:)
   TYPE(Matrix_t), POINTER :: NodeMatrix
-  INTEGER :: CutFemBody
+  INTEGER :: SplitFemBody
   CHARACTER(:), ALLOCATABLE :: CutStr
   TYPE(Solver_t), POINTER :: SlaveSolver => NULL()
   INTEGER :: SlaveSolverId = 0
@@ -76,18 +76,18 @@ MODULE CutFemUtils
 
 #define DEBUG_ORIENT 0
 #if DEBUG_ORIENT
-  REAL(KIND=dp) :: CutFEMCenter(3)
+  REAL(KIND=dp) :: SplitFEMCenter(3)
 #endif
 
     
-  PUBLIC :: CreateCutFEMMatrix, CreateCutFEMMesh, CreateCutFEMPerm, CreateCutFEMAddMesh, &
-      CutFEMVariableFinalize, CutFEMSetOrigMesh, CutFEMSetAddMesh, LevelSetUpdate, &
-      CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck, CreateCutFEMVariable, &
-      CutFEMVariableRevert
+  PUBLIC :: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMPerm, CreateSplitFEMAddMesh, &
+      SplitFEMVariableFinalize, SplitFEMSetOrigMesh, SplitFEMSetAddMesh, LevelSetUpdate, &
+      CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck, CreateSplitFEMVariable, &
+      SplitFEMVariableRevert
 
   PUBLIC :: CutInterp
   
-  TYPE(Mesh_t), POINTER :: CutFEMOrigMesh => NULL(), CutFEMAddMesh => NULL()
+  TYPE(Mesh_t), POINTER :: SplitFEMOrigMesh => NULL(), SplitFEMAddMesh => NULL()
   
     
 CONTAINS
@@ -97,7 +97,7 @@ CONTAINS
   ! edges and which nodes are being cut by the zero levelset.
   ! Optionally also create a permutation for the outside mesh. 
   !------------------------------------------------------------------
-  SUBROUTINE CreateCutFEMPerm(Solver,UpdateCoords)
+  SUBROUTINE CreateSplitFEMPerm(Solver,UpdateCoords)
     TYPE(Solver_t) :: Solver
     LOGICAL :: UpdateCoords
 
@@ -113,7 +113,7 @@ CONTAINS
     LOGICAL :: Found, PassiveInside, PassiveOutside, isCut, isMore, UseAbsEps, Hit
     REAL(KIND=dp), POINTER :: xtmp(:)    
     LOGICAL :: UpdateOrigCoords
-    CHARACTER(*), PARAMETER :: Caller = 'CreateCutFEMPerm'
+    CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMPerm'
     !REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
 
     Params => CurrentModel % Simulation
@@ -121,12 +121,12 @@ CONTAINS
     ! Memorize original nodal matrix
     NodeMatrix => Solver % Matrix
 
-    CutFEMOrigMesh => Solver % Mesh 
+    SplitFEMOrigMesh => Solver % Mesh 
     Solver % OrigActiveElements => Solver % ActiveElements
 
-    CutExtend = ListGetLogical( Params,'CutFEM extend',Found )
-    CutExtrapolate = ListGetLogical( Params,'CutFEM extrapolate',Found )
-    UpdateOrigCoords = ListGetLogical( Params,'CutFEM bodyfitted',Found )
+    CutExtend = ListGetLogical( Params,'SplitFEM extend',Found )
+    CutExtrapolate = ListGetLogical( Params,'SplitFEM extrapolate',Found )
+    UpdateOrigCoords = ListGetLogical( Params,'SplitFEM bodyfitted',Found )
 
     ! We always need mesh edges since the new dofs are created in intersections of levelset and edge. 
     IF(ASSOCIATED(Mesh % edges)) THEN
@@ -192,18 +192,18 @@ CONTAINS
     PhiValues => PhiVar % Values
     PhiPerm => PhiVar % Perm
 
-    body_in = ListGetInteger( Params,'CutFEm Inside Body',Found )
+    body_in = ListGetInteger( Params,'SplitFEM Inside Body',Found )
     IF(.NOT. Found) body_in = CurrentModel % NumberOfBodies
-    body_out = ListGetInteger( Params,'CutFem Outside Body',Found )
+    body_out = ListGetInteger( Params,'SplitFem Outside Body',Found )
     IF(.NOT. Found) body_out = body_in+1
     body_cut = MAX(body_in,body_out)
 
     ! This is a little dirty, we set the interface elements so we recognize them.
     IF(CutExtend) body_cut = body_cut + 1
 
-    Eps = ListGetCReal(Params,'CutFem Epsilon',Found )
+    Eps = ListGetCReal(Params,'SplitFem Epsilon',Found )
     IF(.NOT. Found) Eps = 1.0e-3
-    UseAbsEps = ListGetLogical(Params,'CutFEM Epsilon Absolute',Found ) 
+    UseAbsEps = ListGetLogical(Params,'SplitFEM Epsilon Absolute',Found ) 
 
 
     ! First mark the cut nodes.
@@ -380,19 +380,19 @@ CONTAINS
       
     ! Set the material for inside/outside or interface material.
     ! This way we do not need to have too complicated material sections.
-    CutFEMBody = 0
+    SplitFEMBody = 0
     DO i=1,Mesh % NumberOfBulkElements
       Element => Mesh % Elements(i)
 
       NodeIndexes => Element % NodeIndexes
       IF(ANY(PhiPerm(NodeIndexes) == 0)) CYCLE
 
-      ! So far we assume that there is only one body index used to define the CutFEM region.
+      ! So far we assume that there is only one body index used to define the SplitFEM region.
       ! We are tampering with the index, so we need to store it. 
-      IF(CutFEMBody == 0) THEN
-        CutFEMBody = Element % BodyId
+      IF(SplitFEMBody == 0) THEN
+        SplitFEMBody = Element % BodyId
       ELSE
-        IF(CutFemBody /= Element % BodyId ) THEN
+        IF(SplitFemBody /= Element % BodyId ) THEN
           CALL Fatal(Caller,'Modify code to deal with several bodies!')
         END IF
       END IF
@@ -435,16 +435,16 @@ CONTAINS
       PRINT *,'Inside/Outside count:',InsideCnt
     END IF
           
-    ! CutPerm is the reordered dofs for the CutFEM mesh. 
+    ! CutPerm is the reordered dofs for the SplitFEM mesh. 
     IF(.NOT. ASSOCIATED(CutPerm)) THEN
       ALLOCATE(CutPerm(nn+ne))
       CALL info(Caller,'Allocated CutPerm of size: '//I2S(nn+ne),Level=20)
     END IF
     CutPerm = 0
 
-    PassiveOutside = ListGetLogical( Params,'CutFEM Passive Outside',Found ) 
+    PassiveOutside = ListGetLogical( Params,'SplitFEM Passive Outside',Found ) 
     IF(.NOT. Found ) PassiveOutside = (body_out == 0)
-    PassiveInside = ListGetLogical( Params,'CutFEM Passive Inside',Found ) 
+    PassiveInside = ListGetLogical( Params,'SplitFEM Passive Inside',Found ) 
     IF(.NOT. Found) PassiveInside = (body_in == 0)
 
     ! Set all cut dofs to exist.
@@ -476,7 +476,7 @@ CONTAINS
       END IF
     END DO
     k = COUNT(CutPerm(1:nn)>0) 
-    CALL Info(Caller,'CutFEM number of nodes: '//I2S(j)//' (original '//I2S(k)//')',Level=7)
+    CALL Info(Caller,'SplitFEM number of nodes: '//I2S(j)//' (original '//I2S(k)//')',Level=7)
 
 
     
@@ -484,14 +484,14 @@ CONTAINS
     ! active domain. The reason might be to provide better initial values for the new territory. 
     IF(CutExtend) THEN
       CALL Info(Caller,'Extending field outside the active domain!',Level=20)
-      r = ListGetCReal( Params,'CutFEM extend width',Found )
+      r = ListGetCReal( Params,'SplitFEM extend width',Found )
 
       IF(.NOT. ASSOCIATED(ExtendPerm)) THEN
         ALLOCATE(ExtendPerm(nn+ne))
       END IF
       ExtendPerm = 0
       
-      r = ListGetCReal( Params,'CutFEM extend width',Found )
+      r = ListGetCReal( Params,'SplitFEM extend width',Found )
       
       ! Set the material for inside/outside.
       DO i=1,Mesh % NumberOfBulkElements
@@ -499,7 +499,7 @@ CONTAINS
         IF(ANY(PhiPerm(Element % NodeIndexes) == 0)) CYCLE
         
         IF( Element % BodyId == body_cut ) THEN
-          ! Mark dofs to extend on elements which lack CutFEM dofs. 
+          ! Mark dofs to extend on elements which lack SplitFEM dofs. 
 10        pElement => CutInterfaceBulk(Element,isCut,isMore)        
           IF(ANY(CutPerm(pElement % NodeIndexes) == 0) ) THEN
             ExtendPerm( pElement % NodeIndexes ) = 1          
@@ -550,9 +550,9 @@ CONTAINS
         IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE     
 
         BC => CurrentModel % BCs(bc_id) % Values        
-        IF(ListGetLogical(BC,'CutFem Forbidden Boundary',Found ) ) THEN
+        IF(ListGetLogical(BC,'SplitFem Forbidden Boundary',Found ) ) THEN
           IF(ANY(CutPerm(nn+Element % EdgeIndexes)>0)) THEN
-            CALL Fatal(Caller,'CutFEM extends beyond forbidden boundaries!')
+            CALL Fatal(Caller,'SplitFEM extends beyond forbidden boundaries!')
           END IF
         END IF
       END DO
@@ -565,25 +565,25 @@ CONTAINS
       IF(j==0) CYCLE
       IF(PhiValues(j) < r) THEN
         r = PhiValues(j)
-        CutFEMCenter(1) = Mesh % Nodes % x(i)
-        CutFEMCenter(2) = Mesh % Nodes % y(i)
-        CutFEMCenter(3) = Mesh % Nodes % z(i)
+        SplitFEMCenter(1) = Mesh % Nodes % x(i)
+        SplitFEMCenter(2) = Mesh % Nodes % y(i)
+        SplitFEMCenter(3) = Mesh % Nodes % z(i)
       END IF
     END DO
-    PRINT *,'CutFEMCenter:',CutFEMCenter
+    PRINT *,'SplitFEMCenter:',SplitFEMCenter
 #endif
     
     ! This is just counter for different split cases while developing the code. 
     nCase = 0
 !    Solver % CutInterp => CutInterp 
     
-  END SUBROUTINE CreateCutFEMPerm
+  END SUBROUTINE CreateSplitFEMPerm
 
 
-  ! Given permutation make additional vector for containing the values of the cutfem
+  ! Given permutation make additional vector for containing the values of the splitfem
   ! field of the solver in question. Memorize the original nodal values.
   !---------------------------------------------------------------------------------
-  SUBROUTINE CreateCutFEMVariable(Solver)
+  SUBROUTINE CreateSplitFEMVariable(Solver)
 
     TYPE(Solver_t) :: Solver
     INTEGER :: i,j,j1,j2,k,m,dofs,nn,ne,nsize
@@ -591,7 +591,7 @@ CONTAINS
     REAL(KIND=dp) :: r
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Variable_t), POINTER :: Variable
-    CHARACTER(*), PARAMETER :: Caller = 'CreateCutFEMVariable'
+    CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMVariable'
 
     IF(.NOT. ASSOCIATED(Solver % Variable)) THEN
       CALL Info(Caller,'Solver % Variable not associated, doing nothing!')
@@ -604,11 +604,11 @@ CONTAINS
     END IF
     
     IF(.NOT. ASSOCIATED(Solver % OrigActiveElements ) ) THEN
-      CALL Info('CreateCutFEMVariable','Storing original ActiveElements table!',Level=15)
+      CALL Info('CreateSplitFEMVariable','Storing original ActiveElements table!',Level=15)
       Solver % OrigActiveElements => Solver % ActiveElements
     END IF
       
-    CALL Info(Caller,'Creating storage for the CutFEM field variable: '//TRIM(Variable % Name),Level=10)
+    CALL Info(Caller,'Creating storage for the SplitFEM field variable: '//TRIM(Variable % Name),Level=10)
     
     nsize = MAXVAL(CutPerm)
     nn = Solver % Mesh % NumberOfNodes
@@ -639,7 +639,7 @@ CONTAINS
       Variable % PrevValues => PrevCutValues
     END IF
 
-    ! Copy nodal values as initial guess to cut fem values. 
+    ! Copy nodal values as initial guess to split fem values. 
     DO i=1, nn + ne
       j = CutPerm(i)
       IF(j==0) CYCLE
@@ -665,16 +665,16 @@ CONTAINS
       END IF        
     END DO
 
-    Variable % Type = Variable_on_cutfem
+    Variable % Type = Variable_on_splitfem
     
-  END SUBROUTINE CreateCutFEMVariable
+  END SUBROUTINE CreateSplitFEMVariable
       
 
   ! Given a permutation, create a matrix. We assume simple nodal elements.
   ! Some extra dofs are created since at the interface we assume that
   ! there can be all possible connections. 
   !-----------------------------------------------------------------------
-  FUNCTION CreateCutFemMatrix(Solver,Perm,MimicMat) RESULT ( A ) 
+  FUNCTION CreateSplitFemMatrix(Solver,Perm,MimicMat) RESULT ( A ) 
     TYPE(Solver_t) :: Solver
     INTEGER :: Perm(:)
     TYPE(Matrix_t), POINTER :: A
@@ -685,7 +685,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: BlockInds(:),DofInds(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER, SAVE :: AllocVecs(3)
-    CHARACTER(*), PARAMETER :: Caller = 'CreateCutFemMatrix'
+    CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFemMatrix'
 
     Mesh => Solver % Mesh
     CutDofs = Solver % Variable % Dofs
@@ -698,12 +698,12 @@ CONTAINS
     ! Add extreme entry since list matrix likes to be allocated at once. 
     n = dofs * MAXVAL(Perm)
     IF(n==0) THEN
-      CALL Warn(Caller,'CutFEM matrix size is zero?')
+      CALL Warn(Caller,'SplitFEM matrix size is zero?')
       A % NumberOfRows = 0
       RETURN
     END IF
       
-    CALL Info(Caller,'Size of CutFEM matrix with '//I2S(dofs)//' dofs is: '//I2S(n),Level=10)
+    CALL Info(Caller,'Size of SplitFEM matrix with '//I2S(dofs)//' dofs is: '//I2S(n),Level=10)
     
     CALL List_AddToMatrixElement(A % ListMatrix, n, n, 0.0_dp ) 
 
@@ -754,7 +754,7 @@ CONTAINS
       END DO
     END DO
 
-    ! Make a CRS matrix that has now a topology to account for all entries coming from cutfem. 
+    ! Make a CRS matrix that has now a topology to account for all entries coming from splitfem. 
     CALL List_toCRSMatrix(A)
     CALL CRS_SortMatrix(A,.FALSE.)
 
@@ -788,7 +788,7 @@ CONTAINS
       END IF
     END IF
     
-  END FUNCTION CreateCutFemMatrix
+  END FUNCTION CreateSplitFemMatrix
 
 
   ! This is a routine that just checks whether an element is cut.
@@ -890,9 +890,9 @@ CONTAINS
       END IF
 
       Params => CurrentModel % Simulation
-      body_in = ListGetInteger( Params,'CutFEm Inside Body',Found )
+      body_in = ListGetInteger( Params,'SplitFEM Inside Body',Found )
       IF(.NOT. Found) body_in = CurrentModel % NumberOfBodies
-      body_out = ListGetInteger( Params,'CutFem Outside Body',Found )
+      body_out = ListGetInteger( Params,'SplitFem Outside Body',Found )
       IF(.NOT. Found) body_out = body_in+1
       PSweep = 0
     END IF
@@ -992,7 +992,7 @@ CONTAINS
       y => Mesh % Nodes % y
       z => Mesh % Nodes % z                 
 
-      n = ListGetInteger( Solver % Values,'CutFem Interface BC',Found )
+      n = ListGetInteger( Solver % Values,'SplitFem Interface BC',Found )
 
       IF( Mesh % MeshDim == 3 ) THEN
         Elem303 % TYPE => GetElementType(303)
@@ -1007,7 +1007,7 @@ CONTAINS
         ALLOCATE( Elem404 % BoundaryInfo )      
         Elem404 % BoundaryInfo % Constraint = n
 
-        VerticalCut = ListGetLogical(Solver % Values,'CutFEM vertical cut',Found ) 
+        VerticalCut = ListGetLogical(Solver % Values,'SplitFEM vertical cut',Found ) 
       ELSE
         Elem202 % TYPE => GetElementType(202)
         ALLOCATE(Elem202 % NodeIndexes(2))      
@@ -1403,7 +1403,7 @@ CONTAINS
         y0 = Mesh % Nodes % y(pElement % NodeIndexes(1))
         x1 = Mesh % Nodes % x(pElement % NodeIndexes(2))
         y1 = Mesh % Nodes % y(pElement % NodeIndexes(2))
-        dir2 = (x1 - x0) * (CutFEMCenter(2) - y0) - (y1 - y0) * (CutFEMCenter(1) - x0)
+        dir2 = (x1 - x0) * (SplitFEMCenter(2) - y0) - (y1 - y0) * (SplitFEMCenter(1) - x0)
 
         IF( dir2 > 0.0 ) THEN
           PRINT *,'WrongDirection:',SplitCase,m,x0,x1,y0,y1
@@ -1431,7 +1431,7 @@ CONTAINS
 
   ! This is currently not used. 
   !-------------------------------------------------------
-  SUBROUTINE CutFEMElementCount(Solver, Perm, nBulk, nBC ) 
+  SUBROUTINE SplitFEMElementCount(Solver, Perm, nBulk, nBC ) 
     TYPE(Solver_t) :: Solver
     INTEGER, POINTER :: Perm(:)
     INTEGER :: nBulk, nBC
@@ -1483,28 +1483,28 @@ CONTAINS
       IF(ALL(Perm(Element % NodeIndexes) > 0) ) nBC0 = nBC0 + 1
     END DO
         
-    CALL Info('CutFEMElementCount','Bulk elements remaining '//I2S(nBulk0)//' & splitted '//I2S(nBulk),Level=7)
-    CALL Info('CutFEMElementCount','BC elements remaining '//I2S(nBC0)//' & splitted '//I2S(nBC),Level=7)
+    CALL Info('SplitFEMElementCount','Bulk elements remaining '//I2S(nBulk0)//' & splitted '//I2S(nBulk),Level=7)
+    CALL Info('SplitFEMElementCount','BC elements remaining '//I2S(nBC0)//' & splitted '//I2S(nBC),Level=7)
     
     nBC = nBC0 + nBC
     nBulk = nBulk0 + nBulk
     
-  END SUBROUTINE CutFEMElementCount
+  END SUBROUTINE SplitFEMElementCount
     
   
-  SUBROUTINE CreateCutFEMAddMesh(Solver) 
+  SUBROUTINE CreateSplitFEMAddMesh(Solver) 
     TYPE(Solver_t) :: Solver
     
     INTEGER :: Sweep, t, n, i
     LOGICAL :: IsActive, IsCut
     TYPE(Element_t), POINTER :: Element
 
-    CALL Info('CreateCutFEMAddMesh','Creating interface mesh from split element',Level=10)
+    CALL Info('CreateSplitFEMAddMesh','Creating interface mesh from split element',Level=10)
     
     DO Sweep = 0,1 
       n = 0      
-      DO t=1,CutFEMOrigMesh % NumberOfBulkElements
-        Element => CutFEMOrigMesh % Elements(t)
+      DO t=1,SplitFEMOrigMesh % NumberOfBulkElements
+        Element => SplitFEMOrigMesh % Elements(t)
         IF(ANY(PhiPerm(Element % NodeIndexes)==0)) CYCLE
         CALL CutInterfaceCheck( Element, IsCut, IsActive, CutPerm )
         IF(IsActive .AND. .NOT. IsCut) THEN
@@ -1521,71 +1521,71 @@ CONTAINS
       END IF
     END DO
     
-    IF(ASSOCIATED(CutFEMAddMesh)) THEN
-      NULLIFY(CutFEMAddMesh % Nodes % x)
-      NULLIFY(CutFEMAddMesh % Nodes % y)
-      NULLIFY(CutFEMAddMesh % Nodes % z)
-      CALL FreeMesh(CutFEMAddMesh)
+    IF(ASSOCIATED(SplitFEMAddMesh)) THEN
+      NULLIFY(SplitFEMAddMesh % Nodes % x)
+      NULLIFY(SplitFEMAddMesh % Nodes % y)
+      NULLIFY(SplitFEMAddMesh % Nodes % z)
+      CALL FreeMesh(SplitFEMAddMesh)
     END IF
-    CutFEMAddMesh => CreateCutFEMMesh(Solver,CutFEMOrigMesh,CutPerm,&
+    SplitFEMAddMesh => CreateSplitFEMMesh(Solver,SplitFEMOrigMesh,CutPerm,&
         .TRUE.,.TRUE.,.TRUE.,CurrentModel % Simulation,'dummy variable') 
     
-    CALL MeshStabParams( CutFEMAddMesh )
+    CALL MeshStabParams( SplitFEMAddMesh )
 
     ! In the AddMesh all elements are active by construction.
-    n = CutFEMAddMesh % NumberOfBulkElements
+    n = SplitFEMAddMesh % NumberOfBulkElements
     ALLOCATE(AddActiveElements(n))
     DO i=1,n
       AddActiveElements(i) = i
     END DO
 
     IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
-      CALL Fatal('CreateCutFEMAddMesh','UnsplitActiveElements not associated!')
+      CALL Fatal('CreateSplitFEMAddMesh','UnsplitActiveElements not associated!')
     END IF
       
     Solver % ActiveElements => UnsplitActiveElements
     Solver % NumberOfActiveElements = SIZE(UnsplitActiveElements)
 
-    CALL Info('CreateCutFEMAddMesh','Add mesh created with '//I2S(i)//' active elements!',Level=10)
+    CALL Info('CreateSplitFEMAddMesh','Add mesh created with '//I2S(i)//' active elements!',Level=10)
     
-  END SUBROUTINE CreateCutFEMAddMesh
+  END SUBROUTINE CreateSplitFEMAddMesh
     
-  SUBROUTINE CutFEMSetAddMesh(Solver)
+  SUBROUTINE SplitFEMSetAddMesh(Solver)
     TYPE(Solver_t) :: Solver
 
-    Solver % Mesh => CutFEMAddMesh
-    CurrentModel % Mesh => CutFEMAddMesh
+    Solver % Mesh => SplitFEMAddMesh
+    CurrentModel % Mesh => SplitFEMAddMesh
 
     IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
-      CALL Fatal('CutFEMSetAddMesh','AddActiveElements not associated!')
+      CALL Fatal('SplitFEMSetAddMesh','AddActiveElements not associated!')
     END IF
     
     Solver % ActiveElements => AddActiveElements
     Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
-    Solver % Mesh % Edges => CutFemOrigMesh % Edges
+    Solver % Mesh % Edges => SplitFemOrigMesh % Edges
 
-    CALL Info('CutFEMSetAddMesh','Swapping CutFEM original mesh to interface mesh!',Level=10)
+    CALL Info('SplitFEMSetAddMesh','Swapping SplitFEM original mesh to interface mesh!',Level=10)
     
-  END SUBROUTINE CutFEMSetAddMesh
+  END SUBROUTINE SplitFEMSetAddMesh
     
-  SUBROUTINE CutFEMSetOrigMesh(Solver)
+  SUBROUTINE SplitFEMSetOrigMesh(Solver)
     TYPE(Solver_t) :: Solver
     
-    Solver % Mesh => CutFEMOrigMesh
-    CurrentModel % Mesh => CutFEMOrigMesh 
+    Solver % Mesh => SplitFEMOrigMesh
+    CurrentModel % Mesh => SplitFEMOrigMesh 
 
     IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
-      CALL Fatal('CutFEMSetOrigMesh','AddActiveElements not associated!')
+      CALL Fatal('SplitFEMSetOrigMesh','AddActiveElements not associated!')
     END IF
       
     Solver % ActiveElements => UnsplitActiveElements
     Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
 
-    NULLIFY(CutFEMAddMesh % Edges) 
+    NULLIFY(SplitFEMAddMesh % Edges) 
 
-    CALL Info('CutFEMSetOrigMesh','Swapping CutFEM interface mesh to original mesh!',Level=10)
+    CALL Info('SplitFEMSetOrigMesh','Swapping SplitFEM interface mesh to original mesh!',Level=10)
     
-  END SUBROUTINE CutFEMSetOrigMesh
+  END SUBROUTINE SplitFEMSetOrigMesh
     
 
 
@@ -1640,10 +1640,10 @@ CONTAINS
 
 
 
-  ! This takes a CutFEM variable and either extrapolates it using a FE equation
+  ! This takes a SplitFEM variable and either extrapolates it using a FE equation
   ! (for many element layers) or just extends it by extrapolating on the cut edges.  
   !---------------------------------------------------------------------------------  
-  SUBROUTINE CutFEMVariableFinalize( Solver ) 
+  SUBROUTINE SplitFEMVariableFinalize( Solver ) 
     TYPE(Solver_t) :: Solver
     
     TYPE(Matrix_t), POINTER :: B
@@ -1668,7 +1668,7 @@ CONTAINS
     IF(.NOT. Found) CopyBack = .TRUE.
 
     IF( CopyBack ) THEN
-      CALL Info('CutFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
+      CALL Info('SplitFEMVariableFinalize','Copying values at shared nodes to the original mesh!',Level=10)
       DO l=1,dofs
         DO i=1,nn
           j = CutPerm(i)
@@ -1683,7 +1683,7 @@ CONTAINS
     ! We can only extrapolate using the edges that are cut since they have also one
     ! known nodal value. 
     IF(CutExtrapolate) THEN
-      CALL Info('CutFEMVariableFinalize','Extrapolating values with split elements!',Level=10)
+      CALL Info('SplitFEMVariableFinalize','Extrapolating values with split elements!',Level=10)
       
       ! Extrapolated nodes may have more than one hit. Hence use weigted average.
       ! This is the weight.
@@ -1727,13 +1727,13 @@ CONTAINS
     ! Extend values using FEM strategies beyond value set above. 
     ! We can extrapolate much but the extrapolation method is nonhysical.
     IF( CutExtend ) THEN
-      CALL Info('CutFEMVariableFinalize','Extending values from inside to outside using FEM!',Level=10)
+      CALL Info('SplitFEMVariableFinalize','Extending values from inside to outside using FEM!',Level=10)
       IF(dofs > 1) THEN
-        CALL Fatal('CutFEMVariableFinalize','Extending values only coded for one dofs!')        
+        CALL Fatal('SplitFEMVariableFinalize','Extending values only coded for one dofs!')        
       END IF      
       Norm0 = Solver % Variable % Norm
 
-      B => CreateCutFEMMatrix(Solver,ExtendPerm)      
+      B => CreateSplitFEMMatrix(Solver,ExtendPerm)      
       ALLOCATE(ExtendValues(B % NumberOfRows))
       ExtendValues = 0.0_dp
       Solver % Matrix => B
@@ -1789,10 +1789,10 @@ CONTAINS
       Solver % Variable % Norm = Norm0
     END IF
 
-  END SUBROUTINE CutFEMVariableFinalize
+  END SUBROUTINE SplitFEMVariableFinalize
 
 
-  SUBROUTINE CutFEMVariableRevert(Model,Mesh)
+  SUBROUTINE SplitFEMVariableRevert(Model,Mesh)
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh
 
@@ -1807,20 +1807,20 @@ CONTAINS
     DO t=1,Mesh % NumberOfBulkElements        
       Element => Mesh % Elements(t)
       IF(ALL(PhiPerm(Element % NodeIndexes)>0)) THEN
-        Element % BodyId = CutFemBody
+        Element % BodyId = SplitFemBody
       END IF
     END DO
         
     DO i=1,Model % NumberOfSolvers
       Solver => CurrentModel % Solvers(i) 
-      IF( .NOT. ListGetLogical( Solver % Values,'CutFEM',Found ) ) CYCLE
+      IF( .NOT. ListGetLogical( Solver % Values,'SplitFEM',Found ) ) CYCLE
 
       Variable => Solver % Variable
-      CALL Info('CutFEMVariableFinalize','Reverting cut field back to original: '&
+      CALL Info('SplitFEMVariableFinalize','Reverting cut field back to original: '&
           //TRIM(Variable % Name),Level=20)
 
-      IF(Variable % TYPE /= Variable_on_cutfem) THEN
-        CALL Fatal('CutFEMVarioableFinalize','Inconsistent variable type: '//I2S(Solver % Variable % Type))
+      IF(Variable % TYPE /= Variable_on_splitfem) THEN
+        CALL Fatal('SplitFEMVarioableFinalize','Inconsistent variable type: '//I2S(Solver % Variable % Type))
       END IF
       
       IF(ASSOCIATED(Variable % Values)) DEALLOCATE(Variable % Values)
@@ -1838,10 +1838,10 @@ CONTAINS
       Solver % ActiveElements => Solver % OrigActiveElements
       Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
 
-      Solver % CutFEMActive = .FALSE.
+      Solver % SplitFEMActive = .FALSE.
     END DO
       
-  END SUBROUTINE CutFEMVariableRevert
+  END SUBROUTINE SplitFEMVariableRevert
 
 
 !------------------------------------------------------------------------------
@@ -1850,7 +1850,7 @@ CONTAINS
 !> presented by body fitted finite element mesh. This is a modifieid version
 !> of similar routine in MeshUtils that utilizes the CutInterface* routines.
 !------------------------------------------------------------------------------
-  FUNCTION CreateCutFEMMesh(Solver,Mesh,Perm,CreateBC,CreateBulk,&
+  FUNCTION CreateSplitFEMMesh(Solver,Mesh,Perm,CreateBC,CreateBulk,&
       AddMeshMode, Vlist,ProjectPrefix) RESULT( NewMesh )
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
@@ -1871,7 +1871,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Values(:)
     CHARACTER(:), ALLOCATABLE :: VarName
     TYPE(ValueList_t), POINTER :: Params
-    CHARACTER(*), PARAMETER :: Caller = 'CreateCutFEMMesh'
+    CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMMesh'
 
     SAVE MeshPerm
     
@@ -1932,7 +1932,7 @@ CONTAINS
       NewMesh % Nodes % z => Mesh % Nodes % z
     ELSE
       ! This mode is intended for the isoline that is created at the levelset.
-      NewMesh % Name = TRIM(Mesh % Name)//'-cutfem'
+      NewMesh % Name = TRIM(Mesh % Name)//'-splitfem'
       NodeCnt = MAXVAL(MeshPerm)
       NewMesh % OutputActive = .TRUE.
 
@@ -1950,13 +1950,13 @@ CONTAINS
       END DO
     END IF
       
-    CALL Info(Caller,'Number of nodes in CutFEM mesh: '//I2S(NodeCnt),Level=6)
+    CALL Info(Caller,'Number of nodes in SplitFEM mesh: '//I2S(NodeCnt),Level=6)
 
     NewMesh % NumberOfNodes = NodeCnt
     NewMesh % Nodes % NumberOfNodes = NodeCnt
 
     Params => CurrentModel % Simulation 
-    InterfaceBC = ListGetInteger( Params,'CutFEM Interface BC',Found )    
+    InterfaceBC = ListGetInteger( Params,'SplitFEM Interface BC',Found )    
         
     ! The 1st cycle just compute the number of elements.
     ! In between allocate the mesh elements.
@@ -2030,7 +2030,7 @@ CONTAINS
 
     IF(.NOT. AddMeshMode ) THEN
       ! if add mesh mode we can just use oldparallel structures
-      IF( ParEnv % PEs > 1 ) CALL CutFEMParallelMesh()
+      IF( ParEnv % PEs > 1 ) CALL SplitFEMParallelMesh()
     
       ! If we create interface only then we have original numbering and may use 
       CALL InterpolateLevelsetVariables()
@@ -2046,11 +2046,11 @@ CONTAINS
 #if 1
     ! We do not need to update the Mesh % ParallelInfo, only Matrix % ParallelInfo!
     
-    SUBROUTINE CutFEMParallelMesh()
+    SUBROUTINE SplitFEMParallelMesh()
 
       INTEGER :: istat,n0,n
           
-      CALL Info(Caller,'Creating ParallelInfo for CutFEM mesh structures!',Level=10)      
+      CALL Info(Caller,'Creating ParallelInfo for SplitFEM mesh structures!',Level=10)      
       IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % GlobalDOFS) ) THEN
         CALL Fatal(Caller,'Original mesh has no GlobalDOFs numbering!')
       END IF
@@ -2109,11 +2109,11 @@ CONTAINS
         IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
           !PRINT *,ParEnv % MYPE, 'nn:',nn,ne, MAXVAL(MeshPerm), NewMesh % NumberOfNodes, &
           !    SIZE(MeshPerm)
-          CALL Fatal('CutFEMParallelMesh','Neighbours not associated: '//I2S(i))
+          CALL Fatal('SplitFEMParallelMesh','Neighbours not associated: '//I2S(i))
         END IF
       END DO
       
-    END SUBROUTINE CutFEMParallelMesh
+    END SUBROUTINE SplitFEMParallelMesh
 
 #endif        
 
@@ -2129,16 +2129,11 @@ CONTAINS
       INTEGER, POINTER :: Perm(:)
       LOGICAL :: IsCutVar
 
-      DO iVar = -2,100            
-        IF(iVar == -2) THEN
-          ! This is possible slave solver variable living in cutfem space.
-          IF(.NOT. ASSOCIATED(SlaveSolver)) CYCLE
-          Var => SlaveSolver % Variable
-          VarName = Var % name
-          IsCutVar = .TRUE.
-        ELSE IF(iVar == -1) THEN
-          ! We want to always interpolate the primary variable!
-          ! This is the only variable living in the "CutFEM" universe.
+      DO iVar = -CurrentModel % NumberOfSolvers,100            
+        IF(iVar < 0) THEN
+          ! We want to always interpolate the primary variables!
+          ! These are the only variables living in the "SplitFEM" universe.
+          IF(.NOT. CurrentModel % Solvers(iVar) % SplitFEM) CYCLE
           Var => Solver % Variable
           VarName = Var % name
           IsCutVar = .TRUE.
@@ -2180,7 +2175,7 @@ CONTAINS
         END DO
           
         ! If the size of permutation is nn+ne it is a sign that the field is associated
-        ! to the CutFEM field.
+        ! to the SplitFEM field.
         IF(IsCutVar) THEN
           ntot = nn + ne
         ELSE
@@ -2272,7 +2267,7 @@ CONTAINS
       
     END SUBROUTINE AddelementData
 
-  END FUNCTION CreateCutFEMMesh
+  END FUNCTION CreateSplitFEMMesh
 !------------------------------------------------------------------------------
 
 
@@ -2318,7 +2313,7 @@ CONTAINS
     
     SAVE IsoMesh
 
-    IsoMesh => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+    IsoMesh => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
         .TRUE.,.FALSE.,.FALSE.,CurrentModel % Simulation,'isoline variable')     
     IsoMesh % Name = TRIM(Mesh % Name)//'-isomesh'
     
@@ -2355,14 +2350,14 @@ CONTAINS
     
     ! It turns out that if the polyline is not a zero levelset but something else
     ! we need to try to ensure that the direction is almost normal to the element segment.
-    VPhi = ListGetCReal( Params,'CutFEM critical angle',Found )
+    VPhi = ListGetCReal( Params,'SplitFEM critical angle',Found )
     IF(.NOT. Found) Vphi = 60.0_dp
     cosphi0 = COS(Vphi*PI/180.0_dp)
     
-    Nonzero = ListGetLogical( Params,'CutFEM signed distance nonzero',Found )
-    NormalMove = ListGetLogical( Params,'CutFEM normal move',Found )
-    NodeHistory = ListGetLogical( Params,'CutFEM node history',Found )
-    CheckLS = ListGetLogical( Params,'CutFEM check ls field',Found )
+    Nonzero = ListGetLogical( Params,'SplitFEM signed distance nonzero',Found )
+    NormalMove = ListGetLogical( Params,'SplitFEM normal move',Found )
+    NodeHistory = ListGetLogical( Params,'SplitFEM node history',Found )
+    CheckLS = ListGetLogical( Params,'SplitFEM check ls field',Found )
 
     ALLOCATE(NodeDiff(Mesh % NumberOfNodes), Trust(Mesh % NumberOfNodes))
     NodeDiff = 0.0_dp; Trust = .FALSE.
@@ -2858,8 +2853,8 @@ CONTAINS
         END IF
       END DO
 
-      IF(iSolver > 0) CALL Info('PopulatePolyline','Field is CutFEM field in primary solver: '//I2S(iSolver),Level=15)
-      IF(jSolver > 0) CALL Info('PopulatePolyline','Field is CutFEM field in slave solver: '//I2S(jSolver),Level=15)
+      IF(iSolver > 0) CALL Info('PopulatePolyline','Field is SplitFEM field in primary solver: '//I2S(iSolver),Level=15)
+      IF(jSolver > 0) CALL Info('PopulatePolyline','Field is SplitFEM field in slave solver: '//I2S(jSolver),Level=15)
       
       m = Isomesh % NumberOfBulkElements
       MyPe = ParEnv % MyPe + 1
@@ -3006,7 +3001,7 @@ CONTAINS
 
             IF(PEs > 1) THEN
             ! can't use SIZE(Mesh % ParallelInfo % NeighbourList(i0) % Neighbours)-1
-            ! as this includes all neighbours to the bulk element from Mesh not the ones to CutFEM
+            ! as this includes all neighbours to the bulk element from Mesh not the ones to SplitFEM
             ! so we have to check against shared globaldofs
               IF(IsoMesh % ParallelInfo % GInterface(i0) .OR. &
                   IsoMesh % ParallelInfo % GInterface(i1)) THEN
@@ -3579,7 +3574,7 @@ CONTAINS
                   EXIT
                 END IF
                 counter =counter+1
-                IF(counter>10) CALL FATAL('CutFEM', 'stuck in loop')
+                IF(counter>10) CALL FATAL('SplitFEM', 'stuck in loop')
               END DO
 
               ! adjust node
@@ -3630,10 +3625,10 @@ CONTAINS
       CALL DeallocateMeshLines(IsoMesh, RemoveLines)
       CALL DeallocatePolyLines(RemoveLines, nCol)
 
-      WRITE(Message,'(A,ES12.3)') 'Cutfem isoline length:',TotLineLen
+      WRITE(Message,'(A,ES12.3)') 'SplitFEM isoline length:',TotLineLen
       CALL Info('LevelSetUpdate',Message,Level=6)
 
-      CALL ListAddConstReal(CurrentModel % Simulation,'res: cutfem isoline length',TotLineLen )
+      CALL ListAddConstReal(CurrentModel % Simulation,'res: splitfem isoline length',TotLineLen )
       
       IF(ALLOCATED(Intersects)) THEN
         DO i=1,PEs
@@ -4210,7 +4205,7 @@ CONTAINS
 
   END SUBROUTINE LevelSetUpdate
   
-END MODULE CutFemUtils
+END MODULE SplitFemUtils
 
 !> \} ElmerLib
 

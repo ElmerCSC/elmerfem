@@ -57,7 +57,7 @@ MODULE DefUtils
    USE ContactUtils
    USE BoundaryConditionUtils
    USE ProjectorUtils
-   USE CutFEMUtils
+   USE SplitFEMUtils
 
    IMPLICIT NONE
 
@@ -645,8 +645,8 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( Solver % CutFEMActive ) THEN
-       ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
+     ELSE IF( Solver % SplitFEMActive ) THEN
+       ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
 
        n = Element % TYPE % NumberOfNodes
        Indexes => Element % NodeIndexes
@@ -852,8 +852,8 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( Solver % CutFEMActive ) THEN
-        ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
+     ELSE IF( Solver % SplitFEMActive ) THEN
+        ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
         
         n = Element % TYPE % NumberOfNodes
         Indexes => Element % NodeIndexes
@@ -869,7 +869,7 @@ CONTAINS
             Found0 = .FALSE.
             IF ( j>0 .AND. j<=nn ) THEN
               ! This is an original node,
-              ! or enriched one associated with edge assuming cutfem field
+              ! or enriched one associated with edge assuming splitfem field
               j = Variable % Perm(j)
               IF ( j>0 ) THEN
                 Found0 = .TRUE.
@@ -4032,7 +4032,7 @@ CONTAINS
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------
 
-   FUNCTION DefaultCutFEM(Solver) RESULT( Swap ) 
+   FUNCTION DefaultSplitFEM(Solver) RESULT( Swap ) 
      TYPE(Solver_t), TARGET, OPTIONAL :: Solver
 
      TYPE(Solver_t), POINTER :: pSolver
@@ -4051,20 +4051,20 @@ CONTAINS
        
      
      ! Nothing to do. 
-     IF(.NOT. pSolver % CutFEM ) RETURN
+     IF(.NOT. pSolver % SplitFEM ) RETURN
      
      Counter = Counter+1
 
      IF(MODULO(Counter,2) == 1 ) THEN
        ! We start with the original mesh, then swap to AddMesh.
        Swap = .TRUE. 
-       CALL CutFEMSetAddMesh(pSolver)
+       CALL SplitFEMSetAddMesh(pSolver)
      ELSE
        ! Nothing to swap this time. 
-       CALL CutFEMSetOrigMesh(pSolver)
+       CALL SplitFEMSetOrigMesh(pSolver)
      END IF
      
-   END FUNCTION DefaultCutFEM
+   END FUNCTION DefaultSplitFEM
       
 
 !> Solver the matrix equation related to the active solver

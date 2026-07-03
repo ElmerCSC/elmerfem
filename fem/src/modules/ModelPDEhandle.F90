@@ -89,7 +89,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     !----------------
     CALL DefaultInitialize()
 
-    ! These are to test cutfem
+    ! These are to test splitfem
     TotArea = 0.0_dp
     TotLen = 0.0_dp
     TotSrc = 0.0_dp
@@ -117,7 +117,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
 
-    IF(DefaultCutFEM()) GOTO 1
+    IF(DefaultSplitFEM()) GOTO 1
     
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -132,7 +132,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish()
   
-  IF( ListGetLogical( GetSolverParams(),'CutFEM',Found) &
+  IF( ListGetLogical( GetSolverParams(),'SplitFEM',Found) &
       .OR. ListGetLogical( GetSolverParams(),'Integ Test',Found) ) THEN
     CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total area',TotArea ) 
     CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total len',TotLen ) 
