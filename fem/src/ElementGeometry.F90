@@ -1816,6 +1816,10 @@ END FUNCTION PointFaceDistance
         mmax = 1
       END IF
 
+    CASE (30312, 40412)
+      !triangle/quad split along edge
+      IsCut = .FALSE.
+
     CASE( 40420, 40421 ) 
       ! Quadrilateral being cut on two edges. 
       

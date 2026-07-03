@@ -1126,7 +1126,7 @@ CONTAINS
       pElement % NodeIndexes(1) = nn + eIndexes(j)
       pElement % NodeIndexes(2) = nIndexes(j2)
 
-    CASE( 30302 )       
+    CASE( 30302, 30312 )       
       ! Find the two nodes that are cut.
       DO j=1,3
         IF( CutDof( nIndexes(j) ) ) EXIT
@@ -1188,7 +1188,7 @@ CONTAINS
       pElement % NodeIndexes(1) = nn + eIndexes(j)
       pElement % NodeIndexes(2) = nIndexes(j2)
 
-    CASE( 40402 )      
+    CASE( 40402, 40412 )      
       DO j=1,4
         IF(CutDof( nIndexes(j))) EXIT
       END DO
@@ -1975,6 +1975,7 @@ CONTAINS
           !IF(.NOT. IsActive) CYCLE      
           IF(IsCut) THEN
 10          pElement => CutInterfaceBulk(Element,isCut,isMore,Sweep)        
+            IF(.NOT. IsCut) CYCLE
             IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
               nBulk = nBulk + 1
               IF(Sweep==1) CALL AddElementData(pElement,nBulk)
@@ -3771,7 +3772,7 @@ CONTAINS
       Intersects(MyPE) % Found = WorkLog
       DEALLOCATE(WorkLog)
 
-      ALLOCATE(WorkInt(Size,4))
+      ALLOCATE(WorkInt(Size2,4))
       WorkInt = Intersects(MyPE) % Elements(1:Size2,:)
       DEALLOCATE(Intersects(MyPE) % Elements)
       ALLOCATE(Intersects(MyPE) % Elements(Size2,4))
