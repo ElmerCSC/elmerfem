@@ -54,6 +54,7 @@ MODULE SplitFemUtils
   USE SolveCore, ONLY : SolveLinearSystem
   USE ParallelUtils
   USE MeshBasics, ONLY : PointInMesh
+  USE MeshTransform, ONLY : DetectExtrudedStructure
   
   IMPLICIT NONE
 
@@ -104,7 +105,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
-    INTEGER :: i,j,k,nn,ne,body_in,body_out,body_cut,InsideCnt(3),dofs
+    INTEGER :: i,i1,i2,j,k,nn,ne,body_in,body_out,body_cut,InsideCnt(3),dofs
     REAL(KIND=dp) :: h1,h2,hprod,Eps,r,MaxRat
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Variable_t), POINTER :: Var, PhiVar
@@ -208,37 +209,39 @@ CONTAINS
 
     ! First mark the cut nodes.
     ! These could maybe be part of the same loop as well but I separated when testing something.
-    DO i=1, Mesh % NumberOfEdges
+    DO i=1, ne
       NodeIndexes => Mesh % Edges(i) % NodeIndexes
       IF(ANY(PhiPerm(NodeIndexes) == 0)) CYCLE
-      h1 = PhiValues(PhiPerm(NodeIndexes(1)))
-      h2 = PhiValues(PhiPerm(NodeIndexes(2)))
+      i1 = NodeIndexes(1)
+      i2 = NodeIndexes(2)
+      h1 = PhiValues(PhiPerm(i1))
+      h2 = PhiValues(PhiPerm(i2))
       hprod = h1*h2            
       IF( hprod < 0.0_dp ) THEN
         r = ABS(h2)/(ABS(h1)+ABS(h2))        
         Hit = .FALSE.
         IF( UseAbsEps ) THEN
           IF(ABS(h2) < Eps ) THEN
-            CutDof(NodeIndexes(2)) = .TRUE.
+            CutDof(i2) = .TRUE.
             Hit = .TRUE.
           END IF
           IF(ABS(h1) < Eps ) THEN
-            CutDof(NodeIndexes(1)) = .TRUE.
+            CutDof(i1) = .TRUE.
             Hit = .TRUE.
           END IF
         ELSE
           IF( r <= Eps ) THEN
-            CutDof(NodeIndexes(2)) = .TRUE.
+            CutDof(i2) = .TRUE.
             Hit = .TRUE.
           END IF
           IF((1.0-r < Eps) ) THEN
-            CutDof(NodeIndexes(1)) = .TRUE.
+            CutDof(i1) = .TRUE.
             Hit = .TRUE.
           END IF
         END IF
       ELSE IF( ABS(hprod) < 1.0d-20 ) THEN
-        IF(ABS(h1) < 1.0e-20) CutDof(NodeIndexes(1)) = .TRUE. 
-        IF(ABS(h2) < 1.0e-20) CutDof(NodeIndexes(2)) = .TRUE.
+        IF(ABS(h1) < 1.0e-20) CutDof(i1) = .TRUE. 
+        IF(ABS(h2) < 1.0e-20) CutDof(i2) = .TRUE.
       END IF
     END DO
 
@@ -279,11 +282,13 @@ CONTAINS
     ! This is an add'hoc value that represents the maximum aspect ratio of elements in the mesh.
     MaxRat = 2.0_dp
     
-    DO i=1, Mesh % NumberOfEdges
+    DO i=1, ne
       NodeIndexes => Mesh % Edges(i) % NodeIndexes
       IF(ANY(PhiPerm(NodeIndexes)==0)) CYCLE
-      h1 = PhiValues(PhiPerm(NodeIndexes(1)))
-      h2 = PhiValues(PhiPerm(NodeIndexes(2)))
+      i1 = NodeIndexes(1)
+      i2 = NodeIndexes(2)
+      h1 = PhiValues(PhiPerm(i1))
+      h2 = PhiValues(PhiPerm(i2))
       hprod = h1*h2            
       IF( hprod < 0.0_dp ) THEN
         r = ABS(h2)/(ABS(h1)+ABS(h2))        
@@ -292,9 +297,9 @@ CONTAINS
         ! We may have a sloppier rule if the dof is already cut?
         ! If the rule is exactly the same then no need for separate loop.
         IF( r <= MaxRat * Eps ) THEN
-          IF(CutDof(NodeIndexes(2))) CYCLE
+          IF(CutDof(i2)) CYCLE
         ELSE IF((1.0-r < MaxRat * Eps) ) THEN
-          IF(CutDof(NodeIndexes(1))) CYCLE
+          IF(CutDof(i1)) CYCLE
         END IF
 
         j = j+1 
@@ -309,16 +314,34 @@ CONTAINS
 
         ! We update nodes so that the element on-the-fly can point to then using NodeIndexes. 
         IF( UpdateCoords ) THEN
-          Mesh % Nodes % x(nn+i) = (1-r) * Mesh % Nodes % x(NodeIndexes(2)) + &
-              r * Mesh % Nodes % x(NodeIndexes(1))
-          Mesh % Nodes % y(nn+i) = (1-r) * Mesh % Nodes % y(NodeIndexes(2)) + &
-              r * Mesh % Nodes % y(NodeIndexes(1))
-          Mesh % Nodes % z(nn+i) = (1-r) * Mesh % Nodes % z(NodeIndexes(2)) + &
-              r * Mesh % Nodes % z(NodeIndexes(1))
+          Mesh % Nodes % x(nn+i) = (1-r) * Mesh % Nodes % x(i2) + r * Mesh % Nodes % x(i1)
+          Mesh % Nodes % y(nn+i) = (1-r) * Mesh % Nodes % y(i2) + r * Mesh % Nodes % y(i1)
+          Mesh % Nodes % z(nn+i) = (1-r) * Mesh % Nodes % z(i2) + r * Mesh % Nodes % z(i1)
         END IF
       END IF
     END DO
 
+
+    ! Assuming currently that for 3D meshes we have extruded structure and levelset
+    ! is given at the surface. Then inherit the interpolation from the top edges to
+    ! other edges as well. 
+    IF( Mesh % MeshDim == 3 ) THEN
+      CALL Info(Caller,'Inherint surface cuts and interpolation to 3D mesh!',Level=7)
+      BLOCK
+        INTEGER, POINTER :: TopPointer(:)
+        CALL DetectExtrudedStructure( Mesh, Solver, &
+            TopNodePointer = TopPointer, DoEdges = .TRUE. )
+        DO i=1,nn + ne
+          j = TopPointer(i)
+          IF(j>0 .AND. j /= i) THEN
+            IF(i>nn) CutInterp(i-nn) = CutInterp(j-nn)
+            CutDof(i) = CutDof(j)
+          END IF
+        END DO        
+      END BLOCK
+    END IF
+
+    
     ! Should we update the original coords for nodes which closely match the levelset but not exactly.
     ! This would be the case if we want to follow the body fitted shape of a object as closely as possible. 
     ! We would not want to do in transient cases 
@@ -332,9 +355,10 @@ CONTAINS
         DO i=1, Mesh % NumberOfEdges
           NodeIndexes => Mesh % Edges(i) % NodeIndexes
           IF(.NOT. ANY(CutDOF(NodeIndexes))) CYCLE
-
-          h1 = PhiValues(PhiPerm(NodeIndexes(1)))
-          h2 = PhiValues(PhiPerm(NodeIndexes(2)))
+          i1 = NodeIndexes(1)
+          i2 = NodeIndexes(2)
+          h1 = PhiValues(PhiPerm(i1))
+          h2 = PhiValues(PhiPerm(i2))
           hprod = h1*h2                    
           IF( hprod >= 0.0_dp ) CYCLE
 
@@ -351,12 +375,9 @@ CONTAINS
           IF(.NOT. CutDof(k)) CYCLE
           IF(MovedNode(k)) CYCLE
 
-          TmpCoords(k,1) = (1-r) * Mesh % Nodes % x(NodeIndexes(2)) + &
-              r * Mesh % Nodes % x(NodeIndexes(1))
-          TmpCoords(k,2) = (1-r) * Mesh % Nodes % y(NodeIndexes(2)) + &
-              r * Mesh % Nodes % y(NodeIndexes(1))
-          TmpCoords(k,3) = (1-r) * Mesh % Nodes % z(NodeIndexes(2)) + &
-              r * Mesh % Nodes % z(NodeIndexes(1))
+          TmpCoords(k,1) = (1-r) * Mesh % Nodes % x(i2) + r * Mesh % Nodes % x(i1)
+          TmpCoords(k,2) = (1-r) * Mesh % Nodes % y(i2) + r * Mesh % Nodes % y(i1)
+          TmpCoords(k,3) = (1-r) * Mesh % Nodes % z(i2) + r * Mesh % Nodes % z(i1)
           MovedNode(k) = .TRUE.
         END DO
         k = COUNT(MovedNode)
