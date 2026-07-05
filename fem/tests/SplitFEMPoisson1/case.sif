@@ -3,15 +3,14 @@
 !
 ! This version includes almost everything in the library. 
 !
-! P.R. 24.2.2025
+! P.R. 24.2.2025, 5.7.2026
 
 Header
   Mesh DB "." "square-tri"
-!  Mesh DB "." "square-quad"
 End
 
 Simulation
-  Max Output Level = 25
+  Max Output Level = 7
   Coordinate System = String Cartesian
   Simulation Type = Transient 
   Steady State Max Iterations = 1
@@ -121,44 +120,7 @@ Solver 1
 
   Exported Variable 1 = Surface
 
-
   SplitFEM = Logical True
-
-
-! This should be generalized. 
-  Levelset Velocity 1 = Real $0.006
-  Levelset Velocity 2 = Real $0.002
-  
-  SplitFem = logical True
-  SplitFem Epsilon = Real 1.0e-3
-!  SplitFem Epsilon Absolute = Logical True
-
-! What BC index will be given for on-the-fly BC. 
-  SplitFem Interface BC = Integer 4
-! What index will be given for negative levelset.
-  SplitFEM inside body = integer 1
-! for positive levelset.   
-  SplitFEM outside body = integer 0
-
-! Should we extend using FEM
-  SplitFem extend = logical true
-! Should be extrapolate using edges (alternative). 
-!  SplitFEM extrapolate = Logical True
-
-! Which variables to project to isoline
-  Isoline Variable 1 = String "Potential"
-  Isoline Variable 2 = String "Surface"
-
-! Which variables to project to 2D viz. mesh.
-  Project Variable 1 = Potential
-  Project Variable 2 = Surface
-
-! Should we save the actural splitted mesh in 2D? 
-!  SplitFEM Mesh Save = Logical True
-
-! We define a levelset to be used.
-  Levelset Variable = String "Surface"
-
 End
 
 

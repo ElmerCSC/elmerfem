@@ -321,23 +321,37 @@ CONTAINS
       END IF
     END DO
 
-
+    i = COUNT(CutDof(1:nn))
+    CALL Info(Caller,'Number of split nodes: '//I2S(i),Level=7)
+    i = COUNT(CutDof(nn+1:nn+ne))
+    CALL Info(Caller,'Number of cut edges: '//I2S(i),Level=7)   
+    
     ! Assuming currently that for 3D meshes we have extruded structure and levelset
     ! is given at the surface. Then inherit the interpolation from the top edges to
     ! other edges as well. 
     IF( Mesh % MeshDim == 3 ) THEN
       CALL Info(Caller,'Inherint surface cuts and interpolation to 3D mesh!',Level=7)
       BLOCK
-        INTEGER, POINTER :: TopPointer(:)
+        INTEGER, POINTER :: TopPointer(:), BotPointer(:)
+        CALL ListAddNewInteger( Solver % Values,'Active Coordinate',3)
         CALL DetectExtrudedStructure( Mesh, Solver, &
-            TopNodePointer = TopPointer, DoEdges = .TRUE. )
+            TopNodePointer = TopPointer, BotNodePointer = BotPointer, DoEdges = .TRUE. )
+        k = 0
         DO i=1,nn + ne
           j = TopPointer(i)
           IF(j>0 .AND. j /= i) THEN
             IF(i>nn) CutInterp(i-nn) = CutInterp(j-nn)
-            CutDof(i) = CutDof(j)
+            CutDof(i) = CutDof(j)              
+            k = k+1
           END IF
-        END DO        
+        END DO
+
+        CALL Info(Caller,'Number of new entries in CutDof: '//I2S(k),Level=12)        
+        i = COUNT(CutDof(1:nn))
+        CALL Info(Caller,'Number of split nodes in 3D: '//I2S(i),Level=7)
+        i = COUNT(CutDof(nn+1:nn+ne))
+        CALL Info(Caller,'Number of cut edges in 3D: '//I2S(i),Level=7)
+        DEALLOCATE(TopPointer,BotPointer)
       END BLOCK
     END IF
 
@@ -395,8 +409,6 @@ CONTAINS
     
     IF(InfoActive(25)) THEN
       PRINT *,'CutInterp interval:',MINVAL(CutInterp),MAXVAL(CutInterp)    
-      PRINT *,'Nodes split',COUNT(CutDof(1:nn))
-      PRINT *,'Edges cut',COUNT(CutDof(nn+1:nn+ne))
     END IF
       
     ! Set the material for inside/outside or interface material.
