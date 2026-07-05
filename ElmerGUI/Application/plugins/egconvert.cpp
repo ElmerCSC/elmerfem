@@ -3369,7 +3369,7 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
 {
   int noknots,noelements,maxnodes,material;
   int allocated,dim=0, elemnodes=0, elembasis=0, elemtype;
-  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen,entitydim;
+  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen,entitydim=0;
   int *bclabel, *domlabel, n_label=0, offset, bcoffset, domoffset, *bcinfo;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
   char entityname[MAXNAMESIZE];
@@ -4358,7 +4358,7 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, tagpart, elemnodes=0,maxelemtype;
   int tagmat,verno;
-  int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
+  int physvolexist, physsurfexist,**tagmap=NULL,tagsize=0,maxtag[4];
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
@@ -4801,7 +4801,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, tagpart, elemnodes=0,maxelemtype;
   int tagmat,verno,meshdim,tagdim,frcount;
-  int physvolexist, physsurfexist,**tagmap,tagsize;
+  int physvolexist, physsurfexist,**tagmap=NULL,tagsize=0;
   int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4];
   int maxphystag[4],minphystag[4],tagoffset[4],phystagoffset[4];
   FILE *in;
@@ -5572,7 +5572,7 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
-  int errnum,usetaggeom,i;
+  int errnum=0,usetaggeom=0,i;
 
   /* keeprophans - Should we keep lower order elements not associated to any 
      higher order entity? ElmerGUI certainly does not like it. */
@@ -6999,7 +6999,7 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
 /* Load the mesh from format of Flux Cedrat in TRA format. */
 {
   int noknots,noelements,maxnodes,dim,elmertype;
-  int nonodes,matind,noregions,mode;
+  int nonodes,matind,noregions=0,mode;
   int debug;
   int *elementtypes;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
@@ -7337,7 +7337,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 /* Load the mesh from format of Flux Cedrat in PF3 format. */
 {
   int noknots,noelements,maxnodes,dim,elmertype;
-  int nonodes,matind,noregions,mode;
+  int nonodes,matind,noregions=0,mode;
   int dimplusone, maxlinenodes, nodecnt;
   int debug;
   int *elementtypes;
