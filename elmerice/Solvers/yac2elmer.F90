@@ -497,7 +497,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
       END DO
       ! Write total liquid ice sheet flux to log
-      WRITE(Message,'(A,E14.6)') 'Sum of liquid_ice_sheet_flux_field: ', SUM(liquid_ice_sheet_flux_field(:,1))
+      WRITE(Message,'(A,F15.3)') 'Sum of liquid_ice_sheet_flux_field: ', SUM(liquid_ice_sheet_flux_field(:,1))
       CALL INFO(SolverName, Message, Level=3)
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)
