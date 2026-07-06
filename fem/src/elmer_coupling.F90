@@ -697,6 +697,44 @@ CONTAINS
 
     INTEGER :: info, err
 
+    IF (yac_fget_role_from_field_id(liquid_ice_sheet_flux_field_id) == &
+        YAC_EXCHANGE_TYPE_SOURCE) THEN
+
+      CALL yac_fget_action(liquid_ice_sheet_flux_field_id, info)
+
+      IF (is_root_rank) THEN
+
+        ! get the action executed by YAC in the next put operation called for
+        ! the liquid_ice_sheet_flux and print out some information
+        PRINT *, "ELMER: call put for field: ", TRIM(liquid_ice_sheet_flux_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(liquid_ice_sheet_flux_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
+          (info == YAC_ACTION_REDUCTION)) THEN
+
+        ! get data to be sent from elmer
+
+        ! execute put operation for liquid_ice_sheet_flux field
+        ! * if this is a coupling timestep, this will block until the data has
+        !   been received
+        ! * if this is not a coupling timestep, liquid_ice_sheet_flux field buffer
+        !   is left untouched and routine will return immediately
+        CALL yac_fput( &
+          liquid_ice_sheet_flux_field_id, SIZE(liquid_ice_sheet_flux_field, 1), &
+          SIZE(liquid_ice_sheet_flux_field, 2), liquid_ice_sheet_flux_field, &
+          info, err)
+      ELSE IF (info == YAC_ACTION_NONE) THEN
+        CALL yac_fupdate(liquid_ice_sheet_flux_field_id)
+      ELSE
+          PRINT *, "ELMER: unexpected action for field: ", TRIM(liquid_ice_sheet_flux_field_name), &
+                   " action: ", TRIM(yac_action_to_string(info))
+      END IF
+    END IF
+
     ! checks whether the ocean temperature field is defined as a target
     ! in a couple
     IF (yac_fget_role_from_field_id(t_oce_field_id) == &
@@ -804,40 +842,6 @@ CONTAINS
     END IF
     ! checks whether the liquid ice sheet flux field is defined as a source
     ! in a couple
-    IF (yac_fget_role_from_field_id(liquid_ice_sheet_flux_field_id) == &
-        YAC_EXCHANGE_TYPE_SOURCE) THEN
-
-      CALL yac_fget_action(liquid_ice_sheet_flux_field_id, info)
-
-      IF (is_root_rank) THEN
-
-        ! get the action executed by YAC in the next put operation called for
-        ! the liquid_ice_sheet_flux and print out some information
-        PRINT *, "ELMER: call put for field: ", TRIM(liquid_ice_sheet_flux_field_name), &
-                 " datatime: ", TRIM(yac_fget_field_datetime(liquid_ice_sheet_flux_field_id)), &
-                 " action: ", TRIM(yac_action_to_string(info))
-      END IF
-
-      ! if this was a coupling timestep
-      IF ((info == YAC_ACTION_COUPLING) .OR. &
-          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
-          (info == YAC_ACTION_REDUCTION)) THEN
-
-        ! get data to be sent from elmer
-
-        ! execute put operation for liquid_ice_sheet_flux field
-        ! * if this is a coupling timestep, this will block until the data has
-        !   been received
-        ! * if this is not a coupling timestep, liquid_ice_sheet_flux field buffer
-        !   is left untouched and routine will return immediately
-        CALL yac_fput( &
-          liquid_ice_sheet_flux_field_id, SIZE(liquid_ice_sheet_flux_field, 1), &
-          SIZE(liquid_ice_sheet_flux_field, 2), liquid_ice_sheet_flux_field, &
-          info, err)
-      ELSE IF (info == YAC_ACTION_NONE) THEN
-        CALL yac_fupdate(liquid_ice_sheet_flux_field_id)
-      END IF
-    END IF
 
   END SUBROUTINE elmer_icon_interface
 
