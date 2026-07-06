@@ -489,15 +489,20 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 !!!!!!!!!! DO WE HAVE TO INITIALIZE WITH EVERY CALL ? !!!!!!!!!!!!!!
   IF (couple_to_icon) THEN
-      CALL INFO(SolverName, 'BEFORE ELMER ICON-O INTERFACE', Level=3)
+      CALL INFO(SolverName, 'Starting coupling Elmer -> ICON-O', Level=3)
+      CALL INFO(SolverName, 'Getting Elmer liquid and solid flux variables', Level=30)
       ! Update bmb_flux_field before sending to ICON
       bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
       DO t=1, GetNOFActive(Solver)
         liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
       END DO
+      ! Write total liquid ice sheet flux to log
+      WRITE(Message,'(A,E14.6)') 'Sum of liquid_ice_sheet_flux_field: ', SUM(liquid_ice_sheet_flux_field(:,1))
+      CALL INFO(SolverName, Message, Level=3)
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)
-      CALL INFO(SolverName, 'AFTER ELMER ICON-O INTERFACE', Level=3)
+      CALL INFO(SolverName, 'Finished coupling Elmer -> ICON-O', Level=3)
+      CALL INFO(SolverName, 'Writing variables from ICON-O into Elmer variables...', Level=30)
       t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
       sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
       IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
@@ -511,16 +516,15 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF (couple_to_ebfm) THEN
-      CALL INFO(SolverName, 'BEFORE ELMER EBFM INTERFACE', Level=3)
+      CALL INFO(SolverName, 'Starting coupling Elmer -> EBFM', Level=3)
       ! couple with EBFM
       CALL elmer_ebfm_interface(is_root_rank)
-      CALL INFO(SolverName, 'AFTER ELMER EBFM INTERFACE', Level=3)
-
+      CALL INFO(SolverName, 'Finished coupling Elmer -> EBFM', Level=3)
+      CALL INFO(SolverName, 'Writing variables from EBFM into Elmer variables...', Level=30)
       t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )
       smbVar => VariableGet( Mesh % Variables, 'smb' )
       runoffVar => VariableGet( Mesh % Variables, 'runoff' )
       ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
-      CALL INFO(SolverName, 'AFTER GETTING VARIABLES', Level=3)
       IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
         CALL FATAL(SolverName,'Elmer variables not associated')
       END IF
@@ -544,13 +548,13 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
           'Add  Exported Variable = -elem "runoff"  to the YAC2Elmer solver block in the SIF.')
       END IF
 
-      CALL INFO(SolverName, 'BEFORE WRITING NODAL VALUES', Level=3)
+      CALL INFO(SolverName, 'Writing nodal variables...', Level=30)
        !write over values for nodes
       DO i=1, Mesh % NumberOfNodes
         t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
         surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
       END DO
-      CALL INFO(SolverName, 'BEFORE WRITING ELEMENT VALUES', Level=3)
+      CALL INFO(SolverName, 'Writing cell variables....', Level=30)
       ! write over values for elements
       DO t=1, GetNOFActive(Solver)
          smbVar  % Values(smbVar %  Perm(t)) = smb_field(t,1)
