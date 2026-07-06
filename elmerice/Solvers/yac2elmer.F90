@@ -488,6 +488,27 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     CALL INFO(SolverName, "YAC coupling setup done", Level=1)
   END IF
 !!!!!!!!!! DO WE HAVE TO INITIALIZE WITH EVERY CALL ? !!!!!!!!!!!!!!
+  IF (couple_to_icon) THEN
+      CALL INFO(SolverName, 'BEFORE ELMER ICON-O INTERFACE', Level=3)
+      ! Update bmb_flux_field before sending to ICON
+      bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
+      DO t=1, GetNOFActive(Solver)
+        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
+      END DO
+      ! couple with ICON-O
+      CALL elmer_icon_interface(is_root_rank)
+      CALL INFO(SolverName, 'AFTER ELMER ICON-O INTERFACE', Level=3)
+      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
+      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
+      IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
+        CALL FATAL(SolverName,'Elmer variables not associated')
+      END IF
+      ! write over values for nodes
+      DO i=1, Mesh % NumberOfNodes
+        t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_post_field(i,1)
+        sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_post_field(i,1)
+      END DO
+  END IF
 
   IF (couple_to_ebfm) THEN
       CALL INFO(SolverName, 'BEFORE ELMER EBFM INTERFACE', Level=3)
@@ -539,28 +560,6 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       !PRINT *, "Size of clt_field", SIZE(clt_field, 1),"First entry:", clt_field(1,1)
       !CALL INFO(SolverName, "Test output start", Level=1)
       !CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-  END IF
-
-  IF (couple_to_icon) THEN
-      CALL INFO(SolverName, 'BEFORE ELMER ICON-O INTERFACE', Level=3)
-      ! Update bmb_flux_field before sending to ICON
-      bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
-      DO t=1, GetNOFActive(Solver)
-        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
-      END DO
-      ! couple with ICON-O
-      CALL elmer_icon_interface(is_root_rank)
-      CALL INFO(SolverName, 'AFTER ELMER ICON-O INTERFACE', Level=3)
-      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
-      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
-      IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
-        CALL FATAL(SolverName,'Elmer variables not associated')
-      END IF
-      ! write over values for nodes
-      DO i=1, Mesh % NumberOfNodes
-        t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_post_field(i,1)
-        sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_post_field(i,1)
-      END DO
   END IF
 
   CALL INFO(SolverName,'Coupling step done', Level=1)
