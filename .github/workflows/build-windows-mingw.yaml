@@ -32,10 +32,6 @@ jobs:
         msystem: [UCRT64]
         dependencies: [bundled, external]
         mpi: [with, without]
-        include:
-          - dependencies: external
-            external-packages: parpack:p
-            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON
 
     steps:
       - name: get CPU name
@@ -46,10 +42,11 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@v7
         with:
-          submodules: recursive
+          submodules: ${{ matrix.mpi == 'with' && matrix.dependencies == 'bundled' && 'recursive' || 'false' }}
           fetch-depth: 0
 
       - name: unshallow Zoltan submodule
+        if: ${{ matrix.mpi == 'with' && matrix.dependencies == 'bundled' }}
         shell: bash
         run: git -C contrib/Zoltan_v3.83 fetch --unshallow 2>/dev/null || true
 
@@ -88,13 +85,14 @@ jobs:
             netcdf:p 
             openslide:p
             openvdb:p
+            ${{ matrix.dependencies == 'external' && 'parpack:p' || ' ' }}
             pdal:p
             scnlib:p
             seacas:p
+            ${{ matrix.mpi == 'with' && matrix.dependencies == 'external' && 'trilinos:p' || ' ' }}
             unixodbc:p
             utf8cpp:p
             opencascade:p
-            ${{ matrix.external-packages }}
 
       - name: install MSMPI
         if: matrix.mpi == 'with'
@@ -109,6 +107,11 @@ jobs:
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           declare -a _extra_config
+          if [ "${{ matrix.dependencies }}" == "external" ]; then
+            _extra_config+=("-DEXTERNAL_UMFPACK=ON"
+                            "-DEXTERNAL_ARPACK=ON"
+                            "-DEXTERNAL_PARPACK=ON")
+          fi
           if [ "${{ matrix.mpi }}" == "with" ]; then
             _extra_config+=("-DWITH_MPI=ON"
                             "-DMPI_TEST_MAXPROC=$(nproc)"
@@ -120,6 +123,9 @@ jobs:
                             "-DWITH_Mumps=ON"
                             "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dmo mumps-zmo mumps-smo mumps-cmo)"
                             "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo mumps-zmo mumps-smo mumps-cmo)")
+            if [ "${{ matrix.dependencies }}" == "external" ]; then
+              _extra_config+=("-DUSE_SYSTEM_ZOLTAN=ON")
+            fi
           else
             _extra_config+=("-DWITH_MPI=OFF"
                             "-DWITH_Zoltan=OFF"
@@ -144,7 +150,6 @@ jobs:
             -DWITH_MATC=ON \
             -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
-            ${{ matrix.external-cmake-flags }} \
             ..
 
       - name: exclude build output from Windows Defender scanning
