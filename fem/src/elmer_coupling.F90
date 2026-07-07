@@ -134,7 +134,7 @@ MODULE elmer_ebfm_coupling
   ! Fields Elmer sends to EBFM
 
   INTEGER :: surface_height_field_id = -1
-  CHARACTER(LEN=*), PARAMETER :: surface_height_field_name = "h"
+  CHARACTER(LEN=*), PARAMETER :: surface_height_field_name = "surface_elevation"
   INTEGER :: surface_height_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: surface_height_field(:,:)
 
