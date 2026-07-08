@@ -476,7 +476,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              TransientSimulation,&
               ALEFormulation,Eacabf,Elibmassbf, SEM)
 
-        IF (ComputeMassBalance) THEN
+        IF ((ComputeMassBalance).AND.(.NOT. CutFEMon)) THEN
           acabf % Values ( acabf % Perm (Element % ElementIndex)) = Eacabf
           libmassbf % Values (libmassbf%Perm(Element % ElementIndex))= Elibmassbf
         ENDIF
