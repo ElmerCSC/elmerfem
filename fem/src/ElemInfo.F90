@@ -422,6 +422,7 @@ CONTAINS
        CALL EvalSecondDerivativesRef(Element, pSolver, u, v, w, n, dim, Basis, &
            MAX(SIZE(Nodes % x),SIZE(ddBasisddx)), ddLBasisddx)
 
+#if 0
      ip_slot = 0
      IF (PRESENT(ip_index)) ip_slot = ip_index
      ! Evaluate reference basis functions and local gradients at (u,v,w).
@@ -446,11 +447,13 @@ CONTAINS
            END IF
          END DO
        END IF
+#endif
 
        CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
        CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
 
 
+#if 0
        ! Store in cache for non-P elements if space available
        IF ( ip_slot > 0 ) THEN
          ip = ip_slot
@@ -467,6 +470,7 @@ CONTAINS
          Element % Type % BasisCacheCount = MAX(Element % Type % BasisCacheCount, ip)
        END IF
      END BLOCK RefBasisBlock
+#endif
 
      q = n
      CALL EvalPElementBasis(Element, pSolver, u, v, w, n, q, Basis, dLBasisdx, &
