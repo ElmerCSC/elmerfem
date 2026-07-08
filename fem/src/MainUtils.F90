@@ -5681,7 +5681,10 @@ END BLOCK
          pMatrix => Solver % Matrix
          DoCreate = ListGetLogical(Params,'CutFEM Create',Found )
 
-         IF(DoCreate) CALL CreateCutFEMPerm(Solver,.TRUE.)       
+         IF (.NOT.ASSOCIATED(Solver % ActiveElements)) &
+            CALL SetActiveElementsTable( Model, Solver)       
+
+         IF(DoCreate) CALL CreateCutFEMPerm(Solver,.TRUE.)
 
          CALL CreateCutFEMVariable(Solver)
          Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
