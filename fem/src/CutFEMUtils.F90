@@ -676,7 +676,7 @@ CONTAINS
   ! there can be all possible connections. 
   !-----------------------------------------------------------------------
   FUNCTION CreateCutFemMatrix(Solver,Perm,MimicMat) RESULT ( A ) 
-    TYPE(Solver_t) :: Solver
+    TYPE(Solver_t),TARGET :: Solver
     INTEGER :: Perm(:)
     TYPE(Matrix_t), POINTER :: A
     TYPE(Matrix_t), POINTER, OPTIONAL :: MimicMat
@@ -695,6 +695,8 @@ CONTAINS
     ! Create new matrix
     A => AllocateMatrix()
     A % FORMAT = MATRIX_LIST
+
+    A % Solver => Solver
 
     ! Add extreme entry since list matrix likes to be allocated at once. 
     n = dofs * MAXVAL(Perm)
