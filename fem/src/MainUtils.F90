@@ -5688,6 +5688,9 @@ END BLOCK
 
          CALL CreateCutFEMVariable(Solver)
          Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
+         IF(ASSOCIATED(pMatrix % ParMatrix)) THEN ! prevents error on free parmatrix
+            pMatrix % ParMatrix % SplittedMatrix % InsideMatrix % Solver => pMatrix % Solver
+         END IF
          CALL FreeMatrix(pMatrix)
 
          IF(DoCreate) THEN
