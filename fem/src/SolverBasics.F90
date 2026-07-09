@@ -4353,12 +4353,12 @@ END FUNCTION SearchNodeL
             IF ( j>0 ) THEN
               ElemPhi(i) = IntegVar % Values(j)
             END IF
-          ELSE IF( ASSOCIATED( Solver % Mesh % CutInterp ) ) THEN
+          ELSE IF( ASSOCIATED( CurrentModel % CutInterp ) ) THEN
             nn = SIZE(IntegVar % Perm)
             j1 = IntegVar % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
             j2 = IntegVar % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
             IF(j1 > 0 .AND. j2 > 0) THEN
-              r = Solver % Mesh % CutInterp(j-nn)
+              r = CurrentModel % CutInterp(j-nn)
               ElemPhi(i) = r*IntegVar % Values(j1) + (1-r)*IntegVar % Values(j2)
             END IF
           END IF

@@ -186,9 +186,9 @@ CONTAINS
        ALLOCATE( Matrix % ParallelInfo )
 
 
-       IF( ListGetLogical( Solver % Values,'CutFEM', Found ) ) THEN 
+       IF( ListGetLogical( Solver % Values,'SplitFEM', Found ) ) THEN 
 
-         CALL Info('ParallelInitMatrix','Creating ParallelInfo assuming CutFEM mesh!',Level=12)
+         CALL Info('ParallelInitMatrix','Creating ParallelInfo assuming SplitFEM mesh!',Level=12)
          
          MeshPI => Mesh % ParallelInfo
          MatrixPI => Matrix % ParallelInfo
@@ -240,7 +240,7 @@ CONTAINS
            END DO
          END BLOCK       
 
-         CALL Info('ParallelInitMatrix','Done ParallelInfo assuming CutFEM mesh!',Level=12)
+         CALL Info('ParallelInitMatrix','Done ParallelInfo assuming SplitFEM mesh!',Level=12)
 
          
        ELSE IF ( Matrix % DGMatrix ) THEN
@@ -384,7 +384,7 @@ CONTAINS
 
          
        ELSE
-         ! Default parallel numbering, not CutFEM or Discontinuous Galerkin!
+         ! Default parallel numbering, not SplitFEM or Discontinuous Galerkin!
          !--------------------------------------------------------------------
          
          n = Matrix % NumberOfRows

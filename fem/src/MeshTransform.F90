@@ -52,7 +52,7 @@ CONTAINS
   SUBROUTINE DetectExtrudedStructure( Mesh, Solver, ExtVar, &
       TopNodePointer, BotNodePointer, UpNodePointer, DownNodePointer, &
       MidNodePointer, MidLayerExists, NumberOfLayers, NodeLayer, &
-      MaskVar )
+      MaskVar, DoEdges )
     
     USE CoordinateSystems
     IMPLICIT NONE
@@ -66,6 +66,7 @@ CONTAINS
     INTEGER, OPTIONAL :: NumberOfLayers
     LOGICAL, OPTIONAL :: MidLayerExists
     TYPE(Variable_t), TARGET, OPTIONAL :: MaskVar
+    LOGICAL, OPTIONAL :: DoEdges
 !-----------------------------------------------------------------------------
     REAL(KIND=dp) :: Direction(3)
     TYPE(ValueList_t), POINTER :: Params
@@ -75,7 +76,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(Nodes_t), POINTER :: MeshNodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit, bc_ind, jmin, jmax, elemmax
+	UpHit, DownHit, bc_ind, jmin, jmax, elemmax, nedges, i1, i2, j1, j2
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
@@ -118,7 +119,16 @@ CONTAINS
     IF(.NOT. GotIt) Eps = 1.0d-4
 
     nnodes = Mesh % NumberOfNodes
-    nsize = nnodes
+    nedges = 0
+    IF(PRESENT(DoEdges)) THEN
+      IF(ASSOCIATED(Mesh % Edges)) THEN
+        nedges = Mesh % NumberOfEdges
+      ELSE
+        CALL Fatal(Caller,'Edge mapping requested, but Edges not associated!')
+      END IF
+    END IF
+      
+    nsize = nnodes + nedges
 
     Var => NULL()
     IF( PRESENT(MaskVar) ) THEN
@@ -131,6 +141,9 @@ CONTAINS
     END IF
     MaskExists = ASSOCIATED(Var)
     IF( MaskExists ) THEN
+      IF(nedges > 0) THEN
+        CALL Fatal(Caller,'We cannot have mask & edges active yet!')
+      END IF
       ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
       MaskPerm = Var % Perm 
       nsize = MAXVAL( MaskPerm ) 
@@ -215,7 +228,7 @@ CONTAINS
     !------------------------------------------------------------------------
     IF( UpActive ) THEN
       ALLOCATE(TopPointer(nsize),UpPointer(nsize))
-      DO i=1,nnodes
+      DO i=1,nnodes + nedges
         j = i
         IF( MaskExists ) THEN
           j = MaskPerm(i)
@@ -227,7 +240,7 @@ CONTAINS
     END IF
     IF( DownActive ) THEN
       ALLOCATE(BotPointer(nsize),DownPointer(nsize))
-      DO i=1,nnodes        
+      DO i=1,nnodes + nedges       
         j = i
         IF( MaskExists ) THEN
           j = MaskPerm(i)
@@ -263,13 +276,10 @@ CONTAINS
       Nodes % y(1:n) = MeshNodes % y(NodeIndexes)
       Nodes % z(1:n) = MeshNodes % z(NodeIndexes)
       
-      ! This is probably a copy-paste error, I comment it away for time being.   
-      ! IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
-
       IF( MaskExists ) THEN
         IF( ANY(MaskPerm(NodeIndexes) == 0) ) CYCLE
       END IF
-      
+
       DO i=1,n
         ii = NodeIndexes(i)
         
@@ -329,8 +339,38 @@ CONTAINS
             IF( UpActive ) UpPointer(jmin) = ii              
           END IF
         END IF
-
       END DO
+
+      IF(nedges == 0) CYCLE
+
+      ! Use the nodal info on Up and Down to find the edge mapping also.
+      ! Note that this can only do the horizontal edges which lie within the
+      ! one single element. For vertical edges something else would be needed.
+      DO i=1,Element % Type % NumberOfEdges                        
+        ii = Element % EdgeIndexes(i)
+        i1 = Mesh % Edges(ii) % NodeIndexes(1)
+        i2 = Mesh % Edges(ii) % NodeIndexes(2)
+        
+        DO j=1,Element % Type % NumberOfEdges
+          IF(i==j) CYCLE
+          jj = Element % EdgeIndexes(j)
+          j1 = Mesh % Edges(jj) % NodeIndexes(1)
+          j2 = Mesh % Edges(jj) % NodeIndexes(2)
+
+          IF( ( UpPointer(i1) == j1 .AND. UpPointer(i2) == j2 ) .OR. &
+              ( UpPointer(i1) == j2 .AND. UpPointer(i2) == j1) ) THEN
+            UpPointer(nnodes+ii) = nnodes+jj
+            EXIT
+          END IF
+          
+          IF( ( DownPointer(i1) == j1 .AND. DownPointer(i2) == j2 ) .OR. &
+              ( DownPointer(i1) == j2 .AND. DownPointer(i2) == j1) ) THEN
+            DownPointer(nnodes+ii) = nnodes+jj
+            EXIT
+          END IF
+        END DO
+      END DO
+      
     END DO
     DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
 
@@ -343,7 +383,7 @@ CONTAINS
       DownHit = 0
       UpHit = 0
       
-      DO i=1,nnodes
+      DO i=1,nnodes + nedges
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0) CYCLE
           IF( UpActive ) THEN
@@ -403,7 +443,7 @@ CONTAINS
         EXIT
       END DO
 
-      j = BotPointer(1)      
+      j = BotPointer(i)      
       CALL Info(Caller,'Starting from node: '//I2S(j),Level=15)
 
       NumberOfLayers = 0

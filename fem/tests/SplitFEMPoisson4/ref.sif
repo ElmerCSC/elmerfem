@@ -1,6 +1,8 @@
 ! Test case for a cut-fem type of machinery.
 ! Here simple 2d triangle mesh is split for using a circular zero levelset.
 !
+! This version includes almost everything in the library. 
+!
 ! P.R. 24.2.2025
 
 Header
@@ -9,7 +11,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 30
   Coordinate System = String Cartesian
   Simulation Type = Transient 
   Steady State Max Iterations = 1
@@ -20,7 +22,7 @@ Simulation
   Timestep Sizes = 1.0
   Timestepping Method = implicit euler
 
-  Post File = File "case-2d.vtu"
+  Post File = File "ref.vtu"
   Ascii Output = True
 !  vtu: Save Bulk Only = Logical True
 
@@ -58,9 +60,9 @@ End
 
 
 Solver 1
-  Equation = "CutFem"
+  Equation = "SplitFem"
   Variable = Potential
-  Procedure = "ModelPDECutFEM" "AdvDiffSolver"
+  Procedure = "ModelPDE" "AdvDiffSolver"
 
   Time Derivative Order = 1
   Time Order = 1
@@ -84,21 +86,21 @@ Solver 1
   Levelset Velocity 1 = Real $0.006
   Levelset Velocity 2 = Real $0.002
   
-  CutFem = logical True
-  CutFem Epsilon = Real 1.0e-3
-!  CutFem Epsilon Absolute = Logical True
+  SplitFem = logical True
+  SplitFem Epsilon = Real 1.0e-3
+!  SplitFem Epsilon Absolute = Logical True
 
 ! What BC index will be given for on-the-fly BC. 
-  CutFem Interface BC = Integer 4
+  SplitFem Interface BC = Integer 4
 ! What index will be given for negative levelset.
-  CutFEM inside body = integer 1
+  SplitFEM inside body = integer 1
 ! for positive levelset.   
-  CutFEM outside body = integer 0
+  SplitFEM outside body = integer 0
 
 ! Should we extend using FEM
-  CutFem extend = logical true
+  SplitFem extend = logical true
 ! Should be extrapolate using edges (alternative). 
-!  CutFEM extrapolate = Logical True
+!  SplitFEM extrapolate = Logical True
 
 ! Which variables to project to isoline
   Isoline Variable 1 = String "Potential"
@@ -109,10 +111,7 @@ Solver 1
   Project Variable 2 = Surface
 
 ! Should we save the actural splitted mesh in 2D? 
-  CutFEM Mesh Save = Logical True
-
-! If we want to eliminate "locking"
-!  CutFEM Signed Distance Nonzero = Logical True
+!  SplitFEM Mesh Save = Logical True
 End
 
 
@@ -166,11 +165,11 @@ End
 Boundary Condition 3
   Name = String "Sides"
   Target Boundaries(2) = 2 4
-!  CutFEM Forbidden Boundary = Logical True
+!  SplitFEM Forbidden Boundary = Logical True
 End
 
 Boundary Condition 4
-  Name = String "CutFEM"
+  Name = String "SplitFEM"
 !  Field Flux = Real 1.0
   Robin Coefficient = Real 1.0
   External Field = Real 0.0

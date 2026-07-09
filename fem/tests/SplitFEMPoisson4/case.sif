@@ -1,17 +1,15 @@
 ! Test case for a cut-fem type of machinery.
 ! Here simple 2d triangle mesh is split for using a circular zero levelset.
+! This version has too solvers just to see that that works alo.
 !
-! This version includes almost everything in the library. 
-!
-! P.R. 24.2.2025
+! P.R. 13.4.2026, 5.7.2026
 
 Header
   Mesh DB "." "square-tri"
-!  Mesh DB "." "square-quad"
 End
 
 Simulation
-  Max Output Level = 25
+  Max Output Level = 30
   Coordinate System = String Cartesian
   Simulation Type = Transient 
   Steady State Max Iterations = 1
@@ -22,49 +20,53 @@ Simulation
   Timestep Sizes = 1.0
   Timestepping Method = implicit euler
 
-  Post File = File "case-2d.vtu"
+  Post File = File "case-a.vtu"
   Ascii Output = True
-!  vtu: Save Bulk Only = Logical True
+  vtu: Save Bulk Only = Logical True
 
   Mesh Levels = 3
+  Mesh Keep = 1
+
+! For now, skip some deallocation issues
+  Dirty Finish  = Logical True
 
 
-
+!------------------------------------------------
+! Keywords for SplitFEM
+!------------------------------------------------
+  Levelset Variable = String "Surface"
 
 ! This should be generalized. 
   Levelset Velocity 1 = Real $0.006
   Levelset Velocity 2 = Real $0.002
   
-  CutFem = logical True
-  CutFem Epsilon = Real 1.0e-3
-!  CutFem Epsilon Absolute = Logical True
+  SplitFem Epsilon = Real 1.0e-3
+!  SplitFem Epsilon Absolute = Logical True
 
 ! What BC index will be given for on-the-fly BC. 
-  CutFem Interface BC = Integer 4
+  SplitFem Interface BC = Integer 4
 ! What index will be given for negative levelset.
-  CutFEM inside body = integer 1
+  SplitFEM inside body = integer 1
 ! for positive levelset.   
-  CutFEM outside body = integer 0
+  SplitFEM outside body = integer 0
 
 ! Should we extend using FEM
-  CutFem extend = logical true
+  SplitFem extend = logical true
 ! Should be extrapolate using edges (alternative). 
-!  CutFEM extrapolate = Logical True
+!  SplitFEM extrapolate = Logical True
+
+! Should we save the actural splitted mesh in 2D? 
+!  SplitFEM Mesh Save = Logical True
 
 ! Which variables to project to isoline
   Isoline Variable 1 = String "Potential"
-  Isoline Variable 2 = String "Surface"
+  Isoline Variable 2 = String "PotentialB"
+  Isoline Variable 3 = String "Surface"
 
 ! Which variables to project to 2D viz. mesh.
-  Project Variable 1 = Potential
-  Project Variable 2 = Surface
-
-! Should we save the actural splitted mesh in 2D? 
-!  CutFEM Mesh Save = Logical True
-
-! We define a levelset to be used.
-  Levelset Variable = String "Surface"
-
+  Project Variable 1 = String "Potential"
+  Project Variable 2 = String "PotentialB"
+  Project Variable 3 = String "Surface"
 End
 
 Body 1
@@ -74,14 +76,6 @@ Body 1
   Body Force = 1
   Initial Condition = 1
 End
-
-!Body 2
-!  Name = String "outside"
-!  Equation = 1
-!  Material = 2
-!  Body Force = 2
-!  Initial Condition = 1
-!End
 
 
 Initial Condition 1
@@ -93,12 +87,12 @@ End
 
 Equation 1
   Name = String "Equation1"
-  Active Solvers(1) = 1 
+  Active Solvers(2) = 1 2
 End
 
 
 Solver 1
-  Equation = "CutFem"
+  Equation = "ModelPDE"
   Variable = Potential
   Procedure = "ModelPDE" "AdvDiffSolver"
 
@@ -108,58 +102,37 @@ Solver 1
   Nonlinear System Max Iterations = 1
 
   Optimize Bandwidth = False
+  Linear System Scaling = False
 
-  Linear System Solver = iterative
-  Linear System Iterative Method = "BiCGStab"
-  Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1.0e-8
-  Linear System Preconditioning = "ILU0"
-  Linear System Residual Output = 20
+  Linear System Solver = direct 
+  Linear System Direct Method = umfpack
 
+! We define a levelset to be used and request this solver to use SplitFEM. 
   Exported Variable 1 = Surface
+  SplitFem = logical True
+End
 
+Solver 2
+  Equation = "ModelPDEB"
+  Variable = PotentialB
+  Procedure = "ModelPDE" "AdvDiffSolver"
 
-  CutFEM = Logical True
+  Time Derivative Order = 1
+  Time Order = 1
 
-
-! This should be generalized. 
-  Levelset Velocity 1 = Real $0.006
-  Levelset Velocity 2 = Real $0.002
+  Nonlinear System Max Iterations = 1
   
-  CutFem = logical True
-  CutFem Epsilon = Real 1.0e-3
-!  CutFem Epsilon Absolute = Logical True
+  Optimize Bandwidth = False
+  Linear System Scaling = False
 
-! What BC index will be given for on-the-fly BC. 
-  CutFem Interface BC = Integer 4
-! What index will be given for negative levelset.
-  CutFEM inside body = integer 1
-! for positive levelset.   
-  CutFEM outside body = integer 0
+  Linear System Solver = direct 
+  Linear System Direct Method = umfpack 
 
-! Should we extend using FEM
-  CutFem extend = logical true
-! Should be extrapolate using edges (alternative). 
-!  CutFEM extrapolate = Logical True
-
-! Which variables to project to isoline
-  Isoline Variable 1 = String "Potential"
-  Isoline Variable 2 = String "Surface"
-
-! Which variables to project to 2D viz. mesh.
-  Project Variable 1 = Potential
-  Project Variable 2 = Surface
-
-! Should we save the actural splitted mesh in 2D? 
-!  CutFEM Mesh Save = Logical True
-
-! We define a levelset to be used.
-  Levelset Variable = String "Surface"
-
+  SplitFem = logical True
 End
 
 
-Solver 2
+Solver 3
   Equation = "SaveScalars"
   Exec Solver = After Timestep
   Procedure = "SaveData" "SaveScalars"
@@ -209,11 +182,11 @@ End
 Boundary Condition 3
   Name = String "Sides"
   Target Boundaries(2) = 2 4
-!  CutFEM Forbidden Boundary = Logical True
+!  SplitFEM Forbidden Boundary = Logical True
 End
 
 Boundary Condition 4
-  Name = String "CutFEM"
+  Name = String "SplitFEM"
 !  Field Flux = Real 1.0
   Robin Coefficient = Real 1.0
   External Field = Real 0.0
@@ -222,8 +195,10 @@ End
 
 ! after 100 timesteps x mesh levels 5
 !Solver 1 :: Reference Norm = 4.93622297E-01
-!Solver 2 :: Reference Norm = 5.96345919E-01
+!Solver 2 :: Reference Norm = 4.93622297E-01
+!Solver 3 :: Reference Norm = 5.96345919E-01
 
 ! after 3 timesteps x mesh levels 3
 Solver 1 :: Reference Norm = 3.74375920E-01
-Solver 2 :: Reference Norm = 4.64944891E-01
+Solver 2 :: Reference Norm = 3.74375920E-01
+Solver 3 :: Reference Norm = 4.64944891E-01

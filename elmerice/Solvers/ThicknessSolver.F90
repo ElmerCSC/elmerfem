@@ -91,7 +91,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: SEM ! Sub-element melting for Grounding line
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element melting
   LOGICAL :: ComputeResidual
-  LOGICAL :: CutFEMOn
+  LOGICAL :: SplitFEMOn
   CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
 
   !-----------------------------------------------------------------------------
@@ -349,7 +349,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
       libmassbf % Values = 0._dp
      ENDIF
      
-     CutFEMOn = .FALSE.
+     SplitFEMOn = .FALSE.
 
      !------------------------------------------------------------------------------
      !    Do the assembly
@@ -358,7 +358,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
       ThickPerm => Solver % Variable % Perm
       SystemMatrix => Solver % Matrix
       ForceVector => Solver % Matrix % RHS
-      IF(CutFEMOn) THEN
+      IF(SplitFEMOn) THEN
          DEALLOCATE(StiffVector)
          ALLOCATE(StiffVector(SIZE( SystemMatrix % RHS )))
       END IF
@@ -397,7 +397,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
       ! get lower limit for solution 
       !-----------------------------
-      IF(.NOT. CutFEMon) THEN
+      IF(.NOT. SplitFEMon) THEN
         LowerLimit(Nodeindexes(1:N)) = &
             ListGetReal(Material,'Min ' // TRIM(VariableName),n,NodeIndexes, Found) 
         IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 1) = Found
@@ -416,7 +416,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         ! get velocity profile
         IF (ConvectionVar) THEN
 #if 1
-          ! more generic routine is needed for CutFEM
+          ! more generic routine is needed for SplitFEM
           CALL GetLocalSolution( Velo,UElement=Element,UVariable=FlowSol)
 #else
           DO i=1,n
@@ -476,7 +476,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              TransientSimulation,&
               ALEFormulation,Eacabf,Elibmassbf, SEM)
 
-        IF ((ComputeMassBalance).AND.(.NOT. CutFEMon)) THEN
+        IF ((ComputeMassBalance).AND.(.NOT. SplitFEMon)) THEN
           acabf % Values ( acabf % Perm (Element % ElementIndex)) = Eacabf
           libmassbf % Values (libmassbf%Perm(Element % ElementIndex))= Elibmassbf
         ENDIF
@@ -519,10 +519,10 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !    transient simulations.
      !------------------------------------------------------------------------------
 
-     ! Tentative code for dealing with calving front using cutFEM. 
-     IF(DefaultCutFEM()) THEN
-       CutFEMOn = .TRUE.
-       PRINT *,'going back for interface elements!'
+     ! Tentative code for dealing with calving front using SplitFEM. 
+     IF(DefaultSplitFEM()) THEN
+       SplitFEMOn = .TRUE.
+       CALL Info(SolverName,'Going back for SplitFEM interface elements!')
        PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'
        IF(ListCheckPresentAnyBodyForce(Model, PassName)) CALL FATAL(SolverName, 'Cannot have passive variable and use CutFEM')
        GOTO 100
@@ -809,7 +809,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        END IF
        
        UseLinear = GetLogical( GetSolverParams(), 'Use linear elements', Stat )
-       IF(.NOT. CutFEMOn) UseLinear = UseLinear .OR. ANY(ActiveNode(NodeIndexes,:))
+       IF(.NOT. SplitFEMOn) UseLinear = UseLinear .OR. ANY(ActiveNode(NodeIndexes,:))
        UseLinear = UseLinear .AND. Element % TYPE % BasisFunctionDegree==2
 
        IF ( UseLinear ) THEN

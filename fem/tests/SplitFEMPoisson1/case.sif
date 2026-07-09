@@ -1,11 +1,12 @@
 ! Test case for a cut-fem type of machinery.
-! Here simple 2d quad mesh is split for using a circular zero levelset.
+! Here simple 2d triangle mesh is split for using a circular zero levelset.
 !
-! P.R. 24.2.2025
+! This version includes almost everything in the library. 
+!
+! P.R. 24.2.2025, 5.7.2026
 
 Header
-!  Mesh DB "." "square-tri"
-  Mesh DB "." "square-quad"
+  Mesh DB "." "square-tri"
 End
 
 Simulation
@@ -25,6 +26,44 @@ Simulation
 !  vtu: Save Bulk Only = Logical True
 
   Mesh Levels = 3
+
+
+!-----------------------------------------------------------
+! Keywords for SplitFEM
+!-----------------------------------------------------------
+! This should be generalized. 
+  Levelset Velocity 1 = Real $0.006
+  Levelset Velocity 2 = Real $0.002
+  
+  SplitFem = logical True
+  SplitFem Epsilon = Real 1.0e-3
+!  SplitFem Epsilon Absolute = Logical True
+
+! What BC index will be given for on-the-fly BC. 
+  SplitFem Interface BC = Integer 4
+! What index will be given for negative levelset.
+  SplitFEM inside body = integer 1
+! for positive levelset.   
+  SplitFEM outside body = integer 0
+
+! Should we extend using FEM
+  SplitFem extend = logical true
+! Should be extrapolate using edges (alternative). 
+!  SplitFEM extrapolate = Logical True
+
+! Which variables to project to isoline
+  Isoline Variable 1 = String "Potential"
+  Isoline Variable 2 = String "Surface"
+
+! Which variables to project to 2D viz. mesh.
+  Project Variable 1 = Potential
+  Project Variable 2 = Surface
+
+! Should we save the actural splitted mesh in 2D? 
+!  SplitFEM Mesh Save = Logical True
+
+! We define a levelset to be used.
+  Levelset Variable = String "Surface"
 End
 
 Body 1
@@ -33,6 +72,9 @@ Body 1
   Material = 1
   Body Force = 1
   Initial Condition = 1
+
+!  ioe
+! dymmy test 
 End
 
 !Body 2
@@ -49,10 +91,6 @@ Initial Condition 1
 $Rad=0.7
   Surface = Variable "Coordinate"
     Real MATC "tx(0)^2+tx(1)^2-Rad^2"
-!   Real
-!      0.0 0.1
-!      1.0 -1.0
-!    End 
 End
 
 Equation 1
@@ -62,9 +100,9 @@ End
 
 
 Solver 1
-  Equation = "CutFem"
+  Equation = "SplitFem"
   Variable = Potential
-  Procedure = "ModelPDECutFEM" "AdvDiffSolver"
+  Procedure = "ModelPDE" "AdvDiffSolver"
 
   Time Derivative Order = 1
   Time Order = 1
@@ -77,44 +115,12 @@ Solver 1
   Linear System Iterative Method = "BiCGStab"
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-8
-  Linear System Preconditioning = ILU0
-  linear system scaling = false
+  Linear System Preconditioning = "ILU0"
   Linear System Residual Output = 20
 
-! We define a levelset to be used.
   Exported Variable 1 = Surface
-  Levelset Variable = String "Surface"
 
-! This should be generalized. 
-  Levelset Velocity 1 = Real $0.006
-  Levelset Velocity 2 = Real $0.002
-  
-  CutFem = logical True
-  CutFem Epsilon = Real 1.0e-3
-!  CutFem Epsilon Absolute = Logical True
-
-! What BC index will be given for on-the-fly BC. 
-  CutFem Interface BC = Integer 4
-! What index will be given for negative levelset.
-  CutFEM inside body = integer 1
-! for positive levelset.   
-  CutFEM outside body = integer 0
-
-! Should we extend using FEM
-  CutFem extend = logical true
-! Should be extrapolate using edges (alternative). 
-!  CutFEM extrapolate = Logical True
-
-! Which variables to project to isoline
-  Isoline Variable 1 = String "Potential"
-  Isoline Variable 2 = String "Surface"
-
-! Which variables to project to 2D viz. mesh.
-  Project Variable 1 = Potential
-  Project Variable 2 = Surface
-
-! Should we save the actural splitted mesh in 2D? 
-  CutFEM Mesh Save = Logical True
+  SplitFEM = Logical True
 End
 
 
@@ -168,11 +174,11 @@ End
 Boundary Condition 3
   Name = String "Sides"
   Target Boundaries(2) = 2 4
-!  CutFEM Forbidden Boundary = Logical True
+!  SplitFEM Forbidden Boundary = Logical True
 End
 
 Boundary Condition 4
-  Name = String "CutFEM"
+  Name = String "SplitFEM"
 !  Field Flux = Real 1.0
   Robin Coefficient = Real 1.0
   External Field = Real 0.0
@@ -180,9 +186,9 @@ Boundary Condition 4
 End
 
 ! after 100 timesteps x mesh levels 5
-!Solver 1 :: Reference Norm = 4.95663348E-01
-!Solver 2 :: Reference Norm = 5.91890823E-01
+!Solver 1 :: Reference Norm = 4.93622297E-01
+!Solver 2 :: Reference Norm = 5.96345919E-01
 
 ! after 3 timesteps x mesh levels 3
-Solver 1 :: Reference Norm = 3.80667597E-01
-Solver 2 :: Reference Norm = 4.64029217E-01
+Solver 1 :: Reference Norm = 3.74375920E-01
+Solver 2 :: Reference Norm = 4.64944891E-01
