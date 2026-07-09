@@ -5685,7 +5685,7 @@ END BLOCK
 
          IF (.NOT.ASSOCIATED(Solver % ActiveElements)) &
             CALL SetActiveElementsTable( Model, Solver)    
-         IF(DoCreate) CALL CreateSplitFEMPerm(Solver,.TRUE.)       
+         IF(DoCreate) CALL CreateSplitFEMPerm(Model,Solver,.TRUE.)       
 
          CALL CreateSplitFEMVariable(Solver)
          Solver % Matrix => CreateSplitFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )

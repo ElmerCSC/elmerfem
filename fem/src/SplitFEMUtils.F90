@@ -98,7 +98,8 @@ CONTAINS
   ! edges and which nodes are being cut by the zero levelset.
   ! Optionally also create a permutation for the outside mesh. 
   !------------------------------------------------------------------
-  SUBROUTINE CreateSplitFEMPerm(Solver,UpdateCoords)
+  SUBROUTINE CreateSplitFEMPerm(Model,Solver,UpdateCoords)
+    TYPE(Model_t)  :: Model
     TYPE(Solver_t) :: Solver
     LOGICAL :: UpdateCoords
 
@@ -611,6 +612,7 @@ CONTAINS
     ! This is just counter for different split cases while developing the code. 
     nCase = 0
 !    Solver % CutInterp => CutInterp 
+    Model % CutInterp => CutInterp
     
   END SUBROUTINE CreateSplitFEMPerm
 
