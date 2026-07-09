@@ -711,7 +711,7 @@ CONTAINS
   ! there can be all possible connections. 
   !-----------------------------------------------------------------------
   FUNCTION CreateSplitFemMatrix(Solver,Perm,MimicMat) RESULT ( A ) 
-    TYPE(Solver_t) :: Solver
+    TYPE(Solver_t),TARGET :: Solver
     INTEGER :: Perm(:)
     TYPE(Matrix_t), POINTER :: A
     TYPE(Matrix_t), POINTER, OPTIONAL :: MimicMat
@@ -2172,7 +2172,7 @@ CONTAINS
         IF(iVar < 0) THEN
           ! We want to always interpolate the primary variables!
           ! These are the only variables living in the "SplitFEM" universe.
-          IF(.NOT. CurrentModel % Solvers(iVar) % SplitFEM) CYCLE
+          IF(.NOT. CurrentModel % Solvers(ABS(iVar)) % SplitFEM) CYCLE
           Var => Solver % Variable
           VarName = Var % name
           IsCutVar = .TRUE.
@@ -4160,7 +4160,7 @@ CONTAINS
 
           Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
           
-          IF(Var2D % TYPE == Variable_on_cutfem) THEN
+          IF(Var2D % TYPE == Variable_on_splitfem) THEN
             j = Solver % OrigPerm(node)
             dofs = Solver % Variable % Dofs
             pValues => Solver % OrigValues

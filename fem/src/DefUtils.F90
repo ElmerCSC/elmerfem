@@ -645,12 +645,11 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( Solver % SplitFEMActive ) THEN
+     ELSE IF(  Variable % TYPE == Variable_on_splitfem ) THEN
        ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
 
        n = Element % TYPE % NumberOfNodes
        Indexes => Element % NodeIndexes
-
        BLOCK
          INTEGER :: nn,j1,j2
          REAL(KIND=dp) :: r
@@ -852,7 +851,7 @@ CONTAINS
        END IF
        IF(PRESENT(Found)) Found = Found0
        RETURN       
-     ELSE IF( Solver % SplitFEMActive ) THEN
+     ELSE IF( Variable % TYPE == Variable_on_splitfem ) THEN
         ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
         
         n = Element % TYPE % NumberOfNodes
