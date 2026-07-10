@@ -76,7 +76,7 @@
 
   LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: stat
-  LOGICAL :: Newton, Converged, MeActive
+  LOGICAL :: Newton, Converged
 
   INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs, iLev
   INTEGER :: NonlinearIter, NewtonIter, iter, other_body_id
@@ -239,11 +239,8 @@
   if (.NOT.Gotit) NewtonIter = NonlinearIter + 1
 
   Newton=.FALSE.
-  MeActive = .TRUE.
   !------------------------------------------------------------------------------
   DO iter=1,NonlinearIter
-
-    IF(.NOT. MeActive) EXIT
 
     at  = CPUTime()
     at0 = RealTime()
@@ -262,13 +259,10 @@
 
     !Initialize the system and do the assembly:
     !------------------------------------------
-100 IF(Solver % Matrix % NumberOfRows > 0) CALL DefaultInitialize()
+100 CALL DefaultInitialize()
 
     ! bulk assembly
-200 MeActive = Solver % Matrix % NumberOfRows > 0
-    IF(iter == 1) CALL ParallelActiveSubset(MeActive)
-
-    DO t=1,Solver % NumberOfActiveElements
+200 DO t=1,Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
       !IF (ParEnv % myPe  /=  Element % partIndex) CYCLE
       n = GetElementNOFNodes()
@@ -288,8 +282,22 @@
         CALL Fatal( SolverName,'It is not possible to compute SSA problems WITH '//I2S(STDOFS)//' dofs!')
       END IF
 
-      ! Read the gravity in the Body Force Section 
-      BodyForce => GetBodyForce()
+      IF( Solver % SplitFEM ) THEN
+        i = LIstGetInteger( SolverParams,'SplitFEM inside body',Found )
+        IF(.NOT. Found) i=1
+        j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Material')
+        Material => CurrentModel % Materials(j) % Values
+        j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Body Force')
+        BodyForce => CurrentModel % BodyForces(j) % Values
+      ELSE
+        ! Read the gravity in the Body Force Section 
+        BodyForce => GetBodyForce()
+
+        ! Read the Viscosity eta, density, and exponent m in MMaterial Section
+        ! Same definition as NS Solver in Elmer - n=1/m , A = 1/ (2 eta^n) 
+        Material => GetMaterial(Element)
+      END IF
+
       NodalGravity = 0.0_dp
       IF ( ASSOCIATED( BodyForce ) ) THEN
         IF (STDOFs==1) THEN 
@@ -300,10 +308,6 @@
                BodyForce, 'Flow BodyForce 3', n, NodeIndexes, Found)
         END IF
       END IF
-
-      ! Read the Viscosity eta, density, and exponent m in MMaterial Section
-      ! Same definition as NS Solver in Elmer - n=1/m , A = 1/ (2 eta^n) 
-      Material => GetMaterial(Element)
 
       cn = ListGetConstReal( Material, 'Viscosity Exponent',Found)
       MinSRInv = ListGetConstReal( Material, 'Critical Shear Rate',Found)
@@ -434,8 +438,6 @@
 
     ! Tentative code for dealing with calving front using SplitFEM. 
     IF(DefaultSplitFEM()) GOTO 200
-
-    IF(.NOT. MeActive) EXIT
 
     CALL DefaultFinishAssembly()
 
@@ -587,9 +589,6 @@
     END DO
   END IF
 
-  IF(ParEnv % PEs > 1) CALL ParallelActive(.TRUE.)
-  ParEnv % ActiveComm = ELMER_COMM_WORLD
-  Solver % Matrix % Comm = ELMER_COMM_WORLD
   CALL DefaultFinish()
   
 !!! reset Model Dimension to dim
@@ -875,106 +874,6 @@ CONTAINS
     END IF
     !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBCSSA
-
-
-  SUBROUTINE ParallelActiveSubset(MeActive)
-
-    LOGICAL :: MeActive    
-    INTEGER :: n
-    INTEGER, ALLOCATABLE :: memb(:)
-    TYPE(Matrix_t), POINTER :: M
-    INTEGER :: comm_active, group_active, group_world, ierr
-
-    IF(ParEnv % PEs == 1 ) RETURN
-    
-    CALL ParallelActive(MeActive)
-    n = COUNT( ParEnv % Active ) 
-
-    M => Solver % Matrix
-    
-    IF ( n>0 .AND. n<ParEnv % PEs ) THEN
-      IF ( ASSOCIATED(Solver % Matrix) ) THEN
-        IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
-            CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
-      END IF
-
-      CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
-      ALLOCATE(memb(n))
-      n = 0
-      DO i=1,ParEnv % PEs
-        IF ( ParEnv % Active(i) ) THEN
-          n=n+1
-          memb(n)=i-1
-        END IF
-      END DO
-      CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
-      DEALLOCATE(memb)
-      CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, comm_active, ierr)
-
-      M => Solver % Matrix
-      DO WHILE(ASSOCIATED(M))
-        M % Comm = comm_active
-        M => M % Parent
-      END DO
-      ParEnv % ActiveComm = comm_active
-
-
-      IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
-        ! If any of the active output partitions in active just use it.
-        ! Typically the 1st one. Others are passive. 
-        IF( ParEnv % MyPe >= MinOutputPE .AND. ParEnv % MyPe <= MaxOutputPE ) THEN 
-          OutputPE = ParEnv % MyPE
-        ELSE
-          OutputPE = -1
-        END IF
-      ELSE         
-        ! Otherwise find the 1st active partition and if found use it.
-        ! Otherwise use the 0:th partition. 
-        DO i=1,ParEnv % PEs
-          IF ( ParEnv % Active(i) ) EXIT
-        END DO
-
-        OutputPE = -1
-        IF ( i-1 == ParEnv % MyPE ) THEN
-          OutputPE = i-1 
-        ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
-          OutputPE = 0
-        END IF
-      END IF
-    ELSE
-      M => Solver % Matrix
-      DO WHILE( ASSOCIATED(M) )
-        M % Comm = ELMER_COMM_WORLD
-        M => M % Parent
-      END DO
-
-      IF(.NOT.ASSOCIATED(Solver % Matrix)) ParEnv % Active = .TRUE.
-
-      ! Here set the default partitions active. 
-      IF( ParEnv % MyPe >= MinOutputPE .AND. &
-          ParEnv % MyPe <= MaxOutputPE ) THEN 
-        OutputPE = ParEnv % MyPE
-      ELSE
-        OutputPE = -1
-      END IF
-    END IF
-
-    IF ( ASSOCIATED(Solver % Matrix) ) THEN
-      IF ( Solver % Parallel .AND. MeActive ) THEN
-        IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
-          ParEnv % ActiveComm = Solver % Matrix % Comm
-
-          IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) then
-            CALL ParallelInitMatrix(Solver, Solver % Matrix )
-          END IF 
-          ParEnv % ActiveComm = Solver % Matrix % Comm
-        END IF
-     END IF
-   END IF
-
-
-  END SUBROUTINE ParallelActiveSubset
-
 
   !------------------------------------------------------------------------------
 END SUBROUTINE SSABasalSolver
