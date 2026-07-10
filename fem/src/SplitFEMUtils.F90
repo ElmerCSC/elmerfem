@@ -1876,7 +1876,8 @@ CONTAINS
       Variable % Type = Variable_on_nodes
       
       Solver % ActiveElements => Solver % OrigActiveElements
-      Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
+      IF(ASSOCIATED(Solver % ActiveElements)) &
+        Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
 
       Solver % SplitFEMActive = .FALSE.
     END DO
@@ -2013,7 +2014,7 @@ CONTAINS
           !IF(.NOT. IsActive) CYCLE      
           IF(IsCut) THEN
 10          pElement => CutInterfaceBulk(Element,isCut,isMore,Sweep)        
-            IF(.NOT. IsCut) CYCLE
+            !IF(.NOT. IsCut) CYCLE
             IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
               nBulk = nBulk + 1
               IF(Sweep==1) CALL AddElementData(pElement,nBulk)
@@ -2175,7 +2176,7 @@ CONTAINS
           ! We want to always interpolate the primary variables!
           ! These are the only variables living in the "SplitFEM" universe.
           IF(.NOT. CurrentModel % Solvers(ABS(iVar)) % SplitFEM) CYCLE
-          Var => Solver % Variable
+          Var => CurrentModel % Solvers(ABS(iVar)) % Variable
           VarName = Var % name
           IsCutVar = .TRUE.
         ELSE
@@ -2355,9 +2356,9 @@ CONTAINS
     SAVE IsoMesh
 
     IsoMesh => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
-        .TRUE.,.FALSE.,.FALSE.,CurrentModel % Simulation,'isoline variable')     
+        .TRUE.,.FALSE.,.FALSE.,CurrentModel % Simulation,'isoline variable')
     IsoMesh % Name = TRIM(Mesh % Name)//'-isomesh'
-    
+
     pVar => VariableGet( Mesh % Variables,'timestep size', &
         ThisOnly = .TRUE., UnfoundFatal=.TRUE.)
     dt = pVar % Values(1)
@@ -2855,7 +2856,7 @@ CONTAINS
       INTEGER :: i,j,k,n,m,i0,i1,nCol,dofs,k2,m2,i2,i3,NNeighbours,neighbour,p0,p1
       INTEGER, ALLOCATABLE :: PL_local(:,:),NodeToElem(:,:),NodeElemCount(:),RecvElems(:,:),&
         rdisps(:),RecvFrom(:),Neighbours(:)
-      TYPE(Variable_t), POINTER :: Var1D
+      TYPE(Variable_t), POINTER :: Var1D => NULL()
       INTEGER :: iVar,MyPe,PEs,Phase,nLines,Next,counter,NInter,SharedCount,NextP,nMax,NPInter,Nexts(2)
       LOGICAL, ALLOCATABLE :: Skip(:),RemoveLines(:,:)
       LOGICAL :: intersect
@@ -2960,6 +2961,8 @@ CONTAINS
           END DO
 
           ALLOCATE(rdisps(PEs))
+
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nCol, 1, MPI_INTEGER, MPI_MAX, comm, ierr)
 
           ! send count should equal recvcount
           !CALL MPI_ALLTOALL(SendCount, 1, MPI_INTEGER, RecvCount, 1, MPI_INTEGER, comm, ierr)

@@ -1171,7 +1171,7 @@ MODULE Types
 ! Tag counts to speed things up
       INTEGER :: NumberOfDistTags=-1,NumberOfParTags=-1
 
-      REAL(KIND=dp), POINTER :: CutInterp(:)      
+      REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()  
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel => NULL()

@@ -5407,7 +5407,7 @@ BLOCK
 END BLOCK
      END IF
 
-     IF( ListGetLogical( Solver % Values,'SplitFEM',Found ) ) GOTO 1
+     !IF( ListGetLogical( Solver % Values,'SplitFEM',Found ) ) GOTO 1
 
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        IF ( Parallel .AND. MeActive ) THEN
@@ -5639,8 +5639,9 @@ END BLOCK
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
+     LOGICAL, ALLOCATABLE :: OrigActive(:)
 
-     INTEGER :: ScanningLoops, scan, sOutputPE
+     INTEGER :: ScanningLoops, scan, sOutputPE, OrigComm
      LOGICAL :: GotLoops, GlobalBubbles
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
@@ -5940,6 +5941,16 @@ END BLOCK
 
        ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
        ! The Mesh % Next is saved normally in the VTU files etc. 
+
+       IF(ParEnv % PEs > 1) THEN
+          OrigComm = Solver % Matrix % Comm
+          Solver % Matrix % COmm = ELMER_COMM_WORLD
+          ParEnv % ActiveComm = Solver % Matrix % Comm
+          ALLOCATE(OrigActive(ParEnv % PEs))
+          OrigActive = ParEnv % Active
+          CALL ParallelActive(.TRUE.)
+       END IF
+
        CALL LevelSetUpdate(Solver,Solver % Mesh)
 
        ! We do not need to create the actual SplitFEM Mesh, but we might want to have it
@@ -5949,9 +5960,14 @@ END BLOCK
          Solver % Mesh % Next % Next => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
              .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
        END IF
+       IF(ParEnv % PEs > 1) THEN
+          Solver % Matrix % Comm = OrigComm
+          ParEnv % ActiveComm = Solver % Matrix % Comm
+          ParEnv % Active = OrigActive
+       END IF
    
        CALL Info('SolverActive','Reverting SplitFEM fields to normal!',Level=10)
-       CALL SplitFEMVariableRevert(Model,Solver % Mesh)         
+       CALL SplitFEMVariableRevert(Model,Solver % Mesh)
      END IF
             
      ! This takes place after all visualization etc. had been done.
