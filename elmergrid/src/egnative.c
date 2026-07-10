@@ -5047,7 +5047,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   int sideind[MAXNODESD1],tottypes,elementtype;
   int i,j,k,l,dummyint,cdstat,fail;
   int falseparents,noparents,bctopocreated;
-  int activeperm,activeelemperm,mini,maxi,minelem,maxelem,p1,p2;
+  int activeperm,activeelemperm,mini=0,maxi=0,minelem=0,maxelem=0,p1,p2;
   int *nodeperm,*elemperm,*invperm,*invelemperm;
   int iostat,noelements0;
   FILE *in;
