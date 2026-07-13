@@ -119,7 +119,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
        ComputeDt=.FALSE.,ElementWiseRockMaterial, DepthExists=.FALSE.,&
        InitializeSteadyState=.FALSE.,ActiveMassMatrix=.TRUE.,&
        NoSalinity=.FALSE., OutputXi=.FALSE., &
-       Linear = .FALSE., Exponential=.FALSE.
+       Linear = .FALSE., Exponential=.FALSE., Lunardini=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostHeatEquation'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, SalinityName, GWfluxName, PhaseChangeModel,&
@@ -281,11 +281,13 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
         WRITE (Message,'(A,A)') '"Permafrost Phase Change Model" set to ', TRIM(PhaseChangeModel)
         CALL INFO(SolverName,Message,Level=9)
       END IF
+      Lunardini = GetLogical(Material, "Lunardini", Found)
+      IF (.NOT.Found) Lunardini=.FALSE.
 
       CALL LocalMatrixHTEQ(  Element, Element % ElementIndex, Active, n, nd+nb,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,&
-           ActiveMassMatrix,FluxOutput)
+           ActiveMassMatrix,FluxOutput,Lunardini)
       FirstTime = .FALSE.
     END DO
 
@@ -331,14 +333,14 @@ CONTAINS
   SUBROUTINE LocalMatrixHTEQ(  Element, ElementID, NoElements, n, nd,&
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial,&
-       ActiveMassMatrix,FluxOutput)
+       ActiveMassMatrix,FluxOutput,Lunardini)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
-    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix, FluxOutput
+    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix, FluxOutput, Lunardini
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DepthAtIP,RefDepth,CGTTAtIP, CgwTTAtIP, CGTpAtIP, CGTycAtIP,KGTTAtIP(3,3)   ! needed in equation
@@ -362,7 +364,8 @@ CONTAINS
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
-         NoSalinity=.FALSE.,Exponential=.FALSE.,Linear=.FALSE., LinearParamsFound=.TRUE.
+         NoSalinity=.FALSE.,Exponential=.FALSE.,Linear=.FALSE.,&
+         LinearParamsFound=.TRUE., LunardiniParamsFound=.TRUE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -373,7 +376,8 @@ CONTAINS
     REAL(KIND=dp), POINTER :: XiAtIP(:), FluxAtElem(:)
 
     !------------------------------------------------------------------------------
-    SAVE Nodes, ConstantsRead, ConstVal,DIM, GasConstant, N0,DeltaT, T0, p0, eps, Gravity
+    SAVE Nodes, ConstantsRead, ConstVal,DIM, GasConstant, N0,DeltaT, T0, p0, eps, Gravity,&
+         c1, c2, c3, k1, k2, k3
     !------------------------------------------------------------------------------
     gradTAtIP = 0.0_dp
     gradPAtIP = 0.0_dp
@@ -534,29 +538,12 @@ CONTAINS
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Exponential = .TRUE.
       CASE('linear') ! even simpler linear law (used in Lunardini)
-        k1 =GetConstReal(Material, "Linear k1", Found)
-        LinearParamsFound = (Found .AND. LinearParamsFound)
-        k2 =GetConstReal(Material, "Linear k2", Found)
-        LinearParamsFound = (Found .AND. LinearParamsFound)
-        k3 =GetConstReal(Material, "Linear k3", Found)
-        LinearParamsFound = (Found .AND. LinearParamsFound)
-        c1 =GetConstReal(Material, "Linear c1", Found)
-        LinearParamsFound = (Found .AND. LinearParamsFound)
-        c2 =GetConstReal(Material, "Linear c2", Found)
-        LinearParamsFound = (Found .AND. LinearParamsFound)
-        c3 =GetConstReal(Material, "Linear c3", Found)
-        LinearParamsFound = (Found .AND. LinearParamsFound)
         Xi0 =GetConstReal(Material, "Linear Xi0", Found)
         LinearParamsFound = (Found .AND. LinearParamsFound)
         dryDensity=GetConstReal(Material, "Linear dry density", Found)
         LinearParamsFound = (Found .AND. LinearParamsFound)
         IF (.NOT.LinearParamsFound) &
              CALL FATAL(FunctionName,"Linear freezing switched on, but not all 3 zone values (Linear) found")
-        IF(FirstTime) THEN
-          WRITE(Message,*) 'Read in Linear zone-wise parameters (k1..3) ', &
-               k1, ',',k2, ',',k3, ', (c1..c3) ',c1, ',',c2, ',',c3, "(Xi0)", Xi0
-          CALL INFO(FunctionName,Message,Level=3)
-        END IF
         XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
         XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
         Linear = .TRUE.
@@ -570,6 +557,29 @@ CONTAINS
              .TRUE.,.TRUE.,.TRUE.,.TRUE.,.FALSE.)
       END SELECT
 
+      ! Lunardini 3-zone parameters (if selected)
+      IF(FirstTime .AND. Lunardini) THEN
+        k1 =GetConstReal(Material, "Lunardini k1", Found)
+        LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+        k2 =GetConstReal(Material, "Lunardini k2", Found)
+        LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+        k3 =GetConstReal(Material, "Lunardini k3", Found)
+        LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+        c1 =GetConstReal(Material, "Lunardini c1", Found)
+        LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+        c2 =GetConstReal(Material, "Lunardini c2", Found)
+        LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+        c3 =GetConstReal(Material, "Lunardini c3", Found)
+        LunardiniParamsFound = (Found .AND. LunardiniParamsFound)
+        IF (LunardiniParamsFound) THEN
+          WRITE(Message,*) 'Read in Linear zone-wise parameters (k1..3) ', &
+               k1, ',',k2, ',',k3, ', (c1..c3) ',c1, ',',c2, ',',c3, "(Xi0)", Xi0
+          CALL INFO(FunctionName,Message,Level=3)
+        ELSE
+          CALL FATAL(FunctionName, 'Not all Lunardini parameters found, but Lunardini (3-zone) set to true')
+        END IF
+      END IF
+      
       !Materialproperties needed at IP:
       rhowAtIP = rhowupdate(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal)
       rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
@@ -601,12 +611,12 @@ CONTAINS
              SalinityATIP,PorosityAtIP,meanfactor)
       END IF
       ! heat capacities at IP
-      IF (Linear) THEN
+      IF (Lunardini) THEN ! 3-zone model
         !CGTTAtIP = 690360.0_dp - 334720.0_dp*rhoiAtIP*PorosityAtIp*XiTAtIP
         CGTTAtIP = GetCGTTLinear(c1,c2,c3,XiAtIP(IPPerm),Swres,Xi0,XiTAtIP,rhoiAtIP,PorosityAtIP,hiAtIP,hwAtIP,dryDensity)
         cwAtIP   = 0.0_dp
         ccAtIP   = 0.0_dp
-      ELSE
+      ELSE ! Hartikainen
         csAtIP   = cs(RockMaterialID,&
              T0,TemperatureAtIP,ConstVal)
         cwAtIP   = cw(CurrentSolventMaterial,&
