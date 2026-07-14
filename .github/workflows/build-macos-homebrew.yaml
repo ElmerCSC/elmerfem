@@ -18,7 +18,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
-    name: ${{ matrix.os }} (${{ matrix.openmp }} OpenMP)
+    name: ${{ matrix.os }} (${{ matrix.openmp }} OpenMP using ${{ matrix.blas }})
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
@@ -35,9 +35,11 @@ jobs:
         # read and mutated by concurrent OMP threads calling
         # GaussPoints(...,PReferenceElement=.TRUE.). Fixed by
         # edcf46029/8cd4edb9b/b7b0d8a14. Re-enabling; watch this leg.
+        blas: [openblas, accelerate]
         include:
           - os: macos-15-intel
             openmp: with
+            blas: openblas
 
     steps:
       - name: get CPU information
@@ -63,7 +65,10 @@ jobs:
           brew install --overwrite python@3.12 python@3.13
           brew reinstall gcc
           brew install \
-            cmake openblas open-mpi \
+            cmake \
+            ${{ matrix.blas == 'openblas' && 'openblas' || '' }} \
+            ${{ matrix.blas == 'accelerate' && 'veclibfort' || '' }} \
+            open-mpi \
             ${{ matrix.openmp == 'with' && 'libomp suitesparse' || '' }} \
             qwt vtk opencascade expat
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
@@ -78,6 +83,9 @@ jobs:
         # thread), with -O3 inlining/scheduling changing the odds of hitting
         # the race window. Fixed; back to Release/-O3.
         run: |
+          if [ "x${{ matrix.blas }}" == "xaccelerate" ]; then
+            export VECLIBFORT_PREFIX=$(brew --prefix veclibfort)
+          fi
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           cmake \
@@ -86,7 +94,10 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_Fortran_COMPILER=gfortran \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
-            -DBLA_VENDOR="OpenBLAS" \
+            ${{ matrix.blas == 'openblas' && '-DBLA_VENDOR="OpenBLAS"' || '' }} \
+            ${{ matrix.blas == 'accelerate'
+              && '-DBLAS_LIBRARIES="${VECLIBFORT_PREFIX}/lib/libvecLibFort.dylib" \
+                  -DLAPACK_LIBRARIES="${VECLIBFORT_PREFIX}/lib/libvecLibFort.dylib"' || '' }} \
             -DUSE_MACOS_PACKAGE_MANAGER=OFF \
             -DCMAKE_PREFIX_PATH="$( [ "${{ matrix.openmp }}" == "with" ] && echo "${HOMEBREW_PREFIX}/opt/libomp;")${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
             ${{ matrix.openmp == 'with'
