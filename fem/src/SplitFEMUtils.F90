@@ -53,7 +53,7 @@ MODULE SplitFemUtils
   USE SolverBasics, ONLY : GaussPointsAdapt, VectorValuesRange
   USE SolveCore, ONLY : SolveLinearSystem
   USE ParallelUtils
-  USE MeshBasics, ONLY : PointInMesh
+  USE MeshBasics, ONLY : PointInMesh, TransferCoordAndTime
   USE MeshTransform, ONLY : DetectExtrudedStructure
   
   IMPLICIT NONE
@@ -168,6 +168,14 @@ CONTAINS
         ALLOCATE(Mesh % Nodes % z(nn+ne))
         Mesh % Nodes % z(1:nn) = xtmp
         DEALLOCATE(xtmp)
+
+        ! Reset Coordinate variable to point to the right values
+        Var => VariableGet(CurrentModel % Mesh % Variables,"Coordinate 1")
+        Var % Values => Mesh % Nodes % x
+        Var => VariableGet(CurrentModel % Mesh % Variables,"Coordinate 2")
+        Var % Values => Mesh % Nodes % y
+        Var => VariableGet(CurrentModel % Mesh % Variables,"Coordinate 3")
+        Var % Values => Mesh % Nodes % z
       END IF
     END IF
 
@@ -1571,6 +1579,9 @@ CONTAINS
         .TRUE.,.TRUE.,.TRUE.,CurrentModel % Simulation,'dummy variable') 
     
     CALL MeshStabParams( SplitFEMAddMesh )
+    !* We need the timestepsize prevValues if using bdf order > 1
+    !* transfer from OrigMesh
+    CALL TransferCoordAndTime(SplitFEMOrigMesh,SplitFEMAddMesh)
 
     ! In the AddMesh all elements are active by construction.
     n = SplitFEMAddMesh % NumberOfBulkElements
