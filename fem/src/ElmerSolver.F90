@@ -53,8 +53,17 @@
 
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
+!>
+!> This is a module (ElmerSolver_mod) rather than a bare subroutine so that, in
+!> addition to the standalone ElmerSolver(initialize, args, NoArgs) entry point
+!> (called by fem/src/Solver.F90 for normal command-line use), it can also
+!> expose ElmerSolver_init / ElmerSolver_run / ElmerSolver_runAll /
+!> ElmerSolver_finalize as separately-callable entry points for an external
+!> caller (e.g. the FISOC coupling framework) that wants to drive Elmer one
+!> real timestep at a time via repeated calls to ElmerSolver_run, instead of
+!> the single continuous ElmerSolver_runAll used by the standalone executable.
 !------------------------------------------------------------------------------
-   SUBROUTINE ElmerSolver(initialize, args, NoArgs)
+MODULE ElmerSolver_mod
 !------------------------------------------------------------------------------
 
      USE Lists
@@ -93,15 +102,33 @@
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
 
      IMPLICIT NONE
-!------------------------------------------------------------------------------
+     
+     PRIVATE
+     PUBLIC :: ElmerSolver, ElmerSolver_init, ElmerSolver_run, ElmerSolver_runAll, ElmerSolver_finalize
+     !------------------------------------------------------------------------------
+     
+     !------------------------------------------------------------------------------
+     !    Module-level state.
+     !
+     !    These used to be locals of the single ElmerSolver subroutine. Promoting
+     !    them to module scope (rather than adding explicit SAVE to each) is what
+     !    lets ElmerSolver_init/_run/_runAll/_finalize, and all the helper
+     !    subroutines below (ExecSimulation, AddSolvers, CountSavedTimesteps, ...,
+     !    formerly nested inside ElmerSolver, now module-level CONTAINS siblings)
+     !    share state across separate calls -- e.g. across many ElmerSolver_run
+     !    calls driving one coupled simulation.
+     !
 
-     INTEGER :: Initialize
-     INTEGER :: NoArgs
-     TYPE(ArgStr_t) :: args(:)
-
-!------------------------------------------------------------------------------
-!    Local variables
-!------------------------------------------------------------------------------
+     ! Cumulative count of real timesteps executed since the most recent
+     ! ElmerSolver_init() call. Unlike ExecSimulation's local cum_Timestep
+     ! (reset to 0 at the top of every ExecSimulation call), this persists
+     ! across repeated ElmerSolver_run() calls, and is what lets ExecSimulation
+     ! tell "first real timestep of the whole simulation" apart from "first
+     ! timestep of this particular call" -- the same thing under
+     ! ElmerSolver_runAll() (one ExecSimulation call = the whole simulation)
+     ! but very different under FISOC's repeated ElmerSolver_run() pattern
+     ! (many ExecSimulation calls = one simulation).
+     INTEGER, SAVE :: FISOC_RealTimestepCount = 0
 
      INTEGER :: i,j,k,n,l,t,k1,k2,iter,Ndeg,istat,nproc,tlen,nthreads
      CHARACTER(LEN=MAX_STRING_LEN) :: threads
@@ -155,6 +182,21 @@
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
+
+!------------------------------------------------------------------------------
+CONTAINS
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Standalone entry point, called by fem/src/Solver.F90 for normal (non-coupled)
+!> command-line use.
+!------------------------------------------------------------------------------
+   SUBROUTINE ElmerSolver(initialize, args, NoArgs)
+!------------------------------------------------------------------------------
+     INTEGER :: Initialize
+     INTEGER :: NoArgs
+     TYPE(ArgStr_t) :: args(:)
+!------------------------------------------------------------------------------
 
      WRITE(*,*) 'Started inside library code'; FLUSH(6)
      ! Start the watches, store later
@@ -580,8 +622,18 @@
        ! Particularly look if the last step will be saved, or if it has
        ! to be saved separately.
        !------------------------------------------------------------------
-       CALL CountSavedTimesteps() 
-       
+       CALL CountSavedTimesteps()
+
+       ! "Before All"/"Before Simulation" solvers: activated here (once, per
+       ! fresh model load) rather than inside ExecSimulation, so that a caller
+       ! invoking ExecSimulation many times per simulation (FISOC's repeated
+       ! ElmerSolver_run) doesn't re-trigger them on every call. Standalone
+       ! calls ExecSimulation once per model load in all normal cases, so this
+       ! is not a behaviour change here -- see ElmerSolver_init for the
+       ! matching call used by the FISOC-driven path.
+       FISOC_RealTimestepCount = 0
+       CALL ActivateAheadAllSolvers()
+
        CALL ListAddLogical( CurrentModel % Simulation,  &
             'Initialization Phase', .FALSE. )
 
@@ -663,8 +715,9 @@
            END IF
 
            CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
-               CoupledMaxIter, OutputIntervals, Transient, Scanning) 
-           
+               CoupledMaxIter, OutputIntervals, Transient, Scanning)
+           CALL ActivateAfterAllAndFinalSave()
+
            ! This evaluates the cost function and saves the results of control
            CALL ControlParameters(CurrentModel % Control, &
                iSweep,GotParams,FinishEarly,.TRUE.)
@@ -716,7 +769,8 @@
          END DO
        ELSE
          CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
-             CoupledMaxIter, OutputIntervals, Transient, Scanning) 
+             CoupledMaxIter, OutputIntervals, Transient, Scanning)
+         CALL ActivateAfterAllAndFinalSave()
        END IF
        
        ! Comparison to reference is done to enable consistency test under ctest.
@@ -768,7 +822,363 @@
 
      RETURN
 
-   CONTAINS 
+   END SUBROUTINE ElmerSolver
+
+
+!------------------------------------------------------------------------------
+!> Coupled-mode entry point: initialise Elmer for a single model/mesh, ready
+!> for repeated ElmerSolver_run() calls (one real timestep each) followed by
+!> one ElmerSolver_finalize(). Called once by an external coupler (e.g.
+!> FISOC). Unlike the standalone path (ElmerSolver/ElmerSolver_runAll above),
+!> this does not support "Mesh Mode" (multiple mesh pieces processed in one
+!> call) or the "Run Control" parameter-scanning/optimisation loop.
+!
+!> Note that there is some code duplication between this routine and the
+!> ElmerSolver subroutine. Tidying this will need careful attention to the
+!> initialize logic in the "DO WHILE(.TRUE.)" loop. 
+!------------------------------------------------------------------------------
+  SUBROUTINE ElmerSolver_init(meshFootprint, ParEnvInitialised, inputFileName)
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), INTENT(INOUT), OPTIONAL :: meshFootprint
+    LOGICAL, INTENT(IN), OPTIONAL :: ParEnvInitialised
+    CHARACTER(*), INTENT(IN), OPTIONAL :: inputFileName
+
+    LOGICAL, SAVE :: FirstTime = .TRUE.
+    INTEGER :: iostat, jj
+!------------------------------------------------------------------------------
+
+    ! Start the watches, store later
+    !--------------------------------
+    RT0 = RealTime()
+    CT0 = CPUTime()
+
+    IF ( FirstTime ) THEN
+      ! If parallel execution requested, initialize parallel environment,
+      ! unless the calling program already initialised ParEnv.
+      !------------------------------------------------------------------
+      IF ( PRESENT(ParEnvInitialised) ) THEN
+        IF ( ParEnvInitialised ) THEN
+          CALL Info( 'ElmerSolver_init', 'ParEnv initialised by calling program', Level=3 )
+          ParallelEnv => ParEnv
+          ! The caller owns the communicator/parallel environment (e.g. FISOC
+          ! duplicates ESMF's communicator and populates ParEnv itself before
+          ! calling here) -- mark it external so ElmerSolver_finalize never
+          ! calls MPI_FINALIZE on a communicator it doesn't own, regardless of
+          ! whether the caller remembers to also pass PreserveParEnvOpt=.TRUE.
+          ParEnv % ExternalInit = .TRUE.
+        ELSE
+          ParallelEnv => ParallelInit()
+        END IF
+      ELSE
+        ParallelEnv => ParallelInit()
+      END IF
+
+      OutputPE = -1
+      IF( ParEnv % MyPe == 0 ) OutputPE = 0
+
+      ! Set number of OpenMP threads, same as the standalone ElmerSolver entry.
+      nthreads = 1
+      !$ nthreads = omp_get_max_threads()
+      IF (nthreads > 1 ) THEN
+        CALL envir( 'OMP_NUM_THREADS', threads, tlen )
+        IF (tlen==0) THEN
+          CALL Info('ElmerSolver_init','OMP_NUM_THREADS not set. Using only 1 thread per task.',Level=6)
+          nthreads = 1
+          !$ CALL omp_set_num_threads(nthreads)
+#ifdef HAVE_MKL
+          CALL mkl_set_num_threads(nthreads)
+#endif
+        END IF
+      END IF
+      ParEnv % NumberOfThreads = nthreads
+
+      CALL Info( 'ElmerSolver_init', 'ElmerSolver finite element software, Welcome! (coupled mode)', Level=3 )
+      CALL InitializeElementDescriptions()
+      FirstTime = .FALSE.
+    END IF
+
+    ! Read input file name either as given directly, or from the default file:
+    !---------------------------------------------------------------------------
+    IF ( PRESENT(inputFileName) ) THEN
+      ModelName = inputFileName
+    ELSE
+      OPEN( 1, File='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
+      IF( iostat /= 0 ) THEN
+        CALL Fatal( 'ElmerSolver_init', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
+      END IF
+      ALLOCATE(CHARACTER(MAX_PATH_LEN)::ModelName)
+      READ(1,'(a)') ModelName
+      CLOSE(1)
+    END IF
+
+    !------------------------------------------------------------------------------
+    !    Read Model and mesh from Elmer mesh data base
+    !------------------------------------------------------------------------------
+    MeshIndex = 0
+    FirstLoad = .TRUE.
+
+    CALL Info( 'ElmerSolver_init', ' ')
+    CALL Info( 'ElmerSolver_init', 'Reading Model: '//TRIM(ModelName) )
+
+    INQUIRE(Unit=InFileUnit, Opened=GotIt)
+    IF ( GotIt ) CLOSE(InFileUnit)
+
+    OPEN( Unit=InFileUnit, Action='Read', File=ModelName, Status='OLD', IOSTAT=iostat )
+    IF( iostat /= 0 ) THEN
+      CALL Fatal( 'ElmerSolver_init', 'Unable to find input file [' // TRIM(ModelName) // '], can not execute.' )
+    END IF
+
+    CurrentModel => LoadModel( ModelName, .FALSE., ParEnv % PEs, ParEnv % MyPE, MeshIndex )
+    IF( .NOT. ASSOCIATED(CurrentModel) ) THEN
+      CALL Fatal( 'ElmerSolver_init', 'Failed to load model [' // TRIM(ModelName) // '].' )
+    END IF
+
+    IF( ParEnv % NumberOfThreads > 1 ) THEN
+      MaxOutputThread = ListGetInteger( CurrentModel % Simulation,'Max Output Thread',GotIt)
+      IF(.NOT. GotIt) MaxOutputThread = 1
+    END IF
+
+    CALL SetNamespaceCheck( ListGetLogical( CurrentModel % Simulation, 'Additive namespaces', Found ) )
+    MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
+    CALL CompleteModelKeywords( )
+
+    ! Optionally hand the (pre-extrusion) mesh footprint back to the caller.
+    !------------------------------------------------------------------------
+    IF ( PRESENT(meshFootprint) ) meshFootprint = CurrentModel % Meshes
+
+    CALL CreateExtrudedMesh()
+    DO jj=1,CurrentModel % NumberOfSolvers
+      CALL CreateExtrudedMesh(jj)
+    END DO
+
+    CoordTransform = ListGetString( CurrentModel % Simulation, 'Coordinate Transformation', GotIt )
+    IF( GotIt ) THEN
+      CALL CoordinateTransformation( CurrentModel % Meshes, CoordTransform, &
+          CurrentModel % Simulation, .TRUE. )
+    END IF
+
+    IF( ListGetLogical( CurrentModel % Simulation,'Internal Rigid Mesh Mapping', Found ) ) THEN
+      CALL RigidMeshMapping( CurrentModel, Mesh, .FALSE. )
+    END IF
+
+    IF( ListGetLogical( CurrentModel % Simulation,'Mark Sharp Edges',GotIt) ) THEN
+      BLOCK
+        LOGICAL, ALLOCATABLE :: SharpEdge(:)
+        REAL(KIND=dp) :: phi
+        phi = ListGetConstReal( CurrentModel % Simulation,'Sharp Edge',GotIt)
+        IF(.NOT. GotIt) phi = 30.0_dp
+        CALL MarkSharpEdges( CurrentModel % Meshes, SharpEdge, phi )
+      END BLOCK
+    END IF
+
+    CALL ListAddLogical( CurrentModel % Simulation, 'Initialization Phase', .TRUE. )
+
+    eq = ListGetString( CurrentModel % Simulation, 'Simulation Type', GotIt )
+    Scanning  = ( eq == 'scanning' )
+    Transient = ( eq == 'transient' )
+
+    CALL AddVtuOutputSolverHack()
+    CALL AddSaveScalarsHack()
+    CALL AddMeshCoordinates()
+    CALL TagBodiesUsingCondition( CurrentModel, CurrentModel % Meshes )
+
+    CALL AddSolvers()
+    CALL InitializeIntervals()
+    CALL AddTimeEtc()
+    CALL InitializeRandomSeed()
+
+    CALL SetInitialConditions()
+    DO jj=1,CurrentModel % NumberOfSolvers
+      Solver => CurrentModel % Solvers(jj)
+      IF( ListGetLogical( Solver % Values, 'Initialize Exported Variables', GotIt ) ) THEN
+        CurrentModel % Solver => Solver
+        CALL UpdateExportedVariables( Solver )
+      END IF
+    END DO
+
+    CALL CountSavedTimesteps()
+
+    CALL ListAddLogical( CurrentModel % Simulation, 'Initialization Phase', .FALSE. )
+
+    FirstLoad = .FALSE.
+
+    ! "Before All"/"Before Simulation" solvers: activated once here, so that
+    ! the repeated ElmerSolver_run() calls that follow don't re-trigger them --
+    ! see ActivateAheadAllSolvers for why this is safe/unchanged for standalone.
+    FISOC_RealTimestepCount = 0
+    CALL ActivateAheadAllSolvers()
+
+  END SUBROUTINE ElmerSolver_init
+
+
+!------------------------------------------------------------------------------
+!> Advance the simulation by exactly one real timestep (or one steady-state
+!> iteration set, for non-transient .sifs). Meant to be called once per
+!> coupling step by an external caller (e.g. FISOC), after one
+!> ElmerSolver_init() and before one ElmerSolver_finalize().
+!------------------------------------------------------------------------------
+  SUBROUTINE ElmerSolver_run()
+!------------------------------------------------------------------------------
+    CALL ExecSimulation( 1, CoupledMinIter, CoupledMaxIter, OutputIntervals, Transient, Scanning )
+  END SUBROUTINE ElmerSolver_run
+
+
+!------------------------------------------------------------------------------
+!> Run the whole simulation (all "Timestep Intervals") in one call.
+!------------------------------------------------------------------------------
+  SUBROUTINE ElmerSolver_runAll()
+!------------------------------------------------------------------------------
+    ExecCommand = ListGetString( CurrentModel % Simulation, 'Control Procedure', GotIt )
+    IF ( GotIt ) THEN
+      ControlProcedure = GetProcAddr( ExecCommand )
+      CALL ExecSimulationProc( ControlProcedure, CurrentModel )
+    ELSE
+      CALL ExecSimulation( TimeIntervals, CoupledMinIter, CoupledMaxIter, OutputIntervals, Transient, Scanning )
+    END IF
+  END SUBROUTINE ElmerSolver_runAll
+
+
+!------------------------------------------------------------------------------
+!> Finalise a coupled-mode simulation started with ElmerSolver_init(). Fires
+!> the "after all"/"after simulation" solvers and the guaranteed final save
+!> exactly once here (see ActivateAfterAllAndFinalSave), regardless of how many
+!> ElmerSolver_run() calls preceded it -- unlike the standalone path, an
+!> external coupler such as FISOC has no way to know in advance which
+!> ElmerSolver_run() call is the clock's last one, so "after all" semantics can
+!> only be correctly implemented at finalize time, not by guessing inside
+!> ElmerSolver_run.
+!------------------------------------------------------------------------------
+  SUBROUTINE ElmerSolver_finalize(PreserveParEnvOpt)
+!------------------------------------------------------------------------------
+    LOGICAL, INTENT(IN), OPTIONAL :: PreserveParEnvOpt
+    LOGICAL :: PreserveParEnv
+!------------------------------------------------------------------------------
+
+    IF ( PRESENT(PreserveParEnvOpt) ) THEN
+      PreserveParEnv = PreserveParEnvOpt
+    ELSE
+      PreserveParEnv = .FALSE.
+    END IF
+
+    IF ( FISOC_RealTimestepCount > 0 ) THEN
+      CALL ActivateAfterAllAndFinalSave()
+    END IF
+
+    IF( ListGetLogical( CurrentModel % Simulation,'Echo Keywords at End', GotIt ) ) THEN
+      CALL ListEchoKeywords( CurrentModel )
+    END IF
+
+    CALL CompareToReferenceSolution( Finalize = .TRUE. )
+
+    CALL Info( 'ElmerSolver_finalize', '*** Elmer Solver: ALL DONE ***', Level=3 )
+
+    IF( ListGetLogical( CurrentModel % Simulation,'Dirty Finish', GotIt ) ) THEN
+      CALL Info('ElmerSolver_finalize','Skipping freeing of the Model structure',Level=4)
+    ELSE
+      CALL FreeModel(CurrentModel)
+
+      IF (.NOT. PreserveParEnv) THEN
+        CALL ParallelFinalize()
+      END IF
+    END IF
+
+    CALL Info('ElmerSolver_finalize','The end',Level=3)
+
+  END SUBROUTINE ElmerSolver_finalize
+
+
+!------------------------------------------------------------------------------
+!> Activate "Before All"/"Before Simulation" solvers. Relocated out of the top
+!> of ExecSimulation (where this used to run, unconditionally, on every call)
+!> to here, called once per fresh model load: from ElmerSolver_init on the
+!> FISOC-driven path, and from the equivalent "just finished loading the
+!> model" point in the standalone ElmerSolver subroutine. Standalone calls
+!> ExecSimulation once per model load in all normal cases, so moving this out
+!> of ExecSimulation is not a behaviour change there; it only changes anything
+!> for a caller (FISOC) that calls ExecSimulation, via ElmerSolver_run, many
+!> times per model load.
+!------------------------------------------------------------------------------
+  SUBROUTINE ActivateAheadAllSolvers()
+!------------------------------------------------------------------------------
+    DO i=1,CurrentModel % NumberOfSolvers
+      Solver => CurrentModel % Solvers(i)
+      IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
+      DoIt = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL )
+      IF(.NOT. DoIt) THEN
+        DoIt = ListGetLogical( Solver % Values,'Before All',Found ) .OR. &
+            ListGetLogical( Solver % Values,'Before Simulation',Found )
+      END IF
+
+      IF( DoIt ) THEN
+        ! solver to be called prior to time looping can never be transient
+        dt = 1.0_dp
+        CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
+      END IF
+    END DO
+  END SUBROUTINE ActivateAheadAllSolvers
+
+
+!------------------------------------------------------------------------------
+!> Activate "After All"/"After Simulation" solvers, then perform the
+!> guaranteed final save (with its own "before saving"/"after saving" hooks).
+!> Relocated out of the tail of ExecSimulation (where this used to run,
+!> unconditionally, on every call) to here, called once per whole simulation:
+!> from ElmerSolver_finalize on the FISOC-driven path (only once at least one
+!> real timestep has actually run), and from the equivalent "just finished
+!> ExecSimulation" call sites in the standalone ElmerSolver subroutine. Same
+!> reasoning as ActivateAheadAllSolvers above: no behaviour change for
+!> standalone
+!------------------------------------------------------------------------------
+  SUBROUTINE ActivateAfterAllAndFinalSave()
+!------------------------------------------------------------------------------
+    DO i=1,CurrentModel % NumberOfSolvers
+      Solver => CurrentModel % Solvers(i)
+      IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
+      When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
+      IF ( GotIt ) THEN
+        IF ( When == 'after simulation' .OR. When == 'after all' ) THEN
+          CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+        END IF
+      ELSE
+        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_ALL ) THEN
+          CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+        END IF
+      END IF
+    END DO
+
+    !------------------------------------------------------------------------------
+    !    Always save the last step to output
+    !------------------------------------------------------------------------------
+    IF ( .NOT.LastSaved ) THEN
+      DO i=1,CurrentModel % NumberOfSolvers
+        Solver => CurrentModel % Solvers(i)
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
+        ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
+        When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
+        IF ( GotIt ) ExecThis = ( When == 'before saving')
+        IF( ExecThis ) CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+      END DO
+
+      CALL SaveToPost(0)
+      CALL SaveToPost(Timestep)
+
+      IF( .NOT. ListGetLogical( CurrentModel % Simulation,'Output File Final Only',GotIt) ) THEN
+        CALL SaveCurrent(Timestep)
+      END IF
+
+      DO i=1,CurrentModel % NumberOfSolvers
+        Solver => CurrentModel % Solvers(i)
+        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
+        ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
+        When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
+        IF ( GotIt ) ExecThis = ( When == 'after saving')
+        IF( ExecThis ) CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+      END DO
+    ELSE IF( ListGetLogical( CurrentModel % Simulation,'Output File Final Only',GotIt) ) THEN
+      CALL SaveCurrent(Timestep)
+    END IF
+
+  END SUBROUTINE ActivateAfterAllAndFinalSave
 
 
      ! If we want to start a new adaptive simulation with the original mesh
@@ -2727,21 +3137,6 @@
      !$OMP END PARALLEL
 
      nSolvers = CurrentModel % NumberOfSolvers
-     DO i=1,nSolvers
-        Solver => CurrentModel % Solvers(i)
-        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
-        DoIt = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL )
-        IF(.NOT. DoIt) THEN
-          DoIt = ListGetLogical( Solver % Values,'Before All',Found ) .OR. &
-              ListGetLogical( Solver % Values,'Before Simulation',Found )
-        END IF
-        
-        IF( DoIt ) THEN
-          ! solver to be called prior to time looping can never be transient
-          dt = 1.0_dp
-          CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
-        END IF
-     END DO
 
      IF( ListGetLogical( CurrentModel % Simulation,'Calculate Mesh Pieces',Found ) .OR. &
          ListCheckPresent( CurrentModel % Simulation,'Desired Mesh Pieces') ) THEN
@@ -2906,6 +3301,12 @@
        DO WHILE(timestep <= Timesteps(interval))
 
          cum_Timestep = cum_Timestep + 1
+                                                                                                          
+         ! Unlike cum_Timestep just above (reset to 0 at the top of every                                                                                       
+         ! ExecSimulation call), FISOC_RealTimestepCount is cumulative across                                                                                   
+         ! repeated ElmerSolver_run() calls -- see its declaration for why                                                                                      
+         ! this exists.
+         FISOC_RealTimestepCount = FISOC_RealTimestepCount + 1
          sStep(1) = cum_Timestep
 
          IF ( GetNamespaceCheck() ) THEN
@@ -2921,7 +3322,7 @@
          ! Sometimes when timestep depends on time we need to have first timestep size
          ! given separately to avoid problems. 
          GotIt = .FALSE.
-         IF( cum_Timestep == 1 ) THEN
+         IF( FISOC_RealTimestepCount == 1 ) THEN
            dtfunc = ListGetCReal( CurrentModel % Simulation,'First Timestep Size',GotIt )
            IF(GotIt) dt = dtfunc
          END IF
@@ -3026,7 +3427,7 @@
 
          
 !------------------------------------------------------------------------------
-         IF(cum_Timestep == 1 .AND. ListGetLogical( CurrentModel % Simulation,'Timestep Start Zero',GotIt) ) THEN
+         IF(FISOC_RealTimestepCount == 1 .AND. ListGetLogical( CurrentModel % Simulation,'Timestep Start Zero',GotIt) ) THEN
            CALL Info(Caller,'Not advancing the 1st timestep!')
          ELSE
            sTime(1) = sTime(1) + dt
@@ -3034,8 +3435,8 @@
          
          IF( nPeriodic > 0 ) THEN
            IF( ParallelTime ) THEN
-             timePeriod = nTimes * nPeriodic * dt                        
-             IF( cum_Timestep == 1 ) THEN
+             timePeriod = nTimes * nPeriodic * dt
+             IF( FISOC_RealTimestepCount == 1 ) THEN
                sTime(1) = sTime(1) + iTime * nPeriodic * dt
              ELSE IF( MODULO( cum_Timestep, nPeriodic ) == 1 ) THEN
                CALL Info(Caller,'Making jump in time-parallel scheme!')
@@ -3051,8 +3452,8 @@
            sPeriodicTime(1) = MODULO( sTime(1), timePeriod )
          END IF
            
-         ! Move the old timesteps one step down the ladder
-         IF(timestep > 1 .OR. interval > 1) THEN
+         ! Move the old timesteps one step down the ladder.
+         IF(FISOC_RealTimestepCount > 1) THEN
            DO i = SIZE(sPrevSizes,2),2,-1
              sPrevSizes(1,i) = sPrevSizes(1,i-1)
            END DO
@@ -3519,62 +3920,6 @@
 
      CALL ListPopNamespace()
 
-     DO i=1,nSolvers
-        Solver => CurrentModel % Solvers(i)
-        IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
-        When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
-        IF ( GotIt ) THEN
-           IF ( When == 'after simulation' .OR. When == 'after all' ) THEN
-              CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              !IF( ASSOCIATED(Solver % Variable) ) THEN
-              ! This construct seems to be for cases when we solve something "after all"
-              ! that affects results elsewhere. Hence we set "LastSaved" to false even
-              ! if it would be true before.                 
-              !IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
-              !END IF
-           END IF
-        ELSE
-           IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_ALL ) THEN
-              CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              !IF( ASSOCIATED(Solver % Variable) ) THEN
-              !  IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
-              !END IF
-           END IF
-        END IF
-     END DO
-
-!------------------------------------------------------------------------------
-!    Always save the last step to output
-!-----------------------------------------------------------------------------
-     IF ( .NOT.LastSaved ) THEN
-       DO i=1,CurrentModel % NumberOfSolvers
-         Solver => CurrentModel % Solvers(i)
-         IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
-         ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_SAVE)
-         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
-         IF ( GotIt ) ExecThis = ( When == 'before saving') 
-         IF( ExecThis ) CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-       END DO
-
-       CALL SaveToPost(0)
-       CALL SaveToPost(TimeStep)
-       
-       IF( .NOT. ListGetLogical( CurrentModel % Simulation,'Output File Final Only',GotIt) ) THEN               
-         CALL SaveCurrent(Timestep)
-       END IF
-
-       DO i=1,CurrentModel % NumberOfSolvers
-         Solver => CurrentModel % Solvers(i)
-         IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) CYCLE
-         ExecThis = ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_SAVE)
-         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )
-         IF ( GotIt ) ExecThis = ( When == 'after saving') 
-         IF( ExecThis ) CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-       END DO
-     ELSE IF( ListGetLogical( CurrentModel % Simulation,'Output File Final Only',GotIt) ) THEN               
-       CALL SaveCurrent(Timestep)
-     END IF
-
 !------------------------------------------------------------------------------
    END SUBROUTINE ExecSimulation
 !------------------------------------------------------------------------------
@@ -4004,7 +4349,7 @@
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE ElmerSolver
+END MODULE ElmerSolver_mod
 !------------------------------------------------------------------------------
 
 !> \} ElmerLib

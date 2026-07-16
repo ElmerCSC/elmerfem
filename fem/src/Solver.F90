@@ -34,6 +34,13 @@ PROGRAM Solver
    USE Types
    USE GeneralUtils
    USE ParallelUtils
+   ! ElmerSolver now lives in a module (ElmerSolver_mod) rather than being a
+   ! bare external subroutine, so that it can also expose ElmerSolver_init /
+   ! ElmerSolver_run / ElmerSolver_runAll / ElmerSolver_finalize for external
+   ! callers (e.g. FISOC) -- see ElmerSolver.F90. The module supplies
+   ! ElmerSolver's interface automatically, replacing the explicit INTERFACE
+   ! block this used to need.
+   USE ElmerSolver_mod, ONLY : ElmerSolver
 
    IMPLICIT NONE
 
@@ -47,16 +54,6 @@ PROGRAM Solver
    INTEGER :: iargc, nargs, arglen
    CHARACTER(:), ALLOCATABLE :: buf
    TYPE(ArgStr_t), ALLOCATABLE :: args(:)
-
-   INTERFACE
-     SUBROUTINE ElmerSolver(initialize, args, NoArgs)
-       USE Types
-       IMPLICIT NONE
-       INTEGER, INTENT(IN) :: initialize
-       INTEGER, INTENT(IN) :: NoArgs
-       TYPE(ArgStr_t), INTENT(IN) :: args(:)
-     END SUBROUTINE ElmerSolver
-   END INTERFACE
 
    CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
    Silent = toutput(1:1)=='0' .OR. toutput(1:5)=='false'
