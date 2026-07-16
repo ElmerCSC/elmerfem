@@ -139,14 +139,11 @@ SET_TARGET_PROPERTIES(elmerf90_bin PROPERTIES OUTPUT_NAME "elmerf90")
 ADD_EXECUTABLE(elmerld_bin ${CMAKE_CURRENT_SOURCE_DIR}/elmerld.c)
 SET_TARGET_PROPERTIES(elmerld_bin PROPERTIES OUTPUT_NAME "elmerld")
 
-# Create pkg-config file if requested and place it under ${PKGCONFIG_PC_PATH}
-# Defaults: PKGCONFIG_PC_PATH = ${CMAKE_INSTALL_PREFIX}/share/pkgconfig
+# Create pkg-config file if requested
 IF(CREATE_PKGCONFIG_FILE)
-  SET(PKGCONFIG_PC_PATH "${CMAKE_INSTALL_PREFIX}/share/pkgconfig"
-    CACHE PATH "Path where to install elmer pkg-config file")
   CONFIGURE_FILE(elmer.in.pc elmer.pc @ONLY)
   INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc
-    DESTINATION ${PKGCONFIG_PC_PATH})
+    DESTINATION "share/pkgconfig")
 ENDIF(CREATE_PKGCONFIG_FILE)
 
 # Copy elements.def and SOLVER.KEYWORDS (to enable testing)
