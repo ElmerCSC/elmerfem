@@ -1,21 +1,21 @@
-/*  
+/*
    Elmer, A Finite Element Software for Multiphysical Problems
-  
+
    Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-   
+
    This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Lesser General Public
    License as published by the Free Software Foundation; either
    version 2.1 of the License, or (at your option) any later version.
-  
+
    This library is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    Lesser General Public License for more details.
-   
+
    You should have received a copy of the GNU Lesser General Public
-   License along with this library (in file ../../LGPL-2.1); if not, write 
-   to the Free Software Foundation, Inc., 51 Franklin Street, 
+   License along with this library (in file ../../LGPL-2.1); if not, write
+   to the Free Software Foundation, Inc., 51 Franklin Street,
    Fifth Floor, Boston, MA  02110-1301  USA
 */
 
@@ -73,7 +73,7 @@
  *
  * Parameters:
  *
- * N     : int            / length of sequences. 
+ * N     : int            / length of sequences.
  * T     : COMPLEX[N]     / input sequence.
  * F     : COMPLEX[N]     / transform sequence. may point to same memory as T.
  *
@@ -98,9 +98,9 @@
  *
  * Parameters:
  *
- * N     : int              / length of input sequence. 
+ * N     : int              / length of input sequence.
  * T     : double[N]         / input sequence.
- * F     : COMPLEX[N/2+1]   / transform sequence. may point to same memory 
+ * F     : COMPLEX[N/2+1]   / transform sequence. may point to same memory
  *                          / as T (which must then be of length (N+2)).
  *
  * F(n) = sum(T(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N/2
@@ -115,7 +115,7 @@
  * then
  * 2*G(n) = (1/(N/2))*sum(g(l)*exp(-i*2*pi*n*l/(N/2)),l=0..N/2-1,(k=2*l)
  * 2*H(n) = (1/(N/2))*sum(h(l)*exp(-i*2*pi*n*l/(N/2)),l=0..N/2-1,(k=2*l+1)
- * and 
+ * and
  * F(n) = G(n) + exp(-i*2*pi*n/N)*H(n), n=0..N/2-1
  * Now take
  * y(k) = g(k) + i*h(k), k=0..N/2-1
@@ -126,7 +126,7 @@
  * where
  *       G_even is even part of G, G_odd odd part of G,
  *       H_even is even part of H, and H_odd odd part of H.
- * now 
+ * now
  * 2*G_even(n) = Real( Y(n) + Y(N/2-n))
  * 2*G_odd(n)  = Imag( Y(n) - Y(N/2-n))
  * 2*H_even(n) = Imag( Y(n) + Y(N/2-n))
@@ -134,10 +134,10 @@
  * and (at last)
  * F(n)=G_even(n)+i*G_odd(n)+exp(-i*2*pi*n/N)*(H_even(n)+i*H_odd(n)), n=0..N/2-1
  * F(n)=Real(F(N-n))-i*Imag(F(N-n)), n=N/2+1..N-1
- * 
+ *
  *------------------------------------------------------------------------------
  *
- * rfftb: inverse real FFT. 
+ * rfftb: inverse real FFT.
  *
  * Parameters:
  *
@@ -159,11 +159,11 @@
  * now
  * h(k) = (exp(i*2*pi*k/N)-exp(-i*2*pi*k/N))*x(k)
  *      = i*2*sin(2*pi*k/N)*x(k)
- * where 
+ * where
  * X(n) = F(2*n+1), k=0..N/2-1
  * x(k) = sum(X(l)*exp(i*2*pi*k*l/(N/2))), l=0..N/2-1,(n=2*l+1)
  * g(k) = sum(G(l)*exp(i*2*pi*k*l/(N/2))), l=0..N/2-1,(n=2*l)
- * take 
+ * take
  * Y(n) = G(n) + H(n)
  * so
  * y(k) = g(k) + h(k)
@@ -215,7 +215,7 @@
  * T     : COMPLEX[L][M][N]   / input array.
  * F     : COMPLEX[L][M][N]   / transform array. may point to same memory as T.
  *
- * F(l,m,n) = sum(T(i,j,k)*exp(-i*2*pi*(l*i/L+m*j/M+n*k/N))), 
+ * F(l,m,n) = sum(T(i,j,k)*exp(-i*2*pi*(l*i/L+m*j/M+n*k/N))),
  *                                         l,i=0..L-1; m,j=0..M-1; k,n=0..N-1
  *
  *------------------------------------------------------------------------------
@@ -228,7 +228,7 @@
  * F     : COMPLEX[L][M][N]   / transform array.
  * T     : COMPLEX[L][M][N]   / output array. may point to same memory as T.
  *
- * T(l,m,n) = sum(F(i,j,k)*exp(i*2*pi*(l*i/L+m*j/M+n*k/N))), 
+ * T(l,m,n) = sum(F(i,j,k)*exp(i*2*pi*(l*i/L+m*j/M+n*k/N))),
  *                                         l,i=0..L-1; m,j=0..M-1; k,n=0..N-1
  *
  *------------------------------------------------------------------------------
@@ -295,9 +295,9 @@
  *     double Mag;
  *     int FBin;
  *     } FREQ;
- * 
+ *
  * The magnitude entry is returned by gfftf(), not used by gfftb().
- * 
+ *
  * Juha Ruokolainen / CSC
  * LAST CHANGE: 19.3. -92
  *
@@ -386,9 +386,7 @@ static int _FFT_Level;
  *                        / the number of bits.
  * T: COMPLEX[N]          / the array to be operated on.
  */
-void BitReverseArray( N, T )
-    int N;
-    COMPLEX *T;
+void BitReverseArray(int N, COMPLEX *T)
 {
     COMPLEX swap;
 
@@ -418,7 +416,7 @@ void BitReverseArray( N, T )
  *       another (integer) array accordingly. the latter can be used as track
  *       keeper of where an element in the sorted order at position (k) was in
  *       in the original order (Ord[k]), if it is initialized to contain
- *       numbers (0..N-1) before calling sort. 
+ *       numbers (0..N-1) before calling sort.
  *
  * Parameters:
  *
@@ -456,10 +454,7 @@ void sort_shift(int lbeg,int lend,double *Key,int *Ord)
    }
 
 }
-void sort( N, Key, Ord )
-    int N;
-    int *Ord;
-    double *Key;
+void sort(int N, double *Key, int *Ord)
 {
   int lend,lbeg;
 
@@ -483,7 +478,7 @@ void sort( N, Key, Ord )
  *
  * Parameters: NONE.
  */
-static int FFTInit( )
+static void FFTInit(void)
 {
     static int InitDone = FALSE;
 
@@ -491,13 +486,13 @@ static int FFTInit( )
     int n;
 
     if ( InitDone ) {
-        return 0;
+        return;
         }
 
     n = ( 1 << _FFT_MAX_LEVELS );
     for( k = 0; k < _FFT_MAX_LEVELS; k++ ) {
-        _FFT_COS[k] =  cos( _FFT_PI / n );    
-        _FFT_SIN[k] = -sin( _FFT_PI / n );    
+        _FFT_COS[k] =  cos( _FFT_PI / n );
+        _FFT_SIN[k] = -sin( _FFT_PI / n );
         n /= 2;
         }
 
@@ -518,10 +513,7 @@ static int FFTInit( )
  * T(n) = sum(F(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N-1
  *
  */
-static int FFTKernel( N, F, T )
-    int N;
-    COMPLEX *F;
-    COMPLEX *T;
+static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
 {
     double ExpR;
     double ExpI;
@@ -576,11 +568,11 @@ static int FFTKernel( N, F, T )
         T[_FFT_I].Imag = TempI - F[3].Imag;
         _FFT_I++;
 
-        return 0;
+        return;
         }
-   
+
     N /= 2;
- 
+
     /*
      *  ExpR + i*ExpI = exp(-i*2*pi*k/N ) = exp(-i*2*pi/N)^(k)
      */
@@ -624,16 +616,13 @@ static int FFTKernel( N, F, T )
  *
  * Parameters:
  *
- * N     : int            / length of sequences. 
+ * N     : int            / length of sequences.
  * T     : COMPLEX[N]     / input sequence.
  * F     : COMPLEX[N]     / transform sequence. may point to same memory as T.
  *
  * F(n) = sum(T(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N-1
  */
-void cfftf( N, T, F )
-    int N;
-    COMPLEX *T;
-    COMPLEX *F;
+void cfftf(int N, COMPLEX *T, COMPLEX *F)
 {
     int logN;
     int k;
@@ -649,7 +638,7 @@ void cfftf( N, T, F )
         for( k = 0; k < N; k++ ) F[k] = T[k];
         }
 
-    FFTKernel( N, F, F ); 
+    FFTKernel( N, F, F );
     BitReverseArray( N, F );
 }
 
@@ -665,10 +654,7 @@ void cfftf( N, T, F )
  * T(n) = sum(F(k)*exp(i*2*pi*n*k/N)), k=0..N-1,N=0..N-1
  *
  */
-void cfftb( N, F, T )
-    int N;
-    COMPLEX *F;
-    COMPLEX *T;
+void cfftb(int N, COMPLEX *F, COMPLEX *T)
 {
     int logN;
     int k;
@@ -682,18 +668,12 @@ void cfftb( N, F, T )
 }
 
 #ifdef USE_ISO_C_BINDINGS
-void fcfftb( N, F, T )
-    int *N;
-    COMPLEX *F;
-    COMPLEX *T;
+void fcfftb(int *N, COMPLEX *F, COMPLEX *T)
 {
     cfftb( *N, F, T );
 }
 #else
-void FC_FUNC(fcfftb,FCFFTB)( N, F, T )
-    int *N;
-    COMPLEX *F;
-    COMPLEX *T;
+void FC_FUNC(fcfftb,FCFFTB)(int *N, COMPLEX *F, COMPLEX *T)
 {
     cfftb( *N, F, T );
 }
@@ -705,18 +685,15 @@ void FC_FUNC(fcfftb,FCFFTB)( N, F, T )
  *
  * parameters:
  *
- * N     : int              / length of input sequence. 
+ * N     : int              / length of input sequence.
  * T     : double[N]         / input sequence.
- * F     : COMPLEX[N/2+1]   / transform sequence. may point to same memory 
+ * F     : COMPLEX[N/2+1]   / transform sequence. may point to same memory
  *                          / as T (which must then be of length (N+2)).
  *
  * F(n) = sum(T(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N/2
  *
  */
-void rfftf( N, T, F )
-    int N;
-    double   *T;
-    COMPLEX *F;
+void rfftf(int N, double *T, COMPLEX *F)
 {
     COMPLEX *W;
 
@@ -742,7 +719,7 @@ void rfftf( N, T, F )
  *     W[k].Imag = T[2*k+1];
  *     }
  *
- *  and replace 
+ *  and replace
  *     cfftf( N, (COMPLEX *)T, W );
  *  by
  *     cfftf( N, W, W );
@@ -773,7 +750,7 @@ void rfftf( N, T, F )
 
         F[k].Real /= 2; F[k].Imag /= 2;
 
-        t = ExpR;                   
+        t = ExpR;
         ExpR = CO * t - SI * ExpI;
         ExpI = CO * ExpI + SI * t;
         }
@@ -782,7 +759,7 @@ void rfftf( N, T, F )
 }
 
 /*
- * rfftb: inverse real FFT. 
+ * rfftb: inverse real FFT.
  *
  * Parameters:
  *
@@ -793,10 +770,7 @@ void rfftf( N, T, F )
  * T(n) = sum(F(k)*exp(i*2*pi*n*k/N)), k=0..N-1,N=0..N-1
  *
  */
-void rfftb( N, F, T )
-    int N;
-    COMPLEX *F;
-    double   *T;
+void rfftb(int N, COMPLEX *F, double *T)
 {
     COMPLEX *W;
 
@@ -863,7 +837,7 @@ void rfftb( N, F, T )
     SI  = sin( pi );
 
     for( k = 1; k < N; k++ ) {
-        t = ExpR;                   
+        t = ExpR;
         ExpR = CO * t - SI * ExpI;
         ExpI = CO * ExpI + SI * t;
 
@@ -883,20 +857,14 @@ void rfftb( N, F, T )
 }
 
 #ifdef USE_ISO_C_BINDINGS
-void frfftb( N, F, T )
-    int *N;
-    COMPLEX *F;
-    double   *T;
+void frfftb(int *N, COMPLEX *F, double *T)
 {
    rfftb( *N, F, T );
 }
 #else
-FC_FUNC(frfftb,FRFFTB)( N, F, T )
-    int *N;
-    COMPLEX *F;
-    double   *T;
+FC_FUNC(frfftb,FRFFTB)(int *N, COMPLEX *F, double *T)
 {
-   rfftb( *N, F, T ); 
+   rfftb( *N, F, T );
 }
 #endif /* USE_ISO_C_BINDINGS */
 
@@ -922,30 +890,26 @@ FC_FUNC(frfftb,FRFFTB)( N, F, T )
  *       }
  *
  */
-void gfftb( nF, freq, nT, time )
-    int nT;
-    int nF;
-    double *time;
-    FREQ  *freq;
+void gfftb(int nF, FREQ *freq, int nT, double *time)
 {
     COMPLEX *F;
 
     int k;
 
-    /* 
-     * if you change the COMPLEX type replace 
+    /*
+     * if you change the COMPLEX type replace
      *     F = (COMPLEX *)time;
      *     bzero( F, ( nT / 2 + 1 ) * sizeof( COMPLEX ) );
      * by
      *     F = (COMPLEX *)calloc( ( nT / 2 + 1, sizeof( COMPLEX ) );
-     * and add 
+     * and add
      *     free( F );
      * to end of the routine.
-     */ 
+     */
     F = (COMPLEX *)time;
     /* bzero( F, ( nT / 2 + 1 ) * sizeof( COMPLEX ) ); */
     memset( F, 0, ( nT / 2 + 1 ) * sizeof( COMPLEX ) );
-        
+
     for( k = 0; k < nF; k++ ) {
         F[freq[k].FBin].Real = freq[k].Real;
         F[freq[k].FBin].Imag = freq[k].Imag;
@@ -976,11 +940,7 @@ void gfftb( nF, freq, nT, time )
  *       int FBin;
  *       }
  */
-void gfftf( nT, time, nF, freq )
-    int nT;
-    int nF;
-    FREQ *freq;
-    double *time;
+void gfftf(int nT, double *time, int nF, FREQ *freq)
 {
     COMPLEX *F;
 
@@ -1015,7 +975,7 @@ void gfftf( nT, time, nF, freq )
         freq[i].Mag  = Magnitude[k];
         freq[i].FBin = Order[k];
         }
- 
+
     free( F );
     free( Order );
     free( Magnitude );
@@ -1032,10 +992,7 @@ void gfftf( nT, time, nF, freq )
  *
  * F(m,n) = sum(T(k,l)*exp(-i*2*pi*(m*k/M+n*l/N))), k,m=0..M-1; l,n=0..N-1
  */
-void cfftf2D( M, N, T, F ) 
-    int M,N;
-    COMPLEX *T;
-    COMPLEX *F;
+void cfftf2D(int M, int N, COMPLEX *T, COMPLEX *F)
 {
     COMPLEX *W;
 
@@ -1070,10 +1027,7 @@ void cfftf2D( M, N, T, F )
  *
  * T(m,n) = sum(F(k,l)*exp(i*2*pi*(m*k/M+n*l/N))), k,m=0..M-1; l,n=0..N-1
  */
-void cfftb2D( M, N, F, T ) 
-    int M,N;
-    COMPLEX *F;
-    COMPLEX *T;
+void cfftb2D(int M, int N, COMPLEX *F, COMPLEX *T)
 {
     COMPLEX *W;
 
@@ -1099,13 +1053,10 @@ void cfftb2D( M, N, F, T )
  * T     : COMPLEX[L][M][N]   / input array.
  * F     : COMPLEX[L][M][N]   / transform array. may point to same memory as T.
  *
- * F(l,m,n) = sum(T(i,j,k)*exp(-i*2*pi*(l*i/L+m*j/M+n*k/N))), 
+ * F(l,m,n) = sum(T(i,j,k)*exp(-i*2*pi*(l*i/L+m*j/M+n*k/N))),
  *                                         l,i=0..L-1; m,j=0..M-1; k,n=0..N-1
  */
-void cfftf3D( L, M, N, T, F )
-    int L,M,N;
-    COMPLEX *T;
-    COMPLEX *F;
+void cfftf3D(int L, int M, int N, COMPLEX *T, COMPLEX *F)
 {
     COMPLEX *W;
 
@@ -1115,7 +1066,7 @@ void cfftf3D( L, M, N, T, F )
 
     W = (COMPLEX *)malloc( L * sizeof( COMPLEX ) );
 
-    for( k = 0; k < L; k++ ) cfftf2D( M, N, &T[k*M*N], &F[k*M*N] ); 
+    for( k = 0; k < L; k++ ) cfftf2D( M, N, &T[k*M*N], &F[k*M*N] );
 
     for( j = 0; j < M * N; j++ ) {
         for( k = 0, n = j; k < L; k++, n += M * N ) W[k] = F[n];
@@ -1137,13 +1088,10 @@ void cfftf3D( L, M, N, T, F )
  * F     : COMPLEX[L][M][N]   / transform array.
  * T     : COMPLEX[L][M][N]   / output array. may point to same memory as T.
  *
- * T(l,m,n) = sum(F(i,j,k)*exp(i*2*pi*(l*i/L+m*j/M+n*k/N))), 
+ * T(l,m,n) = sum(F(i,j,k)*exp(i*2*pi*(l*i/L+m*j/M+n*k/N))),
  *                                         l,i=0..L-1; m,j=0..M-1; k,n=0..N-1
  */
-void cfftb3D( L, M, N, F, T )
-    int L,M,N;
-    COMPLEX *F;
-    COMPLEX *T;
+void cfftb3D(int L, int M, int N, COMPLEX *F, COMPLEX *T)
 {
     int k;
 
@@ -1169,11 +1117,7 @@ void cfftb3D( L, M, N, F, T )
  * F   : COMPLEX F[D[N-1]][D[N-2]]...[D[0]]    / transform array.
  *                                             / may point to same memory as T.
  */
-void cfftfND( N, D, T, F )
-    int  N;
-    int *D;
-    COMPLEX *T;
-    COMPLEX *F;
+void cfftfND(int N, int *D, COMPLEX *T, COMPLEX *F)
 {
     COMPLEX *W;
 
@@ -1188,7 +1132,7 @@ void cfftfND( N, D, T, F )
 
     int S[32];
     int P[32];
-    
+
     WN = D[0];
     TotN = 1;
     for( i = 0; i < N; i++ ) {
@@ -1246,15 +1190,11 @@ void cfftfND( N, D, T, F )
  * T   : COMPLEX F[D[N-1]][D[N-2]]...[D[0]]    / output array.
  *                                             / may point to same memory as T.
  */
-void cfftbND( N, D, F, T )
-    int  N;
-    int *D;
-    COMPLEX *F;
-    COMPLEX *T;
+void cfftbND(int N, int *D, COMPLEX *F, COMPLEX *T)
 {
     int TotN;
     int k;
-    
+
     TotN = D[0];
     for( k = 1; k < N; k++ ) TotN *= D[k];
 

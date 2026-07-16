@@ -255,7 +255,7 @@ MODULE LinearAlgebra
 
   SUBROUTINE ComplexInvertMatrix( A,n )
 
-    COMPLEx(KIND=dp), DIMENSION(:,:) :: A
+    COMPLEX(KIND=dp), DIMENSION(:,:) :: A
     INTEGER :: n 
 
     COMPLEX(KIND=dp) :: s

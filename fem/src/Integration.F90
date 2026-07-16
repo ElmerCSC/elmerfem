@@ -1526,8 +1526,7 @@ CONTAINS
       IF ( n < 1 .OR. n > MAXN ) THEN
         p % n = 0
         WRITE( Message, * ) 'Invalid number of points: ',n
-        CALL Error( 'GaussPoints1D', Message )
-        RETURN
+        CALL Fatal( 'GaussPoints1D', Message )
       END IF
 
       p % n = n
@@ -1764,8 +1763,7 @@ CONTAINS
       IF ( n < 1 .OR. n > MAXN ) THEN
         p % n = 0
         WRITE( Message, * ) 'Invalid number of points: ', n
-        CALL Error( 'GaussPointsQuad', Message )
-        RETURN
+        CALL Fatal( 'GaussPointsQuad', Message )
       END IF
 
       t = 0
@@ -1989,8 +1987,7 @@ CONTAINS
       IF ( n < 1 .OR. n > MAXN ) THEN
          p % n = 0
          WRITE( Message, * ) 'Invalid number of points: ', n
-         CALL Error( 'GaussPointsPyramid', Message )
-         RETURN
+         CALL Fatal( 'GaussPointsPyramid', Message )
       END IF
 
       t = 0
@@ -2079,8 +2076,7 @@ CONTAINS
       IF ( n < 1 .OR. n > MAXN ) THEN
          p % n = 0
          WRITE( Message, * ) 'Invalid number of points: ', n
-         CALL Error( 'GaussPointsWedge', Message )
-         RETURN
+         CALL Fatal( 'GaussPointsWedge', Message )
       END IF
 
       t = 0
@@ -2450,8 +2446,7 @@ CONTAINS
            nz < 1 .OR. nz > MAXN) THEN
         p % n = 0
         WRITE( Message, * ) 'Invalid number of points: ', nx, ny, nz
-        CALL Error( 'GaussPointsBrick', Message )
-        RETURN
+        CALL Fatal( 'GaussPointsBrick', Message )
       END IF
 
       t = 0
@@ -2503,8 +2498,7 @@ CONTAINS
         IF ( n < 1 .OR. n > MAXN ) THEN
           p % n = 0
           WRITE( Message, * ) 'Invalid number of points: ', n
-          CALL Error( 'GaussPointsBrick', Message )
-          RETURN
+          CALL Fatal( 'GaussPointsBrick', Message )
         END IF
       END SELECT
         

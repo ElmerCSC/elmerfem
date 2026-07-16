@@ -1,4 +1,5 @@
 ! Test case for Hypre AMS - Auxiliary-space Maxwell Solver
+! This test case with BiCGStab as solver, AMS as precondtioner. 
 
 $ mu_pm = 1.05
 $ mu0 = 4e-7*pi
@@ -9,7 +10,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 7
   Coordinate System = Cartesian
   Simulation Type = steady state
   Use Mesh Names = False
@@ -103,7 +104,19 @@ Solver 1 ! whitneyavsolver
   Linear System Max Iterations = 5000
   Linear System Residual Output = 10
   Linear System preconditioning = ams
-  Linear System Iterative Method = cg
+
+! AMS          2 
+! PCG          6 
+! BiCGStab     7 
+! GMRes        8 
+! FlexGMRes    9 
+! LGMRes       10
+! COGMRes      11
+
+  Linear System Method Hypre Index = Integer 7
+
+!  Linear System Iterative Method = bicgstab
+
   Edge Basis = Logical True
 
   NonLinear System Consistent Norm = True
@@ -160,6 +173,9 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
-Solver 1:: Reference Norm = 1.47377614E-07
+! At some stage the norm has changed. 
+!Solver 1:: Reference Norm = 1.45087009E-07
+
+! Electromagnetic field energy
 Solver 3:: Show Norm Index = 2
 Solver 3:: Reference Norm = 8.32659888E-06

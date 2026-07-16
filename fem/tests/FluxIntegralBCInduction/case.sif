@@ -1,0 +1,176 @@
+!---------------------------------------------------------------------
+! Solves a axially symmetric magnetodynamics equation such that the net
+! surface current generated on the surface of the conducting piece vanishes.
+! This involves sort of Robin BC where the "external potential" is unknown and
+! is found such that the net integral of the surface currents vanish.
+!
+! This test case was done in collaboration with Roland Ernst in 2023
+! and saved to a test case later. 
+!
+! P.R. / 1.11.2024
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "indmesh"
+  Include Path ""
+  Results Directory "results"
+End
+
+$chr="a"
+
+Simulation
+  Max Output Level = 20
+  Coordinate System = Axi Symmetric
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+  Angular Frequency = 62800.0
+  Post File = case-$chr$.vtu
+  ascii output = true
+!  Mesh Levels = 3
+End
+
+Constants
+  Permittivity of Vacuum = 8.85418781e-12
+  Permeability of Vacuum = 1.25663706e-6
+$i0=6.0e7
+$elcond=1.0e6
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Body 2"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = MgDyn2DHarmonic
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+  Variable = Potential[Potential Re:1 Potential Im:1]
+  Exec Solver = Always
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Direct 
+  Linear System Direct Method = umfpack
+
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+  Calculate Loads = True
+  Apply Integral BCs = True
+End
+
+Solver 2
+  Equation = MgDynPost
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Calculate Magnetic Field Strength = True
+  Calculate Electric Field = True
+  Calculate Nodal Heating = False
+  Calculate Current Density = False
+
+  Calculate Nodal Fields = False
+  Calculate Elemental Fields = True
+End
+
+
+Solver 3
+  Exec Solver = never !after all
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  FileName = f$chr$.dat
+
+  Polyline Coordinates(2,2) = 0.0 0.0 0.05 0.0
+  Polyline Divisions(1) = 100
+End
+
+Solver 4
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = g.dat
+  Variable 1 = potential re
+  Operator 1 = "boundary int"
+  Variable 2 = potential re
+  Operator 2 = "boundary int"
+  Variable 3 = potential loads 1
+  Operator 3 = "boundary sum"
+  Variable 4 = potential loads 2
+  Operator 4 = "boundary sum"
+
+  Variable 5 = Surface current re 3
+  Operator 5 = "boundary int"
+  Variable 6 = Surface current im 3
+  Operator 6 = "boundary int"
+  Variable 7 = Surface current re 3
+  Operator 7 = "boundary min"
+  Variable 8 = Surface current re 3
+  Operator 8 = "boundary max"
+
+  Variable 9 = Lagrange Multiplier MgDyn2DHarmonic 1
+  Variable 10 = Lagrange Multiplier MgDyn2DHarmonic 2
+
+  Show Norm Index = 3
+  File Append = True
+End 
+
+
+Equation 1
+  Name = "Equation 1_EM"
+  Active Solvers(2) = 2 1
+End
+
+Material 1
+  Name = "Air (room temperature)"
+  Relative Permittivity = 1.00059
+  Electric Conductivity = 0
+  Relative Permeability = 1.00000037
+End
+
+Material 2
+  Name = "Copper (generic) cold_ crucible"
+  Electric Conductivity = 59.59e6
+  Relative Permeability = 0.999994
+End
+
+Body Force 1
+  Name = "BodyForce 1"
+  Current Density = $i0
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Name = "BC Outside"
+!  Infinity BC = True
+  Potential Re = Real 0
+  Potential Re = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Name = "BC CC_surf"
+  Layer Electric Conductivity = Real 6.0e7
+  Layer Relative Permeability = Real 1
+
+!  fixit re = real $1.0/(2*pi)
+!  fixit im = real 0.0
+ 
+  Flux Integral BC = Logical True
+  Save Scalars = True
+End
+
+Solver 1 :: Reference Norm = 1.85168787E-04
+
+! This should by construction be zero. 
+Solver 4 :: Reference Norm = 0.0
+Solver 4 :: Reference Norm Absolute = Logical True

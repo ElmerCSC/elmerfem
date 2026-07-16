@@ -1,9 +1,11 @@
-INCLUDE(test_macros)
-INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
-CONFIGURE_FILE( case.sif case.sif COPYONLY)
-ADD_ELMERTEST_MODULE(ArteryOutlet Motion Motion.f90)
+  CONFIGURE_FILE( case.sif case.sif COPYONLY)
+  ADD_ELMERTEST_MODULE(ArteryOutlet Motion Motion.f90)
 
-file(COPY ELMERSOLVER_STARTINFO Motion.f90 contra.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  file(COPY ELMERSOLVER_STARTINFO Motion.f90 contra.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ArteryOutlet LABELS elasticsolve transient fsi)
+  ADD_ELMER_TEST(ArteryOutlet LABELS elasticsolve transient fsi)
+ENDIF()

@@ -355,13 +355,15 @@ CONTAINS
         
       RowId = Cvar % ValueId + nm
       
-      vphi = GetCReal(Params, Circuit % Source(i), Found)
-      IF ( .NOT. Found .AND. ASSOCIATED(BF) ) THEN
-        vphi = GetCReal(BF, Circuit % Source(i), Found)
+      IF( LEN_TRIM( Circuit % Source(i) ) > 0 ) THEN
+        vphi = GetCReal(Params, Circuit % Source(i), Found)
+        IF ( .NOT. Found .AND. ASSOCIATED(BF) ) THEN
+          vphi = GetCReal(BF, Circuit % Source(i), Found)
+        END IF
+        IF (Found) Cvar % SourceRe(i) = vphi
+      ELSE
+        vphi = 0.0_dp
       END IF
-      IF (Found) Cvar % SourceRe(i) = vphi
-
-      !IF(Found) PRINT *,'vphi',i,vphi,TRIM(Circuit % Source(i))
       
       Cvar % SourceRe(i) = vphi
       CM % RHS(RowId) = Cvar % SourceRe(i)
@@ -574,7 +576,8 @@ CONTAINS
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
     TYPE(VariableHandle_t), SAVE :: Wvec_h
- 
+    TYPE(Variable_t), POINTER, SAVE :: Wpot
+    
     LOGICAL :: PiolaVersion = .FALSE.
     
     SAVE CSymmetry, dim, First, InitHandle
@@ -622,6 +625,8 @@ CONTAINS
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
 
       PiolaVersion = GetLogical( ASolver % Values, 'Use Piola Transform', Found )
+
+      CALL GetWPotentialVar(Wpot)
     END IF
 
     PS => Asolver % Variable % Perm
@@ -644,14 +649,14 @@ CONTAINS
     
     ncdofs=nd
     IF (dim == 3) THEN
-
+      ! We can choose the base per component.
       CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
       IF (.NOT. Found) CoilUseWvec = CoilUseWvec0
     
       IF (.NOT. CoilUseWvec) THEN
         !CALL GetLocalSolution(Wbase, 'w')
         ! when W Potential solver is used, 'w' is not enough.
-        CALL GetWPotential(WBase)
+        CALL GetLocalSolution( Wbase,UElement=Element,UVariable=Wpot, Found=Found)
       END IF
 
       ncdofs=nd-nn
@@ -777,7 +782,8 @@ CONTAINS
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: ncdofs,q
-
+    TYPE(Variable_t), POINTER, SAVE :: Wpot
+    
     SAVE CSymmetry, dim, First
 
     IF (First) THEN
@@ -785,6 +791,8 @@ CONTAINS
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
+
+      CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -835,7 +843,8 @@ CONTAINS
 
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase, 'w')
+      !CALL GetLocalSolution(Wbase, 'w')      
+      CALL GetLocalSolution( Wbase,UElement=Element,UVariable=Wpot, Found=Found)
       ncdofs=nd-nn
     END IF
 
@@ -987,7 +996,8 @@ CONTAINS
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
     INTEGER :: i,ncdofs,q
-
+    TYPE(Variable_t), POINTER, SAVE :: Wpot
+    
     SAVE CSymmetry, dim, First
 
     IF (First) THEN
@@ -995,6 +1005,8 @@ CONTAINS
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
+
+      CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -1020,7 +1032,8 @@ CONTAINS
 
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase, 'w')
+      CALL GetLocalSolution( Wbase,UElement=Element,UVariable=Wpot, Found=Found)
+      !CALL GetLocalSolution(Wbase, 'w')
       CALL GetElementRotM(Element, RotM, nn)
       ncdofs=nd-nn
     END IF
@@ -1769,7 +1782,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     LOGICAL :: PiolaVersion = .FALSE.
 
     TYPE(VariableHandle_t), SAVE :: Wvec_h
-
+    TYPE(Variable_t), POINTER, SAVE :: Wpot
+    
     SAVE CSymmetry, dim, First
 
     IF (First) THEN
@@ -1804,6 +1818,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
 
+      CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -1827,7 +1842,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF(.NOT. Found) CoilUseWvec = CoilUseWvec0 
 
       IF (.NOT. CoilUseWvec) THEN
-        CALL GetWPotential(WBase)
+        CALL GetLocalSolution( Wbase,UElement=Element,UVariable=Wpot, Found=Found)
+        !CALL GetWPotential(WBase)
       END IF
     END IF
 
@@ -1874,7 +1890,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         END IF
         IF (CoilUseWvec) THEN
-          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, Found = Found, dofs = dim )
+          IF(.NOT. Found ) THEN
+            CALL Fatal('Add_stranded','Could not find coil current density!')            
+          END IF
         ELSE
           w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
         END IF
@@ -1964,7 +1983,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     INTEGER :: ncdofs,q
     REAL(KIND=dp) :: ModelDepth
     COMPLEX(KIND=dp) :: Permittivity(nn), localP
+    TYPE(Variable_t), POINTER, SAVE :: Wpot
 
+    
     SAVE CSymmetry, dim, First
 
     IF (First) THEN
@@ -1972,6 +1993,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
+
+      CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -1990,7 +2013,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetWPotential(WBase)
+      !CALL GetWPotential(WBase)     
+      CALL GetLocalSolution( Wbase,UElement=Element,UVariable=Wpot, Found=Found)
       ncdofs=nd-nn
     END IF
 
@@ -2209,7 +2233,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
                      RotMLoc(3,3), RotM(3,3,nn)
     REAL(KIND=dp) :: Jvec(3)
     INTEGER :: i,ncdofs,q
+    TYPE(Variable_t), POINTER, SAVE :: Wpot
 
+    
     SAVE CSymmetry, dim, First, InitHandle, InitJHandle
 
     IF( First ) THEN
@@ -2243,6 +2269,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END IF
       IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+
+      CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -2266,7 +2294,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
       IF (.NOT. CoilUseWvec) THEN
         !CALL GetLocalSolution(Wbase, 'w')
-        CALL GetWPotential(WBase)
+        !CALL GetWPotential(WBase)
+        CALL GetLocalSolution( Wbase,UElement=Element,UVariable=Wpot, Found=Found)
       END IF
 
       FoilUseJvec = GetLogical(CompParams, 'Foil Winding Use J Vector', Found)
@@ -2702,13 +2731,12 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
          IF (Cvar % pdofs /= 0 ) THEN
            DO jj = 1, Cvar % pdofs
-             write (dofnumber, "(I2)") jj
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&
-               //'re dof '//TRIM(dofnumber), crt(Cvar % ValueId + ReIndex(jj)), Level=10)
+               //'re dof '//I2S(jj), crt(Cvar % ValueId + ReIndex(jj)), Level=10)
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&
-               //'im dof '//TRIM(dofnumber), crt(Cvar % ValueId + ImIndex(jj)), Level=10)
+               //'im dof '//I2S(jj), crt(Cvar % ValueId + ImIndex(jj)), Level=10)
            END DO
          END IF
        ELSE
@@ -2717,10 +2745,9 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          
          IF (Cvar % pdofs /= 0 ) THEN
            DO jj = 1, Cvar % pdofs
-             write (dofnumber, "(I2)") jj
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&
-               //'dof '//TRIM(dofnumber), crt(Cvar % ValueId + jj), Level=10)
+               //'dof '//I2S(jj), crt(Cvar % ValueId + jj), Level=10)
            END DO
          END IF
        END IF
@@ -2782,11 +2809,9 @@ CONTAINS
   INTEGER :: LevelVal = 3
 
   IF (PRESENT(Level)) LevelVal = Level
-
-  WRITE(VarVal,'(ES15.4)') VariableValue
-  CALL Info(Caller, TRIM(VariableName)//' '//&
-    TRIM(VarVal), Level=LevelVal)
-
+  WRITE(Message,'(A,T20,ES15.4)') TRIM(VariableName),VariableValue
+  CALL Info(Caller,Message,Level=LevelVal)
+  
   CALL ListAddConstReal(GetSimulation(),TRIM(CktPrefix)//' '//TRIM(VariableName), VariableValue)
 !-------------------------------------------------------------------
   END SUBROUTINE SimListAddAndOutputConstReal

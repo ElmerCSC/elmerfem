@@ -116,13 +116,13 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
     int boundary_nnz = 0;
     int neighbors    = 0;
 
-    std::vector<std::vector<PtrType>> boundary(num_procs, std::vector<PtrType>());
+    std::vector<std::vector<int>> boundary(num_procs, std::vector<int>());
     std::vector<bool>                 neighbor(num_procs, false);
     std::vector<std::map<int, bool>>  checked(num_procs, std::map<int, bool>());
 
     for(int i = 0; i < local_nrow; ++i)
     {
-        for(PtrType j = local_row_offset[i]; j < local_row_offset[i + 1]; ++j)
+        for(int j = local_row_offset[i]; j < local_row_offset[i + 1]; ++j)
         {
 
             // Interior point
@@ -147,10 +147,10 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
                             boundary[r].push_back(i + index_offset[rank]);
                             neighbor[r] = true;
                             ++boundary_nnz;
-                                checked[r][i + index_offset[rank]] = true;
+                            checked[r][i + index_offset[rank]] = true;
                         }
                         ++ghost_nnz;
-                            // Rank for current boundary point local_col[j] has been found
+                        // Rank for current boundary point local_col[j] has been found
                         // Continue with next boundary point
                         break;
                     }
@@ -275,7 +275,7 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
     }
 
     // Create boundary index array
-    std::vector<PtrType> boundary_index(nnz_boundary);
+    std::vector<int> boundary_index(nnz_boundary);
 
     k = 0;
     for(int i = 0; i < neighbors; ++i)
@@ -459,8 +459,9 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
 
     ls->Solve(rhs, &x);
 
-//  x.CopyToData(x_out);
-
+    // move solution back from device to host
+    x.MoveToHost();
+    
     for(i=0; i<*n; i++ ) x_out[i]=x[i];
 
     ls->Clear();

@@ -49,12 +49,13 @@ End
 
 Equation $NST
   Active Solvers(1) = 1
-  Element = "p:1 b:1"
+!  Element = "p:1 b:1"
 End
 
 Solver 1
 
   Equation = String "Navier-Stokes"
+  Element = "p:1 b:1"
 
   Linear System Solver = String "Iterative"  ! "Direct"
   Linear System Direct Method = "umfpack"
@@ -66,8 +67,10 @@ Solver 1
   Linear System Ilut Tolerance = 0.0001
   Linear System Residual Output = 1
 
-  Stabilization Method = PBubbles
-! Bubbles in Global System = False
+!  Nonlinear System Consistent Norm = True
+
+  Stabilization Method = pbubbles 
+  Bubbles in Global System = False
 
   Nonlinear System Convergence Tolerance = 1e-8
   Nonlinear System Max Iterations = 20
@@ -105,6 +108,5 @@ Boundary Condition $MeltSilicaCrucibleInterface
 End
 
 
-Solver 1 :: Reference Norm = Real 0.172138
-RUN
+Solver 1 :: Reference Norm = 2.88756149E-01
 !End Of File

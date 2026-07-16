@@ -820,7 +820,111 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
   return(0);
 }
 
+int MeshPieces(struct FemType *data,int nomesh,int nomeshes,int info)
+{
+  int i,j,k,n;
+  int MinIndex,MaxIndex,NoPieces,NoCorners,Loop,Ready;
+  int *MeshPiece=NULL,*PiecePerm=NULL;
+  // Indexes only needs to hold the max number of dofs per element
+  int Indexes[100];
 
+  if(nomeshes > 1) {
+    printf("Calculate Mesh Pieces in mesh[%d] of [%d] meshes:\n",nomesh,nomeshes);
+  } else {
+    printf("Calculate Mesh Pieces in mesh:\n");
+  }
+
+  n = data->noknots;
+  MeshPiece = Ivector(1,n);
+  for(i=1;i<=n;i++) MeshPiece[i] = 0;
+  
+  /*  Only set the piece for the nodes that are used by some element
+      For others the marker will remain zero. */
+  for(i=1; i<=data->noelements; i++) {
+    NoCorners = data->elementtypes[i]%100;
+    for(j=0; j<NoCorners; j++) {
+      MeshPiece[data->topology[i][j]] = 1;
+    }
+  }
+
+  j = 0;
+  for(i=1; i<=n; i++) {
+    if(MeshPiece[i] > 0) {
+      j++;
+      MeshPiece[i] = j;
+    }
+  }
+  if( n > j) {
+    printf("Number of non-body (hanging) nodes in mesh is %d\n", n-j );
+    printf("Consider running ElmerGrid with -autoclean command\n");
+  }
+
+  /* We go through the elements and set all the piece indexes to minimum index
+     until the mesh is unchanged. Thereafter the whole piece will have the minimum index
+     of the piece.  */
+  Ready = FALSE;
+  Loop = 0;
+
+  while(!Ready) {
+    Ready = TRUE;
+    for(i=1; i<=data->noelements; i++) {
+      MaxIndex = 0;
+      MinIndex = n;
+
+      NoCorners = data->elementtypes[i]%100;
+      for(j=0; j<NoCorners; j++) {
+        Indexes[j] = data->topology[i][j];
+      }
+      for(j=0; j<NoCorners; j++) {
+        for(k=0; k<NoCorners; k++) {
+          if(MaxIndex <  MeshPiece[Indexes[k]] )
+            MaxIndex = MeshPiece[Indexes[k]];
+          if(MinIndex >= MeshPiece[Indexes[k]] )
+            MinIndex = MeshPiece[Indexes[k]];
+        }
+        if(MaxIndex > MinIndex) {
+          MeshPiece[Indexes[j]] = MinIndex;
+          Ready = FALSE;
+        }
+      }
+    }
+    Loop++;
+  }
+/*  printf("Mesh coloring loops: %d\n",Loop); */
+
+  MaxIndex = 0;
+  for(i=1; i<=n; i++)
+    if(MeshPiece[i] > MaxIndex) MaxIndex = MeshPiece[i];
+
+  /*  Compute the true number of different pieces  */
+  if(MaxIndex == 1) {
+    NoPieces = 1;
+  } else {
+    NoPieces = 0;
+    PiecePerm = Ivector(1,MaxIndex);
+    for(i=1;i<=MaxIndex;i++) 
+      PiecePerm[i] = 0;    
+      
+    for(i=1; i<=n; i++) {
+      j = MeshPiece[i];
+      if( j == 0) continue;
+      if(PiecePerm[j] == 0) {
+        NoPieces++;
+        PiecePerm[j] = NoPieces;
+      }
+    }
+    free_Ivector(PiecePerm,1,MaxIndex);
+  }
+  if(NoPieces == 1) {
+    printf("There is a single piece in the mesh, so the mesh is conforming.\n");
+  } else {
+    printf("Number of separate pieces in mesh is %d\n", NoPieces);
+    printf("The mesh is non-conforming. If not expecting a non-conforming\n");
+    printf("mesh, then refer to the Elmer User Forum for help.\n");
+  }
+  free_Ivector(MeshPiece,1,n);
+  return(0);
+}
 
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals,int info)

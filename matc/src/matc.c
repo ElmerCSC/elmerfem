@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: matc.c,v 1.7 2007/06/08 08:12:17 jpr Exp $ 
+ * $Id: matc.c,v 1.7 2007/06/08 08:12:17 jpr Exp $
  *
  * $Log: matc.c,v $
  * Revision 1.7  2007/06/08 08:12:17  jpr
@@ -90,7 +90,7 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:48  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -185,7 +185,7 @@ void mtc_init( FILE *input_file, FILE *output_file, FILE *error_file )
   com_init( "help"   , FALSE, FALSE, com_help   , 0, 1, helpHelp   );
   com_init( "quit"   , FALSE, FALSE, com_quit   , 0, 0, "quit\n" );
   com_init( "exit"   , FALSE, FALSE, com_quit   , 0, 0, "exit\n" );
-  
+
   /*
    *    these constants will always be there for you.
    */
@@ -210,7 +210,7 @@ void mtc_init( FILE *input_file, FILE *output_file, FILE *error_file )
 #if 0
   /*
    *  trap INTERRUPT and Floating Point Exception signals
-   */ 
+   */
    signal(SIGFPE, sig_trap);
 
    sprintf( str, "%s/lib/mc.ini", getenv("ELMER_POST_HOME") );
@@ -261,9 +261,9 @@ char * mtc_domath( char *str )
   savejmp = jmpbuf;
   jmpbuf = &jmp;
 
-#ifdef DEBUG 
+#ifdef DEBUG
   fprintf( stderr, "got [%s]\n", str );
-#endif 
+#endif
   if ( math_out_str ) math_out_str[0] = '\0';
   math_out_count  = 0;
 
@@ -277,7 +277,7 @@ char * mtc_domath( char *str )
 
     /*
      *  normal return takes branch 1,
-     *  error() takes branch 2, 
+     *  error() takes branch 2,
      *  quit() takes branch 3.
      */
     switch (setjmp(*jmpbuf))
@@ -306,13 +306,13 @@ char * mtc_domath( char *str )
   return math_out_str;
 }
 
-char *doread()
+char *doread(void)
 /*======================================================================
 ?  doread() is really the main loop of this program. Function reads
 |  it's input as strings and gives them to function doit() for
 |  execution. setjmp() function is used for error recovery.
 |
-|  Memory allocated during the lifetime of this function is 
+|  Memory allocated during the lifetime of this function is
 |  collected to a list represented by the global VARIABLE
 |  ALLOCLIST *alloc_list. If function error() is called, this
 |  list is used to deallocate memory. Normally (well I certainly
@@ -351,7 +351,7 @@ char *doread()
 
       /*
        *  normal return takes branch 1,
-       *  error() takes branch 2, 
+       *  error() takes branch 2,
        *  quit() takes branch 3.
        */
       switch (setjmp(*jmpbuf))
@@ -384,7 +384,7 @@ char *doread()
   return math_out_str;
 }
 
-VARIABLE *com_quit()
+VARIABLE *com_quit(void)
 /*======================================================================
 ?  Quit current doread entry by longjumping back to it (nasty).
 &  longjmp
@@ -396,18 +396,18 @@ VARIABLE *com_quit()
   return (VARIABLE *)NULL;   /* won't be executed (hopefully) */
 }
 
-int dogets(buff, prompt) char *buff; char *prompt;
+int dogets(char *buff, char *prompt)
 /*======================================================================
-?  Get line from input stream. If both input & output streams are 
-|  connected to terminal, this function gives user one of three 
+?  Get line from input stream. If both input & output streams are
+|  connected to terminal, this function gives user one of three
 |  (default) prompts:
 |
-|     MATC> 
+|     MATC>
 |        - normal prompt                      (PMODE_MAIN)
-|     ....> 
+|     ....>
 |        - begin end- block is being defined  (PMODE_BLOCK)
 |     ####>                                   (PMODE_CONT)
-|        - user has given a #-sign as a last character of 
+|        - user has given a #-sign as a last character of
 |          previous line, this line will be concatenated with it
 |
 |  If current comment character is found from input stream, the
@@ -424,7 +424,7 @@ int dogets(buff, prompt) char *buff; char *prompt;
 
    if ( !math_in ) return FALSE;
 
-   /* 
+   /*
        Try figuring out if input & output streams are
        terminals, if they both are, give user a prompt.
    */
@@ -436,7 +436,7 @@ int dogets(buff, prompt) char *buff; char *prompt;
    */
    *ptr++ = ' ';
 
-   /* 
+   /*
         Go for it.
    */
    while((ptr = fgets(ptr, 256, math_in)) != NULL)
@@ -453,8 +453,8 @@ int dogets(buff, prompt) char *buff; char *prompt;
        dogets(ptr, PMODE_CONT);
      }
 
-     /* 
-      *   if there is only spaces in this line, 
+     /*
+      *   if there is only spaces in this line,
       *   don't bother returning it, instead
       *   let's read afresh, otherwise return.
       */
@@ -463,7 +463,7 @@ int dogets(buff, prompt) char *buff; char *prompt;
      if (*p != '\0')   /* GOOD EXIT HERE */
      {
 #if 0
-       /* 
+       /*
         *   Look for the system character, if found
         *   pass rest of the line to system()-call
         */
@@ -479,11 +479,11 @@ int dogets(buff, prompt) char *buff; char *prompt;
          }
        }
 #endif
-       if (*buff != '\0')   
+       if (*buff != '\0')
          return TRUE;          /* OR IF WE ARE HONEST, IT'S HERE */
      }
 
-     /* 
+     /*
           if it's terminal give a prompt.
      */
      if (isatty(fileno(math_in)) && isatty(fileno(math_out)))
@@ -494,14 +494,15 @@ int dogets(buff, prompt) char *buff; char *prompt;
 }
 
 
-void com_init(word, flag_pw, flag_ce, sub, minp, maxp, help_text ) 
+void com_init(char *word, int flag_pw, int flag_ce, VARIABLE *(*sub)(),
+    int minp, int maxp, char *help_text )
 /*======================================================================
-?  Adds commands to global command list. 
+?  Adds commands to global command list.
 |
 |  Parameters:
-|      char *word 
-|         - the keyword user gives for this command to be executed. 
-|      int flag_pw 
+|      char *word
+|         - the keyword user gives for this command to be executed.
+|      int flag_pw
 |         - flag telling if the command can be executed element
 |           by element using function *(*sub)().
 |      int flag_ce
@@ -518,52 +519,48 @@ void com_init(word, flag_pw, flag_ce, sub, minp, maxp, help_text )
 &  lst_add()
 ~  *_com_init()
 ^=====================================================================*/
-     char *word; 
-     VARIABLE *(*sub)();
-     int minp, maxp, flag_pw, flag_ce;
-     char *help_text;
 {
   COMMAND *ptr;        /* can't get rid of this */
-  
 
-  /* 
-     Fill the structure... 
+
+  /*
+     Fill the structure...
   */
   ptr = (COMMAND *)ALLOCMEM(COMSIZE);
   NAME(ptr) = STRCOPY(word);
-  if (flag_pw) 
+  if (flag_pw)
     ptr->flags |= CMDFLAG_PW;
-  if (flag_ce) 
+  if (flag_ce)
     ptr->flags |= CMDFLAG_CE;
   ptr->minp = minp;
   ptr->maxp = maxp;
   ptr->sub  = sub;
   ptr->help = help_text;
 
-  /* 
-     ...and update the list. 
+  /*
+     ...and update the list.
   */
   lst_add(COMMANDS, (LIST *)ptr);
 
   return;
 }
 
-void com_free()  
+void com_free(void)
 /*======================================================================
 ?  Deletes the list of commands and frees associated memory.
 |
 &  lst_purge()
 ^=====================================================================*/
 {
-  /* 
-       Give memory back to system 
+  /*
+       Give memory back to system
   */
   lst_purge(COMMANDS);
 
   return;
 }
 
-COMMAND *com_check(str) char *str;
+COMMAND *com_check(char *str)
 /*======================================================================
 ?  Look for command from COMMANDS list by name.
 |
@@ -625,10 +622,10 @@ VARIABLE *com_help( VARIABLE *ptr )
   return (VARIABLE *)NULL;
 }
 
-VARIABLE *com_pointw(sub, ptr)  double (*sub)(); VARIABLE *ptr;
+VARIABLE *com_pointw(double (*sub)(), VARIABLE *ptr)
 /*======================================================================
 ?  This routine does a function call (*sub)(), for each element in
-|  matrix given by ptr.  
+|  matrix given by ptr.
 |
 =  a temporary VARIABLE for which M(res, i, j) = (*sub)(M(ptr, i, j)
 &  var_temp_new(), *(sub)()
@@ -641,7 +638,7 @@ VARIABLE *com_pointw(sub, ptr)  double (*sub)(); VARIABLE *ptr;
 
   int i;             /* loop index          */
 
-  /* 
+  /*
      Get space for result and ...
   */
   n = NROW(ptr); m = NCOL(ptr);
@@ -649,8 +646,8 @@ VARIABLE *com_pointw(sub, ptr)  double (*sub)(); VARIABLE *ptr;
 
   sz = n*m;
   a = MATR(ptr); b = MATR(res);
-  
-  /* 
+
+  /*
       ...to action.
   */
   ptr2 = NEXT(ptr);
@@ -674,44 +671,47 @@ VARIABLE *com_pointw(sub, ptr)  double (*sub)(); VARIABLE *ptr;
         error("Currently at most three arguments for pointwise functions allowed, sorry.");
       }
       a3 = MATR(ptr2);
-      for(i = 0; i < sz; i++) *b++ = (*sub)(*a++,*a2++,*a3++);
+      for(i = 0; i < sz; i++)
+        *b++ = ((double (*)(double, double, double)) sub)(*a++, *a2++, *a3++);
     }
     else
     {
-      for(i = 0; i < sz; i++) *b++ = (*sub)(*a++,*a2++);
+      for(i = 0; i < sz; i++)
+        *b++ = ((double (*)(double, double)) sub)(*a++, *a2++);
     }
   }
   else
   {
-    for(i = 0; i < sz; i++) *b++ = (*sub)(*a++);
+    for(i = 0; i < sz; i++)
+      *b++ = ((double (*)(double)) sub)(*a++);
   }
 
   return res;
 }
 
-VARIABLE *com_el(ptr) VARIABLE *ptr;
+VARIABLE *com_el(VARIABLE *ptr)
 /*======================================================================
 ?  Extracts specified elements from a matrix. Indexes are given by two
 |  column vectors. The values of the elements of these vectors give
 |  the required indexes. If there is only one index vector given
 |  it is assumed to be column index and row index is set to scalar 0.
 |
-|  If matrix x is, for example, 
+|  If matrix x is, for example,
 |
 |        1 2
-|        3 4 
+|        3 4
 |
-|  you get the first row by 
+|  you get the first row by
 |
 |        x[0, 0 1]
 |
-|  or by 
-| 
+|  or by
+|
 |        x(0 1)
 |
 =  A new temporary VARIABLE, whose size equals to
 |  number of row indexes times number of column indexes.
-|  
+|
 &  var_temp_new(), var_delete_temp()
 ^=====================================================================*/
 {
@@ -738,14 +738,14 @@ VARIABLE *com_el(ptr) VARIABLE *ptr;
   {
     if (*MATR(par) != 0) error("Index out of bounds.\n");
     if (NEXT(par) != NULL)
-      if (*MATR(NEXT(par)) != 0) error("Index out of bounds.\n"); 
+      if (*MATR(NEXT(par)) != 0) error("Index out of bounds.\n");
     res = var_temp_new(TYPE(ptr),1,1);
     *MATR(res) = *MATR(ptr);
     return res;
   }
 
-  /* 
-     The matrix will be indexed by two column vectors. 
+  /*
+     The matrix will be indexed by two column vectors.
      If there is just one assume it's column index and
      make rowindex 0.
   */
@@ -777,7 +777,7 @@ VARIABLE *com_el(ptr) VARIABLE *ptr;
       {
         if (onecount == 0) return NULL;
 
-        res = var_temp_new(TYPE(ptr),1,onecount); 
+        res = var_temp_new(TYPE(ptr),1,onecount);
         for(i=0,k=0; i < rows; i++)
           for(j=0; j < cols; j++)
             if (M(par,i,j) == 1)
@@ -788,7 +788,7 @@ VARIABLE *com_el(ptr) VARIABLE *ptr;
       }
     }
 
-    ind2 = MATR(par); size2 = NCOL(par); 
+    ind2 = MATR(par); size2 = NCOL(par);
     cols *= rows; rows = 1;
   }
   else
@@ -798,12 +798,12 @@ VARIABLE *com_el(ptr) VARIABLE *ptr;
     ind2  = MATR(NEXT(par));
   }
 
-  /* 
-      Space for result  
+  /*
+      Space for result
   */
   res = var_temp_new(TYPE(ptr), size1, size2);
 
-  /* 
+  /*
      Extract the values (try making sense out of that
      if you feel like it).
   */
@@ -820,7 +820,7 @@ VARIABLE *com_el(ptr) VARIABLE *ptr;
   return res;
 }
 
-VARIABLE *com_source(ptr) VARIABLE *ptr;
+VARIABLE *com_source(VARIABLE *ptr)
 /*======================================================================
 ?  Redirect input stream to a file, whose name is given.
 |
@@ -859,7 +859,7 @@ VARIABLE *com_source(ptr) VARIABLE *ptr;
 }
 
 
-VARIABLE *com_apply(ptr) VARIABLE *ptr;
+VARIABLE *com_apply(VARIABLE *ptr)
 /*======================================================================
 ?  Executes given string.
 |
@@ -874,25 +874,25 @@ VARIABLE *com_apply(ptr) VARIABLE *ptr;
   int i, j;             /* just loop indexes */
 
 
-  /* 
-      Allocate space for the string... 
+  /*
+      Allocate space for the string...
   */
   p = q = ALLOCMEM(NROW(ptr) * NCOL(ptr) + 1);
 
   /*
-      ... convert it ... 
+      ... convert it ...
   */
   for(i = 0; i < NROW(ptr); i++)
-    for(j = 0; j < NCOL(ptr); j++) 
+    for(j = 0; j < NCOL(ptr); j++)
       *p++ = (char)M(ptr,i,j);
 
   *p = '\0';
 
   /*
-      ... and try executing it. 
+      ... and try executing it.
   */
-  res = doit( q ); 
-  
+  res = doit( q );
+
   FREEMEM(q);
 
   return res;
@@ -926,9 +926,9 @@ fprintf( stderr, "SHOULD THIS HAPPEN ????\n" );
 #endif
     return;
   }
- 
+
   /*
-   *  it's not the header, look if it's in list at all  
+   *  it's not the header, look if it's in list at all
    */
   if (ALLOC_PTR(lst) != mem)
   {
@@ -954,7 +954,7 @@ fprintf( stderr, "SHOULD THIS HAPPEN ????\n" );
   }
 
   /*
-   *  item was the header, unlink it    
+   *  item was the header, unlink it
    */
   else
     ALLOC_HEAD = NEXT(ALLOC_HEAD);
@@ -967,7 +967,7 @@ fprintf( stderr, "SHOULD THIS HAPPEN ????\n" );
   return;
 }
 
-void mem_free_all()
+void mem_free_all(void)
 /*======================================================================
 ?  Free all memory allocated since last entry of doread.
 |  (actually free all memory from list ALLOCATIONS).
@@ -975,7 +975,7 @@ void mem_free_all()
 ~  mem_alloc(), mem_free(), doread(), error()
 ^=====================================================================*/
 {
-  ALLOC_LIST *lst, *lstn; 
+  ALLOC_LIST *lst, *lstn;
 
   for(lst = (ALLOC_LIST *)ALLOC_HEAD; lst;)
   {
@@ -993,7 +993,7 @@ void mem_free_all()
   return;
 }
 
-void *mem_alloc(size) size_t size;
+void *mem_alloc(size_t size)
 /*======================================================================
 ?  Allocate memory and link it to  memory allocation list.
 |
@@ -1002,8 +1002,8 @@ void *mem_alloc(size) size_t size;
 {
   ALLOC_LIST *lst;
 
-  /* 
-   *    try allocating memory 
+  /*
+   *    try allocating memory
    */
   if ((lst = (ALLOC_LIST *)calloc(size+sizeof(ALLOC_LIST), 1)) != NULL)
   {
@@ -1013,7 +1013,7 @@ void *mem_alloc(size) size_t size;
     error("Can't alloc mem.\n");
 
 #ifdef DEBUG
-  tot++; fprintf(fplog,"alloc addr: %d size: %d total: %d\n", 
+  tot++; fprintf(fplog,"alloc addr: %d size: %d total: %d\n",
                           lst, size, tot);
   fflush( fplog );
 #endif

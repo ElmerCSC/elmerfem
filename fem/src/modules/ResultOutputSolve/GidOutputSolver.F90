@@ -28,6 +28,7 @@
 SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE SaveUtils, ONLY : SolverOutputDirectory
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver

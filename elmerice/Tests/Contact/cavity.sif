@@ -51,7 +51,7 @@ Simulation
   Initialize Dirichlet Conditions = Logical False
   Output File = "$namerun".result"
   Post File = "$namerun".vtu"
-  max output level = 3
+  max output level = 5
 End
 
 !---------------------------------------------------
@@ -308,7 +308,7 @@ Solver 9
   Filename = "results.dat"
 
   Show Norm = True
-  Show Norm Index = 1
+  Show Norm Index = 3
 
    Variable 1 = "Stress Vector 2"
    Operator 1 = "boundary min"
@@ -414,8 +414,8 @@ Boundary Condition 4
   Target Boundaries = 4
 End
 
-Solver 6 :: Reference Norm = Real 7.0439455
-Solver 6 :: Reference Norm Tolerance = Real 1E-05
+Solver 6 :: Reference Norm = 7.0439455
+Solver 6 :: Reference Norm Tolerance = 1.0E-05
 
-Solver 9 :: Reference Norm = Real 0.1
-Solver 9 :: Reference Norm Tolerance = Real 1E-06
+Solver 9 :: Reference Norm = 1.19528960E-01
+Solver 9 :: Reference Norm Tolerance = 1.0E-03

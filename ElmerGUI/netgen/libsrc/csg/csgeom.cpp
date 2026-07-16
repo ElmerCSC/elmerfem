@@ -450,7 +450,7 @@ namespace netgen
   {
     static int cntsurfs = 0;
     cntsurfs++;
-    char name[15];
+    char name[17];
     sprintf (name, "nnsurf%d", cntsurfs);
     AddSurface (name, surf);
   }

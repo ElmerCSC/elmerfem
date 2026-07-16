@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(StressEigen)
-ADD_ELMER_LABEL(StressEigen quick)
+ADD_ELMER_TEST(StressEigen LABELS quick eigen)

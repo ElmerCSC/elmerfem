@@ -40,7 +40,10 @@
 !--------------------------------------------------------------------------------
 !>  Some basic finite element utilities.
 !--------------------------------------------------------------------------------
+#include "../config.h"
+
 MODULE ElementUtils
+
 
     USE DirectSolve
     USE Integration
@@ -70,15 +73,18 @@ CONTAINS
      TYPE(BasicMatrix_t), POINTER :: m
      TYPE(SParIterSolverGlobalD_t), POINTER :: p
 
+     LOGICAL :: Found
+
+
 #ifdef HAVE_HYPRE
     INTERFACE
       !! destroy the data structures (should be called when the matrix has
       !! to be updated and SolveHYPRE1 has to be called again).
-      SUBROUTINE SolveHYPRE4(hypreContainer)
+      SUBROUTINE SolveHYPRE4(hypreContainer, verbosity ) BIND(C,name="solvehypre4")
         USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
+        INTEGER(KIND=c_int) :: verbosity
       END SUBROUTINE SolveHYPRE4
-
     END INTERFACE
 #endif
 #ifdef HAVE_TRILINOS
@@ -171,6 +177,7 @@ CONTAINS
      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
        IF(ASSOCIATED(Matrix % ParallelInfo % GlobalDOFs)) DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
        IF(ASSOCIATED(Matrix % ParallelInfo % GInterface)) DEALLOCATE(Matrix % ParallelInfo % GInterface)
+       IF(ASSOCIATED(Matrix % ParallelInfo % Gorder)) DEALLOCATE(Matrix % ParallelInfo % GOrder)
  
        IF(ASSOCIATED(Matrix % ParallelInfo % NeighbourList)) THEN
          DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
@@ -179,10 +186,27 @@ CONTAINS
          END DO
          DEALLOCATE(Matrix % ParallelInfo % NeighbourList)
        END IF
-       IF(ASSOCIATED(Matrix % ParallelInfo % Gorder)) DEALLOCATE(Matrix % ParallelInfo % GOrder)
 
+       IF(ASSOCIATED(Matrix % ParallelInfo % FaceNeighbourList)) THEN
+         DO i=1,SIZE(Matrix % ParallelInfo % FaceNeighbourList)
+           IF (ASSOCIATED(Matrix % ParallelInfo % FaceNeighbourList(i) % Neighbours)) &
+             DEALLOCATE(Matrix % ParallelInfo % FaceNeighbourList(i) % Neighbours)
+         END DO
+         DEALLOCATE(Matrix % ParallelInfo % FaceNeighbourList)
+       END IF
+       IF(ASSOCIATED(Matrix % ParallelInfo % FaceInterface)) DEALLOCATE(Matrix % ParallelInfo % FaceInterface)
+
+       IF(ASSOCIATED(Matrix % ParallelInfo % EdgeNeighbourList)) THEN
+         DO i=1,SIZE(Matrix % ParallelInfo % EdgeNeighbourList)
+           IF (ASSOCIATED(Matrix % ParallelInfo % EdgeNeighbourList(i) % Neighbours)) &
+             DEALLOCATE(Matrix % ParallelInfo % EdgeNeighbourList(i) % Neighbours)
+         END DO
+         DEALLOCATE(Matrix % ParallelInfo % EdgeNeighbourList)
+       END IF
+       IF(ASSOCIATED(Matrix % ParallelInfo % EdgeInterface)) DEALLOCATE(Matrix % ParallelInfo % EdgeInterface)
        DEALLOCATE(Matrix % ParallelInfo)
      END IF
+         
 
      p=>Matrix % ParMatrix
      IF(ASSOCIATED(p)) THEN
@@ -295,7 +319,10 @@ CONTAINS
 
 #ifdef HAVE_HYPRE
      IF (Matrix % Hypre /= 0) THEN
-       CALL SolveHypre4(Matrix % Hypre)
+       i = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found ) 
+       IF(ParEnv % MyPe /= 0) i = 0 
+       CALL SolveHypre4(Matrix % Hypre, i )
+       Matrix % Hypre = 0
      END IF
 #endif
 
@@ -3516,9 +3543,15 @@ CONTAINS
     DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
     IpVar = ( Var % TYPE == variable_on_gauss_points )
     ElemVar = ( Var % TYPE == Variable_on_elements )       
+
+    ! We do not need P-elements if the value is to be found in node since
+    ! the higher order p-basis does not have any effect there.
     pElem = .FALSE.
-    IF(ASSOCIATED(Var % Solver)) THEN
-      pElem = isActivePElement(Element, Var % Solver)                              
+    IF(PRESENT(LocalCoord)) THEN
+!    IF(.NOT. PRESENT(LocalNode)) THEN
+      IF(ASSOCIATED(Var % Solver)) THEN
+        pElem = isActivePElement(Element, Var % Solver) 
+      END IF
     END IF
       
     PiolaVersion = .FALSE.
@@ -3730,14 +3763,18 @@ CONTAINS
       END IF
 
       IF(l>0) THEN
-        IF( .NOT. ALLOCATED(fip) .OR. SIZE(fip) < l ) THEN
-          IF( ALLOCATED( fip ) ) DEALLOCATE( fip )
+        IF( .NOT. ALLOCATED(fip)) THEN
+          ALLOCATE( fip(l) )
+        ELSE IF (SIZE(fip) < l) THEN
+          DEALLOCATE( fip )
           ALLOCATE( fip(l) )
         END IF
 
-        IF( .NOT. ALLOCATED(fdg) .OR. SIZE(fdg) < n ) THEN
-          IF( ALLOCATED( fdg ) ) DEALLOCATE( fdg )
-          ALLOCATE( fdg(n) )
+        IF(.NOT. ALLOCATED(fdg)) THEN
+           ALLOCATE( fdg(n) )
+        ELSE IF(SIZE(fdg) < n) THEN
+           DEALLOCATE( fdg )
+           ALLOCATE( fdg(n) )
         END IF
 
         DO ii=1,MAX(Var % Dofs,comps)
@@ -3907,7 +3944,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent, Face
      TYPE(Mesh_t), POINTER :: Mesh
 
-     LOGICAL :: Found, GB, DGDisable, NeedEdges
+     LOGICAL :: Found, GB, DGDisable, NeedEdges, Bubbles
      INTEGER :: i,j,k,id, nb, p, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
      INTEGER :: Ind, ElemFamily, ParentFamily, face_type, face_id
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset
@@ -4267,10 +4304,12 @@ BLOCK
            IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
            BDOFs = MAX(nb, BDOFs)
          ELSE
-           ! The following is not an ideal way to obtain the bubble count
-           ! in order to support solverwise definitions, but we are not expected 
-           ! to end up in this branch anyway:
-           BDOFs = Element % BDOFs
+           IF (ASSOCIATED(Solver % Values)) THEN
+             Bubbles = ListGetLogical(Solver % Values, 'Bubbles', Found )
+             ! The following is not a right way to obtain the bubble count
+             ! in order to support solverwise definitions
+             IF (Bubbles) BDOFs = SIZE(Element % BubbleIndexes)
+           END IF
          END IF
          DO i=1,BDOFs
            nd = nd + 1

@@ -2201,9 +2201,11 @@ CONTAINS
         PermIndexes => Element % NodeIndexes
       END IF
 
-      IF ( ANY(Var % Perm(PermIndexes) == 0 ) ) CYCLE      
+      IF(ASSOCIATED(Var % Perm)) THEN
+        IF ( ANY(Var % Perm(PermIndexes) == 0 ) ) CYCLE      
+      END IF
       hits = hits + 1
-      
+        
       NodeIndexes => Element % NodeIndexes 
       CALL CopyElementNodesFromMesh( ElementNodes, Mesh, n, NodeIndexes)
 

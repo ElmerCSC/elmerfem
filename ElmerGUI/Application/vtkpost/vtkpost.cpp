@@ -126,6 +126,15 @@
 #include <vtkCellData.h>
 #include <vtkIndent.h>
 
+#if ELMER_INSTANTIATE_VTK_ARRAY_TEMPLATE
+// explicitly instantiate class template to avoid undefined references
+// FIXME: This should probably be handled upstream in VTK instead.
+// See: https://gitlab.kitware.com/vtk/vtk/-/issues/18444
+template class vtkAOSDataArrayTemplate<int>;
+template class vtkAOSDataArrayTemplate<float>;
+template class vtkAOSDataArrayTemplate<double>;
+#endif
+
 using namespace std;
 
 // Custom print for QtScript:
@@ -142,11 +151,11 @@ QScriptValue printFun(QScriptContext* context, QScriptEngine* engine)
       result.append(" ");
     result.append(context->argument(i).toString());
   }
-  
+
   QScriptValue calleeData = context->callee().data();
   EcmaConsole* ecmaConsole = qobject_cast<EcmaConsole*>(calleeData.toQObject());
   ecmaConsole->append(result);
-  
+
   return engine->undefinedValue();
 }
 #endif
@@ -155,7 +164,7 @@ QScriptValue printFun(QScriptContext* context, QScriptEngine* engine)
 
 // Interaction event handler (press 'i' to interact):
 //-------------------------------------------------------------------
-static void iEventHandler(vtkObject* caller, unsigned long eid, 
+static void iEventHandler(vtkObject* caller, unsigned long eid,
 			  void* clientdata, void* calldata)
 {
   VtkPost* vtkPost = reinterpret_cast<VtkPost*>(clientdata);
@@ -167,7 +176,7 @@ static void iEventHandler(vtkObject* caller, unsigned long eid,
 
 // Pick event handler (press 'p' to pick):
 //-------------------------------------------------------------------
-static void pEventHandler(vtkObject* caller, unsigned long eid, 
+static void pEventHandler(vtkObject* caller, unsigned long eid,
 			  void* clientdata, void* calldata)
 {
   VtkPost* vtkPost = reinterpret_cast<VtkPost*>(clientdata);
@@ -206,8 +215,8 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
     points->InsertPoint(0, +l,  0,  0);
     points->InsertPoint(1,  0, +l,  0);
     points->InsertPoint(2,  0,  0, +l);
-    points->InsertPoint(3, -l,  0,  0);    
-    points->InsertPoint(4,  0, -l,  0);    
+    points->InsertPoint(3, -l,  0,  0);
+    points->InsertPoint(4,  0, -l,  0);
     points->InsertPoint(5,  0,  0, -l);
     cross->SetPoints(points);
 
@@ -322,7 +331,7 @@ VtkPost::VtkPost(QWidget *parent)
   vector = new Vector(this);
   connect(vector, SIGNAL(drawVectorSignal()), this, SLOT(drawVectorSlot()));
   connect(vector, SIGNAL(hideVectorSignal()), this, SLOT(hideVectorSlot()));
-  
+
   isoContour = new IsoContour(this);
   connect(isoContour, SIGNAL(drawIsoContourSignal()), this, SLOT(drawIsoContourSlot()));
   connect(isoContour, SIGNAL(hideIsoContourSignal()), this, SLOT(hideIsoContourSlot()));
@@ -361,9 +370,9 @@ VtkPost::VtkPost(QWidget *parent)
 
 #ifdef EG_MATC
   matc = new Matc(this);
-  connect(matc->ui.mcEdit, SIGNAL(returnPressed()), 
+  connect(matc->ui.mcEdit, SIGNAL(returnPressed()),
         this, SLOT(domatcSlot()));
-  connect(matc->ui.mcHistory, SIGNAL(selectionChanged()), 
+  connect(matc->ui.mcHistory, SIGNAL(selectionChanged()),
         this, SLOT(matcCutPasteSlot()));
 #endif
 
@@ -378,7 +387,7 @@ VtkPost::VtkPost(QWidget *parent)
   // Central widget:
   //----------------
   #if VTK_MAJOR_VERSION >= 8
-    qvtkWidget = new QVTKOpenGLNativeWidget(this);  
+    qvtkWidget = new QVTKOpenGLNativeWidget(this);
     qvtkWidget->setFormat(QVTKOpenGLNativeWidget::defaultFormat());
   #else
     qvtkWidget = new QVTKWidget(this);
@@ -480,7 +489,7 @@ VtkPost::VtkPost(QWidget *parent)
 #if QT_VERSION >= 0x040403
 #if WITH_QT6
   QJSValue fun = engine->newQObject(ecmaConsole);
-  engine->globalObject().setProperty("print", fun.property("print"));  
+  engine->globalObject().setProperty("print", fun.property("print"));
 #else
   QScriptValue fun = engine->newFunction(printFun);
   fun.setData(engine->newQObject(ecmaConsole));
@@ -667,7 +676,7 @@ void VtkPost::createActions()
   timestepAct = new QAction(QIcon(""), tr("Time step"), this);
   playAct->setStatusTip("Time step");
   connect(timestepAct, SIGNAL(triggered()), this, SLOT(timestepSlot()));
-  
+
   // Edit menu:
   //------------
 #ifdef EG_MATC
@@ -816,7 +825,7 @@ void VtkPost::createToolbars()
   viewToolBar->addAction(drawColorBarAct);
   viewToolBar->addSeparator();
   viewToolBar->addAction(drawTextAct);
-  viewToolBar->addSeparator();  
+  viewToolBar->addSeparator();
   viewToolBar->addAction(preferencesAct);
   viewToolBar->addSeparator();
   viewToolBar->addAction(redrawAct);
@@ -829,7 +838,7 @@ void VtkPost::createToolbars()
   planeViewToolBar->addAction(viewYZmPlaneAct);
   planeViewToolBar->addAction(viewZXpPlaneAct);
   planeViewToolBar->addAction(viewZXmPlaneAct);
- 
+
   displacementToolBar = new QToolBar(tr("Displacement"));
   addToolBar(Qt::BottomToolBarArea, displacementToolBar);
   displacementToolBar->addAction(displaceAct);
@@ -849,7 +858,7 @@ void VtkPost::createToolbars()
   timestepToolBar->insertWidget(playAct,timestepSlider);
 
   timestepSlider->setEnabled(false);
-  playAct->setEnabled(false);  
+  playAct->setEnabled(false);
   iEndStep = -1;
 }
 
@@ -961,7 +970,7 @@ void VtkPost::savePictureSlot()
 {
   QString fileName = QFileDialog::getSaveFileName(this,
 	 tr("Save picture"), "", tr("Picture files (*.png)"));
-  
+
   if(fileName.isEmpty()) {
     cout << "File name is empty" << endl;
     return;
@@ -989,7 +998,7 @@ void VtkPost::savePovraySlot()
 #else
   geometry->SetInputData(surfaceGrid);
 #endif
-  
+
   vtkPolyDataNormals *normals = vtkPolyDataNormals::New();
   normals->SetInputConnection(geometry->GetOutputPort());
 
@@ -1001,7 +1010,7 @@ void VtkPost::savePovraySlot()
 #endif
   polyData->ComputeBounds();
 
-  
+
   double *bounds = polyData->GetBounds();
 
   double x0 = (bounds[1] + bounds[0])/2.0;
@@ -1038,7 +1047,7 @@ void VtkPost::savePovraySlot()
 
   text << "  vertex_vectors {\n"
        << "    " << polyData->GetNumberOfPoints() << "\n";
-  
+
   vtkPoints *points = polyData->GetPoints();
 
   for(int i = 0; i < polyData->GetNumberOfPoints(); i++) {
@@ -1046,14 +1055,14 @@ void VtkPost::savePovraySlot()
     double *p = points->GetPoint(i);
     text << "    <" << p[0] << "," << p[1] << "," << p[2] << ">\n";
   }
-    
+
   text << "  }\n"; // vertex_vectors
 
   // Surface normals:
   //------------------
   dialog.setLabelText("Writing normals...");
   dialog.setMaximum(polyData->GetNumberOfPoints());
- 
+
   text << "  normal_vectors {\n"
        << "    " << polyData->GetNumberOfPoints() << "\n";
 
@@ -1072,14 +1081,14 @@ void VtkPost::savePovraySlot()
 
   text << "  face_indices {\n"
        << "    " << polyData->GetNumberOfCells() << "\n";
-  
+
   for(int i = 0; i < polyData->GetNumberOfCells(); i++) {
     emit(povrayState(i));
     vtkCell *cell = polyData->GetCell(i);
     int n0 = cell->GetPointId(0);
     int n1 = cell->GetPointId(1);
     int n2 = cell->GetPointId(2);
-    text << "    <" << n0 << "," << n1 << "," << n2 << ">\n";    
+    text << "    <" << n0 << "," << n1 << "," << n2 << ">\n";
   }
 
   text << "  }\n"; // face_indices
@@ -1114,7 +1123,7 @@ void VtkPost::savePovraySlot()
        << "    ambient 0.4\n"
        << "  }\n"
        << "}\n";
-  
+
   // Finalize:
   //===========
   normals->Delete();
@@ -1145,7 +1154,7 @@ void VtkPost::reloadPostSlot()
     cout << "Reloading results from current ep-file failed." << endl;
 
   drawSurfaceAct->setChecked(surfaceVisible);
-  
+
   redrawSlot();
 }
 
@@ -1212,7 +1221,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   if(!postFile.open(QIODevice::ReadOnly | QIODevice::Text))
     return false;
   postFile.close();
-    
+
   cout << "Loading vtu-file " << endl;
 
   readEpFile->ui.applyButton->setEnabled(false);
@@ -1220,13 +1229,13 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   readEpFile->ui.okButton->setEnabled(false);
   readEpFile->setWindowTitle("Reading...");
   readEpFile->repaint();
-  
+
   // Read in nodes, elements, timesteps, and scalar components:
   //-----------------------------------------------------------
   int nodes, elements, timesteps, components;
   int start = readEpFile->ui.start->value() - 1;
   int end = readEpFile->ui.end->value() - 1;
- 
+
   QString postFilePath = dir.filePath(readEpFile->vtuFileNameList.at(start));
 	vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
 	reader->SetFileName(postFilePath.toLatin1().data());
@@ -1290,7 +1299,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
     cout << fieldName.toLatin1().data() << endl;
 #else
     cout << fieldType.toAscii().data() << ": ";
-    cout << fieldName.toAscii().data() << endl;    
+    cout << fieldName.toAscii().data() << endl;
 #endif
 
 		if(fieldType == "scalar")
@@ -1358,11 +1367,11 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   }
 
   // Add complementary information to group name
-  // This logic is inaccurate, but good for most cases where the number of bodies < 100. 
+  // This logic is inaccurate, but good for most cases where the number of bodies < 100.
   //--------------------------------------------
   for(int i = 0; i < elements; i++) {
 	EpElement *epe = &epMesh->epElement[i];
-	if(geometryIds->GetValue(i) <= 99){	epe->groupName += " (body)";} 
+	if(geometryIds->GetValue(i) <= 99){	epe->groupName += " (body)";}
 	else{epe->groupName += " (boundary)";}
   }
 
@@ -1383,7 +1392,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 		pointData = output->GetPointData();
 		cellData = output->GetCellData();
 		//cout << "<VTU> "<<  postFilePath.toLatin1().data() << endl;
-	}		
+	}
 	int sfcount = 1; // 1 to skip node field
 	for(int j=0; j < reader->GetNumberOfPointArrays(); j++){
 		doubleArray = (vtkDoubleArray*) pointData->GetArray(j); //ElmerSolver stores data as Float64
@@ -1411,7 +1420,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   cout << real_timesteps << " timesteps read in." << endl;
   reader->Delete();
   reader = NULL;
-  
+
 
   // Subtract displacement from nodes:
   // ---------------------------------
@@ -1459,7 +1468,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 #ifdef EG_MATC
       QString name=sf->name;
       int n = sf->name.indexOf("_x");
-      if ( n>0 ) 
+      if ( n>0 )
       {
         name = sf->name.mid(0,n);
 
@@ -1497,7 +1506,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
         VARIABLE *var = var_check(name.toLatin1().data());
 #else
         VARIABLE *var = var_check(name.toAscii().data());
-#endif       
+#endif
         sf->value = (double *)ALLOC_PTR(realloc(
               ALLOC_LST(sf->value), ALLOC_SIZE(size)) );
         MATR(var) = sf->value;
@@ -1529,7 +1538,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
     EpElement* epe = &epMesh->epElement[i];
 
     QString groupName = epe->groupName;
-    
+
     if(groupActionHash.contains(groupName))
       continue;
 
@@ -1548,7 +1557,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 
   groupChangedSlot(NULL);
   connect(editGroupsMenu, SIGNAL(triggered(QAction*)), this, SLOT(groupChangedSlot(QAction*)));
-  
+
   editGroupsMenu->addSeparator();
   editGroupsMenu->addAction(regenerateGridsAct);
 
@@ -1563,7 +1572,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   readEpFile->repaint();
 
   // Draw:
-  //--------------------------- 
+  //---------------------------
   if(postFileName != lastPostFileName){
 	drawSurfaceAct->setChecked(true);
     drawVectorAct->setChecked(false);
@@ -1576,7 +1585,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   }else{
     redrawSlot();
   }
-  
+
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepSlider->setRange(1,timesteps);
@@ -1585,7 +1594,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
-  
+
   setWindowTitle("ElmerVTK postprocessor - " + postFileName);
 
   return true;
@@ -1598,7 +1607,7 @@ bool VtkPost::ReadSingleVtuFile(QString postFileName)
   readEpFile->vtuFileNameList.clear();
   readEpFile->vtuFileNameList.append(postFileName);
   readEpFile->ui.start->setValue(1);
-  readEpFile->ui.end->setValue(1);    
+  readEpFile->ui.end->setValue(1);
   return ReadVtuFile(postFileName);
 */
   readEpFile->ui.fileName->setText(postFileName);
@@ -1606,7 +1615,7 @@ bool VtkPost::ReadSingleVtuFile(QString postFileName)
   readEpFile->ui.allButton->click();
   readEpFile->ui.okButton->click();
   return true;
-//  return ReadVtuFile(postFileName);  
+//  return ReadVtuFile(postFileName);
 }
 // Read ElmerPost format file
 //----------------------------------------------------------------------
@@ -1629,7 +1638,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   readEpFile->ui.okButton->setEnabled(false);
   readEpFile->setWindowTitle("Reading...");
   readEpFile->repaint();
-  
+
   QTextStream postStream(&postFile);
 
   // Read in nodes, elements, timesteps, and scalar components:
@@ -1692,7 +1701,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
     cout << fieldName.toLatin1().data() << endl;
 #else
     cout << fieldType.toAscii().data() << ": ";
-    cout << fieldName.toAscii().data() << endl;    
+    cout << fieldName.toAscii().data() << endl;
 #endif
 
     if(fieldType == "scalar")
@@ -1708,13 +1717,13 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   //========
   epMesh->epNodes = nodes;
   epMesh->epNode = new EpNode[nodes];
-  
+
   for(int i = 0; i < nodes; i++) {
     EpNode *epn = &epMesh->epNode[i];
 
     getPostLineStream(&postStream);
 
-    for(int j = 0; j < 3; j++) 
+    for(int j = 0; j < 3; j++)
       postLineStream >> epn->x[j];
   }
 
@@ -1745,7 +1754,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   epMesh->epElements = elements;
   epMesh->epElement = new EpElement[elements];
 
-  
+
   // indexes for VTK
 	int order820[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16};
 	int order827[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16,24,22,21,23,25,26,27};
@@ -1753,13 +1762,13 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   for(int i = 0; i < elements; i++) {
     EpElement *epe = &epMesh->epElement[i];
 
-    getPostLineStream(&postStream);    
+    getPostLineStream(&postStream);
 
     postLineStream >> epe->groupName >> epe->code;
-    
+
     epe->indexes = epe->code % 100;
     epe->index = new int[epe->indexes];
-    
+
 	if(epe->code == 820){
 		for(int j = 0; j < epe->indexes; j++) {
 		  QString tmpString = "";
@@ -1833,7 +1842,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
 #ifdef EG_MATC
       QString name=sf->name;
       int n = sf->name.indexOf("_x");
-      if ( n>0 ) 
+      if ( n>0 )
       {
         name = sf->name.mid(0,n);
 
@@ -1871,7 +1880,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
         VARIABLE *var = var_check(name.toLatin1().data());
 #else
         VARIABLE *var = var_check(name.toAscii().data());
-#endif       
+#endif
         sf->value = (double *)ALLOC_PTR(realloc(
               ALLOC_LST(sf->value), ALLOC_SIZE(size)) );
         MATR(var) = sf->value;
@@ -1893,7 +1902,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   timeStep->maxSteps = timesteps;
   timeStep->ui.start->setValue(1);
   timeStep->ui.stop->setValue(timesteps);
-  
+
   postFile.close();
 
   // Set up the group edit menu:
@@ -1905,7 +1914,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
     EpElement* epe = &epMesh->epElement[i];
 
     QString groupName = epe->groupName;
-    
+
     if(groupActionHash.contains(groupName))
       continue;
 
@@ -1924,7 +1933,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
 
   groupChangedSlot(NULL);
   connect(editGroupsMenu, SIGNAL(triggered(QAction*)), this, SLOT(groupChangedSlot(QAction*)));
-  
+
   editGroupsMenu->addSeparator();
   editGroupsMenu->addAction(regenerateGridsAct);
 
@@ -1939,7 +1948,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   readEpFile->repaint();
 
   // Draw:
-  //--------------------------- 
+  //---------------------------
   if(postFileName != lastPostFileName){
 	drawSurfaceAct->setChecked(true);
     drawVectorAct->setChecked(false);
@@ -1952,7 +1961,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   }else{
     redrawSlot();
   }
-  
+
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepSlider->setRange(1,timesteps);
@@ -1961,7 +1970,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
-  
+
   setWindowTitle("ElmerVTK postprocessor - " + postFileName);
 
   return true;
@@ -1969,7 +1978,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
 
 void VtkPost::addVectorField(QString fieldName, int values)
 {
-   
+
 #ifdef EG_MATC
 
 #if WITH_QT5 || WITH_QT6
@@ -2008,7 +2017,7 @@ ScalarField* VtkPost::addScalarField(QString fieldName, int values, double *valu
   sf->name = fieldName;
   sf->values = values;
   sf->value = value;
- 
+
   if ( !sf->value ) {
 #ifdef EG_MATC
 
@@ -2069,9 +2078,9 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   while (i_sgh.hasNext()) { i_sgh.next(); i_sgh.value()->Delete();}
   surfaceGridHash.clear();
   QHashIterator<QString, vtkUnstructuredGrid*> i_lgh(lineGridHash);
-  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();} 
+  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();}
   lineGridHash.clear();
-  
+
   // Points:
   //---------
   int index = -1;
@@ -2082,14 +2091,14 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
       break;
     }
   }
-  
+
   if((index < 0) || (index + 2 > scalarFields - 1)) return;
 
   double x[3];
   ScalarField* sfx = &scalarField[index+0];
   ScalarField* sfy = &scalarField[index+1];
   ScalarField* sfz = &scalarField[index+2];
-  
+
   vtkPoints* points = vtkPoints::New();
   points->SetNumberOfPoints(epMesh->epNodes);
 
@@ -2135,10 +2144,10 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
 	g->SetPoints(points);
     volumeGridHash.insert(i_gah.key(), g);
 	g = vtkUnstructuredGrid::New();
-	g->SetPoints(points);	
+	g->SetPoints(points);
     surfaceGridHash.insert(i_gah.key(), g);
 	g = vtkUnstructuredGrid::New();
-	g->SetPoints(points);		
+	g->SetPoints(points);
     lineGridHash.insert(i_gah.key(), g);
   }
 
@@ -2159,7 +2168,7 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   vtkUnstructuredGrid* grid = NULL;
 
   QHash<QString, vtkUnstructuredGrid*>* gridHash = NULL;
-  
+
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
@@ -2184,10 +2193,10 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
 
 		QAction* groupAction = groupActionHash.value(groupName);
 		if(groupAction == NULL) continue;
-	      
+
 		for(int j = 0; j < epe->code % 100; j++)
 		cell->GetPointIds()->SetId(j, epe->index[j]);
-	      
+
 		if(groupAction->isChecked()){
 		  grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
 		  gridHash->value(groupName)->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
@@ -2296,7 +2305,7 @@ void VtkPost::redrawSlot()
 
   planeWidget->GetEdgesProperty()->SetColor(0, 0, 0);
   planeWidget->GetOutlineProperty()->SetColor(0, 0, 0);
-  planeWidget->GetNormalProperty()->SetColor(1, 0, 0);  
+  planeWidget->GetNormalProperty()->SetColor(1, 0, 0);
 }
 
 // Draw color bar:
@@ -2380,7 +2389,7 @@ void VtkPost::drawMeshEdgeSlot()
 void VtkPost::drawFeatureEdgesSlot()
 {
   FeatureEdge* featureEdge = NULL;
-  
+
   if(!postFileRead) return;
   for(int i=0; i < featureEdgeVector.size(); i++){
 	featureEdge = featureEdgeVector.at(i);
@@ -2390,31 +2399,31 @@ void VtkPost::drawFeatureEdgesSlot()
   featureEdgeVector.clear();
 
   if(!preferences->ui.featureGroup->isChecked()) return;
-    
+
   vtkUnstructuredGrid* grid = NULL;
   QHash<QString, vtkUnstructuredGrid*> *gridHash = NULL;
 
-  bool useSurfaceGrid = preferences->ui.surfaceRButton->isChecked();  
+  bool useSurfaceGrid = preferences->ui.surfaceRButton->isChecked();
   if(useSurfaceGrid){
 	gridHash = GetSurfaceGridHash();
   } else {
 	gridHash = GetVolumeGridHash();
   }
-  if(!gridHash) return;  
+  if(!gridHash) return;
   if(gridHash->count() == 0 ) return;
-  
+
   QHashIterator<QString, vtkUnstructuredGrid*> i_gh(*gridHash);
   int port_count = 0;
   while (i_gh.hasNext())
   {
     i_gh.next();
 	grid = i_gh.value();
-	
+
 	if(grid->GetNumberOfCells() >= 1){
 	  featureEdge = new FeatureEdge();
 	  featureEdgeVector.append(featureEdge);
 	  featureEdge->draw(this, preferences, grid);
-	  
+
       featureEdge->addActorTo(renderer);
 
 	}
@@ -2429,7 +2438,7 @@ void VtkPost::drawFeatureEdgesSlot()
 
 /*
 // The original drawFeatureEdgesSlot() which draws all the groups by one FeatureEdge instance
-// using one vtkUstructuredGrid. This ends up with boundary of two groups not drawn. 
+// using one vtkUstructuredGrid. This ends up with boundary of two groups not drawn.
 //
 // Draw feature edges:
 //----------------------------------------------------------------------
@@ -2458,7 +2467,7 @@ void VtkPost::showStreamLineDialogSlot()
 #else
   qvtkWidget->GetRenderWindow()->Render();
 #endif
-  
+
   if(drawStreamLineAct->isChecked()) {
     streamLine->show();
   } else {
@@ -2600,7 +2609,7 @@ void VtkPost::drawIsoContourSlot()
   if(!drawIsoContourAct->isChecked()) return;
   isoContour->draw(this, timeStep);
   renderer->AddActor(isoContourActor);
-  drawColorBarSlot();  
+  drawColorBarSlot();
 #if VTK_MAJOR_VERSION >= 9
   qvtkWidget->renderWindow()->Render();
 #else
@@ -2728,7 +2737,7 @@ void VtkPost::timeStepChangedSlot()
 void VtkPost::fitToWindowSlot()
 {
   if(!postFileRead) return;
-  renderer->ResetCamera();  
+  renderer->ResetCamera();
   redrawSlot();
 }
 
@@ -3185,13 +3194,13 @@ void VtkPost::SetClipPlaneOy(double y)
 
 void VtkPost::SetClipPlaneOz(double z)
 {
-  preferences->ui.clipPointZ->setText(QString::number(z));  
+  preferences->ui.clipPointZ->setText(QString::number(z));
   GetClipPlane();
 }
 
 void VtkPost::SetClipPlaneNx(double x)
 {
-  preferences->ui.clipNormalX->setText(QString::number(x));  
+  preferences->ui.clipNormalX->setText(QString::number(x));
   GetClipPlane();
 }
 
@@ -3203,7 +3212,7 @@ void VtkPost::SetClipPlaneNy(double y)
 
 void VtkPost::SetClipPlaneNz(double z)
 {
-  preferences->ui.clipNormalZ->setText(QString::number(z));  
+  preferences->ui.clipNormalZ->setText(QString::number(z));
   GetClipPlane();
 }
 
@@ -3344,9 +3353,9 @@ void VtkPost::SetCameraRoll(double f)
 
 void VtkPost::SetInitialCameraPosition()
 {
-  renderer->ResetCamera();  
-  renderer->GetActiveCamera()->SetPosition(initialCameraPosition[0], 
-					   initialCameraPosition[1], 
+  renderer->ResetCamera();
+  renderer->GetActiveCamera()->SetPosition(initialCameraPosition[0],
+					   initialCameraPosition[1],
 					   initialCameraPosition[2]);
   renderer->GetActiveCamera()->SetRoll(initialCameraRoll);
 }
@@ -3555,7 +3564,7 @@ double VtkPost::GetMaxZ()
 
 //----------------------------------------------------------------------
 bool VtkPost::SavePngFile(QString fileName)
-{ 
+{
   if(fileName.isEmpty()) return false;
 
   vtkWindowToImageFilter* image = vtkWindowToImageFilter::New();
@@ -3570,7 +3579,7 @@ bool VtkPost::SavePngFile(QString fileName)
   vtkPNGWriter* writer = vtkPNGWriter::New();
 
   writer->SetInputConnection(image->GetOutputPort());
-  
+
 #if WITH_QT5 || WITH_QT6
   writer->SetFileName(fileName.toLatin1().data());
 #else
@@ -3598,13 +3607,13 @@ void VtkPost::SetBgColor(double r, double g, double b)
 
   if(R < 0.0) R = 0.0;
   if(R > 1.0) R = 1.0;
-  
+
   if(G < 0.0) G = 0.0;
   if(G > 1.0) G = 1.0;
-  
+
   if(B < 0.0) B = 0.0;
   if(B > 1.0) B = 1.0;
-  
+
   renderer->SetBackground(R, G, B);
   renderer->GetRenderWindow()->Render();
 }
@@ -3630,7 +3639,7 @@ bool VtkPost::Execute(QString fileName)
     ecmaConsole->append("Execute: error when opening script file");
     return false;
   }
-  
+
   QByteArray script = scriptFile.readAll();
   scriptFile.close();
 
@@ -3704,7 +3713,7 @@ void VtkPost::playSlot(){
 	if(iEndStep < 0){
 		int iStartStep = timestepSlider->value();
 		if( iStartStep == timestepSlider->maximum()){
-			iStartStep = 1; 
+			iStartStep = 1;
 		}
 		iEndStep = timestepSlider->maximum();
 		playAct->setText("Stop");
@@ -3785,7 +3794,7 @@ void VtkPost::hideAll(){
   axes->hide();
   text->hide();
 
-#ifdef EG_MATC  
+#ifdef EG_MATC
   matc->hide();
 #endif
 
@@ -3794,6 +3803,6 @@ void VtkPost::hideAll(){
 #endif
 
   ecmaConsole->hide();
- 
+
   hide();
 }

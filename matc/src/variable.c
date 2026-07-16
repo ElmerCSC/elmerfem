@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: variable.c,v 1.6 2007/05/11 07:53:32 jpr Exp $ 
+ * $Id: variable.c,v 1.6 2007/05/11 07:53:32 jpr Exp $
  *
  * $Log: variable.c,v $
  * Revision 1.6  2007/05/11 07:53:32  jpr
@@ -86,23 +86,23 @@ $  usage of the function and type of the parameters
  *
  * Revision 1.2  1998/08/01 12:34:58  jpr
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
-VARIABLE *const_new(name, type, nrow, ncol) int type, ncol, nrow; char *name;
+VARIABLE *const_new(char *name, int type, int nrow, int ncol)
 /*======================================================================
 ?  return a new global VARIABLE given name, type, and matrix size.
 |  VARIABLE is linked to CONSTANTS lists.
 |
-=  pointer to a new VARIABLE 
+=  pointer to a new VARIABLE
 &  mat_new(), lst_add(), ALLOCMEM, FREEMEM, STRCOPY
 ^=====================================================================*/
 {
   VARIABLE *ptr;
-  
+
   /*
        Allocate the structure and link to global list of VARIABLES.
   */
@@ -117,17 +117,17 @@ VARIABLE *const_new(name, type, nrow, ncol) int type, ncol, nrow; char *name;
   return ptr;
 }
 
-VARIABLE *var_new(name, type, nrow, ncol) int type, ncol, nrow; char *name;
+VARIABLE *var_new(char *name, int type, int nrow, int ncol)
 /*======================================================================
 ?  return a new global VARIABLE given name, type, and matrix size.
 |  VARIABLE is linked to VARIABLES list.
 |
-=  pointer to a new VARIABLE 
+=  pointer to a new VARIABLE
 &  var_check(), lst_add(), ALLOCMEM, FREEMEM, STRCOPY
 ^=====================================================================*/
 {
   VARIABLE *ptr;
-  
+
   /*
    * Delete old definition of name if any...
    */
@@ -155,7 +155,7 @@ void var_create_vector( char *name, int ntime, int ncol, double *data )
     MATR(var) = data;
 }
 
-VARIABLE *var_rename(ptr, str) VARIABLE *ptr; char *str;
+VARIABLE *var_rename(VARIABLE *ptr, char *str)
 {
   VARIABLE *res;
 
@@ -188,7 +188,7 @@ VARIABLE *var_rename(ptr, str) VARIABLE *ptr; char *str;
          {
              memcpy( MATR(res),MATR(ptr), NROW(res)*NCOL(res)*sizeof(double) );
          }
-         else 
+         else
 #endif
          {
             if (--REFCNT(res) == 0)
@@ -211,7 +211,7 @@ static int var_pprec = 3,
     var_pinp = FALSE, var_rowintime = FALSE;
 #pragma omp threadprivate (var_pprec, var_pinp, var_rowintime)
 
-VARIABLE *var_format(var) VARIABLE *var;
+VARIABLE *var_format(VARIABLE *var)
 {
   if (*MATR(var) > 0 && *MATR(var) < 20)
   {
@@ -240,14 +240,14 @@ VARIABLE *var_format(var) VARIABLE *var;
   return (VARIABLE *)NULL;
 }
 
-void var_print(ptr) VARIABLE *ptr;
+void var_print(VARIABLE *ptr)
 {
   double maxp, minp, maxx;
   int i, j, k;
   char fmt[80];
-  
+
   if (ptr == (VARIABLE *)NULL) return;
-  
+
   if (TYPE(ptr) == TYPE_STRING)
   {
     if (var_pinp)
@@ -274,15 +274,15 @@ void var_print(ptr) VARIABLE *ptr;
   {
     if (var_pinp)
       PrintOut("%d %d %% ", NROW(ptr), NCOL(ptr));
-    else if (NCOL(ptr) > 8 && !var_rowintime ) 
-      PrintOut( "\nColumns %d trough %d\n\n", 
+    else if (NCOL(ptr) > 8 && !var_rowintime )
+      PrintOut( "\nColumns %d trough %d\n\n",
               k, min(NCOL(ptr) - 1, k + 7));
 
     if (var_pinp || var_rowintime )
       sprintf(fmt, "%%.%dg",var_pprec );
-    else 
-      sprintf(fmt, "%% %d.%dg",var_pprec+7,var_pprec); 
-     
+    else
+      sprintf(fmt, "%% %d.%dg",var_pprec+7,var_pprec);
+
     for(i = 0; i < NROW(ptr); i++)
     {
       if ( var_rowintime ) {
@@ -305,7 +305,7 @@ void var_print(ptr) VARIABLE *ptr;
   } while(k < NCOL(ptr));
 }
 
-void var_delete(str) char *str;
+void var_delete(char *str)
 {
     VARIABLE *ptr;
 
@@ -320,21 +320,21 @@ void var_delete(str) char *str;
         }
         lst_free(VARIABLES, (LIST *)ptr);
      }
-  
+
      return;
 }
 
-VARIABLE *var_vdelete( var ) VARIABLE *var;
+VARIABLE *var_vdelete(VARIABLE *var)
 {
    var_delete( var_to_string( var ) );
    return (VARIABLE *)NULL;
 }
 
 
-void var_free()
+void var_free(void)
 {
-    VARIABLE *ptr; 
-  
+    VARIABLE *ptr;
+
     for( ptr = (VARIABLE *)VAR_HEAD; ptr; ptr = NEXT(ptr) )
     {
         if ( --REFCNT(ptr) == 0 )
@@ -345,14 +345,14 @@ void var_free()
      }
 
      lst_purge(VARIABLES);
-  
+
      return;
 }
 
-void const_free()
+void const_free(void)
 {
-    VARIABLE *ptr; 
-  
+    VARIABLE *ptr;
+
     for( ptr = (VARIABLE *)CONST_HEAD; ptr; ptr = NEXT(ptr) )
     {
         if ( --REFCNT(ptr) == 0 )
@@ -363,11 +363,11 @@ void const_free()
     }
 
     lst_purge(CONSTANTS);
-  
+
     return;
 }
 
-VARIABLE *var_varlist()
+VARIABLE *var_varlist(void)
 /*======================================================================
 ?  print a list of VARIABLES for the user
 |
@@ -380,7 +380,7 @@ VARIABLE *var_varlist()
     return NULL;
 }
 
-VARIABLE *var_ccheck(var) VARIABLE *var;
+VARIABLE *var_ccheck(VARIABLE *var)
 /*======================================================================
 ?  look for a VARIABLE from the global list of VARIABLES and return
 |  it or (VARIABLE *)NULL if not found.
@@ -411,7 +411,7 @@ VARIABLE *var_ccheck(var) VARIABLE *var;
     return res;
 }
 
-VARIABLE *var_check(str) char *str;
+VARIABLE *var_check(char *str)
 /*======================================================================
 ?  look for a VARIABLE from the global list of VARIABLES and return
 |  it or (VARIABLE *)NULL if not found.
@@ -430,9 +430,9 @@ VARIABLE *var_check(str) char *str;
   return res;
 }
 
-VARIABLE *var_temp_copy(from) VARIABLE *from;
+VARIABLE *var_temp_copy(VARIABLE *from)
 /*======================================================================
-?  Make a temporary (not linked to global list of VARIABLES) 
+?  Make a temporary (not linked to global list of VARIABLES)
 |  copy of a VARIABLE *from and.
 |
 =  pointer to new VARIABLE
@@ -440,7 +440,7 @@ VARIABLE *var_temp_copy(from) VARIABLE *from;
 ^=====================================================================*/
 {
     VARIABLE *to;
-  
+
     /*
      *  if there's nothing to copy return.
      */
@@ -453,9 +453,9 @@ VARIABLE *var_temp_copy(from) VARIABLE *from;
     return to;
 }
 
-VARIABLE *var_temp_new(type,nrow,ncol) int type, nrow, ncol;
+VARIABLE *var_temp_new(int type, int nrow, int ncol)
 /*======================================================================
-?  Make a new temporary (not linked to global list of VARIABLES) 
+?  Make a new temporary (not linked to global list of VARIABLES)
 |  VARIABLE, type and matrix dimensions from function parameters.
 |
 =  pointer to new VARIABLE entry
@@ -463,21 +463,21 @@ VARIABLE *var_temp_new(type,nrow,ncol) int type, nrow, ncol;
 ^=====================================================================*/
 {
     VARIABLE *ptr;
-  
+
     ptr =   (VARIABLE *)ALLOCMEM(VARIABLESIZE); /* list entry */
     ptr->this = mat_new(type, nrow, ncol);
     REFCNT( ptr ) = 1;
 
-    return ptr; 
+    return ptr;
 }
 
 
-void var_copy_transpose(char *name,double *values,int nrows,int ncols)
+void var_copy_transpose(char *name, double *values, int nrows, int ncols)
 {
   VARIABLE *var;
   int i,j;
 
-  var = var_check(name); 
+  var = var_check(name);
   if(!var) return;
 
   for(i=0; i<min(nrows,NROW(var)); i++)
@@ -487,7 +487,7 @@ void var_copy_transpose(char *name,double *values,int nrows,int ncols)
 
 
 void var_delete_temp_el( VARIABLE *ptr )
-{  
+{
     if ( ptr != NULL )
     {
         if ( --REFCNT(ptr) == 0 )
@@ -513,7 +513,7 @@ void var_delete_temp( VARIABLE *head )
     return;
 }
 
-char *var_to_string(ptr) VARIABLE *ptr;
+char *var_to_string(VARIABLE *ptr)
 {
     char *str;
     int i;
@@ -554,7 +554,7 @@ int var_get_status(char *name)
       return 0;
 }
 
-void var_com_init()
+void var_com_init(void)
 {
    static char *existsHelp =
    {

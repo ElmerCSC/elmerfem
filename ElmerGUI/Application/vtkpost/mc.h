@@ -2,12 +2,19 @@
 #define MC_H
 
 extern "C" {
+
 typedef struct list {
   struct list *next;              /* pointer to next item in list */
   char *name;                     /* name of list item            */
 } LIST;
 
+#ifdef _OPENMP
+/* Move initialization to matc.c::mtc_init() for thread safety */
+extern LIST *listheaders;
+#pragma omp threadprivate(listheaders)
+#else
 extern LIST listheaders[];
+#endif /* _OPENMP */
 
 #define ALLOCATIONS 0
 #define CONSTANTS   1

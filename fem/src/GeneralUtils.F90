@@ -2074,10 +2074,15 @@ END FUNCTION ComponentNameVar
 
 !------------------------------------------------------------------------------
    SUBROUTINE ClearMatrix( Matrix ) 
-     TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
-INCLUDE "mpif.h"
-  
-     Matrix % FORMAT = MATRIX_CRS
+#if defined(ELMER_HAVE_MPI_MODULE)
+      USE mpi
+#endif
+      TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
+#if defined(ELMER_HAVE_MPIF_HEADER)
+      INCLUDE "mpif.h"
+#endif
+
+      Matrix % FORMAT = MATRIX_CRS
 
       NULLIFY( Matrix % Child )
       NULLIFY( Matrix % Parent )
@@ -2493,18 +2498,11 @@ INCLUDE "mpif.h"
         Suffix = '.dat'
       END IF
     END IF
-
+    
     DO No = 1,9999
       IF( No > 0 ) PrevFilename = Filename
-      IF( No < 10) THEN
-        WRITE( FileName,'(A,I1,A)') TRIM(Prefix),No,TRIM(Suffix)
-      ELSE IF( No < 100) THEN
-        WRITE( FileName,'(A,I2,A)') TRIM(Prefix),No,TRIM(Suffix)
-      ELSE IF( No < 1000) THEN
-        WRITE( FileName,'(A,I3,A)') TRIM(Prefix),No,TRIM(Suffix)
-      ELSE IF( No < 10000) THEN
-        WRITE( FileName,'(A,I4,A)') TRIM(Prefix),No,TRIM(Suffix)
-      END IF
+      FileName = TRIM(Prefix)//I2S(No)//TRIM(Suffix)
+
       INQUIRE( FILE=Filename, EXIST=FileIs )
       IF(.NOT. FileIs) EXIT
     END DO
@@ -2512,6 +2510,8 @@ INCLUDE "mpif.h"
     IF( PRESENT(LastExisting)) THEN
       IF( LastExisting ) Filename = PrevFilename
     END IF
+
+    CALL Info('NextFreeFilename','Next Free filename is: '//TRIM(Filename),Level=12)
 
 !------------------------------------------------------------------------------
   END FUNCTION NextFreeFilename

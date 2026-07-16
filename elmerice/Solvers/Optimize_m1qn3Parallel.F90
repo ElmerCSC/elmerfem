@@ -104,7 +104,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   integer, allocatable :: LocalToGlobalPerm(:),nodePerm(:),TestPerm(:)
 
   logical :: FirstVisit=.TRUE.,Firsttime=.TRUE.,Found,UseMask,ComputeNormG=.FALSE.,&
-       UnFoundFatal=.TRUE.,MeshIndep, BoundarySolver, AllPartsActive
+       UnFoundFatal=.TRUE.,MeshIndep, BoundarySolver
   logical,SAVE :: Parallel
   logical,allocatable :: VisitedNode(:)
 
@@ -114,7 +114,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
 
 !Variables for m1qn3
-  external simul_rc,euclid,ctonbe,ctcabe
+  external simul_rc !,euclid,ctonbe,ctcabe
   character*3 normtype
   REAL(KIND=dp) :: dxmin,df1,epsrel
   real(kind=dp), allocatable :: dz(:),dzs(:)
@@ -158,6 +158,28 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
        REAL rzs(*)
        DOUBLE PRECISION u(n),v(n),dzs(*)
      END SUBROUTINE MeshUnweight_ctcab
+
+     SUBROUTINE euclid (n,x,y,ps,izs,rzs,dzs)
+       !------------------------------------------------------------------------------
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION x(n),y(n),ps,dzs(*)
+     END SUBROUTINE euclid
+            
+     SUBROUTINE ctonbe (n,u,v,izs,rzs,dzs)
+       !------------------------------------------------------------------------------
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION u(n),v(n),dzs(*)
+     END SUBROUTINE ctonbe
+
+     SUBROUTINE ctcabe (n,u,v,izs,rzs,dzs)
+       !------------------------------------------------------------------------------               
+       INTEGER n,izs(*)
+       REAL rzs(*)
+       DOUBLE PRECISION u(n),v(n),dzs(*)
+     END SUBROUTINE ctcabe
+
   END INTERFACE
   PROCEDURE (MeshUnweight), POINTER :: prosca => NULL()
   PROCEDURE (MeshUnweight_ctonb), POINTER :: ctonb => NULL(),ctcab => NULL()
@@ -207,20 +229,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
               MeshIndep=.FALSE.
             END IF
 
-            ! for tetrahedral 3d meshes where all parts may not have boundary elements on the solver boundary
-            AllPartsActive =  ListGetLogical( SolverParams,'All Partitions Active', Found)
-            IF(.NOT. Found) THEN
-              CALL WARN(SolverName,'Keyword >All Partitions Active< not found in solver params')
-              CALL WARN(SolverName,'Taking default value >TRUE<')
-              AllPartsActive = .TRUE.
-            END IF
-
-            IF(ASSOCIATED(Solver % ActiveElements)) THEN
-              BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
-            ELSE
-              BoundarySolver = .TRUE.
-            END IF
-
+            BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
             IF(BoundarySolver) THEN
               CALL Info(SolverName, "Solver defined on boundary", Level=10)
             ELSE
@@ -406,17 +415,11 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
         End do
       End do
 
-      IF(AllPartsActive) THEN
-        if (NActiveNodes.eq.0) THEN
+     if (NActiveNodes.eq.0) THEN
             WRITE(Message,'(A)') 'NActiveNodes = 0 !!!'
             CALL FATAL(SolverName,Message)
-        End if
-      ELSE
-        if (NActiveNodes.eq.0) THEN
-            WRITE(Message,'(A,i0)') 'NActiveNodes = 0 in part ', ParEnv % MyPE
-            CALL WARN(SolverName,Message)
-        End if
-      END IF
+     End if
+  
     allocate(ActiveNodes(NActiveNodes),LocalToGlobalPerm(NActiveNodes),x(VarDOFs*NActiveNodes),g(VarDOFs*NActiveNodes))
     IF(MeshIndep) ALLOCATE(b(VarDOFs*NActiveNodes))
     ActiveNodes(1:NActiveNodes)=NewNode(1:NActiveNodes)
@@ -620,8 +623,6 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                       BetaValues(VarDOFs*(BetaPerm(ActiveNodes(i))-1)+j)=xtot(VarDOFs*(i-1)+j)
                  End DO
             End Do
-
-            IF(NActiveNodes == 0) BetaValues = 0.0_dp
                       
             ni=1+VarDOFs*NActiveNodes
             Do i=2,Npes

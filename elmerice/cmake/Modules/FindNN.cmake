@@ -11,7 +11,7 @@
 
 # # handle the QUIETLY and REQUIRED arguments and set NN_FOUND to TRUE
 # if all listed variables are TRUE
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If libraries are already defined, do nothing 
 IF(NN_LIBRARY AND NN_INCLUDE_DIR)

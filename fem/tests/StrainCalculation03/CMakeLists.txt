@@ -5,4 +5,4 @@ CONFIGURE_FILE( plate.sif plate.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO plate.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(StrainCalculation03)
+ADD_ELMER_TEST(StrainCalculation03 LABELS eigen)

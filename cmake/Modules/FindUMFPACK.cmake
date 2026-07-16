@@ -26,7 +26,7 @@ IF(UMFPACK_LIBRARIES AND UMFPACK_INCLUDE_DIR)
 ENDIF()
 
 # Fall back to manual search
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 SET(UMFPACK_FOUND FALSE)
 MESSAGE(STATUS "Finding UMFPACK")

@@ -1,0 +1,100 @@
+!---------------------------------------------------------------------
+! Solves a static current conduction problem using some library
+! functionality such that a simple external circuit is solved
+! alongside. The keywords may not be very intuitive since they
+! have been created originally for some other problems.
+!
+! P.R. / 23.9.2024
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+  vtu: ascii output = logical true
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "StatCurrent"
+  Variable = "Potential"
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+End  
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Potential
+  Operator 1 = boundary min
+  Variable 2 = Potential
+  Operator 2 = boundary max
+
+! Showing value of max potential 
+  Show Norm Index = 2
+End 
+
+Material 1
+  Name = "Material1"
+  Electric Conductivity = 5.0
+End
+
+Boundary Condition 1
+  Name = "left"
+  Target Boundaries(1) = 1
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries(1) = 2 
+
+$Rext=2.0
+$Uext=3.0
+$C=1.0
+
+! C*U + (\int i_n) Rext = Uext
+! The case has been constructed so that internal resistance is 1 Ohm.
+! Hence voltage over the beam becomes 1V with external voltage of 3V.
+
+  Potential Constant = Logical True
+  Potential Constant Resistance = Real $Rext
+  Potential Constant Flux = Real $Uext
+  Potential Constant Coefficient = Real $C
+
+  Save Scalars = True
+End
+
+Solver 1 :: Reference Norm = 5.84522597E-01
+Solver 2 :: Reference Norm = 1.0
+
+

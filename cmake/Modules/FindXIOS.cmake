@@ -12,7 +12,7 @@
 
 # # handle the QUIETLY and REQUIRED arguments and set XIOS_FOUND to TRUE
 # if all listed variables are TRUE
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If XIOS is already defined, do nothing
 IF(XIOS_LIBRARIES AND XIOS_INCLUDE_DIR)

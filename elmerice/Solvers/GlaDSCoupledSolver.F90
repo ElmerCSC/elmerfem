@@ -102,7 +102,7 @@
      CHARACTER(LEN=MAX_NAME_LEN) :: methodSheet, methodChannels 
 
      LOGICAL :: Found, FluxBC, Channels, Storage, FirstTime = .TRUE., &
-          AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
+          AllocationsDone = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
           MinHBool=.FALSE., CycleNode=.FALSE.
@@ -1256,19 +1256,6 @@
                 CYCLE
               END IF
               
-              IF(MaxHBool) THEN
-                IF (ThickSolution(k)>MaxH) THEN
-                  ThickSolution(k) = MaxH
-                  !ThickPrev(k,1) = 0.0
-                END IF
-              END IF
-
-              IF(MinHBool) THEN
-                IF (ThickSolution(k)<MinH) THEN
-                  ThickSolution(k) = MinH
-                END IF
-              END IF
-              
               SELECT CASE(methodSheet)
               CASE('implicit') 
                  IF (ThickSolution(k) > hr2(j)) THEN
@@ -1293,6 +1280,20 @@
 
               ! Update Vvar
               Vvar(j) = Vvar(j) * ThickSolution(k)
+
+              IF(MaxHBool) THEN
+                 IF (ThickSolution(k)>MaxH) THEN
+                    ThickSolution(k) = MaxH
+                  !ThickPrev(k,1) = 0.0
+                 END IF
+              END IF
+
+              IF(MinHBool) THEN
+                IF (ThickSolution(k)<MinH) THEN
+                  ThickSolution(k) = MinH
+                END IF
+              END IF
+              
 
            END DO 
 !------------------------------------------------------------------------------
@@ -1330,9 +1331,12 @@
                      END SELECT
                    END DO
                    IF(CycleElement) THEN
-                     AreaSolution(AreaPerm(M+t)) = 0.0
-                     QcSolution(QcPerm(M+t)) = 0.0
-                     CYCLE
+                      ! TODO:
+                      ! The folowing two lines were commented to prevent GL retreat causing instant channel closure.
+                      ! But we need a better solution to this (extrapolate channels from grounded to floating?).
+                      !AreaSolution(AreaPerm(M+t)) = 0.0
+                      !QcSolution(QcPerm(M+t)) = 0.0
+                      CYCLE
                    END IF
                  END IF
                  
@@ -1600,8 +1604,6 @@
       END DO
          
    END IF
-
-   SubroutineVisited = .TRUE.
 
    !CHANGE - to make sure PrevValues for added variables in calving updated
    IF(Calving) THEN
@@ -2847,18 +2849,20 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
   !    Local variables
   !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER  :: SolverParams, Material
-  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar, Ceffvar, UbVar 
+  TYPE(Variable_t), POINTER   :: MeltVar, WeightsVar, HeatVar, GHFVar, Ceffvar, UbVar, SheetVar, NVar 
   LOGICAL, SAVE               :: FirstTime = .TRUE., UseGHF = .FALSE.
-  LOGICAL                     :: Found
+  LOGICAL                     :: Found, WaterSheetSwitch, EffectivePressureSwitch
   CHARACTER(LEN=MAX_NAME_LEN) :: MyName = 'Grounded Melt solver', HeatVarName, WeightsVarName, GHFvarName
-  CHARACTER(LEN=MAX_NAME_LEN) :: MeltMode, CeffVarName, UbVarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: MeltMode, CeffVarName, UbVarName, WaterSheetName, EffectivePressureName
   REAL(KIND=dp)               :: rho_fw ! density of fresh water
   REAL(KIND=dp),PARAMETER     :: threshold = 0.001_dp ! threshold friction melt rate for including GHF in melt calc
   REAL(KIND=dp), POINTER      :: WtVals(:), HeatVals(:), MeltVals(:), GHFVals(:), Ceffvals(:), UbVals(:)
-  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor, Ub(1)
+  REAL(KIND=dp), POINTER      :: SheetVals(:), NVals(:)
+  REAL(KIND=dp)               :: LatHeat, GHFscaleFactor, Ub, WaterSheetLimit, EffectivePressureLimit
   INTEGER, POINTER            :: WtPerm(:), HeatPerm(:), MeltPerm(:), GHFPerm(:), Ceffperm(:), UbPerm(:)
+  INTEGER, POINTER            :: SheetPerm(:), NPerm(:)
   INTEGER                     :: nn
-  
+
 
   rho_fw = ListGetConstReal( Model % Constants, 'Fresh Water Density', Found )
   IF (.NOT.Found) CALL FATAL(MyName, 'Constant >Fresh Water Density< not found')
@@ -2873,6 +2877,23 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
 
   MeltMode = GetString(SolverParams,'Melt mode', Found)
   IF(.NOT.Found) CALL Fatal(MyName, '>Melt mode< not found in solver params')
+  
+  WaterSheetLimit = ListGetConstReal(SolverParams,'Water Sheet Limit', WaterSheetSwitch)
+  WaterSheetName = "Sheet Thickness"
+  IF (WaterSheetSwitch) THEN
+     SheetVar    => VariableGet(Model % Variables, WaterSheetName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+     SheetVals   => SheetVar%Values 
+     SheetPerm   => SheetVar%Perm
+  END IF
+
+  EffectivePressureLimit = ListGetConstReal(SolverParams,'Effective Pressure Limit', EffectivePressureSwitch)
+  EffectivePressureName = "Effective Pressure"
+  IF (EffectivePressureSwitch) THEN
+     NVar    => VariableGet(Model % Variables, EffectivePressureName, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
+     NVals   => NVar%Values 
+     NPerm   => NVar%Perm
+  END IF
+
   
   SELECT CASE (MeltMode)
 
@@ -2891,6 +2912,7 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
     WtPerm     => WeightsVar%Perm
 
   CASE ("friction")
+
     UbVarName = GetString(SolverParams,'Ub variable name', Found)
     IF (.NOT.Found) UbVarName = "SSAVelocity"
     CeffVarName = GetString(SolverParams,'Ceff variable name', Found)
@@ -2904,10 +2926,10 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
     UbVals     => UbVar%Values 
     UbPerm     => UbVar%Perm
 
-    IF (UbVar % DOFS .NE. 2) THEN
-      CALL Fatal(MyName, 'Expecting Ub variable to be 2D')
-    END IF
-    !    Material => GetMaterial() ! get sliding velocity from material
+!    IF (UbVar % DOFS .NE. 2) THEN
+!      CALL Fatal(MyName, 'Expecting Ub variable to be 2D')
+!    END IF
+!    !    Material => GetMaterial() ! get sliding velocity from material
 
   CASE DEFAULT
     CALL Fatal(MyName, 'MeltMode not recognised')
@@ -2940,9 +2962,21 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
       CASE ("heat")      
         MeltVals(MeltPerm(nn)) = ABS( 1.0e6 * HeatVals(HeatPerm(nn)) ) / ( WtVals(WtPerm(nn)) * rho_fw * LatHeat )
       CASE ("friction")
-        Ub = (UbVals(2*(UbPerm(nn)-1)+1)**2 + UbVals(2*(UbPerm(nn)-1)+2)**2)**0.5
+!        Ub = (UbVals(2*(UbPerm(nn)-1)+1)**2 + UbVals(2*(UbPerm(nn)-1)+2)**2)**0.5
 !        Ub(1:1) = ListGetReal( Material, 'Sliding Velocity', 1, [nn], Found, UnfoundFatal = .TRUE. )
-        MeltVals(MeltPerm(nn)) = (Ub(1)**2 * CeffVals(CeffPerm(nn)) ) / ( rho_fw * LatHeat )
+         IF (UbVar % DOFS .EQ. 2) THEN
+            Ub = (UbVals(2*(UbPerm(nn)-1)+1)**2 + UbVals(2*(UbPerm(nn)-1)+2)**2)**0.5
+         ELSE IF (UbVar % DOFS .EQ. 3) THEN
+            Ub = (UbVals(3*(UbPerm(nn)-1)+1)**2 + UbVals(3*(UbPerm(nn)-1)+2)**2 + UbVals(3*(UbPerm(nn)-1)+3)**2)**0.5
+         ELSE IF (UbVar % DOFS .EQ. 4) THEN
+            Ub = (UbVals(4*(UbPerm(nn)-1)+1)**2 + UbVals(4*(UbPerm(nn)-1)+2)**2 + UbVals(4*(UbPerm(nn)-1)+3)**2)**0.5
+           CALL INFO(MyName, 'Sliding velocity is 4D. Ignoring 4th dimension.', level=5 )
+         ELSE
+            CALL Fatal(MyName, 'Expecting Ub variable to be 2D or 3D (or 4D flow solution)')
+         END IF
+         
+         MeltVals(MeltPerm(nn)) = (Ub**2 * CeffVals(CeffPerm(nn)) ) / ( rho_fw * LatHeat )
+
       END SELECT
       
       IF (UseGHF) THEN
@@ -2950,7 +2984,20 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
         MeltVals(MeltPerm(nn)) = MeltVals(MeltPerm(nn)) + &
              ( GHFVals(GHFPerm(nn))*GHFscaleFactor*1.0e6 ) / ( rho_fw*LatHeat )
       END IF
-    END IF
+
+      IF (WaterSheetSwitch) THEN
+         IF (SheetVals(SheetPerm(nn)) .GT. WaterSheetLimit) THEN
+            MeltVals(MeltPerm(nn)) = 0.0
+         END IF
+      END IF
+
+      IF (EffectivePressureSwitch) THEN
+         IF (NVals(NPerm(nn)) .LT. EffectivePressureLimit) THEN
+            MeltVals(MeltPerm(nn)) = 0.0
+         END IF
+      END IF
+
+   END IF
 
   END DO LoopAllNodes
   

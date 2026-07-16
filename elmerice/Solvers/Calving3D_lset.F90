@@ -69,12 +69,16 @@
          PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
          WorkInt(:), WorkInt2D(:,:), PartCount(:), ElemsToAdd(:), PartElemsToAdd(:), &
          EdgeLineNodes(:), NodePositions(:), FrontToLateralConstraint(:), UnfoundConstraints(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+   INTEGER, ALLOCATABLE :: buffer2(:)
+#endif
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), MaxMeshDist,&
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
         angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
         buffer, gridmesh_dx, FrontLeft(2), FrontRight(2), ElemEdge(2,5), &
         CalvingLimit, CrevPenetration, PrevValue, PartMinDist, &
+        Calv_delta_t, Calv_dmax, Calv_k, RandomNumber, x, maxprob, Mu, Prob, calv_f, &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -87,10 +91,10 @@
         EdgeX(:), EdgeY(:), EdgePoly(:,:), CrevOrient(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName,InflowMaskName, &
-        PC_EqName, Iso_EqName, VTUSolverName, EqName
+        PC_EqName, Iso_EqName, VTUSolverName, EqName, FileName
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
-        SaveParallelActive, LeftToRight, inside, Complete,&
-        LatCalvMargins, FullThickness, UnfoundConstraint
+        SaveParallelActive, LeftToRight, inside, Complete, SaveToFile, &
+        LatCalvMargins, FullThickness, UnfoundConstraint, RandomCalving, FileCreated
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
         IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
         IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:), &
@@ -101,7 +105,7 @@
    SAVE :: FirstTime, SolverName, Params, Parallel, Boss, dim, Debug, &
         DistVarName, PC_EqName, Iso_EqName, LeftConstraint, &
         RightConstraint, FrontConstraint,TopMaskName, BotMaskName, &
-        LeftMaskName, RightMaskName, FrontMaskName, InflowMaskName
+        LeftMaskName, RightMaskName, FrontMaskName, InflowMaskName, FileCreated
 
 !---------------Get Variables and Parameters for Solution-----------
 
@@ -142,6 +146,82 @@
       END DO
       IF(Debug) PRINT *,'Front, Left, Right constraints: ',FrontConstraint,LeftConstraint,RightConstraint
    END IF !FirstTime
+
+   RandomCalving = ListGetLogical(Params,"Random Calving")
+   IF(RandomCalving) THEN
+    IF(Boss) THEN
+
+      Calv_k = ListGetConstReal(Params, "Calving k",Found)
+      IF(.NOT. Found) CALL FATAL(SolverName, "Random calving specified but no 'Calving k' value")
+      Calv_delta_t = ListGetConstReal(Params, "Calving delta t",Found)
+      IF(.NOT. Found) CALL FATAL(SolverName, "Random calving specified but no 'Calving delta t' value")
+      Calv_dmax = ListGetConstReal(Params, "Calving dmax",Found)
+      IF(.NOT. Found) CALL FATAL(SolverName, "Random calving specified but no 'Calving dmax' value")
+      Calv_f = ListGetConstReal(Params, "Calving f",Found)
+      IF(.NOT. Found) CALL FATAL(SolverName, "Random calving specified but no 'Calving f' value")
+
+      SaveToFile = ListGetLogical(Params,"Save Probability to File")
+
+      ! calculate dcrev from calving probability
+      !x = (dcrev - dmin) / (1 - dmin)
+      !x[dcrev < dmin] = 0
+      !mu = (x**k) / ( (x**k) + (1-x)**k )
+      !prob = 1 - np.exp(-mu * delta_t)
+
+      maxprob = 1.0_dp - EXP(-1.0_dp * Calv_delta_t * Calv_f)
+
+      ! one random number per timestep
+      CALL Random_Seed()
+      CALL Random_Number(RandomNumber)
+
+      IF(RandomNumber >= maxprob + AEPS) THEN
+        CALL INFO(SolverName, 'shortening random number')
+        Prob = maxprob
+      ELSE
+        Prob = RandomNumber
+      END IF
+
+      Mu = -LOG(1.0_dp-Prob)/(Calv_delta_t*calv_f)
+
+      CrevPenetration = Calv_dmax - (LOG(1/mu) / Calv_k)
+
+      IF(SaveToFile) THEN
+        Filename = ListGetString(Params,"Probability File Name", Found)
+        IF(.NOT. Found) THEN
+          CALL WARN(SolverName, 'Output file name not given so using Probability.txt')
+          Filename = "Probability.txt"
+        END IF
+
+        ! write to file
+        IF(FileCreated) THEN
+          OPEN( 47, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+        ELSE
+          OPEN( 47, FILE=filename, STATUS='UNKNOWN')
+          WRITE(47, '(A)') "Calving Probability Output File"
+          WRITE(47, '(A)') "TimeStep, Time, RandomNumber, Probability, Mu, DCrev"
+        END IF
+
+        WRITE(47, *) GetTimestep(), GetTime(), RandomNumber, Prob, Mu, CrevPenetration
+        CLOSE(47)
+        FileCreated = .TRUE.
+      END IF
+    ELSE
+      CrevPenetration = 0.0_dp
+    END IF
+
+    CALL MPI_ALLREDUCE(MPI_IN_PLACE, CrevPenetration, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+
+    PRINT*, 'CrevPenetration: ', CrevPenetration
+
+    WRITE (Message,'(A,F1.2,A)') 'Calving occuring using crevasse penetration:', CrevPenetration, &
+        'due to probability.'
+    CALL INFO(SolverName, Message)
+   ELSE
+    CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, DefValue = 1.0_dp)
+    IF(.NOT. Found) CALL Info(SolverName, "No Crevasse Penetration specified so assuming full thickness")
+    PRINT*, 'CrevPenetration: ', CrevPenetration
+    IF(CrevPenetration > 1 .OR. CrevPenetration < 0) CALL FATAL(SolverName, "Crevasse Penetraion must be between 0-1")
+   END IF
 
    CalvingOccurs = .FALSE.
 
@@ -990,6 +1070,9 @@
 
      ALLOCATE(IMBdryConstraint(IMBdryCount))
      IMBdryConstraint = 0
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+     ALLOCATE(buffer2(IMBdryCount))
+#endif
 
      !Now cycle elements: for those with a node either side
      !of domain boundary, cycle 3d mesh boundary elements
@@ -1051,7 +1134,13 @@
 
      !Send info back to boss
      IF(Boss) THEN
-       CALL MPI_Reduce(MPI_IN_PLACE, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+       buffer2 = IMBdryConstraint
+       CALL MPI_Reduce(buffer2, &
+#else
+       CALL MPI_Reduce(MPI_IN_PLACE, &
+#endif
+            IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
             MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
      ELSE
        CALL MPI_Reduce(IMBdryConstraint, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
@@ -1133,7 +1222,13 @@
        END DO
 
        IF(Boss) THEN
-         CALL MPI_Reduce(MPI_IN_PLACE, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+         buffer2 = IMBdryConstraint
+         CALL MPI_Reduce(buffer2, &
+#else
+         CALL MPI_Reduce(MPI_IN_PLACE, &
+#endif
+              IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
               MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
        ELSE
          CALL MPI_Reduce(IMBdryConstraint, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
@@ -1477,6 +1572,7 @@
         !    EXIT
         !  END IF
         !END DO
+        CalvingValues(CalvingPerm) = DistValues(DistPerm) + 1
         CALL WARN(SolverName, 'No crevasses so not calculating signed distance')
         !RETURN
      ELSE
@@ -1692,6 +1788,9 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: DistVar
     REAL(KIND=dp) :: SearchDist, RotationMatrix(3,3), Extent(4), Buffer
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer2
+#endif
     !------------------------------
     REAL(KIND=dp) :: NodeHolder(3)
     INTEGER :: i,ierr
@@ -1718,10 +1817,37 @@ CONTAINS
 
     END DO
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(3), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-    CALL MPI_AllReduce(MPI_IN_PLACE, extent(4), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(1)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(2)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(3)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(3), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer2 = extent(4)
+    CALL MPI_AllReduce(buffer2, &
+#else
+    CALL MPI_AllReduce(MPI_IN_PLACE, &
+#endif
+         extent(4), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
 
     extent(1) = extent(1) - buffer
     extent(2) = extent(2) + buffer
@@ -1754,6 +1880,9 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: PathPoly(:,:),xL(:),yL(:),xR(:),yR(:),WorkReal(:),WorkReal2(:,:)
     LOGICAL :: inside,does_intersect,FoundIntersect
     LOGICAL, ALLOCATABLE :: RemoveCrev(:), WorkLogical(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    LOGICAL, ALLOCATABLE :: buffer(:)
+#endif
     CHARACTER(MAX_NAME_LEN) :: FuncName="CheckLateralCalving", Adv_EqName, LeftRailFName, RightRailFName
     INTEGER, PARAMETER :: io=20
 
@@ -1882,6 +2011,9 @@ CONTAINS
     CLOSE(io)
 
     ALLOCATE(RemoveCrev(NoPaths))
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    ALLOCATE(buffer(NoPaths))
+#endif
     RemoveCrev = .FALSE.
     DO i=1, Mesh % NumberOfNodes
 
@@ -1986,7 +2118,13 @@ CONTAINS
       END IF
     END DO
 
-    CALL MPI_AllReduce(MPI_IN_PLACE, RemoveCrev, NoPaths, MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+         buffer = RemoveCrev
+         CALL MPI_ALLREDUCE(buffer, &
+#else
+         CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+        RemoveCrev, NoPaths, MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, ierr)
 
     DO WHILE(ANY(RemoveCrev))
       DO i=1, NoPaths

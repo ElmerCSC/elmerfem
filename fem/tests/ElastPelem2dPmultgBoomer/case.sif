@@ -65,6 +65,7 @@ Solver 1
   mglowest: Linear System Convergence Tolerance = 1.0E-03
   mglowest: Linear System Abort Not Converged = False
   mglowest: Linear System Residual Output = 20
+  mglowest: Linear System Preconditioning = "none"
 
 ! BoomerAMG specific keywords
   BoomerAMG Relax Type = Integer 3

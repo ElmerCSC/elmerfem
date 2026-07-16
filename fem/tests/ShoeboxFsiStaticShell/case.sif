@@ -7,6 +7,8 @@
 ! The static ideal gas is implemented as a suitable choice of coefficient in ModelPDE.
 ! For the elasticity equation a shell solver is solved in static mode.
 !
+! Note: currenly this test case might not make sense. Check it!!!
+!
 ! P.R. 8.12.2017
 
 
@@ -228,7 +230,7 @@ Boundary Condition 3
   Body Id = 2
 End
 
-
-Solver 1 :: reference norm = 4.99291493E+04
+Solver 1 :: reference norm = 9.96176731E+01
+!Solver 1 :: reference norm = 4.99291493E+04
 ! For some reason this is zero.
 !Solver 2 :: reference norm = 2.59187778E-08

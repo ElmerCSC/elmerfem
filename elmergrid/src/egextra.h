@@ -26,6 +26,7 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
 		 char *prefix,int info);
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals, int info);
+int MeshPieces(struct FemType *data,int nomesh,int nomeshes,int info);
 
 void InspectVector(Real *vector,int first,int last,Real *min,
 		   Real *max,int *mini,int *maxi);

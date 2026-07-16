@@ -775,7 +775,7 @@ CONTAINS
     INTEGER :: i,j,k,l,n,Start
     LOGICAL, ALLOCATABLE :: Done(:), CondReg(:)
     TYPE(ValueList_t), POINTER :: BC
-    REAL(KIND=dp) :: Cond1
+    REAL(KIND=dp) :: Cond1, NodalCond(27)
     TYPE(Element_t), POINTER :: Edge, Boundary, Element
 
     INTEGER, ALLOCATABLE :: r_e(:), s_e(:,:), iperm(:)
@@ -825,8 +825,10 @@ CONTAINS
         condReg = .TRUE.
         DO i=1,GetNOFActive()
           Element => GetActiveElement(i)
-          Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
-          IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
+          n = Element % Type % NumberOfNodes
+          NodalCond(1:n) = GetReal(GetMaterial(), 'Electric Conductivity',Found)
+          cond1 = MAXVAL(NodalCond(1:n))
+          IF (cond1 < EPSILON(cond1) ) condReg(Element % NodeIndexes) = .FALSE.
         END DO
 
         CALL CommunicateCondReg(Solver,Mesh,CondReg)

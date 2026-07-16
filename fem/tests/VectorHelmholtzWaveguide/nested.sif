@@ -109,7 +109,7 @@ Solver 1
   block 11: Linear System Convergence Tolerance = $blocktol
 
   Nonlinear System Consistent Norm = True
-!  Calculate Energy Norm = Logical True
+!  Calculate Energy Inner Product = Logical True
 End
 
 Solver 2

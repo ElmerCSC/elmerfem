@@ -31,6 +31,7 @@ RECURSIVE SUBROUTINE DummySolver( Model,Solver,Timestep,TransientSimulation )
      VarPerm => Var % Perm
      VarDOFs =  Var % DOFs
      VarValues => Var % Values
+     VarValues = 0.0_dp
   ELSE
      CALL FATAL('DummySolver','No Variable associated')
   END IF
@@ -41,13 +42,13 @@ RECURSIVE SUBROUTINE DummySolver( Model,Solver,Timestep,TransientSimulation )
  !       VarValues(VarDOFs*(VarPerm(i) - 1)+j) = k
  !    END DO
  ! END DO
- ! VarValues = 0.0_dp
   DO t=1, Solver % Mesh % NumberOfBoundaryElements
       ! get element information
       Element => GetBoundaryElement(t)
       IF ( .NOT.ActiveBoundaryElement() ) CYCLE
       BC => GetBC()
       n = GetElementNOFNodes()
+      IF(ANY(VarPerm(Element % NodeIndexes) == 0)) CYCLE
       VarValues(VarPerm(Element % NodeIndexes)) = ListGetReal(BC,TRIM(Solver % Variable % Name),n,Element % NodeIndexes,GotIt)
    END DO
   

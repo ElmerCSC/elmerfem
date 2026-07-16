@@ -918,6 +918,8 @@ CONTAINS
 !------------------------------------------------------------------------------
        tt = CPUTime()
 
+       CALL Info('PMGSolve','Solving multigrid Level '//I2S(Level),Level=20)
+
 !
 !      Initialize:
 !      -----------
@@ -936,7 +938,6 @@ CONTAINS
 !      If at lowest level, solve directly:
 !      -----------------------------------
        IF ( Level <= 1 ) THEN
-
           CALL ListPushNamespace('mglowest:')
 
           CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
@@ -955,9 +956,20 @@ CONTAINS
             IF ( LIter ) LowestSolver='iterative'
           END IF
 
+          ! This fixes an issue that comes from having different calling convention for
+          ! serial Hypre.
+          IF(.NOT. Parallel) THEN
+            IF(ListGetLogical(Params, 'Linear System Use Hypre', Found) &
+                .AND. LowestSolver == 'iterative') LowestSolver = 'hypre'
+          END IF
+
           CALL Info('PMGSolve','Starting lowest linear solver using: '//TRIM(LowestSolver),Level=10 )
 
           SELECT CASE(LowestSolver)
+
+            ! This one only for serial!
+          CASE('hypre')
+            CALL SolveHypre( Matrix1, Solution, ForceVector, Solver )
 
           CASE('block')
             CALL BlockSolveExt( Matrix1, Solution, ForceVector, Solver )

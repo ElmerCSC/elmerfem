@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 /*
- * $Id: gra_com.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: gra_com.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: gra_com.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -54,13 +54,13 @@
  * Revision 1.2  1998/08/01 12:34:42  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
 #include "elmer/matc.h"
 
-VARIABLE *gra_gopen(var) VARIABLE *var;
+VARIABLE *gra_gopen(VARIABLE *var)
 {
   char *name;
 
@@ -77,25 +77,25 @@ VARIABLE *gra_gopen(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gclose()
+VARIABLE *gra_gclose(void)
 {
   GRA_CLOSE();
   return NULL;
 }
 
-VARIABLE *gra_gclear()
+VARIABLE *gra_gclear(void)
 {
   GRA_CLEAR();
   return NULL;
 }
 
-VARIABLE *gra_gflush()
+VARIABLE *gra_gflush(void)
 {
   GRA_FLUSH();
   return NULL;
 }
 
-VARIABLE *gra_gdefcolor(var) VARIABLE *var;
+VARIABLE *gra_gdefcolor(VARIABLE *var)
 {
   double *m = MATR(NEXT(var));
   double r, g, b;
@@ -110,56 +110,56 @@ VARIABLE *gra_gdefcolor(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gcolor(var) VARIABLE *var;
+VARIABLE *gra_gcolor(VARIABLE *var)
 {
   GRA_COLOR((int)*MATR(var));
 
   return NULL;
 }
 
-VARIABLE *gra_gpolyline(var) VARIABLE *var;
+VARIABLE *gra_gpolyline(VARIABLE *var)
 {
   GRA_POLYLINE((int)*MATR(var), MATR(NEXT(var)));
 
   return NULL;
 }
 
-VARIABLE *gra_gdraw(var) VARIABLE *var;
+VARIABLE *gra_gdraw(VARIABLE *var)
 {
   GRA_DRAW(MATR(var));
 
   return NULL;
 }
 
-VARIABLE *gra_gmove(var) VARIABLE *var;
+VARIABLE *gra_gmove(VARIABLE *var)
 {
   GRA_MOVE(MATR(var));
 
   return NULL;
 }
 
-VARIABLE *gra_gpolymarker(var) VARIABLE *var;
+VARIABLE *gra_gpolymarker(VARIABLE *var)
 {
   GRA_POLYMARKER((int)*MATR(var),(int)*MATR(NEXT(var)),MATR(NEXT(NEXT(var))));
 
   return NULL;
 }
 
-VARIABLE *gra_gmarker(var) VARIABLE *var;
+VARIABLE *gra_gmarker(VARIABLE *var)
 {
   GRA_MARKER((int)*MATR(var),MATR(NEXT(var)));
 
   return NULL;
 }
 
-VARIABLE *gra_gareafill(var) VARIABLE *var;
+VARIABLE *gra_gareafill(VARIABLE *var)
 {
   GRA_AREAFILL((int)*MATR(var),MATR(NEXT(var)));
 
-  return NULL; 
+  return NULL;
 }
 
-VARIABLE *gra_gtext(var) VARIABLE *var;
+VARIABLE *gra_gtext(VARIABLE *var)
 {
   double *m = MATR(var);
   double h, r;
@@ -174,12 +174,12 @@ VARIABLE *gra_gtext(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gimage(var) VARIABLE *var;
+VARIABLE *gra_gimage(VARIABLE *var)
 {
   int w, h, d;
   double *m = MATR(var);
 
-  w = *m++; 
+  w = *m++;
   h = *m++;
   d = *m++;
   GRA_IMAGE(w, h, d, MATR(NEXT(var)));
@@ -187,12 +187,12 @@ VARIABLE *gra_gimage(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gwindow(var) VARIABLE *var;
+VARIABLE *gra_gwindow(VARIABLE *var)
 {
   double x1, x2, y1, y2, z1, z2;
   double *m = MATR(var);
 
-  x1 = *m++; 
+  x1 = *m++;
   x2 = *m++;
   y1 = *m++;
   y2 = *m++;
@@ -203,12 +203,12 @@ VARIABLE *gra_gwindow(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gviewport(var) VARIABLE *var;
+VARIABLE *gra_gviewport(VARIABLE *var)
 {
   double x1, x2, y1, y2;
   double *m = MATR(var);
 
-  x1 = *m++; 
+  x1 = *m++;
   x2 = *m++;
   y1 = *m++;
   y2 = *m++;
@@ -217,12 +217,12 @@ VARIABLE *gra_gviewport(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gtranslate(var) VARIABLE *var;
+VARIABLE *gra_gtranslate(VARIABLE *var)
 {
   double x, y, z;
   double *m = MATR(var);
 
-  x = *m++; 
+  x = *m++;
   y = *m++;
   z = *m++;
   GRA_TRANSLATE(x,y,z);
@@ -230,12 +230,12 @@ VARIABLE *gra_gtranslate(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_grotate(var) VARIABLE *var;
+VARIABLE *gra_grotate(VARIABLE *var)
 {
   double x, y, z;
   double *m = MATR(var);
 
-  x = *m++; 
+  x = *m++;
   y = *m++;
   z = *m++;
   GRA_ROTATE(x,y,z);
@@ -243,12 +243,12 @@ VARIABLE *gra_grotate(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gscale(var) VARIABLE *var;
+VARIABLE *gra_gscale(VARIABLE *var)
 {
   double x, y, z;
   double *m = MATR(var);
 
-  x = *m++; 
+  x = *m++;
   y = *m++;
   z = *m++;
   GRA_SCALE(x,y,z);
@@ -256,28 +256,28 @@ VARIABLE *gra_gscale(var) VARIABLE *var;
   return NULL;
 }
 
-VARIABLE *gra_gviewpoint(var) VARIABLE *var;
+VARIABLE *gra_gviewpoint(VARIABLE *var)
 {
   double xf, yf, zf, xt = 0, yt = 0, zt = 0;
   double *m = MATR(var);
 
-  xf = *m++; 
+  xf = *m++;
   yf = *m++;
   zf = *m++;
   if (NEXT(var) != NULL)
   {
     m = MATR(NEXT(var));
-    xt = *m++; 
+    xt = *m++;
     yt = *m++;
     zt = *m++;
   }
-    
+
   GRA_VIEWPOINT(xf,yf,zf,xt,yt,zt);
 
   return NULL;
 }
 
-VARIABLE *gra_ggetmatrix(var) VARIABLE *var;
+VARIABLE *gra_ggetmatrix(VARIABLE *var)
 {
   VARIABLE *res;
 
@@ -287,42 +287,42 @@ VARIABLE *gra_ggetmatrix(var) VARIABLE *var;
   return res;
 }
 
-VARIABLE *gra_gsetmatrix(var) VARIABLE *var;
+VARIABLE *gra_gsetmatrix(VARIABLE *var)
 {
   GRA_SETMATRIX(MATR(var));
 
   return NULL;
 }
 
-VARIABLE *gra_gperspective(var) VARIABLE *var;
+VARIABLE *gra_gperspective(VARIABLE *var)
 {
   GRA_PERSPECTIVE(*MATR(var));
 
   return NULL;
 }
 
-VARIABLE *gra_gdbuffer(var) VARIABLE *var;
+VARIABLE *gra_gdbuffer(VARIABLE *var)
 {
-  GRA_DBUFFER(1);
+  GRA_DBUFFER(MATR(var));
 
   return NULL;
 }
 
-VARIABLE *gra_gsbuffer(var) VARIABLE *var;
+VARIABLE *gra_gsbuffer(VARIABLE *var)
 {
-  GRA_SBUFFER(1);
+  GRA_SBUFFER(MATR(var));
 
   return NULL;
 }
 
-VARIABLE *gra_gswapbuf(var) VARIABLE *var;
+VARIABLE *gra_gswapbuf(VARIABLE *var)
 {
-  GRA_SWAPBUF(1);
+  GRA_SWAPBUF(MATR(var));
 
   return NULL;
 }
 
-void gra_com_init()
+void gra_com_init(void)
 {
   com_init( "gopen",        FALSE, FALSE, gra_gopen,        1, 2, "Sorry, no help available!");
   com_init( "gclose",       FALSE, FALSE, gra_gclose,       0, 0, "Sorry, no help available!");

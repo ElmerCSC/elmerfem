@@ -15,8 +15,8 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program (in file fem/GPL-2); if not, write to the 
- *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+ *  along with this program (in file fem/GPL-2); if not, write to the
+ *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  *  Boston, MA 02110-1301, USA.
  *
  *****************************************************************************/
@@ -60,7 +60,7 @@
 
 
 /*
- * $Id: clip.c,v 1.2 2005/05/27 12:26:19 vierinen Exp $ 
+ * $Id: clip.c,v 1.2 2005/05/27 12:26:19 vierinen Exp $
  *
  * $Log: clip.c,v $
  * Revision 1.2  2005/05/27 12:26:19  vierinen
@@ -72,7 +72,7 @@
  * Revision 1.2  1998/08/01 12:34:31  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -87,12 +87,12 @@
    RETURN: Number of points in the polygon inside the box
 
    NOTICE! The new number of points may be GRATER than the in origin!
-           The theoretical number of points newer exceeds twice 
-           the number in origin. 
+           The theoretical number of points newer exceeds twice
+           the number in origin.
 ************************************o*************************************/
-int clip_poly(n,x,y)
-int *n;                            /* Number of points in polygon      */
-    double *x,*y;                  /* Coordinate arrays of the polygon */
+int clip_poly(int *n,double *x,double *y)
+/*  int *n;                           Number of points in polygon      */
+/*  double *x,*y;                     Coordinate arrays of the polygon */
 {
   int last,                        /* Last point code (in/out?)     */
       this;                        /* Current point code (in/out?)   */
@@ -101,7 +101,7 @@ int *n;                            /* Number of points in polygon      */
   int eg;                          /* Current edge for clipping         */
   int icode;                       /* Sum of points inside bounding box */
   double xx,yy;                    /* Current point coordinates, i:th   */
-  double cx,cy;                    /* Coordinates of the clipped point  */ 
+  double cx,cy;                    /* Coordinates of the clipped point  */
   double lx,ly;                    /* Coordinates of the previous point */
   double dx,dy;                    /* Length of the line segment        */
 
@@ -127,7 +127,7 @@ int *n;                            /* Number of points in polygon      */
 
       this = FALSE;
       switch(eg)                   /* Code the current point */
-      { 
+      {
         case 0: if (yy <= CL_YMAX) this = TRUE; break;
         case 1: if (yy >= CL_YMIN) this = TRUE; break;
         case 2: if (xx <= CL_XMAX) this = TRUE; break;
@@ -145,36 +145,36 @@ int *n;                            /* Number of points in polygon      */
             case 0:
               cx = lx + ((CL_YMAX-ly)*dx)/dy;
               cy = CL_YMAX;
-              break;       
+              break;
             case 1:
               cx = lx + ((CL_YMIN-ly)*dx)/dy;
               cy = CL_YMIN;
-              break;       
+              break;
             case 2:
               cy = ly + ((CL_XMAX-lx)*dy)/dx;
               cx = CL_XMAX;
-              break;       
+              break;
             case 3:
               cy = ly + ((CL_XMIN-lx)*dy)/dx;
               cx = CL_XMIN;
-              break;       
+              break;
           }
         }
 
         if(last)                   /* Decide to store the point(s) */
-          if(this) 
+          if(this)
             { x[j]=xx; y[j]=yy; j++; }
           else
             { x[j]=cx; y[j]=cy; j++; }
         else
-          if(this) 
+          if(this)
           {
             if(j+2 > i)            /* Too many points without shift */
             {
               for(k=nn; k>i ; k--) { x[k]=x[k-1]; y[k]=y[k-1]; }
               nn++;
               i++;                 /* Update pointer AND the limit  */
-            } 
+            }
             x[j]=cx; y[j]=cy; j++; /* Store two points */
             x[j]=xx; y[j]=yy; j++;
           }
@@ -202,7 +202,7 @@ int *n;                            /* Number of points in polygon      */
 #define BOTTOM_EDGE 4
 #define TOP_EDGE    8
 
-void clip_code(x,y,c) double x,y; int *c;
+void clip_code(double x, double y, int*c)
 {
   *c = NULL_EDGE;
 
@@ -210,7 +210,7 @@ void clip_code(x,y,c) double x,y; int *c;
     *c = LEFT_EDGE;
   else if (x > CL_XMAX)
     *c = RIGHT_EDGE;
-  
+
   if (y < CL_YMIN)
     *c |= BOTTOM_EDGE;
   else if (y > CL_YMAX)
@@ -225,18 +225,16 @@ void clip_code(x,y,c) double x,y; int *c;
  * until all the linesegments in the polyline are handled. Edge crossing
  * points of the last linesegment are stored in place of originals.
  */
-int clip_line(n,x,y)
-int *n;
-double *x, *y;
+int clip_line(int *n, double *x, double *y)
 {
   double xx, yy,
          px, py;
 
   int i,c,c1,c2;
 
-  px = x[0]; 
+  px = x[0];
   py = y[0];
-  clip_code(px,py,&c1); 
+  clip_code(px,py,&c1);
   for(i = 1; i < *n; i++)
   {
     clip_code(x[i],y[i],&c2);
@@ -272,24 +270,24 @@ double *x, *y;
           xx = px+(x[i]-px)*(CL_YMAX-py)/(y[i]-py);
           yy = CL_YMAX;
         }
-     
+
         if (c == c1)
         {
-          x[i-1] = px = xx; 
-          y[i-1] = py = yy; 
+          x[i-1] = px = xx;
+          y[i-1] = py = yy;
           clip_code(xx,yy,&c1);
         }
         else
         {
-          x[i] = xx; 
-          y[i] = yy; 
+          x[i] = xx;
+          y[i] = yy;
           clip_code(xx,yy,&c2);
         }
       }
       *n = i + 1;
-      return *n; 
+      return *n;
     }
-    px = x[i]; 
+    px = x[i];
     py = y[i];
     c1 = c2;
   }

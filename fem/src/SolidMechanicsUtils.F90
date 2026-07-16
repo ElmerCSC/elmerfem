@@ -92,13 +92,14 @@ CONTAINS
     REAL(KIND=dp) :: RBlock(3,3), R(6*nd,6*nd)
     REAL(KIND=dp) :: Basis(nd), dBasis(nd,3), DetJ, Weight
     REAL(KIND=dp) :: Youngs_Modulus(n), Shear_Modulus(n), Area(n), Density(n)
+    REAL(KIND=dp) :: Form_Factor(n)
     REAL(KIND=dp) :: Torsional_Constant(n) 
     REAL(KIND=dp) :: Area_Moment_2(n), Area_Moment_3(n)
     REAL(KIND=dp) :: Offset_2, Offset_3
     REAL(KIND=dp) :: Mass_Inertia_Moment(n), Damping(n), RayleighBeta(n)
     REAL(KIND=dp) :: Load(3,n), f(3)
     REAL(KIND=dp) :: PrevSolVec(6*nd)
-    REAL(KIND=dp) :: E, A, G, rho, DampCoef
+    REAL(KIND=dp) :: E, A, G, rho, DampCoef, FormFact
     REAL(KIND=dp) :: EA, GA, MOI, Mass_per_Length 
     REAL(KIND=dp) :: E_diag(3)
 
@@ -152,6 +153,8 @@ CONTAINS
     IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Youngs Modulus needed')
     Shear_Modulus(1:n) = GetReal(Material, 'Shear Modulus', Found)
     IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Shear Modulus needed')
+    Form_Factor(1:n) = GetReal(Material, 'Shear Correction Factor', Found)
+    IF (.NOT. Found) Form_Factor(1:n) = 1.0_dp
     Area(1:n) = GetReal(Material, 'Cross Section Area', Found)
     IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Cross Section Area needed')
     Torsional_Constant(1:n) = GetReal(Material, 'Torsional Constant', Found)
@@ -275,7 +278,8 @@ CONTAINS
       ! TO DO: Add option to give the applied moment load
 
       E = SUM(Basis(1:n) * Youngs_Modulus(1:n))
-      G = SUM(Basis(1:n) * Shear_Modulus(1:n))      
+      G = SUM(Basis(1:n) * Shear_Modulus(1:n))
+      FormFact = SUM(Basis(1:n) * Form_Factor(1:n))
       A = SUM(Basis(1:n) * Area(1:n))
 
       E_diag(1) = G * SUM(Basis(1:n) * Torsional_Constant(1:n))
@@ -289,7 +293,7 @@ CONTAINS
         DampCoef = SUM(Damping(1:n) * Basis(1:n))
       END IF
 
-      GA = G*A
+      GA = FormFact*G*A
       EA = E*A
 
       ! TO DO: Add option to give shear correction factors

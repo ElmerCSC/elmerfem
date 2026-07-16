@@ -14,7 +14,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -64,6 +64,7 @@ Solver 1
   Fix Input Current Density = Logical False
 
   Linear System Block Mode = Logical True
+  Optimize Bandwidth = False
 
   Block Gauss-Seidel = Logical True
   Block Hor-Ver System = Logical True
@@ -107,20 +108,14 @@ Solver 2
 
   Potential Variable = String "AV"
 
-  Calculate Current Density = Logical True
-  Calculate Electric Field = Logical True
-  Calculate Magnetic Field Strength = Logical True
+  Calculate Current Density = True
+  Calculate Electric Field = True
+  Calculate Magnetic Field Strength = True
   Calculate Joule Heating = True
 
-  Steady State Convergence Tolerance = 0
-  Linear System Solver = "Iterative"
-  Linear System Preconditioning = None
-  Linear System Residual Output = 0
-  Linear System Max Iterations = 5000
-  Linear System Iterative Method = CG
-  Linear System Convergence Tolerance = 1.0e-8
-
+  Calculate Elemental Fields = Logical False
   Calculate Nodal Fields = Logical False
+
   Impose Body Force Potential = Logical True
   Impose Body Force Current = Logical True
 

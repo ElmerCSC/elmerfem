@@ -86,12 +86,19 @@ CONTAINS
           END IF
         END IF
         
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+        IF ( str == 'umfpack' .OR. str == 'big umfpack' ) THEN
+          CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
+          str = 'mumps'
+          CALL ListAddString( Params,'Linear System Direct Method', str)
+        END IF
+#endif
+
         SELECT CASE( str )
         CASE('banded' )
-          
         CASE( 'umfpack', 'big umfpack' )
 #ifndef HAVE_UMFPACK
-          CALL Fatal( 'GetMatrixFormat', 'UMFPACK solver has not been installed.' )
+          CALL Fatal( 'CheckLinearSolverOptions', 'UMFPACK (and MUMPS) solver has not been installed.' )
 #endif
         CASE( 'mumps', 'mumpslocal' )
 #ifndef HAVE_MUMPS
@@ -148,9 +155,6 @@ CONTAINS
     ELSE
       IF (ListGetLogical( Params,  &
           'Linear System Use Hypre', Found )) THEN
-        IF( .NOT. Parallel ) THEN
-          CALL Fatal('CheckLinearSolverOptions','Hypre not usable in serial!')
-        END IF
 #ifndef HAVE_HYPRE
         CALL Fatal('CheckLinearSolverOptions','Hypre requested but not compiled with!')
 #endif
@@ -1677,8 +1681,8 @@ CONTAINS
           IF( ListGetLogical( SolverParams,'Save Limiter',Found ) ) THEN      
             CALL Info('AddEqutionBasics','Adding "contact active" field for '//var_name(1:n))
             CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                var_name(1:n) //' Contact Active', dofs = Solver % Variable % Dofs, &
-                Perm = Solver % Variable % Perm )
+                TRIM(GetVarName(Solver % Variable))//' Contact Active', &
+                dofs = Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
           END IF
         END IF
                     
@@ -2826,7 +2830,11 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: k1(:),k2(:),k3(:),k4(:)
     END TYPE RungeKutta_t
     TYPE(RungeKutta_t), ALLOCATABLE, TARGET :: RKCoeff(:)
+
+    TYPE(ParEnv_t) :: ParEnv_Save
 !------------------------------------------------------------------------------
+
+    ParEnv_Save = ParEnv_Common
 
 !------------------------------------------------------------------------------
 !   Initialize equation solvers for new timestep
@@ -2910,7 +2918,6 @@ CONTAINS
       END DO
     END IF 
 
-      
 !------------------------------------------------------------------------------
     IF( PRESENT( AtTime ) ) THEN
       ExecSlot = AtTime
@@ -3115,7 +3122,13 @@ CONTAINS
       END DO
     END IF
 
+    ParEnv_Common = ParEnv_Save
     ParEnv => ParEnv_Common
+    IF(ParEnv % PEs>1) THEN
+      IF(.NOT.ASSOCIATED(ParEnv % Active)) ALLOCATE(ParEnv % Active(ParEnv % PEs))
+      ParEnv % Active = .TRUE.
+      ParEnv % ActiveComm = ELMER_COMM_WORLD
+    END IF
 
 CONTAINS
 
@@ -3223,9 +3236,11 @@ CONTAINS
 
           IF ( NeedSol .AND. n > 0 ) THEN
             Stat = ASSOCIATED(Solver % Variable % SteadyValues)
-            IF(Stat .AND. SIZE(Solver % Variable % SteadyValues) /= n) THEN
-              DEALLOCATE(Solver % Variable % SteadyValues)
-              Stat = .FALSE.
+            IF(Stat) THEN
+              IF(SIZE(Solver % Variable % SteadyValues) /= n) THEN
+                DEALLOCATE(Solver % Variable % SteadyValues)
+                Stat = .FALSE.
+              END IF
             END IF
             IF(.NOT. Stat) THEN
               ALLOCATE( Solver % Variable % SteadyValues(n), STAT=istat ) 
@@ -4336,12 +4351,8 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL ParallelInitMatrix(Solver,Amat)
 
-            IF(ASSOCIATED(Amat % ParMatrix )) THEN
-              Amat % ParMatrix % ParEnv % ActiveComm = &
-                       Amat % Comm
-              ParEnv => Amat % ParMatrix % ParEnv
-            END IF
-
+            Amat % ParMatrix % ParEnv % ActiveComm = Amat % Comm
+            ParEnv => Amat % ParMatrix % ParEnv
             CALL ParallelActive( .TRUE.)
           END DO
         END DO
@@ -5060,14 +5071,6 @@ CONTAINS
      LOGICAL :: DoBC, DoBulk
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
-
-     IF ( MeActive ) THEN
-       IF (  ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
-         ParEnv => Solver % Matrix % ParMatrix % ParEnv
-         ParEnv % ActiveComm = Solver % Matrix % Comm
-       END IF
-     END IF
-
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
 
      Parallel = Solver % Parallel 
@@ -5090,7 +5093,6 @@ CONTAINS
          ! In parallel we have to prepare the communicator already for the weights
          IF(DoBulk .OR. DoBC ) THEN
            IF ( Parallel .AND. MeActive ) THEN
-             ParEnv % ActiveComm = Solver % Matrix % Comm
              IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
@@ -5179,8 +5181,7 @@ BLOCK
          IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
            ! If any of the active output partitions in active just use it.
            ! Typically the 1st one. Others are passive. 
-           IF( ParEnv % MyPe >= MinOutputPE .AND. &
-               ParEnv % MyPe <= MaxOutputPE ) THEN 
+           IF( ParEnv % MyPe >= MinOutputPE .AND. ParEnv % MyPe <= MaxOutputPE ) THEN 
              OutputPE = ParEnv % MyPE
            ELSE
              OutputPE = -1
@@ -5205,6 +5206,8 @@ BLOCK
            M % Comm = ELMER_COMM_WORLD
            M => M % Parent
          END DO
+
+         IF(.NOT.ASSOCIATED(Solver % Matrix)) ParEnv % Active = .TRUE.
 
          ! Here set the default partitions active. 
          IF( ParEnv % MyPe >= MinOutputPE .AND. &
@@ -5304,80 +5307,82 @@ END BLOCK
        LOGICAL :: PostActive
 
        PostActive = ListGetLogical( Solver % Values,'PostSolver Active',Found )
+
        IF( PostActive ) THEN
          ProcName = ListGetString( Solver % Values,'Procedure', Found )
          SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
          IF( SolverAddr /= 0 ) THEN
+           CALL Info("SingleSolver",'Calling solver for postprocessing',Level=10)
            CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
          END IF
        END IF
      END BLOCK
 
+     IF( ListGetLogical( Solver % Values,'Library Adaptivity', Found ) ) THEN
 #ifdef LIBRARY_ADAPTIVITY
-     ! Do adaptive meshing, whether to do this before or after "_post" is a matter  of taste i guess
-     BLOCK 
-       USE, INTRINSIC :: ISO_C_BINDING
+       ! Do adaptive meshing, whether to do this before or after "_post" is a matter  of taste i guess
+       BLOCK 
+         USE, INTRINSIC :: ISO_C_BINDING
 
-       CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
-       LOGICAL :: AdaptiveActive
-       TYPE(Variable_t), POINTER :: Var
-       INTEGER(KIND=AddrInt) :: IResidual, EResidual, BResidual
+         CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
+         LOGICAL :: AdaptiveActive
+         TYPE(Variable_t), POINTER :: Var
+         INTEGER(KIND=AddrInt) :: IResidual, EResidual, BResidual
 
+         INTERFACE
+           FUNCTION BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
+             USE Types
+             TYPE(Element_t), POINTER :: Edge
+             TYPE(Model_t) :: Model
+             TYPE(Mesh_t), POINTER :: Mesh
+             REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+             INTEGER :: Perm(:)
+           END FUNCTION BoundaryResidual
 
-       INTERFACE
-         FUNCTION BoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
-           USE Types
-           TYPE(Element_t), POINTER :: Edge
-           TYPE(Model_t) :: Model
-           TYPE(Mesh_t), POINTER :: Mesh
-           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-           INTEGER :: Perm(:)
-         END FUNCTION BoundaryResidual
+           FUNCTION EdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
+             USE Types
+             TYPE(Element_t), POINTER :: Edge
+             TYPE(Model_t) :: Model
+             TYPE(Mesh_t), POINTER :: Mesh
+             REAL(KIND=dp) :: Quant(:), Indicator(2)
+             INTEGER :: Perm(:)
+           END FUNCTION EdgeResidual
 
+           FUNCTION InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm ) RESULT(Indicator)
+             USE Types
+             TYPE(Element_t), POINTER :: Element
+             TYPE(Model_t) :: Model
+             TYPE(Mesh_t), POINTER :: Mesh
+             REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+             INTEGER :: Perm(:)
+           END FUNCTION InsideResidual
+         END INTERFACE
 
-         FUNCTION EdgeResidual( Model,Edge,Mesh,Quant,Perm ) RESULT(Indicator)
-            USE Types
-            TYPE(Element_t), POINTER :: Edge
-            TYPE(Model_t) :: Model
-            TYPE(Mesh_t), POINTER :: Mesh
-            REAL(KIND=dp) :: Quant(:), Indicator(2)
-            INTEGER :: Perm(:)
-         END FUNCTION EdgeResidual
+         PROCEDURE(InsideResidual), POINTER :: InsidePtr
+         PROCEDURE(EdgeResidual), POINTER :: EdgePtr
+         PROCEDURE(BoundaryResidual), POINTER :: BoundaryPtr
 
+         POINTER( Eresidual, Edgeptr )
+         POINTER( Iresidual, Insideptr )
+         POINTER( Bresidual, BoundaryPtr )
 
-         FUNCTION InsideResidual( Model,Element,Mesh,Quant,Perm,Fnorm ) RESULT(Indicator)
-            USE Types
-            TYPE(Element_t), POINTER :: Element
-            TYPE(Model_t) :: Model
-            TYPE(Mesh_t), POINTER :: Mesh
-            REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-            INTEGER :: Perm(:)
-         END FUNCTION InsideResidual
-       END INTERFACE
+         AdaptiveActive = ListGetLogical( Solver % Values,'Adaptive Mesh Refinement',Found )
 
-       PROCEDURE(InsideResidual), POINTER :: InsidePtr
-       PROCEDURE(EdgeResidual), POINTER :: EdgePtr
-       PROCEDURE(BoundaryResidual), POINTER :: BoundaryPtr
-
-       POINTER( Eresidual, Edgeptr )
-       POINTER( Iresidual, Insideptr )
-       POINTER( Bresidual, BoundaryPtr )
-
-       AdaptiveActive = ListGetLogical( Solver % Values,'Adaptive Mesh Refinement',Found )
-
-       IF( AdaptiveActive ) THEN
-         ProcName = ListGetString( Solver % Values,'Procedure', Found )
-         IResidual = GetProcAddr( TRIM(ProcName)//'_inside_residual', abort=.FALSE. )
-         EResidual   = GetProcAddr( TRIM(ProcName)//'_edge_residual', abort=.FALSE. )
-         BResidual   = GetProcAddr( TRIM(ProcName)//'_boundary_residual', abort=.FALSE. )
-         IF( IResidual/=0 .AND. EResidual /= 0 .AND. BResidual /= 0 ) THEN
-           Var => Solver % Variable
-           CALL RefineMesh( Model, Solver, Var % Values, Var % Perm, InsidePtr, EdgePtr, BoundaryPtr )
+         IF( AdaptiveActive ) THEN
+           ProcName = ListGetString( Solver % Values,'Procedure', Found )
+           IResidual = GetProcAddr( TRIM(ProcName)//'_inside_residual', abort=.FALSE. )
+           EResidual   = GetProcAddr( TRIM(ProcName)//'_edge_residual', abort=.FALSE. )
+           BResidual   = GetProcAddr( TRIM(ProcName)//'_boundary_residual', abort=.FALSE. )
+           IF( IResidual/=0 .AND. EResidual /= 0 .AND. BResidual /= 0 ) THEN
+             Var => Solver % Variable
+             CALL RefineMesh( Model, Solver, Var % Values, Var % Perm, InsidePtr, EdgePtr, BoundaryPtr )
+           END IF
          END IF
-       END IF
-     END BLOCK
+       END BLOCK
+#else
+       CALL Fatal('SingleSolver','Library version of adaptivity residuals not compiled with!')
 #endif
-
+     END IF            
 
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   

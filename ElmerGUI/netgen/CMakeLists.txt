@@ -13,11 +13,6 @@ ADD_DEFINITIONS("-DNO_PARALLEL_THREADS")
 #QMAKE_CXXFLAGS_DEBUG += -g
 #QMAKE_CXXFLAGS += -g
 
-#unix: QMAKE_CXXFLAGS += -ffriend-injection
-IF(UNIX)
-   ADD_DEFINITIONS("-ffriend-injection")
-ENDIF()
-
 #------------------------------------------------------------------------------
 # Input files:
 #------------------------------------------------------------------------------

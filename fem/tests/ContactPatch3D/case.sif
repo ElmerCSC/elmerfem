@@ -57,7 +57,6 @@ End
 Equation 1
   Name = "Deformation"
   Active Solvers(1) = 1
-  Plane Strain = Logical True
 End
 
 Body 1

@@ -99,8 +99,8 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq
-     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString
+     CHARACTER(LEN=MAX_PATH_LEN) :: ModelName
+     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString, eq
 
      CHARACTER(:), ALLOCATABLE :: str, PostFile, ExecCommand, OutputFile, RestartFile, &
           OutputName, PostName, When
@@ -125,7 +125,7 @@
      INTEGER :: nr,ni,ExtMethod
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
+     CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
      
 #ifdef HAVE_TRILINOS
      INTERFACE
@@ -416,7 +416,10 @@
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
          CALL CreateExtrudedMesh() 
-
+         DO j=1,CurrentModel % NumberOfSolvers
+           CALL CreateExtrudedMesh(j) 
+         END DO
+         
          !----------------------------------------------------------------------------------
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
@@ -843,41 +846,69 @@
      
      ! Optionally create extruded mesh on-the-fly.
      !--------------------------------------------------------------------
-     SUBROUTINE CreateExtrudedMesh()
-
-       INTEGER :: ExtrudeLayers
+     SUBROUTINE CreateExtrudedMesh(SolverId)
+       INTEGER, OPTIONAL :: SolverId
+       
        LOGICAL :: SliceVersion
-
-       IF(.NOT. ListCheckPrefix(CurrentModel % Simulation,'Extruded Mesh') ) RETURN
+       TYPE(ValueList_t), POINTER :: VList
+       TYPE(Mesh_t), POINTER :: Mesh_in, pMesh, prevMesh
+       LOGICAL :: PrimaryMesh
        
-       ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)-1 
-       IF( .NOT. Found ) THEN
-         ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Layers',Found)
-       END IF
-       IF(.NOT. Found ) RETURN
-       
-       IF(ExtrudeLayers < 2) THEN
-         CALL Fatal('MAIN','There must be at least two "Extruded Mesh Layers"!')
-       END IF
-
-       SliceVersion = GetLogical(CurrentModel % Simulation,'Extruded Mesh Slices',Found )              
-       IF( SliceVersion ) THEN
-         ExtrudedMesh => MeshExtrudeSlices(CurrentModel % Meshes, ExtrudeLayers-1)
+       IF(PRESENT(SolverId)) THEN
+         Vlist => CurrentModel % Solvers(SolverId) % Values
+         Mesh_in => CurrentModel % Solvers(SolverId) % Mesh
+         PrimaryMesh = .FALSE.
        ELSE
-         ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
+         Vlist => CurrentModel % Simulation
+         Mesh_in => CurrentModel % Meshes
+         PrimaryMesh = .TRUE.
+       END IF
+                  
+       IF(.NOT. ListCheckPrefix(VList,'Extruded Mesh') ) RETURN
+       IF(.NOT. PrimaryMesh) THEN
+         CALL Info('CreateExtrudedMesh','Extruding mesh associated to solver '//I2S(SolverId))
+       END IF
+       
+       SliceVersion = GetLogical(Vlist,'Extruded Mesh Slices',Found )              
+       IF( SliceVersion ) THEN
+         ExtrudedMesh => MeshExtrudeSlices(Mesh_in, Vlist ) 
+       ELSE
+         ExtrudedMesh => MeshExtrude(Mesh_in, Vlist )
        END IF
          
        ! Make the solvers point to the extruded mesh, not the original mesh
        !-------------------------------------------------------------------
        DO i=1,CurrentModel % NumberOfSolvers
-         IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
-             CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
+         IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,Mesh_in)) THEN
+           CALL Info('CreateExtrudedMesh','Pointing solver '//I2S(i)//' to the new extruded mesh!')
+           CurrentModel % Solvers(i) % Mesh => ExtrudedMesh
+         END IF
        END DO
-       ExtrudedMesh % Next => CurrentModel % Meshes % Next
-       CurrentModel % Meshes => ExtrudedMesh
 
+       ! Put the extruded mesh in a correct place in the list of meshes.
+       i = 0
+       NULLIFY(prevMesh) 
+       pMesh => CurrentModel % Meshes
+       DO WHILE(ASSOCIATED(pMesh))
+         i = i+1
+         IF(ASSOCIATED(pMesh,Mesh_in)) EXIT
+         prevMesh => pMesh
+         pMesh => pMesh % Next 
+       END DO
+       CALL Info('CreateExtrduedMesh','Extruded mesh order is '//I2S(i),Level=25)
+
+       ExtrudedMesh % Next => Mesh_in % Next
+       IF(ASSOCIATED(prevMesh)) THEN
+         prevMesh % Next => ExtrudedMesh
+       ELSE
+         CurrentModel % Meshes => ExtrudedMesh
+       END IF
+         
        ! If periodic BC given, compute boundary mesh projector:
+       ! but only for the primary mesh.
        ! ------------------------------------------------------
+       IF(.NOT. PrimaryMesh) RETURN
+       
        DO i = 1,CurrentModel % NumberOfBCs
          IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
              CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
@@ -1770,6 +1801,7 @@
        CALL Restart()
      END IF
 
+     CALL Info('SetInitialConditions','Initial conditions set',Level=20)
          
 !------------------------------------------------------------------------------
 !    Make sure that initial values at boundaries are set correctly.
@@ -1962,6 +1994,10 @@
          Mesh => Mesh % Next
        END DO
      END IF
+
+     CALL Info('SetInitialConditions','Initial values for boundaries set',Level=20)
+
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE SetInitialConditions
 !------------------------------------------------------------------------------
@@ -3079,7 +3115,7 @@
 
                 IF( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                 IF( .NOT. ASSOCIATED( Solver % Variable  % Values ) ) CYCLE
-                CALL Info(Caller,'Allocating adaptive work space for: '//I2S(i),Level=12)
+                CALL Info(Caller,'Allocating adaptive work space for: '//I2S(i),Level=7)
                 j = SIZE( Solver % Variable % Values )
                 ALLOCATE( AdaptVars(i) % Var % Values( j ), STAT=AllocStat )
                 IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error AdaptVars Values')
@@ -3104,7 +3140,7 @@
                   ! If the next timestep will not get us home but the next one would
                   ! then split the timestep equally into two parts.
                   IF( dt - CumTime - ddt > 1.0d-12 ) THEN
-                    CALL Info(Caller,'Splitted timestep into two equal parts',Level=12)
+                    CALL Info(Caller,'Splitted timestep into two equal parts',Level=7)
                     ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
                   END IF
                 END IF
@@ -3207,7 +3243,9 @@
                  StepControl = -1
                END IF
 
-               WRITE(*,'(a,3e20.12)') 'Adaptive(cum,ddt,err): ', cumtime, ddt, maxerr
+               WRITE(Message,'(a,3e20.12)') 'Adaptive(cum,ddt,err): ', cumtime, ddt, maxerr
+               CALL Info(Caller,Message,Level=7)
+
              END DO
             sSize(1) = dt
             sTime(1) = s + dt
@@ -3395,6 +3433,7 @@
 
      BLOCK
        TYPE(Solver_t), POINTER :: iSolver
+
        DO i=1,CurrentModel % NumberOfSolvers 
          iSolver => CurrentModel % Solvers(i)
          IF( iSolver % NumberOfConstraintModes > 0 ) THEN
@@ -3404,7 +3443,6 @@
          END IF
        END DO
      END BLOCK
-     
      
 100  CONTINUE
 
@@ -3727,7 +3765,7 @@
     LOGICAL :: EigAnal = .FALSE., Found
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
-    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+    CHARACTER(MAX_PATH_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )

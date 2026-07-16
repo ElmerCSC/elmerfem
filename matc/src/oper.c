@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: oper.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: oper.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: oper.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -75,7 +75,7 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:51  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -110,7 +110,7 @@ $  usage of the function and type of the parameters
 #define MB(i,j) b[ncolb * (i) + (j)]
 #define MC(i,j) c[ncolc * (i) + (j)]
 
-MATRIX *mat_new(type, nrow, ncol) int type, nrow, ncol;
+MATRIX *mat_new(int type, int nrow, int ncol)
 {
    MATRIX *res;
 
@@ -123,19 +123,19 @@ MATRIX *mat_new(type, nrow, ncol) int type, nrow, ncol;
     return res;
 }
 
-MATRIX *mat_copy(mat) MATRIX *mat;
+MATRIX *mat_copy(MATRIX *mat)
 {
     MATRIX *res;
 
     if (mat == (MATRIX *)NULL) return NULL;
-     
+
     res = mat_new(TYPE(mat), NROW(mat), NCOL(mat));
     memcpy((char *)MATR(res), (char *)MATR(mat), MATSIZE(mat));
 
     return res;
 }
 
-void mat_free(mat) MATRIX *mat;
+void mat_free(MATRIX *mat)
 {
     if (mat == (MATRIX *)NULL) return;
 
@@ -143,8 +143,7 @@ void mat_free(mat) MATRIX *mat;
     FREEMEM((char *)mat);
 }
 
-MATRIX *opr_vector(A, B)
-       MATRIX *A, *B;
+MATRIX *opr_vector(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
@@ -158,32 +157,31 @@ MATRIX *opr_vector(A, B)
   C = mat_new(TYPE_DOUBLE, 1, n);
   c = MATR(C);
 
-  for(i = 0; i < n; i++) 
+  for(i = 0; i < n; i++)
     *c++ = (int)*a + i*inc;
 
   return C;
-} 
+}
 
-MATRIX *opr_resize(A, B)
-       MATRIX *A, *B;
+MATRIX *opr_resize(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
   double *a = MATR(A), *b = MATR(B), *c;
   int i, j, n, m;
-  
+
   if (NCOL(B) >= 2)
   {
     i = *b++; j = *b++;
-  } 
+  }
   else
   {
     i = 1; j = *b;
   }
-  
+
   if (i < 1 || j < 1)
     error("resize: invalid size for and array");
-  
+
   C = mat_new(TYPE(A), i, j);
   c = MATR(C);
 
@@ -198,18 +196,17 @@ MATRIX *opr_resize(A, B)
   return C;
 }
 
-MATRIX *opr_apply(A)
-     MATRIX *A;
+MATRIX *opr_apply(MATRIX *A)
 {
   VARIABLE *store, *ptr;
   MATRIX *C = NULL;
-  
+
   store = var_temp_new(TYPE_STRING, NROW(A), NCOL(A));
   REFCNT(store) = 0;
   mat_free(store->this);
   store->this = A;
   REFCNT(store)++;
-  
+
   ptr = (VARIABLE *)com_apply(store);
 
   var_delete_temp(store);
@@ -219,8 +216,7 @@ MATRIX *opr_apply(A)
   return C;
 }
 
-MATRIX *opr_add(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_add(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
@@ -232,10 +228,10 @@ MATRIX *opr_add(A, B)
   double *a = MATR(A), *b = MATR(B), *c;
 
   double value;
-  
+
   if (nrowa == nrowb && ncola == ncolb)
   {
-    C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C); 
+    C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++)  *c++ = *a++ + *b++;
   }
@@ -246,7 +242,7 @@ MATRIX *opr_add(A, B)
     value = *a; nrowb *= ncolb;
     for(i = 0; i < nrowb; i++) *c++ = value + *b++;
   }
-  
+
   else if (nrowb == 1 && ncolb == 1)
   {
     C = mat_new(TYPE(A), nrowa, ncola); c = MATR(C);
@@ -256,16 +252,15 @@ MATRIX *opr_add(A, B)
 
   else
     error("Add: Incompatible for addition.\n");
-  
+
   return C;
 }
 
-MATRIX *opr_minus(A)
-     MATRIX *A;
+MATRIX *opr_minus(MATRIX *A)
 {
   MATRIX *C;
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
 
   double *a = MATR(A), *c;
@@ -274,24 +269,23 @@ MATRIX *opr_minus(A)
 
   nrowa *= ncola;
   for(i = 0; i < nrowa; i++) *c++ = -*a++;
-  
+
   return C;
 }
 
-MATRIX *opr_subs(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_subs(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
   double value;
 
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
   double *a = MATR(A), *b = MATR(B), *c;
-  
+
   if (nrowa == nrowb && ncola == ncolb)
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
@@ -312,12 +306,11 @@ MATRIX *opr_subs(A, B)
   }
   else
     error("Substr: Incompatible for addition.\n");
-  
+
   return C;
 }
 
-MATRIX *opr_mul(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_mul(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
@@ -343,37 +336,36 @@ MATRIX *opr_mul(A, B)
   }
   else if (ncola == nrowb)
   {
-    C = mat_new(TYPE(A), nrowa,ncolb); 
+    C = mat_new(TYPE(A), nrowa,ncolb);
     c = MATR(C);
     for(i = 0; i < nrowa; i++)
     {
       for(j = 0; j < ncolb; j++)
       {
         s = 0;
-	for(k = 0; k < ncola; k++) s += a[k] * MB(k,j);
-	*c++ = s;
+        for(k = 0; k < ncola; k++) s += a[k] * MB(k,j);
+        *c++ = s;
       }
       a += ncola;
     }
   }
   else if ( ncola == ncolb && nrowa == nrowb )
   {
-    C = mat_new(TYPE(A), nrowa,ncolb); 
+    C = mat_new(TYPE(A), nrowa,ncolb);
     c = MATR(C);
     k = 0;
     for( i = 0; i < nrowa; i++ )
         for( j = 0; j < ncolb; j++,k++ ) c[k] = a[k] * b[k];
   }
-  else 
+  else
   {
-     error("Mul: Incompatible for multiplication.\n");
+    error("Mul: Incompatible for multiplication.\n");
   }
- 
+
   return C;
 }
 
-MATRIX *opr_pmul(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_pmul(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
@@ -382,7 +374,7 @@ MATRIX *opr_pmul(A, B)
 
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
-  
+
   double *a = MATR(A), *b = MATR(B), *c;
 
   if (nrowa == nrowb && ncola == ncolb)
@@ -403,14 +395,13 @@ MATRIX *opr_pmul(A, B)
     value = *b; nrowa *= ncola;
     for(i = 0; i < nrowa; i++) *c++ = *a++ * value;
   }
-  else 
+  else
     error("PMul: Incompatible for pointwise multiplication.\n");
-  
+
   return C;
 }
 
-MATRIX *opr_div(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_div(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
@@ -419,7 +410,7 @@ MATRIX *opr_div(A, B)
 
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
-  
+
   double *a = MATR(A), *b = MATR(B), *c;
 
   if (nrowa == nrowb && ncola == ncolb)
@@ -440,14 +431,13 @@ MATRIX *opr_div(A, B)
     value = *b; nrowa *= ncola;
     for(i = 0; i < nrowa; i++) *c++ = *a++ / value;
   }
-  else 
+  else
     error("Div: Incompatible for division.\n");
-  
+
   return C;
 }
 
-MATRIX *opr_pow(A,B)
-     MATRIX *A, *B;
+MATRIX *opr_pow(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
@@ -493,13 +483,13 @@ MATRIX *opr_pow(A,B)
     for(l = 1; l < abs(power); l++) {
       for(i = 0; i < nrowa; i++)
       {
-	for(j = 0; j < nrowa; j++)
-	{
-	  v[j] = 0.0;
-	  for(k = 0; k < nrowa; k++) v[j] +=  b[k] * MA(k,j);
-	}
-	for(j = 0; j < nrowa; j++) *c++ = v[j];
-	b += nrowa;
+        for(j = 0; j < nrowa; j++)
+        {
+          v[j] = 0.0;
+          for(k = 0; k < nrowa; k++) v[j] +=  b[k] * MA(k,j);
+        }
+        for(j = 0; j < nrowa; j++) *c++ = v[j];
+        b += nrowa;
       }
       a = MATR(A); b = c = MATR(C);
     }
@@ -522,15 +512,14 @@ MATRIX *opr_pow(A,B)
   return C;
 }
 
-MATRIX *opr_trans(A)
-     MATRIX *A;
+MATRIX *opr_trans(MATRIX *A)
 {
   MATRIX *C;
 
   int i, j;
 
   int ncola = NCOL(A), nrowa = NROW(A);
-  int ncolc;  
+  int ncolc;
 
   double *a = MATR(A), *c;
 
@@ -539,12 +528,11 @@ MATRIX *opr_trans(A)
 
   for(i = 0; i < nrowa; i++)
     for(j = 0; j < ncola; j++) MC(j,i) = *a++;
-  
+
   return C;
 }
 
-MATRIX *opr_reduction(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_reduction(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
@@ -568,13 +556,12 @@ MATRIX *opr_reduction(A, B)
 }
 
 
-MATRIX *opr_lt(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_lt(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -586,14 +573,14 @@ MATRIX *opr_lt(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowb; i++,c++) if (*a < b[i]) *c = 1;
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] < *b) *c = 1;
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
@@ -602,18 +589,17 @@ MATRIX *opr_lt(A, B)
   }
   else
     error("lt: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
 
-MATRIX *opr_le(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_le(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
 
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -625,14 +611,14 @@ MATRIX *opr_le(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowb; i++,c++) if (*a <= b[i]) *c = 1;
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] <= *b) *c = 1;
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
@@ -641,17 +627,16 @@ MATRIX *opr_le(A, B)
   }
   else
     error("le: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
 
-MATRIX *opr_gt(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_gt(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -663,34 +648,33 @@ MATRIX *opr_gt(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowb; i++,c++) if (*a > b[i]) *c = 1;
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] > *b) *c = 1;
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] > b[i]) *c = 1;
   }
-  
+
   else
     error("gt: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
 
-MATRIX *opr_ge(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_ge(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -702,34 +686,33 @@ MATRIX *opr_ge(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowa; i++,c++) if (*a >= b[i]) *c = 1;
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] >= *b) *c = 1;
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] >= b[i]) *c = 1;
   }
-  
+
   else
     error("ge: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
 
-MATRIX *opr_eq(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_eq(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -741,34 +724,33 @@ MATRIX *opr_eq(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowb; i++,c++) if (*a == b[i]) *c = 1;
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] == *b) *c = 1;
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] == b[i]) *c = 1;
   }
-  
-  else 
+
+  else
     error("eq: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
 
-MATRIX *opr_neq(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_neq(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -780,33 +762,32 @@ MATRIX *opr_neq(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowb; i++,c++) if (*a != b[i]) *c = 1;
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] != *b) *c = 1;
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++,c++) if (a[i] != b[i]) *c = 1;
   }
-  
-  else 
+
+  else
     error("neq: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
-MATRIX *opr_or(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_or(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -818,33 +799,32 @@ MATRIX *opr_or(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowb; i++) *c++ = (*a) || (b[i]);
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++) *c++ = (a[i]) || (*b);
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++) *c++ = (a[i]) || (b[i]);
   }
-  
-  else 
+
+  else
     error("or: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
-MATRIX *opr_and(A, B)
-     MATRIX *A, *B;
+MATRIX *opr_and(MATRIX *A, MATRIX *B)
 {
   MATRIX *C;
   int i;
-  
+
   int nrowa = NROW(A), ncola = NCOL(A);
   int nrowb = NROW(B), ncolb = NCOL(B);
 
@@ -856,29 +836,28 @@ MATRIX *opr_and(A, B)
     nrowb *= ncolb;
     for(i = 0; i < nrowb; i++) *c++ = (*a) && (b[i]);
   }
-  
+
   else if ((nrowb == 1) && (ncolb == 1))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++) *c++ = (a[i]) && (*b);
   }
-  
+
   else if ((nrowa == nrowb) && (ncola == ncolb))
   {
     C = mat_new(TYPE(A),nrowa,ncola); c = MATR(C);
     nrowa *= ncola;
     for(i = 0; i < nrowa; i++) *c++ = (a[i]) && (b[i]);
   }
-  
-  else 
+
+  else
     error("and: Incompatible for comparison.\n");
-  
+
   return C;
 }
 
-MATRIX *opr_not(A)
-     MATRIX *A;
+MATRIX *opr_not(MATRIX *A)
 {
   MATRIX *C;
   int i;

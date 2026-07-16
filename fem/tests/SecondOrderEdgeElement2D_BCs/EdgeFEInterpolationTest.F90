@@ -34,6 +34,40 @@
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
+SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+  LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs, Check
+!------------------------------------------------------------------------------  
+  SolverParams => GetSolverParams()
+
+  IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
+    CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE. )
+
+    IF ( SecondOrder ) THEN
+      CALL ListAddString( SolverParams, "Element", &
+          "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+    ELSE IF (SecondFamily) THEN
+      CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
+    ELSE IF( PiolaVersion ) THEN
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
+    ELSE
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+    END IF
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE BestApproximationSolver_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !
@@ -89,7 +123,8 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 
   SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indices
 !------------------------------------------------------------------------------
-  PiolaVersion = GetLogical( GetSolverParams(), 'Optimal Family', Found)
+  PiolaVersion = GetLogical( GetSolverParams(), 'Optimal Family', Found) .OR. &
+      GetLogical( GetSolverParams(), 'Use Piola Transform', Found)
   ElementOrder = 1
   IF ( GetLogical(GetSolverParams(), 'Quadratic Approximation', Found) ) THEN
     ElementOrder = 2

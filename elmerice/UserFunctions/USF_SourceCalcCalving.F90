@@ -142,6 +142,8 @@
       IF(IMVar % Perm(NodeNumber) > 0) THEN
         IF(IMVar % Values(IMVar % Perm(NodeNumber))>=0.0) THEN
           InternalMelt = 0.0
+        ELSE IF(ISNAN(IMVar % Values(IMVar % Perm(NodeNumber)))) THEN
+          InternalMelt = 0.0
         ELSE
           !Latent heat of fusion of water is 333.55 J/g, so dividing by that gives
           ! g of ice melted.
@@ -163,6 +165,8 @@
       IF(Calving) THEN
         IF(SMVar % Values(SMVar % Perm(NodeNumber))>0.0) THEN
           SurfaceMelt = SMVar % Values(SMVar % Perm(NodeNumber))
+        ELSE IF(ISNAN(SMVar % Values(SMVar % Perm(NodeNumber)))) THEN
+          SurfaceMelt = 0.0
         ELSE
           SurfaceMelt = 0.0
         END IF
@@ -179,6 +183,7 @@
 
     !Work out total
     Source = InternalMelt + SurfaceMelt
+    !PRINT *, 'Debug Source: ',Source,InternalMelt,SurfaceMelt
 
 !------------------------------------------------------------------------------
   END FUNCTION SourceCalc

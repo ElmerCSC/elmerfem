@@ -152,10 +152,18 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
 
     Var => VariableGet( ThisMesh % Variables, VarName, ThisOnly = .TRUE. )
     IF(.NOT. ASSOCIATED(Var)) THEN
+      IF(InfoActive(20)) THEN
+        PRINT *,'List of variable in 2D mesh:'
+        Var => ThisMesh % Variables
+        DO WHILE(ASSOCIATED(Var))
+          PRINT *,TRIM(Var % Name), SIZE(Var % Values), ASSOCIATED(Var % Perm)
+          Var => Var % Next
+        END DO
+      END IF
       CALL Fatal(Caller,'Could not find variable: '//TRIM(VarName))
     END IF
     dofs = Var % Dofs
-
+    
     IF( InfoActive( 20 ) ) THEN
       CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(VarName))
     END IF
@@ -165,8 +173,8 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     IF(.NOT. Found) TargetName = VarName
            
     pVar => VariableGet( TargetMesh % Variables, TargetName, ThisOnly = .TRUE. )
-    CreateVar = .NOT. ASSOCIATED(pVar)
-    
+    CreateVar = .NOT. ASSOCIATED(pVar)    
+
     IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
       ! One intended use of this module is to extrude data from 2D electrical machine computation
       ! to 3D one. The it is often desirable also to copy the related electrical circuits that may be
@@ -183,7 +191,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
       ELSE
         pVals => pVar % Values
       END IF
-      pVals = Var % Values
+      pVals(1:n) = Var % Values
       CALL Info(Caller,'Copied variable as such from 2D mesh to 3D mesh: '//TRIM(VarName),Level=8)      
     ELSE      
       maxperm = MAXVAL( Var % Perm )       
@@ -198,7 +206,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
       END IF
       pVals = 0.0_dp      
       
-      ! Here we assume that the fields to be mapped are nodal ones and the mesh is linear on!!
+      ! Here we assume that the fields to be mapped are nodal ones and the mesh is linear one!
       n = ThisMesh % NumberOfNodes
       DO j=0,layers-1
         DO k=1,ThisMesh % NumberOfNodes
@@ -331,7 +339,10 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   CHARACTER(*), PARAMETER :: Caller = 'NodeToEdgeField'
 
 
-!------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
+
+  CALL Info(Caller,'Projecting 3D nodal field to Hcurl field')
+  
   CALL DefaultStart()
 
   dim = CoordinateSystemDimension()
@@ -519,6 +530,10 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
       CALL VectorValuesRange(EdgeVar % Values,SIZE(EdgeVar % Values),TRIM(EdgeVar % Name))       
     END IF
   END IF
+
+  ! We should be visiting this routine only once!
+! CALL Info(Caller,'Freeing unneeded matrix structures',Level=10)
+! CALL FreeMatrix(Solver % Matrix)
   
   CALL Info(Caller,'Finished projection to edge basis!')
 

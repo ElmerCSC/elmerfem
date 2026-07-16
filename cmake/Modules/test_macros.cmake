@@ -1,4 +1,3 @@
-include(CMakeParseArguments)
 MACRO(ADD_ELMER_LABEL test_name label_string)
   SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()
@@ -73,6 +72,15 @@ MACRO(ADD_ELMER_TEST TestName)
           SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
         ENDFOREACH()
       ENDIF()
+      IF(${n} GREATER 0)
+        # Avoid running tests using the same directory concurrently.
+        # To achieve that, set test dependencies such that they are run in
+        # the order as they appear in the NPROCS argument.
+        MATH(EXPR n_prev "${n} - 1")
+        LIST(GET tests_list ${n_prev} _prev_test_name)
+        SET_TESTS_PROPERTIES(${_this_test_name} PROPERTIES
+          DEPENDS ${_prev_test_name})
+      ENDIF()
     ENDIF(_this_test_name)
   ENDFOREACH()
 ENDMACRO(ADD_ELMER_TEST)
@@ -114,7 +122,7 @@ MACRO(RUN_ELMER_TEST)
   ENDIF()
 
   IF(NOT(WIN32))
-    SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src:$ENV{PATH}")
   ENDIF(NOT(WIN32))
 
   # Clean up old result files
@@ -125,17 +133,17 @@ MACRO(RUN_ELMER_TEST)
   ENDIF()
 
   IF(WIN32)
-    SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src;$ENV{PATH}")
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
   ENDIF(WIN32)
 
   IF(WITH_MPI)
-    EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+    EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
       OUTPUT_VARIABLE TEST_STDOUT_VARIABLE
       ERROR_VARIABLE TEST_ERROR_VARIABLE)
-      FILE(WRITE "test-stdout_${MPIEXEC_NTASKS}.log" "${TEST_STDOUT_VARIABLE}"  )
-      FILE(WRITE "test-stderr_${MPIEXEC_NTASKS}.log"  "${TEST_STDERR_VARIABLE}"  )
+      FILE(WRITE "test-stdout_${MPIEXEC_NTASKS}.log" "${TEST_STDOUT_VARIABLE}")
+      FILE(WRITE "test-stderr_${MPIEXEC_NTASKS}.log" "${TEST_STDERR_VARIABLE}")
   ELSE()
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_VARIABLE TEST_STDOUT_VARIABLE
@@ -167,13 +175,13 @@ MACRO(EXECUTE_ELMER_SOLVER SIFNAME)
   SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
 
   IF(NOT(WIN32))
-    SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src:$ENV{PATH}")
   ENDIF(NOT(WIN32))
 
   IF(WIN32)
-    SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src;$ENV{PATH}")
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
   ENDIF(WIN32)
 
   EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME}
@@ -187,17 +195,17 @@ MACRO(EXECUTE_ELMER_SOLVER_MPI SIFNAME)
   SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
 
   IF(NOT(WIN32))
-    SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src:$ENV{PATH}")
   ENDIF(NOT(WIN32))
 
   IF(WIN32)
-    SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src;$ENV{PATH}")
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;$ENV{PATH};${COMPILER_DIRECTORY};$ENV{PATH}")
   ENDIF(WIN32)
 
   IF(WITH_MPI)
-    EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${SIFNAME}
+    EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${SIFNAME}
       OUTPUT_FILE "${SIFNAME}-stdout_${MPIEXEC_NTASKS}.log"
       ERROR_FILE "${SIFNAME}-stderr_${MPIEXEC_NSTAKS}.log")
   ELSE()

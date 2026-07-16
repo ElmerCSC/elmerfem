@@ -780,7 +780,12 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++) 
       SaveSizeInfo(&data[k],boundaries[k],eg.infofile,info);
   }
-  
+
+  if(info) for(k=0;k<nomeshes;k++)
+    BoundingBox(&data[k],k,nomeshes,info);
+
+  if(info) for(k=0;k<nomeshes;k++)
+    MeshPieces(&data[k],k,nomeshes,info);
 
   if(eg.nosave) {
     Goodbye();

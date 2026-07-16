@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO coils.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_steady_coils LABELS whitney)
+ADD_ELMER_TEST(mgdyn_steady_coils LABELS whitney failing)

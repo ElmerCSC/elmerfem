@@ -156,7 +156,11 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   END IF
     
   FixedLayers => ListGetIntegerArray( SolverParams,'Fixed Layer Indexes',MultiLayer)
-  NumberOfFixedLayers = SIZE( FixedLayers )
+  IF(ASSOCIATED(FixedLayers)) THEN
+    NumberOfFixedLayers = SIZE( FixedLayers )
+  ELSE
+    NumberOfFixedLayers = 0
+  END IF
 
   BotProj = ListGetLogical(SolverParams,'Project To Bottom',Found ) 
   

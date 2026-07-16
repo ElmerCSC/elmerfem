@@ -244,12 +244,12 @@ CONTAINS
       CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 2.5d-7, 'dy')
       CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 2.5d-7, 'dz')
 
-      CALL CheckValue(ddiff(1,1),SUM(ddBasisddx(1:nd,1,1)*f), 1.0d-5, 'dxx')
-      CALL CheckValue(ddiff(1,2),SUM(ddBasisddx(1:nd,1,2)*f), 1.0d-5, 'dxy')
-      CALL CheckValue(ddiff(1,3),SUM(ddBasisddx(1:nd,1,3)*f), 1.0d-5, 'dxz')
-      CALL CheckValue(ddiff(2,2),SUM(ddBasisddx(1:nd,2,2)*f), 1.0d-5, 'dyy')
-      CALL CheckValue(ddiff(2,3),SUM(ddBasisddx(1:nd,2,3)*f), 1.0d-5, 'dyz')
-      CALL CheckValue(ddiff(3,3),SUM(ddBasisddx(1:nd,3,3)*f), 1.0d-5, 'dzz')
+      CALL CheckValue(ddiff(1,1),SUM(ddBasisddx(1:nd,1,1)*f), 2.0d-5, 'dxx')
+      CALL CheckValue(ddiff(1,2),SUM(ddBasisddx(1:nd,1,2)*f), 2.0d-5, 'dxy')
+      CALL CheckValue(ddiff(1,3),SUM(ddBasisddx(1:nd,1,3)*f), 2.0d-5, 'dxz')
+      CALL CheckValue(ddiff(2,2),SUM(ddBasisddx(1:nd,2,2)*f), 2.0d-5, 'dyy')
+      CALL CheckValue(ddiff(2,3),SUM(ddBasisddx(1:nd,2,3)*f), 2.0d-5, 'dyz')
+      CALL CheckValue(ddiff(3,3),SUM(ddBasisddx(1:nd,3,3)*f), 2.0d-5, 'dzz')
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix

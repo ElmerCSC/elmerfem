@@ -160,9 +160,9 @@ SUBROUTINE FixTangentVelo( Model,Solver,dt,Transient )
         IF(SUM(v*e1) < 0 .AND. SUM(v*e2) < 0 ) CYCLE
       END IF
         
+      Amat = 0.0_dp
       Amat(:,1) = e1
       Amat(:,2) = e2
-      Amat(:,3) = 0.0_dp
       Amat(ActiveCoord,3) = 1.0_dp
 
       CALL SolveLinSys3x3( Amat, c, v ) 
@@ -175,7 +175,12 @@ SUBROUTINE FixTangentVelo( Model,Solver,dt,Transient )
       END IF
     END DO
   END DO
-
+  
+  IF(InfoActive(20) ) THEN
+    CALL VectorValuesRange(FixVals, SIZE(FixVals),'FixVals')
+  END IF
+  
+  
   IF( ListGetLogical(Params,'Fix Tangent Velocity',Found ) ) THEN
     CALL ApplyTangentFix(.FALSE.)
   END IF

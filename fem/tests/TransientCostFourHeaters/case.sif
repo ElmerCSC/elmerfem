@@ -114,7 +114,7 @@ Solver 1
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
   Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStab
+  Linear System Iterative Method = BiCGStabL
   Linear System Max Iterations = 300
   Linear System Convergence Tolerance = 1.0e-08
   Linear System Preconditioning = ILU0

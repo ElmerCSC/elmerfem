@@ -295,6 +295,7 @@
       CALL Info( SolverName, Message, Level=4 )
       WRITE( Message, * ) 'Relative Change : ',RelativeChange
       CALL Info( SolverName, Message, Level=4 )
+      Solver % Variable % Valid = .TRUE.
 
 
 !------------------------------------------------------------------------------

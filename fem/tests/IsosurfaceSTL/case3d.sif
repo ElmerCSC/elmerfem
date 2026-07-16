@@ -116,6 +116,6 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = 1.13166182E+00
-Solver 2 :: Reference Norm = 2.09430000E+04
+Solver 2 :: Reference Norm = 2.88120000E+04
 
 !End Of File

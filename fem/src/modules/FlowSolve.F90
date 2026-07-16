@@ -415,39 +415,58 @@
          ListCheckPresentAnyBodyForce(Model,'Angular Velocity 3') 
          
 !------------------------------------------------------------------------------
+
+     ! Different options are:
+     ! 1) stabilized
+     ! 2) legacy pubbles
+     ! 3) p-bubbles (or bubbles given in element definion)
+     ! 4) p2p1
+     ! 5) vms
+
      P2P1 = .FALSE.
      Bubbles   = ListGetLogical( Solver % Values,'Bubbles',GotIt )
      Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
-     P2P1 = .FALSE.
+     LegacyBubbles = .FALSE.
      
      StabilizeFlag = ListGetString( Solver % Values, &
            'Stabilization Method', GotIt )
      IF ( .NOT. GotIt ) THEN
        IF ( Stabilize ) THEN
-          StabilizeFlag = 'stabilized'
+         StabilizeFlag = 'stabilized'
        ELSE IF ( Bubbles  ) THEN
-          StabilizeFlag = 'bubbles'
+         StabilizeFlag = 'bubbles'
+       ELSE IF(ListCheckPresent(Solver % Values,'Element')) THEN
+         StabilizeFlag = 'bubbles'
+         Bubbles = .TRUE.
        ELSE
-          StabilizeFlag = 'stabilized'
+         CALL Info('FlowSolver','Defaulting to "stabilized" method')
+         StabilizeFlag = 'stabilized'
+         Stabilize = .TRUE.
        END IF
      ELSE
        IF (StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1') THEN
          P2P1 = .TRUE.
-         Stabilize = .FALSE.         
        ELSE IF( StabilizeFlag == 'bubbles' ) THEN
+         LegacyBubbles = .NOT. ListCheckPresent(Solver % Values,'Element') 
          Bubbles = .TRUE.
+       ELSE IF(StabilizeFlag == 'stabilized' ) THEN
+         Stabilize = .TRUE.
+       ELSE IF(StabilizeFlag == 'pbubbles' ) THEN
+         Bubbles = .TRUE.
+       ELSE IF(StabilizeFlag == 'vms' ) THEN
+         CONTINUE
+       ELSE
+         CALL Fatal('FlowSolver','Unknown "stabilization method": '//TRIM(StabilizeFlag))
        END IF
-     END IF     
+     END IF
      
      IF( Stabilize .AND. Bubbles ) THEN
        CALL Fatal('FlowSolver','You cant have stabilization and bubbles both!')
-     END IF
-     
-     LegacyBubbles = ( Bubbles .AND. .NOT. ListCheckPresent(Solver % Values,'Element') )
+     END IF     
      IF( LegacyBubbles ) THEN
        CALL Info('FlowSolver','Using legacy bubbles (as opposed to elemental ones!)',Level=8)
      END IF
-     
+       
      DivDiscretization = ListGetLogical( Solver % Values, &
               'Div Discretization', GotIt )
 
@@ -664,13 +683,15 @@
 !------------------------------------------------------------------------------
 
          n = GetElementNOFNodes()
-         IF( LegacyBubbles ) THEN
+         IF( Stabilize ) THEN
+           nb = 0
+         ELSE IF( LegacyBubbles ) THEN
            nb = n
          ELSE
            nb = GetElementNOFBDOFs()
          END IF
          nd = GetElementDOFs( Indexes )
-         
+
          CALL GetElementNodes( ElementNodes )
 
          SELECT CASE( NSDOFs )
@@ -1033,13 +1054,21 @@
 !------------------------------------------------------------------------------
          END SELECT
 
+         ! We do not have stabilized formulation for compressible fluids. 
          IF ( CompressibilityModel /= Incompressible .AND. &
                  StabilizeFlag == 'stabilized' ) THEN
-            nb = n
+            Bubbles = .TRUE.
+            StabilizeFlag = 'bubbles'
          END IF
+
+         ! Internally P2P1 is dealt as special case of bubbles. 
          IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. P2P1 ) THEN
-            nb = n
+            Bubbles = .TRUE.
+            StabilizeFlag = 'bubbles'
          END IF
+         
+         ! If bubbles are requested, but not in element formulation.
+         IF ( nb==0 .AND. Bubbles ) nb = n
            
 !------------------------------------------------------------------------------
 !        If time dependent simulation, add mass matrix to global 
@@ -1055,7 +1084,7 @@
          END IF
          
          IF ( nb > 0 ) THEN
-            CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
+           CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
          END IF
          
 !------------------------------------------------------------------------------

@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library (in file ../LGPL-2.1); if not, write 
- * to the Free Software Foundation, Inc., 51 Franklin Street, 
+ * License along with this library (in file ../LGPL-2.1); if not, write
+ * to the Free Software Foundation, Inc., 51 Franklin Street,
  * Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -66,7 +66,7 @@ $  usage of the function and type of the parameters
 
 
 /*
- * $Id: lu.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $ 
+ * $Id: lu.c,v 1.1.1.1 2005/04/14 13:29:14 vierinen Exp $
  *
  * $Log: lu.c,v $
  * Revision 1.1.1.1  2005/04/14 13:29:14  vierinen
@@ -75,7 +75,7 @@ $  usage of the function and type of the parameters
  * Revision 1.2  1998/08/01 12:34:45  jpr
  *
  * Added Id, started Log.
- * 
+ *
  *
  */
 
@@ -83,84 +83,81 @@ $  usage of the function and type of the parameters
 
 #define A(i,j) a[n * (i) + (j)]
 
-VARIABLE *mtr_LUD(var)
-     VARIABLE *var;
+VARIABLE *mtr_LUD(VARIABLE *var)
 {
   VARIABLE *res;
   int i, n, *pivot;
   double *a;
-  
+
   if (NCOL(var) != NROW(var))
-  {        
+  {
     error("LUD: Matrix must be square.\n");
   }
-  
-  res = var_temp_copy(var); 
+
+  res = var_temp_copy(var);
   a = MATR(res); n = NROW(res);
 
   pivot = (int *)ALLOCMEM(n * sizeof(int));
-  
+
   LUDecomp(a, n, pivot);
-  
+
   FREEMEM((char *)pivot);
-  
+
   return res;
 }
 
-VARIABLE *mtr_det(var)
-     VARIABLE *var;
+VARIABLE *mtr_det(VARIABLE *var)
 {
   VARIABLE *tmp, *res;
   int i, n, *pivot;
   double det, *a;
-  
+
   if (NCOL(var) != NROW(var))
-  {        
+  {
     error("Det: Matrix must be square.\n");
   }
-  
-  tmp = var_temp_copy(var); 
+
+  tmp = var_temp_copy(var);
 
   a = MATR(tmp); n = NROW(tmp);
-  
+
   pivot = (int *)ALLOCMEM(n * sizeof(int));
-  
+
   LUDecomp(a, n, pivot);
-  
+
   det = 1.0;
   for(i = 0; i < n; i++)
   {
     det *= A(i,i);
     if (pivot[i] != i) det = -det;
   }
-  
+
   FREEMEM((char *)pivot); var_delete_temp(tmp);
-  
+
   res = var_temp_new(TYPE_DOUBLE,1,1);
 
   M(res,0,0) = det;
-  
+
   return res;
 }
 
-VARIABLE *mtr_inv(var)
-     VARIABLE *var;
+VARIABLE *mtr_inv(VARIABLE *var)
 {
   VARIABLE *ptr;
 
   int i, j , k, n, *pivot;
   double s, *a;
-  
+
   if (NCOL(var) != NROW(var))
-  {        
+  {
     error("Inv: Matrix must be square.\n");
   }
 
-  ptr = var_temp_copy(var); 
+  ptr = var_temp_copy(var);
 
   a = MATR(ptr); n = NROW(ptr);
-  
-  pivot = (int *)ALLOCMEM(n * sizeof(int));  
+
+  pivot = (int *)ALLOCMEM(n * sizeof(int));
 
   /*
    *  AP = LU
@@ -168,12 +165,12 @@ VARIABLE *mtr_inv(var)
   LUDecomp(a, n, pivot);
   for(i = 0; i < n; i++)
   {
-    if (A(i,i) == 0) 
+    if (A(i,i) == 0)
       error("Inv: Matrix is singular.\n");
     A(i,i) = 1.0 / A(i,i);
   }
 
-  /*  
+  /*
    *  INV(U)
    */
   for(i = n - 2; i >= 0; i--)
@@ -192,12 +189,12 @@ VARIABLE *mtr_inv(var)
     for(j = n - 1; j > i; j--)
     {
       s = 0.0;
-      for(k = i + 1; k <= j; k++) 
-	s = s - A(j,k) * A(k,i);
+      for(k = i + 1; k <= j; k++)
+        s = s - A(j,k) * A(k,i);
       A(j,i) = A(i,i) * s;
     }
-  
-  /* 
+
+  /*
    * A  = INV(AP)
    */
   for(i = 0; i < n; i++)
@@ -205,10 +202,10 @@ VARIABLE *mtr_inv(var)
     {
       s = 0.0;
       for(k = max(i,j); k < n; k++)
-	if (k != i)
-	  s += A(i,k) * A(k,j);
-	else 
-	  s += A(k,j);
+        if (k != i)
+          s += A(i,k) * A(k,j);
+        else
+          s += A(k,j);
       A(i,j) = s;
     }
 
@@ -219,11 +216,11 @@ VARIABLE *mtr_inv(var)
     if (pivot[i] != i)
       for(j = 0; j < n; j++)
       {
-	s = A(i,j);
-	A(i,j) = A(pivot[i],j);
-	A(pivot[i],j) = s;
+        s = A(i,j);
+        A(i,j) = A(pivot[i],j);
+        A(pivot[i],j) = s;
       }
-  
+
 
   FREEMEM((char *)pivot);
 
@@ -232,16 +229,14 @@ VARIABLE *mtr_inv(var)
 
 /*
  * LU- decomposition by gaussian elimination. Row pivoting is used.
- * 
- * result : AP = L'U ; L' = LD; pivot[i] is the swapped column 
+ *
+ * result : AP = L'U ; L' = LD; pivot[i] is the swapped column
  * number for column i (for pivoting).
  *
  * Result is stored in place of original matrix.
  *
  */
-void LUDecomp(a, n, pivot)
-   double *a;
-   int n, pivot[];
+void LUDecomp(double *a, int n, int pivot[])
 {
   double swap;
   int i, j, k, l;
@@ -251,14 +246,14 @@ void LUDecomp(a, n, pivot)
     j = i;
     for(k=i+1; k<n; k++)
       if (abs(A(i,k)) > abs(A(i,j))) j = k;
-    
-    if (A(i,j) == 0.0) 
+
+    if (A(i,j) == 0.0)
     {
       error("LUDecomp: Matrix is singular.\n");
     }
-    
+
     pivot[i] = j;
-    
+
     if (j != i)
     {
       for(k=0; k<=i; k++ )
@@ -268,23 +263,23 @@ void LUDecomp(a, n, pivot)
         A(k,j) = swap;
       }
     }
-    
+
     for(k = i + 1; k < n; k++)
       A(i,k) = A(i,k) / A(i,i);
-    
-    for(k = i+1; k<n; k++) 
+
+    for(k = i+1; k<n; k++)
     {
       if (j != i)
       {
-	swap = A(k,i);
-	A(k,i) = A(k,j); 
-	A(k,j) = swap;
+        swap = A(k,i);
+        A(k,i) = A(k,j);
+        A(k,j) = swap;
       }
       for(l = i + 1; l < n; l++)
-	A(k,l) = A(k,l) -  A(i,l) * A(k,i);
+        A(k,l) = A(k,l) -  A(i,l) * A(k,i);
     }
   }
-  
+
   pivot[n - 1] = n - 1;
   if ( A(n-1,n-1) == 0.0)
   {

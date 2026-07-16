@@ -1705,7 +1705,8 @@ MODULE LumpingUtils
         CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
         Found = .FALSE.
         IF( ASSOCIATED( Model % Constants ) ) THEN
-          mu0inv = 1.0_dp / ListGetConstReal( Model % Constants,'Permeability of Vacuum', Found )
+          mu0inv = ListGetConstReal( Model % Constants,'Permeability of Vacuum', Found )
+          IF(mu0inv/=0) mu0inv = 1/mu0inv;
         END IF
         IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
         Found = .FALSE.

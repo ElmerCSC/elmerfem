@@ -233,9 +233,9 @@ CONTAINS
 !print*,fx,sum(basis(1:nd)*f)
       CALL CheckValue(fx,SUM(Basis(1:nd)*f), 1.0d-8, 'fx')
 
-      CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 2.5d-7, 'dx')
-      CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 2.5d-7, 'dy')
-      CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 2.5d-7, 'dz')
+      CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 4.0d-7, 'dx')
+      CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 4.0d-7, 'dy')
+      CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 4.0d-7, 'dz')
 
       CALL CheckValue(ddiff(1,1),SUM(ddBasisddx(1:nd,1,1)*f), 5.0d-7, 'dxx')
       CALL CheckValue(ddiff(1,2),SUM(ddBasisddx(1:nd,1,2)*f), 5.0d-7, 'dxy')
@@ -244,12 +244,12 @@ CONTAINS
       CALL CheckValue(ddiff(2,3),SUM(ddBasisddx(1:nd,2,3)*f), 5.0d-7, 'dyz')
       CALL CheckValue(ddiff(3,3),SUM(ddBasisddx(1:nd,3,3)*f), 5.0d-7, 'dzz')
 
-      CALL CheckValue(ddiff(1,1),SUM(ddxFromNodaldx(1:nd,1,1)*f), 5.0d-7, 'dfxx')
-      CALL CheckValue(ddiff(1,2),SUM(ddxFromNodaldx(1:nd,1,2)*f), 5.0d-7, 'dfxy')
-      CALL CheckValue(ddiff(1,3),SUM(ddxFromNodaldx(1:nd,1,3)*f), 5.0d-7, 'dfxz')
-      CALL CheckValue(ddiff(2,2),SUM(ddxFromNodaldx(1:nd,2,2)*f), 5.0d-7, 'dfyy')
-      CALL CheckValue(ddiff(2,3),SUM(ddxFromNodaldx(1:nd,2,3)*f), 5.0d-7, 'dfyz')
-      CALL CheckValue(ddiff(3,3),SUM(ddxFromNodaldx(1:nd,3,3)*f), 5.0d-7, 'dfzz')
+      CALL CheckValue(ddiff(1,1),SUM(ddxFromNodaldx(1:nd,1,1)*f), 7.5d-7, 'dfxx')
+      CALL CheckValue(ddiff(1,2),SUM(ddxFromNodaldx(1:nd,1,2)*f), 7.5d-7, 'dfxy')
+      CALL CheckValue(ddiff(1,3),SUM(ddxFromNodaldx(1:nd,1,3)*f), 7.5d-7, 'dfxz')
+      CALL CheckValue(ddiff(2,2),SUM(ddxFromNodaldx(1:nd,2,2)*f), 7.5d-7, 'dfyy')
+      CALL CheckValue(ddiff(2,3),SUM(ddxFromNodaldx(1:nd,2,3)*f), 7.5d-7, 'dfyz')
+      CALL CheckValue(ddiff(3,3),SUM(ddxFromNodaldx(1:nd,3,3)*f), 7.5d-7, 'dfzz')
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix

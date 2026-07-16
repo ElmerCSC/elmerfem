@@ -1,9 +1,10 @@
-INCLUDE(test_macros)
-INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+IF(HAVE_UMFPACK OR HAVE_MUMPS)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
-CONFIGURE_FILE( TempDist.sif TempDist.sif COPYONLY)
+  CONFIGURE_FILE( TempDist.sif TempDist.sif COPYONLY)
 
-file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+  file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(heateq_newmark_global)
-ADD_ELMER_LABEL(heateq_newmark_global quick)
+  ADD_ELMER_TEST(heateq_newmark_global LABELS quick)
+ENDIF()

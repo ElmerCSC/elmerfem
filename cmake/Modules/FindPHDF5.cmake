@@ -13,7 +13,7 @@
 
 # # handle the QUIETLY and REQUIRED arguments and set PHDF5_FOUND to TRUE
 # if all listed variables are TRUE
-INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
+INCLUDE(FindPackageHandleStandardArgs)
 
 # If PHDF5 & PHDF5_HL libraries are already defined, do nothing
 IF(PHDF5_LIBRARIES AND PHDF5_INCLUDE_DIR)

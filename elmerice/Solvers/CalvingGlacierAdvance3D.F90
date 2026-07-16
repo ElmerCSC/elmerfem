@@ -51,7 +51,7 @@
 !-----------------------------------------------
    TYPE(Mesh_t), POINTER :: Mesh
    TYPE(Nodes_t), TARGET :: FrontNodes
-   TYPE(ValueList_t), POINTER :: Params
+   TYPE(ValueList_t), POINTER :: Params, Material
    TYPE(Variable_t), POINTER :: Var, VeloVar, MeltVar, NormalVar, TangledVar, &
         DistVar
 ! TO DO clean all unused variables
@@ -70,13 +70,14 @@
         MeltRate, Displace(3), y_coord(2), epsShift, LongRangeLimit, MaxDisplacement, &
         EpsTangle,thisEps,Shift, thisY,xx,yy,TempDist,MinDist,xt,yt,t, &
         a1(2), a2(2), b1(2), b2(2), b3(2), intersect(2), DistRailNode, RDisplace(3),&
-        buffer, VeloFactor
+        buffer, VeloFactor, zb
    REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), &
         xL(:),yL(:),xR(:),yR(:),xRail(:),yRail(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
         Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
-        MovePastRailNode, HitsRails, Reverse, ThisBC, MoveBulk
+        MovePastRailNode, HitsRails, Reverse, ThisBC, MoveBulk, MoveBase,&
+        UnFoundFatal
    LOGICAL, ALLOCATABLE :: DangerZone(:), WorkLogical(:), &
         DontMove(:), FrontToRight(:), FrontToLeft(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VeloVarName, MeltVarName, &
@@ -205,6 +206,10 @@
 
    MoveBulk = ListGetLogical(Params,"MoveBulk", Found, DefValue=.FALSE.)
    IF(.NOT. Found) CALL Info(SolverName, "Not moving bulk as default")
+
+   MoveBase = ListGetLogical(Params,"Account for bedrock", Found, DefValue=.FALSE.)
+   ! still in testing
+   !IF(.NOT. Found) CALL Fatal(SolverName, "'Account for bedrock' not found")
 
    !Get the front line
    FrontMaskName = "Calving Front Mask"
@@ -584,6 +589,35 @@
      Advance((Perm(i)-1)*DOFs + 3) = Displace(3)
 
    END DO
+
+   !do we need to check base base of new advance location?
+   IF(MoveBase) THEN
+
+      i = ListGetInteger( CurrentModel % Bodies(Mesh % Elements(1) % BodyId) % Values, &
+      'Material')
+      Material => CurrentModel % Materials(i) % Values  !TODO, this is not generalised
+
+      DO i=1, Mesh % NumberOfNodes
+         IF(Perm(i) == 0) CYCLE
+         IF(FrontPerm(i) == 0) CYCLE
+         Mesh % Nodes % x(i) = Mesh % Nodes % x(i) + Advance((Perm(i)-1)*DOFs + 1)
+         Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + Advance((Perm(i)-1)*DOFs + 2)
+         Mesh % Nodes % z(i) = Mesh % Nodes % z(i) + Advance((Perm(i)-1)*DOFs + 3)
+         zb = ListGetRealAtNode(Material, "Min Zs Bottom",i,UnfoundFatal=.TRUE.)
+
+         Mesh % Nodes % x(i) = Mesh % Nodes % x(i) - Advance((Perm(i)-1)*DOFs + 1)
+         Mesh % Nodes % y(i) = Mesh % Nodes % y(i) - Advance((Perm(i)-1)*DOFs + 2)
+         Mesh % Nodes % z(i) = Mesh % Nodes % z(i) - Advance((Perm(i)-1)*DOFs + 3)
+
+         IF(Mesh % Nodes % z(i)  + Advance((Perm(i)-1)*DOFs + 3) < zb) THEN
+            Advance((Perm(i)-1)*DOFs + 3) = zb - Mesh % Nodes % z(i)
+            IF(Mesh % Nodes % z(i) < zb) THEN
+               Advance((Perm(i)-1)*DOFs + 3) = 0.0_dp
+            END IF
+         END IF
+      END DO
+   END IF
+
 
    ! find lateral boundary tags
    DO i=1,Model % NumberOfBCs

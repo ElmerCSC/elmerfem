@@ -35,6 +35,8 @@
 !> \ingroup ElmerLib
 !> \{
 
+#include "../config.h"
+
 !-------------------------------------------------------------------------------
 !> Vanka preconditioning for iterative methods.
 !-------------------------------------------------------------------------------
@@ -190,16 +192,16 @@
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
            CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, &
-               i, 7001, ELMER_COMM_WORLD, status, ierr )
+               i, 7001, ELMER_COMM_WORLD, ierr )
            IF ( cnt(i)>0 ) THEN
              CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
-                 i, 7002, ELMER_COMM_WORLD, status, ierr )
+                 i, 7002, ELMER_COMM_WORLD, ierr )
 
              CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
-                 i, 7003, ELMER_COMM_WORLD, status, ierr )
+                 i, 7003, ELMER_COMM_WORLD, ierr )
 
              CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
-                 i, 7004, ELMER_COMM_WORLD, status, ierr )
+                 i, 7004, ELMER_COMM_WORLD, ierr )
            END IF
          END IF
        END DO
@@ -282,7 +284,7 @@
 
      CASE(0)
 
-       ! Pick entries related to ene single element and inverse the matrix.
+       ! Pick entries related to a single element and inverse the matrix.
        ! Add the inverse to the preconditioning matrix.
        !-------------------------------------------------------------------
        Active = GetNOFActive(Solver)
@@ -442,13 +444,13 @@
          Mesh => Solver % Mesh
          IF( Mesh % MeshDim == 3 ) THEN
            IF(.NOT. ASSOCIATED(Mesh % Faces)) THEN
-             CALL Warn('VankaCreate','This mode requires existance of Faces in 3D!')
+             CALL Warn('VankaCreate','This mode requires existence of Faces in 3D!')
              CALL FindMeshFaces3D(Mesh)
            END IF
            NoElems = Mesh % NumberOfFaces
          ELSE
            IF(.NOT. ASSOCIATED(Mesh % Edges)) THEN
-             CALL Warn('VankaCreate','This mode requires existance of Edges in 2D!')
+             CALL Warn('VankaCreate','This mode requires existence of Edges in 2D!')
              CALL FindMeshEdges2D(Mesh)
            END IF
            
@@ -602,7 +604,7 @@
        A % ILUCols => B % Cols
        A % ILURows => B % Rows
        
-       ! Nullify these so that they wont be destroyed
+       ! Nullify these so that they won't be destroyed
        NULLIFY( B % Values, B % Cols, B % Rows)
        CALL FreeMatrix( B )               
      END IF
@@ -666,6 +668,7 @@
     SUBROUTINE CircuitPrec(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
+      !USE DirectSolve, ONLY: MumpsLocal_SolveSystem, Umfpack_SolveSystem
       IMPLICIT NONE
       
       INTEGER :: ipar(*)
@@ -674,8 +677,8 @@
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: i,j,k
       LOGICAL :: stat
-
       INTEGER :: ndim, n
+      CHARACTER(:), ALLOCATABLE, SAVE :: str
       TYPE(Solver_t), POINTER, SAVE :: sv => Null()
 !-------------------------------------------------------------------------------
       A => GlobalMatrix
@@ -688,15 +691,41 @@
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
           ALLOCATE(sv)
-          CALL ListAddString(  sv % Values, 'Linear System Direct Method', 'Umfpack')
+          str = ListGetString( CurrentModel % Solver % Values, &
+              'Linear System Direct Method', Stat )
+          IF(.NOT. Stat ) str = "umfpack"                    
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+          IF( str == "umfpack" ) THEN
+            CALL Warn( 'CircuitPrec', 'Umfpack solver not installed, using MUMPS instead!' )
+            str = "mumps"
+          END IF
+#elseif !defined (HAVE_MUMPS) && defined(HAVE_UMFPACK)
+          IF( str == "mumps" ) THEN
+            CALL Warn( 'CircuitPrec', 'MUMPS solver not installed, using Umfpack instead!' )
+            str = "umfpack"
+          END IF
+#elseif !defined (HAVE_MUMPS) && !defined(HAVE_UMFPACK)
+          CALL Fatal( 'CircuitPrec', 'Preconditioner "circuit" needs either Umfpack or MUMPS!')
+#endif
+          CALL ListAddString( sv % Values, 'Linear System Direct Method', TRIM(str) )
           CALL ListAddLogical( sv % Values, 'Linear System Refactorize', .FALSE.)
           CALL ListAddLogical( sv % Values, 'Linear System Free Factorization', .FALSE.)
+
+          CALL Info('CircuitPrec','Using direct solver '&
+              //TRIM(str)//' of size '//I2S(A % ExtraDofs),Level=10)          
         END IF
         i = ndim - A % ExtraDOFs + 1
         j = ndim - A % ExtraDOFs + n
-
+        
         IF(ANY(ABS(A % CircuitMatrix % Values)>0)) THEN
-          CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+          SELECT CASE( str )
+          CASE('umfpack')
+            CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+          CASE('mumps')
+            CALL MumpsLocal_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+          CASE DEFAULT
+            CALL Fatal('CircuitPrec','Impossible direct method: '//TRIM(str))
+          END SELECT
         END IF
       END IF
 
@@ -716,7 +745,7 @@
       TYPE(Matrix_t), POINTER :: A
       LOGICAL :: stat
       INTEGER :: i,j,k,l
-
+      CHARACTER(:), ALLOCATABLE, SAVE :: str
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ru(:), rv(:)
       INTEGER :: ndim, n
       TYPE(Solver_t), POINTER :: sv => Null()
@@ -731,9 +760,28 @@
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
           ALLOCATE(sv)
-          CALL ListAddString(  sv % Values, 'Linear System Direct Method', 'Umfpack')
+          str = ListGetString( CurrentModel % Solver % Values, &
+              'Linear System Direct Method', Stat )
+          IF(.NOT. Stat ) str = "umfpack"                    
+#if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
+          IF( str == "umfpack" ) THEN
+            CALL Warn( 'CircuitPrecComplex', 'Umfpack solver not installed, using MUMPS instead!' )
+            str = "mumps"
+          END IF
+#elseif !defined (HAVE_MUMPS) && defined(HAVE_UMFPACK)
+          IF( str == "mumps" ) THEN
+            CALL Warn( 'CircuitPrecComplex', 'MUMPS solver not installed, using Umfpack instead!' )
+            str = "umfpack"
+          END IF
+#elseif !defined (HAVE_MUMPS) && !defined(HAVE_UMFPACK)
+          CALL Fatal( 'CircuitPrecComplex', 'Preconditioner "circuit" needs either Umfpack or MUMPS!')
+#endif
+          CALL ListAddString( sv % Values, 'Linear System Direct Method', TRIM(str) )
           CALL ListAddLogical( sv % Values, 'Linear System Refactorize', .FALSE.)
           CALL ListAddLogical( sv % Values, 'Linear System Free Factorization', .FALSE.)
+
+          CALL Info('CircuitPrecComplex','Using direct solver '&
+              //TRIM(str)//' of size '//I2S(A % ExtraDofs/2),Level=10)          
         END IF
  
         IF(.NOT.ALLOCATED(ru)) THEN
@@ -749,9 +797,16 @@
           j = j + 1
           rv(k)   =  REAL(v(i+j)); rv(k+1) = AIMAG(v(i+j))
         END DO
- 
-        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, ru, rv )
 
+        SELECT CASE( str )
+        CASE('umfpack')
+          CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, ru, rv )
+        CASE('mumps')
+          CALL MumpsLocal_SolveSystem( sv, A % CircuitMatrix, ru, rv )
+        CASE DEFAULT
+          CALL Fatal('CircuitPrecComplex','Impossible direct method: '//TRIM(str))
+        END SELECT
+        
         j = 0
         DO k=1,n,2
           j = j + 1
@@ -850,16 +905,16 @@
 
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
-           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, ELMER_COMM_WORLD, status, ierr )
+           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, ELMER_COMM_WORLD, ierr )
            IF ( cnt(i)>0 ) THEN
              CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
-                 i, 7002, ELMER_COMM_WORLD, status, ierr )
+                 i, 7002, ELMER_COMM_WORLD, ierr )
 
              CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
-                 i, 7003, ELMER_COMM_WORLD, status, ierr )
+                 i, 7003, ELMER_COMM_WORLD, ierr )
 
              CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
-                 i, 7004, ELMER_COMM_WORLD, status, ierr )
+                 i, 7004, ELMER_COMM_WORLD, ierr )
            END IF
          END IF
        END DO

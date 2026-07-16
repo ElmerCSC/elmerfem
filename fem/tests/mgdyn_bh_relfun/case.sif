@@ -118,7 +118,7 @@ Solver 6
   procedure = "SaveData" "SaveLine"
   Filename = "g.dat"
 
-  Polyline Coordinates(3,2) = 0.0 0.0 0.01125 0.015 0.015 0.01125
+  Polyline Coordinates(2,3) = 0.0 0.0 0.01125 0.015 0.015 0.01125
 End
 
 

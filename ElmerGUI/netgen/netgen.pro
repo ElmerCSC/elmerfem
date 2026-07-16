@@ -18,8 +18,6 @@ INCLUDEPATH = libsrc/include
 QMAKE_CXXFLAGS_DEBUG += -g
 QMAKE_CXXFLAGS += -g
 
-unix: QMAKE_CXXFLAGS += -ffriend-injection
-
 #------------------------------------------------------------------------------
 # Input files:
 #------------------------------------------------------------------------------

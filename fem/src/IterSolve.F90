@@ -538,8 +538,8 @@ CONTAINS
         PCondType = PRECOND_ILUT
 
       ELSE IF ( SEQL(str, 'ilu') ) THEN
-        ILUn = NINT(ListGetCReal( Params, &
-            'Linear System ILU Order', gotit ))
+        ILUn = ListGetInteger( Params, &
+            'Linear System ILU Order', gotit )
         IF ( .NOT.gotit ) THEN
           IF(LEN(str)>=4) ILUn = ICHAR(str(4:4)) - ICHAR('0')
         END IF
@@ -577,6 +577,8 @@ CONTAINS
       END IF
       
       IF ( .NOT. ListGetLogical( Params, 'No Precondition Recompute',GotIt ) ) THEN
+        CALL ResetTimer("Prec-"//TRIM(str))
+
         n = ListGetInteger( Params, 'Linear System Precondition Recompute', GotIt )
         IF ( n <= 0 ) n = 1
         
@@ -605,6 +607,7 @@ CONTAINS
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
                 CM => A % ConstraintMatrix
                 IF(NullEdges.OR.ASSOCIATED(CM)) THEN
+                  CALL Info('IterSolver','Omitting edge dofs from being target of ILUn',Level=20)
 
                   IF(ASSOCIATED(A % ILURows)) DEALLOCATE(A % ILURows)
                   IF(ASSOCIATED(A % ILUCols)) DEALLOCATE(A % ILUCols)
@@ -679,7 +682,7 @@ CONTAINS
               ELSE IF ( PCondType == PRECOND_ILUT ) THEN
                 Condition = CRS_ComplexILUT( A,ILUT_TOL )
               END IF
-            ELSE IF (ILUn>=0 .OR. PCondType == PRECOND_ILUT) THEN
+            ELSE IF (ILUn>=0 .OR. PCondType == PRECOND_ILUT) THEN  ! Not ComplexSystem
               SELECT CASE(PCondType)
               CASE(PRECOND_ILUn, PRECOND_Circuit)
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
@@ -781,6 +784,7 @@ CONTAINS
             END IF
           END IF
         END IF
+        CALL CheckTimer("Prec-"//TRIM(str),Level=8,Delete=.TRUE.)                  
       END IF
     END IF
     
