@@ -400,4 +400,17 @@ IF(WITH_MPI)
   ENDIF()
 ENDIF()
 
+IF(CMAKE_SYSTEM_NAME MATCHES "Windows" AND CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
+  # Collect list of dependent DLLs using bundledlls
+  # This assumes that ElmerFEM is built using MSYS2.
+  FIND_PROGRAM(MSYS2_BASH NAMES bash REQUIRED)
+  ADD_CUSTOM_COMMAND(
+    TARGET elmersolver POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/bundle/bin
+    COMMAND ${MSYS2_BASH} -lc "${CMAKE_CURRENT_SOURCE_DIR}/../../contrib/msys2-bundledlls/bundledlls $<TARGET_FILE:elmersolver> ${CMAKE_BINARY_DIR}/bundle/bin"
+  )
 
+  INSTALL(DIRECTORY ${CMAKE_BINARY_DIR}/bundle/bin/
+    DESTINATION "bin"
+    COMPONENT "dependencies")
+ENDIF()
