@@ -571,10 +571,10 @@ CONTAINS
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
 
-    Swres = GetConstReal( Material, "Exponential Swres", Found)
-    IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
+    !Swres = GetConstReal( Material, "Exponential Swres", Found)
+    !IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
     IFcomp = GetConstReal( Material, "Exponential Beta", Found)
-    impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
+    !impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
     
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
@@ -698,9 +698,13 @@ CONTAINS
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Exponential = .TRUE.
       CASE('linear') ! even simpler linear law (used in Lunardini)
-        xi0 = GetConstReal( Material, "Linear Xi0", Found)
-        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
-        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        !xi0 = GetConstReal( Material, "Linear Xi0", Found)
+        !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        Swres = GetConstReal( Material, "Linear Swres", Found)
+        IFdeltaT = GetConstReal( Material, "Linear deltaT", Found)
+        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+        !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Linear = .TRUE.
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
@@ -793,10 +797,10 @@ CONTAINS
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       IF (Exponential) THEN
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential, impedancefactor=impedancefactor)
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP, MinKgw,Exponential, impedancefactor=impedancefactor)
       ELSE
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential)
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP, MinKgw,Exponential)
       END IF
       KgwpTAtIP = 0.0_dp
       KgwppAtIP = 0.0_dp

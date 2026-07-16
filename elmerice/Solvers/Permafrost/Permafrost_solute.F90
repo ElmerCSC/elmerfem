@@ -372,8 +372,8 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
 
-    Swres = GetConstReal( Material, "Exponential Swres", Found)
-    IFdeltaT = GetConstReal( Material, "Epxonential deltaT", Found)
+    !Swres = GetConstReal( Material, "Exponential Swres", Found)
+    !IFdeltaT = GetConstReal( Material, "Epxonential deltaT", Found)
     
     !meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
     !IF (.NOT.Found) THEN
@@ -456,9 +456,13 @@ CONTAINS
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Exponential = .TRUE.
       CASE('linear') ! even simpler linear law (used in Lunardini)
-        Xi0 = GetConstReal( Material, "Linear Xi0", Found)
-        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
-        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        !Xi0 = GetConstReal( Material, "Linear Xi0", Found)
+        Swres = GetConstReal( Material, "Linear Swres", Found)
+        IFdeltaT = GetConstReal( Material, "Linear deltaT", Found)
+        !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+        !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Linear = .TRUE.
       CASE DEFAULT ! Hartikainen model
         XiBefore =  XiAtIP(IPPerm)
@@ -493,7 +497,7 @@ CONTAINS
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-           mugwAtIP,XiAtIP(IPPerm),MinKgw,Exponential)
+           mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential)
       !PRINT *, "Solute: Kgw", KgwAtIP(1,1)
       fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
            Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)

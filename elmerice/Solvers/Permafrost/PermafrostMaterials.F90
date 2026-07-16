@@ -1164,14 +1164,16 @@ CONTAINS
          * EXP(-((MIN(Temperature,T0) -T0)/deltaT)**2.0_dp) * 2.0_dp*(MIN(Temperature,T0) -T0)/(deltaT*deltaT)
   END FUNCTION XiExponentialT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXiLinear(T0,Temperature,Swres, Xi0, deltaT) RESULT(XiLinear)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,Xi0,deltaT
+  !FUNCTION GetXiLinear(T0,Temperature,Swres, Xi0, deltaT) RESULT(XiLinear)
+  FUNCTION GetXiLinear(T0,Temperature,Swres, deltaT) RESULT(XiLinear)
+    !REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,Xi0,deltaT
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
     REAL(KIND=dp) :: XiLinear, mpar
-    !Xi0 = 0.200_dp !! READ FROM SIF!!!
-    mpar = (Xi0 - Swres)/deltaT
-    !XiLinear = MAX(mpar*(MIN(Temperature,T0) - T0),Swres)
+    !mpar = (Xi0 - Swres)/deltaT
+    mpar = (1 - Swres)/deltaT
     IF (Temperature >= T0) THEN
-       XiLinear = Xi0
+       !XiLinear = Xi0
+       XiLinear = 1
     ELSEIF (Temperature <= T0 - deltaT) THEN
        XiLinear = Swres
     ELSE
@@ -1179,17 +1181,45 @@ CONTAINS
     ENDIF
   END FUNCTION GetXiLinear
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiLinearT(T0,Temperature,Swres,Xi0, deltaT)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,Xi0,deltaT
+  !REAL (KIND=dp) FUNCTION XiLinearT(T0,Temperature,Swres,Xi0, deltaT)
+  REAL (KIND=dp) FUNCTION XiLinearT(T0,Temperature,Swres,deltaT)
+    !REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,Xi0,deltaT
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,Swres,deltaT
     REAL(KIND=dp) :: mpar
-    !Xi0 = 0.200_dp
-    mpar = (Xi0 - Swres)/deltaT
+    !mpar = (Xi0 - Swres)/deltaT
+    mpar = (1 - Swres)/deltaT
     IF ((Temperature - T0 > -deltaT) .AND. (Temperature < T0) )THEN 
       XiLinearT = mpar
     ELSE
       XiLinearT = 0.0_dp
     END IF
   END FUNCTION XiLinearT
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetXiLunardini(T0,Temperature,xif, xi0, deltaT) RESULT(XiLinear)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,xif,xi0,deltaT
+    REAL(KIND=dp) :: XiLinear, mpar
+    mpar = (xi0 - xif)/deltaT
+    IF (Temperature >= T0) THEN
+       XiLinear = xi0
+    ELSEIF (Temperature <= T0 - deltaT) THEN
+       XiLinear = xif
+    ELSE
+       XiLinear = xif + mpar * (Temperature - (T0 - deltaT))
+    ENDIF
+  END FUNCTION GetXiLunardini
+  !---------------------------------------------------------------------------------------------
+  REAL (KIND=dp) FUNCTION XiLunardiniT(T0,Temperature,xif,xi0, deltaT)
+    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,xif,xi0,deltaT
+    REAL(KIND=dp) :: mpar
+    mpar = (xi0 - xif)/deltaT
+    IF ((Temperature - T0 > -deltaT) .AND. (Temperature < T0) )THEN 
+      !XiLinearT = mpar
+      XiLunardiniT = mpar
+    ELSE
+      !XiLinearT = 0.0_dp
+      XiLunardiniT = 0.0_dp
+    END IF
+  END FUNCTION XiLunardiniT
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change
   !---------------------------------------------------------------------------------------------
@@ -2222,7 +2252,7 @@ CONTAINS
          + rhoi*(hw - hi)*Porosity*XiT
   END FUNCTION GetCGTT
     !---------------------------------------------------------------------------------------------
-  FUNCTION GetCGTTLinear(c1,c2,c3,Xi,Swres,Xi0,XiT,rhoi,Porosity,hi,hw,dryDensity)RESULT(CGTT)
+  FUNCTION GetCGTTLunardini(c1,c2,c3,Xi,Swres,Xi0,XiT,rhoi,Porosity,hi,hw,dryDensity)RESULT(CGTT)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw,Xi0,dryDensity
     REAL(KIND=dp) :: CGTT
@@ -2234,7 +2264,7 @@ CONTAINS
     ELSE
       CGTT = c2 + (hw - hi)*dryDensity*XiT !!TODO: replace 1680_dp with dryDensity input from SIF !!
     END IF
-  END FUNCTION GetCGTTLinear
+  END FUNCTION GetCGTTLunardini
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTp(rhoi,hi,hw,XiP,Porosity)RESULT(CGTp)! All state variables or derived values
     IMPLICIT NONE
@@ -2294,7 +2324,7 @@ CONTAINS
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGTTLinear(Xi,Swres,Xi0,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
+  FUNCTION GetKGTTLunardini(Xi,Swres,Xi0,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3, Xi0
     REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3)
@@ -2307,7 +2337,7 @@ CONTAINS
     ELSE
       KGTT = unittensor*k2
     END IF
-  END FUNCTION GetKGTTLinear
+  END FUNCTION GetKGTTLunardini
   !---------------------------------------------------------------------------------------------
   FUNCTION  GetDtd(RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
     IMPLICIT NONE
@@ -2477,12 +2507,12 @@ CONTAINS
     !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
   END FUNCTION GetXikG0hy
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw,Exponential,impedancefactor) RESULT(Kgw)
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,Porosity,MinKgw,Exponential,impedancefactor) RESULT(Kgw)
     
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
-    REAL(KIND=dp), INTENT(IN) :: Xi,MinKgw,mugw
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity,MinKgw,mugw
     REAL(KIND=dp) :: Kgw(3,3)
     LOGICAL :: Exponential
     REAL(KIND=dp), OPTIONAL :: impedancefactor
@@ -2497,7 +2527,7 @@ CONTAINS
     rhow0 = CurrentSolventMaterial % rhow0
 
     IF (Exponential) THEN
-      relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
+      relativepermeability = MAX(10.0_dp**(-impedancefactor*Porosity*(1.0_dp - Xi)),1.0d-06)
     ELSE
       qexp = GlobalRockMaterial % qexp(RockMaterialID)
       relativepermeability=(Xi**qexp)

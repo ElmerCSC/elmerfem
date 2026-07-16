@@ -1056,8 +1056,10 @@ CONTAINS
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
       CASE('linear') ! even simpler linear law (used in Lunardini)
         Xi0 = GetConstReal( Material, "Linear Xi0", Found)
-        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
-        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Xi0,Swres,IFdeltaT)
+        !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Xi0,Swres,IFdeltaT)
+        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -1422,8 +1424,10 @@ CONTAINS
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
       CASE('linear') ! even simpler linear law (used in Lunardini)
         xi0 = GetConstReal( Material, "Linear Xi0", Found)
-        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
-        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+        !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
+        XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
       CASE DEFAULT ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
