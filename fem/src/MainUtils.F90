@@ -5141,6 +5141,12 @@ BLOCK
          END IF
        END IF
 
+       IF( ASSOCIATED(Solver % Matrix) ) THEN
+         IF ( ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
+           ParEnv => Solver % Matrix % ParMatrix % ParEnv
+         END IF
+       END IF
+
        CALL ParallelActive( MeActive )
        n = COUNT(ParEnv % Active)
        
@@ -5223,6 +5229,11 @@ END BLOCK
        IF ( Parallel .AND. MeActive ) THEN
          IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
            ParEnv % ActiveComm = Solver % Matrix % Comm
+
+           !IF (ASSOCIATED(Solver % Matrix % ParMatrix) ) THEN
+            !CALL FreeParMatrix(Solver % Matrix)
+            !Solver % Matrix % ParMatrix => NULL()
+           !END IF
 
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
@@ -5376,6 +5387,163 @@ END BLOCK
        CALL Info('SingleSolver','Reverting back to current coordinates',Level=12)
        Mesh % Nodes => Mesh % NodesMapped
      END IF
+
+     CONTAINS
+
+     SUBROUTINE FreeParMatrix(Matrix)
+      TYPE(Matrix_t), POINTER :: Matrix
+      INTEGER :: i
+
+      TYPE(SplittedMatrixT), POINTER :: s
+      TYPE(BasicMatrix_t), POINTER :: m
+      TYPE(SParIterSolverGlobalD_t), POINTER :: p
+
+      IF ( .NOT. ASSOCIATED( Matrix ) ) RETURN
+
+      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
+        IF(ASSOCIATED(Matrix % ParallelInfo % GlobalDOFs)) DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
+        IF(ASSOCIATED(Matrix % ParallelInfo % GInterface)) DEALLOCATE(Matrix % ParallelInfo % GInterface)
+        IF(ASSOCIATED(Matrix % ParallelInfo % Gorder)) DEALLOCATE(Matrix % ParallelInfo % GOrder)
+
+        IF(ASSOCIATED(Matrix % ParallelInfo % NeighbourList)) THEN
+          DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
+            IF (ASSOCIATED(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)) &
+              DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
+          END DO
+          DEALLOCATE(Matrix % ParallelInfo % NeighbourList)
+        END IF
+
+        IF(ASSOCIATED(Matrix % ParallelInfo % FaceNeighbourList)) THEN
+          DO i=1,SIZE(Matrix % ParallelInfo % FaceNeighbourList)
+            IF (ASSOCIATED(Matrix % ParallelInfo % FaceNeighbourList(i) % Neighbours)) &
+              DEALLOCATE(Matrix % ParallelInfo % FaceNeighbourList(i) % Neighbours)
+          END DO
+          DEALLOCATE(Matrix % ParallelInfo % FaceNeighbourList)
+        END IF
+        IF(ASSOCIATED(Matrix % ParallelInfo % FaceInterface)) DEALLOCATE(Matrix % ParallelInfo % FaceInterface)
+
+        IF(ASSOCIATED(Matrix % ParallelInfo % EdgeNeighbourList)) THEN
+          DO i=1,SIZE(Matrix % ParallelInfo % EdgeNeighbourList)
+            IF (ASSOCIATED(Matrix % ParallelInfo % EdgeNeighbourList(i) % Neighbours)) &
+              DEALLOCATE(Matrix % ParallelInfo % EdgeNeighbourList(i) % Neighbours)
+          END DO
+          DEALLOCATE(Matrix % ParallelInfo % EdgeNeighbourList)
+        END IF
+        IF(ASSOCIATED(Matrix % ParallelInfo % EdgeInterface)) DEALLOCATE(Matrix % ParallelInfo % EdgeInterface)
+        DEALLOCATE(Matrix % ParallelInfo)
+      END IF
+
+
+      p=>Matrix % ParMatrix
+      IF(ASSOCIATED(p)) THEN
+        s => Matrix % ParMatrix % SplittedMatrix
+
+        s % InsideMatrix % EMatrix => NULL()
+        CALL FreeMatrix(s % InsideMatrix)
+
+        DO i=1,SIZE(s % IfMatrix)
+          m => s % IfMatrix(i)
+          IF(ASSOCIATED(m)) THEN
+            IF(ALLOCATED(m % Rows)) DEALLOCATE(m % Rows)
+            IF(ALLOCATED(m % Cols)) DEALLOCATE(m % Cols)
+            IF(ALLOCATED(m % Diag)) DEALLOCATE(m % Diag)
+            IF(ALLOCATED(m % Grows)) DEALLOCATE(m % Grows)
+            IF(ALLOCATED(m % Values)) DEALLOCATE(m % Values)
+            IF(ALLOCATED(m % RowOwner)) DEALLOCATE(m % RowOwner)
+            IF(ALLOCATED(m % ILUValues)) DEALLOCATE(m % ILUValues)
+            IF(ALLOCATED(m % MassValues)) DEALLOCATE(m % MassValues)
+            IF(ALLOCATED(m % DampValues)) DEALLOCATE(m % DampValues)
+            IF(ALLOCATED(m % PrecValues)) DEALLOCATE(m % PrecValues)
+          END IF
+        END DO
+        DEALLOCATE(s % IfMatrix)
+
+        DO i=1,SIZE(s % NbsIfMatrix)
+          m => s % NbsIfMatrix(i)
+          IF(ASSOCIATED(m)) THEN
+            IF(ALLOCATED(m % Rows)) DEALLOCATE(m % Rows)
+            IF(ALLOCATED(m % Cols)) DEALLOCATE(m % Cols)
+            IF(ALLOCATED(m % Diag)) DEALLOCATE(m % Diag)
+            IF(ALLOCATED(m % Grows)) DEALLOCATE(m % Grows)
+            IF(ALLOCATED(m % Values)) DEALLOCATE(m % Values)
+            IF(ALLOCATED(m % RowOwner)) DEALLOCATE(m % RowOwner)
+            IF(ALLOCATED(m % ILUValues)) DEALLOCATE(m % ILUValues)
+            IF(ALLOCATED(m % MassValues)) DEALLOCATE(m % MassValues)
+            IF(ALLOCATED(m % DampValues)) DEALLOCATE(m % DampValues)
+            IF(ALLOCATED(m % PrecValues)) DEALLOCATE(m % PrecValues)
+          END IF
+        END DO
+        DEALLOCATE(s % NbsIfMatrix)
+
+        IF(ASSOCIATED(s % VecIndices)) THEN
+          DO i=1,SIZE(s % VecIndices)
+            IF(ASSOCIATED(s % Vecindices(i) % RevInd)) DEALLOCATE(s % VecIndices(i) % RevInd)
+          END DO
+          DEALLOCATE(s % VecIndices)
+        END IF
+
+        IF(ASSOCIATED(s % IfVecs)) THEN
+          DO i=1,SIZE(s % IfVecs)
+            IF(ASSOCIATED(s % IfVecs(i) % IfVec)) DEALLOCATE(s % IfVecs(i) % IfVec)
+          END DO
+          DEALLOCATE(s % ifVecs)
+        END IF
+
+        IF(ASSOCIATED(s % IfORows)) THEN
+          DO i=1,SIZE(s % IfORows)
+            IF(ASSOCIATED(s % IfORows(i) % IfVec)) DEALLOCATE(s % IfORows(i) % IfVec)
+          END DO
+          DEALLOCATE(s % ifORows)
+        END IF
+
+        IF(ASSOCIATED(s % IfLCols)) THEN
+          DO i=1,SIZE(s % IfLCols)
+            IF(ASSOCIATED(s % IfLCols(i) % IfVec)) DEALLOCATE(s % IfLCols(i) % IfVec)
+          END DO
+          DEALLOCATE(s % ifLCols)
+        END IF
+
+        IF(ASSOCIATED(s % ResBuf)) THEN
+          DO i=1,SIZE(s % ResBuf)
+            IF(ALLOCATED(s % ResBuf(i) % ResVal)) DEALLOCATE(s % ResBuf(i) % ResVal)
+            IF(ALLOCATED(s % ResBuf(i) % ResInd)) DEALLOCATE(s % ResBuf(i) % ResInd)
+          END DO
+          DEALLOCATE(s % ResBuf)
+        END IF
+
+        IF(ASSOCIATED(s % RHS)) THEN
+          DO i=1,SIZE(s % RHS)
+            IF(ASSOCIATED(s % RHS(i) % RHSVec)) DEALLOCATE(s % RHS(i) % RHSVec)
+            IF(ASSOCIATED(s % RHS(i) % RHSInd)) DEALLOCATE(s % RHS(i) % RHSInd)
+          END DO
+          DEALLOCATE(s % RHS)
+        END IF
+
+        IF (ASSOCIATED(s % Work)) DEALLOCATE(s % Work)
+        IF (ASSOCIATED(s % TmpXVec)) DEALLOCATE(s % TmpXVec)
+        IF (ASSOCIATED(s % TmpRVec)) DEALLOCATE(s % TmpRVec)
+
+        IF(ASSOCIATED(s % GlueTable)) THEN
+          IF(ASSOCIATED(s % GlueTable % Rows)) DEALLOCATE(s % GlueTable % Rows)
+          IF(ASSOCIATED(s % GlueTable % Cols)) DEALLOCATE(s % GlueTable % Cols)
+          IF(ASSOCIATED(s % GlueTable % Inds)) DEALLOCATE(s % GlueTable % Inds)
+          IF(ASSOCIATED(s % GlueTable % RowOwner)) DEALLOCATE(s % GlueTable % RowOwner)
+          DEALLOCATE(s % GlueTable)
+        END IF
+        DEALLOCATE(s)
+
+        IF(ASSOCIATED(p % ParEnv % Active)) THEN
+          DEALLOCATE(p % ParEnv % Active)
+        END IF
+
+        IF(ASSOCIATED(p % ParEnv % Isneighbour)) THEN
+          DEALLOCATE(p % ParEnv % Isneighbour)
+        END IF
+
+        DEALLOCATE(p)
+      END IF
+    END SUBROUTINE FreeParMatrix
+
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------

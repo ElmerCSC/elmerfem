@@ -1090,6 +1090,13 @@
            IF ( RelativeChange < NonlinearTol .AND. iter > NonlinearIterMin ) EXIT 
         END DO ! of the nonlinear iteration
 
+        !Awful hack to fix numerical issues
+        DO t=1,SIZE(HydPot)
+          IF (HydPot(t) > 100) HydPot(t) = 100
+          IF (HydPot(t) < 0.0) HydPot(t) = 0.0
+        END DO
+
+
 !------------------------------------------------------------------------------
 !       Update the Sheet Thickness                 
 !------------------------------------------------------------------------------
@@ -1185,6 +1192,7 @@
                    IF(Snn(i)==0.0) THEN
                      Np = 0.0
                      he = 0.0
+                     pw = -gravity*WaterDensity*zb
                    END IF
                  END IF 
 
@@ -1195,6 +1203,27 @@
                  IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he
               END DO
            END DO Elements     !  Bulk elements
+
+           DO t=1,Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+             Element => Mesh % Elements(t)
+             N = GetElementNOFNodes(Element)
+             IF (ParEnv % myPe  /=  Element % partIndex) CYCLE
+             DO i=1,N
+               j = Element % NodeIndexes(i)
+               IF ( ASSOCIATED( ZbSol )) THEN
+                  zb = ZbSolution(ZbPerm(j))
+               ELSE 
+                  IF (dimSheet==1) THEN  
+                     zb = Mesh % Nodes % y(j)
+                  ELSE
+                     zb = Mesh % Nodes % z(j)
+                  END IF 
+               END IF
+               !This is needed to force water pressure to be computed in
+               !ungrounded areas.
+               PwSolution(PwPerm(j)) = HydPot(HydPotPerm(j)) - gravity*WaterDensity*zb
+             END DO
+           END DO
 
            ! Loop over all nodes to update ThickSolution
            DO j = 1, Mesh % NumberOfNodes
@@ -2517,15 +2546,15 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER     :: GLfluxVals(:)
   REAL(KIND=dp)              :: x1,x2,y1,y2
   REAL(KIND=dp)              :: volFluxSheet, volFluxChannel, sheetDisMag
-  INTEGER, POINTER           :: gmPerm(:), channelPerm(:), sheetThickPerm(:), sheetDisPerm(:)
+  INTEGER, POINTER           :: gmPerm(:), channelPerm(:), sheetThickPerm(:),&
+                                sheetDisPerm(:)
   INTEGER, POINTER           :: GLfluxPerm(:)
-  INTEGER                    :: nn, ee, numNodes
+  INTEGER                    :: nn, ee, numNodes, i
 
   TYPE(Variable_t), POINTER  :: cglfVar, sglfVar
   REAL(KIND=dp), POINTER     :: cglfVals(:), sglfVals(:)
   REAL(KIND=dp)              :: EdgeVec(3),SDVec(3),SDVec1(3),SDVec2(3),EdgeSD
   INTEGER, POINTER           :: cglfPerm(:), sglfPerm(:)
-
 
   SolverName = "GlaDS_GLflux"
 

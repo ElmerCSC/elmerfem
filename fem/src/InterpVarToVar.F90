@@ -114,6 +114,7 @@ CONTAINS
     !------------------------------------------------------------------------------
 
     Debug = .FALSE.
+    !PRINT *, 'DebugIVTVR1: ',ParEnv % myPE
     Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     ALLOCATE( FoundNodes(NewMesh % NumberOfNodes),&
@@ -140,9 +141,12 @@ CONTAINS
     CALL InterpolateVarToVarReducedQ( OldMesh, NewMesh, HeightName, HeightDimensions, &
          FoundNodes, PointLocalDistance, OldNodeMask, NewNodeMask, &
          OldElemMask, Variables, GlobalEps, LocalEps, NumericalEps )
+    !PRINT *, 'DebugIVTVR2: ',ParEnv % myPE
     CALL MPI_BARRIER(ParEnv % ActiveComm, ierr)
+    !PRINT *, 'DebugIVTVR2.0: ',ParEnv % myPE
 
     IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
+    !PRINT *, 'DebugIVTVR2.1: ',ParEnv % myPE
 
     DO i=1,NewMesh % NumberOfNodes
       IF(.NOT. FoundNodes(i)) THEN
@@ -155,14 +159,17 @@ CONTAINS
       IF(Debug) PRINT *,ParEnv % MyPE,'Debug, point ',&
            i,' found with local dist: ',PointLocalDistance(i)
     END DO
+    !PRINT *, 'DebugIVTVR2.2: ',ParEnv % myPE
 
     !Sum up unfound nodes, and those where point wasn't exactly in element
     n = COUNT((.NOT. FoundNodes) .OR. (PointLocalDistance > 0.0_dp))
     dn = n
+    !PRINT *, 'DebugIVTVR2.3: ',ParEnv % myPE
     IF(Debug) THEN
        PRINT *, 'Partition ',ParEnv % MyPE,' could not find ',n,'points!'
     END IF
     CALL SParActiveSUM(dn,2)
+    !PRINT *, 'DebugIVTVR3: ',ParEnv % myPE
 
     !Special case: all found
     !----------------------
@@ -279,6 +286,7 @@ CONTAINS
        END DO
        DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
     END IF Sending
+    !PRINT *, 'DebugIVTVR4: ',ParEnv % myPE
 
     ! receive points from others:
     ! ----------------------------
@@ -303,6 +311,7 @@ CONTAINS
             1104, ELMER_COMM_WORLD, status, ierr )
     END DO
 
+    !PRINT *, 'DebugIVTVR5: ',ParEnv % myPE
     DO i=1,ParEnv % PEs
        IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
 
@@ -488,6 +497,7 @@ CONTAINS
        CALL ReleaseMesh(Nmesh)
        DEALLOCATE(foundnodes, SendLocalDistance, nMesh)
     END DO
+    !PRINT *, 'DebugIVTVR6: ',ParEnv % myPE
     DEALLOCATE(ProcRecv)
 
     ! Receive interpolated values:
@@ -615,6 +625,7 @@ CONTAINS
        DEALLOCATE(astore,vperm,RecvLocalDistance, BetterFound, ProcSend(proc+1) % perm)
 
     END DO
+    !PRINT *, 'DebugIVTVR7: ',ParEnv % myPE
     Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     DEALLOCATE(PointLocalDistance)
@@ -665,6 +676,7 @@ CONTAINS
     !========================================
 
     Debug = .FALSE.
+    !PRINT *, 'DebugIVTVRQ1: ',ParEnv % myPE
 
     !For hydromesh calving purposes
     IF(HeightName == 'temp residual') THEN
@@ -696,6 +708,7 @@ CONTAINS
        ! Which crashes on result output
        ! If inequality other way round, standard routine works fine
        IF(NewMesh % NumberOfNodes .NE.  OldMesh % NumberOfNodes .OR. NewMesh % MeshDim .NE. OldMesh % MeshDim) THEN
+         !PRINT *, 'DebugIVTVRQ2a: ',ParEnv % myPE
          !Special case for my calvinghydrointerp stuff
          PermVar => VariableGet( NewMesh % Variables, 'hydroweights', ThisOnly = .TRUE. )
          !On the assumption you'll have some velocity
@@ -713,6 +726,7 @@ CONTAINS
          NULLIFY(PermVar)
        ! This assumes that the mesh connectivity is the same...
        ELSE
+         !PRINT *, 'DebugIVTVRQ2b: ',ParEnv % myPE
          ALLOCATE( NewHeight(SIZE(OldHeight) ) )
          NewHeight = 0.0_dp
          ALLOCATE( NewPerm(SIZE(OldPerm) ) )
@@ -765,6 +779,7 @@ CONTAINS
     ElementNodes % x = 0.0_dp
     ElementNodes % y = 0.0_dp
     ElementNodes % z = 0.0_dp
+    !PRINT *, 'DebugIVTVRQ3: ',ParEnv % myPE
 
     !========================================
     !             Action
@@ -846,6 +861,7 @@ CONTAINS
           IF(eps_local > eps_local_limit) EXIT
 
        END DO
+       !PRINT *, 'DebugIVTVRQ4: ',ParEnv % myPE
 
        IF (.NOT.Found) THEN
           !CHANGE
@@ -853,6 +869,11 @@ CONTAINS
           !interpolating between ice mesh and larger footprint hydrological mesh
           IF(GMUnfound) THEN
             WorkVar => VariableGet(NewMesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+            IF(ASSOCIATED(WorkVar)) THEN
+              WorkVar % Values(WorkVar % Perm(i)) = -1.0
+            END IF
+            NULLIFY(WorkVar)
+            WorkVar => VariableGet(NewMesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
             IF(ASSOCIATED(WorkVar)) THEN
               WorkVar % Values(WorkVar % Perm(i)) = -1.0
             END IF
@@ -947,10 +968,12 @@ CONTAINS
        END IF
 
     END DO
+    !PRINT *, 'DebugIVTVRQ5: ',ParEnv % myPE
 
     DEALLOCATE( ElementNodes % x, ElementNodes % y, &
          ElementNodes % z, ElementValues )
 
+    !PRINT *, 'DebugIVTVRQ6: ',ParEnv % myPE
 
     !------------------------------------------------------------------------------
   END SUBROUTINE InterpolateVarToVarReducedQ

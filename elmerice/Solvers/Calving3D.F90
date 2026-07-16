@@ -60,7 +60,7 @@
         stride, MaxNN, Next, NodesPerLevel, LeftTgt, RightTgt, &
         county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
         WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
-        FrontLineCount, ShiftIdx, err
+        FrontLineCount, ShiftIdx, err, SaveParallelComm
    INTEGER, PARAMETER :: GeoUnit = 11
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
@@ -837,7 +837,9 @@
     ! Run Project Calving solver
     !----------------------------------------------------
     SaveParallelActive = ParEnv % Active(ParEnv % MyPE+1)
+    SaveParallelComm = ParEnv % ActiveComm
     CALL ParallelActive(.TRUE.)
+    ParEnv % ActiveComm = ELMER_COMM_WORLD
 
     Model % Solver => PCSolver
     CALL SingleSolver( Model, PCSolver, PCSolver % dt, .FALSE. )
@@ -1495,6 +1497,7 @@
 
        DEALLOCATE(PWorkLogical)
        CALL ParallelActive(SaveParallelActive)
+       ParEnv % ActiveComm = SaveParallelComm
 
        !Now, for any uncalved nodes, set heightdirich from current height
        DO i=1, Mesh % NumberOfNodes

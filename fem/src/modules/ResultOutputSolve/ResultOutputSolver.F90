@@ -108,7 +108,16 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  MyMesh => GetMesh()
+  IF ( GetLogical(Params,'CHP Hydro Mesh',Found) ) THEN
+    DO i=1,Model % NumberOfSolvers
+      IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN
+        MyMesh => Model % Solvers(i) % Mesh
+        EXIT
+      END IF
+    END DO
+  ELSE
+    MyMesh => GetMesh()
+  END IF
 
   IF( .NOT. SubroutineVisited ) THEN
     IF ( GetLogical(Params,'Show Variables',Found) ) THEN

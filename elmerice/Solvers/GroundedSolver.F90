@@ -305,27 +305,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
         END IF
      END DO
   END DO
-
-  ! Check connectivity of ungrounded regions to the front (previously GMvalid solver)
-  IF (CheckConn) THEN
-     SELECT CASE(ConnectivityMode)
-
-     CASE(INLAND)
-        ConnMaskVar % Values = 1.0_dp
-        CALL BoundaryConn (INLAND)
-
-     CASE(FRONT)
-        ConnMaskVar % Values = 1.0_dp
-        CALL BoundaryConn (FRONT)
-
-     CASE(COMBINED)
-        ConnMaskVar % Values = 1.0_dp
-        CALL BoundaryConn (INLAND)
-        CALL BoundaryConn (FRONT)
-
-     END SELECT
-  END IF
-  
+ 
   !--------------------------------------------------------------
   ! Grounding line loop to label grounded points at grounding Line.
   !--------------------------------------------------------------
@@ -361,25 +341,25 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
         END DO
      END IF
 
-     IF (CheckConn) THEN
-        MSum = 0
-        ZSum = 0
-        DO ii = 1, en
-           Nn = ConnMaskPerm(Element % NodeIndexes(ii))
-           IF (Nn==0) CYCLE
-           MSum = MSum + ConnMaskVar % Values(Nn)
-           IF (ABS(ConnMaskVar % Values(Nn))<AEPS) ZSum = ZSum + 1.0_dp
-        END DO
-        IF (MSum + ZSum < en) THEN
-           DO ii = 1, en
-              Nn = ConnMaskPerm(Element % NodeIndexes(ii))
-              IF (Nn==0) CYCLE
-              IF (ABS(ConnMaskVar % Values(Nn)-1.0_dp)<AEPS) THEN
-                 ConnMaskVar % Values(Nn) = 0.0_dp
-              END IF
-           END DO
-        END IF
-     END IF
+     !IF (CheckConn) THEN
+     !   MSum = 0
+     !   ZSum = 0
+     !   DO ii = 1, en
+     !      Nn = ConnMaskPerm(Element % NodeIndexes(ii))
+     !      IF (Nn==0) CYCLE
+     !      MSum = MSum + ConnMaskVar % Values(Nn)
+     !      IF (ABS(ConnMaskVar % Values(Nn))<AEPS) ZSum = ZSum + 1.0_dp
+     !   END DO
+     !   IF (MSum + ZSum < en) THEN
+     !      DO ii = 1, en
+     !         Nn = ConnMaskPerm(Element % NodeIndexes(ii))
+     !         IF (Nn==0) CYCLE
+     !         IF (ABS(ConnMaskVar % Values(Nn)-1.0_dp)<AEPS) THEN
+     !            ConnMaskVar % Values(Nn) = 0.0_dp
+     !         END IF
+     !      END DO
+     !   END IF
+     !END IF
 
      !To label all basal frontal nodes not already ungrounded or on GL as on GL -
      !by definition, they're the last grounded node. Also necessary to make
@@ -394,6 +374,26 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
        END DO
      END IF
   END DO
+
+  ! Check connectivity of ungrounded regions to the front (previously GMvalid solver)
+  IF (CheckConn) THEN
+     SELECT CASE(ConnectivityMode)
+
+     CASE(INLAND)
+        ConnMaskVar % Values = VariableValues !1.0_dp
+        CALL BoundaryConn (INLAND)
+
+     CASE(FRONT)
+        ConnMaskVar % Values = VariableValues !1.0_dp
+        CALL BoundaryConn (FRONT)
+
+     CASE(COMBINED)
+        ConnMaskVar % Values = VariableValues !1.0_dp
+        CALL BoundaryConn (INLAND)
+        CALL BoundaryConn (FRONT)
+
+     END SELECT
+  END IF
   
   IF (CheckConn) THEN
      IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, ConnMaskVar % Values, OPER_MIN )
@@ -472,7 +472,7 @@ CONTAINS
        ScaleFactor = -1.0_dp
     CASE(FRONT)
        FrontMaskName = "Calving Front Mask"
-       Threshold = -0.5_dp
+       Threshold = 0.5_dp
        AboveThreshold = .FALSE.
        ScaleFactor = 1.0_dp
     END SELECT
@@ -592,9 +592,10 @@ CONTAINS
     CurrentGroup => FloatGroups
     DO WHILE(ASSOCIATED(CurrentGroup))
        IF(CurrentGroup % FrontConnected) THEN
-          DO ii=1,CurrentGroup % NumberOfNodes
-             ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = -1.0_dp
-          END DO
+          !DO ii=1,CurrentGroup % NumberOfNodes
+          !   ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = -1.0_dp
+          !END DO
+          CONTINUE
        ELSE
           DO ii=1,CurrentGroup % NumberOfNodes
              ConnMaskVar % Values(ConnMaskVar % Perm(CurrentGroup % NodeNumbers(ii))) = 1.0_dp
