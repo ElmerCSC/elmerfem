@@ -141,7 +141,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
     DefaultVariableAdd, GetLogical, GetString, GetConstReal, &
     ListGetString, ListGetConstReal, &
-    GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements
+    GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements, &
+    GetActiveElement
   USE GeneralUtils, ONLY: I2S
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp, Element_t
   USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
@@ -180,6 +181,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
   TYPE(Variable_t), POINTER :: t_oceVar, sal_oceVar, bmb_fluxVar
+  TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
   INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
@@ -498,8 +500,12 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
       END DO
       ! Write total liquid ice sheet flux to log
-
-      local_flux_sum = SUM(liquid_ice_sheet_flux_field(:,1))
+      local_flux_sum = 0.0_dp
+      DO t = 1, GetNOFActive(Solver)
+        Element => GetActiveElement(t, Solver)
+        IF (ParEnv % myPe /= Element % partIndex) CYCLE
+        local_flux_sum = local_flux_sum + liquid_ice_sheet_flux_field(t,1)
+      END DO
       CALL MPI_Allreduce(local_flux_sum, global_flux_sum, 1, MPI_DOUBLE_PRECISION, &
                          MPI_SUM, ParEnv % ActiveComm, ierr)
       WRITE(Message,'(A,F15.3)') 'Sum of liquid_ice_sheet_flux_field: ', global_flux_sum
