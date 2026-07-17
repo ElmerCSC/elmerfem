@@ -112,7 +112,7 @@
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
                   Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
                   RecheckNewton=.FALSE., ImplicitFrictionDirection=.FALSE., &
-                  LegacyBubbles=.FALSE.
+                  LegacyBubbles=.FALSE.,FirstTime=.TRUE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
@@ -150,7 +150,7 @@
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
        PseudoPressureExists, Drag, PotentialField, PotentialCoefficient, &
-       ComputeFree, Indexes
+       ComputeFree, Indexes, FirstTime
 
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
 !------------------------------------------------------------------------------

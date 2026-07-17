@@ -720,7 +720,7 @@ CONTAINS
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
      INTEGER :: i, j, k, k2, l, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id, &
-         mat_id
+         mat_id, TargetMeshIndex
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
          FirstOrderElements, InheritDG, Hit, Stat, &
@@ -729,26 +729,38 @@ CONTAINS
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
-     CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
-     
-     
+     CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef, TargetMesh
+
+
      EdgeDOFs => NULL()
      CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, Caller )
      FaceDOFs => NULL()
-     CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, Caller )     
-    
+     CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, Caller )
+
      DGIndex = 0
 
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
      ELSE
-       InDofs = 0
+       InDofs = -1
        InDofs(:,1) = 1
-       InDofs(:,4) = -1       
+       InDofs(:,4) = -1
        DO s=1,Model % NumberOfSolvers
+         !Need to only look at solvers that are going to run on this mesh
+         TargetMesh = ListGetString(Model % Solvers(s) % Values, 'Mesh', GotIt)
+	 TargetMeshIndex = INDEX(Model % Solvers(s) % Mesh % Name, " ")
          DO i=1,6
            DO j=1,10
-             inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
+             IF(GotIt) THEN
+               !This assumes your meshes all start '. '
+               IF (LEN_TRIM(Model % Solvers(s) % Mesh % Name) > 0) THEN
+                 IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(TargetMeshIndex:))) THEN
+                   CYCLE
+                 END IF
+               END IF
+             ELSE
+               inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
+             END IF
            END DO
          END DO
        END DO

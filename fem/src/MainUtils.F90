@@ -5603,6 +5603,8 @@ END BLOCK
        CALL Info(Caller,'Reverting back to current coordinates',Level=12)
        Mesh % Nodes => Mesh % NodesMapped
      END IF
+
+
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------

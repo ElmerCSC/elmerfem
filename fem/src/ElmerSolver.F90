@@ -3589,7 +3589,7 @@ CONTAINS
 
                 IF( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                 IF( .NOT. ASSOCIATED( Solver % Variable  % Values ) ) CYCLE
-                CALL Info(Caller,'Allocating adaptive work space for: '//I2S(i),Level=12)
+                CALL Info(Caller,'Allocating adaptive work space for: '//I2S(i),Level=7)
                 j = SIZE( Solver % Variable % Values )
                 ALLOCATE( AdaptVars(i) % Var % Values( j ), STAT=AllocStat )
                 IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error AdaptVars Values')
@@ -3614,7 +3614,7 @@ CONTAINS
                   ! If the next timestep will not get us home but the next one would
                   ! then split the timestep equally into two parts.
                   IF( dt - CumTime - ddt > 1.0d-12 ) THEN
-                    CALL Info(Caller,'Splitted timestep into two equal parts',Level=12)
+                    CALL Info(Caller,'Splitted timestep into two equal parts',Level=7)
                     ddt = MIN( ddt, ( dt - CumTime ) / 2.0_dp )
                   END IF
                 END IF
@@ -3717,7 +3717,9 @@ CONTAINS
                  StepControl = -1
                END IF
 
-               WRITE(*,'(a,3e20.12)') 'Adaptive(cum,ddt,err): ', cumtime, ddt, maxerr
+               WRITE(Message,'(a,3e20.12)') 'Adaptive(cum,ddt,err): ', cumtime, ddt, maxerr
+               CALL Info(Caller,Message,Level=7)
+
              END DO
             sSize(1) = dt
             sTime(1) = s + dt
