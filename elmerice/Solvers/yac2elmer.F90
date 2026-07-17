@@ -150,6 +150,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
                                  runoff_field, surface_height_field
   USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_post_field, &
                                  sal_oce_post_field, liquid_ice_sheet_flux_field
+  USE MPI
 
   IMPLICIT NONE
 
@@ -167,9 +168,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
   CHARACTER(LEN=1024) ::  config_file, grid_crs, proj_type
   CHARACTER(LEN=1024) ::  coupling_timestep
-  REAL(KIND=dp) :: coupling_timestep_in_years
+  REAL(KIND=dp) :: coupling_timestep_in_years, local_flux_sum, global_flux_sum
   CHARACTER(LEN=1024) ::  yac_calendar, yac_start_time, yac_end_time
-  INTEGER :: i, t
+  INTEGER :: i, t, ierr
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
   REAL(KIND=dp) :: central_meridian, latitude_of_origin
@@ -497,7 +498,11 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
         liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
       END DO
       ! Write total liquid ice sheet flux to log
-      WRITE(Message,'(A,F15.3)') 'Sum of liquid_ice_sheet_flux_field: ', SUM(liquid_ice_sheet_flux_field(:,1))
+
+      local_flux_sum = SUM(liquid_ice_sheet_flux_field(:,1))
+      CALL MPI_Allreduce(local_flux_sum, global_flux_sum, 1, MPI_DOUBLE_PRECISION, &
+                         MPI_SUM, ParEnv % ActiveComm, ierr)
+      WRITE(Message,'(A,F15.3)') 'Sum of liquid_ice_sheet_flux_field: ', global_flux_sum
       CALL INFO(SolverName, Message, Level=3)
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)
