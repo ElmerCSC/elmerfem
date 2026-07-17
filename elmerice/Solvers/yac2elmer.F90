@@ -174,7 +174,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   INTEGER :: i, t, ierr
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
   INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
-  REAL(KIND=dp) :: central_meridian, latitude_of_origin
+  REAL(KIND=dp) :: central_meridian, latitude_of_origin, seconds_per_year
   REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
   CHARACTER(LEN=16) :: expected_central_meridian_str, expected_latitude_of_origin_str
   LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
@@ -354,6 +354,9 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   ! Do consistency checks
   central_meridian = ListGetConstReal(GetSimulation(), 'central_meridian', UnFoundFatal=.True.)
   latitude_of_origin = ListGetConstReal(GetSimulation(), 'latitude_of_origin', UnFoundFatal=.True.)
+  seconds_per_year = GetConstReal( Model % Constants, 'seconds_per_year', Found )
+  IF (.NOT. Found) CALL FATAL(SolverName, &
+       'seconds_per_year not found in Constants; should be defined in the Constants section of the sif file')
 
   ! Format expected values as strings
   WRITE(expected_central_meridian_str, '(F6.1)') expected_central_meridian
@@ -482,7 +485,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! Initialize bmb_flux_field for first time step
       bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
       DO t=1, GetNOFActive(Solver)
-        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
+        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
       END DO
     END IF
 
@@ -497,7 +500,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       ! Update bmb_flux_field before sending to ICON
       bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
       DO t=1, GetNOFActive(Solver)
-        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t))
+        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
       END DO
       ! Write total liquid ice sheet flux to log
       local_flux_sum = 0.0_dp
@@ -508,7 +511,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       END DO
       CALL MPI_Allreduce(local_flux_sum, global_flux_sum, 1, MPI_DOUBLE_PRECISION, &
                          MPI_SUM, ParEnv % ActiveComm, ierr)
-      WRITE(Message,'(A,F15.3)') 'Sum of liquid_ice_sheet_flux_field: ', global_flux_sum
+      WRITE(Message,'(A,F15.3,A)') 'Sum of liquid_ice_sheet_flux_field: ', global_flux_sum, ' m^3/s'
       CALL INFO(SolverName, Message, Level=3)
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)
