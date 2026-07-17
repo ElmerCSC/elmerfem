@@ -4415,7 +4415,7 @@ SUBROUTINE SParActiveSUM(tsum, oper)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
             MPI_SUM, comm, ierr )
      tsum = tsum / nact
-  END SELECT
+   END SELECT
 !*********************************************************************
 END SUBROUTINE SParActiveSUM
 !*********************************************************************

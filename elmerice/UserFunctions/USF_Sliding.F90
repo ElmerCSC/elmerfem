@@ -163,6 +163,7 @@ FUNCTION Sliding_Weertman (Model, nodenumber, x) RESULT(Bdrag)
   
   ut = MAX(ut,ut0)
   Bdrag = MIN(C * ut**(m-1.0),1.0e20)
+
 END FUNCTION Sliding_Weertman
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -461,6 +462,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   REAL(KIND=dp), POINTER      :: NormalValues(:), FlowValues(:), HValues(:), WeertCoefValues(:)
   TYPE(Variable_t), POINTER   :: coefVar, WeertCoefVar
   REAL(KIND=dp), POINTER      :: coefValues(:)
+  REAL(KIND=dp)               :: EffectivePressure
   INTEGER, POINTER            :: coefPerm(:)
   INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:), WeertCoefPerm(:)
   INTEGER          :: DIM, i, body_id, other_body_id, material_id, elementNbNodes,elementNodeNumber
@@ -707,135 +709,175 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 
   Bdrag = C * ut**(m-1.0) * Zab**q
   
-CONTAINS
-  
-  ! Effective Pressure is overburden pressure (or, in our case, normal 
-  ! stress is more accurate) minus basal water pressure (or "external 
-  ! pressure").
-  !
-  ! Pre-requisites:
-  ! "External Pressure" needs to be defined in the relevant boundary 
-  ! condition.
-  ! The  "ComputeNormal" and "ComputeDevStressNS" solvers need to be 
-  ! active.
-  FUNCTION EffectivePressure (Model, nodenumber, y) RESULT(ep)
-    
-    USE types
-    USE CoordinateSystems
-    USE SolverUtils
-    USE ElementDescription
-    USE DefUtils
-    IMPLICIT NONE
-    
-    TYPE(Model_t) :: Model
-    REAL (KIND=dp) :: y , x              
-    INTEGER :: nodenumber
-    
-    REAL (KIND=dp) :: ep
-    
-    TYPE(ValueList_t), POINTER :: BC, Material
-    TYPE(Variable_t), POINTER :: TimeVar, StressVariable, NormalVar, FlowVariable
-    TYPE(Element_t), POINTER ::  BoundaryElement, ParentElement
-    REAL (KIND=dp), POINTER :: StressValues(:), NormalValues(:), FlowValues(:)
-    INTEGER, POINTER :: StressPerm(:), NormalPerm(:), FlowPerm(:)
-    INTEGER :: DIM, i, j, n, other_body_id, Ind(3,3)
-    REAL (KIND=dp) :: Pext 
-    REAL (KIND=dp) :: Snn, ut, un, t
-    LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy
-    REAL (KIND=dp), ALLOCATABLE :: Sig(:,:), normal(:), velo(:), Sn(:), AuxReal(:) 
-    CHARACTER(LEN=MAX_NAME_LEN) :: USF_name
-    
-    SAVE :: Sig, normal, velo, DIM, Ind, Sn, FirstTime
-    
-    USF_name = "EffectivePressure"
-
-    IF (FirstTime) THEN
-       FirstTime = .FALSE.  
-       DIM = CoordinateSystemDimension()
-       IF ((DIM == 2).OR.(DIM == 3))  THEN
-          ALLOCATE(Sig(DIM,DIM),normal(DIM),Sn(DIM))
-       ELSE
-          CALL FATAL(USF_name, 'Bad dimension of the problem')
-       END IF
-       DO i=1, 3
-          Ind(i,i) = i
-       END DO
-       Ind(1,2) = 4
-       Ind(2,1) = 4
-       Ind(2,3) = 5
-       Ind(3,2) = 5
-       Ind(3,1) = 6
-       Ind(1,3) = 6
-    END IF
-    
-    ! Check we have a boundary condition...
-    BoundaryElement => Model % CurrentElement
-    BC => GetBC(BoundaryElement)  
-    IF (.NOT.ASSOCIATED(BC))THEN
-       CALL Fatal(USF_name, 'No BC Found')
-    END IF
-    
-    n = GetElementNOFNodes()
-   ALLOCATE (auxReal(n))
-    
-    ! Get the external (probably water) pressure
-    ! Use the convention Pext > 0 => Compression
-    auxReal(1:n) = GetReal( BC, 'External Pressure', GotIt )
-    DO i=1, n
-       IF (NodeNumber== BoundaryElement % NodeIndexes( i )) EXIT 
-    END DO
-    Pext = auxReal(i)
-    DEALLOCATE(auxReal)
-    
-    ! Get the variable to compute the normal
-    NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
-    NormalPerm => NormalVar % Perm
-    NormalValues => NormalVar % Values
-    
-    ! Get the stress variable
-    StressVariable => VariableGet( Model % Variables, 'Stress',UnFoundFatal=UnFoundFatal)
-    StressPerm    => StressVariable % Perm
-    StressValues  => StressVariable % Values
-    
-    ! Cauchy or deviatoric stresses ?
-    ! First, get parent element
-    other_body_id = BoundaryElement % BoundaryInfo % outbody
-    IF (other_body_id < 1) THEN ! only one body in calculation
-       ParentElement => BoundaryElement % BoundaryInfo % Right
-       IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
-    ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
-       ParentElement => BoundaryElement % BoundaryInfo % Right
-       IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
-    END IF
-    Material => GetMaterial(ParentElement)
-    Cauchy = ListGetLogical( Material , 'Cauchy', Gotit )
-  
-    ! stress tensor
-    DO i=1, DIM
-       DO j= 1, DIM
-          Sig(i,j) =  &
-               StressValues( 2*DIM *(StressPerm(Nodenumber)-1) + Ind(i,j) )
-       END DO
-       IF (.NOT.Cauchy) THEN 
-          Sig(i,i) = Sig(i,i) - FlowValues((DIM+1)*FlowPerm(Nodenumber))
-       END IF
-    END DO
-    
-    ! normal stress
-    DO i=1, DIM
-       normal(i) = -NormalValues(DIM*(NormalPerm(Nodenumber)-1) + i)      
-    END DO
-    DO i=1, DIM
-       Sn(i) = SUM(Sig(i,1:DIM)*normal(1:DIM)) 
-    END DO
-    Snn = SUM( Sn(1:DIM) * normal(1:DIM) ) 
-    
-    ! effective pressure
-    ep = -Snn -Pext
-      
-  END FUNCTION EffectivePressure
-
 END FUNCTION Sliding_Budd
+
+! ******************************************************************************
+! *
+! *  Authors: Rupert Gladstone
+! *  Email:   RupertGladstone1972@gmail.com
+! *
+! *  Original Date: Probably 2015; updated March 2026.
+! *****************************************************************************
+!
+! Calculates effective pressure on a node.
+! This function is designed for use with Stokes flow, not for hydrostatic
+! approximations.
+! 
+! Effective Pressure is overburden pressure (or, in our case, normal 
+! stress is more accurate) minus basal water pressure (or "external 
+! pressure").
+! This routine calculates the normal stress, n · σ · n, at the node,
+! where σ is the Cauchy Stress and n is the normal vector.
+!
+! The third argument is a dummy argument, present in case this function should
+! be called directly in an elmer .sif. The original intent is that this
+! function be called by code calculation sliding paramterisations and or
+! grounding line parameterisations.
+!
+! *** Pre-requisites ***
+!
+! "External Pressure" needs to be defined in the relevant boundary 
+! condition. Use the convention "External Pressure" < 0 => Compression
+!
+! The Stokes flow solution must be available
+!
+! The  "ComputeNormal" and "ComputeDevStressNS" solvers need to be 
+! active, with main variables "Normal Vector" and "Stress" respectively.
+!
+FUNCTION EffectivePressure (Model, nodenumber, y) RESULT(ep)
+  
+  USE types
+  USE CoordinateSystems
+  USE SolverUtils
+  USE ElementDescription
+  USE DefUtils
+
+  IMPLICIT NONE
+  
+  TYPE(Model_t) :: Model
+  REAL (KIND=dp) :: y              
+  INTEGER :: nodenumber
+  
+  REAL (KIND=dp) :: ep
+
+  TYPE(ValueList_t), POINTER :: BC, Material
+  TYPE(Variable_t), POINTER :: StressVariable, NormalVar, FlowVariable
+  TYPE(Element_t), POINTER ::  BoundaryElement, ParentElement
+  REAL (KIND=dp), POINTER :: StressValues(:), NormalValues(:), FlowValues(:)
+  INTEGER, POINTER :: StressPerm(:), NormalPerm(:), FlowPerm(:)
+  INTEGER          :: DIM, i, j, n, other_body_id, Ind(3,3)
+  REAL (KIND=dp)   :: Pext 
+  REAL (KIND=dp)   :: Snn
+  LOGICAL          :: UnFoundFatal=.TRUE.
+  LOGICAL          :: GotIt, FirstTime = .TRUE., Cauchy
+  REAL (KIND=dp), ALLOCATABLE :: Sig(:,:), normal(:), Sn(:), AuxReal(:) 
+  CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName
+  
+  SAVE :: Sig, normal, DIM, Ind, Sn, FirstTime, FlowSolverName
+    
+  USF_name = "EffectivePressure"
+
+  First: IF (FirstTime) THEN
+    FirstTime = .FALSE.  
+    WRITE( Message, * ) 'Calculating Effective Pressure'
+    CALL INFO(USF_Name, Message, level=5)
+
+    DIM = CoordinateSystemDimension()
+    IF ((DIM == 2).OR.(DIM == 3))  THEN
+      ALLOCATE(Sig(DIM,DIM),normal(DIM),Sn(DIM))
+    ELSE
+      CALL FATAL(USF_name, 'Bad dimension of the problem')
+    END IF
+    DO i=1, 3
+      Ind(i,i) = i
+    END DO
+    Ind(1,2) = 4
+    Ind(2,1) = 4
+    Ind(2,3) = 5
+    Ind(3,2) = 5
+    Ind(3,1) = 6
+    Ind(1,3) = 6
+!    FlowSolverName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt )    
+!    IF (.NOT.Gotit) FlowSolverName = 'Flow Solution'
+    FlowSolverName = 'Flow Solution'
+  END IF First
+    
+  ! Check we have a boundary condition...
+  BoundaryElement => Model % CurrentElement
+  BC => GetBC(BoundaryElement)  
+  IF (.NOT.ASSOCIATED(BC))THEN
+    CALL Fatal(USF_name, 'No BC Found')
+  END IF
+  
+  n = GetElementNOFNodes()
+  ALLOCATE (auxReal(n))
+  
+  ! Get the external (probably water) pressure
+  auxReal(1:n) = GetReal( BC, 'External Pressure', GotIt )
+  DO i=1, n
+    IF (NodeNumber== BoundaryElement % NodeIndexes( i )) EXIT 
+  END DO
+  Pext = -auxReal(i)
+  DEALLOCATE(auxReal)
+  
+  ! Get the variable to compute the normal
+  NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
+  NormalPerm => NormalVar % Perm
+  NormalValues => NormalVar % Values
+  
+  ! Get the stress variable
+  StressVariable => VariableGet( Model % Variables, 'Stress',UnFoundFatal=UnFoundFatal)
+  StressPerm    => StressVariable % Perm
+  StressValues  => StressVariable % Values
+
+  ! Get the flow solution
+  FlowVariable => VariableGet( Model % Variables, FlowSolverName,UnFoundFatal=UnFoundFatal)
+  FlowPerm    => FlowVariable % Perm
+  FlowValues  => FlowVariable % Values
+  
+  ! Cauchy or deviatoric stresses ?
+  ! First, get parent element
+  other_body_id = BoundaryElement % BoundaryInfo % outbody
+  IF (other_body_id < 1) THEN ! only one body in calculation
+    ParentElement => BoundaryElement % BoundaryInfo % Right
+    IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
+    ParentElement => BoundaryElement % BoundaryInfo % Right
+    IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
+  END IF
+  Material => GetMaterial(ParentElement)
+  Cauchy = ListGetLogical( Material , 'Cauchy', Gotit )
+  IF (.NOT.GotIt) Cauchy = .FALSE.
+  
+  ! stress tensor
+  DO i=1, DIM
+    DO j= 1, DIM
+      Sig(i,j) =  &
+          StressValues( 2*DIM *(StressPerm(Nodenumber)-1) + Ind(i,j) )
+    END DO
+    IF (.NOT.Cauchy) THEN 
+      Sig(i,i) = Sig(i,i) - FlowValues((DIM+1)*FlowPerm(Nodenumber))
+    END IF
+  END DO
+    
+  ! normal stress
+  DO i=1, DIM
+    normal(i) = -NormalValues(DIM*(NormalPerm(Nodenumber)-1) + i)      
+  END DO
+  DO i=1, DIM
+    Sn(i) = SUM(Sig(i,1:DIM)*normal(1:DIM)) 
+  END DO
+  Snn = SUM( Sn(1:DIM) * normal(1:DIM) ) 
+  
+  ! effective pressure
+  ep = -Snn -Pext
+
+  NULLIFY(BC, Material, StressVariable, NormalVar, FlowVariable)
+  NULLIFY(BoundaryElement, ParentElement, StressValues, NormalValues)
+  NULLIFY(StressPerm, NormalPerm, FlowPerm, FlowValues)
+  
+END FUNCTION EffectivePressure
+
 
 
 ! ******************************************************************************

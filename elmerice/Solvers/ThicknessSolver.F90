@@ -711,10 +711,15 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        INTEGER       :: i,j,t,p,q, n,FIPcount
        REAL(KIND=dp) :: smbE, bmbE, area, MinH
        REAL(KIND=dp) :: smbAtIP, bmbAtIP, GMatIP, rho, rhow, hh, sealevel,FFI
+       TYPE(ValueList_t), POINTER  :: Constants
+       CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
        !------------------------------------------------------------------------------
        
        IF (SEM) THEN
-          GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+          Constants => GetConstants()
+          MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')
+          GMSol => VariableGet( CurrentModel % Variables,MaskName,UnFoundFatal=.TRUE. )
+!          GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
           CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
           PartlyGroundedElement=(ANY(NodalGM(1:nCoord) >= 0._dp) .AND. ANY(NodalGM(1:nCoord) < 0._dp))
           IF (PartlyGroundedElement) THEN
@@ -796,7 +801,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        !      Numerical integration:
        !      ----------------------
        IF (SEM) THEN
-         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+         GMSol => VariableGet( CurrentModel % Variables,MaskName,UnFoundFatal=.TRUE. )
+!         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
          CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
          CALL GetLocalSolution( NodalThick,UElement=Element,UVariable=Solver % Variable)
          PartlyGroundedElement=(ANY(NodalGM(1:nCoord) >= 0._dp) .AND. ANY(NodalGM(1:nCoord) < 0._dp))
