@@ -401,11 +401,28 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Windows" AND CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
   # Collect list of dependent DLLs using bundledlls
   # This assumes that ElmerFEM is built using MSYS2.
   FIND_PROGRAM(MSYS2_BASH NAMES bash REQUIRED)
-  ADD_CUSTOM_COMMAND(
-    TARGET elmersolver POST_BUILD
+  ADD_CUSTOM_TARGET(elmersolver_bundle ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/bundle/bin
-    COMMAND ${MSYS2_BASH} -lc "${CMAKE_CURRENT_SOURCE_DIR}/../../contrib/msys2-bundledlls/bundledlls $<TARGET_FILE:elmersolver> ${CMAKE_BINARY_DIR}/bundle/bin"
+    COMMAND ${MSYS2_BASH} -lc
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../contrib/msys2-bundledlls/bundledlls \
+      $<TARGET_FILE:elmersolver> ${CMAKE_BINARY_DIR}/bundle/bin"
   )
+
+  ADD_DEPENDENCIES(elmersolver_bundle elmersolver)
+
+  IF(NOT EXTERNAL_ARPACK)
+    ADD_CUSTOM_COMMAND(
+      TARGET elmersolver_bundle POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/bundle/bin/libarpack.dll
+    )
+  ENDIF()
+
+  IF(NOT EXTERNAL_PARPACK)
+    ADD_CUSTOM_COMMAND(
+      TARGET elmersolver_bundle POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/bundle/bin/libparpack.dll
+    )
+  ENDIF()
 
   INSTALL(DIRECTORY ${CMAKE_BINARY_DIR}/bundle/bin/
     DESTINATION "bin"
