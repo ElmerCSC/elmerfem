@@ -15,6 +15,7 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
 		  char *prefix,int keeporphans,int dim,int info);
 int LoadGeoInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
 int LoadFvcomMesh(struct FemType *data,struct BoundaryType *bound,char *filename,int info);
+int LoadLaddieMesh(struct FemType *data,struct BoundaryType *bound,char *filename,int info);
 int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
 int LoadCGsimMesh(struct FemType *data,char *prefix,int info);
 int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);

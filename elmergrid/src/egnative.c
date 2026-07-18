@@ -62,7 +62,7 @@ static char *ioptr;
 
 int matcactive=FALSE, iodebug=FALSE;
 
-#define MAXINMETHODS 21
+#define MAXINMETHODS 22
 const char *InMethods[] = {
   /*0*/ "EG",
   /*1*/ "ELMERGRID",
@@ -86,6 +86,7 @@ const char *InMethods[] = {
   /*19*/ "GEO",
   /*20*/ "FLUX2D",
   /*21*/ "FLUX3D",
+  /*22*/ "LADDIE",
 };
 
 
@@ -133,6 +134,7 @@ void Instructions()
   printf("14) .msh      : Gmsh mesh format\n");
   printf("15) .ep.i     : Partitioned ElmerPost format\n");
   printf("16) .2dm      : 2D triangular FVCOM format\n");
+  printf("22) .nc       : UPSY/LADDIE mesh NetCDF format\n");
 #if 0
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");

@@ -39,6 +39,10 @@
 #include "egmesh.h"
 #include "egconvert.h"
 
+#ifdef HAVE_NETCDF
+#include <netcdf.h>
+#endif
+
 #define GETLINE (ioptr=fgets(line,MAXLINESIZE,in))
 #define GETLONGLINE (ioptr=fgets(longline,LONGLINESIZE,in))
 
@@ -5794,6 +5798,204 @@ omstart:
   if(info) printf("Successfully read the mesh from the FVCOM file!\n");
 
   return(0);
+}
+
+
+int LoadLaddieMesh(struct FemType *data,struct BoundaryType *bound,
+		   char *filename,int info)
+/* This procedure reads a mesh in the UPSY/LADDIE mesh NetCDF format
+   (the same format LADDIE itself reads/writes as e.g. laddie_output_00001.nc).
+
+   Boundary handling is deliberately generic: UPSY only tags mesh boundary
+   vertices/edges/triangles with a compass-direction bounding-box side (values
+   0-8, 0 = interior). There is no finer semantic boundary taxonomy in UPSY, so
+   every distinct nonzero tag actually present in this particular mesh is
+   remapped to a sequential Elmer boundary id (1, 2, 3, ...), with no gaps.
+   Elmer's own BC syntax can combine several of these mesh boundary ids into a
+   single named condition at run time, so no further merging is needed here.
+   */
+{
+#ifndef HAVE_NETCDF
+  printf("LoadLaddieMesh: ElmerGrid was not compiled with NetCDF support!\n");
+  return(1);
+#else
+  int ncid, dimid_vi, dimid_ti, dimid_ei;
+  size_t nV, nT, nE;
+  int varid_V, varid_Tri, varid_EBI, varid_EV;
+  double *V = NULL;
+  int *Tri = NULL, *EBI = NULL, *EV = NULL;
+  int i, j, ti, ei, offset;
+
+  if(info) printf("Loading mesh in UPSY/LADDIE NetCDF format from file %s\n",filename);
+
+  if(nc_open(filename, NC_NOWRITE, &ncid) != NC_NOERR) {
+    printf("LoadLaddieMesh: opening file %s failed!\n",filename);
+    return(1);
+  }
+
+  if(nc_inq_dimid(ncid,"vi",&dimid_vi) != NC_NOERR ||
+     nc_inq_dimid(ncid,"ti",&dimid_ti) != NC_NOERR ||
+     nc_inq_dimid(ncid,"ei",&dimid_ei) != NC_NOERR) {
+    printf("LoadLaddieMesh: file %s is missing the expected vi/ti/ei dimensions!\n",filename);
+    nc_close(ncid);
+    return(1);
+  }
+  nc_inq_dimlen(ncid,dimid_vi,&nV);
+  nc_inq_dimlen(ncid,dimid_ti,&nT);
+  nc_inq_dimlen(ncid,dimid_ei,&nE);
+
+  if(info) printf("LoadLaddieMesh: mesh has %d vertices, %d triangles, %d edges\n",
+		   (int)nV,(int)nT,(int)nE);
+
+  data->dim = 2;
+  data->maxnodes = 3;
+  data->noknots = (int)nV;
+  data->noelements = (int)nT;
+
+  InitializeKnots(data);
+  AllocateKnots(data);
+
+  V   = (double*)malloc(sizeof(double)*2*nV);
+  Tri = (int*)malloc(sizeof(int)*3*nT);
+  EBI = (int*)malloc(sizeof(int)*nE);
+  EV  = (int*)malloc(sizeof(int)*4*nE);
+
+  if(nc_inq_varid(ncid,"V",&varid_V) != NC_NOERR ||
+     nc_inq_varid(ncid,"Tri",&varid_Tri) != NC_NOERR ||
+     nc_inq_varid(ncid,"EBI",&varid_EBI) != NC_NOERR ||
+     nc_inq_varid(ncid,"EV",&varid_EV) != NC_NOERR) {
+    printf("LoadLaddieMesh: file %s is missing one of the expected V/Tri/EBI/EV variables!\n",filename);
+    nc_close(ncid);
+    free(V); free(Tri); free(EBI); free(EV);
+    return(1);
+  }
+  nc_get_var_double(ncid,varid_V,V);
+  nc_get_var_int(ncid,varid_Tri,Tri);
+  nc_get_var_int(ncid,varid_EBI,EBI);
+  nc_get_var_int(ncid,varid_EV,EV);
+
+  nc_close(ncid);
+
+  /* V is stored file-native (C order) as (two,vi): V[0*nV+i]=x, V[1*nV+i]=y */
+  for(i=1;i<=data->noknots;i++) {
+    data->x[i] = V[0*nV + (i-1)];
+    data->y[i] = V[1*nV + (i-1)];
+    data->z[i] = 0.0;
+  }
+  free(V);
+
+  /* Tri is stored file-native as (three,ti). Values are UPSY's own vertex
+     numbers, which are 1-based (Fortran-native) like Elmer's own numbering,
+     so normally no offset is needed. Auto-detect 0-based indexing anyway,
+     the same defensive way LoadTriangleInput does. */
+  {
+    int minidx = data->noknots, maxidx = 0, idx;
+    for(ti=0; ti<data->noelements; ti++)
+      for(j=0;j<3;j++) {
+	idx = Tri[j*nT + ti];
+	if(idx < minidx) minidx = idx;
+	if(idx > maxidx) maxidx = idx;
+      }
+    offset = (minidx == 0) ? 1 : 0;
+    if(info) printf("LoadLaddieMesh: triangle node index range [%d %d]\n",minidx,maxidx);
+    if(info && offset) printf("LoadLaddieMesh: detected 0-based triangle indexing, applying offset\n");
+  }
+
+  for(ti=1; ti<=data->noelements; ti++) {
+    data->elementtypes[ti] = 303;
+    for(j=0;j<3;j++)
+      data->topology[ti][j] = Tri[j*nT + (ti-1)] + offset;
+    data->material[ti] = 1;
+  }
+  free(Tri);
+
+  /* Boundary elements: any edge with EBI != 0 is a boundary edge. Remap
+     whichever of the 8 possible compass tags actually occur to sequential
+     Elmer boundary ids 1..N (Elmer requires ids to start at 1 with no gaps). */
+  {
+    int tagpresent[9], tagmap[9];
+    int ntags, nbc;
+    int *invrow, *invcol;
+    int elemind, side, hit, k, k2, jj, jj2, ind1, ind2, tag;
+    int sideind[4], sideelemtype;
+
+    for(i=0;i<9;i++) { tagpresent[i]=0; tagmap[i]=0; }
+
+    nbc = 0;
+    for(ei=0; ei<(int)nE; ei++) {
+      tag = EBI[ei];
+      if(tag != 0) {
+	tagpresent[tag] = 1;
+	nbc++;
+      }
+    }
+
+    ntags = 0;
+    for(i=1;i<=8;i++) {
+      if(tagpresent[i]) {
+	ntags++;
+	tagmap[i] = ntags;
+      }
+    }
+
+    if(info) printf("LoadLaddieMesh: found %d boundary edges with %d distinct boundary labels\n",nbc,ntags);
+
+    if(nbc > 0) {
+      CreateInverseTopology(data,info);
+      invrow = data->invtopo.rows;
+      invcol = data->invtopo.cols;
+
+      AllocateBoundary(bound,nbc);
+
+      k = 0;
+      for(ei=0; ei<(int)nE; ei++) {
+	tag = EBI[ei];
+	if(tag == 0) continue;
+
+	ind1 = EV[0*nE + ei] + offset;
+	ind2 = EV[1*nE + ei] + offset;
+
+	/* find an element which owns both nodes (same approach as LoadTriangleInput) */
+	hit = FALSE;
+	elemind = 0;
+	for(jj=invrow[ind1-1]; jj<invrow[ind1]; jj++) {
+	  k2 = invcol[jj]+1;
+	  hit = FALSE;
+	  for(jj2=invrow[ind2-1]; jj2<invrow[ind2]; jj2++) {
+	    if(k2 == invcol[jj2]+1) { hit = TRUE; elemind = k2; break; }
+	  }
+	  if(hit) break;
+	}
+
+	k++;
+	if(hit) {
+	  for(side=0; side<3; side++) {
+	    GetElementSide(elemind,side,1,data,&sideind[0],&sideelemtype);
+	    if((sideind[0]==ind1 && sideind[1]==ind2) ||
+	       (sideind[0]==ind2 && sideind[1]==ind1)) break;
+	  }
+	  bound->parent[k] = elemind;
+	  bound->side[k] = side;
+	} else {
+	  bound->parent[k] = 0;
+	  bound->side[k] = 0;
+	  printf("LoadLaddieMesh: warning, could not find parent element for boundary edge %d\n",ei+1);
+	}
+	bound->parent2[k] = 0;
+	bound->side2[k] = 0;
+	bound->types[k] = tagmap[tag];
+      }
+      bound->nosides = k;
+    }
+  }
+
+  free(EBI);
+  free(EV);
+
+  if(info) printf("LoadLaddieMesh: successfully read the mesh from the UPSY/LADDIE NetCDF file!\n");
+
+  return(0);
+#endif
 }
 
 
