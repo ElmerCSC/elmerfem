@@ -136,14 +136,28 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   LOGICAL :: Found
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: Norm, newton_eps
-  INTEGER :: i,j,k,n, nb, nd, t, Active, NonlinIter, iter, tind
+  INTEGER :: i,j,k,n, nb, nd, t, Active, NonlinIter, iter, tind, nthr
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: SolverParams
-  
+
+  ! Per-thread handle/cache storage for LocalMatrixHandles — NOT THREADPRIVATE
+  ! (Windows/GCC emutls bug), see no-threadprivate branch. PrevMaterial is a
+  ! POINTER that gets re-targeted every call, so it can't be an ASSOCIATE
+  ! name — referenced as HandlesState(tid) % PrevMaterial directly instead.
+  TYPE :: MagDyn2DHandles_t
+    TYPE(ValueHandle_t) :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
+        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, nu_h
+    REAL(KIND=dp) :: Nu0 = 0.0_dp
+    LOGICAL :: HBCurve = .FALSE., HasReluctivityFunction = .FALSE.
+    INTEGER :: PrevElemInd = HUGE(1)
+    TYPE(ValueList_t), POINTER :: PrevMaterial => NULL()
+  END TYPE MagDyn2DHandles_t
+  TYPE(MagDyn2DHandles_t), ALLOCATABLE :: HandlesState(:)
+
   LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate, &
       HandleAsm, MassAsm, ConstantMassInUse = .FALSE.
-  LOGICAL :: SliceAverage
+  LOGICAL :: SliceAverage, HasZirka
   TYPE(Variable_t), POINTER :: CoordVar
 
   REAL(KIND=dp), ALLOCATABLE, SAVE :: MassValues(:)
@@ -182,7 +196,13 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   IF( HandleAsm ) THEN
     CALL Info(Caller,'Performing handle version of bulk element assembly',Level=7)
   ELSE
-    CALL Info(Caller,'Performing legacy version of bulk element assembly',Level=7)      
+    CALL Info(Caller,'Performing legacy version of bulk element assembly',Level=7)
+  END IF
+
+  IF( .NOT. ALLOCATED( HandlesState ) ) THEN
+    nthr = 1
+    !$ nthr = omp_get_max_threads()
+    ALLOCATE( HandlesState(nthr) )
   END IF
 
   newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found )
@@ -204,6 +224,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 
   SkipDegenerate = GetLogical(SolverParams, 'Skip Degenerate Elements',Found ) 
   
+  HasZirka = ListGetLogicalAnyMaterial(Model, 'Zirka material')
   CALL Info(Caller,'Initializing Zirka hysteresis models', Level=10)
   CALL InitHysteresis(Model, Solver)
 
@@ -221,30 +242,38 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
 
     tind = 0
-    !!omp parallel do private(Element,n,nd,nb,t)
-    DO t=1,active
-      Element => GetActiveElement(t)
-      n  = GetElementNOFNodes(Element)
-      nd = GetElementNOFDOFs(Element)
-      nb = GetElementNOFBDOFs(Element)
-
-      IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
-        CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
-        CYCLE
-      END IF
-
-      IF( HandleAsm ) THEN
-        CALL LocalMatrixHandles(  Element, n, nd+nb, nb )
-      ELSE
+    IF ( HandleAsm ) THEN
+      DO t=1,active
+        Element => GetActiveElement(t)
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
+          CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
+          CYCLE
+        END IF
+        CALL LocalMatrixHandles( Element, n, nd+nb, nb )
+      END DO
+    ELSE
+!$omp parallel do private(Element,n,nd,nb,t) if(.NOT. HasZirka)
+      DO t=1,active
+        Element => GetActiveElement(t)
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
+          CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
+          CYCLE
+        END IF
         CALL LocalMatrix(Element, n, nd)
-      END IF
-    END DO
-    !!omp end parallel do  
-      
+      END DO
+!$omp end parallel do
+    END IF
+
     CALL DefaultFinishBulkAssembly()
-    
+
     Active = GetNOFBoundaryElements()
-!!omp parallel do private(Element, n, nd, BC,Found, t)
+!$omp parallel do private(Element, n, nd, BC, Found, t)
     DO t=1,active
       Element => GetBoundaryElement(t)
       BC => GetBC( Element )
@@ -255,11 +284,11 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
         CALL LocalMatrixInfinityBC(Element, n, nd)
-      ELSE 
+      ELSE
         CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
-!!omp end parallel do
+!$omp end parallel do
 
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -771,7 +800,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: CompParams
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     REAL(KIND=dp) :: MASS(nd,nd), DAMP(nd,nd), STIFF(nd,nd), FORCE(nd), &
@@ -785,7 +814,7 @@ CONTAINS
 
     INTEGER :: i,p,q,t
 
-    LOGICAL :: CoilBody, StrandedCoil    
+    LOGICAL :: CoilBody, StrandedCoil
     LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
 
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
@@ -796,8 +825,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: hystvar
     TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
 
-!$omp threadprivate(Nodes)
-    
+
 !------------------------------------------------------------------------------
 
     IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
@@ -1065,31 +1093,42 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), POINTER, SAVE :: Basis(:), dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)    
-    REAL(KIND=dp) :: Nu0, Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
-    LOGICAL :: Stat,Found, HBCurve, HasReluctivityFunction
-    INTEGER :: t,p,q,k,m,allocstat, nudim
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)
+    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+    REAL(KIND=dp) :: Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
+    LOGICAL :: Stat,Found
+    INTEGER :: t,p,q,k,m,allocstat, nudim, tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueList_t), POINTER :: Material, PrevMaterial => NULL()
+    TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: Material
     REAL(KIND=dp) :: B_ip(2), Ht(nd,2), Bt(nd,2), Agrad(2), JAC(nd,nd), Alocal, &
             Permittivity(nd), P_ip, A_t_der(2,2), nu_tensor(2,2)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: StrandedCoil
     REAL(KIND=dp), POINTER :: NuTensor(:,:)
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
-        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, nu_h
-    INTEGER :: PrevElemInd = HUGE(PrevElemInd)
-    
-    SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd, HasReluctivityFunction
-    
-    !$omp threadprivate(Basis, dBasisdx, MASS, DAMP, STIFF, FORCE, POT, &
-    !$omp               Nodes, Nu0, HBCurve, HasReluctivityFunction,PrevMaterial, &
-    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h,nu_h, RelPermCoeff_h, &
-    !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd )
-    
+    ! Handles/Nu0/HBCurve/HasReluctivityFunction/PrevElemInd live in parent
+    ! scope as HandlesState(tid); see ASSOCIATE below. PrevMaterial (POINTER,
+    ! re-targeted below) can't be an ASSOCIATE name — referenced directly.
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => HandlesState(tid) % SourceCoeff_h, &
+        CondCoeff_h => HandlesState(tid) % CondCoeff_h, &
+        PermCoeff_h => HandlesState(tid) % PermCoeff_h, &
+        RelPermCoeff_h => HandlesState(tid) % RelPermCoeff_h, &
+        RelucCoeff_h => HandlesState(tid) % RelucCoeff_h, &
+        Mag1Coeff_h => HandlesState(tid) % Mag1Coeff_h, &
+        Mag2Coeff_h => HandlesState(tid) % Mag2Coeff_h, &
+        CoilType_h => HandlesState(tid) % CoilType_h, &
+        nu_h => HandlesState(tid) % nu_h, &
+        Nu0 => HandlesState(tid) % Nu0, &
+        HBCurve => HandlesState(tid) % HBCurve, &
+        HasReluctivityFunction => HandlesState(tid) % HasReluctivityFunction, &
+        PrevElemInd => HandlesState(tid) % PrevElemInd )
+
+    NULLIFY(Basis, dBasisdx)
 
     ! The elements should be in growing order. Hence we initialize if we start the list.
     IF( Element % ElementIndex < PrevElemInd ) THEN
@@ -1113,23 +1152,21 @@ CONTAINS
     END IF
     PrevElemInd = Element % ElementIndex
     
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(MASS)) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(MASS(m,m), DAMP(m,m), STIFF(m,m),FORCE(m), POT(m), STAT=allocstat)      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
-      IF(.NOT. BasisFunctionsInUse ) THEN
-        ALLOCATE(Basis(m), dBasisdx(m,3))
-      END IF
+    ! Allocate local storage
+    m = Mesh % MaxElementDofs
+    ALLOCATE(MASS(m,m), DAMP(m,m), STIFF(m,m), FORCE(m), POT(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
+    END IF
+    IF(.NOT. BasisFunctionsInUse ) THEN
+      ALLOCATE(Basis(m), dBasisdx(m,3))
     END IF
     
     IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
     
     Material => GetMaterial(Element)
-    IF( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN
-      PrevMaterial => Material           
+    IF( .NOT. ASSOCIATED( Material, HandlesState(tid) % PrevMaterial ) ) THEN
+      HandlesState(tid) % PrevMaterial => Material
       HbCurve = ListCheckPresent(Material,'H-B Curve')
       HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
     END IF
@@ -1324,6 +1361,9 @@ CONTAINS
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
 20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element) !, VecAssembly=VecAsm)
+    IF( .NOT. BasisFunctionsInUse .AND. ASSOCIATED(Basis) ) DEALLOCATE(Basis, dBasisdx)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixHandles
 !------------------------------------------------------------------------------
@@ -1385,8 +1425,6 @@ END SUBROUTINE ! }}}
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Parent
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
@@ -1447,11 +1485,10 @@ END SUBROUTINE ! }}}
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), &
             mu,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), AirGapL, SurfC, x
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Nodes_t), SAVE :: Nodes
-    !$OMP THREADPRIVATE(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
 
-    GotAirGap = ListGetLogical( BC,'Air Gap', Found ) 
+    GotAirGap = ListGetLogical( BC,'Air Gap', Found )
     SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
 
     IF(.NOT. (GotAirGap .OR. GotSurfCurr)) RETURN
@@ -1558,18 +1595,13 @@ END SUBROUTINE ! }}}
     REAL(KIND=dp) :: Acoef(2,2,n)
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), SAVE :: Avacuum
     LOGICAL :: Found
-    LOGICAL, SAVE :: FirstTime = .TRUE.
-    !$OMP THREADPRIVATE(Avacuum, FirstTime)
+    REAL(KIND=dp) :: Avacuum
 !------------------------------------------------------------------------------
 
-    IF ( FirstTime ) THEN
-      Avacuum = GetConstReal( CurrentModel % Constants, &
-              'Permeability of Vacuum', Found )
-      IF(.NOT. Found ) Avacuum = PI * 4.0d-7
-      FirstTime = .FALSE.
-    END IF
+    Avacuum = GetConstReal( CurrentModel % Constants, &
+            'Permeability of Vacuum', Found )
+    IF(.NOT. Found ) Avacuum = PI * 4.0d-7
 
     Acoef = GetTensor(Element, n, 2, 'Relative Permeability', 're', Found)
 
@@ -2156,7 +2188,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material,  BodyForce
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: CompParams
 
     COMPLEX(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LoadAtIp,&
@@ -2181,13 +2213,11 @@ CONTAINS
 
     LOGICAL :: HBcurve, Found, Stat, StrandedHomogenization
     LOGICAL :: CoilBody    
-    LOGICAL :: InPlaneProximity=.TRUE., WithVelocity, WithAngularVelocity
+    LOGICAL :: InPlaneProximity, WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
     LOGICAL :: LondonEquations
-    
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
-    !$omp threadprivate(Nodes,InPlaneProximity)
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -2473,8 +2503,6 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Parent
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
@@ -2537,11 +2565,9 @@ CONTAINS
         SurfCurrIm(nd), AirGapL
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
 
-    GotAirGap = GetLogical( BC,'Air Gap', Found ) 
+    GotAirGap = GetLogical( BC,'Air Gap', Found )
     SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
     SurfCurrIm = GetReal( BC, 'Surface Current Im', Found )
     GotSurfCurr = GotSurfCurr .OR. Found
@@ -2606,8 +2632,6 @@ CONTAINS
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd), imu, invZs, delta
     REAL(KIND=dp) :: SkinCond(nd), Mu(nd), CondAtIp, MuAtIp, MuVacuum
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
@@ -2719,17 +2743,11 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     LOGICAL :: Found
-    REAL(KIND=dp), SAVE :: Avacuum
-    LOGICAL, SAVE :: FirstTime = .TRUE.
+    REAL(KIND=dp) :: Avacuum
 
-    !$OMP THREADPRIVATE(FirstTime, Avacuum)
-
-    IF ( FirstTime ) THEN
-      Avacuum = GetConstReal( CurrentModel % Constants, &
-              'Permeability of Vacuum', Found )
-      IF(.NOT. Found ) Avacuum = PI * 4.0d-7
-      FirstTime = .FALSE.
-    END IF
+    Avacuum = GetConstReal( CurrentModel % Constants, &
+            'Permeability of Vacuum', Found )
+    IF(.NOT. Found ) Avacuum = PI * 4.0d-7
 
     Acoef = GetCMPLXTensor(Element, n, 2, 'Relative Permeability', Found)
     

@@ -1859,9 +1859,8 @@ END BLOCK
     REAL(KIND=dp) :: B(3,nd), Bx, By, Bz
     INTEGER :: t
     LOGICAL :: stat, Found
-    TYPE(Nodes_t), SAVE :: Nodes, PNodes
+    TYPE(Nodes_t) :: Nodes, PNodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
 
     CALL GetElementNodes( Nodes, Element )
     Parent => Element % BoundaryInfo % Left
@@ -1928,7 +1927,7 @@ SUBROUTINE LocalConstraintMatrix( Element, n, nd, PiolaVersion, SecondOrder )
   TYPE(Matrix_t), POINTER :: A
   REAL(KIND=dp), POINTER :: SaveRHS(:), SaveValues(:)
 
-  TYPE(Nodes_t), SAVE :: Nodes
+  TYPE(Nodes_t) :: Nodes
   !------------------------------------------------------------------------------
   IF (SecondOrder) THEN
     EdgeBasisDegree = 2
@@ -2047,8 +2046,8 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
-    
+    TYPE(Nodes_t) :: Nodes
+
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -2504,7 +2503,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -2562,7 +2561,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t, i, p, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
@@ -2570,7 +2569,7 @@ END SUBROUTINE LocalConstraintMatrix
     ELSE
       EdgeBasisDegree = 1
     END IF
-    
+
     CALL GetElementNodes( Nodes )
 
     FORCE = 0.0_dp
@@ -2622,7 +2621,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -2722,7 +2721,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,  Element )
     !
@@ -2759,7 +2758,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
@@ -2817,7 +2816,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
@@ -2902,7 +2901,7 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: s,p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp
     TYPE(Matrix_t), POINTER :: Smat
-    TYPE(Nodes_t),SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: BC
 
     LOGICAL :: Found, Found1,Found2,Found3,L1,L2,L3
@@ -3274,7 +3273,7 @@ END SUBROUTINE LocalConstraintMatrix
     LOGICAL :: Stat
     INTEGER :: t, i, j, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -3588,11 +3587,11 @@ CONTAINS
     REAL(KIND=dp) :: PotSol(:)  ! The values of target field DOFS
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(3)
     REAL(KIND=dp) :: s, DetJ
@@ -3901,11 +3900,11 @@ CONTAINS
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(3)
     REAL(KIND=dp) :: s, DetJ

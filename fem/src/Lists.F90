@@ -5151,7 +5151,7 @@ CONTAINS
        CALL Ip2DgFieldInElement( CurrentModel % Mesh, Parent, nip, fip, np, fdg )
        npar = npar + 1
 
-       ! Use basis functions of the boundary to map stuff from nodes to IP points. 
+       ! Use basis functions of the boundary to map stuff from nodes to IP points.
        DO i=1,n
          DO j=1,np
            IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
@@ -5176,7 +5176,7 @@ CONTAINS
 !> Given a table of variables return the variable values on the gauss point.
 !> This only deals with the gauss point variables, all other are already treated. 
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, T, count, ind, Basis, intvarcount, tstep)
+  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, T, count, ind, Basis, intvarcount, tstep, CurrElement)
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
@@ -5186,13 +5186,14 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      INTEGER, OPTIONAL :: intvarcount
      INTEGER, OPTIONAL :: tstep
+     TYPE(Element_t), OPTIONAL, TARGET :: CurrElement
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti,tstep0
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      REAL(KIND=dp), POINTER :: Values(:)
-     
+
      Failed = .FALSE.
      vari0 = 0
      IF( PRESENT(intvarcount)) THEN
@@ -5202,9 +5203,9 @@ CONTAINS
 
      tstep0 = 0
      IF(PRESENT(tstep)) tstep0 = tstep
-     
+
      DO Vari = vari0+1, VarCount
-       
+
        Var => VarTable(Vari) % Variable
 
        IF(.NOT. ASSOCIATED( Var ) ) THEN
@@ -5212,13 +5213,25 @@ CONTAINS
          T(count) = VarTable(Vari) % ParamValue
          CYCLE
        END IF
-       
+
        dti = -(tstep0 + VarTable(Vari) % tstep)
-       Varsize = SIZE( Var % Values ) / Var % Dofs 
+       Varsize = SIZE( Var % Values ) / Var % Dofs
 
        k1 = 0
-       IF ( Var % TYPE == Variable_on_gauss_points ) THEN         
-         Element => CurrentModel % CurrentElement
+       IF ( Var % TYPE == Variable_on_gauss_points ) THEN
+         ! CurrentModel % CurrentElement is only updated by SetCurrentElement
+         ! for the SERIAL case; inside an active OMP region it instead updates
+         ! a threadprivate CurrentElementThread (see DefUtils' GetCurrentElement/
+         ! SetCurrentElement), which this file cannot reach without a circular
+         ! module dependency. So callers that may run from a parallel element
+         ! loop must pass their own element explicitly via CurrElement — reading
+         ! the ambient global here would silently pick up a stale element from
+         ! whatever last set it serially, one and the same for every thread.
+         IF( PRESENT( CurrElement ) ) THEN
+           Element => CurrElement
+         ELSE
+           Element => CurrentModel % CurrentElement
+         END IF
          i = Element % ElementIndex
          n = Var % Perm(i+1) - Var % Perm(i)
 
@@ -7150,8 +7163,8 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, &
-               GaussPoint, Basis, Handle % IntVarCount, tstep )           
-         END IF         
+               GaussPoint, Basis, Handle % IntVarCount, tstep, Handle % Element )
+         END IF
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
          IF ( C_ASSOCIATED(ptr % PROCEDURE) ) THEN
@@ -7184,7 +7197,7 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones have been fecthed already
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
-               Handle % IntVarCount, tstep )
+               Handle % IntVarCount, tstep, Handle % Element )
          END IF
 
          IF ( ptr % LuaFun ) THEN
@@ -7192,7 +7205,7 @@ CONTAINS
          ELSE
            Rvalue = GetMatcReal(Ptr % Cvalue,Handle % ParNo,T)
          END IF
-           
+
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
          IF ( C_ASSOCIATED(ptr % PROCEDURE) ) THEN
@@ -7238,7 +7251,7 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
-              Handle % IntVarCount, tstep )           
+              Handle % IntVarCount, tstep, Handle % Element )
          END IF
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
@@ -7281,9 +7294,9 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
-               Handle % IntVarCount, tstep )           
+               Handle % IntVarCount, tstep, Handle % Element )
          END IF
-               
+
          IF ( .NOT. ptr % LuaFun ) THEN
            Handle % Rtensor = GetMatcRealArray(ptr % Cvalue,n,m,Handle % ParNo,T)
          ELSE
@@ -8056,7 +8069,8 @@ CONTAINS
 
            ! This one only deals with the variables on IPs, nodal ones have been fecthed already
            IF( Handle % SomeVarAtIp ) THEN
-             CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, gp, BasisVec(gp,1:n) )
+             CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, gp, BasisVec(gp,1:n), &
+                 CurrElement=Handle % Element )
            END IF
 
            IF ( .NOT. ptr % LuaFun ) THEN

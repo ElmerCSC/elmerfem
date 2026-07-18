@@ -185,6 +185,19 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
+  ! Thread-local handle storage indexed 1..nthr for LocalMatrixVec, LocalMatrix,
+  ! and LocalMatrixBC. Replaces SAVE+THREADPRIVATE; accessed via ASSOCIATE(tid).
+  ! VecConvVelo_h: 3-component per thread for LocalMatrixVec (Vec path).
+  ! LM_ConvVelo_h: scalar per thread for LocalMatrix (non-Vec path).
+  TYPE(ValueHandle_t), ALLOCATABLE :: &
+      Source_h(:), Cond_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
+      VecConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
+      PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:), &
+      LM_ConvVelo_h(:), PlateSpeed_h(:), &
+      HeatFlux_h(:), HeatTrans_h(:), ExtTemp_h(:), Farfield_h(:), &
+      RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:)
+  TYPE(VariableHandle_t), ALLOCATABLE :: ConvField_h(:)
+
   INTERFACE
     SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
@@ -245,7 +258,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
   Temperature => Solver % Variable % Values
   TempPerm => Solver % Variable % Perm
-   
+
   DB = GetLogical( Params,'DG Reduced Basis',Found ) 
   DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
 
@@ -255,6 +268,15 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   
   nthr = 1
   !$ nthr = omp_get_max_threads()
+
+  ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+      ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
+      PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
+      VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
+      LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), &
+      HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
+      RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
+      TorBC_h(nthr) )
 
   nColours = GetNOFColours(Solver)
 
@@ -359,16 +381,45 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       END IF
     END BLOCK
 
+    ! DiffuseGray is a per-element out-parameter of LocalMatrixBC (set, then
+    ! immediately read back here to decide whether to also call
+    ! LocalMatrixDiffuseGray for the same element) — it must be PRIVATE, not
+    ! SHARED, or one thread's read races against another thread's write for
+    ! a completely different element.
+    !
+    ! Left serial (again) for now: 36e13fd9e re-enabled this region and fixed
+    ! the genuine data races (DiffuseGray sharing, Temperature/TempPerm
+    ! pointer reassignment, unprotected ForceVector scatter), but doing so
+    ! exposed radiation_box_in_box as intermittently failing under threads
+    ! (confirmed 0/60 failures with this region forced serial vs ~20-25%
+    ! failing with it parallel, same OMP_NUM_THREADS, everything else in the
+    ! solver still threaded). Root cause isn't a race — Valgrind/Helgrind see
+    ! nothing, and 1-thread runs are always clean/identical. It's ordinary
+    ! floating-point non-associativity: RadElement can be anywhere in the
+    ! mesh (view-factor coupling), so concurrent threads add contributions to
+    ! shared ForceVector DOFs in a scheduling-dependent order under ATOMIC,
+    ! which is race-free but not bit-reproducible. For most solvers that's
+    ! harmless (~1e-13 relative). Here it isn't: the coupled radiosity-
+    ! conduction Newton iteration's convergence check goes noisy once the
+    ! residual nears its ~1e-6 tolerance (non-monotonic RELC observed near
+    ! the tail), so runs land on slightly different "converged" iterates: and
+    ! this test's Solver 3 diagnostic (TotFlux, a near-total cancellation of
+    ! much larger opposing boundary fluxes) is extremely sensitive to exactly
+    ! which iterate that is — sensitivity to Solver 1's own temperature norm
+    ! varies from ~1x to >4000x across observed runs, ruling out a simple
+    ! fixed amplification factor. Reverting to serial here trades away the
+    ! parallel speedup for this specific loop until the convergence check
+    ! and/or this test's tolerances can be hardened against that noise floor.
     !!OMP PARALLEL &
-    !!OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray, RadiatorPowers ) &
-    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
+    !!OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
+    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
     !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
-    InitHandles = .TRUE. 
+    InitHandles = .TRUE.
     DO col=1,nColours
       !!OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !!OMP END SINGLE      
+      !!OMP END SINGLE
       !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
@@ -486,7 +537,64 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
    END IF
  END IF
    
-CONTAINS 
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> Diagnostic-only: dump an element's bubble-condensation submatrix to a log
+!> file when ELMER_DEBUG_CONDENSATE=1 is set in the environment. Used to
+!> compare a passing vs. a failing run's bubble matrix bit-for-bit and confirm
+!> whether the intermittent Windows InvertMatrix failure in Step_stokes_heat_vec
+!> stems from floating-point summation-order noise rather than a data race.
+!>
+!> Every call overwrites 'condensate_last_element.log' with the element index
+!> about to be condensed, so that after a run crashes (InvertMatrix aborts the
+!> process on a singular matrix) the culprit element can still be identified
+!> from disk. A second, targeted pass can then set
+!> ELMER_DEBUG_CONDENSATE_ELEMENT=<that index> to record only that one
+!> element's matrix (tiny log) and wait for a run where it succeeds.
+!>
+!> Remove once that investigation is closed out.
+!------------------------------------------------------------------------------
+  SUBROUTINE DebugDumpCondensate( Tag, Element, nd, nb, K, F )
+!------------------------------------------------------------------------------
+    CHARACTER(*), INTENT(IN) :: Tag
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, INTENT(IN) :: nd, nb
+    REAL(KIND=dp), INTENT(IN) :: K(:,:), F(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, dbgunit, EnvLen, EnvStat, TargetElem, TargetLen, TargetStat
+    CHARACTER(LEN=8) :: EnvVal
+    CHARACTER(LEN=16) :: TargetVal
+!------------------------------------------------------------------------------
+    IF ( nb <= 0 ) RETURN
+    CALL GET_ENVIRONMENT_VARIABLE( 'ELMER_DEBUG_CONDENSATE', EnvVal, EnvLen, EnvStat )
+    IF ( EnvStat /= 0 .OR. TRIM(EnvVal) /= '1' ) RETURN
+
+    TargetElem = 0
+    CALL GET_ENVIRONMENT_VARIABLE( 'ELMER_DEBUG_CONDENSATE_ELEMENT', TargetVal, TargetLen, TargetStat )
+    IF ( TargetStat == 0 .AND. TargetLen > 0 ) READ( TargetVal, * ) TargetElem
+    IF ( TargetElem > 0 .AND. Element % ElementIndex /= TargetElem ) RETURN
+
+    !$OMP CRITICAL (DebugDumpCondensateWrite)
+    OPEN( NEWUNIT=dbgunit, FILE='condensate_last_element.log', ACCESS='SEQUENTIAL', &
+        FORM='FORMATTED', STATUS='REPLACE' )
+    WRITE(dbgunit,'(I0)') Element % ElementIndex
+    CLOSE(dbgunit)
+
+    OPEN( NEWUNIT=dbgunit, FILE='condensate_debug.log', ACCESS='SEQUENTIAL', &
+        FORM='FORMATTED', POSITION='APPEND', STATUS='UNKNOWN' )
+    WRITE(dbgunit,'(A,1X,A,1X,I0,1X,A,1X,I0,1X,A,1X,I0)') 'ELEM', TRIM(Tag), &
+        Element % ElementIndex, 'ND', nd, 'NB', nb
+    DO i = nd-nb+1, nd
+      WRITE(dbgunit,'(100ES25.16)') ( K(i,j), j=nd-nb+1,nd )
+    END DO
+    WRITE(dbgunit,'(100ES25.16)') ( F(i), i=nd-nb+1,nd )
+    FLUSH(dbgunit)
+    CLOSE(dbgunit)
+    !$OMP END CRITICAL (DebugDumpCondensateWrite)
+!------------------------------------------------------------------------------
+  END SUBROUTINE DebugDumpCondensate
+!------------------------------------------------------------------------------
 
 
   SUBROUTINE LocalNitscheBC(Element,n,BC,str)
@@ -495,21 +603,17 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(:), ALLOCATABLE :: str
 
-    LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:), Basis(:), pBasis(:), pdBasisdx(:,:), Dnodal(:)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), Basis(:), pBasis(:), pdBasisdx(:,:), Dnodal(:)
     REAL(KIND=dp) :: DetJ, D, Esize, Gamma, nrm(3), weight, u, v, w
     LOGICAL :: Stat
-    INTEGER, ALLOCATABLE, SAVE :: Indexes(:), pIndexes(:), Ind(:)
+    INTEGER, ALLOCATABLE :: Indexes(:), pIndexes(:), Ind(:)
     INTEGER :: i,j,t,m,nd,pnd,ii
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes, PNodes
-    
-    IF(.NOT. AllocationsDone) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(STIFF(m,m),FORCE(m),Basis(m),pBasis(m),pdBasisdx(m,3),Dnodal(m),Indexes(m),pIndexes(m),Ind(m))
-      AllocationsDone = .TRUE.
-    END IF
+    TYPE(Nodes_t) :: Nodes, PNodes
+
+    m = Mesh % MaxElementDofs
+    ALLOCATE(STIFF(m,m),FORCE(m),Basis(m),pBasis(m),pdBasisdx(m,3),Dnodal(m),Indexes(m),pIndexes(m),Ind(m))
 
     Dnodal(1:n) = GetReal(BC,str,Found)
     IF (.NOT. Found) RETURN
@@ -584,32 +688,33 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
 
-    REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), CpAtIpVec(:), TmpVec(:), &
+    REAL(KIND=dp), POINTER  :: CondAtIpVec(:), CpAtIpVec(:), TmpVec(:), &
         SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo(:,:),ConvVelo_i(:)
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,ngp,allocstat
+    INTEGER :: i,ngp,allocstat,tid
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-        ConvVelo_h(3), PerfRate_h, PerfDens_h, PerfCp_h, &
-        PerfRefTemp_h, VolSource_h, OrigMesh_h
-    TYPE(VariableHandle_t), SAVE :: ConvField_h
-    
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, ConvVelo, VeloAtIpVec, &
-    !$OMP               ConvVelo_i, RhoAtIpVec, SourceAtIpVec, TmpVec, CPAtIpVec, CondAtIpVec, &
-    !$OMP               Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-    !$OMP               ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
-    !$OMP               PerfRefTemp_h, ConvField_h, VolSource_h, OrigMesh_h)
+    TYPE(Nodes_t) :: Nodes
+    ! Handles now live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        Source_h      => Source_h(tid),     Cond_h        => Cond_h(tid),      &
+        Cp_h          => Cp_h(tid),         Rho_h         => Rho_h(tid),       &
+        ConvFlag_h    => ConvFlag_h(tid),   ConvVelo_h    => VecConvVelo_h(:,tid), &
+        PerfRate_h    => PerfRate_h(tid),   PerfDens_h    => PerfDens_h(tid),   &
+        PerfCp_h      => PerfCp_h(tid),     PerfRefTemp_h => PerfRefTemp_h(tid),&
+        VolSource_h   => VolSource_h(tid),  OrigMesh_h    => OrigMesh_h(tid),   &
+        ConvField_h   => ConvField_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -655,21 +760,11 @@ CONTAINS
       CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
     END IF
         
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-      IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-          DEALLOCATE(Basis, dBasisdx, DetJVec, MASS, STIFF, FORCE, &
-          TmpVec, ConvVelo )
-    END IF
-    
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-          MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
-          TmpVec(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
+        TmpVec(ngp), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN      
@@ -744,9 +839,12 @@ CONTAINS
     END IF
       
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
-    
+
 10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
 !------------------------------------------------------------------------------
@@ -824,21 +922,24 @@ CONTAINS
     REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,j,t,p,q,CondRank
+    INTEGER :: i,j,t,p,q,CondRank,tid
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-
-    TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-        ConvVelo_h, PlateSpeed_h, PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, &
-        VolSource_h, OrigMesh_h
-
-    TYPE(VariableHandle_t), SAVE :: ConvField_h
-
-!$OMP  THREADPRIVATE(Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, ConvVelo_h, PlateSpeed_h, PerfRate_h, &
-!$OMP& PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, OrigMesh_h, ConvField_h, Nodes )
-
+    TYPE(Nodes_t) :: Nodes
+    ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        Source_h      => Source_h(tid),       Cond_h        => Cond_h(tid),          &
+        Cp_h          => Cp_h(tid),           Rho_h         => Rho_h(tid),           &
+        ConvFlag_h    => ConvFlag_h(tid),     ConvVelo_h    => LM_ConvVelo_h(tid),   &
+        PlateSpeed_h  => PlateSpeed_h(tid),   PerfRate_h    => PerfRate_h(tid),       &
+        PerfDens_h    => PerfDens_h(tid),     PerfCp_h      => PerfCp_h(tid),         &
+        PerfRefTemp_h => PerfRefTemp_h(tid),  VolSource_h   => VolSource_h(tid),      &
+        OrigMesh_h    => OrigMesh_h(tid),     ConvField_h   => ConvField_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -998,9 +1099,12 @@ CONTAINS
     END DO
     
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
-    
+
 20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -1060,16 +1164,23 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
 
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
-        RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h 
-
-    !$OMP  THREADPRIVATE(Nodes,HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h,RadFlag_h, &
-    !$OMP& RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h )
+    INTEGER :: tid
+    TYPE(Nodes_t) :: Nodes
+    ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
-    
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        HeatFlux_h   => HeatFlux_h(tid),   HeatTrans_h  => HeatTrans_h(tid),  &
+        ExtTemp_h    => ExtTemp_h(tid),     Farfield_h   => Farfield_h(tid),   &
+        RadFlag_h    => RadFlag_h(tid),     RadExtTemp_h => RadExtTemp_h(tid),  &
+        EmisBC_h     => EmisBC_h(tid),      EmisMat_h    => EmisMat_h(tid),    &
+        TorBC_h      => TorBC_h(tid) )
+
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( HeatFlux_h,'Boundary Condition','Heat Flux')
       CALL ListInitElementKeyword( HeatTrans_h,'Boundary Condition','Heat Transfer Coefficient')
@@ -1230,7 +1341,8 @@ CONTAINS
     ELSE    
       CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
     END IF
-      
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
@@ -1350,9 +1462,6 @@ CONTAINS
     REAL(KIND=dp) :: NodalTemp(12)
     INTEGER, TARGET :: ElemInds(12),ElemInds2(12)
     
-    SAVE Nodes
-
-!$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     IF(Element % PartIndex /= ParEnv % myPE ) RETURN
     
@@ -1380,9 +1489,12 @@ CONTAINS
     nf_imp = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors      
     IF( nf_imp == 0 ) nf_imp = nf
 
+    ! Temperature/TempPerm are shared, host-associated pointers already set
+    ! once (serially) at the top of HeatSolver — reassigning them here again
+    ! on every call, from every thread, is a race on the shared pointer
+    ! descriptor itself (not just its target). ForceVector is a local
+    ! variable in this subroutine, so assigning it is thread-safe.
     ForceVector => Solver % Matrix % rhs
-    Temperature => Solver % Variable % Values
-    TempPerm => Solver % Variable % Perm
 
     Emis1 = Emiss(bindex)
     Refl1 = Reflect(bindex)
@@ -1512,8 +1624,14 @@ CONTAINS
 
             ! Integrate the contribution of surface j over surface j and add to global matrix
             !------------------------------------------------------------------------------                    
+            ! ForceVector is shared across boundary elements/threads (no
+            ! coloring guarantees disjoint nodes here — RadElement can be
+            ! anywhere in the mesh), and unlike DefaultUpdateEquations this
+            ! manual scatter has no built-in atomic protection, so add it
+            ! explicitly. AddToMatrixElement is already atomic internally
+            ! (CRS_AddToMatrixElement uses !$OMP ATOMIC).
             IF( Dg ) THEN
-              CALL DgRadiationIndexes(RadElement,k,ElemInds2,.TRUE.)                              
+              CALL DgRadiationIndexes(RadElement,k,ElemInds2,.TRUE.)
 
               DO p=1,n
                 k1 = TempPerm( ElemInds(p))
@@ -1521,15 +1639,17 @@ CONTAINS
                   k2 = TempPerm( ElemInds2(q) )
                   CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
                 END DO
+                !$OMP ATOMIC UPDATE
                 ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
               END DO
             ELSE
               DO p=1,n
-                k1 = TempPerm( Element % NodeIndexes(p) )            
+                k1 = TempPerm( Element % NodeIndexes(p) )
                 DO q=1,k
                   k2 = TempPerm( RadElement % NodeIndexes(q) )
                   CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
                 END DO
+                !$OMP ATOMIC UPDATE
                 ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
               END DO
             END IF
@@ -1626,6 +1746,9 @@ CONTAINS
         INTEGER :: ElemPerm(27)
         ElemPerm(1:n) = PostFlux % Perm(Element % NodeIndexes)
         IF(ALL(ElemPerm(1:n) > 0 )) THEN
+          ! Nodes are shared between adjacent boundary elements/threads; these
+          ! are array-section updates so ATOMIC doesn't apply — use CRITICAL.
+          !$OMP CRITICAL (HeatSolveDiffuseGrayPostFields)
           PostWeight % Values(ElemPerm(1:n)) = PostWeight % Values(ElemPerm(1:n)) + Base(1:n)
           PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + Fact(1) * Base(1:n)
           IF( Spectral ) THEN
@@ -1633,6 +1756,7 @@ CONTAINS
             PostAbs % Values(ElemPerm(1:n)) = PostAbs % Values(ElemPerm(1:n)) + Fact(3) * Base(1:n)
             PostTemp % Values(ElemPerm(1:n)) = PostTemp % Values(ElemPerm(1:n)) + Fact(4) * Base(1:n)
           END IF
+          !$OMP END CRITICAL (HeatSolveDiffuseGrayPostFields)
         END IF
       END BLOCK
     END IF
@@ -1653,9 +1777,13 @@ CONTAINS
         k2 = TempPerm( pIndexes(q) )
         CALL AddToMatrixElement( Solver % Matrix,k1,k2,STIFF(p,q))
       END DO
+      ! Own element's nodes, but boundary colouring is not guaranteed to be
+      ! active (nColours defaults to 1), so neighboring elements can still
+      ! share nodes — atomic protection needed, same as UpdateGlobalForce.
+      !$OMP ATOMIC UPDATE
       ForceVector(k1) = ForceVector(k1) + FORCE(p)
     END DO
-      
+
   END SUBROUTINE LocalMatrixDiffuseGray
 !------------------------------------------------------------------------------
 

@@ -674,10 +674,10 @@ END SUBROUTINE InterpolateMeshToMesh
        REAL(KIND=dp), POINTER CONTIG :: Values(:) 
        REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
-       TYPE(Nodes_t), SAVE :: Nodes
+       TYPE(Nodes_t) :: Nodes
        INTEGER, ALLOCATABLE :: OneDGIndex(:)
-              
-       !$OMP THREADPRIVATE(eps1,Nodes)
+
+       !$OMP THREADPRIVATE(eps1)
 
 !------------------------------------------------------------------------------
 
@@ -1804,20 +1804,65 @@ CONTAINS
     REAL(KIND=dp) :: fip(:), fdg(:)
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Weight, DetJ
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
-    INTEGER :: i,t,p,q,n
+    INTEGER :: i,t,p,q,n,tid,nthr
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
+    LOGICAL :: Stat
     CHARACTER(*), PARAMETER :: Caller = 'Ip2DgFieldInElement'
-    TYPE(Element_t), POINTER :: PrevElement => NULL()
 
-    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, PrevElement, AllocationsDone
+    ! Per-thread scratch state — NOT THREADPRIVATE (Windows/GCC emutls bug,
+    ! see no-threadprivate branch). Used to be a single SAVE'd workspace
+    ! (Nodes/Basis/MASS/LOAD/PrevElement) shared by all callers; harmless
+    ! while this routine was only ever reached serially, but as soon as a
+    ! caller (e.g. a "-ip" exported variable used in a boundary condition)
+    ! runs from a parallel element loop, threads race on the same Basis/MASS
+    ! allocation and on each other's element data.
+    TYPE :: Ip2DgState_t
+      TYPE(Nodes_t) :: Nodes
+      REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
+      LOGICAL :: CSymmetry = .FALSE.
+      LOGICAL :: AllocationsDone = .FALSE.
+      TYPE(Element_t), POINTER :: PrevElement => NULL()
+    END TYPE Ip2DgState_t
+    TYPE(Ip2DgState_t), ALLOCATABLE, TARGET, SAVE :: States(:)
     !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ! Unlike bulk assembly, boundary assembly has no serial "warm-up" element
+    ! that resolves shared setup before the parallel loop starts, so every
+    ! thread can reach this function's very first call at once. The unguarded
+    ! "IF (.NOT. ALLOCATED(States))" fast-path read this used to have (before
+    ! ever entering the critical section) is a classic double-checked-locking
+    ! race: one thread can observe States as allocated, from another thread's
+    ! write, before that allocation's contents are actually visible to it —
+    ! especially under -O3 reordering. Always taking the critical section here
+    ! is the safe fix; the cost is negligible next to the ElementInfo/LuSolve
+    ! work this routine already does per call.
+    !$OMP CRITICAL (Ip2DgFieldInElementInit)
+    IF( .NOT. ALLOCATED( States ) ) THEN
+      nthr = 1
+      !$ nthr = omp_get_max_threads()
+      ALLOCATE( States(nthr) )
+    END IF
+    !$OMP END CRITICAL (Ip2DgFieldInElementInit)
+
+    ! Basis/MASS/LOAD are whole-allocatable components that get allocated
+    ! below (first touch per thread) — an ASSOCIATE name never inherits the
+    ! ALLOCATABLE attribute from its selector, and gfortran does not
+    ! reliably track the allocation status through such a name when the
+    ! allocation happens later via a different alias to the same variable,
+    ! so they're referenced as States(tid) % ... directly throughout instead
+    ! of through ASSOCIATE. Nodes/CSymmetry/AllocationsDone are fine to
+    ! ASSOCIATE: Nodes is a plain (non-allocatable) derived-type variable,
+    ! and CSymmetry/AllocationsDone are plain scalars.
+    ASSOCIATE( Nodes => States(tid) % Nodes, &
+        CSymmetry => States(tid) % CSymmetry, &
+        AllocationsDone => States(tid) % AllocationsDone )
 
     IF( .NOT. AllocationsDone ) THEN
       n = Mesh % MaxElementNodes
-      ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
+      ALLOCATE( States(tid) % Basis(n), States(tid) % LOAD(n), States(tid) % MASS(n,n) )
       CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
           CurrentCoordinateSystem() == CylindricSymmetric
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
@@ -1829,44 +1874,47 @@ CONTAINS
       fdg(1:ndg) = 0.0_dp
       RETURN
     END IF
-    
-    n = Element % TYPE % NumberOfNodes 
+
+    n = Element % TYPE % NumberOfNodes
     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
 
     ! We could probably do more to utilize the previous visit to save resources...
-    IF(.NOT. ASSOCIATED( PrevElement, Element ) ) THEN
+    IF(.NOT. ASSOCIATED( States(tid) % PrevElement, Element ) ) THEN
       Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
       Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
-      PrevElement => Element
+      States(tid) % PrevElement => Element
     END IF
 
-    MASS  = 0._dp
-    LOAD = 0._dp
+    States(tid) % MASS = 0._dp
+    States(tid) % LOAD = 0._dp
 
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element, nip )
 
     DO t=1,IP % n
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, States(tid) % Basis )
       Weight = IP % s(t) * DetJ
 
       IF( CSymmetry ) THEN
-        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+        Weight = Weight * SUM( States(tid) % Basis(1:n) * Nodes % x(1:n) )
       END IF
 
       DO p=1,n
-        LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
+        States(tid) % LOAD(p) = States(tid) % LOAD(p) + Weight * States(tid) % Basis(p) * fip(t)
         DO q=1,n
-          MASS(p,q) = MASS(p,q) + Weight * Basis(q) * Basis(p)
+          States(tid) % MASS(p,q) = States(tid) % MASS(p,q) + &
+              Weight * States(tid) % Basis(q) * States(tid) % Basis(p)
         END DO
       END DO
     END DO
 
-    CALL LuSolve(n,MASS,LOAD) 
+    CALL LuSolve(n, States(tid) % MASS, States(tid) % LOAD)
 
-    fdg(1:n) = LOAD(1:n)
+    fdg(1:n) = States(tid) % LOAD(1:n)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE Ip2DgFieldInElement
 !------------------------------------------------------------------------------

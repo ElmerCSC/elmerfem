@@ -36,7 +36,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 CutFEMUtils.F90
-  RadiationFactors.F90 f_stubs.c
+  RadiationFactors.F90 f_stubs.c GFortranLocaleFix.c
   ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
   SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
@@ -383,9 +383,9 @@ INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
                   DESTINATION "share/elmersolver/include")
 
 IF(WITH_MPI)
-  IF(NOT(WIN32) OR CMAKE_VERSION VERSION_GREATER_EQUAL "3.13")
-    # Creating symlinks works on Windows with CMake 3.13 or newer:
-    # https://cmake.org/cmake/help/latest/manual/cmake.1.html#cmdoption-cmake-E-arg-create_symlink
+  IF(NOT(WIN32))
+    # Unix: expose the generic name "ElmerSolver" as a symlink to the actual
+    # MPI binary "ElmerSolver_mpi" (cheap and unprivileged here). Unchanged.
     ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink
       ElmerSolver_mpi${CMAKE_EXECUTABLE_SUFFIX}
       ElmerSolver${CMAKE_EXECUTABLE_SUFFIX})
@@ -393,10 +393,19 @@ IF(WITH_MPI)
     INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver${CMAKE_EXECUTABLE_SUFFIX}
       DESTINATION "bin")
   ELSE()
-    # This does not work correctly if `DESTDIR` is set.
-    INSTALL(CODE "EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E copy
-    \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver_mpi.exe
-    \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver.exe)")
+    # Windows: COPY rather than symlink. Creating a symlink needs
+    # SeCreateSymbolicLinkPrivilege (Developer Mode or an elevated shell),
+    # which a normal account lacks, so the previous create_symlink step failed
+    # the whole build for ordinary users. A copy works unprivileged (and
+    # survives being zipped/packaged). copy_if_different keeps it in sync on
+    # rebuilds; it runs after Solver_TGT so the source binary already exists.
+    ADD_CUSTOM_COMMAND(TARGET Solver_TGT POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:Solver_TGT>
+        ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver${CMAKE_EXECUTABLE_SUFFIX}
+      COMMENT "Copying ${ELMERSOLVER_OUTPUT_NAME} to generic name ElmerSolver")
+    INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver${CMAKE_EXECUTABLE_SUFFIX}
+      DESTINATION "bin")
   ENDIF()
 ENDIF()
 

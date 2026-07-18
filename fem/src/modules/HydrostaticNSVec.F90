@@ -76,15 +76,13 @@ CONTAINS
     REAL(KIND=dp) :: R, vgrad(2,3), NewtonRelax
     REAL(KIND=dp) :: c1, c2, c3, c4, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
     LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., DoNewton, GotRelax = .FALSE.
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
-    REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
+    REAL(KIND=dp), ALLOCATABLE :: ss(:), s(:), ArrheniusFactorVec(:)
+    REAL(KIND=dp), POINTER :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:)
     TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar, WeightVar
     LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
     CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
 
     SAVE NewtonRelax, R
-    
-    !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
 
     dim = 3
     dofs = 2
@@ -225,17 +223,9 @@ CONTAINS
       RETURN      
     END IF
 
-    ! Deallocate too small storage if needed 
-    IF (ALLOCATED(ss)) THEN
-      IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ArrheniusFactorVec )
-    END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(ss)) THEN
-      ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     ! For non-newtonian models compute the viscosity here
@@ -484,9 +474,9 @@ CONTAINS
     REAL(KIND=dp), TARGET :: STIFF(ntot*2,ntot*2), FORCE(ntot*2)
     REAL(KIND=dp) :: NodalVelo(2,ntot),NodalHeight(ntot)
     REAL(KIND=dp) :: s, rho, crho
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
+    REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
         rhoVec(:), loadAtIpVec(:,:), ForcePart(:), GradVec(:,:,:), GradHeight(:,:), &
-        weight_1(:), weight_2(:), weight_4(:), tauVec(:)        
+        weight_1(:), weight_2(:), weight_4(:), tauVec(:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
     REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
     REAL(kind=dp) :: stifford(ntot,ntot,2,2), jacord(ntot,ntot,2,2), &
@@ -497,15 +487,10 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: str
 
     TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
-    TYPE(Variable_t), POINTER, SAVE :: HeightVar 
+    TYPE(Variable_t), POINTER, SAVE :: HeightVar
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE, weight_1, weight_2, weight_4
-!$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec, ElemDim )
-!$OMP THREADPRIVATE(ForcePart, weight_1, weight_2, weight_4)
-!$OMP THREADPRIVATE(tauVec, GradVec, GradHeight, Nodes)
-
-    SAVE Nodes
 !------------------------------------------------------------------------------
 
     CALL GetElementNodesVec( Nodes )
@@ -530,24 +515,13 @@ CONTAINS
     ! Storage size depending ngp
     !-------------------------------------------------------------------------------
     
-    ! Deallocate storage if needed 
-    IF (ALLOCATED(BasisVec)) THEN
-      IF (SIZE(BasisVec,1) < ngp .OR. SIZE(BasisVec,2) < ntot) &
-          DEALLOCATE(BasisVec,dBasisdxVec, DetJVec, rhoVec, &
-          LoadAtIpVec, weight_1, weight_2, weight_4, tauVec, &
-          ForcePart, GradVec, GradHeight)
-    END IF
-    
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(BasisVec)) THEN
-      ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
-          rhoVec(ngp), LoadAtIpVec(ngp,2), &
-          weight_1(ngp), weight_2(ngp), weight_4(ngp), tauVec(ngp), &
-          ForcePart(ntot), GradVec(ngp,3,3), GradHeight(ngp,dim), &
-          STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('HydrostaticNSSolver::LocalBulkMatrix','Local storage allocation failed')
-      END IF
+    ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
+        rhoVec(ngp), LoadAtIpVec(ngp,2), &
+        weight_1(ngp), weight_2(ngp), weight_4(ngp), tauVec(ngp), &
+        ForcePart(ntot), GradVec(ngp,3,3), GradHeight(ngp,dim), &
+        STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('HydrostaticNSSolver::LocalBulkMatrix','Local storage allocation failed')
     END IF
 
     IF (Newton) THEN
@@ -740,18 +714,17 @@ CONTAINS
     REAL(KIND=dp) :: ExtPressure, s, detJ, wut0, wexp, wcoeff, ut
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), &
         Velo(3), TanFrictionCoeff, DummyVals(1)
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, IntPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         WeertmanCoeff_h, WeertmanExp_h, FrictionUt0_h, FrictionCoeff_h
     TYPE(VariableHandle_t), SAVE :: Velo_v
     TYPE(Variable_t), POINTER, SAVE :: NrmSol, HeightVar
-    TYPE(ValueList_t), POINTER :: BC    
+    TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp) :: TanFder,JAC(nd*2,nd*2),SOL(nd*2),NodalSol(2,nd),NewtonRelax
     TYPE(Variable_t), POINTER, SAVE :: SlipCoeffVar, SlipSpeedVar, SlipWeightVar
     LOGICAL, SAVE :: SaveSlipSpeed, SaveSlipCoeff, SaveSlipWeight
 
-    
-    SAVE Basis, dBasisdx, NewtonRelax, GotRelax
+    SAVE NewtonRelax, GotRelax
     
     !------------------------------------------------------------------------------
 
@@ -806,15 +779,7 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    IF( ALLOCATED( Basis ) ) THEN
-      IF( SIZE( Basis ) < nd ) THEN
-        DEALLOCATE( Basis, dBasisdx ) 
-      END IF
-    END IF
-
-    IF( .NOT. ALLOCATED( Basis ) ) THEN
-      ALLOCATE( Basis(nd), dBasisdx(nd,3) )
-    END IF
+    ALLOCATE( Basis(nd), dBasisdx(nd,3) )
 
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
@@ -1027,14 +992,10 @@ CONTAINS
     INTEGER :: NodalPerm(ntot)
     REAL(KIND=dp) :: NodalVelo(2,ntot), duz_elem(ntot), wuz_elem(ntot), dp_elem(ntot), ub_elem(ntot), &
         vgrad(2), w, velo(2), zgrad(2)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
     INTEGER :: t, i, j, k, ngp, allocstat
 
-
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec
-!$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, Nodes)
-
-    SAVE Nodes
 !------------------------------------------------------------------------------
 
     CALL GetElementNodesVec( Nodes )
@@ -1049,18 +1010,9 @@ CONTAINS
 
     DoVisc = PRESENT(dpr)
     
-    ! Deallocate storage if needed 
-    IF (ALLOCATED(BasisVec)) THEN
-      IF (SIZE(BasisVec,1) < ngp .OR. SIZE(BasisVec,2) < ntot) &
-          DEALLOCATE(BasisVec,dBasisdxVec, DetJVec )
-    END IF
-    
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(BasisVec)) THEN
-      ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('HydrostaticNSSolver::LocalBulkMatrix','Local storage allocation failed')
-      END IF
+    ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('HydrostaticNSSolver::LocalDuz','Local storage allocation failed')
     END IF
     
     ! Vectorized basis functions

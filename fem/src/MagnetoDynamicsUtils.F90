@@ -38,7 +38,7 @@
                    CoilBody,CoilType) RESULT (Tcoef)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -47,12 +47,12 @@
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
     LOGICAL :: CoilBody
-!$OMP THREADPRIVATE(Cwrk)
 
+    NULLIFY(Cwrk)
     Tcoef=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
-      IF (Part=='re') THEN 
+      IF (Part=='re') THEN
         CALL ListGetRealArray( Material, &
              'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
       ELSE
@@ -83,8 +83,9 @@
         END IF
       END IF
     END IF
+    IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 
-    IF (CoilBody) THEN 
+    IF (CoilBody) THEN
       SELECT CASE (CoilType)
       CASE ('stranded')
         !Tcoef(1,1,1:n) = 0._dp
@@ -93,7 +94,7 @@
         Tcoef(1,1,1:n) = 0._dp
       END SELECT
     END IF
- 
+
 !------------------------------------------------------------------------------
   END FUNCTION GetElectricConductivityTensor
 !------------------------------------------------------------------------------ 
@@ -130,19 +131,19 @@
                   RESULT (mu)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: mu(3,3,n)
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
-!$OMP THREADPRIVATE(Cwrk)
 
+    NULLIFY(Cwrk)
     mu=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
-      IF (Part=='re') THEN 
+      IF (Part=='re') THEN
         CALL ListGetRealArray( Material, &
              'Relative Permeability', Cwrk, n, Element % NodeIndexes, Found )
       ELSE
@@ -173,6 +174,7 @@
         END IF
       END IF
     END IF
+    IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 !------------------------------------------------------------------------------
   END FUNCTION GetPermeabilityTensor
 !------------------------------------------------------------------------------ 
@@ -182,16 +184,16 @@
                   RESULT (T)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: n, i, j, slen, tsize 
+    INTEGER :: n, i, j, slen, tsize
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: T(tsize,tsize,n)
     CHARACTER(LEN=2) :: Part
     CHARACTER(LEN=*) :: varname
     LOGICAL, OPTIONAL :: Found
-!$OMP THREADPRIVATE(Cwrk)
 
+    NULLIFY(Cwrk)
     IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
     Material => GetMaterial( Element )
@@ -228,6 +230,7 @@
         END IF
       END IF
     END IF
+    IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 !------------------------------------------------------------------------------
   END FUNCTION GetTensor
 !------------------------------------------------------------------------------ 
@@ -357,13 +360,13 @@
    REAL(KIND=dp) :: RotM(3,3,n)
    INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
    INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar !, alphavecvar 
+   TYPE(Variable_t), POINTER, SAVE :: RotMvar !, alphavecvar
    REAL(KIND=dp), POINTER, SAVE :: ConstArray(:,:)
    REAL(KIND=dp) :: Origin(3), alpha_ref(3), beta_ref(3)
    REAL(KIND=dp) :: x(3), r(3), xref(3)
    REAL(KIND=dp) :: C, S, t
    LOGICAL, SAVE :: visited = .FALSE.
-   TYPE(Nodes_t), SAVE :: Nodes
+   TYPE(Nodes_t) :: Nodes
 
    LOGICAL :: GotIt
 

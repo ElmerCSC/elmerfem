@@ -315,9 +315,6 @@ END SUBROUTINE HeatSolver_Init
                  Pressure,              &
                  dPressureDt,           &
                  PressureCoeff,        &
-                 ElementNodes % x,      &
-                 ElementNodes % y,      &
-                 ElementNodes % z,      &
                  Density,Work,          &
                  LatentHeat,            &
                  PhaseVelocity,         &
@@ -342,6 +339,10 @@ END SUBROUTINE HeatSolver_Init
                  PerfusionDensity,      &
                  PerfusionHeatCapacity, &
                  PerfusionRefTemperature )
+          IF (ALLOCATED(ElementNodes % xyz)) THEN
+            DEALLOCATE(ElementNodes % xyz)
+            NULLIFY(ElementNodes % x, ElementNodes % y, ElementNodes % z)
+          END IF
        END IF
 
        ALLOCATE( &
@@ -351,9 +352,6 @@ END SUBROUTINE HeatSolver_Init
                  Pressure( N ),                        &
                  dPressureDt( N ),                     &
                  PressureCoeff( N ),                   &
-                 ElementNodes % x( N ),                &
-                 ElementNodes % y( N ),                &
-                 ElementNodes % z( N ),                &
                  Density( N ),Work( N ),               &
                  LatentHeat( N ),                      &
                  PhaseVelocity(3, N),                  &

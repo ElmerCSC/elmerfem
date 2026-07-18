@@ -70,6 +70,8 @@ END INTERFACE
 
     REAL(KIND=dp), PRIVATE :: AdvanceTime1, AdvanceTime2
 
+    PRIVATE :: i2s_ndigits
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -152,68 +154,45 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Converts integer to string. Handy when writing output with integer data.
 !------------------------------------------------------------------------------
+  ! Number of characters I2S needs to represent IVAL (including a '-' sign).
+  ! PURE so it can appear in the length spec of I2S's automatic-length result.
+  PURE FUNCTION i2s_ndigits(ival) RESULT(n)
+!------------------------------------------------------------------------------
+    INTEGER, INTENT(in) :: ival
+    INTEGER :: n, v
+!------------------------------------------------------------------------------
+    n = 1
+    IF (ival < 0) n = 2          ! sign takes one extra character
+    v = ABS(ival)
+    DO WHILE (v >= 10)
+      n = n + 1
+      v = v / 10
+    END DO
+  END FUNCTION i2s_ndigits
+
   PURE FUNCTION i2s(ival) RESULT(s)
 !------------------------------------------------------------------------------
     INTEGER, INTENT(in) :: ival
-    CHARACTER(:), ALLOCATABLE :: s
+    ! NB: the result is an automatic-length CHARACTER, deliberately NOT
+    ! CHARACTER(:),ALLOCATABLE. gfortran (>=15.2) miscompiles a concatenation
+    ! whose operand is a deferred-length ALLOCATABLE function result when it is
+    ! evaluated inside an OpenMP region: the temporary is intermittently given
+    ! the wrong length, causing a heap-buffer-overflow (root cause of the
+    ! radiation2d_spectral / HeatSolveVec intermittent CI crashes). A
+    ! non-allocatable result avoids that path entirely, is standard F90 (more
+    ! portable), and is cheaper (no per-call heap allocation).
+    CHARACTER(LEN=i2s_ndigits(ival)) :: s
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,n,t,v,len
-    INTEGER(8) :: m
+    INTEGER :: i, v
     CHARACTER, PARAMETER :: DIGITS(0:9)=['0','1','2','3','4','5','6','7','8','9']
 !------------------------------------------------------------------------------
-
-     IF(ival>=0) THEN
-       v = ival
-       IF (v<10) THEN
-         ALLOCATE(CHARACTER(1)::s)
-         s = DIGITS(v)
-       ELSE IF (ival<100) THEN
-         i = v/10
-         ALLOCATE(CHARACTER(2)::s)
-         s = DIGITS(i)//DIGITS(v-10*i)
-       ELSE
-         n=3
-         m=100
-         DO WHILE(10*m<=v)
-           n=n+1
-           m=m*10
-         END DO
-
-         ALLOCATE(CHARACTER(n)::s)
-         DO i=1,n
-           t = v / m
-           s(i:i) = DIGITS(t)
-           v = v - t*m
-           m = m / 10
-         END DO
-       END IF
-     ELSE
-       v = -ival
-       IF (v<10) THEN
-        ALLOCATE(CHARACTER(2)::s)
-         s = '-'//DIGITS(v)
-       ELSE IF (v<100) THEN
-         ALLOCATE(CHARACTER(3)::s)
-         i = v/10
-         s = '-'//DIGITS(i)//DIGITS(v-10*i)
-       ELSE
-         n=3
-         m=100
-         DO WHILE(10*m<=v)
-           n=n+1
-           m=m*10
-         END DO
-
-         ALLOCATE(CHARACTER(n+1)::s)
-         s(1:1) = '-'
-         DO i=2,n+1
-           t = v / m
-           s(i:i) = DIGITS(t)
-           v = v - t*m
-           m = m / 10
-         END DO
-       END IF
-     END IF
+    v = ABS(ival)
+    IF (ival < 0) s(1:1) = '-'
+    ! Fill least-significant digit first, right to left.
+    DO i = LEN(s), MERGE(2,1,ival<0), -1
+      s(i:i) = DIGITS(MOD(v,10))
+      v = v / 10
+    END DO
 !------------------------------------------------------------------------------
   END FUNCTION i2s
 !------------------------------------------------------------------------------
@@ -1239,7 +1218,13 @@ CONTAINS
               character(kind=c_char), dimension(*) :: locale
             END SUBROUTINE  setlocale
           END INTERFACE
-          CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+          ! Force period-decimal for Fortran's list-directed READ of the
+          ! substituted value, matching mtc_eval's setlocale(LC_ALL,"C").
+          ! The former "en_US.UTF-8" is a UTF-8 codepage locale whose composite
+          ! locale string trips an intermittent UCRT invalid-parameter fast-fail
+          ! (0xC0000409) inside libgfortran's locale save/restore during the
+          ! subsequent sif READ. "C" is canonical, always valid, and '.'-decimal.
+          CALL setlocale(0,"C"//CHAR(0))
         END BLOCK
 
        closed_region = .false.

@@ -441,8 +441,29 @@ CONTAINS
        F(1:n) = pLocal % F(1:n)        
      END IF
 
+     ! Obtain the (solver-constant) matrix multiplier configuration once. The
+     ! cVar/DoMultiply/DoMultiplyRhs/DoInvert/rVar/prevSolverId state below is
+     ! SAVEd (implicitly, via their declaration initializers) and therefore
+     ! shared across threads, but this routine is called per element from the
+     ! *threaded* vectorized assembly (DefaultUpdateEquations -> here) whenever
+     ! "Local Matrix Storage" is combined with "Vector Assembly" (e.g. topology
+     ! optimization with "Matrix Multiplier Name"). The bare "SolverId /=
+     ! PrevSolverId" check was an unsynchronized double-checked lock: on the
+     ! first parallel assembly several threads pass it together and all run the
+     ! init concurrently. One thread's transient "cvar => NULL()" (below) then
+     ! races against another thread that has already published DoMultiply=.TRUE.
+     ! and reaches "cvar % Perm(eind)" further down -> NULL dereference / SIGSEGV
+     ! (the intermittent TopoOptHeat2DCompMin2 crash). Guard the init with an
+     ! unnamed CRITICAL and re-check inside it (real double-checked locking):
+     ! only one thread initializes, prevSolverId is published last so the
+     ! unlocked fast path stays valid, and the lock is skipped entirely once
+     ! initialized. NOTE: this MUST stay an unnamed CRITICAL -- a named variant
+     ! deterministically SIGSEGVs several MPI tests on the Windows MSYS2/UCRT
+     ! MinGW gomp runtime (see the identical note in GaussPointsAdapt).
      IF(Solver % SolverId /= PrevSolverId) THEN
-       ! For the 1st element obtain the multiplier vector, for other elements it will be the same. 
+       !$OMP CRITICAL
+       IF(Solver % SolverId /= PrevSolverId) THEN
+       ! For the 1st element obtain the multiplier vector, for other elements it will be the same.
        cvar => NULL()
        DoMultiply = .FALSE.
        DoMultiplyRhs = .FALSE.
@@ -458,8 +479,8 @@ CONTAINS
          DoMultiply = .TRUE.
 
          DoInvert = ListGetLogical( Solver % Values,'Matrix Multiplier Invert',Found )
-         
-         ! We may multiply the r.h.s. with a different multiplier. 
+
+         ! We may multiply the r.h.s. with a different multiplier.
          multname = ListGetString( Solver % Values,'Rhs Multiplier Name',Found )
          IF(Found ) THEN
            rvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
@@ -472,7 +493,9 @@ CONTAINS
            DoMultiplyRhs = .TRUE.
          END IF
        END IF
-       prevSolverId = Solver % SolverId       
+       prevSolverId = Solver % SolverId
+       END IF
+       !$OMP END CRITICAL
      END IF
 
      ! Multiply locally stored matrix. Possible use is, for example, density in topology optimization. 
