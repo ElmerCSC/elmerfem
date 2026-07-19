@@ -66,6 +66,8 @@ VARIABLE *str_sprintf(VARIABLE *var)
   char *fmt = var_to_string(var);
   VARIABLE *res;
   int i;
+  double str_p[STR_MAXVALS];
+  char str_pstr[STR_MAXLEN];
 
   if (NEXT(var) != NULL)
   {
@@ -102,6 +104,7 @@ VARIABLE *str_sscanf(VARIABLE *var)
   char *str = var_to_string(var);
   VARIABLE *res;
   int i, got;
+  double str_p[STR_MAXVALS];
 
   got = sscanf(str, fmt,
       &str_p[0],  &str_p[1],  &str_p[2],  &str_p[3],  &str_p[4],  &str_p[5],
