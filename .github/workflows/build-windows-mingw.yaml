@@ -119,14 +119,14 @@ jobs:
                             "-DParMetis_INCLUDE_DIR=$(pkg-config --cflags parmetis)"
                             "-DWITH_Mumps=ON"
                             "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dmo mumps-zmo mumps-smo mumps-cmo)"
-                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo mumps-zmo mumps-smo mumps-cmo)")
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo)")
           else
             _extra_config+=("-DWITH_MPI=OFF"
                             "-DWITH_Zoltan=OFF"
                             "-DWITH_ElmerIce=OFF"
                             "-DWITH_Mumps=ON"
                             "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dto mumps-zto mumps-sto mumps-cto)"
-                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto mumps-zto mumps-sto mumps-cto)")
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto)")
           fi
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
