@@ -318,11 +318,11 @@ c     %-----------------------%
 c
 
 c
-c     needs to do the initialization (perhaps repeatedly), if some of the partners is new:
+c     needs to do the initialization (perhaps repeatedly), if some of the partners are new:
 c
       first0 = first
       call MPI_ALLREDUCE( first0, first, 1, MPI_LOGICAL,
-     &           MPI_LAND, comm, ierr )
+     &           MPI_LOR, comm, ierr )
 
       if (first) then
 c
