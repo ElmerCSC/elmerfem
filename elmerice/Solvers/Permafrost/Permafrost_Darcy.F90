@@ -574,7 +574,7 @@ CONTAINS
     !Swres = GetConstReal( Material, "Exponential Swres", Found)
     !IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
     IFcomp = GetConstReal( Material, "Exponential Beta", Found)
-    !impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
+    impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
     
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
