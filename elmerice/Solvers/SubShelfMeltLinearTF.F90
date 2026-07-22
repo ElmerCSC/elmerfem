@@ -313,7 +313,9 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
            END IF
         END DO
 
-        elemFlux = elemFlux + Sw * detJ * meltRate_gp
+        ! Convert ice-equivalent melt rate to water-equivalent melt rate
+        ! (rhoi/rhoo) before integrating, so that elemFlux is water-equivalent
+        elemFlux = elemFlux + Sw * detJ * meltRate_gp * (rhoi / rhoo)
      END DO
 
      ! checks if the element is active in the flux variable and assigns the integrated flux
