@@ -264,7 +264,7 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
 
      T_far = T_oce_vals(T_oce_Perm(ii))
 
-     meltRate = gammaT * (rhoo * SWCp / (rhoi * Lf)) * (T_far - T_freeze) *  seconds_per_year
+     meltRate = MAX(gammaT * (rhoo * SWCp / (rhoi * Lf)) * (T_far - T_freeze) *  seconds_per_year, 0.0_dp)
      IF (wct_sc) THEN
         wct         = z_iceBase % Values(z_iceBase % Perm(ii)) &
                     - z_bedrock % Values(z_bedrock % Perm(ii))
