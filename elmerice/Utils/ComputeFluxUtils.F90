@@ -192,7 +192,7 @@
       TYPE(Solver_t) :: Solver
       REAL(KIND=dp), OPTIONAL :: FillValue
 
-      Type(Variable_t), POINTER :: FlowVar,HVar,CFluxVar,CalvingFluxTot
+      Type(Variable_t), POINTER :: FlowVar,HVar,CFluxVar,CFluxVarTot
       TYPE(ValueList_t), POINTER :: BC
       TYPE(GaussIntegrationPoints_t) :: IntegStuff
       TYPE(Element_t), POINTER :: Element,Parent
