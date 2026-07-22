@@ -150,7 +150,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
                                  runoff_field, surface_height_field
   USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_post_field, &
-                                 sal_oce_post_field, liquid_ice_sheet_flux_field
+                                 sal_oce_post_field, liquid_ice_sheet_flux_field, &
+                                 solid_ice_sheet_flux_field
   USE MPI
 
   IMPLICIT NONE
@@ -169,7 +170,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
   CHARACTER(LEN=1024) ::  config_file, grid_crs, proj_type
   CHARACTER(LEN=1024) ::  coupling_timestep
-  REAL(KIND=dp) :: coupling_timestep_in_years, local_flux_sum, global_flux_sum
+  REAL(KIND=dp) :: coupling_timestep_in_years, local_liquid_flux_sum, global_liquid_flux_sum
+  REAL(KIND=dp) :: local_solid_flux_sum, global_solid_flux_sum
   CHARACTER(LEN=1024) ::  yac_calendar, yac_start_time, yac_end_time
   INTEGER :: i, t, ierr
   INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
@@ -181,6 +183,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
   TYPE(Variable_t), POINTER :: t_oceVar, sal_oceVar, bmb_fluxVar
+  TYPE(Variable_t), POINTER :: calving_fluxVar
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
@@ -482,10 +485,12 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       END DO
       CALL DefaultVariableAdd('temp_oce', dofs=1, Perm = t_ocePerm)
       CALL DefaultVariableAdd('sal_oce', dofs=1, Perm = sal_ocePerm)
-      ! Initialize bmb_flux_field for first time step
+      ! Initialize bmb_flux_field and calving_flux field for first time step
       bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
+      calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
       DO t=1, GetNOFActive(Solver)
         liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
+        solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
       END DO
     END IF
 
@@ -499,19 +504,27 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       CALL INFO(SolverName, 'Getting Elmer liquid and solid flux variables', Level=30)
       ! Update bmb_flux_field before sending to ICON
       bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
+      calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
       DO t=1, GetNOFActive(Solver)
         liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
+        solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
       END DO
-      ! Write total liquid ice sheet flux to log
-      local_flux_sum = 0.0_dp
+      ! Write total liquid and total solid ice sheet flux to log
+      local_liquid_flux_sum = 0.0_dp
+      local_solid_flux_sum = 0.0_dp
       DO t = 1, GetNOFActive(Solver)
         Element => GetActiveElement(t, Solver)
         IF (ParEnv % myPe /= Element % partIndex) CYCLE
-        local_flux_sum = local_flux_sum + liquid_ice_sheet_flux_field(t,1)
+        local_liquid_flux_sum = local_liquid_flux_sum + liquid_ice_sheet_flux_field(t,1)
+        local_solid_flux_sum = local_solid_flux_sum + solid_ice_sheet_flux_field(t,1)
       END DO
-      CALL MPI_Allreduce(local_flux_sum, global_flux_sum, 1, MPI_DOUBLE_PRECISION, &
+      CALL MPI_Allreduce(local_liquid_flux_sum, global_liquid_flux_sum, 1, MPI_DOUBLE_PRECISION, &
                          MPI_SUM, ParEnv % ActiveComm, ierr)
-      WRITE(Message,'(A,F15.3,A)') 'Sum of liquid_ice_sheet_flux_field: ', global_flux_sum, ' m^3/s'
+      CALL MPI_Allreduce(local_solid_flux_sum, global_solid_flux_sum, 1, MPI_DOUBLE_PRECISION, &
+                         MPI_SUM, ParEnv % ActiveComm, ierr)
+      WRITE(Message,'(A,F15.3,A)') 'Sum of liquid_ice_sheet_flux_field: ', global_liquid_flux_sum, ' m^3/s'
+      CALL INFO(SolverName, Message, Level=3)
+      WRITE(Message,'(A,F15.3,A)') 'Sum of solid_ice_sheet_flux_field: ', global_solid_flux_sum, ' m^3/s'
       CALL INFO(SolverName, Message, Level=3)
       ! couple with ICON-O
       CALL elmer_icon_interface(is_root_rank)

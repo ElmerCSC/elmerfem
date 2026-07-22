@@ -505,6 +505,11 @@ MODULE elmer_icon_coupling
   INTEGER :: liquid_ice_sheet_flux_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: liquid_ice_sheet_flux_field(:,:)
 
+  INTEGER :: solid_ice_sheet_flux_field_id = -1
+  CHARACTER(LEN=*), PARAMETER :: solid_ice_sheet_flux_field_name = "solid_ice_sheet_flux"
+  INTEGER :: solid_ice_sheet_flux_collection_size = 1
+  DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: solid_ice_sheet_flux_field(:,:)
+
 CONTAINS
 
   SUBROUTINE construct_elmer_icon_coupling( &
@@ -535,6 +540,14 @@ CONTAINS
 
     ! allocate and liquid flux field buffer
     ALLOCATE(liquid_ice_sheet_flux_field(nbr_cells, liquid_ice_sheet_flux_collection_size))
+
+    ! register solid flux field in YAC
+    CALL yac_fdef_field( &
+      solid_ice_sheet_flux_field_name, comp_id, (/cell_point_id/), 1, solid_ice_sheet_flux_collection_size, &
+      iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, solid_ice_sheet_flux_field_id);
+
+    ! allocate and solid flux field buffer
+    ALLOCATE(solid_ice_sheet_flux_field(nbr_cells, solid_ice_sheet_flux_collection_size))
 
     ! register ocean temperature field in YAC (masked on boundary)
     CALL yac_fdef_field( &
@@ -631,9 +644,8 @@ CONTAINS
 
     CALL print_field_info(elmer_comp_name, elmer_grid_name, temp_oce_field_name)
     CALL print_field_info(elmer_comp_name, elmer_grid_name, sal_oce_field_name)
-    WRITE(*,*) 'DEBUG: Before print_field_info for liquid_ice_sheet_flux'
     CALL print_field_info(elmer_comp_name, elmer_grid_name, liquid_ice_sheet_flux_field_name)
-    WRITE(*,*) 'DEBUG: After print_field_info for liquid_ice_sheet_flux'
+    CALL print_field_info(elmer_comp_name, elmer_grid_name, solid_ice_sheet_flux_field_name)
 
   CONTAINS
 
@@ -697,6 +709,54 @@ CONTAINS
 
     INTEGER :: info, err
 
+    ! ------------------------------------------------------------------
+    ! Exchange: solid_ice_sheet_flux
+    ! Direction: ELMER -> (source) -- Elmer sends the solid (icebergs) ice
+    !            sheet mass flux to ICON-O.
+    ! ------------------------------------------------------------------
+    IF (yac_fget_role_from_field_id(solid_ice_sheet_flux_field_id) == &
+        YAC_EXCHANGE_TYPE_SOURCE) THEN
+
+      CALL yac_fget_action(solid_ice_sheet_flux_field_id, info)
+
+      IF (is_root_rank) THEN
+
+        ! get the action executed by YAC in the next put operation called for
+        ! the solid_ice_sheet_flux and print out some information
+        PRINT *, "ELMER: call put for field: ", TRIM(solid_ice_sheet_flux_field_name), &
+                 " datatime: ", TRIM(yac_fget_field_datetime(solid_ice_sheet_flux_field_id)), &
+                 " action: ", TRIM(yac_action_to_string(info))
+      END IF
+
+      ! if this was a coupling timestep
+      IF ((info == YAC_ACTION_COUPLING) .OR. &
+          (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
+          (info == YAC_ACTION_REDUCTION)) THEN
+
+        ! get data to be sent from elmer
+
+        ! execute put operation for solid_ice_sheet_flux field
+        ! * if this is a coupling timestep, this will block until the data has
+        !   been received
+        ! * if this is not a coupling timestep, solid_ice_sheet_flux field buffer
+        !   is left untouched and routine will return immediately
+        CALL yac_fput( &
+          solid_ice_sheet_flux_field_id, SIZE(solid_ice_sheet_flux_field, 1), &
+          SIZE(solid_ice_sheet_flux_field, 2), solid_ice_sheet_flux_field, &
+          info, err)
+      ELSE IF (info == YAC_ACTION_NONE) THEN
+        CALL yac_fupdate(solid_ice_sheet_flux_field_id)
+      ELSE
+          PRINT *, "ELMER: unexpected action for field: ", TRIM(solid_ice_sheet_flux_field_name), &
+                   " action: ", TRIM(yac_action_to_string(info))
+      END IF
+    END IF
+
+    ! ------------------------------------------------------------------
+    ! Exchange: liquid_ice_sheet_flux
+    ! Direction: ELMER -> (source) -- Elmer sends the liquid (basal melting) ice
+    !            sheet mass flux to ICON-O.
+    ! ------------------------------------------------------------------
     IF (yac_fget_role_from_field_id(liquid_ice_sheet_flux_field_id) == &
         YAC_EXCHANGE_TYPE_SOURCE) THEN
 
@@ -735,6 +795,10 @@ CONTAINS
       END IF
     END IF
 
+    ! ------------------------------------------------------------------
+    ! Exchange: t_oce (ocean temperature)
+    ! Direction: (target) ELMER receives ocean temperature from ICON-O.
+    ! ------------------------------------------------------------------
     ! checks whether the ocean temperature field is defined as a target
     ! in a couple
     IF (yac_fget_role_from_field_id(t_oce_field_id) == &
@@ -786,7 +850,10 @@ CONTAINS
       ! TODO: ignore info?
 
     END IF
-
+    ! ------------------------------------------------------------------
+    ! Exchange: sal_oce (ocean salinity)
+    ! Direction: (target) ELMER receives ocean salinity from ICON-O. 
+    ! ------------------------------------------------------------------
     ! checks whether the ocean salinity field is defined as a target
     ! in a couple
     IF (yac_fget_role_from_field_id(sal_oce_field_id) == &
@@ -840,8 +907,6 @@ CONTAINS
       ! TODO: ignore info?
 
     END IF
-    ! checks whether the liquid ice sheet flux field is defined as a source
-    ! in a couple
 
   END SUBROUTINE elmer_icon_interface
 
@@ -850,7 +915,7 @@ CONTAINS
     ! clean up
     DEALLOCATE(t_oce_pre_field, t_oce_post_field, &
                sal_oce_pre_field, sal_oce_post_field, &
-               liquid_ice_sheet_flux_field)
+               liquid_ice_sheet_flux_field, solid_ice_sheet_flux_field)
 
   END SUBROUTINE destruct_elmer_icon_coupling
 
