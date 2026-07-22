@@ -325,10 +325,10 @@
         IF (EIndex > 0) THEN
            IF (VisitedParent(Parent % ElementIndex)) THEN
              CFluxVar % Values ( EIndex ) = CFluxVar % Values ( EIndex ) + CalvingFlux / area
-             CFluxVarTot % Values ( EIndex ) = CFluxVarTot % Values ( EIndex ) + CalvingFlux
+             CFluxVarTot % Values ( EIndex ) = MAX(CFluxVarTot % Values ( EIndex ) + CalvingFlux, 0._dp)
            ELSE 
              CFluxVar % Values ( EIndex ) = CalvingFlux / area
-             CFluxVarTot % Values ( EIndex ) = CalvingFlux
+             CFluxVarTot % Values ( EIndex ) = MAX(CalvingFlux, 0._dp)
              IF (Parent % ElementIndex.GT.NofActive) &
                 CALL FATAL(Caller,"Pb with VisitedParent allocated size")
              VisitedParent(Parent % ElementIndex)=.TRUE.
