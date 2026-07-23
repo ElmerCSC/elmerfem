@@ -29,13 +29,12 @@ jobs:
       fail-fast: false
 
       matrix:
-        msystem: [UCRT64]
+        msystem: [UCRT64, CLANG64]
         dependencies: [bundled, external]
         mpi: [with, without]
-        include:
-          - dependencies: external
-            external-packages: parpack:p
-            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON
+        exclude:
+          - msystem: CLANG64
+            dependencies: external
 
     steps:
       - name: get CPU name
@@ -66,6 +65,7 @@ jobs:
             fc:p
             cmake:p
             ${{ matrix.mpi == 'with' && 'msmpi:p' || 'openblas:p' }}
+            omp:p
             openblas:p
             ${{ matrix.mpi == 'with' && 'parmetis:p' || 'openblas:p' }}
             mumps:p
@@ -94,7 +94,7 @@ jobs:
             unixodbc:p
             utf8cpp:p
             opencascade:p
-            ${{ matrix.external-packages }}
+            ${{ matrix.dependencies == 'external' && 'parpack:p' || 'openblas:p' }}
 
       - name: install MSMPI
         if: matrix.mpi == 'with'
@@ -128,11 +128,17 @@ jobs:
                             "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dto mumps-zto mumps-sto mumps-cto)"
                             "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto)")
           fi
+          if [ "${{ matrix.dependencies }}" == "external" ]; then
+            _extra_config+=("-DEXTERNAL_UMFPACK=ON"
+                            "-DEXTERNAL_ARPACK=ON"
+                            "-DEXTERNAL_PARPACK=ON")
+          fi
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             "${_extra_config[@]}" \
             -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF \
+            $([ "${{ matrix.msystem }}" == "CLANG64" ] && echo "-DHAVE_QP=OFF" || echo "-DHAVE_QP=ON") \
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
@@ -144,7 +150,6 @@ jobs:
             -DWITH_MATC=ON \
             -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
-            ${{ matrix.external-cmake-flags }} \
             ..
 
       - name: exclude build output from Windows Defender scanning
