@@ -109,7 +109,7 @@
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
           MinHBool=.FALSE., CycleNode=.FALSE., HaveMoulinMask=.FALSE.
-     LOGICAL, SAVE :: UseGM, AllowSheetAtGL, ZeroSheetWithHP
+     LOGICAL, SAVE :: UseGM, AllowSheetAtGL, ZeroSheetWithHP, CheckThicknessConvergence
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      ! For use in masking GlaDS floating shelves.  "MASK_HP" is for situations where
@@ -118,7 +118,7 @@
      INTEGER :: MaskStatus
      INTEGER, PARAMETER :: MASK_ALL = 0, MASK_NONE = 1, MASK_HP = 2
      
-     REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
+     REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, ThickRelativeChange, &
           Norm, PrevNorm, S, C, Qc, MaxArea, MaxH, MinH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:), SheetConductivity(:), ChannelConductivity(:),&
@@ -135,6 +135,7 @@
          CCw(:), lc(:)
      REAL(KIND=dp) :: ChannelArea, WaterDensity, gravity, Lw, EdgeTangent(3), &
                  ALPHA, BETA, CoupledTol, CoupledNorm, PrevCoupledNorm, &
+                 ThickCoupledNorm, PrevThickCoupledNorm, &
                  Discharge(3)
    
      REAL(KIND=dp) :: totat, st, totst, t1
@@ -388,11 +389,21 @@
         END IF
         ZeroSheetWithHP = GetLogical( SolverParams,'Zero Sheet With HP', Found )
         IF (.NOT. Found) THEN
-          IF (Calving) THEN              
+          IF (Calving) THEN
             ZeroSheetWithHP = .TRUE.
           ELSE
             ZeroSheetWithHP = .FALSE.
           END IF
+        END IF
+
+        CheckThicknessConvergence = GetLogical( SolverParams,'Check Thickness Convergence', Found )
+        IF (.NOT. Found) THEN
+           CheckThicknessConvergence = .FALSE.
+           CALL WARN(SolverName,'No >Check Thickness Convergence< specified. The coupled '// &
+                'loop convergence check is based on Hydraulic Potential only; Sheet '// &
+                'Thickness may exit the coupled iteration before it has converged. Set '// &
+                '>Check Thickness Convergence = Logical True< to also require Sheet '// &
+                'Thickness convergence.')
         END IF
 
         IfCalving: IF(Calving) THEN
@@ -632,10 +643,14 @@
 !------------------------------------------------------------------------------
 !   Loop for the coupling of the three equations
 !------------------------------------------------------------------------------
-    ! check on the coupled Convergence is done on the potential solution only
-    PrevCoupledNorm = ComputeNorm( Solver, SIZE(HydPot), HydPot ) 
+    ! check on the coupled Convergence is done on the potential solution only,
+    ! unless >Check Thickness Convergence< also requires Sheet Thickness to settle
+    PrevCoupledNorm = ComputeNorm( Solver, SIZE(HydPot), HydPot )
+    IF (CheckThicknessConvergence) THEN
+       PrevThickCoupledNorm = ComputeNorm( Solver, SIZE(ThickSolution), ThickSolution )
+    END IF
 
-    
+
     DO iterC = 1, MaxCoupledIter
 
 !------------------------------------------------------------------------------
@@ -1279,6 +1294,7 @@
               IF (UseGM) THEN
                 ! Cycle ungrounded nodes and zero hydrology variables
                 MaskStatus = ProcessMask(MaskName, AllowSheetAtGL, j)
+
                 SELECT CASE (MaskStatus)
                 CASE (MASK_ALL)
                   CycleNode = .TRUE.
@@ -1303,19 +1319,19 @@
               
               SELECT CASE(methodSheet)
               CASE('implicit') 
-                 IF (ThickSolution(k) > hr2(j)) THEN
+                 IF (ThickPrev(k,1) > hr2(j)) THEN
                     ThickSolution(k) = MAX(ThickPrev(k,1)/(1.0_dp + dt*Vvar(j)) , AEPS)
                  ELSE
                     ThickSolution(k) = MAX((ThickPrev(k,1) + dt*ublr(j)*hr2(j))/(1.0_dp + dt*(Vvar(j)+ublr(j))) , AEPS)
                  END IF
               CASE('explicit')
-                 IF (ThickSolution(k) > hr2(j)) THEN 
+                 IF (ThickPrev(k,1) > hr2(j)) THEN 
                     ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*Vvar(j)) , AEPS)
                  ELSE
                     ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j), AEPS)
                  END IF
               CASE('crank-nicolson')
-                 IF (ThickSolution(k) > hr2(j)) THEN 
+                 IF (ThickPrev(k,1) > hr2(j)) THEN 
                     ThickSolution(k) = MAX(ThickPrev(k,1)*(1.0_dp - 0.5*dt*Vvar(j))/(1.0_dp + 0.5*dt*Vvar(j)) , AEPS)
                  ELSE
                     ThickSolution(k) = MAX((ThickPrev(k,1)*(1.0_dp - 0.5*dt*(Vvar(j)+ublr(j))) + dt*ublr(j)*hr2(j)) & 
@@ -1537,20 +1553,40 @@
 
      END IF  ! If Channels
 
-      !   Check for convergence                           
-      CoupledNorm = ComputeNorm( Solver, SIZE(HydPot), HydPot ) 
+      !   Check for convergence
+      CoupledNorm = ComputeNorm( Solver, SIZE(HydPot), HydPot )
 
       IF ( PrevCoupledNorm + CoupledNorm /= 0.0d0 ) THEN
          RelativeChange = 2.0d0 * ABS( PrevCoupledNorm-CoupledNorm ) / (PrevCoupledNorm + CoupledNorm)
       ELSE
          RelativeChange = 0.0d0
       END IF
-      PrevCoupledNorm = CoupledNorm 
+      PrevCoupledNorm = CoupledNorm
 
       WRITE( Message, * ) 'COUPLING LOOP (NRM,RELC) : ',iterC, CoupledNorm, RelativeChange
       CALL Info( SolverName, Message, Level=3 )
 
-      IF ((RelativeChange < CoupledTol) .AND. (iterC .GE. MinCoupledIter)) EXIT 
+      ! Optionally also require Sheet Thickness to have converged (see
+      ! >Check Thickness Convergence< above). Left as ThickRelativeChange=0.0 when
+      ! the option is off, so the EXIT test below is unaffected (backwards compatible).
+      ThickRelativeChange = 0.0d0
+      IF (CheckThicknessConvergence) THEN
+         ThickCoupledNorm = ComputeNorm( Solver, SIZE(ThickSolution), ThickSolution )
+
+         IF ( PrevThickCoupledNorm + ThickCoupledNorm /= 0.0d0 ) THEN
+            ThickRelativeChange = 2.0d0 * ABS( PrevThickCoupledNorm-ThickCoupledNorm ) / &
+                 (PrevThickCoupledNorm + ThickCoupledNorm)
+         ELSE
+            ThickRelativeChange = 0.0d0
+         END IF
+         PrevThickCoupledNorm = ThickCoupledNorm
+
+         WRITE( Message, * ) 'COUPLING LOOP THICKNESS (NRM,RELC) : ',iterC, ThickCoupledNorm, ThickRelativeChange
+         CALL Info( SolverName, Message, Level=3 )
+      END IF
+
+      IF ((RelativeChange < CoupledTol) .AND. (ThickRelativeChange < CoupledTol) &
+           .AND. (iterC .GE. MinCoupledIter)) EXIT
 
    END DO ! iterC
 

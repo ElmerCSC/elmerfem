@@ -91,7 +91,7 @@
                 OutPutFileName, nit
 
      LOGICAL :: Found, AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
-                FirstTime = .TRUE., FirstVisit = .TRUE. 
+                FirstTime = .TRUE., FirstVisit = .TRUE.
 
      INTEGER, PARAMETER :: PVtuUnit=1300
      INTEGER :: VtuUnit, offset, Cpt, kk
@@ -310,8 +310,8 @@
                 END IF
              END DO
                
-             EdgeSheet = 0 
-             DO t=1, Solver % Mesh % NumberOfEdges 
+             EdgeSheet = 0
+             DO t=1, Solver % Mesh % NumberOfEdges
                 Edge => Solver % Mesh % Edges(t)
                 n = Edge % TYPE % NumberOfNodes
                 IF (.NOT.ASSOCIATED(Edge)) CYCLE
@@ -320,7 +320,7 @@
                 END IF
                 IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                   EdgeSheet = EdgeSheet + 1
-             END DO 
+             END DO
              WRITE(Message,'(a,i0)')'Number of Channels (edges): ', EdgeSheet
              CALL INFO(SolverName, Message, level=3 )
              WRITE(Message,'(a,i0)')'Number of nodes in the sheet layer: ', NodeSheet
@@ -451,7 +451,7 @@
 
         Cpt=0
         DO i = 1, Model % NumberOfNodes
-           IF (TableNodeSheet(i)>0) THEN 
+           IF (TableNodeSheet(i)>0) THEN
               x = Solver % Mesh % Nodes % x(i)
               y = Solver % Mesh % Nodes % y(i)
               z = Solver % Mesh % Nodes % z(i)
@@ -481,7 +481,7 @@
         EdgeTypeArray(:)=0
 
         Cpt=0
-        DO t=1, Solver % Mesh % NumberOfEdges 
+        DO t=1, Solver % Mesh % NumberOfEdges
            Edge => Solver % Mesh % Edges(t)
            IF (.NOT.ASSOCIATED(Edge)) CYCLE
            IF (ParEnv % PEs > 1) THEN
@@ -489,7 +489,7 @@
            END IF
            n = Edge % TYPE % NumberOfNodes
            IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
-            
+
            Cpt = Cpt+1
            tmparray(1,Cpt) = TableNodeSheet(Edge % NodeIndexes(1))-1
            tmparray(2,Cpt) = TableNodeSheet(Edge % NodeIndexes(2))-1
@@ -530,10 +530,10 @@
 
         ! Loops to get the Channels Flux variable
         IF (ASSOCIATED(QcSol)) THEN
-           ALLOCATE(ChannelFluxArray(EdgeSheet)) 
+           ALLOCATE(ChannelFluxArray(EdgeSheet))
 
            Cpt=0
-           DO t=1, Solver % Mesh % NumberOfEdges 
+           DO t=1, Solver % Mesh % NumberOfEdges
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
               IF (ParEnv % PEs > 1) THEN
@@ -541,13 +541,13 @@
               END IF
               n = Edge % TYPE % NumberOfNodes
               IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
-            
+
               M = Solver % Mesh % NumberOfNodes
               Cpt = Cpt+1
               ChannelFluxArray(Cpt) = QcSolution(QcPerm(M+t))
            END DO
         END IF
-         
+
         ! Loops to get the Flux from Moulins variable
         IF (OutPutQm) THEN 
            ALLOCATE(MoulinInputArray(NodeSheet))
@@ -735,18 +735,26 @@
            WRITE( OutStr,'(A)') &
            '            <DataArray type="Float64" Name="'//TRIM(ChAreaVarName)//'" NumberOfComponents="1" format="ascii" >'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
+           ! E17.7E3 (not E16.7): forces an explicit 3-digit exponent WITH the "E"
+           ! letter always present. Plain E16.7 lets gfortran silently drop the "E"
+           ! when a value underflows past ~1e-99 (channels decaying to numerical
+           ! zero under a floating shelf, with no bed contact to sustain them, can
+           ! reach this), producing a malformed token like "0.1234567-119" that
+           ! VTK's ASCII reader misparses as two separate numbers - corrupting the
+           ! cell/value correspondence for every subsequent entry in the array.
            WRITE(VtuFormat,'(A,I0,A,A)') &
-                                "(",size(ChannelAreaArray), "E16.7",")"
-           WRITE(VtuUnit,VtuFormat) ChannelAreaArray(:) 
+                                "(",size(ChannelAreaArray), "E17.7E3",")"
+           WRITE(VtuUnit,VtuFormat) ChannelAreaArray(:)
            WRITE( OutStr,'(A)') '            </DataArray>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
 
            WRITE( OutStr,'(A)') &
            '            <DataArray type="Float64" Name="'//TRIM(ChFluxVarName)//'" NumberOfComponents="1" format="ascii" >'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
+           ! Same fix as ChannelAreaArray above - see comment there.
            WRITE(VtuFormat,'(A,I0,A,A)') &
-                                "(",size(ChannelFluxArray), "E16.7",")"
-           WRITE(VtuUnit,VtuFormat) ChannelFluxArray(:) 
+                                "(",size(ChannelFluxArray), "E17.7E3",")"
+           WRITE(VtuUnit,VtuFormat) ChannelFluxArray(:)
            WRITE( OutStr,'(A)') '            </DataArray>'//lf
            CALL VtuStrWrite( OutStr , VtuUnit )
 
