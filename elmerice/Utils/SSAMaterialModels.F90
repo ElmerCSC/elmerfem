@@ -83,7 +83,7 @@ MODULE SSAMaterialModels
    TYPE(Solver_t), POINTER :: pSolver => NULL()
 
    SAVE FirstTime
-   SAVE :: GLnIP, GMSol, BedRockSol, pSolver, MaskName
+   SAVE :: GLnIP, GMSol, BedRockSol, pSolver, MaskName, Constants
 
    Material => GetMaterial(Element)
 
