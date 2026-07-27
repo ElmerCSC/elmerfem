@@ -91,35 +91,11 @@ ENDIF()
 
 IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
   MARK_AS_ADVANCED(MAKE_NSIS_PACKAGE MAKE_ZIP_PACKAGE CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
-  SET(MAKE_ZIP_PACKAGE TRUE CACHE BOOL "Create windows .zip file")
-  SET(MAKE_NSIS_PACKAGE TRUE CACHE BOOL "Create windows installer executable")
-  SET(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS TRUE CACHE BOOL "Bundle dlls in windows install.")
+  SET(MAKE_ZIP_PACKAGE TRUE CACHE BOOL "Create Windows .zip file")
+  SET(MAKE_NSIS_PACKAGE TRUE CACHE BOOL "Create Windows installer executable")
+  SET(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS TRUE CACHE BOOL "Bundle dlls in Windows installer.")
 
   IF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
-    INSTALL(FILES ${LAPACK_LIBRARIES} DESTINATION "bin")
-    IF(NOT(LAPACK_LIB))
-      FIND_FILE(LAPACK_LIB liblapack.dll PATH_SUFFIXES "bin")
-    ENDIF()
-    IF(NOT(BLAS_LIB))
-      FIND_FILE(BLAS_LIB libblas.dll PATH_SUFFIXES "bin")
-    ENDIF()
-
-    # msys2 runtime dynamic link libraries
-    INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_msys2/bin" DESTINATION ".")
-
-# Here we augment the installation by some needed dll's that should be included with QT5. 
-# This is a quick and dirty remedy. I'm sure there is a prettier way too. 
-    IF(WITH_QT5)
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_qt5/bin" DESTINATION ".")
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../platforms" DESTINATION "bin")
-	ENDIF()
-    IF(WITH_VTK)
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_vtk/bin" DESTINATION ".")
-    ENDIF()
-    IF(WITH_OCC)
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_oce/bin" DESTINATION ".")
-    ENDIF()
-
     IF(BUNDLE_STRIPPED_GFORTRAN)
       # TODO: This will make the windows package to be GPL3
       INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran" DESTINATION "." COMPONENT "stripped_gfortran")

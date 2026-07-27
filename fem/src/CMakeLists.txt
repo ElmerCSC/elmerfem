@@ -139,14 +139,11 @@ SET_TARGET_PROPERTIES(elmerf90_bin PROPERTIES OUTPUT_NAME "elmerf90")
 ADD_EXECUTABLE(elmerld_bin ${CMAKE_CURRENT_SOURCE_DIR}/elmerld.c)
 SET_TARGET_PROPERTIES(elmerld_bin PROPERTIES OUTPUT_NAME "elmerld")
 
-# Create pkg-config file if requested and place it under ${PKGCONFIG_PC_PATH}
-# Defaults: PKGCONFIG_PC_PATH = ${CMAKE_INSTALL_PREFIX}/share/pkgconfig
+# Create pkg-config file if requested
 IF(CREATE_PKGCONFIG_FILE)
-  SET(PKGCONFIG_PC_PATH "${CMAKE_INSTALL_PREFIX}/share/pkgconfig"
-    CACHE PATH "Path where to install elmer pkg-config file")
   CONFIGURE_FILE(elmer.in.pc elmer.pc @ONLY)
   INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc
-    DESTINATION ${PKGCONFIG_PC_PATH})
+    DESTINATION "share/pkgconfig")
 ENDIF(CREATE_PKGCONFIG_FILE)
 
 # Copy elements.def and SOLVER.KEYWORDS (to enable testing)
@@ -409,4 +406,34 @@ IF(WITH_MPI)
   ENDIF()
 ENDIF()
 
+IF(CMAKE_SYSTEM_NAME MATCHES "Windows" AND CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
+  # Collect list of dependent DLLs using bundledlls
+  # This assumes that ElmerFEM is built using MSYS2.
+  FIND_PROGRAM(MSYS2_BASH NAMES bash REQUIRED)
+  ADD_CUSTOM_TARGET(elmersolver_bundle ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/bundle/bin
+    COMMAND ${MSYS2_BASH} -lc
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../contrib/msys2-bundledlls/bundledlls \
+      $<TARGET_FILE:elmersolver> ${CMAKE_BINARY_DIR}/bundle/bin"
+  )
 
+  ADD_DEPENDENCIES(elmersolver_bundle elmersolver)
+
+  IF(NOT EXTERNAL_ARPACK)
+    ADD_CUSTOM_COMMAND(
+      TARGET elmersolver_bundle POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/bundle/bin/libarpack.dll
+    )
+  ENDIF()
+
+  IF(NOT EXTERNAL_PARPACK)
+    ADD_CUSTOM_COMMAND(
+      TARGET elmersolver_bundle POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/bundle/bin/libparpack.dll
+    )
+  ENDIF()
+
+  INSTALL(DIRECTORY ${CMAKE_BINARY_DIR}/bundle/bin/
+    DESTINATION "bin"
+    COMPONENT "dependencies")
+ENDIF()
