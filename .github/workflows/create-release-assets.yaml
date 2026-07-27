@@ -59,26 +59,54 @@ jobs:
           path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
           archive: false
 
+      - name: Determine upload_url
+        if: github.event_name == 'release' || github.event.inputs.publish_release == true
+        id: determine_upload_url
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_RELEASE_TOKEN }}
+        run: |
+          # If triggered on a release, get upload_url from event.
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "upload_url=${{ github.event.release.upload_url }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # If triggered by workflow_dispatch with publishing a release,
+          # get upload_url from GitHub API using the provided tag.
+          tag="${{ github.event.inputs.ref }}"
+          echo "Looking for existing release with tag '$tag'..."
+
+          upload_url=$(gh api \
+            repos/${{ github.repository }}/releases/tags/$tag \
+            --jq '.upload_url' \
+            --silent \
+            --exit-status) || {
+              echo "::error::No release exists for tag '$tag'."
+              exit 1
+            }
+
+          echo "upload_url=$upload_url" >> $GITHUB_OUTPUT
+
       # Upload assets to existing or current release
       # The following steps require that ref is a tag.
       - name: Upload .tar.gz to release
-        if: github.event_name == 'release' || inputs.publish_release == true
+        if: github.event_name == 'release' || github.event.inputs.publish_release == true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_RELEASE_TOKEN }}
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          upload_url: ${{ steps.determine_upload_url.outputs.upload_url }}
           asset_path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.tar.gz
           asset_name: elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.tar.gz
           asset_content_type: application/gzip
 
       - name: Upload .zip to release
-        if: github.event_name == 'release' || inputs.publish_release == true
+        if: github.event_name == 'release' || github.event.inputs.publish_release == true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_RELEASE_TOKEN }}
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          upload_url: ${{ steps.determine_upload_url.outputs.upload_url }}
           asset_path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
           asset_name: elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
           asset_content_type: application/zip
