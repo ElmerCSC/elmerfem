@@ -537,6 +537,9 @@ CONTAINS
     CALL yac_fdef_field( &
       liquid_ice_sheet_flux_field_name, comp_id, (/cell_point_id/), 1, liquid_ice_sheet_flux_collection_size, &
       iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, liquid_ice_sheet_flux_field_id);
+    CALL yac_fdef_field_metadata( &
+      elmer_comp_name, elmer_grid_name, liquid_ice_sheet_flux_field_name, &
+      'Liquid flux from basal melting under floating ice shelves, in m3/s water equivalent per cell');
 
     ! allocate and liquid flux field buffer
     ALLOCATE(liquid_ice_sheet_flux_field(nbr_cells, liquid_ice_sheet_flux_collection_size))
@@ -546,6 +549,9 @@ CONTAINS
       solid_ice_sheet_flux_field_name, comp_id, (/cell_point_id/), 1, solid_ice_sheet_flux_collection_size, &
       iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, solid_ice_sheet_flux_field_id);
 
+    CALL yac_fdef_field_metadata( &
+      elmer_comp_name, elmer_grid_name, solid_ice_sheet_flux_field_name, &
+      'Solid flux from iceberg calving, in m3/s ice equivalent per cell');
     ! allocate and solid flux field buffer
     ALLOCATE(solid_ice_sheet_flux_field(nbr_cells, solid_ice_sheet_flux_collection_size))
 
@@ -661,11 +667,16 @@ CONTAINS
       CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
       CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
 
-      WRITE(*,*) 'DEBUG: Field_name: ', field_name, yac_fget_field_role( &
-            elmer_comp_name, elmer_grid_name, field_name)
-      IF (yac_fget_field_role( &
-            elmer_comp_name, elmer_grid_name, field_name) == &
-            YAC_EXCHANGE_TYPE_TARGET) THEN
+      CHARACTER(LEN=:), ALLOCATABLE :: own_field_timestep
+      CHARACTER(LEN=:), ALLOCATABLE :: own_field_metadata
+
+      INTEGER :: field_role
+
+      field_role = yac_fget_field_role(elmer_comp_name, elmer_grid_name, field_name)
+
+      WRITE(*,*) 'DEBUG: Field_name: ', field_name, field_role
+
+      IF (field_role == YAC_EXCHANGE_TYPE_TARGET) THEN
 
 #if YAC_VERSION_GREATER_EQUAL(3, 6, 0)
         CALL yac_fget_field_source( &
@@ -697,9 +708,82 @@ CONTAINS
         PRINT *, "ELMER:    - timestep:  ", src_field_timestep
         PRINT *, "ELMER:    - metadata:  ", src_field_metadata
 
+      ELSE IF (field_role == YAC_EXCHANGE_TYPE_SOURCE) THEN
+
+        own_field_timestep = &
+          yac_fget_field_timestep( &
+            elmer_comp_name, elmer_grid_name, field_name)
+
+        IF (yac_ffield_has_metadata( &
+              elmer_comp_name, elmer_grid_name, field_name)) THEN
+          own_field_metadata = &
+            yac_fget_field_metadata( &
+              elmer_comp_name, elmer_grid_name, field_name)
+        ELSE
+          own_field_metadata = "N/A"
+        END IF
+
+        PRINT *, "ELMER: field ", field_name, ":"
+        PRINT *, "ELMER:  - source: "
+        PRINT *, "ELMER:    - component: ", elmer_comp_name
+        PRINT *, "ELMER:    - grid:      ", elmer_grid_name
+        PRINT *, "ELMER:    - timestep:  ", own_field_timestep
+        PRINT *, "ELMER:    - metadata:  ", own_field_metadata
+
       END IF
 
     END SUBROUTINE print_field_info
+    !SUBROUTINE print_field_info(elmer_comp_name, elmer_grid_name, field_name)
+
+      !CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
+      !CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+      !CHARACTER(LEN=*), INTENT(IN) :: field_name
+
+      !CHARACTER(LEN=:), ALLOCATABLE :: src_comp_name
+      !CHARACTER(LEN=:), ALLOCATABLE :: src_grid_name
+      !CHARACTER(LEN=:), ALLOCATABLE :: src_field_name
+      !CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
+      !CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
+
+      !WRITE(*,*) 'DEBUG: Field_name: ', field_name, yac_fget_field_role( &
+            !elmer_comp_name, elmer_grid_name, field_name)
+      !IF (yac_fget_field_role( &
+            !elmer_comp_name, elmer_grid_name, field_name) == &
+            !YAC_EXCHANGE_TYPE_TARGET) THEN
+
+!#if YAC_VERSION_GREATER_EQUAL(3, 6, 0)
+        !CALL yac_fget_field_source( &
+          !elmer_comp_name, elmer_grid_name, field_name, &
+          !src_comp_name, src_grid_name, src_field_name);
+!#else
+        !src_comp_name = "icon"
+        !src_grid_name = "icon_grid"
+        !src_field_name = field_name
+!#endif
+
+        !src_field_timestep = &
+          !yac_fget_field_timestep( &
+            !src_comp_name, src_grid_name, src_field_name)
+
+        !IF (yac_ffield_has_metadata( &
+              !src_comp_name, src_grid_name, src_field_name)) THEN
+          !src_field_metadata = &
+            !yac_fget_field_metadata( &
+              !src_comp_name, src_grid_name, src_field_name)
+        !ELSE
+          !src_field_metadata = "N/A"
+        !END IF
+
+        !PRINT *, "ELMER: field ", field_name, ":"
+        !PRINT *, "ELMER:  - source:"
+        !PRINT *, "ELMER:    - component: ", src_comp_name
+        !PRINT *, "ELMER:    - grid:      ", src_grid_name
+        !PRINT *, "ELMER:    - timestep:  ", src_field_timestep
+        !PRINT *, "ELMER:    - metadata:  ", src_field_metadata
+
+      !END IF
+
+    !END SUBROUTINE print_field_info
 
   END SUBROUTINE construct_elmer_icon_coupling_post_sync
 
