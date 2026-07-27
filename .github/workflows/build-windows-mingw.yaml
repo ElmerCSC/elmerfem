@@ -94,6 +94,7 @@ jobs:
             unixodbc:p
             utf8cpp:p
             opencascade:p
+            nlohmann-json:p
             ${{ matrix.external-packages }}
 
       - name: install MSMPI
