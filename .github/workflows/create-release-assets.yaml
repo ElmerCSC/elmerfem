@@ -1,0 +1,84 @@
+name: create-release-assets
+# GitHub automatically creates release assets using `git archive`.
+# That does not include submodules (i.e., no Zoltan).
+# This workflow creates release assets including submodules.
+
+on:
+  # Manually trigger workflow to upload assets to existing release or create
+  # artifacts for arbitrary refs.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag, branch, or SHA to archive"
+        required: true
+        default: "devel"
+      publish_release:
+        description: "Upload archives to release"
+        type: boolean
+        default: false
+  # Automatically trigger workflow when publishing a new release
+  release:
+    types: [published]
+
+jobs:
+  create-archives:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install git-archive-all
+        run: pip install git-archive-all
+
+      - name: Create archives including submodules
+        run: |
+          mkdir -p dist
+          echo Creating gz-compressed tarball...
+          git-archive-all dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.tar.gz
+          echo Creating zip archive...
+          git-archive-all dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
+
+      # Upload as workflow artifacts (if triggered manually)
+      - name: Upload .tar.gz as workflow artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: elmerfem-tar-gz
+          path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.tar.gz
+          archive: false
+
+      - name: Upload .zip as workflow artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: elmerfem-zip
+          path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
+          archive: false
+
+      # Upload assets to existing or current release
+      # The following steps require that ref is a tag.
+      - name: Upload .tar.gz to release
+        if: github.event_name == 'release' || inputs.publish_release == true
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_RELEASE_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.tar.gz
+          asset_name: elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload .zip to release
+        if: github.event_name == 'release' || inputs.publish_release == true
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_RELEASE_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
+          asset_name: elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
+          asset_content_type: application/zip
