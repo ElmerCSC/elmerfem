@@ -264,6 +264,8 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
 
      T_far = T_oce_vals(T_oce_Perm(ii))
 
+     !TODO: At the moment, we do not allow negative melt rates (i.e. freezing) at the ice-ocean interface.
+     !      Should probably be revisited in the future.
      meltRate = MAX(gammaT * (rhoo * SWCp / (rhoi * Lf)) * (T_far - T_freeze) *  seconds_per_year, 0.0_dp)
      IF (wct_sc) THEN
         wct         = z_iceBase % Values(z_iceBase % Perm(ii)) &
