@@ -733,57 +733,6 @@ CONTAINS
       END IF
 
     END SUBROUTINE print_field_info
-    !SUBROUTINE print_field_info(elmer_comp_name, elmer_grid_name, field_name)
-
-      !CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
-      !CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
-      !CHARACTER(LEN=*), INTENT(IN) :: field_name
-
-      !CHARACTER(LEN=:), ALLOCATABLE :: src_comp_name
-      !CHARACTER(LEN=:), ALLOCATABLE :: src_grid_name
-      !CHARACTER(LEN=:), ALLOCATABLE :: src_field_name
-      !CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
-      !CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
-
-      !WRITE(*,*) 'DEBUG: Field_name: ', field_name, yac_fget_field_role( &
-            !elmer_comp_name, elmer_grid_name, field_name)
-      !IF (yac_fget_field_role( &
-            !elmer_comp_name, elmer_grid_name, field_name) == &
-            !YAC_EXCHANGE_TYPE_TARGET) THEN
-
-!#if YAC_VERSION_GREATER_EQUAL(3, 6, 0)
-        !CALL yac_fget_field_source( &
-          !elmer_comp_name, elmer_grid_name, field_name, &
-          !src_comp_name, src_grid_name, src_field_name);
-!#else
-        !src_comp_name = "icon"
-        !src_grid_name = "icon_grid"
-        !src_field_name = field_name
-!#endif
-
-        !src_field_timestep = &
-          !yac_fget_field_timestep( &
-            !src_comp_name, src_grid_name, src_field_name)
-
-        !IF (yac_ffield_has_metadata( &
-              !src_comp_name, src_grid_name, src_field_name)) THEN
-          !src_field_metadata = &
-            !yac_fget_field_metadata( &
-              !src_comp_name, src_grid_name, src_field_name)
-        !ELSE
-          !src_field_metadata = "N/A"
-        !END IF
-
-        !PRINT *, "ELMER: field ", field_name, ":"
-        !PRINT *, "ELMER:  - source:"
-        !PRINT *, "ELMER:    - component: ", src_comp_name
-        !PRINT *, "ELMER:    - grid:      ", src_grid_name
-        !PRINT *, "ELMER:    - timestep:  ", src_field_timestep
-        !PRINT *, "ELMER:    - metadata:  ", src_field_metadata
-
-      !END IF
-
-    !END SUBROUTINE print_field_info
 
   END SUBROUTINE construct_elmer_icon_coupling_post_sync
 
