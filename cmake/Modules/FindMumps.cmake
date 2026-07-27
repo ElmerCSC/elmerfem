@@ -13,6 +13,23 @@ IF(Mumps_LIBRARIES AND Mumps_INCLUDE_DIR)
    RETURN()
 ENDIF()
 
+# Try to find with CMake config file of upstream mumps-superbuild.
+FIND_PACKAGE(MUMPS CONFIG)
+
+IF(MUMPS_FOUND)
+  SET(Mumps_FOUND TRUE)
+  SET(Mumps_LIBRARIES ${MUMPS_LIBRARIES})
+  SET(Mumps_INCLUDE_DIR ${MUMPS_INCLUDE_DIRS})
+  IF(MUMPS_METIS_FOUND)
+    SET(Metis_FOUND TRUE)
+    SET(Metis_LIBRARIES ${METIS_LIBRARIES})
+    SET(Metis_INCLUDE_DIR ${METIS_INCLUDE_DIRS})
+  ENDIF()
+
+  RETURN()
+ENDIF()
+
+# Fall back to manual search
 SET(Mumps_FOUND FALSE)
 MESSAGE(STATUS "Finding Mumps")
 
