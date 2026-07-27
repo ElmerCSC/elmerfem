@@ -74,7 +74,7 @@ jobs:
             qwt-qt6:p
             vtk:p
             adios2:p
-            anari-sdk:p 
+            anari-sdk:p
             boost:p
             cgns:p
             cli11:p
@@ -85,7 +85,8 @@ jobs:
             gl2ps:p
             liblas:p
             libmariadbclient:p
-            netcdf:p 
+            netcdf:p
+            nlohmann-json:p
             openslide:p
             openvdb:p
             pdal:p
