@@ -25,6 +25,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Dump inputs
+        run: |
+          echo "Creating tarballs triggered by '${{ github.event_name }}' event"
+          echo "reference (input): ${{ github.event.inputs.ref }}"
+          echo "upload archives (input): ${{ github.event.inputs.publish_release }}"
+          echo "tag name (release): ${{ github.event.release.tag_name }}"
+
       - name: Checkout repository with submodules
         uses: actions/checkout@v7
         with:
@@ -60,9 +67,11 @@ jobs:
           path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
           archive: false
 
-      # Fail early if workflow_dispatch requests publishing but no release exists
+      # Fail early if workflow_dispatch requests publishing but no release exists for the selected tag
       - name: Ensure release exists when publishing
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == true
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ github.event.inputs.ref }}"
           echo "Checking if release exists for tag '$tag'..."
@@ -70,7 +79,6 @@ jobs:
           gh api \
             repos/${{ github.repository }}/releases/tags/$tag \
             --silent \
-            --exit-status \
             >/dev/null || {
               echo "::error::No release exists for tag '$tag'."
               exit 1
@@ -81,7 +89,7 @@ jobs:
       # Upload assets to existing or current release
       # The following steps require that ref is a tag.
       - name: Upload release assets
-        if: github.event_name == 'release' || github.event.inputs.publish_release == true
+        if: github.event_name == 'release' || github.event.inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.ref || github.event.release.tag_name }}
