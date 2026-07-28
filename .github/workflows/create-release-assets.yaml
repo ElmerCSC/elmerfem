@@ -67,9 +67,11 @@ jobs:
           path: dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
           archive: false
 
-      # Fail early if workflow_dispatch requests publishing but no release exists
+      # Fail early if workflow_dispatch requests publishing but no release exists for the selected tag
       - name: Ensure release exists when publishing
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ github.event.inputs.ref }}"
           echo "Checking if release exists for tag '$tag'..."
