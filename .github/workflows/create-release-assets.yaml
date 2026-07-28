@@ -69,7 +69,7 @@ jobs:
 
       # Fail early if workflow_dispatch requests publishing but no release exists
       - name: Ensure release exists when publishing
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == true
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true'
         run: |
           tag="${{ github.event.inputs.ref }}"
           echo "Checking if release exists for tag '$tag'..."
@@ -88,7 +88,7 @@ jobs:
       # Upload assets to existing or current release
       # The following steps require that ref is a tag.
       - name: Upload release assets
-        if: github.event_name == 'release' || github.event.inputs.publish_release == true
+        if: github.event_name == 'release' || github.event.inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.ref || github.event.release.tag_name }}
