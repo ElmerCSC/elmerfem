@@ -25,6 +25,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Dump inputs
+        run: |
+          echo "Creating tarballs triggered by '${{ github.event_name }}' event"
+          echo "reference (input): ${{ github.event.inputs.ref }}"
+          echo "upload archives (input): ${{ github.event.inputs.publish_release }}"
+          echo "tag name (release): ${{ github.event.release.tag_name }}"
+
       - name: Checkout repository with submodules
         uses: actions/checkout@v7
         with:
