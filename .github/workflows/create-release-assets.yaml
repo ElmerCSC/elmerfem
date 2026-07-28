@@ -77,7 +77,6 @@ jobs:
           gh api \
             repos/${{ github.repository }}/releases/tags/$tag \
             --silent \
-            --exit-status \
             >/dev/null || {
               echo "::error::No release exists for tag '$tag'."
               exit 1
