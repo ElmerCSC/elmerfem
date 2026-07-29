@@ -724,7 +724,7 @@ CONTAINS
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
          FirstOrderElements, InheritDG, Hit, Stat, &
-         UpdateDefDofs(Model % NumberOfSolvers), DG
+         UpdateDefDofs(Model % NumberOfSolvers), DG, MultiMesh
      TYPE(Element_t), POINTER :: Element, Parent, pParent
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
@@ -742,28 +742,33 @@ CONTAINS
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
      ELSE
-       InDofs = -1
-       InDofs(:,1) = 1
-       InDofs(:,4) = -1
-       DO s=1,Model % NumberOfSolvers
-         !Need to only look at solvers that are going to run on this mesh
-         TargetMesh = ListGetString(Model % Solvers(s) % Values, 'Mesh', GotIt)
-	 TargetMeshIndex = INDEX(Model % Solvers(s) % Mesh % Name, " ")
-         DO i=1,6
-           DO j=1,10
-             IF(GotIt) THEN
-               !This assumes your meshes all start '. '
-               IF (LEN_TRIM(Model % Solvers(s) % Mesh % Name) > 0) THEN
-                 IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(TargetMeshIndex:))) THEN
-                   CYCLE
+       MultiMesh = ListGetLogical(Model % Simulation % Values, 'Multiple Meshes', GotIt)
+       IF(GotIt .AND. MultiMesh) THEN
+         InDofs = -1
+         InDofs(:,1) = 1
+         InDofs(:,4) = -1
+         DO s=1,Model % NumberOfSolvers
+           !Need to only look at solvers that are going to run on this mesh
+           TargetMesh = ListGetString(Model % Solvers(s) % Values, 'Mesh', GotIt)
+	       TargetMeshIndex = INDEX(Model % Solvers(s) % Mesh % Name, " ")
+           DO i=1,6
+             DO j=1,10
+               IF(GotIt) THEN
+                 !This assumes your meshes all start '. '
+                 IF (LEN_TRIM(Model % Solvers(s) % Mesh % Name) > 0) THEN
+                   IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(TargetMeshIndex:))) THEN
+                     CYCLE
+                   END IF
                  END IF
+               ELSE
+                 inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
                END IF
-             ELSE
-               inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
-             END IF
+             END DO
            END DO
          END DO
-       END DO
+       ELSE
+         inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
+       END IF
      END IF
 
      ! P-basis only over 1st order elements:
