@@ -659,77 +659,67 @@ CONTAINS
 
   CONTAINS
 
-    SUBROUTINE print_field_info(elmer_comp_name, elmer_grid_name, field_name)
+    SUBROUTINE print_field_info( &
+      elmer_comp_name, elmer_grid_name, elmer_field_name)
+
+#if !YAC_VERSION_GREATER_EQUAL(3, 6, 0)
+#error "YAC >= 3.6.0 is required to call yac_fget_field_source"
+#endif
 
       CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
       CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
-      CHARACTER(LEN=*), INTENT(IN) :: field_name
+      CHARACTER(LEN=*), INTENT(IN) :: elmer_field_name
 
-      CHARACTER(LEN=:), ALLOCATABLE :: src_comp_name
-      CHARACTER(LEN=:), ALLOCATABLE :: src_grid_name
-      CHARACTER(LEN=:), ALLOCATABLE :: src_field_name
-      CHARACTER(LEN=:), ALLOCATABLE :: src_field_timestep
-      CHARACTER(LEN=:), ALLOCATABLE :: src_field_metadata
-
-      CHARACTER(LEN=:), ALLOCATABLE :: own_field_timestep
-      CHARACTER(LEN=:), ALLOCATABLE :: own_field_metadata
+      CHARACTER(LEN=:), ALLOCATABLE :: print_comp_name
+      CHARACTER(LEN=:), ALLOCATABLE :: print_grid_name
+      CHARACTER(LEN=:), ALLOCATABLE :: print_field_name
+      CHARACTER(LEN=:), ALLOCATABLE :: print_field_timestep
+      CHARACTER(LEN=:), ALLOCATABLE :: print_field_metadata
 
       INTEGER :: field_role
 
-      field_role = yac_fget_field_role(elmer_comp_name, elmer_grid_name, field_name)
+      ! determine role of this field
+      field_role = yac_fget_field_role( &
+        elmer_comp_name, elmer_grid_name, elmer_field_name)
 
-      IF (field_role == YAC_EXCHANGE_TYPE_TARGET) THEN
-
-#if !YAC_VERSION_GREATER_EQUAL(3, 6, 0)
-#error "YAC >= 3.6.0 is required"
-#endif
+      IF (field_role == YAC_EXCHANGE_TYPE_SOURCE) THEN
+        ! elmer owns field
+        print_field_name = elmer_field_name
+        print_grid_name = elmer_grid_name
+        print_comp_name = elmer_comp_name
+      ELSE IF (field_role == YAC_EXCHANGE_TYPE_TARGET) THEN
+        ! other component owns field; need to get comp name etc.
         CALL yac_fget_field_source( &
-          elmer_comp_name, elmer_grid_name, field_name, &
-          src_comp_name, src_grid_name, src_field_name);
-
-        src_field_timestep = &
-          yac_fget_field_timestep( &
-            src_comp_name, src_grid_name, src_field_name)
-
-        IF (yac_ffield_has_metadata( &
-              src_comp_name, src_grid_name, src_field_name)) THEN
-          src_field_metadata = &
-            yac_fget_field_metadata( &
-              src_comp_name, src_grid_name, src_field_name)
-        ELSE
-          src_field_metadata = "N/A"
-        END IF
-
-        PRINT *, "ELMER: field ", field_name, ":"
-        PRINT *, "ELMER:  - source:"
-        PRINT *, "ELMER:    - component: ", src_comp_name
-        PRINT *, "ELMER:    - grid:      ", src_grid_name
-        PRINT *, "ELMER:    - timestep:  ", src_field_timestep
-        PRINT *, "ELMER:    - metadata:  ", src_field_metadata
-
-      ELSE IF (field_role == YAC_EXCHANGE_TYPE_SOURCE) THEN
-
-        own_field_timestep = &
-          yac_fget_field_timestep( &
-            elmer_comp_name, elmer_grid_name, field_name)
-
-        IF (yac_ffield_has_metadata( &
-              elmer_comp_name, elmer_grid_name, field_name)) THEN
-          own_field_metadata = &
-            yac_fget_field_metadata( &
-              elmer_comp_name, elmer_grid_name, field_name)
-        ELSE
-          own_field_metadata = "N/A"
-        END IF
-
-        PRINT *, "ELMER: field ", field_name, ":"
-        PRINT *, "ELMER:  - source: "
-        PRINT *, "ELMER:    - component: ", elmer_comp_name
-        PRINT *, "ELMER:    - grid:      ", elmer_grid_name
-        PRINT *, "ELMER:    - timestep:  ", own_field_timestep
-        PRINT *, "ELMER:    - metadata:  ", own_field_metadata
-
+          elmer_comp_name, elmer_grid_name, elmer_field_name, &
+          print_comp_name, print_grid_name, print_field_name);
+      ELSE
+        PRINT *, "ELMER: field ", elmer_field_name, &
+          " has unexpected role (not connected to any coupling?)"
+        RETURN
       END IF
+
+      ! get timestep for field from YAC
+      print_field_timestep = &
+        yac_fget_field_timestep( &
+          print_comp_name, print_grid_name, print_field_name)
+
+      ! get metadata for field from YAC (metadata lives with whoever owns the field)
+      IF (yac_ffield_has_metadata( &
+            print_comp_name, print_grid_name, print_field_name)) THEN
+        print_field_metadata = &
+          yac_fget_field_metadata( &
+            print_comp_name, print_grid_name, print_field_name)
+      ELSE
+        print_field_metadata = "N/A"
+      END IF
+
+      ! print field info
+      PRINT *, "ELMER: field ", print_field_name, ":"
+      PRINT *, "ELMER:  - source:"
+      PRINT *, "ELMER:    - component: ", print_comp_name
+      PRINT *, "ELMER:    - grid:      ", print_grid_name
+      PRINT *, "ELMER:    - timestep:  ", print_field_timestep
+      PRINT *, "ELMER:    - metadata:  ", print_field_metadata
 
     END SUBROUTINE print_field_info
 
@@ -875,7 +865,7 @@ CONTAINS
     END IF
     ! ------------------------------------------------------------------
     ! Exchange: sal_oce (ocean salinity)
-    ! Direction: (target) ELMER receives ocean salinity from ICON-O. 
+    ! Direction: (target) ELMER receives ocean salinity from ICON-O.
     ! ------------------------------------------------------------------
     ! checks whether the ocean salinity field is defined as a target
     ! in a couple
