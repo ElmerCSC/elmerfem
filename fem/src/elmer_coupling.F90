@@ -118,24 +118,24 @@ MODULE elmer_ebfm_coupling
 
   INTEGER :: t_ice_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: t_ice_field_name = "T_ice"
-  INTEGER :: t_ice_collection_size = 1
+  INTEGER, PARAMETER :: t_ice_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: t_ice_field(:,:)
 
   INTEGER :: smb_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: smb_field_name = "smb"
-  INTEGER :: smb_collection_size = 1
+  INTEGER, PARAMETER :: smb_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: smb_field(:,:)
 
   INTEGER :: runoff_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: runoff_field_name = "runoff"
-  INTEGER :: runoff_collection_size = 1
+  INTEGER, PARAMETER :: runoff_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: runoff_field(:,:)
 
   ! Fields Elmer sends to EBFM
 
   INTEGER :: surface_height_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: surface_height_field_name = "surface_elevation"
-  INTEGER :: surface_height_collection_size = 1
+  INTEGER, PARAMETER :: surface_height_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: surface_height_field(:,:)
 
 CONTAINS
@@ -468,7 +468,7 @@ MODULE elmer_icon_coupling
   CHARACTER(LEN=*), PARAMETER :: temp_oce_post_field_name = "temp_oce_post"
 
   ! All fields with t_oce prefix use the same collection size.
-  INTEGER :: t_oce_collection_size = 1
+  INTEGER, PARAMETER :: t_oce_collection_size = 1
 
   ! Buffer for receiving `temp_oce` from ICON; used as input for creep mapping
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: t_oce_pre_field(:,:)
@@ -489,7 +489,7 @@ MODULE elmer_icon_coupling
   CHARACTER(LEN=*), PARAMETER :: sal_oce_post_field_name = "sal_oce_post"
 
   ! All fields with sal_oce prefix use the same collection size.
-  INTEGER :: sal_oce_collection_size = 1
+  INTEGER, PARAMETER :: sal_oce_collection_size = 1
 
   INTEGER :: interp_stack_config_id = -1
 

@@ -391,7 +391,7 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
 
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Mesh_t), POINTER :: ThisMesh
-  CHARACTER(LEN=MAX_NAME_LEN):: SolverName='YAC2Elmer'
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='YAC2Elmer'
   ! parameters to be read in from this solvers section in the sif
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
   CHARACTER(LEN=1024) ::  config_file, grid_crs, proj_type
@@ -401,7 +401,8 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: central_meridian, latitude_of_origin, seconds_per_year
   REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
   CHARACTER(LEN=16) :: expected_central_meridian_str, expected_latitude_of_origin_str
-  LOGICAL :: FirstTime=.TRUE., UnFoundFatal=.TRUE.
+  LOGICAL :: FirstTime=.TRUE.
+  LOGICAL, PARAMETER :: UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
