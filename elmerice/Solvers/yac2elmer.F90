@@ -137,65 +137,272 @@ SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
 
 END SUBROUTINE collect_coupling_grid_data
 
-SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
-  USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
-    DefaultVariableAdd, GetLogical, GetString, GetConstReal, &
-    ListGetString, ListGetConstReal, &
-    GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements, &
-    GetActiveElement
-  USE GeneralUtils, ONLY: I2S
-  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp, Element_t
-  USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
-  USE elmer_coupling, ONLY: coupling_setup, is_root_rank
-  USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
-                                 runoff_field, surface_height_field
-  USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_post_field, &
-                                 sal_oce_post_field, liquid_ice_sheet_flux_field, &
-                                 solid_ice_sheet_flux_field
-  USE MPI
+!> Initialize Elmer-side variables for receiving fields from ICON-O
+SUBROUTINE setup_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFatal)
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, dp
+  USE DefUtils, ONLY: DefaultVariableAdd, GetNOFActive, VariableGet
+  USE elmer_icon_coupling, ONLY: liquid_ice_sheet_flux_field, solid_ice_sheet_flux_field
 
   IMPLICIT NONE
 
   TYPE(Model_t),  INTENT(IN) :: Model
   TYPE(Solver_t), INTENT(IN) :: Solver
-  REAL(KIND=dp),  INTENT(IN) :: dt
-  LOGICAL,        INTENT(IN) :: TransientSimulation
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp), INTENT(IN) :: seconds_per_year
+  LOGICAL, INTENT(IN) :: UnFoundFatal
 
+  INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
+  TYPE(Variable_t), POINTER :: bmb_fluxVar, calving_fluxVar
+  INTEGER :: i, t
+
+  ALLOCATE(t_ocePerm(Mesh % NumberOfNodes), sal_ocePerm(Mesh % NumberOfNodes))
+  DO i=1,Mesh % NumberOfNodes
+    t_ocePerm(i) = i
+    sal_ocePerm(i) = i
+  END DO
+  CALL DefaultVariableAdd('temp_oce', dofs=1, Perm = t_ocePerm)
+  CALL DefaultVariableAdd('sal_oce', dofs=1, Perm = sal_ocePerm)
+
+  ! Initialize bmb_flux_field and calving_flux field for first time step
+  bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
+  calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
+  DO t=1, GetNOFActive(Solver)
+    liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
+    solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
+  END DO
+
+END SUBROUTINE setup_icon_variables
+
+!> Initialize Elmer-side variables for receiving fields from EBFM
+SUBROUTINE setup_ebfm_variables(Model, Solver, Mesh, UnFoundFatal)
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, dp
+  USE DefUtils, ONLY: DefaultVariableAdd, GetNOFActive, VariableGet, variable_on_elements
+  USE elmer_ebfm_coupling, ONLY: surface_height_field
+
+  IMPLICIT NONE
+
+  TYPE(Model_t),  INTENT(IN) :: Model
+  TYPE(Solver_t), INTENT(IN) :: Solver
+  TYPE(Mesh_t), POINTER :: Mesh
+  LOGICAL, INTENT(IN) :: UnFoundFatal
+
+  INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
+  TYPE(Variable_t), POINTER :: ZsSol
+  INTEGER :: i, t
+
+  ! setting up Elmer-side variables for receiving YAC variables
+  ! this coul dbe replaced by an automatic picking of the names and the DOFs
+  ! from the coupling-deifnitions
+  ! nodal variable
+  ALLOCATE(t_icePerm(Mesh % NumberOfNodes), runoffPerm(GetNOFActive(Solver)), &
+      smbPerm(GetNOFActive(Solver)))
+  DO i=1,Mesh % NumberOfNodes
+    t_icePerm(i) = i
+  END DO
+
+  ! This is for a element(cell) variables
+  DO t=1,GetNOFActive(Solver)
+    smbPerm(t) = t
+    runoffPerm(t) = t
+  END DO
+
+  ! nodal variables (everything that is not a flux)
+  CALL DefaultVariableAdd('T_ice', dofs=1, Perm = t_icePerm)
+  !CALL DefaultVariableAdd('runoff', dofs=1, Perm = runoffPerm)
+
+  ! element wise (cell) variable
+  CALL DefaultVariableAdd('smb', dofs=1, VariableType = Variable_on_elements, Perm = smbPerm)
+  CALL DefaultVariableAdd('runoff', dofs=1, VariableType = Variable_on_elements, Perm = runoffPerm)
+
+  ! get surface elevation from Elmer for the first time step
+  ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
+  DO i=1, Mesh % NumberOfNodes
+    surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
+  END DO
+
+END SUBROUTINE setup_ebfm_variables
+
+!> Couple Elmer -> ICON-O: send flux fields, run interface, retrieve ocean fields
+SUBROUTINE update_and_exchange_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFatal)
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, Element_t, dp
+  USE DefUtils, ONLY: GetNOFActive, VariableGet, GetActiveElement, ParEnv
+  USE Messages, ONLY: Message, INFO, FATAL
+  USE elmer_coupling, ONLY: is_root_rank
+  USE elmer_icon_coupling, ONLY: elmer_icon_interface, t_oce_post_field, &
+                                 sal_oce_post_field, liquid_ice_sheet_flux_field, &
+                                 solid_ice_sheet_flux_field
+  USE MPI, ONLY: MPI_Allreduce, MPI_DOUBLE_PRECISION, MPI_SUM
+
+  IMPLICIT NONE
+
+  TYPE(Model_t),  INTENT(IN) :: Model
+  TYPE(Solver_t), INTENT(IN) :: Solver
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp), INTENT(IN) :: seconds_per_year
+  LOGICAL, INTENT(IN) :: UnFoundFatal
+
+  CHARACTER(LEN=1024) :: SolverName='update_and_exchange_icon_variables'
+  TYPE(Variable_t), POINTER :: t_oceVar, sal_oceVar, bmb_fluxVar, calving_fluxVar
+  TYPE(Element_t), POINTER :: Element
+  REAL(KIND=dp) :: local_liquid_flux_sum, global_liquid_flux_sum
+  REAL(KIND=dp) :: local_solid_flux_sum, global_solid_flux_sum
+  INTEGER :: i, t, ierr
+
+  CALL INFO(SolverName, 'Starting coupling Elmer -> ICON-O', Level=3)
+  CALL INFO(SolverName, 'Getting Elmer liquid and solid flux variables', Level=30)
+
+  ! Update bmb_flux_field before sending to ICON
+  bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
+  calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
+  DO t=1, GetNOFActive(Solver)
+    liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
+    solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
+  END DO
+
+  ! Write total liquid and total solid ice sheet flux to log
+  local_liquid_flux_sum = 0.0_dp
+  local_solid_flux_sum = 0.0_dp
+  DO t = 1, GetNOFActive(Solver)
+    Element => GetActiveElement(t, Solver)
+    IF (ParEnv % myPe /= Element % partIndex) CYCLE
+    local_liquid_flux_sum = local_liquid_flux_sum + liquid_ice_sheet_flux_field(t,1)
+    local_solid_flux_sum = local_solid_flux_sum + solid_ice_sheet_flux_field(t,1)
+  END DO
+  CALL MPI_Allreduce(local_liquid_flux_sum, global_liquid_flux_sum, 1, MPI_DOUBLE_PRECISION, &
+                     MPI_SUM, ParEnv % ActiveComm, ierr)
+  CALL MPI_Allreduce(local_solid_flux_sum, global_solid_flux_sum, 1, MPI_DOUBLE_PRECISION, &
+                     MPI_SUM, ParEnv % ActiveComm, ierr)
+  WRITE(Message,'(A,F15.3,A)') 'Sum of liquid_ice_sheet_flux_field: ', global_liquid_flux_sum, ' m^3/s'
+  CALL INFO(SolverName, Message, Level=3)
+  WRITE(Message,'(A,F15.3,A)') 'Sum of solid_ice_sheet_flux_field: ', global_solid_flux_sum, ' m^3/s'
+  CALL INFO(SolverName, Message, Level=3)
+
+  ! couple with ICON-O
+  CALL elmer_icon_interface(is_root_rank)
+  CALL INFO(SolverName, 'Finished coupling Elmer -> ICON-O', Level=3)
+  CALL INFO(SolverName, 'Writing variables from ICON-O into Elmer variables...', Level=30)
+
+  t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
+  sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
+  IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
+    CALL FATAL(SolverName,'Elmer variables not associated')
+  END IF
+
+  ! write over values for nodes
+  DO i=1, Mesh % NumberOfNodes
+    t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_post_field(i,1)
+    sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_post_field(i,1)
+  END DO
+
+END SUBROUTINE update_and_exchange_icon_variables
+
+!> Couple Elmer -> EBFM: run interface, retrieve variables into Elmer
+SUBROUTINE update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank, UnFoundFatal)
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, dp
+  USE DefUtils, ONLY: GetNOFActive, VariableGet
+  USE Messages, ONLY: INFO, FATAL
+  USE elmer_ebfm_coupling, ONLY: elmer_ebfm_interface, t_ice_field, smb_field, &
+                                 runoff_field, surface_height_field
+
+  IMPLICIT NONE
+
+  TYPE(Model_t),  INTENT(IN) :: Model
+  TYPE(Solver_t), INTENT(IN) :: Solver
+  TYPE(Mesh_t), POINTER :: Mesh
+  LOGICAL, INTENT(IN) :: is_root_rank
+  LOGICAL, INTENT(IN) :: UnFoundFatal
+
+  CHARACTER(LEN=1024) :: SolverName='update_and_exchange_ebfm_variables'
+  TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
+  INTEGER :: i, t
+
+  CALL INFO(SolverName, 'Starting coupling Elmer -> EBFM', Level=3)
+  ! couple with EBFM
+  CALL elmer_ebfm_interface(is_root_rank)
+  CALL INFO(SolverName, 'Finished coupling Elmer -> EBFM', Level=3)
+  CALL INFO(SolverName, 'Writing variables from EBFM into Elmer variables...', Level=30)
+  t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )
+  smbVar => VariableGet( Mesh % Variables, 'smb' )
+  runoffVar => VariableGet( Mesh % Variables, 'runoff' )
+  ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
+  IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
+    CALL FATAL(SolverName,'Elmer variables not associated')
+  END IF
+
+  ! Validate element variable permutations. In a parallel run, element
+  ! variables declared via "Exported Variable = -elem" in the SIF get a
+  ! proper parallel Perm (built by SetActiveElementsTable). Without that
+  ! declaration, the variable may end up with an invalid Perm.
+
+  ! ! "smb" is known to require this declaration
+  IF (MINVAL(smbVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
+    CALL FATAL(SolverName, &
+      'smb variable has zero/invalid Perm entries. ' // &
+      'Add  Exported Variable = -elem "smb"  to the YAC2Elmer solver block in the SIF.')
+  END IF
+
+  ! "runoff" did not cause issues, but adding the same check for safety
+  IF (MINVAL(runoffVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
+    CALL FATAL(SolverName, &
+      'runoff variable has zero/invalid Perm entries. ' // &
+      'Add  Exported Variable = -elem "runoff"  to the YAC2Elmer solver block in the SIF.')
+  END IF
+
+  CALL INFO(SolverName, 'Writing nodal variables...', Level=30)
+  !write over values for nodes
+  DO i=1, Mesh % NumberOfNodes
+    t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
+    surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
+  END DO
+  CALL INFO(SolverName, 'Writing cell variables....', Level=30)
+  ! write over values for elements
+  DO t=1, GetNOFActive(Solver)
+     smbVar  % Values(smbVar %  Perm(t)) = smb_field(t,1)
+     runoffVar  % Values(runoffVar %  Perm(t)) = runoff_field(t,1)
+  END DO
+
+END SUBROUTINE update_and_exchange_ebfm_variables
+
+SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
+  USE DefUtils, ONLY: GetSolverParams, GetMesh, GetNOFActive, &
+    DefaultVariableAdd, GetLogical, GetString, GetConstReal, &
+    ListGetString, ListGetConstReal, &
+    GetSimulation, MAX_NAME_LEN, VariableGet, ParEnv, variable_on_elements
+  USE GeneralUtils, ONLY: I2S
+  USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, ValueList_t, dp
+  USE Messages, ONLY: Message, FATAL, INFO, USE_YAC
+  USE elmer_coupling, ONLY: coupling_setup, is_root_rank
+
+  IMPLICIT NONE
 
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Mesh_t), POINTER :: ThisMesh
   CHARACTER(LEN=MAX_NAME_LEN):: SolverName='YAC2Elmer'
   ! parameters to be read in from this solvers section in the sif
   LOGICAL :: couple_to_ebfm, couple_to_icon         ! define which component is coupled to Elmer
-
   CHARACTER(LEN=1024) ::  config_file, grid_crs, proj_type
   CHARACTER(LEN=1024) ::  coupling_timestep
-  REAL(KIND=dp) :: coupling_timestep_in_years, local_liquid_flux_sum, global_liquid_flux_sum
-  REAL(KIND=dp) :: local_solid_flux_sum, global_solid_flux_sum
+  REAL(KIND=dp) :: coupling_timestep_in_years
   CHARACTER(LEN=1024) ::  yac_calendar, yac_start_time, yac_end_time
-  INTEGER :: i, t, ierr
-  INTEGER, POINTER :: t_icePerm(:), smbPerm(:), runoffPerm(:)
-  INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
   REAL(KIND=dp) :: central_meridian, latitude_of_origin, seconds_per_year
   REAL(KIND=dp) :: expected_central_meridian, expected_latitude_of_origin
   CHARACTER(LEN=16) :: expected_central_meridian_str, expected_latitude_of_origin_str
-  LOGICAL :: Parallel, FirstTime=.TRUE., UnFoundFatal=.TRUE.
+  LOGICAL :: FirstTime=.TRUE., UnFoundFatal=.TRUE.
   TYPE(Mesh_t),POINTER :: Mesh
-  TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
-  TYPE(Variable_t), POINTER :: t_oceVar, sal_oceVar, bmb_fluxVar
-  TYPE(Variable_t), POINTER :: calving_fluxVar
-  TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: lon_vertices(:), lat_vertices(:)
   REAL(KIND=dp), ALLOCATABLE :: lon_cells(:), lat_cells(:)
   INTEGER, ALLOCATABLE :: cell_to_vertex(:), num_vertices_per_cell(:)
   INTEGER, ALLOCATABLE :: cell_ids(:), vertex_ids(:)
   LOGICAL, ALLOCATABLE :: boundary_corner_mask(:)
-
   ! Variables needed for user output
   CHARACTER(LEN=1024) :: coupling_timestep_in_years_str
   CHARACTER(LEN=1024) :: dt_str
-
   LOGICAL        :: Found
+  TYPE(Model_t),  INTENT(IN) :: Model
+  TYPE(Solver_t), INTENT(IN) :: Solver
+  REAL(KIND=dp),  INTENT(IN) :: dt
+  LOGICAL,        INTENT(IN) :: TransientSimulation
+
 
   INTERFACE
     SUBROUTINE collect_coupling_grid_data(ThisMesh, lon_vertices, lat_vertices, &
@@ -212,6 +419,45 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
       INTEGER, ALLOCATABLE, INTENT(OUT) :: cell_ids(:), vertex_ids(:)
       LOGICAL, ALLOCATABLE, INTENT(OUT) :: boundary_corner_mask(:)
     END SUBROUTINE collect_coupling_grid_data
+
+    SUBROUTINE setup_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFatal)
+      USE Types, ONLY: Model_t, Solver_t, Mesh_t, dp
+      IMPLICIT NONE
+      TYPE(Model_t),  INTENT(IN) :: Model
+      TYPE(Solver_t), INTENT(IN) :: Solver
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp), INTENT(IN) :: seconds_per_year
+      LOGICAL, INTENT(IN) :: UnFoundFatal
+    END SUBROUTINE setup_icon_variables
+
+    SUBROUTINE setup_ebfm_variables(Model, Solver, Mesh, UnFoundFatal)
+      USE Types, ONLY: Model_t, Solver_t, Mesh_t
+      IMPLICIT NONE
+      TYPE(Model_t),  INTENT(IN) :: Model
+      TYPE(Solver_t), INTENT(IN) :: Solver
+      TYPE(Mesh_t), POINTER :: Mesh
+      LOGICAL, INTENT(IN) :: UnFoundFatal
+    END SUBROUTINE setup_ebfm_variables
+
+    SUBROUTINE update_and_exchange_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFatal)
+      USE Types, ONLY: Model_t, Solver_t, Mesh_t, dp
+      IMPLICIT NONE
+      TYPE(Model_t),  INTENT(IN) :: Model
+      TYPE(Solver_t), INTENT(IN) :: Solver
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp), INTENT(IN) :: seconds_per_year
+      LOGICAL, INTENT(IN) :: UnFoundFatal
+    END SUBROUTINE update_and_exchange_icon_variables
+
+    SUBROUTINE update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank, UnFoundFatal)
+      USE Types, ONLY: Model_t, Solver_t, Mesh_t
+      IMPLICIT NONE
+      TYPE(Model_t),  INTENT(IN) :: Model
+      TYPE(Solver_t), INTENT(IN) :: Solver
+      TYPE(Mesh_t), POINTER :: Mesh
+      LOGICAL, INTENT(IN) :: is_root_rank
+      LOGICAL, INTENT(IN) :: UnFoundFatal
+    END SUBROUTINE update_and_exchange_ebfm_variables
   END INTERFACE
 
   SolverParams => GetSolverParams()
@@ -445,53 +691,11 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
     DEALLOCATE(cell_to_vertex, num_vertices_per_cell, cell_ids, vertex_ids)
     DEALLOCATE(boundary_corner_mask)
 
-    IF (couple_to_ebfm) THEN
-      ! setting up Elmer-side variables for receiving YAC variables
-      ! this coul dbe replaced by an automatic picking of the names and the DOFs
-      ! from the coupling-deifnitions
-      ! nodal variable
-      ALLOCATE(t_icePerm(Mesh % NumberOfNodes), runoffPerm(GetNOFActive(Solver)), &
-          smbPerm(GetNOFActive(Solver)))
-      DO i=1,Mesh % NumberOfNodes
-        t_icePerm(i) = i
-      END DO
-
-      ! This is for a element(cell) variables
-      DO t=1,GetNOFActive(Solver)
-        smbPerm(t) = t
-        runoffPerm(t) = t
-      END DO
-
-      ! nodal variables (everything that is not a flux)
-      CALL DefaultVariableAdd('T_ice', dofs=1, Perm = t_icePerm)
-      !CALL DefaultVariableAdd('runoff', dofs=1, Perm = runoffPerm)
-
-      ! element wise (cell) variable
-      CALL DefaultVariableAdd('smb', dofs=1, VariableType = Variable_on_elements, Perm = smbPerm)
-      CALL DefaultVariableAdd('runoff', dofs=1, VariableType = Variable_on_elements, Perm = runoffPerm)
-
-      ! get surface elevation from Elmer for the first time step
-      ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
-      DO i=1, Mesh % NumberOfNodes
-        surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
-      END DO
-    END IF
-
     IF (couple_to_icon) THEN
-      ALLOCATE(t_ocePerm(Mesh % NumberOfNodes), sal_ocePerm(Mesh % NumberOfNodes))
-      DO i=1,Mesh % NumberOfNodes
-        t_ocePerm(i) = i
-        sal_ocePerm(i) = i
-      END DO
-      CALL DefaultVariableAdd('temp_oce', dofs=1, Perm = t_ocePerm)
-      CALL DefaultVariableAdd('sal_oce', dofs=1, Perm = sal_ocePerm)
-      ! Initialize bmb_flux_field and calving_flux field for first time step
-      bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
-      calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
-      DO t=1, GetNOFActive(Solver)
-        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
-        solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
-      END DO
+      CALL setup_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFatal)
+    END IF
+    IF (couple_to_ebfm) THEN
+      CALL setup_ebfm_variables(Model, Solver, Mesh, UnFoundFatal)
     END IF
 
     FirstTime = .FALSE.
@@ -500,97 +704,11 @@ SUBROUTINE YAC2Elmer( Model,Solver,dt,TransientSimulation )
   END IF
 !!!!!!!!!! DO WE HAVE TO INITIALIZE WITH EVERY CALL ? !!!!!!!!!!!!!!
   IF (couple_to_icon) THEN
-      CALL INFO(SolverName, 'Starting coupling Elmer -> ICON-O', Level=3)
-      CALL INFO(SolverName, 'Getting Elmer liquid and solid flux variables', Level=30)
-      ! Update bmb_flux_field before sending to ICON
-      bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
-      calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
-      DO t=1, GetNOFActive(Solver)
-        liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
-        solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
-      END DO
-      ! Write total liquid and total solid ice sheet flux to log
-      local_liquid_flux_sum = 0.0_dp
-      local_solid_flux_sum = 0.0_dp
-      DO t = 1, GetNOFActive(Solver)
-        Element => GetActiveElement(t, Solver)
-        IF (ParEnv % myPe /= Element % partIndex) CYCLE
-        local_liquid_flux_sum = local_liquid_flux_sum + liquid_ice_sheet_flux_field(t,1)
-        local_solid_flux_sum = local_solid_flux_sum + solid_ice_sheet_flux_field(t,1)
-      END DO
-      CALL MPI_Allreduce(local_liquid_flux_sum, global_liquid_flux_sum, 1, MPI_DOUBLE_PRECISION, &
-                         MPI_SUM, ParEnv % ActiveComm, ierr)
-      CALL MPI_Allreduce(local_solid_flux_sum, global_solid_flux_sum, 1, MPI_DOUBLE_PRECISION, &
-                         MPI_SUM, ParEnv % ActiveComm, ierr)
-      WRITE(Message,'(A,F15.3,A)') 'Sum of liquid_ice_sheet_flux_field: ', global_liquid_flux_sum, ' m^3/s'
-      CALL INFO(SolverName, Message, Level=3)
-      WRITE(Message,'(A,F15.3,A)') 'Sum of solid_ice_sheet_flux_field: ', global_solid_flux_sum, ' m^3/s'
-      CALL INFO(SolverName, Message, Level=3)
-      ! couple with ICON-O
-      CALL elmer_icon_interface(is_root_rank)
-      CALL INFO(SolverName, 'Finished coupling Elmer -> ICON-O', Level=3)
-      CALL INFO(SolverName, 'Writing variables from ICON-O into Elmer variables...', Level=30)
-      t_oceVar => VariableGet( Mesh % Variables, 'temp_oce' )
-      sal_oceVar => VariableGet( Mesh % Variables, 'sal_oce' )
-      IF ((.NOT.ASSOCIATED(t_oceVar)) .OR. (.NOT.ASSOCIATED(sal_oceVar))) THEN
-        CALL FATAL(SolverName,'Elmer variables not associated')
-      END IF
-      ! write over values for nodes
-      DO i=1, Mesh % NumberOfNodes
-        t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_post_field(i,1)
-        sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_post_field(i,1)
-      END DO
+      CALL update_and_exchange_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFatal)
   END IF
 
   IF (couple_to_ebfm) THEN
-      CALL INFO(SolverName, 'Starting coupling Elmer -> EBFM', Level=3)
-      ! couple with EBFM
-      CALL elmer_ebfm_interface(is_root_rank)
-      CALL INFO(SolverName, 'Finished coupling Elmer -> EBFM', Level=3)
-      CALL INFO(SolverName, 'Writing variables from EBFM into Elmer variables...', Level=30)
-      t_iceVar => VariableGet( Mesh % Variables, 'T_ice' )
-      smbVar => VariableGet( Mesh % Variables, 'smb' )
-      runoffVar => VariableGet( Mesh % Variables, 'runoff' )
-      ZsSol => VariableGet( Model % Mesh % Variables, "Zs" ,UnFoundFatal=UnFoundFatal)
-      IF ((.NOT.ASSOCIATED(t_iceVar)) .OR. (.NOT.ASSOCIATED(smbVar)) .OR. (.NOT.ASSOCIATED(runoffVar))) THEN
-        CALL FATAL(SolverName,'Elmer variables not associated')
-      END IF
-
-      ! Validate element variable permutations. In a parallel run, element
-      ! variables declared via "Exported Variable = -elem" in the SIF get a
-      ! proper parallel Perm (built by SetActiveElementsTable). Without that
-      ! declaration, the variable may end up with an invalid Perm.
-
-      ! ! "smb" is known to require this declaration
-      IF (MINVAL(smbVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
-        CALL FATAL(SolverName, &
-          'smb variable has zero/invalid Perm entries. ' // &
-          'Add  Exported Variable = -elem "smb"  to the YAC2Elmer solver block in the SIF.')
-      END IF
-
-      ! "runoff" did not cause issues, but adding the same check for safety
-      IF (MINVAL(runoffVar % Perm(1:GetNOFActive(Solver))) <= 0) THEN
-        CALL FATAL(SolverName, &
-          'runoff variable has zero/invalid Perm entries. ' // &
-          'Add  Exported Variable = -elem "runoff"  to the YAC2Elmer solver block in the SIF.')
-      END IF
-
-      CALL INFO(SolverName, 'Writing nodal variables...', Level=30)
-       !write over values for nodes
-      DO i=1, Mesh % NumberOfNodes
-        t_iceVar % Values(t_iceVar % Perm(i)) = t_ice_field(i,1)
-        surface_height_field(i,1) = ZsSol % Values(ZsSol % Perm(i))
-      END DO
-      CALL INFO(SolverName, 'Writing cell variables....', Level=30)
-      ! write over values for elements
-      DO t=1, GetNOFActive(Solver)
-         smbVar  % Values(smbVar %  Perm(t)) = smb_field(t,1)
-         runoffVar  % Values(runoffVar %  Perm(t)) = runoff_field(t,1)
-      END DO
-      !CALL INFO(SolverName, "Test output start", Level=1)
-      !PRINT *, "Size of clt_field", SIZE(clt_field, 1),"First entry:", clt_field(1,1)
-      !CALL INFO(SolverName, "Test output start", Level=1)
-      !CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+      CALL update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank, UnFoundFatal)
   END IF
 
   CALL INFO(SolverName,'Coupling step done', Level=1)
