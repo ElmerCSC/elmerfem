@@ -502,12 +502,12 @@ MODULE elmer_icon_coupling
 
   INTEGER :: liquid_ice_sheet_flux_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: liquid_ice_sheet_flux_field_name = "liquid_ice_sheet_flux"
-  INTEGER :: liquid_ice_sheet_flux_collection_size = 1
+  INTEGER, PARAMETER :: liquid_ice_sheet_flux_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: liquid_ice_sheet_flux_field(:,:)
 
   INTEGER :: solid_ice_sheet_flux_field_id = -1
   CHARACTER(LEN=*), PARAMETER :: solid_ice_sheet_flux_field_name = "solid_ice_sheet_flux"
-  INTEGER :: solid_ice_sheet_flux_collection_size = 1
+  INTEGER, PARAMETER :: solid_ice_sheet_flux_collection_size = 1
   DOUBLE PRECISION, PUBLIC, ALLOCATABLE :: solid_ice_sheet_flux_field(:,:)
 
 CONTAINS
@@ -523,6 +523,10 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: boundary_corner_mask_name
     CHARACTER(LEN=*), INTENT(IN) :: elmer_comp_name
     CHARACTER(LEN=*), INTENT(IN) :: elmer_grid_name
+    CHARACTER(LEN=*), PARAMETER :: liquid_ice_sheet_flux_metadata = &
+      'Liquid flux from basal melting under floating ice shelves, in m3/s water equivalent per cell'
+    CHARACTER(LEN=*), PARAMETER :: solid_ice_sheet_flux_metadata = &
+      'Solid flux from iceberg calving, in m3/s ice equivalent per cell'
 
     INTEGER :: nbr_vertices, nbr_cells
 
@@ -533,26 +537,26 @@ CONTAINS
     nbr_cells = yac_fget_points_size(cell_point_id)
 
 
-    ! register liquid flux field in YAC
+    ! register liquid_ice_sheet_flux_field in YAC
     CALL yac_fdef_field( &
       liquid_ice_sheet_flux_field_name, comp_id, (/cell_point_id/), 1, liquid_ice_sheet_flux_collection_size, &
       iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, liquid_ice_sheet_flux_field_id);
     CALL yac_fdef_field_metadata( &
       elmer_comp_name, elmer_grid_name, liquid_ice_sheet_flux_field_name, &
-      'Liquid flux from basal melting under floating ice shelves, in m3/s water equivalent per cell');
+      liquid_ice_sheet_flux_metadata);
 
-    ! allocate and liquid flux field buffer
+    ! allocate and liquid_ice_sheet_flux_field buffer
     ALLOCATE(liquid_ice_sheet_flux_field(nbr_cells, liquid_ice_sheet_flux_collection_size))
 
-    ! register solid flux field in YAC
+    ! register solid_ice_sheet_flux_field in YAC
     CALL yac_fdef_field( &
       solid_ice_sheet_flux_field_name, comp_id, (/cell_point_id/), 1, solid_ice_sheet_flux_collection_size, &
       iso8601_timestep, YAC_TIME_UNIT_ISO_FORMAT, solid_ice_sheet_flux_field_id);
 
     CALL yac_fdef_field_metadata( &
       elmer_comp_name, elmer_grid_name, solid_ice_sheet_flux_field_name, &
-      'Solid flux from iceberg calving, in m3/s ice equivalent per cell');
-    ! allocate and solid flux field buffer
+      solid_ice_sheet_flux_metadata);
+    ! allocate and solid_ice_sheet_flux_field buffer
     ALLOCATE(solid_ice_sheet_flux_field(nbr_cells, solid_ice_sheet_flux_collection_size))
 
     ! register ocean temperature field in YAC (masked on boundary)
@@ -674,19 +678,14 @@ CONTAINS
 
       field_role = yac_fget_field_role(elmer_comp_name, elmer_grid_name, field_name)
 
-      WRITE(*,*) 'DEBUG: Field_name: ', field_name, field_role
-
       IF (field_role == YAC_EXCHANGE_TYPE_TARGET) THEN
 
-#if YAC_VERSION_GREATER_EQUAL(3, 6, 0)
+#if !YAC_VERSION_GREATER_EQUAL(3, 6, 0)
+#error "YAC >= 3.6.0 is required"
+#endif
         CALL yac_fget_field_source( &
           elmer_comp_name, elmer_grid_name, field_name, &
           src_comp_name, src_grid_name, src_field_name);
-#else
-        src_comp_name = "icon"
-        src_grid_name = "icon_grid"
-        src_field_name = field_name
-#endif
 
         src_field_timestep = &
           yac_fget_field_timestep( &
@@ -744,7 +743,7 @@ CONTAINS
 
     ! ------------------------------------------------------------------
     ! Exchange: solid_ice_sheet_flux
-    ! Direction: ELMER -> (source) -- Elmer sends the solid (icebergs) ice
+    ! Direction: ELMER -> ICON-O -- Elmer sends the solid (icebergs) ice
     !            sheet mass flux to ICON-O.
     ! ------------------------------------------------------------------
     IF (yac_fget_role_from_field_id(solid_ice_sheet_flux_field_id) == &
@@ -766,13 +765,7 @@ CONTAINS
           (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
           (info == YAC_ACTION_REDUCTION)) THEN
 
-        ! get data to be sent from elmer
-
         ! execute put operation for solid_ice_sheet_flux field
-        ! * if this is a coupling timestep, this will block until the data has
-        !   been received
-        ! * if this is not a coupling timestep, solid_ice_sheet_flux field buffer
-        !   is left untouched and routine will return immediately
         CALL yac_fput( &
           solid_ice_sheet_flux_field_id, SIZE(solid_ice_sheet_flux_field, 1), &
           SIZE(solid_ice_sheet_flux_field, 2), solid_ice_sheet_flux_field, &
@@ -787,7 +780,7 @@ CONTAINS
 
     ! ------------------------------------------------------------------
     ! Exchange: liquid_ice_sheet_flux
-    ! Direction: ELMER -> (source) -- Elmer sends the liquid (basal melting) ice
+    ! Direction: ELMER -> ICON-O -- Elmer sends the liquid (basal melting) ice
     !            sheet mass flux to ICON-O.
     ! ------------------------------------------------------------------
     IF (yac_fget_role_from_field_id(liquid_ice_sheet_flux_field_id) == &
@@ -809,13 +802,7 @@ CONTAINS
           (info == YAC_ACTION_PUT_FOR_RESTART) .OR. &
           (info == YAC_ACTION_REDUCTION)) THEN
 
-        ! get data to be sent from elmer
-
         ! execute put operation for liquid_ice_sheet_flux field
-        ! * if this is a coupling timestep, this will block until the data has
-        !   been received
-        ! * if this is not a coupling timestep, liquid_ice_sheet_flux field buffer
-        !   is left untouched and routine will return immediately
         CALL yac_fput( &
           liquid_ice_sheet_flux_field_id, SIZE(liquid_ice_sheet_flux_field, 1), &
           SIZE(liquid_ice_sheet_flux_field, 2), liquid_ice_sheet_flux_field, &
@@ -823,8 +810,11 @@ CONTAINS
       ELSE IF (info == YAC_ACTION_NONE) THEN
         CALL yac_fupdate(liquid_ice_sheet_flux_field_id)
       ELSE
-          PRINT *, "ELMER: unexpected action for field: ", TRIM(liquid_ice_sheet_flux_field_name), &
-                   " action: ", TRIM(yac_action_to_string(info))
+          WRITE(*,'(A, A, A, A)') &
+            "ELMER: unexpected action for field: ", &
+            TRIM(liquid_ice_sheet_flux_field_name), &
+            " action: ", &
+            TRIM(yac_action_to_string(info))
       END IF
     END IF
 
