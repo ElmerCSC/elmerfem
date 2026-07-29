@@ -49,7 +49,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh
   CHARACTER(10) :: OutputFormat
-  CHARACTER(LEN=MAX_PATH_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName
+  CHARACTER(LEN=MAX_PATH_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName, PrimVar
   LOGICAL :: SubroutineVisited=.FALSE.,Found, SaveThisMesh, NowSave
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: ModelVariables
@@ -111,15 +111,18 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  IF ( GetLogical(Params,'CHP Hydro Mesh',Found) ) THEN
-    DO i=1,Model % NumberOfSolvers
-      IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN
-        MyMesh => Model % Solvers(i) % Mesh
-        EXIT
-      END IF
-    END DO
-  ELSE
-    MyMesh => GetMesh()
+  PrimVar = GetString(Params,'Primary Output Variable',Found)
+  IF(Found) THEN
+    IF ( PrimVar == "hydraulic potential" ) THEN
+      DO i=1,Model % NumberOfSolvers
+        IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN
+          MyMesh => Model % Solvers(i) % Mesh
+          EXIT
+        END IF
+      END DO
+    ELSE
+      MyMesh => GetMesh()
+    END IF
   END IF
 
   IF( .NOT. SubroutineVisited ) THEN
