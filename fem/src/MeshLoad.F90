@@ -720,7 +720,7 @@ CONTAINS
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
      INTEGER :: i, j, k, k2, l, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id, &
-         mat_id, TargetMeshIndex
+         mat_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
          FirstOrderElements, InheritDG, Hit, Stat, &
@@ -729,7 +729,7 @@ CONTAINS
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
-     CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef, TargetMesh
+     CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
 
 
      EdgeDOFs => NULL()
@@ -742,33 +742,27 @@ CONTAINS
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
      ELSE
-       MultiMesh = ListGetLogical(Model % Simulation % Values, 'Multiple Meshes', GotIt)
-       IF(GotIt .AND. MultiMesh) THEN
-         InDofs = -1
-         InDofs(:,1) = 1
-         InDofs(:,4) = -1
-         DO s=1,Model % NumberOfSolvers
-           !Need to only look at solvers that are going to run on this mesh
-           TargetMesh = ListGetString(Model % Solvers(s) % Values, 'Mesh', GotIt)
-	       TargetMeshIndex = INDEX(Model % Solvers(s) % Mesh % Name, " ")
-           DO i=1,6
-             DO j=1,10
-               IF(GotIt) THEN
-                 !This assumes your meshes all start '. '
-                 IF (LEN_TRIM(Model % Solvers(s) % Mesh % Name) > 0) THEN
-                   IF(TRIM(Model % Solvers(s) % Mesh % Name) .NE. TRIM(TargetMesh(TargetMeshIndex:))) THEN
-                     CYCLE
-                   END IF
-                 END IF
-               ELSE
-                 inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
-               END IF
-             END DO
+       MultiMesh = ListGetLogical(Model % Simulation, 'Multiple Meshes', GotIt)
+       InDofs = 0
+       InDofs(:,1) = 1
+       InDofs(:,4) = -1
+       DO s=1,Model % NumberOfSolvers
+         IF ( MultiMesh ) THEN
+           ! Only let a solver contribute its DOF requirements to a mesh it's
+           ! actually assigned to -- otherwise every solver's Def_Dofs would
+           ! apply to every mesh, over-allocating DOFs on meshes it never
+           ! touches. Solver % Mesh is already the resolved mesh pointer, so
+           ! this is a direct identity check, no string parsing needed.
+           IF ( ASSOCIATED(Model % Solvers(s) % Mesh) ) THEN
+             IF ( .NOT. ASSOCIATED(Model % Solvers(s) % Mesh, Mesh) ) CYCLE
+           END IF
+         END IF
+         DO i=1,6
+           DO j=1,10
+             inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
            END DO
          END DO
-       ELSE
-         inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
-       END IF
+       END DO
      END IF
 
      ! P-basis only over 1st order elements:
