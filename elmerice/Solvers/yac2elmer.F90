@@ -152,7 +152,7 @@ SUBROUTINE setup_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFa
   REAL(KIND=dp), INTENT(IN) :: seconds_per_year
   LOGICAL, INTENT(IN) :: UnFoundFatal
 
-  CHARACTER(LEN=1024) :: SolverName='setup_icon_variables'
+  CHARACTER(LEN=1024), PARAMETER :: SolverName='setup_icon_variables'
   INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
   TYPE(Variable_t), POINTER :: bmb_fluxVar, calving_fluxVar
   INTEGER :: i, t, n
@@ -250,7 +250,7 @@ SUBROUTINE update_and_exchange_icon_variables(Model, Solver, Mesh, seconds_per_y
   REAL(KIND=dp), INTENT(IN) :: seconds_per_year
   LOGICAL, INTENT(IN) :: UnFoundFatal
 
-  CHARACTER(LEN=1024) :: SolverName='update_and_exchange_icon_variables'
+  CHARACTER(LEN=1024), PARAMETER :: SolverName='update_and_exchange_icon_variables'
   TYPE(Variable_t), POINTER :: t_oceVar, sal_oceVar, bmb_fluxVar, calving_fluxVar
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: local_liquid_flux_sum, global_liquid_flux_sum
@@ -326,7 +326,7 @@ SUBROUTINE update_and_exchange_ebfm_variables(Model, Solver, Mesh, is_root_rank,
   LOGICAL, INTENT(IN) :: is_root_rank
   LOGICAL, INTENT(IN) :: UnFoundFatal
 
-  CHARACTER(LEN=1024) :: SolverName='update_and_exchange_ebfm_variables'
+  CHARACTER(LEN=1024), PARAMETER :: SolverName='update_and_exchange_ebfm_variables'
   TYPE(Variable_t), POINTER :: t_iceVar, smbVar, runoffVar, ZsSol
   INTEGER :: i, t
 
