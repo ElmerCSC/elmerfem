@@ -27,11 +27,11 @@
 ! *  gammaT is a heat exchange velocity (m/s).
 ! *  The result is converted to m/yr.
 ! *
-! *  Required Constants (in sif):
-! *    Ice Density            (kg/m3)
-! *    Water Density          (kg/m3)
-! *    Latent Heat SI         (J/kg)
-! *    SW Cp                  (J/kg/K)
+! *  Required Constants in sif. In parentheses are the are variable names used in this function.:
+! *    Ice Density (rhoi)            (kg/m3)
+! *    Water Density (rhoo)          (kg/m3)
+! *    Latent Heat SI (Lf)           (J/kg)
+! *    SW Cp (SWcp)                  (J/kg/K)
 ! *
 ! *  Required Solver keywords (in sif):
 ! *    lower surface variable name  = string "Zb"
@@ -264,7 +264,14 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
 
      T_far = T_oce_vals(T_oce_Perm(ii))
 
+     !TODO: At the moment, we do not allow negative melt rates (i.e. freezing) at the ice-ocean interface.
+     !      Should probably be revisited in the future.
      meltRate = gammaT * (rhoo * SWCp / (rhoi * Lf)) * (T_far - T_freeze) *  seconds_per_year
+     IF (meltRate < 0.0_dp) THEN
+        CALL INFO(SolverName, &
+          'Negative melt rate (freezing) computed and clamped to zero at node ' // I2S(ii), Level=4)
+     END IF
+     meltRate = MAX(meltRate, 0.0_dp)
      IF (wct_sc) THEN
         wct         = z_iceBase % Values(z_iceBase % Perm(ii)) &
                     - z_bedrock % Values(z_bedrock % Perm(ii))
@@ -313,7 +320,9 @@ SUBROUTINE SubShelfMeltLinearTF (Model, Solver, dt, Transient)
            END IF
         END DO
 
-        elemFlux = elemFlux + Sw * detJ * meltRate_gp
+        ! Convert ice-equivalent melt rate to water-equivalent melt rate
+        ! (rhoi/rhoo) before integrating, so that elemFlux is water-equivalent
+        elemFlux = elemFlux + Sw * detJ * meltRate_gp * (rhoi / rhoo)
      END DO
 
      ! checks if the element is active in the flux variable and assigns the integrated flux

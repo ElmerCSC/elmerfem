@@ -192,7 +192,7 @@
       TYPE(Solver_t) :: Solver
       REAL(KIND=dp), OPTIONAL :: FillValue
 
-      Type(Variable_t), POINTER :: FlowVar,HVar,CFluxVar
+      Type(Variable_t), POINTER :: FlowVar,HVar,CFluxVar,CFluxVarTot
       TYPE(ValueList_t), POINTER :: BC
       TYPE(GaussIntegrationPoints_t) :: IntegStuff
       TYPE(Element_t), POINTER :: Element,Parent
@@ -231,10 +231,16 @@
       IF (CFluxVar % TYPE /= Variable_on_elements) &
        CALL FATAL(Caller,"calving_front_flux type should be on_elements")
 
+      CFluxVarTot => VariableGet(Solver%Mesh%Variables,'calving_front_flux_total',UnfoundFatal=.TRUE.)
+      IF (CFluxVarTot % TYPE /= Variable_on_elements) &
+       CALL FATAL(Caller,"calving_front_flux_total type should be on_elements")
+
       IF (PRESENT(FillValue)) THEN
         CFluxVar % Values = FillValue
+        CFluxVarTot % Values = FillValue
       ELSE
         CFluxVar % Values = 0._dp
+        CFluxVarTot % Values = 0._dp
       END IF
 
       NofActive = Solver % Mesh % NumberOfBulkElements
@@ -319,8 +325,10 @@
         IF (EIndex > 0) THEN
            IF (VisitedParent(Parent % ElementIndex)) THEN
              CFluxVar % Values ( EIndex ) = CFluxVar % Values ( EIndex ) + CalvingFlux / area
+             CFluxVarTot % Values ( EIndex ) = MAX(CFluxVarTot % Values ( EIndex ) + CalvingFlux, 0._dp)
            ELSE 
              CFluxVar % Values ( EIndex ) = CalvingFlux / area
+             CFluxVarTot % Values ( EIndex ) = MAX(CalvingFlux, 0._dp)
              IF (Parent % ElementIndex.GT.NofActive) &
                 CALL FATAL(Caller,"Pb with VisitedParent allocated size")
              VisitedParent(Parent % ElementIndex)=.TRUE.
