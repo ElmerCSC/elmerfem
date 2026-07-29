@@ -3653,7 +3653,7 @@ CONTAINS
     INTEGER :: i,j,k,k2,DOFs, dates(8), n, PermSize,IsVector,SavesDone,FileCycle,FileInd,CalveInd=0
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: SaveCoordinates, MoveBoundary, GotIt, SaveThis, &
-        SaveGlobal, OutputVariableList, SaveIp, ThisIp, InitFile, Calving
+        SaveGlobal, OutputVariableList, SaveIp, ThisIp, InitFile, SepFiles
     INTEGER, POINTER :: PrevPerm(:) 
     INTEGER(IntOff_k) :: PrevPermPos, Pos
     INTEGER(IntOff_k), SAVE :: VarPos(MAX_OUTPUT_VARS) = 0
@@ -3680,14 +3680,14 @@ CONTAINS
     ! If we have cyclic files then each file includes all data but we cyclicly write the
     ! data on top of previous files. 
     FileCycle = ListGetInteger( ResList,'Output File Cycle', Found )
-    Calving = .FALSE.
-    Calving = ListGetLogical( ResList, 'Calving', Found)
+    SepFiles = .FALSE.
+    SepFiles = ListGetLogical( ResList, 'Separate Results Files', Found)
     
     ! cyclic files are always independent and hence must always be initiated.
     IF( FileCycle > 0 ) THEN
       InitFile = .TRUE.
       FileInd = MODULO( Mesh % SavesDone, FileCycle ) + 1
-    ELSE IF( Calving ) THEN
+    ELSE IF( SepFiles ) THEN
       InitFile = .TRUE.
       FileInd = CalveInd
       CalveInd = CalveInd + 1
@@ -3710,7 +3710,7 @@ CONTAINS
     END IF
 #endif
     
-    IF(( FileCycle > 0 ) .OR. (Calving)) THEN
+    IF(( FileCycle > 0 ) .OR. (SepFiles)) THEN
       Fname = TRIM(Fname)//'_'//I2S(FileInd)//'nc'
     END IF
 
