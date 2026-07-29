@@ -141,6 +141,7 @@ END SUBROUTINE collect_coupling_grid_data
 SUBROUTINE setup_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFatal)
   USE Types, ONLY: Model_t, Solver_t, Mesh_t, Variable_t, dp
   USE DefUtils, ONLY: DefaultVariableAdd, GetNOFActive, VariableGet
+  USE Messages, ONLY: FATAL
   USE elmer_icon_coupling, ONLY: liquid_ice_sheet_flux_field, solid_ice_sheet_flux_field
 
   IMPLICIT NONE
@@ -151,9 +152,10 @@ SUBROUTINE setup_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFa
   REAL(KIND=dp), INTENT(IN) :: seconds_per_year
   LOGICAL, INTENT(IN) :: UnFoundFatal
 
+  CHARACTER(LEN=1024) :: SolverName='setup_icon_variables'
   INTEGER, POINTER :: t_ocePerm(:), sal_ocePerm(:)
   TYPE(Variable_t), POINTER :: bmb_fluxVar, calving_fluxVar
-  INTEGER :: i, t
+  INTEGER :: i, t, n
 
   ALLOCATE(t_ocePerm(Mesh % NumberOfNodes), sal_ocePerm(Mesh % NumberOfNodes))
   DO i=1,Mesh % NumberOfNodes
@@ -166,10 +168,17 @@ SUBROUTINE setup_icon_variables(Model, Solver, Mesh, seconds_per_year, UnFoundFa
   ! Initialize bmb_flux_field and calving_flux field for first time step
   bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
   calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
-  DO t=1, GetNOFActive(Solver)
-    liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
-    solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
-  END DO
+  n = GetNOFActive(Solver)
+  IF (MINVAL(bmb_fluxVar % Perm(1:n)) <= 0) THEN
+    CALL FATAL(SolverName, 'bmb_flux variable has zero/invalid Perm entries. ' // &
+      'This is exported by another solver; check its parallel element-variable declaration.')
+  END IF
+  IF (MINVAL(calving_fluxVar % Perm(1:n)) <= 0) THEN
+    CALL FATAL(SolverName, 'calving_front_flux_total variable has zero/invalid Perm entries. ' // &
+      'This is exported by another solver; check its parallel element-variable declaration.')
+  END IF
+  liquid_ice_sheet_flux_field(1:n,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(1:n)) / seconds_per_year
+  solid_ice_sheet_flux_field(1:n,1) = calving_fluxVar % Values(calving_fluxVar % Perm(1:n)) / seconds_per_year
 
 END SUBROUTINE setup_icon_variables
 
@@ -246,7 +255,7 @@ SUBROUTINE update_and_exchange_icon_variables(Model, Solver, Mesh, seconds_per_y
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: local_liquid_flux_sum, global_liquid_flux_sum
   REAL(KIND=dp) :: local_solid_flux_sum, global_solid_flux_sum
-  INTEGER :: i, t, ierr
+  INTEGER :: i, t, n, ierr
 
   CALL INFO(SolverName, 'Starting coupling Elmer -> ICON-O', Level=3)
   CALL INFO(SolverName, 'Getting Elmer liquid and solid flux variables', Level=30)
@@ -254,10 +263,17 @@ SUBROUTINE update_and_exchange_icon_variables(Model, Solver, Mesh, seconds_per_y
   ! Update bmb_flux_field before sending to ICON
   bmb_fluxVar => VariableGet( Model % Mesh % Variables, "bmb_flux", UnFoundFatal=UnFoundFatal)
   calving_fluxVar => VariableGet( Model % Mesh % Variables, "calving_front_flux_total", UnFoundFatal=UnFoundFatal)
-  DO t=1, GetNOFActive(Solver)
-    liquid_ice_sheet_flux_field(t,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(t)) / seconds_per_year
-    solid_ice_sheet_flux_field(t,1) = calving_fluxVar % Values(calving_fluxVar % Perm(t)) / seconds_per_year
-  END DO
+  n = GetNOFActive(Solver)
+  IF (MINVAL(bmb_fluxVar % Perm(1:n)) <= 0) THEN
+    CALL FATAL(SolverName, 'bmb_flux variable has zero/invalid Perm entries. ' // &
+      'This is exported by another solver; check its parallel element-variable declaration.')
+  END IF
+  IF (MINVAL(calving_fluxVar % Perm(1:n)) <= 0) THEN
+    CALL FATAL(SolverName, 'calving_front_flux_total variable has zero/invalid Perm entries. ' // &
+      'This is exported by another solver; check its parallel element-variable declaration.')
+  END IF
+  liquid_ice_sheet_flux_field(1:n,1) = bmb_fluxVar % Values(bmb_fluxVar % Perm(1:n)) / seconds_per_year
+  solid_ice_sheet_flux_field(1:n,1) = calving_fluxVar % Values(calving_fluxVar % Perm(1:n)) / seconds_per_year
 
   ! Write total liquid and total solid ice sheet flux to log
   local_liquid_flux_sum = 0.0_dp
@@ -289,10 +305,8 @@ SUBROUTINE update_and_exchange_icon_variables(Model, Solver, Mesh, seconds_per_y
   END IF
 
   ! write over values for nodes
-  DO i=1, Mesh % NumberOfNodes
-    t_oceVar % Values(t_oceVar % Perm(i)) = t_oce_post_field(i,1)
-    sal_oceVar % Values(sal_oceVar % Perm(i)) = sal_oce_post_field(i,1)
-  END DO
+  t_oceVar % Values(t_oceVar % Perm(1:Mesh % NumberOfNodes)) = t_oce_post_field(1:Mesh % NumberOfNodes,1)
+  sal_oceVar % Values(sal_oceVar % Perm(1:Mesh % NumberOfNodes)) = sal_oce_post_field(1:Mesh % NumberOfNodes,1)
 
 END SUBROUTINE update_and_exchange_icon_variables
 
