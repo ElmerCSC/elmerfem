@@ -12,8 +12,6 @@ IF(CMAKE_CROSSCOMPILING)
   ENDIF()
 ENDIF()
 
-OPTION(EXTERNAL_METIS "Link to external Metis library" OFF)
-
 SET(elmergrid_SRCS egdef.h egparallel.h egnative.h egconvert.h
   egexport.h egextra.h egmesh.h 
   egtypes.h egutils.h egparallel.c egnative.c egconvert.c egexport.c

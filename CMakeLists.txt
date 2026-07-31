@@ -116,6 +116,8 @@ SET(INCLUDE_ELMER_MODULES "" CACHE STRING "Semicolon separated list of solver mo
 # Let user select if the contiguous attribute is used or not
 SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
 
+OPTION(EXTERNAL_METIS "Link to external Metis library" OFF)
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 # if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
