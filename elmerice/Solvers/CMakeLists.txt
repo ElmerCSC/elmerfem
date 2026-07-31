@@ -26,17 +26,45 @@ ELSE()
   MESSAGE(WARNING "  \n Missing: <NETCDF_INCLUDE_DIR> , <NETCDF_LIBRARY>,  <NETCDFF_LIBRARY> \n some functionalities will be disabled")
 ENDIF()
 
-FIND_PACKAGE(YAC)
+# ------------------- #
+# -- YAC libraries -- #
+#-------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for YAC libraries")
 
-IF(YAC_FOUND)
-  MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
-  MESSAGE(STATUS "  YAC_INC:       " "${YAC_INCLUDE_DIR}")
-  MESSAGE(STATUS "  YAC_LIBS:      " "${YAC_LIBRARIES}")
-  MESSAGE(STATUS "  yac2elmer will be available under ElmerIceSolvers")
-ELSE()
-  MESSAGE(STATUS "  YAC not found ")
-  MESSAGE(STATUS "  No yac2elmer in ElmerIceSolvers")
+IF(WITH_YAC)
+
+  # Check for Fortran target (will be available in YAC >= 3.19)
+  FIND_PACKAGE(YAC 3.15 CONFIG QUIET)
+  IF(NOT YAC_FOUND)
+    MESSAGE(FATAL_ERROR
+      "YAC >= 3.15.0 with CMake support is required. "
+      "Hint: install/build YAC so YACConfig.cmake is available.")
+  ENDIF()
+
+  # 2) If version is 3.19+, require Fortran explicitly
+  IF(DEFINED YAC_VERSION AND YAC_VERSION VERSION_GREATER_EQUAL 3.19)
+    # If YAC >= 3.19, require Fortran component
+    UNSET(YAC_FOUND)
+    FIND_PACKAGE(YAC 3.19 CONFIG QUIET COMPONENTS Fortran)
+
+    # Robust check: imported target existence
+    IF(NOT YAC_FOUND)
+      MESSAGE(FATAL_ERROR
+        "YAC ${YAC_VERSION} found, but Fortran component is missing. "
+        "Please rebuild YAC with Fortran enabled (for example -DYAC_ENABLE_FORTRAN=ON).")
+    ENDIF()
+  ELSE()
+    # For YAC < 3.19, cannot check for Fortran component; assuming it is available
+    MESSAGE(WARNING "YAC version " ${YAC_VERSION} " < 3.19 detected. YAC >= 3.19 is recommended for more robust checks.")
+  ENDIF()
+
+  IF(YAC_FOUND)
+    MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
+    MESSAGE(STATUS "  yac2elmer will be available under ElmerIceSolvers")
+  ENDIF()
 ENDIF()
+
 # ---------------------- #
 # -- HDF5 libraries -- #
 #----------------------- #
