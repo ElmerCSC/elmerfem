@@ -2596,7 +2596,8 @@ CONTAINS
 
       character(len=256) :: elmer_home_env
       CALL get_environment_variable("ELMER_HOME", elmer_home_env)
-
+      CALL Info(Caller,'"ELMER_HOME" set to: '//TRIM(elmer_home_env),Level=7)
+      
       !$OMP PARALLEL Shared(mype, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
       LuaState = lua_init()
@@ -2625,8 +2626,14 @@ CONTAINS
             ELMER_SOLVER_HOME &
             // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
       ELSE
+#if 1
+        lstat = lua_dostring(LuaState, &
+            'loadfile("' // TRIM(elmer_home_env) // &
+            '/share/elmersolver/lua-scripts/defaults.lua")()' // c_null_char)
+#else  
         lstat = lua_dostring(LuaState, &
             'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+#endif
       END IF
 
       ! Execute lua parts 

@@ -152,6 +152,7 @@ jobs:
             -DWITH_OCC=ON \
             -DWITH_MATC=ON \
             -DWITH_PARAVIEW=ON \
+            -DWITH_EXTOPTIM=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_MPI=ON -DMPI_TEST_MAXPROC=2 -DMPIEXEC_PREFLAGS=--allow-run-as-root" || echo "-DWITH_MPI=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Trilinos=ON" || echo "-DWITH_Trilinos=OFF") \
