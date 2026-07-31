@@ -1801,7 +1801,7 @@ CONTAINS
 
         INTEGER, ALLOCATABLE, SAVE :: GlobalToLocal(:),rRows(:),rSize(:),cBuf(:),SendTo(:)
         REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
-        INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt,proc
+        INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt,proc,totcnt,totnnz
 
         TYPE SendStuff_t
           INTEGER, ALLOCATABLE :: Size(:), Rows(:)
@@ -1877,6 +1877,17 @@ CONTAINS
               SendStuff(you+1) % Rows(Sendto(you+1))  = i
             END IF
           END DO
+
+          ! Ensure the MPI buffered-send pool is large enough for this loop's
+          ! traffic: call CheckBuffer, similarily to RocSolver
+          totcnt = SUM(SendTo)
+          totnnz = 0
+          DO i=1,ParEnV % PEs
+            IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
+            IF(SendTo(i)>0) totnnz = totnnz + SUM(SendStuff(i) % Size)
+          END DO
+          CALL CheckBuffer( ParEnv % PEs*(1+MPI_BSEND_OVERHEAD) + 2*totcnt + 3*totnnz + &
+                     (3*COUNT(SendTo/=0) + 2*totcnt)*MPI_BSEND_OVERHEAD )
 
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE

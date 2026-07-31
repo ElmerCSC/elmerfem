@@ -156,6 +156,15 @@
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir, MeshName
 
+     INTERFACE
+       ! Pin LC_NUMERIC="C" and, on Windows, neutralize libgfortran's unsafe
+       ! per-I/O setlocale switching (see GFortranLocaleFix.c). Idempotent.
+       SUBROUTINE ElmerFixNumericLocale() BIND(C, name="elmer_fix_numeric_locale")
+       END SUBROUTINE ElmerFixNumericLocale
+     END INTERFACE
+
+     CALL ElmerFixNumericLocale()
+
      WRITE(*,*) 'Started inside library code'; FLUSH(6)
      ! Start the watches, store later
      !--------------------------------

@@ -435,14 +435,17 @@ MODULE Types
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: NodeU, NodeV, NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: P_NodeU, P_NodeV, P_NodeW
      REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: N_NodeU, N_NodeV, N_NodeW
-     ! Reference basis function cache — keyed by (u,v,w), shared across all
-     ! elements of this type.  BasisCacheCount=0 means empty.
-     INTEGER :: BasisCacheCount = 0
-     REAL(KIND=dp), ALLOCATABLE :: BasisCacheU(:)       ! (ELEM_BASIS_CACHE_SIZE)
-     REAL(KIND=dp), ALLOCATABLE :: BasisCacheV(:)
-     REAL(KIND=dp), ALLOCATABLE :: BasisCacheW(:)
-     REAL(KIND=dp), ALLOCATABLE :: BasisCache(:,:)      ! (ELEM_BASIS_CACHE_SIZE, n_nodes)
-     REAL(KIND=dp), ALLOCATABLE :: dBasisCache(:,:,:)   ! (ELEM_BASIS_CACHE_SIZE, n_nodes, 3)
+     ! Reference basis function cache — keyed by (u,v,w). This structure is
+     ! SHARED by every element of this type across all OpenMP threads, so the
+     ! cache is given a per-thread column (last index) to keep both lookup and
+     ! fill lock-free and race-free during threaded assembly (see ElemInfo's
+     ! ElementInfo). BasisCacheCount(tid)=0 means that thread's cache is empty.
+     INTEGER, ALLOCATABLE :: BasisCacheCount(:)          ! (nthreads)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheU(:,:)      ! (ELEM_BASIS_CACHE_SIZE, nthreads)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheV(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCacheW(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: BasisCache(:,:,:)     ! (ELEM_BASIS_CACHE_SIZE, n_nodes, nthreads)
+     REAL(KIND=dp), ALLOCATABLE :: dBasisCache(:,:,:,:)  ! (ELEM_BASIS_CACHE_SIZE, n_nodes, 3, nthreads)
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------

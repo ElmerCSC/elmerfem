@@ -110,9 +110,14 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalConsmode, GetVectorLocalConsmode
    END INTERFACE
 
-   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
-   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: ValueStore(:)
-   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, ValueStore)
+   ! Per-thread scratch storage — NOT THREADPRIVATE; indexed by omp_get_thread_num()+1.
+   ! Avoids the GCC/emutls bug: ALLOCATABLE THREADPRIVATE vars are shared on Windows.
+   TYPE, PRIVATE :: DefUtils_Store_t
+     INTEGER, ALLOCATABLE :: istore(:)
+     INTEGER, ALLOCATABLE :: vistore(:)
+     REAL(KIND=dp), ALLOCATABLE :: vstore(:)
+   END TYPE DefUtils_Store_t
+   TYPE(DefUtils_Store_t), ALLOCATABLE, PRIVATE, TARGET, SAVE :: Stores(:)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)
@@ -171,49 +176,79 @@ CONTAINS
 #endif
    END FUNCTION GetCompilationDate
   
+  SUBROUTINE EnsureStores()
+    INTEGER :: nthr
+    ! The "IF (.NOT. ALLOCATED(Stores))" fast-path read used to happen BEFORE
+    ! entering the critical section below. That is an unsynchronized
+    ! double-checked-locking read: a thread can observe Stores as allocated,
+    ! from another thread's write, before that allocation's contents are
+    ! actually visible to it (especially under -O3 reordering). Some element
+    ! loops (e.g. HeatSolveVec's boundary assembly) have no serial "warm-up"
+    ! element before the parallel region starts, so every thread can reach
+    ! this function's very first call at once, keeping the race window
+    ! reliably open. Always taking the critical section is the safe fix
+    ! (see the analogous fix to Ip2DgFieldInElementInit in
+    ! InterpolateMeshToMesh.F90, confirmed by test to resolve a ~14% crash
+    ! rate in IpVariable4); the cost is negligible next to the per-element
+    ! work GetIndexStore/GetPermIndexStore callers already do.
+    !$OMP CRITICAL
+    IF (.NOT. ALLOCATED(Stores)) THEN
+      nthr = 1
+      !$ nthr = OMP_GET_MAX_THREADS()
+      ALLOCATE(Stores(nthr))
+    END IF
+    !$OMP END CRITICAL
+  END SUBROUTINE EnsureStores
+
   FUNCTION GetIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
+    INTEGER :: tid, istat
 
-    IF ( .NOT. ALLOCATED(IndexStore) ) THEN
-        ALLOCATE( IndexStore(ISTORE_MAX_SIZE), STAT=istat )
-        IndexStore = 0
-        IF ( Istat /= 0 ) CALL Fatal( 'GetIndexStore', &
-                'Memory allocation error.' )
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%istore)) THEN
+      ALLOCATE(Stores(tid)%istore(ISTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%istore = 0
+      IF (istat /= 0) CALL Fatal('GetIndexStore', 'Memory allocation error.')
     END IF
-    ind => IndexStore
+    ind => Stores(tid)%istore
   END FUNCTION GetIndexStore
 
   FUNCTION GetPermIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
-     
-    IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
-      ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
-      VecIndexStore = 0
-      IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', &
-              'Memory allocation error.' )
+    INTEGER :: tid, istat
+
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%vistore)) THEN
+      ALLOCATE(Stores(tid)%vistore(ISTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%vistore = 0
+      IF (istat /= 0) CALL Fatal('GetPermIndexStore', 'Memory allocation error.')
     END IF
-    ind => VecIndexStore
+    ind => Stores(tid)%vistore
   END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
     IMPLICIT NONE
     REAL(KIND=dp), POINTER CONTIG :: val(:)
-    INTEGER :: n, istat
+    INTEGER :: tid, n, istat
 
-    IF ( .NOT.ALLOCATED(ValueStore) ) THEN
-      ALLOCATE( ValueStore(VSTORE_MAX_SIZE), STAT=istat )
-      ValueStore = REAL(0, dp)
-      IF ( Istat /= 0 ) CALL Fatal( 'GetValueStore', &
-              'Memory allocation error.' )
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%vstore)) THEN
+      ALLOCATE(Stores(tid)%vstore(VSTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%vstore = REAL(0, dp)
+      IF (istat /= 0) CALL Fatal('GetValueStore', 'Memory allocation error.')
     END IF
     IF (n > VSTORE_MAX_SIZE) THEN
-      CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
+      CALL Fatal('GetValueStore', 'Not enough memory allocated for store.')
     END IF
-    val => ValueStore(1:n)
+    val => Stores(tid)%vstore(1:n)
   END FUNCTION GetValueStore
 
 !> Returns handle to the active solver
@@ -2363,7 +2398,7 @@ CONTAINS
 
 !> Returns the nodal coordinate values in the active element
   SUBROUTINE GetElementNodes( ElementNodes, UElement, USolver, UMesh )
-     TYPE(Nodes_t) :: ElementNodes
+     TYPE(Nodes_t), TARGET :: ElementNodes
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
      TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -2384,12 +2419,24 @@ CONTAINS
      END IF
 
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
-     
-     IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
-       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
-     ELSE IF ( SIZE(ElementNodes % x)<n ) THEN
-       DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
-       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
+
+     IF ( .NOT. ALLOCATED( ElementNodes % xyz ) ) THEN
+       ALLOCATE( ElementNodes % xyz(n,3) )
+       ElementNodes % xyz = 0.0_dp
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
+     ELSE IF ( SIZE(ElementNodes % xyz, 1) < n ) THEN
+       DEALLOCATE( ElementNodes % xyz )
+       ALLOCATE( ElementNodes % xyz(n,3) )
+       ElementNodes % xyz = 0.0_dp
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
+     ELSE
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
      END IF
 
      n = Element % TYPE % NumberOfNodes

@@ -4189,18 +4189,51 @@ END FUNCTION SearchNodeL
     CHARACTER(:), ALLOCATABLE :: VarName, GaussDef
     TYPE(Solver_t), POINTER :: pSolver, prevSolver => NULL()
     TYPE(Variable_t), POINTER :: IntegVar
-    INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
+    INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder, BaseNp, BaseRelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
     INTEGER :: i,j,n,ElementalNp(8),prevVisited = -1
-    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit, UseNameSpace
+    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit, UseNameSpace, EdgePRef
     INTEGER :: EdgeBasisDegree
     REAL(KIND=dp) :: ElemPhi(27)
     LOGICAL :: ElemCut(8)
     TYPE(Nodes_t) :: ElemNodes
-    
-    SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
-        ElementalRule, ElementalNp, prevVisited, pRef, prevIsBC, AdaptSplit, ElemPhi, ElemNodes
+
+    ! NOTE: pRef, Np, RelOrder and ElemPhi are deliberately NOT in the SAVE
+    ! list. They are element-dependent (written per element in the rule
+    ! selection at the bottom of this function) and must be per-call locals so
+    ! that concurrent threads each get their own copy.
+    !
+    ! pRef used to be SAVEd shared state written only inside the init block;
+    ! when several threads hit their first element concurrently they all
+    ! re-ran the init, which transiently toggled the shared pRef
+    ! .FALSE. -> .TRUE. while other threads were already reading it for the
+    ! rule selection at the bottom of this function. A p-element could then
+    ! rarely be integrated with the non-p rule: slightly wrong local matrix,
+    ! or - with too few points for the bubble basis - a singular block in
+    ! CondensateP (the intermittent "LUDecomp: Matrix is singular" failure
+    ! in e.g. Step_stokes_heat_vec / SD_Step_stokes_heat_vec).
+    !
+    ! Np and RelOrder are the same hazard class: they hold a solver-level
+    ! default (captured once during init) that is then overwritten per element
+    ! for the elemental / adaptive integration rules. The persistent default
+    ! lives in the SAVEd BaseNp/BaseRelOrder; the per-call Np/RelOrder are
+    ! re-seeded from those after the init block on every call. ElemPhi is
+    ! pure per-element scratch (nodal values of the adaptive variable).
+    !
+    ! REMAINING HAZARD (not fixed here): the "Adaptive Integration Split"
+    ! sub-branch below still uses SAVEd scratch with shared state - ElemNodes
+    ! (POINTER components, lazy-allocated) and, in its inner BLOCK,
+    ! PieceElement / IPtmp / PieceNodes. This 2D-only path is exercised for
+    ! correctness by the ModelPDEipsplit test, but only serially: its solver
+    ! (ModelPDEhandle / AdvDiffSolver) has no !$OMP PARALLEL assembly, so the
+    ! SAVEd scratch is never actually contended there. It remains latently
+    ! thread-unsafe and would race if a threaded (*Vec-style) solver ever used
+    ! Adaptive Integration Split; rework it to per-call scratch before doing
+    ! so. ElemNodes is left SAVE here (its POINTER components would leak on
+    ! every call as a plain non-SAVE local) pending that rework.
+    SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, BaseRelOrder, BaseNp, &
+        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemNodes
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -4213,8 +4246,37 @@ END FUNCTION SearchNodeL
    
     InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
         ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
-    
+
     IF( .NOT. InitDone ) THEN
+      ! Unsynchronized double-checked-lock, same anti-pattern already fixed
+      ! elsewhere this session (EnsureStores, Ip2DgFieldInElement): the fast
+      ! InitDone check above happens with no lock, so several threads hitting
+      ! their first element of a parallel assembly concurrently (no serial
+      ! warm-up call exists before e.g. StatElecSolve's BulkAssembly) can all
+      ! enter this block together. Unlike the already-fixed pRef/Np/RelOrder
+      ! hazard, the danger here is not that the *values* differ across
+      ! threads (for a plain SIF with no adaptive/elemental/namespace keys
+      ! they are deterministic) -- it is that nothing orders or flushes the
+      ! writes to BaseNp/BaseRelOrder/ElementalRule/UseAdapt/MinLim/MaxLim/
+      ! EdgePRef/ElementalNp/AdaptNp/AdaptOrder/AdaptSplit relative to the
+      ! terminal "prevSolver => pSolver" / "prevVisited = ..." publish below.
+      ! A third thread can observe InitDone flip to TRUE (via those two
+      ! writes becoming visible) while an earlier field is still stale or
+      ! mid-write under compiler/CPU store reordering, then read garbage into
+      ! the per-element rule selection just below this block. Re-checking
+      ! InitDone inside the critical section restores real double-checked
+      ! locking: cheap in the common (already-initialized) case, since the
+      ! unlocked fast path above still avoids the lock entirely once done.
+      ! NOTE: this MUST stay an unnamed CRITICAL. A named variant
+      ! (GaussPointsAdaptInit) deterministically SIGSEGVs several MPI tests
+      ! (radiation*/radiator*/mgdyn_torus/pointload _np4) on the Windows
+      ! MSYS2/UCRT MinGW gomp runtime -- a toolchain bug in the named-critical
+      ! machinery, unrelated to the logic here (removing the name, or the
+      ! directive entirely, makes them pass; the unnamed lock behaves).
+      !$OMP CRITICAL
+      InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
+          ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
+      IF( .NOT. InitDone ) THEN
       PrevIsBC = IsBC
 
       IF(IsBC ) THEN
@@ -4231,10 +4293,10 @@ END FUNCTION SearchNodeL
         END IF
       END IF
                     
-      RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
+      BaseRelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
       AdaptSplit = .FALSE.
-      Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
+      BaseNp = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
 
       ! Elemental explicit rule will dominate over all other rules
       GaussDef = ListGetString( pSolver % Values,'Element Integration Points',ElementalRule )
@@ -4282,21 +4344,25 @@ END FUNCTION SearchNodeL
       
       
       pRef = .FALSE.
-      
+
       EdgeBasisDegree = 0
       IF( PRESENT(EdgeBasis) ) THEN
         IF( EdgeBasis ) THEN
 
           CALL EdgeElementStyle(pSolver % Values, pRef, BasisDegree=EdgeBasisDegree)
+          ! Store the solver-constant edge-basis reference-element flag for
+          ! the per-call pRef selection below (single same-value store; the
+          ! local pRef is used within this init block only).
+          EdgePRef = pRef
 
           ! If elemental rule has not been given then use special edge basis rules
           ! to overrule any other rule for the gauss points. 
           IF(.NOT. ElementalRule ) THEN
-            ! We can alter between the two explicit rules of edge basis using relative integration order. 
-            IF( RelOrder /= 0 ) THEN
-              IF( RelOrder == 1 .AND. EdgeBasisDegree == 1 ) THEN
+            ! We can alter between the two explicit rules of edge basis using relative integration order.
+            IF( BaseRelOrder /= 0 ) THEN
+              IF( BaseRelOrder == 1 .AND. EdgeBasisDegree == 1 ) THEN
                 EdgeBasisDegree = 2
-              ELSE IF( RelOrder == -1 .AND. EdgeBasisDegree == 2 ) THEN
+              ELSE IF( BaseRelOrder == -1 .AND. EdgeBasisDegree == 2 ) THEN
                 EdgeBasisDegree = 1
               ELSE
                 CALL Warn('GaussPointsAdapt','Relative integration order does not have any effect for Edge Basis')
@@ -4317,20 +4383,37 @@ END FUNCTION SearchNodeL
             CALL Fatal('GaussPointsAdapt','Adaptive rules not yet compatible with EdgeBasis')
           END IF
         END IF
-      ELSE
-        ! Apart from edge elements we may have p-elements defined.
-        ! If not specified check from the current solver. 
-        IF( PRESENT(pReferenceElement) ) THEN
-          pRef = pReferenceElement 
-        ELSE
-          pRef = isActivePElement(Element,pSolver)
-        END IF
       END IF
-      
+
       prevSolver => pSolver
       prevVisited = pSolver % TimesVisited
+      END IF
+      !$OMP END CRITICAL
     END IF
-    
+
+    ! Select the reference-element style for THIS call/element. Computed as a
+    ! local on every call - never cached in shared SAVE state - to stay
+    ! race-free when concurrent threads re-run the init block above (see the
+    ! NOTE at the SAVE statement). isActivePElement is only a flag check plus
+    ! a small array scan, so this costs next to nothing per element.
+    IF( PRESENT(EdgeBasis) ) THEN
+      pRef = .FALSE.
+      IF( EdgeBasis ) pRef = EdgePRef
+    ELSE IF( PRESENT(pReferenceElement) ) THEN
+      pRef = pReferenceElement
+    ELSE
+      ! Apart from edge elements we may have p-elements defined.
+      ! If not specified check from the current solver.
+      pRef = isActivePElement(Element,pSolver)
+    END IF
+
+    ! Re-seed the per-call rule parameters from the solver-level defaults
+    ! captured during init. These may be overwritten per element just below;
+    ! keeping them as call-locals (seeded from the SAVEd base each call)
+    ! avoids threads clobbering each other's rule selection.
+    Np = BaseNp
+    RelOrder = BaseRelOrder
+
     IF( ElementalRule ) THEN
       ! Elemental explicit rule always has the prevalance
       Np = ElementalNp( Element % TYPE % ElementCode / 100 )
@@ -4374,7 +4457,14 @@ END FUNCTION SearchNodeL
       IF( .NOT. ( MaxV < MinLim .OR. MinV > MaxLim ) ) THEN
 
         IF( AdaptSplit ) THEN
-          ElemPhi(1:n) = ElemPhi(1:n) - MinLim 
+          ! THREADING: this adaptive-split branch is SERIAL-ONLY. ElemNodes
+          ! (below) and the PieceElement/IPtmp/PieceNodes SAVEd scratch in the
+          ! inner BLOCK are shared across calls, so calling this from an OMP
+          ! parallel assembly loop would race. Currently safe only because its
+          ! solver (ModelPDEhandle/AdvDiffSolver) assembles serially. Rework
+          ! this scratch to per-call locals before using adaptive-split with a
+          ! threaded (*Vec-style) solver. See the NOTE at the SAVE statement.
+          ElemPhi(1:n) = ElemPhi(1:n) - MinLim
           IF(.NOT. ASSOCIATED(ElemNodes % x)) THEN
             ALLOCATE(ElemNodes % x(2*n),ElemNodes % y(2*n), ElemNodes % z(2*n))
           END IF

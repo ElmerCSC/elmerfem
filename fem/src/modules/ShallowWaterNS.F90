@@ -136,8 +136,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: Material, BF
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     dim=CoordinateSystemDimension()
     L=dim+1
@@ -328,8 +327,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: BC
 
-    TYPE(Nodes_t), SAVE :: Nodes, PNodes
-!$omp threadprivate(Nodes,PNodes)
+    TYPE(Nodes_t) :: Nodes, PNodes
 !------------------------------------------------------------------------------
     dim = CoordinateSystemDimension()
     L = dim+1

@@ -50,7 +50,7 @@
 #include "../config.h"
 
 #if USE_METIS
-#include "metis-5.1.0/include/metis.h"
+#include <metis.h>
 #endif
 
 

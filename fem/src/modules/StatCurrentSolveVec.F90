@@ -162,9 +162,19 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   INTEGER :: n, nb, nd, t, active, dim, RelOrder
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric, HarmonicMode
-  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver'
+
+  ! Per-thread handle/cache storage for LocalMatrixVec, LocalMatrix and
+  ! LocalMatrixBC — NOT THREADPRIVATE (Windows/GCC emutls bug inherits the
+  ! master's ALLOCATABLE/POINTER THREADPRIVATE data into workers instead of
+  ! giving independent copies). Allocated once below, right after nthr is
+  ! known; each local subroutine only ever touches its own thread's slot.
+  TYPE(ValueHandle_t), ALLOCATABLE :: VecSourceCoeff_h(:), VecCondCoeff_h(:), VecEpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE :: SourceCoeff_h(:), CondCoeff_h(:), EpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE :: Flux_h(:), Robin_h(:), Ext_h(:), Farfield_h(:)
+  REAL(KIND=dp), ALLOCATABLE :: VecEps0(:), Eps0(:)
 !------------------------------------------------------------------------------
 
   INTERFACE
@@ -215,6 +225,10 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   nthr = 1
   !$ nthr = omp_get_max_threads()
 
+  ALLOCATE( VecSourceCoeff_h(nthr), VecCondCoeff_h(nthr), VecEpsCoeff_h(nthr), VecEps0(nthr), &
+      SourceCoeff_h(nthr), CondCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr), &
+      Flux_h(nthr), Robin_h(nthr), Ext_h(nthr), Farfield_h(nthr) )
+
   nColours = GetNOFColours(Solver)
 
   HarmonicMode = ListGetLogical( Params,'Harmonic Mode', Found ) 
@@ -249,20 +263,20 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
 
     CALL ResetTimer( Caller//'BulkAssembly' )
 
-    !!OMP PARALLEL &
-    !!OMP SHARED(Solver, Active, nColours, VecAsm) &
-    !!OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
-    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
-   
+    !$OMP PARALLEL &
+    !$OMP SHARED(Solver, Active, nColours, VecAsm) &
+    !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+
     DO col=1,nColours
-      
+
       !$OMP SINGLE
       CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
 
       InitHandles = .TRUE.
-      !!OMP DO
+      !$OMP DO
       DO t=1,Active
         Element => GetActiveElement(t)
         totelem = totelem + 1
@@ -275,9 +289,9 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
           CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
         END IF
       END DO
-      !!OMP END DO
+      !$OMP END DO
     END DO
-    !!OMP END PARALLEL 
+    !$OMP END PARALLEL
 
     CALL CheckTimer(Caller//'BulkAssembly',Delete=.TRUE.)
     totelem = 0
@@ -289,18 +303,18 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     CALL ResetTimer(Caller//'BCAssembly')
 
-    !!OMP PARALLEL &
-    !!OMP SHARED(Active, Solver, nColours, VecAsm) &
-    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
-    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !$OMP PARALLEL &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm) &
+    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
-      !!OMP SINGLE
+      !$OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !!OMP END SINGLE
+      !$OMP END SINGLE
 
-      InitHandles = .TRUE. 
-      !!OMP DO
+      InitHandles = .TRUE.
+      !$OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         !WRITE (*,*) Element % ElementIndex
@@ -312,9 +326,9 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
           CALL LocalMatrixBC(  Element, n, nd+nb, nb, VecAsm, InitHandles )
         END IF
       END DO
-      !!OMP END DO
+      !$OMP END DO
     END DO
-    !!OMP END PARALLEL
+    !$OMP END PARALLEL
 
     CALL CheckTimer(Caller//'BCAssembly',Delete=.TRUE.)
 
@@ -353,25 +367,24 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), EpsAtIpVec(:), SourceAtIpVec(:)
-    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), POINTER  :: CondAtIpVec(:), EpsAtIpVec(:), SourceAtIpVec(:)
+    REAL(KIND=dp) :: weight
     LOGICAL :: Stat,Found, Pref
-    INTEGER :: i,t,p,q,dim,ngp,allocstat
+    INTEGER :: i,t,p,q,dim,ngp,allocstat,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
-    SAVE Eps0
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, DetJVec, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, CondCoeff_h, EpsCoeff_h, &
-    !$OMP               SourceAtIpVec, CondAtIpVec, EpsAtIpVec )
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => VecSourceCoeff_h(tid), CondCoeff_h => VecCondCoeff_h(tid), &
+        EpsCoeff_h => VecEpsCoeff_h(tid), Eps0 => VecEps0(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -396,20 +409,10 @@ CONTAINS
       
     ngp = IP % n
 
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-      IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-            DEALLOCATE(Basis, dBasisdx, DetJVec, MASS, STIFF, FORCE )
-    END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-          MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
-      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -455,6 +458,8 @@ CONTAINS
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
 
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
 
@@ -469,24 +474,24 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
-    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: weight
     REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ, A
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found
-    INTEGER :: i,j,t,p,q,dim,m,allocstat,CondRank
+    INTEGER :: i,j,t,p,q,dim,m,allocstat,CondRank,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
-
-    SAVE Eps0
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
 
-    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, CondCoeff_h, EpsCoeff_h )
-    
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => SourceCoeff_h(tid), CondCoeff_h => CondCoeff_h(tid), &
+        EpsCoeff_h => EpsCoeff_h(tid), Eps0 => Eps0(tid) )
+
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Source')
@@ -508,15 +513,11 @@ CONTAINS
       IP = GaussPoints( Element )
     END IF
       
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(Basis(m), dBasisdx(m,3),&
-          MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)
-      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    m = Mesh % MaxElementDofs
+    ALLOCATE(Basis(m), dBasisdx(m,3), &
+        MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element )
@@ -582,6 +583,8 @@ CONTAINS
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -601,17 +604,20 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
     LOGICAL :: Stat,Found,RobinBC
-    INTEGER :: i,t,p,q,dim
+    INTEGER :: i,t,p,q,dim,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h, Farfield_h
-
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes,Flux_h,Robin_h,Ext_h,Farfield_h)
+    ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( Flux_h => Flux_h(tid), Robin_h => Robin_h(tid), &
+        Ext_h => Ext_h(tid), Farfield_h => Farfield_h(tid) )
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Current Density')
@@ -679,6 +685,8 @@ CONTAINS
     END DO
     
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
@@ -706,7 +714,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
-  INTEGER :: i, dofs, n, nb, nd, t, active, CondRank
+  INTEGER :: i, dofs, n, nb, nd, t, active, CondRank, nthr
   LOGICAL :: Found, InitHandles
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:),&
@@ -717,8 +725,14 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
       Axisymmetric, CalcAvePotential
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) :: HeatingTot, Voltot
-  REAL(KIND=dp), POINTER :: CondTensor(:,:)  
-  
+  REAL(KIND=dp), POINTER :: CondTensor(:,:)
+
+  ! Per-thread handle/cache storage for LocalPostAssembly; see StatCurrentSolver
+  ! above for why this is not THREADPRIVATE.
+  TYPE(ValueHandle_t), ALLOCATABLE :: SourceCoeff_h(:), CondCoeff_h(:), EpsCoeff_h(:)
+  REAL(KIND=dp), ALLOCATABLE :: Eps0(:)
+
+
   TYPE PostVars_t
     TYPE(Variable_t), POINTER :: Var => NULL()
     INTEGER :: FieldType = -1
@@ -798,7 +812,11 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   n = Mesh % MaxElementDOFs
   ALLOCATE( MASS(n,n), FORCE(8,n) ) ! 1+1+3+3 components for force
 
-  CALL Info(Caller,'Calculating local field values',Level=12) 
+  nthr = 1
+  !$ nthr = omp_get_max_threads()
+  ALLOCATE( SourceCoeff_h(nthr), CondCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr) )
+
+  CALL Info(Caller,'Calculating local field values',Level=12)
   HeatingTot = 0.0_dp
   VolTot = 0.0_dp
 
@@ -868,23 +886,23 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: InitHandles
     REAL(KIND=dp) :: MASS(:,:), FORCE(:,:)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:),ElementPot(:)
-    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),ElementPot(:)
+    REAL(KIND=dp) :: weight
     REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ
     REAL(KIND=dp) :: Grad(3), CondGrad(3), Heat
     LOGICAL :: Stat,Found
-    INTEGER :: i,j,t,p,q,dim,m,allocstat
+    INTEGER :: i,j,t,p,q,dim,m,allocstat,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
-    SAVE Eps0
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, ElementPot, &
-    !$OMP               Nodes,SourceCoeff_h, CondCoeff_h, EpsCoeff_h)
-
-    
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => SourceCoeff_h(tid), CondCoeff_h => CondCoeff_h(tid), &
+        EpsCoeff_h => EpsCoeff_h(tid), Eps0 => Eps0(tid) )
+
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Source')
@@ -900,13 +918,10 @@ CONTAINS
 
     dim = CoordinateSystemDimension()
 
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = Mesh % MaxElementDOFs   
-      ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    m = Mesh % MaxElementDOFs
+    ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element )
@@ -980,17 +995,29 @@ CONTAINS
         Force(2,1:n) = Force(2,1:n) + Heat * Weight * Basis(1:n)
       END IF
 
+      ! PotVol/PotInteg/VolTot/HeatingTot are shared across threads (accumulated
+      ! over all elements) — this loop runs inside an OMP DO, so plain "+="
+      ! updates would race. ATOMIC makes each individual update safe.
       IF( CalcAvePotential ) THEN
         i = Element % BodyId
+        !$OMP ATOMIC UPDATE
         PotVol(i) = PotVol(i) + Weight
-        PotInteg(i) = PotInteg(i) + Weight * SUM( Basis(1:n) * ElementPot(1:n) ) 
+        !$OMP ATOMIC UPDATE
+        PotInteg(i) = PotInteg(i) + Weight * SUM( Basis(1:n) * ElementPot(1:n) )
       END IF
-      
+
+      !$OMP ATOMIC UPDATE
       VolTot = VolTot + Weight
-      HeatingTot = HeatingTot + Weight * Heat 
+      !$OMP ATOMIC UPDATE
+      HeatingTot = HeatingTot + Weight * Heat
     END DO
 
+    ! WeightVector is likewise shared; nodes are shared between elements so
+    ! different threads can update the same entries — ATOMIC doesn't apply to
+    ! a whole array-section statement, so use CRITICAL instead (once per
+    ! element, not per integration point).
     IF( NeedScaling ) THEN
+      !$OMP CRITICAL (StatCurrentPostWeightVector)
       IF( ConstantWeights ) THEN
         WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
             WeightVector( WeightPerm( Element % NodeIndexes ) ) + 1.0_dp
@@ -998,8 +1025,10 @@ CONTAINS
         WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
             WeightVector( WeightPerm( Element % NodeIndexes ) ) + Force(1,1:n)
       END IF
+      !$OMP END CRITICAL (StatCurrentPostWeightVector)
     END IF
-      
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalPostAssembly
 !------------------------------------------------------------------------------

@@ -56,6 +56,7 @@ MODULE ElementBasis
    USE PElementBase
    USE H1Basis
    USE Lists
+!$ USE omp_lib ! Include module conditionally (for omp_get_max_threads below)
 
    IMPLICIT NONE
 
@@ -337,14 +338,22 @@ CONTAINS
       END IF
 
 !------------------------------------------------------------------------------
-     ! Allocate reference basis cache on the list node
+     ! Allocate reference basis cache on the list node. The last dimension is
+     ! per OpenMP thread so the shared per-type cache can be filled lock-free
+     ! during threaded assembly (see ElementInfo in ElemInfo.F90).
      n = ElementTypeList % NumberOfNodes
-     ALLOCATE( ElementTypeList % BasisCacheU(ELEM_BASIS_CACHE_SIZE), &
-               ElementTypeList % BasisCacheV(ELEM_BASIS_CACHE_SIZE), &
-               ElementTypeList % BasisCacheW(ELEM_BASIS_CACHE_SIZE), &
-               ElementTypeList % BasisCache(ELEM_BASIS_CACHE_SIZE, n), &
-               ElementTypeList % dBasisCache(ELEM_BASIS_CACHE_SIZE, n, 3) )
-     ElementTypeList % BasisCacheCount = 0
+     BLOCK
+       INTEGER :: nthr
+       nthr = 1
+       !$ nthr = omp_get_max_threads()
+       ALLOCATE( ElementTypeList % BasisCacheU(ELEM_BASIS_CACHE_SIZE, nthr), &
+                 ElementTypeList % BasisCacheV(ELEM_BASIS_CACHE_SIZE, nthr), &
+                 ElementTypeList % BasisCacheW(ELEM_BASIS_CACHE_SIZE, nthr), &
+                 ElementTypeList % BasisCache(ELEM_BASIS_CACHE_SIZE, n, nthr), &
+                 ElementTypeList % dBasisCache(ELEM_BASIS_CACHE_SIZE, n, 3, nthr), &
+                 ElementTypeList % BasisCacheCount(nthr) )
+       ElementTypeList % BasisCacheCount = 0
+     END BLOCK
 !------------------------------------------------------------------------------
 
 CONTAINS

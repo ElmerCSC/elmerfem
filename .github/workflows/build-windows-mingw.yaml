@@ -34,8 +34,8 @@ jobs:
         mpi: [with, without]
         include:
           - dependencies: external
-            external-packages: parpack:p
-            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON
+            external-packages: parpack:p metis:p
+            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON -DEXTERNAL_METIS=ON
 
     steps:
       - name: get CPU name
@@ -94,7 +94,9 @@ jobs:
             unixodbc:p
             utf8cpp:p
             opencascade:p
+            nlohmann-json:p
             ${{ matrix.external-packages }}
+            ${{ matrix.dependencies == 'bundled' && 'nsis:p ntldd:p' || '' }}
 
       - name: install MSMPI
         if: matrix.mpi == 'with'
@@ -119,20 +121,31 @@ jobs:
                             "-DParMetis_INCLUDE_DIR=$(pkg-config --cflags parmetis)"
                             "-DWITH_Mumps=ON"
                             "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dmo mumps-zmo mumps-smo mumps-cmo)"
-                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo mumps-zmo mumps-smo mumps-cmo)")
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo)")
           else
             _extra_config+=("-DWITH_MPI=OFF"
                             "-DWITH_Zoltan=OFF"
                             "-DWITH_ElmerIce=OFF"
                             "-DWITH_Mumps=ON"
                             "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dto mumps-zto mumps-sto mumps-cto)"
-                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto mumps-zto mumps-sto mumps-cto)")
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto)")
+          fi
+          if [ "${{ matrix.dependencies }}" == "bundled" ]; then
+            SANITIZED_REF_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^A-Za-z0-9._-]/_/g')
+            # add flags for creating a bundle with CPack
+            _extra_config+=("-DCPACK_PACKAGE_BASE_FILE_NAME=elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-${SANITIZED_REF_NAME}"
+                            "-DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=ON"
+                            "-DBUNDLE_STRIPPED_GFORTRAN=OFF")
+            if [ "${{ matrix.mpi }}" == "with" ]; then
+              _extra_config+=("-DBUNDLE_MSMPI_REDIST=ON")
+            fi
+          else
+            _extra_config+=("-DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF")
           fi
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             "${_extra_config[@]}" \
-            -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF \
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
@@ -155,6 +168,37 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}/build
           cmake --build .
+
+      - name: create bundles
+        if: matrix.dependencies == 'bundled'
+        id: create-bundles
+        run: |
+          if [ "${{ matrix.mpi }}" == "with" ]; then
+            # copy MSMPI installer to a location where it can be found
+            mkdir ${GITHUB_WORKSPACE}/../msmpi_redist
+            cp "$(cygpath -m "${MSMPI_BIN}")/../Redist/MSMpiSetup.exe" "${GITHUB_WORKSPACE}/../msmpi_redist/"
+          fi
+          # create bundles
+          cd ${GITHUB_WORKSPACE}/build
+          cpack -G "ZIP;NSIS64" .
+          # store name of bundle for following steps
+          cmake -LA -N .. | awk -F= '$1~/CPACK_PACKAGE_FILE_NAME:STRING/{print "bundle-name="$2}' >> $GITHUB_OUTPUT
+
+      - name: upload installer
+        if: matrix.dependencies == 'bundled'
+        uses: actions/upload-artifact@v7
+        with:
+          name: elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-installer
+          path: ${{ github.workspace }}/build/${{ steps.create-bundles.outputs.bundle-name }}.exe
+          archive: false
+
+      - name: upload zip archive
+        if: matrix.dependencies == 'bundled'
+        uses: actions/upload-artifact@v7
+        with:
+          name: elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-zip
+          path: ${{ github.workspace }}/build/${{ steps.create-bundles.outputs.bundle-name }}.zip
+          archive: false
 
       - name: install
         run: |

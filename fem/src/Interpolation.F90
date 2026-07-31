@@ -589,24 +589,30 @@ MODULE Interpolation
 !-------------------------------------------------------------------------------
   SUBROUTINE CopyElementNodesFromMesh(ElementNodes, Mesh, n, Indexes)
 !-------------------------------------------------------------------------------    
-    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Nodes_t), TARGET :: ElementNodes
     TYPE(Mesh_t) :: Mesh
     INTEGER :: n
     INTEGER :: Indexes(:)
 !-------------------------------------------------------------------------------
     INTEGER :: m
 !-------------------------------------------------------------------------------    
-    IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
-      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
+
+
+    IF ( .NOT. ALLOCATED( ElementNodes % xyz ) ) THEN
+      ALLOCATE( ElementNodes % xyz(n,3) )
+      ElementNodes % x => ElementNodes % xyz(1:n,1)
+      ElementNodes % y => ElementNodes % xyz(1:n,2)
+      ElementNodes % z => ElementNodes % xyz(1:n,3)
     ELSE
-      m = SIZE(ElementNodes % x)
+      m = SIZE(ElementNodes % xyz,1)
       IF ( m < n ) THEN
-        DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
-        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
+        DEALLOCATE(ElementNodes % xyz)
+        ALLOCATE( ElementNodes % xyz(n,3) )
+        ElementNodes % x => ElementNodes % xyz(1:n,1)
+        ElementNodes % y => ElementNodes % xyz(1:n,2)
+        ElementNodes % z => ElementNodes % xyz(1:n,3)
       ELSE IF( m > n ) THEN
-        ElementNodes % x(n+1:m) = 0.0_dp
-        ElementNodes % y(n+1:m) = 0.0_dp
-        ElementNodes % z(n+1:m) = 0.0_dp
+        ElementNodes % xyz(n+1:m,:) = 0.0_dp
       END IF
     END IF
 

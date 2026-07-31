@@ -2164,7 +2164,13 @@ CONTAINS
       IF (.NOT. Found) &
         reset_locale=GetLogical(Model % Simulation,'Reset locale after vtu-output',Found)
 
-      IF (.NOT.Found .OR. reset_locale) CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+      ! Restore Elmer's canonical "C" locale (period-decimal), NOT "en_US.UTF-8".
+      ! The former UTF-8 codepage locale intermittently trips a UCRT
+      ! invalid-parameter fast-fail (0xC0000409) inside libgfortran's locale
+      ! save/restore during subsequent formatted I/O (e.g. SaveScalars, the
+      ! nonlinear-iteration prints) -- the same crash the GeneralUtils.F90
+      ! sif-reading path was fixed for. "C" is canonical and always valid.
+      IF (.NOT.Found .OR. reset_locale) CALL setlocale(0,"C"//CHAR(0))
     END BLOCK
     
     CALL Info(Caller,'Finished writing file',Level=15)
