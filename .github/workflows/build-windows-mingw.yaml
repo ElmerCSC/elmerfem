@@ -34,8 +34,8 @@ jobs:
         mpi: [with, without]
         include:
           - dependencies: external
-            external-packages: parpack:p
-            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON
+            external-packages: parpack:p metis:p
+            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON -DEXTERNAL_METIS=ON
 
     steps:
       - name: get CPU name
