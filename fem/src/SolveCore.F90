@@ -46,6 +46,7 @@ MODULE SolveCore
 
     USE SolverBasics
     USE BoundaryConditionUtils
+    USE IterSolve, ONLY : NumericalError
     IMPLICIT NONE
 
 CONTAINS
@@ -1753,7 +1754,7 @@ CONTAINS
 #ifdef HAVE_AMGX
     INTERFACE
       SUBROUTINE AMGXSolve(AMGX, n, rows, cols, vals, b, x, &
-              nonlin_update, config, comm, ng, part_vec, bnrm ) BIND(C, Name="AMGXSolve")
+              nonlin_update, config, comm, ng, part_vec, bnrm, solve_status ) BIND(C, Name="AMGXSolve")
 
          USE Types
          USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
@@ -1763,15 +1764,19 @@ CONTAINS
          INTEGER(KIND=C_INTPTR_T) :: AMGX
          REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm
          CHARACTER(KIND=C_CHAR) :: config(*)
-         INTEGER :: rows(*), cols(*), nonlin_update, n, comm, ng, part_vec(*)
+         INTEGER :: rows(*), cols(*), nonlin_update, n, comm, ng, part_vec(*), solve_status
       END SUBROUTINE AMGXSolve
     END INTERFACE
 
 
+    ! AMGX_SOLVE_STATUS values, mirrored from https://github.com/NVIDIA/AMGX/tree/main/include
+    INTEGER, PARAMETER :: AMGX_SOLVE_SUCCESS = 0, AMGX_SOLVE_FAILED = 1, &
+        AMGX_SOLVE_DIVERGED = 2, AMGX_SOLVE_NOT_CONVERGED = 3
+
     CHARACTER(KIND=C_CHAR) :: cfg(MAX_NAME_LEN)
     CHARACTER(LEN=MAX_NAME_LEN) :: config
-    LOGICAL :: found, isparallel , nlin
-    INTEGER :: nonlin_update, i, j, n, lrow, me, you
+    LOGICAL :: found, isparallel , nlin, DoFatal
+    INTEGER :: nonlin_update, i, j, n, lrow, me, you, solve_status
     REAL(KIND=dp)  :: bnrm
 
     TYPE(Matrix_t), POINTER :: Bm
@@ -1968,7 +1973,7 @@ CONTAINS
         bnrm = SQRT(ParallelReduction(SUM(bb**2)))
 
         CALL AMGXSolve( A % AMGX, n, Bm % Rows-1, Bm % Cols-1, Bm % Values,  &
-          bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, part_vec, bnrm )
+          bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, part_vec, bnrm, solve_status )
 
         x = 0
         DO i=1,n
@@ -1982,7 +1987,30 @@ CONTAINS
 
       CALL AMGXSolve( A % AMGX, n, A % Rows-1, A % Cols-1, &
         A % Values, b, x, nonlin_update, cfg, ELMER_COMM_WORLD, n, &
-           A % Diag, bnrm ) ! <--- a % diag  for dummy
+           A % Diag, bnrm, solve_status ) ! <--- a % diag  for dummy
+    END IF
+
+    IF( solve_status == AMGX_SOLVE_SUCCESS ) THEN
+      IF( ASSOCIATED( Solver % Variable ) ) Solver % Variable % LinConverged = 1
+    ELSE
+      CALL Info('AMGXSolver','Returned status: '//I2S(solve_status),Level=15)
+      SELECT CASE( solve_status )
+      CASE( AMGX_SOLVE_FAILED )
+        CALL NumericalError('AMGXSolver','AMGX solver failed.')
+      CASE( AMGX_SOLVE_DIVERGED )
+        CALL NumericalError('AMGXSolver','AMGX solve diverged.')
+      CASE( AMGX_SOLVE_NOT_CONVERGED )
+        DoFatal = ListGetLogical( Solver % Values, 'Linear System Abort Not Converged', Found )
+        IF(.NOT. Found ) DoFatal = .TRUE.
+        IF( DoFatal ) THEN
+          CALL NumericalError('AMGXSolver','Too many iterations were needed.')
+        ELSE
+          CALL Info('AMGXSolver','AMGX solve did not converge to tolerance',Level=6)
+        END IF
+      CASE DEFAULT
+        CALL Warn('AMGXSolver','AMGX solver returned unrecognized status '//I2S(solve_status))
+      END SELECT
+      IF( ASSOCIATED( Solver % Variable ) ) Solver % Variable % LinConverged = 0
     END IF
 #else
     CALL Fatal('AMGXSolver', "AMGX doesn't seem to be included.")
