@@ -156,7 +156,8 @@ jobs:
             -DWITH_OCC=ON \
             -DWITH_MATC=ON \
             -DWITH_PARAVIEW=ON \
-            -DCREATE_PKGCONFIG_FILE=ON \
+            -DWITH_EXTOPTIM=ON \
+	    -DCREATE_PKGCONFIG_FILE=ON \
             ${{ matrix.external-cmake-flags }} \
             ..
 
