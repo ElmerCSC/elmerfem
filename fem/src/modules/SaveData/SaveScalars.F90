@@ -974,7 +974,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           END IF 
 
           IF ( SaveEigenFreq ) THEN
-            WRITE( Name, '("eigen: frequency ", I0, " [Hz]")' ) k
+            WRITE( Name, '("eigen: frequency ", I0)' ) k
             IF ( Val >= 0.0 ) THEN
               Val = SQRT(Val) / (2*PI)
             ELSE
