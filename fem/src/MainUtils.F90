@@ -2604,10 +2604,15 @@ CONTAINS
             END IF
           END IF
             
-          ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
-          IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for MassValues')
-          
-          Solver % Matrix % MassValues = 0.0d0
+          IF (ASSOCIATED(Solver % Matrix)) THEN
+            IF (ASSOCIATED(Solver % Matrix % Values)) THEN
+              IF( SIZE(Solver % Matrix % Values)>0) THEN
+                ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
+                IF( AllocStat /= 0 ) CALL Warn(Caller,'Allocation error for MassValues')
+                Solver % Matrix % MassValues = 0.0d0
+              END IF
+            END IF
+          END IF
         END IF
       ELSE IF ( HarmonicAnal ) THEN
 
