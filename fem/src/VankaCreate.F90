@@ -1107,90 +1107,147 @@
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: pVar
     TYPE(Matrix_t), POINTER :: Amat
-    REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
+    REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
     REAL(KIND=dp) :: rnorm
     LOGICAL :: Found, ScaleRHS, DoMask
     CHARACTER(MAX_NAME_LEN) :: str   
-    INTEGER :: n
+    INTEGER :: SlaveInd, SlaveCnt
+    INTEGER :: n, DOFs
 !-------------------------------------------------------------------------------
     
     Solver => CurrentModel % Solver
     Params => Solver % Values
     Mesh => Solver % Mesh 
     Amat => Solver % Matrix
+    n = SIZE(Solver % Variable % Values)
+    DOFs = Solver % Variable % dofs
     
     str = ListGetString( Params,'Preconditioning Residual',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
-    n = SIZE(pVar % Values)
-    b => pVar % Values
+    IF(pVar % Dofs /= dofs ) THEN
+      CALL Fatal('SlavePrec','Residual should have the same count of DOFs as primary variable!')
+    END IF
+    IF(n /= SIZE(pVar % Values) ) THEN
+      CALL Fatal('SlavePrec','Residual should have same size as primary variable!')
+    END IF
+       
+    res => pVar % Values
+    res(1:n) = v(1:n)
 
-    b(1:n) = v(1:n)
+    str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
+    IF(pVar % Dofs /= dofs ) THEN
+      CALL Fatal('SlavePrec','Update should have the same count of DOFs as primary variable!')
+    END IF
+    IF(n /= SIZE(pVar % Values) ) THEN
+      CALL Fatal('SlavePrec','Update should have same size as primary variable!')
+    END IF
+    dx => pVar % Values
     
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
     IF (ScaleRHS) THEN
-      !
       ! Perform back-scaling
-      !
-      CALL ScaleLinearSystemVectors(AMat, b, n, BackScaling = .TRUE.)
+      CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
     END IF
-    
-    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
 
-    IF(ListGetLogical( Solver % Values,'Linear System Refactorize First',Found ) ) THEN
-      CALL LIstAddLogical( Solver % Values,'Linear System Refactorize',.FALSE.)
-    END IF
-    
-    str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
-    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
-       
-    n = SIZE(pVar % Values)
-    x => pVar % Values
+    ! Run the 1st preconditioning solver and also return the count of preconditioning solvers
+    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = 1, SlaveCnt = SlaveCnt )
 
     IF (ScaleRHS) THEN
-      !
       ! Transform the search direction so that it corresponds to the scaled linear system
-      !
-      CALL ScaleLinearSystemVectors(AMat, b, n, x)
+      CALL ScaleLinearSystemVectors(AMat, res, n, dx)
     END IF
-   
-    IF( ListCheckPresent( Params,'MG Smoother') ) THEN
-      ALLOCATE(r(n))
 
+
+    ! If we have more than one precondioning solvers assume that they are additive.
+    !------------------------------------------------------------------------------
+    DO SlaveInd = 2, SlaveCnt 
+      
+      IF(SlaveInd == 2) ALLOCATE(r(n),z(n))
+      IF( ListGetLogical(Params, 'Additive Pre-Smoothing', Found) ) THEN
+        CALL TailoredSmooth(.TRUE.)      
+        !CALL ExperimentalStuff()
+      END IF
+      
+      CALL MatrixVectorMultiply(Amat, dx, r)
+      res(1:n) = res(1:n) - r(1:n)
+
+      IF (ScaleRHS) THEN
+        CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
+      END IF
+      
+      z(1:n) = dx(1:n)
+      dx(1:n) = 0.0_dp
+      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
+      
+      IF (ScaleRHS) THEN
+        CALL ScaleLinearSystemVectors(AMat, res, n, dx)
+      END IF
+
+      dx(1:n) = dx(1:n) + z(1:n)
+      res(1:n) = v(1:n) 
+
+      IF(SlaveInd == SlaveCnt) DEALLOCATE(z)
+    END DO
+    !--------------------------------------------------------------------------   
+
+    
+    IF( ListCheckPresent( Params,'MG Smoother') ) THEN
+      IF(.NOT. ASSOCIATED(r)) ALLOCATE(r(n))
+      CALL TailoredSmooth(.FALSE.)
+
+      
       ! This is just to test that the suggested search direction is a good one.
       ! Ideally we need to multiply by "1" to get minimum norm. 
-      ! CALL ExperimentalStuff()
-            
-      CALL CRS_MatrixVectorMultiply( Amat, x, r )
-      !CALL MGmv( Amat, x, r, .TRUE. )
-      r(1:n) = b(1:n) - r(1:n)
+#if 0
+      CALL ExperimentalStuff()            
+#endif
+      CALL CRS_MatrixVectorMultiply( Amat, dx, r )
+      r(1:n) = res(1:n) - r(1:n)
+
+    END IF
+          
+    u(1:n) = dx(1:n) 
+
+  CONTAINS
+
+    SUBROUTINE TailoredSmooth(PreSmooth)
+      LOGICAL :: PreSmooth
+      
+      LOGICAL :: DoMask
 
       DoMask = .FALSE.
-      str = LIstGetString(Params,'MG Smoother')
+      str = ListGetString(Params,'MG Smoother')
       IF(len_TRIM(str) >= 6 ) THEN
         DoMask = (str(1:6) == 'masked')
       END IF
 
+      r(1:n) = 0.0_dp
+      RNorm = MGSmooth(Solver, Amat, Mesh, dx, res, r, &
+          1, dofs, PreSmooth = .FALSE.)
+
+      
       IF(DoMask) THEN
         BLOCK
           LOGICAL, POINTER :: SkipMask(:)
           ALLOCATE(SkipMask(n))
           SkipMask = .FALSE.
           CALL CreateEdgeSkipMask(SkipMask)
-          RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
-              1, pVar % dofs, PreSmooth = .FALSE., SkipMask = SkipMask )
+          RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
+              1, dofs, PreSmooth = PreSmooth, SkipMask = SkipMask )
           DEALLOCATE(SkipMask)
         END BLOCK
       ELSE
-        RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
-            1, pVar % dofs, PreSmooth = .FALSE.)
-      END IF
-    END IF
-          
-    u(1:n) = x(1:n) 
+        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
+            1, dofs, PreSmooth = PreSmooth )
+      END IF      
 
-  CONTAINS
+    END SUBROUTINE TailoredSmooth
+
+
+
     
     SUBROUTINE ExperimentalStuff()
       
@@ -1198,12 +1255,12 @@
       
       IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
         
-        CALL MatrixVectorMultiply( Amat, x, r) 
+        CALL MatrixVectorMultiply( Amat, dx, r) 
         rn = SUM( r(1:n)**2 )
-        bn = SUM( r(1:n) * b(1:n) )
+        bn = SUM( r(1:n) * res(1:n) )
         IF( rn > TINY( rn ) ) THEN
           bn = bn / rn 
-          x(1:n) = x(1:n) * bn 
+          dx(1:n) = dx(1:n) * bn 
           WRITE( Message,'(A,ES12.3)') 'Preconditioning Normalizing Factor: ',bn
           CALL Info('SlavePrec',Message,Level=6) 
         END IF
@@ -1230,10 +1287,11 @@
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: pVar
     TYPE(Matrix_t), POINTER :: Amat
-    REAL(KIND=dp), POINTER :: res(:), dx(:), r(:), z(:)
+    REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS, AdditivePrec, Smoothing, PostSmoothing
+    LOGICAL :: Found, ScaleRHS
     CHARACTER(MAX_NAME_LEN) :: str   
+    INTEGER :: SlaveInd, SlaveCnt
     INTEGER :: n, DOFs
 !-------------------------------------------------------------------------------
 
@@ -1253,8 +1311,8 @@
     IF(n /= SIZE(pVar % Values) ) THEN
       CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
     END IF
+    
     res => pVar % Values
-
     res(1:n:2) = REAL(v(1:n/2))
     res(2:n:2) = AIMAG(v(1:n/2))
 
@@ -1269,49 +1327,40 @@
     END IF
     dx => pVar % Values
 
-    
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
     IF (ScaleRHS) THEN
-      !
       ! Perform back-scaling
-      !
       CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
     END IF
     
-    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
- 
+    ! Run the 1st preconditioning solver and also return the count of preconditioning solvers
+    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = 1, SlaveCnt = SlaveCnt )
+
     IF (ScaleRHS) THEN
-      !
       ! Transform the search direction so that it corresponds to the scaled linear system
-      !
       CALL ScaleLinearSystemVectors(AMat, res, n, dx)
     END IF
 
-    AdditivePrec = ListGetLogical(Params, 'Additive Preconditioning', Found)
-    IF (AdditivePrec) THEN
-      Smoothing = ListGetLogical(Params, 'Additive Pre-Smoothing', Found)
-      PostSmoothing = ListCheckPresent(Params, 'MG Smoother')
-    ELSE
-      Smoothing = ListCheckPresent(Params, 'MG Smoother')
+    ! Enforce old sif files to be rewritten
+    IF( ListCheckPresent( Params, 'Additive Prec Solvers' ) ) THEN
+      CALL Fatal('SlavePrecComplex','Use "Prec Solvers" of size two instead!' )
     END IF
 
-    IF (Smoothing) THEN
-      ALLOCATE(r(n))
+    ! If we have more than one precondioning solvers assume that they are additive.
+    !------------------------------------------------------------------------------
+    DO SlaveInd = 2, SlaveCnt 
       
-      CALL ExperimentalStuffZ()
-        
-      ! Apply additional iterations to the residual correction system. Note: the true residual
-      ! is returned via r but its initial value does not change the result 
-      r(:) = 0.0_dp
-      RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
-          1, dofs, PreSmooth = AdditivePrec)
-
-      DEALLOCATE(r)
-    END IF
-
-    IF (AdditivePrec) THEN
-      ALLOCATE(r(n), z(n))
+      !CALL ExperimentalStuffZ()
+            
+      IF(SlaveInd == 2) ALLOCATE(r(n),z(n))
+      IF( ListGetLogical(Params, 'Additive Pre-Smoothing', Found) ) THEN        
+        ! Apply additional iterations to the residual correction system. Note: the true residual
+        ! is returned via r but its initial value does not change the result 
+        r = 0.0_dp
+        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
+            1, dofs, PreSmooth = .TRUE. ) 
+      END IF
       
       CALL MatrixVectorMultiply(Amat, dx, r)
       res(1:n) = res(1:n) - r(1:n)
@@ -1322,25 +1371,28 @@
       
       z(1:n) = dx(1:n)
       dx(1:n) = 0.0_dp
-      CALL DefaultSlaveSolvers( Solver, 'Additive Prec Solvers' )
+      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
       
       IF (ScaleRHS) THEN
         CALL ScaleLinearSystemVectors(AMat, res, n, dx)
       END IF
 
       dx(1:n) = dx(1:n) + z(1:n)
+      res(1:n:2) = REAL(v(1:n/2))
+      res(2:n:2) = AIMAG(v(1:n/2))
 
-      IF (PostSmoothing) THEN
-        res(1:n:2) = REAL(v(1:n/2))
-        res(2:n:2) = AIMAG(v(1:n/2))
-        r(:) = 0.0_dp
-        RNorm = MGSmooth(Solver, Amat, Mesh, dx, res, r, &
-            1, dofs, PreSmooth = .FALSE.)
-      END IF
-      
-      DEALLOCATE(r, z)
+      IF(SlaveInd == SlaveCnt) DEALLOCATE(z)
+    END DO
+    !--------------------------------------------------------------------------
+
+    IF( ListCheckPresent(Params, 'MG Smoother') ) THEN
+      IF(.NOT. ASSOCIATED(r)) ALLOCATE(r(n))
+      r = 0.0_dp
+      RNorm = MGSmooth(Solver, Amat, Mesh, dx, res, r, &
+          1, dofs, PreSmooth = .FALSE.)
     END IF
-    
+      
+    IF(ASSOCIATED(r)) DEALLOCATE(r)    
     u(1:n/2) = CMPLX(dx(1:n:2), dx(2:n:2),KIND=dp ) 
 
   CONTAINS
