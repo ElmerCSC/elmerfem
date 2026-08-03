@@ -156,6 +156,16 @@ MACRO(RUN_ELMER_TEST)
   ENDIF()
 
   IF(WITH_MPI)
+    # Under MPI+OpenMP oversubscription (MPI tasks * OpenMP threads > cores,
+    # common on CI runners), GCC's default active/spin-wait policy makes idle
+    # OpenMP threads busy-loop at barriers instead of yielding, starving the
+    # MPI progress needed for the frequent Allreduce calls in the parallel
+    # solvers. This turns oversubscription into a multi-minute stall instead
+    # of a graceful slowdown. PASSIVE makes idle threads yield immediately.
+    IF(NOT DEFINED ENV{OMP_WAIT_POLICY})
+      SET(ENV{OMP_WAIT_POLICY} "PASSIVE")
+    ENDIF()
+
     IF(NOT DEFINED ENV{OMP_NUM_THREADS})
       # Limit number of OpenMP threads to a sensible value
       # Divide by ${MPIEXEC_NTASKS} and truncate to the nearest lower integer
