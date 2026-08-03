@@ -3516,11 +3516,13 @@ CONTAINS
 !> The strategy can be particularly efficient for nonlinear problems when the
 !> slave solver is cheap and a stepsize control is applied.
 !> Also one can easily make postprocessing steps just at the correct slot.
-!-----------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
-!------------------------------------------------------------------------------  
+!---------------------------------------------------------------------------------------
+  RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr, SlaveInd, SlaveCnt )
+!---------------------------------------------------------------------------------------  
      TYPE(Solver_t), TARGET :: Solver
      CHARACTER(LEN=*) :: SlaveSolverStr
+     INTEGER, OPTIONAL :: SlaveInd
+     INTEGER, OPTIONAL :: SlaveCnt
      
      TYPE(Solver_t), POINTER :: SlaveSolver
      TYPE(ValueList_t), POINTER :: Params
@@ -3542,13 +3544,19 @@ CONTAINS
        END SUBROUTINE SolverActivate_x
      END INTERFACE
 
-     SlaveSolverIndexes =>  ListGetIntegerArray( Solver % Values,&
+     IF(PRESENT(SlaveCnt)) SlaveCnt = 0
+     SlaveSolverIndexes => ListGetIntegerArray( Solver % Values,&
          SlaveSolverStr,Found )
      IF(.NOT. Found ) RETURN
 
-     CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
-         TRIM(SlaveSolverStr),Level=6)
-     
+     IF( PRESENT( SlaveInd ) ) THEN
+       CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
+           TRIM(SlaveSolverStr)//' : '//I2S(SlaveInd),Level=6)
+     ELSE
+       CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
+           TRIM(SlaveSolverStr),Level=6)
+     END IF
+       
      dt = GetTimeStepsize()
      Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
 
@@ -3556,9 +3564,16 @@ CONTAINS
      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
      iter = NINT(iterV % Values(1))
 
+     IF(PRESENT(SlaveCnt)) SlaveCnt = SIZE(SlaveSolverIndexes)
      
      DO j=1,SIZE(SlaveSolverIndexes)
-       k = SlaveSolverIndexes(j)
+
+       IF(PRESENT(SlaveInd)) THEN
+         IF(j /= SlaveInd) CYCLE
+       END IF
+
+       
+       k = SlaveSolverIndexes(j)       
        SlaveSolver => CurrentModel % Solvers(k)
 
        CALL Info('DefaultSlaveSolvers','Calling slave solver: '//I2S(k),Level=8)
