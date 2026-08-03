@@ -2547,7 +2547,7 @@ CONTAINS
     INTEGER, TARGET :: Def_Dofs(10,6)
     REAL(KIND=dp) :: MeshPower
     REAL(KIND=dp), POINTER :: h(:)
-    CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir,MeshName
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir,MeshName,MeshName2
     CHARACTER(:), ALLOCATABLE :: Name, ElementDef, str
     LOGICAL :: Parallel
     TYPE(valuelist_t), POINTER :: lst
@@ -2715,6 +2715,10 @@ CONTAINS
         ELSE
           MeshSolvers(j, i) = .TRUE.
         END IF
+        !This seems to be necessary to force DefDofs for the global mesh to not
+        !update if you have multiple solvers all pointing at the same solver-
+        !specific mesh
+        GotMesh = .TRUE.
 
       END IF
 
@@ -3128,6 +3132,13 @@ CONTAINS
             i = i - 1
           END DO
         END IF
+        !Due to how Elmer formats mesh names, this is needed to ensure that the
+        !check below for identical mesh names actually functions
+        IF (MeshName(1:2) == './') THEN
+          MeshName2 = MeshName(3:LEN_TRIM(MeshName))
+        ELSE
+          MeshName2 = MeshName
+        END IF
 
         ! If we have requested a unique copy of the mesh then do not check
         ! whether the mesh is already loaded as the primary mesh, or as some
@@ -3140,13 +3151,14 @@ CONTAINS
           DO WHILE( ASSOCIATED( Mesh ) )
             Found = .TRUE.
             k = 1
-            j = i+1
-            DO WHILE( MeshName(j:j) /= CHAR(0) )
+            !j = i+1 I think this is broken, because of how Mesh % Name is saved
+            j = 1
+            DO WHILE( MeshName2(j:j) /= CHAR(0) )
               IF ( k>LEN(Mesh % Name) ) THEN
                 Found = .FALSE.
                 EXIT
               END IF
-              IF (Mesh % Name(k:k) /= MeshName(j:j) ) THEN
+              IF ( Mesh % Name(k:k) /= MeshName2(j:j) ) THEN
                 Found = .FALSE.
                 EXIT
               END IF
@@ -3638,10 +3650,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: CurrentElement
-    INTEGER :: i,j,k,k2,DOFs, dates(8), n, PermSize,IsVector,SavesDone,FileCycle,FileInd
+    INTEGER :: i,j,k,k2,DOFs, dates(8), n, PermSize,IsVector,SavesDone,FileCycle,FileInd,CalveInd=0
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: SaveCoordinates, MoveBoundary, GotIt, SaveThis, &
-        SaveGlobal, OutputVariableList, SaveIp, ThisIp, InitFile 
+        SaveGlobal, OutputVariableList, SaveIp, ThisIp, InitFile, SepFiles
     INTEGER, POINTER :: PrevPerm(:) 
     INTEGER(IntOff_k) :: PrevPermPos, Pos
     INTEGER(IntOff_k), SAVE :: VarPos(MAX_OUTPUT_VARS) = 0
@@ -3651,7 +3663,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: FName, PosName, DateStr, EqName, VarName
     CHARACTER(*), PARAMETER :: Caller = 'SaveResult'
    
-    SAVE SaveCoordinates
+    SAVE SaveCoordinates,CalveInd
     
 !------------------------------------------------------------------------------
 !   If first time here, count number of variables
@@ -3668,11 +3680,17 @@ CONTAINS
     ! If we have cyclic files then each file includes all data but we cyclicly write the
     ! data on top of previous files. 
     FileCycle = ListGetInteger( ResList,'Output File Cycle', Found )
+    SepFiles = .FALSE.
+    SepFiles = ListGetLogical( ResList, 'Separate Results Files', Found)
     
     ! cyclic files are always independent and hence must always be initiated.
     IF( FileCycle > 0 ) THEN
       InitFile = .TRUE.
-      FileInd = MODULO( Mesh % SavesDone, FileCycle ) + 1 
+      FileInd = MODULO( Mesh % SavesDone, FileCycle ) + 1
+    ELSE IF( SepFiles ) THEN
+      InitFile = .TRUE.
+      FileInd = CalveInd
+      CalveInd = CalveInd + 1
     ELSE
       InitFile = ( Mesh % SavesDone == 0 )
     END IF
@@ -3692,7 +3710,7 @@ CONTAINS
     END IF
 #endif
     
-    IF( FileCycle > 0 ) THEN
+    IF(( FileCycle > 0 ) .OR. (SepFiles)) THEN
       Fname = TRIM(Fname)//'_'//I2S(FileInd)//'nc'
     END IF
 
@@ -4138,7 +4156,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: Name,VarName,VarName2,NewName,FullName,PosName
     CHARACTER(LEN=:), ALLOCATABLE :: Row, RestartFileL, FName
     CHARACTER(LEN=MAX_STRING_LEN) :: Trash
-    INTEGER ::i,j,k,k2,n,nt,Node,DOFs,SavedCount,Timestep,NSDOFs,nlen
+    INTEGER ::i,j,k,k2,n,nt,Node,DOFs,SavedCount,Timestep,NSDOFs,nlen, ResultIndex
     INTEGER :: nNodes, Stat, FieldSize, PermSize, FieldSize2, PermSize2
     INTEGER, SAVE :: FmtVersion, DofCount, TotalDofs
     INTEGER, ALLOCATABLE :: Perm(:)
@@ -4146,7 +4164,8 @@ CONTAINS
     TYPE(Solver_t),   POINTER :: Solver
     TYPE(Variable_t), POINTER :: TimeVar, tStepVar
 
-    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm, NewPerm
+    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp,&
+               UsePerm, HasValues, NewPerm
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, GotPerm, GotIt, CreateVariables
     INTEGER, SAVE, ALLOCATABLE :: FileVariableInfo(:,:)
@@ -4205,7 +4224,10 @@ CONTAINS
         CLOSE( RestartUnit)
         CALL Info(Caller,'Using latest saved data for restart: '//I2S(j),Level=6)
       END IF
-      RestartFileL = RestartFileL//'_'//I2S(j)//'nc'
+      ResultIndex = INDEX(RestartFileL,'.')
+      ResultIndex = ResultIndex + 6
+      RestartFileL = RestartFileL(1:ResultIndex)//'_'//I2S(j)//'nc'//RestartFileL(ResultIndex+1:)
+      !RestartFileL = RestartFileL//'_'//I2S(j)//'nc'
     END IF
 
     CALL Info( Caller,'Reading data from file: '//TRIM(RestartFileL), Level = 4 )
@@ -4746,11 +4768,11 @@ CONTAINS
         ! while Perm will be the permutation associated with the saved field. 
         ! They could be different, even though the usually are not!
         CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=20)
-        CALL ReadPerm( RestartUnit, Perm, GotPerm )           
+        CALL ReadPerm( RestartUnit, Perm, GotPerm, HasValues )
         IF( GotPerm ) THEN
           CALL Info(Caller,'Maximum value for permutation order for "'//TRIM(Row)//'" is '//I2S(MAXVAL(Perm)),Level=12)
         END IF
-          
+                  
         IF( LoadThis ) THEN
           ! Size of read loop for field variable
           IF( GotPerm ) THEN
@@ -4828,6 +4850,7 @@ CONTAINS
           CALL InvalidateVariable( CurrentModel % Meshes, Mesh, NewName )
         ELSE
           ! Just cycle the values, do not even try to be smart
+          IF (.NOT. HasValues) FieldSize = 0
           DO j=1, FieldSize
             CALL CycleValue( RestartUnit )
           END DO
@@ -5030,10 +5053,10 @@ CONTAINS
    END SUBROUTINE CycleValue
    
 
-   SUBROUTINE ReadPerm( RestartUnit, Perm, GotPerm )
+   SUBROUTINE ReadPerm( RestartUnit, Perm, GotPerm, HasValues )
       INTEGER, INTENT(IN) :: RestartUnit
       INTEGER, ALLOCATABLE :: Perm(:)
-      LOGICAL :: GotPerm
+      LOGICAL :: GotPerm, HasValues
       INTEGER :: nPerm, nPositive, i, j, k
       INTEGER(Int8_k) :: Pos
       CHARACTER(MAX_NAME_LEN) :: Row
@@ -5051,6 +5074,11 @@ CONTAINS
             READ( Row(7:),*,IOSTAT=iostat) nPerm, nPositive
             IF( iostat /= 0 ) THEN
               CALL Fatal(Caller,'Error reading sizes in ReadPerm: '//TRIM(Row))
+            END IF
+            IF (nPositive == 0) THEN
+              HasValues = .FALSE.
+            ELSE
+              HasValues = .TRUE.
             END IF
          END IF
       END IF
@@ -5169,7 +5197,7 @@ CONTAINS
        IF ( .NOT.ASSOCIATED(Mesh, PrimaryMesh) ) THEN
          Var => VariableGet( Mesh % Variables, Name, .TRUE.)
          IF ( ASSOCIATED( Var ) ) THEN
-           Var % Valid = .FALSE.
+           !Var % Valid = .FALSE.
            Var % PrimaryMesh => PrimaryMesh
            IF ( Var % DOFs > 1 ) THEN
 
