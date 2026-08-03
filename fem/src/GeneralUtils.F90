@@ -322,7 +322,11 @@ CONTAINS
     LOGICAL :: L
     CHARACTER(*), INTENT(IN) :: file
 !------------------------------------------------------------------------------
-    L = INDEX(file,':')>0 .OR. file(1:1)=='/' .OR. file(1:1)==Backslash
+    IF ( LEN(file) == 0 ) THEN
+      L = .FALSE.
+    ELSE
+      L = INDEX(file,':')>0 .OR. file(1:1)=='/' .OR. file(1:1)==Backslash
+    END IF
 !------------------------------------------------------------------------------
   END FUNCTION FileNameQualified
 !------------------------------------------------------------------------------
