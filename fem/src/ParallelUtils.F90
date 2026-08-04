@@ -90,27 +90,13 @@ CONTAINS
        TYPE(Solver_t), TARGET :: Solver
        TYPE(Matrix_t), POINTER :: Matrix
 !-------------------------------------------------------------------------------
-       TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
-       INTEGER :: i, j, k, l, m, n, DOFs, PDOFs, bdofs
-       LOGICAL :: DGSolver, Found, GB, Global_dof, LocalConstraints, DiscontBC, &
-                     OwnersGiven, NeighboursGiven, DGReduced
+       INTEGER :: i, j, k, n, DOFs
+       LOGICAL :: Found
        TYPE(Mesh_t), POINTER :: Mesh
-       TYPE(Element_t), POINTER :: Element
-       TYPE(NeighbourList_t), POINTER :: MtrxN, MeshN
-
-       INTEGER :: maxnode, maxedge, maxface, fdofs, maxfdofs, col, &
-                  edofs, maxedofs, maxbdofs, l_beg, g_beg, proc, sz
-
        INTEGER, POINTER :: Perm(:)
-
-       INTEGER, ALLOCATABLE :: Owneddofs(:), Owneddofs2(:)
-       INTEGER :: pardofs_bef, pardofs_all
-       INTEGER, ALLOCATABLE :: pardofs_in(:), pardofs_out(:), ind(:)
+       INTEGER, ALLOCATABLE :: ind(:)
        REAL(KIND=dp) :: realtime,tt
-
-       LOGICAL, ALLOCATABLE :: Done(:)
-       TYPE(Matrix_t), POINTER :: G
-       INTEGER :: Ierr, status(MPI_STATUS_SIZE)
+       INTEGER :: Ierr
 
 !-------------------------------------------------------------------------------
 !tt = realtime()
@@ -147,7 +133,9 @@ CONTAINS
          ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
 
          BLOCK
-           LOGICAL :: DoConf = .FALSE.
+           ! NOTE: no initializer here on purpose; an initialized local would
+           ! implicitly acquire the SAVE attribute.
+           LOGICAL :: DoConf
 
            DoConf = ListGetLogical( Solver % Values, 'Apply Conforming BCs',Found )
            DoConf = DoConf .AND. ASSOCIATED(Mesh % PeriodicPerm)
@@ -186,553 +174,14 @@ CONTAINS
        ALLOCATE( Matrix % ParallelInfo )
 
 
-       IF( ListGetLogical( Solver % Values,'CutFEM', Found ) ) THEN 
-
-         CALL Info('ParallelInitMatrix','Creating ParallelInfo assuming CutFEM mesh!',Level=12)
-         
-         MeshPI => Mesh % ParallelInfo
-         MatrixPI => Matrix % ParallelInfo
-         n = MAXVAL(Matrix % Perm)
-
-         ALLOCATE( MatrixPI % GlobalDOFs(n) )
-         MatrixPI % GlobalDOFs = 0
-
-         ALLOCATE( MatrixPI % GInterface(n) )
-         MatrixPI % GInterface = .FALSE.
-         
-         ALLOCATE(MatrixPI % NeighbourList(n) )
-         DO i=1,n
-           NULLIFY(MatrixPI % NeighbourList(i) % Neighbours)
-         END DO
-         
-         
-         BLOCK
-           INTEGER :: n0, nn, ne
-           nn = Mesh % NumberOfNodes
-           ne = Mesh % NumberOfEdges
-
-           n0 = MAXVAL(Mesh % ParallelInfo % GlobalDofs)
-           n0 = ParallelReduction(n0,2)
-
-           DO i=1,nn+ne
-             DO j=1,DOFs
-               k = Matrix % Perm((i-1)*DOFs+j)
-               IF ( k<=0 ) CYCLE
-                           
-               IF(i<=nn) THEN
-                 MatrixPI % GInterface(k) = Mesh % ParallelInfo % GInterface(i)
-                 MatrixPI % GlobalDOFs(k) = DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
-                 
-                 l = SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
-                 ALLOCATE(MatrixPI % NeighbourList(k) % Neighbours(l))
-                 MatrixPI % NeighbourList(k) % Neighbours = &
-                     Mesh % ParallelInfo % NeighbourList(i) % Neighbours            
-               ELSE
-                 MatrixPI % GInterface(k) = Mesh % ParallelInfo % EdgeInterface(i-nn)
-                 MatrixPI % GlobalDOFs(k) = DOFs*n0 + DOFs*(Mesh % Edges(i-nn) % GElementIndex-1)+j
-                 
-                 l = SIZE(Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours)
-                 ALLOCATE(MatrixPI % NeighbourList(k) % Neighbours(l))
-                 MatrixPI % NeighbourList(k) % Neighbours = &
-                     Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours                                
-               END IF
-             END DO
-           END DO
-         END BLOCK       
-
-         CALL Info('ParallelInitMatrix','Done ParallelInfo assuming CutFEM mesh!',Level=12)
-
-         
+       ! The global numbering of the matrix rows depends on the discretization.
+       !--------------------------------------------------------------------
+       IF( ListGetLogical( Solver % Values,'CutFEM', Found ) ) THEN
+         CALL MatrixParallelInfoCutFEM( Solver, Matrix, Perm, DOFs )
        ELSE IF ( Matrix % DGMatrix ) THEN
-
-         MeshPI => Solver % Mesh % ParallelInfo
-         MatrixPI => Matrix % ParallelInfo
-         n = MAXVAL(Matrix % Perm)
-
-         ALLOCATE( MatrixPI % GlobalDOFs(n) ); MatrixPI % GlobalDOFs=0
-
-         maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
-         maxnode = ParallelReduction(maxnode,2)
-
-         DGReduced = ListGetLogical(Solver % Values, 'DG Reduced Basis', Found )
-
-         IF( DGReduced ) THEN
-           BLOCK
-             INTEGER, POINTER :: DgMap(:), DgMaster(:), DgSlave(:)
-             INTEGER :: group0, group
-             LOGICAL :: GotDgMap, GotMaster, GotSlave
-
-             DgMap => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Mapping',GotDgMap )
-             DgMaster => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Master Bodies',GotMaster )
-             DgSlave => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Slave Bodies',GotSlave )
-
-             IF( GotSlave .AND. GotMaster ) THEN
-               DO group0 = 1, 2
-
-                 DO i=1,Mesh % NumberOfBulkElements
-                   Element => Mesh % Elements(i)
-                   IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
-                   group = Element % BodyId
-
-                   IF( group0 == 1 ) THEN
-                     IF( .NOT. ANY( DgMaster == group ) ) CYCLE
-                   ELSE
-                     IF( ANY ( DgMaster == group ) ) CYCLE
-                   END IF
-                   group = group0 - 1
-
-                   DO j=1,Element % TYPE % NumberOfNodes
-                     k = Matrix % Perm(Element % DGIndexes(j))
-                     IF(k == 0) CYCLE
-
-                     ! Set the global index for slave dofs only if it not already set for
-                     ! local dofs
-                     IF( group0 == 2 ) THEN
-                       IF( MatrixPI % GlobalDOFs(k) > 0 ) CYCLE
-                     END IF
-
-                     MatrixPI % GlobalDOFs(k) = group * maxnode +  &
-                         MeshPI % GlobalDOFs(Element % NodeIndexes(j))
-                   END DO
-                 END DO
-               END DO
-             ELSE
-               DO i=1,Mesh % NumberOfBulkElements
-                 Element => Mesh % Elements(i)
-                 IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
-
-                 group0 = Element % BodyId
-
-                 IF( GotMaster ) THEN
-                   IF( ANY( DgMaster == group0 ) ) THEN
-                     group = 1
-                   ELSE
-                     group = 2
-                   END IF
-                 ELSE IF( GotDgMap ) THEN
-                   group = DgMap( group0 )
-                 ELSE
-                   group = group0
-                 END IF
-                 group = group - 1
-
-                 DO j=1,Element % TYPE % NumberOfNodes
-                   k = Matrix % Perm(Element % DGIndexes(j))
-                   IF(k == 0) CYCLE
-                   MatrixPI % GlobalDOFs(k) = group * maxnode +  &
-                       MeshPI % GlobalDOFs(Element % NodeIndexes(j))
-                 END DO
-               END DO
-             END IF
-           END BLOCK
-         ELSE
-           DO i=1,Mesh % NumberOfBulkElements
-             Element => Mesh % Elements(i)
-             IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
-             DO j=1,Element % TYPE % NumberOfNodes
-               k = Matrix % Perm(Element % DGIndexes(j))
-               IF(k == 0) CYCLE
-               MatrixPI % GlobalDOFs(k) = 8*(Element % GElementIndex-1) + j
-             END DO
-           END DO
-         END IF
-
-         ALLOCATE( MatrixPI % GInterface(n), MatrixPI % NeighbourList(n) )
-         MatrixPI % GInterface = .FALSE.
-         DO i=1,n
-           MtrxN => MatrixPI % NeighbourList(i)
-           MtrxN % Neighbours => NULL()
-         END DO
-
-         DO i=1,Mesh % NumberOfBulkElements
-           Element => Mesh % Elements(i)
-           IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
-           IF ( ALL(MeshPI % GInterface(Element % NodeIndexes)) ) THEN
-             DO j=1,Element % Type % NumberOfNodes
-                K = Matrix % Perm(Element % DGIndexes(j))
-                IF(K==0) CYCLE
-                L = Element % Nodeindexes(j)
-
-                MeshN => MeshPI % NeighbourList(L)
-                MtrxN => MatrixPI % NeighbourList(K)
-                MatrixPI % GInterface(k) = .TRUE.
-
-                IF( ASSOCIATED(MtrxN % Neighbours) ) DEALLOCATE(MtrxN % Neighbours)
-                CALL AllocateVector( MtrxN % Neighbours,  SIZE(MeshN % Neighbours) )
-
-                MtrxN % Neighbours = MeshN % Neighbours
-                IF(.NOT.DGReduced) THEN 
-                  DO m=1,SIZE(MeshN % Neighbours)
-                   IF ( MeshN % Neighbours(m) == Element % PartIndex ) THEN
-                     MtrxN % Neighbours(1) = MeshN % Neighbours(m)
-                     MtrxN % Neighbours(m) = MeshN % Neighbours(1)
-                     EXIT
-                   END IF
-                  END DO
-                END IF
-             END DO
-           END IF
-         END DO
-
-         DO i=1,n
-           MtrxN => MatrixPI % NeighbourList(i)
-           IF ( .NOT.ASSOCIATED( MtrxN % Neighbours) ) THEN
-             CALL AllocateVector(MtrxN % Neighbours,1)
-             MtrxN % Neighbours(1) = ParEnv % myPE
-           END IF
-         END DO
-
-         
+         CALL MatrixParallelInfoDG( Solver, Matrix, Perm, DOFs )
        ELSE
-         ! Default parallel numbering, not CutFEM or Discontinuous Galerkin!
-         !--------------------------------------------------------------------
-         
-         n = Matrix % NumberOfRows
-         ALLOCATE( Matrix % ParallelInfo % NeighbourList(n) )
-         CALL AllocateVector( Matrix % ParallelInfo % GInterface, n)
-         CALL AllocateVector( Matrix % ParallelInfo % GlobalDOFs, n)
-
-         DO i=1,n
-           Matrix % ParallelInfo % GInterface(i) = .FALSE.
-           Matrix % ParallelInfo % GlobalDOFs(i) = 0
-           Matrix % ParallelInfo % NeighbourList(i) % Neighbours => NULL()
-         END DO
-
-         DO i=1,Mesh % NumberOfNodes
-           DO j=1,DOFs
-              k = Matrix % Perm((i-1)*DOFs+j)
-              IF ( k<=0 ) CYCLE
-              IF (k > SIZE(Matrix % ParallelInfo % GlobalDOFs)) THEN
-                CALL Fatal('ParallelInitMatrix','Matrix % ParallelInfo % GlobalDOFs bounds error.'//&
-                    ' Matrix vs Solver perm scope conflict is a possible cause.')
-              END IF
-              
-              Matrix % ParallelInfo % GlobalDOFs(k) = &
-                DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
-
-              Matrix % ParallelInfo % GInterface(k) = &
-                Mesh % ParallelInfo % GInterface(i)
-
-              IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
-                ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
-                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
-
-                Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
-                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours
-              END IF
-           END DO
-         END DO
-
-         GB = Solver % GlobalBubbles 
-         
-         maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
-         maxnode = ParallelReduction(maxnode,2)
-
-         edofs = 0; fdofs = 0; maxedofs = 0; maxfdofs = 0
-         maxedge = 0; maxface = 0
-
-         IF ( ASSOCIATED(Mesh % Edges) ) THEN
-           g_beg = maxnode
-           l_beg = Mesh % NumberOfNodes
-
-           n = Mesh % NumberOfEdges
-           edofs = Mesh % MaxEdgeDOFS
-           maxedofs = ParallelReduction(edofs,2)
-
-           maxedge = 0
-           DO i=1,n
-             maxedge = MAX(maxedge, Mesh % Edges(i) % GElementindex)
-           END DO
-           maxedge = ParallelReduction(maxedge,2)
-
-           DO i=1,n
-             Element => Mesh % Edges(i)
-             DO j=1,Element % BDOFs
-               DO m=1,DOFs
-                 l = DOFs*(l_beg + edofs*(i-1)+j-1)+m
-                 l = Matrix % Perm(l)
-                 IF(l==0) CYCLE
-
-                 Matrix % ParallelInfo % GlobalDOFs(l) = &
-                     DOFs*(g_beg+maxedofs*(Element % GelementIndex-1)+j-1)+m
-                 Matrix % ParallelInfo % GInterface(l) = Mesh % ParallelInfo % EdgeInterface(i)
-
-                 ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
-                      Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)))
-                 Matrix % Parallelinfo % NeighbourList(l) % Neighbours = &
-                      Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours
-               END DO
-             END DO
-           END DO
-         END IF
-
-         IF ( ASSOCIATED(Mesh % Faces) ) THEN
-           g_beg = maxnode + maxedofs*maxedge
-           l_beg = Mesh % NumberOfNodes + &
-                   Mesh % NumberOfEdges*Mesh % MaxEdgeDOFs
-
-           n = Mesh % NumberOfFaces
-
-           fdofs = Mesh % MaxFaceDOFS
-           maxfdofs = ParallelReduction(fdofs,2)
-
-           maxface = 0
-           DO i=1,n
-             maxface = MAX(maxface, Mesh % Faces(i) % GElementindex)
-           END DO
-           maxface = ParallelReduction(maxface,2)
-
-           DO i=1,n
-             Element => Mesh % Faces(i)
-             DO j=1,Element % BDOFs
-               DO m=1,DOFs
-                 l = Matrix % Perm(DOFs*(l_beg + fdofs*(i-1)+j-1)+m)
-                 IF(l==0) CYCLE
-                 Matrix % ParallelInfo % GlobalDOFs(l) = &
-                     DOFs*(g_beg+maxfdofs*(Element % GelementIndex-1)+j-1)+m
-                 Matrix % ParallelInfo % GInterface(l) = Mesh % ParallelInfo % FaceInterface(i)
-
-                 ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
-                      Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours)))
-
-                 Matrix % Parallelinfo % NeighbourList(l) % Neighbours = &
-                      Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours
-               END DO
-             END DO
-           END DO
-         END IF
-
-         IF ( GB ) THEN
-           l_beg = Mesh % NumberOfNodes + &
-                   Mesh % NumberOfEdges*Mesh % MaxEdgeDOFs + &
-                   Mesh % NumberOfFaces*Mesh % MaxFaceDOFs
-
-           g_beg = Maxnode +  maxedge*maxedofs + maxface*maxfdofs
-           maxbdofs = ParallelReduction(Mesh % MaxBDOFs,2)
-
-           DO i=1,Mesh % NumberOfBulkElements
-             Element=>Mesh % Elements(i)
-
-             j = Element % Type % ElementCode/100
-             bdofs = Solver % Def_Dofs(j, Element % Bodyid, 5)
-             IF ( bdofs<=0 .AND. &
-                Solver % Def_Dofs(j,Element % Bodyid,6)>1) bdofs = Element % BDOFs
-
-             DO l=1,bdofs
-               DO j=1,DOFs
-                 k = Matrix % Perm(DOFs*(l_beg+Element % BubbleIndexes(l)-1)+j)
-                 IF(k==0) CYCLE
-                 Matrix % ParallelInfo % GlobalDOFs(k) = &
-                   DOFs*(g_beg+maxbdofs*(Element % GElementIndex-1)+l-1)+j
-                 Matrix % ParallelInfo % GInterface(k) = .FALSE.
-                 ALLOCATE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours(1))
-                 Matrix % ParallelInfo % NeighbourList(k) % Neighbours=ParEnv % MyPE
-               END DO
-             END DO
-           END DO
-         END IF
-
-         ! Add extra degrees of freedom to parallel structures. The additional
-         ! variables are assigned to task zero, and are assumed to be shared by
-         ! all tasks (TODO: to be optimized if need be...)
-         ! --------------------------------------------------------------------
-         g_beg = ParallelReduction(MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2)
-         pardofs_all = ParallelReduction(Matrix % ParallelDOFs,2)
-
-         LocalConstraints = ListGetLogical(Solver % Values, 'Partition Local Constraints',Found)
-         DiscontBC  = ListGetLogicalAnyBC(CurrentModel,'Discontinuous Boundary' )
-
-         Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix)
-         IF(Found) Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix % InvPerm)
-
-         G => Null()
-         IF( LocalConstraints  ) THEN
-           G => AllocateMatrix()
-           G % Format = MATRIX_LIST
-         END IF
-
-         OwnersGiven = Matrix % ParallelDOFs>0
-         IF(OwnersGiven) THEN
-           OwnersGiven = ASSOCIATED(Solver % Matrix % AddMatrix)
-           IF(OwnersGiven) OwnersGiven = ALLOCATED(Solver % Matrix % AddMatrix % RowOwner)
-         END IF
-
-         NeighboursGiven = Matrix % ParallelDOFs>0
-         IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix)
-         IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix % ParallelInfo)
-         IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix % ParallelInfo % &
-                             NeighbourList)
-
-
-         j=0
-         DO i=Matrix % NumberOFRows-Matrix % ExtraDOFs+1,Matrix % NumberOfRows
-           j=j+1
-           Global_dof = j <= Matrix % ParallelDOFs
-           IF (Global_dof) THEN
-             Matrix % ParallelInfo % GInterface(i) = .TRUE.
-
-             IF(NeighboursGiven) THEN
-               ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours( &
-                  SIZE(Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours)))
-
-               Matrix % ParallelInfo % NeighbourList(i) % Neighbours = &
-                  Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours
-
-               IF(ALL(Matrix % ParallelInfo % NeighbourList(i) % Neighbours /= ParEnv % myPE)) THEN
-                 Matrix % ParallelInfo % GInterface(i) = .FALSE.
-                 DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
-                 ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
-                 Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % mype
-
-                 CALL CRS_ZeroRow(Matrix,i)
-                 CALL CRS_SetMatrixElement(Matrix,i,i,1._dp)
-                 Matrix % RHS(i) = 0._dp
-               END IF
-
-             ELSE IF (OwnersGiven) THEN
-               ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
-               DO k=1,ParEnv % PEs
-                 Matrix % ParallelInfo % NeighbourList(i) % Neighbours(k)=k-1
-               END DO
-
-               l = j + Solver % Matrix % NumberOfRows
-               l = Solver % Matrix % AddMatrix % RowOwner(l)
-
-               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1)   = l
-               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l+1) = 0
-             ELSE
-               ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
-               l = 0
-               DO k=ParEnv % PEs,1,-1
-                 l = l + 1
-                 Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l)=k-1
-               END DO
-             END IF
-
-             k = j + g_beg
-           ELSE IF(Found) THEN
-             n = Solver % Matrix % ConstraintMatrix % InvPerm(j-Matrix % ParallelDOFs)
-             IF( n<=0 ) CYCLE
-             k = MOD(n-1,Solver % Matrix % NumberOfRows)+1
-             n = (n-1) / Solver % Matrix % NumberOfRows
-
-             Matrix % ParallelInfo % GInterface(i) = Matrix % ParallelInfo % GInterface(k)
-
-             l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-             ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
-
-             IF(LocalConstraints) THEN
-               IF(.NOT.DiscontBC) THEN
-                 IF (Matrix % ParallelInfo % GInterface(k)) &
-                   CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-               END IF
-
-               DO m=Matrix % Rows(i), Matrix % Diag(i)-1
-                 col = Matrix % Cols(m)
-                 IF (Matrix % ParallelInfo % GInterface(col)) THEN
-                   DO l=1,SIZE(Matrix % ParallelInfo % NeighbourList(col) % Neighbours)
-                     proc = Matrix % ParallelInfo % NeighbourList(col) % Neighbours(l)
-                     IF(proc==ParEnv % mype) THEN
-                       CALL List_AddToMatrixElement( G % ListMatrix, proc+1, col, 1._dp )
-                     ELSE
-                       CALL List_AddToMatrixElement( G % ListMatrix, &
-                            proc+1, Matrix % ParallelInfo % GlobalDOFs(col), 1._dp)
-                     END IF
-                   END DO
-                 END IF
-               END DO
-             END IF
-
-             Matrix % Parallelinfo % NeighbourList(i) % Neighbours = &
-                Matrix % ParallelInfo % NeighbourList(k) % Neighbours
-
-             k = Matrix % ParallelInfo % GlobalDOFs(k) + (n+1)*g_beg + pardofs_all
-           ELSE
-             ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
-             Matrix % Parallelinfo % NeighbourList(i) % Neighbours(1)=ParEnv % myPE
-             k = j + g_beg + pardofs_all
-           END IF
-           Matrix % ParallelInfo % GlobalDofs(i) = k
-         END DO
-
-         l=Matrix % ExtraDOFs
-         n=SIZE(Perm)
-         IF(l>0) THEN
-            ALLOCATE(Ind(l))
-            k = 0
-            DO i=Matrix % NumberOfRows-l+1,Matrix % NumberOfRows
-              k = k + 1
-              Matrix % Perm(n*DOFs+k) = i
-              Ind(k) = Matrix % Parallelinfo % Globaldofs(i)
-            END DO
-            CALL SortI(l,Ind,Matrix % Perm(n*DOFs+1:))
-            DEALLOCATE(Ind)
-         END IF
-
-         IF (ASSOCIATED(ParEnv % IsNeighbour).AND. LocalConstraints) THEN
-           CALL List_ToCRSMatrix(G)
-           ALLOCATE(Done(Matrix % NumberOfROws)); Done=.FALSE.
-
-           DO i=1,ParEnv % PEs
-             IF(i-1==ParEnv % Mype) THEN
-               IF(G % NumberOfRows>=i) THEN
-                 DO j=G % Rows(i), G % Rows(i+1)-1
-                   m = G % Cols(j)
-                   IF(.NOT.Done(m)) THEN
-                     Done(m) = .TRUE.
-                     k = SIZE(Matrix % ParallelInfo % Neighbourlist(m) % Neighbours)
-                     CALL Sort(k,Matrix % ParallelInfo % NeighbourList(m) % Neighbours)
-                   END IF
-                 END DO
-               END IF
-               CYCLE
-             END IF
-
-             j = 0
-             IF(G % NumberOfRows>=i) j = G % Rows(i+1)-G % Rows(i)
-
-             IF(ParEnv % IsNeighbour(i)) THEN
-               CALL MPI_BSEND( j,1,MPI_INTEGER,i-1,130,Matrix % Comm,ierr )
-               IF (j>0) THEN
-                 CALL MPI_BSEND(G % Cols(G % Rows(i):),j,MPI_INTEGER,i-1,131,Matrix % Comm,ierr )
-               END IF
-             ELSE
-               IF(j>0) stop 'barf'
-             END IF
-           END DO
-
-           DO i=1,ParEnv % NumOfNeighbours
-             CALL MPI_RECV( j,1,MPI_INTEGER,MPI_ANY_SOURCE,130,Matrix % Comm,status,ierr )
-             IF (j>0) THEN
-               IF(.NOT.ALLOCATED(owneddofs)) ALLOCATE(owneddofs(j))
-               IF(SIZE(owneddofs)<j) THEN
-                 DEALLOCATE(owneddofs); ALLOCATE(owneddofs(j))
-               END IF
-
-               CALL MPI_RECV(owneddofs,j,MPI_INTEGER,status(MPI_SOURCE),131,Matrix % Comm,status,ierr )
-               DO l=1,j
-                  m = SearchNode( Matrix % ParallelInfo, Owneddofs(l), Order=Matrix % Perm )
-                  IF(m>0) THEN
-                    IF(.NOT.Done(m)) THEN
-                      Done(m) = .TRUE.
-                      k = SIZE(Matrix % ParallelInfo % Neighbourlist(m) % Neighbours)
-                      CALL Sort(k,Matrix % ParallelInfo % NeighbourList(m) % Neighbours)
-                    END IF
-                  END IF
-                END DO
-             END IF
-           END DO
-           IF(ALLOCATED(owneddofs)) DEALLOCATE(OwnedDofs)
-         END IF
-
-         IF(ASSOCIATED(G)) THEN
-           IF(ASSOCIATED(G % Cols)) DEALLOCATE(G % Cols)
-           IF(ASSOCIATED(G % Rows)) DEALLOCATE(G % Rows)
-           IF(ASSOCIATED(G % Diag)) DEALLOCATE(G % Diag)
-           IF(ASSOCIATED(G % Values)) DEALLOCATE(G % Values)
-           DEALLOCATE(G)
-         END IF
-
+         CALL MatrixParallelInfoDefault( Solver, Matrix, Perm, DOFs )
        END IF
 
        n = SIZE(Matrix % ParallelInfo % GLobalDOFs)
@@ -773,7 +222,6 @@ CONTAINS
        BLOCK
          LOGICAL :: SkipActiveCheck, Found
 
-         !SkipActiveCheck = ListGetLogical( Solver % Values,'Skip Parallel Check', Found )
          SkipActiveCheck = .FALSE.
          DO i=1,CurrentModel % NumberOfBCs
            IF (ListGetString(CurrentModel % Bcs(i) % Values, 'Radiation',Found)=='diffuse gray' .OR. &
@@ -791,7 +239,712 @@ CONTAINS
               
 !if(parenv%mype==0) print*,'MATRIX INIT TIME: ', realtime()-tt
 #endif
-CONTAINS
+  END SUBROUTINE ParallelInitMatrix
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> Global numbering of matrix rows for a CutFEM mesh, where the degrees of
+!> freedom live on the mesh nodes and edges.
+!-------------------------------------------------------------------------------
+    SUBROUTINE MatrixParallelInfoCutFEM( Solver, Matrix, Perm, DOFs )
+!-------------------------------------------------------------------------------
+      TYPE(Solver_t), TARGET :: Solver
+      TYPE(Matrix_t), POINTER :: Matrix
+      INTEGER, POINTER :: Perm(:)
+      INTEGER :: DOFs
+!-------------------------------------------------------------------------------
+      TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
+      TYPE(Mesh_t), POINTER :: Mesh
+      INTEGER :: i, j, k, l, n
+
+      Mesh => Solver % Mesh
+
+      CALL Info('MatrixParallelInfoCutFEM','Creating ParallelInfo assuming CutFEM mesh!',Level=12)
+      
+      MeshPI => Mesh % ParallelInfo
+      MatrixPI => Matrix % ParallelInfo
+      n = MAXVAL(Matrix % Perm)
+
+      ALLOCATE( MatrixPI % GlobalDOFs(n) )
+      MatrixPI % GlobalDOFs = 0
+
+      ALLOCATE( MatrixPI % GInterface(n) )
+      MatrixPI % GInterface = .FALSE.
+      
+      ALLOCATE(MatrixPI % NeighbourList(n) )
+      DO i=1,n
+        NULLIFY(MatrixPI % NeighbourList(i) % Neighbours)
+      END DO
+      
+      
+      BLOCK
+        INTEGER :: n0, nn, ne
+        nn = Mesh % NumberOfNodes
+        ne = Mesh % NumberOfEdges
+
+        n0 = MAXVAL(Mesh % ParallelInfo % GlobalDofs)
+        n0 = ParallelReduction(n0,2)
+
+        DO i=1,nn+ne
+          DO j=1,DOFs
+            k = Matrix % Perm((i-1)*DOFs+j)
+            IF ( k<=0 ) CYCLE
+                        
+            IF(i<=nn) THEN
+              MatrixPI % GInterface(k) = Mesh % ParallelInfo % GInterface(i)
+              MatrixPI % GlobalDOFs(k) = DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
+              
+              l = SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+              ALLOCATE(MatrixPI % NeighbourList(k) % Neighbours(l))
+              MatrixPI % NeighbourList(k) % Neighbours = &
+                  Mesh % ParallelInfo % NeighbourList(i) % Neighbours            
+            ELSE
+              MatrixPI % GInterface(k) = Mesh % ParallelInfo % EdgeInterface(i-nn)
+              MatrixPI % GlobalDOFs(k) = DOFs*n0 + DOFs*(Mesh % Edges(i-nn) % GElementIndex-1)+j
+              
+              l = SIZE(Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours)
+              ALLOCATE(MatrixPI % NeighbourList(k) % Neighbours(l))
+              MatrixPI % NeighbourList(k) % Neighbours = &
+                  Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours                                
+            END IF
+          END DO
+        END DO
+      END BLOCK       
+
+      CALL Info('MatrixParallelInfoCutFEM','Done ParallelInfo assuming CutFEM mesh!',Level=12)
+
+      
+!-------------------------------------------------------------------------------
+    END SUBROUTINE MatrixParallelInfoCutFEM
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> Global numbering of matrix rows for a Discontinuous Galerkin discretization,
+!> where the degrees of freedom are local to each element.
+!-------------------------------------------------------------------------------
+    SUBROUTINE MatrixParallelInfoDG( Solver, Matrix, Perm, DOFs )
+!-------------------------------------------------------------------------------
+      TYPE(Solver_t), TARGET :: Solver
+      TYPE(Matrix_t), POINTER :: Matrix
+      INTEGER, POINTER :: Perm(:)
+      INTEGER :: DOFs
+!-------------------------------------------------------------------------------
+      TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Element_t), POINTER :: Element
+      TYPE(NeighbourList_t), POINTER :: MtrxN, MeshN
+      INTEGER :: i, j, k, l, m, n, maxnode
+      LOGICAL :: Found, DGReduced
+
+      ! Width of the slot reserved per element in the global DG numbering.
+      ! Discontinuous Galerkin as a method has no such limit, but the Elmer
+      ! implementation has used a nodal basis on the element's own nodes with
+      ! linear basis functions only (for a decade or so), so the widest case
+      ! is the 8-node hexahedron. Should higher order DG ever be implemented,
+      ! this numbering has to be revisited: an element needing more than
+      ! MaxDGNodes indices would overrun its slot and collide with the range
+      ! of the following element. The check at the use site below guards that.
+      INTEGER, PARAMETER :: MaxDGNodes = 8
+
+      Mesh => Solver % Mesh
+
+      MeshPI => Solver % Mesh % ParallelInfo
+      MatrixPI => Matrix % ParallelInfo
+      n = MAXVAL(Matrix % Perm)
+
+      ALLOCATE( MatrixPI % GlobalDOFs(n) ); MatrixPI % GlobalDOFs=0
+
+      maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
+      maxnode = ParallelReduction(maxnode,2)
+
+      DGReduced = ListGetLogical(Solver % Values, 'DG Reduced Basis', Found )
+
+      IF( DGReduced ) THEN
+        BLOCK
+          INTEGER, POINTER :: DgMap(:), DgMaster(:), DgSlave(:)
+          INTEGER :: group0, group
+          LOGICAL :: GotDgMap, GotMaster, GotSlave
+
+          DgMap => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Mapping',GotDgMap )
+          DgMaster => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Master Bodies',GotMaster )
+          DgSlave => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Slave Bodies',GotSlave )
+
+          IF( GotSlave .AND. GotMaster ) THEN
+            DO group0 = 1, 2
+
+              DO i=1,Mesh % NumberOfBulkElements
+                Element => Mesh % Elements(i)
+                IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
+                group = Element % BodyId
+
+                IF( group0 == 1 ) THEN
+                  IF( .NOT. ANY( DgMaster == group ) ) CYCLE
+                ELSE
+                  IF( ANY ( DgMaster == group ) ) CYCLE
+                END IF
+                group = group0 - 1
+
+                DO j=1,Element % TYPE % NumberOfNodes
+                  k = Matrix % Perm(Element % DGIndexes(j))
+                  IF(k == 0) CYCLE
+
+                  ! Set the global index for slave dofs only if it not already set for
+                  ! local dofs
+                  IF( group0 == 2 ) THEN
+                    IF( MatrixPI % GlobalDOFs(k) > 0 ) CYCLE
+                  END IF
+
+                  MatrixPI % GlobalDOFs(k) = group * maxnode +  &
+                      MeshPI % GlobalDOFs(Element % NodeIndexes(j))
+                END DO
+              END DO
+            END DO
+          ELSE
+            DO i=1,Mesh % NumberOfBulkElements
+              Element => Mesh % Elements(i)
+              IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
+
+              group0 = Element % BodyId
+
+              IF( GotMaster ) THEN
+                IF( ANY( DgMaster == group0 ) ) THEN
+                  group = 1
+                ELSE
+                  group = 2
+                END IF
+              ELSE IF( GotDgMap ) THEN
+                group = DgMap( group0 )
+              ELSE
+                group = group0
+              END IF
+              group = group - 1
+
+              DO j=1,Element % TYPE % NumberOfNodes
+                k = Matrix % Perm(Element % DGIndexes(j))
+                IF(k == 0) CYCLE
+                MatrixPI % GlobalDOFs(k) = group * maxnode +  &
+                    MeshPI % GlobalDOFs(Element % NodeIndexes(j))
+              END DO
+            END DO
+          END IF
+        END BLOCK
+      ELSE
+        DO i=1,Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(i)
+          IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
+          IF ( Element % TYPE % NumberOfNodes > MaxDGNodes ) THEN
+            CALL Fatal('MatrixParallelInfoDG','Global DG numbering reserves only '//&
+                I2S(MaxDGNodes)//' indices per element, but element has '//&
+                I2S(Element % TYPE % NumberOfNodes)//' nodes')
+          END IF
+          DO j=1,Element % TYPE % NumberOfNodes
+            k = Matrix % Perm(Element % DGIndexes(j))
+            IF(k == 0) CYCLE
+            MatrixPI % GlobalDOFs(k) = MaxDGNodes*(Element % GElementIndex-1) + j
+          END DO
+        END DO
+      END IF
+
+      ALLOCATE( MatrixPI % GInterface(n), MatrixPI % NeighbourList(n) )
+      MatrixPI % GInterface = .FALSE.
+      DO i=1,n
+        MtrxN => MatrixPI % NeighbourList(i)
+        MtrxN % Neighbours => NULL()
+      END DO
+
+      DO i=1,Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(i)
+        IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
+        IF ( ALL(MeshPI % GInterface(Element % NodeIndexes)) ) THEN
+          DO j=1,Element % Type % NumberOfNodes
+             K = Matrix % Perm(Element % DGIndexes(j))
+             IF(K==0) CYCLE
+             L = Element % Nodeindexes(j)
+
+             MeshN => MeshPI % NeighbourList(L)
+             MtrxN => MatrixPI % NeighbourList(K)
+             MatrixPI % GInterface(k) = .TRUE.
+
+             IF( ASSOCIATED(MtrxN % Neighbours) ) DEALLOCATE(MtrxN % Neighbours)
+             CALL AllocateVector( MtrxN % Neighbours,  SIZE(MeshN % Neighbours) )
+
+             MtrxN % Neighbours = MeshN % Neighbours
+             IF(.NOT.DGReduced) THEN 
+               DO m=1,SIZE(MeshN % Neighbours)
+                IF ( MeshN % Neighbours(m) == Element % PartIndex ) THEN
+                  MtrxN % Neighbours(1) = MeshN % Neighbours(m)
+                  MtrxN % Neighbours(m) = MeshN % Neighbours(1)
+                  EXIT
+                END IF
+               END DO
+             END IF
+          END DO
+        END IF
+      END DO
+
+      DO i=1,n
+        MtrxN => MatrixPI % NeighbourList(i)
+        IF ( .NOT.ASSOCIATED( MtrxN % Neighbours) ) THEN
+          CALL AllocateVector(MtrxN % Neighbours,1)
+          MtrxN % Neighbours(1) = ParEnv % myPE
+        END IF
+      END DO
+
+      
+!-------------------------------------------------------------------------------
+    END SUBROUTINE MatrixParallelInfoDG
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> Global numbering of matrix rows for the default discretization, i.e. neither
+!> CutFEM nor Discontinuous Galerkin. Covers nodal, edge, face and bubble
+!> degrees of freedom, and the extra rows of a collection matrix.
+!-------------------------------------------------------------------------------
+    SUBROUTINE MatrixParallelInfoDefault( Solver, Matrix, Perm, DOFs )
+!-------------------------------------------------------------------------------
+      TYPE(Solver_t), TARGET :: Solver
+      TYPE(Matrix_t), POINTER :: Matrix
+      INTEGER, POINTER :: Perm(:)
+      INTEGER :: DOFs
+!-------------------------------------------------------------------------------
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: i, j, k, l, m, n, bdofs
+      INTEGER :: maxnode, maxedge, maxface, fdofs, maxfdofs, &
+                 edofs, maxedofs, maxbdofs, l_beg, g_beg
+      LOGICAL :: Found, GB
+
+      Mesh => Solver % Mesh
+      ! Default parallel numbering, not CutFEM or Discontinuous Galerkin!
+      !--------------------------------------------------------------------
+      
+      n = Matrix % NumberOfRows
+      ALLOCATE( Matrix % ParallelInfo % NeighbourList(n) )
+      CALL AllocateVector( Matrix % ParallelInfo % GInterface, n)
+      CALL AllocateVector( Matrix % ParallelInfo % GlobalDOFs, n)
+
+      DO i=1,n
+        Matrix % ParallelInfo % GInterface(i) = .FALSE.
+        Matrix % ParallelInfo % GlobalDOFs(i) = 0
+        Matrix % ParallelInfo % NeighbourList(i) % Neighbours => NULL()
+      END DO
+
+      DO i=1,Mesh % NumberOfNodes
+        DO j=1,DOFs
+           k = Matrix % Perm((i-1)*DOFs+j)
+           IF ( k<=0 ) CYCLE
+           IF (k > SIZE(Matrix % ParallelInfo % GlobalDOFs)) THEN
+             CALL Fatal('MatrixParallelInfoDefault','Matrix % ParallelInfo % GlobalDOFs bounds error.'//&
+                 ' Matrix vs Solver perm scope conflict is a possible cause.')
+           END IF
+           
+           Matrix % ParallelInfo % GlobalDOFs(k) = &
+             DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
+
+           Matrix % ParallelInfo % GInterface(k) = &
+             Mesh % ParallelInfo % GInterface(i)
+
+           IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+             ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
+                 Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
+
+             Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
+                 Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+           END IF
+        END DO
+      END DO
+
+      GB = Solver % GlobalBubbles 
+      
+      maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
+      maxnode = ParallelReduction(maxnode,2)
+
+      edofs = 0; fdofs = 0; maxedofs = 0; maxfdofs = 0
+      maxedge = 0; maxface = 0
+
+      IF ( ASSOCIATED(Mesh % Edges) ) THEN
+        g_beg = maxnode
+        l_beg = Mesh % NumberOfNodes
+
+        n = Mesh % NumberOfEdges
+        edofs = Mesh % MaxEdgeDOFS
+        maxedofs = ParallelReduction(edofs,2)
+
+        maxedge = 0
+        DO i=1,n
+          maxedge = MAX(maxedge, Mesh % Edges(i) % GElementindex)
+        END DO
+        maxedge = ParallelReduction(maxedge,2)
+
+        DO i=1,n
+          Element => Mesh % Edges(i)
+          DO j=1,Element % BDOFs
+            DO m=1,DOFs
+              l = DOFs*(l_beg + edofs*(i-1)+j-1)+m
+              l = Matrix % Perm(l)
+              IF(l==0) CYCLE
+
+              Matrix % ParallelInfo % GlobalDOFs(l) = &
+                  DOFs*(g_beg+maxedofs*(Element % GelementIndex-1)+j-1)+m
+              Matrix % ParallelInfo % GInterface(l) = Mesh % ParallelInfo % EdgeInterface(i)
+
+              ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
+                   Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)))
+              Matrix % Parallelinfo % NeighbourList(l) % Neighbours = &
+                   Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours
+            END DO
+          END DO
+        END DO
+      END IF
+
+      IF ( ASSOCIATED(Mesh % Faces) ) THEN
+        g_beg = maxnode + maxedofs*maxedge
+        l_beg = Mesh % NumberOfNodes + &
+                Mesh % NumberOfEdges*Mesh % MaxEdgeDOFs
+
+        n = Mesh % NumberOfFaces
+
+        fdofs = Mesh % MaxFaceDOFS
+        maxfdofs = ParallelReduction(fdofs,2)
+
+        maxface = 0
+        DO i=1,n
+          maxface = MAX(maxface, Mesh % Faces(i) % GElementindex)
+        END DO
+        maxface = ParallelReduction(maxface,2)
+
+        DO i=1,n
+          Element => Mesh % Faces(i)
+          DO j=1,Element % BDOFs
+            DO m=1,DOFs
+              l = Matrix % Perm(DOFs*(l_beg + fdofs*(i-1)+j-1)+m)
+              IF(l==0) CYCLE
+              Matrix % ParallelInfo % GlobalDOFs(l) = &
+                  DOFs*(g_beg+maxfdofs*(Element % GelementIndex-1)+j-1)+m
+              Matrix % ParallelInfo % GInterface(l) = Mesh % ParallelInfo % FaceInterface(i)
+
+              ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
+                   Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours)))
+
+              Matrix % Parallelinfo % NeighbourList(l) % Neighbours = &
+                   Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours
+            END DO
+          END DO
+        END DO
+      END IF
+
+      IF ( GB ) THEN
+        l_beg = Mesh % NumberOfNodes + &
+                Mesh % NumberOfEdges*Mesh % MaxEdgeDOFs + &
+                Mesh % NumberOfFaces*Mesh % MaxFaceDOFs
+
+        g_beg = Maxnode +  maxedge*maxedofs + maxface*maxfdofs
+        maxbdofs = ParallelReduction(Mesh % MaxBDOFs,2)
+
+        DO i=1,Mesh % NumberOfBulkElements
+          Element=>Mesh % Elements(i)
+
+          j = Element % Type % ElementCode/100
+          bdofs = Solver % Def_Dofs(j, Element % Bodyid, 5)
+          IF ( bdofs<=0 .AND. &
+             Solver % Def_Dofs(j,Element % Bodyid,6)>1) bdofs = Element % BDOFs
+
+          DO l=1,bdofs
+            DO j=1,DOFs
+              k = Matrix % Perm(DOFs*(l_beg+Element % BubbleIndexes(l)-1)+j)
+              IF(k==0) CYCLE
+              Matrix % ParallelInfo % GlobalDOFs(k) = &
+                DOFs*(g_beg+maxbdofs*(Element % GElementIndex-1)+l-1)+j
+              Matrix % ParallelInfo % GInterface(k) = .FALSE.
+              ALLOCATE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours(1))
+              Matrix % ParallelInfo % NeighbourList(k) % Neighbours=ParEnv % MyPE
+            END DO
+          END DO
+        END DO
+      END IF
+
+      CALL SetupExtraDOFs( Solver, Matrix, Perm, DOFs )
+
+!-------------------------------------------------------------------------------
+    END SUBROUTINE MatrixParallelInfoDefault
+!-------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------
+!> Add the extra rows of a collection matrix to the parallel structures. These
+!> are the global unknowns shared by all partitions, counted by ParallelDOFs and
+!> originating from the AddMatrix (circuit equations), followed by the rows of
+!> the constraint matrix.
+!-------------------------------------------------------------------------------
+    SUBROUTINE SetupExtraDOFs( Solver, Matrix, Perm, DOFs )
+!-------------------------------------------------------------------------------
+      TYPE(Solver_t), TARGET :: Solver
+      TYPE(Matrix_t), POINTER :: Matrix
+      INTEGER, POINTER :: Perm(:)
+      INTEGER :: DOFs
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), POINTER :: G
+      ! Roles of the two matrices in play here; see the comment below.
+      TYPE(Matrix_t), POINTER :: BaseMatrix, CollMatrix
+      INTEGER :: i, j, k, l, m, n, col, proc, g_beg, pardofs_all
+      LOGICAL :: Found, Global_dof, LocalConstraints, DiscontBC, &
+                 OwnersGiven, NeighboursGiven
+      INTEGER, ALLOCATABLE :: Ind(:)
+      ! Add extra degrees of freedom to parallel structures. The additional
+      ! variables are assigned to task zero, and are assumed to be shared by
+      ! all tasks (TODO: to be optimized if need be...)
+      !
+      ! Two distinct matrices are in play from here on, and mixing them up is
+      ! easy, so they are given names:
+      !
+      !   CollMatrix  the matrix being initialized, i.e. the Matrix argument.
+      !               When it carries extra rows (ExtraDOFs>0) it is typically
+      !               a collection matrix, built by EliminateLinearRestriction
+      !               from a base system plus that system's constraint rows.
+      !   BaseMatrix  the base system those extra rows refer to, taken to be
+      !               Solver % Matrix.
+      !
+      ! The distinction is load-bearing, not an oversight: the constraint rows
+      ! are described by BaseMatrix % ConstraintMatrix (which is deliberately
+      ! not propagated onto the collection matrix), and their InvPerm entries
+      ! are decoded modulo BaseMatrix % NumberOfRows. Observed in the contact
+      ! and mortar test cases: CollMatrix % NumberOfRows equals
+      ! BaseMatrix % NumberOfRows + CollMatrix % ExtraDOFs exactly, while
+      ! CollMatrix % ConstraintMatrix is null. Replacing BaseMatrix by
+      ! CollMatrix below therefore silently drops the constraint numbering.
+      !
+      ! Caveat: equating the base system with Solver % Matrix is an assumption.
+      ! Callers build the collection from a matrix of their choosing, which
+      ! need not be the solver matrix. Passing the base matrix in explicitly
+      ! would be the cleaner contract.
+      ! --------------------------------------------------------------------
+      CollMatrix => Matrix
+      BaseMatrix => Solver % Matrix
+
+      g_beg = ParallelReduction(MAXVAL(CollMatrix % ParallelInfo % GlobalDOFs),2)
+      pardofs_all = ParallelReduction(CollMatrix % ParallelDOFs,2)
+
+      LocalConstraints = ListGetLogical(Solver % Values, 'Partition Local Constraints',Found)
+      DiscontBC  = ListGetLogicalAnyBC(CurrentModel,'Discontinuous Boundary' )
+
+      Found = ASSOCIATED(BaseMatrix % ConstraintMatrix)
+      IF(Found) Found = ASSOCIATED(BaseMatrix % ConstraintMatrix % InvPerm)
+
+      G => Null()
+      IF( LocalConstraints  ) THEN
+        G => AllocateMatrix()
+        G % Format = MATRIX_LIST
+      END IF
+
+      OwnersGiven = CollMatrix % ParallelDOFs>0
+      IF(OwnersGiven) THEN
+        OwnersGiven = ASSOCIATED(BaseMatrix % AddMatrix)
+        IF(OwnersGiven) OwnersGiven = ALLOCATED(BaseMatrix % AddMatrix % RowOwner)
+      END IF
+
+      NeighboursGiven = CollMatrix % ParallelDOFs>0
+      IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(BaseMatrix % AddMatrix)
+      IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(BaseMatrix % AddMatrix % ParallelInfo)
+      IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(BaseMatrix % AddMatrix % ParallelInfo % &
+                          NeighbourList)
+
+
+      j=0
+      DO i=CollMatrix % NumberOFRows-CollMatrix % ExtraDOFs+1,CollMatrix % NumberOfRows
+        j=j+1
+        Global_dof = j <= CollMatrix % ParallelDOFs
+        IF (Global_dof) THEN
+          CollMatrix % ParallelInfo % GInterface(i) = .TRUE.
+
+          IF(NeighboursGiven) THEN
+            ALLOCATE(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours( &
+               SIZE(BaseMatrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours)))
+
+            CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours = &
+               BaseMatrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours
+
+            IF(ALL(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours /= ParEnv % myPE)) THEN
+              CollMatrix % ParallelInfo % GInterface(i) = .FALSE.
+              DEALLOCATE(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours)
+              ALLOCATE(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
+              CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % mype
+
+              CALL CRS_ZeroRow(CollMatrix,i)
+              CALL CRS_SetMatrixElement(CollMatrix,i,i,1._dp)
+              CollMatrix % RHS(i) = 0._dp
+            END IF
+
+          ELSE IF (OwnersGiven) THEN
+            ALLOCATE(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
+            DO k=1,ParEnv % PEs
+              CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(k)=k-1
+            END DO
+
+            l = j + BaseMatrix % NumberOfRows
+            l = BaseMatrix % AddMatrix % RowOwner(l)
+
+            CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(1)   = l
+            CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(l+1) = 0
+          ELSE
+            ALLOCATE(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
+            l = 0
+            DO k=ParEnv % PEs,1,-1
+              l = l + 1
+              CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(l)=k-1
+            END DO
+          END IF
+
+          k = j + g_beg
+        ELSE IF(Found) THEN
+          n = BaseMatrix % ConstraintMatrix % InvPerm(j-CollMatrix % ParallelDOFs)
+          IF( n<=0 ) CYCLE
+          k = MOD(n-1,BaseMatrix % NumberOfRows)+1
+          n = (n-1) / BaseMatrix % NumberOfRows
+
+          CollMatrix % ParallelInfo % GInterface(i) = CollMatrix % ParallelInfo % GInterface(k)
+
+          l = SIZE(CollMatrix % ParallelInfo % NeighbourList(k) % Neighbours)
+          ALLOCATE(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
+
+          IF(LocalConstraints) THEN
+            IF(.NOT.DiscontBC) THEN
+              IF (CollMatrix % ParallelInfo % GInterface(k)) &
+                CALL Sort(l,CollMatrix % ParallelInfo % NeighbourList(k) % Neighbours)
+            END IF
+
+            DO m=CollMatrix % Rows(i), CollMatrix % Diag(i)-1
+              col = CollMatrix % Cols(m)
+              IF (CollMatrix % ParallelInfo % GInterface(col)) THEN
+                DO l=1,SIZE(CollMatrix % ParallelInfo % NeighbourList(col) % Neighbours)
+                  proc = CollMatrix % ParallelInfo % NeighbourList(col) % Neighbours(l)
+                  IF(proc==ParEnv % mype) THEN
+                    CALL List_AddToMatrixElement( G % ListMatrix, proc+1, col, 1._dp )
+                  ELSE
+                    CALL List_AddToMatrixElement( G % ListMatrix, &
+                         proc+1, CollMatrix % ParallelInfo % GlobalDOFs(col), 1._dp)
+                  END IF
+                END DO
+              END IF
+            END DO
+          END IF
+
+          CollMatrix % Parallelinfo % NeighbourList(i) % Neighbours = &
+             CollMatrix % ParallelInfo % NeighbourList(k) % Neighbours
+
+          k = CollMatrix % ParallelInfo % GlobalDOFs(k) + (n+1)*g_beg + pardofs_all
+        ELSE
+          ALLOCATE(CollMatrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
+          CollMatrix % Parallelinfo % NeighbourList(i) % Neighbours(1)=ParEnv % myPE
+          k = j + g_beg + pardofs_all
+        END IF
+        CollMatrix % ParallelInfo % GlobalDofs(i) = k
+      END DO
+
+      l=CollMatrix % ExtraDOFs
+      n=SIZE(Perm)
+      IF(l>0) THEN
+         ALLOCATE(Ind(l))
+         k = 0
+         DO i=CollMatrix % NumberOfRows-l+1,CollMatrix % NumberOfRows
+           k = k + 1
+           CollMatrix % Perm(n*DOFs+k) = i
+           Ind(k) = CollMatrix % Parallelinfo % Globaldofs(i)
+         END DO
+         CALL SortI(l,Ind,CollMatrix % Perm(n*DOFs+1:))
+         DEALLOCATE(Ind)
+      END IF
+
+      CALL SyncConstraintOwnership( CollMatrix, G, LocalConstraints )
+!-------------------------------------------------------------------------------
+    END SUBROUTINE SetupExtraDOFs
+
+!-------------------------------------------------------------------------------
+!> Tell the neighbouring partitions which of the constraint rows are owned here,
+!> so that the neighbour lists of a shared row come out in the same order on
+!> every partition. G carries the rows to report, collected while numbering the
+!> extra degrees of freedom; it is freed on the way out.
+!-------------------------------------------------------------------------------
+    SUBROUTINE SyncConstraintOwnership( CollMatrix, G, LocalConstraints )
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), POINTER :: CollMatrix, G
+      LOGICAL :: LocalConstraints
+!-------------------------------------------------------------------------------
+      LOGICAL, ALLOCATABLE :: Done(:)
+      INTEGER, ALLOCATABLE :: Owneddofs(:)
+      INTEGER :: i, j, k, l, m
+      INTEGER :: ierr, status(MPI_STATUS_SIZE)
+      IF (ASSOCIATED(ParEnv % IsNeighbour).AND. LocalConstraints) THEN
+        CALL List_ToCRSMatrix(G)
+        ALLOCATE(Done(CollMatrix % NumberOfROws)); Done=.FALSE.
+
+        DO i=1,ParEnv % PEs
+          IF(i-1==ParEnv % Mype) THEN
+            IF(G % NumberOfRows>=i) THEN
+              DO j=G % Rows(i), G % Rows(i+1)-1
+                m = G % Cols(j)
+                IF(.NOT.Done(m)) THEN
+                  Done(m) = .TRUE.
+                  k = SIZE(CollMatrix % ParallelInfo % Neighbourlist(m) % Neighbours)
+                  CALL Sort(k,CollMatrix % ParallelInfo % NeighbourList(m) % Neighbours)
+                END IF
+              END DO
+            END IF
+            CYCLE
+          END IF
+
+          j = 0
+          IF(G % NumberOfRows>=i) j = G % Rows(i+1)-G % Rows(i)
+
+          IF(ParEnv % IsNeighbour(i)) THEN
+            CALL MPI_BSEND( j,1,MPI_INTEGER,i-1,130,CollMatrix % Comm,ierr )
+            IF (j>0) THEN
+              CALL MPI_BSEND(G % Cols(G % Rows(i):),j,MPI_INTEGER,i-1,131,CollMatrix % Comm,ierr )
+            END IF
+          ELSE
+            ! Constraint rows are owned here for a partition that is not a
+            ! neighbour, so there is no channel to communicate them over.
+            IF(j>0) CALL Fatal('SyncConstraintOwnership','Have '//I2S(j)//&
+                ' constraint row(s) to send to non-neighbour partition '//I2S(i-1))
+          END IF
+        END DO
+
+        DO i=1,ParEnv % NumOfNeighbours
+          CALL MPI_RECV( j,1,MPI_INTEGER,MPI_ANY_SOURCE,130,CollMatrix % Comm,status,ierr )
+          IF (j>0) THEN
+            IF(.NOT.ALLOCATED(owneddofs)) ALLOCATE(owneddofs(j))
+            IF(SIZE(owneddofs)<j) THEN
+              DEALLOCATE(owneddofs); ALLOCATE(owneddofs(j))
+            END IF
+
+            CALL MPI_RECV(owneddofs,j,MPI_INTEGER,status(MPI_SOURCE),131,CollMatrix % Comm,status,ierr )
+            DO l=1,j
+               m = SearchNode( CollMatrix % ParallelInfo, Owneddofs(l), Order=CollMatrix % Perm )
+               IF(m>0) THEN
+                 IF(.NOT.Done(m)) THEN
+                   Done(m) = .TRUE.
+                   k = SIZE(CollMatrix % ParallelInfo % Neighbourlist(m) % Neighbours)
+                   CALL Sort(k,CollMatrix % ParallelInfo % NeighbourList(m) % Neighbours)
+                 END IF
+               END IF
+             END DO
+          END IF
+        END DO
+        IF(ALLOCATED(owneddofs)) DEALLOCATE(OwnedDofs)
+      END IF
+
+      IF(ASSOCIATED(G)) THEN
+        IF(ASSOCIATED(G % Cols)) DEALLOCATE(G % Cols)
+        IF(ASSOCIATED(G % Rows)) DEALLOCATE(G % Rows)
+        IF(ASSOCIATED(G % Diag)) DEALLOCATE(G % Diag)
+        IF(ASSOCIATED(G % Values)) DEALLOCATE(G % Values)
+        DEALLOCATE(G)
+      END IF
+!-------------------------------------------------------------------------------
+    END SUBROUTINE SyncConstraintOwnership
+!-------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------
 
 
 !-------------------------------------------------------------------------------
@@ -828,14 +981,24 @@ CONTAINS
 
        IF(L(imemb(ParEnv % MyPE))) THEN
 
-         j = 0; k=0
-         DO i=1,n
-           p => ParallelInfo % NeighbourList(i) % Neighbours
-           IF (SIZE(p)>j) THEN
-              j=SIZE(p); k=i
-           END IF
-         END DO
-         K = n/2
+         ! Pick the DOF to donate to a partition that ended up owning none.
+         !
+         ! The loop below used to select the most shared DOF, but its result was
+         ! always overwritten by the midpoint choice that follows, so it has been
+         ! inactive for a long time. There has apparently been trouble with it in
+         ! the past, so it is left commented out rather than restored: the
+         ! midpoint choice is the behaviour that has actually been in use. Note
+         ! that n/2 need not be a shared DOF at all, so this deserves a proper
+         ! revisit if this rare Hypre path ever misbehaves.
+         !
+         ! j = 0; k=0
+         ! DO i=1,n
+         !   p => ParallelInfo % NeighbourList(i) % Neighbours
+         !   IF (SIZE(p)>j) THEN
+         !      j=SIZE(p); k=i
+         !   END IF
+         ! END DO
+         k = n/2
          p => ParallelInfo % NeighbourList(k) % Neighbours
 
          DO i=1,SIZE(p)
@@ -867,7 +1030,8 @@ CONTAINS
            CALL MPI_RECV(dof, 1, MPI_INTEGER, i, 501, comm, status, ierr )
 
            IF(dof>0) THEN
-            k = SearchNode( ParallelInfo, dof, Order = ParallelInfo % Gorder )
+             k = SearchNode( ParallelInfo, dof, Order = ParallelInfo % Gorder )
+             ! A donated DOF not found locally is silently ignored.
              IF (k>0) THEN
                p => ParallelInfo % NeighbourList(k) % Neighbours
                DO j=1,SIZE(p)
@@ -878,8 +1042,6 @@ CONTAINS
                  END IF
                END DO
                CALL Sort(SIZE(p)-1, p(2:) )
-             ELSE
-!              STOP 'k'
              END IF
            END IF
          END IF
@@ -887,8 +1049,6 @@ CONTAINS
      END IF
 !-------------------------------------------------------------------------------
    END SUBROUTINE AssignAtLeastOneDOFToPartition
-!-------------------------------------------------------------------------------
-  END SUBROUTINE ParallelInitMatrix
 !-------------------------------------------------------------------------------
 
 
