@@ -515,7 +515,7 @@ CONTAINS
       INTEGER :: i, j, k, l, m, n, bdofs
       INTEGER :: maxnode, maxedge, maxface, fdofs, maxfdofs, &
                  edofs, maxedofs, maxbdofs, l_beg, g_beg
-      LOGICAL :: Found, GB
+      LOGICAL :: Found
 
       Mesh => Solver % Mesh
       ! Default parallel numbering, not CutFEM or Discontinuous Galerkin!
@@ -557,8 +557,6 @@ CONTAINS
         END DO
       END DO
 
-      GB = Solver % GlobalBubbles 
-      
       maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
       maxnode = ParallelReduction(maxnode,2)
 
@@ -636,7 +634,7 @@ CONTAINS
         END DO
       END IF
 
-      IF ( GB ) THEN
+      IF ( Solver % GlobalBubbles ) THEN
         l_beg = Mesh % NumberOfNodes + &
                 Mesh % NumberOfEdges*Mesh % MaxEdgeDOFs + &
                 Mesh % NumberOfFaces*Mesh % MaxFaceDOFs
