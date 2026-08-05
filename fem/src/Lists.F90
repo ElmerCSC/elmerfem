@@ -86,11 +86,21 @@ MODULE Lists
       TYPE(String_stack_t), POINTER :: Next => Null()
    END TYPE String_stack_t
 
+   ! Deliberately NOT threadprivate. The namespace is written only outside
+   ! parallel regions -- solver drivers, linear solve, multigrid, block solve --
+   ! and merely read inside the threaded assembly loops, so shared state is both
+   ! correct and race-free here.
+   !
+   ! As a THREADPRIVATE ALLOCATABLE the workers entered assembly with an
+   ! unallocated copy (no copyin), so ListGetNamespace() returned .FALSE. for
+   ! every thread but the master and their namespaced lookups silently fell back
+   ! to the bare keyword. In StatCurrentVec2 that meant only the master thread
+   ! resolved "a: Current Density", so all boundary flux assembled by the other
+   ! threads was lost: the norm decayed with thread count and reached zero once
+   ! the master's static chunk no longer reached the flux boundary at all.
    CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: Namespace
-   !$OMP THREADPRIVATE(NameSpace)
 
    TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Namespace_stack => Null()
-   !$OMP THREADPRIVATE(NameSpace_stack)
 
    CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: ActiveListName
    !$OMP THREADPRIVATE(ActiveListName)
