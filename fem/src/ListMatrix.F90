@@ -124,9 +124,15 @@ CONTAINS
      END DO
      !$OMP END DO
 
-     !$OMP CRITICAL(ListMatrixEntryPool)
+     ! Unnamed !$OMP CRITICAL on purpose, as in GaussPointsInit: a named critical
+     ! section allocates its per-name mutex lazily on first encounter, and that
+     ! lazy init crashes inside MPI-spawned processes with GOMP on Windows+MSMPI.
+     ! The unnamed form uses a pre-allocated global lock. Do not reintroduce a
+     ! name here. The wider lock costs nothing, this being entered once per
+     ! thread per matrix rather than once per entry.
+     !$OMP CRITICAL
      CALL List_ReturnEntryChain( Head, Tail, cnt )
-     !$OMP END CRITICAL(ListMatrixEntryPool)
+     !$OMP END CRITICAL
      !$OMP END PARALLEL
 
      DEALLOCATE( List )

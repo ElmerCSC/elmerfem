@@ -496,6 +496,22 @@
            ! -----------------------------------
            CALL ExtractMeshInfo( RT_Mesh, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm, ElimBBox = ElimBB )
 
+           ! ExtractMeshInfo returns immediately when there is no shadow mesh,
+           ! leaving these three unallocated, and the deallocation below shows
+           ! Data/Perm need not come back allocated even when there is one.
+           ! They are passed to assumed-size dummies of ViewFactors3D and
+           ! RadiatorFactors3d, which an unallocated allocatable must not be, so
+           ! make sure they exist whether or not they carry anything.
+           IF ( .NOT. ALLOCATED(RT_Surf) ) THEN
+             ALLOCATE( RT_Surf(1) ); RT_Surf = 0
+           END IF
+           IF ( .NOT. ALLOCATED(RT_Perm) ) THEN
+             ALLOCATE( RT_Perm(1) ); RT_Perm = 0
+           END IF
+           IF ( .NOT. ALLOCATED(RT_Data) ) THEN
+             ALLOCATE( RT_Data(1) ); RT_Data = 0.0_dp
+           END IF
+
            ! Shadow mesh is fully available on all ranks:
            !  - LoadShadowMesh: reads mesh files directly (serial, no MPI)
            !  - LoadMesh2: called with (1,0) above so all ranks load the full mesh

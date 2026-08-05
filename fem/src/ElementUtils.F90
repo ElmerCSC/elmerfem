@@ -66,6 +66,8 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: Matrix
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
+     ! Stand-in for the Free_Fact call below when the matrix has no solver
+     TYPE(Solver_t) :: DummySolver
      REAL(KIND=dp) :: x(1), b(1)
      INTEGER :: i
      LOGICAL :: Active
@@ -93,8 +95,18 @@ CONTAINS
 
      IF ( .NOT. ASSOCIATED( Matrix ) ) RETURN
 
+     ! DirectSolver takes Solver by value, so it must not be handed a
+     ! disassociated pointer, and matrices with no solver attached do reach
+     ! here. Every Free_Fact path deals with the matrix and returns without
+     ! looking at Solver, so a default initialized stand-in is enough; passing
+     ! one rather than skipping the call keeps the matrix-only frees, such as
+     ! FreeMumpsFactorizations, running for those matrices.
      Solver => Matrix % Solver
-     CALL DirectSolver( Matrix,x,b,Solver,Free_Fact=.TRUE.)
+     IF ( ASSOCIATED( Solver ) ) THEN
+       CALL DirectSolver( Matrix,x,b,Solver,Free_Fact=.TRUE.)
+     ELSE
+       CALL DirectSolver( Matrix,x,b,DummySolver,Free_Fact=.TRUE.)
+     END IF
 
      IF ( ASSOCIATED( Matrix % Perm ) )        DEALLOCATE( Matrix % Perm )
      IF ( ASSOCIATED( Matrix % InvPerm ) )     DEALLOCATE( Matrix % InvPerm )

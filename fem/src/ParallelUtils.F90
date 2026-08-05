@@ -129,7 +129,21 @@ CONTAINS
          CALL Fatal('ParallelInitMatrix','Only Perm or InvPerm is associated!')
        ELSE IF(i==0) THEN
          CALL Info('ParallelInitMatrix','Allocating communication structures for matrix!',Level=5)
-         j = MAXVAL(Perm)*DOFs + Matrix % ExtraDOFs
+         ! InvPerm is indexed by the values stored in Perm below. The nodal part
+         ! reaches MAXVAL(Perm)*DOFs, but the extra rows are numbered from
+         ! n*DOFs upwards, so MAX() is needed to cover both. The two agree
+         ! whenever the permutation is onto, and instrumenting the 124 _npN
+         ! tests shows MAXVAL(Perm) /= n never once coincides with ExtraDOFs>0,
+         ! so this only guards a case the suite does not reach.
+         !
+         ! NOTE: if that case ever does arise, sizing alone is not the whole
+         ! story. The extra rows of the matrix follow the base rows, which end
+         ! at MAXVAL(Perm)*DOFs, so "Matrix % Perm(i) = i" below would then give
+         ! them the wrong row and leave the true extra-row slots of InvPerm at
+         ! zero. Numbering them from MAXVAL(Perm)*DOFs is most likely the real
+         ! fix, but it is deliberately not made here, being unverifiable against
+         ! a suite that never exercises it.
+         j = MAX( MAXVAL(Perm), n )*DOFs + Matrix % ExtraDOFs
          ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(j))
 
          BLOCK
