@@ -958,25 +958,7 @@ CONTAINS
 
           CALL Info(Caller,'Adding matrix topology for BC: '//I2S(This),Level=10)
 
-          DO i=1,Projector % NumberOfRows
-            k = Reorder( Projector % InvPerm(i) )
-            IF ( k > 0 ) THEN
-              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
-                IF ( Projector % Cols(l) <= 0 ) CYCLE
-                m = Reorder( Projector % Cols(l) )
-                IF ( m > 0 ) THEN
-                  Lptr => List_GetMatrixIndex( List,k,m )
-                  Lptr => List_GetMatrixIndex( List,m,k ) ! keep structure symm.
-                  CList => List(k) % Head
-                  DO WHILE( ASSOCIATED( CList ) )
-                    Lptr => List_GetMatrixIndex( List,m,CList % Index )
-                    Lptr => List_GetMatrixIndex( List,CList % Index,m ) ! keep structure symm.
-                    CList => CList % Next
-                  END DO
-                END IF
-              END DO
-            END IF
-          END DO
+          CALL ProjectorTopology( List, Reorder, Projector )
         END DO
       END IF ! DoProjectors
 
@@ -1587,25 +1569,7 @@ CONTAINS
           CALL Info(Caller,'Adding matrix topology for BC: '//I2S(This),Level=10)
 
           ! TODO: Add multithreading
-          DO i=1,Projector % NumberOfRows
-            k = Reorder( Projector % InvPerm(i) )
-            IF ( k > 0 ) THEN
-              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
-                IF ( Projector % Cols(l) <= 0 ) CYCLE
-                m = Reorder( Projector % Cols(l) )
-                IF ( m > 0 ) THEN
-                  CALL ListMatrixArray_AddEntry(List, k, m)
-                  CALL ListMatrixArray_AddEntry(List, m, k)
-                  CList => List % Rows(k) % Head
-                  DO WHILE( ASSOCIATED( CList ) )
-                    CALL ListMatrixArray_AddEntry(List, m, CList % Index)
-                    CALL ListMatrixArray_AddEntry(List, CList % Index, m)
-                    CList => CList % Next
-                  END DO
-                END IF
-              END DO
-            END IF
-          END DO
+          CALL ProjectorTopologyArray( List, Reorder, Projector )
         END DO
       END IF ! DoProjectors
 
@@ -1644,6 +1608,209 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   END SUBROUTINE MakeListMatrixArray
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add the matrix topology implied by an implicitly treated projector. For each
+!> projector row the master dof k and its slave dofs must be connected to each
+!> other and to everything k is already connected to, and the structure is kept
+!> symmetric. Adding that one entry at a time re-walks row k for every slave dof
+!> and searches each target row from its head, so instead the index sets are
+!> collected first and every row is extended in a single merge pass.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorTopology( List, Reorder, Projector )
+!------------------------------------------------------------------------------
+    TYPE(ListMatrix_t), POINTER :: List(:)
+    INTEGER :: Reorder(:)
+    TYPE(Matrix_t), POINTER :: Projector
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,l,k,m,nm,ns
+    INTEGER, ALLOCATABLE :: Ms(:), Ss(:)
+    TYPE(ListMatrixEntry_t), POINTER :: CList
+
+    CALL ProjectorTopologySizes( Projector, nm, Ms )
+    IF( nm == 0 ) RETURN
+
+    DO i=1,Projector % NumberOfRows
+      k = Reorder( Projector % InvPerm(i) )
+      IF( k <= 0 ) CYCLE
+
+      CALL ProjectorRowSlaves( Projector, Reorder, i, nm, Ms )
+      IF( nm == 0 ) CYCLE
+
+      ! Row k gains the slave dofs of this projector row
+      CALL List_AddMatrixIndexes( List, k, nm, Ms )
+
+      ! Everything row k is connected to now, plus k itself. The row is kept
+      ! sorted, so gathering it in order gives a sorted set.
+      ns = List(k) % Degree + 1
+      IF( ALLOCATED(Ss) ) THEN
+        IF( SIZE(Ss) < ns ) DEALLOCATE( Ss )
+      END IF
+      IF( .NOT. ALLOCATED(Ss) ) ALLOCATE( Ss(ns) )
+
+      CALL GatherRowWithSelf( List(k) % Head, k, ns, Ss )
+
+      ! Each slave dof gets the whole set, and everything in the set gets the
+      ! slave dofs. Together these give the same symmetric structure that the
+      ! entry-at-a-time version converged to.
+      DO j=1,nm
+        CALL List_AddMatrixIndexes( List, Ms(j), ns, Ss )
+      END DO
+      DO j=1,ns
+        CALL List_AddMatrixIndexes( List, Ss(j), nm, Ms )
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorTopology
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> As ProjectorTopology() but for the threaded ListMatrixArray_t structure.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorTopologyArray( List, Reorder, Projector )
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixArray_t) :: List
+    INTEGER :: Reorder(:)
+    TYPE(Matrix_t), POINTER :: Projector
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,l,k,m,nm,ns
+    INTEGER, ALLOCATABLE :: Ms(:), Ss(:), MPerm(:), SPerm(:)
+    TYPE(ListMatrixEntry_t), POINTER :: CList
+
+    CALL ProjectorTopologySizes( Projector, nm, Ms )
+    IF( nm == 0 ) RETURN
+
+    ! ListMatrixArray_AddEntries() takes the ordering as a separate permutation,
+    ! and the sets are sorted in place here, so identity permutations are used.
+    ALLOCATE( MPerm(SIZE(Ms)) )
+    DO i=1,SIZE(MPerm)
+      MPerm(i) = i
+    END DO
+
+    DO i=1,Projector % NumberOfRows
+      k = Reorder( Projector % InvPerm(i) )
+      IF( k <= 0 ) CYCLE
+
+      CALL ProjectorRowSlaves( Projector, Reorder, i, nm, Ms )
+      IF( nm == 0 ) CYCLE
+
+      CALL ListMatrixArray_AddEntries( List, k, nm, Ms, MPerm )
+
+      ns = List % Rows(k) % Degree + 1
+      IF( ALLOCATED(Ss) ) THEN
+        IF( SIZE(Ss) < ns ) DEALLOCATE( Ss, SPerm )
+      END IF
+      IF( .NOT. ALLOCATED(Ss) ) THEN
+        ALLOCATE( Ss(ns), SPerm(ns) )
+        DO j=1,ns
+          SPerm(j) = j
+        END DO
+      END IF
+
+      CALL GatherRowWithSelf( List % Rows(k) % Head, k, ns, Ss )
+
+      DO j=1,nm
+        CALL ListMatrixArray_AddEntries( List, Ms(j), ns, Ss, SPerm )
+      END DO
+      DO j=1,ns
+        CALL ListMatrixArray_AddEntries( List, Ss(j), nm, Ms, MPerm )
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorTopologyArray
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Allocate the slave dof workspace for the projector topology routines, sized
+!> by the longest projector row. Returns nm=0 if the projector has no entries.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorTopologySizes( Projector, nm, Ms )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: Projector
+    INTEGER :: nm
+    INTEGER, ALLOCATABLE :: Ms(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i
+
+    nm = 0
+    DO i=1,Projector % NumberOfRows
+      nm = MAX( nm, Projector % Rows(i+1) - Projector % Rows(i) )
+    END DO
+    IF( nm > 0 ) ALLOCATE( Ms(nm) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorTopologySizes
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Collect the permuted slave dofs of one projector row into a sorted set.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorRowSlaves( Projector, Reorder, i, nm, Ms )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: Projector
+    INTEGER :: Reorder(:)
+    INTEGER :: i, nm
+    INTEGER :: Ms(:)
+!------------------------------------------------------------------------------
+    INTEGER :: l, m
+
+    nm = 0
+    DO l=Projector % Rows(i), Projector % Rows(i+1)-1
+      IF( Projector % Cols(l) <= 0 ) CYCLE
+      m = Reorder( Projector % Cols(l) )
+      IF( m <= 0 ) CYCLE
+      nm = nm + 1
+      Ms(nm) = m
+    END DO
+
+    ! Duplicates may remain, they are skipped when the row is added
+    CALL Sort( nm, Ms )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorRowSlaves
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Gather the sorted indexes of a matrix row, with the row index itself merged
+!> in so that the master dof is included even if the diagonal entry is missing.
+!------------------------------------------------------------------------------
+  SUBROUTINE GatherRowWithSelf( Head, k, ns, Ss )
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixEntry_t), POINTER :: Head
+    INTEGER :: k, ns
+    INTEGER :: Ss(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: GotK
+    TYPE(ListMatrixEntry_t), POINTER :: CList
+
+    ns = 0
+    GotK = .FALSE.
+    CList => Head
+    DO WHILE( ASSOCIATED(CList) )
+      IF( .NOT. GotK ) THEN
+        IF( CList % Index >= k ) THEN
+          IF( CList % Index > k ) THEN
+            ns = ns + 1
+            Ss(ns) = k
+          END IF
+          GotK = .TRUE.
+        END IF
+      END IF
+      ns = ns + 1
+      Ss(ns) = CList % Index
+      CList => CList % Next
+    END DO
+
+    IF( .NOT. GotK ) THEN
+      ns = ns + 1
+      Ss(ns) = k
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GatherRowWithSelf
 !------------------------------------------------------------------------------
 
   

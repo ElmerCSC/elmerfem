@@ -1398,7 +1398,7 @@ CONTAINS
     IsBlockSolver = ( Solver % SolverMode == SOLVER_MODE_BLOCK ) 
     IsAssemblySolver = ( Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) 
     IsAssemblySolver = IsAssemblySolver .OR. &
-	( IsCoupledSolver .AND. .NOT. IsProcedure ) .OR. &
+      ( IsCoupledSolver .AND. .NOT. IsProcedure ) .OR. &
         ( IsBlockSolver .AND. .NOT. IsProcedure ) 
     IsStepsSolver = ( Solver % SolverMode == SOLVER_MODE_STEPS ) 
 
@@ -2326,14 +2326,14 @@ CONTAINS
         Solver % Variable % Values => Null(); RETURN
     END IF
     !------------------------------------------------------------------------------
-	
+
     !------------------------------------------------------------------------------
     ! If soft limiters are applied then also loads must be computed
     !------------------------------------------------------------------------------
     IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found) ) THEN
       CALL ListAddLogical( Solver % Values,'Calculate Loads',.TRUE.)
     END IF
-	    
+    
     !------------------------------------------------------------------------------
     ! Create the variable needed for the computation of nodal loads and
     ! residual: r=b-Ax. The difference here is at what stage A and b are stored.     
@@ -4478,7 +4478,7 @@ CONTAINS
         IF(.NOT. GotIt) ScaleSystem = .TRUE.
         
         IF( ScaleSystem ) THEN
-	  CALL Info('BlockSolver','Applying scaling',Level=8)
+          CALL Info('BlockSolver','Applying scaling',Level=8)
           CALL ScaleLinearSystem(Solver, SolverMatrix, &
               SolverMatrix % Rhs, Solver % Variable % Values )
           CALL ListAddLogical( Solver % Values,'Linear System Scaling',.FALSE.)
@@ -4578,7 +4578,7 @@ CONTAINS
       ! related to nonlinearity and assembly.
       !----------------------------------------------------------------------
       IF( NoVar == 1 ) THEN
-	CALL Info('BlockSolver','Solving in standard manner',Level=8)
+        CALL Info('BlockSolver','Solving in standard manner',Level=8)
 
         Solver % Variable => TotMatrix % SubVector(1) % Var
         Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
@@ -4587,14 +4587,14 @@ CONTAINS
         MaxChange = Solver % Variable % NonlinChange 
 
       ELSE IF( BlockPrec ) THEN
-	CALL Info('BlockSolver','Using block preconditioning strategy',Level=8)        
+        CALL Info('BlockSolver','Using block preconditioning strategy',Level=8)        
         CALL BlockKrylovIter( Solver, MaxChange )
 
       ELSE
         Solver % Variable => TotMatrix % SubVector(1) % Var
         Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
 
-	CALL Info('BlockSolver','Using block solution strategy',Level=8)
+        CALL Info('BlockSolver','Using block solution strategy',Level=8)
         CALL BlockStandardIter( Solver, MaxChange )
       END IF      
       CALL ListPopNameSpace()
@@ -4696,7 +4696,7 @@ CONTAINS
         xNorm = ComputeNorm(Solver, n, x)
         bNorm = ComputeNorm(Solver, n, b)
 
-	res = 0.0_dp        
+        res = 0.0_dp        
         rtmp = 0.0_dp  
         
         DO NoCol = 1,NoVar           
@@ -4722,7 +4722,7 @@ CONTAINS
         ELSE
           res = res - b
         END IF
-	
+
         rNorm = ComputeNorm(Solver, n, res)
 
         ! PRINT *,'comp norms:',NoRow,Rnorm,Xnorm
