@@ -127,20 +127,16 @@ jobs:
             echo "::group::Content of ${test_root}/${test}"
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
-            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
-              for err_log in "${err_logs[@]}"; do
-                echo ---- Content of ${err_log} ----
-                cat ${err_log}
-              done
-            fi
-            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
-              for out_log in "${out_logs[@]}"; do
-                echo ---- Content of ${out_log} ----
-                cat ${out_log}
-              done
-            fi
+            err_logs=($(ls ${test_root}/${test}/test-stderr*.log 2>/dev/null))
+            for err_log in "${err_logs[@]}"; do
+              echo ---- Content of ${err_log} ----
+              cat ${err_log}
+            done
+            out_logs=($(ls ${test_root}/${test}/test-stdout*.log 2>/dev/null))
+            for out_log in "${out_logs[@]}"; do
+              echo ---- Content of ${out_log} ----
+              cat ${out_log}
+            done
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"
