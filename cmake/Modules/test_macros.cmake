@@ -162,8 +162,17 @@ MACRO(RUN_ELMER_TEST)
     # MPI progress needed for the frequent Allreduce calls in the parallel
     # solvers. This turns oversubscription into a multi-minute stall instead
     # of a graceful slowdown. PASSIVE makes idle threads yield immediately.
-    IF(NOT DEFINED ENV{OMP_WAIT_POLICY})
-      SET(ENV{OMP_WAIT_POLICY} "PASSIVE")
+    #
+    # Only for the multi-task tests. A single task cannot oversubscribe this
+    # way: OMP_NUM_THREADS is set to PHYS_CPU/MPIEXEC_NTASKS just below, so at
+    # one task the product is exactly the core count. The stall this works
+    # around, and the measurement motivating it, are both from the _npN tests,
+    # so setting it for the serial ones only changed idle thread behaviour in
+    # several hundred tests that had nothing to gain from it.
+    IF(${MPIEXEC_NTASKS} GREATER 1)
+      IF(NOT DEFINED ENV{OMP_WAIT_POLICY})
+        SET(ENV{OMP_WAIT_POLICY} "PASSIVE")
+      ENDIF()
     ENDIF()
 
     IF(NOT DEFINED ENV{OMP_NUM_THREADS})
