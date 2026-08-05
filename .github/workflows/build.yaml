@@ -174,9 +174,17 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          # -j2 instead of -j$(nproc) on the MPI+OpenMP job. The hosted runners
+          # have 4 vCPUs on 2 physical cores and the test macro derives
+          # OMP_NUM_THREADS from the physical core count, so -j$(nproc) ran
+          # 4 tests x 2 OpenMP threads on 4 vCPUs. Trying whether backing that
+          # 2x oversubscription off changes the intermittent SIGSEGVs seen
+          # inside PMIx during MPI init. The other entries keep -j$(nproc):
+          # all but one build without OpenMP, and the one that does (gcc,
+          # no MPI) has no MPI stack for oversubscription to destabilise.
           ctest . \
             -LE slow \
-            -j$(nproc) \
+            -j$([ "${{ matrix.mpi }}" == "with" ] && [ "${{ matrix.openmp }}" == "with" ] && echo 2 || nproc) \
             --timeout 600
 
       - name: Re-run tests

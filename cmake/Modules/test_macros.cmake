@@ -163,16 +163,15 @@ MACRO(RUN_ELMER_TEST)
     # solvers. This turns oversubscription into a multi-minute stall instead
     # of a graceful slowdown. PASSIVE makes idle threads yield immediately.
     #
-    # Only for the multi-task tests. A single task cannot oversubscribe this
-    # way: OMP_NUM_THREADS is set to PHYS_CPU/MPIEXEC_NTASKS just below, so at
-    # one task the product is exactly the core count. The stall this works
-    # around, and the measurement motivating it, are both from the _npN tests,
-    # so setting it for the serial ones only changed idle thread behaviour in
-    # several hundred tests that had nothing to gain from it.
-    IF(${MPIEXEC_NTASKS} GREATER 1)
-      IF(NOT DEFINED ENV{OMP_WAIT_POLICY})
-        SET(ENV{OMP_WAIT_POLICY} "PASSIVE")
-      ENDIF()
+    # This applies to the single-task tests too. It was briefly narrowed to
+    # MPIEXEC_NTASKS > 1 on the reasoning that one task cannot oversubscribe,
+    # since OMP_NUM_THREADS is set to PHYS_CPU/MPIEXEC_NTASKS just below. That
+    # reasoning ignores ctest -j: N serial tests running concurrently, each
+    # with OMP_NUM_THREADS = PHYS_CPU, oversubscribe by a factor of N. The
+    # serial tests got markedly slower with the narrowing in place, so it is
+    # reverted.
+    IF(NOT DEFINED ENV{OMP_WAIT_POLICY})
+      SET(ENV{OMP_WAIT_POLICY} "PASSIVE")
     ENDIF()
 
     IF(NOT DEFINED ENV{OMP_NUM_THREADS})
