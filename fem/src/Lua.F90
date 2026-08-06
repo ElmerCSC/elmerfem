@@ -36,8 +36,8 @@
 
 #include <../config.h>
 
-#define lua_upvalueindex(i)	(LUA_GLOBALSINDEX-(i))
-#define LUA_GLOBALSINDEX	(-10002)
+#define lua_upvalueindex(i)  (LUA_GLOBALSINDEX-(i))
+#define LUA_GLOBALSINDEX     (-10002)
 !-------------------------------------------------------------------------------
 module Lua ! {{{
 !-------------------------------------------------------------------------------

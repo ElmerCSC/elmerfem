@@ -6104,14 +6104,14 @@ END SUBROUTINE FindNeighbourNodes
        Hit = .FALSE.
        IF(t <= Mesh % NumberOfBulkElements) THEN
           l = CurrentElement % BodyId
-	  bf_id = ListGetInteger( Model % Bodies(l) % Values, 'Body Force',Found)
-	  IF( bf_id>0 ) THEN
+          bf_id = ListGetInteger( Model % Bodies(l) % Values, 'Body Force',Found)
+          IF( bf_id>0 ) THEN
             IF( MaskIsLogical ) THEN
               Hit = ListGetLogical( Model % BodyForces(bf_id) % Values, MaskName, Found )
             ELSE
               Hit = ListCheckPresent( Model % BodyForces(bf_id) % Values, MaskName )
             END IF
-	  END IF 
+          END IF 
        ELSE
           DO l=1, Model % NumberOfBCs
             IF ( Model % BCs(l) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
@@ -6853,7 +6853,7 @@ END SUBROUTINE FindNeighbourNodes
 
     n = Mesh % MaxElementNodes
     ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), STAT=istat)
-    IF( istat /= 0 ) CALL Fatal('ClosestElementInMesh','Memory allocation error') 	
+    IF( istat /= 0 ) CALL Fatal('ClosestElementInMesh','Memory allocation error')
     ElemIndx = 0
     MinDist = HUGE( MinDist ) 
     Hit = .FALSE.
@@ -6892,7 +6892,7 @@ END SUBROUTINE FindNeighbourNodes
     ! If there was no proper hit go through the best candidates so far and 
     ! see if they would give a acceptable hit
     !----------------------------------------------------------------------
-    IF( ParallelHits < 0.5_dp ) THEN	  
+    IF( ParallelHits < 0.5_dp ) THEN  
 
       ! Compute the number of parallel candidates
       !------------------------------------------
@@ -6917,10 +6917,10 @@ END SUBROUTINE FindNeighbourNodes
         !--------------------------------------------------------------------------------------
         IF( ParallelCands > 1.5_dp ) THEN
           Hit = PointInElement( Element, ElementNodes, &
-              Coords, LocalCoords, GlobalEps = 1.0d-3, LocalEps=1.0d-4 )	
+              Coords, LocalCoords, GlobalEps = 1.0d-3, LocalEps=1.0d-4 )
         ELSE
           Hit = PointInElement( Element, ElementNodes, &
-              Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	
+              Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )
         END IF
       END IF
     END IF

@@ -188,16 +188,16 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
       rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++) {
-	nnz = rows[i+1]-rows[i];
-	if ( nnz>csize ) {
-	  csize = nnz+csize;
-	  rcols = (int *)realloc( rcols, csize*sizeof(int) );
-	}
-	irow=globaldofs[i];
-	for( k=0,j=rows[i]; j<rows[i+1]; j++,k++) {
-	  rcols[k] = globaldofs[cols[j-1]-1];
-	}
-	HYPRE_IJMatrixAddToValues(A, 1, &nnz, &irow, rcols, &vals[rows[i]-1]);
+        nnz = rows[i+1]-rows[i];
+        if ( nnz>csize ) {
+          csize = nnz+csize;
+          rcols = (int *)realloc( rcols, csize*sizeof(int) );
+        }
+        irow=globaldofs[i];
+        for( k=0,j=rows[i]; j<rows[i+1]; j++,k++) {
+          rcols[k] = globaldofs[cols[j-1]-1];
+        }
+        HYPRE_IJMatrixAddToValues(A, 1, &nnz, &irow, rcols, &vals[rows[i]-1]);
       }
       free( rcols );
    }
@@ -254,13 +254,13 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
        for (j=rows[i];j<rows[i+1];j++) {
          jcol = globaldofs[cols[j-1]-1];
          /*TODO - is the block ordering preserved in the linear numbering?
-	   Here we assume it is.
-	 */
+             Here we assume it is.
+         */
          if ((irow%*BILU)==(jcol%*BILU)) {
-	   rcols[nnz] = jcol;
+           rcols[nnz] = jcol;
            dbuf[nnz] = vals[j-1];
            nnz++;
-	 }
+         }
        }
        HYPRE_IJMatrixAddToValues(Atilde, 1, &nnz, &irow, rcols, dbuf);
      }
@@ -353,8 +353,8 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_BoomerAMGSetSmoothType(precond, hypre_intpara[5]);  /* smoother type */
      HYPRE_BoomerAMGSetCycleType(precond, hypre_intpara[6]);  /* coarsening type */
      /* threshold for strong coupling (default 0.25 recommended for 2D Laplace, 0.5-0.6 
-	for 3D Laplace, 0.9 for elasticity) */
-     HYPRE_BoomerAMGSetStrongThreshold(precond, hypre_dppara[0]);  	 
+        for 3D Laplace, 0.9 for elasticity) */
+     HYPRE_BoomerAMGSetStrongThreshold(precond, hypre_dppara[0]);
      
      if( myverb > 10) fprintf(stdout,"SolveHypre: Created BoomerAMG preconditioner!\n");
 
@@ -499,16 +499,16 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the PCG preconditioner */
      if( hypre_pre == 1){
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
      } else if ( hypre_pre == 4) { 
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
        
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up PCG linear system");
@@ -534,16 +534,16 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the BiCGStabl preconditioner */
      if(hypre_pre == 1) {
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                   (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+                   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
      } else if (hypre_pre == 4) { 
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up BiCGStab linear system");
      HYPRE_ParCSRBiCGSTABSetup(solver, parcsr_A, par_b, par_x);     
@@ -569,16 +569,16 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
      if( hypre_pre == 1){
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre  == 3) {
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
      } else if (hypre_pre == 4) { 
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
        
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up GMRes linear system");
@@ -605,16 +605,16 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the FlexGMRES preconditioner */
      if( hypre_pre == 1) {
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				 (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
      } else if ( hypre_pre == 4) { 
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up FlexGMRes linear system");
      HYPRE_ParCSRFlexGMRESSetup(solver, parcsr_A, par_b, par_x);
@@ -642,17 +642,17 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the LGMRES preconditioner */
      if( hypre_pre == 1){
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				 (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      }
      else if ( hypre_pre  == 3) {
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
      } else if ( hypre_pre == 4) { 
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
        
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up LGMRes linear system");
@@ -684,16 +684,16 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the COGMRES preconditioner */
      if(hypre_pre == 1) {
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
      } else if (hypre_pre == 4) { 
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
        
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up COGMRes linear system");
@@ -716,7 +716,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    Container->precond = precond;
    
    if (myverb > 5) fprintf( stdout, "SolveHypre: setup time (method %d): %g\n", 
-			    Container->hypre_method, realtime_()-st );
+           Container->hypre_method, realtime_()-st );
    
 } /* SolveHypre1 - matrix conversion and solver setup */
 
@@ -960,9 +960,9 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
      if ( owner[i] ) xvec[i] = txvec[k++];
 
    if(myverb > 5) fprintf(stdout,"SolveHypre: Required iterations %d (method %d) to norm %lg\n",
-			  num_iterations,Container->hypre_method, final_res_norm);   
+                  num_iterations,Container->hypre_method, final_res_norm);   
    if (myverb > 4) fprintf( stdout, "SolveHypre: Solution time (method %d): %g\n", 
-			    Container->hypre_method, realtime_()-st );
+                  Container->hypre_method, realtime_()-st );
    free( txvec );
    free( rcols );
    
@@ -1124,8 +1124,8 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    for( i=0; i<local_size; i++ )
      {
        if ( owner[i] ) {
-	 if ( iupper < globaldofs[i] ) iupper=globaldofs[i];
-	 if ( ilower > globaldofs[i] ) ilower=globaldofs[i];
+         if ( iupper < globaldofs[i] ) iupper=globaldofs[i];
+         if ( ilower > globaldofs[i] ) ilower=globaldofs[i];
        }
      }
 
@@ -1135,8 +1135,8 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    for( i=0; i<local_nodes; i++ )
      {
        if ( nodeowner[i] ) {
-	 if ( nupper < globalnodes[i] ) nupper=globalnodes[i];
-	 if ( nlower > globalnodes[i] ) nlower=globalnodes[i];
+         if ( nupper < globalnodes[i] ) nupper=globalnodes[i];
+         if ( nlower > globalnodes[i] ) nlower=globalnodes[i];
        }
      }
 #else
@@ -1288,7 +1288,7 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    
    HYPRE_AMSSetCycleType(precond, hypre_intpara[1]); // 1-14
    HYPRE_AMSSetSmoothingOptions(precond, hypre_intpara[2], hypre_intpara[3],
-				hypre_dppara[1], hypre_dppara[2]);
+           hypre_dppara[1], hypre_dppara[2]);
    HYPRE_AMSSetAlphaAMGOptions(precond, 10, 1, 3, hypre_dppara[3], 0, 0);
    HYPRE_AMSSetBetaAMGOptions(precond, 10, 1, 3, hypre_dppara[4], 0, 0);
 

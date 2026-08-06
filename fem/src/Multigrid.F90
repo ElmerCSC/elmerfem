@@ -6005,7 +6005,7 @@ CONTAINS
         DO j=Solver % MultiGridTotal, MinLevel,-1
           k = Solver % MultiGridTotal - j + 1
 
-	  IF( .NOT. ALLOCATED(TmpMatrix % Grows)) CYCLE
+          IF( .NOT. ALLOCATED(TmpMatrix % Grows)) CYCLE
 
           NULLIFY( Clustering ) 
           ALLOCATE( Clustering(OrigSize), STAT=istat)

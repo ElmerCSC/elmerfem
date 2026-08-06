@@ -518,7 +518,7 @@
 
       n = COUNT(.NOT. FoundNodes )           
       IF(n>0) CALL Info('InterpolateMeshToMesh',&
-	'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
+       'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
       
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
       DEALLOCATE( FoundNodes ) 

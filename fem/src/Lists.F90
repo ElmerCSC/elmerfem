@@ -1093,7 +1093,7 @@ CONTAINS
          CALL Info('ReleaseVariableList','Trying to release variable: '//TRIM(Var % Name))
        END IF
        
-	IF( Var % Secondary ) THEN
+       IF( Var % Secondary ) THEN
           Var => Var % Next
           CYCLE
         END IF
@@ -10102,7 +10102,7 @@ CONTAINS
         IF ( VarDim == 1 ) THEN
           Set = .TRUE. 
           
-	  str =  ' '
+          str =  ' '
           j = LEN_TRIM(Var % Name)
           DO i=1,j
             str(i:i) = Var % Name(i:i)
@@ -10136,11 +10136,11 @@ CONTAINS
             IF( Comp == 1 ) THEN
               ! If we have the 1st component we need at least dim (2 or 3) components
               ! to have a vector.
-              Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
+              Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)
 
               ! However, if the 4th component also exists then this cannot be a vector
               IF( ASSOCIATED(Var1)) THEN
-                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
+                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)
                 IsVector = .NOT. ASSOCIATED(Var1)
               END IF
               
@@ -10150,13 +10150,13 @@ CONTAINS
 
               ! 2D: 2 or 3 components
               ! 3D: 3 components
-              Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' 1',ThisOnly)		
+              Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' 1',ThisOnly)
               IF( ASSOCIATED( Var1 ) ) THEN
-                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)		
+                Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(4),ThisOnly)
                 Set = ASSOCIATED( Var1 )
                 IF( .NOT. Set ) THEN
                   IF( Comp == 2 .AND. dim == 3 ) THEN
-                    Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)		
+                    Var1 => VariableGet(Variables,TRIM(str(1:j-2))//' '//I2S(dim),ThisOnly)
                     Set = .NOT. ASSOCIATED( Var1 )
                   END IF
                 END IF

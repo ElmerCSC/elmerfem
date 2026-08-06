@@ -2664,7 +2664,7 @@ CONTAINS
      body_id = CurrElement % BodyId 
 
      IF ( PRESENT( Found ) ) THEN
-	bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+       bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
            'Body Force', Found, minv=1,maxv=CurrentModel % NumberOfBodyForces )
      ELSE
         bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
@@ -4177,7 +4177,7 @@ CONTAINS
 
     IF( ListGetLogical( Params,'Linear System Remove Zeros',Found ) ) THEN
       CALL CRS_RemoveZeros( Solver % Matrix )
-    END IF	
+    END IF
         
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
@@ -5956,9 +5956,9 @@ CONTAINS
      IF( ListGetLogical( Params,'Apply Limiter',Found) ) THEN
        IF( ListGetLogical( Params,'Linear System Limiter',Found) ) THEN               
          ! This is intended for cases when the linear solver comes with limiters. 
-         CALL PopulateLimiterValues( Solver )	
+         CALL PopulateLimiterValues( Solver )
        ELSE
-         CALL DetermineSoftLimiter( Solver )	
+         CALL DetermineSoftLimiter( Solver )
 
          ! It is difficult to determine whether loads should be computed before or after setting the limiter.
          ! There are cases where both alternative are needed.
@@ -6479,7 +6479,7 @@ CONTAINS
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
                    IF (.NOT. ASSOCIATED(Face)) CYCLE
                    NoEdges = Face % TYPE % NumberOfEdges
-		   Face % BodyId = Parent % BodyId                      
+                   Face % BodyId = Parent % BodyId                      
 
                    IF ( ActiveBoundaryElement(Face) ) THEN
                      BCMode = 2
@@ -7486,7 +7486,7 @@ CONTAINS
       END IF
     END IF
 
-    IF( GetLogical( Params,'Bulk System Multiply',Found ) ) THEN	
+    IF( GetLogical( Params,'Bulk System Multiply',Found ) ) THEN
       CALL Info('DefaultFinishBulkAssembly','Multiplying matrix equation',Level=10)
       CALL LinearSystemMultiply( PSolver )
     END IF
@@ -7596,7 +7596,7 @@ CONTAINS
     ! Create contact BCs using mortar conditions.
     !---------------------------------------------------------------------
     IF( ListGetLogical( Params,'Apply Contact BCs',Found) ) THEN
-      CALL DetermineContact( PSolver )	
+      CALL DetermineContact( PSolver )
     END IF
 
     IF( InfoActive( 30 ) ) THEN

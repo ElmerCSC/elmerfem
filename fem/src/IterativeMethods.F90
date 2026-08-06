@@ -1301,9 +1301,9 @@ CONTAINS
               //I2S(n)//' x '//I2S(m-1))
         END IF
         
-         V(1:n,1:m-1) = 0.0d0	
+         V(1:n,1:m-1) = 0.0d0
          S(1:n,1:m-1) = 0.0d0
-      END IF	
+      END IF
       
       CALL C_matvec( x, r, ipar, matvecsubr )
       r(1:n) = b(1:n) - r(1:n)
@@ -1405,7 +1405,7 @@ CONTAINS
          IF ( j /= m ) THEN
            S(1:n,j) = T1(1:n)
            V(1:n,j) = T2(1:n)
-	 END IF       
+         END IF       
 
          !--------------------------------------------------------------
          ! Check whether the convergence criterion is met 
@@ -2529,7 +2529,7 @@ CONTAINS
          czero = CMPLX( 0.0_dp, 0.0_dp, KIND=dp )
          V(1:n,1:m-1) = czero
          S(1:n,1:m-1) = czero
-      END IF	
+      END IF
       
       CALL matvecsubr( x, r, ipar )
       r(1:n) = b(1:n) - r(1:n)
@@ -2547,8 +2547,8 @@ CONTAINS
       IF( Converged .OR. Diverged) RETURN
       
       DO k=1,Rounds
-	 !----------------------------------------------
-	 ! Check for restarting
+         !----------------------------------------------
+         ! Check for restarting
          !--------------------------------------------- 
          IF ( MOD(k,m)==0 ) THEN
             j = m
@@ -2587,10 +2587,10 @@ CONTAINS
          beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
          x(1:n) = x(1:n) + beta * T1(1:n)      
          r(1:n) = r(1:n) - beta * T2(1:n)
-	 IF ( j /= m ) THEN
+         IF ( j /= m ) THEN
             S(1:n,j) = T1(1:n)
             V(1:n,j) = T2(1:n)
-	 END IF       
+         END IF       
 
          !--------------------------------------------------------------
          ! Check whether the convergence criterion is met 

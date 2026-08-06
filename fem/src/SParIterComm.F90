@@ -1755,7 +1755,7 @@ CONTAINS
         commonlist = Facen(i) % Neighbours(2:)
         DEALLOCATE(Facen(i) % Neighbours)
         Facen(i) % Neighbours => commonlist
-	IF ( k==2 ) Facen(i) % Interface=.FALSE.
+        IF ( k==2 ) Facen(i) % Interface=.FALSE.
       END IF
     END DO
 

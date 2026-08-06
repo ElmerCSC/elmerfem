@@ -212,7 +212,7 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
       // WRITE OUT MATRIX (REMOVE)
       //AMGX_write_system(ptr->A, ptr->b, ptr->x, "mymatrix.dat");
       //exit(0);
-		  
+
       AMGX_solver_setup(ptr->solver, ptr->A);
       AMGX_solver_solve(ptr->solver, ptr->b, ptr->x);
 

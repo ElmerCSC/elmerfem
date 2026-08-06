@@ -580,7 +580,7 @@
            Solver => CurrentModel % Solvers(i)
            IF( ListGetLogical( Solver % Values, 'Initialize Exported Variables', GotIt ) ) THEN
              CurrentModel % Solver => Solver
-             CALL UpdateExportedVariables( Solver )	 
+             CALL UpdateExportedVariables( Solver ) 
            END IF
          END DO
        END IF
@@ -3469,8 +3469,8 @@
             GOTO 100
          END IF
 
-	 exitcond = ListGetCReal( CurrentModel % Simulation,'Exit Condition',GotIt)
-	 IF( GotIt .AND. exitcond > 0.0_dp ) THEN
+         exitcond = ListGetCReal( CurrentModel % Simulation,'Exit Condition',GotIt)
+         IF( GotIt .AND. exitcond > 0.0_dp ) THEN
             CALL Info('MAIN','Found a positive exit condition, exiting...',Level=3)
             GOTO 100
          END IF

@@ -90,13 +90,13 @@ MODULE Types
                         
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
-	                      SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
-	                      SOLVER_MODE_ASSEMBLY = 2, &   ! coupled solver with single block
-	                      SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
-	                      SOLVER_MODE_BLOCK = 4, &      ! block solver
-	                      SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
-	                      SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
-                              SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
+                        SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
+                        SOLVER_MODE_ASSEMBLY = 2, &   ! coupled solver with single block
+                        SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
+                        SOLVER_MODE_BLOCK = 4, &      ! block solver
+                        SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
+                        SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
+                        SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector

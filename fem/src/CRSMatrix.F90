@@ -1105,9 +1105,9 @@ CONTAINS
      INTEGER, INTENT(IN) :: RowDofs  !< Number of dofs for row variable
      INTEGER, INTENT(IN) :: ColDofs  !< Number of dofs for column variable
      INTEGER, INTENT(IN) :: Col0     !< Offset for column variable
-	 INTEGER, INTENT(IN) :: Row0     !< Offset for row variable
+     INTEGER, INTENT(IN) :: Row0     !< Offset for row variable
      INTEGER, INTENT(IN) :: RowInds(:)  !< Permutation of the row dofs
-	 INTEGER, INTENT(IN) :: ColInds(:)  !< Permutation of the column dofs
+     INTEGER, INTENT(IN) :: ColInds(:)  !< Permutation of the column dofs
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,l,c,Row,Col
      INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)

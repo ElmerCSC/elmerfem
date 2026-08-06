@@ -1756,9 +1756,9 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the equilateral triangle used in the description of p-elements.
-	 ! We map the original integration points into their counterparts on the
-	 ! p-reference element and scale the weights by the determinant of the
-	 ! deformation gradient associated with the change of reference element.
+         ! We map the original integration points into their counterparts on the
+         ! p-reference element and scale the weights by the determinant of the
+         ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
         DO i=1,P % n
@@ -1997,9 +1997,9 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the regular tetrahedron used in the description of p-elements
-	 ! We map the original integration points into their counterparts on the
-	 ! p-reference element and scale the weights by the determinant of the
-	 ! deformation gradient associated with the change of reference element.
+         ! We map the original integration points into their counterparts on the
+         ! p-reference element and scale the weights by the determinant of the
+         ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
         DO i=1,P % n

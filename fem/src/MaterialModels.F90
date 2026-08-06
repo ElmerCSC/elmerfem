@@ -597,7 +597,7 @@ this ise not in USE
      ! for backward compatibility this is activated by an existing keyword
      !--------------------------------------------------------------------
      c1 = ListGetConstReal( Material, 'Viscosity Temp Exp',GotIt)
-     IF( GotIt ) THEN 	
+     IF( GotIt ) THEN
         TempSol => VariableGet( CurrentModel % Variables, 'Temperature' )
         IF ( ASSOCIATED( TempSol) ) THEN
            TempPerm    => TempSol % Perm

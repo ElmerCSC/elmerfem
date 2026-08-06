@@ -75,7 +75,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(Nodes_t), POINTER :: MeshNodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit, bc_ind, jmin, jmax, elemmax
+        UpHit, DownHit, bc_ind, jmin, jmax, elemmax
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
@@ -175,20 +175,20 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 2')
     ELSE 
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
-    END IF	      
+    END IF
 
     CALL Info(Caller,'Variable used to detect extrusion: '//TRIM(Var % Name),Level=10)
     IF( MaskExists .OR. DoCoordTransform) THEN
       DO i=1,Mesh % NumberOfNodes
         j = i
-	IF( MaskExists ) THEN
+        IF( MaskExists ) THEN
           j = MaskPerm(i)
           IF( j == 0 ) CYCLE
         END IF
         Vector(1) = Mesh % Nodes % x(i)
-	Vector(2) = Mesh % Nodes % y(i)
-	Vector(3) = Mesh % Nodes % z(i)
-	IF( DoCoordTransform ) THEN
+        Vector(2) = Mesh % Nodes % y(i)
+        Vector(3) = Mesh % Nodes % z(i)
+        IF( DoCoordTransform ) THEN
           CALL CoordinateTransformationNodal( CoordTransform, Vector )
         END IF
         Values(j) = Vector( ActiveDirection )
@@ -274,10 +274,10 @@ CONTAINS
         ii = NodeIndexes(i)
         
         Vector(1) = Nodes % x(i)
-	Vector(2) = Nodes % y(i) 
+        Vector(2) = Nodes % y(i) 
         Vector(3) = Nodes % z(i)
         
- 	IF( DoCoordTransform ) THEN
+        IF( DoCoordTransform ) THEN
           CALL CoordinateTransformationNodal( CoordTransform, Vector )
         END IF
 
@@ -287,11 +287,11 @@ CONTAINS
         DO j=i+1,n
           jj = NodeIndexes(j)
           
-	  Vector2(1) = Nodes % x(j)
+          Vector2(1) = Nodes % x(j)
           Vector2(2) = Nodes % y(j)
           Vector2(3) = Nodes % z(j)
 
-	  IF( DoCoordTransform ) THEN
+          IF( DoCoordTransform ) THEN
             CALL CoordinateTransformationNodal( CoordTransform, Vector2 )
           END IF
           
@@ -736,7 +736,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(Nodes_t), POINTER :: MeshNodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit, bc_ind
+       UpHit, DownHit, bc_ind
     INTEGER, POINTER :: NodeIndexes(:)
     LOGICAL :: UpActive, DownActive, GotIt, Found
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
@@ -790,7 +790,7 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 2')
     ELSE 
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
-    END IF	      
+    END IF      
 
     IF( PRESENT( ExtVar ) ) ExtVar => Var
 
@@ -908,7 +908,7 @@ CONTAINS
         IF( DownActive ) THEN
           j = DownPointer(i)
           IF( BotPointer(i) /= BotPointer( j ) ) THEN
-	    DownHit = DownHit + 1
+            DownHit = DownHit + 1
             BotPointer(i) = BotPointer( j )
           END IF
         END IF

@@ -3400,7 +3400,7 @@ END FUNCTION SearchNodeL
     END IF
     IF( DoIt ) THEN
       CALL Info(Caller,'Updating exported variables',Level=20)
-      CALL UpdateExportedVariables( Solver )	
+      CALL UpdateExportedVariables( Solver )
     END IF
 
     
@@ -3416,7 +3416,7 @@ END FUNCTION SearchNodeL
     END IF
     IF( DoIt ) THEN
       CALL Info(Caller,'Updating components',Level=20)
-      CALL UpdateDependentComponents( UpdateComponents )	
+      CALL UpdateDependentComponents( UpdateComponents )
     END IF
 
     ! Compute derivative of solution with time i.e. velocity 
@@ -3528,7 +3528,7 @@ END FUNCTION SearchNodeL
       A => Solver % Matrix
     END IF
             
-    IF(SteadyState) THEN	
+    IF(SteadyState) THEN
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
         CALL Info(Caller,'Skipping the computation of steady state change',Level=15)
@@ -3868,7 +3868,7 @@ END FUNCTION SearchNodeL
           END IF
         END IF
         DEALLOCATE( TmpRHSVec, TmpXVec, TmpRVec )
-      ELSE	
+      ELSE
         ALLOCATE(r(n)) 
         CALL MatrixVectorMultiply( A, x, r)
         DO i=1,n
@@ -3881,7 +3881,7 @@ END FUNCTION SearchNodeL
             Change = Change / bNorm
           END IF
         END IF
-        DEALLOCATE(r)	
+        DEALLOCATE(r)
       END IF
       
     CASE('solution')      
@@ -9287,8 +9287,8 @@ END SUBROUTINE DerivateExportedVariables
         IntPerm => Solver % Variable % Perm
       END IF
       IF( ASSOCIATED( IntPerm ) ) THEN
-	NULLIFY( Solution )
-	n = MAXVAL( IntPerm ) 
+        NULLIFY( Solution )
+        n = MAXVAL( IntPerm ) 
         ALLOCATE( Solution(n))
         Solution = 0.0_dp
         CALL VariableAdd( Mesh % Variables, Mesh, Solver,&
