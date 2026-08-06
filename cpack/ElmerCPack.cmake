@@ -103,6 +103,16 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
       SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 10.2.0")
     ENDIF()
 
+    OPTION(BUNDLE_MSYS2_PACKAGES "Bundle additional packages from MSYS2" OFF)
+    IF(BUNDLE_MSYS2_PACKAGES)
+      # default value for the prefix where the packages are installed/extracted
+      SET(BUNDLE_MSYS2_PACKAGES_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../msys2_prefix"
+          CACHE STRING "Prefix with the MSYS2 packages for the Windows installer")
+      INSTALL(DIRECTORY "${BUNDLE_MSYS2_PACKAGES_PREFIX}/" DESTINATION "." COMPONENT "MSYS2_PACKAGES")
+      SET(CPACK_COMPONENT_MSYS2_PACKAGES_DESCRIPTION "Additional packages from MSYS2 (e.g., gfortran).")
+      SET(CPACK_COMPONENT_MSYS2_PACKAGES_DISPLAY_NAME "MSYS2 packages")
+    ENDIF()
+
     IF(WITH_MPI)
       IF(BUNDLE_MSMPI_REDIST)
         INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/msmpisetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
