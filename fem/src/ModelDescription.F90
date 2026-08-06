@@ -1636,13 +1636,21 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     RECURSIVE SUBROUTINE SectionContents( Model,List, CheckAbort,FreeNames, &
-              Section, InFileUnit, ScanOnly, Echo )
+              Section, InFileUnit, ScanOnly, Echo, KeyPrefix0 )
 !------------------------------------------------------------------------------
       TYPE(ValueList_t), POINTER :: List,ll
       INTEGER :: InFileUnit,CheckAbort
       TYPE(Model_t) :: Model
       LOGICAL :: FreeNames,Echo
       CHARACTER(LEN=*)  :: Section
+      !> Keyword block prefix in force at the point of an include, so an
+      !> included file continues inside the enclosing block. Absent at top
+      !> level. Note ReadAndTrim already splices most includes inline through
+      !> its own IncludeUnit stack, so they are read in this same frame and
+      !> inherit the prefix regardless; this argument exists so the explicit
+      !> include branch below behaves identically rather than silently not
+      !> inheriting.
+      CHARACTER(LEN=*), OPTIONAL :: KeyPrefix0
 
       INTEGER, ALLOCATABLE  :: IValues(:)
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
@@ -1660,17 +1668,90 @@ CONTAINS
       
       CHARACTER(*), PARAMETER :: Caller = 'SectionContents'
 
+      ! Keyword grouping blocks, see the comment at the head of the read loop.
+      INTEGER, PARAMETER :: MAX_KEY_BLOCKS = 32
+      CHARACTER(LEN=:), ALLOCATABLE :: KeyPrefix
+      INTEGER :: BlockLen(MAX_KEY_BLOCKS), BlockDepth, nlen0
+
       ALLOCATE( ATt(1), ATx(1,1,1), IValues(1) )
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Name)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Depname)
-      
+
+      ! An included file inherits the block prefix in force at the include, but
+      ! not the depth: it may open and must close its own blocks, and cannot
+      ! close one opened by the includer. This applies to the explicit include
+      ! branch below; includes spliced by ReadAndTrim are read in this frame and
+      ! so share both prefix and depth, meaning a block may legitimately span
+      ! the include boundary there.
+      KeyPrefix  = ''
+      IF ( PRESENT( KeyPrefix0 ) ) KeyPrefix = KeyPrefix0
+      BlockDepth = 0
 
       Name = ''
       DO WHILE( ReadAndTrim( InFileUnit,Name,Echo ) )
 
         IF ( Name == '' .OR. Name == ' ')  CYCLE
+
+        !-------------------------------------------------------------------
+        ! Keyword grouping blocks:
+        !
+        !   Linear System [
+        !     Solver = Iterative
+        !     Convergence Tolerance = 1.0e-9
+        !     Preconditioning [
+        !       Method = ILU1
+        !     ]
+        !   ]
+        !
+        ! A line whose last character is '[' opens a block, a line that is
+        ! just ']' closes it, and blocks nest. This is purely lexical: the
+        ! block name is prepended to each keyword inside, so the rest of the
+        ! parser, CheckKeyword, SOLVER.KEYWORDS, the ValueList and every
+        ! solver still see exactly the flat keyword they see today
+        ! ("linear system convergence tolerance", "linear system
+        ! preconditioning method"). Nothing downstream changes and existing
+        ! sif files are unaffected.
+        !
+        ! Brackets are safe as the delimiter. ReadAndTrim has already
+        ! evaluated and consumed any $ MATC block before we get here, so a
+        ! '[' surfacing as a keyword name cannot have come from MATC -- which
+        ! is what rules out braces, whose MATC bodies ("else {", "if (y>0) {")
+        ! are indistinguishable from block openers. Brackets do occur in sif
+        ! files, but only inside values after '=', which never reach here.
+        !
+        ! Values are newline separated. Comma separated one-liners
+        ! ("Linear System [ Solver = x, Tolerance = y ]") would additionally
+        ! need comma splitting in ReadAndTrim, where commas already occur in
+        ! MATC arguments; deliberately left for later, the syntax above is
+        ! forward compatible with it.
+        !-------------------------------------------------------------------
+        nlen0 = LEN_TRIM(Name)
+
+        IF ( nlen0 == 1 .AND. Name(1:1) == ']' ) THEN
+          IF ( BlockDepth <= 0 ) CALL Fatal( Caller, &
+              'Unmatched "]" in section: '//TRIM(Section) )
+          KeyPrefix  = KeyPrefix(1:BlockLen(BlockDepth))
+          BlockDepth = BlockDepth - 1
+          CYCLE
+        END IF
+
+        IF ( Name(nlen0:nlen0) == '[' ) THEN
+          IF ( nlen0 == 1 ) CALL Fatal( Caller, &
+              'Keyword block "[" without a name in section: '//TRIM(Section) )
+          IF ( BlockDepth >= MAX_KEY_BLOCKS ) CALL Fatal( Caller, &
+              'Keyword blocks nested deeper than '//I2S(MAX_KEY_BLOCKS)// &
+              ' in section: '//TRIM(Section) )
+          BlockDepth = BlockDepth + 1
+          BlockLen(BlockDepth) = LEN(KeyPrefix)
+          KeyPrefix = KeyPrefix//TRIM(Name(1:nlen0-1))//' '
+          CYCLE
+        END IF
+
         IF ( SEQL(Name,'end') ) THEN
+          IF ( BlockDepth > 0 ) CALL Fatal( Caller, &
+              'Unclosed keyword block "'//TRIM(KeyPrefix)//'" at end of section: ' &
+              //TRIM(Section) )
           EXIT
         END IF
 
@@ -1681,10 +1762,17 @@ CONTAINS
           END IF
             
           CALL SectionContents( Model,List,CheckAbort,FreeNames, &
-                  Section,InFileUnit-1,ScanOnly, Echo )
+                  Section,InFileUnit-1,ScanOnly, Echo, KeyPrefix )
           CLOSE( InFileUnit-1 )
           CYCLE
         END IF
+
+        ! Inside a keyword block the name carries the accumulated prefix. Done
+        ! after the include branch above so an include path is never mangled --
+        ! the prefix reaches the included file through the argument instead.
+        ! Tested on the prefix rather than the depth, since an included file
+        ! inherits a non-empty prefix while starting at depth zero.
+        IF ( LEN(KeyPrefix) > 0 ) Name = KeyPrefix//TRIM(Name)
 
         TYPE = LIST_TYPE_CONSTANT_SCALAR
         N1   = 1
@@ -2330,6 +2418,15 @@ CONTAINS
 !------------------------------------------------------------------------------
       END DO
 !------------------------------------------------------------------------------
+
+      ! An unclosed keyword block has to be caught here rather than at the
+      ! 'end' branch above. When a keyword's value fails to parse, the inner
+      ! value loop keeps reading and can swallow the section's End, so the
+      ! loop above may terminate on end-of-file without ever seeing it. This
+      ! catches both routes.
+      IF ( BlockDepth > 0 ) CALL Fatal( Caller, &
+          'Unclosed keyword block "'//TRIM(KeyPrefix)//'" in section: '//TRIM(Section) )
+
       END SUBROUTINE SectionContents
 !------------------------------------------------------------------------------
 
