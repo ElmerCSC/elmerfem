@@ -1670,8 +1670,8 @@ CONTAINS
 
       ! Keyword grouping blocks, see the comment at the head of the read loop.
       INTEGER, PARAMETER :: MAX_KEY_BLOCKS = 32
-      CHARACTER(LEN=:), ALLOCATABLE :: KeyPrefix
-      INTEGER :: BlockLen(MAX_KEY_BLOCKS), BlockDepth, nlen0
+      CHARACTER(LEN=:), ALLOCATABLE :: KeyPrefix, NameRest
+      INTEGER :: BlockLen(MAX_KEY_BLOCKS), BlockDepth, nlen0, ibr
 
       ALLOCATE( ATt(1), ATx(1,1,1), IValues(1) )
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Name)
@@ -1704,14 +1704,27 @@ CONTAINS
         !     ]
         !   ]
         !
-        ! A line whose last character is '[' opens a block, a line that is
-        ! just ']' closes it, and blocks nest. This is purely lexical: the
-        ! block name is prepended to each keyword inside, so the rest of the
-        ! parser, CheckKeyword, SOLVER.KEYWORDS, the ValueList and every
-        ! solver still see exactly the flat keyword they see today
+        ! '[' opens a block and ']' closes it, and blocks nest. This is purely
+        ! lexical: the block name is prepended to each keyword inside, so the
+        ! rest of the parser, CheckKeyword, SOLVER.KEYWORDS, the ValueList and
+        ! every solver still see exactly the flat keyword they see today
         ! ("linear system convergence tolerance", "linear system
         ! preconditioning method"). Nothing downstream changes and existing
         ! sif files are unaffected.
+        !
+        ! Statements may be separated by ';' as well as by newlines, which
+        ! ReadAndTrim has always supported, so blocks can be written inline:
+        !
+        !   Linear System [ Solver = Direct; Max Iterations = 500; ]
+        !
+        ! The opener is free-form -- keywords may follow '[' on the same line.
+        ! The closer is not: ']' must start a statement, so it needs a newline
+        ! or a ';' before it. "Method = UMFPack ]" swallows the bracket into
+        ! the value and fails loudly. Making ']' terminate a value would mean
+        ! adding it to ReadAndTrim's delimiters, which every name and value in
+        ! every section passes through, and brackets legitimately end values
+        ! there ("Exported Variable 5 = Flow Solution Loads[Fx:1 ... ]"). Not
+        ! worth it to save one character.
         !
         ! Brackets are safe as the delimiter. ReadAndTrim has already
         ! evaluated and consumed any $ MATC block before we get here, so a
@@ -1719,12 +1732,6 @@ CONTAINS
         ! is what rules out braces, whose MATC bodies ("else {", "if (y>0) {")
         ! are indistinguishable from block openers. Brackets do occur in sif
         ! files, but only inside values after '=', which never reach here.
-        !
-        ! Values are newline separated. Comma separated one-liners
-        ! ("Linear System [ Solver = x, Tolerance = y ]") would additionally
-        ! need comma splitting in ReadAndTrim, where commas already occur in
-        ! MATC arguments; deliberately left for later, the syntax above is
-        ! forward compatible with it.
         !-------------------------------------------------------------------
         nlen0 = LEN_TRIM(Name)
 
@@ -1736,16 +1743,33 @@ CONTAINS
           CYCLE
         END IF
 
-        IF ( Name(nlen0:nlen0) == '[' ) THEN
-          IF ( nlen0 == 1 ) CALL Fatal( Caller, &
-              'Keyword block "[" without a name in section: '//TRIM(Section) )
-          IF ( BlockDepth >= MAX_KEY_BLOCKS ) CALL Fatal( Caller, &
-              'Keyword blocks nested deeper than '//I2S(MAX_KEY_BLOCKS)// &
-              ' in section: '//TRIM(Section) )
-          BlockDepth = BlockDepth + 1
-          BlockLen(BlockDepth) = LEN(KeyPrefix)
-          KeyPrefix = KeyPrefix//TRIM(Name(1:nlen0-1))//' '
-          CYCLE
+        ! Block opener. The '[' need not be the last thing on the line:
+        ! ReadAndTrim ends a keyword name at '=', so
+        !   Linear System [ Solver = Direct
+        ! arrives here as the single name "linear system [ solver", bracket
+        ! embedded. Split on it rather than only testing the last character,
+        ! looping so several blocks may open on one line. Whatever follows the
+        ! last bracket, if anything, is a keyword name and falls through below
+        ! to be handled as usual.
+        ibr = INDEX( Name(1:nlen0), '[' )
+        IF ( ibr > 0 ) THEN
+          DO WHILE( ibr > 0 )
+            IF ( ibr == 1 ) CALL Fatal( Caller, &
+                'Keyword block "[" without a name in section: '//TRIM(Section) )
+            IF ( BlockDepth >= MAX_KEY_BLOCKS ) CALL Fatal( Caller, &
+                'Keyword blocks nested deeper than '//I2S(MAX_KEY_BLOCKS)// &
+                ' in section: '//TRIM(Section) )
+            BlockDepth = BlockDepth + 1
+            BlockLen(BlockDepth) = LEN(KeyPrefix)
+            KeyPrefix = KeyPrefix//TRIM(Name(1:ibr-1))//' '
+            NameRest  = ADJUSTL(Name(ibr+1:))
+            Name      = NameRest
+            nlen0     = LEN_TRIM(Name)
+            IF ( nlen0 == 0 ) EXIT
+            ibr = INDEX( Name(1:nlen0), '[' )
+          END DO
+          ! Pure opener line: nothing left to assign.
+          IF ( nlen0 == 0 ) CYCLE
         END IF
 
         IF ( SEQL(Name,'end') ) THEN
