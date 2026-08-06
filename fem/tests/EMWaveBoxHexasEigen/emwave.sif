@@ -73,13 +73,24 @@ Solver 1
   Use Global Mass Matrix = True
 
   Eigen Analysis = True
-  Eigen System Values = 10
+  Eigen System Values = 2
   Eigen System Convergence Tolerance = 0
   Eigen System Select = smallest magnitude
 
-! This is a very sensitive parameter. Decreasing it too much
-! will reviel tons of zero eigenmodes...
-  Eigen System Shift = Real 4.0e3
+! The shift and the number of modes must be chosen together. With shift-invert
+! ARPACK converges the modes closest to the shift first, so the shift is placed
+! just below the 1st mode (lambda = (2*pi*f)^2 = 1242 for f = 5.6097) and only
+! 2 modes are asked for. Then modes 1 and 2 rank 1st and 2nd by 1/|lambda-shift|
+! while the zero eigenmodes rank only 3rd, leaving a ~3x margin.
+!
+! Do not raise the shift or the mode count "to be safe" -- both make it worse.
+! With the earlier 4.0e3 / 10 modes the checked 1st mode was the *farthest* of
+! the ten from the shift, i.e. the last one to converge with no margin at all,
+! and small perturbations (a different C compiler in CI) dropped it so that
+! mode 2 (7.1002) landed in the "Show Norm Index = 1" slot. Raising the count
+! is not a fix either: 14 modes drops mode 1 the same way and >=16 lets the
+! zero eigenmodes take the first slots. Verified stable for shift 1.1e3..1.9e3.
+  Eigen System Shift = Real 1.5e3
 
 ! Optionally we could compute energy norm
 !  Calculate Loads = Logical True
