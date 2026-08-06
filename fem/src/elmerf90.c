@@ -2,11 +2,58 @@
  * elmerf90 - wrapper to compile Elmer solver plugins as shared libraries.
  *
  * Replaces the elmerf90 shell script (Linux/Mac) and elmerf90.bat (Windows).
- * Logic:
- *   1. Determine LIBDIR / INCLUDE from env (ELMER_LIB, ELMER_HOME) or baked-in paths.
- *   2. Determine the Fortran compiler from ELMER_Fortran_COMPILER or the build-time default.
- *   3. Optionally append ElmerIce / MMG / ParMMG flags.
- *   4. exec the compiler with the assembled argument list.
+ *
+ * WHAT IT DOES
+ *   1. Resolves LIBDIR / INCLUDE, first match wins:
+ *        ELMER_LIB          -> libdir = $ELMER_LIB, incdir = $ELMER_LIB/../include
+ *        ELMER_HOME         -> libdir = $ELMER_HOME/<install libdir>,
+ *                              incdir = $ELMER_HOME/share/elmersolver/include
+ *        neither            -> the paths baked in at build time
+ *   2. Resolves the Fortran compiler:
+ *        ELMER_Fortran_COMPILER if set and non-empty, else CMAKE_Fortran_COMPILER
+ *        as recorded when Elmer was built. See exec_compiler() in the helper for
+ *        the PATH fallback when that build-time compiler is not present here.
+ *   3. Assembles one command line, in this order:
+ *        <compiler> <caller's argv verbatim> <baked-in flags> -I<inc> -L<lib>
+ *        [ElmerIce libs and -rpath] [MMG/ParMMG -I/-L] -lelmersolver
+ *      The baked-in flags are CMAKE_Fortran_FLAGS, ELMER_F90FLAGS and the two
+ *      CMake shared-library Fortran flags, concatenated at configure time and
+ *      re-split on whitespace here.
+ *   4. Prints the assembled command to stdout, then execs it.
+ *
+ * WHAT IT DOES NOT DO
+ *   - It does not compile or link anything itself. It is argv assembly plus
+ *     exec, so the compiler replaces this process and its exit status is what
+ *     the caller sees. There is no fork, no wait, no post-processing.
+ *   - It does not parse or validate the caller's arguments. It cannot tell a
+ *     compile-only (-c) invocation from a full link, and adds the same flags,
+ *     -L paths and -lelmersolver either way. Harmless for -c, but it means the
+ *     wrapper has no notion of what you are actually asking for.
+ *   - It does not quote or escape. Baked-in flags are split on whitespace, so
+ *     an install path containing spaces produces a broken command line. Same
+ *     limitation as the shell script it replaced.
+ *   - It does not verify that the compiler it runs is the one that built
+ *     libelmersolver, nor that the two are ABI- or module-format compatible.
+ *     Fortran .mod files are compiler- and often version-specific, so a
+ *     mismatch typically surfaces as an unreadable module rather than a clear
+ *     error from here.
+ *   - It does not check that libdir/incdir exist or contain anything.
+ *   - It does not add -o. The caller owns output naming. Note it *does* add
+ *     -fPIC and -shared, since CMAKE_SHARED_LIBRARY_Fortran_FLAGS and
+ *     CMAKE_SHARED_LIBRARY_CREATE_Fortran_FLAGS are part of the baked-in flag
+ *     string -- so every invocation is a shared-object build, including one
+ *     you meant to be compile-only.
+ *   - It caps the command line at MAX_ARGS (1024) entries and exits if exceeded.
+ *
+ * QUIRKS WORTH KNOWING
+ *   - The assembled command goes to stdout while the "with/no elmerice" and
+ *     MMG notes go to stderr, so capturing stdout yields the command line
+ *     alone. The elmerice note is printed on every run, including "no
+ *     elmerice", which makes the wrapper chatty on stderr by default.
+ *   - That command is echoed before the exec is attempted, so it always names
+ *     the build-time compiler. If the PATH fallback kicks in, the binary
+ *     actually run differs from the one printed -- exec_compiler() reports the
+ *     substitution on stderr for exactly this reason.
  */
 
 #include "elmerf90-helper.h"
@@ -98,7 +145,5 @@ int main(int argc, char *argv[])
         printf("\"%s\" ", args[i]);
     printf("\n");
 
-    execvp(fc, args);
-    perror("elmerf90: exec");
-    return 127;
+    return exec_compiler(fc, "elmerf90");
 }

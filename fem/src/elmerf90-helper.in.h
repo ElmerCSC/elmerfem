@@ -14,6 +14,7 @@
 #  include <unistd.h>    /* execvp */
 #endif
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,4 +82,77 @@ static char *join(const char *a, const char *b)
     memcpy(r, a, la);
     memcpy(r + la, b, lb + 1);
     return r;
+}
+
+/* --- compiler resolution and exec ---------------------------------------- */
+
+/* Trailing component of a path, tolerating Windows separators. Returns the
+   argument itself when there is no separator at all. */
+static const char *base_name(const char *p)
+{
+    const char *b = p;
+    for (const char *s = p; *s; s++) {
+#ifdef _WIN32
+        if (*s == '/' || *s == '\\') b = s + 1;
+#else
+        if (*s == '/') b = s + 1;
+#endif
+    }
+    return b;
+}
+
+/*
+ * exec the compiler, falling back to its bare name on PATH.
+ *
+ * ELMERF90_FC is CMAKE_Fortran_COMPILER as resolved on the *build* machine,
+ * normally an absolute path such as "/usr/bin/f95". execvp() searches PATH
+ * only for names containing no separator, so that absolute path is used
+ * verbatim: an install copied to another machine, a container, or a system
+ * where the compiler lives elsewhere would fail outright even with a
+ * perfectly good compiler of the same name on PATH.
+ *
+ * The exact build-time compiler is tried first, so a machine that still has
+ * it keeps using precisely that binary and behaviour is unchanged there. Only
+ * if that fails do we retry with the trailing name ("f95", "gfortran", ...)
+ * and let PATH resolve it.
+ *
+ * Note this is a name match, not a compatibility check -- a "gfortran" found
+ * on PATH may be a different version, or ABI-incompatible with the one that
+ * built libelmersolver. Setting ELMER_Fortran_COMPILER remains the way to be
+ * explicit.
+ *
+ * Returns only on failure; on success the process has been replaced.
+ */
+static int exec_compiler(const char *fc, const char *who)
+{
+    /* exec replaces the process image without flushing stdio, so anything
+       still buffered is lost. The echoed command line is written to stdout,
+       which is fully buffered whenever it is a file or a pipe -- without this
+       it only ever appeared on a terminal, where the newline flushed it. */
+    fflush(NULL);
+
+    execvp(fc, args);
+    int first_errno = errno;
+
+    const char *base = base_name(fc);
+    if (base != fc && *base) {
+        /* The command echoed above names the build-time compiler, since it is
+           printed before the exec is attempted. Say so, otherwise the
+           substitution is invisible and the echoed line is misleading. */
+        fprintf(stderr, "%s: '%s' not usable (%s), falling back to '%s' on PATH\n",
+                who, fc, strerror(first_errno), base);
+        fflush(NULL);
+
+        free(args[0]);
+        args[0] = strdup(base);
+        execvp(base, args);
+        fprintf(stderr,
+                "%s: could not exec build-time compiler '%s' (%s), "
+                "nor '%s' on PATH (%s)\n",
+                who, fc, strerror(first_errno), base, strerror(errno));
+    } else {
+        fprintf(stderr, "%s: could not exec '%s' (%s)\n",
+                who, fc, strerror(first_errno));
+    }
+    return 127;
 }
