@@ -159,7 +159,7 @@ static int exec_compiler(const char *fc, const char *who)
                     who, fc, strerror(first_errno));
         }
     }
-    return status;
+    return (status == -1 ? 127 : status);
 #else
     /* Replace the current process everywhere but on Windows. */
     execvp(fc, args);
