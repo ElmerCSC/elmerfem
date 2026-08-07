@@ -131,6 +131,37 @@ static int exec_compiler(const char *fc, const char *who)
        it only ever appeared on a terminal, where the newline flushed it. */
     fflush(NULL);
 
+#if defined (_WIN32)
+    /* Spawn new process and wait for its exit code on Windows. */
+    int status = _spawnvp(P_WAIT, fc, args);
+    if (status == -1) {
+        int first_errno = errno;
+
+        const char *base = base_name(fc);
+        if (base != fc && *base) {
+            /* The command echoed above names the build-time compiler, since it is
+               printed before the exec is attempted. Say so, otherwise the
+               substitution is invisible and the echoed line is misleading. */
+            fprintf(stderr, "%s: '%s' not usable (%s), falling back to '%s' on PATH\n",
+                    who, fc, strerror(first_errno), base);
+            fflush(NULL);
+
+            free(args[0]);
+            args[0] = strdup(base);
+            status = _spawnvp(P_WAIT, base, args);
+            if (status == -1)
+                fprintf(stderr,
+                        "%s: could not exec build-time compiler '%s' (%s), "
+                        "nor '%s' on PATH (%s)\n",
+                        who, fc, strerror(first_errno), base, strerror(errno));
+        } else {
+            fprintf(stderr, "%s: could not exec '%s' (%s)\n",
+                    who, fc, strerror(first_errno));
+        }
+    }
+    return status;
+#else
+    /* Replace the current process everywhere but on Windows. */
     execvp(fc, args);
     int first_errno = errno;
 
@@ -155,4 +186,5 @@ static int exec_compiler(const char *fc, const char *who)
                 who, fc, strerror(first_errno));
     }
     return 127;
+#endif
 }
