@@ -27,7 +27,11 @@ jobs:
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
+            # The leading -D matters. This read "-WITH_OpenMP=ON" for a long
+            # time; cmake silently ignores an unknown -W argument (exit 0, no
+            # warning), so WITH_OpenMP kept its FALSE default and this job was
+            # in fact building and testing without OpenMP.
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
 
     env:
       CC: ${{ matrix.cc }}
