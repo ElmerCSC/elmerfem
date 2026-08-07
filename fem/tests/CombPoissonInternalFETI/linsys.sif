@@ -1,0 +1,27 @@
+  Linear System Symmetric = True
+
+  Linear System Solver = "Feti"
+
+! Total FETI is switched here by runtest.cmake, so that the case is run both
+! ways. With it the Dirichlet conditions are imposed by Lagrange coefficients
+! and every subdomain floats; without it they are eliminated and only the
+! subdomains not touching the constrained boundary do.
+  Total Feti = Logical False
+
+  Linear System Iterative Method = "CPG"
+
+! Deliberately not "MumpsLocal": that lets Mumps deal with the singular local
+! matrices internally, while this uses the kernel found in Feti.F90 and removes
+! it by pinning DOFs, which is the path the other FETI tests never take. It also
+! keeps the test free of a Mumps dependency.
+  Linear System Direct Method = "umfpack"
+
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = None
+
+  Feti Preconditioning = Logical True
+  Feti CPG Projection Iterative = Logical True
+
+  Skip Zero Rhs Test = Logical True

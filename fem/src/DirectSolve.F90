@@ -1997,8 +1997,24 @@ CONTAINS
     IF (nullpiv) THEN
       A % mumpsIDL % ICNTL(24) = 1
       A % mumpsIDL % CNTL(1) = 1D-2     ! Pivoting threshold
-      A % mumpsIDL % CNTL(3) = 1D-9    ! Null pivot detection threshold
-      A % mumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
+
+      ! Null pivot detection threshold. Positive values are relative to the
+      ! norm of the preprocessed matrix, so this is scale invariant, but the
+      ! value still decides the numerical rank on its own. Too large and a
+      ! genuine (stiff) mode is declared to be in the kernel; too small and a
+      ! nearly floating subdomain -- one attached to the rest by a single node
+      ! or edge, which graph partitioners produce readily -- is not detected
+      ! and the local solve stays singular. Both failures are silent, so make
+      ! it tunable instead of a hardwired guess.
+      A % mumpsIDL % CNTL(3) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Threshold', stat)
+      IF (.NOT. stat) A % mumpsIDL % CNTL(3) = 1D-9
+
+      ! Value placed on the diagonal in place of a detected null pivot.
+      A % mumpsIDL % CNTL(5) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Fixation', stat)
+      IF (.NOT. stat) A % mumpsIDL % CNTL(5) = 1D6
+
       A % mumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
     END IF
 
@@ -2169,8 +2185,17 @@ CONTAINS
     IF (nullpiv) THEN
       A % ZmumpsIDL % ICNTL(24) = 1
       A % ZmumpsIDL % CNTL(1) = 1D-2     ! Pivoting threshold
-      A % ZmumpsIDL % CNTL(3) = 1D-9     ! Null pivot detection threshold
-      A % ZmumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
+
+      ! See the real valued counterpart above for what these control and why
+      ! the null pivot threshold is worth being able to set from the sif.
+      A % ZmumpsIDL % CNTL(3) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Threshold', stat)
+      IF (.NOT. stat) A % ZmumpsIDL % CNTL(3) = 1D-9
+
+      A % ZmumpsIDL % CNTL(5) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Fixation', stat)
+      IF (.NOT. stat) A % ZmumpsIDL % CNTL(5) = 1D6
+
       A % ZmumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
     END IF
 

@@ -87,6 +87,7 @@ MODULE FetiSolve
 
   ! Some global flags:
   ! ------------------
+  LOGICAL, PRIVATE, SAVE :: FixingByDofs=.FALSE.
   LOGICAL, PRIVATE, SAVE :: Precondition=.FALSE., TotalFETI=.FALSE., NullSpaceLC=.TRUE.,&
                           dumptofiles=.FALSE.
   LOGICAL, PRIVATE, SAVE :: InitializeIf, InitializeLC, CPG, Refactorize, FetiAsPrec=.FALSE.
@@ -387,7 +388,15 @@ CONTAINS
       sndLC=0
       toSend(:) % n=0
       DO i=1,nrows
-        IF (ig(i).AND..NOT.DirichletDOFs(i)) THEN
+        ! Dirichlet DOFs are left out of the interface compatibility conditions
+        ! because in the standard scheme they have already been eliminated from
+        ! the local matrices, so there is nothing left to make continuous. That
+        ! reasoning does not hold for total FETI: there the Dirichlet conditions
+        ! are imposed by Lagrange coefficients instead, the DOFs stay in the
+        ! local systems as ordinary unknowns, and their copies in neighbouring
+        ! partitions have to be tied together like any other interface DOF.
+        ! See the identical test in FetiSendRecvIf.
+        IF (ig(i).AND.(TotalFeti.OR..NOT.DirichletDOFs(i))) THEN
           ninterface=ninterface+1
           lint(ninterface)=i
           sz = SIZE(nb(i) % Neighbours)
@@ -681,7 +690,10 @@ CONTAINS
       nLC=0
       toSend(:) % n=0
       DO i=1,nrows
-        IF (ig(i) .AND..NOT.DirichletDOFs(i)) THEN
+        ! Under total FETI the Dirichlet DOFs are not eliminated from the local
+        ! matrices, so they need the interface compatibility conditions too.
+        ! See the longer comment at the identical test in FetiSendReceiveInit.
+        IF (ig(i) .AND.(TotalFeti.OR..NOT.DirichletDOFs(i))) THEN
           ninterface=ninterface+1
           lint(ninterface)=i
 
@@ -1475,27 +1487,311 @@ END SUBROUTINE FetiProject
 
 
 !------------------------------------------------------------------------------
+!> Split the local matrix graph into connected components, returning their
+!> number and labelling every row in comp().
+!>
+!> Graph partitioners hand out subdomains that fall into several disconnected
+!> pieces quite readily, and a subdomain in c pieces has c times the kernel of a
+!> single one: c constants for Poisson, 6c rigid body modes for elasticity. The
+!> analytic kernels built below have to be split accordingly, or the local
+!> matrix is left singular in all but one piece.
+!>
+!> A is symmetric here (FETI requires it), so its sparsity is an undirected
+!> graph and a plain flood fill over the numerically nonzero entries is enough.
+!------------------------------------------------------------------------------
+  FUNCTION FetiConnectedComponents(A,comp) RESULT(nc)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: A
+    INTEGER :: comp(:)
+    INTEGER :: nc
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,n,top
+    INTEGER, ALLOCATABLE :: stack(:)
+!------------------------------------------------------------------------------
+    n = A % NumberOfRows
+    nc = 0
+    ALLOCATE(stack(n))
+
+    ! Rows with no off-diagonal coupling are not pieces of the domain. Dirichlet
+    ! DOFs eliminated to an identity row look exactly like that, and there can be
+    ! thousands of them: counting each as its own component would report nonsense
+    ! and size the per component work by it. They carry no kernel either, since
+    ! their diagonal is nonzero, so a kernel vector has to vanish there anyway.
+    ! Mark them -1 for now and hand them back as 0, i.e. belonging to no piece.
+    ! --------------------------------------------------------------------------
+    DO i=1,n
+      comp(i) = -1
+      DO j = A % Rows(i), A % Rows(i+1)-1
+        IF (A % Cols(j) == i) CYCLE
+        IF (A % Values(j) == 0._dp) CYCLE
+        comp(i) = 0
+        EXIT
+      END DO
+    END DO
+
+    DO i=1,n
+      IF (comp(i) /= 0) CYCLE
+      nc = nc+1
+      comp(i) = nc
+      top = 1; stack(1) = i
+      DO WHILE(top > 0)
+        k = stack(top); top = top-1
+        DO j = A % Rows(k), A % Rows(k+1)-1
+          IF (A % Values(j) == 0._dp) CYCLE
+          IF (comp(A % Cols(j)) /= 0) CYCLE
+          comp(A % Cols(j)) = nc
+          top = top+1
+          stack(top) = A % Cols(j)
+        END DO
+      END DO
+    END DO
+
+    WHERE(comp < 0) comp = 0
+
+    DEALLOCATE(stack)
+!------------------------------------------------------------------------------
+  END FUNCTION FetiConnectedComponents
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Infinity norm of the local matrix, used to make kernel tests scale
+!> invariant. For a symmetric A this bounds ||A||_2 from above.
+!------------------------------------------------------------------------------
+  FUNCTION FetiMatrixNorm(A) RESULT(Anorm)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) :: Anorm
+!------------------------------------------------------------------------------
+    INTEGER :: i
+    REAL(KIND=dp) :: rowsum
+!------------------------------------------------------------------------------
+    Anorm = 0._dp
+    DO i=1,A % NumberOfRows
+      rowsum = SUM(ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)))
+      Anorm = MAX(Anorm, rowsum)
+    END DO
+    IF (Anorm <= 0._dp) Anorm = 1._dp
+!------------------------------------------------------------------------------
+  END FUNCTION FetiMatrixNorm
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> FixInds and the alpha work array are sized by the compile time maxnz, so a
+!> kernel bigger than that would silently run past them. A subdomain in several
+!> disconnected pieces reaches such sizes easily: four pieces of elasticity
+!> already make 24.
+!------------------------------------------------------------------------------
+  SUBROUTINE FetiCheckKernelSize(nzl,Origin)
+!------------------------------------------------------------------------------
+    INTEGER :: nzl
+    CHARACTER(LEN=*) :: Origin
+!------------------------------------------------------------------------------
+    IF (nzl > maxnz) THEN
+      WRITE(Message,'(A,I0,A,I0,A,A)') 'Kernel dimension ',nzl, &
+          ' exceeds the compiled in maximum of ',maxnz, &
+          ', which sizes FixInds and alpha. Source: ',TRIM(Origin)
+      CALL Fatal('Feti:',Message)
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE FetiCheckKernelSize
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Can the kernel be removed by pinning the DOFs in FixInds?
+!>
+!> Pinning works exactly when the nz x nz matrix z(:,FixInds) is nonsingular: a
+!> kernel vector surviving the pinning is one that vanishes at every pinned DOF,
+!> and there is such a vector precisely when that matrix is singular. Being
+!> nearly singular is nearly as bad, since the pinned matrix is then nearly
+!> singular too and the local solves lose accuracy quietly.
+!>
+!> The choice was never checked. FindRigidBodyFixingNodes picks the nodes on
+!> geometric grounds, which can land on a degenerate set -- collinear nodes for a
+!> rotation, say -- and nothing noticed. z is orthonormal by the time this runs,
+!> so the singular values are directly comparable to one.
+!------------------------------------------------------------------------------
+  FUNCTION FetiFixingUsable() RESULT(Usable)
+!------------------------------------------------------------------------------
+    LOGICAL :: Usable
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,ierr
+    REAL(KIND=dp) :: tol
+    REAL(KIND=dp), ALLOCATABLE :: M(:,:),sv(:),wrk(:),dummy(:,:)
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+    Usable = .TRUE.
+    IF (nz <= 0) RETURN
+
+    ALLOCATE(M(nz,nz),sv(nz),wrk(MAX(1,10*nz)),dummy(1,1))
+    DO j=1,nz
+      DO i=1,nz
+        M(i,j) = z(i,FixInds(j))
+      END DO
+    END DO
+
+    CALL DGESVD('N','N',nz,nz,M,nz,sv,dummy,1,dummy,1,wrk,SIZE(wrk),ierr)
+
+    IF (ierr /= 0) THEN
+      CALL Warn('Feti:','Could not check the DOFs chosen for fixing')
+      DEALLOCATE(M,sv,wrk,dummy)
+      RETURN
+    END IF
+
+    Params => ListGetSolverParams()
+    tol = GetCReal(Params,'Feti Fixing Tolerance',Found)
+    IF (.NOT.Found) tol = 1.0d-6
+
+    Usable = sv(nz) > tol
+
+    WRITE(Message,'(A,ES10.3)') &
+        'Smallest singular value of the fixing DOFs: ',sv(nz)
+    CALL Info('Feti:',Message,Level=7)
+
+    IF (.NOT.Usable) THEN
+      WRITE(Message,'(A,ES10.3,A)') 'The DOFs chosen for fixing do not remove '// &
+          'the kernel (smallest singular value ',sv(nz), &
+          '); using Lagrange coefficients instead'
+      CALL Warn('Feti:',Message)
+    END IF
+
+    DEALLOCATE(M,sv,wrk,dummy)
+!------------------------------------------------------------------------------
+  END FUNCTION FetiFixingUsable
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Orthonormalize the kernel basis z=null(A) and check that it really is one.
+!>
+!> Whichever route produced z -- the analytic rigid body modes, the null
+!> frequency eigenmodes, SPQR or the Mumps null pivots -- the vectors come back
+!> in no particular scaling and are not mutually orthogonal. That matters
+!> downstream: the coarse operator is G=Bz and the coarse problem is solved
+!> from G^T G, which squares the condition number, so a poorly scaled or nearly
+!> dependent z shows up as a stalling coarse solve rather than as anything that
+!> points back here. Only the span of z enters the FETI formulation, so
+!> replacing it with an orthonormal basis of the same span is free of side
+!> effects and strictly better conditioned.
+!>
+!> The residual check afterwards costs nz matrix-vector products and turns an
+!> otherwise opaque rank decision (Mumps CNTL(3), an eigenvalue threshold) into
+!> something that can be seen in the log.
+!------------------------------------------------------------------------------
+  SUBROUTINE FetiCheckKernel(A,Origin)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: A
+    CHARACTER(LEN=*) :: Origin
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,n,ncomp
+    INTEGER, ALLOCATABLE :: comp(:)
+    REAL(KIND=dp) :: nrm,nrm0,proj,Anorm,res,maxres,tol
+    REAL(KIND=dp), ALLOCATABLE :: x(:),w(:)
+    LOGICAL :: Found, Deficient
+!------------------------------------------------------------------------------
+    IF (nz <= 0) RETURN
+
+    n = A % NumberOfRows
+    Params => ListGetSolverParams()
+
+    tol = GetCReal(Params,'Feti Kernel Tolerance',Found)
+    IF (.NOT.Found) tol = 1.0d-9
+
+    ALLOCATE(x(n),w(n))
+
+    ! Modified Gram-Schmidt. A vector that (nearly) vanishes here was already
+    ! dependent on the previous ones, i.e. the reported deficiency is too
+    ! large. We keep the count rather than silently changing nz, since FixInds
+    ! was sized against it, but say so loudly.
+    Deficient = .FALSE.
+    DO i=1,nz
+      w = z(i,1:n)
+      nrm0 = SQRT(SUM(w**2))
+      DO j=1,i-1
+        proj = SUM(z(j,1:n)*z(i,1:n))
+        z(i,1:n) = z(i,1:n) - proj*z(j,1:n)
+      END DO
+      nrm = SQRT(SUM(z(i,1:n)**2))
+      IF (nrm0 <= 0._dp .OR. nrm <= SQRT(EPSILON(1._dp))*nrm0) THEN
+        ! Restore the unorthogonalized vector so that everything stays finite.
+        Deficient = .TRUE.
+        z(i,1:n) = w
+        nrm = nrm0
+      END IF
+      IF (nrm > 0._dp) z(i,1:n) = z(i,1:n)/nrm
+    END DO
+
+    IF (Deficient) THEN
+      WRITE(Message,'(A,A,A)') 'Kernel basis from ',TRIM(Origin), &
+          ' is linearly dependent, the deficiency is likely overestimated'
+      CALL Warn('Feti:',Message)
+    END IF
+
+    ! Now that z is orthonormal, ||A z_i|| relative to ||A|| is a meaningful
+    ! measure of how well z_i really is in the kernel.
+    Anorm = FetiMatrixNorm(A)
+    maxres = 0._dp
+    DO i=1,nz
+      CALL MatrixVectorMultiply(A,z(i,1:n),x)
+      res = SQRT(SUM(x**2))/Anorm
+      maxres = MAX(maxres,res)
+    END DO
+
+    ! Report the number of disconnected pieces alongside. The routes that read
+    ! the kernel off a factorization get the dimension right without knowing
+    ! why it is what it is, and "6 modes over 1 piece" versus "6 modes over 3
+    ! pieces, so 12 are missing" is the difference worth seeing.
+    ALLOCATE(comp(n))
+    ncomp = FetiConnectedComponents(A,comp)
+    DEALLOCATE(comp)
+
+    WRITE(Message,'(A,A,A,I0,A,I0,A,ES10.3)') 'Kernel from ',TRIM(Origin), &
+        ': dim ',nz,' over ',ncomp,' piece(s), max relative residual ',maxres
+    CALL Info('Feti:',Message,Level=6)
+
+    IF (ncomp > 1) THEN
+      WRITE(Message,'(A,I0,A)') 'Local matrix falls into ',ncomp, &
+          ' disconnected pieces; check the kernel dimension accounts for all of them'
+      CALL Warn('Feti:',Message)
+    END IF
+
+    ! A loose factor over the detection tolerance: we are flagging a rank
+    ! decision that looks wrong, not measuring round-off.
+    IF (maxres > 1000._dp*tol) THEN
+      WRITE(Message,'(A,ES10.3,A,A)') 'Suspect null space, ||Az||/||A|| = ', &
+          maxres,' for a vector reported to be in the kernel by ',TRIM(Origin)
+      CALL Warn('Feti:',Message)
+    END IF
+
+    DEALLOCATE(x,w)
+!------------------------------------------------------------------------------
+  END SUBROUTINE FetiCheckKernel
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Compute null(A), return value is whether null(A) is nonempty.
 !------------------------------------------------------------------------------
   FUNCTION FetiFloatingDomain(A,Solver,FixInds,TOL) RESULT(Floating)
 !------------------------------------------------------------------------------
-    USE EigenSolve
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp) :: TOL
     LOGICAL :: floating
     INTEGER :: FixInds(:)
     TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), PARAMETER :: floatEps = 1.0d-9
     REAL(KIND=dp), ALLOCATABLE :: x(:),tz(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: S(:,:),Seig(:),Swrk(:),Az(:,:),tz2(:,:),y2(:)
     INTEGER, POINTER :: p(:)
-    INTEGER :: i,j,k,n,m,dofs,neigs,dim,FixNodes(0:6)
+    INTEGER, ALLOCATABLE :: comp(:)
+    INTEGER :: i,j,k,n,m,dofs,dim,FixNodes(0:6)
+    INTEGER :: m2,ierr,nc,ic,kc,nfree
     REAL(KIND=dp), POINTER :: coord_x(:),coord_y(:),coord_z(:), dscale(:)
     LOGICAL :: Found
-    REAL(KIND=dp) :: xc,yc,zc,hc
+    REAL(KIND=dp) :: xc,yc,zc,hc,Anorm,KerTol
     INTEGER, ALLOCATABLE :: floatinds(:)
-    COMPLEX(KIND=dp) :: EigValues(maxnz)
-    COMPLEX(KIND=dp), ALLOCATABLE :: EigVectors(:,:)
 !------------------------------------------------------------------------------
 
     Params => ListGetSolverParams()
@@ -1526,32 +1822,93 @@ END SUBROUTINE FetiProject
       m =  Solver % Mesh % NumberOfNodes
       p => Solver % Variable % Perm
 
-      ! constant 1 (complications due to p-elements)
-      ! --------------------------------------------------
-      nz=1
-      ALLOCATE(z(nz,n))
-      z = 0._dp
+      ! One constant per connected component of the local matrix, not one for
+      ! the subdomain as a whole. Testing a single global constant does not
+      ! reveal the difference: the sum of the per component constants is in the
+      ! kernel as well, so a subdomain in several pieces passed the check with
+      ! the deficiency reported as 1 and its local matrix left singular.
+      !
+      ! The value is put on the nodal DOFs only, as before, since in a
+      ! hierarchical basis the constant has no higher order coefficients.
+      ! ------------------------------------------------------------------------
+      ALLOCATE(comp(n))
+      nc = FetiConnectedComponents(A,comp)
+      ALLOCATE(tz2(nc,n),x(n))
+      tz2 = 0._dp
       DO i=1,m
         j=p(i)
-        IF (j>0) z(1,j) = 1._dp / dscale(j)
+        ! comp==0 are the rows belonging to no piece, see FetiConnectedComponents
+        IF (j>0) THEN
+          IF (comp(j)>0) tz2(comp(j),j) = 1._dp / dscale(j)
+        END IF
       END DO
 
-      ALLOCATE(x(n));
-      CALL MatrixVectorMultiply(A,z(1,:),x)
-      Floating = ALL(ABS(x)<floatEps)
+      Anorm = FetiMatrixNorm(A)
+      KerTol = GetCReal(Params,'Feti Kernel Tolerance',Found)
+      IF (.NOT.Found) KerTol = 1.0d-9
 
-      IF (.NOT.Floating) THEN
-        DEALLOCATE(z); nz=0;
-      ELSE
-        CALL FindRigidBodyFixingNodes(Solver, FixNodes, p)
-        Fixinds(1) = p(FixNodes(0))
-      END IF
-      IF (.NOT.ASSOCIATED(A % DiagScaling)) DEALLOCATE(dscale)
+      ! Keep the components that really are free. A component carrying a
+      ! Dirichlet condition is not, and drops out here.
+      ! ------------------------------------------------------------------------
+      nz=0
+      DO i=1,nc
+        hc = SQRT(SUM(tz2(i,:)**2))
+        IF (hc <= 0._dp) CYCLE
+        tz2(i,:) = tz2(i,:)/hc
+        CALL MatrixVectorMultiply(A,tz2(i,:),x)
+        IF (SQRT(SUM(x**2))/Anorm > KerTol) CYCLE
+        nz=nz+1
+        IF (nz /= i) tz2(nz,:) = tz2(i,:)
+      END DO
+
+      Floating = nz>0
       NullSpaceLC=GetLogical(Params,'Feti Fixing Using L.C.',Found)
+
+      IF (Floating) THEN
+        CALL FetiCheckKernelSize(nz,'constants per connected component')
+        ALLOCATE(z(nz,n))
+        z = tz2(1:nz,:)
+
+        ! One DOF to fix per free component, taken where that component's
+        ! constant is largest so that the pinned DOF certainly carries it.
+        ! With a single component this is the node FindRigidBodyFixingNodes
+        ! would have picked in all but name; with several it is the only way
+        ! to remove the kernel by pinning at all.
+        ! ----------------------------------------------------------------------
+        DO i=1,nz
+          FixInds(i) = MAXLOC(ABS(z(i,:)),DIM=1)
+        END DO
+      END IF
+
+      IF (nc > 1) THEN
+        WRITE(Message,'(A,I0,A,I0,A)') 'Local matrix falls into ',nc, &
+            ' disconnected pieces, ',nz,' of them floating'
+        CALL Info('Feti:',Message,Level=5)
+      END IF
+
+      IF (.NOT.ASSOCIATED(A % DiagScaling)) DEALLOCATE(dscale)
       RETURN
-    ELSE IF (GetLogical(Params,'Feti Kernel Rot-Trans',Found)) THEN
+    ELSE
+      IF (.NOT.GetLogical(Params,'Feti Kernel Rot-Trans',Found)) THEN
+        IF (Found) CALL Warn('Feti:','"Feti Kernel Rot-Trans" is no longer '// &
+            'optional: the null frequency eigenmode alternative it selected '// &
+            'against has been removed. Use "mumpslocal" with "Mumps Solve '// &
+            'Singular", or "spqr", to read the kernel off the factorization.')
+      END IF
       !
-      ! If requested, make null(A) using basic translations and rotations:
+      ! Otherwise null(A) is spanned by the rigid body modes, i.e. the basic
+      ! translations and rotations, plus the potential levels. This used to sit
+      ! behind "Feti Kernel Rot-Trans" with a null frequency eigenmode
+      ! computation as the default. That default is gone: it ran Arpack for up
+      ! to twenty modes and a direct factorization per subdomain, then threw the
+      ! factorization away, and decided the numerical rank from shift inverted
+      ! eigenvalues, which is the least reliable way to ask that question. It
+      ! was also silently capped, so a deficiency above the cap came back
+      ! truncated. The modes below are exact for the operators FETI is used on
+      ! here, cost a handful of matrix-vector products, and are checked against
+      ! the matrix afterwards; when they are not the right answer, "mumpslocal"
+      ! with "Mumps Solve Singular", or "spqr", reads the kernel straight off
+      ! the factorization.
       ! ------------------------------------------------------------------
 
       m =  Solver % Mesh % NumberOfNodes
@@ -1561,64 +1918,153 @@ END SUBROUTINE FetiProject
       coord_y => Solver % Mesh % Nodes % y
       coord_z => Solver % Mesh % Nodes % z
 
-      xc = SUM(coord_x)/m
-      yc = SUM(coord_y)/m
-      zc = SUM(coord_z)/m
-      hc = 0._dp
-      hc = hc + (MAXVAL(coord_x)-MINVAL(coord_x))**2
-      hc = hc + (MAXVAL(coord_y)-MINVAL(coord_y))**2
-      hc = hc + (MAXVAL(coord_z)-MINVAL(coord_z))**2
-      hc = SQRT(hc)
-      
-      IF (dim==2) nz=dofs+1
-      IF (dim==3) nz=dofs+dim
-      ALLOCATE(tz(nz,n)); tz=0
+      ALLOCATE(comp(n))
+      nc = FetiConnectedComponents(A,comp)
 
-      DO i=1,m                   ! translations and potential levels
-        IF (p(i) <= 0) CYCLE
-        DO j=1,dofs
-          k=dofs*(p(i)-1)+j
-          tz(j,k) = 1._dp / dscale(k)
+      IF (dim==2) m2=dofs+1
+      IF (dim==3) m2=dofs+dim
+
+      Anorm = FetiMatrixNorm(A)
+      KerTol = GetCReal(Params,'Feti Kernel Tolerance',Found)
+      IF (.NOT.Found) KerTol = 1.0d-9
+
+      ALLOCATE(tz(m2,n), x(n), y2(n), floatinds(m2), S(m2,m2), Seig(m2), &
+          Swrk(MAX(1,3*m2)), Az(m2,n), tz2(m2*nc,n))
+
+      nz = 0
+      nfree = 0
+      DO ic=1,nc
+
+        ! Centre and length scale of this piece. Taken per component rather than
+        ! over the whole subdomain: a rotation measured about a centroid that
+        ! lies in a different, disconnected piece is badly scaled.
+        ! ----------------------------------------------------------------------
+        xc=0._dp; yc=0._dp; zc=0._dp; kc=0
+        DO i=1,m
+          IF (p(i) <= 0) CYCLE
+          IF (comp(dofs*(p(i)-1)+1) /= ic) CYCLE
+          kc=kc+1
+          xc=xc+coord_x(i); yc=yc+coord_y(i); zc=zc+coord_z(i)
+        END DO
+        IF (kc == 0) CYCLE
+        xc=xc/kc; yc=yc/kc; zc=zc/kc
+
+        hc = 0._dp
+        DO i=1,m
+          IF (p(i) <= 0) CYCLE
+          IF (comp(dofs*(p(i)-1)+1) /= ic) CYCLE
+          hc = MAX(hc,(coord_x(i)-xc)**2+(coord_y(i)-yc)**2+(coord_z(i)-zc)**2)
+        END DO
+        hc = SQRT(hc)
+        IF (hc <= 0._dp) hc = 1._dp
+
+        ! Translations, potential levels and rotations, restricted to this piece
+        ! ----------------------------------------------------------------------
+        tz = 0._dp
+        DO i=1,m
+          IF (p(i) <= 0) CYCLE
+          IF (comp(dofs*(p(i)-1)+1) /= ic) CYCLE
+          DO j=1,dofs
+            k=dofs*(p(i)-1)+j
+            tz(j,k) = 1._dp / dscale(k)
+          END DO
+          j=dofs*(p(i)-1)
+          tz(dofs+1,j+1) = -(coord_y(i)-yc) / hc / dscale(j+1)  ! rot about z
+          tz(dofs+1,j+2) =  (coord_x(i)-xc) / hc / dscale(j+2)
+          IF (dim>=3) THEN
+            tz(dofs+2,j+2) = -(coord_z(i)-zc) / hc / dscale(j+2) ! rot about x
+            tz(dofs+2,j+3) =  (coord_y(i)-yc) / hc / dscale(j+3)
+
+            tz(dofs+3,j+1) =  (coord_z(i)-zc) / hc / dscale(j+1) ! rot about y
+            tz(dofs+3,j+3) = -(coord_x(i)-xc) / hc / dscale(j+3)
+          END IF
+        END DO
+
+        DO i=1,m2
+          hc = SQRT(SUM(tz(i,:)**2))
+          IF( hc > 0._dp ) tz(i,:) = tz(i,:) / hc
+          CALL MatrixVectorMultiply(A,tz(i,:),Az(i,:))
+        END DO
+        DO i=1,m2
+          DO j=1,m2
+            S(i,j) = SUM(tz(i,:)*Az(j,:))
+          END DO
+        END DO
+        S = 0.5_dp*(S + TRANSPOSE(S))   ! symmetrize away the round-off
+
+        CALL DSYEV('V','U',m2,S,m2,Seig,Swrk,SIZE(Swrk),ierr)
+        IF (ierr /= 0) CALL Fatal('FetiFloatingDomain', &
+            'Eigenvalue decomposition of the candidate kernel failed')
+
+        ! Accept a combination when its residual is small relative to ||A||. The
+        ! Rayleigh quotient Seig alone would be a more permissive test, since it
+        ! behaves like the square of the distance to the kernel, so use it only
+        ! to order the candidates and let the residual make the decision.
+        ! ----------------------------------------------------------------------
+        DO i=1,m2
+          IF (Seig(i) > KerTol*Anorm) CYCLE
+          x = 0._dp
+          DO j=1,m2
+            x = x + S(j,i)*tz(j,:)
+          END DO
+          hc = SQRT(SUM(x**2))
+          IF (hc <= 0._dp) CYCLE
+          x = x/hc
+          CALL MatrixVectorMultiply(A,x,y2)
+          IF (SQRT(SUM(y2**2))/Anorm > KerTol) CYCLE
+          nz = nz+1
+          tz2(nz,:) = x
+        END DO
+
+        ! How many of this piece's modes are in the kernel on their own. Only
+        ! those can be expressed by pinning a single DOF.
+        ! ----------------------------------------------------------------------
+        DO i=1,m2
+          IF (SQRT(SUM(Az(i,:)**2))/Anorm > KerTol) CYCLE
+          nfree = nfree+1
+          IF (nc == 1) FloatInds(nfree) = i
         END DO
       END DO
 
-      DO i=1,m
-        IF (p(i) <= 0) CYCLE
-        j=dofs*(p(i)-1)
-        tz(dofs+1,j+1) = -(coord_y(i)-yc) / hc / dscale(j+1)  ! rot about z
-        tz(dofs+1,j+2) =  (coord_x(i)-xc) / hc / dscale(j+2)
-
-        IF (dim>=3) THEN
-          tz(dofs+2,j+2) = -(coord_z(i)-zc) / hc / dscale(j+2) ! rot about x
-          tz(dofs+2,j+3) =  (coord_y(i)-yc) / hc / dscale(j+3)
-
-          tz(dofs+3,j+1) =  (coord_z(i)-zc) / hc / dscale(j+1) ! rot about y
-          tz(dofs+3,j+3) = -(coord_x(i)-xc) / hc / dscale(j+3)
-        END IF
-      END DO
       IF (.NOT.ASSOCIATED(A % DiagScaling)) DEALLOCATE(dscale)
 
-      ALLOCATE(x(n),floatinds(nz))
+      ! "nfree" counted the modes that are in the kernel by themselves. Only
+      ! those can be expressed by pinning a single DOF, so if the kernel is
+      ! larger the rest are genuine combinations and pinning cannot remove them.
+      ! Several pieces rule pinning out too: FindRigidBodyFixingNodes returns one
+      ! set of nodes for the subdomain, which cannot fix a mode living in another
+      ! piece. Either way, fall back to the Lagrange coefficient route.
+      ! --------------------------------------------------------------------------
+      j = nfree
 
-      ! Check which of the translations & rotations & potential
-      ! levels are free:
-      ! --------------------------------------------------------
-      j=nz
-      nz=0
-      DO i=1,j
-        hc = MAXVAL(ABS(tz(i,:)))
-        IF( hc > 0._dp ) tz(i,:) = tz(i,:) / hc
-        CALL MatrixVectorMultiply(A,tz(i,:),x)
-        IF (ALL(ABS(x)<floatEps)) THEN
-          nz=nz+1
-          FloatInds(nz)=i
-        END IF
-      END DO
-     
+      Floating=nz>0
+
+      ! The kernel itself, however it ends up being fixed below.
+      IF (Floating) THEN
+        CALL FetiCheckKernelSize(nz,'rigid body modes per connected component')
+        ALLOCATE(z(nz,n))
+        z = tz2(1:nz,:)
+      END IF
+
+      NullSpaceLC=GetLogical(Params,'Feti Fixing Using L.C.',Found)
+
+      IF (nc > 1) THEN
+        WRITE(Message,'(A,I0,A,I0,A)') 'Local matrix falls into ',nc, &
+            ' disconnected pieces, kernel dimension ',nz, &
+            '; fixing with Lagrange coefficients instead of DOFs'
+        CALL Info('Feti:',Message,Level=5)
+        NullSpaceLC = .TRUE.
+      ELSE IF (Floating .AND. j < nz) THEN
+        WRITE(Message,'(A,I0,A,I0,A)') 'Kernel dimension ',nz, &
+            ' exceeds the ',j,' free rigid body modes, so it contains a '// &
+            'combination; fixing with Lagrange coefficients instead of DOFs'
+        CALL Info('Feti:',Message,Level=5)
+        NullSpaceLC = .TRUE.
+      END IF
+
       ! Set the DOFs to fix at FixNodes() nodes:
       ! ----------------------------------------
-      Floating=nz>0
-      IF (Floating) THEN
+      IF (Floating .AND. nc == 1 .AND. j >= nz) THEN
         CALL FindRigidBodyFixingNodes(Solver, FixNodes, p)
         DO i=1,nz
 !           FixInds(i) = dofs*(p(FixNodes(2*FloatInds(i)-1))-1)+FloatInds(i)
@@ -1640,74 +2086,10 @@ END SUBROUTINE FetiProject
           END IF
 
         END DO
-        ALLOCATE(z(nz,n))
-        z = tz(floatinds(1:nz),:)
       END IF
-      NullSpaceLC=GetLogical(Params,'Feti Fixing Using L.C.',Found)
       RETURN
     END IF
 
-
-    ! By default assemble the ker(A) from the null frequency eigenmodes:
-    ! ==================================================================
-
-    ! max deficiency:
-    ! ---------------
-    IF (dim==2) THEN
-      Neigs=4
-    ELSE
-      Neigs=20
-    END IF
-
-    ! Solution of few lowest eigenmodes:
-    ! ----------------------------------
-    ALLOCATE(eigVectors(Neigs,n))
-      
-    CALL ListPushNameSpace('feti:')
-
-    CALL ListAddString( Params, 'Feti: Linear System Solver', 'Direct' )
-    Params=>ListGetSolverParams()
-    CALL ListAddString( Params, 'Feti: Linear System Direct Method', 'umfpack' )
-    Params=>ListGetSolverParams()
-
-    IF (.NOT.ListCheckPresent(Params,'Eigen System Convergence Tolerance')) &
-      CALL ListAddConstReal( Params, &
-               'Feti: Eigen System Convergence Tolerance', 1.0d-9)
-    Params=>ListGetSolverParams()
-
-    IF (.NOT.ASSOCIATED(A % MassValues)) THEN
-      ALLOCATE(A % MassValues(SIZE(A % Values)))
-      A % MassValues=0
-      A % Massvalues(A % Diag)=1/dscale
-      CALL ArpackEigenSolve(Solver,A,n,NEigs,EigValues,EigVectors)
-      DEALLOCATE(A % MassValues)
-    ELSE
-      CALL ArpackEigenSolve(Solver,A,n,NEigs,EigValues,EigVectors)
-    END IF
-
-    ! Delete factorization as we can't use the same factorization within FETI:
-    ! ------------------------------------------------------------------------
-    CALL DirectSolver(A,x,x,Solver,Free_Fact=.TRUE.)
-
-    CALL ListPopNameSpace()
-
-    ! Finally create null(A) from zero freq. eigenvectors:
-    ! ----------------------------------------------------
-    DO nz=0,neigs-1
-      IF (ABS(EigValues(nz+1))>floatEps) EXIT
-    END DO
-
-    IF (nz>0) THEN
-      ALLOCATE(z(nz,n))
-      z(1:nz,:) = REAL(EigVectors(1:nz,:))
-    END IF
-
-    DEALLOCATE(EigVectors)
-    IF (.NOT.ASSOCIATED(A % DiagScaling)) DEALLOCATE(dscale)
-
-    Floating = nz>0
-    NullSpaceLC=GetLogical(Params,'Feti Fixing Using L.C.',Found)
-    IF(.NOT.Found) NullSpaceLC=.TRUE.
 
 !------------------------------------------------------------------------------
   END FUNCTION FetiFloatingDomain
@@ -1724,12 +2106,29 @@ END SUBROUTINE FetiProject
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp), TARGET CONTIG :: x(:),b(:)
 !------------------------------------------------------------------------------
-    INTEGER :: n
+    INTEGER :: n,i
     REAL(KIND=dp), POINTER CONTIG :: tx(:),tb(:)
+    REAL(KIND=dp), POINTER CONTIG :: bfix(:)
 !call resettimer('direct')
     n = A % NumberOfRows
     tx=>x
     tb=>b
+
+    IF (FixingByDofs.AND.nz>0) THEN
+      ! A has had the FixInds rows and columns replaced by identity rows to take
+      ! the kernel out. That only stays a generalized inverse of the original
+      ! matrix if the right hand side vanishes there too: otherwise the pinned
+      ! DOF comes back as b(FixInds) instead of zero and every local solve is off
+      ! by that much. The pinning is done once when the matrix is set up, while
+      ! the right hand side changes at every iteration, so it has to be imposed
+      ! here rather than there.
+      ALLOCATE(bfix(n))
+      bfix = b
+      DO i=1,nz
+        bfix(FixInds(i)) = 0._dp
+      END DO
+      tb => bfix
+    END IF
 
     IF (NullSpaceLC.AND.nz>0) THEN
       ALLOCATE(tx(n+nz),tb(n+nz))
@@ -1744,6 +2143,8 @@ END SUBROUTINE FetiProject
       A % NumberOfRows=n
       x=tx(1:n)
       DEALLOCATE(tx,tb)
+    ELSE IF (FixingByDofs.AND.nz>0) THEN
+      DEALLOCATE(bfix)
     END IF
 !call checktimer('direct',delete=.true.)
 !------------------------------------------------------------------------------
@@ -2071,12 +2472,21 @@ END SUBROUTINE FetiProject
       ! ---------------------------------------------------------------
       IF(.NOT.(QR.OR.MumpsLU)) THEN
         Floating=FetiFloatingDomain(A,Solver,FixInds,TOL)
+        CALL FetiCheckKernel(A,'rigid body modes')
       END IF
     END IF
 
     ! 'fix' A  to allow solving local system:
     ! ---------------------------------------
     IF (.NOT.(QR.OR.MumpsLU).AND.Floating) THEN
+      ! Pinning only removes the kernel if the chosen DOFs are a good enough
+      ! set for it. Check before relying on them, and fall back to the Lagrange
+      ! coefficients when they are not, rather than solving with a matrix that
+      ! is still (nearly) singular.
+      IF (.NOT.NullSpaceLC) THEN
+        IF (.NOT.FetiFixingUsable()) NullSpaceLC = .TRUE.
+      END IF
+
       saverows   => a % rows
       savecols   => a % cols
       savevalues => a % values
@@ -2132,6 +2542,7 @@ END SUBROUTINE FetiProject
         DO j=1,nz
           CALL CRS_SetSymmDirichlet(A,y,FixInds(j),0._dp)
         END DO
+        FixingByDofs = .TRUE.
       END IF
     END IF
 
@@ -2154,6 +2565,7 @@ END SUBROUTINE FetiProject
       IF(ALLOCATED(z)) DEALLOCATE(z)
       ALLOCATE(z(nz,n))
       CALL SPQR_NullSpace(A % Cholmod,n,nz,z) ! get the null space
+      CALL FetiCheckKernel(A,'SPQR')
 #else
       CALL Fatal('Feti','Cholmod/SPQR solver has not been installed.')
 #endif
@@ -2168,6 +2580,7 @@ END SUBROUTINE FetiProject
       CALL MumpsLocal_SolveNullSpace( Solver, A, z, nz )
       NullSpaceLC=.FALSE. ! What does this do?
       Floating = nz/=0 ! Is the domain a floating one
+      CALL FetiCheckKernel(A,'Mumps null pivots')
 #else
       CALL Fatal('Feti','Mumps has not been installed.')
 #endif
