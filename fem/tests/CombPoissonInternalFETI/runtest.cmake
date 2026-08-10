@@ -19,3 +19,12 @@ string(REPLACE "Total Feti = Logical False" "Total Feti = Logical True"
        LINSYS "${LINSYS_TEMPLATE}")
 file(WRITE linsys.sif "${LINSYS}")
 RUN_ELMER_TEST()
+
+# And once more with the kernel removed by Lagrange coefficients instead of by
+# pinning DOFs, which solves [A z^T; z 0] rather than a pinned A. Total FETI is
+# on so that the subdomains actually float and the choice has something to act
+# on. Nothing else covers that branch.
+string(REPLACE "Total Feti = Logical False" "Total Feti = Logical True"
+       LINSYS "${LINSYS_TEMPLATE}")
+file(WRITE linsys.sif "${LINSYS}\n  Feti Fixing Using L.C. = Logical True\n")
+RUN_ELMER_TEST()
