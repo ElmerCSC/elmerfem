@@ -82,12 +82,14 @@ MODULE FetiSolve
   ! Neighbour identification, local and global numbering of 
   ! neighbour PEs:
   ! -------------------------------------------------------
-  INTEGER, PRIVATE, SAVE :: nneigh,  FixInds(maxnz)
+  INTEGER, PRIVATE, SAVE :: nneigh
+  INTEGER, ALLOCATABLE, PRIVATE, SAVE :: FixInds(:)
   INTEGER, ALLOCATABLE, PRIVATE, SAVE :: lpnum(:), gpnum(:)
 
   ! Some global flags:
   ! ------------------
   LOGICAL, PRIVATE, SAVE :: FixingByDofs=.FALSE.
+  LOGICAL, PRIVATE, SAVE :: LocalSolveChecked=.TRUE.
   LOGICAL, PRIVATE, SAVE :: Precondition=.FALSE., TotalFETI=.FALSE., NullSpaceLC=.TRUE.,&
                           dumptofiles=.FALSE.
   LOGICAL, PRIVATE, SAVE :: InitializeIf, InitializeLC, CPG, Refactorize, FetiAsPrec=.FALSE.
@@ -199,6 +201,46 @@ CONTAINS
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE FetiGetNeighbours
+!------------------------------------------------------------------------------
+
+
+   ! Upper bound for the number of Lagrange coefficients.
+   !
+   ! One is created for each pair in which an owned interface DOF participates,
+   ! so a DOF shared by k partitions contributes k-1 of them, and under total
+   ! FETI each Dirichlet DOF adds one more. The total is therefore NOT bounded
+   ! by the number of rows of the local matrix, which is what the work vectors
+   ! used to be sized by. Partition finely enough -- twelve pieces of the winkel
+   ! mesh is plenty -- and most DOFs end up on an interface, many of them shared
+   ! three or four ways, and the count passes the row count.
+   ! ------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+   FUNCTION FetiMaxLC(A) RESULT(m)
+!------------------------------------------------------------------------------
+     TYPE(Matrix_t) :: A
+     INTEGER :: m
+!------------------------------------------------------------------------------
+     INTEGER :: i,n
+     LOGICAL, POINTER :: ig(:)
+     TYPE(NeighbourList_t), POINTER :: nb(:)
+!------------------------------------------------------------------------------
+     m = 0
+     IF (.NOT.ASSOCIATED(A % ParallelInfo)) RETURN
+
+     n = A % NumberOfRows
+     ig => A % ParallelInfo % GInterface
+     nb => A % ParallelInfo % NeighbourList
+
+     DO i=1,n
+       IF (.NOT.ig(i)) CYCLE
+       IF (.NOT.(TotalFeti.OR..NOT.DirichletDOFs(i))) CYCLE
+       IF (nb(i) % Neighbours(1) /= ParEnv % myPE) CYCLE
+       m = m + SIZE(nb(i) % Neighbours)-1
+     END DO
+
+     IF (TotalFeti) m = m + COUNT(DirichletDOFs)
+!------------------------------------------------------------------------------
+   END FUNCTION FetiMaxLC
 !------------------------------------------------------------------------------
 
 
@@ -534,9 +576,13 @@ CONTAINS
 
     n = A % NumberOfRows
 
-    ALLOCATE(Perm(n),InEqualityFlag(n), B % RHS(n))
+    ! nLC coefficients already exist and at most one is appended per local DOF,
+    ! the Done() flags below making sure of that, so nLC+n is a bound that holds
+    ! whatever the partitioning. Sizing these by n alone overflowed all three as
+    ! soon as the interface coefficients outnumbered the rows.
+    ALLOCATE(Perm(nLC+n),InEqualityFlag(nLC+n), B % RHS(nLC+n))
     B % RHS=0._dp
-    Perm(1:nLC) = B % Perm
+    Perm(1:nLC) = B % Perm(1:nLC)
     InEqualityFlag(1:nLC) = 0
 
     IF (FetiAsPrec) THEN
@@ -1476,6 +1522,20 @@ END SUBROUTINE FetiProject
 !call checktimer('iter',delete=.true.)
     END DO
 
+    ! Falling out of the loop without reaching the tolerance used to pass
+    ! silently, and the coefficients were then used as if they had converged.
+    ! A stagnating solve is thereby returned as a plausible looking but wrong
+    ! answer, which is a bad way to find out about it.
+    IF (err1>=TOL) THEN
+      WRITE(Message,'(A,I0,A,ES12.5,A,ES12.5)') 'CPG did not converge in ', &
+          maxit,' iterations: residual ',err1,' against a tolerance of ',TOL
+      IF (ListGetLogical(Params,'Linear System Abort Not Converged',Found)) THEN
+        CALL Fatal('FetiCPG',Message)
+      ELSE
+        CALL Warn('FetiCPG',Message)
+      END IF
+    END IF
+
     CALL matvecsubr(x(1:n),T,ipar)
     T = -(T-b(1:n))
     CALL FetiProject(A,n,T,OP=2,TOL=1d-12)
@@ -1574,28 +1634,6 @@ END SUBROUTINE FetiProject
     IF (Anorm <= 0._dp) Anorm = 1._dp
 !------------------------------------------------------------------------------
   END FUNCTION FetiMatrixNorm
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> FixInds and the alpha work array are sized by the compile time maxnz, so a
-!> kernel bigger than that would silently run past them. A subdomain in several
-!> disconnected pieces reaches such sizes easily: four pieces of elasticity
-!> already make 24.
-!------------------------------------------------------------------------------
-  SUBROUTINE FetiCheckKernelSize(nzl,Origin)
-!------------------------------------------------------------------------------
-    INTEGER :: nzl
-    CHARACTER(LEN=*) :: Origin
-!------------------------------------------------------------------------------
-    IF (nzl > maxnz) THEN
-      WRITE(Message,'(A,I0,A,I0,A,A)') 'Kernel dimension ',nzl, &
-          ' exceeds the compiled in maximum of ',maxnz, &
-          ', which sizes FixInds and alpha. Source: ',TRIM(Origin)
-      CALL Fatal('Feti:',Message)
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE FetiCheckKernelSize
 !------------------------------------------------------------------------------
 
 
@@ -1787,7 +1825,10 @@ END SUBROUTINE FetiProject
     INTEGER, POINTER :: p(:)
     INTEGER, ALLOCATABLE :: comp(:)
     INTEGER :: i,j,k,n,m,dofs,dim,FixNodes(0:6)
-    INTEGER :: m2,ierr,nc,ic,kc,nfree
+    INTEGER :: m2,ierr,nc,ic,kc,nfree,ncand
+    INTEGER, ALLOCATABLE :: cand(:)
+    REAL(KIND=dp), ALLOCATABLE :: W(:,:)
+    LOGICAL :: Usable
     REAL(KIND=dp), POINTER :: coord_x(:),coord_y(:),coord_z(:), dscale(:)
     LOGICAL :: Found
     REAL(KIND=dp) :: xc,yc,zc,hc,Anorm,KerTol
@@ -1865,7 +1906,6 @@ END SUBROUTINE FetiProject
       NullSpaceLC=GetLogical(Params,'Feti Fixing Using L.C.',Found)
 
       IF (Floating) THEN
-        CALL FetiCheckKernelSize(nz,'constants per connected component')
         ALLOCATE(z(nz,n))
         z = tz2(1:nz,:)
 
@@ -2041,7 +2081,6 @@ END SUBROUTINE FetiProject
 
       ! The kernel itself, however it ends up being fixed below.
       IF (Floating) THEN
-        CALL FetiCheckKernelSize(nz,'rigid body modes per connected component')
         ALLOCATE(z(nz,n))
         z = tz2(1:nz,:)
       END IF
@@ -2062,30 +2101,69 @@ END SUBROUTINE FetiProject
         NullSpaceLC = .TRUE.
       END IF
 
-      ! Set the DOFs to fix at FixNodes() nodes:
-      ! ----------------------------------------
-      IF (Floating .AND. nc == 1 .AND. j >= nz) THEN
+      ! Set the DOFs to fix at FixNodes() nodes.
+      !
+      ! Pinning removes the kernel exactly when z(:,FixInds) is nonsingular, so
+      ! choose the DOFs by pivoting on that matrix rather than by mapping each
+      ! mode to a node by hand. Every component of every node the search offers
+      ! is a candidate, and Gaussian elimination with column pivoting picks the
+      ! nz of them that keep it furthest from singular. That is the same
+      ! criterion FetiFixingUsable checks afterwards, so the two agree by
+      ! construction.
+      !
+      ! The mapping this replaces read FixNodes(0), which
+      ! FindRigidBodyFixingNodes never writes: it documents its output as
+      ! x1 x2 y1 y2 z1 z2 and fills entries 1..2*dim only. All three translations
+      ! were therefore pinned at whatever that entry happened to hold, which is
+      ! how the fixing matrix ended up singular to 1e-17 on most partitions of a
+      ! finely divided mesh.
+      ! ------------------------------------------------------------------------
+      IF (Floating .AND. nc == 1) THEN
         CALL FindRigidBodyFixingNodes(Solver, FixNodes, p)
-        DO i=1,nz
-!           FixInds(i) = dofs*(p(FixNodes(2*FloatInds(i)-1))-1)+FloatInds(i)
 
-          IF (FloatInds(i)==1) THEN  ! x translation
-            FixInds(i) = dofs*(p(FixNodes(0))-1)+1
-          ELSE IF (FloatInds(i)==2) THEN  ! y translation
-            FixInds(i) = dofs*(p(FixNodes(0))-1)+2
-          ELSE IF (dofs>2.AND.FloatInds(i)==3) THEN  ! z translation
-            FixInds(i) = dofs*(p(FixNodes(0))-1)+3
-          ELSE IF (FloatInds(i)==dofs+1) THEN ! rot 'bout z
-            FixInds(i) = dofs*(p(FixNodes(1))-1)+1
-          ELSE IF (FloatInds(i)==dofs+2) THEN ! rot 'bout x
-            FixInds(i) = dofs*(p(FixNodes(2))-1)+2
-          ELSE IF (FloatInds(i)==dofs+3) THEN ! rot 'bout y
-            FixInds(i) = dofs*(p(FixNodes(3))-1)+3
-          ELSE                                ! the rest assumed potential like
-            FixInds(i)=dofs*(p(FixNodes(0))-1)+FloatInds(i)
-          END IF
-
+        ncand = 0
+        ALLOCATE(cand(2*dim*dofs), W(nz,2*dim*dofs))
+        DO k=1,2*dim
+          IF (FixNodes(k) <= 0) CYCLE
+          IF (p(FixNodes(k)) <= 0) CYCLE
+          DO i=1,dofs
+            ncand = ncand+1
+            cand(ncand) = dofs*(p(FixNodes(k))-1)+i
+          END DO
         END DO
+
+        Usable = ncand >= nz
+        IF (Usable) THEN
+          W(:,1:ncand) = z(1:nz,cand(1:ncand))
+          DO i=1,nz
+            ! Pick the column with the largest remaining entry in row i.
+            k = 0; hc = 0._dp
+            DO m2=i,ncand
+              IF (ABS(W(i,m2)) > hc) THEN
+                hc = ABS(W(i,m2)); k = m2
+              END IF
+            END DO
+            IF (hc <= EPSILON(1._dp)) THEN
+              Usable = .FALSE.; EXIT
+            END IF
+            ! Swap it into place and eliminate below.
+            IF (k /= i) THEN
+              y2(1:nz) = W(:,i); W(:,i) = W(:,k); W(:,k) = y2(1:nz)
+              m2 = cand(i); cand(i) = cand(k); cand(k) = m2
+            END IF
+            FixInds(i) = cand(i)
+            DO m2=i+1,ncand
+              W(:,m2) = W(:,m2) - (W(i,m2)/W(i,i))*W(:,i)
+            END DO
+          END DO
+        END IF
+
+        IF (.NOT.Usable) THEN
+          CALL Info('Feti:','No set of DOFs among the fixing nodes removes '// &
+              'the kernel; using Lagrange coefficients instead',Level=5)
+          NullSpaceLC = .TRUE.
+        END IF
+        DEALLOCATE(cand,W)
       END IF
       RETURN
     END IF
@@ -2122,8 +2200,10 @@ END SUBROUTINE FetiProject
       ! by that much. The pinning is done once when the matrix is set up, while
       ! the right hand side changes at every iteration, so it has to be imposed
       ! here rather than there.
+      ! b is the caller's right hand side, which is sized for the Lagrange
+      ! coefficients and so longer than the n rows solved for here.
       ALLOCATE(bfix(n))
-      bfix = b
+      bfix = b(1:n)
       DO i=1,nz
         bfix(FixInds(i)) = 0._dp
       END DO
@@ -2133,11 +2213,49 @@ END SUBROUTINE FetiProject
     IF (NullSpaceLC.AND.nz>0) THEN
       ALLOCATE(tx(n+nz),tb(n+nz))
       tb=0
-      tb(1:n)=b
+      tb(1:n)=b(1:n)
       A % NumberOfRows=n+nz
     END IF
 
     CALL DirectSolver(A,tx,tb,Solver)
+
+    ! Check the first solve after the matrix was set up. The kernel handed to it
+    ! has been verified to lie in null(A), but nothing has checked that it is all
+    ! of null(A), and there is no cheap way to. It is not, when a partition holds
+    ! pieces joined at a single node or a single edge: those are one piece to a
+    ! graph but a mechanism to the operator, with three or one extra modes each
+    ! beyond the six rigid body ones. Whatever is left of the kernel then survives
+    ! into the matrix solved here, and the result is not a solution of anything.
+    ! Left alone it comes out as a residual of 1e18 and then NaN some hundred
+    ! iterations later, which says nothing about the cause.
+    IF (.NOT.LocalSolveChecked) THEN
+      LocalSolveChecked = .TRUE.
+      BLOCK
+        REAL(KIND=dp), ALLOCATABLE :: res(:)
+        REAL(KIND=dp) :: rn,bn
+        INTEGER :: ii,jj,nn
+        nn = A % NumberOfRows
+        ALLOCATE(res(nn)); res = 0._dp
+        DO ii=1,nn
+          DO jj=A % Rows(ii),A % Rows(ii+1)-1
+            res(ii) = res(ii) + A % Values(jj)*tx(A % Cols(jj))
+          END DO
+        END DO
+        res = res - tb(1:nn)
+        rn = SQRT(SUM(res**2)); bn = SQRT(SUM(tb(1:nn)**2))
+        DEALLOCATE(res)
+        IF (bn > 0._dp .AND. rn > 1.0d-6*bn) THEN
+          WRITE(Message,'(A,ES12.5,A,I0,A)') &
+              'The local matrix was not solved: relative residual ',rn/bn, &
+              '. Its kernel is most likely bigger than the ',nz, &
+              ' modes found for it, which happens when a partition holds pieces '// &
+              'joined at a single node or edge. Use "mumpslocal" with "Mumps '// &
+              'Solve Singular", or "spqr", which read the kernel off the '// &
+              'factorization instead of assuming it.'
+          CALL Fatal('FetiDirectSolver',Message)
+        END IF
+      END BLOCK
+    END IF
 
     IF (NullSpaceLC.AND.nz>0) THEN
       A % NumberOfRows=n
@@ -2340,7 +2458,10 @@ END SUBROUTINE FetiProject
     REAL(KIND=dp), target :: x(:),b(:)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE,target :: y(:)
-    REAL(KIND=dp) :: alpha(maxnz), TOL,mind,maxd
+    REAL(KIND=dp), ALLOCATABLE :: lambda(:)
+    INTEGER :: SaveNdeg
+    REAL(KIND=dp), ALLOCATABLE :: alpha(:)
+    REAL(KIND=dp) :: TOL,mind,maxd
     INTEGER :: i,j,k,l,m,n,nd,q,d,nLC
 
     LOGICAL  :: Found, Floating=.FALSE., QR, MumpsLU
@@ -2463,7 +2584,18 @@ END SUBROUTINE FetiProject
       MumpsLU = ListGetLogical(Params, 'Mumps Solve Singular', Found)
 
     n = A % NumberOfRows
-    ALLOCATE(y(n))
+    ! Sized for the Lagrange coefficients, which can outnumber the rows of the
+    ! local matrix, plus the kernel coefficients that both solvers append after
+    ! them. maxnz bounds the latter.
+    ALLOCATE(y(MAX(n,FetiMaxLC(A)+n)))
+    ALLOCATE(lambda(MAX(n,FetiMaxLC(A)+n)))
+
+    ! The kernel dimension is bounded by the number of rows and by nothing
+    ! smaller: a subdomain in several disconnected pieces carries the modes of
+    ! each, so twelve metis pieces of the winkel mesh already reach 24 against
+    ! the 20 these used to be given.
+    IF (ALLOCATED(FixInds)) DEALLOCATE(FixInds)
+    ALLOCATE(FixInds(n), alpha(n))
 
     ! Initialize parallel matrix for the original system for
     ! matrix-vector multiply in FetiStopc. NOT USED at the
@@ -2504,6 +2636,8 @@ END SUBROUTINE FetiProject
         IF (.NOT.FetiFixingUsable()) NullSpaceLC = .TRUE.
       END IF
 
+      LocalSolveChecked = .FALSE.
+
       saverows   => a % rows
       savecols   => a % cols
       savevalues => a % values
@@ -2512,6 +2646,16 @@ END SUBROUTINE FetiProject
         ! Fix z=null(A) with Lagrange coefficients
         ! A_fix = [A z^T; z 0] ([x; \lambda]):
         ! ------------------------------------------
+
+        ! CRS_MatrixVectorMultiply has hand unrolled paths selected by A % ndeg
+        ! which assume every row holds whole blocks of ndeg consecutive columns.
+        ! The assembly below breaks that twice over: it drops stored zeros, and
+        ! it appends the nz constraint columns after them. Left as it was, the
+        ! unrolled loop reads the wrong entries of the multiplicand -- the
+        ! product came out 60% asymmetric, which stalls the conjugate gradient
+        ! iteration that preconditions with it. Mark the matrix as unblocked.
+        SaveNdeg = a % ndeg
+        a % ndeg = 1
 
         allocate(a % rows(n+nz+1))
         k=count(a % values/=0)+2*count(z/=0)
@@ -2631,16 +2775,21 @@ END SUBROUTINE FetiProject
     ! ----------------------------
     Precondition = GetLogical( Params,'FETI Preconditioning', Found)
     IF (.NOT.Found) Precondition=.TRUE.
-    x=0
+    ! The unknown of this solve is the vector of Lagrange coefficients, which
+    ! lives in a space of nLC (plus nz) dimensions and has nothing to do with
+    ! the rows of the local matrix. It used to be kept in the caller's solution
+    ! vector x, which is sized by those rows, and that only held together while
+    ! the coefficients happened to be fewer.
+    lambda=0
     IF ( CPG ) THEN
-      CALL FetiCPG(A,nLC,x,y,b,Solver, & 
+      CALL FetiCPG(A,nLC,lambda,y,b,Solver, &
               FetiMV, FetiPrec, SParDotProd, SParNorm)
     ELSE
       precProc=AddrFunc(FetiPrec)
       mvProc=AddrFunc(FetiMV)
       nrmProc=AddrFunc(SParNorm)
       dotProc=AddrFunc(SParDotProd)
-      CALL IterSolver(A,x,y,Solver,ndim=nLC,DotF=dotProc, &
+      CALL IterSolver(A,lambda,y,Solver,ndim=nLC,DotF=dotProc, &
           NormF=nrmProc, MatvecF=mvProc, precF=precProc )
     END IF
 
@@ -2649,14 +2798,17 @@ END SUBROUTINE FetiProject
     ! --------------------------------------------
     IF ( Floating ) THEN
       IF ( CPG ) THEN
-        alpha(1:nz)=x(nLC+1:nLC+nz)
+        alpha(1:nz)=lambda(nLC+1:nLC+nz)
       ELSE
-        alpha(1:nz)=x(nLC-nz+1:nLC)
+        alpha(1:nz)=lambda(nLC-nz+1:nLC)
       END IF
     END IF
 
-    CALL FetiSendRecvLC(A,y,x)
-    y = y + b(1:n)
+    ! From here on x is the primary unknown again, and y holds B^T*lambda in the
+    ! space of the local rows. The extent is written out because y is sized for
+    ! the Lagrange coefficients and is longer than that.
+    CALL FetiSendRecvLC(A,y,lambda)
+    y(1:n) = y(1:n) + b(1:n)
     CALL FetiDirectSolver(A,x,y,Solver)
 
     IF (Floating) THEN
@@ -2665,6 +2817,7 @@ END SUBROUTINE FetiProject
 
       IF(.NOT.(QR.OR.MumpsLU)) THEN
         DEALLOCATE(A % Values,A % Rows, A % Cols)
+        A % ndeg = SaveNdeg
         A % Rows => SaveRows
         A % Cols => SaveCols
         A % Values => SaveValues
