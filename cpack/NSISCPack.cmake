@@ -5,6 +5,11 @@ IF(WIN32)
   SET(CPACK_NSIS_HELP_LINK "http://www.elmerfem.org")
   #SET(CPACK_NSIS_CONTACT "TODO: elmeradm@csc.fi")
   SET(CPACK_NSIS_CONTACT "")
+
+  # Fix blurry installer on High-DPI screens
+  # Support introduced with CMake 3.18. It should be a no-op with older versions.
+  SET(CPACK_NSIS_MANIFEST_DPI_AWARE ON)
+
   LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS
 "   !include \\\"winmessages.nsh\\\"
    ; HKLM (all users) vs HKCU (current user) defines
