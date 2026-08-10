@@ -2384,33 +2384,50 @@ END SUBROUTINE FetiProject
     ALLOCATE(DirichletDOFs(A % NumberOFRows))
     DirichletDOFs = .FALSE.
 
-    d  = Solver % Variable % DOFs
-    p => Solver % Variable % Perm
-    ALLOCATE(Indexes(Solver % Mesh % MaxElementDOFs))
-    DO i=1,GetNofBoundaryElements()
-      El=>GetBoundaryElement(i)
-      BC=>GetBC()
-      IF(.NOT.ASSOCIATED(BC)) CYCLE
-      nd = GetElementDOFs(Indexes)
-      DO j=1,d
-        IF (d>1) THEN
-          IF(ListCheckPresent(BC,ComponentName(Solver % Variable,j))) THEN
-            DO k=1,nd
-              IF( p(Indexes(k)) <= 0 ) CYCLE
-              DirichletDOFs(d*(p(Indexes(k))-1)+j) = .TRUE.
-            END DO
+    IF (ALLOCATED(A % ConstrainedDOF)) THEN
+      ! Take the flags from the matrix. They are what was actually imposed on
+      ! it, which is not the same as what a scan of this partition's boundary
+      ! elements finds: a node can be constrained here while the boundary
+      ! element carrying the condition sits in a neighbouring partition, and
+      ! conditions set by other means than a boundary condition section are not
+      ! visible to such a scan at all.
+      !
+      ! Rebuilding them here instead is what made the two sides of an interface
+      ! disagree about what was on it, since the lists are filtered with
+      ! .NOT.DirichletDOFs: one partition kept a DOF and sent its tag, the other
+      ! had dropped it, could not match the tag, and reported "should not
+      ! happen" while quietly discarding the constraint.
+      DirichletDOFs = A % ConstrainedDOF(1:A % NumberOfRows)
+    ELSE
+      ! No flags on the matrix, so fall back to scanning the boundary elements.
+      d  = Solver % Variable % DOFs
+      p => Solver % Variable % Perm
+      ALLOCATE(Indexes(Solver % Mesh % MaxElementDOFs))
+      DO i=1,GetNofBoundaryElements()
+        El=>GetBoundaryElement(i)
+        BC=>GetBC()
+        IF(.NOT.ASSOCIATED(BC)) CYCLE
+        nd = GetElementDOFs(Indexes)
+        DO j=1,d
+          IF (d>1) THEN
+            IF(ListCheckPresent(BC,ComponentName(Solver % Variable,j))) THEN
+              DO k=1,nd
+                IF( p(Indexes(k)) <= 0 ) CYCLE
+                DirichletDOFs(d*(p(Indexes(k))-1)+j) = .TRUE.
+              END DO
+            END IF
+          ELSE
+            IF(ListCheckPresent(BC,Solver % Variable % Name)) THEN
+              DO k=1,nd
+                IF( p(Indexes(k)) <= 0 ) CYCLE
+                DirichletDOFs(d*(p(Indexes(k))-1)+j) = .TRUE.
+              END DO
+            END IF
           END IF
-        ELSE
-          IF(ListCheckPresent(BC,Solver % Variable % Name)) THEN
-            DO k=1,nd
-              IF( p(Indexes(k)) <= 0 ) CYCLE
-              DirichletDOFs(d*(p(Indexes(k))-1)+j) = .TRUE.
-            END DO
-          END IF
-        END IF
+        END DO
       END DO
-    END DO
-    DEALLOCATE(Indexes)
+      DEALLOCATE(Indexes)
+    END IF
 
     ! Get various  solution options:
     ! ------------------------------
