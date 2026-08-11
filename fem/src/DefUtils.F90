@@ -3556,14 +3556,18 @@ CONTAINS
        CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
            TRIM(SlaveSolverStr),Level=6)
      END IF
-       
-     dt = GetTimeStepsize()
-     Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
-
+     
+     dt = 0.0_dp
+     iterV => VariableGet( Solver % Mesh % Variables, 'timestep size', &
+         ThisOnly = .TRUE., UnfoundFatal=.TRUE.)
+     dt = iterV % Values(1)
+     
+     Transient = ListGetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
+     
      ! store the nonlinear iteration at the outer loop
      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-     iter = NINT(iterV % Values(1))
-
+     IF(ASSOCIATED(iterV)) iter = NINT(iterV % Values(1))
+     
      IF(PRESENT(SlaveCnt)) SlaveCnt = SIZE(SlaveSolverIndexes)
      
      DO j=1,SIZE(SlaveSolverIndexes)
@@ -3571,7 +3575,6 @@ CONTAINS
        IF(PRESENT(SlaveInd)) THEN
          IF(j /= SlaveInd) CYCLE
        END IF
-
        
        k = SlaveSolverIndexes(j)       
        SlaveSolver => CurrentModel % Solvers(k)
@@ -3584,7 +3587,7 @@ CONTAINS
            CALL ListAddLogical(SlaveSolver % Values,'Linear System Solver Disabled',.TRUE.)
          END IF
        END IF
-         
+       
        IF(ParEnv % PEs>1) THEN
          SParEnv => ParEnv
 
@@ -3598,7 +3601,7 @@ CONTAINS
            CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
          END IF
        END IF
-
+       
        CurrentModel % Solver => SlaveSolver
        CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
 
@@ -3606,7 +3609,7 @@ CONTAINS
          ParEnv => SParEnv
        END IF
      END DO
-     iterV % Values = iter       
+     IF(ASSOCIATED(iterV)) iterV % Values = iter       
      CurrentModel % Solver => Solver
 
    END SUBROUTINE DefaultSlaveSolvers

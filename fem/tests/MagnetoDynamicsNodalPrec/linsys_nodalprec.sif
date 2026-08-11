@@ -1,20 +1,23 @@
   Linear System Preconditioning = "auxiliary space solver"
+  Prec Solvers(2) = Integer 7 8  
 
-! Needed for auxiliary space preconditioning
-  Exported Variable 1 = a res
-  Exported Variable 2 = a update
-  Prec Solvers(1) = Integer 7
-  Preconditioning Residual = String "a res"
-  Preconditioning Update = String "a update"
+! Now set internally by solver
+! Exported Variable 1 = ams res
+! Exported Variable 2 = ams update
+! Preconditioning Residual = String "ams res"
+! Preconditioning Update = String "ams update"
+
+  Additive Smoother = Logical True
 
   MG Smoother = sgs
   MG Post Smoothing Iterations = 5
   MG Smoother Relaxation Factor = Real 1.0
 !  MG Smoother Relaxation Factor = Real $2.0/3.0
 
+!  MG Smoother Normalize Guess = Logical True
+
 ! Standard parameter for outer iteration
   Linear System Symmetric = False
-  Linear System Scaling = True
   Linear System Row Equilibration = False 
 
   Linear System Solver = String "Iterative"
@@ -24,7 +27,6 @@
   Linear system abort not converged = True
 
 ! Note: this is tuned so that the solver fails if >5 iterations needed!
-  Linear System Max Iterations = 10 !100
+  Linear System Max Iterations = 5 !100
  
-
-
+!  Linear System Scaling = False

@@ -1108,11 +1108,12 @@
     TYPE(Variable_t), POINTER :: pVar
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
-    REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS, DoMask
+    REAL(KIND=dp) :: rnorm, coeff
+    LOGICAL :: Found, ScaleRHS, DoMask, AdditiveSmoother
     CHARACTER(MAX_NAME_LEN) :: str   
     INTEGER :: SlaveInd, SlaveCnt
     INTEGER :: n, DOFs
+
 !-------------------------------------------------------------------------------
     
     Solver => CurrentModel % Solver
@@ -1130,8 +1131,7 @@
     END IF
     IF(n /= SIZE(pVar % Values) ) THEN
       CALL Fatal('SlavePrec','Residual should have same size as primary variable!')
-    END IF
-       
+    END IF       
     res => pVar % Values
     res(1:n) = v(1:n)
 
@@ -1144,91 +1144,96 @@
       CALL Fatal('SlavePrec','Update should have same size as primary variable!')
     END IF
     dx => pVar % Values
-    
+
+
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
-    IF (ScaleRHS) THEN
-      ! Perform back-scaling
-      CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
-    END IF
 
-    ! Run the 1st preconditioning solver and also return the count of preconditioning solvers
-    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = 1, SlaveCnt = SlaveCnt )
-
-    IF (ScaleRHS) THEN
-      ! Transform the search direction so that it corresponds to the scaled linear system
-      CALL ScaleLinearSystemVectors(AMat, res, n, dx)
-    END IF
-
-
+    ! Shall we do smoother after each preconitioner step, or after all? 
+    AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
+    
+    ALLOCATE(r(n))
+      
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
-    DO SlaveInd = 2, SlaveCnt 
+    DO SlaveInd = 1, 10
       
-      IF(SlaveInd == 2) ALLOCATE(r(n),z(n))
-      IF( ListGetLogical(Params, 'Additive Pre-Smoothing', Found) ) THEN
-        CALL TailoredSmooth(.TRUE.)      
-        !CALL ExperimentalStuff()
+      ! Calculate remaining residual, if we have just one slave we just need the initial residual.
+      IF( SlaveInd > 1 ) THEN
+        r(1:n) = 0.0_dp
+        CALL MatrixVectorMultiply(Amat, z, r)
+        res(1:n) = v(1:n) - r(1:n)
       END IF
       
-      CALL MatrixVectorMultiply(Amat, dx, r)
-      res(1:n) = res(1:n) - r(1:n)
-
       IF (ScaleRHS) THEN
+        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff. 
         CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
       END IF
-      
-      z(1:n) = dx(1:n)
+
+      ! (dx,res) are the vectors that should go in here by their name
       dx(1:n) = 0.0_dp
-      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
+      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd, SlaveCnt = SlaveCnt  )
       
       IF (ScaleRHS) THEN
+        ! Transform the search direction so that it corresponds to the scaled linear system
         CALL ScaleLinearSystemVectors(AMat, res, n, dx)
       END IF
-
-      dx(1:n) = dx(1:n) + z(1:n)
-      res(1:n) = v(1:n) 
-
-      IF(SlaveInd == SlaveCnt) DEALLOCATE(z)
-    END DO
-    !--------------------------------------------------------------------------   
-
-    
-    IF( ListCheckPresent( Params,'MG Smoother') ) THEN
-      IF(.NOT. ASSOCIATED(r)) ALLOCATE(r(n))
-      CALL TailoredSmooth(.FALSE.)
-
       
+      IF( AdditiveSmoother ) THEN
+        CALL TailoredSmooth(dx,res,SlaveInd)      
+      END IF
+
       ! This is just to test that the suggested search direction is a good one.
       ! Ideally we need to multiply by "1" to get minimum norm. 
-#if 0
       CALL ExperimentalStuff()            
-#endif
-      CALL CRS_MatrixVectorMultiply( Amat, dx, r )
-      r(1:n) = res(1:n) - r(1:n)
+      
+      ! If we just have one solver, no need to cumulative summation etc. 
+      IF( SlaveCnt == 1 ) EXIT
 
+      ! Sum up cumulative solution
+      IF(SlaveInd == 1) THEN
+        ALLOCATE(z(n)) 
+        z(1:n) = dx(1:n)
+      ELSE          
+        z(1:n) = z(1:n) + dx(1:n)
+      END IF
+
+      ! At final solver revert the cumulative solution back to origonal vectors.
+      IF(SlaveInd == SlaveCnt) THEN
+        dx(1:n) = z(1:n)
+        res(1:n) = v(1:n) 
+        DEALLOCATE(z)
+        EXIT
+      END IF
+        
+    END DO
+    !--------------------------------------------------------------------------   
+    
+
+    ! If we want to perform smoothing only once at the very end.
+    IF( .NOT. AdditiveSmoother ) THEN
+      CALL TailoredSmooth(dx,res,1)
+      CALL ExperimentalStuff()            
     END IF
-          
+    
+    DEALLOCATE(r)
     u(1:n) = dx(1:n) 
 
+    
   CONTAINS
 
-    SUBROUTINE TailoredSmooth(PreSmooth)
-      LOGICAL :: PreSmooth
-      
+    SUBROUTINE TailoredSmooth(dx,res,Level)
+      REAL(KIND=dp) :: dx(:), res(:)     
       LOGICAL :: DoMask
-
+      INTEGER :: Level
+      
       DoMask = .FALSE.
       str = ListGetString(Params,'MG Smoother')
       IF(len_TRIM(str) >= 6 ) THEN
         DoMask = (str(1:6) == 'masked')
       END IF
 
-      r(1:n) = 0.0_dp
-      RNorm = MGSmooth(Solver, Amat, Mesh, dx, res, r, &
-          1, dofs, PreSmooth = .FALSE.)
-
-      
+      r(1:n) = 0.0_dp      
       IF(DoMask) THEN
         BLOCK
           LOGICAL, POINTER :: SkipMask(:)
@@ -1236,25 +1241,21 @@
           SkipMask = .FALSE.
           CALL CreateEdgeSkipMask(SkipMask)
           RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
-              1, dofs, PreSmooth = PreSmooth, SkipMask = SkipMask )
+              Level, dofs, SkipMask = SkipMask )
           DEALLOCATE(SkipMask)
         END BLOCK
       ELSE
-        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
-            1, dofs, PreSmooth = PreSmooth )
+        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, Level, dofs )
       END IF      
 
     END SUBROUTINE TailoredSmooth
 
-
-
     
     SUBROUTINE ExperimentalStuff()
-      
-      REAL(KIND=dp) :: rn, bn
-      
+
+      REAL(KIND=dp) :: rn, bn      
       IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
-        
+
         CALL MatrixVectorMultiply( Amat, dx, r) 
         rn = SUM( r(1:n)**2 )
         bn = SUM( r(1:n) * res(1:n) )
@@ -1289,7 +1290,7 @@
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS
+    LOGICAL :: Found, ScaleRHS, AdditiveSmoother
     CHARACTER(MAX_NAME_LEN) :: str   
     INTEGER :: SlaveInd, SlaveCnt
     INTEGER :: n, DOFs
@@ -1329,73 +1330,87 @@
 
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
-    IF (ScaleRHS) THEN
-      ! Perform back-scaling
-      CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
-    END IF
+
+    ! Shall we do smoother after each preconitioner step, or after all? 
+    AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
     
-    ! Run the 1st preconditioning solver and also return the count of preconditioning solvers
-    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = 1, SlaveCnt = SlaveCnt )
 
-    IF (ScaleRHS) THEN
-      ! Transform the search direction so that it corresponds to the scaled linear system
-      CALL ScaleLinearSystemVectors(AMat, res, n, dx)
-    END IF
 
-    ! Enforce old sif files to be rewritten
-    IF( ListCheckPresent( Params, 'Additive Prec Solvers' ) ) THEN
-      CALL Fatal('SlavePrecComplex','Use "Prec Solvers" of size two instead!' )
-    END IF
-
+    ALLOCATE(r(n))
+      
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
-    DO SlaveInd = 2, SlaveCnt 
+    DO SlaveInd = 1, 10
       
-      !CALL ExperimentalStuffZ()
-            
-      IF(SlaveInd == 2) ALLOCATE(r(n),z(n))
-      IF( ListGetLogical(Params, 'Additive Pre-Smoothing', Found) ) THEN        
-        ! Apply additional iterations to the residual correction system. Note: the true residual
-        ! is returned via r but its initial value does not change the result 
-        r = 0.0_dp
-        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
-            1, dofs, PreSmooth = .TRUE. ) 
+      ! Calculate remaining residual, if we have just one slave we just need the initial residual.
+      IF( SlaveInd > 1 ) THEN
+        r(1:n) = 0.0_dp
+        CALL MatrixVectorMultiply(Amat, z, r)
+        res(1:n:2) = REAL(v(1:n/2))
+        res(2:n:2) = AIMAG(v(1:n/2))
+        res(1:n) = res(1:n) - r(1:n)
       END IF
       
-      CALL MatrixVectorMultiply(Amat, dx, r)
-      res(1:n) = res(1:n) - r(1:n)
-
       IF (ScaleRHS) THEN
+        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff. 
         CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
       END IF
-      
-      z(1:n) = dx(1:n)
+
+      ! (dx,res) are the vectors that should go in here by their name
       dx(1:n) = 0.0_dp
-      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
+      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd, SlaveCnt = SlaveCnt  )
       
       IF (ScaleRHS) THEN
+        ! Transform the search direction so that it corresponds to the scaled linear system
         CALL ScaleLinearSystemVectors(AMat, res, n, dx)
       END IF
-
-      dx(1:n) = dx(1:n) + z(1:n)
-      res(1:n:2) = REAL(v(1:n/2))
-      res(2:n:2) = AIMAG(v(1:n/2))
-
-      IF(SlaveInd == SlaveCnt) DEALLOCATE(z)
-    END DO
-    !--------------------------------------------------------------------------
-
-    IF( ListCheckPresent(Params, 'MG Smoother') ) THEN
-      IF(.NOT. ASSOCIATED(r)) ALLOCATE(r(n))
-      r = 0.0_dp
-      RNorm = MGSmooth(Solver, Amat, Mesh, dx, res, r, &
-          1, dofs, PreSmooth = .FALSE.)
-    END IF
       
-    IF(ASSOCIATED(r)) DEALLOCATE(r)    
+      IF( AdditiveSmoother ) THEN
+        r = 0.0_dp
+        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SlaveInd, dofs )
+      END IF
+
+      ! This is just to test that the suggested search direction is a good one.
+      ! Ideally we need to multiply by "1" to get minimum norm. 
+      CALL ExperimentalStuffZ()            
+      
+      ! If we just have one solver, no need to cumulative summation etc. 
+      IF( SlaveCnt == 1 ) EXIT
+
+      ! Sum up cumulative solution
+      IF(SlaveInd == 1) THEN
+        ALLOCATE(z(n)) 
+        z(1:n) = dx(1:n)
+      ELSE          
+        z(1:n) = z(1:n) + dx(1:n)
+      END IF
+
+      ! At final solver revert the cumulative solution back to origonal vectors.
+      IF(SlaveInd == SlaveCnt) THEN
+        dx(1:n) = z(1:n)
+        res(1:n:2) = REAL(v(1:n/2))
+        res(2:n:2) = AIMAG(v(1:n/2))
+        DEALLOCATE(z)
+        EXIT
+      END IF
+        
+    END DO
+    !--------------------------------------------------------------------------   
+    
+
+    ! If we want to perform smoothing only once at the very end.
+    IF( .NOT. AdditiveSmoother ) THEN
+      r = 0.0_dp
+      RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, 1, dofs )
+      CALL ExperimentalStuffZ()            
+    END IF
+    
+    DEALLOCATE(r)
+
     u(1:n/2) = CMPLX(dx(1:n:2), dx(2:n:2),KIND=dp ) 
 
   CONTAINS
+
 
     SUBROUTINE ExperimentalStuffZ()
       
