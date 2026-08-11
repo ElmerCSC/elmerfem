@@ -69,6 +69,7 @@ SUBROUTINE StressSolver_Init0( Model,Solver,dt,Transient )
 SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
+    USE StressLocal, ONLY: SymTensorComponents
     IMPLICIT NONE
 
     TYPE(Model_t)  :: Model
@@ -79,7 +80,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     INTEGER :: dim,i
     TYPE(ValueList_t), POINTER :: SolverParams
     LOGICAL :: Found, CalculateStrains, CalcPrincipalAngle, CalcPrincipalAll, &
-         CalcStressAll, CalcPrincipalStrain, CalcVelocities, MaxwellMaterial
+         CalcStressAll, CalcPrincipalStrain, CalcVelocities, MaxwellMaterial, &
+         CSymmetry
     CHARACTER :: DimensionString
 
 !------------------------------------------------------------------------------
@@ -106,9 +108,28 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       CALL ListAddInteger(SolverParams, 'BDF Order', 1 )
       CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
 
+      ! The lag stress is a symmetric tensor, so only its independent components
+      ! are stored. In the axisymmetric case that is what makes room for the hoop
+      ! component at all: the full 2x2 layout used before had no slot for it.
+      ! StressCompose sizes its indexing by the same rule and checks the two agree.
+      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
+          CurrentCoordinateSystem() == CylindricSymmetric
+
+      ! Axisymmetry is the case that has to carry the hoop component of the lag
+      ! stress, and carrying it makes the incompressible formulation diverge: the
+      ! pressure reaches the hoop equation both through the lag stress and through
+      ! the mixed formulation. While the components were stored as a full block
+      ! there was no room for the hoop term, so it was quietly dropped and the
+      ! scheme stayed stable by solving a different model instead. Neither answer
+      ! is worth handing back, so refuse the combination rather than pick one.
+      IF( CSymmetry .AND. GetLogical( SolverParams, 'Incompressible', Found ) ) THEN
+        CALL Fatal( 'StressSolve_init', 'Maxwell material with "Incompressible" is not '// &
+            'supported in axisymmetric coordinates' )
+      END IF
+
       CALL ListAddString( SolverParams, &
           NextFreeKeyword('Exported Variable ',SolverParams), &
-          '-dofs '//i2s(dim**2)//' -ip ve_stress' )
+          '-dofs '//i2s(SymTensorComponents(dim,CSymmetry))//' -ip ve_stress' )
 
       i = GetInteger( SolverParams, 'Nonlinear System Min Iterations', Found )
       CALL ListAddInteger( SolverParams, 'Nonlinear System Min Iterations', MAX(i,2) )
