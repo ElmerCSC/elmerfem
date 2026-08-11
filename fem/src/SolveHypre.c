@@ -67,6 +67,21 @@ typedef struct {
 
 } ElmerHypreContainer;
 
+static void CheckHypreError(const char *Caller, int myid)
+{
+  int ierr = HYPRE_GetError();
+  if (ierr) {
+    if (myid == 0) {
+      char msg[512];
+      HYPRE_DescribeError(ierr, msg);
+      fprintf(stderr,
+              "SolveHypre: %s: Hypre library returned error code %d: %s \n",
+              Caller, ierr, msg);
+    }
+    HYPRE_ClearAllErrors();
+  }
+}
+
 
 /* The interface calls Hypre step-wise separating phases for 
    procedure of setup, solve and cleanup.
@@ -705,6 +720,8 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      exit(EXIT_FAILURE);
    }
 
+   CheckHypreError("SolveHypre1 (solver/preconditioner setup)", myid);
+
    Container->ilower = ilower;
    Container->iupper = iupper;     
    Container->hypre_method = *hypre_method;
@@ -950,7 +967,9 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
        HYPRE_COGMRESGetFinalRelativeResidualNorm(solver, &final_res_norm);
      }
    }
-   
+
+   CheckHypreError("SolveHypre2 (solve)", myid);
+
    for( k=0,i=0; i<local_size; i++ )
      if ( owner[i] ) rcols[k++] = globaldofs[i];
    
