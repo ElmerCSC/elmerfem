@@ -1320,6 +1320,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
+
+    ! If the dofs has just one component, no use trying to find components.
+    IF(Var % dofs == 1 ) THEN
+      str = TRIM(Var % Name)
+      RETURN
+    END IF
+
     IF ( Var % Name(1:Var % NameLen) == 'flow solution' ) THEN
       str='flow solution'
       IF ( .NOT. PRESENT(Component) ) RETURN

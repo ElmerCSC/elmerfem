@@ -2043,7 +2043,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Rows   => A % Rows
      Cols   => A % Cols
      Values => A % Values     
-          
+
      ! Use MKL to perform mvp if it is available
 #ifdef HAVE_MKL
      CALL mkl_dcsrgemv('T', n, Values, Rows, Cols, u, v)
