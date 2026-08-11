@@ -2067,6 +2067,15 @@ CONTAINS
           END IF
         END DO
       END DO
+
+      ! Only the triangle was written, so that is how many triplets there are.
+      ! NZ was set from the full entry count above, which left Mumps reading the
+      ! remaining half of IRN, JCN and A uninitialised. It reports them as
+      ! "index out of range" and discards them -- INFO(1)=1 with a count in
+      ! INFO(2) -- which is luck rather than safety: an uninitialised index that
+      ! happens to land inside the matrix is accepted as a real entry carrying
+      ! an uninitialised value.
+      A % mumpsIDL % NZ = nzloc
     END IF
 
     icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
@@ -2250,6 +2259,10 @@ CONTAINS
           END IF
         END DO
       END DO
+
+      ! See the real valued counterpart: only the triangle is written, so NZ has
+      ! to say so rather than count the whole matrix.
+      A % ZmumpsIDL % NZ = nzloc
     END IF
 
     icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
