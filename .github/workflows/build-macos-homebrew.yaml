@@ -18,7 +18,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
-    name: ${{ matrix.os }} (${{ matrix.openmp }} OpenMP using ${{ matrix.blas }})
+    name: ${{ matrix.os }} (using ${{ matrix.blas }})
 
     strategy:
       # Allow other runners in the matrix to continue if some fail
@@ -26,19 +26,9 @@ jobs:
 
       matrix:
         os: [macos-14]
-        openmp: [with]
-        # OpenMP was disabled here (2025-01 to 2026-07) because of
-        # intermittent H1BasisEvaluation/SD_H1BasisEvaluation failures on
-        # Apple Silicon. Root cause found on the no-threadprivate branch:
-        # GaussPointsAdapt (fem/src/SolverBasics.F90) kept its p-element
-        # reference-element flag/order in unsynchronized SAVEd module state,
-        # read and mutated by concurrent OMP threads calling
-        # GaussPoints(...,PReferenceElement=.TRUE.). Fixed by
-        # edcf46029/8cd4edb9b/b7b0d8a14. Re-enabling; watch this leg.
         blas: [openblas, accelerate]
         include:
           - os: macos-15-intel
-            openmp: with
             blas: openblas
 
     steps:
@@ -69,13 +59,13 @@ jobs:
             ${{ matrix.blas == 'openblas' && 'openblas' || '' }} \
             ${{ matrix.blas == 'accelerate' && 'veclibfort' || '' }} \
             open-mpi \
-            ${{ matrix.openmp == 'with' && 'libomp suitesparse' || '' }} \
+            libomp suitesparse \
             qwt vtk opencascade expat
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: configure
         env:
-          LDFLAGS: ${{ matrix.openmp == 'with' && format('-L{0}/opt/libomp/lib -lomp', env.HOMEBREW_PREFIX) || '' }}
+          LDFLAGS: ${{ format('-L{0}/opt/libomp/lib -lomp', env.HOMEBREW_PREFIX) }}
         # SD_H1BasisEvaluation and SD_LinearFormsAssembly used to fail on
         # macos-15-intel (Intel CPU) at `-O3` (passed at `-O2`): the same
         # GaussPointsAdapt SAVE-state race noted above (LinearFormsAssembly
@@ -99,19 +89,17 @@ jobs:
               && '-DBLAS_LIBRARIES="${VECLIBFORT_PREFIX}/lib/libvecLibFort.dylib" \
                   -DLAPACK_LIBRARIES="${VECLIBFORT_PREFIX}/lib/libvecLibFort.dylib"' || '' }} \
             -DUSE_MACOS_PACKAGE_MANAGER=OFF \
-            -DCMAKE_PREFIX_PATH="$( [ "${{ matrix.openmp }}" == "with" ] && echo "${HOMEBREW_PREFIX}/opt/libomp;")${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
-            ${{ matrix.openmp == 'with'
-              && '-DWITH_OpenMP=ON \
-                  -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
-                  -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
-                  -DOpenMP_Fortran_FLAGS="-fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include"'
-              || '-DWITH_OpenMP=OFF' }} \
+            -DCMAKE_PREFIX_PATH="${HOMEBREW_PREFIX}/opt/libomp;${HOMEBREW_PREFIX}/opt/openblas;${HOMEBREW_PREFIX}/opt/qt;${HOMEBREW_PREFIX}/opt/qwt" \
+            -DWITH_OpenMP=ON \
+            -DOpenMP_C_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
+            -DOpenMP_Fortran_FLAGS="-fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" \
             -DWITH_LUA=ON \
             -DWITH_MPI=ON \
             -DMPI_TEST_MAXPROC=2 \
             -DWITH_Zoltan=OFF \
             -DWITH_Mumps=OFF \
-            -DWITH_CHOLMOD=${{ matrix.openmp == 'with' && 'ON' || 'OFF' }} \
+            -DWITH_CHOLMOD=ON \
             -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
