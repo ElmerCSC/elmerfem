@@ -247,124 +247,42 @@ CONTAINS
       END IF
     END IF
 
+    weight_a(1:ngp) = muVec(1:ngp) * detJVec(1:ngp)
     IF (DivCurlForm) THEN
-      weight_a(1:ngp) = muVec(1:ngp) * detJVec(1:ngp)
-      weight_b(1:ngp) = -muVec(1:ngp) * detJVec(1:ngp) 
-
+      weight_b(1:ngp) = -weight_a(1:ngp)
       ! The following assumes that the bulk viscosity of the fluid vanishes:
-      weight_c(1:ngp) =  4.0_dp / 3.0_dp * muVec(1:ngp) * detJVec(1:ngp)
+      weight_c(1:ngp) =  4.0_dp / 3.0_dp * weight_a(1:ngp)
 
-      ! curl-curl part and div-div parts
-      SELECT CASE(dim)
-      CASE(3) ! {{{
-        i = 1; j = 1 
-        ! curl-curl
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:,2), weight_a, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 3), dbasisdxvec(:,:,3), weight_a, stifford(:,:,i,j))
-        ! div-div
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:, 1), weight_c, stifford(:,:,i,j))
+      DO i = 1, dim
+        DO j = 1, dim
+          ! Div-Div term
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              dbasisdxvec(:,:,i), dbasisdxvec(:,:,j), weight_c, stifford(:,:,i,j))
 
-        i=1;j=2
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:,1), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:, 2), weight_c, stifford(:,:,i,j))
+          IF (i == j) THEN
+            ! Diagonal terms for curl-curl 
+            DO k = 1, dim
+              IF (k /= i) THEN
+                CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                    dbasisdxvec(:,:,k), dbasisdxvec(:,:,k), weight_a, stifford(:,:,i,j))
+              END IF
+            END DO
+          ELSE
+            ! Off-diagonal terms: Cross derivatives for curl-curl 
+            CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                dbasisdxvec(:,:,j), dbasisdxvec(:,:,i), weight_b, stifford(:,:,i,j))
+          END IF
+        END DO
+      END DO
 
-        i=1;j=3
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 3), dbasisdxvec(:,:,1), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:, 3), weight_c, stifford(:,:,i,j))
-
-        i=2;j=1
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:,2), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:, 1), weight_c, stifford(:,:,i,j))
-
-        i=2;j=2
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:,1), weight_a, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 3), dbasisdxvec(:,:,3), weight_a, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:, 2), weight_c, stifford(:,:,i,j))
-
-        i=2;j=3
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 3), dbasisdxvec(:,:,2), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:, 3), weight_c, stifford(:,:,i,j))
-
-        i=3;j=1
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:,3), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 3), dbasisdxvec(:,:, 1), weight_c, stifford(:,:,i,j))
-
-        i=3;j=2
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:,3), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 3), dbasisdxvec(:,:, 2), weight_c, stifford(:,:,i,j))
-
-        i=3;j=3
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:,1), weight_a, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:,2), weight_a, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 3), dbasisdxvec(:,:, 3), weight_c, stifford(:,:,i,j))
-        ! }}}
-      CASE(2)  ! {{{
-        i = 1; j = 1
-        ! curl-curl
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:,2), weight_a, stifford(:,:,i,j))
-        ! div-div
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:, 1), weight_c, stifford(:,:,i,j))
-
-        i = 1; j = 2
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:,1), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:, 2), weight_c, stifford(:,:,i,j))
-
-        i = 2; j = 1
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:,2), weight_b, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:, 1), weight_c, stifford(:,:,i,j))
-
-        i = 2; j = 2
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 1), dbasisdxvec(:,:,1), weight_a, stifford(:,:,i,j))
-        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-            dbasisdxvec(:, :, 2), dbasisdxvec(:,:, 2), weight_c, stifford(:,:,i,j))
-        ! }}}
-      END SELECT
-
-    ELSE !DivCurlForm
-
-      weight_a(1:ngp) = muVec(1:ngp) * detJvec(1:ngp)      
-
-      ! The following assumes that the bulk viscosity of the fluid vanishes:
-!     weight_c(1:ngp) = -2.0_dp / 3.0_dp * muVec(1:ngp) * detJVec(1:ngp)
-
+    ELSE ! Standard Grad-U Form (Non-DivCurlForm)
       DO i=1,dim
         DO j=1,dim
           CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-              dBasisdxVec(1:ngp,1:ntot,j), dBasisdxVec(1:ngp,1:ntot,j), weight_a, stifford(1:ntot,1:ntot,i,i))
+              dBasisdxVec(:,:,j), dBasisdxVec(:,:,j), weight_a, stifford(:,:,i,i))
 
           CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-              dBasisdxVec(1:ngp,1:ntot,j), dBasisdxVec(1:ngp,1:ntot,i), weight_a, stifford(1:ntot,1:ntot,i,j))
-
-!         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-!             dBasisdxVec(1:ngp,1:ntot,i), dBasisdxVec(1:ngp,1:ntot,j), weight_c, stifford(1:ntot,1:ntot,i,j))
+              dBasisdxVec(:,:,j), dBasisdxVec(:,:,i), weight_a, stifford(:,:,i,j))
         END DO
       END DO
     END IF
