@@ -129,7 +129,7 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          export OMP_NUM_THREADS=1; ctest . \
+          ctest . \
             -LE slow \
             --timeout 600
 
