@@ -27,7 +27,33 @@ jobs:
             compiler-pkgs: "clang"
             cc: "clang"
             cxx: "clang++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON -DOpenMP_C_FLAGS=-fopenmp=libgomp -DOpenMP_CXX_FLAGS=-fopenmp=libgomp"
+            # OpenMP is deliberately OFF here, and now says so explicitly.
+            #
+            # This used to read "-WITH_OpenMP=ON -DOpenMP_C_FLAGS=... " but the
+            # first flag lacks its -D, and cmake silently ignores an unknown -W
+            # argument (exit 0, no warning), so WITH_OpenMP kept its FALSE
+            # default and the OpenMP_*_FLAGS were inert. The job has therefore
+            # never built with OpenMP, despite appearing to ask for it.
+            #
+            # Simply adding the missing -D would break the build: the runner
+            # image has no libomp, so FIND_PACKAGE(OpenMP REQUIRED) hard-fails
+            # with "Could NOT find OpenMP_C (missing: OpenMP_C_LIB_NAMES)".
+            # Clang has to be pointed at GCC's libgomp instead, and note that
+            # -fopenmp=libgomp does NOT define _OPENMP, so without forcing it
+            # every "#ifdef _OPENMP" block in C/C++ would silently compile out
+            # while OpenMP looked enabled. A recipe verified to configure:
+            #
+            #   -DWITH_OpenMP=ON
+            #   -DOpenMP_C_FLAGS='-fopenmp=libgomp -D_OPENMP=201511'
+            #   -DOpenMP_CXX_FLAGS='-fopenmp=libgomp -D_OPENMP=201511'
+            #   -DOpenMP_C_LIB_NAMES='gomp;pthread'
+            #   -DOpenMP_CXX_LIB_NAMES='gomp;pthread'
+            #
+            # We keep it OFF: the point of this job is to test the clang C/C++
+            # compiler difference against ubuntu-gcc-full, not to maintain a
+            # second, clang-specific OpenMP setup. OpenMP coverage comes from
+            # ubuntu-gcc-full and from the build.yaml matrix.
+            openmp-cmake-flags: "-DWITH_OpenMP=OFF"
 
     env:
       CC: ${{ matrix.cc }}
@@ -113,20 +139,16 @@ jobs:
             echo "::group::Content of ${test_root}/${test}"
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
-            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
-              for err_log in "${err_logs[@]}"; do
-                echo ---- Content of ${err_log} ----
-                cat ${err_log}
-              done
-            fi
-            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
-              for out_log in "${out_logs[@]}"; do
-                echo ---- Content of ${out_log} ----
-                cat ${out_log}
-              done
-            fi
+            err_logs=($(ls ${test_root}/${test}/test-stderr*.log 2>/dev/null))
+            for err_log in "${err_logs[@]}"; do
+              echo ---- Content of ${err_log} ----
+              cat ${err_log}
+            done
+            out_logs=($(ls ${test_root}/${test}/test-stdout*.log 2>/dev/null))
+            for out_log in "${out_logs[@]}"; do
+              echo ---- Content of ${out_log} ----
+              cat ${out_log}
+            done
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"

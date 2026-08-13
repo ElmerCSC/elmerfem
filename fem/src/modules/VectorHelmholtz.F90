@@ -157,8 +157,14 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
   END IF
 
-
-
+  IF( ListGetString( SolverParams,'Linear System Preconditioning', Found ) == "auxiliary space solver" ) THEN
+    CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable', SolverParams), &
+        "ams res")
+    CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable', SolverParams), &
+        "ams update")
+    CALL ListAddString( SolverParams,'Preconditioning Residual',"ams res")
+    CALL ListAddString( SolverParams,'Preconditioning Update',"ams update")
+  END IF
   
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init0
@@ -250,7 +256,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   LOGICAL :: Found, PrecMatrix, HasPrecDampCoeff, MassProportional, CurlCurlPrec
   REAL(KIND=dp) :: Omega, mu0inv, eps0, rob0
-  INTEGER :: i, soln, NoIterationsMax, EdgeBasisDegree
+  INTEGER :: i, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
@@ -258,6 +264,12 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LOGICAL :: EigenProblem
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
+
+  LOGICAL :: AmsAny
+  TYPE(Matrix_t), POINTER :: AmsMat, AmsScalMat
+  TYPE(Solver_t), POINTER :: AmsSolver, AmsScalSolver
+  LOGICAL :: AmsCurlCurlForm, AmsMonolithic
+  
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
 !------------------------------------------------------------------------------
 
@@ -283,6 +295,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
         Use: Variable = E[E re:1 E im:1]')
   ENDIF
 
+  ! If we use our own AMS preconditioner where actually the scalar and vector preconditioning equations
+  ! are solved for, lets get information needed for the assembly i.e. pointers to the solvers and matrices. 
+  CALL GetAuxSolverInfo()
+  
   PrecDampCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
       GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ), kind=dp)
@@ -297,7 +313,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   PrecMatrix = HasPrecDampCoeff .OR. CurlCurlPrec
   
   IF(PrecMatrix) THEN
-    IF(ListGetString(SolverParams,'Linear System Solver',Found ) == 'direct') THEN
+    IF(ASSOCIATED(AmsMat)) THEN
+      CALL Info(Caller,'Incorporating damping coefficient to AMS matrix directly',Level=7)
+      PrecMatrix = .FALSE.      
+    ELSE IF(ListGetString(SolverParams,'Linear System Solver',Found ) == 'direct') THEN
       CALL Warn(Caller,'Generating preconditioning matrix does not make sense for direct methods, canceling!')
       PrecMatrix = .FALSE.
     ELSE
@@ -362,11 +381,57 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
       PRINT *,'Circulation around BC:',Circ
     END BLOCK
   END IF
-
+  
   CALL Info(Caller,'All done',Level=12)
   
 CONTAINS
 
+  SUBROUTINE GetAuxSolverInfo()
+
+    INTEGER, POINTER :: SolverIndexes(:)
+    INTEGER :: i,j
+    
+    AmsAny = .FALSE.
+    NULLIFY(AmsMat); NULLIFY(AmsScalMat)
+    NULLIFY(AmsSolver); NULLIFY(AmsScalSolver)
+
+    SolverIndexes => ListGetIntegerArray( SolverParams,'prec solvers',Found )     
+    IF(Found) THEN
+      DO i=1,SIZE(SolverIndexes)
+        j = SolverIndexes(i)
+        IF(ListGetLogical(Model % Solvers(j) % Values,'AMS Vector Solver', Found ) ) THEN
+          AmsSolver => Model % Solvers(j)
+          AmsMat => AmsSolver % Matrix           
+
+          ! For monolithic AMS matrix we may use curl-curl form.
+          AmsCurlCurlForm = .FALSE.
+          AmsMonolithic = ListGetLogical( AmsSolver % Values,'Monolithic Solver',Found)
+          IF( AmsMonolithic ) THEN
+            AmsCurlCurlForm = ListGetLogical( AmsSolver % Values,'curl-curl Form',Found )
+          END IF
+          IF(AmsCurlCurlForm) THEN
+            CALL Info(Caller,'Using curl-curl form for AMS preconditioner',Level=7)
+          END IF
+          AmsAny = .TRUE.
+        END IF
+        IF(ListGetLogical(Model % Solvers(j) % Values,'AMS Scalar Solver', Found ) ) THEN
+          AmsScalSolver => Model % Solvers(j)
+          AmsScalMat => AmsScalSolver % Matrix           
+          AmsAny = .TRUE.
+        END IF
+      END DO
+    END IF
+
+    IF(ASSOCIATED(AmsMat)) THEN
+      CALL Info(Caller,'Assembling nodal AMS vector matrix on the side!',Level=7)
+    END IF
+    IF(ASSOCIATED(AmsScalMat)) THEN
+      CALL Info(Caller,'Assembling nodal AMS scalar matrix on the side!',Level=7)
+    END IF    
+
+  END SUBROUTINE GetAuxSolverInfo
+
+  
 !---------------------------------------------------------------------------------------------
   FUNCTION DoSolve() RESULT(Converged)
 !---------------------------------------------------------------------------------------------
@@ -384,6 +449,9 @@ CONTAINS
     CALL Info(Caller,'Starting bulk assembly',Level=12)
 
     CALL DefaultInitialize()
+    IF(ASSOCIATED(AmsMat)) AmsMat % Values = 0.0_dp
+    IF(ASSOCIATED(AmsScalMat)) AmsScalMat % Values = 0.0_dp
+
     Active = GetNOFActive()
     InitHandles = .TRUE.
     
@@ -460,6 +528,7 @@ CONTAINS
     
     ! Linear system solution:
     ! -----------------------
+
     Norm = DefaultSolve()
     Converged = ( Solver % Variable % NonlinConverged == 1 )
 !------------------------------------------------------------------------------
@@ -581,6 +650,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: eps, muinv, Cond, L(3)
     REAL(KIND=dp) :: DetJ, weight
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: AmsSTIFF(:,:), AmsSTIFF2(:,:), AmsFORCE(:)
     COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: CurlMat(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     LOGICAL :: Stat, WithNDOFs, ConductorBody
@@ -591,17 +661,22 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrDens_h, MuCoeff_h
 
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, &
-        MASS, STIFF, Gauge, PREC, FORCE
+        MASS, STIFF, Gauge, PREC, FORCE, AmsSTIFF, AmsSTIFF2, AmsFORCE
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), &
           MASS(m,m), STIFF(m,m), Gauge(m,m), PREC(m,m), CurlMat(m,m), FORCE(m) )      
-      AllocationsDone = .TRUE.
+     IF(AmsAny) THEN       
+       ALLOCATE(AmsSTIFF(3*m,3*m), AmsFORCE(3*m), AmsStiff2(m,m))
+       AmsFORCE = 0.0_dp
+     END IF
+     AllocationsDone = .TRUE.
     END IF
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
+      CALL Info(Caller,'Initializing handles in LocalMatrix',Level=25)      
       CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
@@ -615,7 +690,11 @@ CONTAINS
     MASS(1:nd,1:nd)  = 0.0_dp
     CurlMat = 0.0_dp
     FORCE(1:nd) = 0.0_dp
-
+    IF(AmsAny) THEN
+      AmsSTIFF = 0.0_dp
+      AmsSTIFF2 = 0.0_dp
+    END IF
+      
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     np = n * ndofs
 
@@ -807,6 +886,70 @@ CONTAINS
           END IF
         END IF
       END IF
+
+      IF(AmsANY) THEN
+        BLOCK
+          COMPLEX(KIND=dp) :: am, aw, ac, atot(3,3)
+          INTEGER :: idim, jdim
+          
+          DO p = 1,n
+            DO q = 1,n
+              IF(.NOT. LowFrequencyModel ) THEN
+                aw = -Omega**2 * Eps * Basis(q) * Basis(p) 
+              END IF
+              IF(ConductorBody) THEN
+                ac = -im * Omega * Cond * Basis(p) * Basis(q) 
+              END IF
+
+              IF( ASSOCIATED( AmsMat ) ) THEN              
+                IF(AmsCurlCurlForm) THEN              
+                  ! The grad-div operator is now zero. 
+                  am = 0.0_dp
+
+                  atot(1,1) = dBasisdx(q,3) * dBasisdx(p,3) + dBasisdx(q,2) * dBasisdx(p,2)
+                  atot(1,2) = -dBasisdx(q,1) * dBasisdx(p,2)
+                  atot(1,3) = -dBasisdx(q,1) * dBasisdx(p,3)
+
+                  atot(2,1) = -dBasisdx(q,2) * dBasisdx(p,1)
+                  atot(2,2) = dBasisdx(q,1) * dBasisdx(p,1) + dBasisdx(q,3) * dBasisdx(p,3)
+                  atot(2,3) = -dBasisdx(q,2) * dBasisdx(p,3)
+
+                  atot(3,1) = -dBasisdx(q,3) * dBasisdx(p,1)
+                  atot(3,2) = -dBasisdx(q,3) * dBasisdx(p,2)
+                  atot(3,3) = dBasisdx(q,1) * dBasisdx(p,1) + dBasisdx(q,2) * dBasisdx(p,2)
+
+                  ! Multiply after creating the curl-curl because of so many terms...
+                  atot = weight * muinv * atot                
+                ELSE
+                  ! grad-div operator
+                  am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
+                  atot = 0.0_dp
+                END IF
+
+                IF( AmsMonolithic ) THEN
+                  DO idim=1,3
+                    atot(idim,idim) = atot(idim,idim) + weight * ( am + aw + ac )                
+                  END DO
+                  DO idim=1,3
+                    DO jdim=1,3
+                      AmsSTIFF(3*(p-1)+idim,3*(q-1)+jdim) = AmsSTIFF(3*(p-1)+idim,3*(q-1)+jdim) + atot(idim,jdim)
+                    END DO
+                  END DO
+                ELSE
+                  atot(1,1) = atot(1,1) + weight * ( am + aw + ac )
+                  AmsSTIFF(p,q) = AmsSTIFF(p,q) + atot(1,1)
+                END IF
+              END IF
+                
+              IF( ASSOCIATED( AmsScalMat ) ) THEN
+                am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
+                AmsSTIFF2(p,q) = weight * ( am + aw + ac )
+              END IF
+            END DO
+          END DO
+        END BLOCK
+      END IF
+
     END DO
 
     IF (.NOT. EigenProblem) THEN
@@ -826,6 +969,8 @@ CONTAINS
       END IF
     END IF
 
+
+    
     IF (EigenProblem) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + CurlMat(1:nd,1:nd)
     ELSE
@@ -848,6 +993,21 @@ CONTAINS
     IF (nb > 0) CALL CondensateP(nd-nb, nb, STIFF, FORCE)
     CALL DefaultUpdateEquations( STIFF, FORCE, Element )
     IF (EigenProblem) CALL DefaultUpdateMass(MASS)
+
+
+    IF( AmsAny ) THEN
+      IF(ASSOCIATED(AmsMat)) THEN
+        CurrentModel % Solver => AmsSolver
+        CALL DefaultUpdateEquations(AmsSTIFF,AmsFORCE,UElement=Element,USolver=AmsSolver)       
+        CurrentModel % Solver => pSolver
+      END IF
+      IF(ASSOCIATED(AmsScalMat)) THEN
+        CurrentModel % Solver => AmsScalSolver
+        CALL DefaultUpdateEquations(AmsSTIFF2,AmsFORCE,UElement=Element,USolver=AmsScalSolver)       
+        CurrentModel % Solver => pSolver
+      END IF
+    END IF
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -860,11 +1020,12 @@ CONTAINS
     INTEGER :: n, nd
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), &
+        AmsSTIFF(:,:), AmsSTIFF2(:,:), AmsForce(:)
     COMPLEX(KIND=dp) :: ElSurfCurr(3), B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, &
         PortBeta, jn, Cond, SurfImp, epsr, mur, ep
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    REAL(KIND=dp) :: th, DetJ
+    REAL(KIND=dp) :: th, DetJ, weight
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, GoodConductor, Absorb
     LOGICAL :: LineElement, DegenerateElement, Regularize, Consistent
     LOGICAL :: AllocationsDone = .FALSE.
@@ -878,16 +1039,23 @@ CONTAINS
     LOGICAL :: GotPort
 
     
-    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, &
+        AmsSTIFF, AmsSTIFF2, AmsForce
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3),&
           FORCE(m),STIFF(m,m),MASS(m,m))      
+      IF(AmsAny) THEN
+        ALLOCATE(AmsSTIFF(3*m,3*m),AmsSTIFF2(m,m), AmsForce(3*m))
+        AmsForce = 0.0_dp
+      END IF
       AllocationsDone = .TRUE.
     END IF
 
     IF( InitHandles ) THEN
+      CALL Info(Caller,'Initializing handles in LocalMatrixBC',Level=25)      
+
       CALL DefinePortParameters(Model, Mesh)
       
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
@@ -922,6 +1090,8 @@ CONTAINS
     STIFF = 0.0_dp
     MASS = 0.0_dp
     FORCE = 0.0_dp
+    IF(ASSOCIATED(AmsMat)) AmsSTIFF = 0.0_dp
+    IF(ASSOCIATED(AmsScalMat)) AmsSTIFF2 = 0.0_dp
 
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     WithNdofs = ndofs > 0
@@ -960,7 +1130,9 @@ CONTAINS
             IP % W(t), detJ, Basis, dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
       END IF
-
+      
+      weight = detJ * IP % s(t)
+      
       th = ListGetElementReal(Thickness_h, Basis, Element, ThinSheet, GaussPoint = t)
 
       IF (DegenerateElement .AND. ThinSheet .AND. UseGaussLaw) THEN
@@ -979,10 +1151,10 @@ CONTAINS
         IF (ABS(BetaPar) < AEPS .AND. ABS(jn) < AEPS) CYCLE
         DO p = 1,n
           i = (p-1)*ndofs + 1
-          FORCE(i) = FORCE(i) - im * omega * jn * th * Basis(p) * detJ * IP % s(t)
+          FORCE(i) = FORCE(i) - im * omega * jn * th * Basis(p) * weight
           DO q = 1,n
             j = (q-1)*ndofs + 1
-            STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * th * Basis(p) * Basis(q) * detJ * IP % s(t)
+            STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * th * Basis(p) * Basis(q) * weight
           END DO
         END DO
         UpdateStiff = .TRUE.
@@ -1047,14 +1219,43 @@ CONTAINS
       
       DO i = 1,nd-np
         p = i+np
-        FORCE(p) = FORCE(p) - muinv * SUM(L*WBasis(i,:)) * detJ * IP%s(t)
+        FORCE(p) = FORCE(p) - muinv * SUM(L*WBasis(i,:)) * weight
         DO j = 1,nd-np
           q = j+np
           STIFF(p,q) = STIFF(p,q) - muinv * B * &
-              SUM(WBasis(i,:)*WBasis(j,:)) * detJ * IP%s(t)
+              SUM(WBasis(i,:)*WBasis(j,:)) * weight
         END DO
       END DO
 
+      IF(AmsAny) THEN
+        BLOCK
+          COMPLEX(KIND=dp) :: ar, atot
+          
+          DO p = 1,n
+            DO q = 1,n
+              ar = -muinv * B * Basis(q) * Basis(p)
+              atot = ar * weight 
+              
+              IF( ASSOCIATED( AmsMat ) ) THEN
+                IF( AmsMonolithic ) THEN
+                  AmsSTIFF(3*p-2,3*q-2) = AmsSTIFF(3*p-2,3*q-2) + atot
+                  AmsSTIFF(3*p-1,3*q-1) = AmsSTIFF(3*p-1,3*q-1) + atot
+                  AmsSTIFF(3*p-0,3*q-0) = AmsSTIFF(3*p-0,3*q-0) + atot
+                ELSE
+                  AmsSTIFF(p,q) = AmsSTIFF(p,q) + atot
+                END IF
+              END IF
+              
+              IF(ASSOCIATED(AmsScalMat)) THEN
+                AmsSTIFF2(p,q) = AmsSTIFF2(p,q) + atot
+              END IF
+              
+            END DO
+          END DO
+        END BLOCK
+      END IF
+
+      
       IF (WithNdofs) THEN
         ! The following term arises if the decomposition E = A - grad V is applied:
         IF (ABS(B) > AEPS) THEN
@@ -1063,7 +1264,7 @@ CONTAINS
             DO j=1,n
               q = (j-1)*ndofs + 1
               STIFF(p,q) = STIFF(p,q) + muinv * B * &
-                  SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
+                  SUM(WBasis(i,:)*dBasisdx(j,:)) * weight
             END DO
           END DO
 
@@ -1074,13 +1275,13 @@ CONTAINS
               DO q = 1,n
                 j = (q-1)*ndofs + 1
                 STIFF(i,j) = STIFF(i,j) + muinv * B * &
-                    SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+                    SUM(dBasisdx(p,:) * dBasisdx(q,:)) * weight
               END DO
 
               DO q = 1,nd-np
                 j = q+np
                 STIFF(i,j) = STIFF(i,j) - muinv * B * &
-                    SUM(dBasisdx(p,:) * WBasis(q,:)) * detJ * IP % s(t)
+                    SUM(dBasisdx(p,:) * WBasis(q,:)) * weight
               END DO
             END DO
             ! TO DO: If a distribution of surface charge were also given, we would need to
@@ -1093,7 +1294,7 @@ CONTAINS
             ! Apply the conservation of surface charge (not sure whether this is beneficial):
             DO p = 1,n
               i = (p-1)*ndofs + 1
-              FORCE(i) = FORCE(i) - muinv * SUM(L*dBasisdx(p,:)) * detJ * IP % s(t)
+              FORCE(i) = FORCE(i) - muinv * SUM(L*dBasisdx(p,:)) * weight
             END DO
           END IF
           
@@ -1106,10 +1307,10 @@ CONTAINS
             
           DO p = 1,n
             i = (p-1)*ndofs + 1
-            FORCE(i) = FORCE(i) - im * omega * jn * Basis(p) * detJ * IP % s(t)
+            FORCE(i) = FORCE(i) - im * omega * jn * Basis(p) * weight
             DO q = 1,n
               j = (q-1)*ndofs + 1
-              STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * Basis(p) * Basis(q) * detJ * IP % s(t)
+              STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * Basis(p) * Basis(q) * weight
             END DO
           END DO
         END IF
@@ -1126,6 +1327,18 @@ CONTAINS
       END IF
       CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END IF
+
+    IF(ASSOCIATED(AmsMat)) THEN
+      CurrentModel % Solver => AmsSolver
+      CALL DefaultUpdateEquations(AmsSTIFF,AmsFORCE,UElement=Element,USolver=AmsSolver)       
+      CurrentModel % Solver => pSolver
+    END IF
+    IF(ASSOCIATED(AmsScalMat)) THEN
+      CurrentModel % Solver => AmsScalSolver
+      CALL DefaultUpdateEquations(AmsSTIFF2,AmsFORCE,UElement=Element,USolver=AmsScalSolver)       
+      CurrentModel % Solver => pSolver
+    END IF
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------

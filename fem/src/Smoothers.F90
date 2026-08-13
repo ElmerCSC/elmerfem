@@ -111,9 +111,17 @@ CONTAINS
       ELSEWHERE
         InvDiag = 0.0_dp
       END WHERE
-      
-      InvLevel = MAX(1,1 + Solver % MultiGridTotal - Level)
 
+      ! If we have a MG algo then the Smoother count order is reversed.
+      ! The other use case is, for example, "Prec Solvers" where the
+      ! smoother count order is maintained. 
+      IF( Solver % MultiGridTotal > 0 ) THEN
+        InvLevel = MAX(1,1 + Solver % MultiGridTotal - Level)
+      ELSE
+        InvLevel = Level
+      END IF
+
+        
       Lowest = .FALSE.
       IF( PRESENT( LowestSmooth ) ) Lowest = LowestSmooth
 

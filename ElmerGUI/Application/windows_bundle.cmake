@@ -10,7 +10,7 @@ IF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
 
   INSTALL(DIRECTORY ${CMAKE_BINARY_DIR}/bundle/bin/
     DESTINATION "bin"
-    COMPONENT "dependencies")
+    COMPONENT "ELMERGUI")
 
   # Manually copy Qt platform plugins because they are loaded at runtime
   IF(WITH_QT6)
@@ -21,7 +21,7 @@ IF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
     )
     INSTALL(DIRECTORY "${QT6_PLUGIN_DIR}/"
       DESTINATION "bin/platforms"
-      COMPONENT "dependencies")
+      COMPONENT "ELMERGUI")
   ELSEIF(WITH_QT5)
     EXECUTE_PROCESS(
       COMMAND ${MSYS2_BASH} -lc "cygpath -m \"$\{MINGW_PREFIX}/share/qt5/plugins/platforms\""
@@ -30,7 +30,7 @@ IF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
     )
     INSTALL(DIRECTORY "${QT5_PLUGIN_DIR}/"
       DESTINATION "bin/platforms"
-      COMPONENT "dependencies")
+      COMPONENT "ELMERGUI")
   ELSE()
     MESSAGE(WARNING "Qt platform plugins must be bundled manually")
   ENDIF()
@@ -58,6 +58,6 @@ IF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
 
   INSTALL(FILES ${LICENSE_FILES}
     DESTINATION "share/ElmerGUI/license_texts"
-    COMPONENT "elmergui_licenses")
+    COMPONENT "ELMERGUI")
 
 ENDIF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)

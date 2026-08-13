@@ -135,7 +135,8 @@ jobs:
             # add flags for creating a bundle with CPack
             _extra_config+=("-DCPACK_PACKAGE_BASE_FILE_NAME=elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-${SANITIZED_REF_NAME}"
                             "-DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=ON"
-                            "-DBUNDLE_STRIPPED_GFORTRAN=OFF")
+                            "-DBUNDLE_MSYS2_PACKAGES=ON"
+                            "-DBUNDLE_MSYS2_PACKAGES_PREFIX=$(cygpath -m "${GITHUB_WORKSPACE}")/msys2_prefix")
             if [ "${{ matrix.mpi }}" == "with" ]; then
               _extra_config+=("-DBUNDLE_MSMPI_REDIST=ON")
             fi
@@ -173,14 +174,32 @@ jobs:
         if: matrix.dependencies == 'bundled'
         id: create-bundles
         run: |
+          MSYS2_GITHUB_WORKSPACE="$(cygpath -u "${GITHUB_WORKSPACE}")"
+          echo "::group::Download packages from MSYS2"
+          mkdir -p "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages
+          pactree -u ${MINGW_PACKAGE_PREFIX}-fc | \
+            pacman -Sw --noconfirm \
+            --cachedir "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages -
+          echo "::endgroup::"
+          echo "::group::Extract MSYS2 packages"
+          mkdir -p "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix
+          for pkg in "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages/*.pkg.tar.zst; do
+            echo "extracting $pkg..."
+            bsdtar -xf "$pkg" -C "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix --strip-component=1
+          done
+          # remove files with metadata
+          rm -rf "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix/.{PKGINFO,BUILDINFO,MTREE}
+          echo "::endgroup::"
           if [ "${{ matrix.mpi }}" == "with" ]; then
-            # copy MSMPI installer to a location where it can be found
+            echo "::group::Copy MSMPI installer to a location where it can be found"
             mkdir ${GITHUB_WORKSPACE}/../msmpi_redist
             cp "$(cygpath -m "${MSMPI_BIN}")/../Redist/MSMpiSetup.exe" "${GITHUB_WORKSPACE}/../msmpi_redist/"
+            echo "::endgroup::"
           fi
-          # create bundles
+          echo "::group::Create bundles"
           cd ${GITHUB_WORKSPACE}/build
           cpack -G "ZIP;NSIS64" .
+          echo "::endgroup::"
           # store name of bundle for following steps
           cmake -LA -N .. | awk -F= '$1~/CPACK_PACKAGE_FILE_NAME:STRING/{print "bundle-name="$2}' >> $GITHUB_OUTPUT
 
@@ -237,20 +256,16 @@ jobs:
             echo "::group::Content of ${test_root}/${test}"
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
-            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
-              for err_log in "${err_logs[@]}"; do
-                echo ---- Content of ${err_log} ----
-                cat ${err_log}
-              done
-            fi
-            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
-              for out_log in "${out_logs[@]}"; do
-                echo ---- Content of ${out_log} ----
-                cat ${out_log}
-              done
-            fi
+            err_logs=($(ls ${test_root}/${test}/test-stderr*.log 2>/dev/null))
+            for err_log in "${err_logs[@]}"; do
+              echo ---- Content of ${err_log} ----
+              cat ${err_log}
+            done
+            out_logs=($(ls ${test_root}/${test}/test-stdout*.log 2>/dev/null))
+            for out_log in "${out_logs[@]}"; do
+              echo ---- Content of ${out_log} ----
+              cat ${out_log}
+            done
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"

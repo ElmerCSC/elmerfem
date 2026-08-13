@@ -92,7 +92,8 @@ MODULE StressLocal
 
      REAL(KIND=dp) :: M(3,3),D(3,3),HeatExpansion(3,3), A(4,4)
      REAL(KIND=dp) :: Temperature,Density, C(6,6), Damping,MeshVelo(3)
-     REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), InnerProd, NodalViscosity(n)
+     REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), ElasticStress(3,3), &
+                      InnerProd, NodalViscosity(n)
      REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6)
 
      INTEGER :: i,j,k,l,p,q,t,dim,NBasis
@@ -115,8 +116,8 @@ MODULE StressLocal
      REAL(KIND=dp) :: GPA_Coeff(n)
 
      TYPE(Mesh_t), POINTER :: Mesh
-     INTEGER :: ndim
-     LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE.
+     INTEGER :: ndim, nve
+     LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE., ReuseC
      REAL(KIND=dp) :: dt
      REAL(KIND=dp) :: PSOL(4,ntot), SOL(4,ntot), Viscosity, muder0
      CHARACTER :: DimensionString
@@ -216,11 +217,37 @@ MODULE StressLocal
          ve_stress % PrevValues = 0._dp
        END IF
 
+       ! The lag stress is symmetric, so only its independent components are kept.
+       ! StressSolver_Init sizes the variable by the same rule; if the two ever
+       ! disagree the indexing below would silently run into the neighbouring
+       ! point, so say so instead.
+       nve = SymTensorComponents( dim, CSymmetry )
+       IF( ve_stress % DOFs /= nve ) THEN
+         CALL Fatal( 'StressCompose', 'Variable "ve_stress" has '//I2S(ve_stress % DOFs)// &
+             ' components per point, expected '//I2S(nve) )
+       END IF
+
        i = Element % ElementIndex
        j = ve_stress % Perm( i+1 ) - ve_stress % Perm ( i )
        IF( IntegStuff % n /= j ) THEN
          PRINT *,'Inconsistent number of gauss points:',i, IntegStuff % n, j
        END IF
+
+       ! The lag stress converged at the end of the previous timestep is the
+       ! reference for the whole of this one, so save it once per element here
+       ! instead of retesting the iteration counters at every integration point.
+       IF ( GetNonlinIter()==1 .AND. GetCoupledIter()==1 ) THEN
+         k = nve * ve_stress % Perm( i )
+         l = k + nve * j
+         ve_stress % PrevValues(k+1:l,1) = ve_stress % Values(k+1:l)
+       END IF
+
+       ! The assembly loop evaluates the isotropic material parameters and builds
+       ! the elasticity matrix at each integration point anyway; those can be
+       ! handed to LocalStress below rather than evaluated again. Not when the
+       ! parameters are given at integration points, though: LocalStress is called
+       ! without that context here and would answer differently.
+       ReuseC = Isotropic(1) .AND. .NOT. EvaluateAtIP(1) .AND. .NOT. EvaluateAtIP(3)
 
        NodalViscosity(1:n) = GetReal( GetMaterial(), 'Viscosity', Found )
 
@@ -418,7 +445,22 @@ MODULE StressLocal
          Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
          Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
             Element, Nodes, n, ntot, u, v, w,  muder0, LocalIP=t )
-         xPhi = ViscoElasticLoad( ve_stress, t, StressLoad )
+
+         ! The purely elastic response at this point, which the viscoelastic
+         ! update needs alongside the lag stress carried over from the previous
+         ! timestep. C, Young and Poisson above refer to this same point.
+         IF( ReuseC ) THEN
+           CALL LocalStress( ElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
+                NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress, &
+                SOL, Basis, dBasisdx, Nodes, dim, n, ntot, .FALSE.,                    &
+                argC = C, argYoung = Young, argPoisson = Poisson )
+         ELSE
+           CALL LocalStress( ElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
+                NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress, &
+                SOL, Basis, dBasisdx, Nodes, dim, n, ntot, .FALSE. )
+         END IF
+
+         xPhi = ViscoElasticLoad( ve_stress, t, ElasticStress, StressLoad )
          NeedPreStress = .TRUE.
        ELSE
          xPhi = 1
@@ -619,21 +661,16 @@ MODULE StressLocal
 CONTAINS
 
 !------------------------------------------------------------------------------
-   FUNCTION ViscoElasticLoad(ve_stress, ip, StressLoad) RESULT(xPhi)
+   FUNCTION ViscoElasticLoad(ve_stress, ip, ElasticStress, StressLoad) RESULT(xPhi)
 !------------------------------------------------------------------------------
      TYPE(Variable_t) :: ve_stress
      INTEGER :: ip
-     REAL(KIND=dp) :: StressLoad(6), xPhi
+     REAL(KIND=dp) :: ElasticStress(3,3), StressLoad(6), xPhi
 !------------------------------------------------------------------------------
      INTEGER :: i
-     REAL(KIND=dp) :: ElasticStress(3,3), D_new(3,3), PrevD(3,3), Pres, Pres0, ShearModulus
+     REAL(KIND=dp) :: D_new(3,3), PrevD(3,3), VeVec(6), Pres, Pres0, ShearModulus
 
-     i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
-
-     ! Save converged lag stress at the start of each new timestep:
-     IF ( GetNonlinIter()==1 .AND. GetCoupledIter()==1 ) THEN
-       ve_stress % prevvalues(i+1:i+dim**2,1) = ve_stress % values(i+1:i+dim**2)
-     END IF
+     i = nve*(ve_stress % perm(Element % ElementIndex) + ip - 1)
 
      IF(Incompressible) THEN
        ShearModulus = Young / 3
@@ -644,24 +681,20 @@ CONTAINS
        ShearModulus = Young / (2*(1+Poisson))
      END IF
 
-     xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
+     xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * dt )
 
-     ! Lag stress from previous timestep: d = C:u - sigma_VE
-     PrevD(1:dim,1:dim) = RESHAPE(ve_stress % prevvalues(i+1:i+dim**2,1), [dim,dim])
+     ! Lag stress from previous timestep: d = C:u - sigma_VE. It is copied aside
+     ! once per element before the integration loop.
+     CALL Vector62Tensor( ve_stress % PrevValues(i+1:i+nve,1), PrevD, dim, CSymmetry )
 
      ! RHS contribution from stored lag stress (no LocalStress call needed):
      StressTensor = xPhi * (PrevD - Pres0 * Ident)
      CALL Tensor26Vector( StressTensor, StressLoad, dim, CSymmetry )
 
-     ! Elastic stress at current iterate:
-     ElasticStress = 0._dp
-     CALL LocalStress( ElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
-          NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
-          SOL, Basis, dBasisdx, Nodes, dim, n, ntot, .FALSE. )
-
      ! Update lag stress: d_new = (1-xPhi)*C:u + xPhi*(d_prev - p0*I) + p*I
      D_new = (1._dp - xPhi)*ElasticStress + xPhi*(PrevD - Pres0*Ident) + Pres*Ident
-     ve_stress % values(i+1:i+dim**2) = RESHAPE( D_new(1:dim,1:dim), [dim**2] )
+     CALL Tensor26Vector( D_new, VeVec, dim, CSymmetry )
+     ve_stress % Values(i+1:i+nve) = VeVec(1:nve)
 !------------------------------------------------------------------------------
    END FUNCTION ViscoElasticLoad
 !------------------------------------------------------------------------------
@@ -1105,7 +1138,8 @@ CONTAINS
  SUBROUTINE LocalStress( Stress, Strain, PoissonRatio, ElasticModulus, &
       Heatexpansion, NodalTemp, Isotropic, CSymmetry, PlaneStress,     &
       NodalDisp, Basis, dBasisdx, Nodes, dim, n, nBasis, ApplyPressure,&
-      argEvaluateAtIP, argEvaluateLoadAtIP, GaussPoint)
+      argEvaluateAtIP, argEvaluateLoadAtIP, GaussPoint, argC, argYoung,&
+      argPoisson)
 !------------------------------------------------------------------------------
      LOGICAL :: Isotropic(2), CSymmetry, PlaneStress  
      LOGICAL, OPTIONAL :: ApplyPressure
@@ -1115,10 +1149,11 @@ CONTAINS
      REAL(KIND=dp) :: Stress(:,:), Strain(:,:), ElasticModulus(:,:,:), &
                       HeatExpansion(:,:,:), NodalTemp(:), Temperature
      REAL(KIND=dp) :: Basis(:), dBasisdx(:,:), PoissonRatio(:), NodalDisp(:,:)
-     LOGICAL, OPTIONAL :: argEvaluateAtIP(3), argEvaluateLoadAtIP     
+     LOGICAL, OPTIONAL :: argEvaluateAtIP(3), argEvaluateLoadAtIP
+     REAL(KIND=dp), OPTIONAL :: argC(:,:), argYoung, argPoisson
 !------------------------------------------------------------------------------
      INTEGER :: i,j,p,q,ic
-     LOGICAL :: Found, Incompressible, FirstTime=.TRUE.
+     LOGICAL :: Found, Incompressible, FirstTime=.TRUE., PreBuiltC
      REAL(KIND=dp) :: C(6,6), Young, LGrad(3,3), Poisson, S(6), &
           Pressure, Radius, HEXP(3,3)
      TYPE(ValueHandle_t), SAVE :: BetaIP_h, EIP_h, nuIP_h, Load_h(4), Load_h_im(4)
@@ -1179,27 +1214,42 @@ CONTAINS
 !
 !    Material parameters:
 !    --------------------
-     IF ( Isotropic(1) ) THEN
-       IF (EvaluateAtIP(3)) THEN
-         Poisson =  ListGetElementReal(nuIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
-       ELSE
-         Poisson = SUM( Basis(1:n) * PoissonRatio(1:n) )
-       END IF
-     END IF
+!    The caller may have evaluated the isotropic parameters and built the
+!    elasticity matrix at this very integration point already, in which case they
+!    are handed over rather than evaluated a second time. Only the isotropic
+!    matrix can be passed in: in the anisotropic case the caller has reduced its
+!    own copy (rows and columns 4:6 cleared), so the out-of-plane row rebuilt
+!    below could no longer be recovered from it.
+     PreBuiltC = .FALSE.
+     IF ( PRESENT(argC) ) PreBuiltC = Isotropic(1)
 
-     C = 0
-     IF ( Isotropic(1) ) THEN
-       IF (EvaluateAtIP(1)) THEN
-         Young = ListGetElementReal( EIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
-       ELSE
-         Young = SUM( Basis(1:n) * ElasticModulus(1,1,1:n) )
-       END IF
+     IF ( PreBuiltC ) THEN
+       C = argC
+       Young = argYoung
+       Poisson = argPoisson
      ELSE
-       DO i=1,SIZE(ElasticModulus,1)
-         DO j=1,SIZE(ElasticModulus,2)
-            C(i,j) = SUM( Basis(1:n) * ElasticModulus(i,j,1:n) )
+       IF ( Isotropic(1) ) THEN
+         IF (EvaluateAtIP(3)) THEN
+           Poisson =  ListGetElementReal(nuIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
+         ELSE
+           Poisson = SUM( Basis(1:n) * PoissonRatio(1:n) )
+         END IF
+       END IF
+
+       C = 0
+       IF ( Isotropic(1) ) THEN
+         IF (EvaluateAtIP(1)) THEN
+           Young = ListGetElementReal( EIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
+         ELSE
+           Young = SUM( Basis(1:n) * ElasticModulus(1,1,1:n) )
+         END IF
+       ELSE
+         DO i=1,SIZE(ElasticModulus,1)
+           DO j=1,SIZE(ElasticModulus,2)
+              C(i,j) = SUM( Basis(1:n) * ElasticModulus(i,j,1:n) )
+           END DO
          END DO
-       END DO
+       END IF
      END IF
 
      HEXP = 0.0_dp
@@ -1224,10 +1274,12 @@ CONTAINS
      SELECT CASE(dim)
      CASE(2)
        IF ( CSymmetry ) THEN
-         IF ( Isotropic(1) ) CALL BuildIsotropicC( C, Young, Poisson, dim, CSymmetry, PlaneStress )
+         IF ( Isotropic(1) .AND. .NOT. PreBuiltC ) &
+             CALL BuildIsotropicC( C, Young, Poisson, dim, CSymmetry, PlaneStress )
        ELSE
          IF ( Isotropic(1) ) THEN
-            CALL BuildIsotropicC( C, Young, Poisson, dim, CSymmetry, PlaneStress )
+            IF ( .NOT. PreBuiltC ) &
+                CALL BuildIsotropicC( C, Young, Poisson, dim, CSymmetry, PlaneStress )
             IF ( .NOT. PlaneStress ) THEN
               C(4,1) = C(1,2)  ! coefficient for out-of-plane Stress_zz
               C(4,2) = C(1,2)
@@ -1251,10 +1303,11 @@ CONTAINS
        END IF
 
      CASE(3)
-       IF ( Isotropic(1) ) CALL BuildIsotropicC( C, Young, Poisson, dim, CSymmetry, PlaneStress )
+       IF ( Isotropic(1) .AND. .NOT. PreBuiltC ) &
+           CALL BuildIsotropicC( C, Young, Poisson, dim, CSymmetry, PlaneStress )
      END SELECT
 !
-!    Compute strain: 
+!    Compute strain:
 !    ---------------
      LGrad = 0._dp
      LGrad(1:dim,1:dim) = MATMUL( NodalDisp(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
@@ -1354,6 +1407,77 @@ CONTAINS
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE Strain2Stress
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Number of independent components of a symmetric stress tensor, i.e. the length
+!> of the vector that Tensor26Vector fills and Vector62Tensor reads back:
+!> (11,22,12) in plane, (11,22,33,12) in axisymmetric and (11,22,33,12,23,13) in
+!> three dimensions.
+!------------------------------------------------------------------------------
+   FUNCTION SymTensorComponents( dim, CSymmetry ) RESULT( ncomp )
+!------------------------------------------------------------------------------
+     INTEGER :: dim, ncomp
+     LOGICAL :: CSymmetry
+!------------------------------------------------------------------------------
+     SELECT CASE( dim )
+     CASE( 1 )
+       ncomp = 1
+     CASE( 2 )
+       ncomp = MERGE( 4, 3, CSymmetry )
+     CASE DEFAULT
+       ncomp = 6
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION SymTensorComponents
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Expand a symmetric stress vector back to tensor form, the inverse of
+!> Tensor26Vector. Components the vector does not carry are zeroed, so the tensor
+!> is fully defined whatever the dimension.
+!------------------------------------------------------------------------------
+   SUBROUTINE Vector62Tensor( V, X, dim, CSymmetry )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: V(:), X(:,:)
+     INTEGER :: dim
+     LOGICAL :: CSymmetry
+!------------------------------------------------------------------------------
+     INTEGER :: i,n,p,q
+     INTEGER :: i1(6), i2(6)
+!------------------------------------------------------------------------------
+     SELECT CASE(dim)
+     CASE(2)
+        IF ( CSymmetry ) THEN
+          n = 4
+          i1(1:n) = [ 1,2,3,1 ]
+          i2(1:n) = [ 1,2,3,2 ]
+        ELSE
+          n = 3
+          i1(1:n) = [ 1,2,1 ]
+          i2(1:n) = [ 1,2,2 ]
+        END IF
+     CASE(3)
+        n = 6
+        i1(1:n) = [ 1,2,3,1,2,1 ]
+        i2(1:n) = [ 1,2,3,2,3,3 ]
+     CASE DEFAULT
+        n = 1
+        i1(1:n) = [ 1 ]
+        i2(1:n) = [ 1 ]
+     END SELECT
+
+     X = 0
+     DO i=1,n
+       p = i1(i)
+       q = i2(i)
+       X(p,q) = V(i)
+       X(q,p) = V(i)
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE Vector62Tensor
 !------------------------------------------------------------------------------
 
 

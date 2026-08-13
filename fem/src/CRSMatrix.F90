@@ -1570,6 +1570,24 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
 #else
 
+    ! The unrolled loops below step through each row ndeg entries at a time and
+    ! assume the columns of each step are consecutive, so every row has to hold a
+    ! whole number of blocks. Code that edits a matrix in place can break that --
+    ! dropping stored zeros, or appending columns to a row -- and the result is
+    ! then a silently wrong product rather than a crash, which is expensive to
+    ! track down. The scan is over rows, not entries, so it costs about a
+    ! percent of the multiplication it guards. Whoever changes the structure
+    ! should set ndeg to 1.
+    IF ( A % ndeg > 1 ) THEN
+      DO i=1,n
+        IF ( MODULO(Rows(i+1)-Rows(i), A % ndeg) /= 0 ) THEN
+          WRITE(Message,'(A,I0,A,I0,A,I0)') 'Row ',i,' holds ',Rows(i+1)-Rows(i), &
+              ' entries, which is not a multiple of ndeg = ',A % ndeg
+          CALL Fatal('CRS_MatrixVectorMultiply',Message)
+        END IF
+      END DO
+    END IF
+
     ! There may be a small structured block in the CRS matrix that is due to the problem
     ! being initially vector valued. For example, in 3D elasticity we usually have dofs related
     ! to (x,y,z) displacements following each other. Using this small dense block we may reduce
@@ -2025,7 +2043,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Rows   => A % Rows
      Cols   => A % Cols
      Values => A % Values     
-          
+
      ! Use MKL to perform mvp if it is available
 #ifdef HAVE_MKL
      CALL mkl_dcsrgemv('T', n, Values, Rows, Cols, u, v)
