@@ -393,6 +393,11 @@ MODULE Types
      TYPE (SplittedMatrixT), POINTER :: SplittedMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: Matrix=>NULL()
      INTEGER :: DOFs, RelaxIters
+     ! The active partitions and the neighbours are a property of the matrix,
+     ! not of the solver: one solver may own several matrices of differing
+     ! parallel structure. This is the owner of the > Active < and
+     ! > IsNeighbour < arrays, > Solver % ParEnv < only mirrors it.
+     TYPE(ParEnv_t) :: ParEnv
      TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
   END TYPE SParIterSolverGlobalD_t
 

@@ -96,33 +96,38 @@ CONTAINS
 
     pes = ParEnv % PEs
     ALLOCATE( SParMatrixDesc )
-    SourceMatrix % Solver % ParEnv = ParEnv
 
     IF ( .NOT. ASSOCIATED(ParEnv % active) ) THEN
       ALLOCATE(ParEnv % Active(Parenv % PEs))
       ParEnv % Active = .TRUE.
     END IF
 
-    IF (.NOT.ASSOCIATED(SourceMatrix % Solver % ParEnv % Active) ) &
-      ALLOCATE(SourceMatrix % Solver % ParEnv % Active(ParEnv % PEs))
-
-    SourceMatrix % Solver % ParEnv % Active = ParEnv % Active
-    ParEnv => SourceMatrix % Solver % ParEnv
-    SourceMatrix % Solver % ParEnv % IsNeighbour => Null()
+    ! The environment is built for this matrix and owned by it. Aim > ParEnv <
+    ! at it while ParEnvInit determines the active partitions and the
+    ! neighbours, see SetMatrixParEnv().
+    SParMatrixDesc % ParEnv = ParEnv
+    ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
+    SParMatrixDesc % ParEnv % Active = ParEnv % Active
+    SParMatrixDesc % ParEnv % IsNeighbour => Null()
+    ParEnv => SParMatrixDesc % ParEnv
 
     IF( ParEnv % PEs /= pes ) THEN
       WRITE(Message,'(A,I0,A,I0)') '#np changed during simulation from ',pes,' to ',ParEnv % PEs
       CALL Fatal('ParInitMatrix',Message)
     END IF
-    
+
     CALL ParEnvInit(SParMatrixDesc, ParallelInfo, SourceMatrix,  SkipActiveCheck)
 
     SParMatrixDesc % Matrix => SourceMatrix
     SParMatrixDesc % DOFs = 1
     SParMatrixDesc % ParallelInfo => ParallelInfo
-    
+
     ParEnv % ActiveComm = SourceMatrix % Comm
-    
+
+    ! Mirror into the solver. Cannot use SetMatrixParEnv() yet as the caller
+    ! only now attaches this descriptor to > SourceMatrix % ParMatrix <.
+    CALL SetMatrixParEnv( SourceMatrix, SParMatrixDesc )
+
     SParMatrixDesc % SplittedMatrix => SplitMatrix( SourceMatrix, ParallelInfo )
 
     
@@ -1288,8 +1293,7 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 
     GlobalData     => SourceMatrix % ParMatrix
-    ParEnv         => SourceMatrix % Solver % ParEnv
-    ParEnv % ActiveComm = SourceMatrix % Comm
+    CALL SetMatrixParEnv( SourceMatrix )
     SplittedMatrix => Globaldata % SplittedMatrix
 
     GlobalData % DOFs  = 1
@@ -1888,8 +1892,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   !******************************************************************
   SaveGlobalData => GlobalData
   GlobalData     => SParMatrixDesc
-  ParEnv         => SourceMatrix % Solver % ParEnv
-  ParEnv % ActiveComm = SourceMatrix % Comm
+  CALL SetMatrixParEnv( SourceMatrix, SParMatrixDesc )
   SplittedMatrix => SParMatrixDesc % SplittedMatrix
 
   Rows => SourceMatrix % Rows

@@ -4525,8 +4525,7 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL ParallelInitMatrix(Solver,Amat)
 
-            Amat % Solver % ParEnv % ActiveComm = Amat % Comm
-            ParEnv => Amat % Solver % ParEnv
+            CALL SetMatrixParEnv( Amat )
             CALL ParallelActive( .TRUE.)
           END DO
         END DO
@@ -5271,9 +5270,8 @@ CONTAINS
            IF ( Parallel .AND. MeActive ) THEN
              IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
-                   CALL ParallelInitMatrix(Solver, Solver % Matrix )               
-               ParEnv => Solver % ParEnv
-               ParEnv % ActiveComm = Solver % Matrix % Comm
+                   CALL ParallelInitMatrix(Solver, Solver % Matrix )
+               CALL SetMatrixParEnv( Solver % Matrix )
              END IF
            END IF           
          END IF
@@ -5321,7 +5319,7 @@ BLOCK
 
        IF ( ASSOCIATED(Solver  % Matrix) ) THEN
           IF ( ASSOCIATED(Solver  % Matrix % ParMatrix) ) THEN
-            ParEnv => Solver % ParEnv
+            CALL SetMatrixParEnv( Solver % Matrix )
           END IF
        END IF
 
@@ -5413,8 +5411,7 @@ END BLOCK
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-           ParEnv => Solver % ParEnv
-           ParEnv % ActiveComm = Solver % Matrix % Comm
+           CALL SetMatrixParEnv( Solver % Matrix )
 
 #if 0
            ! This one is mainly for debugging of parallel problems

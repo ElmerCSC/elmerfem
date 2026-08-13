@@ -2159,10 +2159,9 @@ CONTAINS
       END IF
 
       A % Solver => Solver
-      ParEnv => A % Solver % ParEnv
-      ParEnv % ActiveComm = A % Comm
+      CALL SetMatrixParEnv( A )
 
-      ! Enforce continuous ascending numbering as required by ROCalution 
+      ! Enforce continuous ascending numbering as required by ROCalution
       ! ----------------------------------------------------------------
       IF (.NOT. ASSOCIATED(A % RocParams % Rmatrix)) THEN
         n = SIZE(A % ParallelInfo % GlobalDOFs)
@@ -2813,7 +2812,9 @@ CONTAINS
             NULLIFY( Acoll % AddMatrix )         
 
             CALL FreeMatrix(Acoll)
-            ParEnv => Solver % ParEnv
+            ! The environment of the freed collection matrix is gone with it,
+            ! return to the one of the system matrix.
+            CALL SetMatrixParEnv( A )
 
             Acoll => NULL()
           END BLOCK
@@ -5188,17 +5189,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     ELSE
       CALL Info( Caller,'Trying to keep previous collection matrix structures',Level=10)
     END IF
-  ELSE
-    IF(ASSOCIATED(Solver % ParEnv % Active)) THEN
-      DEALLOCATE(Solver % ParEnv % Active)
-      Solver % ParEnv % Active => Null()
-    END IF
-
-    IF(ASSOCIATED(Solver % ParEnv % IsNeighbour)) THEN
-      DEALLOCATE(Solver % ParEnv % IsNeighbour)
-      Solver % ParEnv % Isneighbour => Null()
-    END IF
   END IF
+  ! No need to release anything from > Solver % ParEnv < here: it is a mirror
+  ! only, the collection matrix created below gets an environment of its own.
 
   IF(.NOT.ASSOCIATED(CollectionMatrix)) THEN
     CollectionMatrix => AllocateMatrix()

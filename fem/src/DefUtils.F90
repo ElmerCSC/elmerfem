@@ -3590,7 +3590,7 @@ CONTAINS
 
          IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
            IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
-             ParEnv => SlaveSolver % ParEnv
+             CALL SetMatrixParEnv( SlaveSolver % Matrix )
            ELSE
              ParEnv % ActiveComm = SlaveSolver % Matrix % Comm
            END IF

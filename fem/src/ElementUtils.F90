@@ -309,26 +309,34 @@ CONTAINS
        END IF
        DEALLOCATE(s)
 
-       IF(ASSOCIATED(Solver % ParEnv % Active)) THEN
-         active = .FALSE.
+       ! The parallel environment arrays belong to this matrix, so they are
+       ! released here. Every solver that still mirrors them, the one owning
+       ! this matrix included, is left with a clean environment rather than
+       ! with freed arrays.
+       IF(ASSOCIATED(p % ParEnv % Active)) THEN
          DO i=1,CurrentModel % NumberOfSolvers
-           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
-           IF ( ASSOCIATED(Solver  % ParEnv % Active, CurrentModel % Solvers(i) % ParEnv % Active) ) &
-                   active = .TRUE.
+           IF ( ASSOCIATED(CurrentModel % Solvers(i) % ParEnv % Active, p % ParEnv % Active) ) &
+               CurrentModel % Solvers(i) % ParEnv % Active => Null()
          END DO
-         IF( .NOT. active ) DEALLOCATE(Solver % ParEnv % Active)
-         Solver % ParEnv % Active => Null()
+         IF( ASSOCIATED(Solver) ) THEN
+           IF ( ASSOCIATED(Solver % ParEnv % Active, p % ParEnv % Active) ) &
+               Solver % ParEnv % Active => Null()
+         END IF
+         DEALLOCATE(p % ParEnv % Active)
+         p % ParEnv % Active => Null()
        END IF
 
-       IF(ASSOCIATED(Solver % ParEnv % Isneighbour)) THEN
-         active = .FALSE.
+       IF(ASSOCIATED(p % ParEnv % Isneighbour)) THEN
          DO i=1,CurrentModel % NumberOfSolvers
-           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
-           IF ( ASSOCIATED(Solver  % ParEnv % IsNeighbour, CurrentModel % Solvers(i) % ParEnv % IsNeighbour) ) &
-                   Active = .TRUE.
+           IF ( ASSOCIATED(CurrentModel % Solvers(i) % ParEnv % IsNeighbour, p % ParEnv % IsNeighbour) ) &
+               CurrentModel % Solvers(i) % ParEnv % IsNeighbour => Null()
          END DO
-         IF ( .NOT. Active ) DEALLOCATE(Solver % ParEnv % Isneighbour)
-         Solver % ParEnv % IsNeighbour => Null()
+         IF( ASSOCIATED(Solver) ) THEN
+           IF ( ASSOCIATED(Solver % ParEnv % IsNeighbour, p % ParEnv % IsNeighbour) ) &
+               Solver % ParEnv % IsNeighbour => Null()
+         END IF
+         DEALLOCATE(p % ParEnv % Isneighbour)
+         p % ParEnv % IsNeighbour => Null()
        END IF
 
        DEALLOCATE(p)

@@ -69,6 +69,45 @@ real(kind=dp):: xxx, yyy
   TYPE (ParEnv_t), POINTER, SAVE :: ParEnv => ParEnv_Common
   TYPE (SParIterSolverGlobalD_t), POINTER :: PIGpntr
   TYPE (SParIterSolverGlobalD_t), POINTER :: GlobalData
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> Aim the global > ParEnv < at the parallel environment of the given matrix.
+!> The active partitions and the neighbours describe a matrix, not a solver: a
+!> single solver may own several matrices with a differing parallel structure,
+!> for example the levels of a p/algebraic multigrid preconditioner, the blocks
+!> of a block system, or a collection matrix. The per matrix environment is
+!> therefore owned by > Matrix % ParMatrix % ParEnv <, and > Solver % ParEnv <
+!> holds a mirror of the matrix that is currently being worked on. The mirror is
+!> what > ParEnv < is aimed at, so that the target stays valid also when the
+!> matrix of a solver is replaced or freed.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetMatrixParEnv( Matrix, ParMatrix )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: Matrix
+    TYPE(SParIterSolverGlobalD_t), OPTIONAL, POINTER :: ParMatrix
+!------------------------------------------------------------------------------
+    TYPE(SParIterSolverGlobalD_t), POINTER :: p
+!------------------------------------------------------------------------------
+    p => Matrix % ParMatrix
+    IF( PRESENT( ParMatrix ) ) p => ParMatrix
+
+    IF( ASSOCIATED( p ) ) THEN
+      ParEnv => p % ParEnv
+      IF( ASSOCIATED( Matrix % Solver ) ) THEN
+        Matrix % Solver % ParEnv = p % ParEnv
+        ParEnv => Matrix % Solver % ParEnv
+      END IF
+    ELSE IF( ASSOCIATED( Matrix % Solver ) ) THEN
+      ParEnv => Matrix % Solver % ParEnv
+    END IF
+
+    ParEnv % ActiveComm = Matrix % Comm
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetMatrixParEnv
+!------------------------------------------------------------------------------
+
 END MODULE SParIterGlobals
 
 !> \}

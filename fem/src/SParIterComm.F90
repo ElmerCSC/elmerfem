@@ -3324,6 +3324,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   END DO
 
   ALLOCATE(perm(0:Parenv % Pes-1))
+  perm = 0
   DO i=1,n
     perm(neigh(i))=i
   END DO
@@ -3335,6 +3336,8 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
     DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
       owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
       IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+         IF ( perm(owner) == 0 ) CALL Fatal('ExchangeSourceVec', &
+             'Owner of a dof is no neighbour, ParEnv does not match the matrix!')
          owner = perm(owner)
          send_size(owner) = send_size(owner) + 1
       END IF
@@ -3509,6 +3512,7 @@ SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
   END DO
 
   ALLOCATE(perm(0:Parenv % Pes-1))
+  perm = 0
   DO i=1,n
     perm(neigh(i))=i
   END DO
@@ -3520,6 +3524,8 @@ SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
     DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
       owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
       IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+         IF ( perm(owner) == 0 ) CALL Fatal('ExchangeSourceVecInt', &
+             'Owner of a dof is no neighbour, ParEnv does not match the matrix!')
          owner = perm(owner)
          send_size(owner) = send_size(owner) + 1
       END IF
@@ -3862,6 +3868,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   END DO
 
   ALLOCATE(perm(0:Parenv % Pes-1))
+  perm = 0
   DO i=1,n
     perm(neigh(i))=i
   END DO
@@ -3878,6 +3885,8 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   DO i = 1, SourceMatrix % NumberOfRows
     owner = ParallelInfo % NeighbourList(i) % Neighbours(1)
     IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+       IF ( perm(owner) == 0 ) CALL Fatal('ExchangeRHSIf', &
+           'Owner of a dof is no neighbour, ParEnv does not match the matrix!')
        owner = perm(owner)
        send_size(owner) = send_size(owner) + 1
     END IF

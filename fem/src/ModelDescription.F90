@@ -6242,9 +6242,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
       CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
-      Solver % ParEnv % ActiveComm = &
-                 Solver % Matrix % Comm
-      ParEnv => Solver % ParEnv
+      CALL SetMatrixParEnv( Solver % Matrix )
     END IF
   END IF
 

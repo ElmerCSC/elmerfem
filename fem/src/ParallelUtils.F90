@@ -1076,12 +1076,11 @@ CONTAINS
        IF(.NOT. ASSOCIATED(Matrix % ParMatrix)) THEN
          CALL Fatal('ParallelInitSolve','ParMatrix not associated!')
        END IF
-       ParEnv => Matrix % Solver % ParEnv
+       CALL SetMatrixParEnv( Matrix )
        IF(.NOT. ASSOCIATED(ParEnv)) THEN
          CALL Fatal('ParallelInitSolve','ParEnv not associated!')
        END IF
-       
-       ParEnv % ActiveComm = Matrix % Comm
+
        Upd = .TRUE.
        IF ( PRESENT(Update) ) Upd=Update
        CALL SParInitSolve( Matrix, x, b, r, Matrix % ParallelInfo, Upd )
@@ -1100,12 +1099,12 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % Solver % ParEnv
+       CALL SetMatrixParEnv( Matrix )
        IF(.NOT.ASSOCIATED(Parenv % Active)) THEN
          ParEnv = ParEnv_Common
+         ParEnv % ActiveComm = Matrix % Comm
        END IF
-       ParEnv % ActiveComm = Matrix % Comm
-       
+
        CALL ExchangeSourceVec( Matrix, Matrix % ParMatrix % SplittedMatrix, &
               Matrix % ParallelInfo, x, op )
 !-------------------------------------------------------------------------------
@@ -1122,8 +1121,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % Solver % ParEnv
-       ParEnv % ActiveComm = Matrix % Comm
+       CALL SetMatrixParEnv( Matrix )
 
        CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
               Matrix % ParallelInfo, x, op )
@@ -1146,8 +1144,7 @@ CONTAINS
       ! We can inherit the ParEnv from the primary matrix even
       ! though the variable is not directly associated to it!
       IF( PRESENT( Matrix ) ) THEN
-        ParEnv => Matrix % Solver % ParEnv
-        ParEnv % ActiveComm = Matrix % Comm
+        CALL SetMatrixParEnv( Matrix )
       END IF
 
       CALL Info('ParallelSumNodalVector','Summing up parallel nodal vector',Level=12)
@@ -1196,8 +1193,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalMatrix % Solver % ParEnv
-      ParEnv % ActiveComm = Matrix % Comm
+      CALL SetMatrixParEnv( Matrix )
 
       UpdateL = .FALSE.
       IF(PRESENT(Update)) UpdateL=Update
@@ -1306,8 +1302,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalMatrix % Solver % ParEnv
-      ParEnv % ActiveComm = Matrix % Comm
+      CALL SetMatrixParEnv( Matrix )
       IF ( PRESENT( Update ) ) THEN
         CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > Update <')
       END IF
