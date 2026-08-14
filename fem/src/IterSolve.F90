@@ -469,6 +469,45 @@ END FUNCTION MaskedNorm
   END FUNCTION Otmp_zdotc
 !----------------------------------------------------------------------
 
+
+!----------------------------------------------------------------------
+!> As Otmp_zdotc but WITHOUT conjugation, i.e. the bilinear form x^T y.
+!> CG is the one Krylov method whose correctness requires the operator to be
+!> self-adjoint in the inner product being used, and the complex systems
+!> assembled by Elmer are complex symmetric (A = A^T) rather than Hermitian.
+!> Methods that only need an inner product for orthogonality or residual
+!> minimization -- BiCGStab, GMRES, GCR, TFQMR, CGS -- keep using Otmp_zdotc.
+!> NOTE: switching CG to this form is necessary but on its own has not been
+!> shown to be sufficient; see the handover notes.
+!----------------------------------------------------------------------
+  FUNCTION Otmp_zdotu( ndim, x, xind, y, yind ) RESULT(zres)
+!----------------------------------------------------------------------
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER :: ndim, xind, yind
+    COMPLEX(KIND=dp) :: x(*)
+    COMPLEX(KIND=dp) :: y(*)
+    COMPLEX(KIND=dp) :: zres
+
+    INTEGER :: i
+
+    IF(  xind/=1 .OR. yind /=1 ) THEN
+       zres = zdotu(ndim,x,xind,y,yind)
+       RETURN
+    END IF
+
+    zres = 0
+!$OMP PARALLEL do shared(x,y) reduction(+:zres)
+    DO i=1,ndim
+       zres = zres + x(i) * y(i)
+    END DO
+!$OMP END PARALLEL DO
+
+!----------------------------------------------------------------------
+  END FUNCTION Otmp_zdotu
+!----------------------------------------------------------------------
+
     
 !------------------------------------------------------------------------------
 !> The routine that decides which linear system solver to call, and calls it.
@@ -1304,8 +1343,16 @@ END FUNCTION MaskedNorm
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )
       END IF
 
-      IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_zdotc)
-      
+      IF ( dotProc  == 0 ) THEN
+        IF ( IterType == ITER_CG ) THEN
+          ! CG needs the unconjugated bilinear form on these complex symmetric
+          ! systems; the other complex methods want the Hermitian product.
+          dotProc = AddrFunc(Otmp_zdotu)
+        ELSE
+          dotProc = AddrFunc(Otmp_zdotc)
+        END IF
+      END IF
+
     END IF
     
 !------------------------------------------------------------------------------

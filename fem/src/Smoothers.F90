@@ -367,6 +367,13 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> The bilinear form x^T y, deliberately WITHOUT conjugation. Its only user is
+!> the CCG smoother, and the systems assembled here are complex symmetric
+!> (A = A^T) rather than Hermitian: under the Hermitian product A is not
+!> self-adjoint and the conjugate-direction recurrence of CG has no basis.
+!> Note that Fortran DOT_PRODUCT on COMPLEX conjugates its first argument, so
+!> it is not what is wanted here.
+!------------------------------------------------------------------------------
     FUNCTION MGCdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
@@ -375,9 +382,9 @@ CONTAINS
        COMPLEX(KIND=dp) CONTIG :: x(:),y(:)
 !------------------------------------------------------------------------------
        IF ( .NOT. Parallel ) THEN
-         s = DOT_PRODUCT( x(1:n), y(1:n) )
+         s = SUM( x(1:n) * y(1:n) )
        ELSE
-         s = ParallelCDot( n, x, y )
+         s = ParallelCDotU( n, x, y )
        END IF
 !------------------------------------------------------------------------------
     END FUNCTION MGCdot

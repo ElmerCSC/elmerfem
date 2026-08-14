@@ -4639,6 +4639,51 @@ END FUNCTION SParCDotProd
 !*********************************************************************
 !*********************************************************************
 !
+!> Compute global bilinear product of vectors x and y, i.e. the dot product
+!> WITHOUT conjugation. This is the form needed by CG-type methods applied to
+!> a complex symmetric (A = A^T, not Hermitian) system, where the Hermitian
+!> product of SParCDotProd would leave the operator non-self-adjoint and the
+!> conjugate-direction recurrence without a basis. Krylov methods that merely
+!> need an inner product for orthogonality or residual minimization -- GCR,
+!> BiCGStab, GMRES, TFQMR -- should keep using SParCDotProd.
+!
+FUNCTION SParCDotProdU( ndim, x, xind, y, yind ) result (dres)
+
+  IMPLICIT NONE
+
+  ! Parameters
+
+  INTEGER :: ndim, xind, yind
+  COMPLEX(KIND=dp) :: x(*)
+  COMPLEX(KIND=dp) :: y(*)
+  COMPLEX(KIND=dp) :: dres
+
+
+  ! Local variables
+
+  INTEGER :: i
+
+  !*********************************************************************
+  dres = 0.0d0
+  IF ( xind == 1 .AND. yind  == 1 ) THEN
+     !$OMP PARALLEL DO REDUCTION(+:dres)
+     DO i = 1, ndim
+        dres = dres + x(i) * y(i)
+     END DO
+     !$OMP END PARALLEL DO
+  ELSE
+     CALL Fatal( 'SParCDotProdU', 'xind or yind not 1' )
+  END IF
+
+  CALL SParActiveSUMComplex( dres, 0 )
+!*********************************************************************
+END FUNCTION SParCDotProdU
+!*********************************************************************
+
+
+!*********************************************************************
+!*********************************************************************
+!
 !> Compute global 2-norm of vector x
 !
 FUNCTION SParCNorm( ndim, x, xind ) result (norm)

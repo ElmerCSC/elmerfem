@@ -1508,6 +1508,25 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
+!> As ParallelCDOT but without conjugation, i.e. the bilinear form x^T y.
+!> See SParCDotProdU for when this is the one you want.
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelCDOTU( n, x, y ) RESULT(s)
+!-------------------------------------------------------------------------------
+      INTEGER :: n
+      COMPLEX(KIND=dp) :: s
+      COMPLEX(KIND=dp) CONTIG :: x(:),y(:)
+!-------------------------------------------------------------------------------
+      s = 0.0d0
+#ifdef PARALLEL_FOR_REAL
+      s = SParCDotProdU( n, x, 1, y, 1 )
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelCDOTU
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
     SUBROUTINE ParallelGlobalNumbering(Mesh,OldMesh,NewNodes,Reorder)
 !-------------------------------------------------------------------------------
        TYPE(Mesh_t) :: Mesh, OldMesh
