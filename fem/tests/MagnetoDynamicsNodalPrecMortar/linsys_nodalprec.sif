@@ -1,0 +1,162 @@
+Equation 1
+  AmsVectorSolver = Logical True
+  AmsScalarSolver = Logical True
+End
+
+Equation 2
+  AmsVectorSolver = Logical True
+  AmsScalarSolver = Logical True
+End
+
+
+Solver 3 
+  Linear System Preconditioning = "auxiliary space solver"
+!  Prec Solvers(2) = Integer 7 8  
+  Prec Solvers(1) = Integer 7 
+
+! Now set internally by solver
+! Exported Variable 1 = ams res
+! Exported Variable 2 = ams update
+! Preconditioning Residual = String "ams res"
+! Preconditioning Update = String "ams update"
+
+  Additive Smoother = Logical True
+
+  MG Post Smoothing Iterations(2) = 5 5 
+  MG Smoother Relaxation Factor = Real 1.0
+!  MG Smoother Relaxation Factor = Real $2.0/3.0
+
+  MG Smoother Normalize Guess = Logical True
+  MG Smoother = "masked sgs"
+  Linear System Skip Mask = Logical True
+
+! Standard parameter for outer iteration
+!  Linear System Symmetric = True
+  Linear System Row Equilibration = True 
+
+  Linear System Solver = String "Iterative"
+  Linear System Iterative Method = "gcr"
+  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Residual Output = 1
+  Linear system abort not converged = True
+  Linear System Max Iterations = $niter
+  Linear System Abort Not Converged = False
+
+!  Linear System Scaling = False
+
+  Apply Mortar BCs = False
+
+!  MG Smoother = "masked jacobi"
+
+! Standard parameter for outer iteration
+  Linear System Scaling = True
+  Linear System Nullify First Guess = Logical True
+End
+
+
+$tol=1.0e-5
+$niter=2000
+Solver 7
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "AmsVectorSolver"
+  Procedure = "AmsPrecSolver" "AmsVectorSolver"
+
+  Monolithic Solver = Logical $mono  
+!  Edge Residual Name = String "ams res"
+!  Edge Update Name = String "ams update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "idrs"
+
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = "ILU0"
+  Linear System Max Iterations = $niter
+  Linear System Convergence Tolerance = $tol
+  Linear system abort not converged = false
+  Linear System Residual Output = 50
+
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+! Essential for performance!
+  No Precondition Recompute = True
+
+! If we know that solution has only a_z no need to do a_x and a_y
+!  Extruded Solution = Logical True
+
+  Eliminate Slave = True
+  Eliminate Linear Constraints = True
+End
+
+
+Solver 8
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "AmsScalarSolver"
+  Procedure = "AmsPrecSolver" "AmsScalarSolver"
+
+!  Edge Residual Name = String "ams res"
+!  Edge Update Name = String "ams update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "idrs"
+
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = "ILU0"
+  Linear System Max Iterations = $niter
+  Linear System Convergence Tolerance = $tol
+  Linear system abort not converged = false
+  Linear System Residual Output = 50
+
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = mumps
+
+! Essential for performance!
+  No Precondition Recompute = True
+
+!  Eliminate Slave = True
+!  Eliminate Linear Constraints = True
+!  Apply Mortar BCs = True
+  Apply Mortar BCs = False !True
+
+  Zero Mortar Fix = Logical True
+End
+
+
+
+
+Boundary Condition 5
+  Projector Skip Edges = Logical True
+
+  Edge Skip Mask = Logical True
+  Node Skip Mask = Logical True
+
+! This is when testing without mortars
+!  av {e} = Real 0.0
+!  amsx = Real 0.0
+!  amsy = Real 0.0
+!  amsz = Real 0.0
+!  amss = Real 0.0
+End 
+
+Boundary Condition 6
+  Edge Skip Mask = Logical True
+  Node Skip Mask = Logical True
+
+!  av {e} = Real 0.0
+!  amsx = Real 0.0
+!  amsy = Real 0.0
+!  amsz = Real 0.0
+!  amss = Real 0.0
+End 
