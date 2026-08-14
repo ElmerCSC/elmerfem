@@ -1716,8 +1716,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        ELSE IF( HasReluctivityFunction ) THEN
          rdummy = ListGetElementReal( mu_h, Basis, Element, &
-             GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )             
-         Nu(1:3,1:3) = muTensor(1:3,1:3)                           
+             GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )
+         IF( mudim < 2 ) CALL Fatal(Caller, &
+             'Specify Reluctivity Function as a tensor')
+         ! The tensor is only as large as declared in the sif, e.g. (2,2) in 2D.
+         DO k = 1, MIN(3, SIZE(muTensor,1))
+           DO l = 1, MIN(3, SIZE(muTensor,2))
+             Nu(k,l) = muTensor(k,l)
+           END DO
+         END DO
          w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
        ELSE IF (HomogenizationLoss .AND. CoilType == 'stranded' .and. HomogenizationModel) THEN
          DO k=1,3

@@ -1185,7 +1185,7 @@ CONTAINS
 !>   This routine solves real linear systems Ax = b by using the GCR algorithm 
 !> (Generalized Conjugate Residual).
 !------------------------------------------------------------------------------
- SUBROUTINE itermethod_gcr( xvec, rhsvec, &
+ RECURSIVE SUBROUTINE itermethod_gcr( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
@@ -1268,8 +1268,8 @@ CONTAINS
   CONTAINS 
     
     
-    SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m, MinIter) 
+    RECURSIVE SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
+        Converged, Diverged, OutputInterval, m, MinIter)
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: Rounds, MinIter

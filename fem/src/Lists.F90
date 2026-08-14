@@ -753,6 +753,8 @@ CONTAINS
 
      L = .FALSE.
      IF ( Element % Type % ElementCode<=1 ) RETURN
+     IF (.NOT. ASSOCIATED(Element % BoundaryInfo) ) RETURN
+     IF (.NOT. ASSOCIATED(CurrentModel % BCs) ) RETURN
 
      t = Element % BoundaryInfo % Constraint
      IF(t<=0 .OR. t>SIZE(CurrentModel % BCs)) RETURN
