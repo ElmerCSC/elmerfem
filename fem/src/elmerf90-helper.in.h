@@ -58,7 +58,17 @@ static void push(const char *s)
         fprintf(stderr, "elmerf90: too many arguments\n");
         exit(1);
     }
+
+#if defined (_WIN32)
+    // The spawn* functions on Windows require that their arguments are
+    // surrounded by double-quotes (to deal with spaces in arguments).
+    // See: https://learn.microsoft.com/en-us/cpp/c-runtime-library/spawn-wspawn-functions?view=msvc-170
+    args[nargs] = malloc(strlen(s) + 3);
+    sprintf(args[nargs], "\"%s\"", s);
+    nargs++;
+#else
     args[nargs++] = strdup(s);
+#endif
 }
 
 /* Split a whitespace-separated flag string and push each token. */

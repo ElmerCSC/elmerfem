@@ -142,7 +142,12 @@ int main(int argc, char *argv[])
 
     /* Print the command (matches shell script behaviour) */
     for (int i = 0; i < nargs; i++)
+#if defined (_WIN32)
+        /* The argument list is already double-quoted for Windows. */
+        printf("%s ", args[i]);
+#else
         printf("\"%s\" ", args[i]);
+#endif
     printf("\n");
 
     return exec_compiler(fc, "elmerf90");
