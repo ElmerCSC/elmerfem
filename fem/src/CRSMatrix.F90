@@ -2320,27 +2320,133 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     COMPLEX(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
     TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
 !------------------------------------------------------------------------------
-    INTEGER, POINTER :: Cols(:),Rows(:)
-    REAL(KIND=dp), POINTER :: Values(:)
-    INTEGER :: i,j,n
-    COMPLEX(KIND=dp) :: s,rsum
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER :: i,j,k,l,m,n
+    COMPLEX(KIND=dp) :: r1,r2,r3,r4,r5
 !------------------------------------------------------------------------------
     n = A % NumberOfRows / 2
     Rows   => A % Rows
     Cols   => A % Cols
     Values => A % Values
 
-!$omp parallel do private(rsum,j,s)
-    DO i=1,n
-       rsum = CMPLX( 0.0d0, 0.0d0,KIND=dp )
-!DIR$ IVDEP
-       DO j=Rows(2*i-1),Rows(2*i)-1,2
-          s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-          rsum = rsum + s * u((Cols(j)+1)/2)
-       END DO
-       v(i) = rsum
-    END DO
-!$omp end parallel do
+    ! The complex equation is stored in a real matrix where every complex entry
+    ! takes two consecutive real ones, the real part and the negated imaginary
+    ! part, and complex row i is the odd numbered one of a pair of real rows. So
+    ! the entries of complex row i are read off real row 2i-1 two at a time.
+    !
+    ! As in the real product a small dense block may be used to cut down indirect
+    ! memory addressing. Here ndeg counts real dofs, so a block spans ndeg/2
+    ! complex entries whose columns follow each other, and only an even ndeg says
+    ! anything about a complex matrix.
+    !-------------------------------------------------------------------------------
+    m = 0
+    IF( A % ndeg > 2 .AND. MODULO( A % ndeg, 2 ) == 0 ) m = A % ndeg / 2
+
+    ! The unrolled loops below step through each row a whole block at a time and
+    ! assume the columns of each step are consecutive, so every row has to hold a
+    ! whole number of blocks. Code that edits a matrix in place can break that --
+    ! dropping stored zeros, or appending columns to a row -- and the result is
+    ! then a silently wrong product rather than a crash, which is expensive to
+    ! track down. The scan is over rows, not entries, so it costs about a
+    ! percent of the multiplication it guards. Whoever changes the structure
+    ! should set ndeg to 1.
+    IF( m > 1 ) THEN
+      DO i=1,n
+        IF( MODULO(Rows(2*i)-Rows(2*i-1), A % ndeg) /= 0 ) THEN
+          WRITE(Message,'(A,I0,A,I0,A,I0)') 'Row ',2*i-1,' holds ',Rows(2*i)-Rows(2*i-1), &
+              ' entries, which is not a multiple of ndeg = ',A % ndeg
+          CALL Fatal('CRS_ComplexMatrixVectorMultiply',Message)
+        END IF
+      END DO
+    END IF
+
+    SELECT CASE( m )
+
+    CASE( 5, 10 )
+      !$omp parallel do private(j,l,r1,r2,r3,r4,r5) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,10
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u(l+2)
+          r4 = r4 + CMPLX( Values(j+6),-Values(j+7), KIND=dp ) * u(l+3)
+          r5 = r5 + CMPLX( Values(j+8),-Values(j+9), KIND=dp ) * u(l+4)
+        END DO
+        v(i) = r1 + r2 + r3 + r4 + r5
+      END DO
+      !$omp end parallel do
+
+    CASE( 4, 8 )
+      !$omp parallel do private(j,l,r1,r2,r3,r4) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,8
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u(l+2)
+          r4 = r4 + CMPLX( Values(j+6),-Values(j+7), KIND=dp ) * u(l+3)
+        END DO
+        v(i) = r1 + r2 + r3 + r4
+      END DO
+      !$omp end parallel do
+
+    CASE( 3, 6 )
+      !$omp parallel do private(j,l,r1,r2,r3) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,6
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u(l+2)
+        END DO
+        v(i) = r1 + r2 + r3
+      END DO
+      !$omp end parallel do
+
+    CASE( 2 )
+      !$omp parallel do private(j,l,r1,r2) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,4
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+        END DO
+        v(i) = r1 + r2
+      END DO
+      !$omp end parallel do
+
+    CASE DEFAULT
+      ! No block to lean on, but the sum may still be split over four partial sums
+      ! so that the products do not have to wait on each other. k counts the
+      ! complex entries of the row.
+      !$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+        k = ( Rows(2*i) - Rows(2*i-1) ) / 2
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i-1)+8*(k/4)-1,8
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u((Cols(j)+1)/2)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u((Cols(j+2)+1)/2)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u((Cols(j+4)+1)/2)
+          r4 = r4 + CMPLX( Values(j+6),-Values(j+7), KIND=dp ) * u((Cols(j+6)+1)/2)
+        END DO
+        DO j=Rows(2*i-1)+8*(k/4),Rows(2*i)-1,2
+          r1 = r1 + CMPLX( Values(j),-Values(j+1), KIND=dp ) * u((Cols(j)+1)/2)
+        END DO
+        v(i) = r1 + r2 + r3 + r4
+      END DO
+      !$omp end parallel do
+    END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_ComplexMatrixVectorMultiply
 !------------------------------------------------------------------------------
