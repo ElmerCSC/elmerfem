@@ -1,4 +1,4 @@
-Input File = half_wire2d
+Input File = half_wire2d_discont
 Output File = wire3d
 Input Mode = ElmerSolver
 Output Mode = ElmerSolver
