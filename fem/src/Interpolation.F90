@@ -860,7 +860,8 @@ MODULE Interpolation
 !> element (Nedelec) interpolant.
 !------------------------------------------------------------------------------
   SUBROUTINE NodalToNedelecInterpolation_GlobalMatrix(Mesh, NodalVar, &
-      VectorElementVar, GlobalPiMat, cdim, UseNodalPermArg, SkipFaces )
+      VectorElementVar, GlobalPiMat, cdim, UseNodalPermArg, SkipFaces, &
+      NodalOffset )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
@@ -870,6 +871,7 @@ MODULE Interpolation
     INTEGER, OPTIONAL :: cdim      !< The number of spatial coordinates
     LOGICAL, OPTIONAL :: UseNodalPermArg
     LOGICAL, OPTIONAL :: SkipFaces
+    INTEGER, OPTIONAL :: NodalOffset
 !------------------------------------------------------------------------------
     INTEGER, PARAMETER :: MaxEDOFs = 2
     INTEGER, PARAMETER :: MaxFDOFs = 2
@@ -879,7 +881,7 @@ MODULE Interpolation
     LOGICAL :: PiolaVersion, SecondKindBasis, SecondOrder, Found
     INTEGER, ALLOCATABLE, SAVE :: Ind(:)
     INTEGER :: dim, istat, EDOFs, i, j, k, i1, i2, k1, k2, nd, dofi, i0, k0, &
-        vdofs, edgej, facej
+        vdofs, edgej, facej, n0
     REAL(KIND=dp) :: PiMat(MaxEDOFs,6), FacePiMat(MaxFDOFs,12)
     CHARACTER(*), PARAMETER :: Caller = 'NodalToNedelecInterpolation_GlobalMatrix'
     LOGICAL :: UseNodalPerm, DoFatal, SkipPeriodicSlave, DoFaces
@@ -944,6 +946,9 @@ MODULE Interpolation
     ELSE
       EDOFs = 1
     END IF
+
+    n0 = 0
+    IF(PRESENT(NodalOffset)) n0 = NodalOffset
     
     GlobalPiMat => AllocateMatrix()
     GlobalPiMat % Format = MATRIX_LIST
@@ -975,17 +980,26 @@ MODULE Interpolation
         k1 = NodalPerm(i1)
         k2 = NodalPerm(i2)
       ELSE
-        k1 =  i1
-        k2 =  i2
+        k1 = i1
+        k2 = i2
       END IF
+
+      i0 = 0
+      IF(n0 > 0) THEN
+        DO j=1,nd
+          ! Note: this logic is not full proof!
+          IF(Ind(j)>n0) EXIT
+          i0 = i0 + 1
+        END DO
+      END IF        
 
       DO dofi=1, vdofs
         DO j=1,EDOFs
-          k = VectorPerm(Ind(j))
+          k = VectorPerm(Ind(i0+j)) !- n0
           IF(k==0) CYCLE
 
           IF(SkipPeriodicSlave) THEN
-            IF(Mesh % PeriodicPerm(Ind(j)) > 0) CYCLE
+            IF(Mesh % PeriodicPerm(Ind(i0+j)) > 0) CYCLE
           END IF
             
           k0 = vdofs*(k-1)+dofi
@@ -1010,6 +1024,13 @@ MODULE Interpolation
         ! Count the offset for picking the true face DOFs
         !
         i0 = 0
+        IF(n0 > 0) THEN
+          DO j=1,nd
+            ! Note: this logic is not full proof!
+            IF(Ind(j)>n0) EXIT
+            i0 = i0 + 1
+          END DO
+        END IF
         DO k=1,Face % Type % NumberOfEdges
           Edge => Mesh % Edges(Face % EdgeIndexes(k))
           EDOFs = Edge % BDOFs
@@ -1021,8 +1042,8 @@ MODULE Interpolation
 
         DO dofi=1, vdofs
           DO j=1,Face % BDOFs
-            k2 = VectorPerm(Ind(j+i0))
-            IF(k2==0) CYCLE
+            k2 = VectorPerm(Ind(j+i0)) !- n0
+            IF(k2<=0) CYCLE
 
             IF(SkipPeriodicSlave) THEN
               IF(Mesh % PeriodicPerm(Ind(j+i0)) > 0) CYCLE
