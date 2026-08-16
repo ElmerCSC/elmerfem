@@ -19,7 +19,9 @@
        PARAMETER (MPI_DOUBLE_COMPLEX=1)
        INTEGER MPI_DOUBLE_PRECISION
        PARAMETER (MPI_DOUBLE_PRECISION=1)
+!      Buffered sends are a no-op here, so a message costs no envelope
        INTEGER MPI_BSEND_OVERHEAD
+       PARAMETER (MPI_BSEND_OVERHEAD=0)
        INTEGER MPI_MIN
        PARAMETER (MPI_MIN=1)
        INTEGER MPI_MAX

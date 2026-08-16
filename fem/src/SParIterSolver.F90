@@ -920,8 +920,9 @@ END SUBROUTINE ZeroSplittedMatrix
   SUBROUTINE SParMatVecCommSetup( SplittedMatrix )
     TYPE(SplittedMatrixT), POINTER :: SplittedMatrix
 
-    INTEGER :: i, j, k, ni, nj, nneigh, ierr
+    INTEGER :: i, j, k, l, first, ni, nj, nneigh, ierr
     TYPE(BasicMatrix_t), POINTER :: IfM
+    TYPE(MVPackT), POINTER :: P
     INTEGER, ALLOCATABLE :: reqs(:)
 
     nneigh = ParEnv % NumOfNeighbours
@@ -972,7 +973,43 @@ END SUBROUTINE ZeroSplittedMatrix
       ALLOCATE( SplittedMatrix % MVRecvBuf(i) % rbuf( MAX(1, SplittedMatrix % MVRecvSize(i)) ) )
     END DO
     ALLOCATE( SplittedMatrix % MVRequests(nneigh) )
+    ALLOCATE( SplittedMatrix % MVSendRequests(nneigh) )
     SplittedMatrix % MVRequests = MPI_REQUEST_NULL
+    SplittedMatrix % MVSendRequests = MPI_REQUEST_NULL
+
+    ! Work out the gather that fills each send buffer. The loop nesting must
+    ! stay the one that counted MVSendSize above: the receiving side picks the
+    ! values apart by position through VecIndices % RevInd, so the order the
+    ! slots are filled in is part of the protocol. Each interface block yields
+    ! at most one segment and there is one block per neighbour, so nneigh
+    ! segments is always enough. More than one arises from nodes that are
+    ! shared by three or more partitions.
+    ALLOCATE( SplittedMatrix % MVPack(nneigh) )
+    DO nj = 1, nneigh
+      P => SplittedMatrix % MVPack(nj)
+      ALLOCATE( P % SegIf(nneigh), P % SegStart(nneigh+1), &
+                P % Row( MAX(1, SplittedMatrix % MVSendSize(nj)) ) )
+      j = SplittedMatrix % MVNeigh(nj)
+      l = 0
+      P % nseg = 0
+      DO ni = 1, nneigh
+        i = SplittedMatrix % MVNeigh(ni) + 1
+        IfM => SplittedMatrix % IfMatrix(i)
+        first = l + 1
+        DO k = 1, IfM % NumberOfRows
+          IF ( IfM % RowOwner(k) == j ) THEN
+            l = l + 1
+            P % Row(l) = k
+          END IF
+        END DO
+        IF ( l >= first ) THEN
+          P % nseg = P % nseg + 1
+          P % SegIf( P % nseg ) = i
+          P % SegStart( P % nseg ) = first
+        END IF
+      END DO
+      P % SegStart( P % nseg + 1 ) = l + 1
+    END DO
   END SUBROUTINE SParMatVecCommSetup
 !----------------------------------------------------------------------
 
@@ -2646,12 +2683,13 @@ END SUBROUTINE SolveHutiter
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
 
-  INTEGER :: i, j, k, l, n, ni, nj, nneigh, ColInd, ierr
+  INTEGER :: i, j, k, l, n, ni, nj, iseg, nneigh, ColInd, ierr
   TYPE(IfVecT),       POINTER :: IfV
   TYPE(IfLColsT),     POINTER :: IfL
-  TYPE(BasicMatrix_t),POINTER :: CurrIf, IfM
+  TYPE(BasicMatrix_t),POINTER :: CurrIf
   TYPE(Matrix_t),     POINTER :: InsideMatrix
   TYPE(SplittedMatrixT), POINTER :: SP
+  TYPE(MVPackT),      POINTER :: P
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
   SP           => GlobalData % SplittedMatrix
@@ -2661,6 +2699,7 @@ END SUBROUTINE SolveHutiter
   ! Post non-blocking receives into persistent buffers
   DO ni = 1, nneigh
     SP % MVRequests(ni) = MPI_REQUEST_NULL
+    SP % MVSendRequests(ni) = MPI_REQUEST_NULL
     IF ( SP % MVRecvSize(ni) > 0 ) THEN
       CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
           MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
@@ -2668,11 +2707,9 @@ END SUBROUTINE SolveHutiter
     END IF
   END DO
 
-  !$OMP PARALLEL DO
-  DO i = 1, n
-    v(i) = 0.0_dp
-  END DO
-  !$OMP END PARALLEL DO
+  ! v is not zeroed here: the interface contributions are accumulated into the
+  ! IfVec arrays, and the local product below defines v in full before anything
+  ! is added to it.
 
   ! Compute interface contributions into IfVec arrays
   DO ni = 1, nneigh
@@ -2702,34 +2739,33 @@ END SUBROUTINE SolveHutiter
     !$OMP END PARALLEL
   END DO
 
-  ! Pack persistent send buffers and dispatch
-  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
+  ! Pack persistent send buffers along the precomputed gather and dispatch.
+  ! The buffers are ours until the waitall at the end of the routine, so the
+  ! sends go straight out of them rather than through the attached buffer.
   DO nj = 1, nneigh
     IF ( SP % MVSendSize(nj) > 0 ) THEN
-      l = 0
-      DO ni = 1, nneigh
-        i   = SP % MVNeigh(ni) + 1
-        IfV => SP % IfVecs(i)
-        IfM => SP % IfMatrix(i)
-        j   =  SP % MVNeigh(nj)
-        DO k = 1, IfM % NumberOfRows
-          IF ( IfM % RowOwner(k) == j ) THEN
-            l = l + 1
-            SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
-          END IF
+      P => SP % MVPack(nj)
+      DO iseg = 1, P % nseg
+        IfV => SP % IfVecs( P % SegIf(iseg) )
+        DO l = P % SegStart(iseg), P % SegStart(iseg+1) - 1
+          SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec( P % Row(l) )
         END DO
       END DO
-      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
-          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+      CALL MPI_ISEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, &
+          SP % MVSendRequests(nj), ierr )
     END IF
   END DO
 
-  ! Local SpMV (overlaps with MPI)
+  ! Local SpMV (overlaps with MPI). This defines v, it does not add to it.
   CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
 
   ! Wait for receives and accumulate into v
   CALL Recv_LocIf_Wait( SP, n, v, nneigh, SP % MVNeigh, &
        SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
+
+  ! Release the send buffers for the next product
+  CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
 
 END SUBROUTINE SParMatrixVector
 !----------------------------------------------------------------------
@@ -2749,12 +2785,13 @@ END SUBROUTINE SParMatrixVector
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
 
-  INTEGER :: i, j, k, l, n, ni, nj, ColInd, nneigh, ierr
+  INTEGER :: i, j, k, l, n, ni, nj, iseg, ColInd, nneigh, ierr
   TYPE(IfVecT),        POINTER :: IfV
   TYPE(IfLColsT),      POINTER :: IfL
-  TYPE(BasicMatrix_t), POINTER :: CurrIf, IfM
+  TYPE(BasicMatrix_t), POINTER :: CurrIf
   TYPE(Matrix_t),      POINTER :: InsideMatrix
   TYPE(SplittedMatrixT), POINTER :: SP
+  TYPE(MVPackT),       POINTER :: P
 
   REAL(KIND=dp) :: rsum
   REAL(KIND=dp), POINTER CONTIG :: Vals(:), Abs_Vals(:)
@@ -2767,6 +2804,7 @@ END SUBROUTINE SParMatrixVector
 
   DO ni = 1, nneigh
     SP % MVRequests(ni) = MPI_REQUEST_NULL
+    SP % MVSendRequests(ni) = MPI_REQUEST_NULL
     IF ( SP % MVRecvSize(ni) > 0 ) THEN
       CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
           MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
@@ -2799,21 +2837,18 @@ END SUBROUTINE SParMatrixVector
     !$OMP END PARALLEL
   END DO
 
-  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
   DO nj = 1, nneigh
     IF ( SP % MVSendSize(nj) > 0 ) THEN
-      l = 0
-      DO ni = 1, nneigh
-        i = SP % MVNeigh(ni) + 1; IfV => SP % IfVecs(i); IfM => SP % IfMatrix(i)
-        j = SP % MVNeigh(nj)
-        DO k = 1, IfM % NumberOfRows
-          IF ( IfM % RowOwner(k) == j ) THEN
-            l = l + 1; SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
-          END IF
+      P => SP % MVPack(nj)
+      DO iseg = 1, P % nseg
+        IfV => SP % IfVecs( P % SegIf(iseg) )
+        DO l = P % SegStart(iseg), P % SegStart(iseg+1) - 1
+          SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec( P % Row(l) )
         END DO
       END DO
-      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
-          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+      CALL MPI_ISEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, &
+          SP % MVSendRequests(nj), ierr )
     END IF
   END DO
 
@@ -2842,6 +2877,9 @@ END SUBROUTINE SParMatrixVector
   CALL Recv_LocIf_Wait( SP, n, v, nneigh, SP % MVNeigh, &
        SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
 
+  ! Release the send buffers for the next product
+  CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
+
 !----------------------------------------------------------------------
 END SUBROUTINE SParABSMatrixVector
 !----------------------------------------------------------------------
@@ -2857,19 +2895,23 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
   IMPLICIT NONE
 
   INTEGER, DIMENSION(*) :: ipar
-  COMPLEX(KIND=dp), DIMENSION(*) :: u, v
+  COMPLEX(KIND=dp), DIMENSION(*) :: u
+  COMPLEX(KIND=dp), DIMENSION(*), TARGET :: v
 
-  INTEGER :: i, j, k, l, n, ni, nj, ci, ColInd, nneigh, ierr
+  INTEGER :: i, j, k, l, n, ni, nj, iseg, ColInd, nneigh, ierr
   TYPE(IfVecT),        POINTER :: IfV
   TYPE(IfLColsT),      POINTER :: IfL
-  TYPE(BasicMatrix_t), POINTER :: CurrIf, IfM
+  TYPE(BasicMatrix_t), POINTER :: CurrIf
   TYPE(Matrix_t),      POINTER :: InsideMatrix
   TYPE(SplittedMatrixT), POINTER :: SP
-  INTEGER, POINTER :: RevInd(:)
+  TYPE(MVPackT),       POINTER :: P
 
-  COMPLEX(KIND=dp) :: A, rsum
-  REAL(KIND=dp), POINTER :: Vals(:)
-  INTEGER, POINTER :: Cols(:), Rows(:)
+  COMPLEX(KIND=dp) :: A
+
+  ! A real view of the complex result vector. The received interface data is
+  ! real and interleaved, and RevInd indexes the 2n real layout directly, so
+  ! through this view the receive and scatter is the same as in the real case.
+  REAL(KIND=dp), POINTER CONTIG :: vr(:)
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
   SP           => GlobalData % SplittedMatrix
@@ -2878,6 +2920,7 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
 
   DO ni = 1, nneigh
     SP % MVRequests(ni) = MPI_REQUEST_NULL
+    SP % MVSendRequests(ni) = MPI_REQUEST_NULL
     IF ( SP % MVRecvSize(ni) > 0 ) THEN
       CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
           MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
@@ -2885,15 +2928,25 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
     END IF
   END DO
 
-  !$OMP PARALLEL DO
-  DO i = 1, n; v(i) = (0.0_dp, 0.0_dp); END DO
-  !$OMP END PARALLEL DO
+  ! v is not zeroed here: the interface contributions are accumulated into the
+  ! IfVec arrays, and the local product below defines v in full before anything
+  ! is added to it.
 
+  ! Compute interface contributions into IfVec arrays. Only the odd rows of the
+  ! interface block are traversed, the even ones carry no information of their
+  ! own, and one complex row of the product fills the pair IfVec(2j-1),IfVec(2j).
   DO ni = 1, nneigh
     i = SP % MVNeigh(ni) + 1; CurrIf => SP % IfMatrix(i)
     IF ( CurrIf % NumberOfRows == 0 ) CYCLE
     IfV => SP % IfVecs(i); IfL => SP % IfLCols(i)
-    DO j = 1, CurrIf % NumberOfRows; IfV % IfVec(j) = 0.0_dp; END DO
+
+    !$OMP PARALLEL PRIVATE(ColInd,j,k,A)
+    !$OMP DO
+    DO j = 1, CurrIf % NumberOfRows
+      IfV % IfVec(j) = 0.0_dp
+    END DO
+    !$OMP END DO
+    !$OMP DO
     DO j = 1, CurrIf % NumberOfRows / 2
       IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
         DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
@@ -2906,62 +2959,35 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
         END DO
       END IF
     END DO
+    !$OMP END DO
+    !$OMP END PARALLEL
   END DO
 
-  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
   DO nj = 1, nneigh
     IF ( SP % MVSendSize(nj) > 0 ) THEN
-      l = 0
-      DO ni = 1, nneigh
-        i = SP % MVNeigh(ni) + 1; IfV => SP % IfVecs(i); IfM => SP % IfMatrix(i)
-        j = SP % MVNeigh(nj)
-        DO k = 1, IfM % NumberOfRows
-          IF ( IfM % RowOwner(k) == j ) THEN
-            l = l + 1; SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
-          END IF
+      P => SP % MVPack(nj)
+      DO iseg = 1, P % nseg
+        IfV => SP % IfVecs( P % SegIf(iseg) )
+        DO l = P % SegStart(iseg), P % SegStart(iseg+1) - 1
+          SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec( P % Row(l) )
         END DO
       END DO
-      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
-          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+      CALL MPI_ISEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, &
+          SP % MVSendRequests(nj), ierr )
     END IF
   END DO
 
-  Rows => InsideMatrix % Rows
-  Cols => InsideMatrix % Cols
-  Vals => InsideMatrix % Values
+  ! Local SpMV (overlaps with MPI). This defines v, it does not add to it.
+  CALL CRS_ComplexMatrixVectorMultiply( InsideMatrix, u, v )
 
-  !$OMP PARALLEL DO PRIVATE(j,A,rsum)
-  DO i = 1, n
-    rsum = (0.0_dp, 0.0_dp)
-    DO j = Rows(2*i-1), Rows(2*i)-1, 2
-      A = CMPLX( Vals(j), -Vals(j+1), KIND=dp )
-      rsum = rsum + A * u(Cols(j+1)/2)
-    END DO
-    v(i) = v(i) + rsum
-  END DO
-  !$OMP END PARALLEL DO
+  ! Wait for receives and accumulate into v through its real view
+  CALL C_F_POINTER( C_LOC(v(1)), vr, [2*n] )
+  CALL Recv_LocIf_Wait( SP, 2*n, vr, nneigh, SP % MVNeigh, &
+       SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
 
-  ! MPI_REQUEST_NULL entries are completed immediately per MPI standard
-  CALL MPI_Waitall( nneigh, SP % MVRequests, MPI_STATUSES_IGNORE, ierr )
-
-  ! Scatter received real-interleaved data into complex v:
-  ! RevInd(k) is 1-based into a 2n real array; odd = real part, even = imag part
-  DO ni = 1, nneigh
-    IF ( SP % MVRecvSize(ni) <= 0 ) CYCLE
-    i = SP % MVNeigh(ni) + 1
-    RevInd => SP % VecIndices(i) % RevInd
-    DO k = 1, SP % MVRecvSize(ni)
-      l = RevInd(k)
-      IF ( l > 0 ) THEN
-        ci = (l + 1) / 2
-        IF ( MOD(l, 2) == 1 ) THEN
-          v(ci) = v(ci) + SP % MVRecvBuf(ni) % rbuf(k)
-        ELSE
-          v(ci) = v(ci) + CMPLX(0.0_dp, SP % MVRecvBuf(ni) % rbuf(k), KIND=dp)
-        END IF
-      END IF
-    END DO
-  END DO
+  ! Release the send buffers for the next product
+  CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
 
 !*********************************************************************
 END SUBROUTINE SParCMatrixVector

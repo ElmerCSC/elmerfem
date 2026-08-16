@@ -365,6 +365,19 @@ MODULE Types
     REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
   END TYPE RealBuf_t
 
+  ! The gather that fills the send buffer of one neighbour in SParMatrixVector.
+  ! Which interface row ends up in which slot of the buffer is fixed by the
+  ! matrix structure, so it is worked out once instead of by rescanning every
+  ! RowOwner array on every product. The slots are grouped into segments, one
+  ! per contributing interface block, leaving one pointer dereference per
+  ! segment and one indexed load per slot.
+  TYPE MVPackT
+    INTEGER :: nseg = 0
+    INTEGER, ALLOCATABLE :: SegIf(:)     ! interface block a segment reads from
+    INTEGER, ALLOCATABLE :: SegStart(:)  ! first slot of a segment, size nseg+1
+    INTEGER, ALLOCATABLE :: Row(:)       ! row of that block, one per slot
+  END TYPE MVPackT
+
   TYPE SplittedMatrixT
      TYPE (BasicMatrix_t), DIMENSION(:), POINTER :: IfMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: InsideMatrix=>NULL()
@@ -386,6 +399,8 @@ MODULE Types
      TYPE(RealBuf_t), ALLOCATABLE :: MVSendBuf(:)
      TYPE(RealBuf_t), ALLOCATABLE :: MVRecvBuf(:)
      INTEGER, ALLOCATABLE :: MVRequests(:)
+     INTEGER, ALLOCATABLE :: MVSendRequests(:)
+     TYPE(MVPackT), ALLOCATABLE :: MVPack(:)
   END TYPE SplittedMatrixT
 
 
