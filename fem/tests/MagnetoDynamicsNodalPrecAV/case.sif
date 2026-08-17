@@ -1,11 +1,12 @@
 ! Test case for internal AMS strategy for Elmer
+! This one is for transient and includes preconditioner for V block as well.
 !
-! P.R. 3.9.2025 & 17.8.2026
+! 17.8.2026
 
 Check Keywords "Warn" 
 
-$L=0.05
-$alpha=30.0
+$L=0.05/2
+$alpha=30.0/2
 $piola="False"
 $mono="False"
 $levels=1
@@ -20,12 +21,17 @@ End
 Simulation
   Max Output Level = 7
   Coordinate System = "Cartesian"
-  Simulation Type = Steady
+  Simulation Type = Transient
+  Timestep Sizes = 1
+  Timestep Intervals = 1
+  Timestepping Method = "implicit euler"
+
   Steady State Max Iterations = 1
   Output Intervals(1) = 1
 
   Coordinate Scaling = 1.0e-2
   Mesh Levels = $levels
+
 !  Split Mesh Prisms = True
 End
 
@@ -52,18 +58,20 @@ Body 3
   Body Force = 2
 End
 
+$cond = 1.0e3
+
 Material 1
   Name = "Cu"
   Relative Permittivity = 1
   Relative Permeability = 1
-  Electric Conductivity = 58e6
+  Electric Conductivity = $cond
 End
 
 Material 2
   Name = "Air"
   Relative Permittivity = 1.0
   Relative Permeability = 1.0
-  Electric Conductivity = 0.0
+  Electric Conductivity = $cond
 End 
 
 Equation 1
@@ -266,6 +274,8 @@ Boundary Condition 5
 
   AV {e} = Real 0.0
   Fixed Boundary = True
+
+  AV = Real 0.0
 End
 
 !Boundary Condition 6
@@ -277,5 +287,5 @@ include linsys_nodalprec.sif
 
 
 Solver 1 :: Reference Norm = 6.36587123E-01
-Solver 2 :: Reference Norm = 3.26276951E-03
-Solver 3 :: Reference Norm = 4.55599571E-07
+Solver 2 :: Reference Norm = 6.05594621E-01
+Solver 3 :: Reference Norm = 4.38812982E-07
