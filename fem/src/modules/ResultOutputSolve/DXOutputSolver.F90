@@ -120,7 +120,10 @@
             END DO
             str(1:1) = CHAR(ICHAR(str(1:1))-ICHAR('a')+ICHAR('A'))
             
-            CALL WriteVariable( TRIM(str), Var, Model % NumberOfNodes, &
+            ! Only str(1:Var % NameLen) has been set, and the loop above has
+            ! turned every blank within it into '_'. TRIM(str) would therefore
+            ! not stop here but run on into the uninitialized tail of str.
+            CALL WriteVariable( str(1:Var % NameLen), Var, Model % NumberOfNodes, &
                 Var % DOFs, 0,  nTime, MasterUnit, Prefix )
           END SELECT
           Var => Var % Next
