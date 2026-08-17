@@ -693,17 +693,13 @@ SUBROUTINE AmsVSolver( Model,Solver,dt,Transient ) ! {{{
   LOGICAL, SAVE :: Visited = .FALSE., IsComplex
   LOGICAL, POINTER, SAVE :: NodeSkip(:)
   TYPE(Matrix_t), POINTER :: VMat, AVMat
-  CHARACTER(*), PARAMETER :: Caller = 'AmsScalarSolver'
-  
+  CHARACTER(*), PARAMETER :: Caller = 'AmsVSolver'  
 !------------------------------------------------------------------------------
   
   Mesh => Solver % Mesh 
   SolverParams => Solver % Values
   VVar => Solver % Variable
   VMat => Solver % Matrix
-
-  PRINT *,'ASS:',ASSOCIATED(VVar), ASSOCIATED(VMat)
-  PRINT *,'ASS2:',SIZE(VVar % Values), VMat % NumberOfRows, VVar % dofs
   
   CALL Info( Caller,'-------------------------------------------------------', Level=10 )
   CALL Info( Caller,'Solving preconditioning equation for AMS V', Level=6 )
@@ -725,8 +721,6 @@ SUBROUTINE AmsVSolver( Model,Solver,dt,Transient ) ! {{{
   
   EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
   AVMat => EdgeResVar % Solver % Matrix
-
-  PRINT *,'Primary solver index:',EdgeResVar % Solver % SolverId
   
   CALL PickNodalSubmatrix(AVMat,VMat,EdgeSolVar,VVar)
 
