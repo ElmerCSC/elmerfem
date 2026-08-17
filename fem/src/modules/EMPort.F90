@@ -189,6 +189,7 @@ END SUBROUTINE EMPortSolver_Init0
 SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE GeneralUtils, ONLY : ComplexVariableValues
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
@@ -209,6 +210,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: Beta, Zet
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
+  COMPLEX(KIND=dp), POINTER :: cValues(:)
   REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum, Scale
   REAL(KIND=dp) :: Y, Z_port
   COMPLEX(KIND=dp) :: E2, Power, V2
@@ -442,10 +444,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         Solver % Variable % Values = 0.0_dp
         Norm = DefaultSolve()
 
-        DO k=1,m
-          Solver % Variable % EigenVectors(j,k) = Solver % Variable % EigenVectors(j,k) + &
-              CMPLX(Solver % Variable % Values(2*k-1), Solver % Variable % Values(2*k), KIND=dp)
-        END DO
+        cValues => ComplexVariableValues( Solver % Variable )
+        Solver % Variable % EigenVectors(j,1:m) = &
+            Solver % Variable % EigenVectors(j,1:m) + cValues(1:m)
         
         Solver % Matrix % Values = Solver % Matrix % Values + &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues

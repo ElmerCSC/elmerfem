@@ -45,7 +45,8 @@ MODULE Smoothers
 
   USE CRSMatrix
   USE Lists
-  USE ParallelUtils  
+  USE ParallelUtils
+  USE GeneralUtils, ONLY : ComplexValues
 
   IMPLICIT NONE
 
@@ -522,26 +523,27 @@ CONTAINS
         TYPE(Matrix_t), POINTER, INTENT(IN) :: A
         TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: n, Rounds
-        REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
-        REAL(KIND=dp) CONTIG, INTENT(IN) :: rb(:)
-        REAL(KIND=dp) CONTIG, INTENT(OUT) :: rr(:)
+        REAL(KIND=dp), TARGET, INTENT(INOUT) :: rx(:)
+        REAL(KIND=dp), TARGET, INTENT(IN) :: rb(:)
+        REAL(KIND=dp), TARGET, INTENT(OUT) :: rr(:)
         REAL(KIND=dp), INTENT(in) :: w
 !------------------------------------------------------------------------------
         INTEGER :: i,j,k
         REAL(KIND=dp), POINTER :: Values(:)
         INTEGER, POINTER :: Diag(:)
-        COMPLEX(KIND=dp) :: x(n/2),b(n/2),r(n/2), v
+        COMPLEX(KIND=dp) :: v
+        ! rx, rb and rr already hold the complex vectors as consecutive (Re,Im)
+        ! pairs, so alias them rather than copying to and from complex stack
+        ! temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: x(:),b(:),r(:)
 !------------------------------------------------------------------------------
-!$OMP PARALLEL DO shared(x,b, rx, rb,n)
-        DO j=1,n/2
-          x(j) = CMPLX( rx(2*j-1), rx(2*j),KIND=dp )
-          b(j) = CMPLX( rb(2*j-1), rb(2*j),KIND=dp )
-        END DO
-!$OMP END PARALLEL DO
+        x => ComplexValues( rx, n/2 )
+        b => ComplexValues( rb, n/2 )
+        r => ComplexValues( rr, n/2 )
 
         Diag   => M %  Diag
         Values => M %  Values
-        
+
         DO i=1,Rounds
           CALL MGCmv(A, x, r)
 !$OMP PARALLEL DO shared(n,x,b,r,Values,Diag) private(k,v)
@@ -553,15 +555,6 @@ CONTAINS
           END DO
 !$OMP END PARALLEL DO
         END DO
-        
-!$OMP PARALLEL DO shared(n,r,x,rr,rx)
-        DO j=1,n/2
-          rr(2*j-1) = REAL( r(j) )
-          rr(2*j) =  AIMAG( r(j) )
-          rx(2*j-1) = REAL( x(j) )
-          rx(2*j) =  AIMAG( x(j) )
-        END DO
-!$OMP END PARALLEL DO
 !-----------------------------------------------------------------------------
       END SUBROUTINE ComplexJacobi
 !------------------------------------------------------------------------------
@@ -765,20 +758,21 @@ CONTAINS
 
         TYPE(Matrix_t) :: A, M
         INTEGER :: n,Rounds
-        REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
+        REAL(KIND=dp), TARGET :: rx(:),rb(:),rr(:)
 
         INTEGER :: i,j,k,l
         COMPLEX(KIND=dp) :: s, v
         REAL(KIND=dp) :: w
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        COMPLEX(KIND=dp) :: x(n/2),b(n/2),r(n/2)
+        ! Alias the interleaved (Re,Im) reals instead of copying to and from
+        ! complex stack temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: x(:),b(:),r(:)
 
-        DO i=1,n/2
-          x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )
-          b(i) = CMPLX( rb(2*i-1), rb(2*i), KIND=dp )
-        END DO
-        
+        x => ComplexValues( rx, n/2 )
+        b => ComplexValues( rb, n/2 )
+        r => ComplexValues( rr, n/2 )
+
         Rows   => A % Rows
         Cols   => A % Cols 
         Values => A % Values
@@ -820,14 +814,6 @@ CONTAINS
             r(l) = (b(l)-s) / v
             x(l) = x(l) + w*r(l)
           END DO
-        END DO
-
-        DO i=1,n/2
-          rr(2*i-1) =  REAL( r(i) )
-          rr(2*i-0) =  AIMAG( r(i) )
-
-          rx(2*i-1) =  REAL( x(i) )
-          rx(2*i-0) =  AIMAG( x(i) )
         END DO
 
       END SUBROUTINE InternalComplexSGS
@@ -1041,20 +1027,22 @@ CONTAINS
         TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: Rounds
         REAL(KIND=dp), INTENT(IN) :: w
-        REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
-        REAL(KIND=dp) CONTIG, INTENT(IN) :: rb(:)
-        REAL(KIND=dp) CONTIG, INTENT(OUT) :: rr(:)
-!------------------------------------------------------------------------------        
+        REAL(KIND=dp), TARGET, INTENT(INOUT) :: rx(:)
+        REAL(KIND=dp), TARGET, INTENT(IN) :: rb(:)
+        REAL(KIND=dp), TARGET, INTENT(OUT) :: rr(:)
+!------------------------------------------------------------------------------
         INTEGER :: i,j,k,n,l
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        COMPLEX(KIND=dp) :: r(n/2),b(n/2),x(n/2),s, v
+        COMPLEX(KIND=dp) :: s, v
+        ! Alias the interleaved (Re,Im) reals instead of copying to and from
+        ! complex stack temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: r(:),b(:),x(:)
 !------------------------------------------------------------------------------
-        DO i=1,n/2
-          x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )
-          b(i) = CMPLX( rb(2*i-1), rb(2*i), KIND=dp )
-        END DO
-        
+        x => ComplexValues( rx, n/2 )
+        b => ComplexValues( rb, n/2 )
+        r => ComplexValues( rr, n/2 )
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -1086,15 +1074,7 @@ CONTAINS
             r(i) = (b(i)-s) / v
             x(i) = x(i) + w * r(i)
           END DO
-          
-        END DO
-        
-        DO i=1,n/2
-          rr(2*i-1) =  REAL( r(i) )
-          rr(2*i-0) =  AIMAG( r(i) )
 
-          rx(2*i-1) =  REAL( x(i) )
-          rx(2*i-0) =  AIMAG( x(i) )
         END DO
       END SUBROUTINE ComplexSGS
 !------------------------------------------------------------------------------
@@ -1489,17 +1469,17 @@ CONTAINS
         IMPLICIT NONE
         INTEGER :: i,n, Rounds
         TYPE(Matrix_t), POINTER :: A,M
-        REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
+        REAL(KIND=dp), TARGET :: rx(:),rb(:),rr(:)
         COMPLEX(KIND=dp) :: alpha,rho,oldrho
-        COMPLEX(KIND=dp) :: r(n/2),b(n/2),x(n/2)
+        ! Alias the interleaved (Re,Im) reals instead of copying to and from
+        ! complex stack temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: r(:),b(:),x(:)
         COMPLEX(KIND=dp) :: Z(n), Pc(n), Q(n)
 !------------------------------------------------------------------------------
-        DO i=1,n/2
-          r(i) = CMPLX( rr(2*i-1), rr(2*i),KIND=dp )
-          x(i) = CMPLX( rx(2*i-1), rx(2*i),KIND=dp )
-          b(i) = CMPLX( rb(2*i-1), rb(2*i),KIND=dp )
-        END DO
-        
+        x => ComplexValues( rx, n/2 )
+        b => ComplexValues( rb, n/2 )
+        r => ComplexValues( rr, n/2 )
+
         CALL MGCmv( A, x, r )
         r(1:n/2) = b(1:n/2) - r(1:n/2)
 
@@ -1520,13 +1500,6 @@ CONTAINS
           
           x(1:n/2) = x(1:n/2) + alpha * Pc(1:n/2)
           r(1:n/2) = r(1:n/2) - alpha * Q(1:n/2)
-        END DO
-
-        DO i=1,n/2
-          rr(2*i-1) =  REAL( r(i) )
-          rr(2*i-0) =  AIMAG( r(i) )
-          rx(2*i-1) =  REAL( x(i) )
-          rx(2*i-0) =  AIMAG( x(i) )
         END DO
 !------------------------------------------------------------------------------
       END SUBROUTINE CCG

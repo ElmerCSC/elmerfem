@@ -1278,6 +1278,7 @@
   SUBROUTINE SlavePrecComplex(u,v,ipar)
 !-------------------------------------------------------------------------------
     USE DefUtils
+    USE GeneralUtils, ONLY : ComplexVariableValues
     IMPLICIT NONE
     COMPLEX(KIND=dp) u(*)  !< the correction returned to create a new solution
     COMPLEX(KIND=dp) v(*)  !< right-hand side (the current residual)
@@ -1289,9 +1290,13 @@
     TYPE(Variable_t), POINTER :: pVar
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
+    ! Complex views of the interleaved (Re,Im) reals behind res and dx, so that
+    ! the transfers to and from the complex vectors v and u are contiguous
+    ! copies rather than pairs of stride-2 gathers and scatters.
+    COMPLEX(KIND=dp), POINTER :: cres(:), cdx(:)
     REAL(KIND=dp) :: rnorm
     LOGICAL :: Found, ScaleRHS, AdditiveSmoother
-    CHARACTER(MAX_NAME_LEN) :: str   
+    CHARACTER(MAX_NAME_LEN) :: str
     INTEGER :: SlaveInd, SlaveCnt
     INTEGER :: n, DOFs
 !-------------------------------------------------------------------------------
@@ -1314,8 +1319,8 @@
     END IF
     
     res => pVar % Values
-    res(1:n:2) = REAL(v(1:n/2))
-    res(2:n:2) = AIMAG(v(1:n/2))
+    cres => ComplexVariableValues( pVar )
+    cres(1:n/2) = v(1:n/2)
 
     str = ListGetString( Params,'Preconditioning Update', UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )    
@@ -1327,6 +1332,7 @@
       CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
     END IF
     dx => pVar % Values
+    cdx => ComplexVariableValues( pVar )
 
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
@@ -1346,8 +1352,7 @@
       IF( SlaveInd > 1 ) THEN
         r(1:n) = 0.0_dp
         CALL MatrixVectorMultiply(Amat, z, r)
-        res(1:n:2) = REAL(v(1:n/2))
-        res(2:n:2) = AIMAG(v(1:n/2))
+        cres(1:n/2) = v(1:n/2)
         res(1:n) = res(1:n) - r(1:n)
       END IF
       
@@ -1388,8 +1393,7 @@
       ! At final solver revert the cumulative solution back to origonal vectors.
       IF(SlaveInd == SlaveCnt) THEN
         dx(1:n) = z(1:n)
-        res(1:n:2) = REAL(v(1:n/2))
-        res(2:n:2) = AIMAG(v(1:n/2))
+        cres(1:n/2) = v(1:n/2)
         DEALLOCATE(z)
         EXIT
       END IF
@@ -1407,7 +1411,7 @@
     
     DEALLOCATE(r)
 
-    u(1:n/2) = CMPLX(dx(1:n:2), dx(2:n:2),KIND=dp ) 
+    u(1:n/2) = cdx(1:n/2)
 
   CONTAINS
 

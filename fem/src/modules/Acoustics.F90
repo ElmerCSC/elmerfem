@@ -78,6 +78,7 @@ END SUBROUTINE AcousticsSolver_init
 SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE GeneralUtils, ONLY : ComplexValues
   IMPLICIT NONE
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options
@@ -2146,16 +2147,20 @@ CONTAINS
 !------------------------------------------------------------------------------  
     TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
     INTEGER :: n, q, Rounds, dim
-    REAL(KIND=dp) :: x(n), b(n), TOL, Norm
+    REAL(KIND=dp), TARGET :: x(n), b(n)
+    REAL(KIND=dp) :: TOL, Norm
 !-------------------------------------------------------------------------------
     INTEGER :: i, j, k, m, InnerRounds, IluOrder, VelocityPrecond = 1, &
-        MaxRestarts        
+        MaxRestarts
     LOGICAL :: Condition, GotIt, SystemScaling, ConvergedSol = .FALSE.
     REAL(KIND=dp) :: res, tottime, res0, const, stime, InnerTol, alpha
     COMPLEX(KIND=dp) :: r(n/2),T1(n/2),T2(n/2), &
-        S(n/2,Rounds), V(n/2,Rounds), y(n/2),f(n/2), e(n/2), &
+        S(n/2,Rounds), V(n/2,Rounds), e(n/2), &
         Vel(dim*q/2), VelRhs(dim*q/2), da(n/2), dps(q), dpa(dim*q/2)
-    COMPLEX(KIND=dp) :: beta 
+    ! x and b already hold the complex vectors as consecutive (Re,Im) pairs, so
+    ! alias them rather than copying into complex temporaries and back.
+    COMPLEX(KIND=dp), POINTER :: y(:),f(:)
+    COMPLEX(KIND=dp) :: beta
 !------------------------------------------------------------------------------
 
     tottime = CPUTime()
@@ -2248,13 +2253,12 @@ CONTAINS
     !--------------------------------------------------------------------------------     
     m = n/2
     !----------------------------------------------------------------------------
-    ! Transform the solution vector x and the right-hand side vector b to 
-    ! complex-valued vectors y and f
+    ! View the solution vector x and the right-hand side vector b as the
+    ! complex-valued vectors y and f. Nothing is copied, so the solution needs
+    ! no transforming back either.
     !---------------------------------------------------------------------------
-    DO i=1,m
-      y(i) = CMPLX( x(2*i-1), x(2*i), kind=dp )
-      f(i) = CMPLX( b(2*i-1), b(2*i), kind=dp )
-    END DO
+    y => ComplexValues( x, m )
+    f => ComplexValues( b, m )
 
     CALL ComplexMatrixVectorProduct( A, y, r )
     !--------------------------------------------------------
@@ -2338,12 +2342,8 @@ CONTAINS
         ConditionEstimate( m, A, y, f)
 
     !----------------------------------------------
-    ! Return the solution as a real vector...
+    ! No transforming back: y aliases x.
     !----------------------------------------------
-    DO i=1,m
-      x( 2*i-1 ) = REAL( y(i) )
-      x( 2*i ) = AIMAG( y(i) )
-    END DO
     Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))  
 
 !------------------------------------------------------------------------------
@@ -2362,13 +2362,17 @@ CONTAINS
 !------------------------------------------------------------------------------  
     TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
     INTEGER :: n, q, Rounds, dim
-    REAL(KIND=dp) :: x(n), b(n), TOL, Norm
+    REAL(KIND=dp), TARGET :: x(n), b(n)
+    REAL(KIND=dp) :: TOL, Norm
 !-------------------------------------------------------------------------------
     INTEGER :: i, j, m, InnerRounds, IluOrder, VelocityPrecond = 1
     LOGICAL :: Condition, GotIt, SystemScaling
     REAL(KIND=dp) :: res, tottime, res0, InnerTol
     COMPLEX(KIND=dp) :: r(n/2),Ri(n/2),P(n/2),V(n/2),T(n/2),T1(n/2),T2(n/2),S(n/2), &
-        y(n/2), f(n/2), Vel(dim*q/2), VelRhs(dim*q/2), da(n/2), dps(q), dpa(dim*q/2)
+        Vel(dim*q/2), VelRhs(dim*q/2), da(n/2), dps(q), dpa(dim*q/2)
+    ! x and b already hold the complex vectors as consecutive (Re,Im) pairs, so
+    ! alias them rather than copying into complex temporaries and back.
+    COMPLEX(KIND=dp), POINTER :: y(:),f(:)
     COMPLEX(KIND=dp) :: alpha, beta, omega, rho, oldrho
 !------------------------------------------------------------------------------
 
@@ -2459,13 +2463,12 @@ CONTAINS
     !--------------------------------------------------------------------------------     
     m = n/2
     !----------------------------------------------------------------------------
-    ! Transform the solution vector x and the right-hand side vector b to 
-    ! complex-valued vectors y and f
+    ! View the solution vector x and the right-hand side vector b as the
+    ! complex-valued vectors y and f. Nothing is copied, so the solution needs
+    ! no transforming back either.
     !---------------------------------------------------------------------------
-    DO i=1,m
-      y(i) = CMPLX( x(2*i-1), x(2*i), kind=dp )
-      f(i) = CMPLX( b(2*i-1), b(2*i), kind=dp )
-    END DO
+    y => ComplexValues( x, m )
+    f => ComplexValues( b, m )
 
     CALL ComplexMatrixVectorProduct( A, y, r )
     !--------------------------------------------------------
@@ -2552,12 +2555,8 @@ CONTAINS
     END DO
 
     !----------------------------------------------
-    ! Return the solution as a real vector...
+    ! No transforming back: y aliases x.
     !----------------------------------------------
-    DO i=1,m
-      x( 2*i-1 ) = REAL( y(i) )
-      x( 2*i ) = AIMAG( y(i) )
-    END DO
     Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))  
 
 
@@ -2576,11 +2575,14 @@ CONTAINS
 !------------------------------------------------------------------------------  
    INTEGER :: l, m, q, MaxRounds, dim   
    TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix  
-   REAL(KIND=dp) :: v(m), f(m), Tol, Norm
-!----------------------------------------------------------------------------------- 
+   REAL(KIND=dp), TARGET :: v(m), f(m)
+   REAL(KIND=dp) :: Tol, Norm
+!-----------------------------------------------------------------------------------
    LOGICAL :: SystemScaling, GotIt, Condition
-   COMPLEX(KIND=dp) :: da(m/2), dps(q), dpa(dim*q/2), Vel(dim*q/2), VelRhs(dim*q/2), &
-       x(m/2), b(m/2)
+   COMPLEX(KIND=dp) :: da(m/2), dps(q), dpa(dim*q/2), Vel(dim*q/2), VelRhs(dim*q/2)
+   ! v and f already hold the complex vectors as consecutive (Re,Im) pairs, so
+   ! alias them rather than copying into complex temporaries and back.
+   COMPLEX(KIND=dp), POINTER :: x(:), b(:)
    INTEGER :: IluOrder, InnerRounds, VelocityPrecond = 1
    REAL(KIND=dp) :: InnerTol, tottime
 
@@ -2681,13 +2683,12 @@ CONTAINS
    !--------------------------------------------------------------------------------     
    n = m/2
    !----------------------------------------------------------------------------
-   ! Transform the solution vector v and the right-hand side vector f to 
-   ! complex-valued vectors x and b
+   ! View the solution vector v and the right-hand side vector f as the
+   ! complex-valued vectors x and b. Nothing is copied, so the solution needs
+   ! no transforming back either.
    !---------------------------------------------------------------------------
-   DO i=1,n
-     x(i) = CMPLX( v(2*i-1), v(2*i), kind=dp )
-     b(i) = CMPLX( f(2*i-1), f(2*i), kind=dp )
-   END DO
+   x => ComplexValues( v, n )
+   b => ComplexValues( f, n )
 
    zzero = CMPLX( 0.0d0,0.0d0, kind=dp)
    zone =  CMPLX( 1.0d0,0.0d0, kind=dp)
@@ -2899,13 +2900,8 @@ CONTAINS
    WRITE(*,'(a,ES12.3)') 'An approximate lower bound for the condition number: ', &
        ConditionEstimate( m, A, x, b)
    !----------------------------------------------
-   ! Return the solution as a real vector...
+   ! No transforming back: x aliases v.
    !----------------------------------------------
-   DO i=1,n
-     v( 2*i-1 ) = REAL( x(i) )
-     v( 2*i ) = AIMAG( x(i) )
-   END DO
-
    Norm = SQRT(DOT_PRODUCT( v(1:2*n), v(1:2*n) )/(2*n))
 
 !------------------------------------------------------------------------------
@@ -2931,18 +2927,22 @@ CONTAINS
 !------------------------------------------------------------------------------  
     TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
     INTEGER :: n, q, Rounds, dim
-    REAL(KIND=dp) :: x(n), b(n), TOL, Norm
+    REAL(KIND=dp), TARGET :: x(n), b(n)
+    REAL(KIND=dp) :: TOL, Norm
 !-------------------------------------------------------------------------------
     INTEGER :: i, j, k, m, InnerRounds, IluOrder, VelocityPrecond = 1, InnerRestart, &
         MaxRestarts
     LOGICAL :: Condition, GotIt, SystemScaling, Truncation, &
-        ConvergedSol, FirstVisit = .TRUE. 
+        ConvergedSol, FirstVisit = .TRUE.
     REAL(KIND=dp) :: res, tottime, res0, InnerTol, alpha, &
         ResidualReductionRatio, bw_error
     COMPLEX(KIND=dp) :: r(n/2),T1(n/2),T2(n/2), &
-        S(n/2,Rounds), V(n/2,Rounds), y(n/2), f(n/2), &
+        S(n/2,Rounds), V(n/2,Rounds), &
         Vel(dim*q/2), VelRhs(dim*q/2), Sol(n/2), da(n/2), dps(q), dpa(dim*q/2)
-    COMPLEX(KIND=dp) :: beta 
+    ! x and b already hold the complex vectors as consecutive (Re,Im) pairs, so
+    ! alias them rather than copying into complex temporaries and back.
+    COMPLEX(KIND=dp), POINTER :: y(:),f(:)
+    COMPLEX(KIND=dp) :: beta
     SAVE FirstVisit
 !------------------------------------------------------------------------------
     ConvergedSol = .FALSE.
@@ -3079,13 +3079,12 @@ CONTAINS
     !--------------------------------------------------------------------------------     
     m = n/2
     !----------------------------------------------------------------------------
-    ! Transform the solution vector x and the right-hand side vector b to 
-    ! complex-valued vectors y and f
+    ! View the solution vector x and the right-hand side vector b as the
+    ! complex-valued vectors y and f. Nothing is copied, so the solution needs
+    ! no transforming back either.
     !---------------------------------------------------------------------------
-    DO i=1,m
-      y(i) = CMPLX( x(2*i-1), x(2*i), kind=dp )
-      f(i) = CMPLX( b(2*i-1), b(2*i), kind=dp )
-    END DO
+    y => ComplexValues( x, m )
+    f => ComplexValues( b, m )
 
     CALL ComplexMatrixVectorProduct( A, y, r )
     !--------------------------------------------------------
@@ -3159,12 +3158,8 @@ CONTAINS
         ConditionEstimate( m, A, y, f )
 
     !----------------------------------------------
-    ! Return the solution as a real vector...
+    ! No transforming back: y aliases x.
     !----------------------------------------------
-    DO i=1,m
-      x( 2*i-1 ) = REAL( y(i) )
-      x( 2*i ) = AIMAG( y(i) )
-    END DO
     Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))          
 
 !------------------------------------------------------------------------------

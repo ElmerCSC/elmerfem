@@ -620,6 +620,7 @@
 CONTAINS
 
   SUBROUTINE WriteData( Prefix, Model, nTime )
+    USE GeneralUtils, ONLY : ComplexValues
     CHARACTER(*), INTENT(IN) :: Prefix
     TYPE(Model_t) :: Model
     INTEGER, INTENT(IN) :: nTime
@@ -628,6 +629,7 @@ CONTAINS
     INTEGER :: i, j, k
     LOGICAL :: EigAnal
     REAL(dp), POINTER :: OldValues(:)
+    COMPLEX(dp), POINTER :: cValues(:)
     CHARACTER(MAX_NAME_LEN) :: Dir
     
     Mesh => Model % Mesh
@@ -650,10 +652,8 @@ CONTAINS
           
           IF ( Model % Solvers(i) % Matrix % COMPLEX ) THEN
             ALLOCATE( Var % Values(2*SIZE(Var%EigenVectors,2)) )
-            FORALL ( k = 1:SIZE(Var % Values)/2 )
-              Var%Values(2*k-1) = REAL(Var%EigenVectors(j,k))
-              Var%Values(2*k) = AIMAG(Var%EigenVectors(j,k))
-            END FORALL
+            cValues => ComplexValues( Var % Values )
+            cValues(1:SIZE(cValues)) = Var % EigenVectors(j,1:SIZE(cValues))
           ELSE
             ALLOCATE( Var % Values(SIZE(Var % EigenVectors,2)) )
             Var % Values = Var % EigenVectors(j,:)

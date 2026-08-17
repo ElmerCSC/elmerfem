@@ -523,6 +523,7 @@ END FUNCTION MaskedNorm
     USE huti_sfe
     USE ListMatrix
     USE SParIterGlobals
+    USE GeneralUtils, ONLY : ComplexValues
     IMPLICIT NONE
 
 !------------------------------------------------------------------------------
@@ -557,8 +558,7 @@ END FUNCTION MaskedNorm
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pconddProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
-    INTEGER :: astat
-    COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
+    COMPLEX(KIND=dp), POINTER :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
     EXTERNAL :: AddrFunc    
 
@@ -1369,18 +1369,11 @@ END FUNCTION MaskedNorm
     GlobalMatrix => A
     
     IF ( ComplexSystem ) THEN
-      ! Associate xC and bC with complex variables
-      ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
-      IF (astat /= 0) THEN
-        CALL Fatal('IterSolve','Unable to allocate memory for complex arrays')
-      END IF
-      ! Initialize xC and bC
-      DO i=1,HUTI_NDIM
-        xC(i) = cmplx(x(2*i-1),x(2*i),dp)
-      END DO
-      DO i=1,HUTI_NDIM
-        bC(i) = cmplx(b(2*i-1),b(2*i),dp)
-      END DO
+      ! x and b already hold the complex vectors as consecutive (Re,Im) pairs,
+      ! so alias them instead of copying into complex temporaries. The solution
+      ! is then written straight back into x and needs no copy-out either.
+      xC => ComplexValues( x, HUTI_NDIM )
+      bC => ComplexValues( b, HUTI_NDIM )
 
       CALL Info('IterSolver','Calling complex iterative solver',Level=32)
 
@@ -1392,12 +1385,9 @@ END FUNCTION MaskedNorm
             mvProc, pconddProc, pcondProc, dotProc, normProc, stopcProc )
       END IF
 
-      ! Copy result back
-      DO i=1,HUTI_NDIM
-        x(2*i-1) = REAL(REAL(xC(i)),dp)
-        x(2*i) = REAL(AIMAG(xC(i)),dp)
-      END DO
-      DEALLOCATE(bC,xC)
+      ! No copy-back needed: xC aliases x.
+      xC => NULL()
+      bC => NULL()
     ELSE
       CALL Info('IterSolver','Calling real-valued iterative solver',Level=32)
 
