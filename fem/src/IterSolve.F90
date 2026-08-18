@@ -258,15 +258,14 @@ CONTAINS
       END IF
     END DO
 
-    n0 = COUNT(SkipMask)
-    CALL Info('CreateEdgeSkipMask','Mask include edges on BC: '//I2S(n0)//' (out of '//I2S(e0)//')',Level=7)   
+    i = COUNT(SkipMask)
+    CALL Info('CreateEdgeSkipMask','Mask includes edges on BC: '//I2S(i)//' (out of '//I2S(e0)//')',Level=7)   
 
     
     ! It is not self-evident that we should include the additional Piola nodes
     ! in the set of nodes to be skipped in smoothing / krylov iteration.
     ! Numerical evidence seems to suggest that this is a good idea. 
     IF(Piola) THEN
-
       IF(SIZE(pVar % Perm) < n0+e0+2*Mesh % NumberOfFaces) THEN
         CALL Fatal('CreateEdgeSkipMask','Size of Perm too small for Piola!')
       END IF
@@ -285,11 +284,10 @@ CONTAINS
         END IF
       END DO
       
-      n0 = COUNT(SkipMask)
-      CALL Info('CreateEdgeSkipMask','Mask include total dofs on BC: '//I2S(n0), Level=7)
+      i = COUNT(SkipMask)
+      CALL Info('CreateEdgeSkipMask','Mask includes total dofs on BC: '//I2S(i), Level=7)
     END IF
     
-
   END SUBROUTINE CreateEdgeSkipMask
 
   
