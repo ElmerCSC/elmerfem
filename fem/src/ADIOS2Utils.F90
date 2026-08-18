@@ -35,7 +35,10 @@
 ! *****************************************************************************/
 
 MODULE ADIOS2Utils
-USE DefUtils
+USE Types
+use GeneralUtils
+USE SParIterGlobals
+USE SParIterComm
 USE ADIOS2
 IMPLICIT NONE
 
