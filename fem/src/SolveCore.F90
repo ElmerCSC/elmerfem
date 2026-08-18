@@ -6644,29 +6644,19 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Saves the linear system (CRS matrix, optionally mass/damp matrices, and rhs)
-!> using ADIOS2Utils, as a single self-describing .bp archive. Row/column
-!> indices are translated to global DOF numbers, same as PrintMatrix does for
-!> the ascii output. Unlike a plain ascii dump, the per-row nonzero count
-!> ('row_nnz') is written instead of the raw CRS row-pointer, since a raw
-!> per-rank row-pointer cannot be validly concatenated across ranks as a
-!> single ADIOS2_ARRAY_GLOBAL array (each rank's pointer restarts from 1). A
-!> reader reconstructs a global row-pointer via a cumulative sum of 'row_nnz'
-!> with a leading zero, in the same per-row order as 'global_dofs'.
+!> using ADIOS2Utils. Global dofs from A % parallelinfo % globaldofs is saved to the output file
+!> or if CNumbering is enabled, then the output of ContinuousNumbering A % Gorder is saved.
+!> Note! The ADIOS2 file is finalized at the end of the call so multiple timesteps will cause problems.
 !------------------------------------------------------------------------------
   SUBROUTINE SaveLinearSystemAdios2( A, dumpfile, Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol, Sol )
 !------------------------------------------------------------------------------
 #ifdef HAVE_ADIOS2
     USE ADIOS2Utils
 #endif
-    TYPE(Matrix_t) :: A            !< Structure holding matrix
-    CHARACTER(LEN=*) :: dumpfile   !< Name of the ADIOS2 (.bp) archive to write
-    LOGICAL :: Parallel            !< Are we in parallel mode?
-    LOGICAL :: CNumbering          !< Continuous numbering?
-    LOGICAL :: SaveMass            !< Should we save the mass matrix
-    LOGICAL :: SaveDamp            !< Should we save the damping matrix
-    LOGICAL :: SaveStiff           !< Should we save the stiffness matrix
-    LOGICAL :: SaveSol             !< Should we save the solution vector
-    REAL(KIND=dp), POINTER :: Sol(:) !< Solution vector to save, if SaveSol
+    TYPE(Matrix_t) :: A
+    CHARACTER(LEN=*) :: dumpfile
+    LOGICAL :: Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol
+    REAL(KIND=dp), POINTER :: Sol(:)
 !------------------------------------------------------------------------------
 #ifdef HAVE_ADIOS2
     TYPE(AdiosWriter_t) :: Writer
