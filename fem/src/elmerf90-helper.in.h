@@ -4,12 +4,7 @@
  */
 
 #ifdef _WIN32
-#  include <process.h>   /* _execvp */
-   /* _execvp wants argv as 'const char *const *'; our argv is built as
-      'char **', which POSIX execvp() accepts directly but _execvp() does
-      not. Cast explicitly at the call site rather than changing argv's
-      type, since push()/args are shared with other array/string logic. */
-#  define execvp(prog, argv) _execvp((prog), (const char * const *)(argv))
+#  include <process.h>   /* _spawnvp */
 #else
 #  include <unistd.h>    /* execvp */
 #endif
