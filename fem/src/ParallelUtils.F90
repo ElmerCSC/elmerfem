@@ -1540,7 +1540,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
-    SUBROUTINE ParallelIter( SourceMatrix, ParallelInfo, DOFs, XVec, &
+    RECURSIVE SUBROUTINE ParallelIter( SourceMatrix, ParallelInfo, DOFs, XVec, &
               RHSVec, Solver, SParMatrixDesc )
 !-------------------------------------------------------------------------------
        TYPE (Matrix_t) :: SourceMatrix

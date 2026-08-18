@@ -1883,8 +1883,8 @@ END SUBROUTINE ZeroSplittedMatrix
 !--------------------------------------------------------------------
 !> Call the parallel iterative solver
 !--------------------------------------------------------------------
-SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
-            RHSVec, Solver, SParMatrixDesc )
+RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
+    RHSVec, Solver, SParMatrixDesc )
 
   USE, INTRINSIC :: iso_c_binding                
 
@@ -2457,7 +2457,7 @@ END SUBROUTINE SolveHypre
 !-------------------------------------------------------------------------
 !
 !-------------------------------------------------------------------------
-SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
+RECURSIVE SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
     RHSVec, XVec, Solver, ErrInfo )
 
   USE IterSolve
