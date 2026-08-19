@@ -633,10 +633,34 @@ IF(Mumps_FOUND)
     ENDIF()
   ENDFOREACH()
 
-  IF(_mumps_dist_rhs)
+  # Off on Windows for the time being. Every parallel MUMPS test fails on the
+  # MinGW/MS-MPI runner with the distributed right-hand side in place -- a
+  # segfault inside the DLLs in most of them, a silently wrong solution in
+  # DirichletNeumannZoltan -- while Ubuntu and a local Linux build are green on
+  # the same tests, the same code and the same MUMPS 5.7.3. It is not
+  # MPI_IN_PLACE: testMPIcapabilities reports "no" on that runner, so those
+  # reductions already take the copy path there. What runs instead is the
+  # gathered assembly under the #else in DirectSolve.F90, which is the route
+  # every MUMPS older than 5.3 takes and what devel did before the switch.
+  # Force it back on with -DELMER_MUMPS_DIST_RHS=ON when retesting the runner.
+  IF(WIN32)
+    SET(_mumps_dist_rhs_default OFF)
+  ELSE()
+    SET(_mumps_dist_rhs_default ON)
+  ENDIF()
+  OPTION(ELMER_MUMPS_DIST_RHS
+    "Hand MUMPS a distributed right-hand side (requires MUMPS 5.3 or newer)"
+    ${_mumps_dist_rhs_default})
+  MARK_AS_ADVANCED(ELMER_MUMPS_DIST_RHS)
+
+  IF(_mumps_dist_rhs AND ELMER_MUMPS_DIST_RHS)
     SET(HAVE_MUMPS_DIST_RHS TRUE)
     MARK_AS_ADVANCED(HAVE_MUMPS_DIST_RHS)
     MESSAGE(STATUS "Mumps has the distributed right-hand side")
+  ELSEIF(_mumps_dist_rhs)
+    MESSAGE(STATUS "Mumps has the distributed right-hand side but "
+                   "ELMER_MUMPS_DIST_RHS is off; the right-hand side will be "
+                   "gathered instead")
   ELSE()
     MESSAGE(STATUS "Mumps has no distributed right-hand side (needs 5.3 or "
                    "newer); the right-hand side will be gathered instead")
