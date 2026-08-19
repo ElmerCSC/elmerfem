@@ -181,6 +181,17 @@ CONTAINS
         END IF
       END IF
 
+      ! The internal smoothers skip the interface rows, which a Gauss-Seidel
+      ! cannot update without communication, and never exchange them. On their
+      ! own they therefore leave those rows untouched on every partition but the
+      ! one that owns them, and the preconditioner stops reducing the residual.
+      ! They are meant as the second half of the composite smoothers, whose
+      ! Jacobi part sweeps the interface over the owned-rows matrix.
+      IF( Parallel .AND. IterMethod == 'icsgs' ) THEN
+        CALL Fatal('MGSmooth','Smoother "'//TRIM(IterMethod)//'" only smooths the &
+            &rows owned by the partition, use "cjacobi+isgs" in parallel')
+      END IF
+
       TOL = ListGetConstReal( Solver % Values, 'MG Smoother Reduction TOL',Found)
 
       TmpArray => ListGetConstRealArray(Solver % Values,'MG Smoother Relaxation Factor',Found)
@@ -229,8 +240,18 @@ CONTAINS
         CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
         IF(Parallel) CALL ParallelUpdateResult(A,x,r)
 
-        CALL ComplexSGS( n, A, M, x, b, r, Omega, Rounds)
-        IF(Parallel) CALL ParallelUpdateResult(A,x,r)
+        ! The internal variant is the one that goes with the local vectors, as in
+        ! 'jacobi+isgs' above. ComplexSGS reads the owned-rows matrix M and so
+        ! would have to be given Mx/Mb/Mr; handed the local x/b/r it mixed M's
+        ! numbering with the local ordering. The closing update has to push the
+        ! local solution back into the split vectors, not pull it the other way.
+        CALL InternalComplexSGS( n, A, M, x, b, r, Omega, Rounds)
+        IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
+
+        ! Closing sweep, as in 'jacobi+isgs'. The Gauss-Seidel above leaves the
+        ! interface rows exactly as the opening sweep set them, so without this
+        ! they never see what the interior gained and are never exchanged again.
+        CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
       CASE( 'bsgs' )                                     
         CALL BSGS( n, A, M, Mx, Mb, Mr, DOFs, Rounds)
@@ -760,7 +781,7 @@ CONTAINS
         INTEGER :: n,Rounds
         REAL(KIND=dp), TARGET :: rx(:),rb(:),rr(:)
 
-        INTEGER :: i,j,k,l
+        INTEGER :: i,j,k,l,na
         COMPLEX(KIND=dp) :: s, v
         REAL(KIND=dp) :: w
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
@@ -769,16 +790,25 @@ CONTAINS
         ! complex stack temporaries on every smoothing call.
         COMPLEX(KIND=dp), POINTER :: x(:),b(:),r(:)
 
-        x => ComplexValues( rx, n/2 )
-        b => ComplexValues( rb, n/2 )
-        r => ComplexValues( rr, n/2 )
+        ! This smoother reads the local matrix A and the local vectors, so it is
+        ! A that sets the range of rows and columns -- not the passed n, which in
+        ! parallel counts the rows of the owned-rows matrix M only. Sizing the
+        ! complex views from n while indexing them with the columns of A left the
+        ! views shorter than the indices used, and the row loops silently skipped
+        ! the rows A holds beyond M. Compare InternalSGS, which likewise ignores
+        ! n in favour of A % NumberOfRows.
+        na = A % NumberOfRows
+
+        x => ComplexValues( rx, na/2 )
+        b => ComplexValues( rb, na/2 )
+        r => ComplexValues( rr, na/2 )
 
         Rows   => A % Rows
         Cols   => A % Cols 
         Values => A % Values
         
         DO k=1,Rounds
-          DO i=1,n,2
+          DO i=1,na,2
             l = (i+1)/2
             ! Skip the interface elements as the gauss-seidel cannot be used to update them
             IF( Parallel ) THEN
@@ -797,7 +827,7 @@ CONTAINS
             x(l) = x(l) + w*r(l)
           END DO
           
-          DO i=n-1,1,-2
+          DO i=na-1,1,-2
             l = (i+1)/2
             IF( Parallel ) THEN
               IF( A % ParallelInfo % GInterface(i) ) CYCLE
@@ -1474,7 +1504,10 @@ CONTAINS
         ! Alias the interleaved (Re,Im) reals instead of copying to and from
         ! complex stack temporaries on every smoothing call.
         COMPLEX(KIND=dp), POINTER :: r(:),b(:),x(:)
-        COMPLEX(KIND=dp) :: Z(n), Pc(n), Q(n)
+        ! n counts the rows of the real system, so the complex vectors it holds
+        ! are half as long. Sizing these by n put twice the needed complex
+        ! working set on the stack, three times over.
+        COMPLEX(KIND=dp) :: Z(n/2), Pc(n/2), Q(n/2)
 !------------------------------------------------------------------------------
         x => ComplexValues( rx, n/2 )
         b => ComplexValues( rb, n/2 )

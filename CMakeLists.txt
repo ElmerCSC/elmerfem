@@ -247,6 +247,27 @@ IF(WITH_MPI)
 
   FIND_PACKAGE(MPI REQUIRED)
 
+  # The test suite runs cases with up to eight tasks, more than the cores of a
+  # typical runner or workstation. OpenMPI counts slots and refuses to place more
+  # ranks than it has, so those cases fail to launch at all rather than merely
+  # running slowly. Ask for oversubscription so that they run. The flag is
+  # OpenMPI's own and other launchers reject arguments they do not know, so
+  # settle the vendor by asking mpiexec rather than by guessing from its path.
+  # RUN_ELMER_TEST already divides OMP_NUM_THREADS by the task count and pins
+  # OMP_WAIT_POLICY to PASSIVE, which is what keeps the resulting
+  # oversubscription a graceful slowdown instead of a stall.
+  IF(MPIEXEC AND NOT MPIEXEC_PREFLAGS)
+    EXECUTE_PROCESS(COMMAND "${MPIEXEC}" --version
+      RESULT_VARIABLE MPIEXEC_VERSION_RESULT
+      OUTPUT_VARIABLE MPIEXEC_VERSION_OUTPUT
+      ERROR_VARIABLE MPIEXEC_VERSION_OUTPUT
+      TIMEOUT 60)
+    IF(MPIEXEC_VERSION_RESULT EQUAL 0 AND MPIEXEC_VERSION_OUTPUT MATCHES "Open MPI")
+      SET(MPIEXEC_PREFLAGS "--oversubscribe")
+      MESSAGE(STATUS "  MPI test launcher: OpenMPI, adding --oversubscribe")
+    ENDIF()
+  ENDIF()
+
   # Check features of found MPI
   INCLUDE(testMPIcapabilities)
   IF(ELMER_BROKEN_MPI_IN_PLACE)
