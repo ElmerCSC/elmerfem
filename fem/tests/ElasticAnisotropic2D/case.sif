@@ -1,0 +1,134 @@
+! Anisotropic elasticity in two dimensions through ElasticSolve -- the sibling of
+! StressAnisotropic2D, paired with it the way ElasticEigenFields is with
+! StressEigenFields.
+!
+! ElasticSolve refused this outright until the elasticity matrix was condensed into
+! the reduced plane packing (11,22,12) that a plane assembly contracts with. Nothing
+! in its anisotropic assembly was ever specific to three dimensions -- DetDefG
+! switches on the dimension, Strain2Stress carries the reduced packing, and the
+! Newton loop runs to it -- so what the guard was protecting against was being
+! handed an unreduced 6x6, in which C(3,3) sits where the shear modulus belongs
+! (1346 against 385 on this material) and the stiffness, not merely the output,
+! comes out wrong.
+!
+! THE REFERENCE VALUES ARE STRESSSOLVE'S, taken unchanged from StressAnisotropic2D,
+! which is what makes this a cross-solver check rather than a record of whatever
+! this solver happens to do. Field by field the two agree to 1e-15 on both
+! assumptions, and -- the part that matters most -- the DISPLACEMENTS agree to
+! 2e-15, so the condensed matrix is verified as a stiffness and not just as a
+! postprocessing convenience.
+!
+! Both out-of-plane recoveries are exercised, and they are the reason the material
+! needs C(3,4) /= 0:
+!
+!   plane strain -> Stress_zz = C31 exx + C32 eyy + C34 gxy   (checked, RUN 1)
+!   plane stress -> Strain_zz = -( C31 exx + C32 eyy + C34 gxy ) / C33  (RUN 2)
+!
+! Each recovery has a shear term reachable only for an anisotropic material, and it
+! is about 15% of the recovered value here. The complementary component is
+! identically zero in each case by construction -- Strain_zz under plane strain,
+! Stress_zz under plane stress -- and both were confirmed to be exactly zero rather
+! than merely small.
+!
+! Material, mesh and boundary conditions are copied verbatim from
+! StressAnisotropic2D so that the comparison is of solvers and nothing else. The
+! material is an isotropic base (E = 1e3, nu = 0.3) in Elmer's Voigt order
+! (11,22,33,12,23,13) with engineering shear, plus C(3,4) = C(4,3).
+!
+! Axial symmetry is covered by ElasticAnisotropicAxi, not here. It was refused
+! outright when this test was written, the assemblies having ordered the components
+! (r, phi, z) with the hoop at index 2 while the postprocessor and StressSolve used
+! (r, z, phi) with the hoop at index 3; the assemblies were then moved to (r, z, phi)
+! and the capability came with it. That test needs a material this one cannot
+! supply -- one whose C(2,2) and C(3,3) DIFFER -- since an isotropic base is
+! symmetric in those two slots and would pass under either convention.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = 1.0
+  Youngs Modulus(6,6) = Real \
+    1346.154  576.923  576.923    0.000    0.000    0.000 \
+     576.923 1346.154  576.923    0.000    0.000    0.000 \
+     576.923  576.923 1346.154  200.000    0.000    0.000 \
+       0.000    0.000  200.000  384.615    0.000    0.000 \
+       0.000    0.000    0.000    0.000  384.615    0.000 \
+       0.000    0.000    0.000    0.000    0.000  384.615
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+
+  ! Small strain, so the kinematics reduce to StressSolve's and the comparison is
+  ! of the constitutive path alone.
+  Large Deflection = False
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  ! The out-of-plane components, slot 3 of Elmer's 2D layout (11,22,33,12).
+  Variable 1 = String "Stress_zz"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Strain_zz"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Displacement 1 = Real 1.0e-3
+  Displacement 2 = Real 2.0e-3
+End
+
+! Plane strain, checking the recovered Stress_zz.
+Solver 2 :: Reference Norm = Real 2.574911913548E+001
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN
+
+! Plane stress, checking the recovered Strain_zz. Scalar 2 rather than 1, since
+! here it is the strain that the plane system leaves to be recovered.
+Equation 1 :: Plane Stress = Logical True
+Solver 2 :: Show Norm Index = Integer 2
+Solver 2 :: Reference Norm = Real 1.912791488602E-002
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

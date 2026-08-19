@@ -1,0 +1,119 @@
+! Anisotropic elasticity through ElasticSolve, in three dimensions.
+!
+! Three dimensions is not one case among several here: it is the ONLY
+! dimensionality in which ElasticSolve accepts an anisotropic material at all.
+! Two guards in its LocalMatrix refuse the rest --
+!
+!   "Material anisotropy implemented only for 3-d"                (plane 2D)
+!   "Axially symmetric option is not supported for anisotropic materials"
+!
+! -- while StressSolve carries all three, condensing the elasticity matrix into
+! the reduced plane packing and recovering the out-of-plane component afterwards
+! (see StressAnisotropic2D, which covers exactly that). So this test covers the
+! whole of ElasticSolve's anisotropic capability, and until it existed no test in
+! the suite gave ElasticSolve a matrix valued "Youngs Modulus" in any dimension.
+!
+! THE REFERENCE VALUE IS STRESSSOLVE'S ANSWER, not this solver's. The same mesh,
+! material and prescribed displacements run through StressSolve give
+!
+!   max abs stress_xy   6.626115203781E-001
+!   max abs stress_zz   4.459885743015E+000
+!
+! agreeing with the values below in every digit printed, and agreeing field by
+! field to 1e-15 with the displacement control at 4e-16. That makes this a
+! cross-solver assertion carried in a single-solver run: the two independent
+! anisotropic kernels must keep giving the same answer.
+!
+! The material is an isotropic base (E = 1e3, nu = 0.3) in Elmer's Voigt order
+! (11,22,33,12,23,13) with engineering shear, plus C(3,4) = C(4,3) = 200 coupling
+! out-of-plane normal stress to in-plane shear. That term is what makes the test
+! anisotropic rather than an isotropic case in matrix clothing, and the checked
+! norm is chosen for its sensitivity to it: with C(3,4) zeroed, stress_xy goes
+! from 6.626e-01 to -8.168e-02, a change of sign and of a factor of eight.
+! Stress_zz moves only 7% and is the weaker detector, so it is reported for
+! reference but not the checked one.
+!
+! Displacement is prescribed on both boundaries so that no difference in load
+! interpretation can enter the cross-solver comparison, and "Large Deflection" is
+! off so that ElasticSolve's kinematics reduce to StressSolve's small strain.
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = 1.0
+  Youngs Modulus(6,6) = Real \
+    1346.154  576.923  576.923    0.000    0.000    0.000 \
+     576.923 1346.154  576.923    0.000    0.000    0.000 \
+     576.923  576.923 1346.154  200.000    0.000    0.000 \
+       0.000    0.000  200.000  384.615    0.000    0.000 \
+       0.000    0.000    0.000    0.000  384.615    0.000 \
+       0.000    0.000    0.000    0.000    0.000  384.615
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 3 Displacement
+
+  Large Deflection = False
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  ! The shear component, which the C(3,4) coupling changes by a factor of eight.
+  Show Norm Index = 2
+  Variable 1 = String "Stress_zz"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_xy"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 6
+  Displacement 1 = Real 1.0e-3
+  Displacement 2 = Real 2.0e-3
+  Displacement 3 = Real 0.5e-3
+End
+
+Solver 2 :: Reference Norm = Real 6.626115203781E-001
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

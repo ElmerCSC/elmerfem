@@ -3146,8 +3146,23 @@ CONTAINS
     PermIndex = Perm(NodeIndex)
     IF ( PermIndex > 0 ) THEN
       PermIndex = NDOFs * (PermIndex-1) + DOF
+
+      ! Allocate on demand, as UpdateDirichletDof above does. These arrays are
+      ! otherwise created by the higher level Dirichlet routines, so a caller
+      ! reaching this one before DefaultDirichletBCs has run -- which is exactly
+      ! when setting a single point is useful -- would write through unallocated
+      ! arrays and segfault.
+      IF(.NOT. ALLOCATED(A % ConstrainedDOF)) THEN
+        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+        A % ConstrainedDOF = .FALSE.
+      END IF
+      IF(.NOT. ALLOCATED(A % Dvalues)) THEN
+        ALLOCATE(A % Dvalues(A % NumberOfRows))
+        A % Dvalues = 0._dp
+      END IF
+
       A % ConstrainedDOF(PermIndex) = .TRUE.
-      A % DValues(PermIndex) = NodeValue      
+      A % DValues(PermIndex) = NodeValue
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletPoint
