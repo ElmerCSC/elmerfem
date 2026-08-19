@@ -134,6 +134,12 @@ MODULE Types
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
     REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:), &
         DampValues(:),ILUValues(:),PrecValues(:)
+!   Block view of a complex interface matrix, as for Matrix_t: NumberOfRows/2
+!   block rows and one COMPLEX per 2x2 block. The local column index is folded
+!   in from IfLCols, and rows this rank owns and entries with no local column
+!   are dropped at build time, so the product needs no test at all.
+    INTEGER, ALLOCATABLE :: BRows(:), BCols(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: CValues(:)
   END TYPE BasicMatrix_t
 
 
@@ -295,6 +301,21 @@ MODULE Types
     COMPLEX(KIND=dp), POINTER :: CRHS(:)=>NULL(),CForce(:,:)=>NULL()
     COMPLEX(KIND=dp),  POINTER :: CValues(:)=>NULL(),CILUValues(:)=>NULL()
     COMPLEX(KIND=dp),  POINTER :: CMassValues(:)=>NULL(),CDampValues(:)=>NULL()
+
+!   Optional block CRS view of a complex matrix: NumberOfRows/2 block rows and
+!   one COMPLEX coefficient per 2x2 [Re -Im; Im Re] block, in BRows/BCols and
+!   the CValues slot above. Built on demand by CRS_BuildBlockCRS, used by
+!   CRS_BlockComplexMatrixVectorMultiply. Not present unless asked for.
+!
+!   CPrecValues is the same view over PrecValues when a separate preconditioning
+!   matrix exists. It shares BRows and BCols outright: DefaultUpdatePrecC glues
+!   the preconditioner through the same structure as the matrix, so the only
+!   thing that differs is the coefficients. The complex ILU factorizes
+!   PrecValues when it is present, so without this the view is bypassed exactly
+!   on the cases that have one -- which includes every VectorHelmholtz case
+!   carrying a damping coefficient.
+    INTEGER, POINTER :: BRows(:)=>NULL(), BCols(:)=>NULL(), BDiag(:)=>NULL()
+    COMPLEX(KIND=dp), POINTER :: CPrecValues(:)=>NULL()
 
 ! For Flux Corrected Transport 
     REAL(KIND=dp), POINTER :: FCT_D(:) => NULL()
