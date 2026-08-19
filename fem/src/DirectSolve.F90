@@ -707,6 +707,144 @@ CONTAINS
 !------------------------------------------------------------------------------
 #ifdef HAVE_MUMPS
 !------------------------------------------------------------------------------
+!> The in-place reductions of the MUMPS paths, in one place. MPI_IN_PLACE is not
+!> usable with every MPI and compiler combination -- MS-MPI with gfortran on
+!> Windows is the one the build probes for, ELMER_BROKEN_MPI_IN_PLACE -- and
+!> there it does not merely fail to reduce, it faults inside MPI. Where the probe
+!> says so these fall back to the scratch copy the code used before, which is the
+!> same arithmetic on the same data in the same order. Wrapping them keeps that to
+!> one #ifdef per type instead of one at every call site.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsAndAll( val, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    LOGICAL :: val
+    INTEGER :: Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    LOGICAL :: buf
+    buf = val
+    CALL MPI_ALLREDUCE( buf, val, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, val, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsAndAll
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllS( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    REAL :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL, ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_REAL, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_REAL, MPI_SUM, Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllS
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllC( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    COMPLEX :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    COMPLEX, ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_COMPLEX, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_COMPLEX, MPI_SUM, Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllC
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllD( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    REAL(KIND=dp) :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp), ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_DOUBLE_PRECISION, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_DOUBLE_PRECISION, MPI_SUM, &
+        Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllD
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllZ( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    COMPLEX(KIND=dp) :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    COMPLEX(KIND=dp), ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_DOUBLE_COMPLEX, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+        Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllZ
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Begin a redistribution plan for MUMPS's distributed solution: the half of it
 !> that is known as soon as the global numbering is, namely which contiguous
 !> range of global indices each rank owns. ContinuousNumbering already produced
@@ -756,8 +894,7 @@ CONTAINS
     ! The decision has to be unanimous. The two redistribution routes make
     ! different collective calls, so a rank quietly opting out while the others
     ! carried on would hang rather than fall back.
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, Usable, 1, MPI_LOGICAL, MPI_LAND, &
-            Comm, ierr )
+    CALL MumpsAndAll( Usable, Comm )
 
     IF( .NOT. Usable ) THEN
       CALL Info('MumpsSolPlanInit','Cannot map the distributed solution '// &
@@ -822,7 +959,7 @@ CONTAINS
     IF( P % Built ) THEN
       IF( P % nSend == nsol ) Ok = ALL( P % isol == isol(1:nsol) )
     END IF
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, Ok, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+    CALL MumpsAndAll( Ok, Comm )
     IF( Ok ) THEN
       Ready = .TRUE.
       RETURN
@@ -929,7 +1066,7 @@ CONTAINS
 
     ! Unanimous again: every rank runs the same collectives from here on, so
     ! they must agree on which route the solves will take.
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, Ok, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+    CALL MumpsAndAll( Ok, Comm )
 
     IF( .NOT. Ok ) THEN
       CALL Info('MumpsSolPlanReady','Could not map the distributed solution '// &
@@ -1388,8 +1525,8 @@ CONTAINS
       A % SMumpsId % RHS(ip) = b(i)
     END DO
 
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % SMumpsID % RHS, &
-      A % SMumpsID % n, MPI_REAL, MPI_SUM, A % SMumpsID % Comm, ierr )
+    CALL MumpsSumAllS( A % SMumpsID % RHS, A % SMumpsID % n, &
+      A % SMumpsID % Comm )
 
  ! Solution:
     A % SMumpsID % job = 3
@@ -1400,8 +1537,8 @@ CONTAINS
     DO i=1,A % SMumpsID % lsol_loc
       A % SMumpsID % RHS(A % SMumpsID % isol_loc(i)) = A % SMumpsID % sol_loc(i)
     END DO
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % SMumpsID % RHS, &
-      A % SMumpsID % n, MPI_REAL, MPI_SUM, A % SMumpsID % Comm, ierr )
+    CALL MumpsSumAllS( A % SMumpsID % RHS, A % SMumpsID % n, &
+      A % SMumpsID % Comm )
 
  ! Select the values which belong to us:
     DO i=1,A % NumberOfRows
@@ -1618,8 +1755,8 @@ CONTAINS
       A % CMumpsId % RHS(ip) = CMPLX( b(i), b(i+1) )
     END DO
 
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % CMumpsID % RHS, &
-      A % CMumpsID % n, MPI_COMPLEX, MPI_SUM, A % CMumpsID % Comm, ierr )
+    CALL MumpsSumAllC( A % CMumpsID % RHS, A % CMumpsID % n, &
+      A % CMumpsID % Comm )
 
     A % CMumpsID % job = 3
     CALL CMumps(A % CMumpsID)
@@ -1629,8 +1766,8 @@ CONTAINS
     DO i=1,A % CMumpsID % lsol_loc
       A % CMumpsID % RHS(A % CMumpsID % isol_loc(i)) = A % CMumpsID % sol_loc(i)
     END DO
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % CMumpsID % RHS, &
-      A % CMumpsID % N, MPI_COMPLEX, MPI_SUM, A % CMumpsID % Comm, ierr )
+    CALL MumpsSumAllC( A % CMumpsID % RHS, A % CMumpsID % N, &
+      A % CMumpsID % Comm )
 
  ! Select the values which belong to us:
     DO i=1,A % NumberOfRows,2
@@ -1922,8 +2059,8 @@ CONTAINS
       ip = A % Gorder(i)
       A % MumpsId % RHS(ip) = b(i)
     END DO
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % MumpsID % RHS, &
-      A % MumpsID % n, MPI_DOUBLE_PRECISION, MPI_SUM, A % MumpsID % Comm, ierr )
+    CALL MumpsSumAllD( A % MumpsID % RHS, A % MumpsID % n, &
+      A % MumpsID % Comm )
 #endif
 
  ! Solution:
@@ -1946,8 +2083,8 @@ CONTAINS
       DO i=1,A % MumpsID % lsol_loc
         A % MumpsID % RHS(A % MumpsID % isol_loc(i)) = A % MumpsID % sol_loc(i)
       END DO
-      CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % MumpsID % RHS, &
-        A % MumpsID % N, MPI_DOUBLE_PRECISION, MPI_SUM, A % MumpsID % Comm, ierr )
+      CALL MumpsSumAllD( A % MumpsID % RHS, A % MumpsID % N, &
+        A % MumpsID % Comm )
 
       DO i=1,A % NumberOfRows
         ip = A % Gorder(i)
@@ -2198,8 +2335,8 @@ CONTAINS
       ip = (A % Gorder(i)-1)/2+1
       A % ZMumpsId % RHS(ip) = CMPLX(b(i), b(i+1), KIND=dp)
     END DO
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % ZMumpsID % RHS, &
-      A % ZMumpsID % n, MPI_DOUBLE_COMPLEX, MPI_SUM, A % ZMumpsID % Comm, ierr )
+    CALL MumpsSumAllZ( A % ZMumpsID % RHS, A % ZMumpsID % n, &
+      A % ZMumpsID % Comm )
 #endif
 
     A % ZMumpsID % job = 3
@@ -2220,8 +2357,8 @@ CONTAINS
       DO i=1,A % ZMumpsID % lsol_loc
         A % ZMumpsID % RHS(A % ZMumpsID % isol_loc(i)) = A % ZMumpsID % sol_loc(i)
       END DO
-      CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % ZMumpsID % RHS, &
-        A % ZMumpsID % N, MPI_DOUBLE_COMPLEX, MPI_SUM, A % ZMumpsID % Comm, ierr )
+      CALL MumpsSumAllZ( A % ZMumpsID % RHS, A % ZMumpsID % N, &
+        A % ZMumpsID % Comm )
 
       DO i=1,A % NumberOfRows,2
         ip = (A % Gorder(i)-1)/2+1
