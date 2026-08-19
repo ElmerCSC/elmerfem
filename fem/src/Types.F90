@@ -210,6 +210,32 @@ MODULE Types
 #endif
 
 
+#ifdef HAVE_MUMPS
+  !> Plan for turning MUMPS's distributed solution into Elmer's local rows.
+  !> ICNTL(21)=1 leaves the solution spread over the ranks in a distribution
+  !> MUMPS chooses, reported in ISOL_loc, which has nothing to do with the mesh
+  !> partitioning. Redistributing it used to mean scattering into a vector of
+  !> global length on every rank and allreducing that. It can instead be one
+  !> MPI_ALLTOALLV, because ContinuousNumbering hands each rank a contiguous
+  !> range of global indices for the rows it owns, so the owner of an index is
+  !> a search in a table of range bounds rather than a lookup that would have
+  !> to be communicated. Everything here is fixed by the factorization, so it
+  !> is built once and reused by every solve that follows.
+  TYPE MumpsSolPlan_t
+    INTEGER :: nGlob = 0                     !< global rows, in plan units
+    INTEGER :: gStart = 0                    !< our owned range is (gStart,gStart+nOwn]
+    INTEGER :: nOwn = 0
+    LOGICAL :: Built = .FALSE.               !< the per-solve plan below is ready
+    INTEGER :: nSend = 0, nRecv = 0          !< slots we send / receive
+    INTEGER, ALLOCATABLE :: gBound(:)        !< 0:PEs, owned index ranges
+    INTEGER, ALLOCATABLE :: sCnt(:), sDsp(:) !< what we send, per rank
+    INTEGER, ALLOCATABLE :: rCnt(:), rDsp(:) !< what we receive, per rank
+    INTEGER, ALLOCATABLE :: sPerm(:)         !< sol_loc index of each send slot
+    INTEGER, ALLOCATABLE :: rRow(:)          !< local row of each receive slot
+    INTEGER, ALLOCATABLE :: isol(:)          !< the ISOL_loc it was built for
+  END TYPE MumpsSolPlan_t
+#endif
+
   TYPE Matrix_t
     TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => NULL(), &
         ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
@@ -266,6 +292,10 @@ MODULE Types
 
     TYPE(cmumps_struc), POINTER :: CMumpsID => NULL() ! Global distributed Mumps
     TYPE(cmumps_struc), POINTER :: CMumpsIDL => NULL() ! Local domainwise Mumps
+
+    ! Redistribution plan for the distributed solution, valid as long as the
+    ! factorization above is. Released by FreeMumpsFactorizations.
+    TYPE(MumpsSolPlan_t), POINTER :: MumpsSolPlan => NULL()
 #endif
 #if defined(HAVE_MKL) || defined(HAVE_PARDISO)
     INTEGER, POINTER :: PardisoParam(:) => NULL()

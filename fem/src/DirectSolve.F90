@@ -51,6 +51,7 @@ MODULE DirectSolve
    USE CRSMatrix
    USE BandMatrix
    USE SParIterSolve
+   USE ParallelUtils, ONLY : ParallelSumVector
 
    IMPLICIT NONE
 
@@ -704,12 +705,365 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+!------------------------------------------------------------------------------
+!> Begin a redistribution plan for MUMPS's distributed solution: the half of it
+!> that is known as soon as the global numbering is, namely which contiguous
+!> range of global indices each rank owns. ContinuousNumbering already produced
+!> those ranges -- it hands each rank a base index from its predecessor and
+!> numbers the rows it owns consecutively from there -- so only the lengths need
+!> collecting. That is what makes "who owns this index" a search in a table of
+!> P+1 bounds rather than something that has to be looked up over the network.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSolPlanInit( A, gStart, nOwn, nGlob, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    INTEGER :: gStart, nOwn, nGlob, Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: i, PEs, me, ierr
+    LOGICAL :: Usable
+    INTEGER, ALLOCATABLE :: cnt(:), gb(:)
+!------------------------------------------------------------------------------
+    CALL MumpsFreeSolPlan( A )
+
+    CALL MPI_COMM_SIZE( Comm, PEs, ierr )
+    CALL MPI_COMM_RANK( Comm, me, ierr )
+
+    ALLOCATE( cnt(PEs), gb(0:PEs) )
+    CALL MPI_ALLGATHER( nOwn, 1, MPI_INTEGER, cnt, 1, MPI_INTEGER, Comm, ierr )
+    gb(0) = 0
+    DO i=1,PEs
+      gb(i) = gb(i-1) + cnt(i)
+    END DO
+    DEALLOCATE( cnt )
+
+    ! Three things have to hold. The plan leaves the shared rows to
+    ! ParallelSumVector, which reaches into the matrix's parallel structures; a
+    ! parallel solve always has them by the time it gets here, since
+    ! SolveLinearSystem takes the serial branch when ParallelInitMatrix could
+    ! not build them, but the plan is optional so declining beats depending on
+    ! it. And the bounds only mean what the plan assumes if the ranks are
+    ! ordered here the way ContinuousNumbering ordered them and their ranges
+    ! tile the whole system. All three are one comparison each.
+    Usable = ASSOCIATED( A % ParMatrix ) .AND. &
+             gb(me) == gStart .AND. gb(PEs) == nGlob
+
+    ! The decision has to be unanimous. The two redistribution routes make
+    ! different collective calls, so a rank quietly opting out while the others
+    ! carried on would hang rather than fall back.
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, Usable, 1, MPI_LOGICAL, MPI_LAND, &
+            Comm, ierr )
+
+    IF( .NOT. Usable ) THEN
+      CALL Info('MumpsSolPlanInit','Cannot map the distributed solution '// &
+          'directly; keeping the gathered redistribution',Level=6)
+      DEALLOCATE( gb )
+      RETURN
+    END IF
+
+    ALLOCATE( A % MumpsSolPlan )
+    ALLOCATE( A % MumpsSolPlan % gBound(0:PEs) )
+    A % MumpsSolPlan % gBound = gb
+    A % MumpsSolPlan % gStart = gStart
+    A % MumpsSolPlan % nOwn   = nOwn
+    A % MumpsSolPlan % nGlob  = nGlob
+    DEALLOCATE( gb )
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSolPlanInit
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Finish the plan, or confirm the one already built still applies. MUMPS only
+!> reports its solution distribution in ISOL_loc on exit from a solve, so the
+!> rest of the plan cannot be built until after the first one. It is stable for
+!> the life of the factorization in practice, but nothing in the user guide says
+!> it must be, so the ISOL_loc it was built for is kept and compared -- a local
+!> O(lsol_loc) test -- and the plan is rebuilt if it ever differs.
+!> nblk is 1 for a real system and 2 for a complex one, i.e. the number of
+!> scalar matrix rows per index MUMPS is working with.
+!------------------------------------------------------------------------------
+  FUNCTION MumpsSolPlanReady( A, isol, nsol, nblk, Comm ) RESULT( Ready )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    INTEGER :: isol(:), nsol, nblk, Comm
+    LOGICAL :: Ready
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    TYPE(MumpsSolPlan_t), POINTER :: P
+    INTEGER :: i,j,k,lo,hi,mid,PEs,ierr,g,nrecv
+    LOGICAL :: Ok
+    INTEGER, ALLOCATABLE :: own2row(:), sIdx(:), rIdx(:), pos(:)
+!------------------------------------------------------------------------------
+    Ready = .FALSE.
+
+    ! MumpsSolPlanInit made its decision collectively, so either every rank has
+    ! a plan under construction or none has.
+    IF( .NOT. ASSOCIATED( A % MumpsSolPlan ) ) RETURN
+    P => A % MumpsSolPlan
+    CALL MPI_COMM_SIZE( Comm, PEs, ierr )
+
+    ! Is the plan we already hold still the right one? MUMPS reports its
+    ! solution distribution only on exit from a solve, so the plan cannot be
+    ! built before the first one. It is a property of the factorization and does
+    ! not change in practice, but the user guide does not promise that, so the
+    ! ISOL_loc it was built for is kept and compared. The comparison is local
+    ! and the answer must be unanimous, hence the one word reduction.
+    Ok = .FALSE.
+    IF( P % Built ) THEN
+      IF( P % nSend == nsol ) Ok = ALL( P % isol == isol(1:nsol) )
+    END IF
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, Ok, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+    IF( Ok ) THEN
+      Ready = .TRUE.
+      RETURN
+    END IF
+    IF( P % Built ) THEN
+      CALL Info('MumpsSolPlanReady','MUMPS returned a different solution '// &
+          'distribution; rebuilding the redistribution plan',Level=6)
+      P % Built = .FALSE.
+    END IF
+
+    ! Global index -> our local row, for the rows we own. The owned indices are
+    ! contiguous, so this is an offset into an array of nOwn rather than a search.
+    ALLOCATE( own2row(MAX(P % nOwn,1)) )
+    own2row = 0
+    DO i=1,A % NumberOfRows,nblk
+      g = (A % Gorder(i)-1)/nblk + 1
+      IF( g > P % gStart .AND. g <= P % gStart + P % nOwn ) &
+          own2row(g - P % gStart) = i
+    END DO
+
+    IF( ALLOCATED(P % sCnt) ) DEALLOCATE(P % sCnt,P % sDsp,P % rCnt,P % rDsp)
+    ALLOCATE( P % sCnt(PEs), P % sDsp(PEs), P % rCnt(PEs), P % rDsp(PEs) )
+    IF( ALLOCATED(P % sPerm) ) DEALLOCATE(P % sPerm)
+    ALLOCATE( P % sPerm(MAX(nsol,1)), sIdx(MAX(nsol,1)), pos(PEs) )
+    P % nSend = nsol
+
+    ! Bin our share of the solution by the rank owning each index. Two passes,
+    ! counting then placing, so the send buffer comes out grouped by rank.
+    Ok = .TRUE.
+    P % sCnt = 0
+    DO k=1,nsol
+      g = isol(k)
+      IF( g < 1 .OR. g > P % nGlob ) THEN
+        Ok = .FALSE.
+        EXIT
+      END IF
+      lo = 0; hi = PEs
+      DO WHILE( hi - lo > 1 )
+        mid = (lo + hi)/2
+        IF( g > P % gBound(mid) ) THEN
+          lo = mid
+        ELSE
+          hi = mid
+        END IF
+      END DO
+      P % sCnt(lo+1) = P % sCnt(lo+1) + 1
+    END DO
+
+    IF( Ok ) THEN
+      P % sDsp(1) = 0
+      DO i=2,PEs
+        P % sDsp(i) = P % sDsp(i-1) + P % sCnt(i-1)
+      END DO
+      pos = P % sDsp
+      DO k=1,nsol
+        g = isol(k)
+        lo = 0; hi = PEs
+        DO WHILE( hi - lo > 1 )
+          mid = (lo + hi)/2
+          IF( g > P % gBound(mid) ) THEN
+            lo = mid
+          ELSE
+            hi = mid
+          END IF
+        END DO
+        pos(lo+1) = pos(lo+1) + 1
+        P % sPerm(pos(lo+1)) = k
+        sIdx(pos(lo+1)) = g
+      END DO
+
+      CALL MPI_ALLTOALL( P % sCnt, 1, MPI_INTEGER, &
+                         P % rCnt, 1, MPI_INTEGER, Comm, ierr )
+      P % rDsp(1) = 0
+      DO i=2,PEs
+        P % rDsp(i) = P % rDsp(i-1) + P % rCnt(i-1)
+      END DO
+      nrecv = SUM( P % rCnt )
+
+      ! Every index we own should arrive exactly once, MUMPS's distribution
+      ! being a partition of the system. If it is not, the premise of the plan
+      ! is wrong and the gathered route is the honest fallback.
+      IF( nrecv /= P % nOwn ) Ok = .FALSE.
+      P % nRecv = nrecv
+    END IF
+
+    IF( Ok ) THEN
+      IF( ALLOCATED(P % rRow) ) DEALLOCATE(P % rRow)
+      ALLOCATE( rIdx(MAX(nrecv,1)), P % rRow(MAX(nrecv,1)) )
+      CALL MPI_ALLTOALLV( sIdx, P % sCnt, P % sDsp, MPI_INTEGER, &
+                          rIdx, P % rCnt, P % rDsp, MPI_INTEGER, Comm, ierr )
+      DO j=1,nrecv
+        g = rIdx(j) - P % gStart
+        IF( g < 1 .OR. g > P % nOwn ) THEN
+          Ok = .FALSE.
+          EXIT
+        END IF
+        P % rRow(j) = own2row(g)
+        IF( P % rRow(j) == 0 ) THEN
+          Ok = .FALSE.
+          EXIT
+        END IF
+      END DO
+    END IF
+
+    ! Unanimous again: every rank runs the same collectives from here on, so
+    ! they must agree on which route the solves will take.
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, Ok, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+
+    IF( .NOT. Ok ) THEN
+      CALL Info('MumpsSolPlanReady','Could not map the distributed solution '// &
+          'onto the owned rows; keeping the gathered redistribution',Level=6)
+      CALL MumpsFreeSolPlan( A )
+      RETURN
+    END IF
+
+    IF( ALLOCATED(P % isol) ) DEALLOCATE(P % isol)
+    ALLOCATE( P % isol(nsol) )
+    P % isol = isol(1:nsol)
+
+    P % Built = .TRUE.
+    Ready = .TRUE.
+    CALL Info('MumpsSolPlanReady','Solution redistribution plan built',Level=8)
+!------------------------------------------------------------------------------
+  END FUNCTION MumpsSolPlanReady
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Move MUMPS's distributed solution onto our own rows: one MPI_ALLTOALLV that
+!> carries each value straight to the rank owning that row, then Elmer's own
+!> parallel sum to hand the shared rows their owner's value. The rows we do not
+!> own are zero going into that sum and adding zero is exact, so the result is
+!> the same bits the global gather produced.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsScatterSolutionR( A, sol, x, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp) :: sol(:)
+    REAL(KIND=dp) :: x(*)
+    INTEGER :: Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    TYPE(MumpsSolPlan_t), POINTER :: P
+    REAL(KIND=dp), ALLOCATABLE :: sBuf(:), rBuf(:)
+    INTEGER :: k, n, ns, nr, ierr
+!------------------------------------------------------------------------------
+    P => A % MumpsSolPlan
+    n = A % NumberOfRows
+    ns = P % nSend; nr = P % nRecv
+    ALLOCATE( sBuf(MAX(ns,1)), rBuf(MAX(nr,1)) )
+
+    DO k=1,ns
+      sBuf(k) = sol(P % sPerm(k))
+    END DO
+
+    CALL MPI_ALLTOALLV( sBuf, P % sCnt, P % sDsp, MPI_DOUBLE_PRECISION, &
+                        rBuf, P % rCnt, P % rDsp, MPI_DOUBLE_PRECISION, Comm, ierr )
+
+    x(1:n) = 0.0_dp
+    DO k=1,nr
+      x(P % rRow(k)) = rBuf(k)
+    END DO
+    DEALLOCATE( sBuf, rBuf )
+
+    CALL ParallelSumVector( A, x(1:n) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsScatterSolutionR
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The complex counterpart. The plan is in block indices, so a received entry
+!> fills the two consecutive scalar rows of its block.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsScatterSolutionZ( A, sol, x, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    COMPLEX(KIND=dp) :: sol(:)
+    REAL(KIND=dp) :: x(*)
+    INTEGER :: Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    TYPE(MumpsSolPlan_t), POINTER :: P
+    COMPLEX(KIND=dp), ALLOCATABLE :: sBuf(:), rBuf(:)
+    INTEGER :: k, n, ns, nr, ierr
+!------------------------------------------------------------------------------
+    P => A % MumpsSolPlan
+    n = A % NumberOfRows
+    ns = P % nSend; nr = P % nRecv
+    ALLOCATE( sBuf(MAX(ns,1)), rBuf(MAX(nr,1)) )
+
+    DO k=1,ns
+      sBuf(k) = sol(P % sPerm(k))
+    END DO
+
+    CALL MPI_ALLTOALLV( sBuf, P % sCnt, P % sDsp, MPI_DOUBLE_COMPLEX, &
+                        rBuf, P % rCnt, P % rDsp, MPI_DOUBLE_COMPLEX, Comm, ierr )
+
+    x(1:n) = 0.0_dp
+    DO k=1,nr
+      x(P % rRow(k))   =  REAL( rBuf(k), KIND=dp )
+      x(P % rRow(k)+1) = AIMAG( rBuf(k) )
+    END DO
+    DEALLOCATE( sBuf, rBuf )
+
+    CALL ParallelSumVector( A, x(1:n) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsScatterSolutionZ
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsFreeSolPlan( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+!------------------------------------------------------------------------------
+    IF( ASSOCIATED( A % MumpsSolPlan ) ) THEN
+      DEALLOCATE( A % MumpsSolPlan )
+      A % MumpsSolPlan => NULL()
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsFreeSolPlan
+!------------------------------------------------------------------------------
+#endif
+
  SUBROUTINE FreeMumpsFactorizations(A)
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A
 
 !------------------------------------------------------------------------------
 #ifdef HAVE_MUMPS
+    CALL MumpsFreeSolPlan( A )
+
     IF(ASSOCIATED(A % SMumpsID)) THEN
       IF(ASSOCIATED(A % SMumpsID % irn_loc)) THEN
         DEALLOCATE( A % SMumpsID % irn_loc, &
@@ -749,10 +1103,16 @@ CONTAINS
     END IF
 
     IF(ASSOCIATED(A % MumpsID)) THEN
+#ifdef HAVE_MUMPS_DIST_RHS
+      IF(ASSOCIATED(A % MumpsID % irhs_loc)) THEN
+        DEALLOCATE( A % MumpsID % irhs_loc, A % MumpsID % rhs_loc )
+      END IF
+#endif
       IF(ASSOCIATED(A % MumpsID % irn_loc)) THEN
         DEALLOCATE( A % MumpsID % irn_loc, &
-           A % MumpsID % jcn_loc, A % MumpsID % Rhs,  &
+           A % MumpsID % jcn_loc, &
              A % MumpsID % isol_loc, A % MumpsID % sol_loc)
+        IF(ASSOCIATED(A % MumpsID % Rhs)) DEALLOCATE( A % MumpsID % Rhs )
         IF(.NOT.ASSOCIATED(A % MumpsID % A_loc, A % Values)) DEALLOCATE( A % MumpsID % A_loc )
       ELSE
         DEALLOCATE( A % MumpsID % irn, A % MumpsID % jcn, &
@@ -768,10 +1128,16 @@ CONTAINS
     END IF
 
     IF(ASSOCIATED(A % ZMumpsID)) THEN
+#ifdef HAVE_MUMPS_DIST_RHS
+      IF(ASSOCIATED(A % ZMumpsID % irhs_loc)) THEN
+        DEALLOCATE( A % ZMumpsID % irhs_loc, A % ZMumpsID % rhs_loc )
+      END IF
+#endif
       IF(ASSOCIATED(A % ZMumpsID % irn_loc)) THEN
         DEALLOCATE( A % ZMumpsID % irn_loc, &
-           A % ZMumpsID % jcn_loc, A % ZMumpsID % Rhs,  &
+           A % ZMumpsID % jcn_loc, &
              A % ZMumpsID % isol_loc, A % ZMumpsID % sol_loc)
+        IF(ASSOCIATED(A % ZMumpsID % Rhs)) DEALLOCATE( A % ZMumpsID % Rhs )
         DEALLOCATE( A % ZMumpsID % A_loc )
       ELSE
         DEALLOCATE( A % ZMumpsID % irn, A % ZMumpsID % jcn, &
@@ -819,7 +1185,6 @@ CONTAINS
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
 
-  REAL, ALLOCATABLE :: dbuf(:)
 
   Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
@@ -1023,9 +1388,7 @@ CONTAINS
       A % SMumpsId % RHS(ip) = b(i)
     END DO
 
-    ALLOCATE( dbuf(A % SMumpsID % n) )
-    dbuf = A % SMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % SMumpsID % RHS, &
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % SMumpsID % RHS, &
       A % SMumpsID % n, MPI_REAL, MPI_SUM, A % SMumpsID % Comm, ierr )
 
  ! Solution:
@@ -1037,11 +1400,8 @@ CONTAINS
     DO i=1,A % SMumpsID % lsol_loc
       A % SMumpsID % RHS(A % SMumpsID % isol_loc(i)) = A % SMumpsID % sol_loc(i)
     END DO
-    dbuf = A % SMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % SMumpsID % RHS, &
-      A % SMumpsID % n, MPI_REAL, MPI_SUM,A %  SMumpsID % Comm, ierr )
-
-    DEALLOCATE(dbuf)
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % SMumpsID % RHS, &
+      A % SMumpsID % n, MPI_REAL, MPI_SUM, A % SMumpsID % Comm, ierr )
 
  ! Select the values which belong to us:
     DO i=1,A % NumberOfRows
@@ -1090,7 +1450,6 @@ CONTAINS
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
 
-  COMPLEX, ALLOCATABLE :: dbuf(:)
 
   LOGICAL :: SerialMode
 
@@ -1259,9 +1618,7 @@ CONTAINS
       A % CMumpsId % RHS(ip) = CMPLX( b(i), b(i+1) )
     END DO
 
-    ALLOCATE( dbuf(A % CMumpsID % n) )
-    dbuf = A % CMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % CMumpsID % RHS, &
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % CMumpsID % RHS, &
       A % CMumpsID % n, MPI_COMPLEX, MPI_SUM, A % CMumpsID % Comm, ierr )
 
     A % CMumpsID % job = 3
@@ -1272,11 +1629,8 @@ CONTAINS
     DO i=1,A % CMumpsID % lsol_loc
       A % CMumpsID % RHS(A % CMumpsID % isol_loc(i)) = A % CMumpsID % sol_loc(i)
     END DO
-    dbuf = A % CMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % CMumpsID % RHS, &
-      A % CMumpsID % N, MPI_COMPLEX, MPI_SUM, A %  CMumpsID % Comm, ierr )
-
-    DEALLOCATE(dbuf)
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % CMumpsID % RHS, &
+      A % CMumpsID % N, MPI_COMPLEX, MPI_SUM, A % CMumpsID % Comm, ierr )
 
  ! Select the values which belong to us:
     DO i=1,A % NumberOfRows,2
@@ -1319,18 +1673,23 @@ CONTAINS
 #  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
-  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
+  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc,nOwnLoc,gStartLoc
   LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled, SerialMode
+  LOGICAL :: UseGathered, PlanOk
 
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
-
-  REAL(KIND=dp), ALLOCATABLE :: dbuf(:)
 
   Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
 
   SerialMode = (ParEnv % PEs <= 1)
+
+  ! Escape hatch, and the way the two redistribution routes get compared: with
+  ! this set the solution comes back through the global gather even when the
+  ! direct mapping is available. One binary, one keyword, everything else equal.
+  UseGathered = ListGetLogical( Solver % Values, &
+          'Linear System Mumps Gathered Solution', stat )
 
   IF ( Factorize .OR. .NOT.ASSOCIATED(A % MumpsID) ) THEN
     CALL FreeMumpsFactorizations(A)
@@ -1380,11 +1739,15 @@ CONTAINS
       n = SIZE(A % ParallelInfo % GlobalDOFs)
 
       ALLOCATE( A % Gorder(n), Owner(n) )
-      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner, &
+              nOwn=nOwnLoc, gStart=gStartLoc )
 
       CALL MPI_ALLREDUCE( SUM(Owner), A % MumpsID % n, &
          1, MPI_INTEGER, MPI_SUM, A % MumpsID % Comm, ierr )
       DEALLOCATE(Owner)
+
+      CALL MumpsSolPlanInit( A, gStartLoc, nOwnLoc, A % MumpsID % n, &
+              A % MumpsID % Comm )
     ELSE
       CALL MPI_ALLREDUCE( A % NumberOfRows, A % MumpsId % n, &
             1, MPI_INTEGER, MPI_MAX, A % Comm, ierr )
@@ -1490,7 +1853,32 @@ CONTAINS
         END DO
       END IF
 
-      ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
+      ! Distributed right-hand side. Every rank offers only its own rows, each
+      ! tagged with its global index in IRHS_loc, and MUMPS sums the rows whose
+      ! index turns up on more than one rank. That summation is exactly how the
+      ! local contributions on a shared row have to be combined, and it is the
+      ! same property ICNTL(18)=3 above already relies on for the coefficients,
+      ! so the global sized gather that used to precede every solve is not
+      ! needed at all. Rows nobody offers would be taken as zero; here every
+      ! local row is offered, as before.
+#ifdef HAVE_MUMPS_DIST_RHS
+      A % MumpsID % icntl(20) = 10 ! distributed rhs
+      A % MumpsID % NRHS = 1
+      A % MumpsID % Nloc_RHS = A % NumberOfRows
+      A % MumpsID % LRHS_loc = A % NumberOfRows
+      ALLOCATE( A % MumpsID % irhs_loc(A % NumberOfRows), &
+                A % MumpsID % rhs_loc(A % NumberOfRows) )
+      DO i=1,A % NumberOfRows
+        A % MumpsID % irhs_loc(i) = A % Gorder(i)
+      END DO
+#endif
+
+      ! No global sized buffer is reserved here. MUMPS does not read RHS while
+      ! ICNTL(21)=1, and the redistribution below only needs one if it has to
+      ! fall back to the gathered route, so it is allocated where that happens.
+      ! Reserving it anyway would give back the per-rank global vector that the
+      ! whole exercise was about removing.
+      A % MumpsID % rhs => NULL()
     END IF
 
     A % MumpsID % job = 4
@@ -1519,39 +1907,53 @@ CONTAINS
       x(i) = A % MumpsID % RHS(i)
     END DO
   ELSE
- ! sum the rhs from all procs. Could be done for neighbours only (i guess):
+ ! Hand over our own rows only; MUMPS sums the shared ones (see ICNTL(20)
+ ! above), which is what the global allreduce used to do here.
  ! ------------------------------------------------------------------------
+#ifdef HAVE_MUMPS_DIST_RHS
+    DO i=1,A % NumberOfRows
+      A % MumpsID % rhs_loc(i) = b(i)
+    END DO
+#else
+    IF(.NOT.ASSOCIATED(A % MumpsID % rhs)) &
+        ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
     A % MumpsID % RHS = 0
     DO i=1,A % NumberOfRows
       ip = A % Gorder(i)
       A % MumpsId % RHS(ip) = b(i)
     END DO
-
-    ALLOCATE( dbuf(A % MumpsID % n) )
-    dbuf = A % MumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % MumpsID % RHS, &
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % MumpsID % RHS, &
       A % MumpsID % n, MPI_DOUBLE_PRECISION, MPI_SUM, A % MumpsID % Comm, ierr )
+#endif
 
  ! Solution:
     A % MumpsID % job = 3
     CALL DMumps(A % MumpsID)
 
- ! Distribute the solution to all:
-    A % MumpsId % Rhs = 0
-    DO i=1,A % MumpsID % lsol_loc
-      A % MumpsID % RHS(A % MumpsID % isol_loc(i)) = A % MumpsID % sol_loc(i)
-    END DO
-    dbuf = A % MumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % MumpsID % RHS, &
-      A % MumpsID % N, MPI_DOUBLE_PRECISION, MPI_SUM,A %  MumpsID % Comm, ierr )
+ ! Distribute the solution onto our own rows. One all-to-all carrying just the
+ ! values that have to move, when the plan could be built; otherwise the old
+ ! route through a vector of global length.
+    PlanOk = .FALSE.
+    IF( .NOT. UseGathered ) &
+        PlanOk = MumpsSolPlanReady( A, A % MumpsID % isol_loc, &
+            A % MumpsID % lsol_loc, 1, A % MumpsID % Comm )
+    IF( PlanOk ) THEN
+      CALL MumpsScatterSolutionR( A, A % MumpsID % sol_loc, x, A % MumpsID % Comm )
+    ELSE
+      IF(.NOT.ASSOCIATED(A % MumpsID % rhs)) &
+          ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
+      A % MumpsId % Rhs = 0
+      DO i=1,A % MumpsID % lsol_loc
+        A % MumpsID % RHS(A % MumpsID % isol_loc(i)) = A % MumpsID % sol_loc(i)
+      END DO
+      CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % MumpsID % RHS, &
+        A % MumpsID % N, MPI_DOUBLE_PRECISION, MPI_SUM, A % MumpsID % Comm, ierr )
 
-    DEALLOCATE(dbuf)
-
- ! Select the values which belong to us:
-    DO i=1,A % NumberOfRows
-      ip = A % Gorder(i)
-      x(i) = A % MumpsId % RHS(ip)
-    END DO
+      DO i=1,A % NumberOfRows
+        ip = A % Gorder(i)
+        x(i) = A % MumpsId % RHS(ip)
+      END DO
+    END IF
   END IF
 
   FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
@@ -1587,18 +1989,23 @@ CONTAINS
 #  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
-  INTEGER :: i,j,k,l,n,ip,ierr,icntlft,nzloc
+  INTEGER :: i,j,k,l,n,ip,ierr,icntlft,nzloc,nOwnLoc,gStartLoc
   LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled, SerialMode
+  LOGICAL :: UseGathered, PlanOk
 
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
-
-  COMPLEX(KIND=dp), ALLOCATABLE :: dbuf(:)
 
   Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
 
   SerialMode = (ParEnv % PEs <= 1)
+
+  ! Escape hatch, and the way the two redistribution routes get compared: with
+  ! this set the solution comes back through the global gather even when the
+  ! direct mapping is available. One binary, one keyword, everything else equal.
+  UseGathered = ListGetLogical( Solver % Values, &
+          'Linear System Mumps Gathered Solution', stat )
 
   IF ( Factorize .OR. .NOT.ASSOCIATED(A % ZMumpsID) ) THEN
     CALL FreeMumpsFactorizations(A)
@@ -1629,9 +2036,19 @@ CONTAINS
     ELSE IF(ASSOCIATED(A % ParallelInfo)) THEN
       n = SIZE(A % ParallelInfo % GlobalDOFs)
       ALLOCATE( A % Gorder(n), Owner(n) )
-      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner, &
+              nOwn=nOwnLoc, gStart=gStartLoc )
       CALL MPI_ALLREDUCE( SUM(Owner)/2,A % ZMumpsID % n,1,MPI_INTEGER, MPI_SUM,A % ZMumpsID % Comm,ierr )
       DEALLOCATE(Owner)
+
+      ! The plan works in complex block indices. A block owns two consecutive
+      ! scalar rows, so both a rank's owned scalar row count and the base it
+      ! starts numbering from are even; if they are not, the pairing assumption
+      ! does not hold and no plan is offered.
+      IF( MODULO(gStartLoc,2) == 0 .AND. MODULO(nOwnLoc,2) == 0 ) THEN
+        CALL MumpsSolPlanInit( A, gStartLoc/2, nOwnLoc/2, A % ZMumpsID % n, &
+                A % ZMumpsID % Comm )
+      END IF
     ELSE
       CALL MPI_ALLREDUCE( A % NumberOfRows/2, A % ZMumpsId % n, 1, MPI_INTEGER, MPI_MAX, A % Comm, ierr )
 
@@ -1715,7 +2132,27 @@ CONTAINS
         END DO
       END IF
 
-      ALLOCATE(A % ZMumpsID % rhs(A % ZMumpsId % n))
+      ! Distributed right-hand side, as in the real path above: our own block
+      ! rows only, tagged with their global block index, and MUMPS sums the
+      ! ones that several ranks offer.
+#ifdef HAVE_MUMPS_DIST_RHS
+      A % ZMumpsID % icntl(20) = 10 ! distributed rhs
+      A % ZMumpsID % NRHS = 1
+      A % ZMumpsID % Nloc_RHS = A % NumberOfRows / 2
+      A % ZMumpsID % LRHS_loc = A % NumberOfRows / 2
+      ALLOCATE( A % ZMumpsID % irhs_loc(A % NumberOfRows/2), &
+                A % ZMumpsID % rhs_loc(A % NumberOfRows/2) )
+      DO i=1,A % NumberOfRows,2
+        A % ZMumpsID % irhs_loc(i/2+1) = (A % Gorder(i)-1)/2 + 1
+      END DO
+#endif
+
+      ! No global sized buffer is reserved here. MUMPS does not read RHS while
+      ! ICNTL(21)=1, and the redistribution below only needs one if it has to
+      ! fall back to the gathered route, so it is allocated where that happens.
+      ! Reserving it anyway would give back the per-rank global vector that the
+      ! whole exercise was about removing.
+      A % ZMumpsID % rhs => NULL()
     END IF
 
     A % ZMumpsID % job = 4
@@ -1748,37 +2185,50 @@ CONTAINS
       x(i+1) = AIMAG( A % ZMumpsID % RHS(ip) )
     END DO
   ELSE
- ! sum the rhs from all procs:
+ ! Our own block rows only; MUMPS sums the shared ones.
+#ifdef HAVE_MUMPS_DIST_RHS
+    DO i=1,A % NumberOfRows,2
+      A % ZMumpsID % rhs_loc(i/2+1) = CMPLX(b(i), b(i+1), KIND=dp)
+    END DO
+#else
+    IF(.NOT.ASSOCIATED(A % ZMumpsID % rhs)) &
+        ALLOCATE(A % ZMumpsID % rhs(A % ZMumpsId % n))
     A % ZMumpsID % RHS = 0
     DO i=1,A % NumberOfRows,2
       ip = (A % Gorder(i)-1)/2+1
       A % ZMumpsId % RHS(ip) = CMPLX(b(i), b(i+1), KIND=dp)
     END DO
-    ALLOCATE( dbuf(A % ZMumpsID % n) )
-    dbuf = A % ZMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % ZMumpsID % RHS, &
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % ZMumpsID % RHS, &
       A % ZMumpsID % n, MPI_DOUBLE_COMPLEX, MPI_SUM, A % ZMumpsID % Comm, ierr )
+#endif
 
     A % ZMumpsID % job = 3
     CALL ZMumps(A % ZMumpsID)
 
- ! Distribute the solution to all:
-    A % ZMumpsId % Rhs = 0
-    DO i=1,A % ZMumpsID % lsol_loc
-      A % ZMumpsID % RHS(A % ZMumpsID % isol_loc(i)) = A % ZMumpsID % sol_loc(i)
-    END DO
-    dbuf = A % ZMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % ZMumpsID % RHS, &
-      A % ZMumpsID % N, MPI_DOUBLE_COMPLEX, MPI_SUM,A %  ZMumpsID % Comm, ierr )
+ ! Distribute the solution onto our own rows; see the real path for the two
+ ! routes.
+    PlanOk = .FALSE.
+    IF( .NOT. UseGathered ) &
+        PlanOk = MumpsSolPlanReady( A, A % ZMumpsID % isol_loc, &
+            A % ZMumpsID % lsol_loc, 2, A % ZMumpsID % Comm )
+    IF( PlanOk ) THEN
+      CALL MumpsScatterSolutionZ( A, A % ZMumpsID % sol_loc, x, A % ZMumpsID % Comm )
+    ELSE
+      IF(.NOT.ASSOCIATED(A % ZMumpsID % rhs)) &
+          ALLOCATE(A % ZMumpsID % rhs(A % ZMumpsId % n))
+      A % ZMumpsId % Rhs = 0
+      DO i=1,A % ZMumpsID % lsol_loc
+        A % ZMumpsID % RHS(A % ZMumpsID % isol_loc(i)) = A % ZMumpsID % sol_loc(i)
+      END DO
+      CALL MPI_ALLREDUCE( MPI_IN_PLACE, A % ZMumpsID % RHS, &
+        A % ZMumpsID % N, MPI_DOUBLE_COMPLEX, MPI_SUM, A % ZMumpsID % Comm, ierr )
 
-    DEALLOCATE(dbuf)
-
- ! Select the values which belong to us:
-    DO i=1,A % NumberOfRows,2
-      ip = (A % Gorder(i)-1)/2+1
-      x(i)   = REAL( A % ZMumpsId % RHS(ip), KIND=dp )
-      x(i+1) = AIMAG( A % ZMumpsId % RHS(ip) )
-    END DO
+      DO i=1,A % NumberOfRows,2
+        ip = (A % Gorder(i)-1)/2+1
+        x(i)   = REAL( A % ZMumpsId % RHS(ip), KIND=dp )
+        x(i+1) = AIMAG( A % ZMumpsId % RHS(ip) )
+      END DO
+    END IF
   END IF
 
   FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )

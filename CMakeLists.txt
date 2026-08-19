@@ -591,6 +591,35 @@ IF(Mumps_FOUND)
   SET(HAVE_MUMPS TRUE)
   MARK_AS_ADVANCED(HAVE_MUMPS)
   # LINK_DIRECTORIES(${MUMPS_LIBRARIES})
+
+  # The distributed right-hand side -- ICNTL(20)=10 with RHS_loc, IRHS_loc,
+  # Nloc_RHS and LRHS_loc -- appeared in MUMPS 5.3. Probe for the field itself
+  # rather than compare version strings: the field is what the code needs, and
+  # it has to be present in both the real and the complex struct.
+  SET(_mumps_dist_rhs TRUE)
+  FOREACH(_h dmumps_struc.h zmumps_struc.h)
+    SET(_mumps_hit "")
+    FOREACH(_d ${Mumps_INCLUDE_DIR})
+      IF(EXISTS "${_d}/${_h}")
+        FILE(STRINGS "${_d}/${_h}" _mumps_hit REGEX "IRHS_loc")
+      ENDIF()
+      IF(_mumps_hit)
+        BREAK()
+      ENDIF()
+    ENDFOREACH()
+    IF(NOT _mumps_hit)
+      SET(_mumps_dist_rhs FALSE)
+    ENDIF()
+  ENDFOREACH()
+
+  IF(_mumps_dist_rhs)
+    SET(HAVE_MUMPS_DIST_RHS TRUE)
+    MARK_AS_ADVANCED(HAVE_MUMPS_DIST_RHS)
+    MESSAGE(STATUS "Mumps has the distributed right-hand side")
+  ELSE()
+    MESSAGE(STATUS "Mumps has no distributed right-hand side (needs 5.3 or "
+                   "newer); the right-hand side will be gathered instead")
+  ENDIF()
 ENDIF()
 
 IF(Hypre_FOUND)
