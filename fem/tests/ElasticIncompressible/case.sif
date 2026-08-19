@@ -1,0 +1,122 @@
+! The linear mixed formulation, "Incompressible", through both solvers on one
+! problem against one reference value. A truly incompressible material solved for
+! a displacement and a pressure, plane strain, and sheared rather than pressed --
+! a clamped block admits no volume preserving deformation at all, so a normal load
+! here would pin nothing but zero.
+!
+! What it guards:
+!
+! - the pressure unknown and the div u = 0 constraint, as StressSolve assembles
+!   them: the momentum row's pressure column and the constraint row. The two
+!   solvers agree to eight digits, which no reference value of its own would show;
+! - that "Poisson Ratio" is IGNORED. The formulation takes mu = E/3, the ratio
+!   being 1/2 by construction rather than read, so the 0.1 below must not reach the
+!   answer. Reading it instead would give mu = E/2.2 and a norm 27% larger;
+! - the pressure in the reported stress, sigma = 2 mu eps - p I, which the third
+!   solver's reference value pins. Without it the stress components are wrong by
+!   the whole pressure and the displacement norm says nothing.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Serendipity P Elements = False
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+! The ratio is deliberately far from 1/2: a formulation that read it would be
+! loud, and one that ignores it as this one does cannot notice the value at all.
+Material 1
+  Density = Real 0
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.1
+End
+
+! "Plane Stress" is here on purpose and must have NO effect: div u = 0 in the plane
+! is the plane strain constraint, and StressSolve resolves the contradiction by
+! ignoring the keyword -- which every Maxwell sif in the tree relies on, since they
+! all set both. The reference values below are the plane strain ones, so a
+! formulation that let the keyword through would fail this test. ElasticSolve warns
+! where StressSolve says nothing.
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = True
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "sSol[sDisp:2 sPres:1]"
+  Element = p:1 b:3
+  Incompressible = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Nonlinear System Max Iterations = 30
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Solver 2
+  Equation = "Elasticity Analysis"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "eSol[eDisp:2 ePres:1]"
+  Element = p:1 b:3
+  Incompressible = Logical True
+  Large Deflection = False
+  Displace Mesh = Logical False
+  Calculate Stresses = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Nonlinear System Max Iterations = 30
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+  Show Norm Index = 1
+
+  Variable 1 = String "Stress_xx"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_xy"
+  Operator 2 = String "max abs"
+  Variable 3 = String "ePres"
+  Operator 3 = String "max abs"
+End
+
+! Clamped below, sheared above, the sides free: volume preserving, so the
+! constraint permits a deformation and the answer is not trivially zero.
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  sDisp 1 = Real 0
+  sDisp 2 = Real 0
+  eDisp 1 = Real 0
+  eDisp 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Force 1 = Real 0.1
+End
+
+Solver 1 :: Reference Norm = Real 3.83178687E-02
+Solver 2 :: Reference Norm = Real 3.83178687E-02
+! Stress_xx, which is 2 mu eps_xx MINUS the pressure: dropping that subtraction
+! moves it by nearly the whole pressure, 1.02 of this 1.16.
+Solver 3 :: Reference Norm = Real 1.15923585E+00
