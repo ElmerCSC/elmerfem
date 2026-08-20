@@ -4308,6 +4308,13 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
           IF (ASSOCIATED(G % DampValues)) THEN
             A % Values(kr+1) = -G % Dampvalues(j) * omega
             A % Values(ki)   =  G % Dampvalues(j) * omega
+          ELSE
+            ! The damping is what couples the real and imaginary blocks. Without it
+            ! the coupling is zero -- but it must still be written, as A is freshly
+            ! allocated here and these are the only entries the loop would leave
+            ! untouched.
+            A % Values(kr+1) = 0.0_dp
+            A % Values(ki)   = 0.0_dp
           END IF
           A % Values(ki+1) =  G % Values(j)
           IF (ASSOCIATED(G % MassValues)) A % Values(ki+1) = &
