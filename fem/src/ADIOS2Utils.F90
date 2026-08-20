@@ -50,6 +50,7 @@ INTEGER, PARAMETER :: ADIOS2_MAX_VARNAME_LEN = 512
 ! NOTE: Global arrays are catenated in first dimension across ranks. 
 ! NOTE: Local arrays are named part_#/<varname> where # is MPI rank
 
+
 TYPE :: AdiosWriter_t
   TYPE(adios2_adios), PRIVATE :: adios
   TYPE(adios2_io), PRIVATE :: io
@@ -78,8 +79,149 @@ TYPE :: AdiosWriter_t
   FINAL :: finalize_sub
 END TYPE AdiosWriter_t
 
+TYPE, extends(AdiosWriter_t) :: AdiosReader_t
+
+  CONTAINS
+  PROCEDURE, PRIVATE :: read_real_t
+  
+  PROCEDURE, PUBLIC :: init => init_adios_r_t
+
+  GENERIC, PUBLIC :: read_data => read_real_t
+
+END TYPE AdiosReader_t
 
 CONTAINS
+
+!----------------------------------------
+! Reader specific subroutines
+
+SUBROUTINE finalize_sub_r(this)
+  IMPLICIT NONE
+  TYPE(AdiosReader_t) :: this
+  integer :: ierr
+  ierr = this % finalize()
+END SUBROUTINE
+
+SUBROUTINE finalize_adios_r_t(this)
+  IMPLICIT NONE
+  CLASS(AdiosReader_t) :: this
+  INTEGER :: IERR
+
+  IF ((.NOT. this % finalized) .AND. this % initialized) THEN
+    call adios2_flush_all(this%adios, ierr)
+    CALL adios2_close(this%engine, ierr)
+    CALL adios2_finalize(this%adios, ierr)
+  END IF
+  this % finalized = .true.
+  this%initialized = .false.
+  
+END SUBROUTINE finalize_adios_r_t
+
+FUNCTION init_adios_r_t(this, fname, array_kind, write_offsets) result(ierr)
+  IMPLICIT NONE
+  CLASS(AdiosReader_t) :: this
+  INTEGER :: ierr
+  INTEGER, OPTIONAL :: array_kind
+  LOGICAL, OPTIONAL :: write_offsets
+  CHARACTER(*), INTENT(IN) :: fname
+
+  if (present(array_kind)) then
+    this % array_kind = array_kind
+  else
+    this % array_kind = ADIOS2_ARRAY_GLOBAL
+  end if
+
+  call adios2_init(this % adios, parenv % activecomm, ierr)
+  call adios2_declare_io(this % io, this % adios, "ioReader", ierr)
+  this %finalized = .false.
+  call adios2_open(this % engine, this % io, fname, adios2_mode_read, ierr)
+  IF (ierr .ne. 0) THEN
+      CALL Warn("init_adios_r_t", "Failed to open stream " // fname)
+      this % initialized =.false.
+      RETURN
+  END IF
+  this % initialized = .true.
+END FUNCTION init_adios_r_t
+
+SUBROUTINE read_real_t(this, varname, X)
+  IMPLICIT NONE
+!---------
+  CLASS(AdiosReader_t) :: this
+  CHARACTER(*), INTENT(IN) :: varname
+  INTEGER :: ierr
+  REAL(KIND=dp), ALLOCATABLE, INTENT(INOUT) :: X(:)
+!---------
+  TYPE(adios2_variable) :: var
+  INTEGER(KIND=8), dimension(1) :: start_dims, count_dims
+  INTEGER :: ndims
+  INTEGER(KIND=8), ALLOCATABLE :: shape_dims(:)
+  integer(kind=8), dimension(1:2) :: bounds
+  CHARACTER(ADIOS2_MAX_VARNAME_LEN) :: adios_varname
+
+  adios_varname = trim(varname)
+  bounds = -1
+
+  IF (.NOT. this % initialized) THEN
+    Call Warn("AdiosReader_t % read_real_t", "Reader not initialized")
+    RETURN
+  END IF
+
+  call adios2_begin_step(this % engine,ierr)
+  print *, 'reading: '// adios_varname
+  call adios2_inquire_variable(var, this % io, adios_varname, ierr)
+
+  IF(.NOT. var % valid) THEN
+    Call Warn("AdiosReader_t % read_real_t", "Variable is not valid")
+    RETURN
+  END IF
+
+  this % write_offsets = .FALSE.
+
+  call adios2_variable_shape(shape_dims, ndims, var, ierr)
+
+  SELECT CASE (this % array_kind)
+    CASE (ADIOS2_ARRAY_GLOBAL)
+      BLOCK
+        INTEGER(kind=8), dimension(1) :: block_shape_dims, block_start_dims, block_count_dims
+        INTEGER(kind=8), ALLOCATABLE :: offset_shape(:)
+        INTEGER :: offset_ndim
+
+        TYPE(adios2_variable) :: offset_var
+
+        block_shape_dims(1) = parenv % PEs
+        block_start_dims(1) = parenv % mype
+        block_count_dims(1) = 2
+        CALL adios2_inquire_variable(offset_var, this % io,  adios_varname//'_offsets', ierr)
+        CALL adios2_variable_shape(offset_shape, offset_ndim, offset_var, ierr)
+
+        ! Last Pe
+        IF (offset_shape(1) == parenv % myPE+1) block_count_dims(1) = 1
+
+        CALL adios2_set_selection(offset_var, 1, block_start_dims, block_count_dims, ierr)
+        CALL adios2_get(this % engine, offset_var, bounds, adios2_mode_read, ierr)
+        CALL adios2_perform_gets(this % engine, ierr)
+
+        IF (block_count_dims(1) == 1) bounds(2) = shape_dims(1)
+        IF (block_count_dims(1) == 2) bounds(2) = bounds(2)-1
+        
+        IF (.not. (allocated(X) .and. size(X,1) == bounds(2)-bounds(1)+1) ) THEN
+          ALLOCATE(X(bounds(2)-bounds(1)+1))
+        END IF
+      END BLOCK
+      call adios2_set_selection(var, 1, (/bounds(1)/), (/bounds(2)-bounds(1)+1/), ierr)
+
+      call adios2_get_dp_1d(this % engine, var, X, adios2_mode_read, ierr)
+      call adios2_perform_gets(this % engine, ierr)
+
+    CASE (ADIOS2_ARRAY_LOCAL)
+    ! Not implemented yet
+    CASE DEFAULT
+  END SELECT
+
+END SUBROUTINE read_real_t
+
+!----------------------------------------
+! Writer specific subroutines
 
 SUBROUTINE begin_step(this)
 
@@ -91,14 +233,12 @@ SUBROUTINE begin_step(this)
     this % instep = .true.
   end if
 
-
 END SUBROUTINE
 
 SUBROUTINE end_step(this)
 
   class(AdiosWriter_t) :: this
   integer :: ierr
-
 
   if (this % instep .and. this % initialized) then
 
@@ -185,21 +325,15 @@ SUBROUTINE make_varname(this, varname, adios_varname)
   end if
 END SUBROUTINE
 
-FUNCTION init_adios_t(this, fname, array_kind, mode, write_offsets) result(ierr)
+FUNCTION init_adios_t(this, fname, array_kind, write_offsets) result(ierr)
   IMPLICIT NONE
   CLASS(AdiosWriter_t) :: this
   INTEGER :: ierr
   CHARACTER(*), intent(in) :: fname
-  INTEGER, OPTIONAL :: mode
   INTEGER, OPTIONAL :: array_kind
   LOGICAL, OPTIONAL :: write_offsets
-  INTEGER :: mode_, array_kind_
+  INTEGER :: array_kind_
 
-  IF (present(mode)) THEN
-    mode_ = mode
-  else
-    mode_ = adios2_mode_write
-  END IF
 
   if (present(array_kind)) then
     this % array_kind = array_kind
@@ -214,7 +348,7 @@ FUNCTION init_adios_t(this, fname, array_kind, mode, write_offsets) result(ierr)
 
   CALL adios2_init(this % adios, parenv % activecomm, ierr)
   CALL adios2_declare_io(this % io, this % adios, "ioWriter", ierr)
-  CALL adios2_open(this % engine, this % io, fname, mode_, ierr)
+  CALL adios2_open(this % engine, this % io, fname, adios2_mode_write, ierr)
   this % finalized = .false.
   this % initialized = .true.
 
