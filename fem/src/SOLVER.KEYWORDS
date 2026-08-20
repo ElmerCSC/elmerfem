@@ -4,6 +4,7 @@ $ _nexp__=10
 $ for(_i__=1:10) for(_j__=1:10) "Solver:String: 'Tensor Field " _i2str__(_i__) " Component " _i2str__(_j__) "'"
 $ for(_i__=1:_nexp__) "Solver:Integer: 'Exported Variable " _i2str__(_i__) " DOFs'"
 $ for(_i__=1:_nexp__) "Solver:Logical: 'Exported Variable " _i2str__(_i__) " Output'"
+$ for(_i__=1:_nexp__) "Solver:String: 'Diffusion Current Variable " _i2str__(_i__) "'"
 $ for(_i__=1:_nexp__) for(_j__=1:_ndim__) "Solver:String: 'Vector Field " _i2str__(_i__) " Component " _i2str__(_j__) "'"
 Simulation:Real:    'Initial Parameter 1'
 Solver:Logical:     'Fixed Parameter 1'
@@ -502,6 +503,7 @@ Boundary:Integer:   'Body Id'
 Boundary:Integer:   'Boundary Condition'
 Boundary:String:    'Name'
 Constants:Real:     'Boltzmann Constant'
+Constants:Real:     'Faraday Constant'
 Constants:Real:     'Gravity'
 Constants:Real:     'Permeability Of Vacuum'
 Constants:Real:     'Permittivity Of Vacuum'
@@ -904,6 +906,7 @@ Solver:Integer:     'BoomerAMG Num Sweeps'
 Solver:Integer:     'BoomerAMG Relax Type'
 Solver:Integer:     'BoomerAMG Smooth Type'
 Solver:Integer:     'Capacitance Bodies'
+Solver:Integer:     'Diffusion Current Species'
 Solver:Integer:     'Eigen Mode'
 Solver:Integer:     'Eigen System Lanczos Vectors'
 Solver:Integer:     'Eigen System Max Iterations'

@@ -85,8 +85,15 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
     
 !------------------------------------------------------------------------------
-!>  Solve the Poisson equation for the electric potential and compute the 
-!>  volume current and Joule heating
+!> Solve the Poisson equation for the electric potential and compute the
+!> volume current and Joule heating.
+!>
+!> A multi-ion diffusion-current source is enabled with
+!> `Diffusion Current Species = Integer N` and the indexed solver keywords
+!> `Diffusion Current Variable i = String "name"`. Each scalar species field
+!> uses the material properties `<name> Diffusivity` and `<name> Ion Charge`.
+!> The assembled current is
+!> `-conductivity*grad(potential) - Faraday*sum(z_i*D_i*grad(c_i))`.
 !------------------------------------------------------------------------------
   SUBROUTINE StatCurrentSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -102,6 +109,11 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
+     TYPE DiffusionSpecies_t
+       CHARACTER(LEN=MAX_NAME_LEN) :: Name
+       TYPE(Variable_t), POINTER :: Variable
+     END TYPE DiffusionSpecies_t
+
      TYPE(Matrix_t), POINTER  :: StiffMatrix
      TYPE(Element_t), POINTER :: CurrentElement
      TYPE(Nodes_t) :: ElementNodes
@@ -112,26 +124,30 @@ END SUBROUTINE StatCurrentSolver_Init
      REAL (KIND=DP), POINTER :: EleC(:)
      REAL (KIND=DP), POINTER :: Cwrk(:,:,:)
      REAL (KIND=DP), ALLOCATABLE ::  Conductivity(:,:,:), &
-       LocalStiffMatrix(:,:), Load(:), LocalForce(:)
+       LocalStiffMatrix(:,:), Load(:), LocalForce(:), &
+       DiffusionSpeciesValues(:,:), DiffusionSpeciesCharge(:), &
+       DiffusionSpeciesDiffusivity(:,:,:,:)
+
+     TYPE(DiffusionSpecies_t), ALLOCATABLE :: DiffusionSpecies(:)
 
      REAL (KIND=DP) :: Norm, HeatingTot, VolTot, CurrentTot, ControlTarget, ControlScaling = 1.0
      REAL (KIND=DP) :: Resistance, PotDiff
-     REAL (KIND=DP) :: at, st, at0
+     REAL (KIND=DP) :: at, st, at0, FaradayConstant
 
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER, POINTER :: PotentialPerm(:)
      INTEGER :: i, j, k, n, t, istat, bf_id, LocalNodes, Dim, &
-         iter, NonlinearIter
+         iter, NonlinearIter, DiffusionSpeciesCount
  
      LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC
      LOGICAL :: CalculateField = .FALSE., ConstantWeights
      LOGICAL :: CalculateCurrent, CalculateHeating, CalculateNodalHeating
-     LOGICAL :: ControlPower, ControlCurrent, Control
+     LOGICAL :: ControlPower, ControlCurrent, Control, UseDiffusionCurrent
 
      TYPE(ValueList_t), POINTER :: Params
      TYPE(Variable_t), POINTER :: Var
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, Keyword, SpeciesName
 
      LOGICAL :: GetCondAtIp
      TYPE(ValueHandle_t) :: CondAtIp_h
@@ -195,6 +211,66 @@ END SUBROUTINE StatCurrentSolver_Init
        ControlTarget = GetCReal( Params,'Current Control',ControlCurrent)
      END IF
      Control = ControlPower .OR. ControlCurrent
+
+     DiffusionSpeciesCount = 0
+     DiffusionSpeciesCount = ListGetInteger( Params, &
+         'Diffusion Current Species', UseDiffusionCurrent, minv=1 )
+     IF ( .NOT. UseDiffusionCurrent ) DiffusionSpeciesCount = 0
+
+     IF ( UseDiffusionCurrent .AND. Control ) THEN
+       CALL Fatal( 'StatCurrentSolver', &
+           'Diffusion current is not compatible with power/current control' )
+     END IF
+
+     IF ( UseDiffusionCurrent .AND. &
+         ListGetLogical( Params, 'Adaptive Mesh Refinement', GotIt ) ) THEN
+       CALL Fatal( 'StatCurrentSolver', &
+           'Diffusion current is not yet included in adaptive error indicators' )
+     END IF
+
+     FaradayConstant = ListGetConstReal( Model % Constants, &
+         'Faraday Constant', GotIt )
+     IF ( .NOT. GotIt ) FaradayConstant = 96485.33212_dp
+
+     ALLOCATE( DiffusionSpecies(MAX(1,DiffusionSpeciesCount)), &
+         DiffusionSpeciesValues(Model % MaxElementNodes, &
+             MAX(1,DiffusionSpeciesCount)), &
+         DiffusionSpeciesCharge(MAX(1,DiffusionSpeciesCount)), &
+         DiffusionSpeciesDiffusivity(3,3,Model % MaxElementNodes, &
+             MAX(1,DiffusionSpeciesCount)), STAT=istat )
+     IF ( istat /= 0 ) THEN
+       CALL Fatal( 'StatCurrentSolver', &
+           'Diffusion-current memory allocation error' )
+     END IF
+
+     DO i = 1, MAX(1,DiffusionSpeciesCount)
+       NULLIFY( DiffusionSpecies(i) % Variable )
+       DiffusionSpecies(i) % Name = ''
+     END DO
+
+     DO i = 1, DiffusionSpeciesCount
+       WRITE( Keyword, '(A,I0)' ) 'Diffusion Current Variable ', i
+       SpeciesName = ListGetString( Params, TRIM(Keyword), GotIt )
+       IF ( .NOT. GotIt .OR. LEN_TRIM(SpeciesName) == 0 ) THEN
+         WRITE( Message, '(A,I0)' ) &
+             'Missing Diffusion Current Variable ', i
+         CALL Fatal( 'StatCurrentSolver', Message )
+       END IF
+
+       DiffusionSpecies(i) % Name = TRIM(SpeciesName)
+       DiffusionSpecies(i) % Variable => VariableGet( &
+           Solver % Mesh % Variables, TRIM(SpeciesName) )
+       IF ( .NOT. ASSOCIATED(DiffusionSpecies(i) % Variable) ) THEN
+         CALL Fatal( 'StatCurrentSolver', &
+             'Diffusion-current species variable not found: '// &
+             TRIM(SpeciesName) )
+       END IF
+       IF ( DiffusionSpecies(i) % Variable % DOFs /= 1 ) THEN
+         CALL Fatal( 'StatCurrentSolver', &
+             'Diffusion-current species must be scalar: '// &
+             TRIM(SpeciesName) )
+       END IF
+     END DO
 
      ! To obtain convergence rescale the potential to the original BCs
      IF( Control ) THEN
@@ -397,6 +473,11 @@ END SUBROUTINE StatCurrentSolver_Init
              END DO
            END IF
          END IF
+
+         IF ( UseDiffusionCurrent ) THEN
+           CALL GetDiffusionCurrentElementData( &
+               CurrentElement, n, NodeIndexes )
+         END IF
            
          !------------------------------------------------------------------------------
          !      Get element local matrix, and rhs vector
@@ -586,12 +667,123 @@ END SUBROUTINE StatCurrentSolver_Init
           'Nodal Joule Heating')
     END IF
 
+    DEALLOCATE( DiffusionSpecies, DiffusionSpeciesValues, &
+        DiffusionSpeciesCharge, DiffusionSpeciesDiffusivity )
+
     CALL DefaultFinish()
     
 
 !------------------------------------------------------------------------------
  
    CONTAINS
+
+!------------------------------------------------------------------------------
+!> Read the species fields and material coefficients for one bulk element.
+!------------------------------------------------------------------------------
+  SUBROUTINE GetDiffusionCurrentElementData( Element, n, NodeIndexes )
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, NodeIndexes(:)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: Material
+    REAL(KIND=dp), POINTER :: Dwrk(:,:,:)
+    INTEGER :: i, j, k, Species
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+    k = ListGetInteger( Model % Bodies(Element % BodyId) % Values, &
+        'Material', minv=1, maxv=Model % NumberOfMaterials )
+    Material => Model % Materials(k) % Values
+    NULLIFY( Dwrk )
+
+    DiffusionSpeciesValues(:,1:DiffusionSpeciesCount) = 0.0_dp
+    DiffusionSpeciesCharge(1:DiffusionSpeciesCount) = 0.0_dp
+    DiffusionSpeciesDiffusivity(:,:,:,1:DiffusionSpeciesCount) = 0.0_dp
+
+    DO Species = 1, DiffusionSpeciesCount
+      IF ( ANY(DiffusionSpecies(Species) % Variable % &
+          Perm(NodeIndexes(1:n)) <= 0) ) THEN
+        CALL Fatal( 'StatCurrentSolver', &
+            'Diffusion-current species is undefined on an active element: '// &
+            TRIM(DiffusionSpecies(Species) % Name) )
+      END IF
+
+      DiffusionSpeciesValues(1:n,Species) = &
+          DiffusionSpecies(Species) % Variable % Values( &
+          DiffusionSpecies(Species) % Variable % Perm(NodeIndexes(1:n)) )
+
+      CALL ListGetRealArray( Material, &
+          TRIM(DiffusionSpecies(Species) % Name)//' Diffusivity', &
+          Dwrk, n, NodeIndexes, Found )
+      IF ( .NOT. Found ) THEN
+        CALL Fatal( 'StatCurrentSolver', &
+            'Missing diffusivity for diffusion-current species: '// &
+            TRIM(DiffusionSpecies(Species) % Name) )
+      END IF
+
+      IF ( SIZE(Dwrk,1) == 1 ) THEN
+        DO i = 1, 3
+          DiffusionSpeciesDiffusivity(i,i,1:n,Species) = &
+              Dwrk(1,1,1:n)
+        END DO
+      ELSE IF ( SIZE(Dwrk,2) == 1 ) THEN
+        DO i = 1, MIN(3,SIZE(Dwrk,1))
+          DiffusionSpeciesDiffusivity(i,i,1:n,Species) = &
+              Dwrk(i,1,1:n)
+        END DO
+      ELSE
+        DO i = 1, MIN(3,SIZE(Dwrk,1))
+          DO j = 1, MIN(3,SIZE(Dwrk,2))
+            DiffusionSpeciesDiffusivity(i,j,1:n,Species) = &
+                Dwrk(i,j,1:n)
+          END DO
+        END DO
+      END IF
+
+      DiffusionSpeciesCharge(Species) = ListGetConstReal( Material, &
+          TRIM(DiffusionSpecies(Species) % Name)//' Ion Charge', Found )
+      IF ( .NOT. Found ) THEN
+        CALL Fatal( 'StatCurrentSolver', &
+            'Missing ion charge for diffusion-current species: '// &
+            TRIM(DiffusionSpecies(Species) % Name) )
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetDiffusionCurrentElementData
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Compute F sum_i z_i D_i grad(c_i) at one integration point.
+!------------------------------------------------------------------------------
+  SUBROUTINE DiffusionGradientCurrentAtIP( n, Basis, dBasisdx, Current )
+!------------------------------------------------------------------------------
+    INTEGER :: n
+    REAL(KIND=dp) :: Basis(:), dBasisdx(:,:), Current(:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: SpeciesGradient(3), DiffusivityAtIP
+    INTEGER :: i, j, Species
+!------------------------------------------------------------------------------
+    Current = 0.0_dp
+    DO Species = 1, DiffusionSpeciesCount
+      SpeciesGradient = 0.0_dp
+      DO j = 1, DIM
+        SpeciesGradient(j) = SUM( dBasisdx(1:n,j) * &
+            DiffusionSpeciesValues(1:n,Species) )
+      END DO
+
+      DO i = 1, DIM
+        DO j = 1, DIM
+          DiffusivityAtIP = SUM( &
+              DiffusionSpeciesDiffusivity(i,j,1:n,Species) * &
+              Basis(1:n) )
+          Current(i) = Current(i) + FaradayConstant * &
+              DiffusionSpeciesCharge(Species) * DiffusivityAtIP * &
+              SpeciesGradient(j)
+        END DO
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE DiffusionGradientCurrentAtIP
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Compute the Current and Joule Heating at model nodes.
@@ -614,7 +806,8 @@ END SUBROUTINE StatCurrentSolver_Init
     REAL(KIND=DP) :: SqrtElementMetric, ElemVol
     REAL(KIND=dp) :: ElementPot(Model % MaxElementNodes)
     REAL(KIND=dp) :: Current(3)
-    REAL(KIND=dp) :: s, ug, vg, wg, Grad(3), EpsGrad(3)
+    REAL(KIND=dp) :: s, ug, vg, wg, Grad(3), EpsGrad(3), &
+        DiffusionGradientCurrent(3)
     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
     REAL(KIND=dp) :: HeatingDensity, x, y, z
     INTEGER, POINTER :: NodeIndexes(:)
@@ -703,6 +896,10 @@ END SUBROUTINE StatCurrentSolver_Init
            END DO
          END IF
        END IF
+
+       IF ( UseDiffusionCurrent ) THEN
+         CALL GetDiffusionCurrentElementData( Element, n, NodeIndexes )
+       END IF
          
 !------------------------------------------------------------------------------
 ! Loop over Gauss integration points
@@ -758,6 +955,12 @@ END SUBROUTINE StatCurrentSolver_Init
             END DO
           END IF
 
+          DiffusionGradientCurrent = 0.0_dp
+          IF ( UseDiffusionCurrent ) THEN
+            CALL DiffusionGradientCurrentAtIP( n, Basis, dBasisdx, &
+                DiffusionGradientCurrent )
+          END IF
+
             
           VolTot = VolTot + s
 
@@ -768,7 +971,8 @@ END SUBROUTINE StatCurrentSolver_Init
             HeatingDensity = HeatingDensity + &
                 s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) ) 
             DO j = 1,DIM
-              Current(j) = Current(j) - EpsGrad(j) * s
+              Current(j) = Current(j) - &
+                  (EpsGrad(j) + DiffusionGradientCurrent(j)) * s
             END DO
             
             ElemVol = ElemVol + s
@@ -864,6 +1068,7 @@ END SUBROUTINE StatCurrentSolver_Init
        REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
+       REAL(KIND=dp) :: DiffusionGradientCurrent(3)
        LOGICAL :: Stat
 
        INTEGER :: i,p,q,t,DIM
@@ -920,6 +1125,12 @@ END SUBROUTINE StatCurrentSolver_Init
              END DO
            END DO
          END IF
+
+         DiffusionGradientCurrent = 0.0_dp
+         IF ( UseDiffusionCurrent ) THEN
+           CALL DiffusionGradientCurrentAtIP( n, Basis, dBasisdx, &
+               DiffusionGradientCurrent )
+         END IF
          
 !------------------------------------------------------------------------------
 !        The Poisson equation
@@ -935,6 +1146,11 @@ END SUBROUTINE StatCurrentSolver_Init
              StiffMatrix(p,q) = StiffMatrix(p,q) + S*A
            END DO
            Force(p) = Force(p) + S*L*Basis(p)
+           IF ( UseDiffusionCurrent ) THEN
+             Force(p) = Force(p) - S * SUM( &
+                 DiffusionGradientCurrent(1:DIM) * &
+                 dBasisdx(p,1:DIM) )
+           END IF
          END DO
 !------------------------------------------------------------------------------
        END DO
