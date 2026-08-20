@@ -82,11 +82,13 @@ END TYPE AdiosWriter_t
 TYPE, extends(AdiosWriter_t) :: AdiosReader_t
 
   CONTAINS
-  PROCEDURE, PRIVATE :: read_real_t
-  
+  PROCEDURE, PRIVATE :: read_real_t, init_adios_r_t, finalize_adios_r_t
+
   PROCEDURE, PUBLIC :: init => init_adios_r_t
+  PROCEDURE, PUBLIC :: finalize => finalize_adios_r_t
 
   GENERIC, PUBLIC :: read_data => read_real_t
+  FINAL :: finalize_sub_r
 
 END TYPE AdiosReader_t
 
@@ -102,20 +104,19 @@ SUBROUTINE finalize_sub_r(this)
   ierr = this % finalize()
 END SUBROUTINE
 
-SUBROUTINE finalize_adios_r_t(this)
+FUNCTION finalize_adios_r_t(this) result(ierr)
   IMPLICIT NONE
   CLASS(AdiosReader_t) :: this
-  INTEGER :: IERR
+  INTEGER :: ierr
 
   IF ((.NOT. this % finalized) .AND. this % initialized) THEN
-    call adios2_flush_all(this%adios, ierr)
     CALL adios2_close(this%engine, ierr)
     CALL adios2_finalize(this%adios, ierr)
   END IF
   this % finalized = .true.
-  this%initialized = .false.
-  
-END SUBROUTINE finalize_adios_r_t
+  this % initialized = .false.
+
+END FUNCTION finalize_adios_r_t
 
 FUNCTION init_adios_r_t(this, fname, array_kind, write_offsets) result(ierr)
   IMPLICIT NONE
@@ -131,9 +132,11 @@ FUNCTION init_adios_r_t(this, fname, array_kind, write_offsets) result(ierr)
     this % array_kind = ADIOS2_ARRAY_GLOBAL
   end if
 
+  this % instep = .false.
+
   call adios2_init(this % adios, parenv % activecomm, ierr)
   call adios2_declare_io(this % io, this % adios, "ioReader", ierr)
-  this %finalized = .false.
+  this % finalized = .false.
   call adios2_open(this % engine, this % io, fname, adios2_mode_read, ierr)
   IF (ierr .ne. 0) THEN
       CALL Warn("init_adios_r_t", "Failed to open stream " // fname)
@@ -148,75 +151,46 @@ SUBROUTINE read_real_t(this, varname, X)
 !---------
   CLASS(AdiosReader_t) :: this
   CHARACTER(*), INTENT(IN) :: varname
-  INTEGER :: ierr
-  REAL(KIND=dp), ALLOCATABLE, INTENT(INOUT) :: X(:)
+  REAL(KIND=dp), INTENT(OUT) :: X(:)
 !---------
   TYPE(adios2_variable) :: var
-  INTEGER(KIND=8), dimension(1) :: start_dims, count_dims
-  INTEGER :: ndims
-  INTEGER(KIND=8), ALLOCATABLE :: shape_dims(:)
-  integer(kind=8), dimension(1:2) :: bounds
+  INTEGER(KIND=8), dimension(1) :: start_dim, count_dim
+  INTEGER :: ierr, local_count, global_offset
   CHARACTER(ADIOS2_MAX_VARNAME_LEN) :: adios_varname
 
   adios_varname = trim(varname)
-  bounds = -1
 
   IF (.NOT. this % initialized) THEN
     Call Warn("AdiosReader_t % read_real_t", "Reader not initialized")
     RETURN
   END IF
 
-  call adios2_begin_step(this % engine,ierr)
-  print *, 'reading: '// adios_varname
+  call this % begin_step()
   call adios2_inquire_variable(var, this % io, adios_varname, ierr)
 
   IF(.NOT. var % valid) THEN
-    Call Warn("AdiosReader_t % read_real_t", "Variable is not valid")
+    Call Warn("AdiosReader_t % read_real_t", "Variable not found: "//trim(adios_varname))
     RETURN
   END IF
 
-  this % write_offsets = .FALSE.
-
-  call adios2_variable_shape(shape_dims, ndims, var, ierr)
-
   SELECT CASE (this % array_kind)
     CASE (ADIOS2_ARRAY_GLOBAL)
-      BLOCK
-        INTEGER(kind=8), dimension(1) :: block_shape_dims, block_start_dims, block_count_dims
-        INTEGER(kind=8), ALLOCATABLE :: offset_shape(:)
-        INTEGER :: offset_ndim
-
-        TYPE(adios2_variable) :: offset_var
-
-        block_shape_dims(1) = parenv % PEs
-        block_start_dims(1) = parenv % mype
-        block_count_dims(1) = 2
-        CALL adios2_inquire_variable(offset_var, this % io,  adios_varname//'_offsets', ierr)
-        CALL adios2_variable_shape(offset_shape, offset_ndim, offset_var, ierr)
-
-        ! Last Pe
-        IF (offset_shape(1) == parenv % myPE+1) block_count_dims(1) = 1
-
-        CALL adios2_set_selection(offset_var, 1, block_start_dims, block_count_dims, ierr)
-        CALL adios2_get(this % engine, offset_var, bounds, adios2_mode_read, ierr)
-        CALL adios2_perform_gets(this % engine, ierr)
-
-        IF (block_count_dims(1) == 1) bounds(2) = shape_dims(1)
-        IF (block_count_dims(1) == 2) bounds(2) = bounds(2)-1
-        
-        IF (.not. (allocated(X) .and. size(X,1) == bounds(2)-bounds(1)+1) ) THEN
-          ALLOCATE(X(bounds(2)-bounds(1)+1))
-        END IF
-      END BLOCK
-      call adios2_set_selection(var, 1, (/bounds(1)/), (/bounds(2)-bounds(1)+1/), ierr)
-
-      call adios2_get_dp_1d(this % engine, var, X, adios2_mode_read, ierr)
-      call adios2_perform_gets(this % engine, ierr)
+      ! X must be pre-allocated to the correct local size same as done in write step
+      ! Per rank offset is computed to match one computed by the writer
+      local_count = size(X,1)
+      global_offset = 0
+      CALL MPI_Exscan(local_count, global_offset, 1, MPI_INTEGER, MPI_SUM, parenv%activecomm, ierr)
+      start_dim(1) = global_offset
+      count_dim(1) = local_count
+      CALL adios2_set_selection(var, 1, start_dim, count_dim, ierr)
+      CALL adios2_get(this%engine, var, X, adios2_mode_sync, ierr)
 
     CASE (ADIOS2_ARRAY_LOCAL)
     ! Not implemented yet
     CASE DEFAULT
   END SELECT
+
+  call this % end_step()
 
 END SUBROUTINE read_real_t
 
