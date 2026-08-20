@@ -633,16 +633,28 @@ IF(Mumps_FOUND)
     ENDIF()
   ENDFOREACH()
 
-  # Off on Windows for the time being. Every parallel MUMPS test fails on the
-  # MinGW/MS-MPI runner with the distributed right-hand side in place -- a
-  # segfault inside the DLLs in most of them, a silently wrong solution in
-  # DirichletNeumannZoltan -- while Ubuntu and a local Linux build are green on
-  # the same tests, the same code and the same MUMPS 5.7.3. It is not
-  # MPI_IN_PLACE: testMPIcapabilities reports "no" on that runner, so those
-  # reductions already take the copy path there. What runs instead is the
-  # gathered assembly under the #else in DirectSolve.F90, which is the route
-  # every MUMPS older than 5.3 takes and what devel did before the switch.
-  # Force it back on with -DELMER_MUMPS_DIST_RHS=ON when retesting the runner.
+  # Off on Windows, because MUMPS's own reductions cannot work there. MPI_IN_PLACE
+  # is unusable with MS-MPI and gfortran: mpif.h keeps the sentinel in
+  # COMMON /MPIPRIV1/ and imports the block with a !DEC$ directive, Intel syntax
+  # that gfortran treats as a comment, so gfortran uses its own zero-filled copy,
+  # the address matches nothing the C layer compares against, and MPI reads that
+  # memory as a real send buffer. MUMPS provides -DAVOID_MPI_IN_PLACE for exactly
+  # this case and MSYS2 does not use it, so all 27 of MUMPS's in-place reductions
+  # are live there. ICNTL(20)=10 walks into them every time: analysis and
+  # factorization are unaffected (INFO(1)=0), the solve then corrupts the heap or
+  # returns zeros. Established in a Windows VM with a standalone MUMPS program
+  # containing no Elmer at all, on MUMPS 5.9.0 and on the 5.7.3 that CI uses, and
+  # confirmed by rebuilding MUMPS from source: without the macro the distributed
+  # right-hand side gives sum(x)=0 in five runs out of five, with it the answer is
+  # correct. Open MPI implements MPI_IN_PLACE, which is why no other platform sees
+  # any of this, and Elmer's own reductions are not involved -- those already take
+  # a copy path via ELMER_BROKEN_MPI_IN_PLACE. So this stays off until MSYS2 ships
+  # a mumps built with that macro, not merely until MUMPS closes the four
+  # ?sol_distrhs.F sites where the guard is missing altogether (those turn out to
+  # be latent: the value misread there is zero, which that code reads as "no
+  # allocation failure"). What runs instead is the gathered assembly under the
+  # #else in DirectSolve.F90, the route every MUMPS older than 5.3 takes.
+  # -DELMER_MUMPS_DIST_RHS=ON forces it back on.
   IF(WIN32)
     SET(_mumps_dist_rhs_default OFF)
   ELSE()
