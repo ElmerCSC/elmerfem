@@ -189,14 +189,20 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! and LocalMatrixBC. Replaces SAVE+THREADPRIVATE; accessed via ASSOCIATE(tid).
   ! VecConvVelo_h: 3-component per thread for LocalMatrixVec (Vec path).
   ! LM_ConvVelo_h: scalar per thread for LocalMatrix (non-Vec path).
-  TYPE(ValueHandle_t), ALLOCATABLE :: &
+  ! SAVEd on purpose: each ValueHandle_t owns a scratch ValueList_t that
+  ! ListInitElementKeyword allocates on first use and reuses afterwards. If the
+  ! arrays are re-created on every visit to this solver, that list is dropped
+  ! unfreed -- a leak of one list per handle per timestep. They are rebound to
+  ! the current solver's keywords through InitHandles on every visit, so keeping
+  ! them is also what the SAVE+THREADPRIVATE version effectively did.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: &
       Source_h(:), Cond_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
       VecConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
       PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:), &
       LM_ConvVelo_h(:), PlateSpeed_h(:), &
       HeatFlux_h(:), HeatTrans_h(:), ExtTemp_h(:), Farfield_h(:), &
       RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:)
-  TYPE(VariableHandle_t), ALLOCATABLE :: ConvField_h(:)
+  TYPE(VariableHandle_t), ALLOCATABLE, SAVE :: ConvField_h(:)
 
   INTERFACE
     SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
@@ -269,14 +275,31 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   nthr = 1
   !$ nthr = omp_get_max_threads()
 
-  ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
-      ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
-      PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
-      VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
-      LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), &
-      HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
-      RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
-      TorBC_h(nthr) )
+  ! Allocated once, or again only if the thread count ever changes.
+  IF( .NOT. ALLOCATED( Source_h ) ) THEN
+    ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+        ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
+        PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
+        VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
+        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), &
+        HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
+        RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
+        TorBC_h(nthr) )
+  ELSE IF( SIZE( Source_h ) /= nthr ) THEN
+    DEALLOCATE( Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, VecConvVelo_h, &
+        PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, &
+        OrigMesh_h, ConvField_h, LM_ConvVelo_h, PlateSpeed_h, HeatFlux_h, &
+        HeatTrans_h, ExtTemp_h, Farfield_h, RadFlag_h, RadExtTemp_h, &
+        EmisBC_h, EmisMat_h, TorBC_h )
+    ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+        ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
+        PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
+        VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
+        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), &
+        HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
+        RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
+        TorBC_h(nthr) )
+  END IF
 
   nColours = GetNOFColours(Solver)
 
@@ -691,8 +714,17 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
 
-    REAL(KIND=dp), POINTER  :: CondAtIpVec(:), CpAtIpVec(:), TmpVec(:), &
-        SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo(:,:),ConvVelo_i(:)
+    ! These are aliases into storage owned by the value handles, so they must
+    ! stay pointers.
+    REAL(KIND=dp), POINTER  :: CondAtIpVec(:), CpAtIpVec(:), &
+        SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo_i(:)
+    ! These two are work arrays that this routine allocates itself. As locals
+    ! without SAVE they used to be pointers, and nothing released them on return:
+    ! a leak of (1+3)*ngp reals per element per assembly. Allocatables are freed
+    ! automatically. ConvVelo needs TARGET because VeloAtIpVec is pointer
+    ! assigned to it below.
+    REAL(KIND=dp), ALLOCATABLE :: TmpVec(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ConvVelo(:,:)
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst
     INTEGER :: i,ngp,allocstat,tid

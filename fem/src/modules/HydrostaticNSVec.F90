@@ -52,7 +52,7 @@ CONTAINS
   ! by the postprocessing when estimating pressure.
   !----------------------------------------------------------------------------------
   FUNCTION EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-      InitHandles, ViscNewton, ViscDerVec, DetJVec ) RESULT ( EffViscVec ) 
+      InitHandles, ViscNewton, ViscDerVec, DetJVec, ViscWork ) RESULT ( EffViscVec ) 
 
     IMPLICIT NONE 
     
@@ -65,6 +65,13 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: ViscDerVec(:)
     REAL(KIND=dp), POINTER  :: EffViscVec(:)
     REAL(KIND=dp), OPTIONAL, ALLOCATABLE :: DetJVec(:)
+    ! ViscWork is supplied by the caller so that the vector this function returns a
+    ! pointer to is owned by the caller's frame: a local of a routine called inside
+    ! the parallel region, hence per-thread by construction and released on return.
+    ! It was POINTER+SAVE+THREADPRIVATE before; as a plain local pointer it leaked
+    ! ngp reals per call, and routing it through a module-level per-thread struct
+    ! ended up shared between threads.
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
 
     INTEGER :: allocstat,i,j,k,dim,dofs,n
     LOGICAL :: Found     
@@ -223,7 +230,14 @@ CONTAINS
       RETURN      
     END IF
 
-    ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
+    ALLOCATE(ss(ngp),s(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
+    IF( .NOT. ALLOCATED( ViscWork ) ) THEN
+      ALLOCATE( ViscWork(ngp) )
+    ELSE IF( SIZE( ViscWork ) < ngp ) THEN
+      DEALLOCATE( ViscWork )
+      ALLOCATE( ViscWork(ngp) )
+    END IF
+    ViscVec => ViscWork(1:ngp)
     IF (allocstat /= 0) THEN
       CALL Fatal(Caller,'Local storage allocation failed')
     END IF
@@ -474,6 +488,8 @@ CONTAINS
     REAL(KIND=dp), TARGET :: STIFF(ntot*2,ntot*2), FORCE(ntot*2)
     REAL(KIND=dp) :: NodalVelo(2,ntot),NodalHeight(ntot)
     REAL(KIND=dp) :: s, rho, crho
+    ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
     REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
         rhoVec(:), loadAtIpVec(:,:), ForcePart(:), GradVec(:,:,:), GradHeight(:,:), &
         weight_1(:), weight_2(:), weight_4(:), tauVec(:)
@@ -562,7 +578,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-        InitHandles, Newton, muDerVec0, DetJVec )
+        InitHandles, Newton, muDerVec0, DetJVec, ViscWork )
     
     ! Rho 
     rhovec(1:ngp) = rho
@@ -993,6 +1009,8 @@ CONTAINS
     REAL(KIND=dp) :: NodalVelo(2,ntot), duz_elem(ntot), wuz_elem(ntot), dp_elem(ntot), ub_elem(ntot), &
         vgrad(2), w, velo(2), zgrad(2)
     REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
+    ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
     INTEGER :: t, i, j, k, ngp, allocstat
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec
@@ -1031,7 +1049,7 @@ CONTAINS
     IF(DoVisc) THEN
       dp_elem = 0.0_dp
       muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-          InitHandles = FirstElem )
+          InitHandles = FirstElem, ViscWork = ViscWork )
     END IF
       
     duz_elem = 0.0_dp

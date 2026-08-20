@@ -3115,6 +3115,11 @@ CONTAINS
     ! we can have access to all components in saving. 
     IF(.NOT. ExternalLoop ) THEN
       Var % NumberOfConstraintModes = NoModes
+      ! This routine is visited on every solver call, so the previous table has
+      ! to go first -- as ConstraintModesIndeces and ConstraintModesWeights above
+      ! already do. Without this the whole NoModes x NumberOfRows table was
+      ! dropped unfreed once per timestep.
+      IF( ASSOCIATED( Var % ConstraintModes ) ) DEALLOCATE( Var % ConstraintModes )
       ALLOCATE( Var % ConstraintModes( Var % NumberOfConstraintModes, A % NumberOfRows ) )
       Var % ConstraintModes = 0.0_dp
     END IF

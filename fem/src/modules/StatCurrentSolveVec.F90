@@ -171,10 +171,13 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   ! master's ALLOCATABLE/POINTER THREADPRIVATE data into workers instead of
   ! giving independent copies). Allocated once below, right after nthr is
   ! known; each local subroutine only ever touches its own thread's slot.
-  TYPE(ValueHandle_t), ALLOCATABLE :: VecSourceCoeff_h(:), VecCondCoeff_h(:), VecEpsCoeff_h(:)
-  TYPE(ValueHandle_t), ALLOCATABLE :: SourceCoeff_h(:), CondCoeff_h(:), EpsCoeff_h(:)
-  TYPE(ValueHandle_t), ALLOCATABLE :: Flux_h(:), Robin_h(:), Ext_h(:), Farfield_h(:)
-  REAL(KIND=dp), ALLOCATABLE :: VecEps0(:), Eps0(:)
+  ! SAVEd: each ValueHandle_t owns a scratch ValueList_t that is allocated on
+  ! first use and reused. Re-creating these arrays on every visit to the solver
+  ! dropped those lists unfreed, one per handle per timestep.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: VecSourceCoeff_h(:), VecCondCoeff_h(:), VecEpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: SourceCoeff_h(:), CondCoeff_h(:), EpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: Flux_h(:), Robin_h(:), Ext_h(:), Farfield_h(:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: VecEps0(:), Eps0(:)
 !------------------------------------------------------------------------------
 
   INTERFACE
@@ -225,9 +228,18 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   nthr = 1
   !$ nthr = omp_get_max_threads()
 
-  ALLOCATE( VecSourceCoeff_h(nthr), VecCondCoeff_h(nthr), VecEpsCoeff_h(nthr), VecEps0(nthr), &
-      SourceCoeff_h(nthr), CondCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr), &
-      Flux_h(nthr), Robin_h(nthr), Ext_h(nthr), Farfield_h(nthr) )
+  IF( ALLOCATED( VecSourceCoeff_h ) ) THEN
+    IF( SIZE( VecSourceCoeff_h ) /= nthr ) THEN
+      DEALLOCATE( VecSourceCoeff_h, VecCondCoeff_h, VecEpsCoeff_h, VecEps0, &
+          SourceCoeff_h, CondCoeff_h, EpsCoeff_h, Eps0, &
+          Flux_h, Robin_h, Ext_h, Farfield_h )
+    END IF
+  END IF
+  IF( .NOT. ALLOCATED( VecSourceCoeff_h ) ) THEN
+    ALLOCATE( VecSourceCoeff_h(nthr), VecCondCoeff_h(nthr), VecEpsCoeff_h(nthr), VecEps0(nthr), &
+        SourceCoeff_h(nthr), CondCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr), &
+        Flux_h(nthr), Robin_h(nthr), Ext_h(nthr), Farfield_h(nthr) )
+  END IF
 
   nColours = GetNOFColours(Solver)
 
@@ -729,8 +741,11 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
 
   ! Per-thread handle/cache storage for LocalPostAssembly; see StatCurrentSolver
   ! above for why this is not THREADPRIVATE.
-  TYPE(ValueHandle_t), ALLOCATABLE :: SourceCoeff_h(:), CondCoeff_h(:), EpsCoeff_h(:)
-  REAL(KIND=dp), ALLOCATABLE :: Eps0(:)
+  ! SAVEd: each ValueHandle_t owns a scratch ValueList_t that is allocated on
+  ! first use and reused. Re-creating these arrays on every visit to the solver
+  ! dropped those lists unfreed, one per handle per timestep.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: SourceCoeff_h(:), CondCoeff_h(:), EpsCoeff_h(:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: Eps0(:)
 
 
   TYPE PostVars_t
@@ -814,7 +829,13 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
 
   nthr = 1
   !$ nthr = omp_get_max_threads()
-  ALLOCATE( SourceCoeff_h(nthr), CondCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr) )
+  IF( ALLOCATED( SourceCoeff_h ) ) THEN
+    IF( SIZE( SourceCoeff_h ) /= nthr ) &
+        DEALLOCATE( SourceCoeff_h, CondCoeff_h, EpsCoeff_h, Eps0 )
+  END IF
+  IF( .NOT. ALLOCATED( SourceCoeff_h ) ) THEN
+    ALLOCATE( SourceCoeff_h(nthr), CondCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr) )
+  END IF
 
   CALL Info(Caller,'Calculating local field values',Level=12)
   HeatingTot = 0.0_dp
