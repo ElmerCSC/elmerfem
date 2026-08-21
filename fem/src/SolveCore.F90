@@ -378,6 +378,7 @@ CONTAINS
     INTEGER :: bc, ind, NoBoundaryActive, NoBCs, ierr
     LOGICAL :: OnlyGivenBCs, IgnorePeriodic
     LOGICAL :: UseVar, Parallel
+    LOGICAL, SAVE :: SharedWarned = .FALSE.
 
 
     Parallel = Solver % Parallel
@@ -609,7 +610,15 @@ CONTAINS
       DO i=1,CurrentModel % NumberOfBCs 
         IF( BoundaryActive(i) == 0 ) CYCLE
         IF( BoundaryShared(i) > 0) THEN
-          CALL Warn('CalculateLoads','Boundary '//I2S(i)//' includes inseparable dofs!')
+          ! This is a property of the mesh and the BCs, so it does not change
+          ! between the calls -- and there is one call per nonlinear iteration
+          ! and timestep. Say it once, then keep it for the curious only.
+          IF( SharedWarned ) THEN
+            CALL Info('CalculateLoads','Boundary '//I2S(i)//&
+                ' includes inseparable dofs!',Level=8)
+          ELSE
+            CALL Warn('CalculateLoads','Boundary '//I2S(i)//' includes inseparable dofs!')
+          END IF
         END IF
         NoBoundaryActive = NoBoundaryActive + 1
 
@@ -627,6 +636,7 @@ CONTAINS
           CALL Info('CalculateLoads',Message,Level=6)
         END DO
       END DO
+      SharedWarned = .TRUE.
       
       IF( NoBoundaryActive > 1 ) THEN
         DO j=1,DOFs

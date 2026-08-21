@@ -343,7 +343,9 @@ CONTAINS
            TieContact = .TRUE.
          CASE('friction')
            FrictionContact = .TRUE.
-         CASE('slide')
+         CASE('slip','slide')
+           ! Both spellings: the keyword is "Slip Contact" but the string form
+           ! has always been "slide", and the default warning says "slip".
            SlipContact = .TRUE.
          CASE Default
            CALL Fatal(Caller,'Unknown contact type: '//TRIM(ContactType))

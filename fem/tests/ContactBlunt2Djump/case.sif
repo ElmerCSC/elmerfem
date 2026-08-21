@@ -145,6 +145,7 @@ Boundary Condition 1
   Target Boundaries(2) = 1 2
 
   Mortar BC = 5
+  Contact Type = String "slide"
   Mortar BC Nonlinear = Logical True
 
 ! At start of each position set the contact off since otherwise
