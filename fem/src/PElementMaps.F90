@@ -1290,6 +1290,19 @@ SUBROUTINE GetRefPElementNodes(Element, U, V, W)
         END IF
 !$OMP END single
 
+    ! Only the coordinates that the element's own dimension uses are set below,
+    ! and only for its corner nodes, so start from zero: this is the same
+    ! convention the nodal definitions follow, where elements.def gives no
+    ! "Node V"/"Node W" line for a lower-dimensional element and the reader
+    ! defaults the missing component to zero. Without this the unset entries
+    ! stay as whatever the ALLOCATE in SwapRefElemNodes happened to get, and
+    ! they do escape: a 2D parent element's NodeW is read as the third
+    ! reference coordinate of a boundary node in e.g. ElasticSolve's
+    ! LocalBoundaryMatrix.
+    U = 0.0_dp
+    V = 0.0_dp
+    W = 0.0_dp
+
     ! Select by element type given
     SELECT CASE(Element % ElementCode / 100)
     ! Line
