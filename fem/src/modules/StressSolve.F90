@@ -494,7 +494,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
                 UpdateSystem, GotHeatExp, Converged,&
                 EvaluateAtIP(3) = .FALSE., EvaluateLoadAtIp = .FALSE., QuasiStationary = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE., NormalTangential, HarmonicAnalysis
-     LOGICAL :: StabilityAnalysis = .FALSE., ModelLumping
+     LOGICAL :: StabilityAnalysis = .FALSE., UseModelLumping
      LOGICAL :: GeometricStiffness = .FALSE., EigenAnalysis=.FALSE., OrigEigenAnalysis, &
            Refactorize = .TRUE., Incompr
 
@@ -881,8 +881,8 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        END IF
      END IF
 
-     ModelLumping = GetLogical( SolverParams, 'Model Lumping', Found )
-     IF ( ModelLumping ) THEN       
+     UseModelLumping = GetLogical( SolverParams, 'Model Lumping', Found )
+     IF ( UseModelLumping ) THEN
        IF(DIM /= 3) CALL Fatal('StressSolve','Model Lumping implemented only for 3D')
        MinIter = 6
        MaxIter = 6
@@ -954,7 +954,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
     
        CALL DefaultFinishAssembly()
 
-       IF( ModelLumping .AND. Lump % FixDisplacement) THEN
+       IF( UseModelLumping .AND. Lump % FixDisplacement) THEN
          CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
        END IF
 
@@ -1016,7 +1016,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
          END IF
        END IF
        
-       IF( ModelLumping ) THEN
+       IF( UseModelLumping ) THEN
          CALL ModelLumpingSprings( Lump, Solver, Model, iter )
        END IF
      END DO ! of nonlinear iter
@@ -1624,7 +1624,7 @@ CONTAINS
                         
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
 
-          IF(ModelLumping .AND. .NOT. Lump % FixDisplacement) THEN
+          IF(UseModelLumping .AND. .NOT. Lump % FixDisplacement) THEN
             IF(GetLogical( BC, 'Model Lumping Boundary',Found )) THEN
               CALL ModelLumpingLoads( Lump, iter, ElementNodes, n, Load )
             END IF
