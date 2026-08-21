@@ -48,6 +48,7 @@ MODULE ElementUtils
     USE DirectSolve
     USE ListMatrixArray
     USE Integration
+    USE IpFieldInterface
     USE Lists
     USE Interpolation
     USE BandwidthOptimize
@@ -55,6 +56,9 @@ MODULE ElementUtils
       CrossProduct, NormalVector, InterpolateInElement, mGetElementDOFs
             
     IMPLICIT NONE
+    ! Not re-exported: the external procedure itself USEs modules that would
+    ! then import its own name (see module IpFieldInterface).
+    PRIVATE :: Ip2DgFieldInElement
 
 CONTAINS
 
@@ -3758,15 +3762,6 @@ CONTAINS
     REAL(KIND=dp), POINTER :: rValues(:)
     COMPLEX(KIND=dp), POINTER :: cValues(:)
 
-    INTERFACE
-      SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
-        USE Types
-        TYPE(Mesh_t) :: Mesh
-        TYPE(Element_t), TARGET :: Parent
-        INTEGER :: nip, np
-        REAL(KIND=dp) :: fip(:), fdg(:)
-      END SUBROUTINE Ip2DgFieldInElement
-    END INTERFACE
 
     IF(PRESENT(GotEdge)) GotEdge = .FALSE.
     IF(PRESENT(GotEigen)) GotEIgen = .FALSE.

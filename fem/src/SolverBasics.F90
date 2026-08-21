@@ -52,6 +52,8 @@ MODULE SolverBasics
    USE LoadMod
    USE Multigrid
    USE ElementUtils
+   USE IpFieldInterface
+   USE PElementVisual
    USE LumpingUtils, ONLY : ComponentStokesTheorem, ComponentCoilEnergy, BoundaryWaveFlux, &
        UpdateDependentComponents, ComponentNodalForceReduction
    USE TimeIntegrate
@@ -66,6 +68,9 @@ MODULE SolverBasics
    USE MatrixScaling
    
    IMPLICIT NONE
+   ! Not re-exported: the external procedure itself USEs modules that would
+   ! then import its own name (see module IpFieldInterface).
+   PRIVATE :: Ip2DgFieldInElement
 
 CONTAINS
 
@@ -8174,16 +8179,6 @@ END SUBROUTINE DerivateExportedVariables
      CHARACTER(:), ALLOCATABLE :: TmpName
      CHARACTER(*), PARAMETER :: Caller = 'Ip2DgSwapper'
 
-     INTERFACE
-       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
-         USE Types
-         IMPLICIT NONE
-         TYPE(Mesh_t) :: Mesh
-         TYPE(Element_t), TARGET :: Parent
-         INTEGER :: nip, np
-         REAL(KIND=dp) :: fip(:), fdg(:)
-       END SUBROUTINE Ip2DgFieldInElement
-     END INTERFACE
 
      IF( FromVar % TYPE /= Variable_on_gauss_points ) THEN
        CALL Warn(Caller,'Only IP fields can be swapped!: '//TRIM(FromVar % Name))
@@ -8421,18 +8416,6 @@ END SUBROUTINE DerivateExportedVariables
 
      CHARACTER(*), PARAMETER :: Caller = 'p2LagrangeSwapper'
 
-     INTERFACE 
-       SUBROUTINE HierarchicPToLagrange(PElement, Degree, PSol, LSol, DOFs, PSolver)
-         USE Types
-         IMPLICIT NONE
-         TYPE(Element_t), POINTER :: PElement 
-         INTEGER :: Degree                         
-         REAL(KIND=dp) :: PSol(:,:)                
-         REAL(KIND=dp) :: LSol(:,:)                
-         INTEGER, OPTIONAL :: DOFs                 
-         TYPE(Solver_t), POINTER, OPTIONAL :: PSolver 
-       END SUBROUTINE HierarchicPToLagrange         
-     END INTERFACE
 
      IF(.NOT. ASSOCIATED(FromVar) ) THEN
        CALL Fatal(Caller,'From variable is not associated!')
@@ -8574,16 +8557,6 @@ END SUBROUTINE DerivateExportedVariables
    !-------------------------------------------------------------------------------------
    FUNCTION EvalFieldAtElem( Mesh, Var, Element, Basis, dofi, eigeni, imVal, GotVal ) RESULT ( Val )
 
-     INTERFACE
-       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
-         USE Types
-         IMPLICIT NONE
-         TYPE(Mesh_t) :: Mesh
-         TYPE(Element_t), TARGET :: Parent
-         INTEGER :: nip, np
-         REAL(KIND=dp) :: fip(:), fdg(:)
-       END SUBROUTINE Ip2DgFieldInElement
-     END INTERFACE
 
      TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Variable_t), POINTER :: Var

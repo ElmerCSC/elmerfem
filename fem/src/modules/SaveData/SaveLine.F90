@@ -106,6 +106,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   USE Types
   USE Lists
   USE Integration
+  USE IpFieldInterface
   USE ElementDescription
   USE ElementUtils
   USE SolverBasics
@@ -167,19 +168,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: LabelData(:,:)
   REAL(KIND=dp), POINTER :: ResultData(:,:)
   
-  INTERFACE
-    SUBROUTINE Ip2DgFieldInElement( Mesh, Element, nip, fip, ndg, fdg )
-      USE Types
-      USE Integration
-      USE ElementDescription
-      IMPLICIT NONE
-      
-      TYPE(Mesh_t) :: Mesh
-      TYPE(Element_t), TARGET :: Element
-      INTEGER :: nip, ndg
-      REAL(KIND=dp) :: fip(:), fdg(:)
-    END SUBROUTINE Ip2DgFieldInElement
-  END INTERFACE
   
   SAVE SavePerm, PrevMaskName, SaveNodes
 
