@@ -225,8 +225,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     END IF
 
     UNorm = DefaultSolve()
-    
-    TotNorm = TotNorm + Unorm ** 2
+
     Fields(i) % Values = Solver % Variable % Values
       
     IF( EnforcePositiveMagnitude .AND. i >= firstmag ) THEN
@@ -238,7 +237,14 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   
   DEALLOCATE( ForceVector )  
   Solver % Matrix % RHS => SaveRHS
-  TotNorm = SQRT(TotNorm)
+
+  ! Only the last component is asked for a nonlinear change, as above, so UNorm is
+  ! the norm of that one alone. For the others ComputeChange returns before it
+  ! touches the variable norm, and DefaultSolve hands back whatever was left there
+  ! -- zero on the first visit, the previous visit's value on every one after.
+  ! Accumulating those squares reported |U_last| the first time and 2*|U_last|
+  ! from then on, so the sum is dropped in favour of the one norm that is real.
+  TotNorm = UNorm
   Solver % Variable % Norm = Totnorm
 
   FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Flux_abs' )

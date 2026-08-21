@@ -59,9 +59,16 @@ Solver 1
 !  Procedure = "StressSolve" "StressSolver"
   Variable = -dofs 3 Displacement
 
-  Nonlinear System Convergence Tolerance = 1.0e-4
-  Nonlinear System Max Iterations = 20
-!  Nonlinear System Relaxation Factor = Real 0.7
+  ! The nonlinear tolerance was 1.0e-4, looser than the 1.0e-5 this norm is judged
+  ! at, so the iteration stopped after 3-4 steps with the last one still moving the
+  ! norm by more than the whole tolerance budget. The reference recorded that
+  ! under-converged state: NormalProj and LevelProj are two projections of one
+  ! problem, yet their old references disagreed by 7.9e-5. Converged with the
+  ! relaxation below -- which was already here, commented out -- they agree to
+  ! 1.8e-8.
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 60
+  Nonlinear System Relaxation Factor = Real 0.7
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = Ilu1
@@ -216,5 +223,5 @@ Boundary Condition 8
   Spring 3 = Real 1.0e3
 End 
 
-Solver 1 :: Reference Norm = 1.10123792E-01
+Solver 1 :: Reference Norm = 1.10141929E-01
 
