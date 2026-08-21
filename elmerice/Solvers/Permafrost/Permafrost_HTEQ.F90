@@ -620,7 +620,7 @@ CONTAINS
       
       ! heat conductivity at IP
       IF (Lunardini) THEN
-        KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),Swres,Xi0,k1,k2,k3)
+        KGTTAtIP = GetKGTTLunardini(XiAtIP(IPPerm),xif,xi0,k1,k2,k3)
       ELSE
         ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
              GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
@@ -635,7 +635,7 @@ CONTAINS
       ! heat capacities at IP
       IF (Lunardini) THEN ! 3-zone model
         !CGTTAtIP = 690360.0_dp - 334720.0_dp*rhoiAtIP*PorosityAtIp*XiTAtIP
-        CGTTAtIP = GetCGTTLunardini(c1,c2,c3,XiAtIP(IPPerm),Swres,Xi0,XiTAtIP,rhoiAtIP,PorosityAtIP,hiAtIP,hwAtIP,dryDensity)
+        CGTTAtIP = GetCGTTLunardini(c1,c2,c3,XiAtIP(IPPerm),xif,xi0,XiTAtIP,rhoiAtIP,PorosityAtIP,hiAtIP,hwAtIP,dryDensity)
         cwAtIP   = 0.0_dp
         ccAtIP   = 0.0_dp
       ELSE ! Hartikainen
