@@ -1,3 +1,15 @@
+! Feature-OFF control for ../StatCurrentDiffusionCurrent.
+!
+! Same mesh, same three species, same material, same boundary data.  The ONLY
+! difference is that Solver 4 does not opt in to the diffusion current, so the
+! solver must return the ohmic answer -- identically zero, because both pinned
+! ends are at zero potential -- and must therefore MISS the manufactured field
+! by roughly its peak.
+!
+! This directory exists because the manufactured test alone cannot fail for the
+! right reason: a solver that silently ignored the new term would still satisfy
+! "total current cancels" (zero cancels trivially).  The pair does the work.
+
 Check Keywords Warn
 
 Header
@@ -52,15 +64,13 @@ Solver 3
 End
 
 Solver 4
-  Equation = "Static current with diffusion current"
+  Equation = "Static current, ohmic only"
   Variable = "Potential"
   Variable DOFs = 1
   Procedure = "StatCurrentSolve" "StatCurrentSolver"
 
-  Diffusion Current Species = Integer 3
-  Diffusion Current Variable 1 = String "C1"
-  Diffusion Current Variable 2 = String "C2"
-  Diffusion Current Variable 3 = String "C3"
+  ! THE ONE DIFFERENCE: no `Diffusion Current Species`, no
+  ! `Diffusion Current Variable i`.  Everything else matches the sibling case.
   Calculate Volume Current = Logical True
 
   Linear System Solver = Direct
@@ -73,9 +83,13 @@ Solver 5
   Equation = "Manufactured solution check"
   Procedure = "MMSCheck" "CheckDiffusionCurrentMMS"
 
-  ! No configuration: the checker finds the solver that owns Potential, reads
-  ! its species contract, and derives from it whether to demand the manufactured
-  ! field or the ohmic one.  Nothing here can disagree with Solver 4.
+
+  ! Solver 4 declares no species here, so the checker is told which fields make
+  ! up the manufactured potential it must demonstrate the ohmic solve MISSES.
+  ! Same keyword name as the real contract, read from this section instead.
+  Diffusion Current Variable 1 = String "C1"
+  Diffusion Current Variable 2 = String "C2"
+  Diffusion Current Variable 3 = String "C3"
 End
 
 Material 1
@@ -102,5 +116,8 @@ Boundary Condition 1
   Potential = 0.0
 End
 
-Solver 4 :: Reference Norm = Real 7.4931150e-5
-Solver 4 :: Reference Norm Tolerance = Real 1.0e-7
+! The ohmic solution of a Laplace problem pinned to zero at both ends is
+! identically zero, so the norm is zero and the comparison must be absolute.
+Solver 4 :: Reference Norm = Real 0.0
+Solver 4 :: Reference Norm Absolute = Logical True
+Solver 4 :: Reference Norm Tolerance = Real 1.0e-12
