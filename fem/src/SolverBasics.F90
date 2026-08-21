@@ -3766,7 +3766,9 @@ END FUNCTION SearchNodeL
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
     IF( Norm /= Norm ) THEN
-      PRINT *,'Norm:',Norm,PrevNorm, n
+      WRITE( Message, '(a,g15.8,g15.8,a,i0)') &
+          'Norm and previous norm: ',Norm,PrevNorm,' size: ',n
+      CALL Info(Caller,Message,Level=3)
       CALL NumericalError(Caller,'Norm of solution appears to be NaN')
     END IF
 
@@ -3778,7 +3780,9 @@ END FUNCTION SearchNodeL
           'Nonlinear System Max Norm', Stat )
     END IF    
 
-    IF( Stat ) THEN
+    IF( Stat .AND. Norm > MaxNorm ) THEN
+      WRITE( Message, '(a,g15.8,g15.8)') &
+          'Computed norm and given max norm: ',Norm,MaxNorm
       CALL Info(Caller,Message)
       CALL NumericalError(Caller,'Norm of solution exceeded given bounds')
     END IF
