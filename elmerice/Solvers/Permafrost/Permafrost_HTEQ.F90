@@ -364,7 +364,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
-         CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
+         CryogenicSuction=.FALSE.,ThermalDispersion=.FALSE.,ComputeFlux=.TRUE.,&
          NoSalinity=.FALSE.,Exponential=.FALSE.,Linear=.FALSE.,&
          LinearParamsFound=.TRUE., LunardiniParamsFound=.TRUE.
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -426,7 +426,8 @@ CONTAINS
       RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
     END IF
 
-    HydroGeo = GetLogical(Material,'Hydrogeological Model',Found)
+    ThermalDispersion = GetLogical(Material,'ThermalDispersion',Found)
+    IF (.NOT.Found) ThermalDispersion = .FALSE.
 
  
 
@@ -700,16 +701,15 @@ CONTAINS
         !PRINT *,"HTEQ: JgwD=(",JgwDAtIP(1:DIM)*365.5*24.0*3600.0,")"        
       END IF
       
-      ! add thermal dispersion in Hydro-Geological Mode
-      !------------------------------------------------
-      !IF (HydroGeo) THEN
+      ! Add mechanical thermal dispersion when explicitly enabled.
+      IF (ThermalDispersion) THEN
         DtdAtIP = GetDtd(RockMaterialID,XiAtIP(IPPerm),PorosityAtIP,JgwDAtIP)
         DO I=1,DIM
           DO J=1,DIM
             KGTTAtIP(I,J) = KGTTAtIP(I,J) + CGWTTAtIP * DtdAtIP(I,J)
           END DO
         END DO
-      !END IF
+      END IF
 
       Weight = IP % s(t) * DetJ
 
