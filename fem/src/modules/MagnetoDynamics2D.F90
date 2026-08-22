@@ -886,7 +886,8 @@ CONTAINS
         CASE ('foil winding')
 !          CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
-          CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+          CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+          CALL Fatal (Caller, 'Non existent Coil Type Chosen 1!')
         END SELECT
       END IF
     END IF
@@ -1186,7 +1187,8 @@ CONTAINS
       CASE ('foil winding')
         CONTINUE
       CASE DEFAULT
-        CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+        CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+        CALL Fatal (Caller, 'Non existent Coil Type Chosen 2!')
       END SELECT
     END IF
         
@@ -2273,7 +2275,8 @@ CONTAINS
             foilthickness = coilthickness/nofturns
           END IF
         CASE DEFAULT
-          CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+          CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+          CALL Fatal (Caller, 'Non existent Coil Type Chosen 3!')
         END SELECT
       END IF
     END IF
