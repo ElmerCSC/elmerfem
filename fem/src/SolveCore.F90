@@ -6510,7 +6510,8 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros, SaveSum
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros, SaveSum, &
+        SaveAdios2, SaveStiff
     CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystem'
 !------------------------------------------------------------------------------
 
@@ -6541,8 +6542,22 @@ CONTAINS
 
     SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
 
-    SkipZeros = ListGetLogical( Params,'Linear System Save Skip Zeros', Found ) 
-    
+    SkipZeros = ListGetLogical( Params,'Linear System Save Skip Zeros', Found )
+
+    SaveAdios2 = ListGetLogical( Params,'Linear System Save Adios2', Found )
+
+    SaveStiff = ListGetLogical( Params,'Linear System Save Stiff', Found )
+    IF(.NOT. Found ) SaveStiff = .TRUE.
+
+    SaveSol = ListGetLogical( Params,'Linear System Save Solution',Found)
+    IF( SaveSol ) THEN
+      Sol => Solver % Variable % Values
+      IF( .NOT. ASSOCIATED( Sol ) ) THEN
+        CALL Warn(Caller,'Solution not associated!')
+        SaveSol = .FALSE.
+      END IF
+    END IF
+
     IF( PRESENT( LinSysName ) ) THEN
       dumpprefix = TRIM(LinSysName) 
     ELSE
@@ -6550,6 +6565,8 @@ CONTAINS
       IF(.NOT. Found ) dumpprefix = 'linsys'
     END IF
           
+    IF(.NOT. SaveAdios2) THEN
+
     dumpfile = TRIM(dumpprefix)//'_a.dat'
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
     CALL Info(Caller,'Saving matrix to: '//TRIM(dumpfile),Level=5)
@@ -6585,22 +6602,15 @@ CONTAINS
     END IF
 
 
-    SaveSol = ListGetLogical( Params,'Linear System Save Solution',Found)
     IF( SaveSol ) THEN
-      Sol => Solver % Variable % Values
-      IF( .NOT. ASSOCIATED( Sol ) ) THEN
-        CALL Warn(Caller,'Solution not associated!')
-        SaveSol = .FALSE.
-      ELSE
-        dumpfile = TRIM(dumpprefix)//'_sol.dat'
-        IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
-        CALL Info(Caller,'Saving solution to: '//TRIM(dumpfile),Level=5)
-        OPEN(1,FILE=dumpfile, STATUS='Unknown')
-        DO i=1,SIZE(Sol)
-          WRITE(1,'(I0,ES15.6)') i,Sol(i)
-        END DO
-        CLOSE( 1 ) 
-      END IF
+      dumpfile = TRIM(dumpprefix)//'_sol.dat'
+      IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
+      CALL Info(Caller,'Saving solution to: '//TRIM(dumpfile),Level=5)
+      OPEN(1,FILE=dumpfile, STATUS='Unknown')
+      DO i=1,SIZE(Sol)
+        WRITE(1,'(I0,ES15.6)') i,Sol(i)
+      END DO
+      CLOSE( 1 )
     END IF
     
     
@@ -6628,13 +6638,102 @@ CONTAINS
       IF( SavePerm ) WRITE(1,*) ParallelReduction(SIZE( Perm ))
       CLOSE(1)
     END IF
-    
+
+    ELSE
+      dumpfile = TRIM(dumpprefix)//'.bp'
+      CALL SaveLinearSystemAdios2( A, dumpfile, Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol, Sol )
+    END IF
+
     IF( ListGetLogical( Params,'Linear System Save and Stop',Found ) ) THEN
       CALL Info(Caller,'Just saved matrix and stopped!',Level=4)
       STOP EXIT_OK
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveLinearSystem
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Saves the linear system (CRS matrix, optionally mass/damp matrices, and rhs)
+!> using ADIOS2Utils. Global dofs from A % parallelinfo % globaldofs is saved to the output file
+!> or if CNumbering is enabled, then the output of ContinuousNumbering A % Gorder is saved.
+!> Note! The ADIOS2 file is finalized at the end of the call so multiple timesteps will cause problems.
+!------------------------------------------------------------------------------
+  SUBROUTINE SaveLinearSystemAdios2( A, dumpfile, Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol, Sol )
+!------------------------------------------------------------------------------
+#ifdef HAVE_ADIOS2
+    USE ADIOS2Utils
+#endif
+    TYPE(Matrix_t) :: A
+    CHARACTER(LEN=*) :: dumpfile
+    LOGICAL :: Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol
+    REAL(KIND=dp), POINTER :: Sol(:)
+!------------------------------------------------------------------------------
+#ifdef HAVE_ADIOS2
+    TYPE(AdiosWriter_t) :: Writer
+    INTEGER, ALLOCATABLE :: Owner(:)
+    INTEGER, ALLOCATABLE :: GlobalRows(:), GlobalCols(:), RowNnz(:)
+    INTEGER :: i, j, n, nnz, ierr
+    CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystemAdios2'
+
+    CALL Info(Caller,'Saving linear system using Adios2 to: '//TRIM(dumpfile),Level=5)
+
+    n = A % NumberOfRows
+    nnz = A % Rows(n+1) - 1
+
+    ALLOCATE( GlobalRows(n),  )
+
+
+    IF( Parallel ) THEN
+      IF( CNumbering ) THEN
+        IF( .NOT. ASSOCIATED( A % Gorder ) ) THEN
+          ALLOCATE( A % Gorder(n), Owner(n) )
+          CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+        END IF
+        GlobalRows(1:n) = A % Gorder(1:n)
+      ELSE
+        GlobalRows(1:n) = A % ParallelInfo % GlobalDOFs(1:n)
+      END IF
+    ELSE
+      DO i=1,n
+        GlobalRows(i) = i
+      END DO
+    END IF
+
+    ierr = Writer % init( dumpfile, array_kind = ADIOS2_ARRAY_GLOBAL )
+
+    CALL Writer % write_data( 'global_dofs', GlobalRows )
+    CALL Writer % write_data( 'rows', A % rows )
+    CALL Writer % write_data( 'cols', A % cols )
+
+    IF( SaveStiff ) THEN
+      CALL Writer % write_data( 'values', A % Values(1:nnz) )
+    END IF
+
+    IF( SaveMass ) THEN
+      CALL Writer % write_data( 'mass_values', A % MassValues(1:nnz) )
+    END IF
+
+    IF( SaveDamp ) THEN
+      CALL Writer % write_data( 'damp_values', A % DampValues(1:nnz) )
+    END IF
+
+    IF( ASSOCIATED( A % rhs ) ) THEN
+      CALL Writer % write_data( 'rhs', A % rhs(1:n) )
+    END IF
+
+    IF( SaveSol ) THEN
+      CALL Writer % write_data( 'solution', Sol )
+    END IF
+
+    ierr = Writer % finalize()
+
+    DEALLOCATE( GlobalRows )
+#else
+    CALL Fatal('SaveLinearSystemAdios2','Elmer was not compiled with ADIOS2 support!')
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE SaveLinearSystemAdios2
+!------------------------------------------------------------------------------
 
   SUBROUTINE LinearSystemMultiply( Solver )
 !----------------------------------------------------------------------------------    

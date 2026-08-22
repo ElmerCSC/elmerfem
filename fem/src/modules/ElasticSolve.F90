@@ -455,7 +455,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! the boundary. State of the run, deliberately NOT in any SAVE list -- it has to
   ! live across the six cases of THIS call and no longer, which is exactly the
   ! mistake PrevSOL used to make.
-  LOGICAL :: ModelLumping
+  LOGICAL :: UseModelLumping
   TYPE(ModelLumping_t) :: Lump
 
   ! Gates for the refusal of StressSolve-only keywords: true when one is set
@@ -1074,8 +1074,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! reuse without the saved bulk matrix; adding it to the list keeps the two in
   ! agreement by construction.
   !-----------------------------------------------------------------------------
-  ModelLumping = ListGetLogical( SolverParams, 'Model Lumping', GotIt )
-  IF ( ModelLumping ) THEN
+  UseModelLumping = ListGetLogical( SolverParams, 'Model Lumping', GotIt )
+  IF ( UseModelLumping ) THEN
     IF ( dim /= 3 ) CALL Fatal( Caller, 'Model lumping is implemented in 3D only' )
     NonlinearIter = 6
     MinNonlinearIter = 6
@@ -1332,7 +1332,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! The geometry of the lumping boundary -- its area, centre and second moments --
   ! and the rigid body mass. Computed once, before the load cases, since every case
   ! reads it and none of it moves.
-  IF ( ModelLumping ) CALL ModelLumpingInit( Lump, Solver, Model )
+  IF ( UseModelLumping ) CALL ModelLumpingInit( Lump, Solver, Model )
 
   CALL DefaultStart()
 
@@ -1878,7 +1878,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            ! routine's own doing -- it zeroes the array it is given -- and is what
            ! StressSolve does too. Nothing but a "Model Lumping Boundary" reaches
            ! this, so a sif that does not lump cannot see it.
-           IF ( ModelLumping .AND. .NOT. Lump % FixDisplacement ) THEN
+           IF ( UseModelLumping .AND. .NOT. Lump % FixDisplacement ) THEN
              IF ( GetLogical( BC, 'Model Lumping Boundary', GotIt ) ) THEN
                ! ElementNodes still holds the last BULK element here, and the moment
                ! cases need the coordinates of THIS boundary element. Harmless to
@@ -2088,7 +2088,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      ! conditions, which is where StressSolve puts it and what the routine's own
      ! comment requires: it sets boundary values directly into the matrix, and the
      ! sif's own conditions must be applied after so that they win where both speak.
-     IF ( ModelLumping .AND. Lump % FixDisplacement ) THEN
+     IF ( UseModelLumping .AND. Lump % FixDisplacement ) THEN
        CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
      END IF
 
@@ -2208,7 +2208,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      ! leaves through one of those EXITs, and a row missed there is a matrix never
      ! written. The reactions come from BulkValues times the solution, which is why
      ! "Constant Bulk System" had to be added to the list and not merely assumed.
-     IF ( ModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
+     IF ( UseModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
 
      IF (UseUmat) THEN
        Displacement(:) = TotalSol(:) + Displacement(:)
