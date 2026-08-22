@@ -485,7 +485,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ,elevationAtIp
     REAL(KIND=dp) :: TemperatureAtIP,PorosityAtIP,KPorosityAtIP,SalinityAtIP,PressureAtIP
     REAL(KIND=dp) :: TemperatureDtAtIP,SalinityDtAtIP,PressureDtAtIP,StressInvDtAtIP
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08, impedancefactor=50.0_dp
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp) , POINTER :: gWork(:,:)
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
@@ -495,6 +495,7 @@ CONTAINS
          Linear = .FALSE., Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
+    TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostGroundWaterFlow', &
          FunctionName='Permafrost (LocalMatrixDarcy)'
@@ -505,6 +506,12 @@ CONTAINS
     SAVE Nodes, ConstantsRead, ConstVal, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity
     !------------------------------------------------------------------------------
     Material => GetMaterial(Element)    ! Get stuff from SIF Material section
+    Exponential = .FALSE.
+    Linear = .FALSE.
+    IF (PhaseChangeModel == 'exponential') THEN
+      CALL ReadExponentialParameters(Material,ExponentialParams,FunctionName)
+      Exponential = .TRUE.
+    END IF
     IF(.NOT.ConstantsRead) THEN
       ConstantsRead = &
            ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
@@ -571,11 +578,6 @@ CONTAINS
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
 
-    !Swres = GetConstReal( Material, "Exponential Swres", Found)
-    !IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
-    IFcomp = GetConstReal( Material, "Exponential Beta", Found)
-    impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
-    
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
     NoSalinity = GetLogical(Material,'No Salinity',Found)
@@ -691,12 +693,10 @@ CONTAINS
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
-        Swres = GetConstReal( Material, "Exponential Swres", Found)
-        IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
-        IFcomp = GetConstReal( Material, "Exponential Beta", Found)
-        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        Exponential = .TRUE.
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
       CASE('linear') ! even simpler linear law (used in Lunardini)
         !xi0 = GetConstReal( Material, "Linear Xi0", Found)
         !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
@@ -797,7 +797,8 @@ CONTAINS
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       IF (Exponential) THEN
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP, MinKgw,Exponential, impedancefactor=impedancefactor)
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential,&
+             impedancefactor=ExponentialParams % Impedance)
       ELSE
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
              mugwAtIP,XiAtIP(IPPerm),PorosityAtIP, MinKgw,Exponential)
@@ -824,8 +825,7 @@ CONTAINS
       IF (HydroGeo) THEN   ! Simplifications: Xip=0 Xi=1 kappas=0
         CgwppAtIP = PorosityAtIP * rhogwPAtIP + rhogwAtIP * kappaGAtIP
       ELSE IF (Exponential) THEN
-        CgwppAtIP =  PorosityAtIP * rhogwAtIP * IFComp * XiAtIP(IPPerm)
-        !PRINT *, "CgwppAtIP (Exponential)", CgwppAtIP,"por", PorosityAtIP, "rhogw", rhogwAtIP, "beta", IFComp, "Xi", XiAtIP(IPPerm)
+        CgwppAtIP = PorosityAtIP * rhogwAtIP * ExponentialParams % Beta * XiAtIP(IPPerm)
       ELSE
         CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
              kappaGAtIP,XiAtIP(IPPerm),XiPAtIP,&

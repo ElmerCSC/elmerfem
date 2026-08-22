@@ -85,6 +85,10 @@ MODULE PermafrostMaterials
      CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   END TYPE RockMaterial_t
 
+  TYPE ExponentialParameters_t
+     REAL(KIND=dp) :: Swres, DeltaT, Beta, Impedance
+  END TYPE ExponentialParameters_t
+
   TYPE(SolventMaterial_t), TARGET :: GlobalSolventMaterial
   TYPE(SoluteMaterial_t), TARGET :: GlobalSoluteMaterial
   TYPE(RockMaterial_t) :: GlobalRockmaterial
@@ -98,6 +102,39 @@ CONTAINS
   !-------------------------------------------------
   ! I/O related functions
   !-------------------------------------------------
+
+  SUBROUTINE ReadExponentialParameters(Params,ExponentialParams,Caller)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(ExponentialParameters_t), INTENT(OUT) :: ExponentialParams
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    LOGICAL :: Found
+
+    ExponentialParams % Swres = GetConstReal(Params,"Exponential Swres",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Exponential Swres" not found')
+
+    ExponentialParams % DeltaT = GetConstReal(Params,"Exponential DeltaT",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Exponential DeltaT" not found')
+
+    ExponentialParams % Impedance = GetConstReal(Params,"Exponential Impedance",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Exponential Impedance" not found')
+
+    ExponentialParams % Beta = GetConstReal(Params,"Exponential Beta",Found)
+    IF (.NOT.Found) ExponentialParams % Beta = 0.0_dp
+
+    IF ((ExponentialParams % Swres < 0.0_dp) .OR. &
+         (ExponentialParams % Swres >= 1.0_dp)) &
+         CALL FATAL(Caller,'"Exponential Swres" must satisfy 0 <= Swres < 1')
+    IF (ExponentialParams % DeltaT <= 0.0_dp) &
+         CALL FATAL(Caller,'"Exponential DeltaT" must be positive')
+    IF (ExponentialParams % Beta < 0.0_dp) &
+         CALL FATAL(Caller,'"Exponential Beta" must be nonnegative')
+    IF (ExponentialParams % Impedance < 0.0_dp) &
+         CALL FATAL(Caller,'"Exponential Impedance" must be nonnegative')
+  END SUBROUTINE ReadExponentialParameters
 
   SUBROUTINE ReadPermafrostSolventMaterial( Params, CurrentSolventMaterial)
     IMPLICIT NONE

@@ -868,7 +868,7 @@ CONTAINS
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
          StiffPQ, meanfactor, vstarAtIP(3), auxtensor(3,3)
-    REAL(KIND=dp) :: Swres=0.001_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08
+    REAL(KIND=dp) :: Swres=0.001_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,j,k,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
@@ -877,6 +877,7 @@ CONTAINS
          NoSalinity=.FALSE., Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
+    TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='PermafrostIPOutput(SetIPValues)'
@@ -970,6 +971,11 @@ CONTAINS
     END IF
     ! Get stuff from SIF Material section
     Material => GetMaterial(Element)
+    Exponential = .FALSE.
+    IF (PhaseChangeModel == 'exponential') THEN
+      CALL ReadExponentialParameters(Material,ExponentialParams,FunctionName)
+      Exponential = .TRUE.
+    END IF
     IF (ElementWiseRockMaterial) THEN
       RockMaterialID = ElementID  ! each element has it's own set of parameters
     ELSE
@@ -1049,11 +1055,10 @@ CONTAINS
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
-        Swres = GetConstReal( Material, "Exponential Swres", Found)
-        IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
-        IFcomp = GetConstReal( Material, "Exponential Beta", Found)       
-        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
       CASE('linear') ! even simpler linear law (used in Lunardini)
         Xi0 = GetConstReal( Material, "Linear Xi0", Found)
         !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
@@ -1088,8 +1093,14 @@ CONTAINS
              XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       END IF
       IF (WriteIPVar(3)) THEN
-        auxtensor = &
-                 GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),Exponential)
+        IF (Exponential) THEN
+          auxtensor = &
+               GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),Exponential,&
+               impedancefactor=ExponentialParams % Impedance)
+        ELSE
+          auxtensor = &
+               GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),Exponential)
+        END IF
         K = 0
         DO I=1,DIM
           DO J=1,DIM
@@ -1123,8 +1134,14 @@ CONTAINS
         END DO
       END IF
       IF (WriteIPVar(5)) THEN
-        auxtensor = &
-             GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),Exponential)
+        IF (Exponential) THEN
+          auxtensor = &
+               GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),Exponential,&
+               impedancefactor=ExponentialParams % Impedance)
+        ELSE
+          auxtensor = &
+               GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),Exponential)
+        END IF
         !PRINT *, "XikG0hy", auxtensor
         K = 0
         DO I=1,DIM
@@ -1305,7 +1322,7 @@ CONTAINS
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
          StiffPQ,meanfactor,vstarAtIP(3)
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, IFcomp=1.0d-08
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
@@ -1313,6 +1330,7 @@ CONTAINS
          CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
+    TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='Permafrost(LocalMatrixHTEQ)'
@@ -1346,6 +1364,8 @@ CONTAINS
 
     ! Get stuff from SIF Material section
     Material => GetMaterial(Element)
+    IF (PhaseChangeModel == 'exponential') &
+         CALL ReadExponentialParameters(Material,ExponentialParams,FunctionName)
     IF (ElementWiseRockMaterial) THEN
       RockMaterialID = ElementID  ! each element has it's own set of parameters
     ELSE
@@ -1417,11 +1437,10 @@ CONTAINS
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
-        Swres = GetConstReal( Material, "Exponential Swres", Found)
-        IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
-        IFcomp = GetConstReal( Material, "Exponential Beta", Found)
-        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
       CASE('linear') ! even simpler linear law (used in Lunardini)
         xi0 = GetConstReal( Material, "Linear Xi0", Found)
         !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
@@ -1443,9 +1462,6 @@ CONTAINS
   !------------------------------------------------------------------------------
 END SUBROUTINE InitiliazeXi
   
-
-
-
 
 
 

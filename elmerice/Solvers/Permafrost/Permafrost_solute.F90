@@ -72,8 +72,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,&
        ComputeDt=.FALSE., ElementWiseRockMaterial, ActiveMassMatrix = .TRUE., &
-       InitializeSteadyState = .FALSE., CorrectValues=.FALSE., ExtForce=.FALSE., &
-       Linear = .FALSE., Exponential=.FALSE.
+       InitializeSteadyState = .FALSE., CorrectValues=.FALSE., ExtForce=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostSoluteTransport'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, VarName, TemperatureName, GWfluxName, PhaseChangeModel,&
@@ -317,16 +316,17 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          StiffPQ, meanfactor
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, impedancefactor=50.0_dp
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n), XiBefore
     REAL(KIND=dp), POINTER :: gWork(:,:), XiAtIp(:)
     INTEGER :: i,j,t,p,q,DIM, RockMaterialID, IPPerm
     INTEGER, POINTER :: XiAtIPPerm(:)
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          ConstantDispersion=.FALSE.,ConstantDiffusion=.FALSE.,CryogenicSuction=.FALSE.,&
-         InterFrost=.FALSE.
+         InterFrost=.FALSE.,Linear=.FALSE.,Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
+    TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='Permafrost(LocalMatrixSolute)'
@@ -362,6 +362,12 @@ CONTAINS
 
     ! Get stuff from SIF Material section
     Material => GetMaterial(Element)
+    Exponential = .FALSE.
+    Linear = .FALSE.
+    IF (PhaseChangeModel == 'exponential') THEN
+      CALL ReadExponentialParameters(Material,ExponentialParams,FunctionName)
+      Exponential = .TRUE.
+    END IF
     IF (ElementWiseRockMaterial) THEN
       RockMaterialID = ElementID  ! each element has it's own set of parameters
     ELSE
@@ -372,9 +378,6 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
 
-    !Swres = GetConstReal( Material, "Exponential Swres", Found)
-    !IFdeltaT = GetConstReal( Material, "Epxonential deltaT", Found)
-    
     !meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
     !IF (.NOT.Found) THEN
     !  CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
@@ -450,12 +453,10 @@ CONTAINS
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
-        Swres = GetConstReal( Material, "Exponential Swres", Found)
-        IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
-        impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
-        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        Exponential = .TRUE.
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
       CASE('linear') ! even simpler linear law (used in Lunardini)
         !Xi0 = GetConstReal( Material, "Linear Xi0", Found)
         Swres = GetConstReal( Material, "Linear Swres", Found)
@@ -499,7 +500,8 @@ CONTAINS
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       IF (Exponential) THEN
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential,impedancefactor=impedancefactor)
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential,&
+             impedancefactor=ExponentialParams % Impedance)
       ELSE
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
              mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential)
@@ -644,6 +646,7 @@ CONTAINS
     INTEGER :: i,t,p,q,DIM,body_id, other_body_id, material_id, RockMaterialID
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BoundaryCondition, ParentMaterial
+    TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Element_t), POINTER ::  ParentElement
     TYPE(Nodes_t) :: Nodes    
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='PermafrostSoluteTransport (LocalMatrixBCSolute)'
@@ -699,6 +702,8 @@ CONTAINS
     ConstVal = GetLogical(ParentMaterial,'Constant Permafrost Properties',Found)
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
+    IF (PhaseChangeModel == 'exponential') &
+         CALL ReadExponentialParameters(ParentMaterial,ExponentialParams,FunctionName)
 
     CALL GetElementNodes( Nodes )
     STIFF = 0._dp
@@ -764,9 +769,8 @@ CONTAINS
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           ! NB: XiTAtIP, XiPAtIP not needed
         CASE('exponential')
-          Swres = GetConstReal( ParentMaterial, "Exponential Swres", Found)
-          IFdeltaT = GetConstReal( ParentMaterial, "Exponential deltaT", Found)
-          XiAtIP = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
+          XiAtIP = GetXiExponential(T0,TemperatureAtIP,&
+               ExponentialParams % Swres,ExponentialParams % DeltaT)
         CASE('linear')
           Swres = GetConstReal( ParentMaterial, "Linear Swres", Found)
           IFdeltaT = GetConstReal( ParentMaterial, "Linear deltaT", Found)

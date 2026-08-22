@@ -359,7 +359,7 @@ CONTAINS
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
          StiffPQ, meanfactor, vstarAtIP(3)
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, impedancefactor=50.0_dp
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
@@ -369,6 +369,7 @@ CONTAINS
          LinearParamsFound=.TRUE., LunardiniParamsFound=.TRUE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
+    TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='Permafrost(LocalMatrixHTEQ)'
@@ -384,6 +385,12 @@ CONTAINS
     gradPAtIP = 0.0_dp
     gradYcAtIP = 0.0_dp
     Material => GetMaterial(Element)   ! Get stuff from SIF Material section
+    Exponential = .FALSE.
+    Linear = .FALSE.
+    IF (PhaseChangeModel == 'exponential') THEN
+      CALL ReadExponentialParameters(Material,ExponentialParams,FunctionName)
+      Exponential = .TRUE.
+    END IF
     IF(.NOT.ConstantsRead) THEN
       ConstantsRead = &
            ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
@@ -437,11 +444,6 @@ CONTAINS
       meanfactor = 1.0_dp
     END IF
     
-    !Swres = GetConstReal( Material, "Exponential Swres", Found)
-    !IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
-    !impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
-
-      
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
@@ -536,13 +538,10 @@ CONTAINS
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
-        Swres = GetConstReal( Material, "Exponential Swres", Found)
-        IFdeltaT = GetConstReal( Material, "Exponential DeltaT", Found)
-        !IFdeltaT = DeltaT
-        impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
-        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
-        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
-        Exponential = .TRUE.
+        XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
+        XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
+             ExponentialParams % Swres,ExponentialParams % DeltaT)
       CASE('linear') ! even simpler linear law
         IFdeltaT = GetConstReal( Material, "Linear DeltaT", Found)
         LinearParamsFound = (Found .AND. LinearParamsFound)
@@ -675,7 +674,8 @@ CONTAINS
         KgwAtIP = 0.0_dp
         IF (Exponential) THEN
           KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-               mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential, impedancefactor=impedancefactor)
+               mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential,&
+               impedancefactor=ExponentialParams % Impedance)
         ELSE
           KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
                mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential)
