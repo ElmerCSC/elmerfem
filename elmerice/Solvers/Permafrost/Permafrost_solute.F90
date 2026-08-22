@@ -317,7 +317,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          StiffPQ, meanfactor
-    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
+    REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp, impedancefactor=50.0_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n), XiBefore
     REAL(KIND=dp), POINTER :: gWork(:,:), XiAtIp(:)
     INTEGER :: i,j,t,p,q,DIM, RockMaterialID, IPPerm
@@ -452,6 +452,7 @@ CONTAINS
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
         Swres = GetConstReal( Material, "Exponential Swres", Found)
         IFdeltaT = GetConstReal( Material, "Exponential deltaT", Found)
+        impedancefactor = GetConstReal( Material, "Exponential Impedance", Found)
         XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Exponential = .TRUE.
@@ -496,8 +497,13 @@ CONTAINS
       !PRINT *, "Solute: Compute Flux"
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
-      KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-           mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential)
+      IF (Exponential) THEN
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential,impedancefactor=impedancefactor)
+      ELSE
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential)
+      END IF
       !PRINT *, "Solute: Kgw", KgwAtIP(1,1)
       fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
            Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
