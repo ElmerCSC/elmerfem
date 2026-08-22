@@ -70,7 +70,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
        TemperatureDt(:), PressureDt(:), SalinityDt(:),&
        GWflux1(:),GWflux2(:),GWflux3(:)
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
-       ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,GivenGWFlux=.FALSE.,&
+       ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,&
        ComputeDt=.FALSE., ElementWiseRockMaterial, ActiveMassMatrix = .TRUE., &
        InitializeSteadyState = .FALSE., CorrectValues=.FALSE., ExtForce=.FALSE., &
        Linear = .FALSE., Exponential=.FALSE.
@@ -80,7 +80,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
        ElementRockMaterialName
   TYPE(ValueHandle_t) :: Temperature_h, Pressure_h, Salinity_h, Porosity_h, Load_h
 
-  SAVE DIM,FirstTime,AllocationsDone,GivenGWFlux,&
+  SAVE DIM,FirstTime,AllocationsDone,&
        CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
        ElementWiseRockMaterial,&
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
@@ -650,6 +650,7 @@ CONTAINS
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: XiAtIP, Xi0Tilde, XiTAtIP, XiPAtIP, XiYcAtIP,XiEtaAtIP
+    REAL(KIND=dp) :: Swres, IFdeltaT
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP,&
          rhowAtIP, rhoiAtIP, rhocAtIP !needed by XI
@@ -762,6 +763,14 @@ CONTAINS
                CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           ! NB: XiTAtIP, XiPAtIP not needed
+        CASE('exponential')
+          Swres = GetConstReal( ParentMaterial, "Exponential Swres", Found)
+          IFdeltaT = GetConstReal( ParentMaterial, "Exponential deltaT", Found)
+          XiAtIP = GetXiExponential(T0,TemperatureAtIP,Swres,IFdeltaT)
+        CASE('linear')
+          Swres = GetConstReal( ParentMaterial, "Linear Swres", Found)
+          IFdeltaT = GetConstReal( ParentMaterial, "Linear deltaT", Found)
+          XiAtIP = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
         CASE DEFAULT ! Hartikainen model
           CALL  GetXiHartikainen(RockMaterialID,&
                CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -775,8 +784,8 @@ CONTAINS
         END SELECT
         rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
 
-        ! Check, whether we have a weakly imposed Dirichlet condition
-        IF (GivenGWFlux) THEN
+        ! Apply this term only when groundwater flux is prescribed on this boundary
+        IF (GWFluxCondition) THEN
           JgwDNAtIP = SUM(Basis(1:n)*JgwDN(1:n))
           ! contribution from partial integration of groundwater flux term (always on)
           DO p=1,nd
