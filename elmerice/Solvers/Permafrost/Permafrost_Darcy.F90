@@ -300,12 +300,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
         END IF
       END IF
       
-      PhaseChangeModel = ListGetString(Material, &
-           'Permafrost Phase Change Model', Found )
-      IF (Found) THEN
-        WRITE (Message,'(A,A)') '"Permafrost Phase Change Model" set to ', TRIM(PhaseChangeModel)
-        CALL INFO(SolverName,Message,Level=9)
-      END IF
+      PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
       
       IF (FirstTime) THEN
         ! check, whether we have globally or element-wise defined values of rock-material parameters
@@ -706,7 +701,7 @@ CONTAINS
         !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
         XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Linear = .TRUE.
-      CASE DEFAULT ! Hartikainen model
+      CASE('hartikainen') ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
@@ -721,6 +716,8 @@ CONTAINS
           PRINT *, "Darcy: XiAtIP", B1AtIP*B1AtIP + D1AtIP !1.0/(1.0 + 0.5*B1AtIP + SQRT(B1AtIP*B1AtIP + D1AtIP)
           CALL FATAL(SolverName,"XiAtIP is NaN")
         END IF
+      CASE DEFAULT
+        CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
 
       ! on Xi (directly or indirectly) dependent material parameters (incl. updates) at IP

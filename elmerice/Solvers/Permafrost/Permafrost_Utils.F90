@@ -830,12 +830,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
 
-      PhaseChangeModel = ListGetString(Material, &
-           'Permafrost Phase Change Model', Found )
-      IF (Found) THEN
-        WRITE (Message,'(A,A)') '"Permafrost Phase Change Model" set to ', TRIM(PhaseChangeModel)
-        CALL INFO(SolverName,Message,Level=9)
-      END IF
+      PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
 
       CALL SetIPValues(  Element, Element % ElementIndex, Active, n, nd+nb, WriteIPVar,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
@@ -1065,7 +1060,7 @@ CONTAINS
         !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Xi0,Swres,IFdeltaT)
         XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
         XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
-      CASE DEFAULT ! Hartikainen model
+      CASE('hartikainen') ! Hartikainen model
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
@@ -1073,6 +1068,8 @@ CONTAINS
              GasConstant,p0,T0,&
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
              .FALSE.,.TRUE.,.FALSE.,.TRUE.,.FALSE.)
+      CASE DEFAULT
+        CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
 
       ! compute salt density
@@ -1269,12 +1266,7 @@ SUBROUTINE InitiliazeXi( Model,Solver,dt,TransientSimulation )
     nd = GetElementNOFDOFs()
     nb = GetElementNOFBDOFs()
 
-    PhaseChangeModel = ListGetString(Material, &
-         'Permafrost Phase Change Model', Found )
-    IF (Found) THEN
-      WRITE (Message,'(A,A)') '"Permafrost Phase Change Model" set to ', TRIM(PhaseChangeModel)
-      CALL INFO(SolverName,Message,Level=9)
-    END IF
+    PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
 
     CALL EvaluateXi(  Element, Element % ElementIndex, Active, n, nd+nb,&
          CurrentSoluteMaterial, CurrentSolventMaterial,&
@@ -1447,7 +1439,7 @@ CONTAINS
         XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
         !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
         XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
-      CASE DEFAULT ! Hartikainen model
+      CASE('hartikainen') ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
@@ -1455,6 +1447,8 @@ CONTAINS
              GasConstant,p0,T0,&
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
              .TRUE.,.TRUE.,.TRUE.,.TRUE.,.FALSE.)
+      CASE DEFAULT
+        CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
     END DO
      !------------------------------------------------------------------------------
@@ -1462,7 +1456,6 @@ CONTAINS
   !------------------------------------------------------------------------------
 END SUBROUTINE InitiliazeXi
   
-
 
 
 

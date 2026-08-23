@@ -275,12 +275,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
 
-      PhaseChangeModel = ListGetString(Material, &
-           'Permafrost Phase Change Model', Found )
-      IF (Found) THEN
-        WRITE (Message,'(A,A)') '"Permafrost Phase Change Model" set to ', TRIM(PhaseChangeModel)
-        CALL INFO(SolverName,Message,Level=9)
-      END IF
+      PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
       Lunardini = GetLogical(Material, "Lunardini", Found)
       IF (.NOT.Found) Lunardini=.FALSE.
 
@@ -572,7 +567,7 @@ CONTAINS
           XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
         ENDIF
         Linear = .TRUE.
-      CASE DEFAULT ! Hartikainen model
+      CASE('hartikainen') ! Hartikainen model
         CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
@@ -580,6 +575,8 @@ CONTAINS
              GasConstant,p0,T0,&
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
              .TRUE.,.TRUE.,.TRUE.,.TRUE.,.FALSE.)
+      CASE DEFAULT
+        CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
 
       ! Lunardini 3-zone parameters (if selected)

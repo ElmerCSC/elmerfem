@@ -203,11 +203,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
 
-      PhaseChangeModel = ListGetString(Material, &
-           'Permafrost Phase Change Model', Found )
-      IF (Found) THEN
-        CALL INFO(SolverName,'Permafrost Phase Change Model" set to '//TRIM(PhaseChangeModel),Level=9)
-      END IF
+      PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
 
       CALL LocalMatrixSolute(  Element, Element % ElementIndex, Active, n, nd+nb,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
@@ -466,7 +462,7 @@ CONTAINS
         !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
         XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Linear = .TRUE.
-      CASE DEFAULT ! Hartikainen model
+      CASE('hartikainen') ! Hartikainen model
         XiBefore =  XiAtIP(IPPerm)
         CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
@@ -476,6 +472,8 @@ CONTAINS
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
              .FALSE.,.TRUE.,.TRUE.,.TRUE.,.FALSE.)
         !PRINT *, "SoluteTransport", XiAtIP(IPPerm), IPPerm, XiBefore
+      CASE DEFAULT
+        CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
 
       ! solute and rock densities and derivatives
@@ -775,7 +773,7 @@ CONTAINS
           Swres = GetConstReal( ParentMaterial, "Linear Swres", Found)
           IFdeltaT = GetConstReal( ParentMaterial, "Linear deltaT", Found)
           XiAtIP = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
-        CASE DEFAULT ! Hartikainen model
+        CASE('hartikainen') ! Hartikainen model
           CALL  GetXiHartikainen(RockMaterialID,&
                CurrentSoluteMaterial,CurrentSolventMaterial,&
                TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
@@ -785,6 +783,8 @@ CONTAINS
                .TRUE.,.FALSE., .FALSE., .FALSE.,.FALSE.) ! we need to compute, as IP's on boundary elements deviate from bulk
           ! NB: XiTAtIP, XiPAtIP, XiYcAtIP not needed
           !PRINT *, "SoluteTransportBC", XiAtIP
+        CASE DEFAULT
+          CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
         END SELECT
         rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
 

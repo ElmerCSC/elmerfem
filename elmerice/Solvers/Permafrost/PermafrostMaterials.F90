@@ -103,6 +103,30 @@ CONTAINS
   ! I/O related functions
   !-------------------------------------------------
 
+  FUNCTION ReadPermafrostPhaseChangeModel(Material,Caller) RESULT(PhaseChangeModel)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
+    LOGICAL :: Found
+    !---------
+    PhaseChangeModel = ListGetString(Material,'Permafrost Phase Change Model',Found)
+    IF (.NOT.Found) THEN
+      CALL FATAL(Caller,'"Permafrost Phase Change Model" not found. Accepted values: '//&
+           'powerlaw, exponential, linear, hartikainen')
+    END IF
+
+    SELECT CASE(PhaseChangeModel)
+    CASE('powerlaw','exponential','linear','hartikainen')
+    CASE DEFAULT
+      CALL FATAL(Caller,'Unknown "Permafrost Phase Change Model": '//TRIM(PhaseChangeModel)//&
+           '. Accepted values: powerlaw, exponential, linear, hartikainen')
+    END SELECT
+
+    CALL INFO(Caller,'"Permafrost Phase Change Model" set to '//TRIM(PhaseChangeModel),Level=9)
+  END FUNCTION ReadPermafrostPhaseChangeModel
+  !---------------------------------------------------------------------------------------------
+
   SUBROUTINE ReadExponentialParameters(Params,ExponentialParams,Caller)
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Params
