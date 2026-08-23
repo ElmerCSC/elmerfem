@@ -1092,11 +1092,11 @@ CONTAINS
       IF (WriteIPVar(3)) THEN
         IF (Exponential) THEN
           auxtensor = &
-               GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),Exponential,&
+               GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),PorosityAtIP,Exponential,&
                impedancefactor=ExponentialParams % Impedance)
         ELSE
           auxtensor = &
-               GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),Exponential)
+               GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm),PorosityAtIP,Exponential)
         END IF
         K = 0
         DO I=1,DIM
@@ -1133,11 +1133,11 @@ CONTAINS
       IF (WriteIPVar(5)) THEN
         IF (Exponential) THEN
           auxtensor = &
-               GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),Exponential,&
+               GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),PorosityAtIP,Exponential,&
                impedancefactor=ExponentialParams % Impedance)
         ELSE
           auxtensor = &
-               GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),Exponential)
+               GetXikG0hy(RockMaterialID,XiAtIp(IPPerm),PorosityAtIP,Exponential)
         END IF
         !PRINT *, "XikG0hy", auxtensor
         K = 0
@@ -1455,7 +1455,6 @@ CONTAINS
   END SUBROUTINE EvaluateXi
   !------------------------------------------------------------------------------
 END SUBROUTINE InitiliazeXi
-  
 
 
 

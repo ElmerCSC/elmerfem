@@ -2515,16 +2515,40 @@ CONTAINS
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,Exponential,impedancefactor)RESULT(KGpe)
+  FUNCTION GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor) &
+       RESULT(RelativePermeability)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: RockMaterialID
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
+    LOGICAL, INTENT(IN) :: Exponential
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: impedancefactor
+    REAL(KIND=dp) :: RelativePermeability
+    REAL(KIND=dp) :: qexp
+    !-------------------------
+    IF (Exponential) THEN
+      IF (.NOT.PRESENT(impedancefactor)) THEN
+        CALL FATAL("PermafrostMaterials(GetRelativePermeability)", &
+             "Exponential impedance factor not found")
+      ELSE
+        RelativePermeability = &
+             MAX(10.0_dp**(-impedancefactor*Porosity*(1.0_dp - Xi)),1.0d-06)
+      END IF
+    ELSE
+      qexp = GlobalRockMaterial % qexp(RockMaterialID)
+      RelativePermeability = Xi**qexp
+    END IF
+  END FUNCTION GetRelativePermeability
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,Porosity,Exponential,impedancefactor)RESULT(KGpe)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
-    REAL(KIND=dp), INTENT(IN) :: Xi
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
     REAL(KIND=dp) :: KGpe(3,3)
-    LOGICAL, OPTIONAL :: Exponential
-    REAL(KIND=dp), OPTIONAL :: impedancefactor
+    LOGICAL, INTENT(IN) :: Exponential
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: impedancefactor
 !--------------------------
-    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor, relativepermeability
+    REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativepermeability
     REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
     INTEGER :: I, J
     !-------------------------
@@ -2534,12 +2558,8 @@ CONTAINS
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
     factor = muw0/(rhow0*gval)
-    IF (Exponential) THEN
-      relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
-    ELSE
-      qexp = GlobalRockMaterial % qexp(RockMaterialID)
-      relativepermeability = (Xi**qexp)
-    END IF
+    relativepermeability = &
+         GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
     DO I=1,3
       DO J=1,3
         KGpe(i,j) = Kgwh0(i,j)*factor*relativepermeability
@@ -2547,23 +2567,18 @@ CONTAINS
     END DO
   END FUNCTION GetKGpe
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXikG0hy(RockMaterialID,Xi,Exponential,impedancefactor)RESULT(XikG0hy)
+  FUNCTION GetXikG0hy(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)RESULT(XikG0hy)
      IMPLICIT NONE
-    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
-    REAL(KIND=dp), INTENT(IN) :: Xi
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
     REAL(KIND=dp) :: XikG0hy(3,3)
-    LOGICAL :: Exponential
-    REAL(KIND=dp), OPTIONAL :: impedancefactor
+    LOGICAL, INTENT(IN) :: Exponential
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: impedancefactor
     !--------------------------
-    REAL(KIND=dp) :: Kgwh0(3,3), qexp,relativepermeability
+    REAL(KIND=dp) :: Kgwh0(3,3),relativepermeability
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    IF (Exponential) THEN
-      relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
-    ELSE
-      qexp = GlobalRockMaterial % qexp(RockMaterialID)
-      relativepermeability = (Xi**qexp)
-    END IF
+    relativepermeability = &
+         GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
     XikG0hy = relativepermeability * Kgwh0
     !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
   END FUNCTION GetXikG0hy
@@ -2578,7 +2593,7 @@ CONTAINS
     LOGICAL :: Exponential
     REAL(KIND=dp), OPTIONAL :: impedancefactor
     !--------------------------
-    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor,relativePermeability
+    REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativePermeability
     REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
     INTEGER :: I, J
     !-------------------------
@@ -2587,12 +2602,8 @@ CONTAINS
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
 
-    IF (Exponential) THEN
-      relativepermeability = MAX(10.0_dp**(-impedancefactor*Porosity*(1.0_dp - Xi)),1.0d-06)
-    ELSE
-      qexp = GlobalRockMaterial % qexp(RockMaterialID)
-      relativepermeability=(Xi**qexp)
-    END IF
+    relativepermeability = &
+         GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
       
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
