@@ -1577,7 +1577,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-! Same as previous byt for integer values.
+! Same as previous but for integer values.
 !-------------------------------------------------------------------------------
     FUNCTION ParallelReductionI(i,oper_arg) RESULT(isum)
 !-------------------------------------------------------------------------------
@@ -1612,7 +1612,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-! Same as previous byt for complex values.
+! Same as previous but for complex values.
 !-------------------------------------------------------------------------------
     FUNCTION ParallelReductionZ(z,oper_arg) RESULT(zsum)
 !-------------------------------------------------------------------------------
