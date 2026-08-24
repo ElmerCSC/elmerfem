@@ -831,6 +831,9 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
       nb = GetElementNOFBDOFs()
 
       PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
+      IF (PhaseChangeModel == 'lunardini1988_threezone_linear') &
+           CALL FATAL(SolverName,'Phase model "lunardini1988_threezone_linear" '//&
+           'is limited to conductive heat-equation verification')
 
       CALL SetIPValues(  Element, Element % ElementIndex, Active, n, nd+nb, WriteIPVar,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
@@ -1267,6 +1270,9 @@ SUBROUTINE InitiliazeXi( Model,Solver,dt,TransientSimulation )
     nb = GetElementNOFBDOFs()
 
     PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
+    IF (PhaseChangeModel == 'lunardini1988_threezone_linear') &
+         CALL FATAL(SolverName,'Phase model "lunardini1988_threezone_linear" '//&
+         'is limited to conductive heat-equation verification')
 
     CALL EvaluateXi(  Element, Element % ElementIndex, Active, n, nd+nb,&
          CurrentSoluteMaterial, CurrentSolventMaterial,&
@@ -1455,7 +1461,6 @@ CONTAINS
   END SUBROUTINE EvaluateXi
   !------------------------------------------------------------------------------
 END SUBROUTINE InitiliazeXi
-
 
 
 

@@ -301,6 +301,9 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       END IF
       
       PhaseChangeModel = ReadPermafrostPhaseChangeModel(Material,SolverName)
+      IF (PhaseChangeModel == 'lunardini1988_threezone_linear') &
+           CALL FATAL(SolverName,'Phase model "lunardini1988_threezone_linear" '//&
+           'is limited to conductive heat-equation verification')
       
       IF (FirstTime) THEN
         ! check, whether we have globally or element-wise defined values of rock-material parameters

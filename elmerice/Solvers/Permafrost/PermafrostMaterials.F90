@@ -89,6 +89,11 @@ MODULE PermafrostMaterials
      REAL(KIND=dp) :: Swres, DeltaT, Beta, Impedance
   END TYPE ExponentialParameters_t
 
+  TYPE Lunardini1988ThreeZoneLinearParameters_t
+     REAL(KIND=dp) :: DeltaT, xi_o, xi_f, DryDensity
+     REAL(KIND=dp) :: k1, k2, k3, c1, c2, c3
+  END TYPE Lunardini1988ThreeZoneLinearParameters_t
+
   TYPE(SolventMaterial_t), TARGET :: GlobalSolventMaterial
   TYPE(SoluteMaterial_t), TARGET :: GlobalSoluteMaterial
   TYPE(RockMaterial_t) :: GlobalRockmaterial
@@ -113,14 +118,17 @@ CONTAINS
     PhaseChangeModel = ListGetString(Material,'Permafrost Phase Change Model',Found)
     IF (.NOT.Found) THEN
       CALL FATAL(Caller,'"Permafrost Phase Change Model" not found. Accepted values: '//&
-           'powerlaw, exponential, linear, hartikainen')
+           'powerlaw, exponential, linear, hartikainen, '//&
+           'lunardini1988_threezone_linear')
     END IF
 
     SELECT CASE(PhaseChangeModel)
-    CASE('powerlaw','exponential','linear','hartikainen')
+    CASE('powerlaw','exponential','linear','hartikainen',&
+         'lunardini1988_threezone_linear')
     CASE DEFAULT
       CALL FATAL(Caller,'Unknown "Permafrost Phase Change Model": '//TRIM(PhaseChangeModel)//&
-           '. Accepted values: powerlaw, exponential, linear, hartikainen')
+           '. Accepted values: powerlaw, exponential, linear, hartikainen, '//&
+           'lunardini1988_threezone_linear')
     END SELECT
 
     CALL INFO(Caller,'"Permafrost Phase Change Model" set to '//TRIM(PhaseChangeModel),Level=9)
@@ -159,6 +167,73 @@ CONTAINS
     IF (ExponentialParams % Impedance < 0.0_dp) &
          CALL FATAL(Caller,'"Exponential Impedance" must be nonnegative')
   END SUBROUTINE ReadExponentialParameters
+
+  SUBROUTINE ReadLunardini1988ThreeZoneLinearParameters(&
+       Params,LunardiniParams,Caller)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Lunardini1988ThreeZoneLinearParameters_t), INTENT(OUT) :: LunardiniParams
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    LOGICAL :: Found
+
+    LunardiniParams % DeltaT = GetConstReal(Params,"Lunardini DeltaT",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini DeltaT" not found')
+
+    LunardiniParams % xi_o = GetConstReal(Params,"Lunardini xi_o",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini xi_o" not found')
+
+    LunardiniParams % xi_f = GetConstReal(Params,"Lunardini xi_f",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini xi_f" not found')
+
+    LunardiniParams % DryDensity = &
+         GetConstReal(Params,"Lunardini dry density",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini dry density" not found')
+
+    LunardiniParams % k1 = GetConstReal(Params,"Lunardini k1",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini k1" not found')
+
+    LunardiniParams % k2 = GetConstReal(Params,"Lunardini k2",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini k2" not found')
+
+    LunardiniParams % k3 = GetConstReal(Params,"Lunardini k3",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini k3" not found')
+
+    LunardiniParams % c1 = GetConstReal(Params,"Lunardini c1",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini c1" not found')
+
+    LunardiniParams % c2 = GetConstReal(Params,"Lunardini c2",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini c2" not found')
+
+    LunardiniParams % c3 = GetConstReal(Params,"Lunardini c3",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini c3" not found')
+
+    IF (LunardiniParams % DeltaT <= 0.0_dp) &
+         CALL FATAL(Caller,'"Lunardini DeltaT" must be positive')
+    IF (LunardiniParams % xi_f < 0.0_dp) &
+         CALL FATAL(Caller,'"Lunardini xi_f" must be nonnegative')
+    IF (LunardiniParams % xi_o <= LunardiniParams % xi_f) &
+         CALL FATAL(Caller,'"Lunardini xi_o" must be greater than "Lunardini xi_f"')
+    IF (LunardiniParams % DryDensity <= 0.0_dp) &
+         CALL FATAL(Caller,'"Lunardini dry density" must be positive')
+    IF ((LunardiniParams % k1 <= 0.0_dp) .OR. &
+         (LunardiniParams % k2 <= 0.0_dp) .OR. &
+         (LunardiniParams % k3 <= 0.0_dp)) &
+         CALL FATAL(Caller,'Lunardini thermal conductivities must be positive')
+    IF ((LunardiniParams % c1 <= 0.0_dp) .OR. &
+         (LunardiniParams % c2 <= 0.0_dp) .OR. &
+         (LunardiniParams % c3 <= 0.0_dp)) &
+         CALL FATAL(Caller,'Lunardini volumetric heat capacities must be positive')
+  END SUBROUTINE ReadLunardini1988ThreeZoneLinearParameters
 
   SUBROUTINE ReadPermafrostSolventMaterial( Params, CurrentSolventMaterial)
     IMPLICIT NONE
@@ -1256,31 +1331,31 @@ CONTAINS
     END IF
   END FUNCTION XiLinearT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXiLunardini(T0,Temperature,xif, xi0, deltaT) RESULT(XiLinear)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,xif,xi0,deltaT
-    REAL(KIND=dp) :: XiLinear, mpar
-    mpar = (xi0 - xif)/deltaT
+  FUNCTION GetXiLunardini1988ThreeZoneLinear(&
+       T0,Temperature,xi_f,xi_o,deltaT) RESULT(XiLunardini)
+    REAL(KIND=dp), INTENT(IN) :: T0,Temperature,xi_f,xi_o,deltaT
+    REAL(KIND=dp) :: XiLunardini, mpar
+    mpar = (xi_o - xi_f)/deltaT
     IF (Temperature >= T0) THEN
-       XiLinear = xi0
+       XiLunardini = xi_o
     ELSEIF (Temperature <= T0 - deltaT) THEN
-       XiLinear = xif
+       XiLunardini = xi_f
     ELSE
-       XiLinear = xif + mpar * (Temperature - (T0 - deltaT))
+       XiLunardini = xi_f + mpar * (Temperature - (T0 - deltaT))
     ENDIF
-  END FUNCTION GetXiLunardini
+  END FUNCTION GetXiLunardini1988ThreeZoneLinear
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiLunardiniT(T0,Temperature,xif,xi0, deltaT)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,xif,xi0,deltaT
+  REAL (KIND=dp) FUNCTION XiLunardini1988ThreeZoneLinearT(&
+       T0,Temperature,xi_f,xi_o,deltaT)
+    REAL(KIND=dp), INTENT(IN) :: T0,Temperature,xi_f,xi_o,deltaT
     REAL(KIND=dp) :: mpar
-    mpar = (xi0 - xif)/deltaT
+    mpar = (xi_o - xi_f)/deltaT
     IF ((Temperature - T0 > -deltaT) .AND. (Temperature < T0) )THEN 
-      !XiLinearT = mpar
-      XiLunardiniT = mpar
+      XiLunardini1988ThreeZoneLinearT = mpar
     ELSE
-      !XiLinearT = 0.0_dp
-      XiLunardiniT = 0.0_dp
+      XiLunardini1988ThreeZoneLinearT = 0.0_dp
     END IF
-  END FUNCTION XiLunardiniT
+  END FUNCTION XiLunardini1988ThreeZoneLinearT
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change
   !---------------------------------------------------------------------------------------------
@@ -2313,19 +2388,20 @@ CONTAINS
          + rhoi*(hw - hi)*Porosity*XiT
   END FUNCTION GetCGTT
     !---------------------------------------------------------------------------------------------
-  FUNCTION GetCGTTLunardini(c1,c2,c3,Xi,Swres,Xi0,XiT,rhoi,Porosity,hi,hw,dryDensity)RESULT(CGTT)
+  FUNCTION GetCGTTLunardini1988ThreeZoneLinear(&
+       c1,c2,c3,Xi,xi_f,xi_o,XiT,hi,hw,dryDensity)RESULT(CGTT)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw,Xi0,dryDensity
+    REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,xi_f,xi_o,XiT,hi,hw,dryDensity
     REAL(KIND=dp) :: CGTT
     !-------------------------
-    IF (Xi >= Xi0) THEN
+    IF (Xi >= xi_o) THEN
       CGTT = c3
-    ELSE IF (Xi <= Swres) THEN
+    ELSE IF (Xi <= xi_f) THEN
       CGTT = c1
     ELSE
-      CGTT = c2 + (hw - hi)*dryDensity*XiT !!TODO: replace 1680_dp with dryDensity input from SIF !!
+      CGTT = c2 + (hw - hi)*dryDensity*XiT
     END IF
-  END FUNCTION GetCGTTLunardini
+  END FUNCTION GetCGTTLunardini1988ThreeZoneLinear
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTp(rhoi,hi,hw,XiP,Porosity)RESULT(CGTp)! All state variables or derived values
     IMPLICIT NONE
@@ -2385,20 +2461,20 @@ CONTAINS
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGTTLunardini(Xi,Swres,Xi0,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
+  FUNCTION GetKGTTLunardini1988ThreeZoneLinear(&
+       Xi,xi_f,xi_o,k1,k2,k3)RESULT(KGTT)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3, Xi0
+    REAL(KIND=dp), INTENT(IN) :: Xi, xi_f, xi_o, k1, k2, k3
     REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3)
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
-    !Xi0 = 0.200_dp
-    IF (Xi >= Xi0) THEN
+    IF (Xi >= xi_o) THEN
       KGTT = unittensor*k3
-    ELSE IF (Xi <= Swres) THEN
+    ELSE IF (Xi <= xi_f) THEN
       KGTT = unittensor*k1
     ELSE
       KGTT = unittensor*k2
     END IF
-  END FUNCTION GetKGTTLunardini
+  END FUNCTION GetKGTTLunardini1988ThreeZoneLinear
   !---------------------------------------------------------------------------------------------
   FUNCTION  GetDtd(RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
     IMPLICIT NONE
