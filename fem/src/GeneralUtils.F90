@@ -198,9 +198,78 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Return a COMPLEX pointer view into a REAL array that stores a complex field
+!> in the standard Elmer interleaved form, x(2i-1)=Re, x(2i)=Im. Nothing is
+!> copied: the result aliases the argument, so writes through it are seen by the
+!> caller. Optionally map only the first n complex entries.
+!>
+!> The dummy is deliberately declared TARGET but *without* the CONTIGUOUS
+!> attribute. With CONTIGUOUS the compiler is free to pass a packed copy of a
+!> strided actual argument, and the view would then silently alias a temporary
+!> that dies on return. Without it an assumed-shape dummy is always passed by
+!> descriptor, so the view aliases the real thing -- and the actual requirement,
+!> that the entries occupy consecutive memory, is checked here at runtime.
+!> Note that the CONTIG macro is set at configuration time and expands to
+!> nothing unless the build enables it, so declarations alone guarantee nothing.
+!------------------------------------------------------------------------------
+  FUNCTION ComplexValues( x, n ) RESULT ( cx )
+!------------------------------------------------------------------------------
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY : C_LOC, C_F_POINTER
+    REAL(KIND=dp), TARGET :: x(:)      !< real array holding (Re,Im) pairs
+    INTEGER, OPTIONAL :: n             !< number of complex entries to map
+    COMPLEX(KIND=dp), POINTER :: cx(:) !< complex view aliasing x
+!------------------------------------------------------------------------------
+    INTEGER :: m
+!------------------------------------------------------------------------------
+    m = SIZE(x) / 2
+    IF( PRESENT(n) ) m = n
+
+    cx => NULL()
+    IF( m <= 0 ) RETURN
+
+    IF( 2*m > SIZE(x) ) THEN
+      CALL Fatal('ComplexValues','Real array of size '//i2s(SIZE(x))// &
+          ' cannot host '//i2s(m)//' complex entries')
+    END IF
+
+    IF( .NOT. IS_CONTIGUOUS(x) ) THEN
+      CALL Fatal('ComplexValues','Cannot alias a non-contiguous real array as complex')
+    END IF
+
+    CALL C_F_POINTER( C_LOC(x(1)), cx, [m] )
+!------------------------------------------------------------------------------
+  END FUNCTION ComplexValues
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
-!> Converts string of length n to an integer number. 
+!> Complex view of the values of a field variable that is really complex, i.e.
+!> stored as consecutive (Re,Im) pairs. Returns NULL if there is nothing to
+!> view. See ComplexValues() for the contiguity requirement.
+!------------------------------------------------------------------------------
+  FUNCTION ComplexVariableValues( Var ) RESULT ( cx )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    COMPLEX(KIND=dp), POINTER :: cx(:)
+!------------------------------------------------------------------------------
+    cx => NULL()
+    IF( .NOT. ASSOCIATED( Var % Values ) ) RETURN
+    IF( SIZE( Var % Values ) == 0 ) RETURN
+
+    IF( MODULO( Var % DOFs, 2 ) /= 0 ) THEN
+      CALL Fatal('ComplexVariableValues','Variable "'//TRIM(Var % Name)// &
+          '" has an odd number of dofs and cannot be complex: '//i2s(Var % DOFs))
+    END IF
+
+    cx => ComplexValues( Var % Values )
+!------------------------------------------------------------------------------
+  END FUNCTION ComplexVariableValues
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Converts string of length n to an integer number.
 !------------------------------------------------------------------------------
   PURE FUNCTION s2i(str,n) RESULT(ival)
 !------------------------------------------------------------------------------

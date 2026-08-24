@@ -99,6 +99,17 @@ MODULE SParIterComm
      INTEGER, POINTER :: clist(:) => null()
   END TYPE CommonList_t
 
+!-----------------------------------------------------------------
+!> The odd rows of an interface block in the 2x2 real form of a complex
+!> matrix, i.e. everything ExchangeIfValues has to put on the wire when the
+!> even rows are reconstructible from them.
+!-----------------------------------------------------------------
+  TYPE HalfIf_t
+    INTEGER, ALLOCATABLE :: Rows(:), Cols(:), GRows(:)
+    REAL(KIND=dp), ALLOCATABLE :: Values(:), MassValues(:), &
+        DampValues(:), PrecValues(:), ILUValues(:)
+  END TYPE HalfIf_t
+
 CONTAINS
 
 !-----------------------------------------------------------------
@@ -2937,23 +2948,246 @@ END SUBROUTINE ExchangeInterfaces
 !> processors. This is done only once so there is no need to optimize
 !> communication...
 !--------------------------------------------------------------------------
+!-----------------------------------------------------------------
+!> True when an interface block is in the 2x2 real form of a complex matrix,
+!> so that its even rows carry nothing its odd rows do not: block row j sits
+!> on real rows 2j-1 and 2j, the two share a column pattern and consecutive
+!> global row numbers, and where row 2j-1 holds (x,-y) row 2j holds (y,x).
+!>
+!> This is CHECKED rather than inferred from a flag. The caller's "this is a
+!> complex system" only says the form is expected; a block that does not
+!> actually have it is sent whole. Getting that predicate subtly wrong would
+!> otherwise mean a silently wrong matrix on the neighbour, which is much the
+!> worst outcome available here.
+!-----------------------------------------------------------------
+  FUNCTION HalvableIf( M, NeedMass, NeedDamp, NeedPrec, NeedILU ) RESULT( OK )
+    USE Types
+    IMPLICIT NONE
+    TYPE(BasicMatrix_t) :: M
+    LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, OK
+    INTEGER :: j, k, nj, nb, o, e
+
+    OK = .FALSE.
+    IF ( M % NumberOfRows <= 0 ) RETURN
+    IF ( MODULO( M % NumberOfRows, 2 ) /= 0 ) RETURN
+    IF ( .NOT. ALLOCATED(M % GRows) ) RETURN
+    nb = M % NumberOfRows / 2
+
+    DO j = 1, nb
+      o  = M % Rows(2*j-1)
+      e  = M % Rows(2*j)
+      nj = e - o
+      IF ( nj /= M % Rows(2*j+1) - e ) RETURN
+      IF ( MODULO( nj, 2 ) /= 0 ) RETURN
+      IF ( M % GRows(2*j) /= M % GRows(2*j-1) + 1 ) RETURN
+
+      DO k = 0, nj-1
+        IF ( M % Cols(o+k) /= M % Cols(e+k) ) RETURN
+      END DO
+
+      IF ( .NOT. MirroredIf( M % Values, o, e, nj ) ) RETURN
+      IF ( NeedMass ) THEN
+        IF ( .NOT. MirroredIf( M % MassValues, o, e, nj ) ) RETURN
+      END IF
+      IF ( NeedDamp ) THEN
+        IF ( .NOT. MirroredIf( M % DampValues, o, e, nj ) ) RETURN
+      END IF
+      IF ( NeedPrec ) THEN
+        IF ( .NOT. MirroredIf( M % PrecValues, o, e, nj ) ) RETURN
+      END IF
+      IF ( NeedILU ) THEN
+        IF ( .NOT. MirroredIf( M % ILUValues, o, e, nj ) ) RETURN
+      END IF
+    END DO
+
+    OK = .TRUE.
+!-----------------------------------------------------------------
+  END FUNCTION HalvableIf
+!-----------------------------------------------------------------
+
+
+!-----------------------------------------------------------------
+!> Does row e hold (y,x) where row o holds (x,-y), exactly? The comparison is
+!> bit-exact on purpose: negation is exact in IEEE, so a block that passes can
+!> be rebuilt with no rounding at all, and one that does not is not halved.
+!-----------------------------------------------------------------
+  FUNCTION MirroredIf( V, o, e, nj ) RESULT( OK )
+    IMPLICIT NONE
+    REAL(KIND=dp) :: V(:)
+    INTEGER :: o, e, nj, k
+    LOGICAL :: OK
+
+    OK = .FALSE.
+    DO k = 0, nj-1, 2
+      IF ( V(e+k)   /= -V(o+k+1) ) RETURN
+      IF ( V(e+k+1) /=  V(o+k)   ) RETURN
+    END DO
+    OK = .TRUE.
+!-----------------------------------------------------------------
+  END FUNCTION MirroredIf
+!-----------------------------------------------------------------
+
+
+!-----------------------------------------------------------------
+!> Gather the odd rows of an interface block into contiguous send buffers.
+!-----------------------------------------------------------------
+  SUBROUTINE PackHalfIf( M, H, NeedMass, NeedDamp, NeedPrec, NeedILU )
+    USE Types
+    IMPLICIT NONE
+    TYPE(BasicMatrix_t) :: M
+    TYPE(HalfIf_t) :: H
+    LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU
+    INTEGER :: j, nb, nj, kb, o, h0
+
+    nb = M % NumberOfRows / 2
+    ALLOCATE( H % Rows(nb+1), H % GRows(nb) )
+
+    kb = 1
+    DO j = 1, nb
+      H % Rows(j)  = kb
+      H % GRows(j) = M % GRows(2*j-1)
+      kb = kb + M % Rows(2*j) - M % Rows(2*j-1)
+    END DO
+    H % Rows(nb+1) = kb
+
+    ALLOCATE( H % Cols(kb-1), H % Values(kb-1) )
+    IF ( NeedMass ) ALLOCATE( H % MassValues(kb-1) )
+    IF ( NeedDamp ) ALLOCATE( H % DampValues(kb-1) )
+    IF ( NeedPrec ) ALLOCATE( H % PrecValues(kb-1) )
+    IF ( NeedILU )  ALLOCATE( H % ILUValues(kb-1) )
+
+    DO j = 1, nb
+      o  = M % Rows(2*j-1)
+      h0 = H % Rows(j)
+      nj = H % Rows(j+1) - h0
+      IF ( nj == 0 ) CYCLE
+      H % Cols  (h0:h0+nj-1) = M % Cols  (o:o+nj-1)
+      H % Values(h0:h0+nj-1) = M % Values(o:o+nj-1)
+      IF ( NeedMass ) H % MassValues(h0:h0+nj-1) = M % MassValues(o:o+nj-1)
+      IF ( NeedDamp ) H % DampValues(h0:h0+nj-1) = M % DampValues(o:o+nj-1)
+      IF ( NeedPrec ) H % PrecValues(h0:h0+nj-1) = M % PrecValues(o:o+nj-1)
+      IF ( NeedILU )  H % ILUValues (h0:h0+nj-1) = M % ILUValues (o:o+nj-1)
+    END DO
+!-----------------------------------------------------------------
+  END SUBROUTINE PackHalfIf
+!-----------------------------------------------------------------
+
+
+!-----------------------------------------------------------------
+!> Receive-side buffers for a halved interface block: nb odd rows, nnz values.
+!-----------------------------------------------------------------
+  SUBROUTINE AllocHalfIf( H, nb, nnz, NeedMass, NeedDamp, NeedPrec, NeedILU )
+    IMPLICIT NONE
+    TYPE(HalfIf_t) :: H
+    INTEGER :: nb, nnz
+    LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU
+
+    ALLOCATE( H % Rows(nb+1), H % GRows(nb), H % Cols(nnz), H % Values(nnz) )
+    IF ( NeedMass ) ALLOCATE( H % MassValues(nnz) )
+    IF ( NeedDamp ) ALLOCATE( H % DampValues(nnz) )
+    IF ( NeedPrec ) ALLOCATE( H % PrecValues(nnz) )
+    IF ( NeedILU )  ALLOCATE( H % ILUValues(nnz) )
+!-----------------------------------------------------------------
+  END SUBROUTINE AllocHalfIf
+!-----------------------------------------------------------------
+
+
+!-----------------------------------------------------------------
+!> Rebuild the full 2x2 real block from the odd rows that arrived. M is
+!> already allocated to the full sizes; nothing here rounds, so the result is
+!> the bits the sender held.
+!-----------------------------------------------------------------
+  SUBROUTINE ExpandHalfIf( H, M, NeedMass, NeedDamp, NeedPrec, NeedILU )
+    USE Types
+    IMPLICIT NONE
+    TYPE(HalfIf_t) :: H
+    TYPE(BasicMatrix_t) :: M
+    LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU
+    INTEGER :: j, nb, nj, o, e, h0
+
+    nb = M % NumberOfRows / 2
+    M % Rows(1) = 1
+    DO j = 1, nb
+      h0 = H % Rows(j)
+      nj = H % Rows(j+1) - h0
+      o  = M % Rows(2*j-1)
+      e  = o + nj
+      M % Rows(2*j)   = e
+      M % Rows(2*j+1) = e + nj
+
+      M % GRows(2*j-1) = H % GRows(j)
+      M % GRows(2*j)   = H % GRows(j) + 1
+      IF ( nj == 0 ) CYCLE
+
+      M % Cols(o:o+nj-1) = H % Cols(h0:h0+nj-1)
+      M % Cols(e:e+nj-1) = H % Cols(h0:h0+nj-1)
+
+      CALL MirrorInto( H % Values, h0, M % Values, o, e, nj )
+      IF ( NeedMass ) CALL MirrorInto( H % MassValues, h0, M % MassValues, o, e, nj )
+      IF ( NeedDamp ) CALL MirrorInto( H % DampValues, h0, M % DampValues, o, e, nj )
+      IF ( NeedPrec ) CALL MirrorInto( H % PrecValues, h0, M % PrecValues, o, e, nj )
+      IF ( NeedILU )  CALL MirrorInto( H % ILUValues,  h0, M % ILUValues,  o, e, nj )
+    END DO
+!-----------------------------------------------------------------
+  END SUBROUTINE ExpandHalfIf
+!-----------------------------------------------------------------
+
+
+!-----------------------------------------------------------------
+!> Write one row pair back out: (x,-y) as it came, then (y,x) derived.
+!-----------------------------------------------------------------
+  SUBROUTINE MirrorInto( HV, h0, V, o, e, nj )
+    IMPLICIT NONE
+    REAL(KIND=dp) :: HV(:), V(:)
+    INTEGER :: h0, o, e, nj, k
+
+    DO k = 0, nj-1, 2
+      V(o+k)   =  HV(h0+k)
+      V(o+k+1) =  HV(h0+k+1)
+      V(e+k)   = -HV(h0+k+1)
+      V(e+k+1) =  HV(h0+k)
+    END DO
+!-----------------------------------------------------------------
+  END SUBROUTINE MirrorInto
+!-----------------------------------------------------------------
+
+
+!*********************************************************************
+!> Exchange the interface blocks with the neighbours.
+!>
+!> For a complex system half of what this used to send is reconstructible:
+!> see HalvableIf. Where a block passes that check only its odd rows go on the
+!> wire, which halves the message AND halves the entry-by-entry search that
+!> GlueFinalize does over what arrives -- the latter being the larger of the
+!> two on any case measured so far.
+!>
+!> The choice is per neighbour and travels in the size header, so the two ends
+!> cannot disagree about what is in flight. Sender and receiver both fall back
+!> to the whole block whenever the check fails, so a real matrix, or a complex
+!> one laid out some other way, goes over exactly as before.
+!*********************************************************************
   SUBROUTINE ExchangeIfvalues( NbsIfMatrix, RecvdIfMatrix, &
-             NeedMass, NeedDamp, NeedPrec, NeedILU )
+             NeedMass, NeedDamp, NeedPrec, NeedILU, Complex )
     USE Types
     IMPLICIT NONE
 
     ! Parameters
 
     LOGICAL :: NeedMass, NeedDamp,NeedPrec,NeedILU
+    LOGICAL, OPTIONAL :: Complex
     TYPE (BasicMatrix_t), DIMENSION(:) :: NbsIfMatrix, RecvdIfMatrix
 
     ! Local variables
 
     INTEGER :: i, j, n, sz, req_cnt, ierr, sproc, &
          destproc, rows, cols, TotalSize
+    LOGICAL :: TryHalve
 
     INTEGER, ALLOCATABLE :: requests(:), &
-            recv_rows(:), recv_cols(:), neigh(:)
+            recv_rows(:), recv_cols(:), neigh(:), &
+            full_rows(:), full_cols(:), shdr(:,:), rhdr(:,:)
+    LOGICAL, ALLOCATABLE :: SendHalf(:), RecvHalf(:)
+    TYPE (HalfIf_t), ALLOCATABLE :: Snd(:), Rcv(:)
 
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
   !*********************************************************************
@@ -2968,61 +3202,92 @@ END SUBROUTINE ExchangeInterfaces
     END IF
   END DO
 
+  !
+  ! Decide, per neighbour, whether the block can travel halved, and gather the
+  ! odd rows of the ones that can:
+  !--------------------------
+  TryHalve = .FALSE.
+  IF ( PRESENT(Complex) ) TryHalve = Complex
+
+  ALLOCATE( SendHalf(n), RecvHalf(n), Snd(n), Rcv(n) )
+  SendHalf = .FALSE.
+  RecvHalf = .FALSE.
+
+  IF ( TryHalve ) THEN
+    DO i = 1, n
+      destproc = neigh(i)
+      IF ( NbsIfMatrix(destproc+1) % NumberOfRows <= 0 ) CYCLE
+      SendHalf(i) = HalvableIf( NbsIfMatrix(destproc+1), &
+          NeedMass, NeedDamp, NeedPrec, NeedILU )
+      IF ( SendHalf(i) ) CALL PackHalfIf( NbsIfMatrix(destproc+1), Snd(i), &
+          NeedMass, NeedDamp, NeedPrec, NeedILU )
+    END DO
+
+    WRITE( Message,'(A,I0,A,I0)') 'Interface blocks sent halved: ', &
+        COUNT(SendHalf),' of ',n
+    CALL Info('ExchangeIfValues',Message,Level=8)
+  END IF
+
   totalsize = 0
   DO i = 1, n
     destproc = neigh(i)
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     IF ( rows == 0 ) THEN
-      totalsize = totalsize + 4
+      totalsize = totalsize + 12
     ELSE
       cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-      totalsize = totalsize + 4 + 3*4*rows + 4 + 5*cols
+      IF ( SendHalf(i) ) THEN
+        rows = rows / 2
+        cols = cols / 2
+      END IF
+      totalsize = totalsize + 12 + 3*4*rows + 4 + 5*cols
     END IF
   END DO
   CALL CheckBuffer(totalsize+n*MPI_BSEND_OVERHEAD)
 
   !
-  ! Receive interface sizes:
+  ! Exchange interface sizes. One header carries the row count, the value
+  ! count and the halved/whole choice, all of them describing what is actually
+  ! sent rather than what the block holds:
   !--------------------------
-  ALLOCATE( recv_rows(n), recv_cols(n), requests(n) )
+  ALLOCATE( recv_rows(n), recv_cols(n), requests(n), &
+            full_rows(n), full_cols(n), shdr(3,n), rhdr(3,n) )
+
   DO i=1,n
-    CALL MPI_iRECV( recv_rows(i),1, MPI_INTEGER, neigh(i), &
+    CALL MPI_iRECV( rhdr(1,i), 3, MPI_INTEGER, neigh(i), &
          2000, ELMER_COMM_WORLD, requests(i), ierr )
   END DO
 
   DO i=1,n
     destproc = neigh(i)
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
-    CALL MPI_BSEND( rows, 1, MPI_INTEGER, &
+    cols = 0
+    IF ( rows > 0 ) cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
+    shdr(3,i) = 0
+    IF ( SendHalf(i) ) THEN
+      rows = rows / 2
+      cols = cols / 2
+      shdr(3,i) = 1
+    END IF
+    shdr(1,i) = rows
+    shdr(2,i) = cols
+    CALL MPI_BSEND( shdr(1,i), 3, MPI_INTEGER, &
            destproc, 2000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll(n, requests, MPI_STATUSES_IGNORE, ierr)
-   
-!----------------------------------------------------------------------
-
-  req_cnt = 0
-  DO i=1,n
-    IF (recv_rows(i)>0) THEN
-      req_cnt = req_cnt + 1
-      CALL MPI_iRECV( recv_cols(i), 1, MPI_INTEGER, neigh(i), &
-         2001, ELMER_COMM_WORLD, requests(req_cnt), ierr )
-    END IF
-  END DO
-  !
-  ! Send interface sizes:
-  !--------------------------
 
   DO i=1,n
-    destproc = neigh(i)
-    rows = NbsIfMatrix(destproc+1) % NumberOfRows
-    IF (rows>0) THEN
-      cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-      CALL MPI_BSEND( cols,1, MPI_INTEGER, &
-           destproc, 2001, ELMER_COMM_WORLD, ierr )
+    recv_rows(i) = rhdr(1,i)
+    recv_cols(i) = rhdr(2,i)
+    RecvHalf(i)  = rhdr(3,i) /= 0
+    full_rows(i) = recv_rows(i)
+    full_cols(i) = recv_cols(i)
+    IF ( RecvHalf(i) ) THEN
+      full_rows(i) = 2*recv_rows(i)
+      full_cols(i) = 2*recv_cols(i)
     END IF
   END DO
-  CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
-  
+
   !----------------------------------------------------------------------
   !
   ! Receive the interface parts
@@ -3033,12 +3298,12 @@ END SUBROUTINE ExchangeInterfaces
 
   req_cnt = 0
   DO i = 1, n
-     rows = recv_rows(i)
+     rows = full_rows(i)
      sproc = neigh(i)
      RecvdIfMatrix(sproc+1) % NumberOfRows = rows
 
      IF ( rows>0 ) THEN
-       cols = recv_cols(i)
+       cols = full_cols(i)
        ALLOCATE( RecvdIfMatrix(sproc+1) % Rows(rows+1) )
        ALLOCATE( RecvdIfMatrix(sproc+1) % Diag(rows) )
        ALLOCATE( RecvdIfMatrix(sproc+1) % Cols(cols) )
@@ -3061,9 +3326,17 @@ END SUBROUTINE ExchangeInterfaces
        IF ( NeedILU ) &
          ALLOCATE( RecvdIfMatrix(sproc+1) % ILUValues(Cols) )
 
+       IF ( RecvHalf(i) ) CALL AllocHalfIf( Rcv(i), recv_rows(i), recv_cols(i), &
+              NeedMass, NeedDamp, NeedPrec, NeedILU )
+
        req_cnt = req_cnt+1
-       CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % GRows, rows,  MPI_INTEGER, &
-             sproc, 2002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       IF ( RecvHalf(i) ) THEN
+         CALL MPI_iRECV( Rcv(i) % GRows, recv_rows(i), MPI_INTEGER, &
+               sproc, 2002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       ELSE
+         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % GRows, rows,  MPI_INTEGER, &
+               sproc, 2002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       END IF
      END IF
   END DO
 
@@ -3071,9 +3344,13 @@ END SUBROUTINE ExchangeInterfaces
     destproc = neigh(i)
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     IF ( rows>0 ) THEN
-       cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-       CALL MPI_BSEND( NbsIfMatrix(destproc+1) % GRows, &
-            rows, MPI_INTEGER, destproc, 2002, ELMER_COMM_WORLD, ierr )
+       IF ( SendHalf(i) ) THEN
+         CALL MPI_BSEND( Snd(i) % GRows, rows/2, MPI_INTEGER, &
+              destproc, 2002, ELMER_COMM_WORLD, ierr )
+       ELSE
+         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % GRows, &
+              rows, MPI_INTEGER, destproc, 2002, ELMER_COMM_WORLD, ierr )
+       END IF
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3082,15 +3359,16 @@ END SUBROUTINE ExchangeInterfaces
 
   req_cnt = 0
   DO i = 1, n
-     rows = recv_rows(i)
      sproc = neigh(i)
-     RecvdIfMatrix(sproc+1) % NumberOfRows = rows
-
-     IF ( rows>0 ) THEN
-       cols = recv_cols(i)
+     IF ( full_rows(i)>0 ) THEN
        req_cnt = req_cnt+1
-       CALL MPI_iRECV( RecvdIfmatrix(sproc+1) % Rows, rows+1, MPI_INTEGER, &
-            sproc, 2003, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       IF ( RecvHalf(i) ) THEN
+         CALL MPI_iRECV( Rcv(i) % Rows, recv_rows(i)+1, MPI_INTEGER, &
+              sproc, 2003, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       ELSE
+         CALL MPI_iRECV( RecvdIfmatrix(sproc+1) % Rows, full_rows(i)+1, MPI_INTEGER, &
+              sproc, 2003, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       END IF
      END IF
   END DO
 
@@ -3098,9 +3376,13 @@ END SUBROUTINE ExchangeInterfaces
     destproc = neigh(i)
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     IF ( rows>0 ) THEN
-       cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-       CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Rows, &
-            rows+1, MPI_INTEGER, destproc, 2003, ELMER_COMM_WORLD, ierr )
+       IF ( SendHalf(i) ) THEN
+         CALL MPI_BSEND( Snd(i) % Rows, rows/2+1, MPI_INTEGER, &
+              destproc, 2003, ELMER_COMM_WORLD, ierr )
+       ELSE
+         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Rows, &
+              rows+1, MPI_INTEGER, destproc, 2003, ELMER_COMM_WORLD, ierr )
+       END IF
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3109,15 +3391,16 @@ END SUBROUTINE ExchangeInterfaces
 
   req_cnt = 0
   DO i = 1, n
-     rows = recv_rows(i)
      sproc = neigh(i)
-     RecvdIfMatrix(sproc+1) % NumberOfRows = rows
-
-     IF ( rows>0 ) THEN
-       cols = recv_cols(i)
+     IF ( full_rows(i)>0 ) THEN
        req_cnt = req_cnt+1
-       CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % Cols, cols, MPI_INTEGER, &
-            sproc, 2004, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       IF ( RecvHalf(i) ) THEN
+         CALL MPI_iRECV( Rcv(i) % Cols, recv_cols(i), MPI_INTEGER, &
+              sproc, 2004, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       ELSE
+         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % Cols, full_cols(i), MPI_INTEGER, &
+              sproc, 2004, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       END IF
      END IF
   END DO
 
@@ -3126,8 +3409,13 @@ END SUBROUTINE ExchangeInterfaces
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-       CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Cols, &
-            cols, MPI_INTEGER, destproc, 2004, ELMER_COMM_WORLD, ierr )
+       IF ( SendHalf(i) ) THEN
+         CALL MPI_BSEND( Snd(i) % Cols, cols/2, MPI_INTEGER, &
+              destproc, 2004, ELMER_COMM_WORLD, ierr )
+       ELSE
+         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Cols, &
+              cols, MPI_INTEGER, destproc, 2004, ELMER_COMM_WORLD, ierr )
+       END IF
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3136,15 +3424,16 @@ END SUBROUTINE ExchangeInterfaces
 
   req_cnt = 0
   DO i = 1, n
-     rows = recv_rows(i)
      sproc = neigh(i)
-     RecvdIfMatrix(sproc+1) % NumberOfRows = rows
-
-     IF ( rows>0 ) THEN
-       cols = recv_cols(i)
+     IF ( full_rows(i)>0 ) THEN
        req_cnt = req_cnt+1
-       CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % Values, cols, MPI_DOUBLE_PRECISION, &
-            sproc, 2005, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       IF ( RecvHalf(i) ) THEN
+         CALL MPI_iRECV( Rcv(i) % Values, recv_cols(i), MPI_DOUBLE_PRECISION, &
+              sproc, 2005, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       ELSE
+         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % Values, full_cols(i), MPI_DOUBLE_PRECISION, &
+              sproc, 2005, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       END IF
      END IF
   END DO
 
@@ -3153,8 +3442,13 @@ END SUBROUTINE ExchangeInterfaces
     rows = NbsIfMatrix(destproc+1) % NumberOfRows
     IF ( rows>0 ) THEN
        cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-       CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Values, &
-            cols, MPI_DOUBLE_PRECISION, destproc, 2005, ELMER_COMM_WORLD, ierr )
+       IF ( SendHalf(i) ) THEN
+         CALL MPI_BSEND( Snd(i) % Values, cols/2, MPI_DOUBLE_PRECISION, &
+              destproc, 2005, ELMER_COMM_WORLD, ierr )
+       ELSE
+         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % Values, &
+              cols, MPI_DOUBLE_PRECISION, destproc, 2005, ELMER_COMM_WORLD, ierr )
+       END IF
     END IF
   END DO
   CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3164,15 +3458,16 @@ END SUBROUTINE ExchangeInterfaces
   IF ( NeedPrec ) THEN
     req_cnt = 0
     DO i = 1, n
-       rows = recv_rows(i)
        sproc = neigh(i)
-       RecvdIfMatrix(sproc+1) % NumberOfRows = rows
-
-       IF ( rows>0 ) THEN
-         cols = recv_cols(i)
+       IF ( full_rows(i)>0 ) THEN
          req_cnt = req_cnt+1
-         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % PrecValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2006, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         IF ( RecvHalf(i) ) THEN
+           CALL MPI_iRECV( Rcv(i) % PrecValues, recv_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2006, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         ELSE
+           CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % PrecValues, full_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2006, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         END IF
        END IF
     END DO
 
@@ -3181,8 +3476,13 @@ END SUBROUTINE ExchangeInterfaces
       rows = NbsIfMatrix(destproc+1) % NumberOfRows
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % PrecValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2006, ELMER_COMM_WORLD, ierr )
+         IF ( SendHalf(i) ) THEN
+           CALL MPI_BSEND( Snd(i) % PrecValues, cols/2, &
+                MPI_DOUBLE_PRECISION, destproc, 2006, ELMER_COMM_WORLD, ierr )
+         ELSE
+           CALL MPI_BSEND( NbsIfMatrix(destproc+1) % PrecValues, &
+                cols, MPI_DOUBLE_PRECISION, destproc, 2006, ELMER_COMM_WORLD, ierr )
+         END IF
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3192,15 +3492,16 @@ END SUBROUTINE ExchangeInterfaces
   IF ( NeedMass ) THEN
     req_cnt = 0
     DO i = 1, n
-       rows = recv_rows(i)
        sproc = neigh(i)
-       RecvdIfMatrix(sproc+1) % NumberOfRows = rows
-
-       IF ( rows>0 ) THEN
-         cols = recv_cols(i)
+       IF ( full_rows(i)>0 ) THEN
          req_cnt = req_cnt+1
-         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % MassValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2007, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         IF ( RecvHalf(i) ) THEN
+           CALL MPI_iRECV( Rcv(i) % MassValues, recv_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2007, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         ELSE
+           CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % MassValues, full_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2007, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         END IF
        END IF
     END DO
 
@@ -3209,8 +3510,13 @@ END SUBROUTINE ExchangeInterfaces
       rows = NbsIfMatrix(destproc+1) % NumberOfRows
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % MassValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2007, ELMER_COMM_WORLD, ierr )
+         IF ( SendHalf(i) ) THEN
+           CALL MPI_BSEND( Snd(i) % MassValues, cols/2, &
+                MPI_DOUBLE_PRECISION, destproc, 2007, ELMER_COMM_WORLD, ierr )
+         ELSE
+           CALL MPI_BSEND( NbsIfMatrix(destproc+1) % MassValues, &
+                cols, MPI_DOUBLE_PRECISION, destproc, 2007, ELMER_COMM_WORLD, ierr )
+         END IF
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3221,15 +3527,16 @@ END SUBROUTINE ExchangeInterfaces
   IF ( NeedDamp ) THEN
     req_cnt = 0
     DO i = 1, n
-       rows = recv_rows(i)
        sproc = neigh(i)
-       RecvdIfMatrix(sproc+1) % NumberOfRows = rows
-
-       IF ( rows>0 ) THEN
-         cols = recv_cols(i)
+       IF ( full_rows(i)>0 ) THEN
          req_cnt = req_cnt+1
-         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % DampValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2008, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         IF ( RecvHalf(i) ) THEN
+           CALL MPI_iRECV( Rcv(i) % DampValues, recv_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2008, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         ELSE
+           CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % DampValues, full_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2008, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         END IF
        END IF
     END DO
 
@@ -3238,8 +3545,13 @@ END SUBROUTINE ExchangeInterfaces
       rows = NbsIfMatrix(destproc+1) % NumberOfRows
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % DampValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2008, ELMER_COMM_WORLD, ierr )
+         IF ( SendHalf(i) ) THEN
+           CALL MPI_BSEND( Snd(i) % DampValues, cols/2, &
+                MPI_DOUBLE_PRECISION, destproc, 2008, ELMER_COMM_WORLD, ierr )
+         ELSE
+           CALL MPI_BSEND( NbsIfMatrix(destproc+1) % DampValues, &
+                cols, MPI_DOUBLE_PRECISION, destproc, 2008, ELMER_COMM_WORLD, ierr )
+         END IF
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3250,15 +3562,16 @@ END SUBROUTINE ExchangeInterfaces
   IF ( NeedILU ) THEN
     req_cnt = 0
     DO i = 1, n
-       rows = recv_rows(i)
        sproc = neigh(i)
-       RecvdIfMatrix(sproc+1) % NumberOfRows = rows
-
-       IF ( rows>0 ) THEN
-         cols = recv_cols(i)
+       IF ( full_rows(i)>0 ) THEN
          req_cnt = req_cnt+1
-         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % ILUValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2009, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         IF ( RecvHalf(i) ) THEN
+           CALL MPI_iRECV( Rcv(i) % ILUValues, recv_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2009, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         ELSE
+           CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % ILUValues, full_cols(i), &
+             MPI_DOUBLE_PRECISION, sproc, 2009, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+         END IF
        END IF
     END DO
 
@@ -3267,16 +3580,33 @@ END SUBROUTINE ExchangeInterfaces
       rows = NbsIfMatrix(destproc+1) % NumberOfRows
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
-         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % ILUValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2009, ELMER_COMM_WORLD, ierr )
+         IF ( SendHalf(i) ) THEN
+           CALL MPI_BSEND( Snd(i) % ILUValues, cols/2, &
+                MPI_DOUBLE_PRECISION, destproc, 2009, ELMER_COMM_WORLD, ierr )
+         ELSE
+           CALL MPI_BSEND( NbsIfMatrix(destproc+1) % ILUValues, &
+                cols, MPI_DOUBLE_PRECISION, destproc, 2009, ELMER_COMM_WORLD, ierr )
+         END IF
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
   END IF
 
 !----------------------------------------------------------------------
+!
+! Rebuild the even rows of everything that came over halved.
+!----------------------------------------------------------------------
 
-  DEALLOCATE( requests, neigh, recv_rows, recv_cols )
+  DO i = 1, n
+    IF ( .NOT. RecvHalf(i) ) CYCLE
+    sproc = neigh(i)
+    IF ( RecvdIfMatrix(sproc+1) % NumberOfRows <= 0 ) CYCLE
+    CALL ExpandHalfIf( Rcv(i), RecvdIfMatrix(sproc+1), &
+         NeedMass, NeedDamp, NeedPrec, NeedILU )
+  END DO
+
+  DEALLOCATE( requests, neigh, recv_rows, recv_cols, &
+              full_rows, full_cols, shdr, rhdr, SendHalf, RecvHalf, Snd, Rcv )
 !*********************************************************************
 END SUBROUTINE ExchangeIfValues
 !*********************************************************************
@@ -3324,6 +3654,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   END DO
 
   ALLOCATE(perm(0:Parenv % Pes-1))
+  perm = 0
   DO i=1,n
     perm(neigh(i))=i
   END DO
@@ -3335,6 +3666,8 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
     DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
       owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
       IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+         IF ( perm(owner) == 0 ) CALL Fatal('ExchangeSourceVec', &
+             'Owner of a dof is no neighbour, ParEnv does not match the matrix!')
          owner = perm(owner)
          send_size(owner) = send_size(owner) + 1
       END IF
@@ -3509,6 +3842,7 @@ SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
   END DO
 
   ALLOCATE(perm(0:Parenv % Pes-1))
+  perm = 0
   DO i=1,n
     perm(neigh(i))=i
   END DO
@@ -3520,6 +3854,8 @@ SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
     DO j=1,SIZE(ParallelInfo % NeighbourList(i) % Neighbours)
       owner = ParallelInfo % NeighbourList(i) % Neighbours(j)
       IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+         IF ( perm(owner) == 0 ) CALL Fatal('ExchangeSourceVecInt', &
+             'Owner of a dof is no neighbour, ParEnv does not match the matrix!')
          owner = perm(owner)
          send_size(owner) = send_size(owner) + 1
       END IF
@@ -3862,6 +4198,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   END DO
 
   ALLOCATE(perm(0:Parenv % Pes-1))
+  perm = 0
   DO i=1,n
     perm(neigh(i))=i
   END DO
@@ -3878,6 +4215,8 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
   DO i = 1, SourceMatrix % NumberOfRows
     owner = ParallelInfo % NeighbourList(i) % Neighbours(1)
     IF ( owner /= ParEnv % MyPE .AND. ParEnv % Active(owner+1) ) THEN
+       IF ( perm(owner) == 0 ) CALL Fatal('ExchangeRHSIf', &
+           'Owner of a dof is no neighbour, ParEnv does not match the matrix!')
        owner = perm(owner)
        send_size(owner) = send_size(owner) + 1
     END IF
@@ -4624,6 +4963,51 @@ FUNCTION SParCDotProd( ndim, x, xind, y, yind ) result (dres)
   CALL SParActiveSUMComplex( dres, 0 )
 !*********************************************************************
 END FUNCTION SParCDotProd
+!*********************************************************************
+
+
+!*********************************************************************
+!*********************************************************************
+!
+!> Compute global bilinear product of vectors x and y, i.e. the dot product
+!> WITHOUT conjugation. This is the form needed by CG-type methods applied to
+!> a complex symmetric (A = A^T, not Hermitian) system, where the Hermitian
+!> product of SParCDotProd would leave the operator non-self-adjoint and the
+!> conjugate-direction recurrence without a basis. Krylov methods that merely
+!> need an inner product for orthogonality or residual minimization -- GCR,
+!> BiCGStab, GMRES, TFQMR -- should keep using SParCDotProd.
+!
+FUNCTION SParCDotProdU( ndim, x, xind, y, yind ) result (dres)
+
+  IMPLICIT NONE
+
+  ! Parameters
+
+  INTEGER :: ndim, xind, yind
+  COMPLEX(KIND=dp) :: x(*)
+  COMPLEX(KIND=dp) :: y(*)
+  COMPLEX(KIND=dp) :: dres
+
+
+  ! Local variables
+
+  INTEGER :: i
+
+  !*********************************************************************
+  dres = 0.0d0
+  IF ( xind == 1 .AND. yind  == 1 ) THEN
+     !$OMP PARALLEL DO REDUCTION(+:dres)
+     DO i = 1, ndim
+        dres = dres + x(i) * y(i)
+     END DO
+     !$OMP END PARALLEL DO
+  ELSE
+     CALL Fatal( 'SParCDotProdU', 'xind or yind not 1' )
+  END IF
+
+  CALL SParActiveSUMComplex( dres, 0 )
+!*********************************************************************
+END FUNCTION SParCDotProdU
 !*********************************************************************
 
 

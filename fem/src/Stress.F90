@@ -52,6 +52,78 @@ MODULE StressLocal
 
   INTEGER, PARAMETER :: VOIGT_I1(6) = [1,2,3,1,2,1], VOIGT_I2(6) = [1,2,3,2,3,3]
 
+!> Tensor index pair (i,j) at 3*(i-1)+j -> the slot it is stored in, for the output
+!> layout SymTensorOutputComponents describes. A slot beyond that layout's length is
+!> one the layout does not carry.
+  INTEGER, PARAMETER :: SYMTENSOR_IND(9) = [ 1,4,6,4,2,5,6,5,3 ]
+
+!> Every field an elasticity solver may recover from the displacement. Both
+!> solvers declare exactly this set, so ElasticityStoreEigenmode can walk it
+!> without being told which of them are in play: one a solver did not declare is
+!> simply not on the mesh, and is skipped.
+  CHARACTER(LEN=16), PARAMETER :: STRESS_OUTPUT_FIELDS(7) = &
+      [ CHARACTER(LEN=16) :: 'Stress', 'vonMises', 'Principal Stress', 'Strain', &
+        'Principal Strain', 'Principal Angle', 'Tresca' ]
+
+!------------------------------------------------------------------------------
+!> Persistent state of a nodal projection. Stress and strain fields are recovered
+!> from their integration point values by an L2 projection, which needs a solver
+!> of its own: a scalar mass matrix, a permutation, and a hidden variable to run
+!> the component solves through. All of it survives between calls, so it is kept
+!> here rather than in a pile of SAVEd locals.
+!------------------------------------------------------------------------------
+  TYPE :: NodalProjector_t
+    TYPE(Solver_t), POINTER :: PSolver => NULL()
+    !> The primary solver this projection serves. Held because an assembly callback
+    !> is necessarily file scope -- see NodalProjectorAssemble -- so it cannot reach
+    !> the solver by host association and has nowhere else to get it. PSolver is no
+    !> substitute: its Variable is the projection's hidden scalar, not the field.
+    TYPE(Solver_t), POINTER :: Solver => NULL()
+    INTEGER, POINTER :: Perm(:) => NULL()
+    CHARACTER(LEN=MAX_NAME_LEN) :: EqName = ' '
+    LOGICAL :: UseMask = .FALSE.
+    LOGICAL :: Initialized = .FALSE.
+    ! Solver state held aside while the projection runs, see NodalProjectorBegin.
+    LOGICAL :: LimiterOn = .FALSE., ContactOn = .FALSE.
+    LOGICAL :: EigenOn = .FALSE., HarmonicOn = .FALSE., ResidualOn = .FALSE.
+    REAL(KIND=dp) :: Relax = 1.0_dp
+    LOGICAL :: RelaxFound = .FALSE.
+    LOGICAL :: Factorize = .FALSE., FoundFactorize = .FALSE.
+    LOGICAL :: FreeFactorize = .FALSE., FoundFreeFactorize = .FALSE.
+    LOGICAL :: SkipChange = .FALSE., FoundSkipChange = .FALSE.
+  END TYPE NodalProjector_t
+
+!------------------------------------------------------------------------------
+!> What a caller of NodalProjectorAssemble supplies: the tensor, or the pair of
+!> them, to be fitted at one integration point. This is the only part of a nodal
+!> projection that knows any physics -- everything around it is the same whatever
+!> is being projected.
+!>
+!> An implementation of this MUST be a file scope procedure, not an internal one.
+!> gfortran carries host association through a trampoline on the stack, which marks
+!> the shared object as needing an executable stack and makes the solver module
+!> fail to load outright ("cannot enable executable stack as shared object
+!> requires"). Check with: readelf -lW <module>.so | grep GNU_STACK -- RW is fine,
+!> RWE is this bug. That is why Proj is passed rather than reached: it is the
+!> callback's only route to the solver and hence to the material and the solution.
+!>
+!> Per-element work must not be repeated at every point; do it when t == 1.
+!>
+!> T2 is untouched unless the caller asked for two fields. Both arrive zeroed, so
+!> a component the model does not set stays zero.
+!------------------------------------------------------------------------------
+  ABSTRACT INTERFACE
+    SUBROUTINE ProjectedTensors_i( Proj, Element, Nodes, n, nd, t, Basis, dBasisdx, T1, T2 )
+      IMPORT :: dp, Element_t, Nodes_t, NodalProjector_t
+      TYPE(NodalProjector_t) :: Proj
+      TYPE(Element_t), POINTER :: Element
+      TYPE(Nodes_t) :: Nodes
+      INTEGER :: n, nd, t
+      REAL(KIND=dp) :: Basis(:), dBasisdx(:,:)
+      REAL(KIND=dp) :: T1(3,3), T2(3,3)
+    END SUBROUTINE ProjectedTensors_i
+  END INTERFACE
+
 !------------------------------------------------------------------------------
   CONTAINS
 
@@ -95,6 +167,15 @@ MODULE StressLocal
      REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), ElasticStress(3,3), &
                       InnerProd, NodalViscosity(n)
      REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6)
+     ! The viscoelastic lag stress load, kept apart from StressLoad rather than
+     ! written over it. The two are separate contributions to the same force term,
+     ! and while they shared one array a Maxwell material silently discarded
+     ! whatever "Stress Load" and "Strain Load" had put there: this routine set
+     ! StressLoad from those keywords and ViscoElasticLoad then overwrote it,
+     ! Tensor26Vector zeroing its output first. Nothing said a keyword was dropped,
+     ! and NeedPreStress was forced true immediately after, so the mechanism carried
+     ! on with the lag stress alone.
+     REAL(KIND=dp) :: VeLoad(6)
 
      INTEGER :: i,j,k,l,p,q,t,dim,NBasis
 
@@ -396,6 +477,8 @@ MODULE StressLocal
              NodalDisplacement,Basis,dBasisdx,Nodes,dim,n,ntot )
        END IF
 
+       StressLoad = 0.0d0
+       VeLoad = 0.0d0
        IF( NeedPreStress ) THEN
          DO i=1,6
            PreStrain(i) = SUM( NodalPreStrain(i,1:n)*Basis(1:n) )
@@ -460,7 +543,7 @@ MODULE StressLocal
                 SOL, Basis, dBasisdx, Nodes, dim, n, ntot, .FALSE. )
          END IF
 
-         xPhi = ViscoElasticLoad( ve_stress, t, ElasticStress, StressLoad )
+         xPhi = ViscoElasticLoad( ve_stress, t, ElasticStress, VeLoad )
          NeedPreStress = .TRUE.
        ELSE
          xPhi = 1
@@ -485,7 +568,7 @@ MODULE StressLocal
          IF( NeedPreStress ) THEN
            DO i=1,dim
              DO j=1,6
-               LoadAtIp(i) = LoadAtIp(i) + StressLoad(j) * G(i,j)
+               LoadAtIp(i) = LoadAtIp(i) + ( StressLoad(j) + VeLoad(j) ) * G(i,j)
              END DO
            END DO
          END IF
@@ -661,11 +744,11 @@ MODULE StressLocal
 CONTAINS
 
 !------------------------------------------------------------------------------
-   FUNCTION ViscoElasticLoad(ve_stress, ip, ElasticStress, StressLoad) RESULT(xPhi)
+   FUNCTION ViscoElasticLoad(ve_stress, ip, ElasticStress, LagLoad) RESULT(xPhi)
 !------------------------------------------------------------------------------
      TYPE(Variable_t) :: ve_stress
      INTEGER :: ip
-     REAL(KIND=dp) :: ElasticStress(3,3), StressLoad(6), xPhi
+     REAL(KIND=dp) :: ElasticStress(3,3), LagLoad(6), xPhi
 !------------------------------------------------------------------------------
      INTEGER :: i
      REAL(KIND=dp) :: D_new(3,3), PrevD(3,3), VeVec(6), Pres, Pres0, ShearModulus
@@ -689,7 +772,7 @@ CONTAINS
 
      ! RHS contribution from stored lag stress (no LocalStress call needed):
      StressTensor = xPhi * (PrevD - Pres0 * Ident)
-     CALL Tensor26Vector( StressTensor, StressLoad, dim, CSymmetry )
+     CALL Tensor26Vector( StressTensor, LagLoad, dim, CSymmetry )
 
      ! Update lag stress: d_new = (1-xPhi)*C:u + xPhi*(d_prev - p0*I) + p*I
      D_new = (1._dp - xPhi)*ElasticStress + xPhi*(PrevD - Pres0*Ident) + Pres*Ident
@@ -1154,8 +1237,9 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: i,j,p,q,ic
      LOGICAL :: Found, Incompressible, FirstTime=.TRUE., PreBuiltC
-     REAL(KIND=dp) :: C(6,6), Young, LGrad(3,3), Poisson, S(6), &
-          Pressure, Radius, HEXP(3,3)
+     ! S went with the plane strain recovery, which is now PlaneStrainStressZZ.
+     REAL(KIND=dp) :: C(6,6), Young, LGrad(3,3), Poisson, &
+          Pressure, Radius, HEXP(3,3), EzzC(3)
      TYPE(ValueHandle_t), SAVE :: BetaIP_h, EIP_h, nuIP_h, Load_h(4), Load_h_im(4)
      TYPE(Element_t), POINTER :: Element
      CHARACTER :: DimensionString
@@ -1223,6 +1307,8 @@ CONTAINS
      PreBuiltC = .FALSE.
      IF ( PRESENT(argC) ) PreBuiltC = Isotropic(1)
 
+     EzzC = 0.0_dp
+
      IF ( PreBuiltC ) THEN
        C = argC
        Young = argYoung
@@ -1285,20 +1371,7 @@ CONTAINS
               C(4,2) = C(1,2)
             END IF
          ELSE
-            IF ( PlaneStress ) THEN
-               C(1,1) = C(1,1) - C(1,3) * C(3,1) / C(3,3)
-               C(1,2) = C(1,2) - C(1,3) * C(2,3) / C(3,3)
-               C(2,1) = C(2,1) - C(2,3) * C(1,3) / C(3,3)
-               C(2,2) = C(2,2) - C(2,3) * C(3,2) / C(3,3)
-            ELSE
-!              To compute Stress_zz afterwards....!
-               C(4,1) = C(3,1)
-               C(4,2) = C(3,2)
-               C(4,3) = C(3,4)
-            END IF
-            C(3,3) = C(4,4)
-            C(1,3) = 0; C(3,1) = 0
-            C(2,3) = 0; C(3,2) = 0
+            CALL CondensePlaneElasticityMatrix( C, PlaneStress, EzzC )
          END IF
        END IF
 
@@ -1346,11 +1419,21 @@ CONTAINS
        CALL Strain2Stress( Stress, Strain, C, dim, CSymmetry )
      END IF
 
-     IF ( dim==2 .AND. .NOT. CSymmetry .AND. .NOT. PlaneStress ) THEN
-        S(1) = Strain(1,1)
-        S(2) = Strain(2,2)
-        S(3) = Strain(1,2)
-        Stress(3,3) = Stress(3,3) + SUM( C(4,1:3) * S(1:3) )
+!    In two dimensions one out-of-plane component is not carried by the plane
+!    system but is still determined by it, and which one depends on the
+!    assumption: plane strain leaves Stress_zz to be recovered, plane stress
+!    leaves Strain_zz. Neither does any virtual work here -- the plane weak form
+!    cannot see them -- but both are reportable, so fill them in for output.
+     IF ( dim==2 .AND. .NOT. CSymmetry ) THEN
+       IF ( .NOT. PlaneStress ) THEN
+         Stress(3,3) = Stress(3,3) + PlaneStrainStressZZ( C, Strain )
+       ELSE
+         IF ( Isotropic(1) ) THEN
+           Strain(3,3) = -Poisson / ( 1.0_dp - Poisson ) * ( Strain(1,1) + Strain(2,2) )
+         ELSE
+           Strain(3,3) = PlaneStressStrainZZ( EzzC, Strain )
+         END IF
+       END IF
      END IF
    END SUBROUTINE LocalStress
 !------------------------------------------------------------------------------
@@ -1411,10 +1494,393 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Number of independent components of a symmetric stress tensor, i.e. the length
-!> of the vector that Tensor26Vector fills and Vector62Tensor reads back:
-!> (11,22,12) in plane, (11,22,33,12) in axisymmetric and (11,22,33,12,23,13) in
-!> three dimensions.
+!> Reduce a full 6x6 elasticity matrix to the three-component plane packing that
+!> Strain2Stress uses when dim is 2 and CSymmetry is false, namely (11,22,12) with
+!> the engineering shear.
+!>
+!> This is the step that separates a solver which supports anisotropy in the plane
+!> from one which does not, and it is nothing to do with the assembly: a plane
+!> assembly written for a general dim contracts C(1:3,1:3) with (e11,e22,2e12), so
+!> handed a raw 6x6 it would read C(3,3) -- the 33 modulus -- as the shear modulus,
+!> and the 11-33 couplings as normal-to-shear ones. Hence the condensation, and
+!> hence extracting it here rather than letting a second solver grow its own.
+!>
+!> WHAT COMES BACK, and it is two different things depending on the assumption,
+!> because the plane system determines one out-of-plane component without carrying
+!> it:
+!>
+!>   plane strain -> Stress_zz is left to be recovered, and its coefficients are
+!>     stashed in C(4,1:3), to be contracted with (e11,e22,2e12). EzzC is untouched.
+!>   plane stress -> Strain_zz is left to be recovered, and its coefficients come
+!>     back in EzzC. C(4,1:3) is untouched, and still holds the shear row.
+!>
+!> The C(4,1:3) stash is not a design so much as an existing convention -- the
+!> isotropic path a few lines up in LocalStress fills the same slots by hand -- and
+!> it is kept because changing it would alter what every caller reads for no gain
+!> here. A caller wanting the plane strain coefficients reads C(4,1:3); one wanting
+!> the plane stress coefficients reads EzzC; neither is meaningful under the other
+!> assumption.
+!>
+!> KNOWN LIMITATION, pre-existing and preserved deliberately: the normal-to-shear
+!> couplings C(1,4) and C(2,4) of the input are NOT carried into the reduced
+!> matrix -- positions (1,3) and (2,3) are zeroed rather than loaded from them. For
+!> a material whose axes are the coordinate axes those couplings vanish and nothing
+!> is lost, which is why no test has ever noticed. Fixing it would change
+!> StressSolve's answers, so it is recorded rather than done.
+!------------------------------------------------------------------------------
+   SUBROUTINE CondensePlaneElasticityMatrix( C, PlaneStress, EzzC )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: C(:,:)     !< 6x6 in; reduced plane packing in C(1:3,1:3) out
+     LOGICAL :: PlaneStress
+     REAL(KIND=dp) :: EzzC(:)    !< plane stress only: the Strain_zz coefficients
+!------------------------------------------------------------------------------
+     IF ( PlaneStress ) THEN
+!      Coefficients recovering the out-of-plane strain from the in-plane ones, from
+!      the plane stress condition Stress_zz = 0. Taken before the condensation
+!      below overwrites the out-of-plane row. The third multiplies the engineering
+!      shear, which is how C is indexed.
+       EzzC(1) = -C(3,1) / C(3,3)
+       EzzC(2) = -C(3,2) / C(3,3)
+       EzzC(3) = -C(3,4) / C(3,3)
+
+       C(1,1) = C(1,1) - C(1,3) * C(3,1) / C(3,3)
+       C(1,2) = C(1,2) - C(1,3) * C(2,3) / C(3,3)
+       C(2,1) = C(2,1) - C(2,3) * C(1,3) / C(3,3)
+       C(2,2) = C(2,2) - C(2,3) * C(3,2) / C(3,3)
+     ELSE
+!      To compute Stress_zz afterwards....!
+       C(4,1) = C(3,1)
+       C(4,2) = C(3,2)
+       C(4,3) = C(3,4)
+     END IF
+     C(3,3) = C(4,4)
+     C(1,3) = 0; C(3,1) = 0
+     C(2,3) = 0; C(3,2) = 0
+!------------------------------------------------------------------------------
+   END SUBROUTINE CondensePlaneElasticityMatrix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The out-of-plane normal stress that a plane strain system determines but does
+!> not carry, from the coefficients CondensePlaneElasticityMatrix stashed in
+!> C(4,1:3). Anisotropic materials only; the isotropic case has a closed form in
+!> terms of the Poisson ratio and does not need the stash.
+!>
+!> Extracted so that the two elasticity solvers cannot drift apart on it. It is one
+!> expression and it would be trivial to write twice, which is exactly how a factor
+!> of two on the engineering shear below came to live in this file unnoticed until
+!> a test was written that could see it.
+!------------------------------------------------------------------------------
+   PURE FUNCTION PlaneStrainStressZZ( C, Strain ) RESULT( Szz )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(IN) :: C(:,:), Strain(:,:)
+     REAL(KIND=dp) :: Szz
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: S(3)
+!------------------------------------------------------------------------------
+     S(1) = Strain(1,1)
+     S(2) = Strain(2,2)
+     ! The engineering shear: C is indexed for it throughout, as Strain2Stress
+     ! shows by doubling this same component before contracting with C.
+     S(3) = 2.0_dp * Strain(1,2)
+     Szz = SUM( C(4,1:3) * S(1:3) )
+!------------------------------------------------------------------------------
+   END FUNCTION PlaneStrainStressZZ
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The out-of-plane normal strain that a plane stress system determines but does
+!> not carry, from the coefficients CondensePlaneElasticityMatrix returned in EzzC.
+!> Anisotropic materials only, for the same reason as above.
+!------------------------------------------------------------------------------
+   PURE FUNCTION PlaneStressStrainZZ( EzzC, Strain ) RESULT( Ezz )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(IN) :: EzzC(:), Strain(:,:)
+     REAL(KIND=dp) :: Ezz
+!------------------------------------------------------------------------------
+     Ezz = EzzC(1) * Strain(1,1) + EzzC(2) * Strain(2,2) + &
+         EzzC(3) * 2.0_dp * Strain(1,2)
+!------------------------------------------------------------------------------
+   END FUNCTION PlaneStressStrainZZ
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Number of components of a stress or strain field written out for the user, in
+!> the order (11,22,33,12) in two dimensions and (11,22,33,12,23,13) in three --
+!> the same order truncated, so IND maps into both.
+!>
+!> This is deliberately NOT SymTensorComponents, which answers a different
+!> question. That one gives the length of the vector the weak form contracts, and
+!> so drops the out-of-plane component in the plane case, where it does no virtual
+!> work. Here the question is what is *reportable*, and the out-of-plane component
+!> very much is: in plane strain Stress_zz is nonzero and of the same order as
+!> Stress_xx, and in plane stress Strain_zz is. Only the 23 and 13 shears are
+!> identically zero in two dimensions, so 6 -> 4 is the whole of the reduction.
+!------------------------------------------------------------------------------
+   FUNCTION SymTensorOutputComponents( dim ) RESULT( ncomp )
+!------------------------------------------------------------------------------
+     INTEGER :: dim, ncomp
+!------------------------------------------------------------------------------
+     ncomp = MERGE( 4, 6, dim <= 2 )
+!------------------------------------------------------------------------------
+   END FUNCTION SymTensorOutputComponents
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The tensor index pair a stored slot corresponds to, as "11", "23" and so on,
+!> for progress messages. Slot 3 is always the out-of-plane component, which under
+!> axial symmetry is the hoop.
+!------------------------------------------------------------------------------
+   FUNCTION SymTensorComponentName( slot ) RESULT( Name )
+!------------------------------------------------------------------------------
+     INTEGER :: slot
+     CHARACTER(LEN=2) :: Name
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=2), PARAMETER :: Names(6) = [ '11','22','33','12','23','13' ]
+!------------------------------------------------------------------------------
+     Name = Names(slot)
+!------------------------------------------------------------------------------
+   END FUNCTION SymTensorComponentName
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The "Exported Variable" definition of a stress or strain field, naming exactly
+!> the components SymTensorOutputComponents keeps, in that order. Built here so
+!> that the declaration and the assembly that indexes into it cannot drift apart.
+!------------------------------------------------------------------------------
+   FUNCTION StressFieldDefinition( Name, dim ) RESULT( Str )
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Name
+     INTEGER :: dim
+     CHARACTER(LEN=MAX_NAME_LEN) :: Str
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=2), PARAMETER :: Comp(6) = [ 'xx','yy','zz','xy','yz','xz' ]
+     INTEGER :: i, ncomp
+!------------------------------------------------------------------------------
+     ncomp = SymTensorOutputComponents( dim )
+
+     Str = TRIM(Name)//'['//TRIM(Name)//'_'//Comp(1)//':1'
+     DO i=2,ncomp
+       Str = TRIM(Str)//' '//TRIM(Name)//'_'//Comp(i)//':1'
+     END DO
+     Str = TRIM(Str)//']'
+!------------------------------------------------------------------------------
+   END FUNCTION StressFieldDefinition
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Keep the postprocessed fields of one eigenmode.
+!>
+!> Each mode has its own displacement and hence its own stresses, so the
+!> postprocessing runs once per mode -- but the nodal fields can only ever hold
+!> the last one computed. The results therefore go into each field variable's own
+!> EigenVectors, mirroring the displacement's, so that a mode written out carries
+!> its stresses with it.
+!>
+!> Call this after the postprocessing of mode Mode has run. The fields are read
+!> from the variables themselves, which is where the projection has just left
+!> them, so nothing has to be threaded through: whichever fields the solver
+!> declared are the ones stored.
+!>
+!> Imaginary is mandatory rather than OPTIONAL on purpose -- testing an absent
+!> OPTIONAL reads uninitialised memory instead of failing to build. A harmonic
+!> caller runs each mode twice, .FALSE. for the real part and then .TRUE. for the
+!> imaginary; an eigen caller passes .FALSE. once.
+!------------------------------------------------------------------------------
+   SUBROUTINE ElasticityStoreEigenmode( Solver, Mesh, Mode, Imaginary )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t) :: Solver
+     TYPE(Mesh_t), POINTER :: Mesh
+     INTEGER :: Mode
+     LOGICAL :: Imaginary
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: Var, iVar
+     INTEGER :: i, k, dofs, nomodes
+!------------------------------------------------------------------------------
+     nomodes = Solver % NOFEigenValues
+
+     DO i=1,SIZE(STRESS_OUTPUT_FIELDS)
+       Var => VariableGet( Mesh % Variables, STRESS_OUTPUT_FIELDS(i) )
+       IF ( .NOT. ASSOCIATED( Var ) ) CYCLE
+       dofs = Var % DOFs
+
+       IF ( Mode == 1 .AND. .NOT. Imaginary ) THEN
+         ! Sized from the field itself rather than from the displacement: the two
+         ! agree whenever both are on the same permutation, and where they would
+         ! not, this is the length the assignments below actually need.
+         IF ( .NOT. ASSOCIATED( Var % EigenVectors ) ) THEN
+           ALLOCATE( Var % EigenVectors( nomodes, SIZE( Var % Values ) ) )
+           Var % EigenVectors = 0.0_dp
+         END IF
+         IF ( .NOT. ASSOCIATED( Var % EigenValues ) ) THEN
+           ALLOCATE( Var % EigenValues( nomodes ) )
+           Var % EigenValues = 0.0_dp
+         END IF
+         Var % EigenValues = Solver % Variable % EigenValues
+
+         ! The components of a multi-dof field are variables in their own right,
+         ! and they are what actually gets written out, so point each at the slice
+         ! it names.
+         IF ( dofs > 1 ) THEN
+           DO k=1,dofs
+             iVar => VariableGet( Mesh % Variables, ComponentName( Var % Name, k ) )
+             IF ( .NOT. ASSOCIATED( iVar ) ) CALL Fatal( 'ElasticityStoreEigenmode', &
+                 'No variable associated: '//TRIM( ComponentName( Var % Name, k ) ) )
+             iVar % EigenValues => Var % EigenValues
+             iVar % EigenVectors => Var % EigenVectors(:,k::dofs)
+           END DO
+         END IF
+       END IF
+
+       IF ( Imaginary ) THEN
+         Var % EigenVectors(Mode,:) = Var % EigenVectors(Mode,:) + &
+             CMPLX( 0.0_dp, Var % Values, KIND=dp )
+       ELSE
+         Var % EigenVectors(Mode,:) = Var % Values
+       END IF
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE ElasticityStoreEigenmode
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Expand one node's stored components, as laid out by SymTensorOutputComponents,
+!> back into a full 3x3 tensor. V is that node's slice alone. A slot the layout
+!> does not carry is one that is identically zero, so it reads back as zero and
+!> the tensor is fully defined either way.
+!------------------------------------------------------------------------------
+   SUBROUTINE OutputVector2Tensor( V, ncomp, T )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: V(:), T(3,3)
+     INTEGER :: ncomp
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,p,k
+!------------------------------------------------------------------------------
+     T = 0.0_dp
+     p = 0
+     DO i=1,3
+       DO j=1,3
+         p = p + 1
+         k = SYMTENSOR_IND(p)
+         IF ( k <= ncomp ) T(i,j) = V(k)
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE OutputVector2Tensor
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add one integration point's contribution to the local mass matrix of a nodal
+!> projection. Every component is fitted against this same Galerkin mass, which is
+!> why one matrix serves them all and they differ only in the right hand side.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorMass( Mass, Basis, nd, Weight )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: Mass(:,:), Basis(:), Weight
+     INTEGER :: nd
+!------------------------------------------------------------------------------
+     INTEGER :: p,q
+!------------------------------------------------------------------------------
+     DO p=1,nd
+       DO q=1,nd
+         Mass(p,q) = Mass(p,q) + Weight * Basis(q) * Basis(p)
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorMass
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add one integration point's contribution of a symmetric tensor to the local
+!> projection right hand side, packed in the stored component order.
+!>
+!> Slots the layout does not carry are skipped rather than special cased. In two
+!> dimensions those are the 23 and 13 shears, identically zero there; the
+!> out-of-plane 33 is carried, and under axial symmetry it is the hoop, which the
+!> tensor holds at (3,3) like any other out-of-plane component. That is why this
+!> needs no axisymmetric branch, where the callers each used to have one.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorTensor( Force, Basis, nd, ncomp, Weight, T )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: Force(:), Basis(:), Weight, T(:,:)
+     INTEGER :: nd, ncomp
+!------------------------------------------------------------------------------
+     INTEGER :: p,i,j,k
+!------------------------------------------------------------------------------
+     DO p=1,nd
+       DO i=1,3
+         DO j=i,3
+           k = SYMTENSOR_IND( 3*(i-1)+j )
+           IF ( k > ncomp ) CYCLE
+           Force(ncomp*(p-1)+k) = Force(ncomp*(p-1)+k) + Weight * T(i,j) * Basis(p)
+         END DO
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorTensor
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> As NodalProjectorTensor, but for a source already held as a component vector in
+!> the stored order rather than as a tensor -- which is how a UMAT hands its stress
+!> back.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorVector( Force, Basis, nd, ncomp, Weight, V )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: Force(:), Basis(:), Weight, V(:)
+     INTEGER :: nd, ncomp
+!------------------------------------------------------------------------------
+     INTEGER :: p,i
+!------------------------------------------------------------------------------
+     DO p=1,nd
+       DO i=1,ncomp
+         Force(ncomp*(p-1)+i) = Force(ncomp*(p-1)+i) + Weight * V(i) * Basis(p)
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorVector
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add an element's local projection right hand side into the global one, the
+!> components staying interleaved with stride ncomp.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorGlue( ForceG, Force, Perm, Indexes, nd, ncomp )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: ForceG(:), Force(:)
+     INTEGER :: Perm(:), Indexes(:), nd, ncomp
+!------------------------------------------------------------------------------
+     INTEGER :: p,i,l
+!------------------------------------------------------------------------------
+     DO p=1,nd
+       l = Perm(Indexes(p))
+       DO i=1,ncomp
+         ForceG(ncomp*(l-1)+i) = ForceG(ncomp*(l-1)+i) + Force(ncomp*(p-1)+i)
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorGlue
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Number of independent components of a symmetric stress tensor as the weak form
+!> sees it, i.e. the length of the vector that Tensor26Vector fills and
+!> Vector62Tensor reads back: (11,22,12) in plane, (11,22,33,12) in axisymmetric
+!> and (11,22,33,12,23,13) in three dimensions. The plane case has no out-of-plane
+!> entry because BuildGMatrix has no column for one -- see
+!> SymTensorOutputComponents for the layout used when writing fields out.
 !------------------------------------------------------------------------------
    FUNCTION SymTensorComponents( dim, CSymmetry ) RESULT( ncomp )
 !------------------------------------------------------------------------------
@@ -1906,6 +2372,1196 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE BuildGMatrix
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Build, or rebuild after a mesh change, the auxiliary solver that a nodal
+!> projection runs through: a scalar CRS matrix over the same mesh, its own right
+!> hand side and communicator, and a hidden variable that the component solves are
+!> written into. The keyword namespace is left active on return; the caller clears
+!> it when the projection is finished.
+!>
+!> Rebuilt reports that the matrix was created afresh, so that force vectors the
+!> caller keeps between calls have to be reallocated to the new row count.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorSetup( Proj, Solver, NameSpace, MaskKeyword, TempName, &
+       GlobalBubbles, Rebuilt, VarPerm, ReuseExisting )
+!------------------------------------------------------------------------------
+     TYPE(NodalProjector_t) :: Proj
+     TYPE(Solver_t), TARGET :: Solver
+     CHARACTER(LEN=*) :: NameSpace, MaskKeyword, TempName
+     !> Bubble handling, derived by the caller from the element definition. It is
+     !> deliberately not settable for the projection alone: the assembly loop walks
+     !> the element's DOFs, so a matrix built without the bubbles the element
+     !> actually has is glued into out of bounds and segfaults in
+     !> CRS_GlueLocalMatrix. Setting "Bubbles in Global System" without a namespace
+     !> still works and applies to the primary solver and the projection alike.
+     LOGICAL :: GlobalBubbles
+     LOGICAL, INTENT(OUT) :: Rebuilt
+     !> Permutation recorded on the hidden variable. Defaults to the projection's
+     !> own, which is what the component solves index with; callers that register
+     !> it against the field permutation instead pass theirs.
+     INTEGER, POINTER, OPTIONAL :: VarPerm(:)
+     !> Adopt an existing variable of this name, and its permutation, when the mesh
+     !> already carries one -- as it can after a refinement has interpolated it
+     !> across. Off by default, in which case a fresh one is always made.
+     LOGICAL, OPTIONAL :: ReuseExisting
+!------------------------------------------------------------------------------
+     LOGICAL :: Found, OptimizeBW
+     REAL(KIND=dp), POINTER :: TempValues(:)
+     INTEGER, POINTER :: PermForVar(:)
+!------------------------------------------------------------------------------
+     CALL ListSetNameSpace( NameSpace )
+     Proj % Solver => Solver
+
+     Rebuilt = ( .NOT. Proj % Initialized ) .OR. Solver % MeshChanged
+     IF ( .NOT. Rebuilt ) RETURN
+
+     ! The auxiliary solver object is reassigned rather than freed. The variable
+     ! added below records it as its owner and VariableGet dereferences that owner
+     ! on its interpolation path, so releasing it would leave the previous mesh's
+     ! variable list pointing at freed memory.
+     IF ( Proj % Initialized ) THEN
+       CALL FreeMatrix( Proj % PSolver % Matrix )
+     ELSE
+       ALLOCATE( Proj % PSolver )
+     END IF
+     Proj % PSolver = Solver
+
+     ! An earlier run may have left this variable on the mesh, in which case its
+     ! permutation is adopted rather than a new one built.
+     Proj % PSolver % Variable => NULL()
+     IF ( PRESENT(ReuseExisting) ) THEN
+       IF ( ReuseExisting ) Proj % PSolver % Variable => &
+           VariableGet( Proj % PSolver % Mesh % Variables, TempName, ThisOnly=.TRUE. )
+     END IF
+
+     IF ( ASSOCIATED( Proj % PSolver % Variable ) ) THEN
+       Proj % Perm => Proj % PSolver % Variable % Perm
+     ELSE
+       ALLOCATE( Proj % Perm( SIZE(Solver % Variable % Perm) ) )
+       Proj % Perm = 0
+     END IF
+
+     OptimizeBW = GetLogical( Proj % PSolver % Values, 'Optimize Bandwidth', Found )
+     IF ( .NOT. Found ) OptimizeBW = .TRUE.
+
+
+     ! Restrict the projection to the bodies that asked for it, when any did.
+     IF ( ListGetLogicalAnyEquation( CurrentModel, MaskKeyword ) ) THEN
+       Proj % UseMask = .TRUE.
+       Proj % EqName = MaskKeyword
+     ELSE
+       Proj % UseMask = .FALSE.
+       Proj % EqName = TRIM( ListGetString( Proj % PSolver % Values,'Equation') )
+     END IF
+
+     Proj % PSolver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
+         Proj % Perm, 1, MATRIX_CRS, OptimizeBW, Proj % EqName, GlobalBubbles=GlobalBubbles )
+
+     ALLOCATE( Proj % PSolver % Matrix % RHS(Proj % PSolver % Matrix % NumberOfRows) )
+     Proj % PSolver % Matrix % Comm = Solver % Matrix % Comm
+
+     IF ( .NOT. ASSOCIATED( Proj % PSolver % Variable ) ) THEN
+       PermForVar => Proj % Perm
+       IF ( PRESENT(VarPerm) ) PermForVar => VarPerm
+       ALLOCATE( TempValues(Proj % PSolver % Matrix % NumberOfRows) )
+       TempValues = 0.0_dp
+       CALL VariableAdd( Proj % PSolver % Mesh % Variables, Proj % PSolver % Mesh, &
+           Proj % PSolver, TempName, 1, TempValues, PermForVar, Output=.FALSE. )
+       Proj % PSolver % Variable => VariableGet( Proj % PSolver % Mesh % Variables, TempName )
+     END IF
+
+     Proj % Initialized = .TRUE.
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorSetup
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Hand the solver over to the projection. Several things the primary solve wants
+!> are meaningless for an L2 fit and actively harmful if left on -- limiters and
+!> contact conditions would be applied to a stress component, an eigen or harmonic
+!> setting would send the component solves down the wrong path, and a relaxation
+!> factor would damp a solve that is not iterating on anything. Each is put aside
+!> here and restored by NodalProjectorEnd.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorBegin( Proj, Solver )
+!------------------------------------------------------------------------------
+     TYPE(NodalProjector_t) :: Proj
+     TYPE(Solver_t), TARGET :: Solver
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     TYPE(ValueList_t), POINTER :: Params
+!------------------------------------------------------------------------------
+     Params => Solver % Values
+
+     Proj % LimiterOn = ListGetLogical( Params, 'Apply Limiter', Found )
+     IF ( Proj % LimiterOn ) CALL ListAddLogical( Params, 'Apply Limiter', .FALSE. )
+
+     Proj % ContactOn = ListGetLogical( Params, 'Apply Contact BCs', Found )
+     IF ( Proj % ContactOn ) CALL ListAddLogical( Params, 'Apply Contact BCs', .FALSE. )
+
+     Proj % EigenOn = ListGetLogical( Params, 'Eigen Analysis', Found )
+     IF ( Proj % EigenOn ) CALL ListAddLogical( Params, 'Eigen Analysis', .FALSE. )
+
+     Proj % HarmonicOn = ListGetLogical( Params, 'Harmonic Analysis', Found )
+     IF ( Proj % HarmonicOn ) CALL ListAddLogical( Params, 'Harmonic Analysis', .FALSE. )
+
+     Proj % ResidualOn = ListGetLogical( Params, 'Linear System Residual Mode', Found )
+     IF ( Proj % ResidualOn ) &
+         CALL ListAddLogical( Params, 'Linear System Residual Mode', .FALSE. )
+
+     Proj % Relax = GetCReal( Params, 'Nonlinear System Relaxation Factor', Proj % RelaxFound )
+     IF ( .NOT. Proj % RelaxFound ) Proj % Relax = 1.0_dp
+     CALL ListAddConstReal( Params, 'Nonlinear System Relaxation Factor', 1.0_dp )
+
+     ! Every component solve runs against the same matrix and differs only in its
+     ! right hand side, so the factorization is formed once and kept for the whole
+     ! bracket. And a component solve is not a nonlinear iteration, so it must not
+     ! feed the primary solve's convergence measure.
+     Proj % Factorize = ListGetLogical( Params, 'Linear System Refactorize', &
+         Proj % FoundFactorize )
+     Proj % FreeFactorize = ListGetLogical( Params, 'Linear System Free Factorization', &
+         Proj % FoundFreeFactorize )
+     Proj % SkipChange = ListGetLogical( Params, 'Skip Compute Nonlinear Change', &
+         Proj % FoundSkipChange )
+
+     CALL ListAddLogical( Params, 'Linear System Refactorize', .FALSE. )
+     CALL ListAddLogical( Params, 'Linear System Free Factorization', .FALSE. )
+     CALL ListAddLogical( Params, 'Skip Compute Nonlinear Change', .TRUE. )
+
+     Proj % PSolver % NOFEigenValues = 0
+     CurrentModel % Solver => Proj % PSolver
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorBegin
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Assemble a nodal projection: walk the active elements, and at every integration
+!> point add the Galerkin mass and the right hand side of whatever tensor the
+!> caller supplies. One or two fields, the second being how a caller that wants
+!> stress and strain gets both out of a single pass.
+!>
+!> GetTensors must be a file scope procedure -- see ProjectedTensors_i for why an
+!> internal one cannot be used, and what it costs if tried.
+!>
+!> CSymmetry is passed rather than asked, because the callers do not agree on it:
+!> StressSolve counts CylindricSymmetric as axisymmetric and ElasticSolve does not.
+!> That disagreement is theirs to keep until someone decides it.
+!>
+!> The right hand side handed to DefaultUpdateEquations is a zero vector: only the
+!> mass matrix is wanted from it, and each component solve overwrites the system's
+!> right hand side from ForceG before running.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorAssemble( Proj, ncomp, CSymmetry, GetTensors, ForceG, ForceG2 )
+!------------------------------------------------------------------------------
+     TYPE(NodalProjector_t) :: Proj
+     INTEGER :: ncomp
+     LOGICAL :: CSymmetry
+     PROCEDURE(ProjectedTensors_i) :: GetTensors
+     REAL(KIND=dp) :: ForceG(:)
+     REAL(KIND=dp), OPTIONAL :: ForceG2(:)
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), POINTER :: PSolver
+     TYPE(Element_t), POINTER :: Element
+     TYPE(ValueList_t), POINTER :: Equation
+     TYPE(Nodes_t), SAVE :: Nodes
+     TYPE(GaussIntegrationPoints_t) :: IP
+     INTEGER, POINTER :: Indices(:)
+     REAL(KIND=dp), ALLOCATABLE :: Mass(:,:), Force(:), SForce(:), Zero(:), &
+         Basis(:), dBasisdx(:,:)
+     REAL(KIND=dp) :: T1(3,3), T2(3,3), detJ, Weight
+     INTEGER :: nmax, elem, n, nd, t
+     LOGICAL :: stat, Found, Two
+!------------------------------------------------------------------------------
+     PSolver => Proj % PSolver
+     Two = PRESENT( ForceG2 )
+
+     nmax = PSolver % Mesh % MaxElementDOFs
+     ALLOCATE( Indices(nmax), Mass(nmax,nmax), Force(ncomp*nmax), &
+         SForce(ncomp*nmax), Zero(nmax), Basis(nmax), dBasisdx(nmax,3) )
+     Zero = 0.0_dp
+
+     ForceG = 0.0_dp
+     IF ( Two ) ForceG2 = 0.0_dp
+
+     CALL InitializeToZero( PSolver % Matrix, PSolver % Matrix % RHS )
+     IF( ALLOCATED(PSolver % Matrix % ConstrainedDOF) ) &
+         PSolver % Matrix % ConstrainedDOF = .FALSE.
+     IF( ALLOCATED(PSolver % Matrix % Dvalues) ) PSolver % Matrix % Dvalues = 0.0_dp
+
+     DO elem = 1, PSolver % NumberOfActiveElements
+       Element => GetActiveElement( elem, PSolver )
+
+       ! Only the bodies that asked for this field, when any did.
+       IF ( Proj % UseMask ) THEN
+         Equation => GetEquation()
+         IF ( .NOT. GetLogical( Equation, Proj % EqName, Found ) ) CYCLE
+       END IF
+
+       n = GetElementNOFNodes()
+       nd = GetElementDOFs( Indices )
+       CALL GetElementNodes( Nodes )
+
+       Mass = 0.0_dp
+       Force = 0.0_dp
+       SForce = 0.0_dp
+
+       IP = GaussPoints( Element )
+       DO t=1,IP % n
+         stat = ElementInfo( Element, Nodes, IP % u(t), IP % v(t), IP % w(t), &
+             detJ, Basis, dBasisdx )
+
+         Weight = IP % s(t) * detJ
+         ! An L2 fit is a volume integral, so in axisymmetric coordinates it is
+         ! weighted by the radius like any other. Without this the fit is made in
+         ! the Cartesian metric and every varying component comes out wrong.
+         IF ( CSymmetry ) Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+
+         T1 = 0.0_dp
+         T2 = 0.0_dp
+         CALL GetTensors( Proj, Element, Nodes, n, nd, t, Basis, dBasisdx, T1, T2 )
+
+         CALL NodalProjectorMass( Mass, Basis, nd, Weight )
+         CALL NodalProjectorTensor( Force, Basis, nd, ncomp, Weight, T1 )
+         IF ( Two ) CALL NodalProjectorTensor( SForce, Basis, nd, ncomp, Weight, T2 )
+       END DO
+
+       CALL DefaultUpdateEquations( Mass, Zero(1:nd) )
+
+       CALL NodalProjectorGlue( ForceG, Force, Proj % Perm, Indices, nd, ncomp )
+       IF ( Two ) CALL NodalProjectorGlue( ForceG2, SForce, Proj % Perm, Indices, nd, ncomp )
+     END DO
+
+     DEALLOCATE( Indices, Mass, Force, SForce, Zero, Basis, dBasisdx )
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorAssemble
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Run the projection component by component and scatter each result into the
+!> nodal field. The components share the matrix and differ only in the right hand
+!> side, whose slots are interleaved with stride ncomp; refactorization is already
+!> suppressed for the whole bracket by NodalProjectorBegin, so the factorization is
+!> formed once and reused.
+!>
+!> Perm indexes the nodal field, which need not be the projection's own
+!> permutation -- it is the field variable's, and the two differ whenever the
+!> projection was built over a mask.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorSolve( Proj, FieldName, ncomp, ForceG, Nodal, Perm )
+!------------------------------------------------------------------------------
+     TYPE(NodalProjector_t) :: Proj
+     CHARACTER(LEN=*) :: FieldName
+     INTEGER :: ncomp
+     REAL(KIND=dp) :: ForceG(:), Nodal(:)
+     INTEGER, POINTER :: Perm(:)
+!------------------------------------------------------------------------------
+     INTEGER :: i, l
+     REAL(KIND=dp) :: Norm
+     TYPE(Solver_t), POINTER :: PSolver
+!------------------------------------------------------------------------------
+     PSolver => Proj % PSolver
+
+     DO i=1,ncomp
+       CALL Info( 'NodalProjectorSolve', TRIM(FieldName)//' component '// &
+           SymTensorComponentName(i), Level=5 )
+
+       PSolver % Matrix % RHS = ForceG(i::ncomp)
+       ! Cold start, which is what every caller of this did before it was shared:
+       ! the previous component's solution is no kind of guess for this one.
+       PSolver % Variable % Values = 0.0_dp
+
+       Norm = DefaultSolve()
+
+       DO l=1,SIZE( Proj % Perm )
+         IF ( Proj % Perm(l) <= 0 ) CYCLE
+         Nodal(ncomp*(Perm(l)-1)+i) = PSolver % Variable % Values(Proj % Perm(l))
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorSolve
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Give the solver back what NodalProjectorBegin put aside, and drop the keyword
+!> namespace the projection was reading through.
+!------------------------------------------------------------------------------
+   SUBROUTINE NodalProjectorEnd( Proj, Solver )
+!------------------------------------------------------------------------------
+     TYPE(NodalProjector_t) :: Proj
+     TYPE(Solver_t), TARGET :: Solver
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: Params
+!------------------------------------------------------------------------------
+     Params => Solver % Values
+
+     IF ( Proj % EigenOn ) CALL ListAddLogical( Params, 'Eigen Analysis', .TRUE. )
+     IF ( Proj % HarmonicOn ) CALL ListAddLogical( Params, 'Harmonic Analysis', .TRUE. )
+     ! Put back what was there, or take the keyword away again if it was not:
+     ! leaving one behind changes the paths that merely test for its presence.
+     IF ( Proj % RelaxFound ) THEN
+       CALL ListAddConstReal( Params, 'Nonlinear System Relaxation Factor', Proj % Relax )
+     ELSE
+       CALL ListRemove( Params, 'Nonlinear System Relaxation Factor' )
+     END IF
+     IF ( Proj % LimiterOn ) CALL ListAddLogical( Params, 'Apply Limiter', .TRUE. )
+     IF ( Proj % ContactOn ) CALL ListAddLogical( Params, 'Apply Contact BCs', .TRUE. )
+     IF ( Proj % ResidualOn ) &
+         CALL ListAddLogical( Params, 'Linear System Residual Mode', .TRUE. )
+
+     IF ( Proj % FoundFactorize ) THEN
+       CALL ListAddLogical( Params, 'Linear System Refactorize', Proj % Factorize )
+     ELSE
+       CALL ListRemove( Params, 'Linear System Refactorize' )
+     END IF
+     IF ( Proj % FoundFreeFactorize ) THEN
+       CALL ListAddLogical( Params, 'Linear System Free Factorization', Proj % FreeFactorize )
+     ELSE
+       CALL ListRemove( Params, 'Linear System Free Factorization' )
+     END IF
+     IF ( Proj % FoundSkipChange ) THEN
+       CALL ListAddLogical( Params, 'Skip Compute Nonlinear Change', Proj % SkipChange )
+     ELSE
+       CALL ListRemove( Params, 'Skip Compute Nonlinear Change' )
+     END IF
+
+     CurrentModel % Solver => Solver
+     CALL ListSetNameSpace('')
+!------------------------------------------------------------------------------
+   END SUBROUTINE NodalProjectorEnd
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!> Trace of a second order tensor over its leading dim by dim block. Was one copy
+!> in each solver, differing only in argument names and in spelling REAL(KIND=dp)
+!> as DOUBLE PRECISION.
+!------------------------------------------------------------------------------
+  FUNCTION TRACE( F, dim ) RESULT(t)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: F(:,:), t
+    INTEGER :: dim
+!------------------------------------------------------------------------------
+    INTEGER :: i
+!------------------------------------------------------------------------------
+    t = 0.0_dp
+    DO i=1,dim
+       t = t + F(i,i)
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION TRACE
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Double contraction of two second order tensors over their leading N by N block,
+!> A:B. Was one copy internal to StressSolve's interior residual and another named
+!> DDOT_PRODUCT in ElasticSolve, identical but for the case of the loop variables.
+!------------------------------------------------------------------------------
+  FUNCTION DDOTPROD(A,B,N) RESULT(C)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: A(:,:), B(:,:), C
+    INTEGER :: N
+!------------------------------------------------------------------------------
+    INTEGER :: i,j
+!------------------------------------------------------------------------------
+    C = 0.0_dp
+    DO i = 1,N
+       DO j = 1,N
+          C = C + A(i,j)*B(i,j)
+       END DO
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION DDOTPROD
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Isotropic Lame parameters at a point, from Young's modulus and Poisson ratio.
+!------------------------------------------------------------------------------
+   SUBROUTINE LameParameters( Young, Poisson, PlaneStress, Lame1, Lame2 )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: Young, Poisson, Lame1, Lame2
+     LOGICAL :: PlaneStress
+!------------------------------------------------------------------------------
+     IF ( PlaneStress ) THEN
+       Lame1 = Young * Poisson / ( 1.0_dp - Poisson**2 )
+     ELSE
+       Lame1 = Young * Poisson / ( (1.0_dp + Poisson) * (1.0_dp - 2.0_dp*Poisson) )
+     END IF
+     Lame2 = Young / ( 2.0_dp * (1.0_dp + Poisson) )
+!------------------------------------------------------------------------------
+   END SUBROUTINE LameParameters
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The geometrically nonlinear stress an adaptivity estimator wants: Green-Lagrange
+!> strain, St Venant-Kirchhoff stress from it, pushed forward with the deformation
+!> gradient. Note what comes back is therefore the **first Piola-Kirchhoff** stress,
+!> where the small strain path returns Cauchy; the two coincide only as the
+!> displacement gradient vanishes. Isotropic only, which is what ElasticSolve's
+!> estimators have always been.
+!------------------------------------------------------------------------------
+   SUBROUTINE LargeDeflectionResidualStress( Stress, Strain, Grad, Lame1, Lame2, dim )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: Stress(3,3), Strain(3,3), Grad(3,3), Lame1, Lame2
+     INTEGER :: dim
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: DefG(3,3), Stress2(3,3), Identity(3,3), tr
+     INTEGER :: i
+!------------------------------------------------------------------------------
+     Identity = 0.0_dp
+     DO i=1,3
+       Identity(i,i) = 1.0_dp
+     END DO
+
+     DefG = Identity + Grad
+     Strain = ( TRANSPOSE(Grad) + Grad + MATMUL(TRANSPOSE(Grad),Grad) ) / 2.0_dp
+
+     tr = 0.0_dp
+     DO i=1,dim
+       tr = tr + Strain(i,i)
+     END DO
+
+     Stress2 = 2.0_dp*Lame2*Strain + Lame1*tr*Identity
+     Stress = MATMUL( DefG, Stress2 )
+!------------------------------------------------------------------------------
+   END SUBROUTINE LargeDeflectionResidualStress
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Adaptivity error estimators for elasticity, shared by both solvers.
+!>
+!> This is StressSolve's version, which is the more capable of the two that
+!> existed: the material arrives through InputTensor as a full tensor with an
+!> Isotropic flag so anisotropy is supported, the stress comes from the shared
+!> LocalStress rather than being computed inline, and elements are reached through
+!> GetElementNOFDOFs/GetElementNodes so p-elements and bubbles are handled.
+!>
+!> These do not cover every feature of either solver -- they estimate the residual
+!> of the plain elasticity operator and predate much of what the two solvers grew
+!> afterwards. Sharing them does not change that; it only stops there being two
+!> versions of the same partial coverage.
+!>
+!> Element is deliberately NOT a POINTER dummy here: Adaptive's InsideResidual
+!> interface declares it as a plain TYPE(Element_t), and a POINTER dummy would read
+!> the target address it is handed as though it were a pointer descriptor. That
+!> silently produces a garbage element and a heap overrun rather than a diagnostic.
+!------------------------------------------------------------------------------
+
+   SUBROUTINE ElasticityBoundaryResidual( Model, Edge, Mesh, Quant, Perm, Gnorm, Indicator, LargeDeflection )
+!------------------------------------------------------------------------------
+     USE DefUtils
+     IMPLICIT NONE
+     !> Geometrically nonlinear stress, as ElasticSolve's estimators have always
+     !> used; false gives the small strain path through LocalStress. Deliberately
+     !> not OPTIONAL -- an absent optional cannot be tested without PRESENT, and
+     !> getting that wrong reads uninitialised memory rather than failing to build.
+     LOGICAL :: LargeDeflection
+     REAL(KIND=dp) :: Lame1, Lame2, ResGrad(3,3)
+
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     INTEGER :: Perm(:)
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Edge
+     REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+!------------------------------------------------------------------------------
+
+     TYPE(Nodes_t) :: Nodes, EdgeNodes
+     TYPE(Element_t), POINTER :: Element, Bndry
+     INTEGER :: i,j,k,n,l,t,dim,DOFs,nd,Pn,En
+     LOGICAL :: stat, Found
+     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
+     REAL(KIND=dp) :: Normal(3), EdgeLength
+     REAL(KIND=dp) :: u, v, w, s, detJ
+
+     REAL(KIND=dp), ALLOCATABLE :: EdgeBasis(:), dEdgeBasisdx(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:), ExtPressure(:)
+     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: Force(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalDisplacement(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: ElasticModulus(:,:,:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalPoissonRatio(:)
+     REAL(KIND=dp), ALLOCATABLE :: LocalTemp(:), LocalHexp(:,:,:)
+
+     REAL(KIND=dp) :: Residual(3), ResidualNorm, Area
+     REAL(KIND=dp) :: ForceSolved(3), Dir(3)
+     REAL(KIND=dp) :: Displacement(3)
+     REAL(KIND=dp) :: YoungsModulus
+     REAL(KIND=dp) :: PoissonRatio
+     REAL(KIND=dp) :: Grad(3,3), Strain(3,3), Stress1(3,3), Stress2(3,3)
+     REAL(KIND=dp) :: Identity(3,3), YoungsAverage
+
+     LOGICAL :: PlaneStress, Isotropic(2)=.TRUE., CSymmetry = .FALSE.
+     TYPE(ValueList_t), POINTER :: Material, Equation, BodyForce, BC
+     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+
+     SAVE Nodes, EdgeNodes
+!------------------------------------------------------------------------------
+
+     ! Initialize:
+     ! -----------
+     Gnorm = 0.0d0
+     Indicator = 0.0d0
+
+     Identity = 0.0d0
+     DO i=1,3
+        Identity(i,i) = 1.0d0
+     END DO
+
+     CSymmetry = CurrentCoordinateSystem() == CylindricSymmetric .OR. &
+                 CurrentCoordinateSystem() == AxisSymmetric
+
+     dim = CoordinateSystemDimension()
+     DOFs = dim
+
+!    --------------------------------------------------
+     Element => Edge % BoundaryInfo % Left
+
+     IF ( .NOT. ASSOCIATED( Element ) ) THEN
+        Element => Edge % BoundaryInfo % Right
+     ELSE IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) THEN
+        Element => Edge % BoundaryInfo % Right
+     END IF
+
+     IF ( .NOT. ASSOCIATED( Element ) ) RETURN
+     IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) RETURN
+
+     En = GetElementNOFNodes( Edge )
+     CALL GetElementNodes( EdgeNodes )
+
+     nd = GetElementNOFDOFs( Element )
+     Pn = GetElementNOFNodes( Element )
+     CALL GetElementNodes( Nodes, UElement=Element )
+
+     ALLOCATE( EdgeBasis(En), dEdgeBasisdx(En,3), x(En), y(En), z(En), &
+        ExtPressure(En), Basis(nd), dBasisdx(nd,3), Force(3,En), &
+        NodalDisplacement(3,nd), ElasticModulus(6,6,Pn),&
+        NodalPoissonRatio(Pn), LocalTemp(nd), LocalHexp(3,3,Pn) )
+
+     LocalTemp = 0
+     LocalHexp = 0
+
+     DO l = 1,En
+       DO k = 1,Pn
+          IF ( Edge % NodeIndexes(l) == Element % NodeIndexes(k) ) THEN
+             x(l) = Element % TYPE % NodeU(k)
+             y(l) = Element % TYPE % NodeV(k)
+             z(l) = Element % TYPE % NodeW(k)
+             EXIT
+          END IF
+       END DO
+     END DO
+
+     ! Integrate square of residual over boundary element:
+     ! ---------------------------------------------------
+     Indicator     = 0.0d0
+     EdgeLength    = 0.0d0
+     YoungsAverage = 0.0d0
+     ResidualNorm  = 0.0d0
+
+     BC => GetBC()
+     IF ( .NOT.ASSOCIATED( BC ) ) RETURN
+
+     ! Logical parameters:
+     ! -------------------
+     Equation => GetEquation( Element )
+     PlaneStress = GetLogical( Equation, 'Plane Stress' ,Found )
+
+     Material => GetMaterial( Element )
+     NodalPoissonRatio(1:pn) = GetReal( &
+                  Material, 'Poisson Ratio',Found, Element )
+     CALL InputTensor( ElasticModulus, Isotropic(1), &
+                 'Youngs Modulus', Material, Pn, Element % NodeIndexes )
+
+     ! Given traction:
+     ! ---------------
+     Force = 0.0d0
+     Force(1,1:En) = GetReal( BC, 'Force 1', Found )
+     Force(2,1:En) = GetReal( BC, 'Force 2', Found )
+     Force(3,1:En) = GetReal( BC, 'Force 3', Found )
+
+     ! Force in normal direction:
+     ! ---------------------------
+     ExtPressure(1:En) = GetReal( BC, 'Normal Force', Found )
+
+     ! If dirichlet BC for displacement in any direction given,
+     ! nullify force in that direction:
+     ! --------------------------------------------------------
+     Dir = 1.0d0
+     IF ( ListCheckPresent( BC, 'Displacement' ) )   Dir = 0
+     IF ( ListCheckPresent( BC, 'Displacement 1' ) ) Dir(1) = 0
+     IF ( ListCheckPresent( BC, 'Displacement 2' ) ) Dir(2) = 0
+     IF ( ListCheckPresent( BC, 'Displacement 3' ) ) Dir(3) = 0
+
+     ! Elementwise nodal solution:
+     ! ---------------------------
+     CALL GetVectorLocalSolution( NodalDisplacement, UElement=Element )
+
+     ! Integration:
+     ! ------------
+     EdgeLength    = 0.0d0
+     YoungsAverage = 0.0d0
+     ResidualNorm  = 0.0d0
+
+     IntegStuff = GaussPoints( Edge )
+
+     DO t=1,IntegStuff % n
+        u = IntegStuff % u(t)
+        v = IntegStuff % v(t)
+        w = IntegStuff % w(t)
+
+        stat = ElementInfo( Edge, EdgeNodes, u, v, w, detJ, &
+            EdgeBasis, dEdgeBasisdx )
+
+        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+           s = IntegStuff % s(t) * detJ
+        ELSE
+           u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
+           v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
+           w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
+   
+           CALL CoordinateSystemInfo( Metric, SqrtMetric, &
+                       Symb, dSymb, u, v, w )
+
+           s = IntegStuff % s(t) * detJ * SqrtMetric
+        END IF
+
+        Normal = NormalVector( Edge, EdgeNodes, u, v, .TRUE. )
+
+        u = SUM( EdgeBasis(1:En) * x(1:En) )
+        v = SUM( EdgeBasis(1:En) * y(1:En) )
+        w = SUM( EdgeBasis(1:En) * z(1:En) )
+
+        stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
+           Basis, dBasisdx )
+
+        ! Stress tensor on the edge:
+        ! --------------------------
+        IF ( LargeDeflection ) THEN
+          CALL LameParameters( SUM( ElasticModulus(1,1,1:pn) * Basis(1:pn) ), &
+              SUM( NodalPoissonRatio(1:pn) * Basis(1:pn) ), PlaneStress, Lame1, Lame2 )
+          ResGrad = MATMUL( NodalDisplacement(:,1:nd), dBasisdx(1:nd,:) )
+          CALL LargeDeflectionResidualStress( Stress1, Strain, ResGrad, Lame1, Lame2, dim )
+        ELSE
+        CALL LocalStress( Stress1, Strain, NodalPoissonRatio, &
+           ElasticModulus, LocalHExp, LocalTemp, &
+           Isotropic, CSymmetry, PlaneStress, &
+           NodalDisplacement, Basis, dBasisdx, Nodes, dim, pn, nd )
+        END IF
+
+        ! Given force at the integration point:
+        ! -------------------------------------
+        Residual = MATMUL( Force(:,1:En), EdgeBasis(1:En) ) - &
+          SUM( ExtPressure(1:En) * EdgeBasis(1:En) ) * Normal
+
+        ForceSolved = MATMUL( Stress1, Normal )
+        Residual = Residual - ForceSolved * Dir
+
+        EdgeLength    = EdgeLength + s
+        ResidualNorm  = ResidualNorm  + s * SUM(Residual(1:DIM) ** 2)
+        YoungsAverage = YoungsAverage + &
+                    s * SUM( ElasticModulus(1,1,1:Pn) * Basis(1:Pn) )
+     END DO
+
+     IF ( YoungsAverage > AEPS ) THEN
+        YoungsAverage = YoungsAverage / EdgeLength
+        Indicator = EdgeLength * ResidualNorm / YoungsAverage
+     END IF
+
+     DEALLOCATE( EdgeBasis, dEdgeBasisdx, x, y, z, ExtPressure, Basis, &
+      dBasisdx, Force, NodalDisplacement, ElasticModulus, NodalPoissonRatio, &
+      LocalTemp, LocalHexp )
+!------------------------------------------------------------------------------
+   END SUBROUTINE ElasticityBoundaryResidual
+
+  SUBROUTINE ElasticityEdgeResidual( Model,Edge,Mesh,Quant,Perm, Indicator, LargeDeflection )
+!------------------------------------------------------------------------------
+     USE DefUtils
+     IMPLICIT NONE
+     !> Geometrically nonlinear stress, as ElasticSolve's estimators have always
+     !> used; false gives the small strain path through LocalStress. Deliberately
+     !> not OPTIONAL -- an absent optional cannot be tested without PRESENT, and
+     !> getting that wrong reads uninitialised memory rather than failing to build.
+     LOGICAL :: LargeDeflection
+     REAL(KIND=dp) :: Lame1, Lame2, ResGrad(3,3)
+
+
+     TYPE(Model_t) :: Model
+     INTEGER :: Perm(:)
+     REAL(KIND=dp) :: Quant(:), Indicator(2)
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Edge
+!------------------------------------------------------------------------------
+
+     TYPE(Nodes_t) :: Nodes, EdgeNodes
+     TYPE(Element_t), POINTER :: Element, Bndry
+
+     INTEGER :: i,j,k,l,n,t,dim,DOFs,En,Pn, nd
+     LOGICAL :: stat, Found
+
+     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
+     REAL(KIND=dp) :: Stressi(3,3,2), Jump(3), Identity(3,3)
+     REAL(KIND=dp) :: Normal(3)
+     REAL(KIND=dp) :: Displacement(3)
+     REAL(KIND=dp) :: YoungsModulus
+     REAL(KIND=dp) :: PoissonRatio
+     REAL(KIND=dp) :: YoungsAverage
+     REAL(KIND=dp) :: Grad(3,3), Strain(3,3), Stress1(3,3), Stress2(3,3)
+
+     REAL(KIND=dp), ALLOCATABLE :: LocalTemp(:), LocalHexp(:,:,:)
+     REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalDisplacement(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: ElasticModulus(:,:,:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalPoissonRatio(:)
+     REAL(KIND=dp), ALLOCATABLE :: EdgeBasis(:), Basis(:), dBasisdx(:,:)
+
+     LOGICAL :: PlaneStress, Isotropic(2)=.TRUE., CSymmetry
+
+     TYPE(ValueList_t), POINTER :: Material, Equation
+
+     REAL(KIND=dp) :: u, v, w, s, detJ
+
+     REAL(KIND=dp) :: Residual, ResidualNorm, EdgeLength
+
+     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+
+     SAVE Nodes, EdgeNodes
+!------------------------------------------------------------------------------
+
+!    Initialize:
+!    -----------
+     dim = CoordinateSystemDimension()
+     DOFs = dim
+
+     CSymmetry = CurrentCoordinateSystem() == CylindricSymmetric .OR. &
+                 CurrentCoordinateSystem() == AxisSymmetric
+
+
+     Identity = 0.0d0
+     Metric   = 0.0d0
+     DO i = 1,3
+        Metric(i,i)   = 1.0d0
+        Identity(i,i) = 1.0d0
+     END DO
+!
+!    ---------------------------------------------
+     En = GetElementNOFNodes( Edge )
+     CALL GetElementNodes( EdgeNodes, Edge )
+
+     Element => Edge % BoundaryInfo % Left
+     pn = GetElementNOFNodes( Element )
+     nd = GetElementNOFDOFs( Element )
+
+     Element => Edge % BoundaryInfo % Right
+     nd = MAX( nd, GetElementNOFDOFs( Element ) )
+     pn = MAX( pn, GetElementNOFNodes( Element ) )
+
+     ALLOCATE( LocalTemp(nd), LocalHexp(3,3,Pn), x(En), y(En), z(En), &
+      NodalDisplacement(3,nd), ElasticModulus(6,6,pn), &
+      NodalPoissonRatio(pn), EdgeBasis(En), Basis(nd), dBasisdx(nd,3) )
+
+     LocalTemp = 0
+     LocalHexp = 0
+
+!    Integrate square of jump over edge:
+!    ------------------------------------
+     ResidualNorm  = 0.0d0
+     EdgeLength    = 0.0d0
+     Indicator     = 0.0d0
+     Grad          = 0.0d0
+     YoungsAverage = 0.0d0
+
+     IntegStuff = GaussPoints( Edge )
+
+     DO t=1,IntegStuff % n
+
+        u = IntegStuff % u(t)
+        v = IntegStuff % v(t)
+        w = IntegStuff % w(t)
+
+        stat = ElementInfo( Edge, EdgeNodes, u, v, w, detJ, &
+             EdgeBasis, dBasisdx )
+
+        Normal = NormalVector( Edge, EdgeNodes, u, v, .FALSE. )
+
+        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+           s = IntegStuff % s(t) * detJ
+        ELSE
+           u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
+           v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
+           w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
+
+           CALL CoordinateSystemInfo( Metric, SqrtMetric, &
+                       Symb, dSymb, u, v, w )
+           s = IntegStuff % s(t) * detJ * SqrtMetric
+        END IF
+
+        Stressi = 0.0d0
+        DO i = 1,2
+           IF ( i==1 ) THEN
+              Element => Edge % BoundaryInfo % Left
+           ELSE
+              Element => Edge % BoundaryInfo % Right
+           END IF
+
+           IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) CYCLE
+
+           pn = GetElementNOFNodes( Element )
+           nd = GetElementNOFDOFs( Element )
+           CALL GetElementNodes( Nodes, Element )
+           DO j = 1,en
+              DO k = 1,pn
+                 IF ( Edge % NodeIndexes(j) == Element % NodeIndexes(k) ) THEN
+                    x(j) = Element % TYPE % NodeU(k)
+                    y(j) = Element % TYPE % NodeV(k)
+                    z(j) = Element % TYPE % NodeW(k)
+                    EXIT
+                 END IF
+              END DO
+           END DO
+
+           u = SUM( EdgeBasis(1:En) * x(1:En) )
+           v = SUM( EdgeBasis(1:En) * y(1:En) )
+           w = SUM( EdgeBasis(1:En) * z(1:En) )
+
+           stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
+               Basis, dBasisdx )
+
+           ! Logical parameters:
+           ! -------------------
+           Equation => GetEquation( Element )
+           PlaneStress = GetLogical( Equation,'Plane Stress',Found )
+
+           ! Material parameters:
+           ! --------------------
+           Material => GetMaterial( Element )
+           NodalPoissonRatio(1:pn) = GetReal( Material, 'Poisson Ratio', Found, Element )
+           CALL InputTensor( ElasticModulus, Isotropic(1), &
+                         'Youngs Modulus', Material, pn, Element % NodeIndexes )
+
+           ! Elementwise nodal solution:
+           ! ---------------------------
+           CALL GetVectorLocalSolution( NodalDisplacement, UElement=Element )
+
+           ! Stress tensor on the edge:
+           ! --------------------------
+        IF ( LargeDeflection ) THEN
+          CALL LameParameters( SUM( ElasticModulus(1,1,1:pn) * Basis(1:pn) ), &
+              SUM( NodalPoissonRatio(1:pn) * Basis(1:pn) ), PlaneStress, Lame1, Lame2 )
+          ResGrad = MATMUL( NodalDisplacement(:,1:nd), dBasisdx(1:nd,:) )
+          CALL LargeDeflectionResidualStress( Stress1, Strain, ResGrad, Lame1, Lame2, dim )
+        ELSE
+           CALL LocalStress( Stress1, Strain, NodalPoissonRatio, &
+              ElasticModulus, LocalHExp, LocalTemp, Isotropic, CSymmetry, PlaneStress, &
+              NodalDisplacement, Basis, dBasisdx, Nodes, dim, pn, nd )
+        END IF
+
+           Stressi(:,:,i) = Stress1
+        END DO
+
+        EdgeLength  = EdgeLength + s
+        Jump = MATMUL( ( Stressi(:,:,1) - Stressi(:,:,2)), Normal )
+        ResidualNorm = ResidualNorm + s * SUM( Jump(1:DIM) ** 2 )
+
+        YoungsAverage = YoungsAverage + s *  &
+                    SUM( ElasticModulus(1,1,1:pn) * Basis(1:pn) )
+     END DO
+
+     YoungsAverage = YoungsAverage / EdgeLength
+     Indicator = EdgeLength * ResidualNorm / YoungsAverage
+
+     DEALLOCATE( LocalTemp, LocalHexp, x, y, z, NodalDisplacement, &
+       ElasticModulus, NodalPoissonRatio, EdgeBasis, Basis, dBasisdx )
+!------------------------------------------------------------------------------
+   END SUBROUTINE ElasticityEdgeResidual
+
+   SUBROUTINE ElasticityInsideResidual( Model, Element,  &
+                      Mesh, Quant, Perm, Fnorm, Indicator, LargeDeflection )
+!------------------------------------------------------------------------------
+     USE DefUtils
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     !> Geometrically nonlinear stress, as ElasticSolve's estimators have always
+     !> used; false gives the small strain path through LocalStress. Deliberately
+     !> not OPTIONAL -- an absent optional cannot be tested without PRESENT, and
+     !> getting that wrong reads uninitialised memory rather than failing to build.
+     LOGICAL :: LargeDeflection
+     REAL(KIND=dp) :: Lame1, Lame2, ResGrad(3,3)
+
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     INTEGER :: Perm(:)
+     REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Element
+!------------------------------------------------------------------------------
+
+     TYPE(Nodes_t) :: Nodes
+
+     INTEGER :: i,j,k,l,m,n,nd,t,dim,DOFs,I1(6),I2(6)
+     INTEGER, ALLOCATABLE :: Indexes(:)
+
+     LOGICAL :: stat, Found
+
+     TYPE( Variable_t ), POINTER :: Var
+
+     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
+
+     REAL(KIND=dp) :: Density
+     REAL(KIND=dp) :: PoissonRatio
+     REAL(KIND=dp) :: Damping
+     REAL(KIND=dp) :: Displacement(3),Identity(3,3), YoungsAverage
+     REAL(KIND=dp) :: Grad(3,3), Strain(3,3), Stress1(3,3), Stress2(3,3)
+     REAL(KIND=dp) :: Energy
+
+     REAL(KIND=dp), ALLOCATABLE :: ElasticModulus(:,:,:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalDensity(:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalPoissonRatio(:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalDamping(:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalDisplacement(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: LocalHexp(:,:,:), vec(:)
+     REAL(KIND=dp), ALLOCATABLE :: Stressi(:,:,:), LocalTemp(:)
+     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
+     REAL(KIND=dp), ALLOCATABLE :: NodalForce(:,:), Veloc(:,:), Accel(:,:)
+
+     LOGICAL :: PlaneStress, CSymmetry, Isotropic(2)=.TRUE., Transient
+
+     REAL(KIND=dp) :: u, v, w, s, detJ
+     REAL(KIND=dp) :: Residual(3), ResidualNorm, Area
+
+     TYPE(ValueList_t), POINTER :: Material, BodyForce, Equation
+
+     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+
+     SAVE Nodes
+!------------------------------------------------------------------------------
+     ! Initialize:
+     ! -----------
+     Fnorm     = 0.0d0
+     Indicator = 0.0d0
+
+     IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) RETURN
+
+     Metric = 0.0d0
+     DO i=1,3
+        Metric(i,i) = 1.0d0
+     END DO
+
+     dim = CoordinateSystemDimension()
+     DOFs = dim 
+
+     CSymmetry = CurrentCoordinateSystem() == CylindricSymmetric .OR. &
+                 CurrentCoordinateSystem() == AxisSymmetric
+
+     ! Element nodal points:
+     ! ---------------------
+     nd = GetElementNOFDOFs()
+     n  = GetElementNOFNodes()
+     CALL GetElementNodes( Nodes )
+
+     ALLOCATE( ElasticModulus(6,6,nd), NodalDensity(n), NodalPoissonRatio(n), &
+         NodalDamping(n), NodalDisplacement(3,nd), LocalHExp(3,3,n), vec(nd), &
+         Stressi(3,3,nd), LocalTemp(nd), Basis(nd), dBasisdx(nd,3), &
+         NodalForce(4,n), Veloc(3,nd), Accel(3,nd) )
+
+     LocalTemp = 0
+     LocalHexp = 0
+
+     ! Logical parameters:
+     ! -------------------
+     equation => GetEquation()
+     PlaneStress = GetLogical( Equation, 'Plane Stress',Found )
+
+     ! Material parameters:
+     ! --------------------
+     Material => GetMaterial()
+
+     CALL InputTensor( ElasticModulus, Isotropic(1), &
+           'Youngs Modulus', Material, n, Element % NodeIndexes )
+
+     NodalPoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio', Found )
+
+     ! Check for time dep.
+     ! -------------------
+     IF ( ListGetString( Model % Simulation, 'Simulation Type') == 'transient' ) THEN
+        Transient = .TRUE.
+        Var => VariableGet( Model % Variables, 'Displacement', .TRUE. )
+
+        nd = GetElementDOFs( Indexes )
+
+        Veloc = 0.0d0
+        Accel = 0.0d0
+        DO i=1,DOFs
+           Veloc(i,1:nd) = Var % PrevValues(DOFs*(Var % Perm(Indexes(1:nd))-1)+i,1)
+           Accel(i,1:nd) = Var % PrevValues(DOFs*(Var % Perm(Indexes(1:nd))-1)+i,2)
+        END DO
+        NodalDensity(1:n) = GetReal( Material, 'Density', Found )
+        NodalDamping(1:n) = GetReal( Material, 'Damping', Found )
+     ELSE
+        Transient = .FALSE.
+     END IF
+
+     ! Elementwise nodal solution:
+     ! ---------------------------
+     CALL GetVectorLocalSolution( NodalDisplacement )
+
+     ! Body Forces:
+     ! ------------
+     BodyForce => GetBodyForce()
+
+     NodalForce = 0.0d0
+
+     IF ( ASSOCIATED( BodyForce ) ) THEN
+        NodalForce(1,1:n) = NodalForce(1,1:n) + GetReal( &
+            BodyForce, 'Stress BodyForce 1', Found )
+        NodalForce(2,1:n) = NodalForce(1,1:n) + GetReal( &
+            BodyForce, 'Stress BodyForce 2', Found )
+        NodalForce(3,1:n) = NodalForce(1,1:n) + GetReal( &
+            BodyForce, 'Stress BodyForce 3', Found )
+     END IF
+
+     Identity = 0.0D0
+     DO i = 1,dim
+        Identity(i,i) = 1.0D0
+     END DO
+     CSymmetry = .FALSE.
+
+     Var => VariableGet( Model % Variables, 'Stress 1' )
+     IF ( ASSOCIATED( Var ) ) THEN
+
+       ! If stress already computed:
+       ! ---------------------------
+       I1(1:6) = (/ 1,2,3,1,2,1 /)
+       I2(1:6) = (/ 1,2,3,2,3,3 /)
+       DO i=1,6
+         CALL GetScalarLocalSolution(Vec(1:nd),'Stress ' // CHAR(i+ICHAR('0')))
+         Stressi(I1(i),I2(i),1:nd) = Vec(1:nd)
+         Stressi(I2(i),I1(i),1:nd) = Vec(1:nd)
+       END DO
+     ELSE
+       ! Values of the stress tensor at node points:
+       ! -------------------------------------------
+       DO i = 1,n
+         u = Element % TYPE % NodeU(i)
+         v = Element % TYPE % NodeV(i)
+         w = Element % TYPE % NodeW(i)
+
+         stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
+             Basis, dBasisdx )
+
+        IF ( LargeDeflection ) THEN
+          CALL LameParameters( SUM( ElasticModulus(1,1,1:n) * Basis(1:n) ), &
+              SUM( NodalPoissonRatio(1:n) * Basis(1:n) ), PlaneStress, Lame1, Lame2 )
+          ResGrad = MATMUL( NodalDisplacement(:,1:nd), dBasisdx(1:nd,:) )
+          CALL LargeDeflectionResidualStress( Stressi(:,:,i), Strain, ResGrad, Lame1, Lame2, dim )
+        ELSE
+         CALL LocalStress( Stressi(:,:,i), Strain, NodalPoissonRatio, &
+                   ElasticModulus, LocalHExp, LocalTemp, Isotropic, CSymmetry, PlaneStress, &
+                   NodalDisplacement, Basis, dBasisdx, Nodes, dim, n, nd )
+        END IF
+       END DO
+     END IF
+
+     ! Integrate square of residual over element:
+     ! ------------------------------------------
+     ResidualNorm = 0.0d0
+     Fnorm = 0.0d0
+     Area = 0.0d0
+     Energy = 0.0d0
+     YoungsAverage = 0.0d0
+
+     IntegStuff = GaussPoints( Element )
+
+     DO t=1,IntegStuff % n
+        u = IntegStuff % u(t)
+        v = IntegStuff % v(t)
+        w = IntegStuff % w(t)
+
+        stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
+            Basis, dBasisdx )
+
+        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+           s = IntegStuff % s(t) * detJ
+        ELSE
+           u = SUM( Basis(1:n) * Nodes % x(1:n) )
+           v = SUM( Basis(1:n) * Nodes % y(1:n) )
+           w = SUM( Basis(1:n) * Nodes % z(1:n) )
+
+           CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,u,v,w )
+           s = IntegStuff % s(t) * detJ * SqrtMetric
+        END IF
+
+        ! Residual of the diff.equation:
+        ! ------------------------------
+        Residual = 0.0d0
+        DO i = 1,3
+           Residual(i) = -SUM( NodalForce(i,1:n) * Basis(1:n) )
+
+           IF ( Transient ) THEN
+              Residual(i) = Residual(i) + SUM(NodalDensity(1:n)*Basis(1:n)) * &
+                            SUM( Accel(i,1:nd) * Basis(1:nd) )
+              Residual(i) = Residual(i) + SUM(NodalDamping(1:n)*Basis(1:n)) * &
+                            SUM( Veloc(i,1:nd) * Basis(1:nd) )
+           END IF
+
+           DO j = 1,3
+             Residual(i) = Residual(i) - SUM(Stressi(i,j,1:nd)*dBasisdx(1:nd,j))
+           END DO
+        END DO
+
+!       IF ( CSymmetry ) THEN
+!          DO k=1,3
+!             Residual(1) = Residual(1) + ...
+!          END DO
+!       END IF
+
+       ! Dual norm of the load:
+       ! ----------------------
+        DO i = 1,dim
+           Fnorm = Fnorm + s * SUM( NodalForce(i,1:n) * Basis(1:n) ) ** 2
+        END DO
+
+        YoungsAverage = YoungsAverage + s*SUM( ElasticModulus(1,1,1:n) * Basis(1:n) )
+
+        ! Energy:
+        ! -------
+        IF ( LargeDeflection ) THEN
+          CALL LameParameters( SUM( ElasticModulus(1,1,1:n) * Basis(1:n) ), &
+              SUM( NodalPoissonRatio(1:n) * Basis(1:n) ), PlaneStress, Lame1, Lame2 )
+          ResGrad = MATMUL( NodalDisplacement(:,1:nd), dBasisdx(1:nd,:) )
+          CALL LargeDeflectionResidualStress( Stress1, Strain, ResGrad, Lame1, Lame2, dim )
+        ELSE
+        CALL LocalStress( Stress1, Strain, NodalPoissonRatio, &
+           ElasticModulus, LocalHExp, LocalTemp, Isotropic, CSymmetry, PlaneStress, &
+           NodalDisplacement, Basis, dBasisdx, Nodes, dim, n, nd )
+        END IF
+
+        Energy = Energy + s*DDOTPROD(Strain,Stress1,dim) / 2.0d0
+
+        Area = Area + s
+        ResidualNorm = ResidualNorm + s * SUM( Residual(1:dim) ** 2 )
+     END DO
+
+     YoungsAverage = YoungsAverage / Area
+     Fnorm = Energy
+     Indicator = Area * ResidualNorm / YoungsAverage
+ 
+     DEALLOCATE( ElasticModulus, NodalDensity, NodalPoissonRatio,  &
+         NodalDamping, NodalDisplacement, LocalHExp, vec, Stressi, &
+         LocalTemp, Basis, dBasisdx, NodalForce, Veloc, Accel )
+
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE ElasticityInsideResidual
 
 END MODULE StressLocal
 

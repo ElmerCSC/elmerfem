@@ -102,6 +102,8 @@ CONTAINS
         VeloVec(:,:), PresVec(:), GradVec(:,:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
     REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
+    ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
     REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1), jacord(ntot,ntot,dim+1,dim+1), &
         JAC(ntot*(dim+1),ntot*(dim+1) )
 
@@ -192,7 +194,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-              muDerVec0, Newton,  InitHandles, DetJVec )        
+              muDerVec0, Newton,  InitHandles, DetJVec, ViscWork )        
 
     ! Rho 
     rhovec(1:ngp) = rho
@@ -435,7 +437,7 @@ CONTAINS
 
 
     FUNCTION EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-        ViscDerVec, ViscNewton, InitHandles, DetJVec ) RESULT ( EffViscVec ) 
+        ViscDerVec, ViscNewton, InitHandles, DetJVec, ViscWork ) RESULT ( EffViscVec ) 
 
       INTEGER :: ngp
       REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
@@ -445,7 +447,14 @@ CONTAINS
       LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
       REAL(KIND=dp), ALLOCATABLE :: DetJVec(:)
-      
+      ! ViscWork is supplied by the caller so that the vector this function returns a
+      ! pointer to is owned by the caller's frame: a local of a routine called inside
+      ! the parallel region, hence per-thread by construction and released on return.
+      ! It was POINTER+SAVE+THREADPRIVATE before; as a plain local pointer it leaked
+      ! ngp reals per call, and routing it through a module-level per-thread struct
+      ! ended up shared between threads.
+      REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
+
       LOGICAL :: Found
       CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
@@ -599,7 +608,14 @@ CONTAINS
         RETURN      
       END IF
         
-      ALLOCATE(ss(ngp), s(ngp), ViscVec(ngp), ArrheniusFactorVec(ngp))
+      ALLOCATE(ss(ngp), s(ngp), ArrheniusFactorVec(ngp))
+      IF( .NOT. ALLOCATED( ViscWork ) ) THEN
+        ALLOCATE( ViscWork(ngp) )
+      ELSE IF( SIZE( ViscWork ) < ngp ) THEN
+        DEALLOCATE( ViscWork )
+        ALLOCATE( ViscWork(ngp) )
+      END IF
+      ViscVec => ViscWork(1:ngp)
 
       ! For non-newtonian models compute the viscosity here
       EffViscVec => ViscVec

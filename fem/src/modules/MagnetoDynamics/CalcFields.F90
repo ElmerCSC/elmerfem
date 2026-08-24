@@ -597,7 +597,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    USE CircuitUtils
    USE Zirka
    USE ZirkaUtils
-   
+   USE GeneralUtils, ONLY : ComplexValues
+
    IMPLICIT NONE
 !------------------------------------------------------------------------------
    TYPE(Solver_t), TARGET :: Solver
@@ -630,6 +631,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp) :: imag_value, Zs
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Nu_el(:,:,:)
    COMPLEX(KIND=dp), POINTER, SAVE :: Reluct_Z(:,:,:) => NULL()
+   COMPLEX(KIND=dp), POINTER :: cValues(:)
    COMPLEX(KIND=dp) :: R_ip_Z, Nu(3,3)
    
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
@@ -1074,10 +1076,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( NodalFields ) GForce = 0._dp
 
    IF(EigenAnalysis) THEN
-     DO i=1,pSolver % Matrix % NumberOfRows/2
-       pSolver % Variable % Values(2*i-1) = REAL(pSolver % Variable % EigenVectors(Field,i))
-       pSolver % Variable % Values(2*i) = AIMAG(pSolver % Variable % EigenVectors(Field,i))
-     END DO
+     cValues => ComplexValues( pSolver % Variable % Values, pSolver % Matrix % NumberOfRows/2 )
+     cValues(1:SIZE(cValues)) = pSolver % Variable % EigenVectors(Field,1:SIZE(cValues))
    END IF
 
    C = 0._dp; PR=0._dp
@@ -1716,8 +1716,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        ELSE IF( HasReluctivityFunction ) THEN
          rdummy = ListGetElementReal( mu_h, Basis, Element, &
-             GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )             
-         Nu(1:3,1:3) = muTensor(1:3,1:3)                           
+             GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )
+         IF( mudim < 2 ) CALL Fatal(Caller, &
+             'Specify Reluctivity Function as a tensor')
+         ! The tensor is only as large as declared in the sif, e.g. (2,2) in 2D.
+         DO k = 1, MIN(3, SIZE(muTensor,1))
+           DO l = 1, MIN(3, SIZE(muTensor,2))
+             Nu(k,l) = muTensor(k,l)
+           END DO
+         END DO
          w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
        ELSE IF (HomogenizationLoss .AND. CoilType == 'stranded' .and. HomogenizationModel) THEN
          DO k=1,3

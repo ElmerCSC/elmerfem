@@ -52,6 +52,8 @@ MODULE SolverBasics
    USE LoadMod
    USE Multigrid
    USE ElementUtils
+   USE IpFieldInterface
+   USE PElementVisual
    USE LumpingUtils, ONLY : ComponentStokesTheorem, ComponentCoilEnergy, BoundaryWaveFlux, &
        UpdateDependentComponents, ComponentNodalForceReduction
    USE TimeIntegrate
@@ -66,6 +68,9 @@ MODULE SolverBasics
    USE MatrixScaling
    
    IMPLICIT NONE
+   ! Not re-exported: the external procedure itself USEs modules that would
+   ! then import its own name (see module IpFieldInterface).
+   PRIVATE :: Ip2DgFieldInElement
 
 CONTAINS
 
@@ -3766,7 +3771,9 @@ END FUNCTION SearchNodeL
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
     IF( Norm /= Norm ) THEN
-      PRINT *,'Norm:',Norm,PrevNorm, n
+      WRITE( Message, '(a,g15.8,g15.8,a,i0)') &
+          'Norm and previous norm: ',Norm,PrevNorm,' size: ',n
+      CALL Info(Caller,Message,Level=3)
       CALL NumericalError(Caller,'Norm of solution appears to be NaN')
     END IF
 
@@ -3778,7 +3785,9 @@ END FUNCTION SearchNodeL
           'Nonlinear System Max Norm', Stat )
     END IF    
 
-    IF( Stat ) THEN
+    IF( Stat .AND. Norm > MaxNorm ) THEN
+      WRITE( Message, '(a,g15.8,g15.8)') &
+          'Computed norm and given max norm: ',Norm,MaxNorm
       CALL Info(Caller,Message)
       CALL NumericalError(Caller,'Norm of solution exceeded given bounds')
     END IF
@@ -8170,16 +8179,6 @@ END SUBROUTINE DerivateExportedVariables
      CHARACTER(:), ALLOCATABLE :: TmpName
      CHARACTER(*), PARAMETER :: Caller = 'Ip2DgSwapper'
 
-     INTERFACE
-       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
-         USE Types
-         IMPLICIT NONE
-         TYPE(Mesh_t) :: Mesh
-         TYPE(Element_t), TARGET :: Parent
-         INTEGER :: nip, np
-         REAL(KIND=dp) :: fip(:), fdg(:)
-       END SUBROUTINE Ip2DgFieldInElement
-     END INTERFACE
 
      IF( FromVar % TYPE /= Variable_on_gauss_points ) THEN
        CALL Warn(Caller,'Only IP fields can be swapped!: '//TRIM(FromVar % Name))
@@ -8417,18 +8416,6 @@ END SUBROUTINE DerivateExportedVariables
 
      CHARACTER(*), PARAMETER :: Caller = 'p2LagrangeSwapper'
 
-     INTERFACE 
-       SUBROUTINE HierarchicPToLagrange(PElement, Degree, PSol, LSol, DOFs, PSolver)
-         USE Types
-         IMPLICIT NONE
-         TYPE(Element_t), POINTER :: PElement 
-         INTEGER :: Degree                         
-         REAL(KIND=dp) :: PSol(:,:)                
-         REAL(KIND=dp) :: LSol(:,:)                
-         INTEGER, OPTIONAL :: DOFs                 
-         TYPE(Solver_t), POINTER, OPTIONAL :: PSolver 
-       END SUBROUTINE HierarchicPToLagrange         
-     END INTERFACE
 
      IF(.NOT. ASSOCIATED(FromVar) ) THEN
        CALL Fatal(Caller,'From variable is not associated!')
@@ -8570,16 +8557,6 @@ END SUBROUTINE DerivateExportedVariables
    !-------------------------------------------------------------------------------------
    FUNCTION EvalFieldAtElem( Mesh, Var, Element, Basis, dofi, eigeni, imVal, GotVal ) RESULT ( Val )
 
-     INTERFACE
-       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
-         USE Types
-         IMPLICIT NONE
-         TYPE(Mesh_t) :: Mesh
-         TYPE(Element_t), TARGET :: Parent
-         INTEGER :: nip, np
-         REAL(KIND=dp) :: fip(:), fdg(:)
-       END SUBROUTINE Ip2DgFieldInElement
-     END INTERFACE
 
      TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Variable_t), POINTER :: Var

@@ -3593,7 +3593,7 @@ CONTAINS
 
          IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
            IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
-             ParEnv => SlaveSolver % ParEnv
+             CALL SetMatrixParEnv( SlaveSolver % Matrix )
            ELSE
              ParEnv % ActiveComm = SlaveSolver % Matrix % Comm
            END IF
@@ -7579,8 +7579,12 @@ CONTAINS
         ELSE
           BUpd = .FALSE.
         END IF
-        BUpd = BUpd .OR. GetLogical( Params,'Constant System', Found )
       END IF
+      ! Outside the test above, as the corresponding chain in
+      ! DefaultFinishBulkAssembly is. Nested inside it, this asked for "Constant
+      ! System" only where "Calculate Loads" had already been set, so on its own
+      ! the keyword saved nothing and no solver's reuse could ever engage.
+      BUpd = BUpd .OR. GetLogical( Params,'Constant System', Found )
     END IF
 
     IF( BUpd ) THEN

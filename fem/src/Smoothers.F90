@@ -45,7 +45,8 @@ MODULE Smoothers
 
   USE CRSMatrix
   USE Lists
-  USE ParallelUtils  
+  USE ParallelUtils
+  USE GeneralUtils, ONLY : ComplexValues
 
   IMPLICIT NONE
 
@@ -180,6 +181,17 @@ CONTAINS
         END IF
       END IF
 
+      ! The internal smoothers skip the interface rows, which a Gauss-Seidel
+      ! cannot update without communication, and never exchange them. On their
+      ! own they therefore leave those rows untouched on every partition but the
+      ! one that owns them, and the preconditioner stops reducing the residual.
+      ! They are meant as the second half of the composite smoothers, whose
+      ! Jacobi part sweeps the interface over the owned-rows matrix.
+      IF( Parallel .AND. IterMethod == 'icsgs' ) THEN
+        CALL Fatal('MGSmooth','Smoother "'//TRIM(IterMethod)//'" only smooths the &
+            &rows owned by the partition, use "cjacobi+isgs" in parallel')
+      END IF
+
       TOL = ListGetConstReal( Solver % Values, 'MG Smoother Reduction TOL',Found)
 
       TmpArray => ListGetConstRealArray(Solver % Values,'MG Smoother Relaxation Factor',Found)
@@ -228,8 +240,18 @@ CONTAINS
         CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
         IF(Parallel) CALL ParallelUpdateResult(A,x,r)
 
-        CALL ComplexSGS( n, A, M, x, b, r, Omega, Rounds)
-        IF(Parallel) CALL ParallelUpdateResult(A,x,r)
+        ! The internal variant is the one that goes with the local vectors, as in
+        ! 'jacobi+isgs' above. ComplexSGS reads the owned-rows matrix M and so
+        ! would have to be given Mx/Mb/Mr; handed the local x/b/r it mixed M's
+        ! numbering with the local ordering. The closing update has to push the
+        ! local solution back into the split vectors, not pull it the other way.
+        CALL InternalComplexSGS( n, A, M, x, b, r, Omega, Rounds)
+        IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
+
+        ! Closing sweep, as in 'jacobi+isgs'. The Gauss-Seidel above leaves the
+        ! interface rows exactly as the opening sweep set them, so without this
+        ! they never see what the interior gained and are never exchanged again.
+        CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
       CASE( 'bsgs' )                                     
         CALL BSGS( n, A, M, Mx, Mb, Mr, DOFs, Rounds)
@@ -367,6 +389,13 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> The bilinear form x^T y, deliberately WITHOUT conjugation. Its only user is
+!> the CCG smoother, and the systems assembled here are complex symmetric
+!> (A = A^T) rather than Hermitian: under the Hermitian product A is not
+!> self-adjoint and the conjugate-direction recurrence of CG has no basis.
+!> Note that Fortran DOT_PRODUCT on COMPLEX conjugates its first argument, so
+!> it is not what is wanted here.
+!------------------------------------------------------------------------------
     FUNCTION MGCdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
@@ -375,9 +404,9 @@ CONTAINS
        COMPLEX(KIND=dp) CONTIG :: x(:),y(:)
 !------------------------------------------------------------------------------
        IF ( .NOT. Parallel ) THEN
-         s = DOT_PRODUCT( x(1:n), y(1:n) )
+         s = SUM( x(1:n) * y(1:n) )
        ELSE
-         s = ParallelCDot( n, x, y )
+         s = ParallelCDotU( n, x, y )
        END IF
 !------------------------------------------------------------------------------
     END FUNCTION MGCdot
@@ -515,26 +544,27 @@ CONTAINS
         TYPE(Matrix_t), POINTER, INTENT(IN) :: A
         TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: n, Rounds
-        REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
-        REAL(KIND=dp) CONTIG, INTENT(IN) :: rb(:)
-        REAL(KIND=dp) CONTIG, INTENT(OUT) :: rr(:)
+        REAL(KIND=dp), TARGET, INTENT(INOUT) :: rx(:)
+        REAL(KIND=dp), TARGET, INTENT(IN) :: rb(:)
+        REAL(KIND=dp), TARGET, INTENT(OUT) :: rr(:)
         REAL(KIND=dp), INTENT(in) :: w
 !------------------------------------------------------------------------------
         INTEGER :: i,j,k
         REAL(KIND=dp), POINTER :: Values(:)
         INTEGER, POINTER :: Diag(:)
-        COMPLEX(KIND=dp) :: x(n/2),b(n/2),r(n/2), v
+        COMPLEX(KIND=dp) :: v
+        ! rx, rb and rr already hold the complex vectors as consecutive (Re,Im)
+        ! pairs, so alias them rather than copying to and from complex stack
+        ! temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: x(:),b(:),r(:)
 !------------------------------------------------------------------------------
-!$OMP PARALLEL DO shared(x,b, rx, rb,n)
-        DO j=1,n/2
-          x(j) = CMPLX( rx(2*j-1), rx(2*j),KIND=dp )
-          b(j) = CMPLX( rb(2*j-1), rb(2*j),KIND=dp )
-        END DO
-!$OMP END PARALLEL DO
+        x => ComplexValues( rx, n/2 )
+        b => ComplexValues( rb, n/2 )
+        r => ComplexValues( rr, n/2 )
 
         Diag   => M %  Diag
         Values => M %  Values
-        
+
         DO i=1,Rounds
           CALL MGCmv(A, x, r)
 !$OMP PARALLEL DO shared(n,x,b,r,Values,Diag) private(k,v)
@@ -546,15 +576,6 @@ CONTAINS
           END DO
 !$OMP END PARALLEL DO
         END DO
-        
-!$OMP PARALLEL DO shared(n,r,x,rr,rx)
-        DO j=1,n/2
-          rr(2*j-1) = REAL( r(j) )
-          rr(2*j) =  AIMAG( r(j) )
-          rx(2*j-1) = REAL( x(j) )
-          rx(2*j) =  AIMAG( x(j) )
-        END DO
-!$OMP END PARALLEL DO
 !-----------------------------------------------------------------------------
       END SUBROUTINE ComplexJacobi
 !------------------------------------------------------------------------------
@@ -758,26 +779,36 @@ CONTAINS
 
         TYPE(Matrix_t) :: A, M
         INTEGER :: n,Rounds
-        REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
+        REAL(KIND=dp), TARGET :: rx(:),rb(:),rr(:)
 
-        INTEGER :: i,j,k,l
+        INTEGER :: i,j,k,l,na
         COMPLEX(KIND=dp) :: s, v
         REAL(KIND=dp) :: w
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        COMPLEX(KIND=dp) :: x(n/2),b(n/2),r(n/2)
+        ! Alias the interleaved (Re,Im) reals instead of copying to and from
+        ! complex stack temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: x(:),b(:),r(:)
 
-        DO i=1,n/2
-          x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )
-          b(i) = CMPLX( rb(2*i-1), rb(2*i), KIND=dp )
-        END DO
-        
+        ! This smoother reads the local matrix A and the local vectors, so it is
+        ! A that sets the range of rows and columns -- not the passed n, which in
+        ! parallel counts the rows of the owned-rows matrix M only. Sizing the
+        ! complex views from n while indexing them with the columns of A left the
+        ! views shorter than the indices used, and the row loops silently skipped
+        ! the rows A holds beyond M. Compare InternalSGS, which likewise ignores
+        ! n in favour of A % NumberOfRows.
+        na = A % NumberOfRows
+
+        x => ComplexValues( rx, na/2 )
+        b => ComplexValues( rb, na/2 )
+        r => ComplexValues( rr, na/2 )
+
         Rows   => A % Rows
         Cols   => A % Cols 
         Values => A % Values
         
         DO k=1,Rounds
-          DO i=1,n,2
+          DO i=1,na,2
             l = (i+1)/2
             ! Skip the interface elements as the gauss-seidel cannot be used to update them
             IF( Parallel ) THEN
@@ -796,7 +827,7 @@ CONTAINS
             x(l) = x(l) + w*r(l)
           END DO
           
-          DO i=n-1,1,-2
+          DO i=na-1,1,-2
             l = (i+1)/2
             IF( Parallel ) THEN
               IF( A % ParallelInfo % GInterface(i) ) CYCLE
@@ -813,14 +844,6 @@ CONTAINS
             r(l) = (b(l)-s) / v
             x(l) = x(l) + w*r(l)
           END DO
-        END DO
-
-        DO i=1,n/2
-          rr(2*i-1) =  REAL( r(i) )
-          rr(2*i-0) =  AIMAG( r(i) )
-
-          rx(2*i-1) =  REAL( x(i) )
-          rx(2*i-0) =  AIMAG( x(i) )
         END DO
 
       END SUBROUTINE InternalComplexSGS
@@ -1034,20 +1057,22 @@ CONTAINS
         TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: Rounds
         REAL(KIND=dp), INTENT(IN) :: w
-        REAL(KIND=dp) CONTIG, INTENT(INOUT) :: rx(:)
-        REAL(KIND=dp) CONTIG, INTENT(IN) :: rb(:)
-        REAL(KIND=dp) CONTIG, INTENT(OUT) :: rr(:)
-!------------------------------------------------------------------------------        
+        REAL(KIND=dp), TARGET, INTENT(INOUT) :: rx(:)
+        REAL(KIND=dp), TARGET, INTENT(IN) :: rb(:)
+        REAL(KIND=dp), TARGET, INTENT(OUT) :: rr(:)
+!------------------------------------------------------------------------------
         INTEGER :: i,j,k,n,l
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        COMPLEX(KIND=dp) :: r(n/2),b(n/2),x(n/2),s, v
+        COMPLEX(KIND=dp) :: s, v
+        ! Alias the interleaved (Re,Im) reals instead of copying to and from
+        ! complex stack temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: r(:),b(:),x(:)
 !------------------------------------------------------------------------------
-        DO i=1,n/2
-          x(i) = CMPLX( rx(2*i-1), rx(2*i), KIND=dp )
-          b(i) = CMPLX( rb(2*i-1), rb(2*i), KIND=dp )
-        END DO
-        
+        x => ComplexValues( rx, n/2 )
+        b => ComplexValues( rb, n/2 )
+        r => ComplexValues( rr, n/2 )
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -1079,15 +1104,7 @@ CONTAINS
             r(i) = (b(i)-s) / v
             x(i) = x(i) + w * r(i)
           END DO
-          
-        END DO
-        
-        DO i=1,n/2
-          rr(2*i-1) =  REAL( r(i) )
-          rr(2*i-0) =  AIMAG( r(i) )
 
-          rx(2*i-1) =  REAL( x(i) )
-          rx(2*i-0) =  AIMAG( x(i) )
         END DO
       END SUBROUTINE ComplexSGS
 !------------------------------------------------------------------------------
@@ -1482,17 +1499,20 @@ CONTAINS
         IMPLICIT NONE
         INTEGER :: i,n, Rounds
         TYPE(Matrix_t), POINTER :: A,M
-        REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
+        REAL(KIND=dp), TARGET :: rx(:),rb(:),rr(:)
         COMPLEX(KIND=dp) :: alpha,rho,oldrho
-        COMPLEX(KIND=dp) :: r(n/2),b(n/2),x(n/2)
-        COMPLEX(KIND=dp) :: Z(n), Pc(n), Q(n)
+        ! Alias the interleaved (Re,Im) reals instead of copying to and from
+        ! complex stack temporaries on every smoothing call.
+        COMPLEX(KIND=dp), POINTER :: r(:),b(:),x(:)
+        ! n counts the rows of the real system, so the complex vectors it holds
+        ! are half as long. Sizing these by n put twice the needed complex
+        ! working set on the stack, three times over.
+        COMPLEX(KIND=dp) :: Z(n/2), Pc(n/2), Q(n/2)
 !------------------------------------------------------------------------------
-        DO i=1,n/2
-          r(i) = CMPLX( rr(2*i-1), rr(2*i),KIND=dp )
-          x(i) = CMPLX( rx(2*i-1), rx(2*i),KIND=dp )
-          b(i) = CMPLX( rb(2*i-1), rb(2*i),KIND=dp )
-        END DO
-        
+        x => ComplexValues( rx, n/2 )
+        b => ComplexValues( rb, n/2 )
+        r => ComplexValues( rr, n/2 )
+
         CALL MGCmv( A, x, r )
         r(1:n/2) = b(1:n/2) - r(1:n/2)
 
@@ -1513,13 +1533,6 @@ CONTAINS
           
           x(1:n/2) = x(1:n/2) + alpha * Pc(1:n/2)
           r(1:n/2) = r(1:n/2) - alpha * Q(1:n/2)
-        END DO
-
-        DO i=1,n/2
-          rr(2*i-1) =  REAL( r(i) )
-          rr(2*i-0) =  AIMAG( r(i) )
-          rx(2*i-1) =  REAL( x(i) )
-          rx(2*i-0) =  AIMAG( x(i) )
         END DO
 !------------------------------------------------------------------------------
       END SUBROUTINE CCG

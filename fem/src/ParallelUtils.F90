@@ -1076,12 +1076,11 @@ CONTAINS
        IF(.NOT. ASSOCIATED(Matrix % ParMatrix)) THEN
          CALL Fatal('ParallelInitSolve','ParMatrix not associated!')
        END IF
-       ParEnv => Matrix % Solver % ParEnv
+       CALL SetMatrixParEnv( Matrix )
        IF(.NOT. ASSOCIATED(ParEnv)) THEN
          CALL Fatal('ParallelInitSolve','ParEnv not associated!')
        END IF
-       
-       ParEnv % ActiveComm = Matrix % Comm
+
        Upd = .TRUE.
        IF ( PRESENT(Update) ) Upd=Update
        CALL SParInitSolve( Matrix, x, b, r, Matrix % ParallelInfo, Upd )
@@ -1100,12 +1099,12 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % Solver % ParEnv
+       CALL SetMatrixParEnv( Matrix )
        IF(.NOT.ASSOCIATED(Parenv % Active)) THEN
          ParEnv = ParEnv_Common
+         ParEnv % ActiveComm = Matrix % Comm
        END IF
-       ParEnv % ActiveComm = Matrix % Comm
-       
+
        CALL ExchangeSourceVec( Matrix, Matrix % ParMatrix % SplittedMatrix, &
               Matrix % ParallelInfo, x, op )
 !-------------------------------------------------------------------------------
@@ -1122,8 +1121,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        IF(Matrix % ParallelInfo % NothingShared ) RETURN
 
-       ParEnv => Matrix % Solver % ParEnv
-       ParEnv % ActiveComm = Matrix % Comm
+       CALL SetMatrixParEnv( Matrix )
 
        CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
               Matrix % ParallelInfo, x, op )
@@ -1146,8 +1144,7 @@ CONTAINS
       ! We can inherit the ParEnv from the primary matrix even
       ! though the variable is not directly associated to it!
       IF( PRESENT( Matrix ) ) THEN
-        ParEnv => Matrix % Solver % ParEnv
-        ParEnv % ActiveComm = Matrix % Comm
+        CALL SetMatrixParEnv( Matrix )
       END IF
 
       CALL Info('ParallelSumNodalVector','Summing up parallel nodal vector',Level=12)
@@ -1182,22 +1179,18 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: Matrix
       LOGICAL, OPTIONAL :: Update, UseMassVals,ZeroNotOwned, UseAbs
 !-------------------------------------------------------------------------------
-      INTEGER :: i,ipar(1)
+      INTEGER :: i
       REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mr(:), Mb(:), r(:)
 
       LOGICAL:: UpdateL, UseMassValsL,ZeroNotOwnedL, UseAbsL
 
       TYPE(Matrix_t), POINTER :: SaveMatrix
-      TYPE(SplittedMatrixT), POINTER :: SP
-      TYPE(Matrix_t), POINTER :: SavePtrIN
-      TYPE(BasicMatrix_t), POINTER :: SavePtrIF(:), SavePtrNB(:)
 !-------------------------------------------------------------------------------
 #ifdef PARALLEL_FOR_REAL
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalMatrix % Solver % ParEnv
-      ParEnv % ActiveComm = Matrix % Comm
+      CALL SetMatrixParEnv( Matrix )
 
       UpdateL = .FALSE.
       IF(PRESENT(Update)) UpdateL=Update
@@ -1211,33 +1204,6 @@ CONTAINS
       UseABSL = .FALSE.
       IF(PRESENT(UseABS)) UseABSL=UseABS
 
-      IF ( UseMassValsL ) THEN
-        SP => GlobalData % SplittedMatrix
-        ALLOCATE( SavePtrIF( ParEnv % PEs ) )
-        ALLOCATE( SavePtrNB( ParEnv % PEs ) )
-        ALLOCATE( SavePtrIn )
-        DO i=1,ParEnv % PEs
-          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-             ALLOCATE(SavePtrIF(i) % Values(SIZE(SP % IfMatrix(i) % Values)))
-             SavePtrIF(i) % Values = SP % IfMatrix(i) % Values
-          END IF
-          IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-             ALLOCATE(SavePtrNB(i) % Values(SIZE(SP % NbsIfMatrix(i) % Values)))
-             SavePtrNB(i) % Values = SP % NbsIfMatrix(i) % Values
-          END IF
-        END DO
-        SavePtrIN % Values => SP % InsideMatrix % Values
-
-        DO i=1,ParEnv % PEs
-          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) &
-            SP % IfMatrix(i) % Values = SP % IfMatrix(i) % MassValues
-
-          IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) &
-                       SP % NbsIfMatrix(i) % Values = SP % NbsIfMatrix(i) % MassValues
-        END DO
-        SP % InsideMatrix % Values => SP % InsideMatrix % MassValues
-      END IF
-
       IF(UpdateL) THEN
         Mx => GlobalData % SplittedMatrix % TmpXVec
         Mr => GlobalData % SplittedMatrix % TmpRVec
@@ -1246,10 +1212,15 @@ CONTAINS
         Mr => b
       END  IF
 
+      ! The mass coefficients are selected inside the product now. It used to be
+      ! done by writing MassValues over Values here -- a deep copy for every
+      ! interface block, a pointer swap for the inside matrix -- and undoing it
+      ! afterwards. Same result, none of the copying, and A % Values is no longer
+      ! ever pointer-assigned to a sibling array.
       IF(UseABSL) THEN
-        CALL SParABSMatrixVector( Mx, Mr, ipar )
+        CALL SParABSMatrixVectorVals( Mx, Mr, UseMassValsL )
       ELSE
-        CALL SParMatrixVector( Mx, Mr, ipar )
+        CALL SParMatrixVectorVals( Mx, Mr, UseMassValsL )
       END IF
 
       IF(UpdateL) CALL SParUpdateResult( Matrix, x, b, .FALSE. )
@@ -1259,26 +1230,6 @@ CONTAINS
           IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) &
             b(i) = 0._dp
         END DO
-      END IF
-
-      IF ( UseMassValsL ) THEN
-        DO i=1,ParEnv % PEs
-          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-            IF( ALLOCATED( SP % IfMatrix(i) % Values ) ) DEALLOCATE( SP % IfMatrix(i) % Values )
-            ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
-              SP % IfMatrix(i) % Values =  SavePtrIF(i) % Values
-           END IF
-
-           IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-             IF( ALLOCATED( SP % NbsIfMatrix(i) % Values ) ) DEALLOCATE( SP % NbsIfMatrix(i) % Values )
-              ALLOCATE(SP % NbsIfMatrix(i) % Values(SIZE(SavePtrNB(i) % Values)))
-              SP % NbsIfMatrix(i) % Values =  SavePtrNB(i) % Values
-           END IF
-        END DO
-        SP % InsideMatrix % Values => SavePtrIN % Values
-        DEALLOCATE( SavePtrIF )
-        DEALLOCATE( SavePtrNB )
-        DEALLOCATE( SavePtrIn )
       END IF
 
        GlobalMatrix => SaveMatrix
@@ -1306,8 +1257,7 @@ CONTAINS
       GlobalData => Matrix % ParMatrix
       SaveMatrix  => GlobalMatrix
       GlobalMatrix => Matrix
-      ParEnv => GlobalMatrix % Solver % ParEnv
-      ParEnv % ActiveComm = Matrix % Comm
+      CALL SetMatrixParEnv( Matrix )
       IF ( PRESENT( Update ) ) THEN
         CALL Fatal('ParallelMatrixVectorC','Cannot handle parameter > Update <')
       END IF
@@ -1509,6 +1459,25 @@ CONTAINS
 #endif
 !-------------------------------------------------------------------------------
     END FUNCTION ParallelCDOT
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> As ParallelCDOT but without conjugation, i.e. the bilinear form x^T y.
+!> See SParCDotProdU for when this is the one you want.
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelCDOTU( n, x, y ) RESULT(s)
+!-------------------------------------------------------------------------------
+      INTEGER :: n
+      COMPLEX(KIND=dp) :: s
+      COMPLEX(KIND=dp) CONTIG :: x(:),y(:)
+!-------------------------------------------------------------------------------
+      s = 0.0d0
+#ifdef PARALLEL_FOR_REAL
+      s = SParCDotProdU( n, x, 1, y, 1 )
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelCDOTU
 !-------------------------------------------------------------------------------
 
 

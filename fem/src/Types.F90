@@ -134,6 +134,12 @@ MODULE Types
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
     REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:), &
         DampValues(:),ILUValues(:),PrecValues(:)
+!   Block view of a complex interface matrix, as for Matrix_t: NumberOfRows/2
+!   block rows and one COMPLEX per 2x2 block. The local column index is folded
+!   in from IfLCols, and rows this rank owns and entries with no local column
+!   are dropped at build time, so the product needs no test at all.
+    INTEGER, ALLOCATABLE :: BRows(:), BCols(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: CValues(:)
   END TYPE BasicMatrix_t
 
 
@@ -204,6 +210,32 @@ MODULE Types
 #endif
 
 
+#ifdef HAVE_MUMPS
+  !> Plan for turning MUMPS's distributed solution into Elmer's local rows.
+  !> ICNTL(21)=1 leaves the solution spread over the ranks in a distribution
+  !> MUMPS chooses, reported in ISOL_loc, which has nothing to do with the mesh
+  !> partitioning. Redistributing it used to mean scattering into a vector of
+  !> global length on every rank and allreducing that. It can instead be one
+  !> MPI_ALLTOALLV, because ContinuousNumbering hands each rank a contiguous
+  !> range of global indices for the rows it owns, so the owner of an index is
+  !> a search in a table of range bounds rather than a lookup that would have
+  !> to be communicated. Everything here is fixed by the factorization, so it
+  !> is built once and reused by every solve that follows.
+  TYPE MumpsSolPlan_t
+    INTEGER :: nGlob = 0                     !< global rows, in plan units
+    INTEGER :: gStart = 0                    !< our owned range is (gStart,gStart+nOwn]
+    INTEGER :: nOwn = 0
+    LOGICAL :: Built = .FALSE.               !< the per-solve plan below is ready
+    INTEGER :: nSend = 0, nRecv = 0          !< slots we send / receive
+    INTEGER, ALLOCATABLE :: gBound(:)        !< 0:PEs, owned index ranges
+    INTEGER, ALLOCATABLE :: sCnt(:), sDsp(:) !< what we send, per rank
+    INTEGER, ALLOCATABLE :: rCnt(:), rDsp(:) !< what we receive, per rank
+    INTEGER, ALLOCATABLE :: sPerm(:)         !< sol_loc index of each send slot
+    INTEGER, ALLOCATABLE :: rRow(:)          !< local row of each receive slot
+    INTEGER, ALLOCATABLE :: isol(:)          !< the ISOL_loc it was built for
+  END TYPE MumpsSolPlan_t
+#endif
+
   TYPE Matrix_t
     TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => NULL(), &
         ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
@@ -260,6 +292,10 @@ MODULE Types
 
     TYPE(cmumps_struc), POINTER :: CMumpsID => NULL() ! Global distributed Mumps
     TYPE(cmumps_struc), POINTER :: CMumpsIDL => NULL() ! Local domainwise Mumps
+
+    ! Redistribution plan for the distributed solution, valid as long as the
+    ! factorization above is. Released by FreeMumpsFactorizations.
+    TYPE(MumpsSolPlan_t), POINTER :: MumpsSolPlan => NULL()
 #endif
 #if defined(HAVE_MKL) || defined(HAVE_PARDISO)
     INTEGER, POINTER :: PardisoParam(:) => NULL()
@@ -295,6 +331,21 @@ MODULE Types
     COMPLEX(KIND=dp), POINTER :: CRHS(:)=>NULL(),CForce(:,:)=>NULL()
     COMPLEX(KIND=dp),  POINTER :: CValues(:)=>NULL(),CILUValues(:)=>NULL()
     COMPLEX(KIND=dp),  POINTER :: CMassValues(:)=>NULL(),CDampValues(:)=>NULL()
+
+!   Optional block CRS view of a complex matrix: NumberOfRows/2 block rows and
+!   one COMPLEX coefficient per 2x2 [Re -Im; Im Re] block, in BRows/BCols and
+!   the CValues slot above. Built on demand by CRS_BuildBlockCRS, used by
+!   CRS_BlockComplexMatrixVectorMultiply. Not present unless asked for.
+!
+!   CPrecValues is the same view over PrecValues when a separate preconditioning
+!   matrix exists. It shares BRows and BCols outright: DefaultUpdatePrecC glues
+!   the preconditioner through the same structure as the matrix, so the only
+!   thing that differs is the coefficients. The complex ILU factorizes
+!   PrecValues when it is present, so without this the view is bypassed exactly
+!   on the cases that have one -- which includes every VectorHelmholtz case
+!   carrying a damping coefficient.
+    INTEGER, POINTER :: BRows(:)=>NULL(), BCols(:)=>NULL(), BDiag(:)=>NULL()
+    COMPLEX(KIND=dp), POINTER :: CPrecValues(:)=>NULL()
 
 ! For Flux Corrected Transport 
     REAL(KIND=dp), POINTER :: FCT_D(:) => NULL()
@@ -365,6 +416,19 @@ MODULE Types
     REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
   END TYPE RealBuf_t
 
+  ! The gather that fills the send buffer of one neighbour in SParMatrixVector.
+  ! Which interface row ends up in which slot of the buffer is fixed by the
+  ! matrix structure, so it is worked out once instead of by rescanning every
+  ! RowOwner array on every product. The slots are grouped into segments, one
+  ! per contributing interface block, leaving one pointer dereference per
+  ! segment and one indexed load per slot.
+  TYPE MVPackT
+    INTEGER :: nseg = 0
+    INTEGER, ALLOCATABLE :: SegIf(:)     ! interface block a segment reads from
+    INTEGER, ALLOCATABLE :: SegStart(:)  ! first slot of a segment, size nseg+1
+    INTEGER, ALLOCATABLE :: Row(:)       ! row of that block, one per slot
+  END TYPE MVPackT
+
   TYPE SplittedMatrixT
      TYPE (BasicMatrix_t), DIMENSION(:), POINTER :: IfMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: InsideMatrix=>NULL()
@@ -386,6 +450,8 @@ MODULE Types
      TYPE(RealBuf_t), ALLOCATABLE :: MVSendBuf(:)
      TYPE(RealBuf_t), ALLOCATABLE :: MVRecvBuf(:)
      INTEGER, ALLOCATABLE :: MVRequests(:)
+     INTEGER, ALLOCATABLE :: MVSendRequests(:)
+     TYPE(MVPackT), ALLOCATABLE :: MVPack(:)
   END TYPE SplittedMatrixT
 
 
@@ -393,6 +459,11 @@ MODULE Types
      TYPE (SplittedMatrixT), POINTER :: SplittedMatrix=>NULL()
      TYPE (Matrix_t), POINTER :: Matrix=>NULL()
      INTEGER :: DOFs, RelaxIters
+     ! The active partitions and the neighbours are a property of the matrix,
+     ! not of the solver: one solver may own several matrices of differing
+     ! parallel structure. This is the owner of the > Active < and
+     ! > IsNeighbour < arrays, > Solver % ParEnv < only mirrors it.
+     TYPE(ParEnv_t) :: ParEnv
      TYPE (ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
   END TYPE SParIterSolverGlobalD_t
 

@@ -1185,7 +1185,7 @@ CONTAINS
 !>   This routine solves real linear systems Ax = b by using the GCR algorithm 
 !> (Generalized Conjugate Residual).
 !------------------------------------------------------------------------------
- SUBROUTINE itermethod_gcr( xvec, rhsvec, &
+ RECURSIVE SUBROUTINE itermethod_gcr( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
@@ -1268,8 +1268,8 @@ CONTAINS
   CONTAINS 
     
     
-    SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m, MinIter) 
+    RECURSIVE SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
+        Converged, Diverged, OutputInterval, m, MinIter)
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: Rounds, MinIter
@@ -2073,6 +2073,10 @@ CONTAINS
       LOGICAL, INTENT(OUT) :: converged
       REAL(KIND=dp), INTENT(OUT) :: final_norm_gp
       INTEGER :: ierr, comm, n_beyond
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      INTEGER :: ibuffer
+      REAL(KIND=dp) :: rbuffer
+#endif
       
       INTEGER :: itl
       REAL(KIND=dp) :: normv
@@ -2203,7 +2207,13 @@ CONTAINS
 
           n_beyond = COUNT(bs * yy(:) < bs * c(:))
           IF(ParEnv % PEs > 1) THEN
-            CALL MPI_ALLREDUCE( MPI_IN_PLACE, n_beyond, 1, MPI_INTEGER, MPI_SUM, comm, ierr )              
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+            ibuffer = n_beyond
+            CALL MPI_ALLREDUCE( ibuffer, &
+#else
+            CALL MPI_ALLREDUCE( MPI_IN_PLACE, &
+#endif
+                n_beyond, 1, MPI_INTEGER, MPI_SUM, comm, ierr )
           END IF
 
           IF (n_beyond == 0) THEN
@@ -2250,7 +2260,13 @@ CONTAINS
             a_f = MINVAL((x-c) / p,p_mask)
             
             IF(ParEnv % PEs > 1) THEN
-              CALL MPI_ALLREDUCE( MPI_IN_PLACE, a_f, 1, MPI_DOUBLE_PRECISION, MPI_MIN, comm, ierr )              
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+              rbuffer = a_f
+              CALL MPI_ALLREDUCE( rbuffer, &
+#else
+              CALL MPI_ALLREDUCE( MPI_IN_PLACE, &
+#endif
+                  a_f, 1, MPI_DOUBLE_PRECISION, MPI_MIN, comm, ierr )              
             END IF
               
             IF (a_f < 0.0_dp) a_f = 0.0_dp

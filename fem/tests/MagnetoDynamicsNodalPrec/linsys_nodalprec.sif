@@ -1,3 +1,5 @@
+! Continue with settings for MagnetoStatics
+Solver 3
   Linear System Preconditioning = "auxiliary space solver"
   Prec Solvers(2) = Integer 7 8  
 
@@ -30,3 +32,117 @@
   Linear System Max Iterations = 5 !100
  
 !  Linear System Scaling = False
+End 
+
+
+
+Solver 7
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "AmsVectorSolver"
+  Procedure = "AmsPrecSolver" "AmsVectorSolver"
+
+  Monolithic Solver = Logical $mono  
+!  Edge Residual Name = String "ams res"
+!  Edge Update Name = String "ams update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU2"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+! Essential for performance!
+  No Precondition Recompute = True
+End
+
+
+Solver 8
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "AmsScalarSolver"
+  Procedure = "AmsPrecSolver" "AmsScalarSolver"
+
+!  Edge Residual Name = String "ams res"
+!  Edge Update Name = String "ams update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU2"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+! Essential for performance!
+  No Precondition Recompute = True
+End
+
+! Add the solvers without need to tamper "Active Solvers"
+Equation 1
+  AmsVectorSolver = Logical True
+  AmsScalarSolver = Logical True
+End
+
+Equation 2
+  AmsVectorSolver = Logical True
+  AmsScalarSolver = Logical True
+End
+
+
+
+! Additions to BC's related to AMS
+
+Boundary Condition 1
+  amsx = Real 0.0
+  amsy= Real 0.0
+  Amss = Real 0.0
+End
+
+Boundary Condition 2
+  amsx = Real 0.0
+  amsy= Real 0.0
+  Amss = Real 0.0
+End
+
+Boundary Condition 3
+  amsx = Real 0.0
+  amsy= Real 0.0
+  Amss = Real 0.0
+End
+
+
+Boundary Condition 4
+  amsx = Real 0.0
+  amsy= Real 0.0
+  amss = Real 0.0
+End
+
+Boundary Condition 5
+  amsx = Real 0.0
+  amsy= Real 0.0
+  amsz = Real 0.0
+  amss = Real 0.0
+End

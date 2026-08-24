@@ -47,8 +47,12 @@
 MODULE Lists
 
    USE GeneralUtils
+   USE IpFieldInterface
    
    IMPLICIT NONE
+   ! Not re-exported: the external procedure itself USEs modules that would
+   ! then import its own name (see module IpFieldInterface).
+   PRIVATE :: Ip2DgFieldInElement
 
    INTEGER, PARAMETER :: LIST_TYPE_LOGICAL = 1
    INTEGER, PARAMETER :: LIST_TYPE_STRING  = 2
@@ -753,6 +757,8 @@ CONTAINS
 
      L = .FALSE.
      IF ( Element % Type % ElementCode<=1 ) RETURN
+     IF (.NOT. ASSOCIATED(Element % BoundaryInfo) ) RETURN
+     IF (.NOT. ASSOCIATED(CurrentModel % BCs) ) RETURN
 
      t = Element % BoundaryInfo % Constraint
      IF(t<=0 .OR. t>SIZE(CurrentModel % BCs)) RETURN
@@ -5109,17 +5115,6 @@ CONTAINS
      INTEGER :: ipar, npar, i, j, n, np, nip, dofs
      REAL(KIND=dp), ALLOCATABLE :: fip(:),fdg(:)
 
-     ! We have to provide interface for this as otherwise we would create a
-     ! cyclic dependence.
-     INTERFACE
-       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
-         USE Types
-         TYPE(Mesh_t) :: Mesh
-         TYPE(Element_t), TARGET :: Parent
-         INTEGER :: nip, np
-         REAL(KIND=dp) :: fip(:), fdg(:)
-       END SUBROUTINE Ip2DgFieldInElement
-     END INTERFACE
 
      T = 0.0_dp
      n = Element % TYPE % NumberOfNodes     

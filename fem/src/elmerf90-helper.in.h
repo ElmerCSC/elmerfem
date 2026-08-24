@@ -4,12 +4,7 @@
  */
 
 #ifdef _WIN32
-#  include <process.h>   /* _execvp */
-   /* _execvp wants argv as 'const char *const *'; our argv is built as
-      'char **', which POSIX execvp() accepts directly but _execvp() does
-      not. Cast explicitly at the call site rather than changing argv's
-      type, since push()/args are shared with other array/string logic. */
-#  define execvp(prog, argv) _execvp((prog), (const char * const *)(argv))
+#  include <process.h>   /* _spawnvp */
 #else
 #  include <unistd.h>    /* execvp */
 #endif
@@ -58,7 +53,17 @@ static void push(const char *s)
         fprintf(stderr, "elmerf90: too many arguments\n");
         exit(1);
     }
+
+#if defined (_WIN32)
+    // The spawn* functions on Windows require that their arguments are
+    // surrounded by double-quotes (to deal with spaces in arguments).
+    // See: https://learn.microsoft.com/en-us/cpp/c-runtime-library/spawn-wspawn-functions?view=msvc-170
+    args[nargs] = malloc(strlen(s) + 3);
+    sprintf(args[nargs], "\"%s\"", s);
+    nargs++;
+#else
     args[nargs++] = strdup(s);
+#endif
 }
 
 /* Split a whitespace-separated flag string and push each token. */
@@ -133,7 +138,12 @@ static int exec_compiler(const char *fc, const char *who)
 
 #if defined (_WIN32)
     /* Spawn new process and wait for its exit code on Windows. */
-    int status = _spawnvp(P_WAIT, fc, args);
+    /* _spawnvp wants argv as 'const char *const *'; our argv is built
+       as 'char **', and the mismatch warning is elevated to an error
+       by default with GCC 14 or later. Cast at the call site rather
+       than changing argv's type, since push()/args are shared with
+       other array/string logic. */
+    int status = _spawnvp(P_WAIT, fc, (const char * const *)args);
     if (status == -1) {
         int first_errno = errno;
 
@@ -148,7 +158,7 @@ static int exec_compiler(const char *fc, const char *who)
 
             free(args[0]);
             args[0] = strdup(base);
-            status = _spawnvp(P_WAIT, base, args);
+            status = _spawnvp(P_WAIT, base, (const char * const *)args);
             if (status == -1)
                 fprintf(stderr,
                         "%s: could not exec build-time compiler '%s' (%s), "

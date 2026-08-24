@@ -1,0 +1,95 @@
+! "Gravitational Prestress Advection" through both solvers on one problem against one
+! reference value: the restoring stiffness that arises when a body under its own
+! weight is displaced vertically, so a column of material of density rho is advected
+! through gravity. "GPA Coeff" is that rho*g. The only tests that used it before are
+! the two elmer_earth_2d_2layer cases, which need a Maxwell material as well and so
+! cannot say which of the two capabilities an answer came from; here it is alone.
+!
+! WHAT THE TEST IS REALLY FOR. The term is not symmetric, and StressSolve symmetrises
+! its whole local stiffness before gluing it in -- every other term it assembles being
+! symmetric already -- so only the symmetric half of this one ever reaches its linear
+! solver. Reproducing the term as written instead of as its symmetric part is
+! therefore the mistake to guard against, and it is a loud one here: the second norm
+! becomes 9.16E-02 against this 2.61E-01. On the earth cases the same mistake is worth
+! only 2.6%, which is why this case exists rather than relying on them.
+!
+! The load is vertical, since a term coupling to the vertical displacement cannot be
+! exercised by shear alone, and the coefficient is chosen to be worth about a third of
+! the answer: without the keyword the norm is 1.93E-01 against this 2.61E-01.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = Real 0
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.3
+End
+
+Body Force 1
+  Stress BodyForce 2 = Real -0.1
+  Gravitational Prestress Advection = Logical True
+  GPA Coeff = Real 2.0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "sDisp[sDisp:2]"
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Solver 2
+  Equation = "Elasticity Analysis"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "eDisp[eDisp:2]"
+  Large Deflection = False
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  sDisp 1 = Real 0
+  sDisp 2 = Real 0
+  eDisp 1 = Real 0
+  eDisp 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Force 2 = Real -0.05
+End
+
+Solver 1 :: Reference Norm = Real 2.60547590E-01
+Solver 2 :: Reference Norm = Real 2.60547590E-01

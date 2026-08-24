@@ -95,3 +95,18 @@ End
 Solver 1 :: Reference Norm = Real 0.128318191837E-01
 RUN
 
+! Second pass exercises complex CG. The Helmholtz operator is complex
+! SYMMETRIC but not Hermitian, so CG is only valid with the unconjugated
+! bilinear form x^T y; with the conjugating (Hermitian) dot product it has no
+! self-adjoint operator to work with.
+!
+! The angular frequency is changed so that this is a genuine cold start: the
+! reload keeps Pressure from the previous pass, and at the same frequency that
+! is already the converged solution, which any solver would "confirm" in one
+! iteration. The reference norm below was cross-checked by solving the same
+! frequency with BiCGStab from a cold start.
+Simulation :: Angular Frequency = Real 20000
+Solver 1 :: Linear System Iterative Method = String "CG"
+Solver 1 :: Reference Norm = Real 0.990092197E-02
+RUN
+
