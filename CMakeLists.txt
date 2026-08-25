@@ -633,36 +633,39 @@ IF(Mumps_FOUND)
     ENDIF()
   ENDFOREACH()
 
-  # Off on Windows, because MUMPS's own reductions cannot work there. MPI_IN_PLACE
-  # is unusable with MS-MPI and gfortran: mpif.h keeps the sentinel in
-  # COMMON /MPIPRIV1/ and imports the block with a !DEC$ directive, Intel syntax
-  # that gfortran treats as a comment, so gfortran uses its own zero-filled copy,
-  # the address matches nothing the C layer compares against, and MPI reads that
-  # memory as a real send buffer. MUMPS provides -DAVOID_MPI_IN_PLACE for exactly
-  # this case and MSYS2 does not use it, so all 27 of MUMPS's in-place reductions
-  # are live there. ICNTL(20)=10 walks into them every time: analysis and
-  # factorization are unaffected (INFO(1)=0), the solve then corrupts the heap or
-  # returns zeros. Established in a Windows VM with a standalone MUMPS program
-  # containing no Elmer at all, on MUMPS 5.9.0 and on the 5.7.3 that CI uses, and
-  # confirmed by rebuilding MUMPS from source: without the macro the distributed
-  # right-hand side gives sum(x)=0 in five runs out of five, with it the answer is
-  # correct. Open MPI implements MPI_IN_PLACE, which is why no other platform sees
-  # any of this, and Elmer's own reductions are not involved -- those already take
-  # a copy path via ELMER_BROKEN_MPI_IN_PLACE. So this stays off until MSYS2 ships
-  # a mumps built with that macro, not merely until MUMPS closes the four
-  # ?sol_distrhs.F sites where the guard is missing altogether (those turn out to
-  # be latent: the value misread there is zero, which that code reads as "no
-  # allocation failure"). What runs instead is the gathered assembly under the
-  # #else in DirectSolve.F90, the route every MUMPS older than 5.3 takes.
-  # -DELMER_MUMPS_DIST_RHS=ON forces it back on.
-  IF(WIN32)
-    SET(_mumps_dist_rhs_default OFF)
-  ELSE()
-    SET(_mumps_dist_rhs_default ON)
-  ENDIF()
+  # MUMPS's own reductions cannot work on MinGW if MUMPS is built without
+  # -DAVOID_MPI_IN_PLACE. The reason is that MPI_IN_PLACE of MS-MPI is unusable
+  # with Fortran 77 and GFortran: mpif.h keeps the sentinel in COMMON /MPIPRIV1/
+  # and imports the block with a !DEC$ directive, Intel syntax that GFortran
+  # treats as a comment. GFortran does not support dllimport attributes on
+  # COMMON blocks at all. So with GFortran, each application uses its own
+  # zero-filled copy, the address matches nothing the C layer compares against,
+  # and MPI reads that memory as a real send buffer.
+  # MUMPS provides -DAVOID_MPI_IN_PLACE for exactly this case. MSYS2 uses it
+  # since August 2026. For versions of MUMPS compiled without that definition on
+  # MinGW, all 27 of its in-place reductions won't work correctly. ICNTL(20)=10
+  # walks into them every time: analysis and factorization are unaffected
+  # (INFO(1)=0), the solve then corrupts the heap or returns zeros. Established
+  # in a Windows VM with a standalone MUMPS program containing no Elmer at all,
+  # on MUMPS 5.9.0 and on the 5.7.3, and confirmed by rebuilding MUMPS from
+  # source: without the macro the distributed right-hand side gives sum(x)=0 in
+  # five runs out of five - with it, the answer is correct. Other platforms are
+  # not affected because they share variables across shared library borders
+  # differently.
+  # Elmer's own reductions are not affected because they use the Fortran 90
+  # module of MPI (which has a work-around to "DLLIMPORT" MPI_IN_PLACE in
+  # MSYS2), or they take a copy path via ELMER_BROKEN_MPI_IN_PLACE if necessary.
+  # There are four additional sites (in ?sol_distrhs.F) in MUPMPS where the
+  # guard is missing altogether. (Those turn out to be latent: the value misread
+  # there is zero, which that code reads as "no allocation failure". What runs
+  # instead is the gathered assembly under the #else in DirectSolve.F90, the
+  # route every MUMPS older than 5.3 takes.)
+  # With versions of MUMPS 5.3 or later on MinGW that are built without
+  # -DAVOID_MPI_IN_PLACE, set -DELMER_MUMPS_DIST_RHS=OFF when configuring Elmer
+  # to avoid the problematic code paths.
   OPTION(ELMER_MUMPS_DIST_RHS
     "Hand MUMPS a distributed right-hand side (requires MUMPS 5.3 or newer)"
-    ${_mumps_dist_rhs_default})
+    ON)
   MARK_AS_ADVANCED(ELMER_MUMPS_DIST_RHS)
 
   IF(_mumps_dist_rhs AND ELMER_MUMPS_DIST_RHS)
