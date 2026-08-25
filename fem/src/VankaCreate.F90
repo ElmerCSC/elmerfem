@@ -1112,7 +1112,7 @@
     LOGICAL :: Found, ScaleRHS, DoMask, AdditiveSmoother
     CHARACTER(MAX_NAME_LEN) :: str   
     INTEGER :: SlaveInd, SlaveCnt
-    INTEGER :: n, DOFs
+    INTEGER :: n, m, i, DOFs
 
 !-------------------------------------------------------------------------------
     
@@ -1133,8 +1133,19 @@
       CALL Fatal('SlavePrec','Residual should have same size as primary variable!')
     END IF       
     res => pVar % Values
-    res(1:n) = v(1:n)
 
+    IF( ParEnv % PEs > 1 ) THEN
+      ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs)
+      !res(1:n) = v(1:n)
+      m = 0
+      DO i=1,n
+        IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) m=m+1
+      END DO
+      CALL PartitionVector( Amat, res, v(1:m) )
+    ELSE      
+      res(1:n) = v(1:n)
+    END IF
+    
     str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
     IF(pVar % Dofs /= dofs ) THEN
@@ -1217,8 +1228,13 @@
     END IF
     
     DEALLOCATE(r)
-    u(1:n) = dx(1:n) 
 
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL ParallelVector( Amat, u(1:m), dx )
+    ELSE
+      u(1:n) = dx(1:n) 
+    END IF
+      
     
   CONTAINS
 

@@ -1337,10 +1337,11 @@ CONTAINS
       TYPE(Matrix_t), INTENT(in) :: A
       REAL(KIND=dp), INTENT(inout) :: vec_in(:), vec_out(:)
 !-------------------------------------------------------------------------------
-      INTEGER :: i,j,k
+      INTEGER :: i,j,k,n
 !-------------------------------------------------------------------------------
+      n = A % NumberOfRows
+      vec_out(1:n) = 0._dp
       j = 0
-      vec_out = 0._dp
       DO i=1,A % NumberOfRows
         IF ( A % ParallelInfo % Neighbourlist(i) % &
                    Neighbours(1)==Parenv % Mype ) THEN
