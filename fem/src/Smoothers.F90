@@ -88,7 +88,7 @@ CONTAINS
 !      SAVE Z, Pr, Q, Ri, T, T1, T2, S, V
 !------------------------------------------------------------------------------
 
-      Parallel = ParEnv % PEs > 1
+      Parallel = ( ParEnv % PEs > 1 )
 
       IF ( .NOT. Parallel ) THEN
         M  => A
@@ -101,11 +101,16 @@ CONTAINS
         Diag = A % Values(A % Diag)
       ELSE
         CALL ParallelUpdateSolve( A,x,r )
-        M => ParallelMatrix( A, Mx, Mb, Mr )
-
+        M => ParallelMatrix( A, Mx, Mb, Mr )        
         n = M % NumberOfRows
         ALLOCATE(Diag(n), InvDiag(n))
         Diag = M % Values(M % Diag)
+        ! If this is not associated, we get in trouble later on. 
+        IF(.NOT. ASSOCIATED(Mb)) THEN          
+          ALLOCATE(M % rhs(n))
+          Mb => M % rhs 
+          Mb = 0.0_dp
+        END IF
       END IF
       WHERE (Diag /= 0.0_dp)
         InvDiag = 1.0_dp / Diag
@@ -209,7 +214,7 @@ CONTAINS
 
 
       SELECT CASE( IterMethod )
-      CASE( 'jacobi' ) 
+      CASE( 'jacobi' )
         CALL Jacobi( n, A, M, Mx, Mb, Mr, Rounds )
        
       CASE( 'gs' )                         
