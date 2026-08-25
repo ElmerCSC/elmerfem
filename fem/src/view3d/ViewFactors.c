@@ -74,6 +74,43 @@ static inline uint32_t pcg32_random(pcg32_rng_t *rng)
     return (x >> r) | (x << ((-r) & 31));
 }
 
+/* Mix a work-item key into a well-separated RNG seed.  splitmix64 is the
+ * usual companion seeder for pcg/xoshiro: consecutive keys give unrelated
+ * streams, which is what we need since the keys here are consecutive
+ * element indices. */
+static inline uint64_t splitmix64( uint64_t x )
+{
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
+/* Reseed the calling thread's stream from a work-item key.  Binding the
+ * stream to the work item instead of to the thread is what makes the result
+ * independent of the thread count and of the dynamic schedule: with a
+ * per-thread stream, which rays a given element pair gets depends on which
+ * thread happened to pick that pair up and how far that thread's stream had
+ * already advanced. */
+void vrand_seed( uint64_t key )
+{
+#ifdef _OPENMP
+    int tid = omp_get_thread_num();
+#else
+    int tid = 0;
+#endif
+    rbuf[tid]->state = splitmix64( key + 0x853c49e6748fea9bULL );
+    rbuf[tid]->inc   = splitmix64( key + 0xda3e39cb94b95bdbULL );
+}
+
+/* Key for the element pair (a,b), symmetric so that the same physical pair
+ * draws the same rays whichever of the two rows drives the integration. */
+uint64_t vrand_pair_key( int a, int b, int n )
+{
+    int lo = (a<b) ? a : b, hi = (a<b) ? b : a;
+    return (uint64_t)lo * (uint64_t)n + (uint64_t)hi;
+}
+
 inline double vrand()
 {
 #ifdef _OPENMP
@@ -267,6 +304,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
             lel[j].Flags |= GEOMETRY_FLAG_LEAF;
             lel[i].Flags |= GEOMETRY_FLAG_LEAF;
 
+            vrand_seed( vrand_pair_key(i,j,N) );
             (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
             Fact = ComputeViewFactorValue( &lel[i],0 );
             Factors[li*N+j] = Fact / lel[i].Area;
@@ -289,6 +327,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
             lel[j].Flags |= GEOMETRY_FLAG_LEAF;
             lel[i].Flags |= GEOMETRY_FLAG_LEAF;
 
+            vrand_seed( vrand_pair_key(i,j,N) );
             (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
             Fact = ComputeViewFactorValue( &lel[i],0 );
             Factors[li*N+j] = Fact / lel[i].Area;

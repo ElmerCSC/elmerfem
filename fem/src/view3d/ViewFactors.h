@@ -38,9 +38,12 @@
 #include <math.h>
 #include <float.h>
 #include <limits.h>
+#include <stdint.h>
 #include "../../config.h"
 
 double vrand();
+void vrand_seed( uint64_t key );
+uint64_t vrand_pair_key( int a, int b, int n );
 
 #include <sys/types.h>
 
