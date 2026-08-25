@@ -2780,6 +2780,10 @@ CONTAINS
 
     BLOCK
       LOGICAL :: LFact, FreeFact, ConstraintMatrixConstant
+      ! Hoisted out of the constraint-elimination branch below: nested BLOCKs
+      ! are miscompiled by some compilers (Intel 20.0), and the extra scope
+      ! bought nothing here.
+      TYPE(Matrix_t), POINTER :: Acoll
 
       ConstraintMatrixConstant = ListGetLogical( Solver % Values,  &
           'Constraint Modes Constant Matrix', Found)
@@ -2804,30 +2808,27 @@ CONTAINS
         ! Here activate constraint solve only if constraints are not treated as blocks
         IF( RestrictionMode .AND. &
             ListGetLogical( Params, 'Eliminate Linear Constraints', Found) ) THEN
-          BLOCK 
-            TYPE(Matrix_t), POINTER :: Acoll      
-            Acoll  => AllocateMatrix()
-            Acoll % FORMAT = MATRIX_LIST        
-            CALL Info(Caller,'Eliminating constraints before going into block matrix!')
-            CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
-            CALL List_ToCRSMatrix(Acoll)
+          Acoll  => AllocateMatrix()
+          Acoll % FORMAT = MATRIX_LIST
+          CALL Info(Caller,'Eliminating constraints before going into block matrix!')
+          CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
+          CALL List_ToCRSMatrix(Acoll)
 
-            Acoll % Comm = A % Comm 
-            Acoll % AddMatrix => A % AddMatrix
-            CALL ParallelInitMatrix(Solver, Acoll)
-          
-            CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
+          Acoll % Comm = A % Comm
+          Acoll % AddMatrix => A % AddMatrix
+          CALL ParallelInitMatrix(Solver, Acoll)
 
-            CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
-            NULLIFY( Acoll % AddMatrix )         
+          CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
 
-            CALL FreeMatrix(Acoll)
-            ! The environment of the freed collection matrix is gone with it,
-            ! return to the one of the system matrix.
-            CALL SetMatrixParEnv( A )
+          CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
+          NULLIFY( Acoll % AddMatrix )
 
-            Acoll => NULL()
-          END BLOCK
+          CALL FreeMatrix(Acoll)
+          ! The environment of the freed collection matrix is gone with it,
+          ! return to the one of the system matrix.
+          CALL SetMatrixParEnv( A )
+
+          Acoll => NULL()
         ELSE
           CALL BlockSolveExt( A, x, bb, Solver )
         END IF

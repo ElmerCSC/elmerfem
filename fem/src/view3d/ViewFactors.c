@@ -61,6 +61,7 @@ typedef struct {
 } pcg32_rng_t;
 
 static pcg32_rng_t **rbuf = NULL;
+static int rbufn = 0;     /* allocated length of rbuf */
 static int MPIRank = 0;   /* set by viewfactors3d before parallel region */
 
 static inline uint32_t pcg32_random(pcg32_rng_t *rng)
@@ -86,25 +87,39 @@ inline double vrand()
 void vrand_init()
 {
 #ifdef _OPENMP
-   int tid = omp_get_thread_num(), tidn = 1;
+   int tid = omp_get_thread_num(), tidn = omp_get_num_threads();
 #else
    int tid = 0, tidn = 1;
 #endif
 
+/* The whole initialization is serialized: it runs once per thread per parallel
+ * region, so the cost is irrelevant.  The first thread of a team to get here
+ * sizes rbuf for the entire team, so the remaining threads never resize it --
+ * no realloc can then race with a vrand() call from a thread that has already
+ * finished its own init. */
 #pragma omp critical
 {
-   if ( !rbuf ) {
-#ifdef _OPENMP
-     tidn = omp_get_num_threads();
-#endif
-     rbuf = malloc(sizeof(pcg32_rng_t*)*tidn);
-   }
-}
+   int i;
 
-   rbuf[tid] = malloc(sizeof(pcg32_rng_t));
+   /* rbuf used to be sized once, from the team size of whichever parallel
+    * region got here first, and never resized.  vrand_init is also called
+    * from the serial radiator path (team size 1), so a later, wider region
+    * would index past the end of the table.  Grow it instead. */
+   if ( tidn > rbufn || tid >= rbufn ) {
+     int newn = ( tidn > tid+1 ) ? tidn : tid+1;
+     rbuf = realloc( rbuf, sizeof(pcg32_rng_t *) * newn );
+     for( i=rbufn; i<newn; i++ ) rbuf[i] = NULL;
+     rbufn = newn;
+   }
+
+   /* reuse the slot on a repeat call: reseeding is what matters, and
+    * mallocing a fresh one each time just leaked the previous stream */
+   if ( !rbuf[tid] ) rbuf[tid] = malloc(sizeof(pcg32_rng_t));
+
    /* Include MPI rank in seed so different ranks generate independent streams */
    rbuf[tid]->state = 0x853c49e6748fea9bULL + (uint64_t)MPIRank * 128 + tid;
    rbuf[tid]->inc   = 0xda3e39cb94b95bdbULL + (((uint64_t)MPIRank * 128 + tid) << 1);
+}
 }
 /* end copilot code */
 
