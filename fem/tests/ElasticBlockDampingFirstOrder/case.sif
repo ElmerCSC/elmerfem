@@ -1,0 +1,103 @@
+! ElasticBlockDamping asked for, with "Time Derivative Order = 1": the first order
+! transient, where the mass matrix is dropped and the damping matrix alone carries
+! the time derivative. Both solvers must therefore ignore the density given here.
+!
+! The keyword is a solver keyword and StressSolve has always honoured it, while
+! ElasticSolve overwrote it with two and integrated the inertia regardless -- so
+! the two solvers answered differently on the same sif. Both run here on the same
+! problem against one reference value, which is the check: with the inertia wrongly
+! kept the second norm is 7.61E-01 against this 2.16E+00.
+!
+! Based on ElasticBlockDamping, P.R. 30.3.2021
+
+Header
+  Mesh DB "." "cube"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+
+$tsteps=20
+  Timestepping Method = Bossak
+  Timestep Sizes = $1.0/tsteps
+  Timestep Intervals = $tsteps
+
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body Force 1
+  Name = "Force"
+  Stress Bodyforce 1 = 1.0
+  Stress Bodyforce 2 = 2.0
+  Stress Bodyforce 3 = 3.0
+End
+
+Initial Condition 1
+  Name = "Start"
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+! Nonzero, unlike in ElasticBlockDamping, so that keeping the inertial term is
+! visible: the first order transient has to leave it out of the system.
+Material 1
+  Density = 1.0
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+  Damping = 1.0
+End
+
+Solver 1
+  Equation = StressSolver
+  Variable = -dofs 3 DisplacementA
+  Procedure = "StressSolve" "StressSolver"
+  Time Derivative Order = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+End
+
+Solver 2
+  Equation = ElasticitySolver
+  Variable = -dofs 3 DisplacementB
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Time Derivative Order = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1 :: Reference Norm = 2.16024690E+00
+Solver 2 :: Reference Norm = 2.16024690E+00

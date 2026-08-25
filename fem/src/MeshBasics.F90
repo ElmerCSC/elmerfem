@@ -958,12 +958,14 @@ CONTAINS
    ! parents any more!
    !------------------------------------------------------------------------------
    SUBROUTINE DropFalseParents()
-     INTEGER :: i,j,t,n,t1,t2,right,hits,nact,npass,nfalse
+     INTEGER :: i,j,t,n,t1,t2,right,hits,nact,npass,nfalse,norphan,torphan
      TYPE(Element_t), POINTER :: Parent, Element
      
      t1 = Mesh % NumberOfBulkElements
      t2 = Mesh % NumberOfBoundaryElements
      nfalse = 0
+     norphan = 0
+     torphan = 0
      
      DO t = t1+1,t1+t2
        Element => Mesh % Elements(t)
@@ -1002,12 +1004,20 @@ CONTAINS
          END IF
        END DO
 
-       IF(npass>0 .AND. nact==0) THEN         
-         CALL Warn('DropFalseParents','Boundary element '//I2S(t)//' no longer has parents with same indexes!')
+       IF(npass>0 .AND. nact==0) THEN
+         norphan = norphan + 1
+         IF( torphan == 0 ) torphan = t
        END IF
 
        nfalse = nfalse + npass
      END DO
+
+     ! One line for the lot rather than one per element: the count is what
+     ! tells whether this is a stray element or the whole boundary.
+     IF( norphan > 0 ) THEN
+       CALL Warn('DropFalseParents','Boundary elements with no parents of same indexes: '&
+           //I2S(norphan)//', first one: '//I2S(torphan))
+     END IF
 
      CALL Info('DropFalseParents','Number of parents no longer parents: '//I2S(nfalse),Level=6)
                       

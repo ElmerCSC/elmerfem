@@ -215,11 +215,14 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   ! master's ALLOCATABLE/POINTER THREADPRIVATE data into workers instead of
   ! giving independent copies). Allocated once below, right after nthr is
   ! known; each local subroutine only ever touches its own thread's slot.
-  TYPE(ValueHandle_t), ALLOCATABLE :: VecSourceCoeff_h(:), VecEpsCoeff_h(:)
-  TYPE(ValueHandle_t), ALLOCATABLE :: SourceCoeff_h(:), EpsCoeff_h(:)
-  TYPE(ValueHandle_t), ALLOCATABLE :: Flux_h(:), Farfield_h(:), Infty_h(:), &
+  ! SAVEd: each ValueHandle_t owns a scratch ValueList_t that is allocated on
+  ! first use and reused. Re-creating these arrays on every visit to the solver
+  ! dropped those lists unfreed, one per handle per timestep.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: VecSourceCoeff_h(:), VecEpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: SourceCoeff_h(:), EpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: Flux_h(:), Farfield_h(:), Infty_h(:), &
       LayerEps_h(:), LayerH_h(:), LayerRho_h(:), LayerV_h(:)
-  REAL(KIND=dp), ALLOCATABLE :: VecEps0(:), Eps0(:), BCEps0(:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: VecEps0(:), Eps0(:), BCEps0(:)
 
   INTERFACE
     SUBROUTINE StatElecSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
@@ -278,10 +281,20 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   nthr = 1
   !$ nthr = omp_get_max_threads()
 
-  ALLOCATE( VecSourceCoeff_h(nthr), VecEpsCoeff_h(nthr), VecEps0(nthr), &
-      SourceCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr), &
-      Flux_h(nthr), Farfield_h(nthr), Infty_h(nthr), LayerEps_h(nthr), &
-      LayerH_h(nthr), LayerRho_h(nthr), LayerV_h(nthr), BCEps0(nthr) )
+  IF( ALLOCATED( VecSourceCoeff_h ) ) THEN
+    IF( SIZE( VecSourceCoeff_h ) /= nthr ) THEN
+      DEALLOCATE( VecSourceCoeff_h, VecEpsCoeff_h, VecEps0, &
+          SourceCoeff_h, EpsCoeff_h, Eps0, &
+          Flux_h, Farfield_h, Infty_h, LayerEps_h, &
+          LayerH_h, LayerRho_h, LayerV_h, BCEps0 )
+    END IF
+  END IF
+  IF( .NOT. ALLOCATED( VecSourceCoeff_h ) ) THEN
+    ALLOCATE( VecSourceCoeff_h(nthr), VecEpsCoeff_h(nthr), VecEps0(nthr), &
+        SourceCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr), &
+        Flux_h(nthr), Farfield_h(nthr), Infty_h(nthr), LayerEps_h(nthr), &
+        LayerH_h(nthr), LayerRho_h(nthr), LayerV_h(nthr), BCEps0(nthr) )
+  END IF
 
   nColours = GetNOFColours(Solver)
 

@@ -2537,12 +2537,21 @@ CONTAINS
             REAL(KIND=dp), ALLOCATABLE :: Pvals(:)
             INTEGER :: comm, ierr, status(MPI_STATUS_SIZE),Phase,cnt
             LOGICAL :: Finish
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+            LOGICAL :: lbuffer
+#endif
 
             comm = Solver % Matrix % Comm
 
             ! all trust reduce here
             Finish = ALL(Trust)
-            CALL MPI_ALLREDUCE(MPI_IN_PLACE, Finish, 1, MPI_LOGICAL, MPI_LAND, comm, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+            lbuffer = Finish
+            CALL MPI_ALLREDUCE(lbuffer, &
+#else
+            CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+                Finish, 1, MPI_LOGICAL, MPI_LAND, comm, ierr)
 
             IF(Finish) EXIT
 
@@ -3070,20 +3079,39 @@ CONTAINS
         BLOCK
           INTEGER, ALLOCATABLE :: nPar(:)
           INTEGER :: comm, ierr, status(MPI_STATUS_SIZE)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          INTEGER, ALLOCATABLE :: ibuffer(:)
+          REAL(KIND=dp) :: rbuffer
+#endif
           
           ALLOCATE(nPar(PEs))
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          ALLOCATE(ibuffer(PEs))
+#endif
           comm = Solver % Matrix % Comm
 
           nPar = 0
           nPar(MyPe) = PolylineData(MyPe) % nLines
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          ibuffer = nPar
+          CALL MPI_ALLREDUCE(ibuffer, &
+#else
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+              nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
           DO i=1,PEs
             PolylineData(i) % nLines = nPar(i)
           END DO
           
           nPar = 0
           nPar(MyPe) = Mesh % NumberOfNodes
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          ibuffer = nPar
+          CALL MPI_ALLREDUCE(ibuffer, &
+#else
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+              nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
           DO i=1,PEs
             PolylineData(i) % nNodes = nPar(i)
           END DO
@@ -3133,12 +3161,24 @@ CONTAINS
           !comm local intersects
           nPar = 0
           nPar(MyPE) = NInter
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          ibuffer = nPar
+          CALL MPI_ALLREDUCE(ibuffer, &
+#else
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+              nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
 
           k = SUM( PolylineData(1:PEs) % nLines ) 
           CALL Info('LevelSetUpdate','Number of line segments in parallel system: '//I2S(k),Level=7)
           
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, TotLineLen, PEs, MPI_DOUBLE_PRECISION, MPI_SUM, comm, ierr)                
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          rbuffer = TotLineLen
+          CALL MPI_ALLREDUCE(rbuffer, &
+#else
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+              TotLineLen, 1, MPI_DOUBLE_PRECISION, MPI_SUM, comm, ierr)
         END BLOCK
       END IF
 
@@ -3253,13 +3293,25 @@ CONTAINS
           INTEGER, ALLOCATABLE :: nPar(:),UpdateIndices(:,:),AllUpdateIndices(:)
           REAL(KIND=dp), ALLOCATABLE :: UpdateVals(:),AllUpdateVals(:)
           INTEGER :: comm, ierr, status(MPI_STATUS_SIZE), Updates
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          INTEGER, ALLOCATABLE :: ibuffer(:)
+#endif
 
           ALLOCATE(nPar(PEs))
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          ALLOCATE(ibuffer(PEs))
+#endif
           comm = Solver % Matrix % Comm
 
           nPar = 0
           nPar(MyPe) = Intersects(MyPe) % nIntersects
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          ibuffer = nPar
+          CALL MPI_ALLREDUCE(ibuffer, &
+#else
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+              nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
           DO i=1,PEs
             Intersects(i) % nIntersects = nPar(i)
           END DO
@@ -3368,7 +3420,13 @@ CONTAINS
 
           nPar = 0
           nPar(MyPE) = Updates
-          CALL MPI_ALLREDUCE(MPI_IN_PLACE, nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+          ibuffer = nPar
+          CALL MPI_ALLREDUCE(ibuffer, &
+#else
+          CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+              nPar, PEs, MPI_INTEGER, MPI_MAX, comm, ierr)
 
           rdisps(1) = 0
           DO i=2,PEs

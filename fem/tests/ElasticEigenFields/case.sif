@@ -1,0 +1,112 @@
+! Per-eigenmode stress and strain fields, through ElasticSolve.
+!
+! An eigen analysis has a displacement per mode and hence stresses per mode. The
+! solver computes them one mode at a time and keeps each mode's result with the
+! mode -- in the field variable's own EigenVectors -- because the nodal fields
+! themselves can only ever hold the last mode computed.
+!
+! Nothing used to check that. StrainCalculation03 is the only other case that
+! computes per-mode stresses at all, and its reference norm is the displacement's
+! while its output solver is switched off, so the stored fields went unverified.
+!
+! StressEigenFields is this same case through StressSolve, with the same mesh
+! and the SAME reference norms; the pair is a cross-solver check the way
+! adaptivity4 and adaptivity5 are. Keep them in step.
+!
+! Reading the per-mode data needs SaveScalars "Save Points": that is the one
+! route that reads a variable's EigenVectors rather than its current values,
+! which are only the last mode's.
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "plate"
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Youngs modulus = 100e9
+  Poisson ratio = 0.3
+  Density = 1.0e3
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Displacement analysis"
+  Procedure = "ElasticSolve" "ElasticSolver"
+
+  ! Small strain, so that this is the same problem StressEigenFields solves.
+  Large Deflection = False
+  Variable = -dofs 3 Displacement
+
+  Eigen Analysis = True
+  Eigen System Values = 3
+
+  Calculate Stresses = True
+  Calculate Strains = True
+
+  Linear System Solver = "Iterative"
+  Linear system iterative method = BiCGstab
+  Linear system convergence tolerance = 1.0e-10
+  Linear system max iterations = 2000
+  Linear system preconditioning = ILU1
+  Nonlinear System Max Iterations = 1
+  Optimize bandwidth = False
+  Linear System Symmetric = True
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Filename = "f.dat"
+
+  ! Save Points emits, for every variable carrying EigenVectors, one entry per
+  ! (mode, component) at this node -- so it reads the per-mode fields directly.
+  Save Points(1) = 5
+
+  ! Column 58 is "re eigen 1 vonmises at node 5"; 59 and 60 are modes 2 and 3.
+  ! The index depends on the variable set, so if these move, read f.dat.names
+  ! rather than guessing -- do not add Calculate Principal here without redoing
+  ! them. Turning the stress calculation off drops the list from 96 columns to
+  ! 21, which is the sensitivity check that this really reads the mode data.
+  Show Norm Index = 58
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+! von Mises is checked rather than a stress component because it is positive
+! definite: an eigenvector's overall sign is arbitrary, so a signed component
+! would be a fragile reference. The tolerance is loose on purpose -- this path
+! carries about 2e-9 of run-to-run noise, from ARPACK's random starting vector
+! and the iterative solve, so it cannot be pinned to the usual precision.
+
+! Mode 1.
+Solver 2 :: Reference Norm = Real 7.651818860E+011
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-6
+RUN
+
+! Mode 3, which must differ from mode 1 -- that is what makes this a test of
+! per-mode storage rather than of one field written three times.
+Solver 2 :: Show Norm Index = Integer 60
+Solver 2 :: Reference Norm = Real 4.281783734E+012
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-6
+RUN

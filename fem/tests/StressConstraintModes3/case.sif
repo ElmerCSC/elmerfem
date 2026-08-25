@@ -52,7 +52,15 @@ Solver 1
   Eigen Analysis = True
   Eigen System Values = 12
   Eigen System Convergence Tolerance = Real 1.0e-6
-  Eigen System Normalize To Unity = Logical True
+  ! The reduced-matrix norm below is a Frobenius norm over the reduction basis.
+  ! The cube's symmetry gives three near-degenerate eigenpairs, within which the
+  ! basis is only fixed up to a rotation -- and under unity scaling that rotation
+  ! changes the norm. Mass-orthonormal modes make it invariant: the eigen block
+  ! becomes diag(lambda) and the eigen/constraint cross terms rotate within a sum
+  ! of squares. With unity scaling the norm drifted 2.7% between eigen tolerances
+  ! 1e-6 and 1e-12 and occasionally landed ~4% off; mass-normalised it is stable
+  ! to 7 digits across that range and repeats bit-identically.
+  Eigen System Normalize To Unity = Logical False
   Eigen System Max Iterations = 50
 
   Linear System Solver = string "Iterative"
@@ -131,4 +139,4 @@ End
 
 Solver 1 :: Reference Norm = 2.18487357E-02
 Solver 3 :: Reference Norm = 3336422.8
-Solver 4 :: Reference Norm = 9.07012850E+09
+Solver 4 :: Reference Norm = 1.99353333E+09

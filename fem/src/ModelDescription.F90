@@ -4857,6 +4857,10 @@ CONTAINS
       WRITE( Message,'(A,I0)') 'Reading variables on timestep: ',Timestep
       CALL Info( Caller,Message, Level=4)
 
+      ! Only 'Perm: use previous' leaves this to the previous variable, and it
+      ! cannot be the first one, but give it a value before the loop anyway.
+      HasValues = .TRUE.
+
       DO i=1,TotalDOFs
 
         ! Use the information from header for the sizes
@@ -5196,11 +5200,6 @@ CONTAINS
             IF( iostat /= 0 ) THEN
               CALL Fatal(Caller,'Error reading sizes in ReadPerm: '//TRIM(Row))
             END IF
-            IF (nPositive == 0) THEN
-              HasValues = .FALSE.
-            ELSE
-              HasValues = .TRUE.
-            END IF
          END IF
       END IF
 
@@ -5217,9 +5216,16 @@ CONTAINS
          RETURN
       ELSE IF ( nPerm == 0 ) THEN
 !         IF ( ASSOCIATED(Perm) ) DEALLOCATE( Perm )
+         ! A variable without a permutation has a value for every node.
+         HasValues = .TRUE.
          RETURN
       ELSE 
          IF ( Binary ) CALL BinReadInt4( RestartUnit, nPositive )
+         ! Both formats have the count by now. The 'use previous' branch above
+         ! is the one that cannot set this: the file does not repeat the count
+         ! either, and since the permutation is the same as the previous one so
+         ! is the number of positive entries, hence the incoming value is kept.
+         HasValues = ( nPositive /= 0 )
       END IF
 
       IF( ALLOCATED( Perm ) ) THEN

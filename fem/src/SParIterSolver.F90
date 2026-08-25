@@ -2472,6 +2472,7 @@ RECURSIVE SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
   ! Local variables
 
   LOGICAL :: stat, EdgeBasis = .FALSE.
+  LOGICAL :: GotIt
   INTEGER :: i, j, k, l, nbind, dof
   INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
   REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
@@ -2614,9 +2615,19 @@ RECURSIVE SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
         TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
           matVecF=AddrFunc(SParMatrixVector) )
   ELSE
+     ! Same keyword as the local block view built inside IterSolver, so the two
+     ! halves of the product are always in the same form.
+     IF ( ListGetLogical( Solver % Values,'Linear System Block CRS', GotIt, &
+         DefValue = .TRUE. ) ) CALL SParCBuildIfBlocks( SplittedMatrix )
+
+     ! SParCMatrixVector takes the local half against the block view and the
+     ! interface half against the interface blocks' own arrays, so it never
+     ! reads InsideMatrix % Values. Verified by poisoning that array across the
+     ! iteration at np4 and getting bit-identical norms, not by reading the
+     ! code. That lets IterSolver release it here as it does in serial.
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
        TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
-         MatVecF=AddrFunc(SParCMatrixVector) )
+         MatVecF=AddrFunc(SParCMatrixVector), MatvecReadsNoValues = .TRUE. )
   END IF
 
   IF (ASSOCIATED(CM)) THEN
@@ -2683,6 +2694,33 @@ END SUBROUTINE SolveHutiter
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
 
+  ! ipar is a vestige of the HUTI callback signature and is not read; the
+  ! matrix comes from GlobalData.
+  CALL SParMatrixVectorVals( u, v, .FALSE. )
+
+END SUBROUTINE SParMatrixVector
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+!> The parallel product, against either the stiffness or the mass coefficients.
+!>
+!> UseMass selects which sibling array the coefficients come from. It used to be
+!> expressed by the caller writing MassValues over Values -- a deep copy for
+!> each interface block and a pointer swap for the inside matrix -- and putting
+!> it all back afterwards. Selecting here costs nothing and leaves the matrix
+!> alone, which also means A % Values is never pointer-assigned to a sibling and
+!> so is always owned by the matrix.
+!----------------------------------------------------------------------
+SUBROUTINE SParMatrixVectorVals( u,v,UseMass )
+!----------------------------------------------------------------------
+
+  IMPLICIT NONE
+
+  REAL(KIND=dp), DIMENSION(*) :: u, v
+  LOGICAL :: UseMass
+  REAL(KIND=dp), POINTER :: IfVals(:)
+
   INTEGER :: i, j, k, l, n, ni, nj, iseg, nneigh, ColInd, ierr
   TYPE(IfVecT),       POINTER :: IfV
   TYPE(IfLColsT),     POINTER :: IfL
@@ -2718,6 +2756,11 @@ END SUBROUTINE SolveHutiter
     IF ( CurrIf % NumberOfRows == 0 ) CYCLE
     IfV    => SP % IfVecs(i)
     IfL    => SP % IfLCols(i)
+    IF ( UseMass ) THEN
+      IfVals => CurrIf % MassValues
+    ELSE
+      IfVals => CurrIf % Values
+    END IF
 
     !$OMP PARALLEL PRIVATE(ColInd,j,k)
     !$OMP DO
@@ -2731,7 +2774,7 @@ END SUBROUTINE SolveHutiter
         DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
           ColInd = IfL % IfVec(k)
           IF ( ColInd > 0 ) &
-            IfV % IfVec(j) = IfV % IfVec(j) + CurrIf % Values(k) * u(ColInd)
+            IfV % IfVec(j) = IfV % IfVec(j) + IfVals(k) * u(ColInd)
         END DO
       END IF
     END DO
@@ -2758,7 +2801,12 @@ END SUBROUTINE SolveHutiter
   END DO
 
   ! Local SpMV (overlaps with MPI). This defines v, it does not add to it.
-  CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
+  IF ( UseMass ) THEN
+    CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v, &
+        UseValues = InsideMatrix % MassValues )
+  ELSE
+    CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
+  END IF
 
   ! Wait for receives and accumulate into v
   CALL Recv_LocIf_Wait( SP, n, v, nneigh, SP % MVNeigh, &
@@ -2767,7 +2815,7 @@ END SUBROUTINE SolveHutiter
   ! Release the send buffers for the next product
   CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
 
-END SUBROUTINE SParMatrixVector
+END SUBROUTINE SParMatrixVectorVals
 !----------------------------------------------------------------------
 
 
@@ -2784,6 +2832,26 @@ END SUBROUTINE SParMatrixVector
 
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
+
+  ! ipar is not read; see SParMatrixVector.
+  CALL SParABSMatrixVectorVals( u, v, .FALSE. )
+
+END SUBROUTINE SParABSMatrixVector
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+!> The parallel absolute-value product, against stiffness or mass
+!> coefficients; see SParMatrixVectorVals.
+!----------------------------------------------------------------------
+SUBROUTINE SParABSMatrixVectorVals( u,v,UseMass )
+!----------------------------------------------------------------------
+
+  IMPLICIT NONE
+
+  REAL(KIND=dp), DIMENSION(*) :: u, v
+  LOGICAL :: UseMass
+  REAL(KIND=dp), POINTER :: IfVals(:)
 
   INTEGER :: i, j, k, l, n, ni, nj, iseg, ColInd, nneigh, ierr
   TYPE(IfVecT),        POINTER :: IfV
@@ -2820,6 +2888,11 @@ END SUBROUTINE SParMatrixVector
     i = SP % MVNeigh(ni) + 1; CurrIf => SP % IfMatrix(i)
     IF ( CurrIf % NumberOfRows == 0 ) CYCLE
     IfV => SP % IfVecs(i); IfL => SP % IfLCols(i)
+    IF ( UseMass ) THEN
+      IfVals => CurrIf % MassValues
+    ELSE
+      IfVals => CurrIf % Values
+    END IF
     !$OMP PARALLEL PRIVATE(ColInd,j,k)
     !$OMP DO
     DO j = 1, CurrIf % NumberOfRows; IfV % IfVec(j) = 0.0_dp; END DO
@@ -2829,7 +2902,7 @@ END SUBROUTINE SParMatrixVector
       IF ( CurrIf % RowOwner(j) /= ParEnv % MyPE ) THEN
         DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
           ColInd = IfL % IfVec(k)
-          IF ( ColInd > 0 ) IfV % IfVec(j) = IfV % IfVec(j) + ABS(CurrIf % Values(k)) * u(ColInd)
+          IF ( ColInd > 0 ) IfV % IfVec(j) = IfV % IfVec(j) + ABS(IfVals(k)) * u(ColInd)
         END DO
       END IF
     END DO
@@ -2854,10 +2927,14 @@ END SUBROUTINE SParMatrixVector
 
   Rows => InsideMatrix % Rows
   Cols => InsideMatrix % Cols
-  Vals => InsideMatrix % Values
+  IF ( UseMass ) THEN
+    Vals => InsideMatrix % MassValues
+  ELSE
+    Vals => InsideMatrix % Values
+  END IF
 
   IF ( C_ASSOCIATED(GlobalMatrix % MatvecSubr) ) THEN
-    ALLOCATE(Abs_Vals(SIZE(InsideMatrix % Values)))
+    ALLOCATE(Abs_Vals(SIZE(Vals)))
     Abs_Vals = ABS(Vals)
     CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
         GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
@@ -2881,7 +2958,90 @@ END SUBROUTINE SParMatrixVector
   CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
 
 !----------------------------------------------------------------------
-END SUBROUTINE SParABSMatrixVector
+END SUBROUTINE SParABSMatrixVectorVals
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+!> Build a block view of the complex interface matrices, the counterpart of
+!> CRS_BuildBlockCRS for the off-diagonal blocks that SParCMatrixVector walks.
+!>
+!> Two things are folded in that the scalar walk has to test for on every
+!> entry: rows owned by this rank contribute nothing, and entries whose local
+!> column index is not positive are skipped. Dropping both here leaves an inner
+!> product with no branch in it, and leaves every row defined, so the separate
+!> pass that zeroed IfVec is no longer needed either.
+!>
+!> The structure is built once; the values are refreshed on every call, since
+!> the interface values are rezeroed and reglued for each solve.
+!----------------------------------------------------------------------
+SUBROUTINE SParCBuildIfBlocks( SP )
+
+  IMPLICIT NONE
+  TYPE(SplittedMatrixT), POINTER :: SP
+
+  TYPE(BasicMatrix_t), POINTER :: CurrIf
+  TYPE(IfLColsT), POINTER :: IfL
+  INTEGER :: i, j, k, kb, nb
+
+  DO i = 1, ParEnv % PEs
+    CurrIf => SP % IfMatrix(i)
+    IF ( CurrIf % NumberOfRows == 0 ) CYCLE
+    IfL => SP % IfLCols(i)
+    nb = CurrIf % NumberOfRows / 2
+
+    IF ( .NOT. ALLOCATED( CurrIf % BRows ) ) THEN
+      ALLOCATE( CurrIf % BRows(nb+1) )
+      kb = 1
+      DO j = 1, nb
+        CurrIf % BRows(j) = kb
+        IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+          DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+            IF ( IfL % IfVec(k) > 0 ) kb = kb + 1
+          END DO
+        END IF
+      END DO
+      CurrIf % BRows(nb+1) = kb
+      ALLOCATE( CurrIf % BCols(kb-1), CurrIf % CValues(kb-1) )
+
+      kb = 1
+      DO j = 1, nb
+        IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+          DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+            IF ( IfL % IfVec(k) > 0 ) THEN
+              CurrIf % BCols(kb) = ( IfL % IfVec(k) + 1 ) / 2
+              kb = kb + 1
+            END IF
+          END DO
+        END IF
+      END DO
+    END IF
+
+    kb = 1
+    DO j = 1, nb
+      IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+        DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+          IF ( IfL % IfVec(k) > 0 ) THEN
+            CurrIf % CValues(kb) = CMPLX( CurrIf % Values(k), &
+                -CurrIf % Values(k+1), KIND=dp )
+            kb = kb + 1
+          END IF
+        END DO
+      END IF
+    END DO
+
+    ! Both filters are structural, so the refresh above must visit exactly the
+    ! entries the structure was built from. If it ever does not, the values are
+    ! silently misaligned with the columns, which is worth a Fatal rather than
+    ! a wrong answer.
+    IF ( kb-1 /= SIZE(CurrIf % CValues) ) THEN
+      CALL Fatal('SParCBuildIfBlocks','Interface block structure no longer matches: '// &
+          I2S(kb-1)//' entries against '//I2S(SIZE(CurrIf % CValues)))
+    END IF
+  END DO
+
+!----------------------------------------------------------------------
+END SUBROUTINE SParCBuildIfBlocks
 !----------------------------------------------------------------------
 
 
@@ -2940,27 +3100,43 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
     IF ( CurrIf % NumberOfRows == 0 ) CYCLE
     IfV => SP % IfVecs(i); IfL => SP % IfLCols(i)
 
-    !$OMP PARALLEL PRIVATE(ColInd,j,k,A)
-    !$OMP DO
-    DO j = 1, CurrIf % NumberOfRows
-      IfV % IfVec(j) = 0.0_dp
-    END DO
-    !$OMP END DO
-    !$OMP DO
-    DO j = 1, CurrIf % NumberOfRows / 2
-      IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
-        DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
-          IF ( IfL % IfVec(k) > 0 ) THEN
-            ColInd = (IfL % IfVec(k)+1) / 2
-            A = CMPLX( CurrIf % Values(k), -CurrIf % Values(k+1), KIND=dp ) * u(ColInd)
-            IfV % IfVec(2*j-1) = IfV % IfVec(2*j-1) + REAL(A, KIND=dp)
-            IfV % IfVec(2*j  ) = IfV % IfVec(2*j  ) + AIMAG(A)
-          END IF
+    IF ( ALLOCATED( CurrIf % BRows ) ) THEN
+      ! Every block row is assigned here, the empty ones to zero, so IfVec needs
+      ! no separate clearing pass. The row and column tests the scalar walk
+      ! below makes were folded into the structure by SParCBuildIfBlocks.
+      !$OMP PARALLEL DO PRIVATE(j,k,A)
+      DO j = 1, CurrIf % NumberOfRows / 2
+        A = CMPLX( 0.0_dp, 0.0_dp, KIND=dp )
+        DO k = CurrIf % BRows(j), CurrIf % BRows(j+1)-1
+          A = A + CurrIf % CValues(k) * u( CurrIf % BCols(k) )
         END DO
-      END IF
-    END DO
-    !$OMP END DO
-    !$OMP END PARALLEL
+        IfV % IfVec(2*j-1) = REAL(A, KIND=dp)
+        IfV % IfVec(2*j  ) = AIMAG(A)
+      END DO
+      !$OMP END PARALLEL DO
+    ELSE
+      !$OMP PARALLEL PRIVATE(ColInd,j,k,A)
+      !$OMP DO
+      DO j = 1, CurrIf % NumberOfRows
+        IfV % IfVec(j) = 0.0_dp
+      END DO
+      !$OMP END DO
+      !$OMP DO
+      DO j = 1, CurrIf % NumberOfRows / 2
+        IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+          DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+            IF ( IfL % IfVec(k) > 0 ) THEN
+              ColInd = (IfL % IfVec(k)+1) / 2
+              A = CMPLX( CurrIf % Values(k), -CurrIf % Values(k+1), KIND=dp ) * u(ColInd)
+              IfV % IfVec(2*j-1) = IfV % IfVec(2*j-1) + REAL(A, KIND=dp)
+              IfV % IfVec(2*j  ) = IfV % IfVec(2*j  ) + AIMAG(A)
+            END IF
+          END DO
+        END IF
+      END DO
+      !$OMP END DO
+      !$OMP END PARALLEL
+    END IF
   END DO
 
   DO nj = 1, nneigh
@@ -2979,7 +3155,16 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
   END DO
 
   ! Local SpMV (overlaps with MPI). This defines v, it does not add to it.
-  CALL CRS_ComplexMatrixVectorMultiply( InsideMatrix, u, v )
+  ! Where a block view of the local matrix has been built, take the product
+  ! against that instead: one contiguous COMPLEX per block rather than two
+  ! reals strided out of the fourfold redundant real form. The interface blocks
+  ! above are on a block view of their own, built by SParCBuildIfBlocks; only a
+  ! block that never got one falls back to the strided walk.
+  IF ( ASSOCIATED( InsideMatrix % BCols ) ) THEN
+    CALL CRS_BlockComplexMatrixVectorMultiply( InsideMatrix, u, v )
+  ELSE
+    CALL CRS_ComplexMatrixVectorMultiply( InsideMatrix, u, v )
+  END IF
 
   ! Wait for receives and accumulate into v through its real view
   CALL C_F_POINTER( C_LOC(v(1)), vr, [2*n] )
@@ -3323,7 +3508,7 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
   INTEGER :: i, j, k, l, RowInd, Rows, ColInd, ColIndA, lstart, lstop
   TYPE (BasicMatrix_t), DIMENSION(:), ALLOCATABLE :: RecvdIfMatrix
 
-  LOGICAL :: Found, NeedMass, NeedDamp, NeedPrec, NeedILU
+  LOGICAL :: Found, NeedMass, NeedDamp, NeedPrec, NeedILU, Cplx
 
   !*******************************************************************
 
@@ -3349,8 +3534,19 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
   ALLOCATE( RecvdIfMatrix(ParEnv % PEs) )
   RecvdIfMatrix(:) % NumberOfRows = 0
 
+  ! Half of a complex interface block is derivable from the other half, so
+  ! offer the exchange the chance to send odd rows only. This is a hint and not
+  ! an assertion: ExchangeIfValues checks the form of each block itself and
+  ! falls back to the whole one per neighbour. The keyword exists to measure
+  ! against, the saving being once per solve rather than per iteration.
+  Cplx = SourceMatrix % COMPLEX
+  IF ( Cplx .AND. ASSOCIATED(SourceMatrix % Solver) ) THEN
+    Cplx = ListGetLogical( SourceMatrix % Solver % Values, &
+        'Linear System Halve Interface Exchange', Found, DefValue = .TRUE. )
+  END IF
+
   CALL ExchangeIfValues(SplittedMatrix % NbsIfMatrix, &
-     RecvdIfMatrix, NeedMass, NeedDamp, NeedPrec, NeedILU )
+     RecvdIfMatrix, NeedMass, NeedDamp, NeedPrec, NeedILU, Cplx )
 
   !----------------------------------------------------------------------
   !

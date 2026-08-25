@@ -1769,19 +1769,19 @@ CONTAINS
      TYPE(Solver_t), TARGET :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,l,l2,dofs,maxperm,permsize,bc_ind,row,col,col2,&
-         mcount,bcount,kk,cdofs,dim
+     INTEGER :: i,j,k,k2,l,dofs,permsize,bc_ind,row,col,col2,&
+         bcount,kk,cdofs,dim
      TYPE(Matrix_t), POINTER :: Atmp,Btmp 
      LOGICAL :: Found, ComplexMatrix, SomeSet, SomeSkip, SetDof
      LOGICAL, ALLOCATABLE :: ActiveComponents(:), SetDefined(:)
      TYPE(ValueList_t), POINTER :: BC
      TYPE(MortarBC_t), POINTER :: MortarBC
-     REAL(KIND=dp) :: wsum, Scale
-     INTEGER :: rowoffset, arows, sumrow, EliminatedRows, NeglectedRows, sumrow0, k20
-     LOGICAL :: ThisIsMortar, Reorder, NeedToGenerate
+     REAL(KIND=dp) :: Scale
+     INTEGER :: arows
+     LOGICAL :: Reorder
      LOGICAL :: PerFlipActive, SkipConstrained
      LOGICAL, POINTER :: ConstrainedDof(:)             
-     REAL(KIND=dp) :: MortarDiag, val, valsum, EpsVal
+     REAL(KIND=dp) :: val, valsum, EpsVal
      LOGICAL, POINTER :: PerFlip(:)
      CHARACTER(:), ALLOCATABLE :: Str 
      LOGICAL :: IsDg, IsBodyForce
@@ -1846,7 +1846,6 @@ CONTAINS
      
      Perm => Solver % Variable % Perm
      permsize = SIZE( Perm )
-     maxperm  = MAXVAL( Perm )
      arows = Solver % Matrix % NumberOfRows
 
      ! Use list matrix type since it saves us from many headaches. 
@@ -1958,7 +1957,7 @@ CONTAINS
      CALL List_ToCRSMatrix( Btmp )
      k2 = SIZE(Btmp % Values)         
      
-     CALL Info(Caller,'Used '//I2S(sumrow)//&
+     CALL Info(Caller,'Used '//I2S(Btmp % NumberOfRows)//&
          ' rows and '//I2S(k2)//' nonzeros',Level=7)
      
      Solver % Matrix % AddMatrix => Btmp     
@@ -2014,11 +2013,12 @@ CONTAINS
 
          IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE ! skip empty rows directly
 
-         ! If the mortar boundary is not active at this round don't apply it
-         IF( ThisIsMortar ) THEN
-           IF( ASSOCIATED( MortarBC % Active ) ) THEN
-             IF( .NOT. MortarBC % Active(i) ) CYCLE
-           END IF
+         ! If the mortar boundary is not active at this round don't apply it.
+         ! Every projector here comes from Solver % MortarBCs, so unlike in
+         ! GenerateConstraintMatrix there is nothing to tell apart here: the
+         ! test is just whether an active set has been given at all.
+         IF( ASSOCIATED( MortarBC % Active ) ) THEN
+           IF( .NOT. MortarBC % Active(i) ) CYCLE
          END IF
 
          ! Relate the constraint to geometric entity
@@ -2068,8 +2068,11 @@ CONTAINS
 
            ! If we sum up to anti-periodic dof then use different sign
            ! - except if the target is also antiperiodic.
+           ! Both indexes are unpermuted mesh dofs, and the row here is i:
+           ! GenerateConstraintMatrix has a k of its own for this, this routine
+           ! does not.
            IF( PerFlipActive ) THEN
-             IF(  PerFlip(col) .NEQV. PerFlip(k) ) Scale = -Scale
+             IF(  PerFlip(col) .NEQV. PerFlip(i) ) Scale = -Scale
            END IF
 
            k2 = k2+1

@@ -174,6 +174,19 @@ CONTAINS
 
 
        RHSNorm = ParallelReduction(SQRT(SUM(ForceVector**2)))
+
+!      A zero right-hand side would divide by zero here and turn every residual
+!      ratio below into a NaN, which the divergence test then reports as
+!      divergence. Leave the norm at one in that case: the scaling becomes a
+!      no-op and the ratios become absolute residuals, which is the meaningful
+!      measure when there is no load to compare against. Same threshold as
+!      ScaleLinearSystem uses for the same decision.
+!      ---------------------------------------------------------------------
+       IF( RHSNorm < SQRT( TINY( RHSNorm ) ) ) THEN
+         CALL Info('GMGSolve','Right-hand side is almost zero, not normalizing by it',Level=8)
+         RHSNorm = 1.0_dp
+       END IF
+
        Solution(1:n) = Solution(1:n) / RHSnorm
        ForceVector(1:n) = ForceVector(1:n) / RHSnorm
 !
@@ -228,7 +241,7 @@ CONTAINS
                        ForceVector, Residual, NewLinearSystem )
             END IF
             PSolver => Solver
-            tmp = MGSmooth( PSolver, Matrix1, Mesh1, Solution, &
+            tmp = MGSmooth( PSolver, Matrix1, Solver % Mesh, Solution, &
                  ForceVector, Residual, Level, DOFs, LowestSmooth = .TRUE. )
 
           CASE('none') 
@@ -582,6 +595,7 @@ CONTAINS
 !     Recursively solve (PAQ)z = Pr:
 !     ------------------------------
       CALL Info('GMGSolve','Calling recursively MG solver',Level=12)
+      Solution2(1:n2) = 0.0_dp
       DO i=1,Sweeps
          CALL MultigridSolve( Matrix2, Solution2, Residual2, &
              DOFs, Solver, Level-1, NewLinearSystem )
@@ -891,7 +905,6 @@ CONTAINS
        REAL(KIND=dp), TARGET CONTIG :: ForceVector(:), Solution(:)
 !------------------------------------------------------------------------------
        TYPE(Variable_t), POINTER :: Variable1, TimeVar, SaveVariable
-       TYPE(Mesh_t), POINTER   :: Mesh1, Mesh2, SaveMesh
        TYPE(Matrix_t), POINTER :: Matrix2, PMatrix, SaveMatrix
        TYPE(Solver_t), POINTER :: PSolver             
 
@@ -934,6 +947,10 @@ CONTAINS
              NewLinearSystem = NewLinearSystem .AND. NewSystem
           END IF
        END IF
+
+       n = Matrix1 % NumberOfRows
+       ALLOCATE( Residual(n) )
+       Residual = 0.0_dp
 
 !---------------------------------------------------------------------
 !
@@ -994,7 +1011,7 @@ CONTAINS
                        ForceVector, Residual, NewLinearSystem )
             END IF
             PSolver => Solver
-            tmp = MGSmooth( PSolver, Matrix1, Mesh1, Solution, &
+            tmp = MGSmooth( PSolver, Matrix1, Solver % Mesh, Solution, &
                  ForceVector, Residual, Level, DOFs, LowestSmooth = .TRUE. )
 
           CASE('none') 
@@ -1013,12 +1030,10 @@ CONTAINS
 
           CALL ListPopNamespace('mglowest:')
 
+          DEALLOCATE( Residual )
+
           RETURN
        END IF
-
-       n = Matrix1 % NumberOfRows
-       ALLOCATE( Residual(n) )
-       Residual = 0.0_dp
 !
 !      Parallel initializations:
 !      -------------------------
@@ -1033,6 +1048,19 @@ CONTAINS
        Residual(1:n) = ForceVector(1:n) - Residual(1:n)
  
        RHSNorm = MGnorm(n, ForceVector)
+
+!      A zero right-hand side would divide by zero here and turn every residual
+!      ratio below into a NaN, which the divergence test then reports as
+!      divergence. Leave the norm at one in that case: the scaling becomes a
+!      no-op and the ratios become absolute residuals, which is the meaningful
+!      measure when there is no load to compare against. Same threshold as
+!      ScaleLinearSystem uses for the same decision.
+!      ---------------------------------------------------------------------
+       IF( RHSNorm < SQRT( TINY( RHSNorm ) ) ) THEN
+         CALL Info('PMGSolve','Right-hand side is almost zero, not normalizing by it',Level=8)
+         RHSNorm = 1.0_dp
+       END IF
+
        ResidualNorm = MGnorm( n, Residual ) / RHSNorm
  
        Tolerance = ListGetConstReal( Params,'Linear System Convergence Tolerance' )
@@ -1476,7 +1504,7 @@ CONTAINS
     INTEGER, POINTER :: CF(:), InvCF(:)
     LOGICAL, POINTER :: Fixed(:)
     
-    REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:), Solution2(:), Work2(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:), Solution2(:)
     REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
     REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL
     REAL(KIND=dp) :: tt
@@ -1571,6 +1599,19 @@ CONTAINS
     Residual(1:n) = ForceVector(1:n) - Residual(1:n)
 
     RHSNorm = MGnorm( n, ForceVector )
+
+    ! A zero right-hand side would divide by zero here and turn every residual
+    ! ratio below into a NaN, which the divergence test then reports as
+    ! divergence. Leave the norm at one in that case: the scaling becomes a
+    ! no-op and the ratios become absolute residuals, which is the meaningful
+    ! measure when there is no load to compare against. Same threshold as
+    ! ScaleLinearSystem uses for the same decision.
+    !-------------------------------------------------------------------
+    IF( RHSNorm < SQRT( TINY( RHSNorm ) ) ) THEN
+      CALL Info('AMGSolve','Right-hand side is almost zero, not normalizing by it',Level=8)
+      RHSNorm = 1.0_dp
+    END IF
+
     ResidualNorm = MGnorm( n, Residual ) / RHSNorm
 
     Tolerance = ListGetConstReal( Params,'Linear System Convergence Tolerance' )
@@ -1667,7 +1708,7 @@ CONTAINS
     n  = Matrix1 % NumberOfRows
     n2 = Matrix2 % NumberOfRows
     Residual2 => Matrix2 % RHS
-    ALLOCATE( Work2(n2), Solution2(n2) )
+    ALLOCATE( Solution2(n2) )
 
 !------------------------------------------------------------------------------
 !      Global iteration parameters:
@@ -1717,7 +1758,8 @@ CONTAINS
       
     ELSE IF ( SEQL(str, 'ilu') ) THEN      
       IF ( NewLinearSystem ) THEN
-        k = ICHAR(str(4:4)) - ICHAR('0')
+        k = 0
+        IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
         IF ( k < 0 .OR. k > 9 ) k = 0
         IF ( Parallel ) THEN
           PMatrix % Cholesky = ListGetLogical( Params, &
@@ -1757,7 +1799,7 @@ CONTAINS
       CALL ParallelUpdateResult( Matrix1, Solution, Residual )
     END IF
     
-    DEALLOCATE( Residual, Solution2, Work2 )
+    DEALLOCATE( Residual, Solution2 )
     
     IF ( Level == Solver % MultiGridTotal ) THEN
       WRITE( Message, '(A,F8.2)' ) 'MG iter time: ', CPUTime() - tt
@@ -1820,16 +1862,15 @@ CONTAINS
  
 !      Recursively solve (PAQ)z = Pr:
 !      ------------------------------
+!      numbers of W-cycles. MultigridSolve improves the coarse iterate in
+!      place, so each sweep simply continues from the previous one. Adding
+!      the incoming iterate back on top of the result counted the correction
+!      Sweeps times over.
+!      -----------------------------------------------------------------
       Solution2 = 0.0d0
-
-!      numbers of W-cycles
       DO i=1,Sweeps
-        Work2(1:n2) = Solution2(1:n2)
-        
-        CALL MultigridSolve( Matrix2, Work2, Residual2, DOFs, &
+        CALL MultigridSolve( Matrix2, Solution2, Residual2, DOFs, &
             Solver, Level-1,NewLinearSystem )
-
-        Solution2(1:n2) = Solution2(1:n2) + Work2(1:n2)
       END DO
 
 !      Compute x = x + Qz:
@@ -4733,7 +4774,7 @@ CONTAINS
     Cols   => PMatrix % Cols
     Values => PMatrix % Values
 
-    IF(Trans) THEN
+    IF( LTrans ) THEN
       IF(SIZE(u)/DOFS /= n) THEN
         PRINT *,'dofs',dofs,'u',SIZE(u),'n',n,'u/dofs',SIZE(u)/dofs        
         CALL Fatal('CRS_ProjectVector','Incompatible transpose sizes')
@@ -4784,44 +4825,6 @@ CONTAINS
     END IF
 !-------------------------------------------------------------------------------
   END SUBROUTINE CRS_ProjectVector
-!-------------------------------------------------------------------------------
-
-
-!-------------------------------------------------------------------------------
-  SUBROUTINE CRS_ClusterProject( CF, u, v, DOFs, Trans )
-!-------------------------------------------------------------------------------
-    INTEGER, POINTER :: CF(:)
-    REAL(KIND=dp), POINTER CONTIG :: u(:),v(:)
-    INTEGER :: DOFs
-    LOGICAL, OPTIONAL :: Trans
-!-------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,nv,nu
-    REAL(KIND=dp), POINTER CONTIG :: Values(:)
-    LOGICAL :: LTrans
-    INTEGER, POINTER CONTIG :: Rows(:), Cols(:)
-!-------------------------------------------------------------------------------
-    LTrans = .FALSE.
-    IF ( PRESENT( Trans ) ) LTrans = Trans
-
-    nu = SIZE(u)
-    nv = SIZE(v)
-
-    v = 0.0d0
-
-    IF(Trans) THEN
-      DO i=1,nv
-        j = CF(i)
-        IF(j > 0) v(i) = v(i) + u(j)
-      END DO      
-    ELSE
-      DO i=1,nu
-        j = CF(i)
-        IF(j > 0) v(j) = v(j) + u(i)
-      END DO
-    END IF
-
-!-------------------------------------------------------------------------------
-  END SUBROUTINE CRS_ClusterProject
 !-------------------------------------------------------------------------------
 
 
@@ -5080,6 +5083,19 @@ CONTAINS
     Normalize = ListGetLogical( Params,'MG Normalize RHS',GotIt)
 
     RHSNorm = ParallelReduction(SQRT(SUM(ForceVector**2)))
+
+    ! A zero right-hand side would divide by zero here and turn every residual
+    ! ratio below into a NaN, which the divergence test then reports as
+    ! divergence. Leave the norm at one in that case: the scaling becomes a
+    ! no-op and the ratios become absolute residuals, which is the meaningful
+    ! measure when there is no load to compare against. Same threshold as
+    ! ScaleLinearSystem uses for the same decision.
+    !-------------------------------------------------------------------
+    IF( RHSNorm < SQRT( TINY( RHSNorm ) ) ) THEN
+      CALL Info('CMGSolve','Right-hand side is almost zero, not normalizing by it',Level=8)
+      RHSNorm = 1.0_dp
+    END IF
+
     IF( Normalize ) THEN
       Solution(1:n) = Solution(1:n) / RHSnorm
       ForceVector(1:n) = ForceVector(1:n) / RHSnorm
@@ -5387,7 +5403,8 @@ CONTAINS
       
     ELSE IF ( SEQL(str, 'ilu') ) THEN      
       IF ( NewLinearSystem ) THEN
-        k = ICHAR(str(4:4)) - ICHAR('0')
+        k = 0
+        IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
         IF ( k < 0 .OR. k > 9 ) k = 0
         IF ( Parallel ) THEN
           PMatrix % Cholesky = ListGetLogical( Params, &
@@ -5467,7 +5484,6 @@ CONTAINS
       INTEGER :: Sweeps
       INTEGER, POINTER :: Iters(:)
       REAL(KIND=dp), POINTER :: R1(:),R2(:)
-      REAL(KIND=dp), ALLOCATABLE :: Work2(:)
 
 !------------------------------------------------------------------------------
 
@@ -5502,25 +5518,16 @@ CONTAINS
 !      Recursively solve (PAQ)z = Pr:
 !      ------------------------------
 
-!      numbers of W-cycles
-
-
-! I wonder how this really should be for multiple sweeps, jpr?
-
+!      numbers of W-cycles. MultigridSolve improves the coarse iterate in
+!      place, so each sweep simply continues from the previous one. Adding
+!      the incoming iterate back on top of the result counted the correction
+!      Sweeps times over.
+!      -----------------------------------------------------------------
       Solution2 = 0.0_dp
-      IF( Sweeps > 1 ) THEN
-        ALLOCATE( Work2 ( n2 ) )
-        DO i=1,Sweeps
-          Work2 = Solution2        
-          CALL MultigridSolve( Matrix2, Solution2, Residual2, DOFs, &
-              Solver, Level-1, NewLinearSystem )          
-          Solution2 = Solution2 + Work2
-        END DO
-        DEALLOCATE( Work2 )
-      ELSE
+      DO i=1,Sweeps
         CALL MultigridSolve( Matrix2, Solution2, Residual2, DOFs, &
-            Solver, Level-1, NewLinearSystem )                  
-      END IF
+            Solver, Level-1, NewLinearSystem )
+      END DO
 
 !      Compute x = x + Qz:
 !      -------------------
@@ -5632,7 +5639,7 @@ CONTAINS
     IF(DOFs == 1) THEN
       nu = SIZE(u) 
       nv = SIZE(v) 
-      IF(Trans) THEN
+      IF( LTrans ) THEN
         ! Only one value for each v is needed
         DO i=1,nv
           j = CF(i)
@@ -5648,7 +5655,7 @@ CONTAINS
     ELSE 
       nu = SIZE(u) / DOFs
       nv = SIZE(v) / DOFs
-      IF(Trans) THEN
+      IF( LTrans ) THEN
         DO i=1,nv
           j = CF(i)
           IF(j > 0) THEN

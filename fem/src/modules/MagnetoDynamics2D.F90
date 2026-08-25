@@ -255,7 +255,19 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         CALL LocalMatrixHandles( Element, n, nd+nb, nb )
       END DO
     ELSE
-!$omp parallel do private(Element,n,nd,nb,t) if(.NOT. HasZirka)
+      ! The threading here is disabled, not removed. LocalMatrix reads the model's
+      ! value lists -- GetMaterial, GetBodyForce, GetComponentParams and the
+      ! GetReal/GetString/GetLogical calls under them -- and those accessors are not
+      ! thread safe. Running six threads through them makes GetString return a
+      ! zero-length "Coil Type" often enough to abort the assembly:
+      !   ERROR:: MagnetoDynamics2D: Non existent Coil Type Chosen 1
+      ! circuits2D_transient_london failed ~7 of 30 runs at OMP_NUM_THREADS=6 and
+      ! 0 of 350 at 1 thread. The blank is transient: re-reading the same keyword
+      ! on the same list immediately afterwards returns "massive". Not an optimiser
+      ! artifact -- rebuilding either this file or Lists.F90 at -O0 makes it more
+      ! frequent (9/30 and 11/30), which is a race widening, not codegen.
+      ! Re-enable when the value lists are safe to read concurrently.
+!!$omp parallel do private(Element,n,nd,nb,t) if(.NOT. HasZirka)
       DO t=1,active
         Element => GetActiveElement(t)
         n  = GetElementNOFNodes(Element)
@@ -267,7 +279,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         END IF
         CALL LocalMatrix(Element, n, nd)
       END DO
-!$omp end parallel do
+!!$omp end parallel do
     END IF
 
     CALL DefaultFinishBulkAssembly()
@@ -886,7 +898,8 @@ CONTAINS
         CASE ('foil winding')
 !          CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
-          CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+          CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+          CALL Fatal (Caller, 'Non existent Coil Type Chosen 1!')
         END SELECT
       END IF
     END IF
@@ -1186,7 +1199,8 @@ CONTAINS
       CASE ('foil winding')
         CONTINUE
       CASE DEFAULT
-        CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+        CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+        CALL Fatal (Caller, 'Non existent Coil Type Chosen 2!')
       END SELECT
     END IF
         
@@ -2273,7 +2287,8 @@ CONTAINS
             foilthickness = coilthickness/nofturns
           END IF
         CASE DEFAULT
-          CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+          CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+          CALL Fatal (Caller, 'Non existent Coil Type Chosen 3!')
         END SELECT
       END IF
     END IF

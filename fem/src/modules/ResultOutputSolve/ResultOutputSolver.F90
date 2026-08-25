@@ -111,17 +111,22 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  ! The mesh of this solver is the default, and also the fallback if the named
+  ! primary output variable is not found among the solvers. Without this the
+  ! 'Save This Mesh Only' test below has nothing to compare against whenever
+  ! 'Primary Output Variable' is not given, which is the normal case.
+  MyMesh => GetMesh()
+
   PrimVar = GetString(Params,'Primary Output Variable',Found)
   IF(Found) THEN
     IF ( PrimVar == "hydraulic potential" ) THEN
       DO i=1,Model % NumberOfSolvers
+        IF(.NOT. ASSOCIATED(Model % Solvers(i) % Variable) ) CYCLE
         IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN
           MyMesh => Model % Solvers(i) % Mesh
           EXIT
         END IF
       END DO
-    ELSE
-      MyMesh => GetMesh()
     END IF
   END IF
 

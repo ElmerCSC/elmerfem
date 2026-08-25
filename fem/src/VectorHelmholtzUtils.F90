@@ -66,6 +66,9 @@
     INTEGER, POINTER :: Indexes(:)
     REAL(KIND=dp) :: s,detJ,Width,Area,Length,RadInner, RadOuter,CenterArray(3,1),Scale
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), LumpVec(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer(7)
+#endif
     TYPE(ValueList_t), POINTER :: BC, BC0
     CHARACTER(:), ALLOCATABLE :: PortType
     LOGICAL :: Found, stat
@@ -158,11 +161,25 @@
       
       ! Do parallel communication, if needed.
       IF( ParEnv % PEs > 1 ) THEN
+        ! The three reductions take disjoint slices, so one copy serves them all.
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        buffer = LumpVec(1:7)
+        CALL MPI_ALLREDUCE( buffer(1:3), LumpVec(1:3), 3, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(1:3), 3, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr )
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        CALL MPI_ALLREDUCE( buffer(4:6), LumpVec(4:6), 3, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(4:6), 3, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr )
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        CALL MPI_ALLREDUCE( buffer(7:7), LumpVec(7:7), 1, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(7:7), 1, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
 

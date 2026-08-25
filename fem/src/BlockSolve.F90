@@ -2540,6 +2540,10 @@ CONTAINS
         IF (.NOT. ASSOCIATED(PMat % Values)) THEN
           CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
           CALL CRS_CopyMatrixTopology( AMat, PMat )
+          ! Only the topology is wanted here. CopyMatrixTopology also allocates and
+          ! zeroes a value array of its own, which the assignment below replaces, so
+          ! give that one back before losing the last pointer to it.
+          DEALLOCATE( PMat % Values )
         ELSE
           ! Make a partial check that PrecMat has been derived from the right template:
           IF (.NOT. ASSOCIATED(AMat % Rows, PMat % Rows)) &

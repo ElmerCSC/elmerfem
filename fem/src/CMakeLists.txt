@@ -21,7 +21,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   DiffuseConvectiveAnisotropic.F90 LoadMod.F90
   DiffuseConvectiveGeneralAnisotropic.F90 PElementMaps.F90
   PElementBase.F90 ElementBasis.F90 ElementGeometry.F90 ElemInfo.F90 ElementDescription.F90 Integration.F90 ListMatrixArray.F90
-  ModelDescription.F90 GeneralUtils.F90 Stress.F90 StressGeneral.F90
+  ModelDescription.F90 GeneralUtils.F90 Constitutive.F90 Stress.F90 StressGeneral.F90 ModelLumping.F90
   LinearAlgebra.F90 CoordinateSystems.F90 ListMatrix.F90 CRSMatrix.F90
   BandMatrix.F90 BandwidthOptimize.F90 BlockSolve.F90
   MaterialModels.F90 DirectSolve.F90 IterSolve.F90
@@ -40,7 +40,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
   SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
-  cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
+  cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90 PElementVisual.F90 IpFieldInterface.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
   ElmerSolver.F90 MagnetoDynamicsUtils.F90 VectorHelmholtzUtils.F90 LumpingUtils.F90
   ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90

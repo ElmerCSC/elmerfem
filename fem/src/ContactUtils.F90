@@ -343,7 +343,9 @@ CONTAINS
            TieContact = .TRUE.
          CASE('friction')
            FrictionContact = .TRUE.
-         CASE('slide')
+         CASE('slip','slide')
+           ! Both spellings: the keyword is "Slip Contact" but the string form
+           ! has always been "slide", and the default warning says "slip".
            SlipContact = .TRUE.
          CASE Default
            CALL Fatal(Caller,'Unknown contact type: '//TRIM(ContactType))
@@ -584,14 +586,32 @@ CONTAINS
        TYPE(Variable_t), POINTER :: LinSysVar, ContactSysVar, ActiveVar
        INTEGER :: i,j,k,l,n
        INTEGER, POINTER :: InvPerm(:)
+       LOGICAL :: Stat
        
        CALL Info(Caller,'Pick lagrange coefficient from the active set to whole set',Level=10)
 
        LinSysVar => VariableGet( Model % Variables, &
            LagrangeMultiplierName(Solver),ThisOnly = .TRUE. )
        IF( .NOT. ASSOCIATED( LinSysVar ) ) THEN
-         CALL Warn(Caller, &
-             'No Lagrange multiplier field associated with linear system: '//GetVarName(Var) )
+         ! Having nothing to pick from is the normal case, not a fault: the
+         ! linear system multiplier is created in SolveWithLinearRestriction
+         ! only when "Export Lagrange Multiplier" is given, and even then not
+         ! before the first solve -- whereas this runs from
+         ! DefaultFinishBoundaryAssembly, ahead of it. The exception is when
+         ! the contact condition is itself asked to be based on the
+         ! multiplier, as it would then be determined from a field that is
+         ! never filled, i.e. from zeros.
+         ! Note the test is on the keywords, not on this call: with both given
+         ! the field simply does not exist yet on the first round, and picking
+         ! from it starts working on the next one.
+         IF( ListGetLogical( Params,'Use Lagrange Multiplier for Contact', Stat ) .AND. &
+             .NOT. ListGetLogical( Params,'Export Lagrange Multiplier', Stat ) ) THEN
+           CALL Fatal(Caller,'"Use Lagrange Multiplier for Contact" requires also '// &
+               '"Export Lagrange Multiplier": '//GetVarName(Var) )
+         ELSE
+           CALL Info(Caller,'No Lagrange multiplier field to pick from, skipping: '// &
+               GetVarName(Var), Level=8 )
+         END IF
          RETURN
        END IF
        
