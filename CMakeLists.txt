@@ -111,6 +111,8 @@ SET(WITH_ROCALUTION FALSE CACHE BOOL "Compile with Rocalution library.")
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 SET(USE_SYSTEM_ZOLTAN FALSE CACHE BOOL "Use system Zoltan library")
 
+SET(WITH_SLEPC FALSE CACHE BOOL "Link in SLEPc eigenvalue library")
+
 SET(INCLUDE_ELMER_MODULES "" CACHE STRING "Semicolon separated list of solver modules to be compiled. If empty compile all.")
 
 # Let user select if the contiguous attribute is used or not
@@ -818,6 +820,16 @@ IF(MPI_FOUND AND EXTERNAL_PARPACK)
     ${CMAKE_REQUIRED_LIBRARIES} ${PARPACK_LIBRARIES})
 ENDIF()
 
+# Find SLEPc
+IF(WITH_SLEPC)
+  FIND_PACKAGE(PkgConfig REQUIRED)
+  pkg_check_modules(PETSC_PKG REQUIRED IMPORTED_TARGET PETSc)
+  pkg_check_modules(SLEPC_PKG REQUIRED IMPORTED_TARGET SLEPc)
+  IF(SLEPC_PKG_FOUND)
+    SET(HAVE_SLEPC TRUE)
+  ENDIF()
+ENDIF()
+
 ADD_SUBDIRECTORY(fhutiter)
 ADD_SUBDIRECTORY(meshgen2d)
 ADD_SUBDIRECTORY(fem)
@@ -955,6 +967,11 @@ IF(WITH_Trilinos)
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(WITH_Trilinos)
 
+IF(WITH_SLEPC)
+  MESSAGE(STATUS "  SLEPc:           " "${SLEPC_PKG_VERSION}")
+  MESSAGE(STATUS "  SLEPc libraries: " "${SLEPC_PKG_LIBRARIES}")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
 IF(WITH_CONTRIB)
   MESSAGE(STATUS "  Building contributed solvers")
   MESSAGE(STATUS "------------------------------------------------")
