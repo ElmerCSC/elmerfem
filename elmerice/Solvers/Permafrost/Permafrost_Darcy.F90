@@ -646,17 +646,23 @@ CONTAINS
       ! Variable gradients at IP
       gradTAtIP = ListGetElementRealGrad( Temperature_h,dBasisdx,Element,Found)
       IF (.NOT.Found) CALL FATAL(SolverName,'Unable to find Temperature gradient')
-      gradYcAtIP = ListGetElementRealGrad( Salinity_h,dBasisdx,Element,Found)
-      IF (.NOT.Found) CALL FATAL(SolverName,'Unable to find Salintiy gradient')
+      gradYcAtIP = 0.0_dp
+      IF (.NOT.NoSalinity) THEN
+        gradYcAtIP = ListGetElementRealGrad( Salinity_h,dBasisdx,Element,Found)
+        IF (.NOT.Found) CALL FATAL(SolverName,'Unable to find Salinity gradient')
+      END IF
       gradpAtIP = ListGetElementRealGrad( Pressure_h,dBasisdx,Element,Found)
       IF (.NOT.Found) CALL FATAL(SolverName,'Unable to find Pressure gradient')
 
       ! Time derivatives of other variables
+      SalinityDtAtIP = 0.0_dp
       IF (ComputeDt) THEN
         TemperatureDtAtIP = ListGetElementReal( TemperatureDt_h,Basis,Element, Found, GaussPoint=t)
         IF (.NOT.Found)  CALL FATAL(SolverName,'Temperature Velocity variable not found')
-        SalinityDtAtIP = ListGetElementReal( SalinityDt_h,Basis,Element, Found, GaussPoint=t)
-        IF (.NOT.Found)  CALL FATAL(SolverName,'Salinity Velocity variable not found')
+        IF (.NOT.NoSalinity) THEN
+          SalinityDtAtIP = ListGetElementReal( SalinityDt_h,Basis,Element, Found, GaussPoint=t)
+          IF (.NOT.Found)  CALL FATAL(SolverName,'Salinity Velocity variable not found')
+        END IF
       END IF
 
 

@@ -513,7 +513,10 @@ CONTAINS
       SalinityVeloAtIP = 0.0_dp
       IF (ActiveMassMatrix .AND. .NOT.Lunardini) THEN
         PressureVeloAtIP = ListGetElementReal( PressureVelo_h, Basis, Element, Found, GaussPoint=t)
-        SalinityVeloAtIP = ListGetElementReal( SalinityVelo_h, Basis, Element, Found, GaussPoint=t)
+        IF (.NOT.NoSalinity) THEN
+          SalinityVeloAtIP = ListGetElementReal( SalinityVelo_h, Basis, Element, Found, GaussPoint=t)
+          IF (.NOT.Found) CALL FATAL(SolverName,'Salinity Velocity variable not found')
+        END IF
       END IF
 
       ! bedrock deformation velocity at IP
