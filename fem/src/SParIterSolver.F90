@@ -1293,12 +1293,17 @@ END SUBROUTINE ZeroSplittedMatrix
 
       IF(j>7) THEN
         hypre_intpara(10) = ListGetInteger( Params,&
-            'HYPRE GmRes Dimension', Found, DefValue = 100 )        
+            'HYPRE GmRes Dimension', Found, DefValue = 100 )
       END IF
-      
+
     END DO
-      
-  
+
+    ! Toggle between the row by row HYPRE_IJMatrixAddToValues assembly (one Hypre
+    ! call per row) and the bulk assembly (one call for the whole local block).
+    ! Bulk assembly is default, use row-by-row if bulk is too large and overflows.
+    IF ( ListGetLogical( Params, 'Hypre Assemble Row By Row', Found ) ) hypre_intpara(20) = 1
+
+
   END SUBROUTINE SetHypreParameters
 
 

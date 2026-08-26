@@ -44,6 +44,8 @@
 
 #ifdef HAVE_HYPRE
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 #include "_hypre_utilities.h"
 #include "HYPRE_krylov.h"
 #include "HYPRE.h"
@@ -122,7 +124,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
    int ilower, iupper;
    int local_size, extra;
-   int hypre_sol, hypre_pre;
+   int hypre_sol, hypre_pre, AssembleRowByRow;
    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
    ElmerHypreContainer* Container;
 
@@ -142,6 +144,8 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    
    int verbosity = *verbosityPtr, myverb;
 
+   HYPRE_Init();
+
    /* which process number am I? */
    MPI_Comm_rank(comm, &myid);
 
@@ -158,6 +162,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    local_size = *nrows;
    hypre_sol = *hypre_method / 100;
    hypre_pre = *hypre_method % 100;
+   AssembleRowByRow = hypre_intpara[19];
 
    if(hypre_sol == 2 || hypre_pre == 2)  {
      if (*ContainerPtr == NULL) {
@@ -193,9 +198,30 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
    /* Initialize before setting coefficients */
    HYPRE_IJMatrixInitialize(A);
+   CheckHypreError("SolveHypre1 (A Initialize, before fill)", myid);
 
    /* Build the local block of matrix entries for Hypre */
-   {
+   if (AssembleRowByRow) {
+      /* Row by row assembly, one HYPRE_IJMatrixAddToValues call per row,
+         use if the bulk would be too large */
+      int i,j,nnz,irow,*rcols,csize=128;
+
+      rcols = (int *)malloc( csize*sizeof(int) );
+      for (i = 0; i < local_size; i++) {
+        nnz = rows[i+1]-rows[i];
+        if ( nnz>csize ) {
+          csize = nnz+csize;
+          rcols = (int *)realloc( rcols, csize*sizeof(int) );
+        }
+        irow=globaldofs[i];
+        for( k=0,j=rows[i]; j<rows[i+1]; j++,k++) {
+          rcols[k] = globaldofs[cols[j-1]-1];
+        }
+        HYPRE_IJMatrixAddToValues(A, 1, &nnz, &irow, rcols, &vals[rows[i]-1]);
+      }
+      CheckHypreError("SolveHypre1 (A AddToValues, before Assemble)", myid);
+      free( rcols );
+   } else {
       int i,j;
       /* rcols     - global column index of each nonzero entry in the local block (length total_nnz)
          irows     - global row index of each row in the local block (length local_size)
@@ -223,11 +249,14 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
       if ( local_size > 0 )
         HYPRE_IJMatrixAddToValues(A, local_size, ncols, irows, rcols, vals);
 
+      CheckHypreError("SolveHypre1 (A AddToValues, before Assemble)", myid);
+
       free( rcols ); free( irows ); free( ncols );
    }
 
    /* Assemble after setting the coefficients */
    HYPRE_IJMatrixAssemble(A);
+   CheckHypreError("SolveHypre1 (A assembly)", myid);
 
    if (!*precflag && *BILU <= 1) {
      /* Standard version - use A as preconditioner */
@@ -237,7 +266,25 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &Atilde);
      HYPRE_IJMatrixSetObjectType(Atilde, HYPRE_PARCSR);
      HYPRE_IJMatrixInitialize(Atilde);
-     {
+     if (AssembleRowByRow) {
+        /* Row by row assembly */
+        int nnz,irow,i,j,csize=128,*rcols;
+
+        rcols = (int *)malloc( csize*sizeof(int) );
+        for (i = 0; i < local_size; i++) {
+          nnz = rows[i+1]-rows[i];
+          if ( nnz>csize ) {
+            csize = nnz+csize;
+            rcols = (int *)realloc( rcols, csize*sizeof(int) );
+          }
+          irow=globaldofs[i];
+          for( k=0,j=rows[i]; j<rows[i+1]; j++,k++) {
+             rcols[k] = globaldofs[cols[j-1]-1];
+          }
+          HYPRE_IJMatrixAddToValues(Atilde, 1, &nnz, &irow, rcols, &precvals[rows[i]-1]);
+        }
+        free( rcols );
+     } else {
         int i,j;
         /* rcols     - global column index of each nonzero entry in the local block (length total_nnz)
            irows     - global row index of each row in the local block (length local_size)
@@ -270,14 +317,37 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_IJMatrixAssemble(Atilde);
    } else {
      /* We only take the block diagonal values of the original matrix for our preconditioner */
-     int nnz,irow,jcol,i,j,k;
      if (myverb > 6) fprintf(stdout,"HYPRE: using BILU(%d) approximation for preconditioner\n",*BILU);
-     
+
      HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &Atilde);
      HYPRE_IJMatrixSetObjectType(Atilde, HYPRE_PARCSR);
      HYPRE_IJMatrixInitialize(Atilde);
 
-     {
+     if (AssembleRowByRow) {
+       int nnz,irow,jcol,i,j,csize=128,*rcols;
+       double *dbuf;
+
+       rcols = (int *)malloc( csize*sizeof(int) );
+       dbuf = (double *)malloc( csize*sizeof(double) );
+       for (i = 0; i < local_size; i++) {
+         irow=globaldofs[i];
+         nnz = 0;
+         for (j=rows[i];j<rows[i+1];j++) {
+           jcol = globaldofs[cols[j-1]-1];
+           /*TODO - is the block ordering preserved in the linear numbering?
+               Here we assume it is.
+           */
+           if ((irow%*BILU)==(jcol%*BILU)) {
+             rcols[nnz] = jcol;
+             dbuf[nnz] = vals[j-1];
+             nnz++;
+           }
+         }
+         HYPRE_IJMatrixAddToValues(Atilde, 1, &nnz, &irow, rcols, dbuf);
+       }
+       free( rcols );
+       free( dbuf );
+     } else {
        /* rcols     - global column index of each retained nonzero entry, allocated to
                       total_nnz but only the first pos entries end up populated
           irows     - global row index of each row in the local block (length local_size)
@@ -286,6 +356,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
           total_nnz - upper bound on the retained count, before filtering
           pos       - running write index into rcols/dbuf as entries are kept
        */
+       int nnz,irow,jcol,i,j;
        int *rcols, *irows, *ncols;
        double *dbuf;
        int total_nnz, pos;
@@ -325,6 +396,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Assemble after setting the coefficients */
      HYPRE_IJMatrixAssemble(Atilde);
    }
+   CheckHypreError("SolveHypre1 (Atilde assembly)", myid);
 
    /* Get the parcsr matrix object to use */
    /* note: this is only used for setup,  */
@@ -1143,7 +1215,7 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    int ilower, iupper, nlower, nupper;
    int local_size, local_nodes, extra;
 
-   int solver_id;
+   int solver_id, AssembleRowByRow;
    int print_solution, print_system;
 
    double  *txvec, st, realtime_();
@@ -1161,8 +1233,11 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    int verbosity = *verbosityPtr, myverb;
    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
 
-   
-   Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));   
+   AssembleRowByRow = hypre_intpara[19];
+
+   HYPRE_Init();
+
+   Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));
    *ContainerPtr=(int*)(Container);
    
    st  = realtime_();
@@ -1210,65 +1285,81 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
          if ( nlower > k ) nlower = k;
        }
 #endif
-//   fprintf( stderr, "%d %d %d %d\n", ilower, iupper, nlower, nupper );
+  // fprintf( stderr, "%d %d %d %d\n", ilower, iupper, nlower, nupper );
 
    HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &G);
    HYPRE_IJMatrixSetObjectType(G, HYPRE_PARCSR);
    HYPRE_IJMatrixInitialize(G);
    
-   {
-      /* rcols       - global column index of each nonzero entry kept for owned rows (length total_nnz)
-         irows       - global row index of each owned row (length nrows_out)
-         ncols       - number of nonzero entries in each owned row (length nrows_out)
-         gvals_local - values of the kept entries, in the same order as rcols
-         nrows_out   - number of rows owned by this rank (<= local_size)
-         total_nnz   - total number of nonzero entries across owned rows
-         r, pos      - running write indices into irows/ncols and rcols/gvals_local
-      */
-      int nnz,irow,i,j,l,p,q;
-      int *rcols, *irows, *ncols;
-      double *gvals_local;
-      int nrows_out, total_nnz, r, pos;
+   if (AssembleRowByRow) {
+      int nnz,irow,i,j,k,l,p,q,*rcols,csize=32;
 
-      nrows_out = 0;
-      total_nnz = 0;
-      for (i = 0; i < local_size; i++) {
-        if( !owner[i] ) continue;
-        nrows_out++;
-        total_nnz += grows[i+1] - grows[i];
-      }
-
-      irows = (int *)malloc( nrows_out*sizeof(int) );
-      ncols = (int *)malloc( nrows_out*sizeof(int) );
-      rcols = (int *)malloc( total_nnz*sizeof(int) );
-      gvals_local = (double *)malloc( total_nnz*sizeof(double) );
-
-      r = 0; pos = 0;
+      rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++)
       {
          if( !owner[i] ) continue;
          nnz = grows[i+1] - grows[i];
+         if ( nnz>csize ) {
+           rcols = (int *)realloc( rcols, nnz*sizeof(int) );
+           csize = nnz;
+         }
          irow = globaldofs[i];
-         irows[r] = irow;
-         ncols[r] = nnz;
-         r++;
-         for( j=grows[i]; j<grows[i+1]; j++, pos++ )
+         for( k=0,j=grows[i]; j<grows[i+1]; j++,k++)
          {
            l = gcols[j-1]-1;
            p = l % 3;
            q = l / 3;
-           rcols[pos] = 3*globalnodes[q]+p;
-           gvals_local[pos] = gvals[j-1];
+           rcols[k] = 3*globalnodes[q]+p;
          }
+         HYPRE_IJMatrixAddToValues(G, 1, &nnz, &irow, rcols, &gvals[grows[i]-1]);
+      }
+      free( rcols );
+   } else {
+      /* Bulk assembly: one HYPRE_IJMatrixAddToValues call for all owned rows. Owned rows
+         are not contiguous in grows/gvals, so (unlike the A matrix, which includes every
+         local row) we still have to compact them into local buffers first. */
+      int nnz,irow,i,j,k,l,p,q,pos,nowned,total_nnz;
+      int *rcols, *irows, *ncols;
+      double *dbuf;
+
+      nowned = 0;
+      total_nnz = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nowned++;
+        total_nnz += grows[i+1] - grows[i];
       }
 
-      if ( nrows_out > 0 )
-        HYPRE_IJMatrixAddToValues(G, nrows_out, ncols, irows, rcols, gvals_local);
+      irows = (int *)malloc( nowned*sizeof(int) );
+      ncols = (int *)malloc( nowned*sizeof(int) );
+      rcols = (int *)malloc( total_nnz*sizeof(int) );
+      dbuf  = (double *)malloc( total_nnz*sizeof(double) );
 
-      free( rcols ); free( irows ); free( ncols ); free( gvals_local );
+      pos = 0; k = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nnz = grows[i+1] - grows[i];
+        irows[k] = globaldofs[i];
+        ncols[k] = nnz;
+        k++;
+        for (j = grows[i]; j < grows[i+1]; j++) {
+          l = gcols[j-1]-1;
+          p = l % 3;
+          q = l / 3;
+          rcols[pos] = 3*globalnodes[q]+p;
+          dbuf[pos]  = gvals[j-1];
+          pos++;
+        }
+      }
+
+      if ( nowned > 0 )
+        HYPRE_IJMatrixAddToValues(G, nowned, ncols, irows, rcols, dbuf);
+
+      free( rcols ); free( irows ); free( ncols ); free( dbuf );
    }
-   
+
    HYPRE_IJMatrixAssemble(G);
+   CheckHypreError("CreateHypreAMS (G assembly)", myid);
    HYPRE_IJMatrixGetObject(G, (void**) &parcsr_G);
 
 
@@ -1288,131 +1379,153 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    HYPRE_IJMatrixSetObjectType(Pi, HYPRE_PARCSR);
    HYPRE_IJMatrixInitialize(Pi);
    
-   {
-      /* rcols        - global column index of each nonzero entry kept for owned rows (length total_nnz)
-         irows        - global row index of each owned row (length nrows_out)
-         ncols        - number of nonzero entries in each owned row (length nrows_out)
-         pivals_local - values of the kept entries, in the same order as rcols
-         nrows_out    - number of rows owned by this rank (<= local_size)
-         total_nnz    - total number of nonzero entries across owned rows
-         r, pos      - running write indices into irows/ncols and rcols/gvals_local
-      */
-      int nnz,irow,i,j,l,p,q;
-      int *rcols, *irows, *ncols;
-      double *pivals_local;
-      int nrows_out, total_nnz, r, pos;
+   if (AssembleRowByRow) {
+      int nnz,irow,i,j,k,l,p,q,*rcols,csize=32;
 
-      nrows_out = 0;
-      total_nnz = 0;
-      for (i = 0; i < local_size; i++) {
-        if( !owner[i] ) continue;
-        nrows_out++;
-        total_nnz += pirows[i+1] - pirows[i];
-      }
-
-      irows = (int *)malloc( nrows_out*sizeof(int) );
-      ncols = (int *)malloc( nrows_out*sizeof(int) );
-      rcols = (int *)malloc( total_nnz*sizeof(int) );
-      pivals_local = (double *)malloc( total_nnz*sizeof(double) );
-
-      r = 0; pos = 0;
+      rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++)
       {
          if( !owner[i] ) continue;
          nnz =  pirows[i+1] - pirows[i];
+         if ( nnz>csize ) {
+           rcols = (int *)realloc( rcols, nnz*sizeof(int) );
+           csize = nnz;
+         }
          irow = globaldofs[i];
-         irows[r] = irow;
-         ncols[r] = nnz;
-         r++;
-         for( j=pirows[i]; j<pirows[i+1]; j++, pos++ )
+         for( k=0,j=pirows[i]; j<pirows[i+1]; j++,k++)
          {
            l = picols[j-1]-1;
            p = l % 3;
            q = l / 3;
-           rcols[pos] = 3*globalnodes[q]+p;
-           pivals_local[pos] = pivals[j-1];
+           rcols[k] = 3*globalnodes[q]+p;
          }
+         HYPRE_IJMatrixAddToValues(Pi, 1, &nnz, &irow, rcols, &pivals[pirows[i]-1]);
+      }
+      free( rcols );
+   } else {
+      /* Bulk assembly: one HYPRE_IJMatrixAddToValues call for all owned rows (see G above). */
+      int nnz,irow,i,j,k,l,p,q,pos,nowned,total_nnz;
+      int *rcols, *irows, *ncols;
+      double *dbuf;
+
+      nowned = 0;
+      total_nnz = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nowned++;
+        total_nnz += pirows[i+1] - pirows[i];
       }
 
-      if ( nrows_out > 0 )
-        HYPRE_IJMatrixAddToValues(Pi, nrows_out, ncols, irows, rcols, pivals_local);
+      irows = (int *)malloc( nowned*sizeof(int) );
+      ncols = (int *)malloc( nowned*sizeof(int) );
+      rcols = (int *)malloc( total_nnz*sizeof(int) );
+      dbuf  = (double *)malloc( total_nnz*sizeof(double) );
 
-      free( rcols ); free( irows ); free( ncols ); free( pivals_local );
+      pos = 0; k = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nnz = pirows[i+1] - pirows[i];
+        irows[k] = globaldofs[i];
+        ncols[k] = nnz;
+        k++;
+        for (j = pirows[i]; j < pirows[i+1]; j++) {
+          l = picols[j-1]-1;
+          p = l % 3;
+          q = l / 3;
+          rcols[pos] = 3*globalnodes[q]+p;
+          dbuf[pos]  = pivals[j-1];
+          pos++;
+        }
+      }
+
+      if ( nowned > 0 )
+        HYPRE_IJMatrixAddToValues(Pi, nowned, ncols, irows, rcols, dbuf);
+
+      free( rcols ); free( irows ); free( ncols ); free( dbuf );
    }
 
    HYPRE_IJMatrixAssemble(Pi);
+   CheckHypreError("CreateHypreAMS (Pi assembly)", myid);
    HYPRE_IJMatrixGetObject(Pi, (void**) &parcsr_Pi);
+   CheckHypreError("CreateHypreAMS (Pi GetObject)", myid);
 
-   
-#if 0
-   for( k=0,i=0; i<local_nodes; i++ ) rcols[k++] = globalnodes[i];
+  /* This is commented out, probably was used to set the coordinate vectors for AMS, but it is not used
+     because we are using the gradient instead of the
+     coordinate vectors. xx/yy/zz IJVectors and xx_d/yy_d/zz_d from Fortran were never allocated
+     and this code would trigger "Error in argument 4" (HYPRE_IJVectorSetValues' NULL values check),
+     so for now this is commented out.
+  */
+// #if 0
+//    for( k=0,i=0; i<local_nodes; i++ ) rcols[k++] = globalnodes[i];
 
-   HYPRE_IJVectorCreate(comm, nlower, nupper,&xx);
-   HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(xx);
-   HYPRE_IJVectorSetValues(xx, local_nodes, rcols,xx_d);
-   HYPRE_IJVectorAssemble(xx);
-   HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
+//    HYPRE_IJVectorCreate(comm, nlower, nupper,&xx);
+//    HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(xx);
+//    HYPRE_IJVectorSetValues(xx, local_nodes, rcols,xx_d);
+//    HYPRE_IJVectorAssemble(xx);
+//    HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
 
-   HYPRE_IJVectorCreate(comm, nlower, nupper,&yy);
-   HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(yy);
-   HYPRE_IJVectorSetValues(yy, local_nodes, rcols, yy_d);
-   HYPRE_IJVectorAssemble(yy);
-   HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
+//    HYPRE_IJVectorCreate(comm, nlower, nupper,&yy);
+//    HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(yy);
+//    HYPRE_IJVectorSetValues(yy, local_nodes, rcols, yy_d);
+//    HYPRE_IJVectorAssemble(yy);
+//    HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
 
-   HYPRE_IJVectorCreate(comm, nlower, nupper,&zz);
-   HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(zz);
-   HYPRE_IJVectorSetValues(zz, local_nodes, rcols, zz_d);
-   HYPRE_IJVectorAssemble(zz);
-   HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
-#else
-   HYPRE_IJVectorCreate(comm, ilower, iupper,&xx);
-   HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(xx);
-   HYPRE_IJVectorSetValues(xx, local_size, rcols, xx_d);
-   HYPRE_IJVectorAssemble(xx);
-   HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
+//    HYPRE_IJVectorCreate(comm, nlower, nupper,&zz);
+//    HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(zz);
+//    HYPRE_IJVectorSetValues(zz, local_nodes, rcols, zz_d);
+//    HYPRE_IJVectorAssemble(zz);
+//    HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
+// #else
+//    HYPRE_IJVectorCreate(comm, ilower, iupper,&xx);
+//    HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(xx);
+//    HYPRE_IJVectorSetValues(xx, local_size, rcols, xx_d);
+//    HYPRE_IJVectorAssemble(xx);
+//    HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
 
-   HYPRE_IJVectorCreate(comm, ilower, iupper,&yy);
-   HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(yy);
-   HYPRE_IJVectorSetValues(yy, local_size, rcols, yy_d);
-   HYPRE_IJVectorAssemble(yy);
-   HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
+//    HYPRE_IJVectorCreate(comm, ilower, iupper,&yy);
+//    HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(yy);
+//    HYPRE_IJVectorSetValues(yy, local_size, rcols, yy_d);
+//    HYPRE_IJVectorAssemble(yy);
+//    HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
 
-   HYPRE_IJVectorCreate(comm, ilower, iupper,&zz);
-   HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(zz);
-   HYPRE_IJVectorSetValues(zz, local_size, rcols, zz_d);
-   HYPRE_IJVectorAssemble(zz);
-   HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
-#endif
+//    HYPRE_IJVectorCreate(comm, ilower, iupper,&zz);
+//    HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(zz);
+//    HYPRE_IJVectorSetValues(zz, local_size, rcols, zz_d);
+//    HYPRE_IJVectorAssemble(zz);
+//    HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
+// #endif
 
-   HYPRE_AMSCreate(&precond); 
+   HYPRE_AMSCreate(&precond);
+   CheckHypreError("CreateHypreAMS (AMSCreate, before SetDiscreteGradient)", myid);
    HYPRE_AMSSetDiscreteGradient(precond,parcsr_G);
+   CheckHypreError("CreateHypreAMS (SetDiscreteGradient)", myid);
    HYPRE_AMSSetInterpolations(precond, parcsr_Pi, NULL, NULL, NULL);
-//   HYPRE_AMSSetEdgeConstantVectors(precond,par_xx,par_yy,par_zz);
-//   HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
+   CheckHypreError("CreateHypreAMS (SetInterpolations)", myid);
 
    // AMS Parameters
    HYPRE_AMSSetMaxIter(precond,hypre_intpara[0]);
    HYPRE_AMSSetTol(precond,hypre_dppara[0]);
-   
+
    HYPRE_AMSSetCycleType(precond, hypre_intpara[1]); // 1-14
    HYPRE_AMSSetSmoothingOptions(precond, hypre_intpara[2], hypre_intpara[3],
            hypre_dppara[1], hypre_dppara[2]);
    HYPRE_AMSSetAlphaAMGOptions(precond, 10, 1, 3, hypre_dppara[3], 0, 0);
    HYPRE_AMSSetBetaAMGOptions(precond, 10, 1, 3, hypre_dppara[4], 0, 0);
 
-   if(hypre_intpara[4]) 
+   if(hypre_intpara[4])
      HYPRE_AMSSetBetaPoissonMatrix(precond,NULL);
-   
+
    i = (verbosity >= 6);
    if(verbosity >= 10) i=3;
-   HYPRE_AMSSetPrintLevel(precond, i); 
-   
+   HYPRE_AMSSetPrintLevel(precond, i);
+   CheckHypreError("CreateHypreAMS (AMS parameters)", myid);
+
    Container->precond = precond;
    Container->G = G; 
    Container->Pi = Pi; 
