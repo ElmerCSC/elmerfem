@@ -348,7 +348,8 @@ CONTAINS
     LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix, FluxOutput, Lunardini
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: DepthAtIP,RefDepth,CGTTAtIP, CgwTTAtIP, CGTpAtIP, CGTycAtIP,KGTTAtIP(3,3)   ! needed in equation
+    REAL(KIND=dp) :: DepthAtIP,RefDepth,CGTTAtIP,CgwTTAtIP,CGTpAtIP,CGTycAtIP,&
+         KGTTAtIP(3,3),KhAtIP(3,3) ! needed in equation
     !REAL(KIND=dp) :: Xi0Tilde,Xi0,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
     REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
          ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,hiAtIP,hwAtIP  ! function values needed for C's and KGTT
@@ -701,12 +702,13 @@ CONTAINS
         END IF
       END IF
       
-      ! Add mechanical thermal dispersion when explicitly enabled.
+      ! Add mechanical thermal dispersion to the conductive tensor.
+      KhAtIP = KGTTAtIP
       IF (ThermalDispersion) THEN
         DtdAtIP = GetDtd(RockMaterialID,XiAtIP(IPPerm),PorosityAtIP,JgwDAtIP)
         DO I=1,DIM
           DO J=1,DIM
-            KGTTAtIP(I,J) = KGTTAtIP(I,J) + CGWTTAtIP * DtdAtIP(I,J)
+            KhAtIP(I,J) = KhAtIP(I,J) + CgwTTAtIP * DtdAtIP(I,J)
           END DO
         END DO
       END IF
@@ -732,11 +734,11 @@ CONTAINS
       !KGTTAtIP(2,2) = 3.0_dp
       DO p=1,nd
         DO q=1,nd          
-          ! diffusion term (KGTTAtIP.grad(u),grad(v)):
+          ! diffusion term (KhAtIP.grad(u),grad(v)):
           DO i=1,DIM
             DO j=1,DIM
-              Stiff(p,q) = Stiff(p,q) + Weight * KGTTAtIP(i,j) * dBasisdx(p,j)* dBasisdx(q,i)
-              !PRINT *,"cond", Weight," *", KGTTAtIP(i,j)," *", dBasisdx(p,j),"*", dBasisdx(q,i)
+              Stiff(p,q) = Stiff(p,q) + Weight * KhAtIP(i,j) * dBasisdx(p,j)* dBasisdx(q,i)
+              !PRINT *,"cond", Weight," *", KhAtIP(i,j)," *", dBasisdx(p,j),"*", dBasisdx(q,i)
             END DO
           END DO
           ! advection term due to groundwater velocity (CgwTT * (Jgw.grad(u)),v)

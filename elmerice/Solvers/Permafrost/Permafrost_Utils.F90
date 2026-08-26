@@ -858,7 +858,7 @@ CONTAINS
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
     REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,&
-         KgwppAtIP(3,3),fwAtIP,DtdAtIP(3,3)!  JgwD stuff
+         KgwppAtIP(3,3),fwAtIP ! JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,csAtIP,cwAtIP,ciAtIP,ccAtIP ! material properties at IP
@@ -871,7 +871,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,j,k,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
-         CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
+         CryogenicSuction=.FALSE.,ComputeFlux=.TRUE.,&
          NoSalinity=.FALSE., Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
@@ -979,8 +979,6 @@ CONTAINS
     ELSE
       RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
     END IF
-
-    HydroGeo = GetLogical(Material,'Hydrogeological Model',Found)
 
     ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
     IF (ConstVal) &
@@ -1312,7 +1310,7 @@ CONTAINS
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
     REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,&
-         KgwppAtIP(3,3),fwAtIP,mugwAtIP,DtdAtIP(3,3)!  JgwD stuff
+         KgwppAtIP(3,3),fwAtIP,mugwAtIP ! JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,rhogwAtIP,csAtIP,cwAtIP,ciAtIP,ccAtIP ! material properties at IP
@@ -1325,7 +1323,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
-         CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.
+         CryogenicSuction=.FALSE.,ComputeFlux=.TRUE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -1369,9 +1367,6 @@ CONTAINS
     ELSE
       RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
     END IF
-
-    HydroGeo = GetLogical(Material,'Hydrogeological Model',Found)
-    IF (.NOT.Found) HydroGeo = .FALSE.
 
     ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
     IF (ConstVal) &
@@ -1461,8 +1456,6 @@ CONTAINS
   END SUBROUTINE EvaluateXi
   !------------------------------------------------------------------------------
 END SUBROUTINE InitiliazeXi
-
-
 
 
 
