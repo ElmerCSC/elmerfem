@@ -2625,9 +2625,15 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
      ! reads InsideMatrix % Values. Verified by poisoning that array across the
      ! iteration at np4 and getting bit-identical norms, not by reading the
      ! code. That lets IterSolver release it here as it does in serial.
+     ! Both complex inner products go in: IterSolver picks the unconjugated one
+     ! for CG and the Hermitian one for everything else, since it is the place
+     ! that parses the method keyword. Passing only SParCDotProd left parallel
+     ! complex CG running the Hermitian product on a complex symmetric operator,
+     ! which diverges.
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
        TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
-         MatVecF=AddrFunc(SParCMatrixVector), MatvecReadsNoValues = .TRUE. )
+         MatVecF=AddrFunc(SParCMatrixVector), MatvecReadsNoValues = .TRUE., &
+           DotFU=AddrFunc(SParCDotProdU) )
   END IF
 
   IF (ASSOCIATED(CM)) THEN

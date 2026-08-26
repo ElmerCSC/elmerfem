@@ -743,7 +743,7 @@ END FUNCTION MaskedNorm
 
 
   RECURSIVE SUBROUTINE IterSolver( A,x,b,Solver,ndim,DotF, &
-              NormF,MatvecF,PrecF,StopcF,MatvecReadsNoValues )
+              NormF,MatvecF,PrecF,StopcF,MatvecReadsNoValues,DotFU )
 !------------------------------------------------------------------------------
     USE huti_sfe
     USE ListMatrix
@@ -761,6 +761,13 @@ END FUNCTION MaskedNorm
     LOGICAL, OPTIONAL :: MatvecReadsNoValues
     INTEGER, OPTIONAL :: ndim
     INTEGER(KIND=AddrInt), OPTIONAL :: DotF, NormF, MatVecF, PrecF, StopcF
+    !> The unconjugated (bilinear) counterpart of DotF, for a caller that
+    !> supplies its own complex inner product. CG needs this form and every
+    !> other complex method here needs DotF; a caller cannot pick between them
+    !> without duplicating the keyword parsing that decides IterType below, so
+    !> it hands over both and the choice is made here. Ignored for real
+    !> systems and for any method other than CG.
+    INTEGER(KIND=AddrInt), OPTIONAL :: DotFU
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: Adiag,CM,PrecMat,SaveGlobalM
 
@@ -1622,14 +1629,21 @@ END FUNCTION MaskedNorm
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )
       END IF
 
-      IF ( dotProc  == 0 ) THEN
-        IF ( IterType == ITER_CG ) THEN
-          ! CG needs the unconjugated bilinear form on these complex symmetric
-          ! systems; the other complex methods want the Hermitian product.
+      IF ( IterType == ITER_CG ) THEN
+        ! CG needs the unconjugated bilinear form on these complex symmetric
+        ! systems; the other complex methods want the Hermitian product. This
+        ! has to be honoured for a caller-supplied product too, not just the
+        ! default: the parallel path hands in SParCDotProd, and with the
+        ! conjugating form CG has no self-adjoint operator to work with and
+        ! diverges outright -- HelmholtzFEM's CG pass ran the residual up to
+        ! 5.5e+01 over 301 iterations at np=2 and np=4 alike before this.
+        IF ( PRESENT( DotFU ) ) THEN
+          dotProc = DotFU
+        ELSE IF ( dotProc == 0 ) THEN
           dotProc = AddrFunc(Otmp_zdotu)
-        ELSE
-          dotProc = AddrFunc(Otmp_zdotc)
         END IF
+      ELSE IF ( dotProc == 0 ) THEN
+        dotProc = AddrFunc(Otmp_zdotc)
       END IF
 
     END IF
