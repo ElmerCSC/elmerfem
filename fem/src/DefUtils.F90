@@ -1353,6 +1353,55 @@ CONTAINS
   END FUNCTION GetString
 
 
+!> Returns a string by its name, for use inside OpenMP parallel regions.
+!>
+!> The value lists themselves are only read here, and ListGetString and ListFind
+!> under it are perfectly happy with several threads at once. What is not, is
+!> gfortran's implementation of the ALLOCATABLE deferred-length CHARACTER result
+!> that GetString above returns (checked up to gfortran 15.2): the hidden length
+!> that goes with such a result is emitted as FILE SCOPE STATIC storage -- the
+!> 'slen.NNN' symbols in .bss -- and is therefore shared by every thread. A
+!> statement such as
+!>
+!>   CoilType = GetString( CompParams, 'Coil Type', Found )
+!>
+!> compiles into "zero the static slen, call, let the callee write the true
+!> length through that pointer, reload the static, copy that many characters
+!> out", and there are two such statics on the way, one in the caller and one in
+!> GetString itself. Let a second thread reach the zeroing between the write and
+!> the reload of the first, and the first copies nothing: the caller is handed
+!> Found = .TRUE. together with an empty string, while the value list it read is
+!> of course untouched and yields the right answer when read again a moment
+!> later. That was the source of the intermittent
+!>
+!>   ERROR:: MagnetoDynamics2D: Non existent Coil Type Chosen 1
+!>
+!> in circuits2D_transient_london, roughly 7 runs out of 30 at six threads and
+!> none at all out of 350 at one thread. Neither the RECURSIVE attribute nor
+!> -frecursive nor -fno-automatic persuades gfortran to put slen on the stack.
+!>
+!> Bracketing the assignment in the caller with !$OMP CRITICAL does cure it, and
+!> the calls in MagnetoDynamics2D used to do exactly that, but it leaves the
+!> obligation with every call site. This routine takes it over. Being a
+!> SUBROUTINE with a fixed length result is the whole point: the caller does a
+!> plain CALL and so gets no hidden length temporary of its own, and the single
+!> one left, belonging to the assignment below, is covered by the CRITICAL.
+!>
+!> The CRITICAL must stay UNNAMED. A named variant deterministically SIGSEGVs
+!> several MPI tests on the Windows MSYS2/UCRT MinGW gomp runtime; see the
+!> identical notes in GaussPointsAdapt and UseLocalMatrixStorage.
+  SUBROUTINE GetStringThreadSafe( List, Name, CValue, Found )
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*) :: CValue
+     LOGICAL, OPTIONAL :: Found
+
+     !$OMP CRITICAL
+     CValue = ListGetString(List, Name, Found)
+     !$OMP END CRITICAL
+  END SUBROUTINE GetStringThreadSafe
+
+
 !> Returns an integer by its name if found in the list structure
   FUNCTION GetInteger( List, Name, Found ) RESULT(i)
      TYPE(ValueList_t), POINTER :: List
