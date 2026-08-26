@@ -1049,7 +1049,40 @@ CONTAINS
       CALL Warn('CRS_GlueLocalMatrixVec',msg)
     END IF
 
-    ! The actual contribution loop
+    ! The actual contribution loop.
+    !
+    ! Neither branch is bitwise reproducible run to run under threading, and
+    ! that is a property of the accumulation rather than of anything fixable
+    ! here. The ATOMIC protects against a lost update but says nothing about
+    ! the order two threads reach the same entry in, and floating point
+    ! addition is not associative.
+    !
+    ! Measured with HeatSolveVec on a 4000 element mesh, 37076 nonzeroes, the
+    ! assembled matrix dumped through "Linear System Save" and compared
+    ! bitwise: identical across six runs at four and at eight threads, and
+    ! different on every one of six runs at sixteen and at thirty-two. Where
+    ! it differs, 33 to 315 entries move, by at most 4.4e-16 relative, with
+    ! the nonzero count unchanged -- last-bit reordering, not a lost update.
+    ! It takes oversubscription to show at all because !$OMP DO defaults to a
+    ! static schedule: threads only contend where their chunks meet, and the
+    ! thread opening a chunk almost always reaches those entries before the
+    ! one closing the previous chunk does.
+    !
+    ! Making this branch deterministic in place would mean staging the
+    ! contributions per thread and merging them in thread order, i.e. nnz *
+    ! nthreads doubles, or accumulating in fixed point, which is exact and
+    ! order free but changes every value relative to the serial sum. Neither
+    ! is worth a last-bit effect.
+    !
+    ! The MCAssembly branch is not the answer either, although it looks like
+    ! it should be: a colour is race free within itself, so the order is
+    ! fixed once the colouring is. It is not. ElmerGraphColour is threaded and
+    ! partitions differently from run to run -- 357/357/6 elements in the
+    ! first three colours on one run of the case above, 356/356/8 on the next
+    ! two -- so which colour an element lands in, and hence the order the
+    ! colours deposit into a shared entry, varies. Deterministic threaded
+    ! assembly needs a deterministic colouring; it does not need a change to
+    ! the two loops below.
     IF (MCAssembly) THEN
       !_ELMER_OMP_SIMD
 !DIR$ IVDEP
