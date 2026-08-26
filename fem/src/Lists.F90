@@ -749,11 +749,11 @@ CONTAINS
 !---------------------------------------------------------------------------
      LOGICAL :: L, Found
 
-     INTEGER :: t
+     INTEGER :: t, n
 
      TYPE(Element_t), TARGET :: Element
      TYPE(ValueList_t), POINTER :: BC
-     CHARACTER(:), ALLOCATABLE :: RadiationFlag
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
      L = .FALSE.
      IF ( Element % Type % ElementCode<=1 ) RETURN
@@ -764,8 +764,24 @@ CONTAINS
      IF(t<=0 .OR. t>SIZE(CurrentModel % BCs)) RETURN
 
      BC => CurrentModel % BCs(t) % Values
-     RadiationFlag = ListGetString( BC, 'Radiation', Found )
-     IF (RadiationFlag=='diffuse gray' .OR. ListGetLogical(BC,'Radiator BC',Found)) L=.TRUE.
+
+     ! Compared in place rather than via
+     !   RadiationFlag = ListGetString( BC, 'Radiation', Found )
+     ! which needed a hidden length for the ALLOCATABLE deferred-length result,
+     ! and gfortran keeps such a length in static, thread shared storage. Getting
+     ! a zero length here would have made the comparison below quietly fail and
+     ! left the radiation boundary nodes out of the permutation being built by the
+     ! caller, so this is worth not depending on the call site staying serial.
+     ! The type check mirrors the one in ListGetString.
+     ptr => ListFind( BC, 'Radiation', Found )
+     IF( Found ) THEN
+       IF( ptr % Type /= LIST_TYPE_STRING ) THEN
+         CALL Fatal('RadiationCheck','Invalid list type for: Radiation')
+       END IF
+       n = LEN_TRIM(ptr % CValue)
+       L = ( ptr % CValue(1:n) == 'diffuse gray' )
+     END IF
+     IF( .NOT. L ) L = ListGetLogical(BC,'Radiator BC',Found)
 !---------------------------------------------------------------------------
    END FUNCTION RadiationCheck
 !---------------------------------------------------------------------------
@@ -1589,7 +1605,31 @@ CONTAINS
          RETURN
       END IF
 
-      ! If the variable is of type "global" do not do all the stupid hassle to interpolate it. 
+!------------------------------------------------------------------------------
+!     Only here does it get dangerous. Everything below creates the variable in
+!     the given list or interpolates it from PVar's mesh: VariableAdd appends to
+!     the shared variable list, ALLOCATE and InterpolateMeshToMesh follow, and the
+!     'tmpname = ComponentName(...)' assignments carry the hidden string lengths
+!     that gfortran keeps in static, thread shared storage. None of that can be
+!     made thread safe by locking, and it is not meant to happen per element in
+!     the first place, so fail loudly rather than corrupt quietly.
+!
+!     Note how far down this has to sit. The three returns above are all ones a
+!     threaded assembly legitimately takes and they are all clean: the variable
+!     was found and is valid, ThisOnly was requested, or -- and this is the common
+!     one -- the variable does not exist on any mesh at all. HeatSolveVec asks its
+!     threaded bulk assembly for 'Flow Solution' on every element of every case
+!     that has no flow solver, and lands on that third return. Guarding any
+!     earlier turns that into a fatal error, which is what the radiation and
+!     radiator tests promptly demonstrated.
+!------------------------------------------------------------------------------
+!$    IF( omp_in_parallel() ) THEN
+!$      CALL Fatal('VariableGet','Variable "'//TRIM(Name)// &
+!$          '" would have to be created or interpolated, which cannot be done &
+!$          &inside a parallel region')
+!$    END IF
+
+      ! If the variable is of type "global" do not do all the stupid hassle to interpolate it.
       IF( pVar % TYPE == Variable_global ) THEN
         IF(.NOT. ASSOCIATED(Var)) THEN
           ALLOCATE(Var)
@@ -2144,7 +2184,20 @@ CONTAINS
      TYPE(String_stack_t), POINTER :: stack
 !------------------------------------------------------------------------------
      ALLOCATE(stack)
-     stack % name = ListGetActiveName()
+     ! Inlined from ListGetActiveName(), on purpose. Both ActiveListName and
+     ! Activename_stack are THREADPRIVATE, so this stack is already per-thread --
+     ! but going through the function was not: its result is an ALLOCATABLE
+     ! deferred-length CHARACTER, and gfortran keeps the hidden length of such a
+     ! result in static, thread shared storage. Two threads reaching a keyword
+     ! whose value comes from a user "Procedure" at the same time could hand each
+     ! other a zero length here, and ListPopActiveName would then restore a blank
+     ! active name instead of the enclosing one. Assigning allocatable to
+     ! allocatable from a variable needs no such temporary.
+     IF( ALLOCATED( ActiveListName ) ) THEN
+       stack % name = ActiveListName
+     ELSE
+       stack % name = ''
+     END IF
      stack % next => Activename_stack
      Activename_stack => stack
      ActiveListName = str
@@ -6740,31 +6793,44 @@ CONTAINS
      LOGICAL :: Same
 !------------------------------------------------------------------------------     
      TYPE(ValueList_t), POINTER :: List
+     TYPE(ValueListEntry_t), POINTER :: ptr
      LOGICAL :: Found, EndLoop
      INTEGER :: id, n
-     CHARACTER(:), ALLOCATABLE :: ThisValue     
 !------------------------------------------------------------------------------
 
      Same = .FALSE.
-     
+
      ! If value is not present anywhere then return False
      IF( Handle % NotPresentAnywhere ) RETURN
 
      id = 0
-     DO WHILE (.TRUE.) 
+     DO WHILE (.TRUE.)
        id = id + 1
-       List => SectionHandleList( Handle, id, EndLoop ) 
+       List => SectionHandleList( Handle, id, EndLoop )
        IF( EndLoop ) EXIT
        IF(.NOT. ASSOCIATED( List ) ) CYCLE
-       
-       ThisValue = ListGetString( List, Handle % Name, Found )
-       IF( Found ) THEN         
-         n = len_TRIM(ThisValue)
-         Same = ( ThisValue(1:n) == RefValue )
+
+       ! Compare against the stored string in place rather than via
+       ! ThisValue = ListGetString(...). That assignment needed a hidden length
+       ! for the ALLOCATABLE deferred-length result, and gfortran keeps such a
+       ! length in static, thread shared storage, which made this loop unsafe to
+       ! run from a parallel region for no good reason: nothing else here writes
+       ! anything, not even the Handle, since SectionHandleList only reads
+       ! Handle % SectionType. Going through ListFind removes the temporary
+       ! altogether -- no lock needed -- and saves an allocate and free per
+       ! section as well. The type check mirrors the one in ListGetString.
+       ptr => ListFind( List, Handle % Name, Found )
+       IF( Found ) THEN
+         IF( ptr % Type /= LIST_TYPE_STRING ) THEN
+           CALL Fatal('ListCompareElementAnyString', &
+               'Invalid list type: '//TRIM(Handle % Name))
+         END IF
+         n = LEN_TRIM(ptr % CValue)
+         Same = ( ptr % CValue(1:n) == RefValue )
          IF( Same ) EXIT
        END IF
      END DO
-              
+
    END FUNCTION ListCompareElementAnyString
 !------------------------------------------------------------------------------
 
@@ -8416,8 +8482,22 @@ CONTAINS
        IF( PRESENT( Found ) ) Found = Handle % Found 
        CValue = Handle % CValue(1:Handle % CValueLen)
      ELSE IF( ListFound ) THEN
+       ! The CRITICAL is for gfortran, not for the value list. ListGetString
+       ! returns an ALLOCATABLE deferred-length CHARACTER and gfortran keeps the
+       ! hidden length of such a result in static, thread shared storage, so two
+       ! threads assigning from it hand each other zero-length strings. CValue
+       ! here is of fixed length, so this is the only such temporary involved and
+       ! bracketing the assignment covers its whole lifetime. Lists cannot USE
+       ! DefUtils, hence not GetStringThreadSafe. Must stay UNNAMED, see the notes
+       ! in GaussPointsAdapt and UseLocalMatrixStorage.
+       !
+       ! NOTE this does not make the routine thread safe by itself: the writes to
+       ! Handle below, and those to Handle % ListId / % List in ElementHandleList,
+       ! mean the Handle must be per-thread storage in the caller.
+       !$OMP CRITICAL
        CValue = ListGetString( List, Handle % Name, Found, &
            UnfoundFatal = Handle % UnfoundFatal )
+       !$OMP END CRITICAL
        Handle % CValue = TRIM(CValue)
        Handle % CValueLen = len_trim(CValue)
        IF(PRESENT(Found)) Handle % Found = Found 

@@ -219,7 +219,8 @@ CONTAINS
      REAL(KIND=dp) :: Dts(Solver % Order)
      LOGICAL :: ConstantDt
      TYPE(Element_t), POINTER :: Element
-     CHARACTER(:), ALLOCATABLE :: Method
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(LEN=MAX_NAME_LEN) :: Method
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder       !< Order of predictor-corrector scheme
 
@@ -289,7 +290,26 @@ CONTAINS
          n, DOFs, NodeIndexes, UElement=Element )
 !------------------------------------------------------------------------------
 !PrevSol(:,Order) needed for BDF
-     Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
+     ! Read into a fixed length local instead of
+     !   Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
+     ! because that assignment needed a hidden length for the ALLOCATABLE
+     ! deferred-length result, which gfortran keeps in static, thread shared
+     ! storage. This routine runs once per element in the threaded assembly of
+     ! every transient case, so it was the most exposed instance of that problem
+     ! in the tree, and its failure mode was silent: a thread handed a zero length
+     ! would fall through the SELECT below to CASE DEFAULT and integrate that
+     ! element with Newmark-Beta instead of the requested scheme. Assigning to a
+     ! fixed length local from the stored string needs no temporary, and saves an
+     ! allocate and free per element as a side benefit. The CASE labels below
+     ! compare blank padded, so they match exactly as they did before.
+     Method = ' '
+     ptr => ListFind( Solver % Values, 'Timestepping Method', GotIt )
+     IF( ASSOCIATED( ptr ) ) THEN
+       IF( ptr % Type /= LIST_TYPE_STRING ) THEN
+         CALL Fatal('Add1stOrderTime','Invalid list type for: Timestepping Method')
+       END IF
+       Method = ptr % CValue
+     END IF
 
      SELECT CASE( Method )
      CASE( 'fs' ) 
