@@ -834,6 +834,11 @@ CONTAINS
     INTEGER :: i,j, nzind
     INTEGER :: ci, ri, rli, rti, rdof, cdof, nidx, pnidx
 
+    ! Entries the CRS structure has no room for; see NoteMissingEntry below.
+    INTEGER :: nmiss, missrow, misscol
+    REAL(KIND=dp) :: missmax
+    CHARACTER(LEN=256) :: msg
+
     INTEGER, POINTER CONTIG :: gia(:), gja(:)
     REAL(KIND=dp), POINTER CONTIG :: gval(:)
 !DIR$ ATTRIBUTES ALIGN:64::Lind
@@ -842,9 +847,14 @@ CONTAINS
     gia  => Gmtr % Rows
     gja   => Gmtr % Cols
     gval => Gmtr % Values
-    
+
     pnidx = -8
-    
+
+    nmiss = 0
+    missrow = 0
+    misscol = 0
+    missmax = 0.0_dp
+
     ! Get permutation such that Indices(pind(1:N)) is sorted
 !DIR$ INLINE
     CALL InsertionSort(N, Indices, pind)
@@ -869,10 +879,14 @@ CONTAINS
             DO j=1,N
               ! Get global matrix index for entry (ri,Indices(j)).
               IF (Indices(pind(j)) > 0) THEN
-                nzind = nzind + 1
                 ! Get global matrix index for entry (ri,Indices(j)).
 !DIR$ INLINE
                 nidx = GetNextIndex(gja,Indices(pind(j)), rli, rti)
+                IF (nidx == 0) THEN
+                  CALL NoteMissingEntry(ri, Indices(pind(j)), Lmtr(pind(i),pind(j)))
+                  CYCLE
+                END IF
+                nzind = nzind + 1
                 Lind(nzind)=nidx
                 Lvals(nzind)=Lmtr(pind(i),pind(j))
 #ifdef __INTEL_COMPILER
@@ -907,6 +921,11 @@ CONTAINS
                     ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                     nidx=GetNextIndex(gja, ci, rli, rti)
+                    IF (nidx == 0) THEN
+                      CALL NoteMissingEntry(ri, ci, &
+                          Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof))
+                      CYCLE
+                    END IF
                     nzind = nzind + 1
                     Lind(nzind)=nidx
                     Lvals(nzind)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
@@ -931,7 +950,11 @@ CONTAINS
       IF (NDOFs == 1) THEN
         ! Separate case for only 1 DOF per node
 
-        ! Construct index array
+        ! Construct index array. A running nzind rather than the N*(i-1)+j layout
+        ! this used to have, so that an entry the structure lacks can be left out
+        ! the same way as in the masked branches above. Nothing outside the
+        ! contribution loop below depends on the packing.
+        nzind = 0
         DO i=1,N
           ! Row index
           ri = Indices(pind(i))
@@ -944,8 +967,13 @@ CONTAINS
             ! Get global matrix index for entry (ri,Indices(j)).
 !DIR$ INLINE
             nidx=GetNextIndex(gja,Indices(pind(j)), rli, rti)
-            Lind(N*(i-1)+j)=nidx
-            Lvals(N*(i-1)+j)=Lmtr(pind(i),pind(j))
+            IF (nidx == 0) THEN
+              CALL NoteMissingEntry(ri, Indices(pind(j)), Lmtr(pind(i),pind(j)))
+              CYCLE
+            END IF
+            nzind = nzind + 1
+            Lind(nzind)=nidx
+            Lvals(nzind)=Lmtr(pind(i),pind(j))
 #ifdef __INTEL_COMPILER
             ! Issue prefetch for every new cache line of gval(nidx)
             IF (nidx > pnidx+8) THEN
@@ -955,7 +983,6 @@ CONTAINS
 #endif
           END DO
         END DO
-        nzind = N*N
       ELSE
         ! More than 1 DOF per node
 
@@ -976,6 +1003,11 @@ CONTAINS
                 ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                 nidx = GetNextIndex(gja, ci, rli, rti)
+                IF (nidx == 0) THEN
+                  CALL NoteMissingEntry(ri, ci, &
+                      Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof))
+                  CYCLE
+                END IF
                 nzind = nzind + 1
                 Lind(nzind) = nidx
                 Lvals(nzind) = Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof)
@@ -992,6 +1024,30 @@ CONTAINS
         END DO
       END IF ! NDOFs==1 check
     END IF ! Masking check
+
+    ! Entries the CRS structure does not have have been left out above. Report them
+    ! on the same terms as the scalar path, CRS_AddToMatrixElement, which drops a
+    ! zero valued one without a word and warns about a nonzero one:
+    !
+    !   IF ( k==0 .AND. val/=0 ) THEN ... Warn ... ; A % FORMAT = MATRIX_LIST ; END IF
+    !   IF ( k==0 ) RETURN
+    !
+    ! The parallel radiation tests hit the silent case: the boundary local matrix
+    ! carries zeroes for radiation couplings the matrix topology never reserved.
+    ! Serially those went through the scalar path and were dropped as intended, and
+    ! it was only the default "Vector Assembly = nthr > 1" that made anything appear
+    ! to be thread dependent about it.
+    !
+    ! Deliberately not doing the scalar path's A % FORMAT = MATRIX_LIST here. That
+    ! only helps subsequent additions -- the offending value is dropped either way --
+    ! and it would be an unsynchronised write to the shared matrix from what may be
+    ! a threaded assembly loop.
+    IF (nmiss > 0 .AND. missmax > 0.0_dp) THEN
+      WRITE(msg,'(A,I0,A,I0,A,I0,A,ES12.3)') 'Dropped ',nmiss, &
+          ' entries absent from the matrix structure, largest at row ',missrow, &
+          ' col ',misscol,' value ',missmax
+      CALL Warn('CRS_GlueLocalMatrixVec',msg)
+    END IF
 
     ! The actual contribution loop
     IF (MCAssembly) THEN
@@ -1044,8 +1100,16 @@ CONTAINS
       END IF
     END FUNCTION BinarySearch
     
-    ! Find index matching key from arr(lind:tind). lind is set to location of 
-    ! arr(keyloc))=key, i.e., keyloc once the search ends
+    ! Find index matching key from arr(lind:tind). lind is advanced to the location
+    ! of arr(keyloc)=key, so that the next and larger key can carry on from there.
+    !
+    ! Returns 0 when the key is not in arr(lind:tind), leaving lind alone, and the
+    ! caller must then not touch the matrix. This used to return tind+1 instead,
+    ! with no not-found case at all, which aliases onto the first entry of the next
+    ! row -- and on the last row is gval(nnz+1), one element past A % Values. That
+    ! is the invalid 8 byte read and write valgrind reports from the parallel
+    ! radiation tests. Leaving lind alone on a miss keeps the monotonic advance
+    ! correct: a later, larger key still cannot sit before the current position.
     FUNCTION GetNextIndex(arr, key, lind, tind) RESULT(keyloc)
       IMPLICIT NONE
 
@@ -1061,9 +1125,27 @@ CONTAINS
       DO ci=lind,tind
          IF (arr(ci)==key) EXIT
       END DO
-      keyloc = ci
-      lind = keyloc
+      IF (ci > tind) THEN
+        keyloc = 0
+      ELSE
+        keyloc = ci
+        lind = keyloc
+      END IF
     END FUNCTION GetNextIndex
+
+    ! Bookkeeping for entries the CRS structure does not have, so that one warning
+    ! can be issued per call instead of one per entry.
+    SUBROUTINE NoteMissingEntry( row, col, val )
+      INTEGER, INTENT(IN) :: row, col
+      REAL(KIND=dp), INTENT(IN) :: val
+
+      nmiss = nmiss + 1
+      IF ( ABS(val) > missmax ) THEN
+        missmax = ABS(val)
+        missrow = row
+        misscol = col
+      END IF
+    END SUBROUTINE NoteMissingEntry
 
   END SUBROUTINE CRS_GlueLocalMatrixVec
 

@@ -1106,7 +1106,7 @@ CONTAINS
       t2(2) = FaceNodes % y(third) - Surface(2)
       t2(3) = FaceNodes % z(third) - Surface(3)
 
-      ! Normal vector obtained from the cross product of tangent vectoes
+      ! Normal vector obtained from the cross product of tangent vectors
       ! This is not normalized to unity as value of lambda does not depend on its magnitude
       Normal(1) = t1(2)*t2(3) - t1(3)*t2(2)
       Normal(2) = t1(3)*t2(1) - t1(1)*t2(3)

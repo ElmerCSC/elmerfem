@@ -222,7 +222,7 @@ SUBROUTINE StressSolver( Model,Solver,dt,Transient )
     SUBROUTINE StressSolverLegacy( Model,Solver,dt,Transient )
       USE Types
       TYPE(Model_t)  :: Model
-      TYPE(Solver_t) :: Solver
+      TYPE(Solver_t), TARGET :: Solver
       REAL(KIND=dp) :: dt
       LOGICAL :: Transient
     END SUBROUTINE StressSolverLegacy

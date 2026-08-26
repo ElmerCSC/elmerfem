@@ -476,6 +476,13 @@
            INTEGER, POINTER :: RT_Type(:)
            REAL(KIND=dp), POINTER :: RT_Coord(:)
            INTEGER, ALLOCATABLE ::  RT_Surf(:), RT_Perm(:), Ref(:)
+
+           ! Hoisted out of the two branches further down: nested BLOCKs are
+           ! miscompiled by some compilers (Intel 20.0), and neither branch
+           ! needed a scope of its own.
+           INTEGER :: base_n, rem_n, n2
+           INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
+           REAL(KIND=dp), ALLOCATABLE :: dummy_recv(:)
            !------------------------------------------------------
 
            RT_n = 0
@@ -545,47 +552,39 @@
              ! matrix for normalisation and output.  Non-root ranks send their
              ! rows but receive nothing, saving O(N²) memory and Newton work.
              IF ( nProcs > 1 ) THEN
-               BLOCK
-                 INTEGER :: base_n, rem_n
-                 INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
-                 REAL(KIND=dp), ALLOCATABLE :: dummy_recv(:)
-                 ALLOCATE( recvcounts(0:nProcs-1), displs(0:nProcs-1) )
-                 base_n = n_global / nProcs;  rem_n = MOD(n_global, nProcs)
-                 DO i = 0, nProcs-1
-                   recvcounts(i) = (base_n + MERGE(1,0,i<rem_n)) * n_global
-                 END DO
-                 displs(0) = 0
-                 DO i = 1, nProcs-1
-                   displs(i) = displs(i-1) + recvcounts(i-1)
-                 END DO
-                 IF ( myRank == 0 ) THEN
-                   ALLOCATE( Factors(n_global * n_global), STAT=istat )
-                   IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
-                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
-                       Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
-                 ELSE
-                   ALLOCATE( dummy_recv(1) )  ! receive buffer ignored on non-root
-                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
-                       dummy_recv, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
-                 END IF
-                 DEALLOCATE( recvcounts, displs )
-               END BLOCK
+               ALLOCATE( recvcounts(0:nProcs-1), displs(0:nProcs-1) )
+               base_n = n_global / nProcs;  rem_n = MOD(n_global, nProcs)
+               DO i = 0, nProcs-1
+                 recvcounts(i) = (base_n + MERGE(1,0,i<rem_n)) * n_global
+               END DO
+               displs(0) = 0
+               DO i = 1, nProcs-1
+                 displs(i) = displs(i-1) + recvcounts(i-1)
+               END DO
+               IF ( myRank == 0 ) THEN
+                 ALLOCATE( Factors(n_global * n_global), STAT=istat )
+                 IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+                 CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                     Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+               ELSE
+                 ALLOCATE( dummy_recv(1) )  ! receive buffer ignored on non-root
+                 CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                     dummy_recv, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+               END IF
+               DEALLOCATE( recvcounts, displs )
              ELSE
                IF( UseSymmetry ) THEN
                  ! Do not ever create the full matrix but directly reduce the size to half.
-                 BLOCK
-                   INTEGER :: n2
-                   n2 = n_global/2
-                   ALLOCATE( Factors(n2*n2), STAT=istat )
-                   IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
-                   DO i=1,n2
-                     DO j=1,n2
-                       Factors((i-1)*n2+j) = Factors_local((i-1)*n+j) + Factors_local((i-1)*n+j+n2)
-                     END DO
+                 n2 = n_global/2
+                 ALLOCATE( Factors(n2*n2), STAT=istat )
+                 IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+                 DO i=1,n2
+                   DO j=1,n2
+                     Factors((i-1)*n2+j) = Factors_local((i-1)*n+j) + Factors_local((i-1)*n+j+n2)
                    END DO
-                   n = n2
-                   ni = n2
-                 END BLOCK
+                 END DO
+                 n = n2
+                 ni = n2
                ELSE
                  ALLOCATE( Factors(n_global * n_global), STAT=istat )
                  IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
