@@ -293,7 +293,8 @@ CONTAINS
 !>              source, A, B, Mre, Mim, CircuitVariables(:), Components(:); per
 !>              circuit variable, A, B, Mre, Mim, SourceRe, SourceIm; per
 !>              component, the deferred length CoilType and ComponentType; and
-!>              Ckt % CircuitMatrix.
+!>              Ckt % CircuitMatrix, but only while the A solver matrix still
+!>              aliases it as its AddMatrix - see below.
 !>   borrowed - Comp % BodyIds and Comp % ElBoundaries, which come straight from
 !>              ListGetIntegerArray and belong to the value lists; Comp % ivar
 !>              and vvar, which point into CircuitVariables; Cvar % Component,
@@ -315,6 +316,7 @@ CONTAINS
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER :: p, i
+    LOGICAL :: OwnMatrix
 
     IF( PRESENT(UCkt) ) THEN
       Ckt => UCkt
@@ -328,9 +330,22 @@ CONTAINS
 
     ! The A solver matrix aliases the circuit matrix, so break that before the
     ! matrix goes away or it is left dangling.
+    !
+    ! The alias is also what says whether the matrix is still ours to free.
+    ! FreeMatrix() descends into AddMatrix, so whoever frees the A solver matrix
+    ! frees the circuit matrix with it - SwapMesh() does exactly that when the
+    ! mesh is replaced under a running circuit solver, and Circuits_MatrixInit()
+    ! does it for a circuit matrix that came out with no rows. Both leave
+    ! Ckt % CircuitMatrix pointing at released memory, and both are seen here as
+    ! an A solver matrix that no longer aliases it, so the free below is skipped
+    ! rather than done a second time.
+    OwnMatrix = .FALSE.
     ASolver => Ckt % ASolver
-    IF( ASSOCIATED(ASolver) ) THEN
-      IF( ASSOCIATED(ASolver % Matrix) ) ASolver % Matrix % AddMatrix => NULL()
+    IF( ASSOCIATED(ASolver) .AND. ASSOCIATED(Ckt % CircuitMatrix) ) THEN
+      IF( ASSOCIATED(ASolver % Matrix) ) THEN
+        OwnMatrix = ASSOCIATED(ASolver % Matrix % AddMatrix, Ckt % CircuitMatrix)
+        IF( OwnMatrix ) ASolver % Matrix % AddMatrix => NULL()
+      END IF
     END IF
 
     IF( ASSOCIATED(Ckt % Circuits) ) THEN
@@ -392,10 +407,8 @@ CONTAINS
     END IF
     Ckt % Circuits => NULL()
 
-    IF( ASSOCIATED(Ckt % CircuitMatrix) ) THEN
-      CALL FreeMatrix(Ckt % CircuitMatrix)
-      Ckt % CircuitMatrix => NULL()
-    END IF
+    IF( OwnMatrix ) CALL FreeMatrix(Ckt % CircuitMatrix)
+    Ckt % CircuitMatrix => NULL()
 
     Ckt % n_Circuits = 0
     Ckt % Circuit_tot_n = 0
@@ -767,11 +780,21 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE GetWPotentialVar(pVar)
+  SUBROUTINE GetWPotentialVar(pVar, Quiet)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Variable_t), POINTER :: pVar
+    !> Probe only: the caller reports the missing field itself, or does not need
+    !> one. The warning is for the assembly routines, which cannot do their job
+    !> without the field; a caller that only asks what is there would turn it
+    !> into noise in every case that legitimately has no "W" - every 2D case,
+    !> among others.
+    LOGICAL, OPTIONAL :: Quiet
+    LOGICAL :: Silent
+
+    Silent = .FALSE.
+    IF( PRESENT(Quiet) ) Silent = Quiet
 
     pVar => VariableGet( CurrentModel % Mesh % Variables,'W Potential')
     IF(.NOT. ASSOCIATED(pVar) ) THEN
@@ -780,7 +803,7 @@ CONTAINS
     IF(ASSOCIATED(pVar)) THEN
       CALL Info('GetWPotentialVar','Using gradient of field to define direction: '&
           //TRIM(pVar % Name),Level=7)
-    ELSE
+    ELSE IF( .NOT. Silent ) THEN
       CALL Warn('GetWPotentialVar','Could not obtain variable for potential "W"')
     END IF
 !------------------------------------------------------------------------------
@@ -2506,7 +2529,12 @@ END FUNCTION isComponentName
       ! potential "W Potential" found no support in any element and had all of its
       ! massive and foil winding elements dropped - from the matrix structure as
       ! well as from the assembly, hence without so much as a warning.
-      CALL GetWPotentialVar(Wpot)
+      !
+      ! Only in 3D, and quietly: in 2D nothing below looks at the field, and a
+      ! 2D case is not expected to have one. Asking anyway is what made every 2D
+      ! circuit case warn about a missing "W".
+      Wpot => NULL()
+      IF( dim == 3 ) CALL GetWPotentialVar(Wpot, Quiet=.TRUE.)
 
       ! With no such field at all there is nothing to test against, so do not
       ! gate on it. The component may be driven by its own current density
@@ -2889,8 +2917,10 @@ END FUNCTION isComponentName
 
     ! Probe the potential exactly as HasSupport() does, so the column reports what
     ! the assembly will really do. With no such field HasSupport() does not gate
-    ! at all, so there is no support count to show.
-    CALL GetWPotentialVar(Wvar)
+    ! at all, so there is no support count to show. Quietly: this is a summary,
+    ! and it is the assembly that gets to complain about a field it needs.
+    Wvar => NULL()
+    IF( dim == 3 ) CALL GetWPotentialVar(Wvar, Quiet=.TRUE.)
     HaveW = ASSOCIATED(Wvar)
 
     CALL Info(Caller,'Resolved circuit model:',Level=5)

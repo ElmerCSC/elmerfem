@@ -656,7 +656,10 @@ CONTAINS
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
 
       CALL EdgeElementStyle(ASolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
-      CALL GetWPotentialVar(Wpot)
+      ! Only in 3D: every use of it below is inside a dim == 3 test, and a 2D
+      ! case is not expected to have a wire direction potential at all.
+      Wpot => NULL()
+      IF (dim == 3) CALL GetWPotentialVar(Wpot)
     END IF
 
     PS => Asolver % Variable % Perm
@@ -823,7 +826,10 @@ CONTAINS
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
 
-      CALL GetWPotentialVar(Wpot)
+      ! Only in 3D: every use of it below is inside a dim == 3 test, and a 2D
+      ! case is not expected to have a wire direction potential at all.
+      Wpot => NULL()
+      IF (dim == 3) CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % CircuitModel % ASolver
@@ -1062,7 +1068,10 @@ CONTAINS
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
 
-      CALL GetWPotentialVar(Wpot)
+      ! Only in 3D: every use of it below is inside a dim == 3 test, and a 2D
+      ! case is not expected to have a wire direction potential at all.
+      Wpot => NULL()
+      IF (dim == 3) CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % CircuitModel % ASolver
@@ -1898,7 +1907,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
 
-      CALL GetWPotentialVar(Wpot)
+      ! Only in 3D: every use of it below is inside a dim == 3 test, and a 2D
+      ! case is not expected to have a wire direction potential at all.
+      Wpot => NULL()
+      IF (dim == 3) CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % CircuitModel % ASolver
@@ -2071,7 +2083,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
 
-      CALL GetWPotentialVar(Wpot)
+      ! Only in 3D: every use of it below is inside a dim == 3 test, and a 2D
+      ! case is not expected to have a wire direction potential at all.
+      Wpot => NULL()
+      IF (dim == 3) CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % CircuitModel % ASolver
@@ -2366,7 +2381,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
 
-      CALL GetWPotentialVar(Wpot)
+      ! Only in 3D: every use of it below is inside a dim == 3 test, and a 2D
+      ! case is not expected to have a wire direction potential at all.
+      Wpot => NULL()
+      IF (dim == 3) CALL GetWPotentialVar(Wpot)
     END IF
 
     ASolver => CurrentModel % CircuitModel % ASolver
