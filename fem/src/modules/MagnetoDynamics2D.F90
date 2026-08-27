@@ -3771,11 +3771,11 @@ CONTAINS
              END DO
            END DO
   
-           CALL ListAddConstReal( Model % Simulation,'res: Power re & 
-                 in Component '//i2s(j), CirCompComplexPower(1,j) )
+           CALL ListAddConstReal( Model % Simulation, &
+               'res: Power re in Component '//i2s(j), CirCompComplexPower(1,j) )
                          
-           CALL ListAddConstReal( Model % Simulation,'res: Power im & 
-                 in Component '//i2s(j), CirCompComplexPower(2,j) )
+           CALL ListAddConstReal( Model % Simulation, &
+               'res: Power im in Component '//i2s(j), CirCompComplexPower(2,j) )
          END IF
        END DO
     END IF

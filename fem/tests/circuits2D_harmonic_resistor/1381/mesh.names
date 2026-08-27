@@ -1,0 +1,5 @@
+! ----- names for boundaries -----
+$ center0 = 1
+$ center1 = 5
+$ center2 = 9
+$ center3 = 15

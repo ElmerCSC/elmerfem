@@ -110,7 +110,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: First=.TRUE.
+  INTEGER :: MyGen = -1
   TYPE(Solver_t), POINTER :: Asolver => Null()
   INTEGER :: p, n, istat, max_element_dofs, i, j
   TYPE(Mesh_t), POINTER :: Mesh  
@@ -127,18 +127,23 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamics'
 
-  SAVE First, Tstep, Parallel, Crt, MultName
+  SAVE MyGen, Tstep, Parallel, Crt, MultName
   
 !------------------------------------------------------------------------------
-  
-  IF (First) THEN
+
+  ! Ahead of the build block on purpose: if the structures no longer fit the
+  ! problem this tears them down and bumps the generation, which reopens the
+  ! block below so everything is rebuilt on this same entry.
+  CALL CircuitsCheckStale()
+
+  IF (MyGen /= CircuitsGeneration) THEN
     IF( TransientSimulation ) THEN
       CALL Info(Caller,'Initializing electric circuits for transient simulation',Level=6)
     ELSE
       CALL Info(Caller,'Initializing electric circuits for steady state simulation',Level=6)
     END IF
     
-    First = .FALSE.
+    MyGen = CircuitsGeneration
     
     Parallel = Solver % Parallel
     IF(Parallel) THEN
@@ -174,19 +179,43 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
 
-    IF( Solver % Parallel .NEQV. Asolver % Parallel  ) THEN
-      CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
-      Solver % Parallel = .TRUE.
-      ASolver % Parallel = .TRUE.
-    END IF
-    
+    ! Note the shape of this: the search stops at the first solver whose
+    ! "Procedure" matches, and that one solver becomes Model % ASolver for the
+    ! whole package. So a single circuit solver serves exactly one FEM solver.
+    !
+    ! Several circuits are not the limitation - "Circuits = n" with C.1.*, C.2.*
+    ! and so on already gives you those, all attached to this same A solver, and
+    ! Circuit_t even carries a per-circuit ASolver field which is currently just
+    ! set to the same pointer for every circuit. What is not possible is one
+    ! circuit solver driving two different FEM solvers with different circuits on
+    ! each, or two circuit solvers side by side, since the package keeps its state
+    ! in Model % Circuits, Model % CircuitMatrix and Model % ASolver.
+    !
+    ! Lifting that needs the state keyed per instance - most naturally by A solver
+    ! rather than by circuit solver, given the row indices are offsets into the A
+    ! solver matrix - and it needs the circuit definitions scoped too, because
+    ! "Circuits" and "C.<p>.*" live in one global MATC namespace that every
+    ! instance would read the same way.
+    !
+    ! The fallback has to come before ASolver is dereferenced: the loop above
+    ! only recognizes the solver by its "Procedure" string, so ASolver is still
+    ! null here for e.g. an A solver reached through a wrapper module. The
+    ! parallel status is reconciled after that, as in the harmonic version.
     IF(.NOT. ASSOCIATED(ASolver) ) THEN
       ASolver => FindSolverWithKey('Export Lagrange Multiplier')
     END IF
     CALL Info(Caller,'Circuit equations associated with solver index: '&
         //I2S(ASolver % SolverId),Level=6)
-    Model % ASolver => ASolver 
-       
+    Model % ASolver => ASolver
+
+    IF( Solver % Parallel .NEQV. Asolver % Parallel  ) THEN
+      CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
+      Solver % Parallel = .TRUE.
+      ASolver % Parallel = .TRUE.
+      ! Keep the local copy in step, it is what Circuit % Parallel is set from.
+      Parallel = Solver % Parallel
+    END IF
+
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
     Circuits => Model % Circuits
 
@@ -218,16 +247,23 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     END DO
 
     CALL CheckComponentVariables()
+    CALL CheckCircuitSources()
+    ! Before the summary, which reports the element counts it produces.
+    CALL BuildComponentElementLists()
+    CALL CircuitsSummary()
+    ! After the summary, so that its table is available as context for the abort.
+    CALL CheckTransientComponents()
 
-    
     ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
+    ! Saved across calls, so it may already exist from a previous build.
+    IF(ALLOCATED(Crt)) DEALLOCATE(Crt)
     ALLOCATE(Crt(Model % Circuit_tot_n))
 
     MultName = LagrangeMultiplierName(ASolver)
   END IF
-  
+
   ! If we have angle given explicitly, do not compute it 
   IF( .NOT. ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
     IF( TransientSimulation ) CALL SetDynamicAngle()
@@ -399,7 +435,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE MGDynMaterialUtils
     IMPLICIT NONE
-    INTEGER :: p, CompInd, nm, nn, nd
+    INTEGER :: p, CompInd, nm, nn, nd, qi
     TYPE(Solver_t), POINTER :: ASolver
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Matrix_t), POINTER :: CM
@@ -498,48 +534,61 @@ CONTAINS
       
       IF (Comp % ComponentType == 'resistor') CYCLE
 
-      DO q=GetNOFActive(),1,-1
+      ! Walked backwards over the component's own element list, which
+      ! BuildComponentElementLists() filled using ElAssocToComp(). Same elements
+      ! in the same order as the old "every element, test each one" loop, so the
+      ! accumulation order is unchanged.
+      DO qi=SIZE(Comp % ElemIdx),1,-1
+        q = Comp % ElemIdx(qi)
         Element => GetActiveElement(q)
-        IF (ElAssocToComp(Element, Comp)) THEN
-          CompParams => GetComponentParams( Element )
-          IF (.NOT. ASSOCIATED(CompParams)) &
-              CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+        CompParams => GetComponentParams( Element )
+        IF (.NOT. ASSOCIATED(CompParams)) &
+            CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
 
-          CoilType = ListGetString(CompParams, 'Coil Type', UnfoundFatal=.TRUE.)
-          
-          nn = GetElementNOFNodes(Element)
-          nd = GetElementNOFDOFs(Element,ASolver)
-          
-          IF (SIZE(Tcoef,3) /= nn) THEN
-            DEALLOCATE(Tcoef)
-            ALLOCATE(Tcoef(3,3,nn), STAT=astat)
-            IF ( astat /= 0 ) THEN
-              CALL Fatal('AddComponentEquationsAndCouplings', 'Memory allocation error!' )
-            END IF
+        CoilType = ListGetString(CompParams, 'Coil Type', UnfoundFatal=.TRUE.)
+        
+        nn = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element,ASolver)
+        
+        IF (SIZE(Tcoef,3) /= nn) THEN
+          DEALLOCATE(Tcoef)
+          ALLOCATE(Tcoef(3,3,nn), STAT=astat)
+          IF ( astat /= 0 ) THEN
+            CALL Fatal('AddComponentEquationsAndCouplings', 'Memory allocation error!' )
           END IF
-          
-          Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
-          SELECT CASE(CoilType)
-          CASE ('stranded')
-            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
-          CASE ('massive')
-            IF (.NOT. HasSupport(Element,nn)) CYCLE
-            CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt,crt)
-          CASE ('foil winding')
-            IF (.NOT. HasSupport(Element,nn)) CYCLE
-            CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
-          CASE DEFAULT
-            CALL Fatal ('AddComponentEquationsAndCouplings', 'Non-existent Coil Type Chosen!')
-          END SELECT
         END IF
+        
+        Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
+        SELECT CASE(CoilType)
+        CASE ('stranded')
+          CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
+        CASE ('massive')
+          IF (.NOT. HasSupport(Element,nn)) CYCLE
+          CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt,crt)
+        CASE ('foil winding')
+          IF (.NOT. HasSupport(Element,nn)) CYCLE
+          CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
+        CASE DEFAULT
+          CALL Fatal ('AddComponentEquationsAndCouplings', 'Non-existent Coil Type Chosen!')
+        END SELECT
       END DO
     END DO
 
-    IF( Parallel ) THEN
+    IF( CircuitsPartitionedMesh() ) THEN
       DO CompInd = 1, Circuit % n_comp
         Comp => Circuit % Components(CompInd)
-        Comp % Resistance = ParallelReduction(Comp % Resistance)
+        ! Only an integrated resistance is a partial sum over the partitions. One
+        ! that came from the "Resistance" keyword is already the whole value on
+        ! every partition, and summing it would report it PEs times too large.
+        ! UseCoilResistance is derived from a keyword, so this test is uniform
+        ! over the partitions and the collective below stays collective.
+        IF( .NOT. Comp % UseCoilResistance ) THEN
+          Comp % Resistance = ParallelReduction(Comp % Resistance)
+        END IF
         Comp % Conductance = ParallelReduction(Comp % Conductance)
+        ! Note: guarded by the partitioned-mesh test at the IF above, not by
+        ! Solver % Parallel - both of these are integrals over this partition's
+        ! elements. See CircuitsPartitionedMesh().
       END DO
     END IF
       
@@ -567,10 +616,12 @@ CONTAINS
     REAL(KIND=dp) :: dBasisdx(nd,3), wBase(nn), w(3)
     REAL(KIND=dp) :: localC, val, circ_eq_coeff, localR !, localL
     INTEGER :: j,t
+    REAL(KIND=dp) :: ModelDepth
     LOGICAL :: stat
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+    INTEGER :: MyGen = -1
+    LOGICAL :: CSymmetry, InitHandle=.TRUE., &
                CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
 
@@ -581,13 +632,13 @@ CONTAINS
     
     LOGICAL :: PiolaVersion = .FALSE.
     
-    SAVE CSymmetry, dim, First, InitHandle, EdgeBasisDegree
+    SAVE CSymmetry, dim, MyGen, InitHandle, EdgeBasisDegree
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
@@ -672,6 +723,12 @@ CONTAINS
     ELSE
       IP = GaussPoints(Element)
     END IF
+    ! Model depth is constant over the element, so read it once here. It used to
+    ! be read at every integration point, and each call does two keyword lookups
+    ! plus CurrentCoordinateSystem().
+    ModelDepth = 1.0_dp
+    IF( dim == 2 ) ModelDepth = GetCircuitModelDepth()
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -687,7 +744,7 @@ CONTAINS
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
         END IF
-        circ_eq_coeff = GetCircuitModelDepth()
+        circ_eq_coeff = ModelDepth
       CASE(3)
 
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
@@ -766,10 +823,12 @@ CONTAINS
     REAL(KIND=dp) :: localC, val, circ_eq_coeff, grads_coeff, localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
+    REAL(KIND=dp) :: ModelDepth
     LOGICAL :: stat, PiolaVersion
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry
+    INTEGER :: MyGen = -1
     LOGICAL :: LondonEquations
     TYPE(ValueList_t), POINTER :: Material
 
@@ -777,10 +836,10 @@ CONTAINS
     INTEGER :: ncdofs, q, EdgeBasisDegree
     TYPE(Variable_t), POINTER, SAVE :: Wpot
     
-    SAVE CSymmetry, dim, First
+    SAVE CSymmetry, dim, MyGen
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
@@ -803,6 +862,14 @@ CONTAINS
 
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
+
+    ! localP below is formed at every integration point whether or not the second
+    ! order branch is taken, so Permittivity has to be defined either way. It used
+    ! to be read only inside that branch, leaving the other path summing
+    ! uninitialized stack - harmless for the result, since localP is then unused,
+    ! but it traps under -ffpe-trap and shows up in any sanitizer run.
+    Permittivity = 0.0_dp
+
     IF (ASolver % TimeOrder==2) THEN
       CALL GetLocalSolution(pPot,UElement=Element,USolver=ASolver,tstep=-3)
       CALL GetLocalSolution(pVel,UElement=Element,USolver=ASolver,tstep=-4)
@@ -852,6 +919,12 @@ CONTAINS
     ELSE
       IP = GaussPoints(Element)
     END IF
+    ! Model depth is constant over the element, so read it once here. It used to
+    ! be read at every integration point, and each call does two keyword lookups
+    ! plus CurrentCoordinateSystem().
+    ModelDepth = 1.0_dp
+    IF( dim == 2 ) ModelDepth = GetCircuitModelDepth()
+
     DO t=1,IP % n
       
       grads_coeff = -1._dp
@@ -866,7 +939,7 @@ CONTAINS
           detJ = detJ * x
           grads_coeff = grads_coeff/x
         END IF
-        circ_eq_coeff = GetCircuitModelDepth()
+        circ_eq_coeff = ModelDepth
         grads_coeff = grads_coeff/circ_eq_coeff
       CASE(3)
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
@@ -990,20 +1063,22 @@ CONTAINS
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim
+    REAL(KIND=dp) :: ModelDepth
     LOGICAL :: stat, PiolaVersion
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry
+    INTEGER :: MyGen = -1
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
     INTEGER :: i,ncdofs,q,EdgeBasisDegree
     TYPE(Variable_t), POINTER, SAVE :: Wpot
     
-    SAVE CSymmetry, dim, First
+    SAVE CSymmetry, dim, MyGen
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
@@ -1053,6 +1128,12 @@ CONTAINS
       IP = GaussPoints(Element)
     END IF
 
+    ! Model depth is constant over the element, so read it once here. It used to
+    ! be read at every integration point, and each call does two keyword lookups
+    ! plus CurrentCoordinateSystem().
+    ModelDepth = 1.0_dp
+    IF( dim == 2 ) ModelDepth = GetCircuitModelDepth()
+
     DO t=1,IP % n
       grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
@@ -1065,7 +1146,7 @@ CONTAINS
           detJ = detJ * x
           grads_coeff = grads_coeff/x
         END IF
-        circ_eq_coeff = GetCircuitModelDepth()
+        circ_eq_coeff = ModelDepth
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
         ! I * R, where 
@@ -1157,51 +1238,6 @@ CONTAINS
    END SUBROUTINE Add_foil_winding
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-  SUBROUTINE GetConductivity(Element, Tcoef, nn)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(Element_t), TARGET :: Element
-    TYPE(Valuelist_t), POINTER :: Material
-    REAL(KIND=dp) :: Tcoef(3,3,nn)
-    REAL(KIND=dp), POINTER, SAVE :: Cwrk(:,:,:)
-    INTEGER :: nn, i, j
-    LOGICAL, SAVE :: visited = .FALSE., Found
-
-    IF (.NOT. visited) THEN
-      NULLIFY( Cwrk )
-    END IF
-
-    Tcoef = 0.0_dp
-    Material => GetMaterial( Element )
-    IF (.NOT. ASSOCIATED(Material)) CALL Fatal('Circuits_apply','Material not found.')
-
-    CALL ListGetRealArray( Material, &
-           'Electric Conductivity', Cwrk, nn, Element % NodeIndexes, Found )
-
-    IF (.NOT. Found) CALL Fatal('GetConductivity', 'Electric Conductivity not found.')
-    
-    IF (Found) THEN
-       IF ( SIZE(Cwrk,1) == 1 ) THEN
-          DO i=1,3
-             Tcoef( i,i,1:nn ) = Cwrk( 1,1,1:nn )
-          END DO
-       ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk,1))
-             Tcoef(i,i,1:nn) = Cwrk(i,1,1:nn)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk,1))
-             DO j=1,MIN(3,SIZE(Cwrk,2))
-                Tcoef( i,j,1:nn ) = Cwrk(i,j,1:nn)
-             END DO
-          END DO
-       END IF
-    END IF
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE GetConductivity
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Set the rotation angle in case moment of inertia and torque are given.
@@ -1209,7 +1245,10 @@ CONTAINS
   SUBROUTINE SetDynamicAngle()
     TYPE(Variable_t), POINTER :: AngVar, VeloVar
     TYPE(ValueList_t), POINTER :: Simulation
-    REAL(KIND=dp) :: dt, ang, velo, ang0, velo0, imom, torq    
+    ! Note: no local "dt" here. There used to be one, which shadowed the dt
+    ! argument of the host routine and was never assigned, so the rotor was
+    ! integrated with an undefined timestep. dt now comes by host association.
+    REAL(KIND=dp) :: ang, velo, ang0, velo0, imom, torq
     INTEGER :: tStep, tStepPrev = 0
     LOGICAL :: Found
     
@@ -1221,15 +1260,20 @@ CONTAINS
     
     VeloVar => DefaultVariableGet( 'Rotor Velo' )
     IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
-      CALL Fatal('SetRotation','Variable > Rotor Velo < does not exist!')
+      CALL Fatal('SetDynamicAngle','Variable > Rotor Velo < does not exist!')
     END IF
-    
+
+    ! Start from the current state so that every exit path below reports
+    ! something defined.
+    ang = AngVar % Values(1)
+    velo = VeloVar % Values(1)
+
     Simulation => GetSimulation()
 
     IF( ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
-      CALL Info('SetRotation','Using "Rotor Velo" from simulation section',Level=6)
+      CALL Info('SetDynamicAngle','Using "Rotor Velo" from simulation section',Level=6)
     ELSE      
-      CALL Info('SetRotation','Using computed torque to set rotation!',Level=6)
+      CALL Info('SetDynamicAngle','Using computed torque to set rotation!',Level=6)
       tStep = GetTimestep()
 
       imom = GetConstReal( Simulation,'Imom',Found) ! interatial moment of the motor      
@@ -1251,13 +1295,19 @@ CONTAINS
         tStepPrev = tStep
       END IF
 
+      ! Without a torque the velocity is held at the value it had at the start
+      ! of the timestep and only the angle keeps integrating, as the warning
+      ! says. Previously this branch left velo and ang undefined and wrote them
+      ! to the variables regardless.
+      velo = velo0
       torq = GetConstReal( Simulation,'res: Air Gap Torque', Found)
       IF(.NOT. Found ) THEN
-        CALL Warn('SetRotation','Without torque rotor velocity stays the same!')
+        CALL Warn('SetDynamicAngle','Without torque rotor velocity stays the same!')
       ELSE
-        velo = velo0 + dt * (torq-0) / imom
-        ang  = ang0  + dt * velo
+        velo = velo0 + dt * torq / imom
       END IF
+      ang = ang0 + dt * velo
+
       VeloVar % Values(1) = velo
       AngVar % Values(1) = ang
     END IF
@@ -1317,7 +1367,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: First=.TRUE.
+  INTEGER :: MyGen = -1
   TYPE(Solver_t), POINTER :: Asolver => Null()
   INTEGER :: p, n, istat, max_element_dofs, i, j
   TYPE(Mesh_t), POINTER :: Mesh  
@@ -1329,17 +1379,20 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamicsHarmonic'
   
-  SAVE First, Parallel
+  SAVE MyGen, Parallel
   
 !------------------------------------------------------------------------------
 
 
   CALL DefaultStart()
 
-  IF (First) THEN
+  ! Ahead of the build block, as in the transient driver.
+  CALL CircuitsCheckStale()
+
+  IF (MyGen /= CircuitsGeneration) THEN
     CALL Info(Caller,'Initializing electric circuits for harmonic simulation',Level=6)
 
-    First = .FALSE.
+    MyGen = CircuitsGeneration
 
     Parallel = Solver % Parallel 
     IF(Parallel) THEN
@@ -1383,6 +1436,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
       Solver % Parallel = .TRUE.
       ASolver % Parallel = .TRUE.
+      ! Keep the local copy in step, it is what Circuit % Parallel is set from.
+      Parallel = Solver % Parallel
     END IF
     
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
@@ -1413,11 +1468,20 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       Circuits(p) % Asolver => ASolver
     END DO
 
+    ! Same checks as the transient driver runs; this one used to skip
+    ! CheckComponentVariables() entirely, so a coil-typed component left out of
+    ! the circuit went unnoticed in a harmonic run.
+    CALL CheckComponentVariables()
+    CALL CheckCircuitSources()
+    ! Before the summary, which reports the element counts it produces.
+    CALL BuildComponentElementLists()
+    CALL CircuitsSummary()
+
     ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
   END IF
-  
+
   EigenSystem = GetLogical( Asolver % Values, 'Eigen Analysis', Found )
 
   max_element_dofs = Model % Mesh % MaxElementDOFs
@@ -1429,9 +1493,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   ! -----------------------------
   IF(.NOT.ASSOCIATED(CM)) RETURN
 
-  IF (SIZE(CM % values) <= 0) RETURN
+  IF(.NOT.ASSOCIATED(CM % Values)) RETURN
+  IF (SIZE(CM % Values) <= 0) RETURN
   CM % RHS = 0._dp
-  IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
+  CM % Values = 0._dp
+  ! MassValues is created and zeroed on the first pass through AddMatrixEntry()
+  ! only, so without this every later assembly pass of an eigen analysis would
+  ! pile its circuit mass contributions on top of the previous ones.
+  IF(ASSOCIATED(CM % MassValues)) CM % MassValues = 0._dp
 
   ! Write Circuit equations:
   ! ------------------------
@@ -1564,7 +1633,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
-    INTEGER :: VvarId, IvarId, q, j, astat
+    INTEGER :: VvarId, IvarId, q, j, astat, qi
     COMPLEX(KIND=dp) :: i_multiplier, cmplx_val
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     REAL(KIND=dp) :: RotM(3,3,nn)
@@ -1589,7 +1658,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', &
                'Component parameters not found')
 
-      IF (Comp % CoilType == 'stranded') THEN
+      IF (Comp % CoilType == 'stranded' .OR. Comp % ComponentType == 'resistor') THEN
         Comp % Resistance = ListGetCReal(CompParams, 'Resistance', Found)
         IF (Found) THEN
           Comp % UseCoilResistance = .TRUE.
@@ -1599,6 +1668,15 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END IF
 
       IF ( Cvar % Owner == ParEnv % myPE .OR. .NOT. Circuit % Parallel ) THEN
+        IF (Comp % ComponentType == 'resistor') THEN
+          ! V = R I, mirroring the transient branch. A resistor has no coil type,
+          ! so the SELECT CASE below would simply skip it and leave the row empty,
+          ! which made the circuit block singular.
+          CALL Info('AddComponentEquationsAndCouplings',&
+              'Writing resistor equation, component '//i2s(CompInd), Level = 7)
+          CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
+          CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, -1._dp, 0._dp)
+        ELSE
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
@@ -1643,26 +1721,43 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
                REAL(cmplx_val), AIMAG(cmplx_val))
           END DO
         END SELECT
+        END IF
       END IF
 
-      DO q=GetNOFActive(),1,-1
-        Element => GetActiveElement(q)
+      ! A resistor has no elements of its own; as in the transient path there is
+      ! nothing further to assemble for it.
+      IF (Comp % ComponentType == 'resistor') CYCLE
+
+      ! See the note in the transient driver: the component's own element lists,
+      ! walked backwards to preserve the previous order.
+      DO qi=SIZE(Comp % ElemIdx),1,-1
+        Element => GetActiveElement(Comp % ElemIdx(qi))
         CALL AddComponentElementContributions(Element, Comp, Tcoef, &
                                               sigma_33, sigmaim_33, .False.)
       END DO
 
-      DO q=GetNOFBoundaryElements(),1,-1
-        Element => GetBoundaryElement(q)
+      DO qi=SIZE(Comp % BCElemIdx),1,-1
+        Element => GetBoundaryElement(Comp % BCElemIdx(qi))
         CALL AddComponentElementContributions(Element, Comp, Tcoef, &
                                               sigma_33, sigmaim_33, .True.)
       END DO
     END DO
 
-    IF( Circuit % Parallel ) THEN
+    IF( CircuitsPartitionedMesh() ) THEN
       DO CompInd = 1, Circuit % n_comp
         Comp => Circuit % Components(CompInd)
-        Comp % Resistance = ParallelReduction(Comp % Resistance)
+        ! Only an integrated resistance is a partial sum over the partitions. One
+        ! that came from the "Resistance" keyword is already the whole value on
+        ! every partition, and summing it would report it PEs times too large.
+        ! UseCoilResistance is derived from a keyword, so this test is uniform
+        ! over the partitions and the collective below stays collective.
+        IF( .NOT. Comp % UseCoilResistance ) THEN
+          Comp % Resistance = ParallelReduction(Comp % Resistance)
+        END IF
         Comp % Conductance = ParallelReduction(Comp % Conductance)
+        ! Note: guarded by the partitioned-mesh test at the IF above, not by
+        ! Solver % Parallel - both of these are integrals over this partition's
+        ! elements. See CircuitsPartitionedMesh().
       END DO
     END IF
       
@@ -1775,11 +1870,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     COMPLEX(KIND=dp) :: localC, i_multiplier, cmplx_val
     REAL(KIND=dp) :: localR !, localL
     INTEGER :: j,t
+    REAL(KIND=dp) :: ModelDepth
     LOGICAL :: stat
 
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry
+    INTEGER :: MyGen = -1
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs, q, EdgeBasisDegree
@@ -1792,10 +1889,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(VariableHandle_t), SAVE :: Wvec_h
     TYPE(Variable_t), POINTER, SAVE :: Wpot
     
-    SAVE CSymmetry, dim, First
+    SAVE CSymmetry, dim, MyGen
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
@@ -1869,6 +1966,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IP = GaussPoints(Element)
     END IF
 
+    ! Model depth is constant over the element, so read it once here. It used to
+    ! be read at every integration point, and each call does two keyword lookups
+    ! plus CurrentCoordinateSystem().
+    ModelDepth = 1.0_dp
+    IF( dim == 2 ) ModelDepth = GetCircuitModelDepth()
+
     DO t=1,IP % n
  
       circ_eq_coeff = 1._dp
@@ -1881,7 +1984,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
         END IF
-        circ_eq_coeff = GetCircuitModelDepth()
+        circ_eq_coeff = ModelDepth
       CASE(3)
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
             detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver)
@@ -1902,7 +2005,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor
+        localR = REAL( Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff &
+            / Comp % VoltageFactor, KIND=dp )
 
         Comp % Resistance = Comp % Resistance + localR
         
@@ -1972,7 +2076,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry
+    INTEGER :: MyGen = -1
     LOGICAL :: LondonEquations, SkinBc=.False., ElectroDynamics
     TYPE(ValueList_t), POINTER :: Material
 
@@ -1983,10 +2088,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Variable_t), POINTER, SAVE :: Wpot
 
     
-    SAVE CSymmetry, dim, First
+    SAVE CSymmetry, dim, MyGen
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
@@ -2047,6 +2152,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IP = GaussPoints(Element)
     END IF
 
+    ! Model depth is constant over the element, so read it once here. It used to
+    ! be read at every integration point, and each call does two keyword lookups
+    ! plus CurrentCoordinateSystem().
+    ModelDepth = 1.0_dp
+    IF( dim == 2 ) ModelDepth = GetCircuitModelDepth()
+
     DO t=1,IP % n
       grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
@@ -2060,7 +2171,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           detJ = detJ * x
           grads_coeff = grads_coeff/x
         END IF
-        ModelDepth = GetCircuitModelDepth()
         circ_eq_coeff = ModelDepth
         grads_coeff = grads_coeff/ModelDepth
       CASE(3)
@@ -2221,11 +2331,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim
+    REAL(KIND=dp) :: ModelDepth
     LOGICAL :: stat, PiolaVersion
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+    INTEGER :: MyGen = -1
+    LOGICAL :: CSymmetry, InitHandle=.TRUE., &
                CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
     LOGICAL :: InitJHandle=.TRUE., FoilUseJvec=.FALSE.
     REAL(KIND=dp) :: localR
@@ -2236,15 +2348,19 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
-    REAL(KIND=dp) :: Jvec(3)
+    ! Jvec is sigma * grad v0 and sigma may be complex ("Electric Conductivity
+    ! im", homogenization models). It used to be REAL, which silently threw the
+    ! imaginary part away in the V-V stiffness block and in the A-V coupling
+    ! block below, while the V-A block kept the full complex C.
+    COMPLEX(KIND=dp) :: Jvec(3)
     INTEGER :: i,ncdofs,q,EdgeBasisDegree
     TYPE(Variable_t), POINTER, SAVE :: Wpot
 
     
-    SAVE CSymmetry, dim, First, InitHandle, InitJHandle
+    SAVE CSymmetry, dim, MyGen, InitHandle, InitJHandle
 
-    IF( First ) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
@@ -2314,8 +2430,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           IF ( .NOT. Found) FoilJVecVarname = 'J Vector E'
           CALL ListInitElementVariable(Jvec_h, FoilJVecVarname)
           IF ( .NOT. ASSOCIATED(Jvec_h % Variable)) THEN
-            CALL Fatal('Add_foil_winding','You are trying to use Foil J Vector for describing the &
-                                    component source field but I cannot the variable')
+            CALL Fatal('Add_foil_winding','You are trying to use Foil J Vector for '//&
+                'describing the component source field but I cannot find the variable')
           END IF
           InitJHandle = .FALSE.
         END IF
@@ -2337,6 +2453,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IP = GaussPoints(Element)
     END IF
 
+    ! Model depth is constant over the element, so read it once here. It used to
+    ! be read at every integration point, and each call does two keyword lookups
+    ! plus CurrentCoordinateSystem().
+    ModelDepth = 1.0_dp
+    IF( dim == 2 ) ModelDepth = GetCircuitModelDepth()
+
     DO t=1,IP % n
       grads_coeff = -1._dp
       circ_eq_coeff = 1._dp
@@ -2350,13 +2472,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           detJ = detJ * x
           grads_coeff = grads_coeff/x
         END IF
-        circ_eq_coeff = GetCircuitModelDepth()
+        circ_eq_coeff = ModelDepth
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff / Comp % VoltageFactor
+        localR = REAL( Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff &
+            / Comp % VoltageFactor, KIND=dp )
       CASE(3)
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
             detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = ASolver )
@@ -2379,12 +2502,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+        localR = REAL( Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor, KIND=dp )
 
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
         IF (FoilUseJvec) THEN
-          Jvec = ListGetElementVectorSolution( Jvec_h, Basis, Element, dofs = dim )
+          ! A given J vector is a real field, so it has no imaginary part.
+          Jvec = CMPLX( ListGetElementVectorSolution( Jvec_h, Basis, Element, dofs = dim ), &
+              0.0_dp, KIND=dp )
         ELSE
           Jvec = MATMUL(C,gradv)
         END IF
@@ -2451,71 +2576,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
    END SUBROUTINE Add_foil_winding
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-  SUBROUTINE GetConductivity(Element, Tcoef, nn)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(Element_t), TARGET :: Element
-    TYPE(Valuelist_t), POINTER :: Material
-    COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
-    REAL(KIND=dp), POINTER, SAVE :: Cwrk(:,:,:), Cwrk_im(:,:,:) 
-    INTEGER :: nn, i, j
-    LOGICAL, SAVE :: visited = .FALSE., Found
-
-    IF (.NOT. visited) THEN
-      NULLIFY( Cwrk, Cwrk_im )
-    END IF
-
-    Tcoef = cmplx(0.0d0,0.0d0,KIND=dp)
-    Material => GetMaterial( Element )
-    IF (.NOT. ASSOCIATED(Material)) CALL Fatal('Circuits_apply','Material not found.')
-
-    CALL ListGetRealArray( Material, &
-           'Electric Conductivity', Cwrk, nn, Element % NodeIndexes, Found )
-
-    IF (.NOT. Found) CALL Fatal('Circuits_apply', 'Electric Conductivity not found.')
-    
-    IF (Found) THEN
-       IF ( SIZE(Cwrk,1) == 1 ) THEN
-          DO i=1,3
-             Tcoef( i,i,1:nn ) = Cwrk( 1,1,1:nn )
-          END DO
-       ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk,1))
-             Tcoef(i,i,1:nn) = Cwrk(i,1,1:nn)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk,1))
-             DO j=1,MIN(3,SIZE(Cwrk,2))
-                Tcoef( i,j,1:nn ) = Cwrk(i,j,1:nn)
-             END DO
-          END DO
-       END IF
-    END IF
-
-    CALL ListGetRealArray( Material, &
-           'Electric Conductivity im', Cwrk_im, nn, Element % NodeIndexes, Found )
-
-    IF (Found) THEN
-       IF ( SIZE(Cwrk_im,1) == 1 ) THEN
-          DO i=1,3
-             Tcoef( i,i,1:nn ) = CMPLX( REAL(Tcoef( i,i,1:nn )), Cwrk_im( 1,1,1:nn ), KIND=dp)
-          END DO
-       ELSE IF ( SIZE(Cwrk_im,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk_im,1))
-             Tcoef(i,i,1:nn) = CMPLX( REAL(Tcoef( i,i,1:nn )), Cwrk_im( i,1,1:nn ), KIND=dp)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk_im,1))
-             DO j=1,MIN(3,SIZE(Cwrk_im,2))
-                Tcoef( i,j,1:nn ) = CMPLX( REAL(Tcoef( i,j,1:nn )), Cwrk_im( i,j,1:nn ), KIND=dp)
-             END DO
-          END DO
-       END IF
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE GetConductivity
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddMatrixEntry( A, row, col, val, tval )
@@ -2594,11 +2654,12 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
 ! EEC variables
 !------------------------------------------------------------------------------
-  LOGICAL, SAVE :: EEC, First =.TRUE.
+  LOGICAL, SAVE :: EEC
+  INTEGER, SAVE :: MyGen = -1
   LOGICAL :: EEC_lim
   REAL(KIND=dp), SAVE :: EEC_freq, EEC_time_0
   INTEGER, SAVE :: EEC_max, EEC_cnt = 0
-  REAL :: TTime
+  REAL(KIND=dp) :: TTime      ! GetTime() is double; single lost resolution as t grew
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Variable_t), POINTER :: AzVar
   REAL (KIND=dp), POINTER :: Az(:)
@@ -2624,7 +2685,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    nm =  Asolver % Matrix % NumberOfRows
 
 
-  IF (First) THEN
+  IF (MyGen /= CircuitsGeneration) THEN
     SolverParams => GetSolverParams(Solver)
     ! Reading parameter for supply frequency
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
@@ -2641,6 +2702,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
       EEC_time_0 = 0.0
       
       ! Reserve memory for storing current MVP solution
+      IF(ALLOCATED(Az0)) DEALLOCATE(Az0)
       ALLOCATE(Az0(nm))
       
       ! Store MVP solution at t=0
@@ -2655,7 +2717,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     CktPrefix = ListGetString(SolverParams,'Scalars Prefix',Found )
     IF(.NOT. Found) CktPrefix = 'res:'
 
-    First = .FALSE.
+    MyGen = CircuitsGeneration
   END IF
 
 
@@ -2689,10 +2751,12 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    ! Circuit variable values from previous timestep:
    ! -----------------------------------------------
-  Parallel = ( ParEnv % PEs > 1 )
-  IF( Parallel ) THEN
-    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found )
-  END IF
+  ! This is the "is the linear system parallel" question, and the library has
+  ! already answered it in Solver % Parallel. It used to be recomputed here from
+  ! ParEnv % PEs, SingleMesh and "Enforce Parallel" - the same rule, except that
+  ! it only looked for "Enforce Parallel" in the Simulation section and missed the
+  ! solver section, so the two could disagree.
+  Parallel = Solver % Parallel
     
   ALLOCATE(crt(circuit_tot_n), crtt(circuit_tot_n))
    crt = 0._dp
@@ -2712,7 +2776,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
        CALL MPI_ALLREDUCE(crtt,crt,circuit_tot_n, MPI_DOUBLE_PRECISION, &
                   MPI_SUM, ASolver % Matrix % Comm, j)
      ELSE
-       crt(1:circuit_tot_n) = LagrangeVar % Values
+       crt(1:circuit_tot_n) = LagrangeVar % Values(1:circuit_tot_n)
      END IF
    END IF
 
@@ -2727,8 +2791,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    CALL Info(Caller, 'Writing Circuit Results', Level=5) 
    DO p=1,n_Circuits
-     CALL Info(Caller, 'Writing Circuit Variables for &
-       Circuit '//i2s(p), Level=8) 
+     CALL Info(Caller, 'Writing Circuit Variables for Circuit '//i2s(p), Level=8)
      CALL Info(Caller, 'There are '//i2s(Circuits(p)%n)//&
        ' Circuit Variables', Level=8)
      DO i=1,Circuits(p) % n
@@ -2741,13 +2804,21 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
            TRIM(Circuits(p) % names(i))//' im', crt(Cvar % ImValueId), Level=10)
 
          IF (Cvar % pdofs /= 0 ) THEN
+           ! The harmonic assembly places polynomial term m (m=0,...,pdofs-1) of a
+           ! foil winding voltage at Cvar % ValueId + AddIndex(m+1) and its
+           ! imaginary part one row further, see Add_foil_winding() and
+           ! CountAndCreateFoilWinding(). Hence AddIndex/AddImIndex here.
+           ! ReIndex/ImIndex used to be used instead, which are 2*jj-1 and 2*jj
+           ! and so reported every dof one slot too low: "re dof 1" was the
+           ! imaginary part of the voltage itself, "im dof 1" the real part of
+           ! dof 1, and so on.
            DO jj = 1, Cvar % pdofs
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&
-               //'re dof '//I2S(jj), crt(Cvar % ValueId + ReIndex(jj)), Level=10)
+               //' re dof '//I2S(jj), crt(Cvar % ValueId + AddIndex(jj)), Level=10)
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&
-               //'im dof '//I2S(jj), crt(Cvar % ValueId + ImIndex(jj)), Level=10)
+               //' im dof '//I2S(jj), crt(Cvar % ValueId + AddImIndex(jj)), Level=10)
            END DO
          END IF
        ELSE
@@ -2758,18 +2829,17 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
            DO jj = 1, Cvar % pdofs
              CALL SimListAddAndOutputConstReal(&
                TRIM(Circuits(p) % names(i))&
-               //'dof '//I2S(jj), crt(Cvar % ValueId + jj), Level=10)
+               //' dof '//I2S(jj), crt(Cvar % ValueId + jj), Level=10)
            END DO
          END IF
        END IF
 
      END DO
 
-     CALL Info(Caller, 'Writing Component Variables for &
-       Circuit '//i2s(p), Level=8) 
+     CALL Info(Caller, 'Writing Component Variables for Circuit '//i2s(p), Level=8)
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
-         IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
+         IF (ABS(Comp % Resistance) < TINY(0._dp) .AND. ABS(Comp % Conductance) > TINY(0._dp)) &
              Comp % Resistance = 1._dp / Comp % Conductance
 
          CALL SimListAddAndOutputConstReal('r_component('//&
@@ -2787,8 +2857,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          CALL SimListAddAndOutputConstReal('p_dc_component('//i2s(Comp % ComponentId)//')',&
            p_dc_component, Level=8) 
 
-         CompRealPower = GetConstReal( Model % Simulation, TRIM(CktPrefix)//' Power re & 
-                 in Component '//i2s(Comp % ComponentId), Found)
+         CompRealPower = GetConstReal( Model % Simulation, &
+             TRIM(CktPrefix)//' Power re in Component '//i2s(Comp % ComponentId), Found)
          IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
            CALL SimListAddAndOutputConstReal('p_ac_component('//&
              i2s(Comp % ComponentId)//')', CompRealPower, Level=8)
@@ -2817,10 +2887,14 @@ CONTAINS
   CHARACTER(LEN=*) :: VariableName
   REAL(KIND=dp) :: VariableValue
   INTEGER, OPTIONAL :: Level 
-  INTEGER :: LevelVal = 3
+  ! Not initialized in the declaration: that would give it an implicit SAVE and
+  ! a call without Level would reuse whatever the previous call passed.
+  INTEGER :: LevelVal
 
+  LevelVal = 3
   IF (PRESENT(Level)) LevelVal = Level
-  WRITE(Message,'(A,T20,ES15.4)') TRIM(VariableName),VariableValue
+  ! Wide enough for the longest name written here, "<name> im dof <n>".
+  WRITE(Message,'(A,T34,ES15.4)') TRIM(VariableName),VariableValue
   CALL Info(Caller,Message,Level=LevelVal)
   
   CALL ListAddConstReal(GetSimulation(),TRIM(CktPrefix)//' '//TRIM(VariableName), VariableValue)

@@ -45,7 +45,208 @@ MODULE CircuitUtils
     USE DefUtils
     IMPLICIT NONE
 
+    ! Recorded when the circuit structures are built, compared on every later
+    ! entry. See CircuitsCheckStale() for what these are good for.
+    INTEGER, PRIVATE, SAVE :: BuiltNm = -1
+    INTEGER, PRIVATE, SAVE :: BuiltTotN = -1
+    TYPE(Mesh_t), POINTER, PRIVATE, SAVE :: BuiltMesh => NULL()
+
+    !> Bumped by FreeCircuits(). Every routine in the package that caches
+    !> something behind a "first time through" test compares its own saved copy
+    !> against this instead of using a logical flag, so that one increment
+    !> invalidates all of those caches at once without anything having to
+    !> enumerate them. Values cached this way include dim, CSymmetry, the W
+    !> potential variable and the element variable handles - all of which point
+    !> at, or are derived from, structures that a rebuild replaces.
+    INTEGER, SAVE :: CircuitsGeneration = 1
+
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> Release everything the circuit package allocated and invalidate its caches.
+!>
+!> Ownership matters here, since much of what a component points at is borrowed:
+!>   owned    - Model % Circuits(:) and, per circuit, ComponentIds, Perm, names,
+!>              source, A, B, Mre, Mim, CircuitVariables(:), Components(:); per
+!>              circuit variable, A, B, Mre, Mim, SourceRe, SourceIm; per
+!>              component, the deferred length CoilType and ComponentType; and
+!>              Model % CircuitMatrix, n_Circuits and Circuit_tot_n.
+!>   borrowed - Comp % BodyIds and Comp % ElBoundaries, which come straight from
+!>              ListGetIntegerArray and belong to the value lists; Comp % ivar
+!>              and vvar, which point into CircuitVariables; Cvar % Component,
+!>              which points into Components; and every Solver pointer.
+!> The borrowed ones are only nullified. Circuit % Area is in the type but is
+!> never allocated, hence the guard.
+!------------------------------------------------------------------------------
+  SUBROUTINE FreeCircuits()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(CircuitVariable_t), POINTER :: Cvar
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER :: p, i
+
+    CALL Info('FreeCircuits','Releasing circuit structures',Level=7)
+
+    ! The A solver matrix aliases the circuit matrix, so break that before the
+    ! matrix goes away or it is left dangling.
+    ASolver => CurrentModel % ASolver
+    IF( ASSOCIATED(ASolver) ) THEN
+      IF( ASSOCIATED(ASolver % Matrix) ) ASolver % Matrix % AddMatrix => NULL()
+    END IF
+
+    IF( ASSOCIATED(CurrentModel % Circuits) .AND. ASSOCIATED(CurrentModel % n_Circuits) ) THEN
+      DO p=1,CurrentModel % n_Circuits
+        Circuit => CurrentModel % Circuits(p)
+
+        IF( ASSOCIATED(Circuit % CircuitVariables) ) THEN
+          DO i=1,SIZE(Circuit % CircuitVariables)
+            Cvar => Circuit % CircuitVariables(i)
+            IF( ALLOCATED(Cvar % A) ) DEALLOCATE(Cvar % A)
+            IF( ALLOCATED(Cvar % B) ) DEALLOCATE(Cvar % B)
+            IF( ALLOCATED(Cvar % Mre) ) DEALLOCATE(Cvar % Mre)
+            IF( ALLOCATED(Cvar % Mim) ) DEALLOCATE(Cvar % Mim)
+            IF( ALLOCATED(Cvar % SourceRe) ) DEALLOCATE(Cvar % SourceRe)
+            IF( ALLOCATED(Cvar % SourceIm) ) DEALLOCATE(Cvar % SourceIm)
+            IF( ALLOCATED(Cvar % EqVarIds) ) DEALLOCATE(Cvar % EqVarIds)
+            Cvar % Component => NULL()          ! borrowed
+          END DO
+        END IF
+
+        IF( ASSOCIATED(Circuit % Components) ) THEN
+          DO i=1,SIZE(Circuit % Components)
+            Comp => Circuit % Components(i)
+            IF( ALLOCATED(Comp % CoilType) ) DEALLOCATE(Comp % CoilType)
+            IF( ALLOCATED(Comp % ComponentType) ) DEALLOCATE(Comp % ComponentType)
+            Comp % BodyIds => NULL()            ! borrowed from a value list
+            Comp % ElBoundaries => NULL()       ! borrowed from a value list
+            Comp % ivar => NULL()               ! points into CircuitVariables
+            Comp % vvar => NULL()               ! points into CircuitVariables
+            IF( ALLOCATED(Comp % ElemIdx) ) DEALLOCATE(Comp % ElemIdx)
+            IF( ALLOCATED(Comp % BCElemIdx) ) DEALLOCATE(Comp % BCElemIdx)
+          END DO
+          DEALLOCATE(Circuit % Components)
+          Circuit % Components => NULL()
+        END IF
+
+        IF( ASSOCIATED(Circuit % CircuitVariables) ) THEN
+          DEALLOCATE(Circuit % CircuitVariables)
+          Circuit % CircuitVariables => NULL()
+        END IF
+
+        IF( ALLOCATED(Circuit % ComponentIds) ) DEALLOCATE(Circuit % ComponentIds)
+        IF( ALLOCATED(Circuit % Perm) ) DEALLOCATE(Circuit % Perm)
+        IF( ALLOCATED(Circuit % names) ) DEALLOCATE(Circuit % names)
+        IF( ALLOCATED(Circuit % source) ) DEALLOCATE(Circuit % source)
+        IF( ALLOCATED(Circuit % A) ) DEALLOCATE(Circuit % A)
+        IF( ALLOCATED(Circuit % B) ) DEALLOCATE(Circuit % B)
+        IF( ALLOCATED(Circuit % Mre) ) DEALLOCATE(Circuit % Mre)
+        IF( ALLOCATED(Circuit % Mim) ) DEALLOCATE(Circuit % Mim)
+        IF( ALLOCATED(Circuit % Area) ) DEALLOCATE(Circuit % Area)
+
+        Circuit % ASolver => NULL()             ! borrowed
+        Circuit % n = 0
+        Circuit % n_comp = 0
+        Circuit % UsePerm = .FALSE.
+      END DO
+
+      DEALLOCATE(CurrentModel % Circuits)
+    END IF
+    CurrentModel % Circuits => NULL()
+
+    IF( ASSOCIATED(CurrentModel % CircuitMatrix) ) THEN
+      CALL FreeMatrix(CurrentModel % CircuitMatrix)
+      CurrentModel % CircuitMatrix => NULL()
+    END IF
+
+    IF( ASSOCIATED(CurrentModel % n_Circuits) ) DEALLOCATE(CurrentModel % n_Circuits)
+    IF( ASSOCIATED(CurrentModel % Circuit_tot_n) ) DEALLOCATE(CurrentModel % Circuit_tot_n)
+    CurrentModel % n_Circuits => NULL()
+    CurrentModel % Circuit_tot_n => NULL()
+    CurrentModel % ASolver => NULL()            ! borrowed
+
+    ! Invalidate every cached value in the package, and forget what was built.
+    CircuitsGeneration = CircuitsGeneration + 1
+    BuiltNm = -1
+    BuiltTotN = -1
+    BuiltMesh => NULL()
+!------------------------------------------------------------------------------
+  END SUBROUTINE FreeCircuits
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Remember what the circuit structures were built against.
+!------------------------------------------------------------------------------
+  SUBROUTINE CircuitsRecordBuild()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t), POINTER :: ASolver
+
+    ASolver => CurrentModel % ASolver
+    IF(.NOT. ASSOCIATED(ASolver)) RETURN
+
+    BuiltNm = ASolver % Matrix % NumberOfRows
+    BuiltTotN = CurrentModel % Circuit_tot_n
+    BuiltMesh => ASolver % Mesh
+
+    CALL Info('CircuitsRecordBuild','Circuit structures built for '//I2S(BuiltNm)//&
+        ' matrix rows and '//I2S(BuiltTotN)//' circuit dofs',Level=8)
+!------------------------------------------------------------------------------
+  END SUBROUTINE CircuitsRecordBuild
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Refuse to assemble into circuit structures that no longer fit the problem.
+!>
+!> Every circuit row is addressed as an offset from the number of rows of the A
+!> solver matrix, and CircuitMatrix is sized nm + Circuit_tot_n once, in
+!> Circuits_MatrixInit(). The whole package is then built exactly once, behind
+!> saved flags, and never rebuilt - so if the A solver matrix or the mesh is
+!> replaced underneath it (adaptivity, remeshing, a restart, a second mesh) the
+!> row indices silently address the wrong rows.
+!>
+!> When that is detected the package is torn down through FreeCircuits(), which
+!> also bumps CircuitsGeneration and so invalidates every cached value in it. The
+!> caller then falls into its own build path again on this same entry.
+!------------------------------------------------------------------------------
+  SUBROUTINE CircuitsCheckStale()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER :: nm
+    LOGICAL :: Stale
+    CHARACTER(*), PARAMETER :: Caller = 'CircuitsCheckStale'
+
+    IF( BuiltNm < 0 ) RETURN   ! nothing built yet
+
+    ASolver => CurrentModel % ASolver
+    IF(.NOT. ASSOCIATED(ASolver)) RETURN
+
+    Stale = .FALSE.
+
+    nm = ASolver % Matrix % NumberOfRows
+    IF( nm /= BuiltNm ) THEN
+      CALL Info(Caller,'The circuit equations were built for '//I2S(BuiltNm)//&
+          ' matrix rows but the solver now has '//I2S(nm),Level=5)
+      Stale = .TRUE.
+    END IF
+
+    IF( ASSOCIATED(BuiltMesh) .AND. ASSOCIATED(ASolver % Mesh) ) THEN
+      IF( .NOT. ASSOCIATED(BuiltMesh, ASolver % Mesh) ) THEN
+        CALL Info(Caller,'The A solver mesh is not the one the circuits were built on',Level=5)
+        Stale = .TRUE.
+      END IF
+    END IF
+
+    IF( .NOT. Stale ) RETURN
+
+    CALL Info(Caller,'Circuit structures no longer fit the problem, rebuilding them',Level=4)
+    CALL FreeCircuits()
+!------------------------------------------------------------------------------
+  END SUBROUTINE CircuitsCheckStale
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION GetCircuitModelDepth() RESULT (Depth)
@@ -76,6 +277,36 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION GetCircuitModelDepth
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Is the mesh really split over the partitions?
+!>
+!> Not the same question as Solver % Parallel, which says whether the linear
+!> system is solved in parallel. With "Number of Slices" or parallel timestepping
+!> every partition holds the whole mesh, and "Enforce Parallel" then makes the
+!> linear system parallel while every element still exists on every partition.
+!> Anything integrated over elements - an electrode area, a coil resistance, an
+!> element count - is a partial sum only when this is true, and reducing it when
+!> it is false multiplies the result by the number of partitions.
+!------------------------------------------------------------------------------
+  FUNCTION CircuitsPartitionedMesh() RESULT (Partitioned)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    LOGICAL :: Partitioned
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    Partitioned = ( ParEnv % PEs > 1 )
+    IF( .NOT. Partitioned ) RETURN
+
+    Mesh => CurrentModel % Mesh
+    IF( ASSOCIATED(CurrentModel % Solver) ) THEN
+      IF( ASSOCIATED(CurrentModel % Solver % Mesh) ) Mesh => CurrentModel % Solver % Mesh
+    END IF
+    IF( ASSOCIATED(Mesh) ) Partitioned = .NOT. Mesh % SingleMesh
+!------------------------------------------------------------------------------
+  END FUNCTION CircuitsPartitionedMesh
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   FUNCTION GetComponentVoltageFactor(CompInd) RESULT (VoltageFactor)
@@ -166,7 +397,12 @@ CONTAINS
           Found = .TRUE.
           CurrRe = LagrangeVar % Values(iVar % ValueId)
         END IF
-        IF(iVar % ImValueId > 0 ) THEN
+        ! Guarded on the circuit being harmonic, not just on the index looking
+        ! plausible: ImValueId is only ever assigned for a harmonic circuit, so
+        ! for a transient one this used to branch on uninitialized memory, and
+        ! when that happened to be a valid index it read the real current as the
+        ! imaginary part. A transient current is real by construction.
+        IF( Circuit % Harmonic .AND. iVar % ImValueId > 0 ) THEN
           CurrIm = LagrangeVar % Values(iVar % ImValueId)
         END IF        
         IF(Found) EXIT
@@ -198,8 +434,10 @@ CONTAINS
     REAL(KIND=dp) :: CurrIm, CurrRe
     TYPE(Circuit_t), POINTER :: Circuit
     CHARACTER(LEN=MAX_NAME_LEN) :: str 
+    LOGICAL :: GotComp
        
     Found = .FALSE.
+    GotComp = .FALSE.
     Area = 0.0_dp
 
     IF(CurrentModel % n_Circuits == 0) RETURN
@@ -208,16 +446,28 @@ CONTAINS
       Circuit => CurrentModel % Circuits(i)      
       DO j = 1, SIZE(Circuit % Components)
         ivar => Circuit % Components(j) % ivar
+        IF(.NOT. ASSOCIATED(ivar)) CYCLE
         IF(iVar % BodyId /= CompId ) CYCLE
 
+        GotComp = .TRUE.
         Area = Circuit % Components(j) % ElArea
-        Found = .TRUE.
+
+        ! ElArea is only computed for the coil types that need it, so a zero here
+        ! means "this component has no electrode area", not "the area is zero".
+        ! Report that through Found rather than returning a number the caller
+        ! cannot use - it is only ever wanted for optional postprocessing, so it
+        ! is not worth aborting the run over.
+        Found = ( Area > 0.0_dp )
+        IF( .NOT. Found ) THEN
+          CALL Warn('GetComponentArea','No electrode area for component '&
+              //I2S(CompId)//' of coil type: '//TRIM(Circuit % Components(j) % CoilType))
+        END IF
         EXIT
       END DO
-      IF(Found) EXIT
+      IF(GotComp) EXIT
     END DO
 
-    IF(.NOT. Found) THEN
+    IF(.NOT. GotComp) THEN
       CALL Fatal('GetComponentArea','Got circuits but no area for component: '//I2S(CompId))
     END IF
       
@@ -285,7 +535,7 @@ CONTAINS
     
     LOGICAL :: Found
     INTEGER :: i, j, k
-    LOGICAL, SAVE :: Visited=.FALSE.
+    INTEGER, SAVE :: MyGen = -1
     ! Components and Bodies:
     ! ----------------------  
     INTEGER :: BodyId, BoundaryId
@@ -293,9 +543,9 @@ CONTAINS
     INTEGER, POINTER :: BCAssociations(:) => Null()
     TYPE(Valuelist_t), POINTER :: BodyParams, BCParams, ComponentParams
      
-    IF (Visited) RETURN
+    IF (MyGen == CircuitsGeneration) RETURN
 
-    Visited = .TRUE.
+    MyGen = CircuitsGeneration
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
 
@@ -317,10 +567,17 @@ CONTAINS
           BodyParams => CurrentModel % Bodies(BodyId) % Values
           IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                         'Body parameters not found!')
+          ! Idempotent on purpose. This writes into the body's value list, which
+          ! outlives the circuit package, so on a rebuild the keyword is already
+          ! there from the previous build. Only a body claimed by a *different*
+          ! component is the error this check is for.
           k = GetInteger(BodyParams, 'Component', Found)
-          IF (Found) CALL Fatal ('AddComponentsToBodyList', &
-                                'Body '//TRIM(i2s(BodyId))//' associated to two components!')
-          CALL listAddInteger(BodyParams, 'Component', i)
+          IF (Found) THEN
+            IF( k /= i ) CALL Fatal ('AddComponentsToBodyList', &
+                'Body '//TRIM(i2s(BodyId))//' associated to two components!')
+          ELSE
+            CALL listAddInteger(BodyParams, 'Component', i)
+          END IF
           BodyParams => Null()
         END DO
       END IF
@@ -331,12 +588,15 @@ CONTAINS
           IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
                          'Boundary Condition parameters not found!')
 
+          ! Idempotent for the same reason as the body branch above.
           k = GetInteger(BCParams, 'Component', Found)
 
-          IF (Found) CALL Fatal ('AddComponentsToBodyList', &
-            'Boundary Condition '//TRIM(i2s(BoundaryId))//' associated to two components!')
-
-          CALL ListAddInteger(BCParams, 'Component', i)
+          IF (Found) THEN
+            IF( k /= i ) CALL Fatal ('AddComponentsToBodyList', &
+                'Boundary Condition '//TRIM(i2s(BoundaryId))//' associated to two components!')
+          ELSE
+            CALL ListAddInteger(BCParams, 'Component', i)
+          END IF
           BCParams => Null()
         END DO
       END IF
@@ -380,14 +640,14 @@ CONTAINS
     
     LOGICAL :: Found
     INTEGER :: i, j, k
-    LOGICAL, SAVE :: Visited=.FALSE.
+    INTEGER, SAVE :: MyGen = -1
     TYPE(Valuelist_t), POINTER :: ComponentParams
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, VarName
    
-    IF(Visited) RETURN
+    IF (MyGen == CircuitsGeneration) RETURN
     IF(CurrentModel % NumberOfComponents == 0) RETURN
     
-    Visited = .TRUE.
+    MyGen = CircuitsGeneration
 
     j = 0
     DO i = 1, CurrentModel % NumberOfComponents      
@@ -405,15 +665,19 @@ CONTAINS
         CYCLE
       END SELECT
 
+      ! The keyword is written by AddComponentValuesToLists(), which only walks
+      ! the components that a circuit actually refers to. Its absence therefore
+      ! means this component has a coil type but is not wired into any circuit.
       IF(.NOT. ListCheckPresent(ComponentParams, VarName) ) THEN
-        CALL Warn('CheckComponentOwners','Coil type given for component '//I2S(i)//' but no: '//TRIM(VarName))
+        CALL Warn('CheckComponentVariables','Component '//I2S(i)//' has a coil type but is '//&
+            'not used by any circuit, so it has no: '//TRIM(VarName))
         j = j + 1
       END IF
     END DO
 
     IF(j > 0) THEN
-      CALL Warn('CheckComponentOwners','Could not find variables for '//I2S(j)//' coils!')
-      CALL Fatal('CheckComponentOwners','Check your circuit settings!')
+      CALL Warn('CheckComponentVariables','Could not find variables for '//I2S(j)//' coils!')
+      CALL Fatal('CheckComponentVariables','Check your circuit settings!')
     END IF
 
   END SUBROUTINE CheckComponentVariables
@@ -502,6 +766,7 @@ END MODULE CircuitUtils
 MODULE CircuitsMod
 
   USE DefUtils
+  USE CircuitUtils
   IMPLICIT NONE
 
 CONTAINS 
@@ -523,7 +788,12 @@ CONTAINS
       IF( SIZE( CurrentModel % Circuits ) == n_Circuits ) THEN
         CALL Info('AllocateCircuitList','Circuit list already allocated!')
       ELSE
-        CALL Warn('AllocateCircuitList','Circuit of wrong size already allocated, deallocating this!')
+        ! This used to warn that it was deallocating the list and then keep it,
+        ! leaving every later index out of range. There is no safe way to drop it
+        ! either, since the circuits are referenced from Model % Circuits and from
+        ! each Circuit % Asolver, so refuse instead.
+        CALL Fatal('AllocateCircuitList','Circuit list already allocated with '//&
+            I2S(SIZE(CurrentModel % Circuits))//' circuits, cannot resize to '//I2S(n_Circuits))
       END IF
     END IF
 
@@ -609,8 +879,12 @@ FUNCTION isComponentName(name, len) RESULT(L)
    L = .FALSE.
    IF(len<12) RETURN
    IF(name(1:12)=='i_component(' .OR. &
-      name(1:12)=='v_component(' .OR. &
-      name(1:14)=='phi_component(') L=.TRUE.
+      name(1:12)=='v_component(') THEN
+     L = .TRUE.
+   ELSE IF(len>=14) THEN
+     ! Needs its own guard: 14 characters were read behind a check for 12.
+     L = (name(1:14)=='phi_component(')
+   END IF
 !------------------------------------------------------------------------------
 END FUNCTION isComponentName
 !------------------------------------------------------------------------------
@@ -621,11 +895,17 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: slen, ComponentId,i,j,CId, CompInd, nofc, ibracket
+    LOGICAL :: Found
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: CVar
-    LOGICAL :: LondonEquations = .FALSE.
+    ! Not initialized in the declaration: that would give it an implicit SAVE and
+    ! carry a value over from the previous component, which combined with the
+    ! aliasing below made the outcome depend on the order the variables are read.
+    LOGICAL :: LondonEquations
     CHARACTER(:), ALLOCATABLE :: cmd
     CHARACTER(LEN=MAX_NAME_LEN) :: name
+
+    LondonEquations = .FALSE.
 
     Circuit => CurrentModel % Circuits(CId)
 
@@ -673,8 +953,14 @@ END FUNCTION isComponentName
           CVar % isIvar = .TRUE.
           CVar % Component % ivar => CVar
         CASE('v_component(')
+          ! Was passing LondonEquations as both the assignment target and the
+          ! Found argument, i.e. aliasing an INTENT(OUT) dummy with the variable
+          ! being assigned. It happened to work because the assignment lands
+          ! after the call, but the value it read back was the Found flag rather
+          ! than a default, so use a separate flag.
           LondonEquations = ListGetLogical(CurrentModel % Components (ComponentId) % Values, &
-                                           'London Equations', LondonEquations)
+                                           'London Equations', Found)
+          IF(.NOT. Found) LondonEquations = .FALSE.
           IF (.NOT. LondonEquations) THEN
             CVar % isVvar = .TRUE.
             CVar % Component % vvar => CVar
@@ -769,7 +1055,9 @@ END FUNCTION isComponentName
 
     Mesh => CurrentModel % Mesh
 
-    Parallel = CurrentModel % Solver % Parallel
+    ! Boundary areas are element integrals, so this is the partitioned-mesh
+    ! question and not Solver % Parallel, which it used to ask.
+    Parallel = CircuitsPartitionedMesh()
 
     ! Not all boundary elements are associated to a BC.
     ! Some may also be created by extrusion. 
@@ -848,7 +1136,6 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE ReadComponents(CId)
 !------------------------------------------------------------------------------
-    USE CircuitUtils
     IMPLICIT NONE
     INTEGER :: CId, CompInd
     TYPE(Circuit_t), POINTER :: Circuit
@@ -879,8 +1166,8 @@ END FUNCTION isComponentName
       
       Comp % CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (.NOT. Found) THEN
-        CALL Info('Circuits_Init', 'Component '//i2s(Comp % ComponentId)//' is not a coil. &
-          Checking if it has a component type.', Level=7)
+        CALL Info('Circuits_Init', 'Component '//i2s(Comp % ComponentId)//&
+            ' is not a coil. Checking if it has a component type.', Level=7)
         Comp % ComponentType = GetString(CompParams, 'Component Type', Found)
         IF (.NOT. Found) CALL Fatal ('Circuits_Init', 'Component Type not found!')
       ELSE
@@ -1042,12 +1329,9 @@ END FUNCTION isComponentName
   Mesh => CurrentModel % Mesh
   Comp % ElArea = 0._dp
 
-  Parallel = ( ParEnv % PEs > 1 )
-  IF( Parallel ) THEN
-    ! If we have single mesh then we have either parallel times or parallel slices.
-    ! In both cases let us not do a parallel sum. 
-    IF( Mesh % SingleMesh ) Parallel = .FALSE.
-  END IF
+  ! The area is summed over this partition's elements, so it only needs reducing
+  ! when the mesh really is split. See CircuitsPartitionedMesh().
+  Parallel = CircuitsPartitionedMesh()
     
   IF (CoordinateSystemDimension() == 2) THEN
     DO t=1,GetNOFActive()
@@ -1175,23 +1459,34 @@ END FUNCTION isComponentName
     IMPLICIT NONE
     TYPE(Circuit_t) :: Circuit
     TYPE(CircuitVariable_t) :: Variable
-    INTEGER :: Owner=-1, k
+    INTEGER :: k                        ! index of the circuit, i.e. CId
     INTEGER, POINTER :: circuit_tot_n => Null()
 
     CALL Info('AddVariableToCircuit','Adding variables count to circuit!',Level=20)
-    
+
     Circuit_tot_n => CurrentModel % Circuit_tot_n
-    
+
+    ! Pick the partition owning this circuit variable. The circuit dofs are global
+    ! in the sense that every partition may assemble into them; the owner only
+    ! tells which partition holds the row of the constraint matrix. It ends up in
+    ! CM % RowOwner and as the first entry of the row's neighbour list, both set
+    ! in SetCircuitsParallelInfo().
+    !
+    ! The choice is static on purpose: all variables of the first circuit go to
+    ! partition 0 and those of any further circuit to the last partition. There
+    ! used to be a round-robin scheme here that stepped a saved owner counter
+    ! downwards from ParEnv % PEs/2 (circuit 1) or ParEnv % PEs (other circuits)
+    ! over successive calls, but its result was immediately overwritten by the
+    ! constant assignment that followed it, so it never had any effect. It is
+    ! removed rather than revived: a distribution worth having should follow the
+    ! partitions that actually carry the coil elements of the component - the
+    ! element counts already gathered in SetCircuitsParallelInfo() - and not a
+    ! counter over the order in which the variables happen to be read.
+    ! --------------------------------------------------------------------------
     IF(k==1) THEN
-      IF(Owner<=0) Owner = MAX(Parenv % PEs/2,1)
-      Owner = Owner - 1
-      Variable % Owner = Owner
-      variable % owner = 0
+      Variable % Owner = 0
     ELSE
-      IF(Owner<=ParEnv % PEs/2) Owner = ParEnv % PEs
-      Owner = Owner - 1
-      Variable % Owner = Owner
-      variable % owner = ParEnv % PEs-1
+      Variable % Owner = ParEnv % PEs-1
     END IF
 
     IF (Circuit % Harmonic) THEN
@@ -1242,7 +1537,17 @@ END FUNCTION isComponentName
       CALL listAddInteger(CompParams, 'Circuit Voltage Variable dofs', Comp % vvar % dofs)
       CALL listAddInteger(CompParams, 'Circuit Current Variable Id', Comp % ivar % valueId)
       CALL listAddInteger(CompParams, 'Circuit Current Variable dofs', Comp % ivar % dofs)
-      CALL listAddConstReal(CompParams, 'Stranded Coil N_j', Comp % N_j)
+
+      ! N_j is only computed for the coil types that have a current density
+      ! shape function, i.e. 'stranded' and 'foil winding'. It used to be
+      ! published for every component, which handed MagnetoDynamics2D and
+      ! CalcFields - both of which read it and abort if it is missing - an
+      ! uninitialized value for 'massive' coils and for resistors.
+      SELECT CASE( Comp % CoilType )
+      CASE( 'stranded', 'foil winding' )
+        CALL listAddConstReal(CompParams, 'Stranded Coil N_j', Comp % N_j)
+      END SELECT
+
       CurrentModel % Components (Comp % ComponentId) % Values => CompParams
     END DO
 
@@ -1314,7 +1619,7 @@ END FUNCTION isComponentName
     END DO
     IF(ANY(Circuit % Perm /= 0)) THEN 
       Circuit % UsePerm = .TRUE.
-      CALL Info( 'IHarmonic2D','Found Permutation vector for circuit '//i2s(CId), Level=4 )
+      CALL Info( 'ReadPermutationVector','Found Permutation vector for circuit '//i2s(CId), Level=4 )
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadPermutationVector
@@ -1344,20 +1649,35 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Give every circuit variable its own row of the circuit coefficient matrices.
+!>
+!> Note that this is duplicated state, deliberately left in place. Cvar % A, B,
+!> Mre and Mim are copies of row i of Circuit % A, B, Mre and Mim, so the same
+!> numbers live in two places - 4n^2 doubles of them - and anything that changes
+!> one has to change the other. The assembly (AddBasicCircuitEquations and the
+!> Count/CreateBasicCircuitEquations pair) could index Circuit % A(i,j) directly
+!> and these per-variable vectors could go away entirely; that was measured
+!> against the risk and judged to be churn, since even a 200 variable circuit is
+!> only a couple of megabytes and the copies are written exactly once, here.
+!>
+!> SourceRe and SourceIm are looser still: they are allocated with n entries per
+!> variable, but only entry i of variable i is ever read or written - see the
+!> source handling in AddBasicCircuitEquations - so that is n^2 storage holding n
+!> values. Worth collapsing to a scalar per variable if this is ever revisited.
+!------------------------------------------------------------------------------
   SUBROUTINE WriteCoeffVectorsForCircVariables(CId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: CId,n,slen,i,j,RowId
+    INTEGER :: CId,n,i
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
-    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   
     Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
 
     DO i=1,n
       Cvar => Circuit % CircuitVariables(i)
-      RowId = Cvar % ValueId
 
       ALLOCATE(Cvar % A(Circuit % n), &
                Cvar % B(Circuit % n), &
@@ -1372,14 +1692,12 @@ END FUNCTION isComponentName
       Cvar % SourceRe = 0._dp
       Cvar % SourceIm = 0._dp
 
-      DO j=1,Circuit % n
-        IF (Circuit % A(i,j)/=0) Cvar % A(j) = Circuit % A(i,j)
-        IF (Circuit % B(i,j)/=0) Cvar % B(j) = Circuit % B(i,j)
-        IF (Circuit % Mre(i,j)/=0 .OR. Circuit % Mim(i,j)/=0) THEN
-          Cvar % Mre(j) = Circuit % Mre(i,j) 
-          Cvar % Mim(j) = Circuit % Mim(i,j)
-        END IF
-      END DO
+      ! Plain copies. The tests for a nonzero source value that used to guard
+      ! these were redundant, the targets having been zeroed just above.
+      Cvar % A(1:n) = Circuit % A(i,1:n)
+      Cvar % B(1:n) = Circuit % B(i,1:n)
+      Cvar % Mre(1:n) = Circuit % Mre(i,1:n)
+      Cvar % Mim(1:n) = Circuit % Mim(i,1:n)
     END DO
 
 !------------------------------------------------------------------------------
@@ -1513,20 +1831,40 @@ END FUNCTION isComponentName
     IMPLICIT NONE
     INTEGER :: nn, dim
     TYPE(Element_t) :: Element
-    LOGICAL :: support, First=.TRUE.
+    LOGICAL :: support, Gate=.FALSE.
+    INTEGER :: MyGen = -1
     REAL(KIND=dp) :: wBase(nn)
-    SAVE dim, First
+    TYPE(Variable_t), POINTER, SAVE :: Wpot => NULL()
+    SAVE dim, MyGen, Gate
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       dim = CoordinateSystemDimension()
+
+      ! Resolve the wire direction potential through GetWPotentialVar(), which is
+      ! what the assembly routines use: "W Potential" first and "W" only as a
+      ! fallback. This used to ask for "W" and nothing else, so a case naming its
+      ! potential "W Potential" found no support in any element and had all of its
+      ! massive and foil winding elements dropped - from the matrix structure as
+      ! well as from the assembly, hence without so much as a warning.
+      CALL GetWPotentialVar(Wpot)
+
+      ! With no such field at all there is nothing to test against, so do not
+      ! gate on it. The component may be driven by its own current density
+      ! instead ("Coil Use W Vector", "Foil Winding Use J Vector"), and answering
+      ! .FALSE. here would silently discard every one of its elements.
+      Gate = ( dim == 3 .AND. ASSOCIATED(Wpot) )
+      IF( dim == 3 .AND. .NOT. ASSOCIATED(Wpot) ) THEN
+        CALL Info('HasSupport','No potential field to test element support with, '//&
+            'accepting all elements of coil components',Level=7)
+      END IF
     END IF
-    
-    support = .TRUE. 
-    IF (dim == 3) THEN
-      support = .FALSE.
-      CALL GetLocalSolution(Wbase,'W')
-      IF ( ANY(Wbase .ne. 0d0) ) support = .TRUE.
+
+    support = .TRUE.
+    IF (Gate) THEN
+      Wbase = 0.0_dp
+      CALL GetLocalSolution(Wbase,UElement=Element,UVariable=Wpot)
+      support = ANY( Wbase(1:nn) /= 0.0_dp )
     END IF
 !------------------------------------------------------------------------------
    END FUNCTION HasSupport
@@ -1650,6 +1988,352 @@ END FUNCTION isComponentName
           
   END SUBROUTINE Circuits_ToMeshVariable
 
+
+!------------------------------------------------------------------------------
+!> Work out once which elements belong to which component.
+!>
+!> The assembly and both matrix structure passes used to be shaped as a loop over
+!> components containing a loop over every element, testing ElAssocToComp() on
+!> each - so the mesh was walked once per component, with a GetBC() and a keyword
+!> lookup at every step. That is O(n_components * n_elements) per assembly, per
+!> timestep, per nonlinear iteration.
+!>
+!> ElAssocToComp() is still the only thing that decides membership here, so the
+!> semantics are reproduced rather than restated: this simply asks it once. The
+!> lists come out in ascending element order, and the users walk them backwards to
+!> keep the accumulation order - and hence the floating point result - exactly what
+!> it was.
+!------------------------------------------------------------------------------
+  SUBROUTINE BuildComponentElementLists()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: p, CompInd, q, nA, nB, nActive, nBound
+    INTEGER :: TotA, TotB
+    CHARACTER(*), PARAMETER :: Caller = 'BuildComponentElementLists'
+
+    nActive = GetNOFActive()
+    nBound = GetNOFBoundaryElements()
+    TotA = 0; TotB = 0
+
+    DO p=1,CurrentModel % n_Circuits
+      Circuit => CurrentModel % Circuits(p)
+
+      DO CompInd=1,Circuit % n_comp
+        Comp => Circuit % Components(CompInd)
+
+        IF( ALLOCATED(Comp % ElemIdx) ) DEALLOCATE(Comp % ElemIdx)
+        IF( ALLOCATED(Comp % BCElemIdx) ) DEALLOCATE(Comp % BCElemIdx)
+
+        ! Count, then fill. Two passes rather than a growable list, since the
+        ! whole point is to pay for this once.
+        nA = 0
+        DO q=1,nActive
+          Element => GetActiveElement(q)
+          IF( ElAssocToComp(Element, Comp) ) nA = nA + 1
+        END DO
+        nB = 0
+        DO q=1,nBound
+          Element => GetBoundaryElement(q)
+          IF( ElAssocToComp(Element, Comp) ) nB = nB + 1
+        END DO
+
+        ALLOCATE( Comp % ElemIdx(nA), Comp % BCElemIdx(nB) )
+
+        nA = 0
+        DO q=1,nActive
+          Element => GetActiveElement(q)
+          IF( ElAssocToComp(Element, Comp) ) THEN
+            nA = nA + 1
+            Comp % ElemIdx(nA) = q
+          END IF
+        END DO
+        nB = 0
+        DO q=1,nBound
+          Element => GetBoundaryElement(q)
+          IF( ElAssocToComp(Element, Comp) ) THEN
+            nB = nB + 1
+            Comp % BCElemIdx(nB) = q
+          END IF
+        END DO
+
+        TotA = TotA + nA
+        TotB = TotB + nB
+      END DO
+    END DO
+
+    CALL Info(Caller,'Element lists built for the components: '//I2S(TotA)//&
+        ' bulk and '//I2S(TotB)//' boundary elements out of '//I2S(nActive)//&
+        ' and '//I2S(nBound),Level=8)
+!------------------------------------------------------------------------------
+  END SUBROUTINE BuildComponentElementLists
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Check once that every named circuit source can actually be found.
+!>
+!> The assembly reads the sources with GetCReal() every time it runs and falls
+!> back to zero without complaint when the name resolves nowhere. Since the names
+!> come from MATC definitions ("C.1.source.1 = ...") and the values from a
+!> different section of the sif, a typo in either is easy to make and produces a
+!> circuit that is simply not excited - a plausible looking, entirely wrong,
+!> solution. Look the names up once here instead and say so.
+!------------------------------------------------------------------------------
+  SUBROUTINE CheckCircuitSources()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(ValueList_t), POINTER :: Params, BF
+    INTEGER :: p, i, nMissing
+    LOGICAL :: FoundIt
+    CHARACTER(LEN=MAX_NAME_LEN) :: sname
+    CHARACTER(*), PARAMETER :: Caller = 'CheckCircuitSources'
+
+    ! The same two lists the assembly consults, in the same order. Note that the
+    ! body force is hardwired to the first one there, so a source value given in
+    ! "Body Force 2" is not seen - which this check therefore also reports.
+    Params => CurrentModel % Solver % Values
+    BF => NULL()
+    IF( CurrentModel % NumberOfBodyForces > 0 ) BF => CurrentModel % BodyForces(1) % Values
+
+    nMissing = 0
+
+    DO p=1,CurrentModel % n_Circuits
+      Circuit => CurrentModel % Circuits(p)
+
+      DO i=1,Circuit % n
+        sname = Circuit % Source(i)
+        IF( LEN_TRIM(sname) == 0 ) CYCLE
+
+        IF( Circuit % Harmonic ) THEN
+          ! Either part is enough: giving only the real part is normal.
+          FoundIt = SourcePresent(TRIM(sname)//' re') .OR. SourcePresent(TRIM(sname)//' im')
+        ELSE
+          FoundIt = SourcePresent(TRIM(sname))
+        END IF
+
+        IF( FoundIt ) THEN
+          CALL Info(Caller,'Circuit '//I2S(p)//' source "'//TRIM(sname)//'" found',Level=8)
+        ELSE
+          nMissing = nMissing + 1
+          CALL Warn(Caller,'Circuit '//I2S(p)//' names a source "'//TRIM(sname)//&
+              '" that is in neither the circuit solver section nor "Body Force 1"!')
+        END IF
+      END DO
+    END DO
+
+    IF( nMissing > 0 ) THEN
+      CALL Warn(Caller,I2S(nMissing)//' circuit source(s) will be taken as zero.')
+    END IF
+
+  CONTAINS
+
+    FUNCTION SourcePresent(key) RESULT(yes)
+      CHARACTER(LEN=*) :: key
+      LOGICAL :: yes
+      yes = ListCheckPresent(Params,key)
+      IF( .NOT. yes .AND. ASSOCIATED(BF) ) yes = ListCheckPresent(BF,key)
+    END FUNCTION SourcePresent
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE CheckCircuitSources
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Reject the component definitions that the transient assembly cannot honour.
+!>
+!> A component whose elements come from "Master BCs" is assembled by the harmonic
+!> path only: its AddComponentEquationsAndCouplings() sweeps the boundary
+!> elements as well as the bulk ones, and Add_massive() carries the impedance
+!> boundary terms ("Layer Electric Conductivity") that go with them. The
+!> transient path sweeps bulk elements only and has no counterpart for those
+!> terms, so such a component would contribute nothing at all while the matrix
+!> structure pass - which does sweep the boundary elements - still reserves rows
+!> for it. The result is a silently uncoupled component, so say no instead.
+!------------------------------------------------------------------------------
+  SUBROUTINE CheckTransientComponents()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(ValueList_t), POINTER :: CompParams
+    INTEGER :: p, CompInd
+    CHARACTER(*), PARAMETER :: Caller = 'CheckTransientComponents'
+
+    DO p=1,CurrentModel % n_Circuits
+      Circuit => CurrentModel % Circuits(p)
+      DO CompInd=1,Circuit % n_comp
+        Comp => Circuit % Components(CompInd)
+        CompParams => CurrentModel % Components(Comp % ComponentId) % Values
+        IF(.NOT. ASSOCIATED(CompParams)) CYCLE
+
+        ! Only when the boundaries really are the element association. If bodies
+        ! are given too then AddComponentsToBodyLists() uses those and ignores
+        ! the boundaries, which is a different (and merely confusing) matter.
+        IF( ListCheckPresent(CompParams,'Body') ) CYCLE
+        IF( ListCheckPresent(CompParams,'Master Bodies') ) CYCLE
+        IF( .NOT. ListCheckPresent(CompParams,'Master BCs') ) CYCLE
+
+        CALL Warn(Caller,'Component '//I2S(Comp % ComponentId)//&
+            ' is defined through "Master BCs", which only the harmonic circuit '//&
+            'solver assembles.')
+        CALL Fatal(Caller,'Transient circuits do not support "Master BCs" for '//&
+            'component '//I2S(Comp % ComponentId)//'!')
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CheckTransientComponents
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Report the circuit model as it was actually resolved, once, after the
+!> circuits have been read. Most of the ways a circuit definition goes wrong are
+!> silent - a component whose "Master Bodies" match no body still assembles,
+!> it just contributes nothing - so print what was resolved and warn about the
+!> combinations that cannot be intended.
+!------------------------------------------------------------------------------
+  SUBROUTINE CircuitsSummary()
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(ValueList_t), POINTER :: CompParams
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Variable_t), POINTER :: Wvar
+    INTEGER :: p, CompInd, t, n, nElem, nBC, nSupp, dim
+    LOGICAL :: Parallel, HaveW, CheckSupport
+    CHARACTER(LEN=16) :: cType
+    CHARACTER(LEN=8)  :: cSupp
+    CHARACTER(LEN=12) :: cRes
+    CHARACTER(LEN=11) :: cOwner
+    ! One set of widths for the header and the rows so the columns line up.
+    CHARACTER(*), PARAMETER :: HdrFmt = '(A6,2X,A16,A7,A7,A8,3A14,2X,A12,A11)'
+    CHARACTER(*), PARAMETER :: RowFmt = '(I6,2X,A16,I7,I7,A8,3ES14.4,2X,A12,A11)'
+    CHARACTER(*), PARAMETER :: Caller = 'CircuitsSummary'
+
+    ! This early exit has to be taken by every partition or by none, because
+    ! the element counts below are reduced with a collective. It is: the output
+    ! level mask is set once from the sif in ModelDescription and is identical on
+    ! all partitions - the non-root ones are silenced inside Info() through
+    ! OutputPE, not through the mask. Keep it that way.
+    IF( .NOT. InfoActive(5) ) RETURN
+
+    dim = CoordinateSystemDimension()
+    ! Element counts are partial sums only when the mesh is really split.
+    Parallel = CircuitsPartitionedMesh()
+
+    ! Probe the potential exactly as HasSupport() does, so the column reports what
+    ! the assembly will really do. With no such field HasSupport() does not gate
+    ! at all, so there is no support count to show.
+    CALL GetWPotentialVar(Wvar)
+    HaveW = ASSOCIATED(Wvar)
+
+    CALL Info(Caller,'Resolved circuit model:',Level=5)
+
+    DO p=1,CurrentModel % n_Circuits
+      Circuit => CurrentModel % Circuits(p)
+
+      WRITE(Message,'(A,I0,A,I0,A,I0,A)') 'Circuit ',p,': ',Circuit % n, &
+          ' variables, ',Circuit % n_comp,' components'
+      CALL Info(Caller,Message,Level=5)
+
+      IF( Circuit % n_comp == 0 ) CYCLE
+
+      WRITE(Message,HdrFmt) 'comp','type            ','elems','bcs','Wsupp', &
+          'ElArea','N_j','turns','resistance  ','  owner i/v'
+      CALL Info(Caller,Message,Level=5)
+
+      DO CompInd=1,Circuit % n_comp
+        Comp => Circuit % Components(CompInd)
+
+        cType = Comp % CoilType
+        IF( LEN_TRIM(cType) == 0 ) cType = Comp % ComponentType
+
+        ! Only these two coil types are gated by HasSupport() in the assembly.
+        CheckSupport = ( dim == 3 .AND. &
+            ( Comp % CoilType == 'massive' .OR. Comp % CoilType == 'foil winding' ) )
+
+        ! Straight off the lists built by BuildComponentElementLists(), so the
+        ! numbers reported here are by construction the ones the assembly uses.
+        nElem = SIZE(Comp % ElemIdx)
+        nBC = SIZE(Comp % BCElemIdx)
+        nSupp = 0
+        IF( CheckSupport .AND. HaveW ) THEN
+          DO t=1,nElem
+            Element => GetActiveElement(Comp % ElemIdx(t))
+            n = GetElementNOFNodes(Element)
+            IF( HasSupport(Element,n) ) nSupp = nSupp + 1
+          END DO
+        END IF
+
+        IF( Parallel ) THEN
+          nElem = NINT( ParallelReduction( 1.0_dp*nElem ) )
+          nBC   = NINT( ParallelReduction( 1.0_dp*nBC ) )
+          nSupp = NINT( ParallelReduction( 1.0_dp*nSupp ) )
+        END IF
+
+        ! UseCoilResistance is only decided during assembly, so report the input
+        ! that decides it rather than the flag itself.
+        CompParams => CurrentModel % Components(Comp % ComponentId) % Values
+        IF( ListCheckPresent(CompParams,'Resistance') ) THEN
+          cRes = 'keyword'
+        ELSE IF( Comp % CoilType == 'massive' ) THEN
+          ! A massive coil integrates a conductance, which CircuitsOutput then
+          ! inverts to get something to report as a resistance.
+          cRes = 'conductance'
+        ELSE
+          cRes = 'integrated'
+        END IF
+
+        ! Support is a property of the bulk elements, so with none of those there
+        ! is nothing to report.
+        IF( .NOT. CheckSupport .OR. nElem == 0 ) THEN
+          cSupp = '       -'
+        ELSE IF( .NOT. HaveW ) THEN
+          cSupp = '     n/a'
+        ELSE
+          WRITE(cSupp,'(I8)') nSupp
+        END IF
+
+        WRITE(cOwner,'(I5,A,I0)') Comp % ivar % Owner,'/',Comp % vvar % Owner
+
+        WRITE(Message,RowFmt) Comp % ComponentId, cType, nElem, nBC, cSupp, &
+            Comp % ElArea, Comp % N_j, Comp % nofturns, cRes, cOwner
+        CALL Info(Caller,Message,Level=5)
+
+        ! A component that names bodies or boundaries but matches no element is
+        ! always a mistake: the equations are assembled and couple to nothing.
+        IF( nElem + nBC == 0 ) THEN
+          IF( ASSOCIATED(Comp % BodyIds) .OR. ASSOCIATED(Comp % ElBoundaries) ) THEN
+            CALL Warn(Caller,'Component '//I2S(Comp % ComponentId)//&
+                ' is associated to bodies or boundaries but matches no element!')
+          END IF
+        ELSE IF( CheckSupport .AND. HaveW .AND. nElem > 0 .AND. nSupp == 0 ) THEN
+          ! Only meaningful when there are bulk elements to have support in the
+          ! first place - a component defined through "Master BCs" has none, and
+          ! that is not an error.
+          CALL Warn(Caller,'Component '//I2S(Comp % ComponentId)//' has '//&
+              I2S(nElem)//' bulk elements but none with "W" support, so they will be skipped!')
+        END IF
+
+        IF( Comp % ComponentType /= 'resistor' .AND. nBC > 0 .AND. &
+            .NOT. CurrentModel % HarmonicCircuits ) THEN
+          CALL Warn(Caller,'Component '//I2S(Comp % ComponentId)//&
+              ' has boundary elements, but the transient assembly only visits bulk elements!')
+        END IF
+      END DO
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE CircuitsSummary
+!------------------------------------------------------------------------------
+
    
 END MODULE CircuitsMod
 
@@ -1668,9 +2352,7 @@ CONTAINS
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Solver_t), POINTER :: ASolver
     TYPE(Circuit_t), POINTER :: Circuits(:)
-    TYPE(Element_t), POINTER :: Element
     INTEGER :: i, nm, Circuit_tot_n, p, j, &
-               cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
                RowId, nn, l, k, n_Circuits
     
     CM => CurrentModel % CircuitMatrix
@@ -1689,36 +2371,35 @@ CONTAINS
       END DO
     END IF
 
+    ! Every circuit row is shared by all partitions: the row is owned by
+    ! Cvar % Owner and every other partition is listed as its neighbour. That is
+    ! a safe over-estimate - a partition that never assembles into the row only
+    ! contributes zeros - but it does make the circuit block dense in the
+    ! communication pattern, so the cost grows with the number of partitions.
+    !
+    ! There used to be code here that tried to do better: for each circuit
+    ! variable it swept the active elements with ElAssocToCvar(), counted the
+    ! ones belonging to the variable's component, and did an MPI_ALLREDUCE to
+    ! learn which partitions actually touch it. The result was then discarded by
+    ! an unconditional "r_cnt = 1; nn = ParEnv % PEs ! for now" before it was
+    ! ever read, so the neighbour lists have always been the all-partitions ones
+    ! built below. The dead sweep has been removed - it cost
+    ! n_circuit_variables element loops plus one collective each, per startup,
+    ! for nothing.
+    !
+    ! To restore the intended behaviour, gather the per-variable element counts
+    ! into one array and reduce them in a single collective, then let nn be the
+    ! number of partitions with a non-zero count (forcing in the owner and the
+    ! local partition, as the old code did) and filter the neighbour loops below
+    ! on that count. ElAssocToCvar() is kept for that purpose.
+    ! --------------------------------------------------------------------------
+    nn = ParEnv % PEs
+
     DO p = 1,n_Circuits
       DO i=1,Circuits(p) % n
-        cnt  = 0
         Cvar => Circuits(p) % CircuitVariables(i)
-        IF(ASSOCIATED(CVar%Component)) THEN
-          DO j=1,GetNOFACtive()
-             Element => GetActiveElement(j)
-               IF(ElAssocToCvar(Element, Cvar)) THEN
-                 cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
-               END IF
-          END DO
-        END IF
-        CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
-                MPI_MAX,ASolver % Matrix % Comm,j)
-
 
         RowId = Cvar % ValueId + nm
-
-        nn = COUNT(r_cnt>0)
-        IF( r_cnt(CVar % Owner+1)<=0 ) THEN
-          r_cnt(CVar % Owner+1) = 1
-          nn=nn + 1
-        END IF
-
-        IF(r_cnt(Parenv % myPE+1)<=0) THEN
-          r_cnt(parenv % mype+1) = 1
-          nn = nn + 1
-        END IF
-
-        r_cnt  = 1; nn=Parenv % PEs ! for now
 
         IF (Circuits(p) % Harmonic) THEN
           DO j=1,Cvar % Dofs
@@ -1731,11 +2412,9 @@ CONTAINS
             l = 1
             DO k=0,ParEnv % PEs-1
               IF(k==CVar % Owner) CYCLE
-              IF(r_cnt(k+1)>0) THEN
-                l = l + 1
-                CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(l) = k
-                CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(l) = k
-              END IF
+              l = l + 1
+              CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(l) = k
+              CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(l) = k
             END DO
             CM % RowOwner(RowId + AddIndex(j-1))   = Cvar % Owner
             CM % RowOwner(RowId + AddImIndex(j-1)) = Cvar % Owner
@@ -1749,10 +2428,8 @@ CONTAINS
             l = 1
             DO k=0,ParEnv % PEs-1
               IF(k==CVar % Owner) CYCLE
-              IF(r_cnt(k+1)>0) THEN
-                l = l + 1
-                CM % ParallelInfo % NeighbourList(RowId+j-1) % Neighbours(l) = k
-              END IF
+              l = l + 1
+              CM % ParallelInfo % NeighbourList(RowId+j-1) % Neighbours(l) = k
             END DO
             CM % RowOwner(RowId+j-1) = Cvar % Owner
           END DO
@@ -1890,18 +2567,34 @@ CONTAINS
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
     INTEGER :: i, j, p, nm, RowId, n_Circuits
+    LOGICAL :: Parallel
     INTEGER, POINTER :: Rows(:), Cnts(:)
     
     Circuits => CurrentModel % Circuits
     n_Circuits = CurrentModel % n_Circuits
     nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Parallel = CurrentModel % Solver % Parallel
     
     ! Basic circuit equations...
     ! ---------------------------
     DO p = 1,n_Circuits
       DO i=1,Circuits(p) % n
         Cvar => Circuits(p) % CircuitVariables(i)
-        IF(CVar % Owner /= ParEnv % myPE) CYCLE
+        ! Guarded on Parallel exactly as AddBasicCircuitEquations() is. Without
+        ! that guard a run with PEs > 1 but a non-parallel linear system - a
+        ! replicated mesh, i.e. slices or parallel timestepping - created these
+        ! rows only on the owning partition while every partition went on to
+        ! assemble into them.
+        IF( Parallel ) THEN
+          ! Guarded on Parallel exactly as AddBasicCircuitEquations() is. Without
+        ! that guard a run with PEs > 1 but a non-parallel linear system - a
+        ! replicated mesh, i.e. slices or parallel timestepping - created these
+        ! rows only on the owning partition while every partition went on to
+        ! assemble into them.
+        IF( Parallel ) THEN
+          IF(Cvar % Owner /= ParEnv % myPE) CYCLE
+        END IF
+        END IF
 
         RowId = Cvar % ValueId + nm
         DO j=1,Circuits(p) % n
@@ -1921,18 +2614,27 @@ CONTAINS
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
     INTEGER :: i, j, p, nm, RowId, ColId, n_Circuits
+    LOGICAL :: Parallel
     INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
     
     Circuits => CurrentModel % Circuits
     n_Circuits = CurrentModel % n_Circuits
     nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Parallel = CurrentModel % Solver % Parallel
     
     ! Basic circuit equations...
     ! ---------------------------
     DO p = 1,n_Circuits
       DO i=1,Circuits(p) % n
         Cvar => Circuits(p) % CircuitVariables(i)
-        IF(Cvar % Owner /= ParEnv % myPE) CYCLE
+        ! Guarded on Parallel exactly as AddBasicCircuitEquations() is. Without
+        ! that guard a run with PEs > 1 but a non-parallel linear system - a
+        ! replicated mesh, i.e. slices or parallel timestepping - created these
+        ! rows only on the owning partition while every partition went on to
+        ! assemble into them.
+        IF( Parallel ) THEN
+          IF(Cvar % Owner /= ParEnv % myPE) CYCLE
+        END IF
 
         RowId = Cvar % ValueId + nm
         DO j=1,Circuits(p) % n
@@ -1959,7 +2661,7 @@ CONTAINS
     TYPE(Component_t), POINTER :: Comp
     INTEGER :: i, j, p, nm, nn, nd, &
                RowId, ColId, n_Circuits, &
-               CompInd, q
+               CompInd, q, qi
     INTEGER, POINTER :: Rows(:), Cnts(:)
     LOGICAL :: dofsdone
     LOGICAL*1 :: Done(:)
@@ -2002,13 +2704,16 @@ CONTAINS
 
 !        temp = SUM(Cnts)
 !print *, "Active elements", ParEnv % Mype, ":", GetNOFActive()
-        DO q=GetNOFActive(),1,-1
-          Element => GetActiveElement(q)
+        ! The component's own element lists, walked backwards, so the structure
+        ! is created in exactly the order the assembly fills it. See
+        ! BuildComponentElementLists().
+        DO qi=SIZE(Comp % ElemIdx),1,-1
+          Element => GetActiveElement(Comp % ElemIdx(qi))
           CALL CountComponentElements(Element, Comp, RowId, Rows, Cnts, Done, dofsdone)
         END DO
 
-        DO q=GetNOFBoundaryElements(),1,-1
-          Element => GetBoundaryElement(q)
+        DO qi=SIZE(Comp % BCElemIdx),1,-1
+          Element => GetBoundaryElement(Comp % BCElemIdx(qi))
           CALL CountComponentElements(Element, Comp, RowId, Rows, Cnts, Done, dofsdone)
         END DO
 !        Comp % nofcnts = SUM(Cnts) - temp
@@ -2030,7 +2735,7 @@ CONTAINS
     TYPE(Component_t), POINTER :: Comp
     INTEGER :: i, j, jj, p, nm, nn, nd, &
                VvarId, IvarId, n_Circuits, &
-               CompInd, q
+               CompInd, q, qi
     INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
     LOGICAL :: dofsdone
     LOGICAL*1 :: Done(:)
@@ -2079,13 +2784,14 @@ CONTAINS
 
 !        temp = SUM(Cnts)
 !print *, "Active elements ", ParEnv % Mype, ":", GetNOFActive()
-        DO q=GetNOFActive(),1,-1
-          Element => GetActiveElement(q)
+        ! As in CountComponentEquations, and it has to match it exactly.
+        DO qi=SIZE(Comp % ElemIdx),1,-1
+          Element => GetActiveElement(Comp % ElemIdx(qi))
           CALL CreateComponentElements(Element, Comp, VvarId, IvarId, Rows, Cols, Cnts, Done, dofsdone)
         END DO
 
-        DO q=GetNOFBoundaryElements(),1,-1
-          Element => GetBoundaryElement(q)
+        DO qi=SIZE(Comp % BCElemIdx),1,-1
+          Element => GetBoundaryElement(Comp % BCElemIdx(qi))
           CALL CreateComponentElements(Element, Comp, VvarId, IvarId, Rows, Cols, Cnts, Done, dofsdone)
         END DO
 !        Comp % nofcnts = SUM(Cnts) - temp
@@ -2176,13 +2882,13 @@ CONTAINS
     INTEGER, OPTIONAL :: Jsind
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
-    LOGICAL :: First=.TRUE.
+    INTEGER :: MyGen = -1
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
-    SAVE dim, First
+    SAVE dim, MyGen
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       dim = CoordinateSystemDimension()
     END IF
 
@@ -2244,13 +2950,13 @@ CONTAINS
     INTEGER :: p,i,j,k,Indexes(nd)
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
-    LOGICAL :: First=.TRUE.
+    INTEGER :: MyGen = -1
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
-    SAVE dim, First
+    SAVE dim, MyGen
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       dim = CoordinateSystemDimension()
     END IF
     
@@ -2308,15 +3014,16 @@ CONTAINS
     INTEGER :: Indexes(nd)
     INTEGER :: p,j,q,vpolord,vpolordtest,vpolord_tot,&
       dofId,dofIdtest,vvarId, nm
-    LOGICAL :: dofsdone, First=.TRUE.
+    LOGICAL :: dofsdone
+    INTEGER :: MyGen = -1
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
-    SAVE dim, First
+    SAVE dim, MyGen
 
-    IF (First) THEN
-      First = .FALSE.
+    IF (MyGen /= CircuitsGeneration) THEN
+      MyGen = CircuitsGeneration
       dim = CoordinateSystemDimension()
     END IF
     
@@ -2433,8 +3140,13 @@ CONTAINS
     n = SUM(Cnts)
 
     IF (n<=0) THEN
-      CM % NUmberOfRows = 0
-      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null()
+      CM % NumberOfRows = 0
+      CALL CircuitsRecordBuild()
+      DEALLOCATE(Rows,Cnts,Done)
+      ! FreeMatrix rather than a bare DEALLOCATE of CM: RHS, RowOwner and, in
+      ! parallel, ParallelInfo % NeighbourList were all allocated above and were
+      ! being leaked with it.
+      CALL FreeMatrix(CM); CM=>Null()
       Asolver %  Matrix % AddMatrix => CM
       CurrentModel % CircuitMatrix=>CM
       RETURN 
@@ -2472,6 +3184,8 @@ CONTAINS
     CALL CRS_SortMatrix(CM)
     
     Asolver %  Matrix % AddMatrix => CM
+
+    CALL CircuitsRecordBuild()
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_MatrixInit
 !------------------------------------------------------------------------------
