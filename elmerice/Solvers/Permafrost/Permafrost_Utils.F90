@@ -1077,6 +1077,7 @@ CONTAINS
       END SELECT
 
       ! compute salt density
+      CALL ValidateSalinity(SalinityAtIP,XiAtIP(IPPerm),FunctionName)
       IF (NoSalinity) THEN
         rhocAtIP    = 0.0_dp
       ELSE
@@ -1463,10 +1464,10 @@ CONTAINS
       CASE DEFAULT
         CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
+      CALL ValidateSalinity(SalinityAtIP,XiAtIP(IPPerm),FunctionName)
     END DO
      !------------------------------------------------------------------------------
   END SUBROUTINE EvaluateXi
   !------------------------------------------------------------------------------
 END SUBROUTINE InitiliazeXi
-
 

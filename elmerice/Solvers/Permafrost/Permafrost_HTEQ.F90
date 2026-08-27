@@ -596,6 +596,7 @@ CONTAINS
 
       !Materialproperties needed at IP:
       IF (.NOT.Lunardini) THEN
+        CALL ValidateSalinity(SalinityAtIP,XiAtIP(IPPerm),FunctionName)
         rhowAtIP = rhowupdate(CurrentSolventMaterial,rhowAtIP,&
              XiAtIP(IPPerm),SalinityAtIP,ConstVal)
         rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!

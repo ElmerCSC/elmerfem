@@ -483,6 +483,7 @@ CONTAINS
       END SELECT
 
       ! solute and rock densities and derivatives
+      CALL ValidateSalinity(SalinityAtIP,XiAtIP(IPPerm),FunctionName)
       rhowAtIP = rhowupdate(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal)
       rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP(IPPerm),TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
       rhocPAtIP = rhocP(CurrentSoluteMaterial,rhocAtIP,ConstVal)
@@ -795,6 +796,7 @@ CONTAINS
         CASE DEFAULT
           CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
         END SELECT
+        CALL ValidateSalinity(SalinityAtIP,XiAtIP,FunctionName)
         rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
 
         ! Apply this term only when groundwater flux is prescribed on this boundary

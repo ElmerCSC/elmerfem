@@ -146,6 +146,36 @@ CONTAINS
   END SUBROUTINE ValidateLiquidFraction
   !---------------------------------------------------------------------------------------------
 
+  SUBROUTINE ValidateSalinityInput(Salinity,Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: Salinity
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+
+    IF (Salinity .NE. Salinity) &
+         CALL FATAL(Caller,'Salinity is NaN')
+
+    IF ((Salinity < 0.0_dp) .OR. (Salinity >= 1.0_dp)) THEN
+      WRITE(Message,*) 'Salinity=',Salinity,&
+           ' is outside the required range 0 <= Salinity < 1'
+      CALL FATAL(Caller,Message)
+    END IF
+  END SUBROUTINE ValidateSalinityInput
+  !---------------------------------------------------------------------------------------------
+
+  SUBROUTINE ValidateSalinity(Salinity,Xi,Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: Salinity,Xi
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+
+    CALL ValidateSalinityInput(Salinity,Caller)
+    IF (Salinity > Xi) THEN
+      WRITE(Message,*) 'Salinity=',Salinity,' exceeds liquid fraction Xi=',Xi,&
+           '. Required range: 0 <= Salinity <= Xi'
+      CALL FATAL(Caller,Message)
+    END IF
+  END SUBROUTINE ValidateSalinity
+  !---------------------------------------------------------------------------------------------
+
   FUNCTION ReadPermafrostPhaseChangeModel(Material,Caller) RESULT(PhaseChangeModel)
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
@@ -1862,6 +1892,7 @@ CONTAINS
     REAL(KIND=dp) :: biAtIP(4),biYcAtIP(2),gwaAtIP,gwaTAtIP,gwapAtIP,&
          giaAtIP,giaTAtIP,giapAtIP,deltaGAtIP,DAtIP,BAtIP
     !---------------------------
+    CALL ValidateSalinityInput(SalinityAtIP,'GetXiHartikainen')
     IF (ComputeXi .OR. (ComputeXiT .OR. ComputeXiYC .OR. ComputeXiP)) THEN
       biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.FALSE.) 

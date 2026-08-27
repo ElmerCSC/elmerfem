@@ -733,6 +733,7 @@ CONTAINS
       END SELECT
 
       ! on Xi (directly or indirectly) dependent material parameters (incl. updates) at IP
+      CALL ValidateSalinity(SalinityAtIP,XiAtIP(IPPerm),FunctionName)
       rhowAtIP  = rhowupdate(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal) ! update
 
       IF (ConstVal) THEN
