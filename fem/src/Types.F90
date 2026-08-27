@@ -1131,6 +1131,57 @@ MODULE Types
     TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)=>NULL()
     TYPE(Solver_t), POINTER :: ASolver => NULL()
   END TYPE Circuit_t
+
+!> Everything one circuit solver owns.
+!>
+!> This used to be a set of slots directly on Model_t, plus a handful of module
+!> level SAVE variables in CircuitUtils, which limited a run to one circuit
+!> solver: a second one would overwrite the first one's circuits, matrix and
+!> build record. Collecting it here makes the state per instance, so that
+!> Model % CircuitModels can hold one entry per circuit solver.
+!>
+!> Instances are addressed through Model % CircuitModel, which the circuit
+!> solver entry points set to their own container. See GetCircuitModel() and
+!> SetCircuitModel() in CircuitUtils.
+  TYPE CircuitModel_t
+    ! Which solvers this instance belongs to. Solver is the circuit solver that
+    ! owns the container, ASolver the FEM solver whose matrix the circuit
+    ! equations are appended to. Both are borrowed pointers into Model % Solvers.
+    INTEGER :: SolverId = 0
+    TYPE(Solver_t), POINTER :: Solver => NULL()
+    TYPE(Solver_t), POINTER :: ASolver => NULL()
+
+    ! The circuit equations themselves.
+    INTEGER :: n_Circuits = 0, Circuit_tot_n = 0
+    TYPE(Circuit_t), POINTER :: Circuits(:) => NULL()
+    TYPE(Matrix_t), POINTER :: CircuitMatrix => NULL()
+    LOGICAL :: Harmonic = .FALSE.
+
+    ! Cache invalidation. Generation is a ticket drawn from a module wide
+    ! counter in CircuitUtils, so it is unique over all instances and over all
+    ! rebuilds. Routines that cache something behind a "first time through" test
+    ! compare a saved copy of it against CircuitsGeneration(), and therefore
+    ! re-derive both when this instance is rebuilt and when the active instance
+    ! changes under them. BuiltNm/BuiltTotN/BuiltMesh record what the structures
+    ! were built against; see CircuitsCheckStale().
+    INTEGER :: Generation = 0
+    INTEGER :: BuiltNm = -1, BuiltTotN = -1
+    TYPE(Mesh_t), POINTER :: BuiltMesh => NULL()
+
+    ! Prefix for the MATC symbols this instance reads its definitions from
+    ! ("Circuits", "C.<p>.*"). Empty is the historical global namespace.
+    CHARACTER(:), ALLOCATABLE :: MatcPrefix
+
+    ! Driver state that used to be SAVEd inside the circuit solver entry points,
+    ! and so was shared by every instance. Crt holds the circuit variable values
+    ! of the previous timestep, sized Circuit_tot_n; Tstep is the timestep it was
+    ! last refreshed on; MultName is the name of the A solver's Lagrange
+    ! multiplier variable the values are read from.
+    REAL(KIND=dp), ALLOCATABLE :: Crt(:)
+    INTEGER :: Tstep = -1
+    LOGICAL :: Parallel = .FALSE.
+    CHARACTER(:), ALLOCATABLE :: MultName
+  END TYPE CircuitModel_t
 !-------------------Circuit stuff----------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1246,13 +1297,11 @@ MODULE Types
       TYPE(Mesh_t),   POINTER :: Mesh   => NULL()
       TYPE(Solver_t), POINTER :: Solver => NULL()
       
-      ! Circuits:
-      INTEGER, POINTER :: n_Circuits => NULL(), Circuit_tot_n => NULL()
-      TYPE(Matrix_t), POINTER :: CircuitMatrix => NULL()
-      TYPE(Circuit_t), POINTER :: Circuits(:) => NULL()
-      TYPE(Solver_t), POINTER :: ASolver => NULL()
-      
-      LOGICAL :: HarmonicCircuits=.FALSE.
+      ! Circuits: one container per circuit solver, plus a pointer to the one
+      ! whose equations are currently being handled. Everything in the circuit
+      ! package reads its state through CircuitModel rather than from here.
+      TYPE(CircuitModel_t), POINTER :: CircuitModels(:) => NULL()
+      TYPE(CircuitModel_t), POINTER :: CircuitModel => NULL()
 
 ! Tag counts to speed things up
       INTEGER :: NumberOfDistTags=-1,NumberOfParTags=-1

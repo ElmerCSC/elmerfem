@@ -45,60 +45,297 @@ MODULE CircuitUtils
     USE DefUtils
     IMPLICIT NONE
 
-    ! Recorded when the circuit structures are built, compared on every later
-    ! entry. See CircuitsCheckStale() for what these are good for.
-    INTEGER, PRIVATE, SAVE :: BuiltNm = -1
-    INTEGER, PRIVATE, SAVE :: BuiltTotN = -1
-    TYPE(Mesh_t), POINTER, PRIVATE, SAVE :: BuiltMesh => NULL()
-
-    !> Bumped by FreeCircuits(). Every routine in the package that caches
-    !> something behind a "first time through" test compares its own saved copy
-    !> against this instead of using a logical flag, so that one increment
-    !> invalidates all of those caches at once without anything having to
-    !> enumerate them. Values cached this way include dim, CSymmetry, the W
-    !> potential variable and the element variable handles - all of which point
-    !> at, or are derived from, structures that a rebuild replaces.
-    INTEGER, SAVE :: CircuitsGeneration = 1
+    !> Ticket dispenser for circuit model generations. Never reset, so a number
+    !> drawn from it identifies both an instance and one build of that instance.
+    INTEGER, PRIVATE, SAVE :: CircuitsGenerationCounter = 0
 
 CONTAINS
 
 !------------------------------------------------------------------------------
-!> Release everything the circuit package allocated and invalidate its caches.
+!> Generation number of the circuit model currently being worked on.
+!>
+!> Every routine in the package that caches something behind a "first time
+!> through" test compares its own saved copy against this instead of using a
+!> logical flag, so that one number invalidates all of those caches at once
+!> without anything having to enumerate them. Values cached this way include
+!> dim, CSymmetry, the W potential variable and the element variable handles -
+!> all of which point at, or are derived from, structures that a rebuild
+!> replaces.
+!>
+!> Because the numbers are drawn from a single counter over all instances, the
+!> same test also catches a switch to a different circuit solver: its container
+!> carries a different generation, so the caches re-derive rather than serve the
+!> other instance's values.
+!------------------------------------------------------------------------------
+  FUNCTION CircuitsGeneration() RESULT (Gen)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: Gen
+
+    Gen = 0
+    IF( ASSOCIATED(CurrentModel % CircuitModel) ) THEN
+      Gen = CurrentModel % CircuitModel % Generation
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION CircuitsGeneration
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Draw the next generation number. Used when a container is claimed and again
+!> whenever its contents are torn down, so that no cache can survive either.
+!------------------------------------------------------------------------------
+  FUNCTION NewCircuitsGeneration() RESULT (Gen)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: Gen
+
+    CircuitsGenerationCounter = CircuitsGenerationCounter + 1
+    Gen = CircuitsGenerationCounter
+!------------------------------------------------------------------------------
+  END FUNCTION NewCircuitsGeneration
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The circuit model owned by the given circuit solver, claimed on first use.
+!>
+!> The containers are held in one array indexed by solver id rather than in a
+!> list that grows: the entries must not move, since Model % CircuitModel points
+!> into them. An unclaimed entry is inert, and costs a few tens of bytes.
+!------------------------------------------------------------------------------
+  FUNCTION GetCircuitModel(Solver) RESULT (Ckt)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t), TARGET :: Solver
+    TYPE(CircuitModel_t), POINTER :: Ckt
+    INTEGER :: i
+
+    i = Solver % SolverId
+    IF( i < 1 .OR. i > CurrentModel % NumberOfSolvers ) THEN
+      CALL Fatal('GetCircuitModel','Solver has no usable solver id: '//I2S(i))
+    END IF
+
+    IF(.NOT. ASSOCIATED(CurrentModel % CircuitModels) ) THEN
+      ALLOCATE( CurrentModel % CircuitModels(CurrentModel % NumberOfSolvers) )
+    END IF
+
+    Ckt => CurrentModel % CircuitModels(i)
+
+    IF( Ckt % SolverId == 0 ) THEN
+      Ckt % SolverId = i
+      ! Model % Solvers(i) rather than the dummy: the dummy has TARGET so that
+      ! this is legal to write, but the association would go undefined on return.
+      Ckt % Solver => CurrentModel % Solvers(i)
+      Ckt % Generation = NewCircuitsGeneration()
+      CALL Info('GetCircuitModel','Created circuit model for solver: '//I2S(i),Level=8)
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION GetCircuitModel
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> How many circuit solvers this run has.
+!>
+!> Every circuit solver claims its container in its _init routine, so this is
+!> the real count from the start of the simulation, not a count of the ones that
+!> happen to have been built so far.
+!------------------------------------------------------------------------------
+  FUNCTION CircuitModelCount() RESULT (Cnt)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: Cnt
+    INTEGER :: i
+
+    Cnt = 0
+    IF(.NOT. ASSOCIATED(CurrentModel % CircuitModels) ) RETURN
+    DO i=1,SIZE(CurrentModel % CircuitModels)
+      IF( CurrentModel % CircuitModels(i) % SolverId /= 0 ) Cnt = Cnt + 1
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION CircuitModelCount
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Make the given circuit model the one the package reads its state from.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetCircuitModel(Ckt)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(CircuitModel_t), POINTER :: Ckt
+
+    CurrentModel % CircuitModel => Ckt
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetCircuitModel
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The circuit model built on the given FEM solver.
+!------------------------------------------------------------------------------
+  FUNCTION GetCircuitModelOfASolver(ASolver) RESULT (Ckt)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t), POINTER :: ASolver
+    TYPE(CircuitModel_t), POINTER :: Ckt
+    INTEGER :: i
+
+    Ckt => NULL()
+    IF(.NOT. ASSOCIATED(ASolver) ) RETURN
+    IF(.NOT. ASSOCIATED(CurrentModel % CircuitModels) ) RETURN
+
+    DO i=1,SIZE(CurrentModel % CircuitModels)
+      IF( CurrentModel % CircuitModels(i) % SolverId == 0 ) CYCLE
+      IF( ASSOCIATED(CurrentModel % CircuitModels(i) % ASolver, ASolver) ) THEN
+        Ckt => CurrentModel % CircuitModels(i)
+        RETURN
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION GetCircuitModelOfASolver
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The circuit model a consumer solver works on, without claiming one of its own.
+!>
+!> Used by solvers that read circuit results rather than build them, such as
+!> CircuitsOutput. In order of preference:
+!>   1. the model built on this solver's declared host, which is the way to be
+!>      explicit when a run has more than one circuit solver,
+!>   2. the only circuit model there is, which covers every existing case file,
+!>   3. the one currently active, which is whichever circuit solver ran last.
+!------------------------------------------------------------------------------
+  FUNCTION ResolveCircuitModel(Solver,Caller) RESULT (Ckt)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    CHARACTER(LEN=*) :: Caller
+    TYPE(CircuitModel_t), POINTER :: Ckt
+    TYPE(Solver_t), POINTER :: Host
+    INTEGER :: i, j, cnt
+    LOGICAL :: Explicit
+
+    Host => FindCircuitHost(Solver,Explicit,Caller)
+    IF( ASSOCIATED(Host) ) THEN
+      Ckt => GetCircuitModelOfASolver(Host)
+      IF( ASSOCIATED(Ckt) ) RETURN
+      ! Declared, but nothing has been built on that solver. Worth saying so
+      ! rather than quietly reporting on some other circuit.
+      IF( Explicit ) THEN
+        CALL Fatal(Caller,'No circuits have been built on solver '//&
+            I2S(Host % SolverId))
+      END IF
+    END IF
+
+    IF( ASSOCIATED(CurrentModel % CircuitModels) ) THEN
+      cnt = 0
+      j = 0
+      DO i=1,SIZE(CurrentModel % CircuitModels)
+        IF( CurrentModel % CircuitModels(i) % SolverId == 0 ) CYCLE
+        cnt = cnt + 1
+        j = i
+      END DO
+      IF( cnt == 1 ) THEN
+        Ckt => CurrentModel % CircuitModels(j)
+        RETURN
+      END IF
+      IF( cnt > 1 ) THEN
+        CALL Info(Caller,'Several circuit solvers exist, using the one that ran last. '//&
+            'Give "Master Solver" to be explicit.',Level=5)
+      END IF
+    END IF
+
+    Ckt => CurrentModel % CircuitModel
+    IF(.NOT. ASSOCIATED(Ckt) ) CALL Fatal(Caller,'No circuit model to work on!')
+!------------------------------------------------------------------------------
+  END FUNCTION ResolveCircuitModel
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The circuit model that holds the circuit the given component belongs to.
+!>
+!> Consumers on the FEM side reach the circuit state by component rather than by
+!> solver - CalcFields asks for a component's current and area - and a component
+!> is wired into the circuits of exactly one circuit solver. Returns null when
+!> nothing claims it, which the callers report as "no circuits".
+!------------------------------------------------------------------------------
+  FUNCTION GetCircuitModelOfComponent(CompId) RESULT (Ckt)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: CompId
+    TYPE(CircuitModel_t), POINTER :: Ckt
+    TYPE(Circuit_t), POINTER :: Circuit
+    INTEGER :: i, p, j
+
+    Ckt => NULL()
+    IF(.NOT. ASSOCIATED(CurrentModel % CircuitModels) ) RETURN
+
+    DO i=1,SIZE(CurrentModel % CircuitModels)
+      IF( CurrentModel % CircuitModels(i) % SolverId == 0 ) CYCLE
+      IF(.NOT. ASSOCIATED(CurrentModel % CircuitModels(i) % Circuits) ) CYCLE
+      DO p=1,CurrentModel % CircuitModels(i) % n_Circuits
+        Circuit => CurrentModel % CircuitModels(i) % Circuits(p)
+        IF(.NOT. ASSOCIATED(Circuit % Components) ) CYCLE
+        DO j=1,SIZE(Circuit % Components)
+          IF( Circuit % Components(j) % ComponentId /= CompId ) CYCLE
+          Ckt => CurrentModel % CircuitModels(i)
+          RETURN
+        END DO
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION GetCircuitModelOfComponent
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Release everything one circuit model allocated and invalidate its caches.
 !>
 !> Ownership matters here, since much of what a component points at is borrowed:
-!>   owned    - Model % Circuits(:) and, per circuit, ComponentIds, Perm, names,
+!>   owned    - Ckt % Circuits(:) and, per circuit, ComponentIds, Perm, names,
 !>              source, A, B, Mre, Mim, CircuitVariables(:), Components(:); per
 !>              circuit variable, A, B, Mre, Mim, SourceRe, SourceIm; per
 !>              component, the deferred length CoilType and ComponentType; and
-!>              Model % CircuitMatrix, n_Circuits and Circuit_tot_n.
+!>              Ckt % CircuitMatrix.
 !>   borrowed - Comp % BodyIds and Comp % ElBoundaries, which come straight from
 !>              ListGetIntegerArray and belong to the value lists; Comp % ivar
 !>              and vvar, which point into CircuitVariables; Cvar % Component,
 !>              which points into Components; and every Solver pointer.
 !> The borrowed ones are only nullified. Circuit % Area is in the type but is
 !> never allocated, hence the guard.
+!>
+!> The container itself survives, so that Model % CircuitModel and the solver
+!> binding stay valid; only its contents go. It draws a fresh generation, which
+!> is what invalidates the caches keyed on CircuitsGeneration().
 !------------------------------------------------------------------------------
-  SUBROUTINE FreeCircuits()
+  SUBROUTINE FreeCircuits( UCkt )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
+    TYPE(CircuitModel_t), POINTER, OPTIONAL :: UCkt
+    TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER :: p, i
 
-    CALL Info('FreeCircuits','Releasing circuit structures',Level=7)
+    IF( PRESENT(UCkt) ) THEN
+      Ckt => UCkt
+    ELSE
+      Ckt => CurrentModel % CircuitModel
+    END IF
+    IF(.NOT. ASSOCIATED(Ckt) ) RETURN
+
+    CALL Info('FreeCircuits','Releasing circuit structures of solver: '//&
+        I2S(Ckt % SolverId),Level=7)
 
     ! The A solver matrix aliases the circuit matrix, so break that before the
     ! matrix goes away or it is left dangling.
-    ASolver => CurrentModel % ASolver
+    ASolver => Ckt % ASolver
     IF( ASSOCIATED(ASolver) ) THEN
       IF( ASSOCIATED(ASolver % Matrix) ) ASolver % Matrix % AddMatrix => NULL()
     END IF
 
-    IF( ASSOCIATED(CurrentModel % Circuits) .AND. ASSOCIATED(CurrentModel % n_Circuits) ) THEN
-      DO p=1,CurrentModel % n_Circuits
-        Circuit => CurrentModel % Circuits(p)
+    IF( ASSOCIATED(Ckt % Circuits) ) THEN
+      DO p=1,Ckt % n_Circuits
+        Circuit => Ckt % Circuits(p)
 
         IF( ASSOCIATED(Circuit % CircuitVariables) ) THEN
           DO i=1,SIZE(Circuit % CircuitVariables)
@@ -151,26 +388,32 @@ CONTAINS
         Circuit % UsePerm = .FALSE.
       END DO
 
-      DEALLOCATE(CurrentModel % Circuits)
+      DEALLOCATE(Ckt % Circuits)
     END IF
-    CurrentModel % Circuits => NULL()
+    Ckt % Circuits => NULL()
 
-    IF( ASSOCIATED(CurrentModel % CircuitMatrix) ) THEN
-      CALL FreeMatrix(CurrentModel % CircuitMatrix)
-      CurrentModel % CircuitMatrix => NULL()
+    IF( ASSOCIATED(Ckt % CircuitMatrix) ) THEN
+      CALL FreeMatrix(Ckt % CircuitMatrix)
+      Ckt % CircuitMatrix => NULL()
     END IF
 
-    IF( ASSOCIATED(CurrentModel % n_Circuits) ) DEALLOCATE(CurrentModel % n_Circuits)
-    IF( ASSOCIATED(CurrentModel % Circuit_tot_n) ) DEALLOCATE(CurrentModel % Circuit_tot_n)
-    CurrentModel % n_Circuits => NULL()
-    CurrentModel % Circuit_tot_n => NULL()
-    CurrentModel % ASolver => NULL()            ! borrowed
+    Ckt % n_Circuits = 0
+    Ckt % Circuit_tot_n = 0
+    Ckt % Harmonic = .FALSE.
+    Ckt % ASolver => NULL()                     ! borrowed
 
-    ! Invalidate every cached value in the package, and forget what was built.
-    CircuitsGeneration = CircuitsGeneration + 1
-    BuiltNm = -1
-    BuiltTotN = -1
-    BuiltMesh => NULL()
+    IF( ALLOCATED(Ckt % Crt) ) DEALLOCATE(Ckt % Crt)
+    IF( ALLOCATED(Ckt % MultName) ) DEALLOCATE(Ckt % MultName)
+    Ckt % Tstep = -1
+    Ckt % Parallel = .FALSE.
+
+    ! Invalidate every cached value keyed on this instance, and forget what was
+    ! built. A fresh ticket rather than an increment, so that the number stays
+    ! unique across instances.
+    Ckt % Generation = NewCircuitsGeneration()
+    Ckt % BuiltNm = -1
+    Ckt % BuiltTotN = -1
+    Ckt % BuiltMesh => NULL()
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeCircuits
 !------------------------------------------------------------------------------
@@ -181,17 +424,21 @@ CONTAINS
   SUBROUTINE CircuitsRecordBuild()
 !------------------------------------------------------------------------------
     IMPLICIT NONE
+    TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Solver_t), POINTER :: ASolver
 
-    ASolver => CurrentModel % ASolver
+    Ckt => CurrentModel % CircuitModel
+    IF(.NOT. ASSOCIATED(Ckt)) RETURN
+
+    ASolver => Ckt % ASolver
     IF(.NOT. ASSOCIATED(ASolver)) RETURN
 
-    BuiltNm = ASolver % Matrix % NumberOfRows
-    BuiltTotN = CurrentModel % Circuit_tot_n
-    BuiltMesh => ASolver % Mesh
+    Ckt % BuiltNm = ASolver % Matrix % NumberOfRows
+    Ckt % BuiltTotN = Ckt % Circuit_tot_n
+    Ckt % BuiltMesh => ASolver % Mesh
 
-    CALL Info('CircuitsRecordBuild','Circuit structures built for '//I2S(BuiltNm)//&
-        ' matrix rows and '//I2S(BuiltTotN)//' circuit dofs',Level=8)
+    CALL Info('CircuitsRecordBuild','Circuit structures built for '//I2S(Ckt % BuiltNm)//&
+        ' matrix rows and '//I2S(Ckt % BuiltTotN)//' circuit dofs',Level=8)
 !------------------------------------------------------------------------------
   END SUBROUTINE CircuitsRecordBuild
 !------------------------------------------------------------------------------
@@ -207,34 +454,37 @@ CONTAINS
 !> replaced underneath it (adaptivity, remeshing, a restart, a second mesh) the
 !> row indices silently address the wrong rows.
 !>
-!> When that is detected the package is torn down through FreeCircuits(), which
-!> also bumps CircuitsGeneration and so invalidates every cached value in it. The
-!> caller then falls into its own build path again on this same entry.
+!> When that is detected the instance is torn down through FreeCircuits(), which
+!> also draws a new generation and so invalidates every cached value keyed on it.
+!> The caller then falls into its own build path again on this same entry.
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitsCheckStale()
 !------------------------------------------------------------------------------
     IMPLICIT NONE
+    TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER :: nm
     LOGICAL :: Stale
     CHARACTER(*), PARAMETER :: Caller = 'CircuitsCheckStale'
 
-    IF( BuiltNm < 0 ) RETURN   ! nothing built yet
+    Ckt => CurrentModel % CircuitModel
+    IF(.NOT. ASSOCIATED(Ckt)) RETURN
+    IF( Ckt % BuiltNm < 0 ) RETURN   ! nothing built yet
 
-    ASolver => CurrentModel % ASolver
+    ASolver => Ckt % ASolver
     IF(.NOT. ASSOCIATED(ASolver)) RETURN
 
     Stale = .FALSE.
 
     nm = ASolver % Matrix % NumberOfRows
-    IF( nm /= BuiltNm ) THEN
-      CALL Info(Caller,'The circuit equations were built for '//I2S(BuiltNm)//&
+    IF( nm /= Ckt % BuiltNm ) THEN
+      CALL Info(Caller,'The circuit equations were built for '//I2S(Ckt % BuiltNm)//&
           ' matrix rows but the solver now has '//I2S(nm),Level=5)
       Stale = .TRUE.
     END IF
 
-    IF( ASSOCIATED(BuiltMesh) .AND. ASSOCIATED(ASolver % Mesh) ) THEN
-      IF( .NOT. ASSOCIATED(BuiltMesh, ASolver % Mesh) ) THEN
+    IF( ASSOCIATED(Ckt % BuiltMesh) .AND. ASSOCIATED(ASolver % Mesh) ) THEN
+      IF( .NOT. ASSOCIATED(Ckt % BuiltMesh, ASolver % Mesh) ) THEN
         CALL Info(Caller,'The A solver mesh is not the one the circuits were built on',Level=5)
         Stale = .TRUE.
       END IF
@@ -371,20 +621,26 @@ CONTAINS
     TYPE(Variable_t), POINTER :: LagrangeVar
     REAL(KIND=dp) :: CurrIm, CurrRe
     TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(CircuitModel_t), POINTER :: Ckt
     CHARACTER(LEN=MAX_NAME_LEN) :: str 
        
     Found = .FALSE.
     Curr = 0.0_dp
 
-    IF(CurrentModel % n_Circuits == 0) RETURN
+    ! By component rather than through the active model: the callers are on the
+    ! FEM side, where the circuit solver that owns this component need not be
+    ! the one that ran last.
+    Ckt => GetCircuitModelOfComponent(CompId)
+    IF(.NOT. ASSOCIATED(Ckt) ) RETURN
+    IF(Ckt % n_Circuits == 0) RETURN
     
     CurrRe = 0.0_dp
     CurrIm = 0.0_dp
     
-    DO i = 1, CurrentModel % n_Circuits     
-      Circuit => CurrentModel % Circuits(i)
+    DO i = 1, Ckt % n_Circuits     
+      Circuit => Ckt % Circuits(i)
       
-      str = LagrangeMultiplierName( CurrentModel % ASolver ) 
+      str = LagrangeMultiplierName( Ckt % ASolver ) 
       LagrangeVar => VariableGet( CurrentModel % Mesh % Variables, str, ThisOnly = .TRUE.)
       IF(.NOT. ASSOCIATED(LagrangeVar) ) RETURN           
       
@@ -435,15 +691,19 @@ CONTAINS
     TYPE(Circuit_t), POINTER :: Circuit
     CHARACTER(LEN=MAX_NAME_LEN) :: str 
     LOGICAL :: GotComp
+    TYPE(CircuitModel_t), POINTER :: Ckt
        
     Found = .FALSE.
     GotComp = .FALSE.
     Area = 0.0_dp
 
-    IF(CurrentModel % n_Circuits == 0) RETURN
+    ! By component, as in GetComponentCurrent().
+    Ckt => GetCircuitModelOfComponent(CompId)
+    IF(.NOT. ASSOCIATED(Ckt) ) RETURN
+    IF(Ckt % n_Circuits == 0) RETURN
     
-    DO i = 1, CurrentModel % n_Circuits     
-      Circuit => CurrentModel % Circuits(i)      
+    DO i = 1, Ckt % n_Circuits     
+      Circuit => Ckt % Circuits(i)      
       DO j = 1, SIZE(Circuit % Components)
         ivar => Circuit % Components(j) % ivar
         IF(.NOT. ASSOCIATED(ivar)) CYCLE
@@ -543,9 +803,9 @@ CONTAINS
     INTEGER, POINTER :: BCAssociations(:) => Null()
     TYPE(Valuelist_t), POINTER :: BodyParams, BCParams, ComponentParams
      
-    IF (MyGen == CircuitsGeneration) RETURN
+    IF (MyGen == CircuitsGeneration()) RETURN
 
-    MyGen = CircuitsGeneration
+    MyGen = CircuitsGeneration()
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
 
@@ -644,10 +904,10 @@ CONTAINS
     TYPE(Valuelist_t), POINTER :: ComponentParams
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, VarName
    
-    IF (MyGen == CircuitsGeneration) RETURN
+    IF (MyGen == CircuitsGeneration()) RETURN
     IF(CurrentModel % NumberOfComponents == 0) RETURN
     
-    MyGen = CircuitsGeneration
+    MyGen = CircuitsGeneration()
 
     j = 0
     DO i = 1, CurrentModel % NumberOfComponents      
@@ -677,7 +937,18 @@ CONTAINS
 
     IF(j > 0) THEN
       CALL Warn('CheckComponentVariables','Could not find variables for '//I2S(j)//' coils!')
-      CALL Fatal('CheckComponentVariables','Check your circuit settings!')
+      ! Only an abort when there is one circuit solver, i.e. when "not used by
+      ! any circuit" is something this check can actually conclude. With several
+      ! of them the components are wired up one circuit solver at a time, and
+      ! the ones belonging to a solver that has not built yet look exactly like
+      ! the ones belonging to no circuit at all. Rather than guess at when the
+      ! last one has been through, say what was seen and carry on.
+      IF( CircuitModelCount() > 1 ) THEN
+        CALL Warn('CheckComponentVariables','This run has '//I2S(CircuitModelCount())//&
+            ' circuit solvers, so these may yet be picked up by another one')
+      ELSE
+        CALL Fatal('CheckComponentVariables','Check your circuit settings!')
+      END IF
     END IF
 
   END SUBROUTINE CheckComponentVariables
@@ -756,6 +1027,392 @@ CONTAINS
   END FUNCTION FindSolverWithKey
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> The solver that lists the given one in one of its slave solver slots.
+!>
+!> These are the slots DefUtils calls DefaultSlaveSolvers() with; a solver named
+!> in one of them is run by the listing solver at that point of its cycle. Of
+!> the six, only "Pre Solvers" (DefaultStart) and "Post Solvers" (DefaultFinish)
+!> lie outside the host's nonlinear loop - the other four fire once per
+!> nonlinear iteration - which is why they are the ones a circuit solver wants.
+!>
+!> Slot returns the name of the slot the solver was found in, blank if none.
+!------------------------------------------------------------------------------
+  FUNCTION FindSlaveSolverHost(SolverId,Slot) RESULT (Host)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: SolverId
+    CHARACTER(LEN=*) :: Slot
+    TYPE(Solver_t), POINTER :: Host
+
+    CHARACTER(LEN=22), PARAMETER :: Slots(6) = [ CHARACTER(LEN=22) :: &
+        'Pre Solvers', 'Post Solvers', 'Slave Solvers', &
+        'Nonlinear Pre Solvers', 'Nonlinear Post Solvers', 'Assembly Solvers' ]
+    INTEGER, POINTER :: Indexes(:)
+    INTEGER :: i, j
+    LOGICAL :: Found
+
+    Host => NULL()
+    Slot = ' '
+
+    DO i=1,CurrentModel % NumberOfSolvers
+      IF( i == SolverId ) CYCLE
+      DO j=1,SIZE(Slots)
+        Indexes => ListGetIntegerArray( CurrentModel % Solvers(i) % Values, &
+            TRIM(Slots(j)), Found )
+        IF(.NOT. Found ) CYCLE
+        IF( ANY(Indexes == SolverId) ) THEN
+          Host => CurrentModel % Solvers(i)
+          Slot = TRIM(Slots(j))
+          RETURN
+        END IF
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION FindSlaveSolverHost
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The host solver a circuit package solver belongs to, if it is declared.
+!>
+!> The pairing is written once, in whichever direction reads better:
+!>
+!>   Solver 2  ! the circuit solver
+!>    Master Solver = Integer 3
+!>
+!>   Solver 3  ! the A solver
+!>    Circuit Solver(2) = 2 6
+!>
+!> The two are exact inverses and either one suffices; given both, they have to
+!> agree. Declared this way the pairing also wires the invocation, see
+!> CircuitSolverBind().
+!>
+!> A solver named in one of the host's slave solver slots by hand is recognised
+!> too, and Explicit comes back false for it: the invocation is already in place
+!> and there is nothing left to wire.
+!------------------------------------------------------------------------------
+  FUNCTION FindCircuitHost(Solver,Explicit,Caller) RESULT (Host)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    LOGICAL :: Explicit
+    CHARACTER(LEN=*) :: Caller
+    TYPE(Solver_t), POINTER :: Host
+
+    TYPE(Solver_t), POINTER :: Owner
+    INTEGER, POINTER :: Indexes(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: Slot
+    INTEGER :: i, me
+    LOGICAL :: Found
+
+    Host => NULL()
+    Explicit = .FALSE.
+    me = Solver % SolverId
+
+    ! Named from this end.
+    i = ListGetInteger( Solver % Values,'Master Solver',Found )
+    IF( Found ) THEN
+      IF( i < 1 .OR. i > CurrentModel % NumberOfSolvers ) THEN
+        CALL Fatal(Caller,'Invalid "Master Solver" index: '//I2S(i))
+      END IF
+      Host => CurrentModel % Solvers(i)
+      Explicit = .TRUE.
+    END IF
+
+    ! Named from the other end.
+    Owner => NULL()
+    DO i=1,CurrentModel % NumberOfSolvers
+      IF( i == me ) CYCLE
+      Indexes => ListGetIntegerArray( CurrentModel % Solvers(i) % Values, &
+          'Circuit Solver', Found )
+      IF(.NOT. Found ) CYCLE
+      IF(.NOT. ANY(Indexes == me) ) CYCLE
+      Owner => CurrentModel % Solvers(i)
+      EXIT
+    END DO
+
+    IF( ASSOCIATED(Owner) ) THEN
+      IF( ASSOCIATED(Host) .AND. .NOT. ASSOCIATED(Host,Owner) ) THEN
+        CALL Fatal(Caller,'"Master Solver" says '//I2S(Host % SolverId)//&
+            ' but solver '//I2S(Owner % SolverId)//' claims this one in "Circuit Solver"')
+      END IF
+      Host => Owner
+      Explicit = .TRUE.
+    END IF
+
+    IF( ASSOCIATED(Host) ) RETURN
+
+    ! Written out as a slave solver slot by hand.
+    Host => FindSlaveSolverHost(me,Slot)
+!------------------------------------------------------------------------------
+  END FUNCTION FindCircuitHost
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The FEM solver the circuit equations of the given circuit solver attach to.
+!>
+!> The declared host if there is one, see FindCircuitHost(). Failing that, the
+!> first solver whose "Procedure" is one of the known magnetodynamics solvers -
+!> which is how it has always worked and keeps every existing case file running,
+!> but cannot tell two of them apart and does not see through a wrapper module.
+!> Failing that, any solver carrying "Export Lagrange Multiplier", which is what
+!> an A solver reached through a wrapper module still has.
+!------------------------------------------------------------------------------
+  FUNCTION FindCircuitASolver(Solver,Harmonic,Caller) RESULT (ASolver)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    LOGICAL :: Harmonic
+    CHARACTER(LEN=*) :: Caller
+    TYPE(Solver_t), POINTER :: ASolver
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: sname
+    INTEGER :: i, j
+    LOGICAL :: Found, Explicit
+
+    ASolver => FindCircuitHost(Solver,Explicit,Caller)
+    IF( ASSOCIATED(ASolver) ) THEN
+      CALL Info(Caller,'Circuit equations attached to solver '//&
+          I2S(ASolver % SolverId),Level=6)
+      RETURN
+    END IF
+
+    ! The legacy match on the procedure name.
+    DO i=1,CurrentModel % NumberOfSolvers
+      sname = ListGetString( CurrentModel % Solvers(i) % Values,'Procedure',Found )
+      IF(.NOT. Found ) CYCLE
+      IF( Harmonic ) THEN
+        j = INDEX( sname,'MagnetoDynamics2DHarmonic')
+        IF(j==0) j = INDEX( sname,'WhitneyAVHarmonicSolver')
+      ELSE
+        j = INDEX( sname,'MagnetoDynamics2D')
+        IF(j>0) THEN
+          ! The harmonic solver's name contains the transient one's.
+          IF( INDEX( sname,'MagnetoDynamics2DHarmonic') > 0 ) CYCLE
+        END IF
+        IF(j==0) j = INDEX( sname,'WhitneyAVSolver')
+      END IF
+      IF( j > 0 ) THEN
+        ASolver => CurrentModel % Solvers(i)
+        CALL Info(Caller,'Circuit equations attached to solver '//I2S(i)//&
+            ' found by its "Procedure". Give "Master Solver" to be explicit.',Level=6)
+        RETURN
+      END IF
+    END DO
+
+    ! Last resort, before the caller would dereference a null pointer.
+    ASolver => FindSolverWithKey('Export Lagrange Multiplier')
+    CALL Info(Caller,'Circuit equations attached to solver '//&
+        I2S(ASolver % SolverId)//', found by "Export Lagrange Multiplier"',Level=6)
+!------------------------------------------------------------------------------
+  END FUNCTION FindCircuitASolver
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The prefix the active circuit model's MATC symbols carry.
+!>
+!> Blank for the historical global namespace, so an existing definitions file
+!> reads exactly as before.
+!------------------------------------------------------------------------------
+  FUNCTION CircuitMatcPrefix() RESULT (Prefix)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    CHARACTER(LEN=MAX_NAME_LEN) :: Prefix
+
+    Prefix = ' '
+    IF( ASSOCIATED(CurrentModel % CircuitModel) ) THEN
+      IF( ALLOCATED(CurrentModel % CircuitModel % MatcPrefix) ) THEN
+        Prefix = CurrentModel % CircuitModel % MatcPrefix
+      END IF
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION CircuitMatcPrefix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The MATC symbol holding <Suffix> of circuit CId of the active circuit model.
+!>
+!> Every read of a circuit definition goes through here, so that two circuit
+!> solvers can read two sets of definitions out of the one MATC namespace. The
+!> result is fixed length rather than deferred: a deferred length character
+!> function result shares a static hidden length under gfortran with OpenMP,
+!> which is a trap not worth setting for the sake of a few trailing blanks.
+!------------------------------------------------------------------------------
+  FUNCTION CktSym(CId,Suffix) RESULT (Sym)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: CId
+    CHARACTER(LEN=*) :: Suffix
+    CHARACTER(LEN=MAX_NAME_LEN) :: Sym
+
+    Sym = TRIM(CircuitMatcPrefix())//'C.'//i2s(CId)//'.'//Suffix
+!------------------------------------------------------------------------------
+  END FUNCTION CktSym
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Read the MATC namespace this circuit solver takes its definitions from.
+!>
+!> "Circuits" and "C.<p>.*" are plain MATC symbols in one flat, process wide
+!> namespace, so two circuit solvers reading them unqualified would read the
+!> same definitions. "Circuit Namespace = String ckt2" puts this solver's
+!> symbols behind "ckt2.", i.e. it reads "ckt2.Circuits" and "ckt2.C.1.name.1",
+!> and the definitions file is written to match:
+!>
+!>   $ ckt2.Circuits = 1
+!>   $ ckt2.C.1.variables = 4
+!>   $ ckt2.C.1.name.1 = "i_testsource"
+!>
+!> A separating dot is appended if the given name does not end in one, since a
+!> namespace that ran straight into the symbol would be a trap. Unset means the
+!> unqualified names, which is what every existing case file uses.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetCircuitMatcPrefix(Ckt,Solver,Caller)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(CircuitModel_t), POINTER :: Ckt
+    TYPE(Solver_t) :: Solver
+    CHARACTER(LEN=*) :: Caller
+
+    CHARACTER(:), ALLOCATABLE :: ns
+    LOGICAL :: Found
+    INTEGER :: n
+
+    ns = ListGetString( Solver % Values,'Circuit Namespace',Found )
+    IF(.NOT. Found ) THEN
+      Ckt % MatcPrefix = ''
+      RETURN
+    END IF
+
+    n = LEN_TRIM(ns)
+    IF( n == 0 ) THEN
+      Ckt % MatcPrefix = ''
+      RETURN
+    END IF
+
+    IF( ns(n:n) == '.' ) THEN
+      Ckt % MatcPrefix = ns(1:n)
+    ELSE
+      Ckt % MatcPrefix = ns(1:n)//'.'
+    END IF
+
+    CALL Info(Caller,'Reading circuit definitions from MATC namespace: '//&
+        Ckt % MatcPrefix,Level=5)
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetCircuitMatcPrefix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Refuse two circuit models that would read the same Lagrange multiplier.
+!>
+!> The circuit variables live in the A solver's Lagrange multiplier vector, and
+!> its name comes from the A solver: "Lagrange Multiplier Name", defaulting to
+!> "Lagrange Multiplier <equation>". Two A solvers therefore already have two
+!> vectors - unless they share an "Equation" name and neither names its
+!> multiplier, in which case both circuit models would read and write one
+!> vector, silently.
+!------------------------------------------------------------------------------
+  SUBROUTINE CheckCircuitMultiplierUnique(Ckt,Caller)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(CircuitModel_t), POINTER :: Ckt
+    CHARACTER(LEN=*) :: Caller
+
+    TYPE(CircuitModel_t), POINTER :: Other
+    INTEGER :: i
+
+    IF(.NOT. ALLOCATED(Ckt % MultName) ) RETURN
+    IF(.NOT. ASSOCIATED(CurrentModel % CircuitModels) ) RETURN
+
+    DO i=1,SIZE(CurrentModel % CircuitModels)
+      Other => CurrentModel % CircuitModels(i)
+      IF( Other % SolverId == 0 ) CYCLE
+      IF( Other % SolverId == Ckt % SolverId ) CYCLE
+      IF(.NOT. ALLOCATED(Other % MultName) ) CYCLE
+      IF( Other % MultName /= Ckt % MultName ) CYCLE
+      IF( ASSOCIATED(Other % ASolver, Ckt % ASolver) ) THEN
+        CALL Fatal(Caller,'Solvers '//I2S(Other % SolverId)//' and '//&
+            I2S(Ckt % SolverId)//' both put circuits on solver '//&
+            I2S(Ckt % ASolver % SolverId))
+      END IF
+      CALL Fatal(Caller,'Circuit solvers '//I2S(Other % SolverId)//' and '//&
+          I2S(Ckt % SolverId)//' share the Lagrange multiplier "'//&
+          Ckt % MultName//'". Give the A solvers distinct "Lagrange Multiplier Name".')
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CheckCircuitMultiplierUnique
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Wire a circuit package solver into its host, and out of the solver list.
+!>
+!> Called from the circuit solvers' _init routines with the slot they belong in:
+!> "Pre Solvers" for the ones that build the circuit equations, "Post Solvers"
+!> for the one that reports on them. Those two are the slots DefUtils runs from
+!> DefaultStart() and DefaultFinish(), i.e. the only two of the six that lie
+!> outside the host's nonlinear loop - which is where circuits run today, so
+!> nothing about the numerics changes, only where the call comes from.
+!>
+!> A declared pairing ("Master Solver" or the host's "Circuit Solver") is taken
+!> to mean the host runs the solver, so the slot is filled in here rather than
+!> written out a second time by hand. Either keyword on its own is enough.
+!>
+!> The solver is then taken out of the solver list, or it would run twice, once
+!> from the main loop and once from its host. The exec flag is set directly and
+!> not only through the keyword, since AddSolvers() has already read
+!> "Exec Solver" into it by the time any _init runs.
+!>
+!> An explicit "Exec Solver" turns all of this off and leaves only the
+!> association: saying where a solver runs is the user's call. So is writing the
+!> slot out by hand, which still works and needs nothing added.
+!------------------------------------------------------------------------------
+  SUBROUTINE CircuitSolverBind(Solver,Slot,Caller)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    CHARACTER(LEN=*) :: Slot
+    CHARACTER(LEN=*) :: Caller
+
+    TYPE(Solver_t), POINTER :: Host
+    INTEGER, POINTER :: Indexes(:)
+    INTEGER, ALLOCATABLE :: NewIndexes(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: OldSlot
+    LOGICAL :: Explicit, Found
+
+    IF( ListCheckPresent( Solver % Values,'Exec Solver') ) RETURN
+
+    Host => FindCircuitHost(Solver,Explicit,Caller)
+    IF(.NOT. ASSOCIATED(Host) ) RETURN
+
+    IF( Explicit ) THEN
+      ! Only if some slot does not already name it, so that a hand written slot
+      ! is not duplicated by the one we would add.
+      IF(.NOT. ASSOCIATED(FindSlaveSolverHost(Solver % SolverId,OldSlot)) ) THEN
+        Indexes => ListGetIntegerArray( Host % Values, Slot, Found )
+        IF( Found ) THEN
+          ALLOCATE(NewIndexes(SIZE(Indexes)+1))
+          NewIndexes(1:SIZE(Indexes)) = Indexes
+          NewIndexes(SIZE(Indexes)+1) = Solver % SolverId
+        ELSE
+          ALLOCATE(NewIndexes(1))
+          NewIndexes(1) = Solver % SolverId
+        END IF
+        CALL ListAddIntegerArray( Host % Values, Slot, SIZE(NewIndexes), NewIndexes )
+        CALL Info(Caller,'Added to the "'//TRIM(Slot)//'" slot of solver '//&
+            I2S(Host % SolverId),Level=5)
+      END IF
+    END IF
+
+    CALL Info(Caller,'Solver is run by solver '//I2S(Host % SolverId)//&
+        ', taking it out of the solver list',Level=5)
+    CALL ListAddString( Solver % Values,'Exec Solver','never')
+    Solver % SolverExecWhen = SOLVER_EXEC_NEVER
+!------------------------------------------------------------------------------
+  END SUBROUTINE CircuitSolverBind
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+
 
 
 
@@ -781,24 +1438,25 @@ CONTAINS
 
     ! Read Circuit definitions from MATC:
     ! ----------------------------------
-    n_Circuits = NINT(GetMatcReal("Circuits"))
-    CurrentModel % n_Circuits = n_Circuits
+    ! Through the prefix, as every read of a circuit definition is.
+    n_Circuits = NINT(GetMatcReal(TRIM(CircuitMatcPrefix())//'Circuits'))
+    CurrentModel % CircuitModel % n_Circuits = n_Circuits
 
-    IF( ASSOCIATED( CurrentModel % Circuits ) ) THEN
-      IF( SIZE( CurrentModel % Circuits ) == n_Circuits ) THEN
+    IF( ASSOCIATED( CurrentModel % CircuitModel % Circuits ) ) THEN
+      IF( SIZE( CurrentModel % CircuitModel % Circuits ) == n_Circuits ) THEN
         CALL Info('AllocateCircuitList','Circuit list already allocated!')
       ELSE
         ! This used to warn that it was deallocating the list and then keep it,
         ! leaving every later index out of range. There is no safe way to drop it
-        ! either, since the circuits are referenced from Model % Circuits and from
+        ! either, since the circuits are referenced from Model % CircuitModel % Circuits and from
         ! each Circuit % Asolver, so refuse instead.
         CALL Fatal('AllocateCircuitList','Circuit list already allocated with '//&
-            I2S(SIZE(CurrentModel % Circuits))//' circuits, cannot resize to '//I2S(n_Circuits))
+            I2S(SIZE(CurrentModel % CircuitModel % Circuits))//' circuits, cannot resize to '//I2S(n_Circuits))
       END IF
     END IF
 
-    IF(.NOT. ASSOCIATED(CurrentModel % Circuits ) ) THEN
-      ALLOCATE( CurrentModel % Circuits(n_Circuits) )
+    IF(.NOT. ASSOCIATED(CurrentModel % CircuitModel % Circuits ) ) THEN
+      ALLOCATE( CurrentModel % CircuitModel % Circuits(n_Circuits) )
     END IF
       
 !------------------------------------------------------------------------------
@@ -815,13 +1473,13 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: name
     TYPE(Circuit_t), POINTER :: Circuit
     
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     
     nofc = 0
     
     char_len = LEN_TRIM(Var_type)
     DO i=1,Circuit % n
-      slen = Matc('C.'//i2s(CId)//'.name.'//i2s(i),name)
+      slen = Matc(TRIM(CktSym(CId,'name.'//i2s(i))),name)
       IF(name(1:char_len) == Var_type(1:char_len)) nofc = nofc + 1
     END DO
 
@@ -842,11 +1500,11 @@ CONTAINS
     nofc = 0
     ComponentIDs = -1
     
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     
    
     DO i=1,Circuit % n
-      slen = Matc('C.'//i2s(CId)//'.name.'//i2s(i),name)
+      slen = Matc(TRIM(CktSym(CId,'name.'//i2s(i))),name)
 
       IF(isComponentName(name,slen)) THEN
         DO ibracket=1,slen
@@ -907,7 +1565,7 @@ END FUNCTION isComponentName
 
     LondonEquations = .FALSE.
 
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
 
     nofc = SIZE(Circuit % Components)
     DO i=1,nofc
@@ -916,7 +1574,7 @@ END FUNCTION isComponentName
 
     CompInd = 0
     DO i=1,Circuit % n
-      slen = Matc('C.'//i2s(CId)//'.name.'//i2s(i),name)
+      slen = Matc(TRIM(CktSym(CId,'name.'//i2s(i))),name)
       Circuit % names(i) = name(1:slen)
 
       CVar => Circuit % CircuitVariables(i)
@@ -1004,8 +1662,8 @@ END FUNCTION isComponentName
     INTEGER :: CId, n, slen 
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel % Circuits(CId)
-    Circuit % n = NINT(GetMatcReal('C.'//i2s(CId)//'.variables'))
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
+    Circuit % n = NINT(GetMatcReal(TRIM(CktSym(CId,'variables'))))
     n = Circuit % n
 !------------------------------------------------------------------------------
   END FUNCTION GetNofCircVariables
@@ -1019,7 +1677,7 @@ END FUNCTION isComponentName
     INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     
     n = Circuit % n
     
@@ -1146,7 +1804,7 @@ END FUNCTION isComponentName
 
     CALL Info('ReadComponents','Reading component: '//I2S(Cid),Level=20)
 
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     
     Circuit % CvarDofs = 0
     DO CompInd=1,Circuit % n_comp
@@ -1464,7 +2122,7 @@ END FUNCTION isComponentName
 
     CALL Info('AddVariableToCircuit','Adding variables count to circuit!',Level=20)
 
-    Circuit_tot_n => CurrentModel % Circuit_tot_n
+    Circuit_tot_n => CurrentModel % CircuitModel % Circuit_tot_n
 
     ! Pick the partition owning this circuit variable. The circuit dofs are global
     ! in the sense that every partition may assemble into them; the owner only
@@ -1521,7 +2179,7 @@ END FUNCTION isComponentName
     TYPE(Valuelist_t), POINTER :: CompParams
     INTEGER :: CId, CompInd
     
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
 
     CALL Info('AddComponentValuesToLists','Adding "Circuit Voltage Variable *" keywords for '&
         //I2S(Circuit % n_comp)//' components in Circuit '//I2S(CId),Level=20)
@@ -1563,7 +2221,7 @@ END FUNCTION isComponentName
     TYPE(CircuitVariable_t), POINTER :: CVar
     INTEGER :: CId, i
     
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     ! add variables that are not associated to components
     DO i=1,Circuit % n
       Cvar => Circuit % CircuitVariables(i)
@@ -1582,22 +2240,22 @@ END FUNCTION isComponentName
     INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     n = Circuit % n
 
     ! Read in the coefficient matrices for the circuit equations:
     ! Ax' + Bx = source:
     ! ------------------------------------------------------------
 
-    CALL matc_get_array('C.'//i2s(CId)//'.A'//CHAR(0),Circuit % A,n,n)
-    CALL matc_get_array('C.'//i2s(CId)//'.B'//CHAR(0),Circuit % B,n,n)
+    CALL matc_get_array(TRIM(CktSym(CId,'A'))//CHAR(0),Circuit % A,n,n)
+    CALL matc_get_array(TRIM(CktSym(CId,'B'))//CHAR(0),Circuit % B,n,n)
 
     IF (Circuit % Harmonic) THEN
       ! Complex multiplier matrix is used for:
       ! B = times(M,B), where B times is the element-wise product
       ! ---------------------------------------------------------
-      CALL matc_get_array('C.'//i2s(CId)//'.Mre'//CHAR(0),Circuit % Mre,n,n)
-      CALL matc_get_array('C.'//i2s(CId)//'.Mim'//CHAR(0),Circuit % Mim,n,n)
+      CALL matc_get_array(TRIM(CktSym(CId,'Mre'))//CHAR(0),Circuit % Mre,n,n)
+      CALL matc_get_array(TRIM(CktSym(CId,'Mim'))//CHAR(0),Circuit % Mim,n,n)
     END IF
 
 !------------------------------------------------------------------------------
@@ -1611,11 +2269,11 @@ END FUNCTION isComponentName
     INTEGER :: CId,n,slen,i
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     n = Circuit % n
 
     DO i=1,n
-      Circuit % Perm(i) = NINT(GetMatcReal('C.'//i2s(CId)//'.perm('//i2s(i-1)//')'))
+      Circuit % Perm(i) = NINT(GetMatcReal(TRIM(CktSym(CId,'perm('//i2s(i-1)//')'))))
     END DO
     IF(ANY(Circuit % Perm /= 0)) THEN 
       Circuit % UsePerm = .TRUE.
@@ -1634,14 +2292,15 @@ END FUNCTION isComponentName
     CHARACTER(:), ALLOCATABLE :: cmd
     CHARACTER(LEN=MAX_NAME_LEN) :: name
 
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     n = Circuit % n
     DO i=1,n
       ! Names of the source functions, these functions should be found
       ! in the "Body Force 1" block of the .sif file.
       ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
       ! ---------------------------------------------------------------------------
-      slen = Matc('nc:C.'//i2s(CId)//'.source.'//i2s(i),name)
+      ! The 'nc:' flag stays in front of the namespace, it is read by Matc().
+      slen = Matc('nc:'//TRIM(CktSym(CId,'source.'//i2s(i))),name)
       Circuit % Source(i) = name(1:slen)
     END DO
 !------------------------------------------------------------------------------
@@ -1673,7 +2332,7 @@ END FUNCTION isComponentName
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
   
-    Circuit => CurrentModel % Circuits(CId)
+    Circuit => CurrentModel % CircuitModel % Circuits(CId)
     n = Circuit % n
 
     DO i=1,n
@@ -1764,7 +2423,7 @@ END FUNCTION isComponentName
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = CurrentModel % HarmonicCircuits
+      harm = CurrentModel % CircuitModel % Harmonic
     ELSE
       harm = Harmonic
     END IF
@@ -1784,7 +2443,7 @@ END FUNCTION isComponentName
     IMPLICIT NONE
     INTEGER :: Ind
     Integer :: AddImIndex
-    IF ( .NOT. CurrentModel % HarmonicCircuits ) CALL Fatal ('AddImIndex','Model is not of harmonic type!')
+    IF ( .NOT. CurrentModel % CircuitModel % Harmonic ) CALL Fatal ('AddImIndex','Model is not of harmonic type!')
     
     AddImIndex = 2 * Ind + 1
 !------------------------------------------------------------------------------
@@ -1800,7 +2459,7 @@ END FUNCTION isComponentName
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = CurrentModel % HarmonicCircuits
+      harm = CurrentModel % CircuitModel % Harmonic
     ELSE
       harm = Harmonic
     END IF
@@ -1837,8 +2496,8 @@ END FUNCTION isComponentName
     TYPE(Variable_t), POINTER, SAVE :: Wpot => NULL()
     SAVE dim, MyGen, Gate
 
-    IF (MyGen /= CircuitsGeneration) THEN
-      MyGen = CircuitsGeneration
+    IF (MyGen /= CircuitsGeneration()) THEN
+      MyGen = CircuitsGeneration()
       dim = CoordinateSystemDimension()
 
       ! Resolve the wire direction potential through GetWPotentialVar(), which is
@@ -1893,14 +2552,14 @@ END FUNCTION isComponentName
     
     Mesh => Solver % Mesh
             
-    DO p=1,CurrentModel % n_Circuits
+    DO p=1,CurrentModel % CircuitModel % n_Circuits
       CALL Info('Circuit_ToMeshVariable','Adding circuit: '//I2S(p),Level=12)
 
-      Circuit => CurrentModel % Circuits(p)
+      Circuit => CurrentModel % CircuitModel % Circuits(p)
 
       n = Circuit % n
       
-      IF( CurrentModel % n_Circuits == 1) THEN
+      IF( CurrentModel % CircuitModel % n_Circuits == 1) THEN
         crtName = 'crt'
       ELSE
         crtName = 'crt '//I2S(p)
@@ -2018,8 +2677,8 @@ END FUNCTION isComponentName
     nBound = GetNOFBoundaryElements()
     TotA = 0; TotB = 0
 
-    DO p=1,CurrentModel % n_Circuits
-      Circuit => CurrentModel % Circuits(p)
+    DO p=1,CurrentModel % CircuitModel % n_Circuits
+      Circuit => CurrentModel % CircuitModel % Circuits(p)
 
       DO CompInd=1,Circuit % n_comp
         Comp => Circuit % Components(CompInd)
@@ -2101,8 +2760,8 @@ END FUNCTION isComponentName
 
     nMissing = 0
 
-    DO p=1,CurrentModel % n_Circuits
-      Circuit => CurrentModel % Circuits(p)
+    DO p=1,CurrentModel % CircuitModel % n_Circuits
+      Circuit => CurrentModel % CircuitModel % Circuits(p)
 
       DO i=1,Circuit % n
         sname = Circuit % Source(i)
@@ -2164,8 +2823,8 @@ END FUNCTION isComponentName
     INTEGER :: p, CompInd
     CHARACTER(*), PARAMETER :: Caller = 'CheckTransientComponents'
 
-    DO p=1,CurrentModel % n_Circuits
-      Circuit => CurrentModel % Circuits(p)
+    DO p=1,CurrentModel % CircuitModel % n_Circuits
+      Circuit => CurrentModel % CircuitModel % Circuits(p)
       DO CompInd=1,Circuit % n_comp
         Comp => Circuit % Components(CompInd)
         CompParams => CurrentModel % Components(Comp % ComponentId) % Values
@@ -2236,8 +2895,8 @@ END FUNCTION isComponentName
 
     CALL Info(Caller,'Resolved circuit model:',Level=5)
 
-    DO p=1,CurrentModel % n_Circuits
-      Circuit => CurrentModel % Circuits(p)
+    DO p=1,CurrentModel % CircuitModel % n_Circuits
+      Circuit => CurrentModel % CircuitModel % Circuits(p)
 
       WRITE(Message,'(A,I0,A,I0,A,I0,A)') 'Circuit ',p,': ',Circuit % n, &
           ' variables, ',Circuit % n_comp,' components'
@@ -2323,7 +2982,7 @@ END FUNCTION isComponentName
         END IF
 
         IF( Comp % ComponentType /= 'resistor' .AND. nBC > 0 .AND. &
-            .NOT. CurrentModel % HarmonicCircuits ) THEN
+            .NOT. CurrentModel % CircuitModel % Harmonic ) THEN
           CALL Warn(Caller,'Component '//I2S(Comp % ComponentId)//&
               ' has boundary elements, but the transient assembly only visits bulk elements!')
         END IF
@@ -2355,13 +3014,13 @@ CONTAINS
     INTEGER :: i, nm, Circuit_tot_n, p, j, &
                RowId, nn, l, k, n_Circuits
     
-    CM => CurrentModel % CircuitMatrix
-    ASolver => CurrentModel % Asolver
+    CM => CurrentModel % CircuitModel % CircuitMatrix
+    ASolver => CurrentModel % CircuitModel % ASolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('SetCircuitsParallelInfo','ASolver not found!')
     nm = ASolver % Matrix % NumberOfRows
-    Circuit_tot_n = CurrentModel % Circuit_tot_n
-    Circuits => CurrentModel % Circuits
-    n_Circuits = CurrentModel % n_Circuits
+    Circuit_tot_n = CurrentModel % CircuitModel % Circuit_tot_n
+    Circuits => CurrentModel % CircuitModel % Circuits
+    n_Circuits = CurrentModel % CircuitModel % n_Circuits
     
     IF(.NOT.ASSOCIATED(CM % ParallelInfo)) THEN
       ALLOCATE(CM % ParallelInfo)
@@ -2482,7 +3141,7 @@ CONTAINS
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = CurrentModel % HarmonicCircuits
+      harm = CurrentModel % CircuitModel % Harmonic
     ELSE
       harm = Harmonic
     END IF
@@ -2543,7 +3202,7 @@ CONTAINS
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = CurrentModel % HarmonicCircuits
+      harm = CurrentModel % CircuitModel % Harmonic
     ELSE
       harm = Harmonic
     END IF
@@ -2570,9 +3229,9 @@ CONTAINS
     LOGICAL :: Parallel
     INTEGER, POINTER :: Rows(:), Cnts(:)
     
-    Circuits => CurrentModel % Circuits
-    n_Circuits = CurrentModel % n_Circuits
-    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Circuits => CurrentModel % CircuitModel % Circuits
+    n_Circuits = CurrentModel % CircuitModel % n_Circuits
+    nm = CurrentModel % CircuitModel % ASolver % Matrix % NumberOfRows
     Parallel = CurrentModel % Solver % Parallel
     
     ! Basic circuit equations...
@@ -2617,9 +3276,9 @@ CONTAINS
     LOGICAL :: Parallel
     INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
     
-    Circuits => CurrentModel % Circuits
-    n_Circuits = CurrentModel % n_Circuits
-    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Circuits => CurrentModel % CircuitModel % Circuits
+    n_Circuits = CurrentModel % CircuitModel % n_Circuits
+    nm = CurrentModel % CircuitModel % ASolver % Matrix % NumberOfRows
     Parallel = CurrentModel % Solver % Parallel
     
     ! Basic circuit equations...
@@ -2666,9 +3325,9 @@ CONTAINS
     LOGICAL :: dofsdone
     LOGICAL*1 :: Done(:)
     
-    Circuits => CurrentModel % Circuits
-    n_Circuits = CurrentModel % n_Circuits
-    Asolver => CurrentModel % Asolver
+    Circuits => CurrentModel % CircuitModel % Circuits
+    n_Circuits = CurrentModel % CircuitModel % n_Circuits
+    Asolver => CurrentModel % CircuitModel % ASolver
     nm = Asolver % Matrix % NumberOfRows
     DO p=1,n_Circuits
       DO CompInd=1,Circuits(p) % n_comp
@@ -2740,9 +3399,9 @@ CONTAINS
     LOGICAL :: dofsdone
     LOGICAL*1 :: Done(:)
     
-    Circuits => CurrentModel % Circuits
-    n_Circuits = CurrentModel % n_Circuits
-    Asolver => CurrentModel % Asolver
+    Circuits => CurrentModel % CircuitModel % Circuits
+    n_Circuits = CurrentModel % CircuitModel % n_Circuits
+    Asolver => CurrentModel % CircuitModel % ASolver
     nm = Asolver % Matrix % NumberOfRows
 
     DO p=1,n_Circuits
@@ -2817,7 +3476,7 @@ CONTAINS
     LOGICAL :: dofsdone
 
     IF (ElAssocToComp(Element, Comp)) THEN
-      Asolver => CurrentModel % Asolver
+      Asolver => CurrentModel % CircuitModel % ASolver
       nn = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element,ASolver)
       SELECT CASE (Comp % CoilType)
@@ -2850,7 +3509,7 @@ CONTAINS
     LOGICAL :: dofsdone
     
     IF (ElAssocToComp(Element, Comp)) THEN
-      Asolver => CurrentModel % Asolver
+      Asolver => CurrentModel % CircuitModel % ASolver
       nn = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element,ASolver)
       SELECT CASE (Comp % CoilType)
@@ -2887,22 +3546,22 @@ CONTAINS
     LOGICAL :: harm
     SAVE dim, MyGen
 
-    IF (MyGen /= CircuitsGeneration) THEN
-      MyGen = CircuitsGeneration
+    IF (MyGen /= CircuitsGeneration()) THEN
+      MyGen = CircuitsGeneration()
       dim = CoordinateSystemDimension()
     END IF
 
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = CurrentModel % HarmonicCircuits
+      harm = CurrentModel % CircuitModel % Harmonic
     ELSE
       harm = Harmonic
     END IF
 
     
-    IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateStranded','ASolver not found!')
-    PS => CurrentModel % Asolver % Variable % Perm
+    IF (.NOT. ASSOCIATED(CurrentModel % CircuitModel % ASolver) ) CALL Fatal ('CountAndCreateStranded','ASolver not found!')
+    PS => CurrentModel % CircuitModel % ASolver % Variable % Perm
 
-    nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
+    nd = GetElementDOFs(Indexes,Element,CurrentModel % CircuitModel % ASolver)
     IF(dim==2) THEN
       ncdofs1=1
       ncdofs2=nd
@@ -2955,20 +3614,20 @@ CONTAINS
     LOGICAL :: harm
     SAVE dim, MyGen
 
-    IF (MyGen /= CircuitsGeneration) THEN
-      MyGen = CircuitsGeneration
+    IF (MyGen /= CircuitsGeneration()) THEN
+      MyGen = CircuitsGeneration()
       dim = CoordinateSystemDimension()
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = CurrentModel % HarmonicCircuits
+      harm = CurrentModel % CircuitModel % Harmonic
     ELSE
       harm = Harmonic
     END IF
     
-    IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateMassive','ASolver not found!')
-    PS => CurrentModel % Asolver % Variable % Perm
-    nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
+    IF (.NOT. ASSOCIATED(CurrentModel % CircuitModel % ASolver) ) CALL Fatal ('CountAndCreateMassive','ASolver not found!')
+    PS => CurrentModel % CircuitModel % ASolver % Variable % Perm
+    nd = GetElementDOFs(Indexes,Element,CurrentModel % CircuitModel % ASolver)
     IF(dim==2) THEN
       ncdofs1=1
       ncdofs2=nd
@@ -3022,21 +3681,21 @@ CONTAINS
     LOGICAL :: harm
     SAVE dim, MyGen
 
-    IF (MyGen /= CircuitsGeneration) THEN
-      MyGen = CircuitsGeneration
+    IF (MyGen /= CircuitsGeneration()) THEN
+      MyGen = CircuitsGeneration()
       dim = CoordinateSystemDimension()
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = CurrentModel % HarmonicCircuits
+      harm = CurrentModel % CircuitModel % Harmonic
     ELSE
       harm = Harmonic
     END IF
     
-    IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateFoilWinding','ASolver not found!')
-    PS => CurrentModel % Asolver % Variable % Perm
-    nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
-    nm = CurrentModel % ASolver % Matrix % NumberOfRows
+    IF (.NOT. ASSOCIATED(CurrentModel % CircuitModel % ASolver) ) CALL Fatal ('CountAndCreateFoilWinding','ASolver not found!')
+    PS => CurrentModel % CircuitModel % ASolver % Variable % Perm
+    nd = GetElementDOFs(Indexes,Element,CurrentModel % CircuitModel % ASolver)
+    nm = CurrentModel % CircuitModel % ASolver % Matrix % NumberOfRows
 
     ncdofs=nd
     IF (dim == 3) ncdofs=nd-nn
@@ -3100,9 +3759,9 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG :: Values(:)
     LOGICAL :: Parallel, Found
     
-    ASolver => CurrentModel % Asolver
+    ASolver => CurrentModel % CircuitModel % ASolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
-    Circuit_tot_n = CurrentModel % Circuit_tot_n
+    Circuit_tot_n = CurrentModel % CircuitModel % Circuit_tot_n
     
     ! Initialize Circuit matrix:
     ! -----------------------------
@@ -3110,7 +3769,7 @@ CONTAINS
     nm =  Asolver % Matrix % NumberOfRows
 
     CM => AllocateMatrix()
-    CurrentModel % CircuitMatrix=>CM
+    CurrentModel % CircuitModel % CircuitMatrix=>CM
     
     CM % Format = MATRIX_CRS
     Asolver % Matrix % AddMatrix => CM
@@ -3148,7 +3807,7 @@ CONTAINS
       ! being leaked with it.
       CALL FreeMatrix(CM); CM=>Null()
       Asolver %  Matrix % AddMatrix => CM
-      CurrentModel % CircuitMatrix=>CM
+      CurrentModel % CircuitModel % CircuitMatrix=>CM
       RETURN 
     END IF
 
