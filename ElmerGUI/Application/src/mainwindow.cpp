@@ -48,6 +48,7 @@
 #include <QStringList>
 #include <QSystemTrayIcon>
 #include <QTimeLine>
+#include <QtGlobal>  /* for QT_VERSION_CHECK with Qt4 or Qt5 */
 #include <QtGui>
 
 #include <fstream>
@@ -5106,7 +5107,11 @@ void MainWindow::showVtkPostSlot() {
 
     logMessage("Executing: " + unifyingCommand);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    meshUnifier->startCommand(unifyingCommand);
+#else
     meshUnifier->start(unifyingCommand);
+#endif
 
     if (!meshUnifier->waitForStarted()) {
       solverLogWindow->getTextEdit()->append(
@@ -6638,7 +6643,11 @@ void MainWindow::runsolverSlot() {
 
       logMessage("Executing: " + partitioningCommand);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+      meshSplitter->startCommand(partitioningCommand);
+#else
       meshSplitter->start(partitioningCommand);
+#endif
 
       if (!meshSplitter->waitForStarted()) {
         logMessage("Unable to start ElmerGrid for mesh partitioning - aborted");
@@ -6696,7 +6705,7 @@ void MainWindow::meshSplitterFinishedSlot(int exitCode) {
   int nofProcessors = ui.nofProcessorsSpinBox->value();
 
   QString parallelExec = ui.parallelExecLineEdit->text().trimmed();
-#ifdef WIN32
+#if defined (_WIN32)
   parallelExec = "\"" + parallelExec + "\"";
 #endif
 
@@ -6707,7 +6716,11 @@ void MainWindow::meshSplitterFinishedSlot(int exitCode) {
 
   logMessage("Executing: " + parallelCmd);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  solver->startCommand(parallelCmd);
+#else
   solver->start(parallelCmd);
+#endif
   killsolverAct->setEnabled(true);
 
   if (!solver->waitForStarted()) {
@@ -7075,7 +7088,11 @@ void MainWindow::resultsSlot() {
 
     logMessage("Executing: " + unifyingCommand);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    meshUnifier->startCommand(unifyingCommand);
+#else
     meshUnifier->start(unifyingCommand);
+#endif
 
     if (!meshUnifier->waitForStarted()) {
       solverLogWindow->getTextEdit()->append(
