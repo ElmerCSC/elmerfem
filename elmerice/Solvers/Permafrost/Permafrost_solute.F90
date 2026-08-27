@@ -44,7 +44,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
@@ -90,6 +90,11 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   CALL INFO( SolverName, 'Computing solute transport           ',Level=4 )
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
   CALL DefaultStart()
+
+  IF (.NOT.ASSOCIATED(Solver % Variable % Solver,Solver)) THEN
+    CALL FATAL(SolverName,'Primary solute variable is owned by another solver; '//&
+         'remove any duplicate Salinity export and set Calculate Velocity in the solute solver')
+  END IF
 
   VarName = Solver % Variable % Name
   Params => GetSolverParams()
