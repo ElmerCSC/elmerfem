@@ -547,6 +547,7 @@ CONTAINS
              GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+        CALL ValidateLiquidFraction(XiAtIP(IPPerm),Material,FunctionName)
         XiTAtIP = &
              XiPowerlawT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
@@ -558,6 +559,7 @@ CONTAINS
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
         XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,&
              ExponentialParams % Swres,ExponentialParams % DeltaT)
+        CALL ValidateLiquidFraction(XiAtIP(IPPerm),Material,FunctionName)
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
              ExponentialParams % Swres,ExponentialParams % DeltaT)
       CASE('linear') ! even simpler linear law
@@ -568,6 +570,7 @@ CONTAINS
         IF (.NOT.LinearParamsFound) &
              CALL FATAL(FunctionName,"Linear freezing switched on, but not all parameters found")
         XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+        CALL ValidateLiquidFraction(XiAtIP(IPPerm),Material,FunctionName)
         XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Linear = .TRUE.
       CASE('lunardini1988_threezone_linear')
@@ -580,7 +583,7 @@ CONTAINS
              LunardiniParams % xi_f,LunardiniParams % xi_o,&
              LunardiniParams % DeltaT)
       CASE('hartikainen') ! Hartikainen model
-        CALL  GetXiHartikainen (RockMaterialID,&
+        CALL  GetXiHartikainen (RockMaterialID,Material,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&

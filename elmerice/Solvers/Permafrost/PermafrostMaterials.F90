@@ -41,6 +41,8 @@ MODULE PermafrostMaterials
   USE DefUtils
   USE SolverUtils
   IMPLICIT NONE
+  REAL(KIND=dp), PARAMETER :: MinimumLiquidFraction = 0.001_dp
+  LOGICAL, SAVE :: LiquidFractionClipWarningIssued = .FALSE.
   !---------------------------------
   ! type for solvent (water and ice)
   !---------------------------------
@@ -108,6 +110,42 @@ CONTAINS
   ! I/O related functions
   !-------------------------------------------------
 
+  SUBROUTINE ValidateLiquidFraction(Xi,Material,Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(INOUT) :: Xi
+    TYPE(ValueList_t), POINTER :: Material
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    LOGICAL :: ClipLiquidFraction, Found
+
+    IF (Xi .NE. Xi) &
+         CALL FATAL(Caller,'Computed liquid fraction Xi is NaN')
+
+    IF ((Xi <= 0.0_dp) .OR. (Xi > 1.0_dp)) THEN
+      ClipLiquidFraction = GetLogical(Material,'Clip Liquid Fraction',Found)
+      IF (.NOT.Found) ClipLiquidFraction = .FALSE.
+
+      IF (.NOT.ClipLiquidFraction) THEN
+        WRITE(Message,*) 'Computed liquid fraction Xi=',Xi,&
+             ' is outside the required range 0 < Xi <= 1'
+        CALL FATAL(Caller,Message)
+      END IF
+
+      IF (.NOT.LiquidFractionClipWarningIssued) THEN
+        WRITE(Message,*) 'Computed liquid fraction Xi=',Xi,' reset to ',&
+             MERGE(MinimumLiquidFraction,1.0_dp,Xi <= 0.0_dp),&
+             '. Further liquid-fraction clipping warnings are suppressed.'
+        CALL WARN(Caller,Message)
+        LiquidFractionClipWarningIssued = .TRUE.
+      END IF
+      IF (Xi <= 0.0_dp) THEN
+        Xi = MinimumLiquidFraction
+      ELSE
+        Xi = 1.0_dp
+      END IF
+    END IF
+  END SUBROUTINE ValidateLiquidFraction
+  !---------------------------------------------------------------------------------------------
+
   FUNCTION ReadPermafrostPhaseChangeModel(Material,Caller) RESULT(PhaseChangeModel)
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
@@ -157,9 +195,9 @@ CONTAINS
     ExponentialParams % Beta = GetConstReal(Params,"Exponential Beta",Found)
     IF (.NOT.Found) ExponentialParams % Beta = 0.0_dp
 
-    IF ((ExponentialParams % Swres < 0.0_dp) .OR. &
+    IF ((ExponentialParams % Swres <= 0.0_dp) .OR. &
          (ExponentialParams % Swres >= 1.0_dp)) &
-         CALL FATAL(Caller,'"Exponential Swres" must satisfy 0 <= Swres < 1')
+         CALL FATAL(Caller,'"Exponential Swres" must satisfy 0 < Swres < 1')
     IF (ExponentialParams % DeltaT <= 0.0_dp) &
          CALL FATAL(Caller,'"Exponential DeltaT" must be positive')
     IF (ExponentialParams % Beta < 0.0_dp) &
@@ -1801,7 +1839,7 @@ CONTAINS
     END IF
   END FUNCTION XiEta
   !----------------------------------------------------------------------
-  SUBROUTINE GetXiHartikainen (RockMaterialID,&
+  SUBROUTINE GetXiHartikainen (RockMaterialID,Material,&
        CurrentSoluteMaterial,CurrentSolventMaterial,&
        TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
        Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -1813,6 +1851,7 @@ CONTAINS
 
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+    TYPE(ValueList_t), POINTER :: Material
     INTEGER :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP
     REAL(KIND=dp), INTENT(IN) :: GasConstant,p0,T0
@@ -1839,15 +1878,7 @@ CONTAINS
     END IF
     IF (ComputeXi)  THEN
       XiAtIP = GetXi(BAtIP,DAtIP)
-      IF (XiAtIP < 0.0_dp) THEN
-        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
-        XiAtIP = 0.0_dp
-        CALL WARN("GetXiHartikainen",Message)
-      ELSE IF (XiAtIP > 1.0_dp) THEN
-        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
-        XiAtIP = 0.99_dp
-        CALL WARN("GetXiHartikainen",Message)
-      END IF
+      CALL ValidateLiquidFraction(XiAtIP,Material,'GetXiHartikainen')
     END IF
     
     ! updates of derivatives
@@ -1855,11 +1886,7 @@ CONTAINS
       biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.TRUE.)
       XiAtIP = GetXi(BAtIP,DAtIP)
-      IF (XiAtIP <= 0.0_dp) THEN
-        WRITE(Message,*) 'Xi=',XiAtIP,' reset to 0.001'
-        CALL WARN("GetXiHartikainen",Message)
-        XiAtIP = 0.001_dp
-      END IF
+      CALL ValidateLiquidFraction(XiAtIP,Material,'GetXiHartikainen')
     END IF
     !----------------------------------------------------
     XiTAtIP = 0.0_dp

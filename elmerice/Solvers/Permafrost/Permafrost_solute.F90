@@ -443,6 +443,7 @@ CONTAINS
              GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+        CALL ValidateLiquidFraction(XiAtIP(IPPerm),Material,FunctionName)
         XiTAtIP = &
              XiPowerlawT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
@@ -454,6 +455,7 @@ CONTAINS
       CASE('exponential') ! simple exponential law (used in some INTERFROST cases)
         XiAtIP(IPPerm) = GetXiExponential(T0,TemperatureAtIP,&
              ExponentialParams % Swres,ExponentialParams % DeltaT)
+        CALL ValidateLiquidFraction(XiAtIP(IPPerm),Material,FunctionName)
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
              ExponentialParams % Swres,ExponentialParams % DeltaT)
       CASE('linear') ! even simpler linear law (used in Lunardini)
@@ -462,12 +464,13 @@ CONTAINS
         IFdeltaT = GetConstReal( Material, "Linear deltaT", Found)
         !XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
         XiAtIP(IPPerm) = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+        CALL ValidateLiquidFraction(XiAtIP(IPPerm),Material,FunctionName)
         !XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,Xi0,IFdeltaT)
         XiTAtIP = XiLinearT(T0,TemperatureAtIP,Swres,IFdeltaT)
         Linear = .TRUE.
       CASE('hartikainen') ! Hartikainen model
         XiBefore =  XiAtIP(IPPerm)
-        CALL  GetXiHartikainen(RockMaterialID,&
+        CALL  GetXiHartikainen(RockMaterialID,Material,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -768,16 +771,19 @@ CONTAINS
                GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
                CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+          CALL ValidateLiquidFraction(XiAtIP,ParentMaterial,FunctionName)
           ! NB: XiTAtIP, XiPAtIP not needed
         CASE('exponential')
           XiAtIP = GetXiExponential(T0,TemperatureAtIP,&
                ExponentialParams % Swres,ExponentialParams % DeltaT)
+          CALL ValidateLiquidFraction(XiAtIP,ParentMaterial,FunctionName)
         CASE('linear')
           Swres = GetConstReal( ParentMaterial, "Linear Swres", Found)
           IFdeltaT = GetConstReal( ParentMaterial, "Linear deltaT", Found)
           XiAtIP = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+          CALL ValidateLiquidFraction(XiAtIP,ParentMaterial,FunctionName)
         CASE('hartikainen') ! Hartikainen model
-          CALL  GetXiHartikainen(RockMaterialID,&
+          CALL  GetXiHartikainen(RockMaterialID,ParentMaterial,&
                CurrentSoluteMaterial,CurrentSolventMaterial,&
                TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
                Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
