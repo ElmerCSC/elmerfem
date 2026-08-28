@@ -1,3 +1,28 @@
+# ELMER_HOME and ELMER_LIB are what point the binaries at the build tree being
+# tested rather than at whatever happens to be installed.  RUN_ELMER_TEST and
+# EXECUTE_ELMER_SOLVER set them, but they only do so when they are called, and
+# a test that drives ElmerGrid, ViewFactors or Radiators directly through
+# EXECUTE_PROCESS spawns those before any macro has run.  Such a child then
+# inherits an empty environment and falls back to the compiled in
+# ELMER_SOLVER_HOME, i.e. to the install tree; on Windows getsolverhome()
+# ignores that define and looks next to the running exe instead, which in a
+# build tree holds no elements.def at all and the run dies before it writes
+# anything.  Set them here, at include time, so every child of a runtest.cmake
+# sees the same environment the solver gets.  Same values RUN_ELMER_TEST uses.
+#
+# BINARY_DIR is only defined when this is included from a runtest.cmake driven
+# by ctest; at configure time, where the test CMakeLists.txt include it, there
+# is nothing to point at and nothing to spawn.
+IF(DEFINED BINARY_DIR)
+  IF(NOT DEFINED ENV{ELMER_HOME} OR "$ENV{ELMER_HOME}" STREQUAL "")
+    SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  ENDIF()
+  IF(NOT DEFINED ENV{ELMER_LIB} OR "$ENV{ELMER_LIB}" STREQUAL "")
+    SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  ENDIF()
+ENDIF()
+
+
 MACRO(ADD_ELMER_LABEL test_name label_string)
   SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()

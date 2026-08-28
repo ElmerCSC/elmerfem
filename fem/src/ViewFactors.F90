@@ -113,6 +113,10 @@
      LOGICAL :: DoRadiators, DoMapping
      REAL(KIND=dp), POINTER :: Radiators(:,:)
 
+     ! .TRUE. only when InitMPI() really took MPI up.  ELMER_NO_MPI leaves it
+     ! down, and MPI must then not be touched again on the way out either.
+     LOGICAL :: MPIInitDone = .FALSE.
+
      INTEGER, PARAMETER :: VFUnit = 10
      CHARACTER(*), PARAMETER :: Caller = 'ViewFactors'
 !------------------------------------------------------------------------------
@@ -655,7 +659,12 @@
      CALL Info( Caller,Message, Level=3 )
 
      CALL FLUSH(6)
-     CALL ParallelFinalize()
+     ! Skipped under ELMER_NO_MPI: ParEnvFinalize() opens with an
+     ! MPI_BARRIER on ELMER_COMM_WORLD, and handing MPI_Comm_f2c a
+     ! communicator before MPI_Init aborts the process.  That abort came
+     ! after the factors were computed and written, so with the exit status
+     ! of the spawn discarded it used to leave no trace at all.
+     IF ( MPIInitDone ) CALL ParallelFinalize()
 
 CONTAINS
 
@@ -749,8 +758,10 @@ CONTAINS
        ParEnv % PEs  = 1
        ParEnv % ActiveComm = 0
        ParEnv % ExternalInit = .FALSE.
+       MPIInitDone = .FALSE.
      ELSE
        penv => ParallelInit()
+       MPIInitDone = .TRUE.
      END IF
    END SUBROUTINE InitMPI
 
