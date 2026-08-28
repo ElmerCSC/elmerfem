@@ -3980,8 +3980,11 @@ CONTAINS
 
 
      SolveAdjoint = ListGetLogical(Params,'Solve Adjoint Equation', Found )
-
      IF( SolveAdjoint ) THEN
+       ! This routine uses the existing linear system and computes an additional solution
+       ! with different r.h.s. that can come from given source vector or given source term.
+       ! This can be used to compute sensitivities for problems that are self-adjoined.
+       !----------------------------------------------------------------------------------
        BLOCK
          INTEGER :: n
          REAL(KIND=dp) :: Norm
@@ -4143,6 +4146,106 @@ CONTAINS
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------
 
+
+   !------------------------------------------------------------------------------
+   !> Calculate full derivative resulting from a change in another field solver.
+   !> This routine modifies one field, and returns to do assembly ans solution
+   !> of the primary field and then computes the sensitivity on the 2nd round. 
+   !------------------------------------------------------------------------------
+   FUNCTION DefaultSensitivity(uSolver) RESULT ( omstart )  
+     TYPE(Solver_t), TARGET, OPTIONAL :: uSolver
+     LOGICAL :: Omstart
+     
+     TYPE(ValueList_t), POINTER :: Params
+     LOGICAL :: SensActive = .FALSE.
+     TYPE(Variable_t), POINTER :: changeVar, sensVar, primVar, changeVeloVar, dtVar
+     TYPE(Solver_t), POINTER :: Solver
+     REAL(KIND=dp) :: changeEps, aid, Nrm
+     LOGICAL :: Found, ApplyLImiter
+     CHARACTER(:), ALLOCATABLE :: str
+     INTEGER :: i
+     
+     
+     SAVE SensActive, changeVar, sensVar, changeEps, ApplyLimiter, primVar, &
+         dtVar, changeVeloVar, Nrm
+     
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+     
+     Params => Solver % Values     
+     Omstart = .FALSE.
+     IF(.NOT. ListGetLogical( Params,'Calculate Sensitivity', Found ) ) RETURN
+     
+     IF(.NOT. SensActive ) THEN
+       CALL Info('DefaultSensitivity','Making a small variation and recomputing the solution!',Level=12)
+
+       ! Find the variable that is internally used to update the gap 
+       str = ListGetString(Params,'Change Variable', UnfoundFatal = .TRUE.)
+       changeVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE. )
+       changeEps = ListGetCReal( Params,'Change Epsilon', UnfoundFatal = .TRUE. )
+       changeVar % Values = changeVar % Values + changeEps
+
+       ! We may need to compute the derivative of the changing variable too!
+       NULLIFY( changeVeloVar ) 
+       str = ListGetString(Params,'Change Velocity Variable', Found )
+       IF( Found ) THEN         
+         changeVeloVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE.)                 
+         dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size', UnfoundFatal = .TRUE.)
+         changeVeloVar % Values = (changeVar % Values(:) - changeVar % PrevValues(:,1)) / dtVar % Values(1)
+       END IF
+
+       ! Get pointer to the sensitivity variable
+       str = ListGetString(Params,'Sensitivity Variable', UnfoundFatal = .TRUE.)        
+       SensVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal=.TRUE.)
+       
+       ! The primary variable
+       PrimVar => Solver % Variable
+       Nrm = Solver % Variable % Norm
+       ! Remember the old values
+       SensVar % Values = PrimVar % Values
+
+       ApplyLimiter = ListGetLogical( Params,'Apply Limiter', Found )
+       IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .FALSE. ) 
+       CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
+       
+       SensActive = .TRUE.
+       Omstart = .TRUE.
+     ELSE
+       CALL Info('DefaultSensitivity','Computing sensitivity from numerical derivative!',Level=12)
+
+       ! Return the gap as it was
+       changeVar % Values = changeVar % Values - changeEps
+
+       ! Revert back to the velocity
+       IF( ASSOCIATED(changeVeloVar) ) THEN         
+         changeVeloVar % Values = (changeVar % Values(:) - changeVar % PrevValues(:,1)) / dtVar % Values(1)
+       END IF
+
+       ! Calculate the sensitivity from one-sided differential, we need to swap the values
+       ! so let's do it one value at the time.
+       DO i=1,SIZE(SensVar % Values)
+         aid = SensVar % Values(i)
+         SensVar % Values(i) = ( PrimVar % Values(i) - aid) / changeEps
+         PrimVar % Values(i) = aid
+       END DO
+       Solver % Variable % Norm = Nrm
+                
+       ! Return solver variable and solver settings as they were
+       IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .TRUE. ) 
+       CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
+
+       SensActive = .FALSE.
+       Omstart = .FALSE.
+     END IF
+     
+   END FUNCTION DefaultSensitivity
+
+
+
+   
    FUNCTION DefaultCutFEM(Solver) RESULT( Swap ) 
      TYPE(Solver_t), TARGET, OPTIONAL :: Solver
 

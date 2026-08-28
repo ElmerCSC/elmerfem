@@ -89,6 +89,9 @@
      LOGICAL :: GotIt, GotHoleType, UseGravity
      REAL(KIND=dp) :: RelaxationAlpha, grav, at, st
 
+     LOGICAL :: PseudoSpring
+     REAL(KIND=dp), ALLOCATABLE :: PseudoDisp(:)
+     
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
           DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef, Dofs
@@ -132,6 +135,13 @@
      EigenOrHarmonic = EigenOrHarmonicAnalysis() &
          .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
 
+
+     PseudoSpring = ListGetLogical(SolverParams,'Pseudo Spring', Found )
+     IF(PseudoSpring) THEN
+       ALLOCATE( PseudoDisp( SIZE(Solver % Variable % Values) / DOFs ) )
+       PseudoDisp = Solver % Variable % Values(1::3)
+     END IF
+     
      ! The following may be used to switch to a 4-node formulation where the shear is enforced to
      ! be in the kernel of curl-conforming ABF_0: 
      !
@@ -241,6 +251,12 @@
              GetReal( Material, 'Spring', GotIt )
          IF (.NOT. GotIt ) SpringCoef(1:n) = 0.0d0
 
+         IF( PseudoSpring ) THEN
+           Load(1:n) = Load(1:n) + SpringCoef(1:n) * &
+               PseudoDisp(Solver % Variable % Perm(Element % NodeIndexes))
+         END IF
+
+         
          IF(HoleCorrection) THEN
            HoleType = GetString(Material,'Hole Type',GotHoleType)
            IF(GotHoleType) THEN
@@ -427,12 +443,12 @@
 !        Spring Coeffficient:
 !        -------------------
          DO p = 1,n
-            i = DOFs*(p-1)+1
-            DO q = 1,n
-               j = DOFs*(q-1)+1
-               STIFF(i,j) = STIFF(i,j) &
-                    + WinklerCoef * Basis(p) * Basis(q) * s
-            END DO
+           i = DOFs*(p-1)+1
+           DO q = 1,n
+             j = DOFs*(q-1)+1
+             STIFF(i,j) = STIFF(i,j) &
+                 + WinklerCoef * Basis(p) * Basis(q) * s
+           END DO
          END DO
 
 !

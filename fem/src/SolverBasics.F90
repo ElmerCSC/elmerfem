@@ -3515,16 +3515,16 @@ END FUNCTION SearchNodeL
     INTEGER :: i, n, nn, RelaxAfter, IterNo, MinIter, MaxIter, dofs
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
-    REAL(KIND=dp), POINTER :: x0(:)
+    REAL(KIND=dp), POINTER :: x0(:), dx(:)
     REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Change, PrevChange, Relaxation, tmp(1),dt, &
         Tolerance, MaxNorm, eps, Ctarget, Poffset, nsum, dpsum
     INTEGER, TARGET  ::  Dnodes(1)
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: iterVar, VeloVar, dtVar, WeightVar
     CHARACTER(:), ALLOCATABLE :: str,SolverName,ConvergenceType
-
+    
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
-        SkipConstraints, ResidualMode, RelativeP, NodalNorm
+        SkipConstraints, ResidualMode, RelativeP, NodalNorm, DoAitkenRelax
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
@@ -3538,7 +3538,8 @@ END FUNCTION SearchNodeL
     RelativeP = .FALSE.
     SingleMesh = Solver % Mesh % SingleMesh
     LimitRelax = .FALSE.
-
+    DoAitkenRelax = .FALSE.
+    
     IF(.NOT. ASSOCIATED(Solver % Variable) ) THEN
       CALL Info(Caller,'Solver variable not found for: '&
            //TRIM(ListGetString(SolverParams,'equation')),Level=10)
@@ -3554,6 +3555,9 @@ END FUNCTION SearchNodeL
     END IF
             
     IF(SteadyState) THEN
+PRINT *,'steady1:'
+
+
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
         CALL Info(Caller,'Skipping the computation of steady state change',Level=15)
@@ -3572,17 +3576,21 @@ END FUNCTION SearchNodeL
       IF(.NOT. Stat) ConvergenceAbsolute = &
           ListGetLogical(SolverParams,'Use Absolute Norm for Convergence',Stat)
 
-      Relaxation = ListGetCReal( SolverParams, &
-          'Steady State Relaxation Factor', Relax )
-      Relax = Relax .AND. ABS(Relaxation-1.0_dp) > EPSILON(Relaxation)
+      Relaxation = ListGetCReal( SolverParams,'Steady State Relaxation Factor', Stat )
+      IF(.NOT. Stat) Relaxation = 1.0_dp
+      Relax = ( ABS(Relaxation-1.0_dp) > EPSILON(Relaxation) )
 
       iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter', UnfoundFatal=.TRUE.)
       IterNo = NINT( iterVar % Values(1) )
+
+      DoAitkenRelax = ListGetLogical( SolverParams,'Steady State Aitken Relaxation',Stat)
+      IF( DoAitkenRelax ) Relax = .TRUE.
+        
       IF( Relax ) THEN
         RelaxAfter = ListGetInteger(SolverParams,'Steady State Relaxation After',Stat)
         IF( Stat .AND. RelaxAfter >= IterNo ) Relax = .FALSE.
       END IF
-        
+      
       NodalNorm = ListGetLogical(SolverParams,'Steady State Nodal Norm',Stat)
       
       RelaxBefore = .TRUE.
@@ -3631,9 +3639,13 @@ END FUNCTION SearchNodeL
       IF(.NOT. Stat) ConvergenceAbsolute = &
           ListGetLogical(SolverParams,'Use Absolute Norm for Convergence',Stat)
               
-      Relaxation = ListGetCReal( SolverParams, &
-          'Nonlinear System Relaxation Factor', Relax )
-      Relax = Relax .AND. ( ABS( Relaxation - 1.0_dp) > EPSILON( Relaxation ) )
+      Relaxation = ListGetCReal( SolverParams,'Nonlinear System Relaxation Factor', Stat )
+      IF(.NOT. Stat) Relaxation = 1.0_dp
+      Relax = ( ABS(Relaxation-1.0_dp) > EPSILON(Relaxation) )
+
+      DoAitkenRelax = ListGetLogical( SolverParams,'Nonlinear System Aitken Relaxation',Stat)
+      IF( DoAitkenRelax ) Relax = .TRUE.
+      
       IF( Relax ) THEN
         RelaxAfter = ListGetInteger(SolverParams,'Nonlinear System Relaxation After',Stat)
         IF( Stat .AND. RelaxAfter >= Solver % Variable % NonlinIter ) Relax = .FALSE.
@@ -3707,6 +3719,26 @@ END FUNCTION SearchNodeL
         x0 => Solver % Variable % Values
         Stat = .TRUE.
       END IF
+    END IF
+
+    IF( DoAitkenRelax ) THEN
+      ! We need to store the suggested change before relaxation because Aitken
+      ! relaxated needs the suggested change, not the relaxed one. 
+      IF(ASSOCIATED(Solver % Variable % DeltaValues) ) THEN
+        IF(SIZE(Solver % Variable % DeltaValues) /= n) THEN
+          DEALLOCATE(Solver % Variable % DeltaValues)
+        END IF
+      END IF
+      IF(.NOT. ASSOCIATED(Solver % Variable % DeltaValues )) THEN
+        ALLOCATE(Solver % Variable % DeltaValues(n))
+      END IF
+      dx => Solver % Variable % DeltaValues
+
+      CALL CalculateAitkenRelaxation(IterNo, Relaxation, Solver % AitkenRelax,A,x,x0,dx)
+
+      ! Save current 'dx' and relaxation for the next round estimate.
+      Solver % AitkenRelax = Relaxation
+      dx = x - x0 
     END IF
     
     x0allocated = .FALSE.
@@ -4191,7 +4223,77 @@ END FUNCTION SearchNodeL
       CLOSE(ConvUnit)
       
     END SUBROUTINE WriteConvergenceInfo
+
+
+    SUBROUTINE CalculateAitkenRelaxation(iter,r,r0,A,x0,x1,dx) 
+      INTEGER :: iter
+      TYPE(Matrix_t) :: A
+      REAL(KIND=dp) :: r,r0,r1,x0(:),x1(:),dx(:)
+
+      INTEGER :: i,j,k,n,dofs,citer
+      REAL(KIND=dp) :: aa, dd, s
+
+      IF(iter <= 1 ) RETURN
+            
+      citer = ListGetInteger( Solver % Values,'Aitken Relaxation After Iterations', Stat )
+      citer = MAX(1,citer)
+      
+      n = A % NumberOfRows
+
+      k = 0
+      dofs = Solver % Variable % dofs
+      IF(dofs>1) k = ListGetInteger( Solver % Values,'Aitken Relaxation Component', Stat ) 
+      IF( k == 0 ) THEN
+        aa = SUM(dx*(x0-x1-dx))
+        dd = SUM((x0-x1-dx)**2)
+      ELSE
+        aa = SUM((dx(k::dofs))*(x0(k::dofs)-x1(k::dofs)-dx(k::dofs)))
+        dd = SUM((x0(k::dofs)-x1(k::dofs)-dx(k::dofs))**2)                
+      END IF
+
+      ! Note that this is not really correctly parallized since the shared nodes are
+      ! considered multiple times!
+      IF( ParEnv % PEs > 1 ) THEN
+        aa = ParallelReduction(aa)
+        dd = ParallelReduction(dd)
+      END IF
         
+      r1 = - r0 * aa / dd 
+
+      WRITE(Message,'(A,ES12.3)') 'Aitken relaxation factor suggested: ',r1
+      CALL Info('CalculateAitkenRelaxation', Message, Level=10) 
+
+      IF(iter > citer ) THEN
+        s = ListGetCReal( Solver % Values,'Aitken Relaxation Factor Relaxation', Stat )
+        IF(Stat) r1 = s * r1 + (1-s) * r0
+
+        s = ListGetCReal( Solver % Values,'Aitken Relaxation Factor Minimum', Stat )
+        IF(Stat) r1 = MAX(s,r1)
+
+        s = ListGetCReal( Solver % Values,'Aitken Relaxation Factor Maximum', Stat ) 
+        IF(Stat) r1 = MIN(s,r1)
+
+        s = ListGetCReal( Solver % Values,'Aitken Relaxation Factor Increase', Stat )
+        IF( Stat ) THEN
+          ! Don't allow for too large increase
+          IF( ABS(r1) > s * ABS(r0) ) r1 = SIGN(s*r0,r1) 
+        END IF
+
+        s = ListGetCReal( Solver % Values,'Aitken Relaxation Factor Decrease', Stat )
+        IF( Stat ) THEN
+          ! Don't allow for too large reduction
+          IF( ABS(r1) < s * ABS(r0) ) r1 = SIGN(s*r0,r1) 
+        END IF
+        
+        WRITE(Message,'(A,ES12.3)') 'Aitken relaxation factor regulated: ',r1
+        CALL Info('CalculateAitkenRelaxation', Message, Level=5) 
+       
+        r = r1
+      END IF
+      
+    END SUBROUTINE CalculateAitkenRelaxation
+      
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE ComputeChange
 !------------------------------------------------------------------------------
@@ -4692,11 +4794,18 @@ END FUNCTION SearchNodeL
     TYPE(ValueList_t), POINTER :: SolverParams
     CHARACTER(:), ALLOCATABLE :: SolverName, ConvergenceType, FileName
 
+    LOGICAL :: HaveDepVar = .FALSE.
+    TYPE(Variable_t), POINTER :: pVar 
+    INTEGER :: citer=0, citer0=1
+    CHARACTER(:), ALLOCATABLE :: str
+    REAL(KIND=dp), POINTER :: depvalues(:), depvalues0(:), depvalues1(:)
+    
 
     SAVE SolverParams, Alpha, Myy, Relaxation, MaxTests, tests, &
         Residual, NonlinTol, LinTol, x1, x0, LineTol, CostMode, SearchMode, &
         Cost0, Residual0, Cost1, n, Dofs, ForceDof, Ortho, Newton, &
-        ConvergenceType, Norm, PrevNorm, iter, FileName, SaveToFile
+        ConvergenceType, Norm, PrevNorm, iter, FileName, SaveToFile, &
+        HaveDepVar, citer, citer0, depvalues, depvalues0, depvalues1
 
     Debug = .FALSE.
     
@@ -4709,8 +4818,7 @@ END FUNCTION SearchNodeL
     ELSE 
       x => Var % Values      
     END IF
-
-
+       
     ! Assembly the vectors, if needed, and 
     ! also at first time get the line search parameters.
     !----------------------------------------------------
@@ -4815,8 +4923,34 @@ END FUNCTION SearchNodeL
       !---------------------------------------------------------------
       CALL ListAddLogical(SolverParams,&
           'Skip Compute Nonlinear Change',.TRUE.)
+
+      ! Find another dependent variable that should be relaxed as the primary variable
+      str = ListGetString(SolverParams,'Nonlinear System Linesearch Dep Variable', HaveDepVar )
+      IF( HaveDepVar ) THEN
+        pVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE. )
+        depvalues => pVar % Values
+        IF(.NOT. ASSOCIATED( depvalues0 ) ) THEN
+          ALLOCATE( depvalues0(SIZE(depvalues)), depvalues1(SIZE(depvalues)))
+          depvalues0 = 0.0_dp
+          depvalues1 = 0.0_dp
+        END IF
+      END IF
     END IF
 
+    IF( HaveDepVar ) THEN
+      pVar => VariableGet( Solver % Mesh % Variables,'coupled iter', UnfoundFatal = .TRUE.)
+      citer = NINT(pVar % Values(1))
+      ! Store the depvalues, do not play with the extend the 1st coupled system iter.
+      ! This way the depvalues0 is always lagging one coupled system iteration. 
+      IF( FirstIter ) THEN
+        depvalues1 = depvalues0
+        depvalues0 = depvalues
+      END IF
+      ! The minimum number of coupled system iterations before relaxing. 
+      citer0 = 1
+    END IF
+
+    
     !--------------------------------------------------------------------------
     ! This is the real residual: r=b-Ax
     ! We hope to roughly minimize L2 norm of r, or some related quantity
@@ -4996,6 +5130,11 @@ END FUNCTION SearchNodeL
       ! New candidate 
       x(1:n) = x0(1:n) + Alpha * x1(1:n)
 
+      ! Update also the dependent values since these two fields should be relaxed with same extent
+      IF( citer > citer0 ) THEN
+        depvalues = depvalues0 + Alpha * depvalues1
+      END IF
+      
       WRITE(Message,'(A,I0,A,g15.6)') 'Step ',Tests,' rejected, trying new extent: ',Alpha
       CALL Info( 'CheckStepSize',Message,Level=6 )
     ELSE ! accept step
@@ -5005,6 +5144,11 @@ END FUNCTION SearchNodeL
       ! Chosen candidate
       x(1:n) = x0(1:n) + Alpha * x1(1:n)
 
+      ! Update also the dependent values since these two fields should be relaxed with same extent
+      IF( citer > citer0 ) THEN
+        depvalues = depvalues0 + Alpha * depvalues1
+      END IF
+      
       PrevNorm = Norm
       Norm = ComputeNorm(Solver, n, x)
 
@@ -5048,7 +5192,7 @@ END FUNCTION SearchNodeL
       
       Tests = 0
       x0 = x
-      
+
       IF( Debug ) THEN
         PRINT *,'x0 range: ',MINVAL(x0),MAXVAL(x0)
         PRINT *,'Cost0: ',Cost0
@@ -5056,9 +5200,7 @@ END FUNCTION SearchNodeL
       END IF
 
       IF( Newton ) FirstIter = .TRUE.
-
     END IF
-
 
 
   CONTAINS
@@ -8779,7 +8921,7 @@ END SUBROUTINE DerivateExportedVariables
      END IF
      
      Relax = ListGetConstReal( Solver % Values,'Parallel Timestepping Relaxation Factor',Found ) 
-     IF(.NOT. Found ) Relax = 1.0_dp
+     IF(.NOT. Found) Relax = 1.0_dp
      
      GuessMode = ListGetInteger( Solver % Values,'Cyclic Guess Mode',Found ) 
      LGuessMode = ListGetInteger( Solver % Values,'Cyclic Lagrange Guess Mode',Found ) 
