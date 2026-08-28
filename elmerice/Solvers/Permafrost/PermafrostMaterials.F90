@@ -2510,14 +2510,13 @@ CONTAINS
          Salinity,Porosity,meanfactor
     REAL(KIND=dp) :: KGTT(3,3)
     !-------------------------
-    REAL(KIND=dp) :: KGaTT, KghTT, unittensor(3,3),xc
+    REAL(KIND=dp) :: KGaTT, KghTT, unittensor(3,3)
     !-------------------------
-    xc = Salinity/Xi
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
-    KGhTT = 1.0_dp/((1.0_dp - Porosity)/ksth + (1.0_dp - xc)*Xi*Porosity/kwth &
-         + xc*Porosity/kcth + (1.0_dp - Xi)*Porosity/kith)
-    KGaTT = (1.0_dp - Porosity)*ksth + (1.0_dp - xc)*Xi*Porosity*kwth &
-         + xc*Porosity*kcth + (1.0_dp - Xi)*Porosity*kith
+    KGhTT = 1.0_dp/((1.0_dp - Porosity)/ksth + (Xi - Salinity)*Porosity/kwth &
+         + Salinity*Porosity/kcth + (1.0_dp - Xi)*Porosity/kith)
+    KGaTT = (1.0_dp - Porosity)*ksth + (Xi - Salinity)*Porosity*kwth &
+         + Salinity*Porosity*kcth + (1.0_dp - Xi)*Porosity*kith
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
