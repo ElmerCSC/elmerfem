@@ -385,6 +385,93 @@ void LinearSolveGaussSeidel( Geometry_t *,int,double *);
 EXT double AreaEPS,FactorEPS,RayEPS;
 EXT int hits, Nrays;
 
+/*
+ * Closed form ("contour formula") evaluation of the inner view factor
+ * integral, in place of the Gauss quadrature.  See ContourInteg.c.
+ *
+ * The target patch is prepared once per element pair into a caller owned
+ * ContourTarget_t and then evaluated once per source integration point.
+ * The prepared form lives on the caller's stack: nothing is cached in
+ * Geometry_t (which is copied per thread, so growing it would multiply the
+ * per thread footprint) and nothing is keyed on node addresses (which are
+ * recycled by FreeChilds after every row).
+ */
+typedef struct
+{
+    int    NV;              /* 3 or 4 corners                          */
+    double V[4][3];         /* corner coordinates                      */
+    double N[3];            /* unit normal, the geometric one          */
+} ContourTarget_t;
+
+EXT int ClosedFormInteg;
+
+/* Diagnostics.  One padded slot pair per thread, so counting cannot put a
+ * shared cache line in the middle of the element pair loop. */
+#define CF_STRIDE 8
+EXT long *ClosedFormCount;
+EXT int   ClosedFormNThreads;
+
+int  ContourPrepare( Geometry_t *, ContourTarget_t * );
+int  ContourPoly( double (*)[3], int, double *,
+                    double,double,double, double,double,double, double * );
+int  ContourEvaluate( ContourTarget_t *, double,double,double,
+                        double,double,double, double * );
+void ContourCountInit( void );
+void ContourCountSum( long *, long * );
+
+/*
+ * Shaft culling, see ShaftCull.c.  The shaft of a patch pair is the region
+ * every ray between them has to pass through; anything outside it cannot
+ * block the view.
+ */
+#define SH_MAXPLANE 24
+
+typedef struct
+{
+    BBox_t BBox;            /* combined box of the two patches          */
+    double N[SH_MAXPLANE][3],D[SH_MAXPLANE];   /* supporting hull planes */
+    int    NP;
+    double Tol;
+    ContourTarget_t A,B;    /* the two patches, for the per element tests */
+} Shaft_t;
+
+EXT BBox_t *RTElementBBox;  /* per shadow element boxes, built once    */
+EXT int     RTElementNof;
+
+void ShaftInitBoxes( int, Geometry_t * );
+int  ShaftInit( Shaft_t *, ContourTarget_t *, ContourTarget_t * );
+int  ShaftCandidates( Shaft_t *, int *, int );
+int  RayHitCandidates( int *, int, double,double,double, double,double,double );
+
+/* Diagnostics for the shaft cull: how many pairs need no visibility work at
+ * all, and how many candidate blockers the rest have.  Opt in, it costs a
+ * tree walk per pair on top of the normal ray casting. */
+#define SC_MAXCAND 256
+#define SC_NBUCKET 9
+EXT int   ShaftRayCull;   /* cull the rays of a pair to its candidates */
+EXT int   ShaftStats;
+EXT long *ShaftCount;       /* SC_NBUCKET padded slots per thread      */
+EXT int   ShaftNThreads;
+
+/* Visibility by clipping, see ClipShadow.c.  CL_MAXV bounds one fragment;
+ * a convex piece gains at most one vertex per half space it is clipped by. */
+#define CL_MAXV     24
+#define CL_MAXPIECE 64
+
+typedef struct
+{
+    int    n;
+    double V[CL_MAXV][3];
+} ClipPoly_t;
+
+EXT int ClipShadows;
+
+int ClipVisible( ContourTarget_t *, int *, int, double *, double *, double * );
+
+void ShaftCountInit( void );
+void ShaftCountAdd( int );
+void ShaftCountSum( long * );
+
 typedef struct CRSRows
 {
    struct CRSRows *Head;

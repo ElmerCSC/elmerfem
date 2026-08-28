@@ -80,7 +80,7 @@
      !---------------------------------------------------
      INTEGER :: divide, LineFlag, LineInteg, TriInteg, QuadInteg, NSymmetry
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
-     INTEGER :: NRays, CombineInt
+     INTEGER :: NRays, CombineInt, ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt
      LOGICAL :: Combine, Combine3D, ElimBB
      REAL(KIND=dp), POINTER :: Coord(:)
      INTEGER, POINTER :: Type(:)
@@ -120,7 +120,7 @@
         SUBROUTINE RadiatorFactors3D(n, Surf, Type, Coord, Normals, &
            RT_n, RT_Surf, RT_Data, RT_Perm, RT_Type, RT_Coord, &
                NofRadiators, RadiatorCoord, LineFlag, Factors, Feps, &
-                 Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine) BIND(C)
+                 Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine, ClosedForm, ShaftStat, Clip, RayCull) BIND(C)
 
           USE, INTRINSIC :: ISO_C_BINDING
           IMPLICIT NONE
@@ -135,13 +135,14 @@
 
           REAL(KIND=dp) :: Feps, Aeps, Reps
           INTEGER :: Nr, NInteg2, NInteg3, NInteg4, Combine, LineFlag
+          INTEGER :: ClosedForm, ShaftStat, Clip, RayCull
         END SUBROUTINE RadiatorFactors3D
 
 
         SUBROUTINE ViewFactors3D(n, Surf, Type, Coord, Normals, &
           RT_n, RT_Surf, RT_Data, RT_Perm, RT_Type, RT_Coord, &
               Factors, Feps, Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine, &
-              iStart, nLocal, mpiRank) BIND(C)
+              iStart, nLocal, mpiRank, ClosedForm, ShaftStat, Clip, RayCull) BIND(C)
 
             USE, INTRINSIC :: ISO_C_BINDING
             IMPLICIT NONE
@@ -156,7 +157,7 @@
 
             REAL(KIND=dp) :: Feps, Aeps, Reps
             INTEGER :: Nr, NInteg2, NInteg3, NInteg4, Combine
-            INTEGER :: iStart, nLocal, mpiRank
+            INTEGER :: iStart, nLocal, mpiRank, ClosedForm, ShaftStat, Clip, RayCull
         END SUBROUTINE ViewFactors3D
 
 
@@ -423,7 +424,7 @@
          ! ---------------------------------------------------------------------------
 
          CALL GetCartParameters( AreaEPS, FactEPS, RayEps, Nrays, LineInteg, QuadInteg, &
-                        TriInteg, UseSymmetry )
+                        TriInteg, UseSymmetry, ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt )
 
          Mesh % NumberOfBulkElements = n
          Mesh % Elements => RadElements
@@ -541,12 +542,19 @@
              IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
              CALL RadiatorFactors3d( n, Surf, TYPE, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, NofRadiators, Radiators, LineFlag, &
-                       Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
+                       Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
+                         ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt )
            ELSE
              CALL ViewFactors3D( n, Surf, Type, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, Factors_local, AreaEPS, FactEPS, RayEPS, &
                       Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
-                      iStart_local, nLocal, myRank )
+                      iStart_local, nLocal, myRank, ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt )
+
+             ! RayCullInt comes back resolved: the automatic setting is only
+             ! decided in InitStuff, which is where the shadow mesh size is
+             ! finally known.
+             IF ( RayCullInt == 1 ) &
+               CALL Info(Caller,'Culling the rays of each pair to its shaft candidates',Level=8)
 
              ! Gather local rows to rank 0 only — only rank 0 needs the full
              ! matrix for normalisation and output.  Non-root ranks send their
@@ -806,8 +814,15 @@ CONTAINS
        END  IF
      END IF
 
-     IF ( NoArgs>1 ) THEN
+     ! A single argument is the sif to read.  Without this it fell through to
+     ! ELMERSOLVER_STARTINFO and the name given on the command line was
+     ! silently ignored, so "ViewFactors a.sif" and "ViewFactors b.sif" both
+     ! computed whichever case STARTINFO happened to name -- wrong, and quiet
+     ! about it.  "-radiators" on its own is a flag, not a model name.
+     IF ( NoArgs > 1 ) THEN
        CALL GET_COMMAND_ARGUMENT(NoArgs, ModelName)
+     ELSE IF ( NoArgs == 1 .AND. .NOT. DoRadiators ) THEN
+       CONTINUE                       ! ModelName already holds the argument
      ELSE
        OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
        IF( iostat /= 0 ) THEN
@@ -1892,13 +1907,15 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
 !------------------------------------------------------------------------------
    SUBROUTINE GetCartParameters( AreaEPS, FactEPS, RayEPS, Nray, LineInteg, QuadInteg, &
-       TriInteg, UseSymmetry )
+       TriInteg, UseSymmetry, ClosedForm, ShaftStat, Clip, RayCull )
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: AreaEPS, FactEPS, RayEPS
      LOGICAL :: UseSymmetry
-     INTEGER :: Nray, LineInteg, QuadInteg, TriInteg
+     INTEGER :: Nray, LineInteg, QuadInteg, TriInteg, ClosedForm, ShaftStat, Clip, RayCull
+     LOGICAL :: ClosedFormGiven
 !------------------------------------------------------------------------------
      LOGICAL :: GotIt
+     CHARACTER(LEN=MAX_NAME_LEN) :: Str
 !------------------------------------------------------------------------------
      AreaEPS = GetConstReal( Params, 'Viewfactor Area Tolerance',  GotIt )
      IF ( .NOT. GotIt ) AreaEPS = 1.0d-1
@@ -1920,6 +1937,65 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
      TriInteg = GetInteger( Params, 'Viewfactor Triangle Integration Points ',  GotIt )
      IF ( .NOT. GotIt ) TriInteg = 3;  ! ---> 1,3,6
+
+     ! Evaluate the inner ("to area") integral in closed form rather than by
+     ! quadrature.  Exact for planar patches, and much more accurate than the
+     ! Gauss rule when the two patches are close together.  Warped quads and
+     ! non-geometric normals fall back to quadrature automatically.
+     ClosedForm = 0
+     IF ( GetLogical( Params, 'Viewfactor Closed Form Integration', GotIt ) ) ClosedForm = 1
+     ClosedFormGiven = GotIt
+     IF ( GotIt .AND. ClosedForm == 1 ) &
+       CALL Info(Caller,'Using closed form evaluation of the inner view factor integral')
+
+     ! Report how many patch pairs have no possible blocker between them, i.e.
+     ! how much visibility work a clipping based scheme would actually face.
+     ! Diagnostic only: it costs a shaft cull per pair on top of the ray casting.
+     ShaftStat = 0
+     IF ( GetLogical( Params, 'Viewfactor Shaft Cull Statistics', GotIt ) ) ShaftStat = 1
+
+     ! How the blocking of the view between two patches is resolved.  Ray
+     ! casting samples it; clipping removes the shadows of the blockers from
+     ! the target and integrates what is left, which is exact for the pair
+     ! and gets the penumbra right instead of scaling by a hit fraction.
+     ! Needs the closed form integration, and turns it on when asked for.
+     ! Cull the rays of a patch pair to that pair's shaft candidates instead
+     ! of walking the whole element tree once per ray.  The answer is bit for
+     ! bit the same; it just replaces one tree traversal per ray by one per
+     ! pair.  Whether that pays depends on the size of the shadow mesh as
+     ! much as on the ray count, and the shadow mesh is only known once the
+     ! element combining has run, so -1 asks InitStuff to decide.
+     RayCull = -1
+     IF ( ListCheckPresent( Params, 'Viewfactor Shaft Cull' ) ) THEN
+       RayCull = 0
+       IF ( GetLogical( Params, 'Viewfactor Shaft Cull', GotIt ) ) RayCull = 1
+     END IF
+
+     ClipInt = 0
+     Str = ListGetString( Params, 'Viewfactor Shadowing', GotIt )
+     IF ( GotIt ) THEN
+       SELECT CASE( Str )
+       CASE('ray casting')
+         ClipInt = 0
+       CASE('clipping')
+         ClipInt = 1
+         ! Clipping defaults to the closed form, which integrates a fragment
+         ! natively.  It does not force it: asking for quadrature explicitly
+         ! selects the fourth corner of the 2x2, where the same clipped
+         ! fragments are fan triangulated and integrated by the triangle rule.
+         ! That corner is a cross check -- it is slower and less accurate --
+         ! but it is the only configuration that tells an error in the inner
+         ! integral apart from an error in the shadowing.
+         IF ( .NOT. ClosedFormGiven ) THEN
+           ClosedForm = 1
+         ELSE IF ( ClosedForm == 0 ) THEN
+           CALL Info(Caller,'Clipping with numerical integration of the fragments')
+         END IF
+         CALL Info(Caller,'Resolving shadowing by clipping')
+       CASE DEFAULT
+         CALL Fatal(Caller,'Unknown "Viewfactor Shadowing": '//TRIM(Str))
+       END SELECT
+     END IF
 
      ! We may cheat with the symmetry by only counting the first half of the symmetric elements.
      UseSymmetry = .FALSE.

@@ -411,6 +411,54 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 }
 
 
+/*
+ * Tell the user whether the closed form inner integral actually got used.
+ * A large miss count means patches are warped or carry non geometric normals,
+ * and those pairs silently kept the old quadrature.
+ */
+void ReportClosedForm()
+{
+   long hits,miss,tot;
+
+   if ( !ClosedFormInteg ) return;
+
+   ContourCountSum( &hits,&miss );
+   tot = hits + miss;
+   if ( tot == 0 ) return;
+
+   fprintf( stdout, "rank %d: closed form inner integral: %ld/%ld patch pairs "
+                    "(%.1f%%), %ld fell back to quadrature\n",
+                     MPIRank, hits, tot, 100.0*hits/tot, miss );
+}
+
+
+/*
+ * How much visibility work would the clipping path actually have to do?
+ * Bucket 0 is the prize: pairs with no candidate blocker at all, which need
+ * no shadow handling of any kind and can take the closed form directly.
+ */
+void ReportShaftCull()
+{
+   static const char *Label[SC_NBUCKET] =
+     { "none", "1-2", "3-4", "5-8", "9-16", ">16", "overflow",
+       "MISSED BLOCKER (cull bug)", "no shaft (face away)" };
+   long b[SC_NBUCKET], tot = 0;
+   int i;
+
+   if ( !ShaftStats ) return;
+
+   ShaftCountSum( b );
+   for( i=0; i<SC_NBUCKET; i++ ) if ( i != 7 ) tot += b[i];
+   if ( tot == 0 ) return;
+
+   fprintf( stdout, "rank %d: shaft cull over %ld resolved patch pairs:\n", MPIRank, tot );
+   for( i=0; i<SC_NBUCKET; i++ )
+      if ( b[i] )
+         fprintf( stdout, "rank %d:   candidate blockers %-8s %10ld  (%5.1f%%)\n",
+                    MPIRank, Label[i], b[i], 100.0*b[i]/tot );
+}
+
+
 void InitGeometryTypes()
 {
     InitRayTracer( RayEPS );
@@ -657,7 +705,8 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
 
 void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int RT_N0,
     int *RT_Topo0, double *RT_Data, int *RT_Perm, int *RT_Type, double *RT_Coord,
-      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine )
+      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine,
+        int ClosedForm, int ShaftStat, int Clip, int RayCull )
 {
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
@@ -666,6 +715,16 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
    RayEPS    = Reps; 
    FactorEPS = Feps; 
    Nrays     = Nr;
+
+   ClosedFormInteg = ClosedForm;
+   ContourCountInit();
+
+   ShaftStats = ShaftStat;
+   ShaftCountInit();
+
+   ClipShadows   = Clip;
+   ShaftRayCull  = RayCull;      /* -1: decide below, once the shadow mesh
+                                    size is known */
 
    InitShapeFunctions();
 
@@ -698,6 +757,37 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
    FillIPointArrays(NInteg2,NInteg3,NInteg4);
    InitGeometryTypes();
    InitVolumeBounds(2,NOFRayElements,RTElements);
+   ShaftInitBoxes(NOFRayElements,RTElements);
+
+   /*
+    * Should the rays of a pair be culled to that pair's shaft candidates?
+    *
+    * The cull replaces Nrays tree traversals by one shaft build per pair, so
+    * it pays when the traversals it saves cost more than the shaft does.  A
+    * traversal is not O(1): the tree is built over a surface, so a ray meets
+    * on the order of sqrt(NOFRayElements) cells on its way through, while
+    * the shaft costs the same whatever the mesh.  Hence the product below
+    * rather than a ray count alone -- a ray count alone gets it backwards on
+    * a small shadow mesh, where the traversal is nearly free.
+    *
+    * Calibrated on the two ends of that range at one thread, timing the view
+    * factor stage with the cull forced on and off:
+    *
+    *   shadow mesh   rays   Nrays*sqrt(N)   cull on / cull off
+    *     6 (box_in_box)   8       20            0.62x   (a real loss)
+    *     6               40       98            1.07x
+    *   536 (radiation3d)  1       23            0.78x   (a real loss)
+    *   536               4        93            1.16x
+    *   536               8       185            1.98x
+    *   536             100      2315            7.77x
+    *
+    * Both meshes break even near 70 despite being 89x apart in size, which
+    * is what the sqrt scaling buys.  Near the threshold it is a wash either
+    * way; well past it the win grows without bound, so a late switch costs
+    * little and an early one costs 40%.
+    */
+   if ( ShaftRayCull < 0 )
+      ShaftRayCull = ( Nrays*sqrt((double)NOFRayElements) >= 70.0 );
 }
 
 /* Fortran callable interface routines */
@@ -705,13 +795,19 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
 void radiatorfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0, double *RT_Data,
       int *RT_Perm, int *RT_Type, double *RT_Coord, int *NofRadiators, double *RadiatorCoords, int *LineFlag,
-        double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine )
+        double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine,
+          int *ClosedForm, int *ShaftStat, int *Clip, int *RayCull )
 {
    /* Radiator factors: no MPI row decomposition (radiators typically few) */
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
-       *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
+       *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine, *ClosedForm, *ShaftStat, *Clip, *RayCull );
+
+   *RayCull = ShaftRayCull;     /* tell the caller how an automatic (-1) went */
 
    IntegrateFromGeometry(*NofRadiators,RadiatorCoords,*LineFlag,*N,Factors,0,*NofRadiators);
+
+   ReportClosedForm();
+   ReportShaftCull();
 }
 
 /*
@@ -725,12 +821,17 @@ void viewfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0,
        double *RT_Data, int *RT_Perm, int *RT_Type, double *RT_Coord, double *Factors, double *Feps, double *Aeps,
           double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int *Combine,
-          int *iStart, int *nLocal, int *mpiRank )
+          int *iStart, int *nLocal, int *mpiRank, int *ClosedForm, int *ShaftStat, int *Clip, int *RayCull )
 {
    MPIRank = *mpiRank;
 
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
-            *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
+            *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine, *ClosedForm, *ShaftStat, *Clip, *RayCull );
+
+   *RayCull = ShaftRayCull;     /* tell the caller how an automatic (-1) went */
 
    IntegrateFromGeometry(0,NULL,0,*N,Factors,*iStart,*nLocal);
+
+   ReportClosedForm();
+   ReportShaftCull();
 }
