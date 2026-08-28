@@ -461,7 +461,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: CgwppAtIP,CgwpTAtIP,CgwpYcAtIP,CgwpI1AtIP,KgwAtIP(3,3),KgwppAtIP(3,3),KgwpTAtIP(3,3),&
-         meanfactor,MinKgw,gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3),fluxTAtIP(3),fluxgAtIP(3),vstarAtIP(3) ! needed in equation
+         meanfactor,gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3),fluxTAtIP(3),fluxgAtIP(3),vstarAtIP(3) ! needed in equation
     REAL(KIND=dp) :: JgwDAtIP(3),JcFAtIP(3), DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3),&
          fcAtIP(3), DispersionCoefficient, MolecularDiffusionCoefficient ! from salinity transport
     REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,ksthAtIP  ! function values needed for KGTT  XiAtIP,
@@ -494,6 +494,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
+    TYPE(GroundwaterMobilityLimit_t) :: MobilityLimit
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostGroundWaterFlow', &
          FunctionName='Permafrost (LocalMatrixDarcy)'
@@ -571,10 +572,7 @@ CONTAINS
     !  CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
     !  meanfactor = 1.0_dp
     !END IF
-    MinKgw = GetConstReal( Material, &
-         'Hydraulic Conductivity Limit', Found)
-    IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
-         MinKgw = 1.0D-14
+    MobilityLimit = ReadGroundwaterMobilityLimit(Material,FunctionName)
 
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
@@ -807,11 +805,11 @@ CONTAINS
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       IF (Exponential) THEN
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential,&
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MobilityLimit,Exponential,&
              impedancefactor=ExponentialParams % Impedance)
       ELSE
         KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP, MinKgw,Exponential)
+             mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MobilityLimit,Exponential)
       END IF
       KgwpTAtIP = 0.0_dp
       KgwppAtIP = 0.0_dp
@@ -995,7 +993,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,WeakPressure(nd), PressureCond(n)
     REAL(KIND=dp) :: MASS(nd,nd),STIFF(nd,nd), FORCE(nd), LOAD(nd),C
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
-    REAL(KIND=dp) :: fluxgAtIP(3), rhogwAtIP, KgwAtIP(3,3), XiAtIP, mugwAtIP, MinKgw 
+    REAL(KIND=dp) :: fluxgAtIP(3), rhogwAtIP, KgwAtIP(3,3), XiAtIP, mugwAtIP
 
     REAL(KIND=dp) :: PressureAtIP, PorosityAtIP, SalinityAtIP, TemperatureAtIP, NormalAtIP(3)
     !REAL(KIND=dp), POINTER :: Nvector(:)
@@ -1102,9 +1100,6 @@ CONTAINS
       END IF
 
       ConstVal = GetLogical(ParentMaterial,'Constant Permafrost Properties',Found)
-      MinKgw = GetConstReal( Material,'Hydraulic Conductivity Limit', Found)
-      IF (.NOT.Found .OR. (MinKgw <= 0.0_dp)) MinKgw = 1.0D-14
-      
       IF (ConstVal) &
            CALL INFO(FunctionName,'"Constant Permafrost Properties" set toPermafrost_HTEQ.F90: true',Level=9)
     END IF

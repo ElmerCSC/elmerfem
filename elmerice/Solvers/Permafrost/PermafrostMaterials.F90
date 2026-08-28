@@ -43,8 +43,12 @@ MODULE PermafrostMaterials
   IMPLICIT NONE
   REAL(KIND=dp), PARAMETER :: MinimumLiquidFraction = 0.001_dp
   REAL(KIND=dp), PARAMETER :: HydraulicConductivityReferenceGravity = 9.81_dp
+  REAL(KIND=dp), PARAMETER :: DefaultHydraulicConductivityLimit = 1.0e-14_dp
   LOGICAL, SAVE :: LiquidFractionClipWarningIssued = .FALSE.
   LOGICAL, SAVE :: HydraulicConductivityReferenceStateReported = .FALSE.
+  LOGICAL, SAVE :: HydraulicConductivityLimitWarningIssued = .FALSE.
+  LOGICAL, SAVE :: DefaultHydraulicConductivityLimitInfoIssued = .FALSE.
+  LOGICAL, SAVE :: GroundwaterMobilityLimitInfoIssued = .FALSE.
   !---------------------------------
   ! type for solvent (water and ice)
   !---------------------------------
@@ -97,6 +101,12 @@ MODULE PermafrostMaterials
      REAL(KIND=dp) :: DeltaT, xi_o, xi_f, DryDensity
      REAL(KIND=dp) :: k1, k2, k3, c1, c2, c3
   END TYPE Lunardini1988ThreeZoneLinearParameters_t
+
+  TYPE GroundwaterMobilityLimit_t
+     REAL(KIND=dp) :: HydraulicConductivity
+     REAL(KIND=dp) :: Mobility
+     LOGICAL :: UseHydraulicConductivity
+  END TYPE GroundwaterMobilityLimit_t
 
   TYPE(SolventMaterial_t), TARGET :: GlobalSolventMaterial
   TYPE(SoluteMaterial_t), TARGET :: GlobalSoluteMaterial
@@ -194,6 +204,58 @@ CONTAINS
            'Using default 1-Porosity*Xi.',Level=9)
     END IF
   END SUBROUTINE ReadConductivityArithmeticMeanWeight
+  !---------------------------------------------------------------------------------------------
+
+  FUNCTION ReadGroundwaterMobilityLimit(Material,Caller) RESULT(MobilityLimit)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    TYPE(GroundwaterMobilityLimit_t) :: MobilityLimit
+    REAL(KIND=dp) :: HydraulicConductivityLimit,GroundwaterMobilityLimit
+    LOGICAL :: HydraulicConductivityLimitFound,GroundwaterMobilityLimitFound
+    !---------
+    HydraulicConductivityLimit = GetConstReal(&
+         Material,'Hydraulic Conductivity Limit',HydraulicConductivityLimitFound)
+    GroundwaterMobilityLimit = GetConstReal(&
+         Material,'Groundwater Mobility Limit',GroundwaterMobilityLimitFound)
+
+    IF (HydraulicConductivityLimitFound .AND. GroundwaterMobilityLimitFound) &
+         CALL FATAL(Caller,'Set only one of "Hydraulic Conductivity Limit" and '//&
+         '"Groundwater Mobility Limit"')
+
+    MobilityLimit % HydraulicConductivity = DefaultHydraulicConductivityLimit
+    MobilityLimit % Mobility = 0.0_dp
+    MobilityLimit % UseHydraulicConductivity = .TRUE.
+
+    IF (HydraulicConductivityLimitFound) THEN
+      IF ((HydraulicConductivityLimit .NE. HydraulicConductivityLimit) .OR. &
+           (HydraulicConductivityLimit <= 0.0_dp)) &
+           CALL FATAL(Caller,'"Hydraulic Conductivity Limit" must be positive')
+      MobilityLimit % HydraulicConductivity = HydraulicConductivityLimit
+      MobilityLimit % UseHydraulicConductivity = .TRUE.
+      IF (.NOT.HydraulicConductivityLimitWarningIssued) THEN
+        CALL WARN(Caller,'"Hydraulic Conductivity Limit" is interpreted in m s^-1 and '//&
+             'converted to groundwater mobility. Earlier versions applied this value without conversion.')
+        HydraulicConductivityLimitWarningIssued = .TRUE.
+      END IF
+    ELSE IF (GroundwaterMobilityLimitFound) THEN
+      IF ((GroundwaterMobilityLimit .NE. GroundwaterMobilityLimit) .OR. &
+           (GroundwaterMobilityLimit <= 0.0_dp)) &
+           CALL FATAL(Caller,'"Groundwater Mobility Limit" must be positive')
+      MobilityLimit % Mobility = GroundwaterMobilityLimit
+      MobilityLimit % UseHydraulicConductivity = .FALSE.
+      IF (.NOT.GroundwaterMobilityLimitInfoIssued) THEN
+        CALL INFO(Caller,'"Groundwater Mobility Limit" uses direct mobility units '//&
+             'm^2 Pa^-1 s^-1.',Level=3)
+        GroundwaterMobilityLimitInfoIssued = .TRUE.
+      END IF
+    ELSE IF (.NOT.DefaultHydraulicConductivityLimitInfoIssued) THEN
+      WRITE(Message,*) 'Neither conductivity-limit keyword was found. Using default ',&
+           DefaultHydraulicConductivityLimit,' m s^-1.'
+      CALL INFO(Caller,Message,Level=3)
+      DefaultHydraulicConductivityLimitInfoIssued = .TRUE.
+    END IF
+  END FUNCTION ReadGroundwaterMobilityLimit
   !---------------------------------------------------------------------------------------------
 
   FUNCTION ReadPermafrostPhaseChangeModel(Material,Caller) RESULT(PhaseChangeModel)
@@ -2787,17 +2849,19 @@ CONTAINS
     !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
   END FUNCTION GetXikG0hy
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,Porosity,MinKgw,Exponential,impedancefactor) RESULT(Kgw)
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,Porosity,&
+       MobilityLimit,Exponential,impedancefactor) RESULT(Kgw)
     
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
-    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity,MinKgw,mugw
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity,mugw
+    TYPE(GroundwaterMobilityLimit_t), INTENT(IN) :: MobilityLimit
     REAL(KIND=dp) :: Kgw(3,3)
     LOGICAL :: Exponential
     REAL(KIND=dp), OPTIONAL :: impedancefactor
     !--------------------------
-    REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativePermeability
+    REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativePermeability,MinimumMobility
     INTEGER :: I, J
     !-------------------------
     muw0 = CurrentSolventMaterial % muw0
@@ -2808,6 +2872,11 @@ CONTAINS
       
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     factor = GetHydraulicConductivityConversionFactor(rhow0,muw0,mugw)
+    IF (MobilityLimit % UseHydraulicConductivity) THEN
+      MinimumMobility = MobilityLimit % HydraulicConductivity*factor
+    ELSE
+      MinimumMobility = MobilityLimit % Mobility
+    END IF
 
     Kgw = 0.0_dp
     DO I=1,3
@@ -2816,7 +2885,7 @@ CONTAINS
       END DO
     END DO
     DO I=1,3
-      Kgw(i,i) = MAX(Kgw(i,i),MinKgw)
+      Kgw(i,i) = MAX(Kgw(i,i),MinimumMobility)
     END DO
   END FUNCTION GetKgw
   !---------------------------------------------------------------------------------------------

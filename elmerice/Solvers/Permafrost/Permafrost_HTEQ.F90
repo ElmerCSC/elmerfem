@@ -355,7 +355,7 @@ CONTAINS
          ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,hiAtIP,hwAtIP  ! function values needed for C's and KGTT
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
-    REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3), JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,&
+    REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3), JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),&
          KgwppAtIP(3,3),fwAtIP,mugwAtIP,DtdAtIP(3,3)!  JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
@@ -375,6 +375,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
+    TYPE(GroundwaterMobilityLimit_t) :: MobilityLimit
     TYPE(Lunardini1988ThreeZoneLinearParameters_t) :: LunardiniParams
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
@@ -453,10 +454,7 @@ CONTAINS
          CALL ReadConductivityArithmeticMeanWeight(&
          Material,meanfactor,MeanFactorFound,FunctionName)
     
-    MinKgw = GetConstReal( Material, &
-         'Hydraulic Conductivity Limit', Found)
-    IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
-         MinKgw = 1.0D-14
+    MobilityLimit = ReadGroundwaterMobilityLimit(Material,FunctionName)
 
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
 
@@ -680,11 +678,11 @@ CONTAINS
           KgwAtIP = 0.0_dp
           IF (Exponential) THEN
             KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-                 mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential,&
+                 mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MobilityLimit,Exponential,&
                  impedancefactor=ExponentialParams % Impedance)
           ELSE
             KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-                 mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MinKgw,Exponential)
+                 mugwAtIP,XiAtIP(IPPerm),PorosityAtIP,MobilityLimit,Exponential)
           END IF
           fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
                Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
