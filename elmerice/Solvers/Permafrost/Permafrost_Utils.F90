@@ -872,7 +872,7 @@ CONTAINS
     INTEGER :: i,j,k,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,ComputeFlux=.TRUE.,&
-         NoSalinity=.FALSE., Exponential=.FALSE.
+         NoSalinity=.FALSE., Exponential=.FALSE.,MeanFactorFound
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -984,11 +984,8 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     NoSalinity = GetLogical(Material,'No Salinity',Found)
-    meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
-    IF (.NOT.Found) THEN
-      CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
-      meanfactor = 1.0_dp
-    END IF
+    CALL ReadConductivityArithmeticMeanWeight(&
+         Material,meanfactor,MeanFactorFound,FunctionName)
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
@@ -1122,6 +1119,8 @@ CONTAINS
         !PRINT *,"kithAtIP",kithAtIP
         kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)
         !PRINT *,"kcthAtIP:",kcthAtIP
+        IF (.NOT.MeanFactorFound) &
+             meanfactor = 1.0_dp - PorosityAtIP*XiAtIP(IPPerm)
         auxtensor = &
              GetKGTT(ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,XiAtIP(IPPerm),&
              SalinityATIP,PorosityAtIP,meanfactor)
@@ -1196,7 +1195,7 @@ SUBROUTINE InitiliazeXi( Model,Solver,dt,TransientSimulation )
        PorosityPerm(:),SalinityPerm(:),GWfluxPerm1(:),&
        TemperatureDtPerm(:), PressureDtPerm(:), SalinityDtPerm(:),&
        GWfluxPerm2(:),GWfluxPerm3(:), DepthPerm(:)
-  REAL(KIND=dp) :: Norm, meanfactor
+  REAL(KIND=dp) :: Norm
   REAL(KIND=dp),POINTER :: Temperature(:), Pressure(:), Porosity(:), Salinity(:),&
        TemperatureDt(:), PressureDt(:), SalinityDt(:),&
        GWflux1(:),GWflux2(:),GWflux3(:), Depth(:)
@@ -1321,7 +1320,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
-         StiffPQ,meanfactor,vstarAtIP(3)
+         StiffPQ,vstarAtIP(3)
     REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
@@ -1377,11 +1376,6 @@ CONTAINS
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     NoSalinity = GetLogical(Material,'No Salinity',Found)
 
-    meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
-    IF (.NOT.Found) THEN
-      CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
-      meanfactor = 1.0_dp
-    END IF
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &

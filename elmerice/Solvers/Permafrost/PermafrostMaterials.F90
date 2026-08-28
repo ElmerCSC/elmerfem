@@ -176,6 +176,24 @@ CONTAINS
   END SUBROUTINE ValidateSalinity
   !---------------------------------------------------------------------------------------------
 
+  SUBROUTINE ReadConductivityArithmeticMeanWeight(Material,MeanFactor,Found,Caller)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    REAL(KIND=dp), INTENT(OUT) :: MeanFactor
+    LOGICAL, INTENT(OUT) :: Found
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+
+    MeanFactor = GetConstReal(Material,'Conductivity Arithmetic Mean Weight',Found)
+    IF (Found) THEN
+      IF ((MeanFactor < 0.0_dp) .OR. (MeanFactor > 1.0_dp)) &
+           CALL FATAL(Caller,'"Conductivity Arithmetic Mean Weight" must be between zero and one')
+    ELSE
+      CALL INFO(Caller,'"Conductivity Arithmetic Mean Weight" not found. '//&
+           'Using default 1-Porosity*Xi.',Level=9)
+    END IF
+  END SUBROUTINE ReadConductivityArithmeticMeanWeight
+  !---------------------------------------------------------------------------------------------
+
   FUNCTION ReadPermafrostPhaseChangeModel(Material,Caller) RESULT(PhaseChangeModel)
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material

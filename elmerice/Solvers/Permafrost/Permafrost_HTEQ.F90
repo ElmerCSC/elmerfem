@@ -371,7 +371,7 @@ CONTAINS
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,ThermalDispersion=.FALSE.,ComputeFlux=.TRUE.,&
          NoSalinity=.FALSE.,Exponential=.FALSE.,Linear=.FALSE.,&
-         LinearParamsFound=.TRUE.
+         LinearParamsFound=.TRUE.,MeanFactorFound
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -449,11 +449,9 @@ CONTAINS
 
  
 
-    meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
-    IF (.NOT.Found) THEN
-      CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
-      meanfactor = 1.0_dp
-    END IF
+    IF (.NOT.Lunardini) &
+         CALL ReadConductivityArithmeticMeanWeight(&
+         Material,meanfactor,MeanFactorFound,FunctionName)
     
     MinKgw = GetConstReal( Material, &
          'Hydraulic Conductivity Limit', Found)
@@ -625,6 +623,8 @@ CONTAINS
         kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
         kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)      
         kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)     
+        IF (.NOT.MeanFactorFound) &
+             meanfactor = 1.0_dp - PorosityAtIP*XiAtIP(IPPerm)
         KGTTAtIP = GetKGTT(ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,XiAtIP(IPPerm),&
              SalinityATIP,PorosityAtIP,meanfactor)
       END IF
