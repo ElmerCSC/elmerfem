@@ -3555,9 +3555,6 @@ END FUNCTION SearchNodeL
     END IF
             
     IF(SteadyState) THEN
-PRINT *,'steady1:'
-
-
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
         CALL Info(Caller,'Skipping the computation of steady state change',Level=15)
@@ -4794,18 +4791,11 @@ PRINT *,'steady1:'
     TYPE(ValueList_t), POINTER :: SolverParams
     CHARACTER(:), ALLOCATABLE :: SolverName, ConvergenceType, FileName
 
-    LOGICAL :: HaveDepVar = .FALSE.
-    TYPE(Variable_t), POINTER :: pVar 
-    INTEGER :: citer=0, citer0=1
-    CHARACTER(:), ALLOCATABLE :: str
-    REAL(KIND=dp), POINTER :: depvalues(:), depvalues0(:), depvalues1(:)
-    
 
     SAVE SolverParams, Alpha, Myy, Relaxation, MaxTests, tests, &
         Residual, NonlinTol, LinTol, x1, x0, LineTol, CostMode, SearchMode, &
         Cost0, Residual0, Cost1, n, Dofs, ForceDof, Ortho, Newton, &
-        ConvergenceType, Norm, PrevNorm, iter, FileName, SaveToFile, &
-        HaveDepVar, citer, citer0, depvalues, depvalues0, depvalues1
+        ConvergenceType, Norm, PrevNorm, iter, FileName, SaveToFile
 
     Debug = .FALSE.
     
@@ -4818,7 +4808,8 @@ PRINT *,'steady1:'
     ELSE 
       x => Var % Values      
     END IF
-       
+
+
     ! Assembly the vectors, if needed, and 
     ! also at first time get the line search parameters.
     !----------------------------------------------------
@@ -4923,34 +4914,8 @@ PRINT *,'steady1:'
       !---------------------------------------------------------------
       CALL ListAddLogical(SolverParams,&
           'Skip Compute Nonlinear Change',.TRUE.)
-
-      ! Find another dependent variable that should be relaxed as the primary variable
-      str = ListGetString(SolverParams,'Nonlinear System Linesearch Dep Variable', HaveDepVar )
-      IF( HaveDepVar ) THEN
-        pVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE. )
-        depvalues => pVar % Values
-        IF(.NOT. ASSOCIATED( depvalues0 ) ) THEN
-          ALLOCATE( depvalues0(SIZE(depvalues)), depvalues1(SIZE(depvalues)))
-          depvalues0 = 0.0_dp
-          depvalues1 = 0.0_dp
-        END IF
-      END IF
     END IF
 
-    IF( HaveDepVar ) THEN
-      pVar => VariableGet( Solver % Mesh % Variables,'coupled iter', UnfoundFatal = .TRUE.)
-      citer = NINT(pVar % Values(1))
-      ! Store the depvalues, do not play with the extend the 1st coupled system iter.
-      ! This way the depvalues0 is always lagging one coupled system iteration. 
-      IF( FirstIter ) THEN
-        depvalues1 = depvalues0
-        depvalues0 = depvalues
-      END IF
-      ! The minimum number of coupled system iterations before relaxing. 
-      citer0 = 1
-    END IF
-
-    
     !--------------------------------------------------------------------------
     ! This is the real residual: r=b-Ax
     ! We hope to roughly minimize L2 norm of r, or some related quantity
@@ -5130,11 +5095,6 @@ PRINT *,'steady1:'
       ! New candidate 
       x(1:n) = x0(1:n) + Alpha * x1(1:n)
 
-      ! Update also the dependent values since these two fields should be relaxed with same extent
-      IF( citer > citer0 ) THEN
-        depvalues = depvalues0 + Alpha * depvalues1
-      END IF
-      
       WRITE(Message,'(A,I0,A,g15.6)') 'Step ',Tests,' rejected, trying new extent: ',Alpha
       CALL Info( 'CheckStepSize',Message,Level=6 )
     ELSE ! accept step
@@ -5144,11 +5104,6 @@ PRINT *,'steady1:'
       ! Chosen candidate
       x(1:n) = x0(1:n) + Alpha * x1(1:n)
 
-      ! Update also the dependent values since these two fields should be relaxed with same extent
-      IF( citer > citer0 ) THEN
-        depvalues = depvalues0 + Alpha * depvalues1
-      END IF
-      
       PrevNorm = Norm
       Norm = ComputeNorm(Solver, n, x)
 

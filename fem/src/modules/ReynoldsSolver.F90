@@ -70,7 +70,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, PARAMETER :: Viscosity_Newtonian = 1, Viscosity_Rarefied = 2
 
   INTEGER :: iter, i, j, k, l, n, nd, t, istat, mat_id, ent_id, body_id, mat_idold, &
-      NoIterations, ViscosityType, CompressibilityType, itime, NormalSign
+      NoIterations, ViscosityType, CompressibilityType, itime
   INTEGER, POINTER :: NodeIndexes(:), PressurePerm(:)
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
@@ -148,10 +148,6 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   NoIterations = GetInteger( Params,'Nonlinear System Max Iterations',GotIt)
   IF(.NOT. GotIt) NoIterations = 1
   
-  NormalSign = 1
-  IF( ListGetLogical( Params,'Negative Normal Sign') ) THEN
-    NormalSign = -1
-  END IF
     
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
@@ -412,8 +408,6 @@ CONTAINS
       NormalVelocity(1:n) = GetReal(BodyForce,'Normal Velocity',GotIt)
       IF(.NOT. GotIt) NormalVelocity(1:n) = GetReal(Material,'Normal Velocity',GotIt)
 
-      NormalVelocity(1:n) = NormalSign * NormalVelocity(1:n) 
-      
       NormalVelocity(1:n) = NormalVelocity(1:n) + &
           FsiMult * GetReal(BodyForce,'Fsi Velocity',GotIt)
       IF(.NOT. GotIt) NormalVelocity(1:n) = NormalVelocity(1:n) + &
@@ -1325,9 +1319,6 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
           END IF
 
           OpposingWall = ListGetLogical( Material,'Opposing Wall',GotIt)
-
-          PRINT *,'OPPO:',OpposingWall
-
         END IF
 
         IF( ManningModel ) THEN
