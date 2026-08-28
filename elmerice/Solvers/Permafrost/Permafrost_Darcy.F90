@@ -720,7 +720,7 @@ CONTAINS
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
              GasConstant,p0,T0,&
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-             .FALSE.,.TRUE.,.FALSE.,.TRUE.,.FALSE.)
+             .TRUE.,.FALSE.,.TRUE.,.FALSE.)
         IF (XiAtIP(IPPerm) .NE. XiAtIP(IPPerm)) THEN
           PRINT *, "Darcy: XiAtIP", B1AtIP,D1AtIP,Xi0Tilde
           PRINT *, "Darcy:  XiAtIP", deltaInElement, GlobalRockMaterial % e1(RockMaterialID), bijAtIP

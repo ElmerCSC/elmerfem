@@ -481,7 +481,7 @@ CONTAINS
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
              GasConstant,p0,T0,&
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-             .FALSE.,.TRUE.,.TRUE.,.TRUE.,.FALSE.)
+             .TRUE.,.TRUE.,.TRUE.,.FALSE.)
         !PRINT *, "SoluteTransport", XiAtIP(IPPerm), IPPerm, XiBefore
       CASE DEFAULT
         CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
@@ -795,7 +795,7 @@ CONTAINS
                Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
                GasConstant,p0,T0,&
                XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-               .TRUE.,.FALSE., .FALSE., .FALSE.,.FALSE.) ! we need to compute, as IP's on boundary elements deviate from bulk
+               .FALSE.,.FALSE.,.FALSE.,.FALSE.) ! we need to compute, as IP's on boundary elements deviate from bulk
           ! NB: XiTAtIP, XiPAtIP, XiYcAtIP not needed
           !PRINT *, "SoluteTransportBC", XiAtIP
         CASE DEFAULT

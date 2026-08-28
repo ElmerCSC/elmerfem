@@ -1071,7 +1071,7 @@ CONTAINS
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
              GasConstant,p0,T0,&
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-             .FALSE.,.TRUE.,.FALSE.,.TRUE.,.FALSE.)
+             .TRUE.,.FALSE.,.TRUE.,.FALSE.)
       CASE DEFAULT
         CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
@@ -1460,7 +1460,7 @@ CONTAINS
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
              GasConstant,p0,T0,&
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-             .TRUE.,.TRUE.,.TRUE.,.TRUE.,.FALSE.)
+             .TRUE.,.TRUE.,.TRUE.,.FALSE.)
       CASE DEFAULT
         CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
@@ -1470,4 +1470,3 @@ CONTAINS
   END SUBROUTINE EvaluateXi
   !------------------------------------------------------------------------------
 END SUBROUTINE InitiliazeXi
-

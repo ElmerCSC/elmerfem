@@ -1656,25 +1656,25 @@ CONTAINS
   END FUNCTION deltaG
   !---------------------------------------------------------------------------------------------
   FUNCTION GetBi(CurrentSoluteMaterial,RockMaterialID,&
-       Xi0Tilde,Salinity,Update) RESULT(bi)
+       Xi0Tilde,Salinity,BoundWater) RESULT(bi)
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: Xi0Tilde,Salinity
     INTEGER,  INTENT(IN) :: RockMaterialID
     REAL(KIND=dp):: bi(4)
-    LOGICAL :: Update
+    LOGICAL, INTENT(IN) :: BoundWater
     !----------
     REAL(KIND=dp)::  aux,d1,d2,e1
 
-    IF (Update) THEN
+    d1 = CurrentSoluteMaterial % d1
+    d2 = CurrentSoluteMaterial % d2
+    aux = Salinity/(1.0_dp - Salinity)
+    bi(1) = aux*(d1 + 0.5_dp*d2*aux)
+    bi(2) = aux*(d1 + d2*aux)/(1.0_dp - Salinity)
+    IF (BoundWater) THEN
       e1 = GlobalRockMaterial % e1(RockMaterialID)
       bi(3) = (1.0_dp - Xi0Tilde)*e1
       bi(4) = Xi0Tilde*e1
     ELSE
-      d1 = CurrentSoluteMaterial % d1
-      d2 = CurrentSoluteMaterial % d2
-      aux = Salinity/(1.0_dp - Salinity)
-      bi(1) = aux*(d1 + 0.5_dp*d2*aux)
-      bi(2) = aux*(d1 + d2*aux)/(1.0_dp - Salinity)
       bi(3) = 0.0_dp
       bi(4) = 0.0_dp
     END IF
@@ -1875,7 +1875,7 @@ CONTAINS
        Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
        GasConstant,p0,T0,&
        XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-       ComputeXi,ComputeXiT, ComputeXiYc, ComputeXiP, ComputeXiEta)
+       ComputeXiT,ComputeXiYc,ComputeXiP,ComputeXiEta)
 
     IMPLICIT NONE
 
@@ -1887,42 +1887,40 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: GasConstant,p0,T0
     REAL(KIND=dp), INTENT(IN) :: TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP
     REAL(KIND=dp), INTENT(OUT) :: XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP
-    LOGICAL, INTENT(IN) :: ComputeXi,ComputeXiT, ComputeXiYc, ComputeXiP, ComputeXiEta
+    LOGICAL, INTENT(IN) :: ComputeXiT,ComputeXiYc,ComputeXiP,ComputeXiEta
     !---------------------------
     REAL(KIND=dp) :: biAtIP(4),biYcAtIP(2),gwaAtIP,gwaTAtIP,gwapAtIP,&
          giaAtIP,giaTAtIP,giapAtIP,deltaGAtIP,DAtIP,BAtIP
     !---------------------------
     CALL ValidateSalinityInput(SalinityAtIP,'GetXiHartikainen')
-    IF (ComputeXi .OR. (ComputeXiT .OR. ComputeXiYC .OR. ComputeXiP)) THEN
-      biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
-           Xi0Tilde,SalinityAtIP,.FALSE.) 
-      gwaAtIP = gwa(CurrentSolventMaterial,&
-           p0,T0,rhowAtIP,TemperatureAtIP,PressureAtIP)     
-      giaAtIP = gia(CurrentSolventMaterial,&
-           p0,T0,rhoiAtIP,TemperatureAtIP,PressureAtIP)
-      deltaGAtIP = deltaG(gwaAtIP,giaAtIP)
-      DAtIP= D(RockMaterialID,deltaInElement,biAtIP)
-      BAtIP = GetB(RockMaterialID,CurrentSolventMaterial,&
-           Xi0tilde,deltaInElement,deltaGAtIP,GasConstant,biAtIP,TemperatureAtIP)
-    ELSE
-      CALL WARN("GetXiHartikainen","Nothing to be done - why did you call this routine?")
-    END IF
-    IF (ComputeXi)  THEN
-      XiAtIP = GetXi(BAtIP,DAtIP)
-      CALL ValidateLiquidFraction(XiAtIP,Material,'GetXiHartikainen')
-    END IF
-    
-    ! updates of derivatives
+    ! First evaluate the unbound-water branch (b3=b4=0).
+    biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
+         Xi0Tilde,SalinityAtIP,.FALSE.)
+    gwaAtIP = gwa(CurrentSolventMaterial,&
+         p0,T0,rhowAtIP,TemperatureAtIP,PressureAtIP)
+    giaAtIP = gia(CurrentSolventMaterial,&
+         p0,T0,rhoiAtIP,TemperatureAtIP,PressureAtIP)
+    deltaGAtIP = deltaG(gwaAtIP,giaAtIP)
+    DAtIP = D(RockMaterialID,deltaInElement,biAtIP)
+    BAtIP = GetB(RockMaterialID,CurrentSolventMaterial,&
+         Xi0tilde,deltaInElement,deltaGAtIP,GasConstant,biAtIP,TemperatureAtIP)
+    XiAtIP = GetXi(BAtIP,DAtIP)
+
     IF (XiAtIP < Xi0tilde)  THEN
+      ! Re-evaluate the state with the bound-water interaction terms.
       biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.TRUE.)
+      DAtIP = D(RockMaterialID,deltaInElement,biAtIP)
+      BAtIP = GetB(RockMaterialID,CurrentSolventMaterial,&
+           Xi0tilde,deltaInElement,deltaGAtIP,GasConstant,biAtIP,TemperatureAtIP)
       XiAtIP = GetXi(BAtIP,DAtIP)
-      CALL ValidateLiquidFraction(XiAtIP,Material,'GetXiHartikainen')
     END IF
-    !----------------------------------------------------
+    CALL ValidateLiquidFraction(XiAtIP,Material,'GetXiHartikainen')
+
     XiTAtIP = 0.0_dp
     XiYcAtIP = 0.0_dp
     XiPAtIP = 0.0_dp
+    XiEtaAtIP = 0.0_dp
     IF (ComputeXiT) THEN
       giaTAtIP = giaT(CurrentSolventMaterial,&
            p0,T0,rhoiAtIP,TemperatureAtIP)
@@ -1942,6 +1940,10 @@ CONTAINS
       XiPAtIP = XiP(CurrentSolventMaterial,&
            BAtIP,DAtIP,biAtIP,gwapAtIP,giapAtIP,XiAtIP,&
            deltaInElement,GasConstant,TemperatureAtIP)
+    END IF
+    IF (ComputeXiEta) THEN
+      CALL FATAL('GetXiHartikainen',&
+           'Porosity derivative XiEta is not implemented')
     END IF
   END SUBROUTINE GetXiHartikainen
   !---------------------------------------------------------------------------------------------
