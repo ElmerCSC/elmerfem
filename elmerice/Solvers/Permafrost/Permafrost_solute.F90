@@ -830,7 +830,7 @@ CONTAINS
       ! Given salinity, weakly imposed
       !----------------------------------------------------------------------
       IF (WeakDirichletCond) THEN
-        SalinityAtIP = SUM(Salinity(1:n)*Basis(1:n))
+        SalinityAtIP = SUM(ImposedSalinity(1:n)*Basis(1:n))
         DO p=1,nd
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + Weight * C * Basis(q) * Basis(p)
