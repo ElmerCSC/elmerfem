@@ -9,11 +9,43 @@ include(test_macros)
 # run overwrites it.  Intermediate runs are therefore checked here by hand,
 # which also lets a failure name the corner that broke.
 
+# Run one of the factor binaries, and insist that it actually ran.  Without the
+# RESULT_VARIABLE check a binary that never starts -- the Windows loader
+# refusing it for a DLL it cannot find is the way this happens -- looks exactly
+# like a binary that ran and wrote nothing, and the test then fails several
+# lines later on a missing file with no hint of why.  The log is redirected, so
+# echo it back on failure or the message would be the only thing anyone sees.
+MACRO(RUN_TOOL BIN LOGBASE)
+  execute_process(COMMAND ${BIN} ${ARGN}
+    OUTPUT_FILE ${LOGBASE}.log ERROR_FILE ${LOGBASE}-err.log
+    RESULT_VARIABLE _rc)
+  IF(NOT _rc EQUAL 0)
+    SET(_out "")
+    IF(EXISTS ${LOGBASE}.log)
+      FILE(READ ${LOGBASE}.log _out)
+    ENDIF()
+    SET(_err "")
+    IF(EXISTS ${LOGBASE}-err.log)
+      FILE(READ ${LOGBASE}-err.log _err)
+    ENDIF()
+    MESSAGE(FATAL_ERROR
+      "'${BIN} ${ARGN}' failed with '${_rc}'\n"
+      "--- stdout ---\n${_out}\n--- stderr ---\n${_err}")
+  ENDIF()
+ENDMACRO()
+
+# Radiators is a thin wrapper: it re-spells its own argv[0] as ViewFactors and
+# passes its last argument through, so it does honour a sif name -- but only if
+# it is given one.  Called bare it hands ViewFactors nothing but the -radiators
+# flag, ViewFactors falls back to ELMERSOLVER_STARTINFO, and every corner of
+# the matrix below would get its radiator factors computed with the one method
+# STARTINFO happens to name.  So name the sif for each corner explicitly.
+#
 # Each corner's view factors are kept so the corners can be compared against
 # each other afterwards, not only against a norm.
 MACRO(RUN_CORNER SIF)
-  execute_process(COMMAND ${VIEWFACTORS_BIN} ${SIF}.sif
-    OUTPUT_FILE ${SIF}-viewfactors.log ERROR_FILE ${SIF}-viewfactors-err.log)
+  RUN_TOOL(${RADIATORS_BIN} ${SIF}-radiators ${SIF}.sif)
+  RUN_TOOL(${VIEWFACTORS_BIN} ${SIF}-viewfactors ${SIF}.sif)
   configure_file(box_in_box/ViewFactors.dat vf_${SIF}.dat COPYONLY)
 ENDMACRO()
 
@@ -39,8 +71,7 @@ MACRO(CHECK_CORNER WHAT)
   ENDIF()
 ENDMACRO()
 
-execute_process(COMMAND ${ELMERGRID_BIN} 1 2 box_in_box.grd)
-execute_process(COMMAND ${RADIATORS_BIN})
+RUN_TOOL(${ELMERGRID_BIN} elmergrid 1 2 box_in_box.grd)
 
 # ---------------------------------------------------------------------------
 # The shaft cull is a pure speed optimisation: it replaces one tree traversal
@@ -50,13 +81,8 @@ execute_process(COMMAND ${RADIATORS_BIN})
 # automatic rule leaves the cull off, so the two runs really do take different
 # paths through the code.
 # ---------------------------------------------------------------------------
-execute_process(COMMAND ${VIEWFACTORS_BIN} culloff.sif
-  OUTPUT_FILE culloff-viewfactors.log ERROR_FILE culloff-viewfactors-err.log)
-configure_file(box_in_box/ViewFactors.dat vf_culloff.dat COPYONLY)
-
-execute_process(COMMAND ${VIEWFACTORS_BIN} cullon.sif
-  OUTPUT_FILE cullon-viewfactors.log ERROR_FILE cullon-viewfactors-err.log)
-configure_file(box_in_box/ViewFactors.dat vf_cullon.dat COPYONLY)
+RUN_CORNER(culloff)
+RUN_CORNER(cullon)
 
 execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files vf_culloff.dat vf_cullon.dat
   RESULT_VARIABLE CULL_DIFFERS)
