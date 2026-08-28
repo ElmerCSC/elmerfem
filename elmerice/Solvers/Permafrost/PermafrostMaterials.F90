@@ -42,7 +42,9 @@ MODULE PermafrostMaterials
   USE SolverUtils
   IMPLICIT NONE
   REAL(KIND=dp), PARAMETER :: MinimumLiquidFraction = 0.001_dp
+  REAL(KIND=dp), PARAMETER :: HydraulicConductivityReferenceGravity = 9.81_dp
   LOGICAL, SAVE :: LiquidFractionClipWarningIssued = .FALSE.
+  LOGICAL, SAVE :: HydraulicConductivityReferenceStateReported = .FALSE.
   !---------------------------------
   ! type for solvent (water and ice)
   !---------------------------------
@@ -500,6 +502,8 @@ CONTAINS
         LocalSolventMaterial % betai = 0.0_dp  ! CHANGE
       END IF
 
+      CALL ValidateHydraulicConductivityReferenceState(&
+           LocalSolventMaterial % rhow0,LocalSolventMaterial % muw0,SubroutineName)
       CALL INFO(SubroutineName,"-----------------------------------------------------------------",Level=9)
       CALL INFO(SubroutineName,"Solvent related constants",Level=9)
       WRITE(Message,*) "Mw",LocalSolventMaterial % Mw,"rhow0",LocalSolventMaterial % rhow0,"rhoi0",LocalSolventMaterial % rhoi0,&
@@ -2692,6 +2696,55 @@ CONTAINS
     END IF
   END FUNCTION GetRelativePermeability
   !---------------------------------------------------------------------------------------------
+  SUBROUTINE ValidateHydraulicConductivityReferenceState(ReferenceDensity,ReferenceViscosity,&
+       Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: ReferenceDensity,ReferenceViscosity
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    !-------------------------
+    IF ((ReferenceDensity .NE. ReferenceDensity) .OR. (ReferenceDensity <= 0.0_dp)) &
+         CALL FATAL(Caller,'Reference groundwater density must be positive')
+    IF ((ReferenceViscosity .NE. ReferenceViscosity) .OR. (ReferenceViscosity <= 0.0_dp)) &
+         CALL FATAL(Caller,'Reference groundwater viscosity must be positive')
+    IF (HydraulicConductivityReferenceGravity <= 0.0_dp) &
+         CALL FATAL(Caller,'Hydraulic-conductivity reference gravity must be positive')
+  END SUBROUTINE ValidateHydraulicConductivityReferenceState
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetHydraulicConductivityConversionFactor(ReferenceDensity,ReferenceViscosity,&
+       CurrentViscosity) RESULT(Factor)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: ReferenceDensity,ReferenceViscosity
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: CurrentViscosity
+    REAL(KIND=dp) :: Factor
+    CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName = &
+         'PermafrostMaterials(GetHydraulicConductivityConversionFactor)'
+    !-------------------------
+    CALL ValidateHydraulicConductivityReferenceState(&
+         ReferenceDensity,ReferenceViscosity,FunctionName)
+
+    IF (PRESENT(CurrentViscosity)) THEN
+      IF ((CurrentViscosity .NE. CurrentViscosity) .OR. (CurrentViscosity <= 0.0_dp)) &
+           CALL FATAL(FunctionName,'Current groundwater viscosity must be positive')
+      ! Hydraulic conductivity to groundwater mobility.
+      Factor = (ReferenceViscosity/CurrentViscosity) / &
+           (ReferenceDensity*HydraulicConductivityReferenceGravity)
+    ELSE
+      ! Hydraulic conductivity to intrinsic permeability.
+      Factor = ReferenceViscosity / &
+           (ReferenceDensity*HydraulicConductivityReferenceGravity)
+    END IF
+
+    IF (.NOT.HydraulicConductivityReferenceStateReported) THEN
+      WRITE(Message,*) 'Hydraulic-conductivity reference state: density=',&
+           ReferenceDensity,' kg m^-3, viscosity=',ReferenceViscosity,&
+           ' Pa s, gravity=',HydraulicConductivityReferenceGravity,&
+           ' m s^-2, intrinsic-permeability factor=',ReferenceViscosity / &
+           (ReferenceDensity*HydraulicConductivityReferenceGravity),' m s'
+      CALL INFO(FunctionName,Message,Level=3)
+      HydraulicConductivityReferenceStateReported = .TRUE.
+    END IF
+  END FUNCTION GetHydraulicConductivityConversionFactor
+  !---------------------------------------------------------------------------------------------
   FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,Porosity,Exponential,impedancefactor)RESULT(KGpe)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
@@ -2702,15 +2755,13 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: impedancefactor
 !--------------------------
     REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativepermeability
-    REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
     INTEGER :: I, J
     !-------------------------
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
    
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
-    factor = muw0/(rhow0*gval)
+    factor = GetHydraulicConductivityConversionFactor(rhow0,muw0)
     relativepermeability = &
          GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
     DO I=1,3
@@ -2747,11 +2798,8 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: impedancefactor
     !--------------------------
     REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativePermeability
-    REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
     INTEGER :: I, J
     !-------------------------
-    IF (mugw <= 0.0_dp) &
-         CALL FATAL("PermafrostMaterials(GetKgw)","Unphysical viscosity detected")
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
 
@@ -2759,8 +2807,7 @@ CONTAINS
          GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
       
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
-    factor = (muw0/mugw)/(rhow0*gval)
+    factor = GetHydraulicConductivityConversionFactor(rhow0,muw0,mugw)
 
     Kgw = 0.0_dp
     DO I=1,3
