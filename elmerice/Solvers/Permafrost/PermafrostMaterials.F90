@@ -1692,7 +1692,8 @@ CONTAINS
 
     aux = 1.0_dp/(1.0_dp - Salinity)
     biYc(1) = (d1 + d2*Salinity*aux)*aux*aux
-    biYc(2) = (d1*(1.0_dp + Salinity) + d2*Salinity*(2.0_dp + Salinity))*aux**3.0_dp
+    biYc(2) = d1*(1.0_dp + Salinity)*aux**3.0_dp &
+         + d2*Salinity*(2.0_dp + Salinity)*aux**4.0_dp
   END FUNCTION GetBiYc
   !---------------------------------------------------------------------------------------------
   FUNCTION GetB(RockMaterialID,CurrentSolventMaterial,&
@@ -1833,8 +1834,7 @@ CONTAINS
 
     aux_sqrt = B*B + 4.0_dp*D
     aux1 = 1.0_dp/(delta + bi(2) + bi(4))
-    aux2 = ( 1.0_dp + B/SQRT(aux_sqrt) )*(biYc(1) + B*biYc(2)) &
-         + biYc(2)/(SQRT(aux_sqrt))
+    aux2 = ( 1.0_dp + B/SQRT(aux_sqrt) )*(biYc(1) + B*biYc(2))
     aux3 = 2.0_dp*D*biYc(2)/(SQRT(aux_sqrt))
     XiYc = 0.5_dp*aux1*(aux2 + aux3)*Xi*Xi      
     !IF (XiYc .NE. XiYc) THEN
