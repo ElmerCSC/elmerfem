@@ -2177,6 +2177,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END IF
 
       ! computing the source term Vi(sigma grad v0, grad si):
+      ! ElectroDynamics requires:
+      ! (P d_t grad v0, grad si) Vi
+      ! ------------------------
+      ! these terms will be done later after comment (P1)
+      ! but it is first built for dim==2 and dim==3
       ! ------------------------------------------------
       IF(dim==2) cmplx_val = IP % s(t)*detJ*grads_coeff**2*circ_eq_coeff * Comp % VoltageFactor
 
@@ -2186,7 +2191,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         !   Boundary Condition: Layer Electric Conductivity
         !   Boundary Condition: Layer Relative Permeability
         !
-        ! The term Vi/Z ( grad v0, grad_v0 )
+        ! The term Vi/Z ( grad v0, grad si )
         !
           cond = SUM(Basis(1:nn) * SkinCond(1:nn))
           mu  = muVacuum * SUM(Basis(1:nn) * SkinMu(1:nn))
@@ -2194,6 +2199,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           invZs = (cond*delta)/(1.0_dp+imu)
           cmplx_val = IP % s(t)*detJ*invZs*SUM(gradv*gradv) * Comp % VoltageFactor
         ELSE
+          ! (grad v0, grad si)
           cmplx_val = IP % s(t)*detJ*SUM(gradv*gradv) * Comp % VoltageFactor
         END IF
       END IF
@@ -2202,6 +2208,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
              REAL(cmplx_val), AIMAG(cmplx_val))
       ELSE
+        ! (P1) 
+        ! Real part: Vi(sigma grad v0, grad si)
+        ! Imaginary part: Vi (P d_t grad v0, grad v0)
         CALL AddMatrixEntry(CM, vvarId, vvarId, &
              cmplx_val*localC, im*Omega*cmplx_val*localP )
       END IF
@@ -2262,6 +2271,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
                     REAL(cmplx_val), AIMAG(cmplx_val))
         ELSE
+          ! ElectroDynamics requires:
+          !
+          ! (P d_t**2 a, grad si)
+          ! ------------------------
+
+          ! (a, grad si)
+          cmplx_val = IP % s(t)*detJ*SUM(Wbasis(j,:)*gradv)
+          ! (sigma d_t a, grad si) - (P d_t**2 a, grad si)
           cmplx_val = im*Omega*cmplx_val*localC - omega**2*cmplx_val*localP
           CALL AddMatrixEntry(CM, vvarId, ReIndex(PS(Indexes(q))), &
                      (0._dp, 0._dp), cmplx_val )
@@ -2283,6 +2300,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             !
             cmplx_val = IP % s(t)*detJ*invZs*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor
           ELSE
+            ! (grad v0, w)
             cmplx_val = IP % s(t)*detJ*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
           END IF
         END IF
@@ -2291,6 +2309,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
                   REAL(cmplx_val), AIMAG(cmplx_val))
         ELSE
+          ! ElectroDynamics requires:
+          ! (P d_t grad v0, w) Vi
+          ! -----------------------------
+          ! real part:      (sigma grad v0, w) Vi
+          ! imaginary part: (P d_t grad v0, w) Vi
           CALL AddMatrixEntry(CM, ReIndex(PS(indexes(q))), vvarId, &
                cmplx_val*LocalC, im*Omega*cmplx_val*LocalP )
         END IF

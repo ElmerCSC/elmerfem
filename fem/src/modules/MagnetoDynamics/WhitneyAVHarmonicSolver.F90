@@ -1503,10 +1503,16 @@ END BLOCK
           !
           ! The constraint equation: in the basic case -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
+          ! ElectroDynamics requires:
+          ! 
+          ! P (d_t**2 a, grad u)
+          ! P (d_t grad v, grad u)
+          ! P (d_t grad v, w)
           DO i=1,np
             p = i
             DO q=1,np
               IF(ElectroDynamics .OR. Darwin) THEN             
+                ! P (d_t grad v, grad u)
                 DAMP(p,q) = DAMP(p,q) + P_ip*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
               END IF
               
@@ -1525,6 +1531,7 @@ END BLOCK
                   SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
 
               IF(ElectroDynamics) THEN             
+                ! P (d_t**2 a, grad u)
                 MASS(p,q) = MASS(p,q) + P_ip*SUM(WBasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
               END IF
 
@@ -1534,6 +1541,7 @@ END BLOCK
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
 
               IF(ElectroDynamics .OR. Darwin) THEN             
+                ! P (d_t grad v, w)
                 DAMP(q,p) = DAMP(q,p) + &
                        P_ip * SUM( WBasis(j,:)*dBasisdx(i,:) )*detJ*IP % s(t)
               END IF
@@ -1563,6 +1571,9 @@ END BLOCK
        ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
        !        J + curl(M) - C*grad(P'):
        ! ----------------------------------------------------
+       ! ElectroDynamics requires:
+       ! 
+       ! P (d_t**2 a, w)
        DO i = 1,nd-np
          p = i+np
          FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
@@ -1591,6 +1602,7 @@ END BLOCK
                 SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
 
            IF(ElectroDynamics ) THEN
+             ! P (d_t**2 a, w)
              MASS(p,q) = MASS(p,q) + &
                 P_ip*SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
            END IF
