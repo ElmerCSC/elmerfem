@@ -27,9 +27,17 @@ jobs:
       matrix:
         os: [macos-14]
         blas: [openblas, accelerate]
+        # Homebrew publishes no Intel macOS bottle for vtk: as of vtk 9.7.0 the
+        # bottles are arm64_tahoe, arm64_sequoia, arm64_sonoma, arm64_linux and
+        # x86_64_linux only. "brew install vtk" therefore fails on
+        # macos-15-intel with "vtk: no bottle available!", which fails the whole
+        # dependency step. Building it from source would dominate the job, so
+        # the Intel runner builds without VtkPost instead.
+        vtk: [true]
         include:
           - os: macos-15-intel
             blas: openblas
+            vtk: false
 
     steps:
       - name: get CPU information
@@ -60,7 +68,7 @@ jobs:
             ${{ matrix.blas == 'accelerate' && 'veclibfort' || '' }} \
             open-mpi \
             libomp suitesparse \
-            qwt vtk opencascade expat
+            qwt ${{ matrix.vtk && 'vtk' || '' }} opencascade expat
           echo "HOMEBREW_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: configure
@@ -104,7 +112,7 @@ jobs:
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DQWT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/qwt/lib/qwt.framework/Headers" \
-            -DWITH_VTK=ON \
+            -DWITH_VTK=${{ matrix.vtk && 'ON' || 'OFF' }} \
             -DEXPAT_INCLUDE_DIR="${HOMEBREW_PREFIX}/opt/expat/include" \
             -DWITH_OCC=ON \
             -DWITH_MATC=ON \
