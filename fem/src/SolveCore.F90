@@ -1753,6 +1753,28 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Deterministic probe value for a global dof index, used by the
+!> 'AMGX Verify Gather' check in AMGXSolver().
+!>
+!> Every partition must obtain exactly the same value for the same global index,
+!> so this is an integer hash (the MINSTD multiplier) rather than anything that
+!> would depend on the libm in use. The product stays well inside INTEGER(8):
+!> global indices are below 2**31 and 48271*2**31 is about 1.0e14.
+!------------------------------------------------------------------------------
+  PURE FUNCTION AMGXProbeValue( g ) RESULT ( v )
+!------------------------------------------------------------------------------
+    INTEGER, INTENT(IN) :: g
+    REAL(KIND=dp) :: v
+!------------------------------------------------------------------------------
+    INTEGER(KIND=8), PARAMETER :: Mult = 48271_8, Modulus = 2147483647_8
+!------------------------------------------------------------------------------
+    v = REAL( MOD( INT(g,8)*Mult, Modulus ), dp ) / REAL( Modulus, dp ) - 0.5_dp
+!------------------------------------------------------------------------------
+  END FUNCTION AMGXProbeValue
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
   SUBROUTINE AMGXSolver( A, x, b, Solver )
 !------------------------------------------------------------------------------
     USE iso_c_binding, only: C_INTPTR_T, C_CHAR, C_NULL_CHAR
@@ -1777,7 +1799,7 @@ CONTAINS
          INTEGER :: rows(*), cols(*), nonlin_update, n, comm, ng, part_vec(*), solve_status
       END SUBROUTINE AMGXSolve
     END INTERFACE
-
+#endif
 
     ! AMGX_SOLVE_STATUS values, mirrored from https://github.com/NVIDIA/AMGX/tree/main/include
     INTEGER, PARAMETER :: AMGX_SOLVE_SUCCESS = 0, AMGX_SOLVE_FAILED = 1, &
@@ -1785,13 +1807,30 @@ CONTAINS
 
     CHARACTER(KIND=C_CHAR) :: cfg(MAX_NAME_LEN)
     CHARACTER(LEN=MAX_NAME_LEN) :: config
-    LOGICAL :: found, isparallel , nlin, DoFatal
+    LOGICAL :: found, isparallel , nlin, DoFatal, VerifyGather, VerifyOnly
     INTEGER :: nonlin_update, i, j, n, lrow, me, you, solve_status
     REAL(KIND=dp)  :: bnrm
 
     TYPE(Matrix_t), POINTER :: Bm
     INTEGER, SAVE :: ng
     INTEGER, ALLOCATABLE, SAVE :: Owner(:), APerm(:), part_vec(:), iLPerm(:)
+
+    ! The collection of the partition-local matrices into whole owned rows below
+    ! is plain Elmer + MPI: it needs no AMGX. Its correctness can therefore be
+    ! checked on any machine, GPU or not, which is what 'AMGX Verify Gather'
+    ! does. Without the library linked in that check is the only thing this
+    ! routine can do, and it stops before the solve.
+    VerifyGather = ListGetLogical( Solver % Values, 'AMGX Verify Gather', Found )
+    VerifyOnly = .FALSE.
+#ifndef HAVE_AMGX
+    IF( .NOT. VerifyGather ) THEN
+      CALL Fatal('AMGXSolver', "AMGX doesn't seem to be included.")
+    END IF
+    VerifyOnly = .TRUE.
+    CALL Info('AMGXSolver','AMGX is not linked in: verifying the matrix gather only.',Level=4)
+#endif
+
+    solve_status = AMGX_SOLVE_SUCCESS
 
     nlin = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
     IF ( nlin .OR. .NOT. Found ) THEN
@@ -1800,7 +1839,10 @@ CONTAINS
       nonlin_update = 0
     END IF
 
-    config = ListGetString( Solver % Values, 'AMGX Config')
+    config = ListGetString( Solver % Values, 'AMGX Config', Found )
+    IF(.NOT. Found .AND. .NOT. VerifyOnly ) THEN
+      CALL Fatal('AMGXSolver','Keyword > AMGX Config < is required!')
+    END IF
     DO i=1,LEN_TRIM(config)
       cfg(i) = config(i:i)
     END DO
@@ -1966,6 +2008,75 @@ CONTAINS
         END IF
       END BLOCK
 
+      ! Verify the gather above against the parallel matrix itself.
+      !
+      ! The parallel matrix is a sum of partition-local contributions,
+      ! A = SUM_p A_p, because every element is assembled on exactly one
+      ! partition. Hence for any vector u on which all partitions agree,
+      ! SUM_p (A_p u) is the exact global product A*u, and ParallelSumVector
+      ! performs that sum. This gives a reference for the gathered matrix Bm
+      ! that needs neither AMGX nor the SplittedMatrix glue.
+      !
+      ! Note that Elmer splits the parallel matrix by *column* ownership
+      ! (SplitMatrix in SParIterSolver.F90), which lets the parallel
+      ! matrix-vector product be formed from local u alone, whereas AMGX wants
+      ! whole *rows* on the owning rank -- hence the gather. An orientation
+      ! error between the two cancels for a symmetric matrix and does not for a
+      ! general one, so run this on a strongly unsymmetric case, with a
+      ! symmetric one as the control.
+      IF( VerifyGather ) THEN
+        BLOCK
+          REAL(KIND=dp), ALLOCATABLE :: vref(:), vtst(:)
+          REAL(KIND=dp) :: s, emax, vmax, relerr
+          INTEGER :: ii, kk
+
+          ALLOCATE( vref(A % NumberOfRows), vtst(Bm % NumberOfRows) )
+
+          ! Reference: the local product of every partition, then summed.
+          DO ii=1,A % NumberOfRows
+            s = 0._dp
+            DO kk=A % Rows(ii), A % Rows(ii+1)-1
+              s = s + A % Values(kk) * AMGXProbeValue( APerm(A % Cols(kk)) )
+            END DO
+            vref(ii) = s
+          END DO
+          CALL ParallelSumVector( A, vref )
+
+          ! Candidate: the same product from the gathered whole rows. Bm % Cols
+          ! already carry the global (APerm) numbering.
+          DO ii=1,Bm % NumberOfRows
+            s = 0._dp
+            DO kk=Bm % Rows(ii), Bm % Rows(ii+1)-1
+              s = s + Bm % Values(kk) * AMGXProbeValue( Bm % Cols(kk) )
+            END DO
+            vtst(ii) = s
+          END DO
+
+          emax = 0._dp; vmax = 0._dp
+          DO ii=1,Bm % NumberOfRows
+            emax = MAX( emax, ABS( vtst(ii) - vref(iLPerm(ii)) ) )
+            vmax = MAX( vmax, ABS( vref(iLPerm(ii)) ) )
+          END DO
+          emax = ParallelReduction( emax, 2 )
+          vmax = ParallelReduction( vmax, 2 )
+
+          relerr = emax
+          IF( vmax > 0._dp ) relerr = emax / vmax
+
+          WRITE(Message,'(A,ES12.5)') 'AMGX gather vs. parallel matrix-vector, relative error: ',relerr
+          IF( relerr > 1.0e-9_dp ) THEN
+            CALL Warn('AMGXSolver',Message)
+            CALL Warn('AMGXSolver','The gathered matrix does not reproduce the parallel product!')
+          ELSE
+            CALL Info('AMGXSolver',Message,Level=4)
+          END IF
+
+          DEALLOCATE( vref, vtst )
+        END BLOCK
+
+        IF( VerifyOnly ) RETURN
+      END IF
+
       BLOCK
         REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
 
@@ -1982,8 +2093,10 @@ CONTAINS
         END DO
         bnrm = SQRT(ParallelReduction(SUM(bb**2)))
 
+#ifdef HAVE_AMGX
         CALL AMGXSolve( A % AMGX, n, Bm % Rows-1, Bm % Cols-1, Bm % Values,  &
           bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, part_vec, bnrm, solve_status )
+#endif
 
         x = 0
         DO i=1,n
@@ -1992,12 +2105,19 @@ CONTAINS
         CALL ParallelSumVector(A, x)
       END BLOCK
     ELSE
+      IF( VerifyGather ) THEN
+        CALL Info('AMGXSolver','Serial run: there is no gather to verify.',Level=4)
+        IF( VerifyOnly ) RETURN
+      END IF
+
       n = A % NumberOfRows
       bnrm = SQRT(SUM(b**2))
 
+#ifdef HAVE_AMGX
       CALL AMGXSolve( A % AMGX, n, A % Rows-1, A % Cols-1, &
         A % Values, b, x, nonlin_update, cfg, ELMER_COMM_WORLD, n, &
            A % Diag, bnrm, solve_status ) ! <--- a % diag  for dummy
+#endif
     END IF
 
     IF( solve_status == AMGX_SOLVE_SUCCESS ) THEN
@@ -2022,9 +2142,6 @@ CONTAINS
       END SELECT
       IF( ASSOCIATED( Solver % Variable ) ) Solver % Variable % LinConverged = 0
     END IF
-#else
-    CALL Fatal('AMGXSolver', "AMGX doesn't seem to be included.")
-#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXSolver
 !------------------------------------------------------------------------------
