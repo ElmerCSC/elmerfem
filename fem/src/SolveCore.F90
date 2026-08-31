@@ -1807,13 +1807,30 @@ CONTAINS
 
     CHARACTER(KIND=C_CHAR) :: cfg(MAX_NAME_LEN)
     CHARACTER(LEN=MAX_NAME_LEN) :: config
-    LOGICAL :: found, isparallel , nlin, DoFatal, VerifyGather, VerifyOnly
+    LOGICAL :: found, isparallel , nlin, DoFatal, VerifyGather, VerifyOnly, Rebuild
     INTEGER :: nonlin_update, i, j, n, lrow, me, you, solve_status
     REAL(KIND=dp)  :: bnrm
 
     TYPE(Matrix_t), POINTER :: Bm
     INTEGER, SAVE :: ng
     INTEGER, ALLOCATABLE, SAVE :: Owner(:), APerm(:), part_vec(:), iLPerm(:)
+
+    ! Cached collection pattern. The structure of the gathered matrix does not
+    ! change from solve to solve, only the values, so the row and column indices
+    ! are exchanged once and afterwards each neighbour is sent a single
+    ! contiguous block of doubles that is scattered straight into
+    ! > Bm % Values < through a precomputed index list.
+    !   LocalMap : A % Values index -> Bm % Values slot, 0 for rows not owned
+    !   SendIdx  : per neighbour, the A % Values indices to ship, in order
+    !   RecvIdx  : per neighbour, the Bm % Values slots to add into, same order
+    TYPE IdxList_t
+      INTEGER, ALLOCATABLE :: Ind(:)
+    END TYPE IdxList_t
+
+    INTEGER, ALLOCATABLE, SAVE :: LocalMap(:)
+    TYPE(IdxList_t), ALLOCATABLE, SAVE :: SendIdx(:), RecvIdx(:)
+    LOGICAL, SAVE :: PatternReady = .FALSE.
+    INTEGER, SAVE :: nnzA = -1, nrowsA = -1
 
     ! The collection of the partition-local matrices into whole owned rows below
     ! is plain Elmer + MPI: it needs no AMGX. Its correctness can therefore be
@@ -1864,11 +1881,23 @@ CONTAINS
           INTEGER, ALLOCATABLE :: Size(:), Rows(:)
         END TYPE SendStuff_t
         TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
+
+        ! Received (Bm row, global column) per entry, in the order the values
+        ! arrive. Turned into > RecvIdx < once Bm has its CRS structure.
+        TYPE(IdxList_t), ALLOCATABLE :: RecvRow(:), RecvCol(:)
+        INTEGER :: icnt, slot, nsend, nrecv
+        REAL(KIND=dp), ALLOCATABLE :: sbuf(:), rbuf(:)
  
         IF(.NOT. ASSOCIATED(A % CollectionMatrix)) THEN
           IF(ALLOCATED(Owner))THEN
             DEALLOCATE(Owner,APerm,ILperm,part_vec, SendTo, GlobalToLocal)
           END IF
+
+          ! This is a different matrix from the one the cached pattern, if any,
+          ! was built for.
+          PatternReady = .FALSE.
+          nnzA = -1
+          nrowsA = -1
 
           n = SIZE(A % ParallelInfo % GlobalDOFs)
           ALLOCATE( Owner(n), Aperm(n) )
@@ -1895,7 +1924,21 @@ CONTAINS
           Bm => A % CollectionMatrix
         END IF
 
-        IF( Bm % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
+        ! The pattern has to be rebuilt on the first pass, if the structure of A
+        ! changed under us, or if CRS_AddToMatrixElement() hit a column the
+        ! gathered matrix does not have and flipped it back to list format.
+        Rebuild = .NOT. PatternReady .OR. Bm % Format == MATRIX_LIST .OR. &
+            nnzA /= SIZE(A % Values) .OR. nrowsA /= A % NumberOfRows
+
+        ! The decision has to be unanimous. The two branches below use different
+        ! message patterns, so partitions disagreeing would deadlock -- and every
+        ! term above is local: CRS_AddToMatrixElement() flips > Bm % Format <
+        ! back to list format on the one partition that met an unknown column.
+        i = 0
+        IF( Rebuild ) i = 1
+        Rebuild = ( NINT( ParallelReduction( 1._dp*i, 2 ) ) > 0 )
+
+        IF( Rebuild ) THEN
           iLPerm = 0
           LRow = 0
           SendTo = 0
@@ -1933,6 +1976,29 @@ CONTAINS
               SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
               SendStuff(you+1) % Rows(Sendto(you+1))  = i
             END IF
+          END DO
+
+          ! Cache the flat list of value indices per neighbour, in exactly the
+          ! order the rows are shipped below, so that later solves can send the
+          ! values alone.
+          IF(ALLOCATED(SendIdx)) DEALLOCATE(SendIdx)
+          IF(ALLOCATED(RecvIdx)) DEALLOCATE(RecvIdx)
+          ALLOCATE(SendIdx(ParEnv % PEs), RecvIdx(ParEnv % PEs))
+          ALLOCATE(RecvRow(ParEnv % PEs), RecvCol(ParEnv % PEs))
+          DO i=1,ParEnv % PEs
+            IF( i-1==me .OR. .NOT. ParEnv % IsNeighbour(i) .OR. SendTo(i)==0 ) THEN
+              ALLOCATE(SendIdx(i) % Ind(0))
+              CYCLE
+            END IF
+            ALLOCATE(SendIdx(i) % Ind(SUM(SendStuff(i) % Size)))
+            l = 0
+            DO j=1,SendTo(i)
+              k = SendStuff(i) % Rows(j)
+              DO you=A % Rows(k), A % Rows(k+1)-1
+                l = l+1
+                SendIdx(i) % Ind(l) = you
+              END DO
+            END DO
           END DO
 
           ! Ensure the MPI buffered-send pool is large enough for this loop's
@@ -1978,10 +2044,22 @@ CONTAINS
 
             CALL MPI_RECV(rRows,rcnt,MPI_INTEGER,proc,1201,ELMER_COMM_WORLD,status,ierr)
             CALL MPI_RECV(rSize,rcnt,MPI_INTEGER,proc,1202,ELMER_COMM_WORLD,status,ierr)
+
+            ALLOCATE( RecvRow(proc+1) % Ind(SUM(rSize)), &
+                      RecvCol(proc+1) % Ind(SUM(rSize)) )
+            icnt = 0
+
             DO j=1,rcnt
               k = GlobalToLocal(rRows(j))
               IF ( k==0 ) THEN
                 PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j)
+                ! Account for the values anyway: the neighbour ships them and
+                ! the cached flat ordering has to line up with what it sends.
+                DO l=1,rSize(j)
+                  icnt = icnt+1
+                  RecvRow(proc+1) % Ind(icnt) = 0
+                  RecvCol(proc+1) % Ind(icnt) = 0
+                END DO
                 CYCLE
               END IF
               ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
@@ -1993,6 +2071,9 @@ CONTAINS
 
               DO l=1,rSize(j)
                 CAll AddToMatrixElement(Bm,k,cBuf(l),vBuf(l))
+                icnt = icnt+1
+                RecvRow(proc+1) % Ind(icnt) = k
+                RecvCol(proc+1) % Ind(icnt) = cBuf(l)
               END DO
               DEALLOCATE(cbuf, vbuf)
             END DO
@@ -2005,6 +2086,91 @@ CONTAINS
             CALL List_toCRSMatrix(Bm)
             A % CollectionMatrix => Bm
           END IF
+
+          ! Bm now has its final CRS structure, so the (row,column) pairs above
+          ! can be resolved to value slots once and for all.
+          IF( Bm % Format == MATRIX_CRS ) THEN
+            IF(ALLOCATED(LocalMap)) DEALLOCATE(LocalMap)
+            ALLOCATE(LocalMap(SIZE(A % Values)))
+            LocalMap = 0
+
+            DO lrow=1,Bm % NumberOfRows
+              i = iLPerm(lrow)
+              IF( i<=0 ) CYCLE
+              DO j=A % Rows(i), A % Rows(i+1)-1
+                slot = CRS_Search( Bm % Rows(lrow+1)-Bm % Rows(lrow), &
+                    Bm % Cols(Bm % Rows(lrow):Bm % Rows(lrow+1)-1), APerm(A % Cols(j)) )
+                IF( slot>0 ) LocalMap(j) = slot + Bm % Rows(lrow) - 1
+              END DO
+            END DO
+
+            DO i=1,ParEnv % PEs
+              IF( .NOT. ALLOCATED(RecvRow(i) % Ind) ) THEN
+                ALLOCATE(RecvIdx(i) % Ind(0))
+                CYCLE
+              END IF
+              nrecv = SIZE(RecvRow(i) % Ind)
+              ALLOCATE(RecvIdx(i) % Ind(nrecv))
+              RecvIdx(i) % Ind = 0
+              DO l=1,nrecv
+                k = RecvRow(i) % Ind(l)
+                IF( k<=0 ) CYCLE
+                slot = CRS_Search( Bm % Rows(k+1)-Bm % Rows(k), &
+                    Bm % Cols(Bm % Rows(k):Bm % Rows(k+1)-1), RecvCol(i) % Ind(l) )
+                IF( slot>0 ) RecvIdx(i) % Ind(l) = slot + Bm % Rows(k) - 1
+              END DO
+            END DO
+
+            nnzA = SIZE(A % Values)
+            nrowsA = A % NumberOfRows
+            PatternReady = .TRUE.
+            CALL Info('AMGXSolver','Collection pattern cached; later solves exchange values only.',Level=6)
+          END IF
+
+        ELSE IF( nonlin_update == 1 ) THEN
+          ! Values-only refresh through the cached pattern: one contiguous
+          ! message of doubles per neighbour, no indices, no per-row messages.
+          Bm % Values = 0._dp
+
+          DO j=1,SIZE(A % Values)
+            IF( LocalMap(j)>0 ) &
+                Bm % Values(LocalMap(j)) = Bm % Values(LocalMap(j)) + A % Values(j)
+          END DO
+
+          totnnz = 0
+          k = 0
+          DO i=1,ParEnv % PEs
+            nsend = SIZE(SendIdx(i) % Ind)
+            IF(nsend>0) THEN
+              totnnz = totnnz + nsend
+              k = k+1
+            END IF
+          END DO
+          CALL CheckBuffer( 2*totnnz + (1+k)*MPI_BSEND_OVERHEAD )
+
+          DO i=1,ParEnv % PEs
+            nsend = SIZE(SendIdx(i) % Ind)
+            IF( nsend==0 ) CYCLE
+            ALLOCATE(sbuf(nsend))
+            sbuf = A % Values(SendIdx(i) % Ind)
+            CALL MPI_BSEND(sbuf,nsend,MPI_DOUBLE_PRECISION,i-1,1210, &
+                ELMER_COMM_WORLD,ierr)
+            DEALLOCATE(sbuf)
+          END DO
+
+          DO i=1,ParEnv % PEs
+            nrecv = SIZE(RecvIdx(i) % Ind)
+            IF( nrecv==0 ) CYCLE
+            ALLOCATE(rbuf(nrecv))
+            CALL MPI_RECV(rbuf,nrecv,MPI_DOUBLE_PRECISION,i-1,1210, &
+                ELMER_COMM_WORLD,status,ierr)
+            DO l=1,nrecv
+              IF( RecvIdx(i) % Ind(l)>0 ) &
+                  Bm % Values(RecvIdx(i) % Ind(l)) = &
+                      Bm % Values(RecvIdx(i) % Ind(l)) + rbuf(l)
+            END DO
+            DEALLOCATE(rbuf)
+          END DO
         END IF
       END BLOCK
 
