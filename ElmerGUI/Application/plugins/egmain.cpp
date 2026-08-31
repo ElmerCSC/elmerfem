@@ -57,10 +57,12 @@
 #define LIB_MODE 1
 
 
-/* The ElmerGrid core is C and is linked in from the elmergrid_core library
-   built out of elmergrid/src.  elmergrid_core.h wraps the individual headers
-   in extern "C" so that this file, which is C++, gets the right linkage. */
-#include "elmergrid_core.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egmesh.h"
+#include "egnative.h"
+#include "egconvert.h"
 
 
 #if EXE_MODE

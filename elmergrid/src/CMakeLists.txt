@@ -64,13 +64,13 @@ INSTALL(TARGETS ElmerGrid RUNTIME DESTINATION "bin")
 # setting reaching this library and the setting reaching ElmerGUI's own sources
 # cannot drift apart.
 #
-# C++ consumers should include elmergrid_core.h, which wraps the individual
-# headers in extern "C".
+# The headers declaring these routines carry extern "C" guards, so C++ callers
+# such as ElmerGUI can include them directly.
 # ---------------------------------------------------------------------------
 SET(elmergrid_core_SRCS
   egconvert.c egmesh.c egnative.c egutils.c
   egconvert.h egmesh.h egnative.h egutils.h
-  egdef.h egtypes.h elmergrid_core.h)
+  egdef.h egtypes.h)
 
 ADD_LIBRARY(elmergrid_core STATIC ${elmergrid_core_SRCS})
 
