@@ -2522,9 +2522,6 @@ CONTAINS
          hi,hw,Porosity,Salinity
     REAL(KIND=dp) :: CGTT
     !-------------------------
-    REAL(KIND=dp) :: xc
-    !-------------------------
-    xc = Salinity/Xi
     CGTT = (1.0_dp - Porosity)*rhos*cs &
          + (Xi - Salinity) * Porosity * rhow * cw & ! mind xc * Xi = Salinity
          + Salinity * Porosity * rhoc * cc & ! mind xc * Xi = Salinity
