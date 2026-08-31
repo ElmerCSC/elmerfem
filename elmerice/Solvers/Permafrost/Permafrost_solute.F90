@@ -55,7 +55,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params, Material
   TYPE(Variable_t), POINTER :: PressureVar,SalinityVar,PorosityVar,TemperatureVar,&
        TemperatureDtVar, PressureDtVar, SalinityDtVar,&
-       GWfluxVar1,GWfluxVar2,GWfluxVar3
+       BCFluxVar,GWfluxVar1,GWfluxVar2,GWfluxVar3
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat
@@ -645,15 +645,20 @@ CONTAINS
     LOGICAL, INTENT(IN) :: ElementWiseRockMaterial!GivenGWflux, 
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Flux(n), Coeff(n), ImposedSalinity(n), JgwDN(n),F,JgwDNAtIP,Weight
+    REAL(KIND=dp) :: Flux(n), Coeff(n), ImposedSalinity(n), JgwDN(n),&
+         InflowSalinity(n), BoundarySalinity(n), F, JgwDNAtIP, Weight,&
+         JgwDAtIP(3),NormalAtIP(3)
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP, gradTAtIP(3),gradPAtIP(3)       
     REAL(KIND=dp) :: MASS(nd,nd),STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), PARAMETER :: C=1000.0_dp
-    LOGICAL :: Stat,Found,ConstVal,FluxCondition,GWFluxCondition,WeakDirichletCond,ConstantsRead=.FALSE.
-    INTEGER :: i,t,p,q,DIM,body_id, other_body_id, material_id, RockMaterialID
+    LOGICAL :: Stat,Found,ConstVal,FluxCondition,GWFluxCondition,PressureCondition,&
+         AdvectiveBoundary,LegacyGWFluxBoundary,InflowSalinityCondition,BoundarySalinityCondition,&
+         NoAdvectiveSoluteTransport,ExternalBoundary,WeakDirichletCond,ConstantsRead=.FALSE.
+    INTEGER :: i,j,t,p,q,DIM,body_id, other_body_id, material_id, RockMaterialID
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BoundaryCondition, ParentMaterial
+    TYPE(ValueListEntry_t), POINTER :: PressureEntry
     TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Element_t), POINTER ::  ParentElement
     TYPE(Nodes_t) :: Nodes    
@@ -661,6 +666,7 @@ CONTAINS
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: XiAtIP, Xi0Tilde, XiTAtIP, XiPAtIP, XiYcAtIP,XiEtaAtIP
+    REAL(KIND=dp) :: AdvectiveSalinityAtIP
     REAL(KIND=dp) :: Swres, IFdeltaT
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP,&
@@ -699,6 +705,18 @@ CONTAINS
       CALL FATAL(FunctionName,Message)
     END IF
 
+    PressureEntry => ListFind(ParentMaterial,'Pressure Variable',Found)
+    IF (.NOT.ASSOCIATED(PressureEntry)) &
+         CALL FATAL(FunctionName,'Pressure variable is not defined in the parent material')
+    IF (PressureEntry % DepNameLen < 1) &
+         CALL FATAL(FunctionName,'Pressure variable is not defined in the parent material')
+    PressureCondition = &
+         ListCheckPresent(BoundaryCondition,TRIM(PressureEntry % DependName))
+    PressureCondition = PressureCondition .OR. ListCheckPresent(BoundaryCondition,&
+         'Imposed '//TRIM(PressureEntry % DependName))
+    ExternalBoundary = .NOT.(ASSOCIATED(Element % BoundaryInfo % Left) .AND. &
+         ASSOCIATED(Element % BoundaryInfo % Right))
+
     ! Get stuff from SIF Material section
     Material => GetMaterial(ParentElement)
     IF (ElementWiseRockMaterial) THEN
@@ -722,11 +740,37 @@ CONTAINS
     Flux(1:n)  = GetReal( BoundaryCondition,'Solute Flow', FluxCondition )
     ! check, whether we have a prescribed groundwater flux
     JgwDN(1:n)  = GetReal( BoundaryCondition,'Groundwater Flux', GWFluxCondition )
+    InflowSalinity(1:n) = &
+         GetReal(BoundaryCondition,'Advective Inflow Salinity',InflowSalinityCondition)
+    BoundarySalinity(1:n) = &
+         GetReal(BoundaryCondition,TRIM(VarName),BoundarySalinityCondition)
+    IF (InflowSalinityCondition .AND. BoundarySalinityCondition) &
+         CALL FATAL(FunctionName,'Use either "Salinity" or '//&
+         '"Advective Inflow Salinity", not both')
+    NoAdvectiveSoluteTransport = &
+         GetLogical(BoundaryCondition,'No Advective Solute Transport',Found)
+    IF (NoAdvectiveSoluteTransport .AND. InflowSalinityCondition) &
+         CALL FATAL(FunctionName,'"Advective Inflow Salinity" cannot be used with '//&
+         '"No Advective Solute Transport"')
+    AdvectiveBoundary = .NOT.NoAdvectiveSoluteTransport .AND. &
+         PressureCondition .AND. ExternalBoundary
+    LegacyGWFluxBoundary = GWFluxCondition .AND. .NOT.NoAdvectiveSoluteTransport
+    IF (InflowSalinityCondition .AND. .NOT.AdvectiveBoundary) &
+         CALL FATAL(FunctionName,'"Advective Inflow Salinity" requires an external pressure boundary')
+    IF (AdvectiveBoundary) THEN
+      BCFluxVar => VariableGet(Solver % Mesh % Variables,'BC Flux')
+      IF (.NOT.ASSOCIATED(BCFluxVar)) &
+           CALL FATAL(FunctionName,'Open pressure boundaries require a computed Darcy flux; '//&
+           'set "Compute BC Flux = Logical True" in the Darcy solver')
+      IF (BCFluxVar % DOFs < DIM) &
+           CALL FATAL(FunctionName,'Computed groundwater flux has too few components')
+    END IF
     ! Check, whether we have a weakly imposed Dirichlet condition
     ImposedSalinity(1:n) = GetReal( BoundaryCondition,'Imposed '// TRIM(VarName), WeakDirichletCond)
 
     ! if none of the above, we can call it a day
-    IF (.NOT.(FluxCondition .OR. GWFluxCondition .OR. WeakDirichletCond)) RETURN
+    IF (.NOT.(FluxCondition .OR. LegacyGWFluxBoundary .OR. &
+         AdvectiveBoundary .OR. WeakDirichletCond)) RETURN
 
     ! Numerical integration:
     !-----------------------
@@ -748,7 +792,7 @@ CONTAINS
       Weight = IP % s(t) * DetJ
 
       ! we need XiAtIP and rhocAtIP only if we have a non-zero groundwater flux or solute flow
-      IF (FluxCondition .OR. GWFluxCondition) THEN ! else spare us the computation
+      IF (FluxCondition .OR. LegacyGWFluxBoundary .OR. AdvectiveBoundary) THEN
 
         ! Variables (Temperature, Porosity, Pressure, Salinity) at IP
         TemperatureAtIP = ListGetElementRealParent( Temperature_h, Basis, Element, Found)
@@ -759,6 +803,29 @@ CONTAINS
         IF (.NOT.Found) CALL FATAL(SolverName,'Pressure not found')
         SalinityAtIP = ListGetElementRealParent( Salinity_h, Basis, Element, Found)
         IF (.NOT.Found) CALL WARN(SolverName,'Salinity not found - setting to zero')
+
+        IF (AdvectiveBoundary) THEN
+          JgwDAtIP = 0.0_dp
+          DO i=1,n
+            j = BCFluxVar % Perm(Element % NodeIndexes(i))
+            IF (j <= 0) &
+                 CALL FATAL(FunctionName,'Computed groundwater flux is not defined on boundary')
+            JgwDAtIP(1:DIM) = JgwDAtIP(1:DIM) + Basis(i) * &
+                 BCFluxVar % Values(BCFluxVar % DOFs*(j-1)+1:BCFluxVar % DOFs*(j-1)+DIM)
+          END DO
+          NormalAtIP = NormalVector(Element,Nodes,IP % U(t),IP % V(t),.TRUE.)
+          JgwDNAtIP = SUM(JgwDAtIP(1:DIM)*NormalAtIP(1:DIM))
+          IF (JgwDNAtIP < 0.0_dp) THEN
+            IF (InflowSalinityCondition) THEN
+              SalinityAtIP = SUM(Basis(1:n)*InflowSalinity(1:n))
+            ELSE IF (BoundarySalinityCondition) THEN
+              SalinityAtIP = SUM(Basis(1:n)*BoundarySalinity(1:n))
+            ELSE
+              CALL FATAL(FunctionName,'Groundwater enters through an open boundary; '//&
+                   'set "Advective Inflow Salinity" or "Salinity" on that boundary')
+            END IF
+          END IF
+        END IF
 
         !Materialproperties needed at IP
 
@@ -802,16 +869,29 @@ CONTAINS
         CALL ValidateSalinity(SalinityAtIP,XiAtIP,FunctionName)
         rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
 
-        ! Apply this term only when groundwater flux is prescribed on this boundary
-        IF (GWFluxCondition) THEN
+        IF (LegacyGWFluxBoundary) THEN
           JgwDNAtIP = SUM(Basis(1:n)*JgwDN(1:n))
-          ! contribution from partial integration of groundwater flux term (always on)
           DO p=1,nd
             DO q=1,nd
               STIFF(p,q) = STIFF(p,q) &
                    + Weight * rhocAtIP * Basis(q) * Basis(p) * JgwDNAtIP/XiAtIP
             END DO
           END DO
+        ELSE IF (AdvectiveBoundary) THEN
+          IF (JgwDNAtIP >= 0.0_dp) THEN
+            ! Outflow uses the unknown interior salinity.
+            DO p=1,nd
+              DO q=1,nd
+                STIFF(p,q) = STIFF(p,q) &
+                     + Weight * rhocAtIP * Basis(q) * Basis(p) * JgwDNAtIP/XiAtIP
+              END DO
+            END DO
+          ELSE
+            ! Inflow uses the prescribed exterior salinity.
+            AdvectiveSalinityAtIP = SalinityAtIP
+            FORCE(1:nd) = FORCE(1:nd) - Weight * rhocAtIP * &
+                 AdvectiveSalinityAtIP * Basis(1:nd) * JgwDNAtIP/XiAtIP
+          END IF
         END IF
 
         !PRINT *,"BCSolute: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
