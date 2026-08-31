@@ -77,12 +77,14 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostSoluteTransport'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, VarName, TemperatureName, GWfluxName, PhaseChangeModel,&
        ElementRockMaterialName
-  TYPE(ValueHandle_t) :: Temperature_h, Pressure_h, Salinity_h, Porosity_h, Load_h
+  TYPE(ValueHandle_t) :: Temperature_h, Pressure_h, Salinity_h, Porosity_h, Load_h,&
+       TemperatureDt_h, PressureDt_h
 
   SAVE DIM,FirstTime,AllocationsDone,&
        CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
        ElementWiseRockMaterial,&
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
+       TemperatureDt_h, PressureDt_h,&
        ActiveMassMatrix, InitializeSteadyState, &
        CorrectValues, MinSalinity, MaxSalinity
   !------------------------------------------------------------------------------
@@ -99,7 +101,9 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   VarName = Solver % Variable % Name
   Params => GetSolverParams()
 
-  ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
+  ComputeDt = .FALSE.
+  IF (TransientSimulation) &
+       ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
   ExtForce = GetLogical(Params,'Compute External Force fc', Found)
 
   Salinity => Solver % Variable % Values
@@ -138,6 +142,10 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
     CALL ListInitElementKeyword( Pressure_h, 'Material', 'Pressure Variable' )
     CALL ListInitElementKeyword( Salinity_h, 'Material', 'Salinity Variable' )
     CALL ListInitElementKeyword( Porosity_h, 'Material', 'Porosity Variable' )
+    IF (ComputeDt) THEN
+      CALL ListInitElementKeyword( TemperatureDt_h, 'Material', 'Temperature Velocity Variable' )
+      CALL ListInitElementKeyword( PressureDt_h, 'Material', 'Pressure Velocity Variable' )
+    END IF
     ! Handle to salinity Source (possible description of heat source at elements/IP's) 
     CALL ListInitElementKeyword( Load_h,'Body Force','Salinity Source' ) 
 
@@ -215,7 +223,8 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
 
       CALL LocalMatrixSolute(  Element, Element % ElementIndex, Active, n, nd+nb,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
-           NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,ActiveMassMatrix, ExtForce)
+           NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,ActiveMassMatrix,&
+           ComputeDt,ExtForce)
     END DO
 
     CALL DefaultFinishBulkAssembly()
@@ -292,7 +301,7 @@ CONTAINS
   SUBROUTINE LocalMatrixSolute(  Element, ElementID, NoElements, n, nd,&
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix,&
-       ExtForce)
+       ComputeDt,ExtForce)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
@@ -301,7 +310,7 @@ CONTAINS
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
 !!$    REAL(KIND=dp) :: NodalTemperature(:), NodalSalinity(:),&
 !!$         NodalGWflux(:,:), NodalPorosity(:), NodalPressure(:)
-    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix, ExtForce !GivenGWflux, 
+    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix,ComputeDt,ExtForce
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: vstarAtIP(3)   ! needed in equation
@@ -427,6 +436,17 @@ CONTAINS
       IF (.NOT.Found) CALL WARN(SolverName,'Salinity not found - setting to zero')
       gradpAtIP = ListGetElementRealGrad( Pressure_h,dBasisdx,Element,Found)
       gradTAtIP = ListGetElementRealGrad( Temperature_h,dBasisdx,Element,Found)
+
+      TemperatureTimeDer = 0.0_dp
+      PressureTimeDer = 0.0_dp
+      IF (ComputeDt .AND. ActiveMassMatrix) THEN
+        TemperatureTimeDer = &
+             ListGetElementReal(TemperatureDt_h,Basis,Element,Found,GaussPoint=t)
+        IF (.NOT.Found) CALL FATAL(SolverName,'Temperature Velocity variable not found')
+        PressureTimeDer = &
+             ListGetElementReal(PressureDt_h,Basis,Element,Found,GaussPoint=t)
+        IF (.NOT.Found) CALL FATAL(SolverName,'Pressure Velocity variable not found')
+      END IF
 
       vstarAtIP = 0.0_dp ! CHANGE to SUM(  Basis(1:N) * NodalRockVelocity(1:N) )
 
@@ -615,10 +635,10 @@ CONTAINS
         END DO
       END IF
 
-      LoadAtIP = LoadAtIP !+ TemperatureTimeDer * CcYcTAtIP + PressureTimeDer * CcYcPAtIP 
-
-
       FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
+      IF (ComputeDt .AND. ActiveMassMatrix) &
+           FORCE(1:nd) = FORCE(1:nd) - Weight * &
+           (TemperatureTimeDer * CcYcTAtIP + PressureTimeDer * CcYcPAtIP) * Basis(1:nd)
     END DO
 
     IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE)
