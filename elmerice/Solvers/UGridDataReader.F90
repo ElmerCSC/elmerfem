@@ -73,7 +73,7 @@
 ! Local variables
       CHARACTER(*), PARAMETER :: SolverName="UGRIDDataReader"
       TYPE(ValueList_t), POINTER :: SolverParams
-      TYPE(Mesh_t), POINTER :: ThisMesh, TargetMesh,Mesh
+      TYPE(Mesh_t), POINTER :: ThisMesh, TargetMesh=>NULL(),Mesh
       TYPE(Projector_t), POINTER :: Projector
       TYPE(Variable_t),POINTER :: Var,pVar
       TYPE(Element_t), POINTER :: Element
@@ -295,7 +295,16 @@
         SELECT CASE(VarType)
          CASE(Variable_global)
            ! for a global variable nvals should be the time dimension...
-           TimeIndex = max(1,min(TimePoint,nvals))
+           IF (TimePoint.LT.0) THEN
+              TimeIndex = nvals
+           ELSE
+              TimeIndex = max(1,min(TimePoint,nvals))
+           ENDIF
+
+           WRITE(Message,'(A,I0)') &
+                    TRIM(VarName)//', reading time step: ',TimeIndex
+           CALL INFO(SolverName,Trim(Message),level=4)
+
            Var % Values(1)=Values(TimeIndex)
            IF (ASSOCIATED(TargetMesh)) THEN
              pVar => VariableGet( TargetMesh % Variables,TRIM(TVarName),ThisOnly=.TRUE.,UnFoundFatal=.TRUE.)
