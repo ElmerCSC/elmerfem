@@ -25,10 +25,10 @@ jobs:
       fail-fast: false
 
       matrix:
-        os: [macos-14]
+        os: [macos-26]
         blas: [openblas, accelerate]
         include:
-          - os: macos-15-intel
+          - os: macos-15
             blas: openblas
 
     steps:
