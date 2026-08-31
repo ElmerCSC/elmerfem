@@ -2069,7 +2069,7 @@ CONTAINS
 	 GeneralPolynomial(Temperature,T0,T0,&
          GlobalRockMaterial % aas(0:5,RockMaterialID),&
          GlobalRockMaterial % aasl(RockMaterialID))
-    rhosT = rhos * alphaS
+    rhosT = -rhos * alphaS
   END FUNCTION rhosT
 !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhosp(RockMaterialID,rhos,p0,Pressure)
@@ -2157,7 +2157,7 @@ CONTAINS
          GeneralPolynomial(Temperature,T0,T0,&
          CurrentSolventMaterial % aaw(0:5),&
          CurrentSolventMaterial % aawl)
-    rhowT = rhow * alphaW
+    rhowT = -rhow * alphaW
   END FUNCTION rhowT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhowP(CurrentSolventMaterial,rhow,p0,Pressure)
@@ -2226,7 +2226,7 @@ CONTAINS
          GeneralPolynomial(Temperature,T0,T0,&
          CurrentSolventMaterial % aai(0:5),&
          CurrentSolventMaterial % aail) 
-    rhoiT = rhoi * alphaI
+    rhoiT = -rhoi * alphaI
   END FUNCTION rhoiT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhoiP(CurrentSolventMaterial,rhoi,p0,Pressure)
@@ -2287,7 +2287,7 @@ CONTAINS
            GeneralPolynomial(Temperature,T0,T0,&
            CurrentSoluteMaterial % aac(0:5),&
            CurrentSoluteMaterial % aacl) 
-      rhocT = rhoc * alphaC
+      rhocT = -rhoc * alphaC
     END IF
   END FUNCTION rhocT
   !---------------------------------------------------------------------------------------------
