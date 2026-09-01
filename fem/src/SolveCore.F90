@@ -1786,7 +1786,7 @@ CONTAINS
 #ifdef HAVE_AMGX
     INTERFACE
       SUBROUTINE AMGXSolve(AMGX, n, rows, cols, vals, b, x, &
-              nonlin_update, config, comm, ng, AC % part_vec, bnrm, solve_status ) BIND(C, Name="AMGXSolve")
+              nonlin_update, config, comm, ng, part_vec, bnrm, solve_status ) BIND(C, Name="AMGXSolve")
 
          USE Types
          USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
@@ -1796,7 +1796,7 @@ CONTAINS
          INTEGER(KIND=C_INTPTR_T) :: AMGX
          REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm
          CHARACTER(KIND=C_CHAR) :: config(*)
-         INTEGER :: rows(*), cols(*), nonlin_update, n, comm, ng, AC % part_vec(*), solve_status
+         INTEGER :: rows(*), cols(*), nonlin_update, n, comm, ng, part_vec(*), solve_status
       END SUBROUTINE AMGXSolve
     END INTERFACE
 #endif
