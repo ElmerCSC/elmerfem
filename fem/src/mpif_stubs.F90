@@ -131,6 +131,10 @@ SUBROUTINE mpi_alltoallv
   RETURN
 END SUBROUTINE mpi_alltoallv
 
+SUBROUTINE mpi_alltoall
+  RETURN
+END SUBROUTINE mpi_alltoall
+
 SUBROUTINE mpi_gatherv
   RETURN
 END SUBROUTINE mpi_gatherv
