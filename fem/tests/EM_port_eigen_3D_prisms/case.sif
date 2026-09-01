@@ -20,7 +20,7 @@ Simulation
   Coordinate System = "Cartesian 3D"
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Max Output Level = 12
+  Max Output Level = 7
 End
 
 Constants
@@ -127,13 +127,10 @@ Solver 2
   Linear System Complex = True
   Linear System Preconditioning = "auxiliary space solver"
 
-! Needed for auxiliary space preconditioning
-  Exported Variable 1 = -dofs 2 e res
-  Exported Variable 2 = -dofs 2 e update
+! Needed for auxiliary space preconditioning.
+! The residual and update variables are now set internally by the solver.
   Prec Solvers(2) = Integer 6 7 !7 6
 
-  Preconditioning Residual = String "e res"
-  Preconditioning Update = String "e update"
   Additive Smoother = Logical False
 
   MG Smoother = csgs
@@ -198,8 +195,8 @@ Solver 6
 
   Preconditioning Solver = Logical True
   Monolithic Solver = Logical True
-  Edge Residual Name = String "e res"
-  Edge Update Name = String "e update"
+  Edge Residual Name = String "ams res"
+  Edge Update Name = String "ams update"
 
   curl-curl Form = Logical True
   Linear System Preconditioning Damp Coefficient im = -1.0
@@ -232,8 +229,8 @@ Solver 7
 !  Variable DOFs = 2
 
   Preconditioning Solver = Logical True
-  Edge Residual Name = String "e res"
-  Edge Update Name = String "e update"
+  Edge Residual Name = String "ams res"
+  Edge Update Name = String "ams update"
 
   Linear System Symmetric = False
   Linear System Scaling = True

@@ -158,12 +158,19 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   END IF
 
   IF( ListGetString( SolverParams,'Linear System Preconditioning', Found ) == "auxiliary space solver" ) THEN
-    CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable', SolverParams), &
-        "ams res")
-    CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable', SolverParams), &
-        "ams update")
-    CALL ListAddString( SolverParams,'Preconditioning Residual',"ams res")
-    CALL ListAddString( SolverParams,'Preconditioning Update',"ams update")
+    ! Create the residual and update fields unless the user has named ones of
+    ! their own. The primary variable is complex-valued, i.e. it has two dofs,
+    ! and the auxiliary space preconditioner requires these to match it.
+    IF( .NOT. ListCheckPresent( SolverParams,'Preconditioning Residual') ) THEN
+      CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable', SolverParams), &
+          "-dofs 2 ams res")
+      CALL ListAddString( SolverParams,'Preconditioning Residual',"ams res")
+    END IF
+    IF( .NOT. ListCheckPresent( SolverParams,'Preconditioning Update') ) THEN
+      CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable', SolverParams), &
+          "-dofs 2 ams update")
+      CALL ListAddString( SolverParams,'Preconditioning Update',"ams update")
+    END IF
   END IF
   
 !------------------------------------------------------------------------------
