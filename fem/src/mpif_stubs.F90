@@ -48,6 +48,9 @@ SUBROUTINE mpi_comm_split(comm, color, key, newcomm, ierr)
   ierr = 0
 END SUBROUTINE mpi_comm_split
 
+SUBROUTINE mpi_scan
+END SUBROUTINE mpi_scan
+
 SUBROUTINE mpi_allreduce
   RETURN
 END SUBROUTINE mpi_allreduce
