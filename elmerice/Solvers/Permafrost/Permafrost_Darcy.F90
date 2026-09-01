@@ -990,20 +990,26 @@ CONTAINS
     !------------------------------------------------------------------------------
     !REAL(KIND=dp) :: Flux(n), Coeff(n), Pressure(n), FluxAtIP, Weight
     REAL(KIND=dp) :: FluxAtIP, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,WeakPressure(nd), PressureCond(n)
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,WeakPressure(nd),PressureCond(n),&
+         BoundarySalinity(n),InflowSalinity(n)
     REAL(KIND=dp) :: MASS(nd,nd),STIFF(nd,nd), FORCE(nd), LOAD(nd),C
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
-    REAL(KIND=dp) :: fluxgAtIP(3), rhogwAtIP, KgwAtIP(3,3), XiAtIP, mugwAtIP
+    REAL(KIND=dp) :: fluxgAtIP(3), rhowAtIP, rhoiAtIP, rhocAtIP, rhogwAtIP,&
+         KgwAtIP(3,3), XiAtIP, Xi0Tilde, XiTAtIP, XiPAtIP, XiYcAtIP, XiEtaAtIP,&
+         mugwAtIP, deltaInElement, Swres, IFdeltaT
 
     REAL(KIND=dp) :: PressureAtIP, PorosityAtIP, SalinityAtIP, TemperatureAtIP, NormalAtIP(3)
     !REAL(KIND=dp), POINTER :: Nvector(:)
-    LOGICAL :: Stat,Found,FluxCondition,WeakDirichletCond,ConstVal,ConstantsRead,Recharge
+    LOGICAL :: Stat,Found,FluxCondition,WeakDirichletCond,ConstVal,ConstantsRead,Recharge,&
+         BoundaryNoSalinity,BoundarySalinityCondition,InflowSalinityCondition
     INTEGER :: i,t,p,q,DIM,body_id, other_body_id, material_id, RockMaterialID
     INTEGER, POINTER :: NodeIndexes(:)!, NPerm(:)
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BoundaryCondition, ParentMaterial
+    TYPE(ExponentialParameters_t) :: ExponentialParams
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER ::  ParentElement
+    CHARACTER(LEN=MAX_NAME_LEN) :: BoundaryPhaseChangeModel
     !TYPE(Variable_t), POINTER :: NormalSolution
     
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='PermafrostGroundwaterFlow (LocalMatrixBCDarcy)'
@@ -1102,12 +1108,25 @@ CONTAINS
       ConstVal = GetLogical(ParentMaterial,'Constant Permafrost Properties',Found)
       IF (ConstVal) &
            CALL INFO(FunctionName,'"Constant Permafrost Properties" set toPermafrost_HTEQ.F90: true',Level=9)
+      BoundaryNoSalinity = GetLogical(ParentMaterial,'No Salinity',Found)
+      BoundaryPhaseChangeModel = &
+           ReadPermafrostPhaseChangeModel(ParentMaterial,FunctionName)
+      IF (BoundaryPhaseChangeModel == 'exponential') &
+           CALL ReadExponentialParameters(ParentMaterial,ExponentialParams,FunctionName)
     END IF
 
     CALL GetElementNodes( Nodes )
     STIFF = 0._dp
     FORCE = 0._dp
     LOAD = 0._dp
+
+    InflowSalinity(1:n) = &
+         GetReal(BoundaryCondition,'Advective Inflow Salinity',InflowSalinityCondition)
+    BoundarySalinity(1:n) = &
+         GetReal(BoundaryCondition,'Salinity',BoundarySalinityCondition)
+    IF (InflowSalinityCondition .AND. BoundarySalinityCondition) &
+         CALL FATAL(FunctionName,'Use either "Salinity" or '//&
+         '"Advective Inflow Salinity", not both')
 
  
     ! Numerical integration:
@@ -1140,7 +1159,88 @@ CONTAINS
           FluxAtIP = FluxAtIP*rhogwAtIP
         ELSE
           FluxAtIP = ListGetElementReal(GWFlux_h, Basis, Element, FluxCondition)
-          IF (FluxCondition) PRINT *, 'Groundwater Flux',  FluxAtIP
+          IF (FluxCondition) THEN
+            TemperatureAtIP = &
+                 ListGetElementRealParent(Temperature_h,Basis,Element,Found)
+            IF (.NOT.Found) CALL FATAL(FunctionName,'Temperature not found')
+            PorosityAtIP = &
+                 ListGetElementRealParent(Porosity_h,Basis,Element,Found)
+            IF (.NOT.Found) CALL FATAL(FunctionName,'Porosity not found')
+            PressureAtIP = &
+                 ListGetElementRealParent(Pressure_h,Basis,Element,Found)
+            IF (.NOT.Found) CALL FATAL(FunctionName,'Pressure not found')
+            IF (BoundaryNoSalinity) THEN
+              SalinityAtIP = 0.0_dp
+            ELSE
+              SalinityAtIP = &
+                   ListGetElementRealParent(Salinity_h,Basis,Element,Found)
+              IF (.NOT.Found) CALL FATAL(FunctionName,'Salinity not found')
+              ! Use the upwind composition when converting volume flux to
+              ! mass flux: exterior salinity at inflow, interior at outflow.
+              IF (FluxAtIP > 0.0_dp) THEN
+                IF (InflowSalinityCondition) THEN
+                  SalinityAtIP = SUM(Basis(1:n)*InflowSalinity(1:n))
+                ELSE IF (BoundarySalinityCondition) THEN
+                  SalinityAtIP = SUM(Basis(1:n)*BoundarySalinity(1:n))
+                ELSE
+                  CALL FATAL(FunctionName,'Groundwater enters through a boundary; '//&
+                       'set "Advective Inflow Salinity" or "Salinity" on that boundary')
+                END IF
+              END IF
+            END IF
+
+            rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,&
+                 TemperatureAtIP,PressureAtIP,ConstVal)
+            rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,&
+                 TemperatureAtIP,PressureAtIP,ConstVal)
+            Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
+            deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
+
+            SELECT CASE(BoundaryPhaseChangeModel)
+            CASE('powerlaw')
+              XiAtIP = GetXiPowerlaw(0.011_dp,-0.66_dp,9.8d-08,&
+                   CurrentSolventMaterial % rhow0,&
+                   GlobalRockMaterial % rhos0(RockMaterialID),&
+                   T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
+              CALL ValidateLiquidFraction(XiAtIP,ParentMaterial,FunctionName)
+            CASE('exponential')
+              XiAtIP = GetXiExponential(T0,TemperatureAtIP,&
+                   ExponentialParams % Swres,ExponentialParams % DeltaT)
+              CALL ValidateLiquidFraction(XiAtIP,ParentMaterial,FunctionName)
+            CASE('linear')
+              Swres = GetConstReal(ParentMaterial,'Linear Swres',Found)
+              IFdeltaT = GetConstReal(ParentMaterial,'Linear deltaT',Found)
+              XiAtIP = GetXiLinear(T0,TemperatureAtIP,Swres,IFdeltaT)
+              CALL ValidateLiquidFraction(XiAtIP,ParentMaterial,FunctionName)
+            CASE('hartikainen')
+              CALL GetXiHartikainen(RockMaterialID,ParentMaterial,&
+                   CurrentSoluteMaterial,CurrentSolventMaterial,&
+                   TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
+                   Xi0Tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
+                   GasConstant,p0,T0,&
+                   XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
+                   .FALSE.,.FALSE.,.FALSE.,.FALSE.)
+            CASE DEFAULT
+              CALL FATAL(FunctionName,'Unsupported phase change model: '//&
+                   TRIM(BoundaryPhaseChangeModel))
+            END SELECT
+
+            CALL ValidateSalinity(SalinityAtIP,XiAtIP,FunctionName)
+            rhowAtIP = rhowupdate(CurrentSolventMaterial,rhowAtIP,&
+                 XiAtIP,SalinityAtIP,ConstVal)
+            IF (BoundaryNoSalinity) THEN
+              rhocAtIP = 0.0_dp
+            ELSE
+              rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,&
+                   TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
+            END IF
+            rhogwAtIP = rhogw(rhowAtIP,rhocAtIP,XiAtIP,SalinityAtIP)
+
+            ! The prescribed value is an inward-positive volumetric flux.
+            ! Convert it to the inward groundwater mass flux used by the
+            ! pressure-equation boundary term.
+            FluxAtIP = FluxAtIP * rhogwAtIP
+          END IF
         END IF
         
        

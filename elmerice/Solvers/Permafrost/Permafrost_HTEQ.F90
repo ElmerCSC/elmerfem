@@ -621,6 +621,7 @@ CONTAINS
         kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
         kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)      
         kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)     
+        ! Default arithmetic weight is the solid-plus-ice volume fraction.
         IF (.NOT.MeanFactorFound) &
              meanfactor = 1.0_dp - PorosityAtIP*XiAtIP(IPPerm)
         KGTTAtIP = GetKGTT(ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,XiAtIP(IPPerm),&

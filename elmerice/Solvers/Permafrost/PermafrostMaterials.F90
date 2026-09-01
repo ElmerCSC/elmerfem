@@ -223,6 +223,8 @@ CONTAINS
          CALL FATAL(Caller,'Set only one of "Hydraulic Conductivity Limit" and '//&
          '"Groundwater Mobility Limit"')
 
+    ! The default remains hydraulic conductivity (m/s); GetKgw converts it
+    ! to current-state mobility using the documented reference state.
     MobilityLimit % HydraulicConductivity = DefaultHydraulicConductivityLimit
     MobilityLimit % Mobility = 0.0_dp
     MobilityLimit % UseHydraulicConductivity = .TRUE.
@@ -1774,6 +1776,7 @@ CONTAINS
     d1 = CurrentSoluteMaterial % d1
     d2 = CurrentSoluteMaterial % d2
 
+    ! Derivatives of the salinity coefficients bi(1:2) with respect to yc.
     aux = 1.0_dp/(1.0_dp - Salinity)
     biYc(1) = (d1 + d2*Salinity*aux)*aux*aux
     biYc(2) = d1*(1.0_dp + Salinity)*aux**3.0_dp &
@@ -1916,6 +1919,7 @@ CONTAINS
     !local
     REAL(KIND=dp) :: aux1, aux2, aux3, aux_sqrt
 
+    ! Chain-rule derivative dXi/dyc using dbi(1:2)/dyc from GetBiYc.
     aux_sqrt = B*B + 4.0_dp*D
     aux1 = 1.0_dp/(delta + bi(2) + bi(4))
     aux2 = ( 1.0_dp + B/SQRT(aux_sqrt) )*(biYc(1) + B*biYc(2))
@@ -2869,6 +2873,7 @@ CONTAINS
       
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     factor = GetHydraulicConductivityConversionFactor(rhow0,muw0,mugw)
+    ! Kgw and its lower bound must have mobility units (m^2 Pa^-1 s^-1).
     IF (MobilityLimit % UseHydraulicConductivity) THEN
       MinimumMobility = MobilityLimit % HydraulicConductivity*factor
     ELSE
@@ -2882,6 +2887,7 @@ CONTAINS
       END DO
     END DO
     DO I=1,3
+      ! Apply the scalar mobility floor only to the principal components.
       Kgw(i,i) = MAX(Kgw(i,i),MinimumMobility)
     END DO
   END FUNCTION GetKgw

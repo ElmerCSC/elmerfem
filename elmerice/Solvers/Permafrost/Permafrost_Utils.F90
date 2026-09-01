@@ -1114,6 +1114,7 @@ CONTAINS
         !PRINT *,"kithAtIP",kithAtIP
         kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)
         !PRINT *,"kcthAtIP:",kcthAtIP
+        ! Match the heat solver's solid-plus-ice default mixing weight.
         IF (.NOT.MeanFactorFound) &
              meanfactor = 1.0_dp - PorosityAtIP*XiAtIP(IPPerm)
         auxtensor = &
