@@ -136,7 +136,11 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  SaveAny = SaveGid .OR. SaveVTK .OR. SaveVTU .OR. SaveOpenDX .OR. SaveGmsh .OR. SaveEp
+  ! Note that SaveStl belongs here too. Leaving it out meant that asking for
+  ! STL alone silently switched VTU on as well, and then the reference value
+  ! comparison below took the VTU branch, so an STL test checked the vtu file.
+  SaveAny = SaveGid .OR. SaveVTK .OR. SaveVTU .OR. SaveOpenDX .OR. SaveGmsh .OR. &
+      SaveEp .OR. SaveStl
   IF(.NOT. SaveAny ) THEN
     CALL Warn(Caller,'No output format given, assuming VTU')
     SaveVTU = .TRUE.
