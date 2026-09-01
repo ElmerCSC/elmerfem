@@ -774,7 +774,7 @@ MODULE Types
      REAL(KIND=dp), POINTER :: Values(:) => NULL() ,&
           PrevValues(:,:) => NULL(), &
           PValues(:) => NULL(), NonlinValues(:) => NULL(), &
-          SteadyValues(:) => NULL()
+          SteadyValues(:) => NULL(), DeltaValues(:) => NULL()
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
      REAL(KIND=dp), POINTER :: UpperLimit(:) => NULL(), LowerLimit(:) => NULL()
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
@@ -1062,6 +1062,8 @@ MODULE Types
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
+      REAL(KIND=dp) :: AitkenRelax = 1.0_dp
+      
       LOGICAL :: NewtonActive = .FALSE.
       LOGICAL :: PeriodicFlipActive = .FALSE.
       

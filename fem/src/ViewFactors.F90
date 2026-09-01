@@ -89,7 +89,7 @@
 
      ! misc variables
      ! --------------
-     CHARACTER(:), ALLOCATABLE :: RadiationFlag
+     CHARACTER(:), ALLOCATABLE :: str    
      CHARACTER(LEN=MAX_NAME_LEN) :: ModelName
      LOGICAL :: CylindricSymmetry, GotIt, Found, Radiation
 
@@ -294,8 +294,8 @@
        BC => GetBC()
        IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
 
-       RadiationFlag = GetString( BC, 'Radiation',GotIt )
-       IF ( GotIt .AND. RadiationFlag == 'diffuse gray' ) THEN
+       str = GetString( BC, 'Radiation',GotIt )
+       IF ( GotIt .AND. str == 'diffuse gray' ) THEN
          t = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ) )
          MaxRadiationBody = MAX(t, MaxRadiationBody)
        END IF
@@ -536,6 +536,17 @@
                  CPUTime()-at2, Realtime()-rt2
              CALL Info( Caller,Message, Level=3 )
              at2 = CPUTime(); rt2 = RealTime()
+
+             ! This is mean mainly for debugging & creating pictures of the joining algorithm.
+             ! End-users will use this probably very rarely.
+             IF ( GetLogical( Params,'Shadow Mesh Save', GotIt) ) THEN
+               str = "ShadowMesh"
+               CALL MakeDirectory(TRIM(str) // CHAR(0))
+               CALL WriteMeshToDisk2(Model, RT_Mesh, str )               
+               CALL Info(Caller,'Saved shadow mesh to file: '//TRIM(str))
+               IF ( GetLogical( Params,'Shadow Mesh Stop', GotIt) ) STOP
+             END IF
+             
            END IF
 
            ! ... and finally the beef:
@@ -1129,7 +1140,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE MirrorMesh(Mesh,c,Plane )
+   SUBROUTINE MirrorMesh(Mesh,c,Plane,NoDoubles)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -1137,10 +1148,14 @@ CONTAINS
      TYPE(Mesh_t) :: Mesh
      INTEGER :: c
      REAL(KIND=dp) :: Plane
+     LOGICAL :: NoDoubles
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: el(:)
-     INTEGER :: i,j,ne, nd, nn, nb, nv
+     INTEGER :: i,j,ne, nd, nn, nb, nv, ns, nd2
      REAL(KIND=dp), POINTER :: ox(:), oy(:), oz(:)
+     INTEGER, ALLOCATABLE :: SymPerm(:)
+     LOGICAL, ALLOCATABLE :: SymNode(:)
+     REAL(KIND=dp) :: Eps
 !------------------------------------------------------------------------------
 
      nv  = Mesh % NumberOfBulkElements
@@ -1151,27 +1166,74 @@ CONTAINS
      ox => Mesh % Nodes % x
      oy => Mesh % Nodes % y
      oz => Mesh % Nodes % z
-     ALLOCATE(Mesh % Nodes % x(2*nd), Mesh % Nodes % y(2*nd), Mesh % Nodes % z(2*nd), STAT=istat )
-     IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh nodes.')
 
+     CALL Info('MirrorMesh','Mirroring mesh aroud axsis: '//I2S(c),Level=12)
+
+     ! Mirroring is easier when we don't need to eliminate the double nodes at the symmetry axis.
+     ! However, if we don't eliminate them, the shadow mesh inverstigation fails to recognize
+     ! continuity of elements over symmetry axis as they do not share any node.
+     ! Hence this flag could save some resources. 
+     !---------------------------------------------------------------------------------------
+     IF(NoDoubles) THEN
+       ALLOCATE(SymNode(nd),SymPerm(nd))
+       SymNode = .FALSE.
+       Eps = 1.0e-8              
+       SELECT CASE(c)
+       CASE(1,2)
+         SymNode = ( ABS( ox(1:nd) - Plane) < eps ) 
+       CASE(3,4)
+         SymNode = ( ABS( oy(1:nd) - Plane) < eps ) 
+       CASE(5,6)
+         SymNode = ( ABS( oz(1:nd) - Plane) < eps ) 
+       END SELECT
+
+       ns = COUNT(SymNode)
+       nd2 = nd - ns
+
+       j = nd
+       DO i=1,nd
+         IF(SymNode(i)) THEN
+           SymPerm(i) = i
+         ELSE
+           j = j+1
+           SymPerm(i) = j
+         END IF
+       END DO
+
+       CALL Info(Caller,'Number of symmetry nodes to eliminate: '//I2S(ns))
+     ELSE
+       nd2 = nd
+     END IF
+
+     ALLOCATE(Mesh % Nodes % x(nd+nd2), Mesh % Nodes % y(nd+nd2), Mesh % Nodes % z(nd+nd2), STAT=istat )
+     IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh nodes.')
+     
        
      DO i=1,nd
        Mesh % Nodes % x(i) = ox(i)
        Mesh % Nodes % y(i) = oy(i)
        Mesh % Nodes % z(i) = oz(i)
+
+       IF(NoDoubles) THEN
+         j = SymPerm(i)
+         IF(j==i) CYCLE
+       ELSE
+         j = i+nd
+       END IF
+
        SELECT CASE(c)
        CASE(1,2)
-         Mesh % Nodes % x(i+nd) = 2*Plane - ox(i)
-         Mesh % Nodes % y(i+nd) = oy(i)
-         Mesh % Nodes % z(i+nd) = oz(i)
+         Mesh % Nodes % x(j) = 2*Plane - ox(i)
+         Mesh % Nodes % y(j) = oy(i)
+         Mesh % Nodes % z(j) = oz(i)
        CASE(3,4)
-         Mesh % Nodes % x(i+nd) = ox(i)
-         Mesh % Nodes % y(i+nd) = 2*Plane - oy(i)
-         Mesh % Nodes % z(i+nd) = oz(i)
+         Mesh % Nodes % x(j) = ox(i)
+         Mesh % Nodes % y(j) = 2*Plane - oy(i)
+         Mesh % Nodes % z(j) = oz(i)
        CASE(5,6)
-         Mesh % Nodes % x(i+nd) = ox(i)
-         Mesh % Nodes % y(i+nd) = oy(i)
-         Mesh % Nodes % z(i+nd) = 2*Plane - oz(i)
+         Mesh % Nodes % x(j) = ox(i)
+         Mesh % Nodes % y(j) = oy(i)
+         Mesh % Nodes % z(j) = 2*Plane - oz(i)
        END SELECT
      END DO
 
@@ -1185,8 +1247,12 @@ CONTAINS
        nn = el(i) % Type % NumberOfNodes
        ALLOCATE(Mesh % Elements(i+nv) % NodeIndexes(nn),STAT=istat)
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh node indexes.')
-       
-       Mesh % Elements(i+nv) % NodeIndexes = el(i) % NodeIndexes+nd
+
+       IF(NoDoubles) THEN
+         Mesh % Elements(i+nv) % NodeIndexes = SymPerm(el(i) % NodeIndexes)
+       ELSE
+         Mesh % Elements(i+nv) % NodeIndexes = el(i) % NodeIndexes+nd
+       END IF
        Mesh % Elements(i+nv) % ElementIndex = i+nv
      END DO
 
@@ -1198,8 +1264,12 @@ CONTAINS
        
        ALLOCATE(Mesh % Elements(j+nb) % NodeIndexes(nn),STAT=istat)
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh NodeIndexes.')         
-       Mesh % Elements(j+nb) % NodeIndexes = el(i) % NodeIndexes+nd
-
+       IF(NoDoubles) THEN
+         Mesh % Elements(j+nb) % NodeIndexes = SymPerm(el(i) % NodeIndexes)
+       ELSE
+         Mesh % Elements(j+nb) % NodeIndexes = el(i) % NodeIndexes+nd
+       END IF
+         
        ALLOCATE(Mesh % Elements(j) % BoundaryInfo)
        Mesh % Elements(j) % BoundaryInfo    = el(i) % BoundaryInfo
 
@@ -1219,7 +1289,7 @@ CONTAINS
 
      DEALLOCATE(ox,oy,oz)
 
-     Mesh % NumberOfNodes = 2*nd
+     Mesh % NumberOfNodes = nd + nd2
      Mesh % NumberOfBulkElements = 2*Mesh % NumberOfBulkElements
      Mesh % NumberOfBoundaryElements = 2*Mesh % NumberOfBoundaryElements
 
@@ -1239,7 +1309,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Plane
      INTEGER :: i
-     LOGICAL :: Found, GotIt
+     LOGICAL :: Found, GotIt, NoDoubles
 !------------------------------------------------------------------------------
      IF(PRESENT(NSymmetry)) Nsymmetry = 0
 
@@ -1264,10 +1334,12 @@ CONTAINS
 
        IF(.NOT. Found ) CYCLE
 
+       NoDoubles = ListGetLogical( Params,'Viewfactor Symmetry Eliminate Nodes', GotIt )
+       
        CALL Info(Caller,'Duplicating mesh in coordinate direction: '//I2S((i+1)/2))
        IF(PRESENT(NSymmetry)) NSymmetry = NSymmetry + 1
        
-       CALL MirrorMesh(Mesh, i, Plane)
+       CALL MirrorMesh(Mesh, i, Plane, NoDoubles )
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE SymmetryDuplication
@@ -1451,10 +1523,10 @@ CONTAINS
            Model % Mesh => RT_Mesh 
            CALL RigidMeshMapping( Model, RT_Mesh, .TRUE. )
            Model % Mesh => Mesh 
-         END IF
-                   
-         CALL SymmetryDuplication(RT_Mesh)
+         END IF         
 
+         CALL SymmetryDuplication(RT_Mesh)
+           
          i0 = RT_Mesh % NumberOfBulkElements
          j = 0
          DO i=1,RT_Mesh % NumberOfBoundaryElements
@@ -1606,7 +1678,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      INTEGER :: i,j,t
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: BC
-     CHARACTER(:), ALLOCATABLE :: RadiationFlag
+     CHARACTER(:), ALLOCATABLE :: str 
 !------------------------------------------------------------------------------
      RadiationSurf = 0
      RadiationOpen = .FALSE.
@@ -1626,8 +1698,8 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
            RadElements(RadiationSurf) = Mesh % Elements(j)
          END IF
        ELSE
-         RadiationFlag = GetString( BC, 'Radiation', Found )
-         IF ( Found .AND. RadiationFlag == 'diffuse gray' ) THEN
+         str = GetString( BC, 'Radiation', Found )
+         IF ( Found .AND. str == 'diffuse gray' ) THEN
            t = MAX(1, GetInteger( BC, 'Radiation Boundary', Found ))
            IF(t == RadiationBody) THEN
              RadiationBC(GetBCId()) = .TRUE.
@@ -1715,9 +1787,10 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
           NodeAtBBox(:,3+i) = .TRUE.
         END WHERE
       END DO
-      
+
+#if 0
       ! Assume cylindrical BB
-      ! We give it a shot without playing with keywords...
+      ! We give it a shot without playing with keywords...      
       pX => Mesh % Nodes % x
       pY => Mesh % Nodes % y
 
@@ -1731,7 +1804,8 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
         NodeAtBBox(:,7) = .TRUE.
       END WHERE
       DEALLOCATE(pR)
-
+#endif
+      
       IF(InfoActive(10)) THEN
         DO i=1,7
           j = COUNT(NodeAtBBox(:,i))
@@ -1740,7 +1814,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
       END IF
 
           
-      ! We skip the elements an bounding box boundaries from the active set. 
+      ! We skip the elements at bounding box boundaries from the active set. 
       nActive = 0
       DO i=1,n
         Element => Mesh % Elements(i)
@@ -1753,11 +1827,12 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
         END IF
         nActive = nActive + 1
       END DO
-      ! Set this to zero, next time the bounding box is not used. 
-      Ref = 0      
       IF(nActive < n) THEN
         CALL Info(Caller,'Number of shading elements: '//I2S(nActive)//' (vs. '//I2S(n)//')')
       END IF
+
+      ! Set this to zero, next time the bounding box is not used. 
+      Ref = 0      
     END IF
     
     ALLOCATE( TYPE(nActive) )
@@ -1783,7 +1858,10 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
     IF(mActive < m) THEN
       CALL Info(Caller,'Number of shading nodes: '//I2S(mActive)//' (vs. '//I2S(m)//')')
     END IF
+!    Mesh % NumberOfBulkElements = l
 
+
+    
     IF ( .NOT.ALLOCATED(Surf) ) ALLOCATE(Surf(4*nActive))
     ALLOCATE(Coord(3*mActive))
     
@@ -1852,8 +1930,14 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
       CASE DEFAULT
         CALL Fatal(Caller,'Uknown Element!')
       END SELECT
+
+      ! This messes with the mesh but I don't think we need it after.
+      Mesh % Elements(l) = Mesh % Elements(i)
+
     END DO
-    
+
+    Mesh % NumberOfBulkElements = nActive
+          
 !------------------------------------------------------------------------------
    END SUBROUTINE ExtractMeshInfo
 !------------------------------------------------------------------------------
