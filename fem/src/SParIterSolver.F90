@@ -621,9 +621,14 @@ CONTAINS
   ! allocate stuff
   !
   !----------------------------------------------------------------------
-  sz = A % Rows(n+1)-1
-  ALLOCATE(A % Values(sz))
-
+  ! NOTE: > A % Values < is deliberately NOT allocated here. Nothing in the
+  ! split needs the values, only the structure, and the array is a full
+  ! nnz-sized double per partition. Solvers that consume the glued matrix
+  ! (SParInitSolve, SParIterSolver, SolveHutiter) get it from
+  ! ZeroSplittedMatrix(); solvers that gather the matrix themselves, AMGX and
+  ! Hypre, never touch it and now do not pay for it. The one place inside this
+  ! routine that does need it is the GotNewCol branch below, since
+  ! List_ToListMatrix() reads the values while converting.
 !-----------------------------------------------------------------------------
 
   SplittedMatrix % IfMatrix(:) % NumberOfRows = 0
@@ -724,7 +729,7 @@ CONTAINS
   ! connections might be known in advance...
   !
   !----------------------------------------------------------------------
-  sz = SIZE(A % Values)
+  sz = A % Rows(A % NumberOfRows+1)-1
 
   ! Check whether we need to create List matrix and add new column entries. 
   GotNewCol = .FALSE.
@@ -746,6 +751,10 @@ CONTAINS
   END DO
 
 1 IF(GotNewCol) THEN
+    IF( .NOT. ASSOCIATED(A % Values) ) THEN
+      ALLOCATE(A % Values(A % Rows(A % NumberOfRows+1)-1))
+      A % Values = 0._dp
+    END IF
     CALL List_toListMatrix(A)
     DO i=1,Parenv % PEs
       CurrIF => SplittedMatrix % IfMatrix(i)
@@ -770,7 +779,7 @@ CONTAINS
   ! 'insidematrix' where the 'partition' matrix entry is to be added).
   !
   !----------------------------------------------------------------------
-  IF(sz /= SIZE(A % Values)) THEN
+  IF(sz /= A % Rows(A % NumberOfRows+1)-1) THEN
     ALLOCATE(Perm(A % NumberOfRows))
     j = 0;
     DO i=1,SourceMatrix % NumberOfRows
@@ -801,7 +810,7 @@ CONTAINS
 
   ! Allocate more insidematrix stuff
   ! ---------------------------------
-  sz = SIZE(A % Values)
+  sz = A % Rows(A % NumberOfRows+1)-1
   NULLIFY( A % PrecValues )
   IF ( NeedPrec ) ALLOCATE(A % PrecValues(sz))
 
@@ -854,6 +863,37 @@ END FUNCTION SplitMatrix
 
 
 !----------------------------------------------------------------------
+!> SplitMatrix() deliberately does not allocate > InsideMatrix % Values <, see
+!> the note there. This allocates it on first use and is cheap enough to call
+!> unconditionally: solvers that gather the matrix themselves (AMGX, Hypre)
+!> never reach it and never pay for the array.
+!>
+!> Do NOT be tempted to add a "not allocated" assertion to the parallel
+!> matrix-vector products on the strength of this. An unassociated
+!> > Values < is a legitimate state there: IterSolver() releases the array for
+!> the duration of the iteration whenever the product asserts
+!> MatvecReadsNoValues, as SParCMatrixVector does, and works off the block
+!> view (BRows/BCols/CValues) instead. Such an assertion fails
+!> HelmholtzFEM_np2/4 and VectorHelmholtzWaveguidePar_np2/4.
+!----------------------------------------------------------------------
+SUBROUTINE EnsureInsideMatrixValues( SplittedMatrix )
+!----------------------------------------------------------------------
+  IMPLICIT NONE
+  TYPE (SplittedMatrixT), POINTER :: SplittedMatrix
+!----------------------------------------------------------------------
+  TYPE(Matrix_t), POINTER :: Am
+!----------------------------------------------------------------------
+  Am => SplittedMatrix % InsideMatrix
+  IF( .NOT. ASSOCIATED( Am % Values ) ) THEN
+    ALLOCATE( Am % Values( Am % Rows(Am % NumberOfRows+1)-1 ) )
+    Am % Values = 0._dp
+  END IF
+!----------------------------------------------------------------------
+END SUBROUTINE EnsureInsideMatrixValues
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
 !> Zero the splitted matrix (for new non-linear iteration)
 !----------------------------------------------------------------------
 SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
@@ -874,6 +914,8 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
   NeedMass = ASSOCIATED(SplittedMatrix % InsideMatrix % MassValues)
   NeedDamp = ASSOCIATED(SplittedMatrix % InsideMatrix % DampValues)
   NeedPrec = ASSOCIATED(SplittedMatrix % InsideMatrix % PrecValues)
+
+  CALL EnsureInsideMatrixValues( SplittedMatrix )
 
   SplittedMatrix % InsideMatrix % Values = 0._dp
   IF ( NeedMass ) SplittedMatrix % InsideMatrix % MassValues = 0._dp
@@ -1340,6 +1382,11 @@ END SUBROUTINE ZeroSplittedMatrix
 
     GlobalData % DOFs  = 1
     GlobalData % ParallelInfo => ParallelInfo
+
+    ! Not inside the IF below on purpose: Multigrid and ParStokes call in with
+    ! > UpdateMatrix < false, and the matrix-vector products that follow read
+    ! these values either way.
+    CALL EnsureInsideMatrixValues( SplittedMatrix )
 
     IF ( UpdateMatrix ) THEN
       NeedMass = ASSOCIATED(SplittedMatrix % InsideMatrix % MassValues)

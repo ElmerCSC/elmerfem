@@ -128,6 +128,39 @@ MODULE Types
   END TYPE ArgStr_t
 
 
+  TYPE IdxList_t
+    INTEGER, ALLOCATABLE :: Ind(:)
+  END TYPE IdxList_t
+
+
+! Parallel collection state for the AMGX interface.
+!
+! AMGX wants whole owned rows on the owning rank, while Elmer keeps partial rows
+! split by column ownership (see SplitMatrix in SParIterSolver), so AMGXSolver
+! gathers the matrix itself into > Matrix % CollectionMatrix <. Everything that
+! gather needs in order to repeat cheaply lives here, and lives with the matrix:
+! it used to be held in SAVEd locals of AMGXSolver, which meant two solvers
+! using AMGX on different matrices tore each other's state down on every call.
+!
+! The structure of the collected matrix is fixed once built, so the row and
+! column indices are exchanged once and later solves ship only values:
+!   LocalMap  entry of Matrix % Values -> slot in CollectionMatrix % Values,
+!             zero for rows this partition does not own
+!   SendIdx   per neighbour, the Matrix % Values entries to ship, in order
+!   RecvIdx   per neighbour, the slots to add the arriving values into, in the
+!             same order
+  TYPE AMGXCollection_t
+    INTEGER :: ng = 0                  !< global number of owned rows
+    INTEGER :: nnzA = -1               !< structure of the source matrix the
+    INTEGER :: nrowsA = -1             !<   cached pattern was built against
+    LOGICAL :: PatternReady = .FALSE.
+    INTEGER, ALLOCATABLE :: APerm(:), iLPerm(:), part_vec(:)
+    INTEGER, ALLOCATABLE :: GlobalToLocal(:), SendTo(:)
+    INTEGER, ALLOCATABLE :: LocalMap(:)
+    TYPE(IdxList_t), ALLOCATABLE :: SendIdx(:), RecvIdx(:)
+  END TYPE AMGXCollection_t
+
+
   TYPE BasicMatrix_t
     INTEGER :: NumberOfRows
     INTEGER, ALLOCATABLE :: Rows(:), Cols(:), Diag(:)
@@ -320,6 +353,7 @@ MODULE Types
     TYPE(RocParams_t) :: RocParams
 #endif
     INTEGER(KIND=C_INTPTR_T) :: AMGX=0, AMGXMV=0
+    TYPE(AMGXCollection_t), POINTER :: AMGXColl => NULL()
     INTEGER(KIND=AddrInt) :: SpMV=0
 
     TYPE(C_FUNPTR) :: MatVecSubr = C_NULL_FUNPTR
