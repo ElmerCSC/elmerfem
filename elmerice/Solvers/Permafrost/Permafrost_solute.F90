@@ -72,7 +72,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,&
        ComputeDt=.FALSE., ElementWiseRockMaterial, ActiveMassMatrix = .TRUE., &
-       InitializeSteadyState = .FALSE., CorrectValues=.FALSE., ExtForce=.FALSE.
+       InitializeSteadyState = .FALSE., CorrectValues=.FALSE., LegacyExtForce=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostSoluteTransport'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, VarName, TemperatureName, GWfluxName, PhaseChangeModel,&
@@ -104,7 +104,10 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   ComputeDt = .FALSE.
   IF (TransientSimulation) &
        ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
-  ExtForce = GetLogical(Params,'Compute External Force fc', Found)
+  LegacyExtForce = GetLogical(Params,'Compute External Force fc', Found)
+  IF (Found) &
+       CALL FATAL(SolverName,'Solver keyword "Compute External Force fc" is obsolete; '//&
+       'use Material keyword "Compute Solute Phase Forces"')
 
   Salinity => Solver % Variable % Values
   IF (.NOT.ASSOCIATED(Salinity)) THEN
@@ -224,7 +227,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
       CALL LocalMatrixSolute(  Element, Element % ElementIndex, Active, n, nd+nb,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,ActiveMassMatrix,&
-           ComputeDt,ExtForce)
+           ComputeDt)
     END DO
 
     CALL DefaultFinishBulkAssembly()
@@ -301,7 +304,7 @@ CONTAINS
   SUBROUTINE LocalMatrixSolute(  Element, ElementID, NoElements, n, nd,&
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix,&
-       ComputeDt,ExtForce)
+       ComputeDt)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
@@ -310,7 +313,7 @@ CONTAINS
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
 !!$    REAL(KIND=dp) :: NodalTemperature(:), NodalSalinity(:),&
 !!$         NodalGWflux(:,:), NodalPorosity(:), NodalPressure(:)
-    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix,ComputeDt,ExtForce
+    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix,ComputeDt
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: vstarAtIP(3)   ! needed in equation
@@ -336,7 +339,7 @@ CONTAINS
     INTEGER, POINTER :: XiAtIPPerm(:)
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          ConstantDispersion=.FALSE.,ConstantDiffusion=.FALSE.,CryogenicSuction=.FALSE.,&
-         InterFrost=.FALSE.,Linear=.FALSE.,Exponential=.FALSE.
+         SolutePhaseForces=.FALSE.,InterFrost=.FALSE.,Linear=.FALSE.,Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -391,6 +394,10 @@ CONTAINS
     ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
+
+    ! This material switch is shared with the Darcy solver so both equations
+    ! use the same definition of the diffusive solute flux JcF.
+    SolutePhaseForces = GetLogical(Material,'Compute Solute Phase Forces',Found)
 
     !meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
     !IF (.NOT.Found) THEN
@@ -586,7 +593,10 @@ CONTAINS
       END IF
       KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
       !PRINT *,"Solute: KcYcYc", KcYcYcAtIP(1,1)
-      fcAtIP = GetFc(rhocAtIP,rhowAtIP,Gravity,r12AtIP,XiTAtIP,XiPAtIP,XiAtIP(IPPerm),gradPAtIP,gradTAtIP) 
+      fcAtIP = 0.0_dp
+      IF (SolutePhaseForces) &
+           fcAtIP = GetFc(rhocAtIP,rhowAtIP,Gravity,r12AtIP,XiTAtIP,XiPAtIP,&
+           XiAtIP(IPPerm),gradPAtIP,gradTAtIP)
 
       Weight = IP % s(t) * DetJ
       !PRINT *,"Solute:",DIM,Weight
@@ -624,13 +634,14 @@ CONTAINS
         END DO
       END DO
 
-      ! if we use ext. force
-      IF (ExtForce) THEN
+      ! Phase-force part of JcF: porosity*rhoc*yc*(Kc.fc).
+      IF (SolutePhaseForces) THEN
+        extforceFlux = 0.0_dp
+        DO i=1,DIM
+          extforceFlux(i) = SUM(KcAtIP(i,1:DIM)*fcAtIP(1:DIM))
+        END DO
         DO p=1,nd
           DO q=1,nd
-            DO i=1,DIM
-              extforceFlux =  SUM(KcAtIP(i,1:DIM)*fcAtIP(1:DIM))
-            END DO
             STIFF (p,q) = STIFF(p,q) &
                  - Weight * PorosityAtIP * rhocAtIP * Basis(q) * SUM(extforceFlux(1:DIM) * dBasisdx(p,1:DIM))
           END DO

@@ -490,7 +490,7 @@ CONTAINS
     INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw,IPPermFreshwaterHead
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
          ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE., &
-         Linear = .FALSE., Exponential=.FALSE.
+         SolutePhaseForces=.FALSE., Linear = .FALSE., Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -577,6 +577,9 @@ CONTAINS
     swaptensor = GetLogical(Material,'Swap Tensor',Found)
     
     NoSalinity = GetLogical(Material,'No Salinity',Found)
+    ! Use the same material switch as the solute solver so both equations
+    ! evaluate the same diffusive solute flux JcF.
+    SolutePhaseForces = GetLogical(Material,'Compute Solute Phase Forces',Found)
     
  
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
@@ -857,10 +860,11 @@ CONTAINS
  
 
       
-      !IF ( (.NOT.ConstantDispersion) .OR. FluxOutput) THEN
-      IF (FluxOutput) THEN
-         JgwDAtIP = GetJgwD(KgwppAtIP,KgwpTAtIP,KgwAtIP,gradpAtIP,gradTAtIP,&
-             Gravity,rhogwAtIP,DIM,CryogenicSuction)
+      ! Darcy flux is needed by velocity-dependent solute dispersion even
+      ! when the optional projected groundwater-flux output is absent.
+      IF (FluxOutput .OR. ((.NOT.NoSalinity) .AND. (.NOT.ConstantDispersion))) THEN
+        JgwDAtIP = GetJgwD(KgwppAtIP,KgwpTAtIP,KgwAtIP,gradpAtIP,gradTAtIP,&
+            Gravity,rhogwAtIP,DIM,CryogenicSuction)
         !PRINT *, "JgwDAtIP", JgwDAtIP
         IF (FluxOutput) THEN
           GWfluxVar1 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(1)
@@ -884,7 +888,10 @@ CONTAINS
         ! parameters for diffusion-dispersion flow
         r12AtIP = GetR(CurrentSoluteMaterial,CurrentSolventMaterial,GasConstant,&
              rhowAtIP,rhocAtIP,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP)
-        fcAtIP = GetFc(rhocAtIP,rhowAtIP,Gravity,r12AtIP,XiTAtIP,XiPAtIP,XiAtIP(IPPerm),gradPAtIP,gradTAtIP)
+        fcAtIP = 0.0_dp
+        IF (SolutePhaseForces) &
+             fcAtIP = GetFc(rhocAtIP,rhowAtIP,Gravity,r12AtIP,XiTAtIP,XiPAtIP,&
+             XiAtIP(IPPerm),gradPAtIP,gradTAtIP)
         KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
         JcFAtIP = GetJcF(KcYcYcAtIP,KcAtIP,fcAtIP,gradYcAtIP,SalinityAtIP)        
       END IF
@@ -899,7 +906,6 @@ CONTAINS
       DO i=1,DIM
         fluxTAtIP(i) =  SUM(KgwpTAtIP(i,1:DIM)*gradTAtIP(1:DIM))
         fluxgAtIP(i) = rhogwAtIP * SUM(KgwAtIP(i,1:DIM)*Gravity(1:DIM))   !!
-        ! insert missing JcF here
         IF ((fluxgAtIP(i) .NE. fluxgAtIP(i)) .OR. (fluxTAtIP(i) .NE. fluxTAtIP(i))) THEN
           PRINT *, "NaN in r.h.s. of Darcy fluxes"
           PRINT *, "flux(",i,")= Jgwg",fluxgAtIP(i),"+ JgwpT", fluxTAtIP(i)
@@ -949,8 +955,10 @@ CONTAINS
       !--------------------------------------
       DO p=1,nd     
         FORCE(p) = FORCE(p) + Weight * rhogwAtIP *  SUM(fluxgAtIP(1:DIM)*dBasisdx(p,1:DIM))
-        FORCE(p) = FORCE(p) - &
-             Weight * Basis(p) * GlobalRockMaterial % etak(RockMaterialID) *&
+        ! The known JcF term is moved from the left-hand side of weak form
+        ! (4.8) to the pressure right-hand side; no extra Basis(p) occurs.
+        FORCE(p) = FORCE(p) + &
+             Weight * GlobalRockMaterial % etak(RockMaterialID) *&
              (rhocAtIP - rhowAtIP)* SUM(JcFAtIP(1:DIM)*dBasisdx(p,1:DIM))
         FORCE(p) = FORCE(p) + Weight * LoadAtIP * Basis(p)
         IF (CryogenicSuction) &
