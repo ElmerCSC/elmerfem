@@ -74,6 +74,12 @@ Solver 1
 
   Nonlinear System Aitken Relaxation = Logical True
 
+! The Aitken factor is a ratio of two dot products over the solution vector, so
+! it is only partition-independent if each dof is counted once. The same applies
+! to the norm that is compared against the reference, hence this keyword lets
+! the parallel runs reproduce the serial result.
+  Nonlinear System Consistent Norm = Logical True
+
 ! Optional parameters to tune the eitken
 !  Aitken Relaxation Factor After Iterations = Integer 1
 !  Aitken Relaxation Factor Relaxation = Real 0.5

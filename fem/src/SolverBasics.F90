@@ -4227,12 +4227,13 @@ END FUNCTION SearchNodeL
       TYPE(Matrix_t) :: A
       REAL(KIND=dp) :: r,r0,r1,x0(:),x1(:),dx(:)
 
-      INTEGER :: i,j,k,n,dofs,citer
-      REAL(KIND=dp) :: aa, dd, s
+      INTEGER :: i,j,k,n,dofs,citer,nOwned
+      REAL(KIND=dp) :: aa, dd, s, ds
+      INTEGER, ALLOCATABLE :: OwnedPerm(:)
 
       IF(iter <= 1 ) RETURN
             
-      citer = ListGetInteger( Solver % Values,'Aitken Relaxation After Iterations', Stat )
+      citer = ListGetInteger( Solver % Values,'Aitken Relaxation Factor After Iterations', Stat )
       citer = MAX(1,citer)
       
       n = A % NumberOfRows
@@ -4240,21 +4241,38 @@ END FUNCTION SearchNodeL
       k = 0
       dofs = Solver % Variable % dofs
       IF(dofs>1) k = ListGetInteger( Solver % Values,'Aitken Relaxation Component', Stat ) 
-      IF( k == 0 ) THEN
-        aa = SUM(dx*(x0-x1-dx))
-        dd = SUM((x0-x1-dx)**2)
-      ELSE
-        aa = SUM((dx(k::dofs))*(x0(k::dofs)-x1(k::dofs)-dx(k::dofs)))
-        dd = SUM((x0(k::dofs)-x1(k::dofs)-dx(k::dofs))**2)                
-      END IF
 
-      ! Note that this is not really correctly parallized since the shared nodes are
-      ! considered multiple times!
+      ! In parallel a dof may be shared by several partitions and must be
+      ! accounted for only once. Loop over the dofs owned by this partition and
+      ! reduce the two sums separately over the partitions. In serial the
+      ! permutation is the identity and the same loop applies.
+      n = MIN(n,SIZE(dx),SIZE(x0),SIZE(x1))
+      nOwned = ParallelOwnedPerm(n,OwnedPerm,Matrix=A,Mesh=Solver % Mesh)
+
+      aa = 0.0_dp
+      dd = 0.0_dp
+      DO j=1,nOwned
+        i = OwnedPerm(j)
+        IF( k > 0 ) THEN
+          IF( MODULO(i-1,dofs)+1 /= k ) CYCLE
+        END IF
+        ds = x0(i) - x1(i) - dx(i)
+        aa = aa + dx(i) * ds
+        dd = dd + ds**2
+      END DO
+
       IF( ParEnv % PEs > 1 ) THEN
         aa = ParallelReduction(aa)
         dd = ParallelReduction(dd)
       END IF
-        
+
+      ! Nothing to extrapolate from, the previous iterate is already at a fixed point.
+      IF( dd < TINY(dd) ) THEN
+        CALL Info('CalculateAitkenRelaxation',&
+            'Vanishing denominator, keeping the previous relaxation factor',Level=8)
+        RETURN
+      END IF
+      
       r1 = - r0 * aa / dd 
 
       WRITE(Message,'(A,ES12.3)') 'Aitken relaxation factor suggested: ',r1

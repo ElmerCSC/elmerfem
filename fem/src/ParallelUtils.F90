@@ -1354,6 +1354,69 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
+!> Create a permutation from the dofs owned by this partition to the local dof
+!> indexes such that Perm(1:nOwned) gives the local dofs that this partition
+!> owns, and return the number of owned dofs. This enables computing partition-
+!> consistent sums (dot products, norms, extrema, ...) with just one loop and no
+!> ownership test inside it. The same loop is valid in serial and in parallel
+!> since when there is nothing shared the permutation is simply the identity.
+!>
+!> The ownership is primarily obtained from the parallel matrix. There are some
+!> exceptions when no matrix, and hence no associated communication, has been
+!> created and we have to resort to the communication structure of the mesh.
+!> Note that the latter is only consistent for nodal scalar fields.
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelOwnedPerm( n, Perm, Matrix, Mesh ) RESULT( nOwned )
+!-------------------------------------------------------------------------------
+      INTEGER, INTENT(IN) :: n
+      INTEGER, ALLOCATABLE :: Perm(:)
+      TYPE(Matrix_t), OPTIONAL :: Matrix
+      TYPE(Mesh_t), OPTIONAL :: Mesh
+      INTEGER :: nOwned
+!-------------------------------------------------------------------------------
+      TYPE(NeighbourList_t), POINTER :: NeighbourList(:)
+      INTEGER :: i
+!-------------------------------------------------------------------------------
+      IF( ALLOCATED( Perm ) ) THEN
+        IF( SIZE( Perm ) < n ) DEALLOCATE( Perm )
+      END IF
+      IF( .NOT. ALLOCATED( Perm ) ) ALLOCATE( Perm(n) )
+
+      NeighbourList => NULL()
+      IF( ParEnv % PEs > 1 ) THEN
+        IF( PRESENT( Matrix ) ) THEN
+          IF( ASSOCIATED( Matrix % ParallelInfo ) ) THEN
+            IF( .NOT. Matrix % ParallelInfo % NothingShared ) &
+                NeighbourList => Matrix % ParallelInfo % NeighbourList
+          END IF
+        END IF
+        IF( .NOT. ASSOCIATED( NeighbourList ) .AND. PRESENT( Mesh ) ) THEN
+          IF( .NOT. Mesh % ParallelInfo % NothingShared ) &
+              NeighbourList => Mesh % ParallelInfo % NeighbourList
+        END IF
+      END IF
+
+      IF( .NOT. ASSOCIATED( NeighbourList ) ) THEN
+        ! Serial, or nothing shared: this partition owns every dof.
+        nOwned = n
+        DO i=1,n
+          Perm(i) = i
+        END DO
+        RETURN
+      END IF
+
+      nOwned = 0
+      DO i=1,MIN( n, SIZE( NeighbourList ) )
+        IF( NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+        nOwned = nOwned + 1
+        Perm(nOwned) = i
+      END DO
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelOwnedPerm
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
     SUBROUTINE ParallelUpdateResult( Matrix, x, r )
 !-------------------------------------------------------------------------------
        REAL(KIND=dp) :: x(:), r(:)
