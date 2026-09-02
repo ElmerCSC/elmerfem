@@ -490,7 +490,7 @@ CONTAINS
         CALL ValidateLiquidFraction(XiAtIP(IPPerm),Material,FunctionName)
         XiTAtIP = XiExponentialT(T0,TemperatureAtIP,&
              ExponentialParams % Swres,ExponentialParams % DeltaT)
-      CASE('linear') ! even simpler linear law (used in Lunardini)
+      CASE('linear') ! generic linear saturation law
         !Xi0 = GetConstReal( Material, "Linear Xi0", Found)
         Swres = GetConstReal( Material, "Linear Swres", Found)
         IFdeltaT = GetConstReal( Material, "Linear deltaT", Found)
