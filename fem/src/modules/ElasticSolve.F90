@@ -4106,34 +4106,34 @@ CONTAINS
              ! law, leaving the load, and an addition to the matrix alone is
              ! therefore exactly an addition to the operator.
              !
-             ! ADDED AS ITS SYMMETRIC PART, which is not a modelling choice made
-             ! here but a reproduction of one made there. StressSolve symmetrises
-             ! its whole local stiffness wholesale before gluing it in --
-             ! "STIFF = (STIFF + TRANSPOSE(STIFF))/2" -- and every other term it
-             ! assembles is already symmetric, so the operator that reaches its
-             ! linear solver contains only the symmetric half of this one. Assembling
-             ! the term as written instead moves the earth cases 2.6%, and their
-             ! published reference norms are the symmetric-half ones.
+             ! ADDED IN FULL, and this is a deliberate departure from
+             ! StressSolveLegacy rather than a reproduction of it. That routine
+             ! symmetrises its whole local stiffness wholesale before gluing it in
+             ! -- "STIFF = (STIFF + TRANSPOSE(STIFF))/2" -- and since every other
+             ! term it assembles is already symmetric, the only thing that blanket
+             ! operation actually changed was this one, silently halving it and
+             ! adding its transpose. The term is GENUINELY NOT SYMMETRIC: it couples
+             ! the gradient of the VERTICAL displacement to every test component,
+             ! and its transpose is a different operator, so the wholesale
+             ! symmetrisation was discarding half of the intended model rather than
+             ! tidying a rounding asymmetry.
              !
-             ! THIS TERM IS GENUINELY NOT SYMMETRIC, and whether the symmetric half
-             ! is the intended model is an OPEN QUESTION, not something this comment
-             ! settles: it couples the gradient of the VERTICAL displacement to every
-             ! test component, and its transpose is a different operator. Nothing in
-             ! the sifs that use it forces the choice either -- they solve with GCR
-             ! and do not declare "Linear System Symmetric", so they could carry a
-             ! non-symmetric operator as they stand. So this reproduces StressSolve
-             ! because the merger requires it to, and if the answer is that the full
-             ! term belongs in the system, both solvers change together and the earth
-             ! reference norms move with them.
+             ! This solver previously reproduced the symmetric half so that the
+             ! merger changed no answers. That reproduction is now retired: the full
+             ! term is the model, and the reference norms of the cases that use it
+             ! moved accordingly. Nothing in their sifs objects -- they solve with
+             ! GCR or a direct method and do not declare "Linear System Symmetric",
+             ! so a non-symmetric operator is carried as they stand.
+             !
+             ! The legacy routine still symmetrises, so a solve forced down it with
+             ! "Legacy Assembly = Logical True" will not reproduce these answers.
+             ! No test does; the keyword is untested in the suite.
              !--------------------------------------------------------------------
              IF ( GotGPA ) THEN
                 DO q = 1,ntot
                    StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+cdim) = &
                         StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+cdim) &
-                        + 0.5_dp*GPAatIP*dBasisdx(q,i)*Basis(p)*s
-                   StiffMatrix(DOFs*(q-1)+cdim,DOFs*(p-1)+i) = &
-                        StiffMatrix(DOFs*(q-1)+cdim,DOFs*(p-1)+i) &
-                        + 0.5_dp*GPAatIP*dBasisdx(q,i)*Basis(p)*s
+                        + GPAatIP*dBasisdx(q,i)*Basis(p)*s
                 END DO
              END IF
           END DO
