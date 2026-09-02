@@ -396,6 +396,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: Realloc
   LOGICAL :: ConstantBulkMatrix, ConstantBulkSystem, ConstantSystem
   LOGICAL :: ConstantBulkMatrixInUse
+  ! Set inside the ASSOCIATED(BulkValues) test: reuse a saved bulk system,
+  ! or a saved whole system, instead of assembling it again.
+  LOGICAL :: SkipBulk, SkipAll
   LOGICAL :: CompressibilityDefined = .FALSE.
   LOGICAL :: NormalSpring, NormalTangential
   LOGICAL :: Converged, NoExternalLoads
@@ -1400,6 +1403,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
          ASSOCIATED( Solver % Matrix % BulkValues )
 
+     ! Cleared on every pass, not just declared: with nothing saved yet both
+     ! assemblies must run, and a stale value from an earlier pass would skip
+     ! them. This is the state the two GO TOs carried implicitly by simply not
+     ! being reached.
+     SkipBulk = .FALSE.
+     SkipAll  = .FALSE.
+
      IF ( ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
        IF ( ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem ) THEN
          Solver % Matrix % Values = Solver % Matrix % BulkValues
@@ -1411,10 +1421,207 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          Solver % Matrix % RHS = 0.0_dp
        END IF
 
-       IF ( ConstantBulkSystem ) GO TO 2000
-       IF ( ConstantSystem )     GO TO 3000
+       ! Reuse is only possible once a bulk system has actually been saved, which
+       ! is why these sit inside the ASSOCIATED test above: on the first visit
+       ! nothing is stored, nothing is skipped, and both assemblies run.
+       SkipBulk = ConstantBulkSystem
+       SkipAll  = ConstantSystem
      END IF
+
+     IF ( .NOT. SkipAll ) THEN
+       IF ( .NOT. SkipBulk ) CALL BulkAssembly()
+       CALL BoundaryAssembly()
+     END IF
+
+     ! This is a matrix level routine for setting friction such that tangential
+     ! traction is the normal traction multiplied by a coefficient.
+     CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+         'Friction Direction')
+     
+     CALL DefaultFinishAssembly()
+
+     ! One load case imposed as a prescribed displacement of the lumping boundary --
+     ! a pure translation or a pure rotation. Between the assembly and the Dirichlet
+     ! conditions, which is where StressSolve puts it and what the routine's own
+     ! comment requires: it sets boundary values directly into the matrix, and the
+     ! sif's own conditions must be applied after so that they win where both speak.
+     IF ( UseModelLumping .AND. Lump % FixDisplacement ) THEN
+       CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
+     END IF
+
+     CALL DefaultDirichletBCs()
+
+     IF (UseUMAT) THEN
+       ! ---------------------------------------------------------------------------------
+       ! Now the solution variable is the solution increment while the sif-file specifies
+       ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
+       ! is obtained for the solution increment.
+       ! ---------------------------------------------------------------------------------
+       DisplacementRot = Displacement
+       CALL RotateNTSystemAll(DisplacementRot, StressPerm, STDOFs)
+       
+       IF (ALLOCATED(StiffMatrix % ConstrainedDOF)) THEN
+         DO i=1,StiffMatrix % NumberOfRows
+           IF (StiffMatrix % ConstrainedDOF(i)) THEN
+             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - DisplacementRot(i)
+           END IF
+         END DO
+         CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
+       END IF
+
+       ! The initial guess for the displacement increment:
+       Displacement = 0.0d0
+
+       ! ---------------------------------------------------------------------------------
+       ! Check whether the nonlinear iteration can be terminated:
+       ! ---------------------------------------------------------------------------------
+       IF (Iter == 1) THEN
+
+         IF (Parallel) THEN
+           IF (.NOT. ASSOCIATED(StiffMatrix % ParMatrix)) &
+               CALL ParallelInitMatrix(Solver, StiffMatrix)
+
+           PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
+           IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+
+           ! Temporarily set the parallel rhs vector to be the plain source vector:
+           CALL ParallelUpdateRHS(StiffMatrix, StiffMatrix % BulkRHS)
+           Pb => PMatrix % RHS
+           Norm = MAXVAL(ABS(Pb))
+           Norm = ParallelReduction(Norm,2)
+         ELSE
+           Norm = MAXVAL(ABS(StiffMatrix % BulkRHS(:)))
+         END IF
+
+         NoExternalLoads = Norm < AEPS       
+         IF (NoExternalLoads) THEN
+           ! This appears to be a purely BC-loaded case, switch to using a different criterion
+           ! (use absolute norm, this can be hard ...):
+           CALL Info('ElasticSolver', 'No pressure external loads ... ', Level=4)
+           CALL Info('ElasticSolver', &
+               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+           CALL Info('ElasticSolver', &
+               'This may give a hard stopping criterion',  Level=4)
+           NonlinRes0 = 1.0d0
+         ELSE
+           ! Compute the 2-norm of the external load vector
+           IF (Parallel)  THEN
+             Norm = 0.0d0
+             DO i=1,PMatrix % NumberOfRows
+               Norm = Norm + Pb(i)**2
+             END DO
+             NonlinRes0 = SQRT(ParallelReduction(Norm))
+           ELSE
+             NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+           END IF
+         END IF
+       END IF
+
+
+       IF (Parallel) THEN
+         ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
+         Solver % Matrix % BulkRHS = Solver % Matrix % RHS
+         CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
+         Norm = 0.0d0
+         DO i=1,PMatrix % NumberOfRows
+           Norm = Norm + Pb(i)**2
+         END DO
+         NonlinRes = SQRT(ParallelReduction(Norm)) / NonlinRes0
+       ELSE
+         NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
+       END IF
+       WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
+           //I2S(Iter-1)//': ',NonLinRes
+       CALL Info('ElasticitySolver', Message, Level=5)        
+
+       IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
+         CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
+
+         ! Save the state variables corresponding to the converged nonlinear
+         ! solution to the array holding the previous solution state:
+         UmatEnergy0 = UmatEnergy
+         UmatStress0 = UmatStress
+         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         
+         Displacement(:) = TotalSol(:)
+         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
+         EXIT
+       END IF
+
+     ELSE
+       IF ( DefaultLinesearch( Converged ) ) GOTO 100
+       IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
+     END IF
+
      !------------------------------------------------------------------------------
+     !     Solve the system and check for convergence
+     !------------------------------------------------------------------------------
+     UNorm = DefaultSolve()
+
+     ! One row or column of the lumped 6x6 stiffness, from the reactions this load
+     ! case produced on the lumping boundary; after the sixth it is inverted and
+     ! written out. Before the convergence tests below, not after: the sixth case
+     ! leaves through one of those EXITs, and a row missed there is a matrix never
+     ! written. The reactions come from BulkValues times the solution, which is why
+     ! "Constant Bulk System" had to be added to the list and not merely assumed.
+     IF ( UseModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
+
+     IF (UseUmat) THEN
+       Displacement(:) = TotalSol(:) + Displacement(:)
+       IF (iter==NonlinearIter) THEN
+         CALL Info('ElasticitySolver', &
+             'The maximum of nonlinear iterations reached: Terminating...', Level=5)        
+
+         ! Save the state variables corresponding to the converged nonlinear
+         ! solution to the array holding the previous solution state:
+         UmatEnergy0 = UmatEnergy
+         UmatStress0 = UmatStress
+         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         
+         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
+         EXIT
+       END IF
+     ELSE
+       !----------------------------------------------------------------------------------
+       IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
+           ( iter >= MinNonlinearIter ) ) EXIT
+     END IF
+
+  !------------------------------------------------------------------------------
+  END DO ! of nonlinear iter
+  !------------------------------------------------------------------------------
+
+  CALL PostProcess()
+
+
+  DEALLOCATE( PrevSOL )
+  IF (UseUmat) THEN
+    DEALLOCATE(DisplacementRot)
+    DEALLOCATE(LocalForceSaved)
+  END IF
+
+  CALL DefaultFinish()
+  
+  CALL Info('ElasticSolver','All done',Level=4)
+  CALL Info('ElasticSolver','------------------------------------------',Level=4)
+
+!------------------------------------------------------------------------------
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> The bulk element loop and the local matrices it builds, moved out of
+!> ElasticSolver unchanged. Skipped entirely when a saved bulk system is reused
+!> ("Constant Bulk System" / "Constant System"), which is what the two GO TOs in
+!> the caller used to express.
+!>
+!> An internal routine with no arguments: everything it touches is a local of the
+!> host and visible here, the same way StressSolve arranges this split. The
+!> numeric label 200 inside the loop is a per-element skip and travels with the
+!> loop; label 100 stays in the host as the line-search retry target.
+!------------------------------------------------------------------------------
+  SUBROUTINE BulkAssembly()
+!------------------------------------------------------------------------------
      DO t=1,GetNOFActive()
       
         IF ( RealTime() - at0 > 1.0 ) THEN
@@ -1833,11 +2040,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
 
      CALL DefaultFinishBulkAssembly()
+!------------------------------------------------------------------------------
+  END SUBROUTINE BulkAssembly
+!------------------------------------------------------------------------------
 
-     !------------------------------------------------------------------------------
-     !     Neumann & Newton boundary conditions
-     !------------------------------------------------------------------------------
-2000 DO t = 1,GetNOFBoundaryElements()
+!------------------------------------------------------------------------------
+!> The Neumann and Newton boundary conditions, moved out of ElasticSolver
+!> unchanged. This was the target of "GO TO 2000".
+!------------------------------------------------------------------------------
+  SUBROUTINE BoundaryAssembly()
+!------------------------------------------------------------------------------
+     DO t = 1,GetNOFBoundaryElements()
         CurrentElement =>  GetBoundaryElement(t)
         IF (.NOT. ActiveBoundaryElement()) CYCLE
 
@@ -2075,166 +2288,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
      !------------------------------------------------------------------------------
      CALL DefaultFinishBoundaryAssembly()
+!------------------------------------------------------------------------------
+  END SUBROUTINE BoundaryAssembly
+!------------------------------------------------------------------------------
 
-     ! This is a matrix level routine for setting friction such that tangential
-     ! traction is the normal traction multiplied by a coefficient.
-3000 CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
-         'Friction Direction')
-     
-     CALL DefaultFinishAssembly()
-
-     ! One load case imposed as a prescribed displacement of the lumping boundary --
-     ! a pure translation or a pure rotation. Between the assembly and the Dirichlet
-     ! conditions, which is where StressSolve puts it and what the routine's own
-     ! comment requires: it sets boundary values directly into the matrix, and the
-     ! sif's own conditions must be applied after so that they win where both speak.
-     IF ( UseModelLumping .AND. Lump % FixDisplacement ) THEN
-       CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
-     END IF
-
-     CALL DefaultDirichletBCs()
-
-     IF (UseUMAT) THEN
-       ! ---------------------------------------------------------------------------------
-       ! Now the solution variable is the solution increment while the sif-file specifies
-       ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
-       ! is obtained for the solution increment.
-       ! ---------------------------------------------------------------------------------
-       DisplacementRot = Displacement
-       CALL RotateNTSystemAll(DisplacementRot, StressPerm, STDOFs)
-       
-       IF (ALLOCATED(StiffMatrix % ConstrainedDOF)) THEN
-         DO i=1,StiffMatrix % NumberOfRows
-           IF (StiffMatrix % ConstrainedDOF(i)) THEN
-             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - DisplacementRot(i)
-           END IF
-         END DO
-         CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
-       END IF
-
-       ! The initial guess for the displacement increment:
-       Displacement = 0.0d0
-
-       ! ---------------------------------------------------------------------------------
-       ! Check whether the nonlinear iteration can be terminated:
-       ! ---------------------------------------------------------------------------------
-       IF (Iter == 1) THEN
-
-         IF (Parallel) THEN
-           IF (.NOT. ASSOCIATED(StiffMatrix % ParMatrix)) &
-               CALL ParallelInitMatrix(Solver, StiffMatrix)
-
-           PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
-           IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
-               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
-
-           ! Temporarily set the parallel rhs vector to be the plain source vector:
-           CALL ParallelUpdateRHS(StiffMatrix, StiffMatrix % BulkRHS)
-           Pb => PMatrix % RHS
-           Norm = MAXVAL(ABS(Pb))
-           Norm = ParallelReduction(Norm,2)
-         ELSE
-           Norm = MAXVAL(ABS(StiffMatrix % BulkRHS(:)))
-         END IF
-
-         NoExternalLoads = Norm < AEPS       
-         IF (NoExternalLoads) THEN
-           ! This appears to be a purely BC-loaded case, switch to using a different criterion
-           ! (use absolute norm, this can be hard ...):
-           CALL Info('ElasticSolver', 'No pressure external loads ... ', Level=4)
-           CALL Info('ElasticSolver', &
-               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
-           CALL Info('ElasticSolver', &
-               'This may give a hard stopping criterion',  Level=4)
-           NonlinRes0 = 1.0d0
-         ELSE
-           ! Compute the 2-norm of the external load vector
-           IF (Parallel)  THEN
-             Norm = 0.0d0
-             DO i=1,PMatrix % NumberOfRows
-               Norm = Norm + Pb(i)**2
-             END DO
-             NonlinRes0 = SQRT(ParallelReduction(Norm))
-           ELSE
-             NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
-           END IF
-         END IF
-       END IF
-
-
-       IF (Parallel) THEN
-         ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
-         Solver % Matrix % BulkRHS = Solver % Matrix % RHS
-         CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
-         Norm = 0.0d0
-         DO i=1,PMatrix % NumberOfRows
-           Norm = Norm + Pb(i)**2
-         END DO
-         NonlinRes = SQRT(ParallelReduction(Norm)) / NonlinRes0
-       ELSE
-         NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
-       END IF
-       WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
-           //I2S(Iter-1)//': ',NonLinRes
-       CALL Info('ElasticitySolver', Message, Level=5)        
-
-       IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
-         CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
-
-         ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
-         
-         Displacement(:) = TotalSol(:)
-         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
-         EXIT
-       END IF
-
-     ELSE
-       IF ( DefaultLinesearch( Converged ) ) GOTO 100
-       IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
-     END IF
-
-     !------------------------------------------------------------------------------
-     !     Solve the system and check for convergence
-     !------------------------------------------------------------------------------
-     UNorm = DefaultSolve()
-
-     ! One row or column of the lumped 6x6 stiffness, from the reactions this load
-     ! case produced on the lumping boundary; after the sixth it is inverted and
-     ! written out. Before the convergence tests below, not after: the sixth case
-     ! leaves through one of those EXITs, and a row missed there is a matrix never
-     ! written. The reactions come from BulkValues times the solution, which is why
-     ! "Constant Bulk System" had to be added to the list and not merely assumed.
-     IF ( UseModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
-
-     IF (UseUmat) THEN
-       Displacement(:) = TotalSol(:) + Displacement(:)
-       IF (iter==NonlinearIter) THEN
-         CALL Info('ElasticitySolver', &
-             'The maximum of nonlinear iterations reached: Terminating...', Level=5)        
-
-         ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
-         
-         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
-         EXIT
-       END IF
-     ELSE
-       !----------------------------------------------------------------------------------
-       IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
-           ( iter >= MinNonlinearIter ) ) EXIT
-     END IF
-
-  !------------------------------------------------------------------------------
-  END DO ! of nonlinear iter
-  !------------------------------------------------------------------------------
-
+!------------------------------------------------------------------------------
+!> Staged-construction reference update, strain and stress computation, adaptive
+!> refinement and mesh displacement: everything after the nonlinear loop, moved
+!> out of ElasticSolver unchanged.
+!------------------------------------------------------------------------------
+  SUBROUTINE PostProcess()
+!------------------------------------------------------------------------------
   !-----------------------------------------------------------------------------
   ! Staged construction: the bodies whose "Update Reference Displacement" came out
   ! non-negative take this step's solution as their new reference, so that the next
@@ -2332,21 +2396,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CALL Info(Caller,'Displacing the mesh with computed displacement field')
      CALL DisplaceMesh( Mesh, Displacement, 1, StressPerm, STDOFs, .FALSE., dim )
   END IF
-
-  DEALLOCATE( PrevSOL )
-  IF (UseUmat) THEN
-    DEALLOCATE(DisplacementRot)
-    DEALLOCATE(LocalForceSaved)
-  END IF
-
-  CALL DefaultFinish()
-  
-  CALL Info('ElasticSolver','All done',Level=4)
-  CALL Info('ElasticSolver','------------------------------------------',Level=4)
-
+!------------------------------------------------------------------------------
+  END SUBROUTINE PostProcess
 !------------------------------------------------------------------------------
 
-CONTAINS
 
 !------------------------------------------------------------------------------
 !> Stop on a StressSolve keyword this solver does not implement, for the material
