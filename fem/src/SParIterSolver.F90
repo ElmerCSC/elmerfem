@@ -967,7 +967,7 @@ END SUBROUTINE ZeroSplittedMatrix
     TYPE(MVPackT), POINTER :: P
     INTEGER, ALLOCATABLE :: reqs(:)
 
-    nneigh = ParEnv % NumOfNeighbours
+    nneigh = ParEnvNeighbourCount( ParEnv )
     ALLOCATE( SplittedMatrix % MVNeigh(nneigh) )
     ALLOCATE( SplittedMatrix % MVSendSize(nneigh) )
     ALLOCATE( SplittedMatrix % MVRecvSize(nneigh) )
@@ -979,7 +979,6 @@ END SUBROUTINE ZeroSplittedMatrix
       IF ( ParEnv % IsNeighbour(i) ) THEN
         j = j + 1
         SplittedMatrix % MVNeigh(j) = i - 1
-        IF ( j == nneigh ) EXIT
       END IF
     END DO
 
@@ -1769,7 +1768,7 @@ END SUBROUTINE ZeroSplittedMatrix
        ALLOCATE(isNeighbour(ParEnv % PEs))
        nneigh = MeshNeighbours(Mesh,isNeighbour)
      ELSE
-       nneigh = ParEnv % NumOfNeighbours
+       nneigh = ParEnvNeighbourCount( ParEnv )
        isNeighbour => ParEnv % IsNeighbour
      ENDIF
  

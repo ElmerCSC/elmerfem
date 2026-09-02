@@ -522,7 +522,7 @@ CONTAINS
       END DO
       ALLOCATE( buf(2*sz) )
 
-      CALL CheckBuffer( 4*n+Parenv % NumOfNeighbours*(4+MPI_BSEND_OVERHEAD) )
+      CALL CheckBuffer( 4*n+ParEnvNeighbourCount(ParEnv)*(4+MPI_BSEND_OVERHEAD) )
 
       DO i=1,ParEnv % PEs
         IF ( .NOT. ParEnv % IsNeighbour(i) ) CYCLE
@@ -548,7 +548,7 @@ CONTAINS
       DEALLOCATE(NeighList, buf )
 
       m = SIZE(ParallelInfo % GlobalDOFs)
-      DO i=1,ParEnv % NumOfNeighbours
+      DO i=1,ParEnvNeighbourCount(ParEnv)
         CALL MPI_RECV( sz,1,MPI_INTEGER,MPI_ANY_SOURCE,20000,ELMER_COMM_WORLD,status,ierr)
         IF (sz>0 ) THEN
           proc = status(MPI_SOURCE)
@@ -2755,7 +2755,7 @@ END  SUBROUTINE SParIterAllReduceOR
 
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -3193,7 +3193,7 @@ END SUBROUTINE ExchangeInterfaces
 
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -3636,7 +3636,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
         send_size(:), perm(:), neigh(:), Replications(:)
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   IF ( n<= 0 ) RETURN
 
   oper = OPER_SUM  ! Operator. See Types.F90 for valid values.
@@ -3827,7 +3827,7 @@ SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
         send_size(:), perm(:), neigh(:)
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   IF ( n<= 0 ) RETURN
 
   oper = 0 ! 0=sum, 1=min, 2=max
@@ -4005,7 +4005,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
         send_size(:), OwnerPerm(:), neigh(:)
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   IF ( n<= 0 ) RETURN
 
   oper = 0 ! 0=sum, 1=min, 2=max
@@ -4188,7 +4188,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
         send_size(:), perm(:), neigh(:)
   !*********************************************************************
 
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -4372,7 +4372,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
         send_size(:), perm(:), neigh(:)
   !*********************************************************************
 
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -4536,7 +4536,7 @@ SUBROUTINE BuildRevVecIndices( SplittedMatrix )
   !*********************************************************************
 tt = realTime()
 
-  n = Parenv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n), sbuf(n), L(n) )
   n = 0
   DO i = 1,ParEnv % PEs
