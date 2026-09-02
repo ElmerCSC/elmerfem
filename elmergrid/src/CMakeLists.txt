@@ -32,14 +32,18 @@ ELSE()
   ADD_SUBDIRECTORY(metis-5.1.0)
 
   # add metis as system include directory
+  # CMAKE_CURRENT_SOURCE_DIR is this directory in both the in-tree and the
+  # standalone build.  The CMAKE_SOURCE_DIR/elmergrid/src spelling that used to
+  # be listed here named the same directory when Elmer is the top level project
+  # and a nonexistent one otherwise.
   TARGET_INCLUDE_DIRECTORIES(ElmerGrid SYSTEM BEFORE PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/metis-5.1.0/include
-    ${CMAKE_SOURCE_DIR}/elmergrid/src/metis-5.1.0/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/metis-5.1.0/include)
 ENDIF()
 
+# config.h is generated into the elmergrid binary directory and reached as
+# "../config.h" from the sources here, so this directory is what is needed.
 TARGET_INCLUDE_DIRECTORIES(ElmerGrid PRIVATE
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${CMAKE_BINARY_DIR}/elmergrid/src)
+  ${CMAKE_CURRENT_BINARY_DIR})
 
 TARGET_COMPILE_DEFINITIONS(ElmerGrid PRIVATE DISABLE_MATC)
 
