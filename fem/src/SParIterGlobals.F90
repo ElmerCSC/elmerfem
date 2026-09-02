@@ -83,6 +83,29 @@ CONTAINS
 !> what > ParEnv < is aimed at, so that the target stays valid also when the
 !> matrix of a solver is replaced or freed.
 !------------------------------------------------------------------------------
+!> Number of neighbouring partitions of a parallel environment, derived from the
+!> > IsNeighbour < mask rather than read from the cached > NumOfNeighbours <.
+!> The mask is a pointer that is deliberately shared between the environments of
+!> several matrices (see FreeMatrix, which clears the aliases before freeing the
+!> owner), while the counter is a plain scalar copied by value. Neighbour
+!> discovery updates the mask in place but writes the count into whichever
+!> environment > ParEnv < aimed at, so the two halves can end up describing
+!> different matrices. Anything that sizes an array or bounds a message loop
+!> must therefore use this and not the counter.
+!------------------------------------------------------------------------------
+  FUNCTION ParEnvNeighbourCount( PEnv ) RESULT( n )
+!------------------------------------------------------------------------------
+    TYPE(ParEnv_t) :: PEnv
+    INTEGER :: n
+!------------------------------------------------------------------------------
+    n = 0
+    IF( ASSOCIATED( PEnv % IsNeighbour ) ) n = COUNT( PEnv % IsNeighbour )
+!------------------------------------------------------------------------------
+  END FUNCTION ParEnvNeighbourCount
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
   SUBROUTINE SetMatrixParEnv( Matrix, ParMatrix )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: Matrix
@@ -101,6 +124,13 @@ CONTAINS
       END IF
     ELSE IF( ASSOCIATED( Matrix % Solver ) ) THEN
       ParEnv => Matrix % Solver % ParEnv
+    END IF
+
+    ! Keep the cached counter in step with the mask it now sits beside, and
+    ! repair the owner so the next refresh of the mirror is right too.
+    IF( ASSOCIATED( ParEnv % IsNeighbour ) ) THEN
+      ParEnv % NumOfNeighbours = ParEnvNeighbourCount( ParEnv )
+      IF( ASSOCIATED( p ) ) p % ParEnv % NumOfNeighbours = ParEnv % NumOfNeighbours
     END IF
 
     ParEnv % ActiveComm = Matrix % Comm
