@@ -2652,6 +2652,17 @@ CONTAINS
      ELSE IF( PRESENT( RelOrder ) ) THEN
        IF (pElement) THEN
          n = elm % PDefs % GaussPoints
+         ! The count the element declares is set for bulk elements in
+         ! SetMeshMaxDOFs and copied to boundary elements in AssignLocalNumber.
+         ! That copy comes from the mesh Edge/Face, so it never happens when no
+         ! Edges/Faces were generated -- an explicit bubble augmentation such as
+         ! "Element = p:1 b:1" needs neither. The boundary element is then still
+         ! an active p-element with a declared count of zero. Fall back to the
+         ! rule of the element type, exactly as the branch below does when
+         ! RelOrder is absent; for p:1 the bubbles vanish on the boundary, so the
+         ! trace is of the element's own degree and that rule is the right one.
+         ! Without this, GaussPoints* is handed n=0 and calls Fatal.
+         IF( n == 0 ) n = elmt % GaussPoints
          IF( RelOrder == 0 ) THEN
            CONTINUE
          ELSE
