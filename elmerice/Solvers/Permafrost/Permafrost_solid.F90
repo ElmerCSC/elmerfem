@@ -1006,6 +1006,7 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
   PorosityAtIP    = ArgumentsAtIP(3)
   SalinityAtIP    = ArgumentsAtIP(4)
   XiAtIP          = ArgumentsAtIP(5)
+  CALL ValidateSalinity(SalinityAtIP,XiAtIP,FunctionName)
   
   rhocAtIP =  rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
   !IF (rhocAtIP .NE. rhocAtIP) CALL FATAL(FunctionName,'rhocAtIP is NaN')  

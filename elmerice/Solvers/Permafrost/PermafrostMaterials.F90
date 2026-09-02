@@ -41,6 +41,14 @@ MODULE PermafrostMaterials
   USE DefUtils
   USE SolverUtils
   IMPLICIT NONE
+  REAL(KIND=dp), PARAMETER :: MinimumLiquidFraction = 0.001_dp
+  REAL(KIND=dp), PARAMETER :: HydraulicConductivityReferenceGravity = 9.81_dp
+  REAL(KIND=dp), PARAMETER :: DefaultHydraulicConductivityLimit = 1.0e-14_dp
+  LOGICAL, SAVE :: LiquidFractionClipWarningIssued = .FALSE.
+  LOGICAL, SAVE :: HydraulicConductivityReferenceStateReported = .FALSE.
+  LOGICAL, SAVE :: HydraulicConductivityLimitWarningIssued = .FALSE.
+  LOGICAL, SAVE :: DefaultHydraulicConductivityLimitInfoIssued = .FALSE.
+  LOGICAL, SAVE :: GroundwaterMobilityLimitInfoIssued = .FALSE.
   !---------------------------------
   ! type for solvent (water and ice)
   !---------------------------------
@@ -85,6 +93,21 @@ MODULE PermafrostMaterials
      CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   END TYPE RockMaterial_t
 
+  TYPE ExponentialParameters_t
+     REAL(KIND=dp) :: Swres, DeltaT, Beta, Impedance
+  END TYPE ExponentialParameters_t
+
+  TYPE Lunardini1988ThreeZoneLinearParameters_t
+     REAL(KIND=dp) :: DeltaT, xi_o, xi_f, DryDensity
+     REAL(KIND=dp) :: k1, k2, k3, c1, c2, c3
+  END TYPE Lunardini1988ThreeZoneLinearParameters_t
+
+  TYPE GroundwaterMobilityLimit_t
+     REAL(KIND=dp) :: HydraulicConductivity
+     REAL(KIND=dp) :: Mobility
+     LOGICAL :: UseHydraulicConductivity
+  END TYPE GroundwaterMobilityLimit_t
+
   TYPE(SolventMaterial_t), TARGET :: GlobalSolventMaterial
   TYPE(SoluteMaterial_t), TARGET :: GlobalSoluteMaterial
   TYPE(RockMaterial_t) :: GlobalRockmaterial
@@ -98,6 +121,271 @@ CONTAINS
   !-------------------------------------------------
   ! I/O related functions
   !-------------------------------------------------
+
+  SUBROUTINE ValidateLiquidFraction(Xi,Material,Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(INOUT) :: Xi
+    TYPE(ValueList_t), POINTER :: Material
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    LOGICAL :: ClipLiquidFraction, Found
+
+    IF (Xi .NE. Xi) &
+         CALL FATAL(Caller,'Computed liquid fraction Xi is NaN')
+
+    IF ((Xi <= 0.0_dp) .OR. (Xi > 1.0_dp)) THEN
+      ClipLiquidFraction = GetLogical(Material,'Clip Liquid Fraction',Found)
+      IF (.NOT.Found) ClipLiquidFraction = .FALSE.
+
+      IF (.NOT.ClipLiquidFraction) THEN
+        WRITE(Message,*) 'Computed liquid fraction Xi=',Xi,&
+             ' is outside the required range 0 < Xi <= 1'
+        CALL FATAL(Caller,Message)
+      END IF
+
+      IF (.NOT.LiquidFractionClipWarningIssued) THEN
+        WRITE(Message,*) 'Computed liquid fraction Xi=',Xi,' reset to ',&
+             MERGE(MinimumLiquidFraction,1.0_dp,Xi <= 0.0_dp),&
+             '. Further liquid-fraction clipping warnings are suppressed.'
+        CALL WARN(Caller,Message)
+        LiquidFractionClipWarningIssued = .TRUE.
+      END IF
+      IF (Xi <= 0.0_dp) THEN
+        Xi = MinimumLiquidFraction
+      ELSE
+        Xi = 1.0_dp
+      END IF
+    END IF
+  END SUBROUTINE ValidateLiquidFraction
+  !---------------------------------------------------------------------------------------------
+
+  SUBROUTINE ValidateSalinityInput(Salinity,Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: Salinity
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+
+    IF (Salinity .NE. Salinity) &
+         CALL FATAL(Caller,'Salinity is NaN')
+
+    IF ((Salinity < 0.0_dp) .OR. (Salinity >= 1.0_dp)) THEN
+      WRITE(Message,*) 'Salinity=',Salinity,&
+           ' is outside the required range 0 <= Salinity < 1'
+      CALL FATAL(Caller,Message)
+    END IF
+  END SUBROUTINE ValidateSalinityInput
+  !---------------------------------------------------------------------------------------------
+
+  SUBROUTINE ValidateSalinity(Salinity,Xi,Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: Salinity,Xi
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+
+    CALL ValidateSalinityInput(Salinity,Caller)
+    IF (Salinity > Xi) THEN
+      WRITE(Message,*) 'Salinity=',Salinity,' exceeds liquid fraction Xi=',Xi,&
+           '. Required range: 0 <= Salinity <= Xi'
+      CALL FATAL(Caller,Message)
+    END IF
+  END SUBROUTINE ValidateSalinity
+  !---------------------------------------------------------------------------------------------
+
+  SUBROUTINE ReadConductivityArithmeticMeanWeight(Material,MeanFactor,Found,Caller)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    REAL(KIND=dp), INTENT(OUT) :: MeanFactor
+    LOGICAL, INTENT(OUT) :: Found
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+
+    MeanFactor = GetConstReal(Material,'Conductivity Arithmetic Mean Weight',Found)
+    IF (Found) THEN
+      IF ((MeanFactor < 0.0_dp) .OR. (MeanFactor > 1.0_dp)) &
+           CALL FATAL(Caller,'"Conductivity Arithmetic Mean Weight" must be between zero and one')
+    ELSE
+      CALL INFO(Caller,'"Conductivity Arithmetic Mean Weight" not found. '//&
+           'Using default 1-Porosity*Xi.',Level=9)
+    END IF
+  END SUBROUTINE ReadConductivityArithmeticMeanWeight
+  !---------------------------------------------------------------------------------------------
+
+  FUNCTION ReadGroundwaterMobilityLimit(Material,Caller) RESULT(MobilityLimit)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    TYPE(GroundwaterMobilityLimit_t) :: MobilityLimit
+    REAL(KIND=dp) :: HydraulicConductivityLimit,GroundwaterMobilityLimit
+    LOGICAL :: HydraulicConductivityLimitFound,GroundwaterMobilityLimitFound
+    !---------
+    HydraulicConductivityLimit = GetConstReal(&
+         Material,'Hydraulic Conductivity Limit',HydraulicConductivityLimitFound)
+    GroundwaterMobilityLimit = GetConstReal(&
+         Material,'Groundwater Mobility Limit',GroundwaterMobilityLimitFound)
+
+    IF (HydraulicConductivityLimitFound .AND. GroundwaterMobilityLimitFound) &
+         CALL FATAL(Caller,'Set only one of "Hydraulic Conductivity Limit" and '//&
+         '"Groundwater Mobility Limit"')
+
+    ! The default remains hydraulic conductivity (m/s); GetKgw converts it
+    ! to current-state mobility using the documented reference state.
+    MobilityLimit % HydraulicConductivity = DefaultHydraulicConductivityLimit
+    MobilityLimit % Mobility = 0.0_dp
+    MobilityLimit % UseHydraulicConductivity = .TRUE.
+
+    IF (HydraulicConductivityLimitFound) THEN
+      IF ((HydraulicConductivityLimit .NE. HydraulicConductivityLimit) .OR. &
+           (HydraulicConductivityLimit <= 0.0_dp)) &
+           CALL FATAL(Caller,'"Hydraulic Conductivity Limit" must be positive')
+      MobilityLimit % HydraulicConductivity = HydraulicConductivityLimit
+      MobilityLimit % UseHydraulicConductivity = .TRUE.
+      IF (.NOT.HydraulicConductivityLimitWarningIssued) THEN
+        CALL WARN(Caller,'"Hydraulic Conductivity Limit" is interpreted in m s^-1 and '//&
+             'converted to groundwater mobility. Earlier versions applied this value without conversion.')
+        HydraulicConductivityLimitWarningIssued = .TRUE.
+      END IF
+    ELSE IF (GroundwaterMobilityLimitFound) THEN
+      IF ((GroundwaterMobilityLimit .NE. GroundwaterMobilityLimit) .OR. &
+           (GroundwaterMobilityLimit <= 0.0_dp)) &
+           CALL FATAL(Caller,'"Groundwater Mobility Limit" must be positive')
+      MobilityLimit % Mobility = GroundwaterMobilityLimit
+      MobilityLimit % UseHydraulicConductivity = .FALSE.
+      IF (.NOT.GroundwaterMobilityLimitInfoIssued) THEN
+        CALL INFO(Caller,'"Groundwater Mobility Limit" uses direct mobility units '//&
+             'm^2 Pa^-1 s^-1.',Level=3)
+        GroundwaterMobilityLimitInfoIssued = .TRUE.
+      END IF
+    ELSE IF (.NOT.DefaultHydraulicConductivityLimitInfoIssued) THEN
+      WRITE(Message,*) 'Neither conductivity-limit keyword was found. Using default ',&
+           DefaultHydraulicConductivityLimit,' m s^-1.'
+      CALL INFO(Caller,Message,Level=3)
+      DefaultHydraulicConductivityLimitInfoIssued = .TRUE.
+    END IF
+  END FUNCTION ReadGroundwaterMobilityLimit
+  !---------------------------------------------------------------------------------------------
+
+  FUNCTION ReadPermafrostPhaseChangeModel(Material,Caller) RESULT(PhaseChangeModel)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
+    LOGICAL :: Found
+    !---------
+    PhaseChangeModel = ListGetString(Material,'Permafrost Phase Change Model',Found)
+    IF (.NOT.Found) THEN
+      CALL FATAL(Caller,'"Permafrost Phase Change Model" not found. Accepted values: '//&
+           'powerlaw, exponential, linear, hartikainen, '//&
+           'lunardini1988_threezone_linear')
+    END IF
+
+    SELECT CASE(PhaseChangeModel)
+    CASE('powerlaw','exponential','linear','hartikainen',&
+         'lunardini1988_threezone_linear')
+    CASE DEFAULT
+      CALL FATAL(Caller,'Unknown "Permafrost Phase Change Model": '//TRIM(PhaseChangeModel)//&
+           '. Accepted values: powerlaw, exponential, linear, hartikainen, '//&
+           'lunardini1988_threezone_linear')
+    END SELECT
+
+    CALL INFO(Caller,'"Permafrost Phase Change Model" set to '//TRIM(PhaseChangeModel),Level=9)
+  END FUNCTION ReadPermafrostPhaseChangeModel
+  !---------------------------------------------------------------------------------------------
+
+  SUBROUTINE ReadExponentialParameters(Params,ExponentialParams,Caller)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(ExponentialParameters_t), INTENT(OUT) :: ExponentialParams
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    LOGICAL :: Found
+
+    ExponentialParams % Swres = GetConstReal(Params,"Exponential Swres",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Exponential Swres" not found')
+
+    ExponentialParams % DeltaT = GetConstReal(Params,"Exponential DeltaT",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Exponential DeltaT" not found')
+
+    ExponentialParams % Impedance = GetConstReal(Params,"Exponential Impedance",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Exponential Impedance" not found')
+
+    ExponentialParams % Beta = GetConstReal(Params,"Exponential Beta",Found)
+    IF (.NOT.Found) ExponentialParams % Beta = 0.0_dp
+
+    IF ((ExponentialParams % Swres <= 0.0_dp) .OR. &
+         (ExponentialParams % Swres >= 1.0_dp)) &
+         CALL FATAL(Caller,'"Exponential Swres" must satisfy 0 < Swres < 1')
+    IF (ExponentialParams % DeltaT <= 0.0_dp) &
+         CALL FATAL(Caller,'"Exponential DeltaT" must be positive')
+    IF (ExponentialParams % Beta < 0.0_dp) &
+         CALL FATAL(Caller,'"Exponential Beta" must be nonnegative')
+    IF (ExponentialParams % Impedance < 0.0_dp) &
+         CALL FATAL(Caller,'"Exponential Impedance" must be nonnegative')
+  END SUBROUTINE ReadExponentialParameters
+
+  SUBROUTINE ReadLunardini1988ThreeZoneLinearParameters(&
+       Params,LunardiniParams,Caller)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Lunardini1988ThreeZoneLinearParameters_t), INTENT(OUT) :: LunardiniParams
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    LOGICAL :: Found
+
+    LunardiniParams % DeltaT = GetConstReal(Params,"Lunardini DeltaT",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini DeltaT" not found')
+
+    LunardiniParams % xi_o = GetConstReal(Params,"Lunardini xi_o",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini xi_o" not found')
+
+    LunardiniParams % xi_f = GetConstReal(Params,"Lunardini xi_f",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini xi_f" not found')
+
+    LunardiniParams % DryDensity = &
+         GetConstReal(Params,"Lunardini dry density",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini dry density" not found')
+
+    LunardiniParams % k1 = GetConstReal(Params,"Lunardini k1",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini k1" not found')
+
+    LunardiniParams % k2 = GetConstReal(Params,"Lunardini k2",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini k2" not found')
+
+    LunardiniParams % k3 = GetConstReal(Params,"Lunardini k3",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini k3" not found')
+
+    LunardiniParams % c1 = GetConstReal(Params,"Lunardini c1",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini c1" not found')
+
+    LunardiniParams % c2 = GetConstReal(Params,"Lunardini c2",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini c2" not found')
+
+    LunardiniParams % c3 = GetConstReal(Params,"Lunardini c3",Found)
+    IF (.NOT.Found) &
+         CALL FATAL(Caller,'"Lunardini c3" not found')
+
+    IF (LunardiniParams % DeltaT <= 0.0_dp) &
+         CALL FATAL(Caller,'"Lunardini DeltaT" must be positive')
+    IF (LunardiniParams % xi_f < 0.0_dp) &
+         CALL FATAL(Caller,'"Lunardini xi_f" must be nonnegative')
+    IF (LunardiniParams % xi_o <= LunardiniParams % xi_f) &
+         CALL FATAL(Caller,'"Lunardini xi_o" must be greater than "Lunardini xi_f"')
+    IF (LunardiniParams % DryDensity <= 0.0_dp) &
+         CALL FATAL(Caller,'"Lunardini dry density" must be positive')
+    IF ((LunardiniParams % k1 <= 0.0_dp) .OR. &
+         (LunardiniParams % k2 <= 0.0_dp) .OR. &
+         (LunardiniParams % k3 <= 0.0_dp)) &
+         CALL FATAL(Caller,'Lunardini thermal conductivities must be positive')
+    IF ((LunardiniParams % c1 <= 0.0_dp) .OR. &
+         (LunardiniParams % c2 <= 0.0_dp) .OR. &
+         (LunardiniParams % c3 <= 0.0_dp)) &
+         CALL FATAL(Caller,'Lunardini volumetric heat capacities must be positive')
+  END SUBROUTINE ReadLunardini1988ThreeZoneLinearParameters
 
   SUBROUTINE ReadPermafrostSolventMaterial( Params, CurrentSolventMaterial)
     IMPLICIT NONE
@@ -278,6 +566,8 @@ CONTAINS
         LocalSolventMaterial % betai = 0.0_dp  ! CHANGE
       END IF
 
+      CALL ValidateHydraulicConductivityReferenceState(&
+           LocalSolventMaterial % rhow0,LocalSolventMaterial % muw0,SubroutineName)
       CALL INFO(SubroutineName,"-----------------------------------------------------------------",Level=9)
       CALL INFO(SubroutineName,"Solvent related constants",Level=9)
       WRITE(Message,*) "Mw",LocalSolventMaterial % Mw,"rhow0",LocalSolventMaterial % rhow0,"rhoi0",LocalSolventMaterial % rhoi0,&
@@ -1195,31 +1485,31 @@ CONTAINS
     END IF
   END FUNCTION XiLinearT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXiLunardini(T0,Temperature,xif, xi0, deltaT) RESULT(XiLinear)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,xif,xi0,deltaT
-    REAL(KIND=dp) :: XiLinear, mpar
-    mpar = (xi0 - xif)/deltaT
+  FUNCTION GetXiLunardini1988ThreeZoneLinear(&
+       T0,Temperature,xi_f,xi_o,deltaT) RESULT(XiLunardini)
+    REAL(KIND=dp), INTENT(IN) :: T0,Temperature,xi_f,xi_o,deltaT
+    REAL(KIND=dp) :: XiLunardini, mpar
+    mpar = (xi_o - xi_f)/deltaT
     IF (Temperature >= T0) THEN
-       XiLinear = xi0
+       XiLunardini = xi_o
     ELSEIF (Temperature <= T0 - deltaT) THEN
-       XiLinear = xif
+       XiLunardini = xi_f
     ELSE
-       XiLinear = xif + mpar * (Temperature - (T0 - deltaT))
+       XiLunardini = xi_f + mpar * (Temperature - (T0 - deltaT))
     ENDIF
-  END FUNCTION GetXiLunardini
+  END FUNCTION GetXiLunardini1988ThreeZoneLinear
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiLunardiniT(T0,Temperature,xif,xi0, deltaT)
-    REAL(KIND=dp), INTENT(IN) ::T0,Temperature,xif,xi0,deltaT
+  REAL (KIND=dp) FUNCTION XiLunardini1988ThreeZoneLinearT(&
+       T0,Temperature,xi_f,xi_o,deltaT)
+    REAL(KIND=dp), INTENT(IN) :: T0,Temperature,xi_f,xi_o,deltaT
     REAL(KIND=dp) :: mpar
-    mpar = (xi0 - xif)/deltaT
+    mpar = (xi_o - xi_f)/deltaT
     IF ((Temperature - T0 > -deltaT) .AND. (Temperature < T0) )THEN 
-      !XiLinearT = mpar
-      XiLunardiniT = mpar
+      XiLunardini1988ThreeZoneLinearT = mpar
     ELSE
-      !XiLinearT = 0.0_dp
-      XiLunardiniT = 0.0_dp
+      XiLunardini1988ThreeZoneLinearT = 0.0_dp
     END IF
-  END FUNCTION XiLunardiniT
+  END FUNCTION XiLunardini1988ThreeZoneLinearT
   !---------------------------------------------------------------------------------------------
   ! functions specific to heat transfer and phase change
   !---------------------------------------------------------------------------------------------
@@ -1452,25 +1742,25 @@ CONTAINS
   END FUNCTION deltaG
   !---------------------------------------------------------------------------------------------
   FUNCTION GetBi(CurrentSoluteMaterial,RockMaterialID,&
-       Xi0Tilde,Salinity,Update) RESULT(bi)
+       Xi0Tilde,Salinity,BoundWater) RESULT(bi)
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: Xi0Tilde,Salinity
     INTEGER,  INTENT(IN) :: RockMaterialID
     REAL(KIND=dp):: bi(4)
-    LOGICAL :: Update
+    LOGICAL, INTENT(IN) :: BoundWater
     !----------
     REAL(KIND=dp)::  aux,d1,d2,e1
 
-    IF (Update) THEN
+    d1 = CurrentSoluteMaterial % d1
+    d2 = CurrentSoluteMaterial % d2
+    aux = Salinity/(1.0_dp - Salinity)
+    bi(1) = aux*(d1 + 0.5_dp*d2*aux)
+    bi(2) = aux*(d1 + d2*aux)/(1.0_dp - Salinity)
+    IF (BoundWater) THEN
       e1 = GlobalRockMaterial % e1(RockMaterialID)
       bi(3) = (1.0_dp - Xi0Tilde)*e1
       bi(4) = Xi0Tilde*e1
     ELSE
-      d1 = CurrentSoluteMaterial % d1
-      d2 = CurrentSoluteMaterial % d2
-      aux = Salinity/(1.0_dp - Salinity)
-      bi(1) = aux*(d1 + 0.5_dp*d2*aux)
-      bi(2) = aux*(d1 + d2*aux)/(1.0_dp - Salinity)
       bi(3) = 0.0_dp
       bi(4) = 0.0_dp
     END IF
@@ -1486,9 +1776,11 @@ CONTAINS
     d1 = CurrentSoluteMaterial % d1
     d2 = CurrentSoluteMaterial % d2
 
+    ! Derivatives of the salinity coefficients bi(1:2) with respect to yc.
     aux = 1.0_dp/(1.0_dp - Salinity)
     biYc(1) = (d1 + d2*Salinity*aux)*aux*aux
-    biYc(2) = (d1*(1.0_dp + Salinity) + d2*Salinity*(2.0_dp + Salinity))*aux**3.0_dp
+    biYc(2) = d1*(1.0_dp + Salinity)*aux**3.0_dp &
+         + d2*Salinity*(2.0_dp + Salinity)*aux**4.0_dp
   END FUNCTION GetBiYc
   !---------------------------------------------------------------------------------------------
   FUNCTION GetB(RockMaterialID,CurrentSolventMaterial,&
@@ -1627,10 +1919,10 @@ CONTAINS
     !local
     REAL(KIND=dp) :: aux1, aux2, aux3, aux_sqrt
 
+    ! Chain-rule derivative dXi/dyc using dbi(1:2)/dyc from GetBiYc.
     aux_sqrt = B*B + 4.0_dp*D
     aux1 = 1.0_dp/(delta + bi(2) + bi(4))
-    aux2 = ( 1.0_dp + B/SQRT(aux_sqrt) )*(biYc(1) + B*biYc(2)) &
-         + biYc(2)/(SQRT(aux_sqrt))
+    aux2 = ( 1.0_dp + B/SQRT(aux_sqrt) )*(biYc(1) + B*biYc(2))
     aux3 = 2.0_dp*D*biYc(2)/(SQRT(aux_sqrt))
     XiYc = 0.5_dp*aux1*(aux2 + aux3)*Xi*Xi      
     !IF (XiYc .NE. XiYc) THEN
@@ -1665,70 +1957,58 @@ CONTAINS
     END IF
   END FUNCTION XiEta
   !----------------------------------------------------------------------
-  SUBROUTINE GetXiHartikainen (RockMaterialID,&
+  SUBROUTINE GetXiHartikainen (RockMaterialID,Material,&
        CurrentSoluteMaterial,CurrentSolventMaterial,&
        TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
        Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
        GasConstant,p0,T0,&
        XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-       ComputeXi,ComputeXiT, ComputeXiYc, ComputeXiP, ComputeXiEta)
+       ComputeXiT,ComputeXiYc,ComputeXiP,ComputeXiEta)
 
     IMPLICIT NONE
 
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+    TYPE(ValueList_t), POINTER :: Material
     INTEGER :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP
     REAL(KIND=dp), INTENT(IN) :: GasConstant,p0,T0
     REAL(KIND=dp), INTENT(IN) :: TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP
     REAL(KIND=dp), INTENT(OUT) :: XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP
-    LOGICAL, INTENT(IN) :: ComputeXi,ComputeXiT, ComputeXiYc, ComputeXiP, ComputeXiEta
+    LOGICAL, INTENT(IN) :: ComputeXiT,ComputeXiYc,ComputeXiP,ComputeXiEta
     !---------------------------
     REAL(KIND=dp) :: biAtIP(4),biYcAtIP(2),gwaAtIP,gwaTAtIP,gwapAtIP,&
          giaAtIP,giaTAtIP,giapAtIP,deltaGAtIP,DAtIP,BAtIP
     !---------------------------
-    IF (ComputeXi .OR. (ComputeXiT .OR. ComputeXiYC .OR. ComputeXiP)) THEN
-      biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
-           Xi0Tilde,SalinityAtIP,.FALSE.) 
-      gwaAtIP = gwa(CurrentSolventMaterial,&
-           p0,T0,rhowAtIP,TemperatureAtIP,PressureAtIP)     
-      giaAtIP = gia(CurrentSolventMaterial,&
-           p0,T0,rhoiAtIP,TemperatureAtIP,PressureAtIP)
-      deltaGAtIP = deltaG(gwaAtIP,giaAtIP)
-      DAtIP= D(RockMaterialID,deltaInElement,biAtIP)
-      BAtIP = GetB(RockMaterialID,CurrentSolventMaterial,&
-           Xi0tilde,deltaInElement,deltaGAtIP,GasConstant,biAtIP,TemperatureAtIP)
-    ELSE
-      CALL WARN("GetXiHartikainen","Nothing to be done - why did you call this routine?")
-    END IF
-    IF (ComputeXi)  THEN
-      XiAtIP = GetXi(BAtIP,DAtIP)
-      IF (XiAtIP < 0.0_dp) THEN
-        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
-        XiAtIP = 0.0_dp
-        CALL WARN("GetXiHartikainen",Message)
-      ELSE IF (XiAtIP > 1.0_dp) THEN
-        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
-        XiAtIP = 0.99_dp
-        CALL WARN("GetXiHartikainen",Message)
-      END IF
-    END IF
-    
-    ! updates of derivatives
+    CALL ValidateSalinityInput(SalinityAtIP,'GetXiHartikainen')
+    ! First evaluate the unbound-water branch (b3=b4=0).
+    biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
+         Xi0Tilde,SalinityAtIP,.FALSE.)
+    gwaAtIP = gwa(CurrentSolventMaterial,&
+         p0,T0,rhowAtIP,TemperatureAtIP,PressureAtIP)
+    giaAtIP = gia(CurrentSolventMaterial,&
+         p0,T0,rhoiAtIP,TemperatureAtIP,PressureAtIP)
+    deltaGAtIP = deltaG(gwaAtIP,giaAtIP)
+    DAtIP = D(RockMaterialID,deltaInElement,biAtIP)
+    BAtIP = GetB(RockMaterialID,CurrentSolventMaterial,&
+         Xi0tilde,deltaInElement,deltaGAtIP,GasConstant,biAtIP,TemperatureAtIP)
+    XiAtIP = GetXi(BAtIP,DAtIP)
+
     IF (XiAtIP < Xi0tilde)  THEN
+      ! Re-evaluate the state with the bound-water interaction terms.
       biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.TRUE.)
+      DAtIP = D(RockMaterialID,deltaInElement,biAtIP)
+      BAtIP = GetB(RockMaterialID,CurrentSolventMaterial,&
+           Xi0tilde,deltaInElement,deltaGAtIP,GasConstant,biAtIP,TemperatureAtIP)
       XiAtIP = GetXi(BAtIP,DAtIP)
-      IF (XiAtIP <= 0.0_dp) THEN
-        WRITE(Message,*) 'Xi=',XiAtIP,' reset to 0.001'
-        CALL WARN("GetXiHartikainen",Message)
-        XiAtIP = 0.001_dp
-      END IF
     END IF
-    !----------------------------------------------------
+    CALL ValidateLiquidFraction(XiAtIP,Material,'GetXiHartikainen')
+
     XiTAtIP = 0.0_dp
     XiYcAtIP = 0.0_dp
     XiPAtIP = 0.0_dp
+    XiEtaAtIP = 0.0_dp
     IF (ComputeXiT) THEN
       giaTAtIP = giaT(CurrentSolventMaterial,&
            p0,T0,rhoiAtIP,TemperatureAtIP)
@@ -1748,6 +2028,10 @@ CONTAINS
       XiPAtIP = XiP(CurrentSolventMaterial,&
            BAtIP,DAtIP,biAtIP,gwapAtIP,giapAtIP,XiAtIP,&
            deltaInElement,GasConstant,TemperatureAtIP)
+    END IF
+    IF (ComputeXiEta) THEN
+      CALL FATAL('GetXiHartikainen',&
+           'Porosity derivative XiEta is not implemented')
     END IF
   END SUBROUTINE GetXiHartikainen
   !---------------------------------------------------------------------------------------------
@@ -1789,7 +2073,7 @@ CONTAINS
 	 GeneralPolynomial(Temperature,T0,T0,&
          GlobalRockMaterial % aas(0:5,RockMaterialID),&
          GlobalRockMaterial % aasl(RockMaterialID))
-    rhosT = rhos * alphaS
+    rhosT = -rhos * alphaS
   END FUNCTION rhosT
 !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhosp(RockMaterialID,rhos,p0,Pressure)
@@ -1877,7 +2161,7 @@ CONTAINS
          GeneralPolynomial(Temperature,T0,T0,&
          CurrentSolventMaterial % aaw(0:5),&
          CurrentSolventMaterial % aawl)
-    rhowT = rhow * alphaW
+    rhowT = -rhow * alphaW
   END FUNCTION rhowT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhowP(CurrentSolventMaterial,rhow,p0,Pressure)
@@ -1946,7 +2230,7 @@ CONTAINS
          GeneralPolynomial(Temperature,T0,T0,&
          CurrentSolventMaterial % aai(0:5),&
          CurrentSolventMaterial % aail) 
-    rhoiT = rhoi * alphaI
+    rhoiT = -rhoi * alphaI
   END FUNCTION rhoiT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhoiP(CurrentSolventMaterial,rhoi,p0,Pressure)
@@ -2007,7 +2291,7 @@ CONTAINS
            GeneralPolynomial(Temperature,T0,T0,&
            CurrentSoluteMaterial % aac(0:5),&
            CurrentSoluteMaterial % aacl) 
-      rhocT = rhoc * alphaC
+      rhocT = -rhoc * alphaC
     END IF
   END FUNCTION rhocT
   !---------------------------------------------------------------------------------------------
@@ -2242,9 +2526,6 @@ CONTAINS
          hi,hw,Porosity,Salinity
     REAL(KIND=dp) :: CGTT
     !-------------------------
-    REAL(KIND=dp) :: xc
-    !-------------------------
-    xc = Salinity/Xi
     CGTT = (1.0_dp - Porosity)*rhos*cs &
          + (Xi - Salinity) * Porosity * rhow * cw & ! mind xc * Xi = Salinity
          + Salinity * Porosity * rhoc * cc & ! mind xc * Xi = Salinity
@@ -2252,19 +2533,20 @@ CONTAINS
          + rhoi*(hw - hi)*Porosity*XiT
   END FUNCTION GetCGTT
     !---------------------------------------------------------------------------------------------
-  FUNCTION GetCGTTLunardini(c1,c2,c3,Xi,Swres,Xi0,XiT,rhoi,Porosity,hi,hw,dryDensity)RESULT(CGTT)
+  FUNCTION GetCGTTLunardini1988ThreeZoneLinear(&
+       c1,c2,c3,Xi,xi_f,xi_o,XiT,hi,hw,dryDensity)RESULT(CGTT)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,Swres,XiT,rhoi,Porosity,hi,hw,Xi0,dryDensity
+    REAL(KIND=dp), INTENT(IN) :: c1,c2,c3,Xi,xi_f,xi_o,XiT,hi,hw,dryDensity
     REAL(KIND=dp) :: CGTT
     !-------------------------
-    IF (Xi >= Xi0) THEN
+    IF (Xi >= xi_o) THEN
       CGTT = c3
-    ELSE IF (Xi <= Swres) THEN
+    ELSE IF (Xi <= xi_f) THEN
       CGTT = c1
     ELSE
-      CGTT = c2 + (hw - hi)*dryDensity*XiT !!TODO: replace 1680_dp with dryDensity input from SIF !!
+      CGTT = c2 + (hw - hi)*dryDensity*XiT
     END IF
-  END FUNCTION GetCGTTLunardini
+  END FUNCTION GetCGTTLunardini1988ThreeZoneLinear
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTp(rhoi,hi,hw,XiP,Porosity)RESULT(CGTp)! All state variables or derived values
     IMPLICIT NONE
@@ -2313,31 +2595,30 @@ CONTAINS
          Salinity,Porosity,meanfactor
     REAL(KIND=dp) :: KGTT(3,3)
     !-------------------------
-    REAL(KIND=dp) :: KGaTT, KghTT, unittensor(3,3),xc
+    REAL(KIND=dp) :: KGaTT, KghTT, unittensor(3,3)
     !-------------------------
-    xc = Salinity/Xi
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
-    KGhTT = 1.0_dp/((1.0_dp - Porosity)/ksth + (1.0_dp - xc)*Xi*Porosity/kwth &
-         + xc*Porosity/kcth + (1.0_dp - Xi)*Porosity/kith)
-    KGaTT = (1.0_dp - Porosity)*ksth + (1.0_dp - xc)*Xi*Porosity*kwth &
-         + xc*Porosity*kcth + (1.0_dp - Xi)*Porosity*kith
+    KGhTT = 1.0_dp/((1.0_dp - Porosity)/ksth + (Xi - Salinity)*Porosity/kwth &
+         + Salinity*Porosity/kcth + (1.0_dp - Xi)*Porosity/kith)
+    KGaTT = (1.0_dp - Porosity)*ksth + (Xi - Salinity)*Porosity*kwth &
+         + Salinity*Porosity*kcth + (1.0_dp - Xi)*Porosity*kith
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGTTLunardini(Xi,Swres,Xi0,k1,k2,k3)RESULT(KGTT) ! All state variables or derived values
+  FUNCTION GetKGTTLunardini1988ThreeZoneLinear(&
+       Xi,xi_f,xi_o,k1,k2,k3)RESULT(KGTT)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: Xi, Swres, k1, k2, k3, Xi0
+    REAL(KIND=dp), INTENT(IN) :: Xi, xi_f, xi_o, k1, k2, k3
     REAL(KIND=dp) :: KGTT(3,3), unittensor(3,3)
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
-    !Xi0 = 0.200_dp
-    IF (Xi >= Xi0) THEN
+    IF (Xi >= xi_o) THEN
       KGTT = unittensor*k3
-    ELSE IF (Xi <= Swres) THEN
+    ELSE IF (Xi <= xi_f) THEN
       KGTT = unittensor*k1
     ELSE
       KGTT = unittensor*k2
     END IF
-  END FUNCTION GetKGTTLunardini
+  END FUNCTION GetKGTTLunardini1988ThreeZoneLinear
   !---------------------------------------------------------------------------------------------
   FUNCTION  GetDtd(RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
     IMPLICIT NONE
@@ -2454,31 +2735,98 @@ CONTAINS
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,Exponential,impedancefactor)RESULT(KGpe)
+  FUNCTION GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor) &
+       RESULT(RelativePermeability)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: RockMaterialID
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
+    LOGICAL, INTENT(IN) :: Exponential
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: impedancefactor
+    REAL(KIND=dp) :: RelativePermeability
+    REAL(KIND=dp) :: qexp
+    !-------------------------
+    IF (Exponential) THEN
+      IF (.NOT.PRESENT(impedancefactor)) THEN
+        CALL FATAL("PermafrostMaterials(GetRelativePermeability)", &
+             "Exponential impedance factor not found")
+      ELSE
+        RelativePermeability = &
+             MAX(10.0_dp**(-impedancefactor*Porosity*(1.0_dp - Xi)),1.0d-06)
+      END IF
+    ELSE
+      qexp = GlobalRockMaterial % qexp(RockMaterialID)
+      RelativePermeability = Xi**qexp
+    END IF
+  END FUNCTION GetRelativePermeability
+  !---------------------------------------------------------------------------------------------
+  SUBROUTINE ValidateHydraulicConductivityReferenceState(ReferenceDensity,ReferenceViscosity,&
+       Caller)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: ReferenceDensity,ReferenceViscosity
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    !-------------------------
+    IF ((ReferenceDensity .NE. ReferenceDensity) .OR. (ReferenceDensity <= 0.0_dp)) &
+         CALL FATAL(Caller,'Reference groundwater density must be positive')
+    IF ((ReferenceViscosity .NE. ReferenceViscosity) .OR. (ReferenceViscosity <= 0.0_dp)) &
+         CALL FATAL(Caller,'Reference groundwater viscosity must be positive')
+    IF (HydraulicConductivityReferenceGravity <= 0.0_dp) &
+         CALL FATAL(Caller,'Hydraulic-conductivity reference gravity must be positive')
+  END SUBROUTINE ValidateHydraulicConductivityReferenceState
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetHydraulicConductivityConversionFactor(ReferenceDensity,ReferenceViscosity,&
+       CurrentViscosity) RESULT(Factor)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: ReferenceDensity,ReferenceViscosity
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: CurrentViscosity
+    REAL(KIND=dp) :: Factor
+    CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName = &
+         'PermafrostMaterials(GetHydraulicConductivityConversionFactor)'
+    !-------------------------
+    CALL ValidateHydraulicConductivityReferenceState(&
+         ReferenceDensity,ReferenceViscosity,FunctionName)
+
+    IF (PRESENT(CurrentViscosity)) THEN
+      IF ((CurrentViscosity .NE. CurrentViscosity) .OR. (CurrentViscosity <= 0.0_dp)) &
+           CALL FATAL(FunctionName,'Current groundwater viscosity must be positive')
+      ! Hydraulic conductivity to groundwater mobility.
+      Factor = (ReferenceViscosity/CurrentViscosity) / &
+           (ReferenceDensity*HydraulicConductivityReferenceGravity)
+    ELSE
+      ! Hydraulic conductivity to intrinsic permeability.
+      Factor = ReferenceViscosity / &
+           (ReferenceDensity*HydraulicConductivityReferenceGravity)
+    END IF
+
+    IF (.NOT.HydraulicConductivityReferenceStateReported) THEN
+      WRITE(Message,*) 'Hydraulic-conductivity reference state: density=',&
+           ReferenceDensity,' kg m^-3, viscosity=',ReferenceViscosity,&
+           ' Pa s, gravity=',HydraulicConductivityReferenceGravity,&
+           ' m s^-2, intrinsic-permeability factor=',ReferenceViscosity / &
+           (ReferenceDensity*HydraulicConductivityReferenceGravity),' m s'
+      CALL INFO(FunctionName,Message,Level=3)
+      HydraulicConductivityReferenceStateReported = .TRUE.
+    END IF
+  END FUNCTION GetHydraulicConductivityConversionFactor
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi,Porosity,Exponential,impedancefactor)RESULT(KGpe)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
-    REAL(KIND=dp), INTENT(IN) :: Xi
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
     REAL(KIND=dp) :: KGpe(3,3)
-    LOGICAL, OPTIONAL :: Exponential
-    REAL(KIND=dp), OPTIONAL :: impedancefactor
+    LOGICAL, INTENT(IN) :: Exponential
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: impedancefactor
 !--------------------------
-    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor, relativepermeability
-    REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
+    REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativepermeability
     INTEGER :: I, J
     !-------------------------
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
    
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
-    factor = muw0/(rhow0*gval)
-    IF (Exponential) THEN
-      relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
-    ELSE
-      qexp = GlobalRockMaterial % qexp(RockMaterialID)
-      relativepermeability = (Xi**qexp)
-    END IF
+    factor = GetHydraulicConductivityConversionFactor(rhow0,muw0)
+    relativepermeability = &
+         GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
     DO I=1,3
       DO J=1,3
         KGpe(i,j) = Kgwh0(i,j)*factor*relativepermeability
@@ -2486,56 +2834,51 @@ CONTAINS
     END DO
   END FUNCTION GetKGpe
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXikG0hy(RockMaterialID,Xi,Exponential,impedancefactor)RESULT(XikG0hy)
+  FUNCTION GetXikG0hy(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)RESULT(XikG0hy)
      IMPLICIT NONE
-    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
-    REAL(KIND=dp), INTENT(IN) :: Xi
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
     REAL(KIND=dp) :: XikG0hy(3,3)
-    LOGICAL :: Exponential
-    REAL(KIND=dp), OPTIONAL :: impedancefactor
+    LOGICAL, INTENT(IN) :: Exponential
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: impedancefactor
     !--------------------------
-    REAL(KIND=dp) :: Kgwh0(3,3), qexp,relativepermeability
+    REAL(KIND=dp) :: Kgwh0(3,3),relativepermeability
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    IF (Exponential) THEN
-      relativepermeability = MAX(10.0_dp**(-impedancefactor*(1.0_dp - Xi)),1.0d-06)
-    ELSE
-      qexp = GlobalRockMaterial % qexp(RockMaterialID)
-      relativepermeability = (Xi**qexp)
-    END IF
+    relativepermeability = &
+         GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
     XikG0hy = relativepermeability * Kgwh0
     !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
   END FUNCTION GetXikG0hy
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,Porosity,MinKgw,Exponential,impedancefactor) RESULT(Kgw)
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,Porosity,&
+       MobilityLimit,Exponential,impedancefactor) RESULT(Kgw)
     
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
-    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity,MinKgw,mugw
+    REAL(KIND=dp), INTENT(IN) :: Xi,Porosity,mugw
+    TYPE(GroundwaterMobilityLimit_t), INTENT(IN) :: MobilityLimit
     REAL(KIND=dp) :: Kgw(3,3)
     LOGICAL :: Exponential
     REAL(KIND=dp), OPTIONAL :: impedancefactor
     !--------------------------
-    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor,relativePermeability
-    REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
+    REAL(KIND=dp) :: muw0,rhow0,Kgwh0(3,3),factor,relativePermeability,MinimumMobility
     INTEGER :: I, J
     !-------------------------
-    IF (mugw <= 0.0_dp) &
-         CALL FATAL("PermafrostMaterials(GetKgw)","Unphysical viscosity detected")
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
 
-    IF (Exponential) THEN
-      relativepermeability = MAX(10.0_dp**(-impedancefactor*Porosity*(1.0_dp - Xi)),1.0d-06)
-    ELSE
-      qexp = GlobalRockMaterial % qexp(RockMaterialID)
-      relativepermeability=(Xi**qexp)
-    END IF
+    relativepermeability = &
+         GetRelativePermeability(RockMaterialID,Xi,Porosity,Exponential,impedancefactor)
       
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
-    ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
-    factor = (muw0/mugw)/(rhow0*gval)
+    factor = GetHydraulicConductivityConversionFactor(rhow0,muw0,mugw)
+    ! Kgw and its lower bound must have mobility units (m^2 Pa^-1 s^-1).
+    IF (MobilityLimit % UseHydraulicConductivity) THEN
+      MinimumMobility = MobilityLimit % HydraulicConductivity*factor
+    ELSE
+      MinimumMobility = MobilityLimit % Mobility
+    END IF
 
     Kgw = 0.0_dp
     DO I=1,3
@@ -2544,7 +2887,8 @@ CONTAINS
       END DO
     END DO
     DO I=1,3
-      Kgw(i,i) = MAX(Kgw(i,i),MinKgw)
+      ! Apply the scalar mobility floor only to the principal components.
+      Kgw(i,i) = MAX(Kgw(i,i),MinimumMobility)
     END DO
   END FUNCTION GetKgw
   !---------------------------------------------------------------------------------------------
