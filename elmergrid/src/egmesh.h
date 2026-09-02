@@ -5,6 +5,12 @@
    become obsolete. The routines mostly operate on structures
    FemType and BoundaryType. */
 
+/* These routines are C. ElmerGUI compiles the ElmerGrid core as a library and
+   calls into it from C++, so the declarations need C linkage there. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int GetElementDimension(int elementtype);
 int GetMaxElementType(struct FemType *data);
 int GetMinElementType(struct FemType *data);
@@ -114,3 +120,7 @@ int CreateInverseTopology(struct FemType *data,int info);
 int DestroyInverseTopology(struct FemType *data,int info);
 int MeshTypeStatistics(struct FemType *data,int info);
 int BoundingBox(struct FemType *data,int nomesh,int nomeshes,int info);
+
+#ifdef __cplusplus
+}
+#endif

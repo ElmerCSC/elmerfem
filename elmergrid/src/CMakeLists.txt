@@ -49,3 +49,37 @@ IF(NOT(WIN32))
 ENDIF()
 
 INSTALL(TARGETS ElmerGrid RUNTIME DESTINATION "bin")
+
+# ---------------------------------------------------------------------------
+# ElmerGrid core library, used by the ElmerGrid plugin inside ElmerGUI.
+#
+# ElmerGUI embeds the ElmerGrid mesh handling routines.  Until now it carried
+# its own copies of egconvert.c, egmesh.c, egnative.c and egutils.c under
+# ElmerGUI/Application/plugins, renamed to .cpp and refreshed by hand with
+# plugins/grid2gui.sh.  Those copies are gone and ElmerGUI links this library
+# instead, so there is a single copy of these sources in the tree.
+#
+# EG_PLUGIN selects the embedded configuration (USE_MATC 0, USE_METIS 0), which
+# is what ElmerGUI has always defined for its copies.  It is PUBLIC so that the
+# setting reaching this library and the setting reaching ElmerGUI's own sources
+# cannot drift apart.
+#
+# The headers declaring these routines carry extern "C" guards, so C++ callers
+# such as ElmerGUI can include them directly.
+# ---------------------------------------------------------------------------
+SET(elmergrid_core_SRCS
+  egconvert.c egmesh.c egnative.c egutils.c
+  egconvert.h egmesh.h egnative.h egutils.h
+  egdef.h egtypes.h)
+
+ADD_LIBRARY(elmergrid_core STATIC ${elmergrid_core_SRCS})
+
+TARGET_COMPILE_DEFINITIONS(elmergrid_core PUBLIC EG_PLUGIN)
+
+TARGET_INCLUDE_DIRECTORIES(elmergrid_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+SET_TARGET_PROPERTIES(elmergrid_core PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
+IF(NOT(WIN32))
+  TARGET_LINK_LIBRARIES(elmergrid_core PUBLIC m)
+ENDIF()
