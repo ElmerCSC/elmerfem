@@ -117,9 +117,11 @@ MACRO(ADD_ELMER_TEST TestName)
         ENDFOREACH()
       ENDIF()
       IF(WITH_MPI)
-        # Tell ctest how many processors this test requires.
+        # Tell ctest how many processors this test requires. Note that > n < is
+        # the index into the test list, as the DEPENDS below uses it; the task
+        # count of this particular test is > _this_test_tasks <.
         SET_TESTS_PROPERTIES(${_this_test_name} PROPERTIES
-          PROCESSORS ${n})
+          PROCESSORS ${_this_test_tasks})
       ENDIF()
       IF(${n} GREATER 0)
         # Avoid running tests using the same directory concurrently.
