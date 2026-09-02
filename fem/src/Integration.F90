@@ -1636,6 +1636,56 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED simplex rule that can serve a
+!> triangular p-element sized by getNumberOfGaussPoints, or 0 if none can.
+!> The tetrahedral counterpart is TetraSimplexRulePoints; see its comment for
+!> why the count can be inverted exactly. Degrees are as documented at each
+!> table above: 1 point for degree 1, 3 for 2, 4 for 3, 6 for 4, 7 for 5,
+!> 11 for 6, 12 for 7, 17 for 8, 20 for 9.
+!>
+!> Worth more here than a cheaper count alone: GaussPointsPTriangle serves the
+!> p-reference triangle by collapsing a quadrilateral rule onto it, which is
+!> not exact at the nominal degree, whereas these tables are genuine triangle
+!> rules. So the tabulated route is the more accurate one as well as the
+!> smaller, and answers may move where it replaces the collapsed rule.
+!------------------------------------------------------------------------------
+   FUNCTION TriangleSimplexRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg
+
+     maxp = NINT( SQRT( REAL(np,dp) ) )
+     ! One degree of headroom; see TetraSimplexRulePoints for why it is not spare.
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       m = 1
+     CASE( 2 )
+       m = 3
+     CASE( 3 )
+       m = 4
+     CASE( 4 )
+       m = 6
+     CASE( 5 )
+       m = 7
+     CASE( 6 )
+       m = 11
+     CASE( 7 )
+       m = 12
+     CASE( 8 )
+       m = 17
+     CASE( 9 )
+       m = 20
+     CASE DEFAULT
+       m = 0
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION TriangleSimplexRulePoints
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsPTriangle(n) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: i,n
@@ -1874,6 +1924,59 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED simplex rule that can serve a
+!> tetrahedral p-element sized by getNumberOfGaussPoints, or 0 if none can.
+!>
+!> getNumberOfGaussPoints forms a tensor-product count maxp**dim, where maxp is
+!> points per direction and maxp-1 the largest basis degree it was sized for.
+!> That count is what GaussPointsPTetra then collapses to a brick rule mapped
+!> onto the tetrahedron -- 150 points for maxp=5. But a simplex has its own,
+!> far cheaper rules, and GaussPointsTetra already maps them onto the
+!> p-reference tetrahedron when asked. So recover maxp (exactly, since the
+!> count was formed as its cube), hence the total degree 2*(maxp-1) reached by
+!> a product of two such basis functions, and pick the smallest table exact to
+!> at least that. Degrees are as documented at each table above: 1 point for
+!> degree 1, 4 for 2, 5 for 3, 11 for 4, 24 for 6.
+!>
+!> The tables stop at degree 6, so an element carrying explicit bubbles on a
+!> tetrahedron ("p:1 b:1" needs degree 8, "p:1 b:3" degree 10) returns 0 and
+!> keeps the mapped brick rule. Adding higher-degree simplex data is what would
+!> reach those.
+!------------------------------------------------------------------------------
+   FUNCTION TetraSimplexRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg
+
+     maxp = NINT( REAL(np,dp)**(1.0_dp/3.0_dp) )
+     ! One degree of headroom, matching what the tensor count it replaces already
+     ! carried: maxp points per direction are exact to 2*maxp-1, i.e. one degree
+     ! beyond the 2*(maxp-1) a product of two basis functions needs. That margin
+     ! is not spare -- the degree argument assumes an affine element and constant
+     ! material, and a curved element or a nonlinear law pushes the integrand
+     ! past it. Dropping it measurably lost accuracy (CooksMembrane, neo-Hookean).
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       m = 1
+     CASE( 2 )
+       m = 4
+     CASE( 3 )
+       m = 5
+     CASE( 4 )
+       m = 11
+     CASE( 5, 6 )
+       m = 24
+     CASE DEFAULT
+       m = 0
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION TetraSimplexRulePoints
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsPTetra(np) RESULT(IP)
 !------------------------------------------------------------------------------
    INTEGER :: i,np,n
@@ -2619,7 +2722,7 @@ CONTAINS
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
      LOGICAL :: pElement, UsePRefElement, Economic, Hcurl
-     INTEGER :: n, eldim, p1d, ntri, nseg, necon
+     INTEGER :: n, eldim, p1d, ntri, nseg, necon, nsimplex
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
@@ -2729,7 +2832,17 @@ CONTAINS
 
      CASE (3)
         IF (pElement) THEN
-          IntegStuff = GaussPointsPTriangle(n)
+          ! As for the tetrahedron in CASE(5): prefer a genuine triangle rule
+          ! over collapsing a quadrilateral one, when a tabulated rule is exact
+          ! to the degree this count was sized for. Skipped when the caller
+          ! named a count explicitly (np), which is honoured literally.
+          nsimplex = 0
+          IF( .NOT. PRESENT( np ) ) nsimplex = TriangleSimplexRulePoints( n )
+          IF( nsimplex > 0 ) THEN
+            IntegStuff = GaussPointsTriangle( nsimplex, PReferenceElement = .TRUE. )
+          ELSE
+            IntegStuff = GaussPointsPTriangle(n)
+          END IF
         ELSE
           IntegStuff = GaussPointsTriangle(n)
         END IF
@@ -2758,7 +2871,18 @@ CONTAINS
 
      CASE (5)
         IF (pElement) THEN
-           IntegStuff = GaussPointsPTetra(n)
+           ! Prefer a tabulated simplex rule when one is exact to the degree
+           ! this count was sized for; GaussPointsPTetra otherwise maps a brick
+           ! rule and costs several times as many points for the same
+           ! exactness. Skipped when the caller named a count explicitly (np),
+           ! which is then honoured literally rather than reinterpreted.
+           nsimplex = 0
+           IF( .NOT. PRESENT( np ) ) nsimplex = TetraSimplexRulePoints( n )
+           IF( nsimplex > 0 ) THEN
+              IntegStuff = GaussPointsTetra( nsimplex, PReferenceElement = .TRUE. )
+           ELSE
+              IntegStuff = GaussPointsPTetra(n)
+           END IF
         ELSE
            IntegStuff = GaussPointsTetra(n)
         END IF
