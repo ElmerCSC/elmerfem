@@ -70,6 +70,36 @@ SUBROUTINE PermafrostGroundwaterFlow_Init( Model,Solver,dt,TransientSimulation )
   ! Add Nonlinear system defaults
   CALL ListAddnewConstReal(SolverParams,'Nonlinear System Convergence Tolerance',1.0e-05_dp)
   CALL ListAddNewInteger(SolverParams,'Nonlinear System Max Iterations',50) 
+
+  ! Ask for a finer integration rule than the element degree implies. The
+  ! default rule integrates the BASIS functions exactly, which is the right
+  ! default in general -- but the permafrost material model is evaluated at the
+  ! integration points, and ice saturation, porosity and the permeability that
+  ! follows from them vary within a single element. The integrand is therefore
+  ! not the polynomial the basis degree describes, and a rule sized from that
+  ! degree under-resolves it: on Permafrost_Biot the default costs about 1% on
+  ! this solver's norm and, through the coupling, nearly 3% on the bedrock
+  ! deformation that reads its pressure.
+  !
+  ! Stated PER FAMILY rather than as a "Relative Integration Order" bump, for
+  ! two reasons. A relative bump is applied on top of whatever each family's
+  ! default is, and those defaults are not uniform -- a tetrahedron already
+  ! carries 150 points for "p:1 b:1" where a quadrilateral carries 9, so one
+  ! bump that suits the quadrilateral is gross over-integration on the
+  ! tetrahedron. And a mesh may mix families, so the right amount cannot be a
+  ! single number. Only the families that need raising are named; the rest keep
+  ! their defaults.
+  !
+  ! The counts give five points per direction. That is what the quadrilateral
+  ! was measured to need (it restores Permafrost_Biot to 2e-6 of its reference),
+  ! and per-direction resolution is the currency the requirement is really in,
+  ! since what has to be resolved is how the coefficients vary across the
+  ! element.
+  !
+  ! ListAddNew, so a sif stating its own "Element Integration Points" still wins
+  ! -- this is a default for a material model with a known appetite, not policy.
+  CALL ListAddNewString(SolverParams,'Element Integration Points', &
+      '-quad 25 -brick 125 -prism 125')
   
   CALL INFO( SolverName, '  Done Initialization',Level=4)
   CALL INFO( SolverName, '-------------------------------------------',Level=4 )
