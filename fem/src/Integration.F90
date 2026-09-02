@@ -2807,7 +2807,18 @@ CONTAINS
          ELSE IF( RelOrder == -1 ) THEN
            n = elmt % GaussPoints0
          ELSE
-           PRINT *,'RelOrder can only be {-1, 0, 1} !'
+           ! A non-p element has exactly three tabulated rules to choose from --
+           ! GaussPoints0 / GaussPoints / GaussPoints2 in elements.def -- so
+           ! there is nothing to return outside {-1,0,1}. This used to PRINT a
+           ! complaint and fall through with n never assigned, handing an
+           ! uninitialised count to the quadrature below. Say so and stop
+           ! instead: "Relative Integration Order" is a documented sif keyword,
+           ! so this is reachable from an ordinary input file. Note that a
+           ! p-element takes any integer -- that branch is arithmetic, not a
+           ! table lookup -- which is why the limit is stated for this case only.
+           WRITE( Message,'(A,I0,A)') 'Relative Integration Order = ',RelOrder, &
+               ' but a non-p element only has rules for {-1,0,1}'
+           CALL Fatal( 'GaussPoints', Message )
          END IF
        END IF
      ELSE
