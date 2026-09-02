@@ -991,6 +991,9 @@ CONTAINS
     ! Calculate value of function without direction and return
     ! if local numbering not present
     IF (.NOT. PRESENT(localNumbers)) THEN
+      ! NOTE: getBubbleDOFs is the volume of these loops and
+      ! getBubbleMaxDegree1D their extent along one axis (both in
+      ! PElementMaps). Changing these bounds means changing those.
       DO i=2,(pmax-2)
         DO j=1,(pmax-i)-1
           !_ELMER_OMP_SIMD
@@ -2172,6 +2175,9 @@ CONTAINS
       L2v(l) = H1Basis_WedgeL(2,u(l),v(l))
       L3v(l) = H1Basis_WedgeL(3,u(l),v(l))
     END DO
+    ! NOTE: getBubbleDOFs is the volume of these loops and
+    ! getBubbleMaxDegree1D their extent along one axis (both in
+    ! PElementMaps). Changing these bounds means changing those.
     DO i=0,pmax-5
       DO j=0,pmax-5-i
         DO k=1,pmax-4-i-j
@@ -3998,6 +4004,9 @@ CONTAINS
 
     ! For each bubble calculate value of basis function and its derivative
     ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
+    ! NOTE: getBubbleDOFs is the volume of these loops and
+    ! getBubbleMaxDegree1D their extent along one axis (both in
+    ! PElementMaps). Changing these bounds means changing those.
     DO i=2,pmax-4
       DO j=2,pmax-i-2
         DO k=1,pmax-i-j-1
@@ -4028,6 +4037,9 @@ CONTAINS
 
     ! For each bubble calculate value of basis function and its derivative
     ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
+    ! NOTE: getBubbleDOFs is the volume of these loops and
+    ! getBubbleMaxDegree1D their extent along one axis (both in
+    ! PElementMaps). Changing these bounds means changing those.
     DO i=2,pmax-4
       DO j=2,pmax-i-2
         DO k=1,pmax-i-j-1

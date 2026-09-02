@@ -994,6 +994,9 @@ CONTAINS
             ! For each bubble calculate the value of p basis function
             ! and its derivatives for index pairs i,j>=2, i+j=4,...,p
             IF(SerendipityPBasis) THEN
+              ! NOTE: getBubbleDOFs is the volume of these loops and
+              ! getBubbleMaxDegree1D their extent along one axis (both in
+              ! PElementMaps). Changing these bounds means changing those.
               SD_bubbles_quad: DO i=2,p-2
                  DO j=2,p-i
                    IF ( q >= SIZE(Basis) ) EXIT SD_bubbles_quad
@@ -1446,6 +1449,9 @@ CONTAINS
             IF(SerendipityPBasis) THEN
               ! For each bubble calculate the value of basis function and its derivative
               ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
+              ! NOTE: getBubbleDOFs is the volume of these loops and
+              ! getBubbleMaxDegree1D their extent along one axis (both in
+              ! PElementMaps). Changing these bounds means changing those.
               SD_bubbles_prism: DO i=0,p-5
                  DO j=0,p-5-i
                     DO k=2,p-3-i-j
@@ -1592,6 +1598,9 @@ CONTAINS
            p = getEffectiveBubbleP(element,p,bdofs)
 
            IF(SerendipityPBasis) THEN
+             ! NOTE: getBubbleDOFs is the volume of these loops and
+             ! getBubbleMaxDegree1D their extent along one axis (both in
+             ! PElementMaps). Changing these bounds means changing those.
              SD_bubbles_brick: DO i=2,p-4
                DO j=2,p-i-2
                  DO k=2,p-i-j
