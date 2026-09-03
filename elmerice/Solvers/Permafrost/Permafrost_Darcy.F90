@@ -36,6 +36,7 @@
 !---------------------------------------------------------------------------------------------
 SUBROUTINE PermafrostGroundwaterFlow_Init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
+  USE PermaFrostMaterials
   IMPLICIT NONE
 
   TYPE(Model_t)  :: Model
@@ -71,35 +72,9 @@ SUBROUTINE PermafrostGroundwaterFlow_Init( Model,Solver,dt,TransientSimulation )
   CALL ListAddnewConstReal(SolverParams,'Nonlinear System Convergence Tolerance',1.0e-05_dp)
   CALL ListAddNewInteger(SolverParams,'Nonlinear System Max Iterations',50) 
 
-  ! Ask for a finer integration rule than the element degree implies. The
-  ! default rule integrates the BASIS functions exactly, which is the right
-  ! default in general -- but the permafrost material model is evaluated at the
-  ! integration points, and ice saturation, porosity and the permeability that
-  ! follows from them vary within a single element. The integrand is therefore
-  ! not the polynomial the basis degree describes, and a rule sized from that
-  ! degree under-resolves it: on Permafrost_Biot the default costs about 1% on
-  ! this solver's norm and, through the coupling, nearly 3% on the bedrock
-  ! deformation that reads its pressure.
-  !
-  ! Stated PER FAMILY rather than as a "Relative Integration Order" bump, for
-  ! two reasons. A relative bump is applied on top of whatever each family's
-  ! default is, and those defaults are not uniform -- a tetrahedron already
-  ! carries 150 points for "p:1 b:1" where a quadrilateral carries 9, so one
-  ! bump that suits the quadrilateral is gross over-integration on the
-  ! tetrahedron. And a mesh may mix families, so the right amount cannot be a
-  ! single number. Only the families that need raising are named; the rest keep
-  ! their defaults.
-  !
-  ! The counts give five points per direction. That is what the quadrilateral
-  ! was measured to need (it restores Permafrost_Biot to 2e-6 of its reference),
-  ! and per-direction resolution is the currency the requirement is really in,
-  ! since what has to be resolved is how the coefficients vary across the
-  ! element.
-  !
-  ! ListAddNew, so a sif stating its own "Element Integration Points" still wins
-  ! -- this is a default for a material model with a known appetite, not policy.
-  CALL ListAddNewString(SolverParams,'Element Integration Points', &
-      '-quad 25 -brick 125 -prism 125')
+  ! Integration rule: see SetPermafrostIntegrationRule. Shared with the other
+  ! permafrost _init routines, because they share integration point variables.
+  CALL SetPermafrostIntegrationRule( SolverParams )
   
   CALL INFO( SolverName, '  Done Initialization',Level=4)
   CALL INFO( SolverName, '-------------------------------------------',Level=4 )
@@ -541,6 +516,13 @@ CONTAINS
       IF (ConstVal) &
            CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     END IF
+
+    ! These are only assigned inside the conditionals below, and they are
+    ! declared without initialisation -- so ASSOCIATED() on them is undefined
+    ! until they are given a value. Nullify explicitly (rather than "=> NULL()"
+    ! at the declaration, which would imply SAVE) so the CheckIPVarSize calls
+    ! below, and the ASSOCIATED tests already in this routine, are well defined.
+    NULLIFY( RhoOffsetAtIPVar, FreshwaterHeadAtIPVar, GWfluxVar1, GWfluxVar2, GWfluxVar3 )
     XiAtIPVar => VariableGet( Solver % Mesh % Variables, 'Xi')
     IF (.NOT.ASSOCIATED(XiAtIPVar)) THEN
       WRITE(Message,*) 'Variable Xi is not associated'
@@ -625,6 +607,15 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPointsAdapt( Element )   
+
+    ! The IP variables written below are indexed Perm(ElementID)+t, so their
+    ! slices must be exactly IP % n long. See CheckIPVarSize.
+    CALL CheckIPVarSize( XiAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( RhoOffsetAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( FreshwaterHeadAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( GWfluxVar1, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( GWfluxVar2, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( GWfluxVar3, ElementID, IP % n, SolverName )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(SolverName,'Number of Gauss points for 1st element:'&
           //I2S(IP % n),Level=31)
