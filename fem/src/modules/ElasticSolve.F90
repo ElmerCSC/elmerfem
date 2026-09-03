@@ -487,9 +487,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! damping with the material resolved and only the terms actually present -- and
   ! that is not visible outside the assembly.
   LOGICAL :: ProbeActive = .FALSE., ProbeOverride = .FALSE.
-  INTEGER :: ProbeRelOrder = 0, ProbeSample, ProbeTop
-  INTEGER :: ProbeSeen(8), ProbeNp(8), ProbeDefNp(8)
-  LOGICAL :: ProbeFailed(8)
+  INTEGER :: ProbeRelOrder = 0, ProbeNpFixed = 0, ProbeSample, ProbeTop
+  INTEGER :: ProbeSeen(8), ProbeNp(8), ProbeDefNp(8), ProbeRelOff(8)
+  LOGICAL :: ProbeFailed(8), ProbeIsRel(8)
   REAL(KIND=dp) :: ProbeTol
   LOGICAL :: PStab = .FALSE.
   REAL(KIND=dp) :: PStabCoeff
@@ -1457,6 +1457,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
     ProbeTop = ListGetInteger( SolverParams,'Integration Rule Probe Steps Up', GotIt )
     IF( .NOT. GotIt ) ProbeTop = 2
     ProbeSeen = 0; ProbeNp = 0; ProbeDefNp = 0; ProbeFailed = .FALSE.
+    ProbeRelOff = 0; ProbeIsRel = .FALSE.
   END IF
 
   ! An explicit per family rule, if one is stated -- by a sif, or by _Init for
@@ -1893,7 +1894,15 @@ CONTAINS
     ! re-assembled differs from the real assembly in the quadrature and nothing
     ! else.
     IF( ProbeOverride ) THEN
-      IntegStuff = GaussPoints( Element, RelOrder = ProbeRelOrder )
+      ! Two ways in, because the two keywords reach disjoint sets of rules and
+      ! the probe has to walk both: a relative order leaves np absent and so
+      ! reaches the tabulated simplex rules, while only an explicit count reaches
+      ! the prism's triangle x segment and economical families.
+      IF( ProbeNpFixed > 0 ) THEN
+        IntegStuff = GaussPoints( Element, np = ProbeNpFixed )
+      ELSE
+        IntegStuff = GaussPoints( Element, RelOrder = ProbeRelOrder )
+      END IF
       RETURN
     END IF
 
@@ -1956,9 +1965,17 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ProbeThisElement()
 !------------------------------------------------------------------------------
-    INTEGER :: fam, r, rlo, nc, i, k, best, PrevNp, nsys, nblk
-    INTEGER, PARAMETER :: MaxCand = 16
-    INTEGER :: CandNp(MaxCand)
+    INTEGER :: fam, r, rlo, nc, i, j, k, best, PrevNp, nsys, nblk, nTry
+    INTEGER, PARAMETER :: MaxCand = 32
+    INTEGER :: CandNp(MaxCand), CandFixed(MaxCand), CandRel(MaxCand)
+    INTEGER :: TryNp(MaxCand), TryFixed(MaxCand)
+    ! The counts family 7 actually dispatches on, taken from the CASE labels in
+    ! Integration.F90: the triangle x segment tensor rules and the economical
+    ! ones. Naming a count outside this set is NOT a soft failure -- it falls
+    ! through to GaussPointsWedge, which fatals -- so this list has to track that
+    ! dispatch and nothing may be added to it speculatively.
+    INTEGER, PARAMETER :: PrismNp(22) = &
+        [ 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,28,44,48,85,100 ]
     REAL(KIND=dp), ALLOCATABLE :: Cand(:,:), Ref(:)
     REAL(KIND=dp) :: Scale, Diff
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -1984,19 +2001,70 @@ CONTAINS
     rlo = MAX( GaussPointsMinRelOrder( CurrentElement ), -8 )
     IF( rlo >= ProbeTop ) RETURN
 
+    ! Collect the candidate rules FIRST, ascending, then assemble. The two
+    ! keywords reach disjoint sets of rules and the smallest sufficient one may
+    ! lie in either: a relative order leaves np absent and so reaches the
+    ! tabulated simplex rules, while only an explicit count reaches the prism's
+    ! triangle x segment and economical families. A ladder-only probe sees just
+    ! the collapsed n**3 rungs on a prism, and so reports one already set to 85
+    ! as needing 125 -- wrong, and wrong in the alarming direction.
+    nTry = 0
+    TryNp = 0
+    TryFixed = 0
+    PrevNp = -1
+    DO r = rlo, ProbeTop
+      IP = GaussPoints( CurrentElement, RelOrder = r )
+      IF( IP % n <= 0 .OR. IP % n == PrevNp ) CYCLE
+      PrevNp = IP % n
+      ! keep the list ascending and free of duplicates; an internal procedure
+      ! cannot contain another, so this is written out at both call sites
+      IF( nTry < MaxCand .AND. .NOT. ANY( TryNp(1:nTry) == IP % n ) ) THEN
+        j = COUNT( TryNp(1:nTry) < IP % n )
+        TryNp(j+2:nTry+1) = TryNp(j+1:nTry)
+        TryFixed(j+2:nTry+1) = TryFixed(j+1:nTry)
+        TryNp(j+1) = IP % n
+        TryFixed(j+1) = 0
+        nTry = nTry + 1
+      END IF
+    END DO
+
+    IF( fam == 7 ) THEN
+      DO i=1,SIZE(PrismNp)
+        ! keep the list ascending and free of duplicates; an internal procedure
+        ! cannot contain another, so this is written out at both call sites
+        IF( nTry < MaxCand .AND. .NOT. ANY( TryNp(1:nTry) == PrismNp(i) ) ) THEN
+          j = COUNT( TryNp(1:nTry) < PrismNp(i) )
+          TryNp(j+2:nTry+1) = TryNp(j+1:nTry)
+          TryFixed(j+2:nTry+1) = TryFixed(j+1:nTry)
+          TryNp(j+1) = PrismNp(i)
+          TryFixed(j+1) = PrismNp(i)
+          nTry = nTry + 1
+        END IF
+      END DO
+    END IF
+
+    IF( nTry < 2 ) RETURN
+
     ALLOCATE( Cand( 3*nblk, MaxCand ), Ref( 3*nblk ) )
     nc = 0
-    PrevNp = -1
     CandNp = 0
 
     ProbeOverride = .TRUE.
-    DO r = rlo, ProbeTop
-      ProbeRelOrder = r
-      IP = GaussPoints( CurrentElement, RelOrder = r )
-      IF( IP % n <= 0 ) CYCLE
-      IF( IP % n == PrevNp ) CYCLE       ! the ladder repeats at the bottom
-      PrevNp = IP % n
-      IF( nc >= MaxCand ) EXIT
+    DO k = 1, nTry
+      ProbeNpFixed = TryFixed(k)
+      ProbeRelOrder = 0
+      IF( ProbeNpFixed == 0 ) THEN
+        ! Find the relative step that produced this count. Cheaper to re-walk
+        ! than to carry it: the ladder is a handful of entries.
+        DO r = rlo, ProbeTop
+          IP = GaussPoints( CurrentElement, RelOrder = r )
+          IF( IP % n == TryNp(k) ) THEN
+            ProbeRelOrder = r
+            EXIT
+          END IF
+        END DO
+      END IF
+      PrevNp = TryNp(k)
 
       CALL LocalMatrix( LocalMassMatrix, LocalDampMatrix, &
           LocalStiffMatrix, LocalForce, LoadVector, InertialLoad, ElasticModulus, &
@@ -2011,6 +2079,12 @@ CONTAINS
 
       nc = nc + 1
       CandNp(nc) = PrevNp
+      ! Which keyword can actually ask for this rule again. Not a detail: an
+      ! explicit count cannot reach the tabulated simplex rules and a relative
+      ! order cannot reach the prism's, so recommending the wrong one hands back
+      ! a rule that is not the one measured.
+      CandFixed(nc) = ProbeNpFixed
+      CandRel(nc) = ProbeRelOrder
       ! Stiffness, then mass and damping when the problem has them. A matrix that
       ! is identically zero is left out: a rule would look converged on a term
       ! that is not there.
@@ -2024,6 +2098,7 @@ CONTAINS
     END DO
     ProbeOverride = .FALSE.
     ProbeRelOrder = 0
+    ProbeNpFixed = 0
 
     IF( nc < 2 ) THEN
       DEALLOCATE( Cand, Ref )
@@ -2039,19 +2114,27 @@ CONTAINS
     DO i=1,nc-1
       Diff = SQRT( SUM( (Cand(:,i)-Ref)**2 ) ) / Scale
       IF( Diff <= ProbeTol ) THEN
-        best = CandNp(i)
-        EXIT                       ! candidates were built cheapest first
+        best = i                   ! candidates were built cheapest first
+        EXIT
       END IF
     END DO
 
     ProbeSeen(fam) = ProbeSeen(fam) + 1
+    ! The family takes the LARGEST requirement over its sampled elements, and the
+    ! provenance travels with it.
+    IF( best > 0 ) THEN
+      IF( CandNp(best) >= ProbeNp(fam) .OR. ProbeNp(fam) == 0 ) THEN
+        ProbeIsRel(fam) = ( CandFixed(best) == 0 )
+        ProbeRelOff(fam) = CandRel(best)
+      END IF
+    END IF
     IF( best == 0 ) THEN
       ! Nothing below the finest matched, so this element is not converged even
       ! there. Say so, rather than reporting the top of the ladder as sufficient.
       ProbeFailed(fam) = .TRUE.
       ProbeNp(fam) = MAX( ProbeNp(fam), CandNp(nc) )
     ELSE
-      ProbeNp(fam) = MAX( ProbeNp(fam), best )
+      ProbeNp(fam) = MAX( ProbeNp(fam), CandNp(best) )
     END IF
 
     DEALLOCATE( Cand, Ref )
@@ -2088,7 +2171,7 @@ CONTAINS
   SUBROUTINE ProbeReport()
 !------------------------------------------------------------------------------
     INTEGER :: fam
-    CHARACTER(LEN=MAX_NAME_LEN) :: Line
+    CHARACTER(LEN=MAX_NAME_LEN) :: Line, RelLine
     CHARACTER(LEN=12) :: FamName(8)
     LOGICAL :: AnyUp
 !------------------------------------------------------------------------------
@@ -2105,6 +2188,7 @@ CONTAINS
     END IF
 
     Line = ''
+    RelLine = ''
     AnyUp = .FALSE.
     DO fam=2,8
       IF( ProbeSeen(fam) == 0 ) CYCLE
@@ -2123,22 +2207,32 @@ CONTAINS
           I2S(ProbeNp(fam)),Level=3)
 
       IF( ProbeNp(fam) > ProbeDefNp(fam) ) AnyUp = .TRUE.
-      IF( ProbeNp(fam) /= ProbeDefNp(fam) ) &
-          Line = TRIM(Line)//' '//TRIM(FamName(fam))//' '//I2S(ProbeNp(fam))
+      IF( ProbeNp(fam) == ProbeDefNp(fam) ) CYCLE
+
+      ! Recommend the keyword that can actually ASK for the rule that was
+      ! measured. The two reach disjoint sets: an explicit count skips the
+      ! tabulated simplex tables -- "-tetra 24" reaches GaussPointsPTetra and
+      ! yields the collapsed 36 point rule, not the 24 point one -- while a
+      ! relative order never reaches the prism's triangle x segment family at
+      ! all. Naming the wrong one hands back a different rule than the one this
+      ! probe just measured, which is the very defect it exists to catch.
+      IF( ProbeIsRel(fam) ) THEN
+        RelLine = TRIM(RelLine)//' '//TRIM(FamName(fam))//' '//I2S(ProbeRelOff(fam))
+      ELSE
+        Line = TRIM(Line)//' '//TRIM(FamName(fam))//' '//I2S(ProbeNp(fam))
+      END IF
     END DO
 
-    IF( LEN_TRIM(Line) > 0 ) THEN
+    IF( LEN_TRIM(Line) > 0 .OR. LEN_TRIM(RelLine) > 0 ) THEN
       CALL Info( Caller,'To adopt it, state in the Solver section:',Level=3)
-      CALL Info( Caller,'  Element Integration Points = String "'// &
-          TRIM(ADJUSTL(Line))//'"',Level=3)
+      IF( LEN_TRIM(RelLine) > 0 ) CALL Info( Caller, &
+          '  Element Relative Integration Order = String "'// &
+          TRIM(ADJUSTL(RelLine))//'"',Level=3)
+      IF( LEN_TRIM(Line) > 0 ) CALL Info( Caller, &
+          '  Element Integration Points = String "'//TRIM(ADJUSTL(Line))//'"',Level=3)
       IF( AnyUp ) CALL Info( Caller,'Some families want MORE than the default. A '// &
           'convoluted material or a distorted mesh does that, and it is the '// &
           'direction worth heeding.',Level=3)
-      ! The prism is the family this cannot speak for. Its triangle x segment and
-      ! economical rules are reachable only by naming a point count, so the
-      ! RelOrder ladder steps 125 -> 64 and never sees the 85 that suffices.
-      IF( ProbeSeen(7) > 0 ) CALL Info( Caller,'NOTE prisms: the ladder cannot '// &
-          'reach the triangle x segment rules, so the prism figure is coarse.',Level=3)
     ELSE
       CALL Info( Caller,'Every family is already at the rule it needs.',Level=3)
     END IF
