@@ -18,7 +18,8 @@
 ! exercises the part of tau that distinguishes this from plain elasticity: the
 ! rule is built on the EFFECTIVE shear modulus xPhi*mu, not the elastic one.
 !
-! HOW TO READ IT. The MINI reference is the sibling test ViscoElasticMaxwell:
+! HOW TO READ IT. The MINI reference is ViscoElasticMaxwell, the sibling this
+! case is named to pair with:
 ! same mesh, material and loading, differing only in the element. The two NORMS
 ! are not comparable -- MINI carries bubble degrees of freedom in the global
 ! system (bandwidth 362 against 92), so the same displacement gives a different

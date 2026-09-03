@@ -6,5 +6,5 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
 
   file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-  ADD_ELMER_TEST(ElasticPressureStabilization LABELS elasticity viscoelastic)
+  ADD_ELMER_TEST(ViscoElasticMaxwellStabilized LABELS elasticity viscoelastic)
 ENDIF()
