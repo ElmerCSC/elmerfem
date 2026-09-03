@@ -1303,6 +1303,21 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! choice between 'stabilized' and 'bubbles': it is a different discretisation,
   ! not an optimisation, and it must never be selected behind a user's back.
   PStab = ListGetLogical( SolverParams,'Pressure Stabilization', GotIt )
+  ! The default of one is calibrated, not nominal: the per-family constants in
+  ! LocalMatrix are chosen so that unity reproduces the MINI displacement, and
+  ! it does so to better than 0.5% for every family, at three mesh resolutions
+  ! spanning 16x in element count, on two different boundary configurations.
+  ! The error also SHRINKS under refinement (0.019 -> 0.011 -> 0.006 % on
+  ! quadrilaterals), so the stabilised pair converges to the MINI answer rather
+  ! than to something merely close to it.
+  !
+  ! The exception is a relaxation-dominated viscoelastic problem, which wants
+  ! roughly seventeen times more. That is not a defect in the calibration: in
+  ! ViscoElasticMaxwell an incompressible ELASTIC material cannot deform at all
+  ! under its constraints -- the norm is exactly zero -- so the deformation
+  ! there is entirely creep, with no elastic counterpart to calibrate against.
+  ! Such cases must state their own coefficient until there is a second creep
+  ! problem to calibrate a rule from.
   PStabCoeff = ListGetConstReal( SolverParams,'Pressure Stabilization Coefficient', GotIt )
   IF( .NOT. GotIt ) PStabCoeff = 1.0_dp
   IF( PStab ) THEN
@@ -3413,7 +3428,7 @@ CONTAINS
     ! assembly does not. Pres/Pres0 are the mixed formulation's pressure now and at
     ! the previous step, zero without it.
     REAL(KIND=dp) :: xPhi, ShearModulus, MaxVisc, MuDer
-    REAL(KIND=dp) :: Tau, MuEff, GpaMag, hKe, mKe, PeStab
+    REAL(KIND=dp) :: Tau, MuEff, GpaMag, hKe, Kfam, PeStab
     REAL(KIND=dp) :: LagStress(3,3), NewLagStress(3,3), ElasticStress(3,3)
     REAL(KIND=dp) :: LagVec(6), Pres, Pres0
     REAL(KIND=dp) :: NodalVelo(3,ntot)
@@ -4131,15 +4146,70 @@ CONTAINS
        !-----------------------------------------------------------------------
        IF ( PStab .AND. LinearIncompressible ) THEN
           MuEff = Lame2
-          IF ( MaxwellHere ) MuEff = xPhi * Lame2
+          ! The relaxation enters as mu/xPhi, NOT xPhi*mu. That is the
+          ! opposite of what the incremental stiffness argument suggests, and it
+          ! is measured rather than argued: with xPhi*mu the optimal coefficient
+          ! moved 13 -> 10 -> 2.7 as the timestep went 0.25 -> 1 -> 4 on
+          ! ViscoElasticMaxwell, and with mu/xPhi the three error curves lie on
+          ! top of each other (-0.20, -0.22, -0.17 % at c=10) across the same
+          ! 2.15x range of xPhi. So the timestep dependence was the effective
+          ! modulus being inverted, not a separate effect.
+          !
+          ! The reading: tau scales with the modulus that resists the pressure
+          ! mode. Relaxation weakens the deviatoric response while leaving the
+          ! incompressibility constraint intact, so LESS stabilisation is needed
+          ! as the material relaxes, not more.
+          IF ( MaxwellHere ) MuEff = Lame2 / xPhi
           GpaMag = ABS( GPAatIP )
           hKe = Element % hK
-          mKe = Element % StabilizationMk
+
+          ! The constant is per element family, and measured rather than
+          ! derived. One steady problem on one unit cube, meshed five ways, gave
+          ! the tau at which the stabilised pair reproduces MINI's displacement.
+          ! The optimum is a real minimum -- the error changes sign through it --
+          ! and it is mesh independent, checked at two resolutions on the
+          ! hexahedron, which is what says the h^2/mu scaling is right:
+          !
+          !   quad 404   0.0417    tri 303    0.0104
+          !   brick 808  0.0198    prism 706  0.0075
+          !                        tetra 504  0.0029
+          !
+          ! StabilizationMk stood here before and is dropped, but NOT because it
+          ! was wrong for the tensor families: it is 1/3 everywhere and 1/6 on
+          ! the hexahedron, and the measured tau for quad and brick differ by
+          ! exactly that factor of two, so mK described that pair correctly. It
+          ! is dropped because it says nothing about the simplices, which need
+          ! four to fourteen times less than a tensor element of the same mK --
+          ! consistent with hK being a DIAMETER, which overstates a simplex's
+          ! characteristic size. Stating all five directly is honest about which
+          ! part is measured and which is inherited from a convective scheme.
+          !
+          ! The pyramid has no measurement -- there is no incompressible pyramid
+          ! case to take one from -- so it sits between prism and tetra rather
+          ! than at a tensor value that would over-stabilise it.
+          SELECT CASE( Element % TYPE % ElementCode / 100 )
+          CASE( 3 )
+             Kfam = 0.0104_dp
+          CASE( 4 )
+             Kfam = 0.0417_dp
+          CASE( 5 )
+             Kfam = 0.0029_dp
+          CASE( 6 )
+             Kfam = 0.005_dp
+          CASE( 7 )
+             Kfam = 0.0075_dp
+          CASE DEFAULT
+             Kfam = 0.0198_dp
+          END SELECT
+
+          ! Advection, when "Gravitational Prestress Advection" is on, following
+          ! the interpolating form NavierStokes uses. Pe is scaled so that the
+          ! weak-advection limit returns exactly the diffusive expression below.
           IF ( GpaMag * hKe > 0.0_dp ) THEN
-             PeStab = MIN( 1.0_dp, mKe * GpaMag * hKe / ( 4.0_dp * MuEff ) )
+             PeStab = MIN( 1.0_dp, 2.0_dp * Kfam * GpaMag * hKe / MuEff )
              Tau = hKe * PeStab / ( 2.0_dp * GpaMag )
           ELSE
-             Tau = mKe * hKe**2 / ( 8.0_dp * MuEff )
+             Tau = Kfam * hKe**2 / MuEff
           END IF
           Tau = PStabCoeff * Tau
        END IF

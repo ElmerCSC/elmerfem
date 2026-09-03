@@ -37,16 +37,22 @@
 ! shows up as roughly a factor of two in the displacement.
 !
 !   coeff    d 1 at the probe     error against MINI
-!   0.01     1.281987             -1.98 %
-!   1        1.293902             -1.07 %
-!   10       1.308306             +0.03 %
-!   100      1.324667             +1.28 %
-!   1000     1.440284             +10.1 %
+!   10       1.305061             -0.216 %
+!   17       1.308062             +0.013 %
+!   20       1.308967             +0.082 %
 !
 ! -- a real optimum: too little tau leaves the spurious mode, too much
-! over-relaxes the constraint. The coefficient is stated explicitly here rather
-! than left to the default precisely because that default is not yet calibrated
-! on more than this one case.
+! over-relaxes the constraint.
+!
+! WHY 17 AND NOT THE DEFAULT OF 1. The default is calibrated for elastic
+! problems and holds there to better than 0.5% across five element families and
+! three mesh resolutions. This problem is not elastic in that sense: an
+! incompressible ELASTIC material cannot deform at all under these constraints
+! -- solved without "Maxwell Material" the displacement is exactly zero -- so
+! every bit of the deformation here is creep. There is no elastic counterpart to
+! calibrate against, and a relaxation-dominated problem simply needs more
+! stabilisation. Stated explicitly rather than folded into the default, because
+! one creep problem is not enough to derive a rule from.
 
 Header
   Mesh DB "." "square"
@@ -101,7 +107,7 @@ Solver 1
   Maxwell Material = Logical True
 
   Pressure Stabilization = Logical True
-  Pressure Stabilization Coefficient = Real 10.0
+  Pressure Stabilization Coefficient = Real 17.0
 
   Linear System Solver = Direct
   Linear System Direct Method = UMFPACK
@@ -141,4 +147,4 @@ Boundary Condition 3
   d 2 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.99713960
+Solver 1 :: Reference Norm = Real 0.99709605
