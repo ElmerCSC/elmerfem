@@ -410,7 +410,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: dim,i,j,k,l,m,n,nd,nb,ntot,t,iter,NDeg,STDOFs,LocalNodes,istat
   INTEGER :: NonlinearIter, MinNonlinearIter, FlowNOFNodes, previ
   INTEGER :: EigenModes, Passes
-  INTEGER :: RelIntegOrder
+  INTEGER :: RelIntegOrder, RelIntegOrderBC
   LOGICAL :: PStab = .FALSE.
   REAL(KIND=dp) :: PStabCoeff
   INTEGER :: CoordinateSystem
@@ -1287,7 +1287,32 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! chosen anyway. Matters most for p-elements, where the default rule is the one
   ! the element declares; fem/tests/ElastPelem2dPmultg* are StressSolve cases that
   ! turn it down to keep a p-refined solve affordable.
+  ! The integration rule offsets, read ONCE here rather than per element. That
+  ! is not only about the cost of a list lookup: read up front, outside any
+  ! namespace push or multigrid level, the value is the one the sif states.
+  !
+  ! "Relative Integration Order" keeps its meaning -- it applies to the bulk and
+  ! the boundary alike, as it always has. The two overrides exist because the
+  ! boundary is what stops the bulk being reduced: a tetrahedron carrying
+  ! "p:1 b:1" is integrated over 150 points and gives a bit-identical answer at
+  ! 36, but asking for that with "Relative Integration Order = -2" fatals,
+  ! because the same offset lands on the boundary triangle whose count is 3 and
+  ! drives it to zero. One knob for two rules with very different budgets.
+  !
+  ! So the bulk can be reduced on its own, and the boundary can be raised on its
+  ! own where a Neumann term needs it. Neither is a default: the rule the basis
+  ! needs stays what it is unless a sif asks otherwise, on a problem it can
+  ! verify. A reduced rule that is exact for one material is not exact for the
+  ! next -- which is how a quadrature change that passed 1128 tests still cost
+  ! Permafrost_Biot a per cent.
   RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order', GotIt )
+  RelIntegOrderBC = RelIntegOrder
+
+  i = ListGetInteger( SolverParams,'Bulk Relative Integration Order', GotIt )
+  IF( GotIt ) RelIntegOrder = i
+
+  i = ListGetInteger( SolverParams,'Boundary Relative Integration Order', GotIt )
+  IF( GotIt ) RelIntegOrderBC = i
 
   ! Pressure stabilisation, as an alternative to the MINI element's bubble.
   !
@@ -5006,7 +5031,7 @@ CONTAINS
        END DO
     END IF
 
-    IP = GaussPoints( Element, RelOrder = RelIntegOrder )
+    IP = GaussPoints( Element, RelOrder = RelIntegOrderBC )
 
     DO t=1,IP % n
        u = IP % U(t)
