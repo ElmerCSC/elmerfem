@@ -250,8 +250,11 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   ! THE SIMPLICES NEED THE RELATIVE FORM. A tetrahedron carrying "p:1 b:1"
   ! defaults to 150 points and is bit-identical at the tabulated 24 point rule, a
   ! triangle to 12 and identical at the tabulated 7. But those tabulated rules
-  ! cannot be asked for by name: GaussPoints honours an explicit count LITERALLY
-  ! and skips TetraSimplexRulePoints / TriangleSimplexRulePoints, so
+  ! cannot be asked for by name BY A P-ELEMENT, and MINI is one. On a plain
+  ! element an explicit count names a tabulated rule and is honoured exactly --
+  ! "-tetra 1" on a non-p tetrahedron really does give one point. But with np
+  ! present GaussPoints takes the p-branch, skipping TetraSimplexRulePoints /
+  ! TriangleSimplexRulePoints, so
   ! "-tetra 24" does not give 24 points -- it reaches GaussPointsPTetra(24),
   ! which computes NINT(24**(1/3)) = 3 and returns the collapsed brick rule
   ! GaussPointsPBrick(3,3,4), i.e. 36 points. That collapsed rule is precisely

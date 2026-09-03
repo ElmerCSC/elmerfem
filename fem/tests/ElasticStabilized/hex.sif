@@ -87,7 +87,15 @@ Solver 2
   Equation = "Elasticity Stabilized"
   Procedure = "ElasticSolve" "ElasticSolver"
   Variable = String "s[sd:3 sp:1]"
-  Element = p:1
+  ! No "Element" declaration, deliberately. Writing "p:1" here bought nothing --
+  ! at degree one there are no edge, face or bubble functions for the p-version to
+  ! add -- but it made the element an ACTIVE P-ELEMENT, and that is not free. A
+  ! p-element carries PDefs, whose GaussPoints field is set mesh-wide by
+  ! SetMeshMaxDOFs from the largest demand any solver places on those elements.
+  ! Sharing a mesh with the MINI leg and its "p:1 b:N" therefore handed this
+  ! solver the bubble's integration rule: 150 points on a tetrahedron where 4 is
+  ! the element's own and 1 is sufficient. A plain nodal element never consults
+  ! PDefs and simply takes its rule from elements.def.
   Incompressible = Logical True
   Large Deflection = False
   Displace Mesh = Logical False
