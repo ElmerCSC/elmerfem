@@ -259,8 +259,9 @@
          CALL Info( 'MAIN', '=============================================================')
          CALL Info( 'MAIN', 'ElmerSolver finite element software, Welcome!                ')
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
-         CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
-         CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
+         CALL Info( 'MAIN', 'Copyright 1st 1995 -> , CSC - IT Center for Science Ltd.     ')
+         CALL Info( 'MAIN', 'Repository https://www.github.org/elmerCSC/elmerfem          ')
+         CALL Info( 'MAIN', 'Homepage https://www.elmerfem.org/,  Email elmeradm@csc.fi   ')
          CALL Info( 'MAIN', 'Version: ' // GetVersion() //'-'// GetBranch() // ' (Rev: ' // GetRevision() // &
                             ', Compiled: ' // GetCompilationDate() // ')' )
 
