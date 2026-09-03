@@ -88,8 +88,14 @@ ENDIF(NOT ARPACK_FOUND)
 IF (ARPACK_INCLUDE_DIR AND ARPACK_LIBRARIES)
   SET(ARPACK_FOUND TRUE)
   #The config script was not used, define the target manually
+  #
+  # UNKNOWN rather than SHARED. A SHARED imported target needs IMPORTED_IMPLIB
+  # on Windows, and only IMPORTED_LOCATION is set here, so anything linking the
+  # bare target name got "arpack-NOTFOUND" on the link line while the configure
+  # reported ARPACK found. UNKNOWN links IMPORTED_LOCATION directly and is
+  # correct whether FIND_LIBRARY returned a .so, a .a or an import library.
   IF(NOT TARGET arpack)
-    ADD_LIBRARY(arpack SHARED IMPORTED)
+    ADD_LIBRARY(arpack UNKNOWN IMPORTED)
     SET_PROPERTY(TARGET arpack PROPERTY IMPORTED_LOCATION ${ARPACK_LIBRARIES})
     SET_PROPERTY(TARGET arpack PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${ARPACK_INCLUDE_DIR})
   ENDIF()

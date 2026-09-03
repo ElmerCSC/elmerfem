@@ -97,8 +97,10 @@ ENDIF(NOT PARPACK_FOUND)
 IF (PARPACK_INCLUDE_DIR AND PARPACK_LIBRARIES)
   SET(PARPACK_FOUND TRUE)
   #The config script was not used, define the target manually
+  # UNKNOWN rather than SHARED, for the same reason as in FindARPACK.cmake: a
+  # SHARED imported target without IMPORTED_IMPLIB is not linkable on Windows.
   IF(NOT TARGET parpack)
-    ADD_LIBRARY(parpack SHARED IMPORTED)
+    ADD_LIBRARY(parpack UNKNOWN IMPORTED)
     SET_PROPERTY(TARGET parpack PROPERTY IMPORTED_LOCATION ${PARPACK_LIBRARIES})
     SET_PROPERTY(TARGET parpack PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${PARPACK_INCLUDE_DIR})
   ENDIF()
