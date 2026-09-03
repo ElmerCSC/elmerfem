@@ -462,6 +462,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: RelIntegOrder, RelIntegOrderBC
   INTEGER :: ElemGaussNp(8)
   LOGICAL :: ElementalGaussRule
+  INTEGER :: ElemGaussRelOrder(8)
+  LOGICAL :: ElemGaussRelStated(8)
+  LOGICAL :: ElementalRelRule
   LOGICAL :: PStab = .FALSE.
   REAL(KIND=dp) :: PStabCoeff
   INTEGER :: CoordinateSystem
@@ -1388,6 +1391,31 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   i = ListGetInteger( SolverParams,'Boundary Relative Integration Order', GotIt )
   IF( GotIt ) RelIntegOrderBC = i
 
+  ! The per family relative order, read through the same parser GaussPointsAdapt
+  ! uses, for the same reason the absolute counts are: CreateIpPerm sizes the
+  ! -ip variables by asking GaussPointsAdapt, which this solver never calls
+  ! itself, so the keyword string is the only thing keeping the two in step.
+  !
+  ! Bulk only here, as the absolute counts are -- the boundary is a different
+  ! budget, which is the very reason the two scalars above are split.
+  ElemGaussRelOrder = 0
+  ElemGaussRelStated = .FALSE.
+  str = ListGetString( SolverParams,'Element Relative Integration Order', GotIt )
+  IF( GotIt ) THEN
+    BLOCK
+      INTEGER :: ParsedOrder(8), fam
+      LOGICAL :: Stated(8)
+      CALL ParseElementalGaussRules( str, ParsedOrder, Stated )
+      DO fam=1,8
+        IF( Stated(fam) ) THEN
+          ElemGaussRelOrder(fam) = ParsedOrder(fam)
+          ElemGaussRelStated(fam) = .TRUE.
+        END IF
+      END DO
+    END BLOCK
+  END IF
+
+  ElementalRelRule = ANY( ElemGaussRelStated )
 
   ! An explicit per family rule, if one is stated -- by a sif, or by _Init for
   ! the incompressible MINI element. Parsed ONCE here, and through the same
@@ -1771,14 +1799,14 @@ CONTAINS
 !> between them.
 !>
 !> Precedence matches GaussPointsAdapt: an absolute per family count wins over
-!> the scalar relative order.
+!> everything, then a per family relative order, then the scalar one.
 !------------------------------------------------------------------------------
   FUNCTION ElasticGaussPoints( Element ) RESULT( IntegStuff )
 !------------------------------------------------------------------------------
     TYPE(Element_t) :: Element
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
 !------------------------------------------------------------------------------
-    INTEGER :: ngp
+    INTEGER :: ngp, nRelOrder
 
     ngp = 0
     IF( ElementalGaussRule ) ngp = ElementalGaussNp( Element, ElemGaussNp )
@@ -1787,7 +1815,16 @@ CONTAINS
       RETURN
     END IF
 
-    IntegStuff = GaussPoints( Element, RelOrder = RelIntegOrder )
+    nRelOrder = RelIntegOrder
+    IF( ElementalRelRule ) THEN
+      BLOCK
+        INTEGER :: nOffs
+        IF( ElementalGaussRelOrder( Element, ElemGaussRelOrder, &
+            ElemGaussRelStated, nOffs ) ) nRelOrder = nOffs
+      END BLOCK
+    END IF
+
+    IntegStuff = GaussPoints( Element, RelOrder = nRelOrder )
 !------------------------------------------------------------------------------
   END FUNCTION ElasticGaussPoints
 !------------------------------------------------------------------------------

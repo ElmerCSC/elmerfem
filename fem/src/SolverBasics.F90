@@ -4328,16 +4328,25 @@ END FUNCTION SearchNodeL
 !> GaussPoints directly -- must read the keyword through the same parser, or the
 !> per element slices of "ve_stress" and its like are allocated for one rule and
 !> written for another.
+!>
+!> "Stated" reports which families the string actually named, separately from
+!> their values, because the same syntax now carries relative orders as well as
+!> absolute counts. Reading a count, zero can only mean "family not named".
+!> Reading an offset, zero is a legitimate value -- "this family keeps its own
+!> rule, whatever the scalar order says" -- so presence cannot be recovered from
+!> the value there.
 !------------------------------------------------------------------------------
-  SUBROUTINE ParseElementalGaussRules( GaussDef, ElementalNp )
+  SUBROUTINE ParseElementalGaussRules( GaussDef, ElementalNp, Stated )
 !------------------------------------------------------------------------------
     CHARACTER(LEN=*), INTENT(IN) :: GaussDef
     INTEGER, INTENT(OUT) :: ElementalNp(8)
+    LOGICAL, OPTIONAL, INTENT(OUT) :: Stated(8)
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,m,iostat
 
     n = LEN_TRIM(GaussDef)
     ElementalNp = 0
+    IF( PRESENT( Stated ) ) Stated = .FALSE.
 
     DO i=2,8
       j = 0
@@ -4365,6 +4374,7 @@ END FUNCTION SearchNodeL
               'Problems reading integer from: '//TRIM(GaussDef(j+m:n)))
         END IF
         ElementalNp(i) = k
+        IF( PRESENT( Stated ) ) Stated(i) = .TRUE.
       END IF
     END DO
 !------------------------------------------------------------------------------
@@ -4405,6 +4415,37 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> The relative integration order a per family rule asks for on THIS element,
+!> and .TRUE. when its family was named at all.
+!>
+!> The relative twin of ElementalGaussNp. Unlike that one it carries no
+!> p-element clamp, and deliberately: an offset shifts from whatever rule the
+!> element chose for the basis it is actually carrying, so it keeps its meaning
+!> under p-refinement. An absolute count does not, which is the whole reason
+!> ElementalGaussNp has to switch itself off above degree one.
+!------------------------------------------------------------------------------
+  FUNCTION ElementalGaussRelOrder( Element, ElementalRelOrder, RelStated, RelOrder ) &
+      RESULT( Stated )
+!------------------------------------------------------------------------------
+    TYPE(Element_t) :: Element
+    INTEGER, INTENT(IN) :: ElementalRelOrder(8)
+    LOGICAL, INTENT(IN) :: RelStated(8)
+    INTEGER, INTENT(OUT) :: RelOrder
+    LOGICAL :: Stated
+!------------------------------------------------------------------------------
+    INTEGER :: Family
+
+    Family = Element % TYPE % ElementCode / 100
+    Stated = RelStated( Family )
+    IF( Stated ) THEN
+      RelOrder = ElementalRelOrder( Family )
+    ELSE
+      RelOrder = 0
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION ElementalGaussRelOrder
+!------------------------------------------------------------------------------
 
 
 
@@ -4431,7 +4472,8 @@ END FUNCTION SearchNodeL
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder, BaseNp, BaseRelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
-    INTEGER :: i,j,n,ElementalNp(8),prevVisited = -1
+    LOGICAL :: ElementalRelRule, RelStated(8)
+    INTEGER :: i,j,n,ElementalNp(8),ElementalRelOrder(8),prevVisited = -1
     LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit, UseNameSpace, EdgePRef
     INTEGER :: EdgeBasisDegree
     REAL(KIND=dp) :: ElemPhi(27)
@@ -4472,7 +4514,8 @@ END FUNCTION SearchNodeL
     ! so. ElemNodes is left SAVE here (its POINTER components would leak on
     ! every call as a plain non-SAVE local) pending that rework.
     SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, BaseRelOrder, BaseNp, &
-        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemNodes
+        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemNodes, &
+        ElementalRelRule, ElementalRelOrder, RelStated
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -4537,6 +4580,10 @@ END FUNCTION SearchNodeL
         END IF
       END IF
                     
+      ElementalRelRule = .FALSE.
+      ElementalRelOrder = 0
+      RelStated = .FALSE.
+
       BaseRelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
 
       ! The bulk and the boundary can be offset separately, because they are two
@@ -4557,6 +4604,33 @@ END FUNCTION SearchNodeL
       END IF
       IF( Found ) BaseRelOrder = i
 
+      ! The per family relative order. A keyword of its own rather than flags on
+      ! the three scalars above: those are typed Integer in the keyword database,
+      ! and that type is what the sif reader consults for a value carrying none
+      ! of its own, so it has to stay Integer for the plain "= -2" spelling to go
+      ! on being read as one. A per family value there would have to be written
+      ! as an explicit String and would draw a "given wrong type" warning from
+      ! CheckKeyword on every run, keyword checking being on by default. This one
+      ! is typed String from the start.
+      !
+      ! Applies to bulk and boundary elements alike, indexed by family the same
+      ! way "Element Integration Points" is -- in 3D the two never collide, the
+      ! boundary of a tetrahedron being a triangle.
+      GaussDef = ListGetString( pSolver % Values,'Element Relative Integration Order',Found )
+      IF( Found ) THEN
+        BLOCK
+          INTEGER :: ParsedOrder(8)
+          LOGICAL :: Stated(8)
+          CALL ParseElementalGaussRules( GaussDef, ParsedOrder, Stated )
+          DO i=1,8
+            IF( Stated(i) ) THEN
+              ElementalRelOrder(i) = ParsedOrder(i)
+              RelStated(i) = .TRUE.
+            END IF
+          END DO
+        END BLOCK
+      END IF
+      ElementalRelRule = ANY( RelStated )
       AdaptNp = 0
       AdaptSplit = .FALSE.
       BaseNp = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
@@ -4676,6 +4750,15 @@ END FUNCTION SearchNodeL
     ! avoids threads clobbering each other's rule selection.
     Np = BaseNp
     RelOrder = BaseRelOrder
+
+    ! A per family relative order replaces the scalar one on the families it
+    ! names. Applied here rather than inside the branches below because a forced
+    ! Np wins over RelOrder at the bottom of the routine anyway, so an absolute
+    ! elemental rule still has the last word, and the adaptive branch still
+    ! zeroes both when it takes over.
+    IF( ElementalRelRule ) THEN
+      IF( ElementalGaussRelOrder( Element, ElementalRelOrder, RelStated, i ) ) RelOrder = i
+    END IF
 
     IF( ElementalRule ) THEN
       ! Elemental explicit rule has the prevalence, except over a p-element of
