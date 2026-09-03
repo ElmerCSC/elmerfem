@@ -4212,6 +4212,20 @@ CONTAINS
           ! The pyramid has no measurement -- there is no incompressible pyramid
           ! case to take one from -- so it sits between prism and tetra rather
           ! than at a tensor value that would over-stabilise it.
+          !
+          ! The brick and prism values were re-measured against a MINI element
+          ! carrying FOUR bubbles rather than one. Four is the next count those
+          ! families actually have -- getBubbleDOFs offers 1, 4, 10 in 3D -- and
+          ! a single bubble is too thin a reference there: on the brick the two
+          ! MINI variants differ by 1.4% on the test mesh. The richer element is
+          ! the one to calibrate against, being the softer and, under refinement,
+          ! the nearer to the limit. The correction is a factor of about 1.17 on
+          ! the brick and 1.20 on the prism, and it is not an artifact of one
+          ! mesh: it narrows the gap to MINI on every refinement level tried
+          ! (brick, at c=1: 1.26%, 0.87%, 0.42% -- at the new value: 0.01%,
+          ! 0.46%, 0.24%). The triangle and tetrahedron keep a single bubble,
+          ! which is the classical MINI element and the right reference for
+          ! them, and the quadrilateral was calibrated at three.
           SELECT CASE( Element % TYPE % ElementCode / 100 )
           CASE( 3 )
              Kfam = 0.0104_dp
@@ -4222,9 +4236,9 @@ CONTAINS
           CASE( 6 )
              Kfam = 0.005_dp
           CASE( 7 )
-             Kfam = 0.0075_dp
+             Kfam = 0.0090_dp
           CASE DEFAULT
-             Kfam = 0.0198_dp
+             Kfam = 0.0232_dp
           END SELECT
 
           ! Advection, when "Gravitational Prestress Advection" is on, following
