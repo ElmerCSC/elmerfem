@@ -482,16 +482,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: ElemGaussRelOrder(8)
   LOGICAL :: ElemGaussRelStated(8)
   LOGICAL :: ElementalRelRule
-  ! The integration rule probe. Deliberately here and not in SolverBasics: what
-  ! it measures is the assembled system of THIS problem -- mass, stiffness and
-  ! damping with the material resolved and only the terms actually present -- and
-  ! that is not visible outside the assembly.
-  LOGICAL :: ProbeActive = .FALSE., ProbeOverride = .FALSE.
-  INTEGER :: ProbeRelOrder = 0, ProbeNpFixed = 0, ProbeSample, ProbeTop
-  INTEGER :: ProbeSeen(8), ProbeNp(8), ProbeDefNp(8), ProbeRelOff(8)
-  LOGICAL :: ProbeFailed(8), ProbeIsRel(8)
-  REAL(KIND=dp) :: ProbeResid(8)
-  REAL(KIND=dp) :: ProbeTol
+  ! The integration rule probe. Only the ASSEMBLY half is here: what the probe
+  ! measures is the assembled system of THIS problem -- mass, stiffness and
+  ! damping with the material resolved and only the terms actually present --
+  ! and that is not visible outside the assembly. The bookkeeping half, which is
+  ! generic, is IntegRuleProbe_t in SolverBasics.
+  TYPE(IntegRuleProbe_t), SAVE :: Probe
   LOGICAL :: PStab = .FALSE.
   REAL(KIND=dp) :: PStabCoeff
   INTEGER :: CoordinateSystem
@@ -1444,22 +1440,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   ElementalRelRule = ANY( ElemGaussRelStated )
 
-  ! The probe. Reporting only -- see ProbeReport for why it may not simply adopt
-  ! what it finds.
-  ProbeActive = ListGetLogical( SolverParams,'Integration Rule Probe', GotIt )
-  IF( ProbeActive ) THEN
-    ProbeTol = ListGetCReal( SolverParams,'Integration Rule Probe Tolerance', GotIt )
-    IF( .NOT. GotIt ) ProbeTol = 1.0e-12_dp
-    ProbeSample = ListGetInteger( SolverParams,'Integration Rule Probe Elements', GotIt )
-    IF( .NOT. GotIt ) ProbeSample = 20
-    ! Two steps above the element's own rule by default. The ladder has to run
-    ! BOTH ways: a convoluted material or a distorted mesh can need more than the
-    ! default, and "the default is not enough" is the answer worth having.
-    ProbeTop = ListGetInteger( SolverParams,'Integration Rule Probe Steps Up', GotIt )
-    IF( .NOT. GotIt ) ProbeTop = 2
-    ProbeSeen = 0; ProbeNp = 0; ProbeDefNp = 0; ProbeFailed = .FALSE.
-    ProbeRelOff = 0; ProbeIsRel = .FALSE.; ProbeResid = 0.0_dp
-  END IF
+  ! The probe. Reporting only -- see IntegRuleProbeReport for why it may not
+  ! simply adopt what it finds.
+  CALL IntegRuleProbeStart( Probe, SolverParams )
 
   ! An explicit per family rule, if one is stated -- by a sif, or by _Init for
   ! the incompressible MINI element. Parsed ONCE here, and through the same
@@ -1855,7 +1838,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   CALL PostProcess()
 
-  IF( ProbeActive ) CALL ProbeReport()
+  CALL IntegRuleProbeReport( Probe, Caller, &
+      'a UMAT or neo-Hookean material owns its own integration and is not probed.' )
 
 
   DEALLOCATE( PrevSOL )
@@ -1894,16 +1878,8 @@ CONTAINS
     ! While the probe is walking the ladder it dictates the rule, so that what is
     ! re-assembled differs from the real assembly in the quadrature and nothing
     ! else.
-    IF( ProbeOverride ) THEN
-      ! Two ways in, because the two keywords reach disjoint sets of rules and
-      ! the probe has to walk both: a relative order leaves np absent and so
-      ! reaches the tabulated simplex rules, while only an explicit count reaches
-      ! the prism's triangle x segment and economical families.
-      IF( ProbeNpFixed > 0 ) THEN
-        IntegStuff = GaussPoints( Element, np = ProbeNpFixed )
-      ELSE
-        IntegStuff = GaussPoints( Element, RelOrder = ProbeRelOrder )
-      END IF
+    IF( Probe % Override ) THEN
+      IntegStuff = IntegRuleProbeRule( Probe, Element )
       RETURN
     END IF
 
@@ -1930,22 +1906,10 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Re-assemble THIS element at successive integration rules and record the
-!> smallest one that reproduces the finest.
-!>
-!> What is compared is the assembled local system -- stiffness, and mass and
-!> damping when the problem has them -- not a proxy built from the basis alone.
-!> That is the whole point. Whether a mass term exists depends on the density
-!> being nonzero, whether a first-derivative advection term exists depends on a
-!> prestress being given, and an anisotropic modulus weights the gradient
-!> components against each other. A proxy assembled with unit coefficients is the
-!> union of everything that COULD be present, so it can only over-state the
-!> requirement, and the reduction worth having is precisely what it discards.
-!>
-!> The ladder runs BOTH WAYS, up to "Integration Rule Probe Steps Up" above the
-!> element's own rule. A convoluted material or a distorted mesh can need more
-!> than the default, and "the default is not enough" is the answer most worth
-!> having, since under-integration is the failure that does not announce itself.
+!> Re-assemble THIS element at each rule the probe asks for. The ladder, the
+!> comparison and the report are IntegRuleProbe_t's; what belongs here is the
+!> assembly, and the two things about this assembly that the probe must not
+!> disturb.
 !>
 !> MAXWELL IS PROBED AS AN ELASTIC MATERIAL, deliberately, and it is not a
 !> compromise. Two things forbid re-entering the Maxwell branch: it writes the
@@ -1966,27 +1930,10 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ProbeThisElement()
 !------------------------------------------------------------------------------
-    INTEGER :: fam, r, rlo, rhi, nc, i, j, k, best, PrevNp, nsys, nblk, nTry
-    INTEGER :: ib, ii, jj
-    REAL(KIND=dp), ALLOCATABLE :: DScale(:)
-    INTEGER, PARAMETER :: MaxCand = 32
-    INTEGER :: CandNp(MaxCand), CandFixed(MaxCand), CandRel(MaxCand)
-    INTEGER :: TryNp(MaxCand), TryFixed(MaxCand)
-    ! The counts family 7 actually dispatches on, taken from the CASE labels in
-    ! Integration.F90: the triangle x segment tensor rules and the economical
-    ! ones. Naming a count outside this set is NOT a soft failure -- it falls
-    ! through to GaussPointsWedge, which fatals -- so this list has to track that
-    ! dispatch and nothing may be added to it speculatively.
-    INTEGER, PARAMETER :: PrismNp(22) = &
-        [ 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,28,44,48,85,100 ]
-    REAL(KIND=dp), ALLOCATABLE :: Cand(:,:), Ref(:)
-    REAL(KIND=dp) :: Scale, Diff, MinDiff
+    INTEGER :: nsys, nblk, nvals
+    REAL(KIND=dp), ALLOCATABLE :: Vals(:)
     TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
-    fam = CurrentElement % TYPE % ElementCode / 100
-    IF( fam < 2 .OR. fam > 8 ) RETURN
-    IF( ProbeSeen(fam) >= ProbeSample ) RETURN
-
     ! UMAT and the neo-Hookean law own their own integration and carry their own
     ! state, so re-entering them would advance variables that are not ours.
     IF( UseUMAT .OR. NeoHookeanMaterial ) RETURN
@@ -1997,83 +1944,13 @@ CONTAINS
 
     ! What this element takes today, so the report reads as a comparison.
     IP = ElasticGaussPoints( CurrentElement )
-    ProbeDefNp(fam) = MAX( ProbeDefNp(fam), IP % n )
+    IF( .NOT. IntegRuleProbeBegin( Probe, CurrentElement, IP % n ) ) RETURN
 
-    ! The bottom of the ladder is asked for, not discovered: GaussPoints enforces
-    ! its lower bound with Fatal, so one step too far would end the run.
-    rlo = MAX( GaussPointsMinRelOrder( CurrentElement ), -8 )
-    ! And the top is bounded too. A non-p element has only {-1,0,1}, and asking
-    ! for more is not a soft failure -- GaussPoints fatals. Every family in
-    ! ElasticStabilized is a p-element, which is why validating against those
-    ! five never exercised this and every plain-element contact case died.
-    rhi = MIN( ProbeTop, GaussPointsMaxRelOrder( CurrentElement ) )
-    IF( rlo >= rhi ) RETURN
+    nvals = nblk
+    IF( NeedMass ) nvals = 3*nblk
+    ALLOCATE( Vals(nvals) )
 
-    ! Collect the candidate rules FIRST, ascending, then assemble. The two
-    ! keywords reach disjoint sets of rules and the smallest sufficient one may
-    ! lie in either: a relative order leaves np absent and so reaches the
-    ! tabulated simplex rules, while only an explicit count reaches the prism's
-    ! triangle x segment and economical families. A ladder-only probe sees just
-    ! the collapsed n**3 rungs on a prism, and so reports one already set to 85
-    ! as needing 125 -- wrong, and wrong in the alarming direction.
-    nTry = 0
-    TryNp = 0
-    TryFixed = 0
-    PrevNp = -1
-    DO r = rlo, rhi
-      IP = GaussPoints( CurrentElement, RelOrder = r )
-      IF( IP % n <= 0 .OR. IP % n == PrevNp ) CYCLE
-      PrevNp = IP % n
-      ! keep the list ascending and free of duplicates; an internal procedure
-      ! cannot contain another, so this is written out at both call sites
-      IF( nTry < MaxCand .AND. .NOT. ANY( TryNp(1:nTry) == IP % n ) ) THEN
-        j = COUNT( TryNp(1:nTry) < IP % n )
-        TryNp(j+2:nTry+1) = TryNp(j+1:nTry)
-        TryFixed(j+2:nTry+1) = TryFixed(j+1:nTry)
-        TryNp(j+1) = IP % n
-        TryFixed(j+1) = 0
-        nTry = nTry + 1
-      END IF
-    END DO
-
-    IF( fam == 7 ) THEN
-      DO i=1,SIZE(PrismNp)
-        ! keep the list ascending and free of duplicates; an internal procedure
-        ! cannot contain another, so this is written out at both call sites
-        IF( nTry < MaxCand .AND. .NOT. ANY( TryNp(1:nTry) == PrismNp(i) ) ) THEN
-          j = COUNT( TryNp(1:nTry) < PrismNp(i) )
-          TryNp(j+2:nTry+1) = TryNp(j+1:nTry)
-          TryFixed(j+2:nTry+1) = TryFixed(j+1:nTry)
-          TryNp(j+1) = PrismNp(i)
-          TryFixed(j+1) = PrismNp(i)
-          nTry = nTry + 1
-        END IF
-      END DO
-    END IF
-
-    IF( nTry < 2 ) RETURN
-
-    ALLOCATE( Cand( 3*nblk, MaxCand ), Ref( 3*nblk ) )
-    nc = 0
-    CandNp = 0
-
-    ProbeOverride = .TRUE.
-    DO k = 1, nTry
-      ProbeNpFixed = TryFixed(k)
-      ProbeRelOrder = 0
-      IF( ProbeNpFixed == 0 ) THEN
-        ! Find the relative step that produced this count. Cheaper to re-walk
-        ! than to carry it: the ladder is a handful of entries.
-        DO r = rlo, rhi
-          IP = GaussPoints( CurrentElement, RelOrder = r )
-          IF( IP % n == TryNp(k) ) THEN
-            ProbeRelOrder = r
-            EXIT
-          END IF
-        END DO
-      END IF
-      PrevNp = TryNp(k)
-
+    DO WHILE( IntegRuleProbeNext( Probe, CurrentElement ) )
       CALL LocalMatrix( LocalMassMatrix, LocalDampMatrix, &
           LocalStiffMatrix, LocalForce, LoadVector, InertialLoad, ElasticModulus, &
           PoissonRatio,Density,Damping,AxialSymmetry,PlaneStress,HeatExpansionCoeff, &
@@ -2085,218 +1962,25 @@ CONTAINS
           GotPressureLoad, NodalPressureLoad, &
           EvalYoungIP, EvalPoissonIP, EvalBetaIP, EvalLoadIP )
 
-      nc = nc + 1
-      CandNp(nc) = PrevNp
-      ! Which keyword can actually ask for this rule again. Not a detail: an
-      ! explicit count cannot reach the tabulated simplex rules and a relative
-      ! order cannot reach the prism's, so recommending the wrong one hands back
-      ! a rule that is not the one measured.
-      CandFixed(nc) = ProbeNpFixed
-      CandRel(nc) = ProbeRelOrder
-      ! Stiffness, then mass and damping when the problem has them. A matrix that
-      ! is identically zero is left out: a rule would look converged on a term
-      ! that is not there.
-      Cand(:,nc) = 0.0_dp
-      Cand(1:nblk,nc) = RESHAPE( LocalStiffMatrix(1:nsys,1:nsys), [nblk] )
+      ! Stiffness FIRST, since its diagonal is the metric the candidates are
+      ! compared in, then mass and damping when the problem has them.
+      Vals = 0.0_dp
+      Vals(1:nblk) = RESHAPE( LocalStiffMatrix(1:nsys,1:nsys), [nblk] )
       IF( NeedMass ) THEN
-        Cand(nblk+1:2*nblk,nc) = RESHAPE( LocalMassMatrix(1:nsys,1:nsys), [nblk] )
+        Vals(nblk+1:2*nblk) = RESHAPE( LocalMassMatrix(1:nsys,1:nsys), [nblk] )
         IF( AnyDamping ) &
-            Cand(2*nblk+1:3*nblk,nc) = RESHAPE( LocalDampMatrix(1:nsys,1:nsys), [nblk] )
+            Vals(2*nblk+1:3*nblk) = RESHAPE( LocalDampMatrix(1:nsys,1:nsys), [nblk] )
       END IF
-    END DO
-    ProbeOverride = .FALSE.
-    ProbeRelOrder = 0
-    ProbeNpFixed = 0
-
-    IF( nc < 2 ) THEN
-      DEALLOCATE( Cand, Ref )
-      RETURN
-    END IF
-
-    ! Compare in the metric the SOLVER sees, not in physical units.
-    !
-    ! The local matrix is physical, but the global system is scaled to a unit
-    ! diagonal before it is solved and the solution scaled back afterwards. In
-    ! axisymmetry the r weight alone spreads row magnitudes by orders of
-    ! magnitude and the quadrature moves precisely that, so a raw comparison
-    ! reports a change the solve never sees: on ElasticMaxwellAxi the raw
-    ! residual is 7.5e-02 while the answer moves by 5e-09.
-    !
-    ! ONE metric for all candidates, taken from the finest. Scaling each by its
-    ! own diagonal would normalise away part of the very difference being
-    ! measured. Guarded, because this is a saddle point -- the pressure rows of a
-    ! mixed displacement/pressure formulation have no diagonal to scale by -- and
-    ! the stiffness diagonal is used for the mass and damping blocks too, so that
-    ! a term which is small in the assembled system stays small here.
-    ALLOCATE( DScale(nsys) )
-    DO i=1,nsys
-      DScale(i) = SQRT( ABS( Cand( (i-1)*nsys + i, nc ) ) )
-      IF( DScale(i) <= TINY(1.0_dp) ) DScale(i) = 1.0_dp
-    END DO
-    DO k=1,nc
-      DO ib=0,2
-        DO jj=1,nsys
-          DO ii=1,nsys
-            Cand( ib*nblk + (jj-1)*nsys + ii, k ) = &
-                Cand( ib*nblk + (jj-1)*nsys + ii, k ) / ( DScale(ii)*DScale(jj) )
-          END DO
-        END DO
-      END DO
-    END DO
-    DEALLOCATE( DScale )
-
-    ! The finest rule tried is the reference.
-    Ref = Cand(:,nc)
-    Scale = SQRT( SUM( Ref**2 ) )
-    IF( Scale <= TINY(Scale) ) Scale = 1.0_dp
-
-    best = 0
-    MinDiff = HUGE( MinDiff )
-    DO i=1,nc-1
-      Diff = SQRT( SUM( (Cand(:,i)-Ref)**2 ) ) / Scale
-      MinDiff = MIN( MinDiff, Diff )
-      IF( Diff <= ProbeTol ) THEN
-        best = i                   ! candidates were built cheapest first
-        EXIT
-      END IF
+      CALL IntegRuleProbeValue( Probe, nsys, Vals )
     END DO
 
-    ProbeSeen(fam) = ProbeSeen(fam) + 1
-    ! The family takes the LARGEST requirement over its sampled elements, and the
-    ! provenance travels with it.
-    IF( best > 0 ) THEN
-      IF( CandNp(best) >= ProbeNp(fam) .OR. ProbeNp(fam) == 0 ) THEN
-        ProbeIsRel(fam) = ( CandFixed(best) == 0 )
-        ProbeRelOff(fam) = CandRel(best)
-      END IF
-    END IF
-    IF( best == 0 ) THEN
-      ! Nothing below the finest matched, so this element is not converged even
-      ! there. Say so, rather than reporting the top of the ladder as sufficient.
-      ProbeFailed(fam) = .TRUE.
-      ProbeNp(fam) = MAX( ProbeNp(fam), CandNp(nc) )
-      ! How close the ladder got. Without this the report cannot distinguish
-      ! "one more step would do it" from "this will never converge".
-      ProbeResid(fam) = MAX( ProbeResid(fam), MinDiff )
-    ELSE
-      ProbeNp(fam) = MAX( ProbeNp(fam), CandNp(best) )
-    END IF
-
-    DEALLOCATE( Cand, Ref )
+    CALL IntegRuleProbeEnd( Probe )
+    DEALLOCATE( Vals )
 !------------------------------------------------------------------------------
   END SUBROUTINE ProbeThisElement
 !------------------------------------------------------------------------------
 
 
-!------------------------------------------------------------------------------
-!> Print what the probe found, and change nothing.
-!>
-!> REPORTS, NEVER ACTS, and the reasons are structural rather than timid. An
-!> integration point variable's storage IS the rule: CreateIpPerm sizes the per
-!> element slices from the rule in force, long before any assembly, so a rule
-!> discovered during assembly cannot be adopted without relaying that storage --
-!> and permafrost is worse than one solver, since Permafrost_HTEQ creates "Xi"
-!> and Permafrost_Darcy writes into it, several solvers having to agree. In
-!> parallel each rank samples its own elements, so adopting a rule would need one
-!> Allreduce(MAX) before that sizing or ranks would allocate differently. And a
-!> rule that changed between timesteps would make the discrete operator
-!> discontinuous in time, which in a creep run is a non-physical kink.
-!>
-!> A printed line has none of those problems: pasted into the sif, the rule is
-!> pinned, reviewable, and reproducible across platforms and partitionings. It is
-!> also how the counts in ElasticSolver_Init were arrived at by hand.
-!>
-!> The MAXIMUM over the sampled elements of a family, never the first. Within one
-!> family the rule needed depends on the geometry -- an affine element has a
-!> constant Jacobian and a genuinely polynomial integrand, a distorted one a
-!> rational inverse Jacobian -- and meshes are usually ordered with the
-!> structured region first, so the first element of a family is the most
-!> flattering sample available.
-!------------------------------------------------------------------------------
-  SUBROUTINE ProbeReport()
-!------------------------------------------------------------------------------
-    INTEGER :: fam
-    CHARACTER(LEN=MAX_NAME_LEN) :: Line, RelLine
-    CHARACTER(LEN=12) :: FamName(8)
-    LOGICAL :: AnyUp
-!------------------------------------------------------------------------------
-    FamName = [ CHARACTER(LEN=12) :: &
-        'point', '-line', '-tri', '-quad', '-tetra', '-pyramid', '-prism', '-brick' ]
-
-    WRITE( Message,'(A,ES9.2)') 'Integration rule probe, tolerance ',ProbeTol
-    CALL Info( Caller, Message, Level=3 )
-
-    IF( ALL( ProbeSeen == 0 ) ) THEN
-      CALL Info( Caller,'Integration rule probe sampled nothing -- a UMAT or '// &
-          'neo-Hookean material owns its own integration and is not probed.',Level=3)
-      RETURN
-    END IF
-
-    Line = ''
-    RelLine = ''
-    AnyUp = .FALSE.
-    DO fam=2,8
-      IF( ProbeSeen(fam) == 0 ) CYCLE
-
-      IF( ProbeFailed(fam) ) THEN
-        ! Report how far off it still is, and do NOT simply advise more points.
-        ! Most of these never converge at any rule: a distorted element's inverse
-        ! Jacobian is RATIONAL, an axisymmetric weight and a coefficient varying
-        ! within the element both raise the integrand off the polynomials the
-        ! quadrature is exact for. For those the ladder is asymptotic and the
-        ! question is only whether the remaining difference matters.
-        WRITE( Message,'(A,I0,A,I0,A,I0,A,ES9.2)') '  '//TRIM(FamName(fam))//': ', &
-            ProbeSeen(fam),' elements, default ',ProbeDefNp(fam), &
-            ' points, still moving at ',ProbeNp(fam),', closest relative change ', &
-            ProbeResid(fam)
-        CALL Info( Caller, Message, Level=3 )
-        IF( ProbeResid(fam) > 1.0e-6_dp ) THEN
-          AnyUp = .TRUE.
-        ELSE
-          CALL Info( Caller,'      -- that is small; an integrand that is not '// &
-              'polynomial converges no further at any rule.',Level=3)
-        END IF
-        CYCLE
-      END IF
-
-      CALL Info( Caller,'  '//TRIM(FamName(fam))//': '//I2S(ProbeSeen(fam))// &
-          ' elements, default '//I2S(ProbeDefNp(fam))//' points, sufficient at '// &
-          I2S(ProbeNp(fam)),Level=3)
-
-      IF( ProbeNp(fam) > ProbeDefNp(fam) ) AnyUp = .TRUE.
-      IF( ProbeNp(fam) == ProbeDefNp(fam) ) CYCLE
-
-      ! Recommend the keyword that can actually ASK for the rule that was
-      ! measured. The two reach disjoint sets: an explicit count skips the
-      ! tabulated simplex tables -- "-tetra 24" reaches GaussPointsPTetra and
-      ! yields the collapsed 36 point rule, not the 24 point one -- while a
-      ! relative order never reaches the prism's triangle x segment family at
-      ! all. Naming the wrong one hands back a different rule than the one this
-      ! probe just measured, which is the very defect it exists to catch.
-      IF( ProbeIsRel(fam) ) THEN
-        RelLine = TRIM(RelLine)//' '//TRIM(FamName(fam))//' '//I2S(ProbeRelOff(fam))
-      ELSE
-        Line = TRIM(Line)//' '//TRIM(FamName(fam))//' '//I2S(ProbeNp(fam))
-      END IF
-    END DO
-
-    IF( LEN_TRIM(Line) > 0 .OR. LEN_TRIM(RelLine) > 0 ) THEN
-      CALL Info( Caller,'To adopt it, state in the Solver section:',Level=3)
-      IF( LEN_TRIM(RelLine) > 0 ) CALL Info( Caller, &
-          '  Element Relative Integration Order = String "'// &
-          TRIM(ADJUSTL(RelLine))//'"',Level=3)
-      IF( LEN_TRIM(Line) > 0 ) CALL Info( Caller, &
-          '  Element Integration Points = String "'//TRIM(ADJUSTL(Line))//'"',Level=3)
-      IF( AnyUp ) CALL Info( Caller,'Some families are still moving at the top of '// &
-          'the ladder by more than 1e-6. Either they want more points, or their '// &
-          'integrand is not polynomial and never will converge -- check whether '// &
-          'the residual above is large enough to matter.',Level=3)
-    ELSE
-      CALL Info( Caller,'Every family is already at the rule it needs.',Level=3)
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE ProbeReport
-!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -2729,7 +2413,7 @@ CONTAINS
         ! After the global update, never before: the probe re-assembles this
         ! element several times and leaves the local arrays holding whichever
         ! rule it tried last.
-        IF( ProbeActive .AND. iter == 1 ) CALL ProbeThisElement()
+        IF( Probe % Active .AND. iter == 1 ) CALL ProbeThisElement()
 
      END DO
 
