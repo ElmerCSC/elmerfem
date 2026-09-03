@@ -4936,6 +4936,151 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
         
   END FUNCTION GaussPointsAdapt
+
+
+!------------------------------------------------------------------------------
+!> Report the integration rule each element family is actually being integrated
+!> over, and say so when it is larger than this solver's own basis can account
+!> for. Reads nothing but the rule and the element; assembles nothing.
+!>
+!> WHAT THIS CATCHES, and it is not hypothetical. PDefs % GaussPoints is a field
+!> of the MESH element, set once by SetMeshMaxDOFs from getNumberOfGaussPoints,
+!> which sizes it from Element % BDOFs -- also a field of the mesh element. So
+!> the moment any solver's element definition puts bubbles on a mesh, EVERY
+!> solver reading those elements inherits a rule sized for the bubble, whatever
+!> basis it carries itself. A pressure-stabilized elasticity solver sharing a
+!> mesh with a MINI solver was integrating linear tetrahedra over 150 points
+!> where 4 is the element's own and 1 suffices. Nothing in the sif says so, no
+!> test notices, and the solver that pays is the one that opted out of the
+!> expensive basis.
+!>
+!> Nothing here is elasticity-specific: a bubble-stabilized FlowSolve beside a
+!> heat solver has exactly the same exposure.
+!>
+!> The comparison is against Element % TYPE % GaussPoints, the plain rule the
+!> element type carries in elements.def, and it is only reported as excess when
+!> THIS solver's own "Element" definition asks for nothing above a linear basis
+!> -- no bubble, no p above one. A genuinely p-refined solver needs its larger
+!> rule and must not be nagged about it.
+!>
+!> Reports only. Acting on it is a separate matter: an integration point
+!> variable's storage is sized from the rule in force before any assembly runs,
+!> and in permafrost's case several solvers must agree on it.
+!------------------------------------------------------------------------------
+  SUBROUTINE AuditIntegrationRules( Solver )
+!------------------------------------------------------------------------------
+    TYPE(Solver_t), TARGET :: Solver
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, fam, i, j, k, ios
+    INTEGER :: InForce(8), Plain(8), Seen(8)
+    INTEGER, POINTER :: ActiveSolvers(:)
+    LOGICAL :: Found, GotList, LinearBasis, AnyExcess
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(LEN=12) :: FamName(8)
+
+    IF( .NOT. ListGetLogical( Solver % Values,'Integration Rule Audit', Found ) ) RETURN
+    IF( Solver % NumberOfActiveElements <= 0 ) RETURN
+
+    FamName = [ CHARACTER(LEN=12) :: &
+        'point', '-line', '-tri', '-quad', '-tetra', '-pyramid', '-prism', '-brick' ]
+
+    ! Does this solver ask for anything above a linear basis? Read from its own
+    ! element definition, not from the mesh element, which is precisely the thing
+    ! that may have been inflated on its behalf.
+    !
+    ! All THREE places that definition can live, as AddEquationBasics itself
+    ! consults them: the Solver section, the Equation section of an equation this
+    ! solver is active in, and a Body section as "Solver N: Element". A sif that
+    ! declares its element in the Equation section would otherwise look like a
+    ! linear basis here and be wrongly accused.
+    !
+    ! Note the Solver section is the right FIRST place to look even though the
+    ! sif may say nothing there: a solver's own _Init may have installed one, as
+    ! ElasticSolver_Init0 installs "p:2" for a mixed neo-Hookean formulation. The
+    ! list is read, not the file, so that is picked up.
+    LinearBasis = .TRUE.
+
+    str = ListGetString( Solver % Values,'Element', Found )
+    IF( Found ) CALL NoteBasis( str )
+
+    IF( .NOT. Found ) THEN
+      DO j=1,CurrentModel % NumberOfEquations
+        ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(j) % Values, &
+            'Active Solvers', GotList )
+        IF( .NOT. GotList ) CYCLE
+        IF( .NOT. ANY( ActiveSolvers == Solver % SolverId ) ) CYCLE
+        str = ListGetString( CurrentModel % Equations(j) % Values,'Element', Found )
+        IF( Found ) CALL NoteBasis( str )
+      END DO
+    END IF
+
+    IF( .NOT. Found ) THEN
+      DO j=1,CurrentModel % NumberOfBodies
+        str = ListGetString( CurrentModel % Bodies(j) % Values, &
+            'Solver '//I2S(Solver % SolverId)//': Element', Found )
+        IF( Found ) CALL NoteBasis( str )
+      END DO
+    END IF
+
+    InForce = 0; Plain = 0; Seen = 0
+    DO t=1,Solver % NumberOfActiveElements
+      Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
+      fam = Element % TYPE % ElementCode / 100
+      IF( fam < 2 .OR. fam > 8 ) CYCLE
+      Seen(fam) = Seen(fam) + 1
+      IP = GaussPoints( Element )
+      InForce(fam) = MAX( InForce(fam), IP % n )
+      Plain(fam) = MAX( Plain(fam), Element % TYPE % GaussPoints )
+    END DO
+
+    ! "Declared", not "in force". This is the rule the ELEMENT carries, before any
+    ! per solver keyword -- a "Relative Integration Order" or an explicit count
+    ! moves the rule actually used away from it, and resolving that generically is
+    ! not possible here since not every solver reaches its rule through
+    ! GaussPointsAdapt. The declared rule is nonetheless exactly the right thing
+    ! to audit: the mesh-wide inflation this looks for happens to the declaration.
+    CALL Info('AuditIntegrationRules','Integration rule declared by the elements '// &
+        'of "'//TRIM(ListGetString(Solver % Values,'Equation',Found))// &
+        '" (before any per solver rule keyword):',Level=5)
+
+    AnyExcess = .FALSE.
+    DO fam=2,8
+      IF( Seen(fam) == 0 ) CYCLE
+      CALL Info('AuditIntegrationRules','  '//TRIM(FamName(fam))//': declared '// &
+          I2S(InForce(fam))//' points, the element type''s own rule is '// &
+          I2S(Plain(fam)),Level=5)
+      IF( LinearBasis .AND. InForce(fam) > Plain(fam) ) AnyExcess = .TRUE.
+    END DO
+
+    IF( AnyExcess ) THEN
+      CALL Warn('AuditIntegrationRules','Solver "'// &
+          TRIM(ListGetString(Solver % Values,'Equation',Found))// &
+          '" carries no bubble and no p above one, yet its elements declare more '// &
+          'integration points than the element type asks for.')
+      CALL Info('AuditIntegrationRules','The rule is set mesh-wide from the '// &
+          'largest basis any solver puts on these elements, so this one is '// &
+          'paying for another solver''s bubbles. Either drop the p-element '// &
+          'declaration from this solver, or state its rule explicitly.',Level=3)
+    END IF
+
+  CONTAINS
+
+    !> A bubble, or a p above one, in an element definition from wherever it came.
+    SUBROUTINE NoteBasis( def )
+      CHARACTER(LEN=*) :: def
+      INTEGER :: ip, ideg, istat
+      IF( INDEX( def,'b:' ) > 0 ) LinearBasis = .FALSE.
+      ip = INDEX( def,'p:' )
+      IF( ip > 0 ) THEN
+        READ( def(ip+2:), *, IOSTAT=istat ) ideg
+        IF( istat == 0 .AND. ideg > 1 ) LinearBasis = .FALSE.
+      END IF
+    END SUBROUTINE NoteBasis
+!------------------------------------------------------------------------------
+  END SUBROUTINE AuditIntegrationRules
+!------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
   
 

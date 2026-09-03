@@ -66,7 +66,8 @@ MODULE MainUtils
       CalculateNodalWeights, CheckStepSize, ComputeChange, &
       ComputeNorm, CreateIpPerm, ScaleLinearSystem, BackScaleLinearSystem, &
       InitializeTimestep, InitializeToZero, InvalidateVariable, &
-      MatrixVectorMultiply, UpdateDependentObjects, UpdateExportedVariables
+      AuditIntegrationRules, MatrixVectorMultiply, UpdateDependentObjects, &
+      UpdateExportedVariables
   USE SolveCore, ONLY : FinalizeLumpedMatrix
   USE BoundaryConditionUtils, ONLY : GetPassiveBoundary
   USE ProjectorUtils, ONLY : GenerateProjectors
@@ -5259,6 +5260,12 @@ CONTAINS
 
          CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
+
+         ! Report the integration rule in force, per element family, and flag a
+         ! solver paying for a basis it does not carry. Costs nothing and
+         ! assembles nothing; here because the active element table has just been
+         ! built, and this branch runs once per mesh rather than per timestep.
+         CALL AuditIntegrationRules( Solver )
          
          ! Calculate accumulated integration weights for bulk if requested          
          DoBulk = ListGetLogical( Solver % Values,'Calculate Weights',Found )
