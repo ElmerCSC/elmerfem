@@ -2739,6 +2739,41 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Given element structure return Gauss integration points for the element.
 !----------------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> The most negative "RelOrder" GaussPoints will accept for this element.
+!>
+!> Stated here because GaussPoints ENFORCES the bound by calling Fatal, so a
+!> caller that walks the ladder downwards cannot discover the limit by trying:
+!> the first invalid step ends the run. A p-element's offset is arithmetic on the
+!> per-direction count, so it bottoms out when that count would reach zero; a
+!> non-p element has exactly three tabulated rules and so cannot go below -1.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsMinRelOrder( Element ) RESULT( rmin )
+!------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE(Element_t), TARGET :: Element
+     INTEGER :: rmin
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: elm
+     INTEGER :: n, eldim
+
+     elm => Element
+     IF( .NOT. isActivePElement(elm) ) THEN
+       rmin = -1
+       RETURN
+     END IF
+
+     n = 0
+     IF( ASSOCIATED( elm % PDefs ) ) n = elm % PDefs % GaussPoints
+     IF( n == 0 ) n = Element % TYPE % GaussPoints
+     eldim = MAX( Element % TYPE % DIMENSION, 1 )
+
+     ! p1d = NINT( n**(1/eldim) ) + RelOrder must stay >= 1
+     rmin = 1 - NINT( REAL(n,dp)**(1.0_dp/eldim) )
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsMinRelOrder
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement, &
         EdgeBasisDegree) RESULT(IntegStuff)
 !---------------------------------------------------------------------------------------------
