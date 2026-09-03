@@ -1967,6 +1967,8 @@ CONTAINS
   SUBROUTINE ProbeThisElement()
 !------------------------------------------------------------------------------
     INTEGER :: fam, r, rlo, rhi, nc, i, j, k, best, PrevNp, nsys, nblk, nTry
+    INTEGER :: ib, ii, jj
+    REAL(KIND=dp), ALLOCATABLE :: DScale(:)
     INTEGER, PARAMETER :: MaxCand = 32
     INTEGER :: CandNp(MaxCand), CandFixed(MaxCand), CandRel(MaxCand)
     INTEGER :: TryNp(MaxCand), TryFixed(MaxCand)
@@ -2110,6 +2112,38 @@ CONTAINS
       DEALLOCATE( Cand, Ref )
       RETURN
     END IF
+
+    ! Compare in the metric the SOLVER sees, not in physical units.
+    !
+    ! The local matrix is physical, but the global system is scaled to a unit
+    ! diagonal before it is solved and the solution scaled back afterwards. In
+    ! axisymmetry the r weight alone spreads row magnitudes by orders of
+    ! magnitude and the quadrature moves precisely that, so a raw comparison
+    ! reports a change the solve never sees: on ElasticMaxwellAxi the raw
+    ! residual is 7.5e-02 while the answer moves by 5e-09.
+    !
+    ! ONE metric for all candidates, taken from the finest. Scaling each by its
+    ! own diagonal would normalise away part of the very difference being
+    ! measured. Guarded, because this is a saddle point -- the pressure rows of a
+    ! mixed displacement/pressure formulation have no diagonal to scale by -- and
+    ! the stiffness diagonal is used for the mass and damping blocks too, so that
+    ! a term which is small in the assembled system stays small here.
+    ALLOCATE( DScale(nsys) )
+    DO i=1,nsys
+      DScale(i) = SQRT( ABS( Cand( (i-1)*nsys + i, nc ) ) )
+      IF( DScale(i) <= TINY(1.0_dp) ) DScale(i) = 1.0_dp
+    END DO
+    DO k=1,nc
+      DO ib=0,2
+        DO jj=1,nsys
+          DO ii=1,nsys
+            Cand( ib*nblk + (jj-1)*nsys + ii, k ) = &
+                Cand( ib*nblk + (jj-1)*nsys + ii, k ) / ( DScale(ii)*DScale(jj) )
+          END DO
+        END DO
+      END DO
+    END DO
+    DEALLOCATE( DScale )
 
     ! The finest rule tried is the reference.
     Ref = Cand(:,nc)
