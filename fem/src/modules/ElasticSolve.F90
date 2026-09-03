@@ -241,6 +241,54 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
      END IF
   END IF
 
+  ! The integration rule for the incompressible MINI element, per family.
+  !
+  ! Only here, and not as a general default. The counts are measured for the
+  ! bubble augmented linear element. The two simplices have the most to give: a
+  ! tetrahedron carrying "p:1 b:1" defaults to 150 points and is bit-identical at
+  ! 24, a triangle to 12 and is bit-identical at 7. The prism gives 125 -> 85.
+  ! The quadrilateral and the brick are already tight at the bubble count they
+  ! actually have -- b:3 and b:4, those being the counts getBubbleDOFs offers --
+  ! so their entries are their own defaults, stated only so a mixed mesh does not
+  ! fall back to a relative bump that would land differently on each family.
+  !
+  ! The prism is the one family where an explicit count reaches rules a relative
+  ! order cannot. Integration.F90 dispatches family 7 three ways, but the
+  ! triangle x segment tensor rules and the economical rules are BOTH reachable
+  ! only when np is given: with np absent it falls through to GaussPointsWedge,
+  ! the collapsed n**3 ladder, which is why the relative order can only ever land
+  ! on 125 or 64. 85 is GaussPointsWedge2(17,5), and it is the smallest rule that
+  ! is bit-identical here -- 48 is right to 3e-7 but not identical, and the
+  ! economical family is not ordered by accuracy (14 points lands at -0.23% while
+  ! 15, 16, 18, 21 and 24 are all worse), so the ladder cannot simply be walked
+  ! down to the first miss.
+  !
+  ! Gated on a bubble appearing in the element definition, because the other
+  ! incompressible configuration is the equal-order pair held by pressure
+  ! stabilisation, whose "p:1" carries no bubble and whose default rule is far
+  ! smaller than these counts -- 1 point on a tetrahedron. Forcing 24 there
+  ! would integrate a linear element 24 times over for nothing.
+  !
+  ! ListAddNew, so a sif stating its own rule still wins. A p-element of degree
+  ! above one is left alone by ElementalGaussNp, which is what stops these
+  ! linear element counts under-integrating a p-refined basis.
+  !
+  ! ABOVE the UMAT early return just below, and it has to stay there. Everything
+  ! past that RETURN runs only when some material names a "UMAT Subroutine",
+  ! which no incompressible MINI case does -- stated at the end of this routine,
+  ! as it first was, the block never executed at all and every count here was
+  ! dead. It read as harmless because the counts are the bit-identical ones, so
+  ! no test could move whether it fired or not.
+  IF( ListGetLogical( SolverParams,'Incompressible', Found ) ) THEN
+    str = ListGetString( SolverParams,'Element', Found )
+    IF( Found ) THEN
+      IF( INDEX( str, 'b:' ) > 0 ) THEN
+        CALL ListAddNewString( SolverParams,'Element Integration Points', &
+            '-tri 7 -quad 16 -tetra 24 -prism 85 -brick 64' )
+      END IF
+    END IF
+  END IF
+
   IF (.NOT. ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine') ) RETURN
 
   
@@ -303,6 +351,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), str )
   END IF
       
+
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init
 !------------------------------------------------------------------------------
@@ -411,6 +460,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: NonlinearIter, MinNonlinearIter, FlowNOFNodes, previ
   INTEGER :: EigenModes, Passes
   INTEGER :: RelIntegOrder, RelIntegOrderBC
+  INTEGER :: ElemGaussNp(8)
+  LOGICAL :: ElementalGaussRule
   LOGICAL :: PStab = .FALSE.
   REAL(KIND=dp) :: PStabCoeff
   INTEGER :: CoordinateSystem
@@ -1310,11 +1361,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !   tri  b:1    12         7       4 pts +0.044%
   !   quad b:3    16        16       9 pts +0.001%
   !   tet  b:1   150        24       5 pts +3.50%
-  !   prism b:4  125       125      64 pts +0.002%
+  !   prism b:4  125        85      64 pts +0.002%
   !   hex  b:4    64        64      27 pts +0.255%
   !
   ! So the two simplices carry a full step of slack and the three tensor
-  ! families carry none. The slack is the headroom degree the simplex tables add
+  ! families carry none, beyond the prism's 125 -> 85, which is not slack in the
+  ! ladder at all but a different rule family (GaussPointsWedge2) that only an
+  ! explicit point count can reach. The slack is the headroom degree the tables add
   ! deliberately, and it is not spare on every problem, which is why none of
   ! this is a default. The same sweep run as a Maxwell material reproduces every
   ! one of those percentages to the digit, so what the rule has to integrate is
@@ -1334,6 +1387,20 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   i = ListGetInteger( SolverParams,'Boundary Relative Integration Order', GotIt )
   IF( GotIt ) RelIntegOrderBC = i
+
+
+  ! An explicit per family rule, if one is stated -- by a sif, or by _Init for
+  ! the incompressible MINI element. Parsed ONCE here, and through the same
+  ! parser GaussPointsAdapt uses, because that function is what CreateIpPerm
+  ! asks how many points an element has when it sizes an integration point
+  ! variable: if the two disagree, the per element slices of "ve_stress" are
+  ! allocated for one rule and written for another.
+  !
+  ! Bulk only. The counts are measured on the bulk element, and the boundary is
+  ! a different budget -- the very reason the relative orders are split in two.
+  ElemGaussNp = 0
+  str = ListGetString( SolverParams,'Element Integration Points', ElementalGaussRule )
+  IF( ElementalGaussRule ) CALL ParseElementalGaussRules( str, ElemGaussNp )
 
   ! Pressure stabilisation, as an alternative to the MINI element's bubble.
   !
@@ -1693,6 +1760,38 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
 !------------------------------------------------------------------------------
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> The integration rule this bulk element is to be assembled over.
+!>
+!> One place, because the two local matrix routines have to agree with each
+!> other and, more importantly, with what CreateIpPerm sized the -ip variables
+!> for -- and CreateIpPerm asks GaussPointsAdapt, which this solver otherwise
+!> never calls. The keyword string plus the shared parser is the only channel
+!> between them.
+!>
+!> Precedence matches GaussPointsAdapt: an absolute per family count wins over
+!> the scalar relative order.
+!------------------------------------------------------------------------------
+  FUNCTION ElasticGaussPoints( Element ) RESULT( IntegStuff )
+!------------------------------------------------------------------------------
+    TYPE(Element_t) :: Element
+    TYPE(GaussIntegrationPoints_t) :: IntegStuff
+!------------------------------------------------------------------------------
+    INTEGER :: ngp
+
+    ngp = 0
+    IF( ElementalGaussRule ) ngp = ElementalGaussNp( Element, ElemGaussNp )
+    IF( ngp > 0 ) THEN
+      IntegStuff = GaussPoints( Element, np = ngp )
+      RETURN
+    END IF
+
+    IntegStuff = GaussPoints( Element, RelOrder = RelIntegOrder )
+!------------------------------------------------------------------------------
+  END FUNCTION ElasticGaussPoints
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> The bulk element loop and the local matrices it builds, moved out of
@@ -3652,7 +3751,7 @@ CONTAINS
     !-------------------------------------------------------
     !    Integration stuff
     !-------------------------------------------------------
-    IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
+    IntegStuff = ElasticGaussPoints( element )
 
     U_Integ => IntegStuff % u
     V_Integ => IntegStuff % v
@@ -4620,7 +4719,7 @@ CONTAINS
        Identity(i,i) = 1.0D0
     END DO
 
-    IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
+    IntegStuff = ElasticGaussPoints( element )
 
     U_Integ => IntegStuff % u
     V_Integ => IntegStuff % v
