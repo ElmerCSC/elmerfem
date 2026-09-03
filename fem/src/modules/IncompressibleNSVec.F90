@@ -71,6 +71,14 @@ MODULE IncompressibleLocalForms
   ! this is not. Set .FALSE. before the serial first element and raised by it, so
   ! every thread in the parallel region afterwards only ever reads it.
   LOGICAL :: ViscVarsZeroed = .FALSE.
+  ! The integration rule probe. Module scope and not one slot per thread on
+  ! purpose: the probe re-enters LocalBulkMatrix in a SERIAL sweep of its own
+  ! after the threaded assembly loop, so neither this state nor the re-entered
+  ! assembly needs locking. The bookkeeping half is IntegRuleProbe_t in
+  ! SolverBasics; what is here is the assembly, and the state the assembly must
+  ! not disturb while NSProbe % Override is set -- the glue to the global matrix,
+  ! the bubble coefficients bx, and the saved shearrate/viscosity fields.
+  TYPE(IntegRuleProbe_t), SAVE :: NSProbe
 
 CONTAINS
 
@@ -121,8 +129,11 @@ CONTAINS
         JAC(ntot*(dim+1),ntot*(dim+1) )
 
     INTEGER :: t, i, j, k, p, q, ngp, allocstat, elemdim
-    INTEGER :: DOFs, tid
+    INTEGER :: DOFs, tid, nProbe
     REAL(KIND=dp) :: Kfam, hStab, VNorm, PeStab
+    ! Set by LCondensate when the candidate rule the probe is walking cannot
+    ! integrate the bubble block; see there.
+    LOGICAL :: ProbeReject
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
@@ -145,9 +156,22 @@ CONTAINS
 
     DOFs = dim + 1
 
+    ! The size of the block that reaches the global matrix, which is the only
+    ! thing the probe may judge a rule on: where there are bubbles they are
+    ! condensed out below, so their rows are assembled but never glued.
+    nProbe = ntot*DOFs
+    IF( nb > 0 ) nProbe = nd*DOFs
+    ProbeReject = .FALSE.
+
     ! Numerical integration:
     !-----------------------
-    IP = GaussPointsAdapt(Element)
+    ! While the probe is walking its ladder it dictates the rule, so that the
+    ! re-assembly differs from the real one in the quadrature and nothing else.
+    IF( NSProbe % Override ) THEN
+      IP = IntegRuleProbeRule( NSProbe, Element )
+    ELSE
+      IP = GaussPointsAdapt(Element)
+    END IF
     ngp = IP % n
 
     ElemDim = Element % Type % Dimension
@@ -762,7 +786,11 @@ CONTAINS
         STIFF(i,i) = 1._dp
       END DO
 
-      IF ( Transient ) THEN
+      ! Not while probing: with "Use Global Mass Matrix" this routine writes
+      ! straight into the global mass matrix, and the probe must leave the global
+      ! system untouched. The mass matrix goes to the probe as a block of its
+      ! own instead, so the term is still measured.
+      IF ( Transient .AND. .NOT. NSProbe % Override ) THEN
         CALL Default1stOrderTime( MASS, STIFF, FORCE )
       END IF
       IF (nb > 0) THEN
@@ -773,6 +801,24 @@ CONTAINS
           CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
         END IF
       END IF
+    END IF
+
+    ! Hand the assembled local system to the probe instead of the global matrix,
+    ! and leave before the Schur block, which is a global write too. Stiffness
+    ! first, since its diagonal is the metric the candidates are compared in --
+    ! and this is a saddle point system, so some of that diagonal is zero and the
+    ! scaling has to be guarded; then mass, then the force vector.
+    !
+    ! POST-condensation, so that what is compared is what the solve is handed. A
+    ! candidate whose bubble block could not be inverted simply reports nothing
+    ! and drops out of the comparison.
+    IF( NSProbe % Override ) THEN
+      IF( .NOT. ProbeReject ) &
+          CALL IntegRuleProbeValue( NSProbe, nProbe, &
+          [ RESHAPE( STIFF(1:nProbe,1:nProbe), [nProbe*nProbe] ), &
+            RESHAPE( MASS(1:nProbe,1:nProbe), [nProbe*nProbe] ), &
+            FORCE(1:nProbe) ] )
+      RETURN
     END IF
 
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
@@ -989,7 +1035,12 @@ CONTAINS
       END DO
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
-      IF(SaveShear) THEN
+      ! Never while probing. On nodes and on elements these accumulate, so a
+      ! re-assembly would add a second contribution; on gauss points the storage
+      ! IS the rule -- CreateIpPerm sized the slices from the rule in force --
+      ! and the count check below would fatal on the probe's first candidate.
+      ! That guard is doing its job; the probe simply must not reach it.
+      IF(SaveShear .AND. .NOT. NSProbe % Override ) THEN
         IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_nodes ) THEN
           DO i=1,n
             NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(Element % NodeIndexes(i))) = &
@@ -1164,7 +1215,7 @@ CONTAINS
       END IF
       
       ! If requested, save viscosity field (on nodes, ip points or elements). 
-      IF(SaveVisc) THEN
+      IF(SaveVisc .AND. .NOT. NSProbe % Override ) THEN
         IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_nodes ) THEN
           DO i=1,n
             NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(Element % NodeIndexes(i))) = &
@@ -1187,7 +1238,7 @@ CONTAINS
       END IF
 
       ! If requested, save normalization weight associated to viscosity (and shearrate).
-      IF(SaveWeight) THEN
+      IF(SaveWeight .AND. .NOT. NSProbe % Override ) THEN
         DO i=1,n
           NSHandles(tid) % WeightVar % Values(NSHandles(tid) % WeightVar % Perm(Element % NodeIndexes(i))) = &
               NSHandles(tid) % WeightVar % Values(NSHandles(tid) % WeightVar % Perm(Element % NodeIndexes(i))) + &
@@ -1291,14 +1342,37 @@ CONTAINS
       Klb = K(Cdofs,Bdofs)
       Fb  = F(Bdofs)
 
+      ! The coarse end of the probe's ladder is a rule that cannot integrate the
+      ! bubble block: on a quad with b:4 the four point rule leaves Kbb singular,
+      ! and InvertMatrix ends the run rather than returning an answer. Such a
+      ! rule is not a usable rule at all, so the candidate is DISCARDED -- not
+      ! compared, and not compared uncondensed either, since the bubble rows are
+      ! never glued and judging a rule on them only over-states it.
+      IF( NSProbe % Override ) THEN
+        BLOCK
+          REAL(KIND=dp) :: KbbLU(nb*dim,nb*dim)
+          INTEGER :: ipiv(nb*dim), LUinfo
+          KbbLU = Kbb
+          CALL DGETRF( nb*dim, nb*dim, KbbLU, nb*dim, ipiv, LUinfo )
+          IF( LUinfo /= 0 ) THEN
+            ProbeReject = .TRUE.
+            RETURN
+          END IF
+        END BLOCK
+      END IF
+
       CALL InvertMatrix( Kbb,Nb*dim )
 
       F(cdofs) = F(cdofs) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
       K(cdofs,cdofs) = &
           K(cdofs,cdofs) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
 
-      ! The bubble part evaluated for the current solution candidate: 
-      IF (ComputeBubblePart) bx((Element_id-1)*dim*nb+1:Element_id*dim*nb) = &
+      ! The bubble part evaluated for the current solution candidate. Not while
+      ! probing: bx is state kept per element -- the same class of thing as an
+      ! integration point history -- and a re-assembly at another rule would
+      ! leave the wrong one behind for the next timestep to read.
+      IF (ComputeBubblePart .AND. .NOT. NSProbe % Override) &
+          bx((Element_id-1)*dim*nb+1:Element_id*dim*nb) = &
           MATMUL(Kbb,Fb-MATMUL(Kbl,xl))
       !------------------------------------------------------------------------------
     END SUBROUTINE LCondensate
@@ -2093,6 +2167,10 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   Params => GetSolverParams() 
 
+  ! The integration rule probe. Reporting only -- see IntegRuleProbeReport for
+  ! why it may not simply adopt what it finds.
+  CALL IntegRuleProbeStart( NSProbe, Params )
+
   !-----------------------------------------------------------------------------
   ! Output the number of integration points as information.
   ! This in not fully informative if several element types are present.
@@ -2303,7 +2381,31 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
-    
+
+    ! The probe, in a serial sweep of its own once the threaded assembly has
+    ! finished. Late and serial deliberately: it re-enters LocalBulkMatrix, so
+    ! from inside the parallel loop the probe's bookkeeping would need locking
+    ! and the sample would be whatever elements a thread happened to be handed.
+    !
+    ! First nonlinear iteration only. The effective viscosity at iteration 30 is
+    ! a different material, and the answer wanted is a rule to state in a sif,
+    ! which has to hold for the whole run.
+    IF( NSProbe % Active .AND. iter == 1 ) THEN
+      DO Element_id=1,Active
+        Element => GetActiveElement(Element_id)
+        n  = GetElementNOFNodes(Element)
+        ! Update=.TRUE. and in this order, exactly as the assembly loop above
+        ! does it: GetElementNOFDOFs reads the bubble count back off the mesh
+        ! element, and only the updating call puts it there. Ask for the counts
+        ! any other way and the probe assembles a system of a different SHAPE
+        ! from the real one -- the bubble block then lands on rows that were
+        ! never filled, and every candidate rule is rejected as singular.
+        nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+        nd = GetElementNOFDOFs(Element)
+        CALL ProbeThisElement()
+      END DO
+    END IF
+
     CALL DefaultFinishBulkAssembly()
     
     Active = GetNOFBoundaryElements()
@@ -2371,10 +2473,53 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     END DO
   END BLOCK
 
+  CALL IntegRuleProbeReport( NSProbe, Caller )
   
   CALL DefaultFinish()
   
   CALL Info( Caller,'All done',Level=10)
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> Re-assemble THIS element at each rule the probe asks for. The ladder, the
+!> comparison and the report are IntegRuleProbe_t's; what belongs here is the
+!> assembly.
+!>
+!> A NON-NEWTONIAN viscosity is probed as it stands, and the answer is then a
+!> LOWER bound: the effective viscosity varies within the element, so the
+!> integrand is not the polynomial the quadrature is exact for and the ladder is
+!> asymptotic rather than convergent. The report says which families never
+!> settled and by how much, which is the honest form of that answer.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProbeThisElement()
+    ! Never .TRUE.: the handles were resolved by the assembly this probe runs
+    ! after, and re-resolving them here would be resolution inside a sweep whose
+    ! whole purpose is to leave the assembly's state alone. A variable and not a
+    ! literal because LocalBulkMatrix clears it on the way out.
+    LOGICAL :: ProbeInitHandles
+!------------------------------------------------------------------------------
+    ! What this element is assembled at today, so the report reads as a
+    ! comparison. GaussPointsAdapt and not the probe's own rule: this is the
+    ! keyword path the real assembly takes.
+    IP = GaussPointsAdapt( Element )
+    IF( .NOT. IntegRuleProbeBegin( NSProbe, Element, IP % n ) ) RETURN
+
+    DO WHILE( IntegRuleProbeNext( NSProbe, Element ) )
+      ProbeInitHandles = .FALSE.
+      ! The stabilisation arguments are passed exactly as the assembly loop
+      ! passes them: the rule being sought has to be the rule for the integrand
+      ! the solver actually integrates, stabilisation included.
+      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim, DivCurlForm, GradPVersion, &
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, &
+          ProbeInitHandles, SchurSolver, PStab, PStabCoeff, PStabHmode )
+    END DO
+
+    CALL IntegRuleProbeEnd( NSProbe )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProbeThisElement
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver
 !------------------------------------------------------------------------------
