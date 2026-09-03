@@ -7295,8 +7295,8 @@ void MainWindow::compilerFinishedSlot(int) {
 // About dialog...
 //-----------------------------------------------------------------------------
 
-void MainWindow::showaboutSlot() {
 
+void MainWindow::showaboutSlot() {
   QMessageBox msgBox(this);
   msgBox.setTextFormat(Qt::RichText);
   QIcon icon(windowIcon());
@@ -7320,24 +7320,20 @@ void MainWindow::showaboutSlot() {
          "(VTK):<BR>"
          "<A HREF='https://vtk.org/'>https://vtk.org/</A></P>"
 #endif
-
 #ifdef EG_PARAVIEW
          "<P>This version of ElmerGUI has been linked "
          "against ParaView visualization software.<BR>"
          "<A HREF='https://www.paraview.org/'>https://www.paraview.org</A></P>"
 #endif
-
 #ifdef EG_OCC
          "<P>This version of ElmerGUI has been compiled with "
          "the OpenCascade solids modeling library:<BR>"
-         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</P>"
+         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</A></P>"
 #endif
-
 #ifdef EG_QWT
          "<P>This version of ElmerGUI is based in part on the work of the Qwt project.<BR>"
          "<A HREF='http://qwt.sf.net'>http://qwt.sf.net</A></P>"
 #endif
-
 #ifdef MPICH2
          "<P>The parallel solver of this package has been linked "
          "against the MPICH2 library v. 1.0.7 from Argonne "
@@ -7353,10 +7349,20 @@ void MainWindow::showaboutSlot() {
          "from the git repository<BR>"
          "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
          "<P>Written by Mikko Lyly, Saeki Takayuki, Juha Ruokolainen, "
-         "Peter Råback and Sampo Sillanpaa 2008-2023</P>"
+         "Peter Råback and Sampo Sillanpaa 2008-2026</P>"
          "<P>Compiled on " __DATE__ "</P>"));
+
+  // Make all embedded hyperlinks (in both the main text and the
+  // informative text) clickable and openable in the default browser.
+  for (QLabel *lbl : msgBox.findChildren<QLabel *>()) {
+    lbl->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    lbl->setOpenExternalLinks(true);
+  }
+
   msgBox.exec();
 }
+
+
 
 void MainWindow::getStartedSlot() {
   QMessageBox msgBox(this);
@@ -7369,28 +7375,29 @@ void MainWindow::getStartedSlot() {
 	"GetStartedElmer.pdf contains instructions for Windows users, "
 	"along with useful information for Linux users."
 	"</P>"
-	"<A HREF='//www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf'>GetStartedElmer.pdf</A>"
+	"<A HREF='https://www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf'>GetStartedElmer.pdf</A>"
 	"<P>"
 	"Download the full set of Elmer documentation from:"
 	"</P>"
-	"<A HREF='//www.nic.funet.fi/index/elmer/doc/'>//www.nic.funet.fi/index/elmer/doc/</A>"
+	"<A HREF='https://www.nic.funet.fi/index/elmer/doc/'>www.nic.funet.fi/index/elmer/doc/</A>"
 	"<P>"
 	"Be sure to review ElmerSolverManual.pdf and ElmerModelsManual.pdf<BR><BR>"
 	"Youtube has videos about Elmer and Elmer Webinars"
 	"</P>"
-	"<A HREF='//www.youtube.com/@elmerfem'>Elmer Youtube Webinars and videos</A>"
+	"<A HREF='https://www.youtube.com/@elmerfem'>Elmer Youtube Webinars and videos</A>"
 	"<P>"
 	"The Elmer users forum can be found at:"
 	"</P>"
-	"<A HREF='//http://www.elmerfem.org/forum/'>//http://www.elmerfem.org/forum/</A>"
+	"<A HREF='https://www.elmerfem.org/forum/'>www.elmerfem.org/forum/</A>"
 	"<P>"
 	"After having reviewed some of the above documents, and "
 	"trying out a few of the tutorials, feel free to post questions on "
 	"the forum.  To help get answers in a timely fashion, be sure to "
 	"post a minimal working example, including a sif file and "
-	"geometry file.  ElmerGUI project folders can be archived into zip "
-	"files or gz files.  The forum allows up to 3 attachments per "
-	"post and up to 1 Megabyte per post.<BR><BR>"
+	"geometry file. <BR><BR>"
+	//ElmerGUI project folders can be archived into zip "
+	//"files or gz files.  The forum allows up to 3 attachments per "
+	//"post and up to 1 Megabyte per post.<BR><BR>"
 	"Context Sensitive Help<BR><BR>"
 	"Some of the ElmerGUI menu items have context sensitive help text.  "
 	"Look for the button labeled 'Whatis'.  Clicking on the 'Whatis' button "
@@ -7404,6 +7411,14 @@ void MainWindow::getStartedSlot() {
 	"entry box, press 'shift F1'.  If help text is available, then it will be displayed."
 	"</P>"
   ));
+
+  // Make the embedded hyperlinks clickable and openable in the default browser.
+  QLabel *label = msgBox.findChild<QLabel *>("qt_msgbox_label");
+  if (label) {
+    label->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    label->setOpenExternalLinks(true);
+  }
+
   msgBox.exec();
 }
 
