@@ -208,12 +208,11 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
       EFamily, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-  COMPLEX(KIND=dp) :: Beta, Zet
+  COMPLEX(KIND=dp) :: Beta
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
   COMPLEX(KIND=dp), POINTER :: cValues(:)
-  REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum, Scale
-  REAL(KIND=dp) :: Y, Z_port
-  COMPLEX(KIND=dp) :: E2, Power, V2
+  REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum
+  COMPLEX(KIND=dp) :: E2, Power
 
   TYPE(Variable_t), POINTER :: EMVar
   INTEGER, ALLOCATABLE :: SavePerm(:)
@@ -402,7 +401,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     ! Use the sum of all propagation constants as a reference value for consistency
     BetaSum = BetaSum + REAL(Beta)
     
-    ! Set the propagation constant to all those BCs associated with this port.
+    ! Assign the propagation constant to all BCs associated with this port.
     DO i = 1,Model % NumberOfBCs
       BC => Model % BCs(i) % Values
       IF(ListGetString( BC,'Port Type',Found) == 'eigenmode' ) THEN
@@ -410,13 +409,6 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         IF(j==PortInd .OR. MaxPort == 0) THEN
           CALL ListAddConstReal( BC,'Port Beta',REAL(Beta))
           CALL ListAddConstReal( BC,'Port Beta Im',AIMAG(Beta))
-
-          Scale = ListGetConstReal( BC,'Port Scale',Found) 
-          IF( Found ) THEN
-            Zet = (Omega / mu0inv ) / (Beta * Scale)
-            WRITE(Message,'(A,2ES15.6)') 'Estimated Port impedance: ',Zet
-            CALL Info(Caller,Message,Level=5)      
-          END IF        
         END IF
       END IF
       j = ListGetInteger( BC,"Port Beta Parent", Found )
@@ -426,7 +418,42 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       END IF
     END DO
 
+    ! Integrations to normalize the eigenvector of special interest:
+    !
+    IF (ListGetLogical(Params, 'Eigenvector Normalization by Power', Found)) THEN
 
+      Power = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      
+      DO t=1,Active
+        Element => GetActiveElement(t,Solver)
+        EFamily = GetElementFamily(Element)
+        IF (EFamily > 4) CYCLE
+        
+        IF (CoordinateSystemDimension() == 2) THEN
+          CONTINUE
+        ELSE
+          ! If we have several ports, then handle the correct one.  
+          IF (MaxPort>0) THEN
+            BC => GetBC(Element)
+            IF (ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
+          END IF
+        END IF
+          
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+
+        CALL CalculatePortPower(Element, n, nd, ModeIndex, Beta, Power)
+      END DO
+
+      Power = ParallelReduction(Power)
+
+      WRITE(Message,'(A,2ES15.6)') 'Scaling by (average) port power: ', 0.5_dp*REAL(Power)
+      CALL Info(Caller, Message, Level=5)
+      
+      Solver % Variable % EigenVectors(ModeIndex,:) = Solver % Variable % EigenVectors(ModeIndex,:)/ &
+          CMPLX(SQRT(REAL(Power)/2.0_dp), 0.0_dp, KIND=dp)       
+    END IF
+    
     ! The standard eigenmodes always satisfy homogeneous BCs. Solving a nonhomogeneous
     ! problem needs an additional step.
     !
@@ -436,7 +463,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       CALL Info(Caller, 'Solving an additional component to satisfy nonhomogeneous BCs', Level=5) 
       CALL ListAddLogical(Params, 'Eigen Analysis', .FALSE.)
 
-      m = SIZE(Solver % Variable % Values)/2
+      m = Solver % Matrix % NumberOfRows/2
       DO j=1,i
         Solver % Matrix % Values = Solver % Matrix % Values - &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
@@ -445,8 +472,14 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         Norm = DefaultSolve()
 
         cValues => ComplexVariableValues( Solver % Variable )
-        Solver % Variable % EigenVectors(j,1:m) = &
-            Solver % Variable % EigenVectors(j,1:m) + cValues(1:m)
+
+        ! Overwrite the standard eigenvector by inserting the particular solution. We could also blend
+        ! the original eigenfunction and the particular solution to obtain another solution to the nonhomogeneous
+        ! problem, so this step is a matter of choice. Remove the component along the homogeneous eigenvector to
+        ! obtain uniqueness:
+        Solver % Variable % EigenVectors(j,1:m) = cValues(1:m) - &
+            SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * cValues(1:m)) * Solver % Variable % EigenVectors(j,1:m) / &
+            SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * Solver % Variable % EigenVectors(j,1:m))
         
         Solver % Matrix % Values = Solver % Matrix % Values + &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
@@ -454,14 +487,12 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       CALL ListAddLogical(Params, 'Eigen Analysis', .TRUE.)
     END IF
     
-    
     ! Integrations to evaluate the impedance:
     !
     IF (ListCheckPresentAnyBC(Model, 'Calculate Impedance') .OR. &
         (CoordinateSystemDimension() == 2 .AND. ListGetLogical(Params, 'Calculate Impedance', Found))) THEN
 
       E2 = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
-      V2 = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       Power = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
       Output_Z = .FALSE.
       DO t=1,Active
@@ -472,10 +503,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         IF (CoordinateSystemDimension() == 2) THEN
           CONTINUE
         ELSE
-          ! When we have several ports, then handle the correct one.  
-          BC => GetBC(Element)
-          IF(MaxPort>0) THEN
-            IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
+          IF (MaxPort>0) THEN
+            BC => GetBC(Element)
+            IF (ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
           END IF
           
           IF (.NOT. ListGetLogical(BC, 'Calculate Impedance', Found)) CYCLE
@@ -484,26 +514,31 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
 
-        CALL CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, V2, Power)
+        CALL CalculatePortPower(Element, n, nd, ModeIndex, Beta, Power, E2)
         IF (.NOT. Output_Z) Output_Z = .TRUE.
       END DO
 
+      Power = ParallelReduction(Power)
+      E2 = ParallelReduction(E2)
+      
       IF (Output_Z) THEN
-        IF (UseV) THEN
-          Z_port = REAL(V2)/REAL(Power)
-        ELSE
-          Y = REAL(Power)/REAL(E2)
-          Z_port = 1.0_dp/Y
-        END IF
 
-        !WRITE(Message,'(A,2ES15.6)') 'Port (wave) impedance: ', Z_port
-        WRITE(Message,'(A,2ES15.6)') 'Port power: ', 0.5_dp*REAL(Power)
+        WRITE(Message,'(A,2ES15.6)') 'Port power (average): ', 0.5_dp*REAL(Power)
         CALL Info(Caller, Message, Level=5)
-        CALL ListAddConstReal(Model % Simulation,'res: Port Power '//I2S(PortInd), 0.5_dp*REAL(Power))
-        CALL ListAddConstReal(Model % Simulation,'res: Port Impedance '//I2S(PortInd), Z_port)
-        IF (UseV) THEN
-          CALL ListAddConstReal(Model % Simulation,'res: Port RMS Voltage '//I2S(PortInd), SQRT(REAL(V2))/SQRT(2.0_dp))
-        END IF
+        WRITE(Message,'(A,2ES15.6)') 'Port power Im (average): ', 0.5_dp*AIMAG(Power)
+        CALL Info(Caller, Message, Level=5)
+        WRITE(Message,'(A,2ES15.6)') 'Modal (wave) impedance: ', REAL(E2) / REAL(Power)
+        CALL Info(Caller, Message, Level=5)
+        WRITE(Message,'(A,2ES15.6)') 'Port impedance (Re): ', REAL(1.0_dp /CONJG(Power))
+        CALL Info(Caller, Message, Level=5)
+        WRITE(Message,'(A,2ES15.6)') 'Port impedance (Im): ', AIMAG(1.0_dp /CONJG(Power))
+        CALL Info(Caller, Message, Level=5)        
+        
+        CALL ListAddConstReal(Model % Simulation,'res: Port Power'//I2S(PortInd), 0.5_dp*REAL(Power))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Power Im'//I2S(PortInd), 0.5_dp*AIMAG(Power))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Impedance '//I2S(PortInd), REAL(1.0_dp /CONJG(Power)))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Impedance Im '//I2S(PortInd), AIMAG(1.0_dp /CONJG(Power)))
+
       END IF
     END IF
     
@@ -942,17 +977,18 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-! Calculate integrals over an element on a port surface so that impedance
+! Calculate integrals over an element lying on a port surface so that impedance
 ! can be evaluated. 
 !------------------------------------------------------------------------------
-  SUBROUTINE CalculatePortImpedance(Element, n, nd, ModeIndex, Beta, E2, V2, P) 
+  SUBROUTINE CalculatePortPower(Element, n, nd, ModeIndex, Beta, P, E2, A) 
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ModeIndex
     COMPLEX(KIND=dp), INTENT(IN) :: Beta
-    COMPLEX(KIND=dp), INTENT(INOUT) :: E2, V2
     COMPLEX(KIND=dp), INTENT(INOUT) :: P   ! The integral of -[E x conjg(H)].n
+    COMPLEX(KIND=dp), OPTIONAL, INTENT(INOUT) :: E2
+    REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: A      ! Area
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1037,12 +1073,12 @@ CONTAINS
         gradEz(:) = gradEz(:) / (im * Beta)
       END IF
       
-      E2 = E2 + SUM(EF*CONJG(EF)) * weight
-      P = P + Nu*Beta/Omega * SUM(EF*CONJG(EF)) * weight + Nu/(im * omega) * SUM(EF*CONJG(gradEz)) * weight
-      IF (UseV) V2 = V2 + V*CONJG(V) * weight
+      P = P + Nu/Omega * (Beta * SUM(EF*CONJG(EF)) - im * SUM(EF*CONJG(gradEz))) * weight
+      IF (PRESENT(E2)) E2 = E2 + SUM(EF*CONJG(EF)) * weight
+      IF (PRESENT(A)) A = A + weight
     END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE CalculatePortImpedance
+  END SUBROUTINE CalculatePortPower
 !------------------------------------------------------------------------------
     
 !-----------------------------------------------------------------------------

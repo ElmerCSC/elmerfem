@@ -32,9 +32,9 @@ image:https://zenodo.org/badge/DOI/10.5281/zenodo.7892181.svg?style=social&label
 
 === Elmer Homepages
 
-* Official home at CSC: http://www.csc.fi/elmer[http://www.csc.fi/elmer]
-* Elmer community: http://www.elmerfem.org/[http://www.elmerfem.org/]
-* Elmer/Ice community: http://elmerice.elmerfem.org[http://elmerice.elmerfem.org]
+* Elmer community: https://www.elmerfem.org/[http://www.elmerfem.org/]
+* Elmer/Ice community: https://elmerice.elmerfem.org[http://elmerice.elmerfem.org]
+* Elmer service at CSC: https://research.csc.fi/service/elmer/[https://research.csc.fi/service/elmer/]
 
 
 === Direct links  

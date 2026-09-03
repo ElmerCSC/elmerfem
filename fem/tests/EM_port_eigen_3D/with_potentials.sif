@@ -207,17 +207,7 @@ Boundary Condition 1
   E re {e} = Real 0.0
   E im {e} = Real 0.0
 
-! This sets nodal and edge dofs to zero for the port dofs.
-! The following doesn't yet work for the potential-variable formulation,
-! so we give BCs otherwise:
-!  Port Ground = True
-
-  Eport re {n} 1 = Real 0.0
-  Eport re {n} 2 = Real 0.0
-  Eport im {n} 1 = Real 0.0
-  Eport im {n} 2 = Real 0.0
-  Eport re {e} = Real 0.0
-  Eport im {e} = Real 0.0
+  Port Ground = True
 End
 
 Boundary Condition 2
