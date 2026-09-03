@@ -1295,9 +1295,30 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! the boundary alike, as it always has. The two overrides exist because the
   ! boundary is what stops the bulk being reduced: a tetrahedron carrying
   ! "p:1 b:1" is integrated over 150 points and gives a bit-identical answer at
-  ! 36, but asking for that with "Relative Integration Order = -2" fatals,
+  ! 24, but asking for that with "Relative Integration Order = -2" fatals,
   ! because the same offset lands on the boundary triangle whose count is 3 and
   ! drives it to zero. One knob for two rules with very different budgets.
+  !
+  ! 24 is the top of the tabulated simplex ladder in TetraSimplexRulePoints;
+  ! without it the collapsed rule would be asked instead and give 36, which is
+  ! both larger and NOT exact here (+0.13% on the probe). Measured per family at
+  ! the bubble count each one actually has -- b:1 on the triangle and the
+  ! tetrahedron, b:3 on the quadrilateral, b:4 on the brick and prism -- the
+  ! default rule and the smallest that stays bit-identical are:
+  !
+  !            default   exact at   first inexact
+  !   tri  b:1    12         7       4 pts +0.044%
+  !   quad b:3    16        16       9 pts +0.001%
+  !   tet  b:1   150        24       5 pts +3.50%
+  !   prism b:4  125       125      64 pts +0.002%
+  !   hex  b:4    64        64      27 pts +0.255%
+  !
+  ! So the two simplices carry a full step of slack and the three tensor
+  ! families carry none. The slack is the headroom degree the simplex tables add
+  ! deliberately, and it is not spare on every problem, which is why none of
+  ! this is a default. The same sweep run as a Maxwell material reproduces every
+  ! one of those percentages to the digit, so what the rule has to integrate is
+  ! the element's business, not the material's.
   !
   ! So the bulk can be reduced on its own, and the boundary can be raised on its
   ! own where a Neumann term needs it. Neither is a default: the rule the basis
