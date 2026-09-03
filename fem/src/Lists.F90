@@ -7937,6 +7937,16 @@ CONTAINS
        END IF
        ! If size is increased we need to ensure that even constants will be rechecked. 
        Handle % ListId = -9999
+       ! Resetting ListId alone does NOT force that recheck. ElementHandleList
+       ! short-circuits on the ELEMENT pointer before it ever looks at ListId, so
+       ! re-evaluating the SAME element at a larger point count comes back with
+       ! ListSame true and ListFound false -- neither branch below recomputes,
+       ! the buffer that was just filled with the default is returned as the
+       ! answer, and it stays wrong for every smaller count after it, since those
+       ! take the ListSame .AND. SizeSame fast path. Silently: Found is .FALSE.,
+       ! but the callers that hand this vector straight to an integrand do not
+       ! ask. Forgetting the element as well as the list forces the full lookup.
+       Handle % Element => NULL()
        SizeSame = .FALSE.
      ELSE
        SizeSame = .TRUE.
