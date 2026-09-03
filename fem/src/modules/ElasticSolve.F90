@@ -241,6 +241,54 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
      END IF
   END IF
 
+  ! The integration rule for the incompressible MINI element, per family.
+  !
+  ! Only here, and not as a general default. The counts are measured for the
+  ! bubble augmented linear element. The two simplices have the most to give: a
+  ! tetrahedron carrying "p:1 b:1" defaults to 150 points and is bit-identical at
+  ! 24, a triangle to 12 and is bit-identical at 7. The prism gives 125 -> 85.
+  ! The quadrilateral and the brick are already tight at the bubble count they
+  ! actually have -- b:3 and b:4, those being the counts getBubbleDOFs offers --
+  ! so their entries are their own defaults, stated only so a mixed mesh does not
+  ! fall back to a relative bump that would land differently on each family.
+  !
+  ! The prism is the one family where an explicit count reaches rules a relative
+  ! order cannot. Integration.F90 dispatches family 7 three ways, but the
+  ! triangle x segment tensor rules and the economical rules are BOTH reachable
+  ! only when np is given: with np absent it falls through to GaussPointsWedge,
+  ! the collapsed n**3 ladder, which is why the relative order can only ever land
+  ! on 125 or 64. 85 is GaussPointsWedge2(17,5), and it is the smallest rule that
+  ! is bit-identical here -- 48 is right to 3e-7 but not identical, and the
+  ! economical family is not ordered by accuracy (14 points lands at -0.23% while
+  ! 15, 16, 18, 21 and 24 are all worse), so the ladder cannot simply be walked
+  ! down to the first miss.
+  !
+  ! Gated on a bubble appearing in the element definition, because the other
+  ! incompressible configuration is the equal-order pair held by pressure
+  ! stabilisation, whose "p:1" carries no bubble and whose default rule is far
+  ! smaller than these counts -- 1 point on a tetrahedron. Forcing 24 there
+  ! would integrate a linear element 24 times over for nothing.
+  !
+  ! ListAddNew, so a sif stating its own rule still wins. A p-element of degree
+  ! above one is left alone by ElementalGaussNp, which is what stops these
+  ! linear element counts under-integrating a p-refined basis.
+  !
+  ! ABOVE the UMAT early return just below, and it has to stay there. Everything
+  ! past that RETURN runs only when some material names a "UMAT Subroutine",
+  ! which no incompressible MINI case does -- stated at the end of this routine,
+  ! as it first was, the block never executed at all and every count here was
+  ! dead. It read as harmless because the counts are the bit-identical ones, so
+  ! no test could move whether it fired or not.
+  IF( ListGetLogical( SolverParams,'Incompressible', Found ) ) THEN
+    str = ListGetString( SolverParams,'Element', Found )
+    IF( Found ) THEN
+      IF( INDEX( str, 'b:' ) > 0 ) THEN
+        CALL ListAddNewString( SolverParams,'Element Integration Points', &
+            '-tri 7 -quad 16 -tetra 24 -prism 85 -brick 64' )
+      END IF
+    END IF
+  END IF
+
   IF (.NOT. ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine') ) RETURN
 
   
@@ -303,6 +351,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), str )
   END IF
       
+
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init
 !------------------------------------------------------------------------------
@@ -396,6 +445,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: Realloc
   LOGICAL :: ConstantBulkMatrix, ConstantBulkSystem, ConstantSystem
   LOGICAL :: ConstantBulkMatrixInUse
+  ! Set inside the ASSOCIATED(BulkValues) test: reuse a saved bulk system,
+  ! or a saved whole system, instead of assembling it again.
+  LOGICAL :: SkipBulk, SkipAll
   LOGICAL :: CompressibilityDefined = .FALSE.
   LOGICAL :: NormalSpring, NormalTangential
   LOGICAL :: Converged, NoExternalLoads
@@ -407,7 +459,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: dim,i,j,k,l,m,n,nd,nb,ntot,t,iter,NDeg,STDOFs,LocalNodes,istat
   INTEGER :: NonlinearIter, MinNonlinearIter, FlowNOFNodes, previ
   INTEGER :: EigenModes, Passes
-  INTEGER :: RelIntegOrder
+  INTEGER :: RelIntegOrder, RelIntegOrderBC
+  INTEGER :: ElemGaussNp(8)
+  LOGICAL :: ElementalGaussRule
+  INTEGER :: ElemGaussRelOrder(8)
+  LOGICAL :: ElemGaussRelStated(8)
+  LOGICAL :: ElementalRelRule
+  LOGICAL :: PStab = .FALSE.
+  REAL(KIND=dp) :: PStabCoeff
   INTEGER :: CoordinateSystem
   INTEGER :: NPROPS, NSTATEV, MAXSTATEV
 
@@ -1282,7 +1341,165 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! chosen anyway. Matters most for p-elements, where the default rule is the one
   ! the element declares; fem/tests/ElastPelem2dPmultg* are StressSolve cases that
   ! turn it down to keep a p-refined solve affordable.
+  ! The integration rule offsets, read ONCE here rather than per element. That
+  ! is not only about the cost of a list lookup: read up front, outside any
+  ! namespace push or multigrid level, the value is the one the sif states.
+  !
+  ! "Relative Integration Order" keeps its meaning -- it applies to the bulk and
+  ! the boundary alike, as it always has. The two overrides exist because the
+  ! boundary is what stops the bulk being reduced: a tetrahedron carrying
+  ! "p:1 b:1" is integrated over 150 points and gives a bit-identical answer at
+  ! 24, but asking for that with "Relative Integration Order = -2" fatals,
+  ! because the same offset lands on the boundary triangle whose count is 3 and
+  ! drives it to zero. One knob for two rules with very different budgets.
+  !
+  ! 24 is the top of the tabulated simplex ladder in TetraSimplexRulePoints;
+  ! without it the collapsed rule would be asked instead and give 36, which is
+  ! both larger and NOT exact here (+0.13% on the probe). Measured per family at
+  ! the bubble count each one actually has -- b:1 on the triangle and the
+  ! tetrahedron, b:3 on the quadrilateral, b:4 on the brick and prism -- the
+  ! default rule and the smallest that stays bit-identical are:
+  !
+  !            default   exact at   first inexact
+  !   tri  b:1    12         7       4 pts +0.044%
+  !   quad b:3    16        16       9 pts +0.001%
+  !   tet  b:1   150        24       5 pts +3.50%
+  !   prism b:4  125        85      64 pts +0.002%
+  !   hex  b:4    64        64      27 pts +0.255%
+  !
+  ! So the two simplices carry a full step of slack and the three tensor
+  ! families carry none, beyond the prism's 125 -> 85, which is not slack in the
+  ! ladder at all but a different rule family (GaussPointsWedge2) that only an
+  ! explicit point count can reach. The slack is the headroom degree the tables add
+  ! deliberately, and it is not spare on every problem, which is why none of
+  ! this is a default. The same sweep run as a Maxwell material reproduces every
+  ! one of those percentages to the digit, so what the rule has to integrate is
+  ! the element's business, not the material's.
+  !
+  ! So the bulk can be reduced on its own, and the boundary can be raised on its
+  ! own where a Neumann term needs it. Neither is a default: the rule the basis
+  ! needs stays what it is unless a sif asks otherwise, on a problem it can
+  ! verify. A reduced rule that is exact for one material is not exact for the
+  ! next -- which is how a quadrature change that passed 1128 tests still cost
+  ! Permafrost_Biot a per cent.
   RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order', GotIt )
+  RelIntegOrderBC = RelIntegOrder
+
+  i = ListGetInteger( SolverParams,'Bulk Relative Integration Order', GotIt )
+  IF( GotIt ) RelIntegOrder = i
+
+  i = ListGetInteger( SolverParams,'Boundary Relative Integration Order', GotIt )
+  IF( GotIt ) RelIntegOrderBC = i
+
+  ! The per family relative order, read through the same parser GaussPointsAdapt
+  ! uses, for the same reason the absolute counts are: CreateIpPerm sizes the
+  ! -ip variables by asking GaussPointsAdapt, which this solver never calls
+  ! itself, so the keyword string is the only thing keeping the two in step.
+  !
+  ! Bulk only here, as the absolute counts are -- the boundary is a different
+  ! budget, which is the very reason the two scalars above are split.
+  ElemGaussRelOrder = 0
+  ElemGaussRelStated = .FALSE.
+  str = ListGetString( SolverParams,'Element Relative Integration Order', GotIt )
+  IF( GotIt ) THEN
+    BLOCK
+      INTEGER :: ParsedOrder(8), fam
+      LOGICAL :: Stated(8)
+      CALL ParseElementalGaussRules( str, ParsedOrder, Stated )
+      DO fam=1,8
+        IF( Stated(fam) ) THEN
+          ElemGaussRelOrder(fam) = ParsedOrder(fam)
+          ElemGaussRelStated(fam) = .TRUE.
+        END IF
+      END DO
+    END BLOCK
+  END IF
+
+  ElementalRelRule = ANY( ElemGaussRelStated )
+
+  ! An explicit per family rule, if one is stated -- by a sif, or by _Init for
+  ! the incompressible MINI element. Parsed ONCE here, and through the same
+  ! parser GaussPointsAdapt uses, because that function is what CreateIpPerm
+  ! asks how many points an element has when it sizes an integration point
+  ! variable: if the two disagree, the per element slices of "ve_stress" are
+  ! allocated for one rule and written for another.
+  !
+  ! Bulk only. The counts are measured on the bulk element, and the boundary is
+  ! a different budget -- the very reason the relative orders are split in two.
+  ElemGaussNp = 0
+  str = ListGetString( SolverParams,'Element Integration Points', ElementalGaussRule )
+  IF( ElementalGaussRule ) CALL ParseElementalGaussRules( str, ElemGaussNp )
+
+  ! Pressure stabilisation, as an alternative to the MINI element's bubble.
+  !
+  ! The incompressible formulation needs an inf-sup stable displacement/pressure
+  ! pair. Today the only route is MINI -- "Element = p:1 b:N" -- and the bubble
+  ! is not cheap: on a tetrahedron the lowest bubble is degree 4, so the element
+  ! is integrated over 150 points where the linear part needs 5. An equal-order
+  ! pair stabilised in the pressure is the standard alternative, and the two are
+  ! the same object seen differently: condensing a bubble analytically yields a
+  ! stabilisation with tau given by the bubble's integral.
+  !
+  ! Off by default and opt-in per solver, exactly as NavierStokes treats its own
+  ! choice between 'stabilized' and 'bubbles': it is a different discretisation,
+  ! not an optimisation, and it must never be selected behind a user's back.
+  PStab = ListGetLogical( SolverParams,'Pressure Stabilization', GotIt )
+  ! The default of one is calibrated, not nominal: the per-family constants in
+  ! LocalMatrix are chosen so that unity reproduces the MINI displacement, and
+  ! it does so to better than 0.5% for every family, at three mesh resolutions
+  ! spanning 16x in element count, on two different boundary configurations.
+  ! The error also SHRINKS under refinement (0.019 -> 0.011 -> 0.006 % on
+  ! quadrilaterals), so the stabilised pair converges to the MINI answer rather
+  ! than to something merely close to it.
+  !
+  ! A relaxation-dominated viscoelastic problem wants roughly seventeen times
+  ! more, so a Maxwell material defaults to 17 instead. That is not a defect in
+  ! the elastic calibration: in ViscoElasticMaxwell an incompressible ELASTIC
+  ! material cannot deform at all under its constraints -- the norm is exactly
+  ! zero -- so the deformation there is entirely creep, with no elastic
+  ! counterpart to calibrate against.
+  !
+  ! 17 is measured, and the figure that justifies it as a DEFAULT rather than a
+  ! per-case fit is the error at fixed coefficient, not where the error crosses
+  ! zero. Each individual error-vs-coefficient curve is monotone, so the crossing
+  ! wanders enormously -- from about 6 to about 60 over the regimes below -- but
+  ! the curves are shallow, and a fixed 17 holds all of this to 0.83%:
+  !
+  !   quad, dt*mu/eta = 1.333 / 0.333 / 0.083   -0.83 / +0.01 / +0.52 %
+  !   triangle, dt*mu/eta = 0.333                        +0.07 %
+  !   quad, dt = 0.25 / 1 / 4 at FIXED physical problem
+  !   (load keyed to time, intervals 80/20/5)   +0.11 / +0.01 / -0.25 %
+  !
+  ! So: a 16x range in the creep regime, a 16x range in the timestep with the
+  ! problem itself held fixed, and two element families. The worst case over all
+  ! of them is minimised near 21 (0.71%) rather than at 17 (0.83%), but the two
+  ! are indistinguishable and 17 is the number already in the sifs. For scale,
+  ! the elastic default of one holds to better than 0.5% over its own sweep, so
+  ! this is the same order of quality.
+  !
+  ! NOTE the axes eta and dt are NOT independent: the response depends only on
+  ! their product dt*mu/eta, verified by eta=4,dt=1 reproducing eta=1,dt=0.25
+  ! bit for bit. And beware the loading in ViscoElasticMaxwell being keyed to the
+  ! timestep INDEX, which makes a naive dt sweep rescale physical time and look
+  ! like a far stronger timestep dependence than there is.
+  !
+  ! WHAT IS STILL UNTESTED: every configuration above shares one geometry and one
+  ! loading pattern, so this establishes insensitivity to rheology, timestep and
+  ! element family -- not to the problem. A genuinely different creep case,
+  ! ideally 3D, is what would close that.
+  PStabCoeff = ListGetConstReal( SolverParams,'Pressure Stabilization Coefficient', GotIt )
+  IF( .NOT. GotIt ) THEN
+    PStabCoeff = 1.0_dp
+    ! MaxwellMaterial is settled well above, and _Init has already propagated a
+    ! solver-level "Maxwell material" into every material, so the AnyMaterial
+    ! test it was read with is reliable here.
+    IF( MaxwellMaterial ) PStabCoeff = 17.0_dp
+  END IF
+  IF( PStab ) THEN
+    CALL Info( Caller,'Using pressure stabilisation instead of bubbles',Level=5)
+    IF( .NOT. LinearIncompressible ) CALL Warn( Caller, &
+        '"Pressure Stabilization" has nothing to stabilise without "Incompressible"')
+  END IF
 
   ConstantSystem     = ListGetLogical( SolverParams, 'Constant System', GotIt )
   ConstantBulkSystem = ListGetLogical( SolverParams, 'Constant Bulk System', GotIt )
@@ -1400,6 +1617,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
          ASSOCIATED( Solver % Matrix % BulkValues )
 
+     ! Cleared on every pass, not just declared: with nothing saved yet both
+     ! assemblies must run, and a stale value from an earlier pass would skip
+     ! them. This is the state the two GO TOs carried implicitly by simply not
+     ! being reached.
+     SkipBulk = .FALSE.
+     SkipAll  = .FALSE.
+
      IF ( ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
        IF ( ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem ) THEN
          Solver % Matrix % Values = Solver % Matrix % BulkValues
@@ -1411,10 +1635,248 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          Solver % Matrix % RHS = 0.0_dp
        END IF
 
-       IF ( ConstantBulkSystem ) GO TO 2000
-       IF ( ConstantSystem )     GO TO 3000
+       ! Reuse is only possible once a bulk system has actually been saved, which
+       ! is why these sit inside the ASSOCIATED test above: on the first visit
+       ! nothing is stored, nothing is skipped, and both assemblies run.
+       SkipBulk = ConstantBulkSystem
+       SkipAll  = ConstantSystem
      END IF
+
+     IF ( .NOT. SkipAll ) THEN
+       IF ( .NOT. SkipBulk ) CALL BulkAssembly()
+       CALL BoundaryAssembly()
+     END IF
+
+     ! This is a matrix level routine for setting friction such that tangential
+     ! traction is the normal traction multiplied by a coefficient.
+     CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+         'Friction Direction')
+     
+     CALL DefaultFinishAssembly()
+
+     ! One load case imposed as a prescribed displacement of the lumping boundary --
+     ! a pure translation or a pure rotation. Between the assembly and the Dirichlet
+     ! conditions, which is where StressSolve puts it and what the routine's own
+     ! comment requires: it sets boundary values directly into the matrix, and the
+     ! sif's own conditions must be applied after so that they win where both speak.
+     IF ( UseModelLumping .AND. Lump % FixDisplacement ) THEN
+       CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
+     END IF
+
+     CALL DefaultDirichletBCs()
+
+     IF (UseUMAT) THEN
+       ! ---------------------------------------------------------------------------------
+       ! Now the solution variable is the solution increment while the sif-file specifies
+       ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
+       ! is obtained for the solution increment.
+       ! ---------------------------------------------------------------------------------
+       DisplacementRot = Displacement
+       CALL RotateNTSystemAll(DisplacementRot, StressPerm, STDOFs)
+       
+       IF (ALLOCATED(StiffMatrix % ConstrainedDOF)) THEN
+         DO i=1,StiffMatrix % NumberOfRows
+           IF (StiffMatrix % ConstrainedDOF(i)) THEN
+             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - DisplacementRot(i)
+           END IF
+         END DO
+         CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
+       END IF
+
+       ! The initial guess for the displacement increment:
+       Displacement = 0.0d0
+
+       ! ---------------------------------------------------------------------------------
+       ! Check whether the nonlinear iteration can be terminated:
+       ! ---------------------------------------------------------------------------------
+       IF (Iter == 1) THEN
+
+         IF (Parallel) THEN
+           IF (.NOT. ASSOCIATED(StiffMatrix % ParMatrix)) &
+               CALL ParallelInitMatrix(Solver, StiffMatrix)
+
+           PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
+           IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+
+           ! Temporarily set the parallel rhs vector to be the plain source vector:
+           CALL ParallelUpdateRHS(StiffMatrix, StiffMatrix % BulkRHS)
+           Pb => PMatrix % RHS
+           Norm = MAXVAL(ABS(Pb))
+           Norm = ParallelReduction(Norm,2)
+         ELSE
+           Norm = MAXVAL(ABS(StiffMatrix % BulkRHS(:)))
+         END IF
+
+         NoExternalLoads = Norm < AEPS       
+         IF (NoExternalLoads) THEN
+           ! This appears to be a purely BC-loaded case, switch to using a different criterion
+           ! (use absolute norm, this can be hard ...):
+           CALL Info('ElasticSolver', 'No pressure external loads ... ', Level=4)
+           CALL Info('ElasticSolver', &
+               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
+           CALL Info('ElasticSolver', &
+               'This may give a hard stopping criterion',  Level=4)
+           NonlinRes0 = 1.0d0
+         ELSE
+           ! Compute the 2-norm of the external load vector
+           IF (Parallel)  THEN
+             Norm = 0.0d0
+             DO i=1,PMatrix % NumberOfRows
+               Norm = Norm + Pb(i)**2
+             END DO
+             NonlinRes0 = SQRT(ParallelReduction(Norm))
+           ELSE
+             NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+           END IF
+         END IF
+       END IF
+
+
+       IF (Parallel) THEN
+         ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
+         Solver % Matrix % BulkRHS = Solver % Matrix % RHS
+         CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
+         Norm = 0.0d0
+         DO i=1,PMatrix % NumberOfRows
+           Norm = Norm + Pb(i)**2
+         END DO
+         NonlinRes = SQRT(ParallelReduction(Norm)) / NonlinRes0
+       ELSE
+         NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
+       END IF
+       WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
+           //I2S(Iter-1)//': ',NonLinRes
+       CALL Info('ElasticitySolver', Message, Level=5)        
+
+       IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
+         CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
+
+         ! Save the state variables corresponding to the converged nonlinear
+         ! solution to the array holding the previous solution state:
+         UmatEnergy0 = UmatEnergy
+         UmatStress0 = UmatStress
+         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         
+         Displacement(:) = TotalSol(:)
+         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
+         EXIT
+       END IF
+
+     ELSE
+       IF ( DefaultLinesearch( Converged ) ) GOTO 100
+       IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
+     END IF
+
      !------------------------------------------------------------------------------
+     !     Solve the system and check for convergence
+     !------------------------------------------------------------------------------
+     UNorm = DefaultSolve()
+
+     ! One row or column of the lumped 6x6 stiffness, from the reactions this load
+     ! case produced on the lumping boundary; after the sixth it is inverted and
+     ! written out. Before the convergence tests below, not after: the sixth case
+     ! leaves through one of those EXITs, and a row missed there is a matrix never
+     ! written. The reactions come from BulkValues times the solution, which is why
+     ! "Constant Bulk System" had to be added to the list and not merely assumed.
+     IF ( UseModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
+
+     IF (UseUmat) THEN
+       Displacement(:) = TotalSol(:) + Displacement(:)
+       IF (iter==NonlinearIter) THEN
+         CALL Info('ElasticitySolver', &
+             'The maximum of nonlinear iterations reached: Terminating...', Level=5)        
+
+         ! Save the state variables corresponding to the converged nonlinear
+         ! solution to the array holding the previous solution state:
+         UmatEnergy0 = UmatEnergy
+         UmatStress0 = UmatStress
+         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         
+         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
+         EXIT
+       END IF
+     ELSE
+       !----------------------------------------------------------------------------------
+       IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
+           ( iter >= MinNonlinearIter ) ) EXIT
+     END IF
+
+  !------------------------------------------------------------------------------
+  END DO ! of nonlinear iter
+  !------------------------------------------------------------------------------
+
+  CALL PostProcess()
+
+
+  DEALLOCATE( PrevSOL )
+  IF (UseUmat) THEN
+    DEALLOCATE(DisplacementRot)
+    DEALLOCATE(LocalForceSaved)
+  END IF
+
+  CALL DefaultFinish()
+  
+  CALL Info('ElasticSolver','All done',Level=4)
+  CALL Info('ElasticSolver','------------------------------------------',Level=4)
+
+!------------------------------------------------------------------------------
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> The integration rule this bulk element is to be assembled over.
+!>
+!> One place, because the two local matrix routines have to agree with each
+!> other and, more importantly, with what CreateIpPerm sized the -ip variables
+!> for -- and CreateIpPerm asks GaussPointsAdapt, which this solver otherwise
+!> never calls. The keyword string plus the shared parser is the only channel
+!> between them.
+!>
+!> Precedence matches GaussPointsAdapt: an absolute per family count wins over
+!> everything, then a per family relative order, then the scalar one.
+!------------------------------------------------------------------------------
+  FUNCTION ElasticGaussPoints( Element ) RESULT( IntegStuff )
+!------------------------------------------------------------------------------
+    TYPE(Element_t) :: Element
+    TYPE(GaussIntegrationPoints_t) :: IntegStuff
+!------------------------------------------------------------------------------
+    INTEGER :: ngp, nRelOrder
+
+    ngp = 0
+    IF( ElementalGaussRule ) ngp = ElementalGaussNp( Element, ElemGaussNp )
+    IF( ngp > 0 ) THEN
+      IntegStuff = GaussPoints( Element, np = ngp )
+      RETURN
+    END IF
+
+    nRelOrder = RelIntegOrder
+    IF( ElementalRelRule ) THEN
+      BLOCK
+        INTEGER :: nOffs
+        IF( ElementalGaussRelOrder( Element, ElemGaussRelOrder, &
+            ElemGaussRelStated, nOffs ) ) nRelOrder = nOffs
+      END BLOCK
+    END IF
+
+    IntegStuff = GaussPoints( Element, RelOrder = nRelOrder )
+!------------------------------------------------------------------------------
+  END FUNCTION ElasticGaussPoints
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The bulk element loop and the local matrices it builds, moved out of
+!> ElasticSolver unchanged. Skipped entirely when a saved bulk system is reused
+!> ("Constant Bulk System" / "Constant System"), which is what the two GO TOs in
+!> the caller used to express.
+!>
+!> An internal routine with no arguments: everything it touches is a local of the
+!> host and visible here, the same way StressSolve arranges this split. The
+!> numeric label 200 inside the loop is a per-element skip and travels with the
+!> loop; label 100 stays in the host as the line-search retry target.
+!------------------------------------------------------------------------------
+  SUBROUTINE BulkAssembly()
+!------------------------------------------------------------------------------
      DO t=1,GetNOFActive()
       
         IF ( RealTime() - at0 > 1.0 ) THEN
@@ -1833,11 +2295,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
 
      CALL DefaultFinishBulkAssembly()
+!------------------------------------------------------------------------------
+  END SUBROUTINE BulkAssembly
+!------------------------------------------------------------------------------
 
-     !------------------------------------------------------------------------------
-     !     Neumann & Newton boundary conditions
-     !------------------------------------------------------------------------------
-2000 DO t = 1,GetNOFBoundaryElements()
+!------------------------------------------------------------------------------
+!> The Neumann and Newton boundary conditions, moved out of ElasticSolver
+!> unchanged. This was the target of "GO TO 2000".
+!------------------------------------------------------------------------------
+  SUBROUTINE BoundaryAssembly()
+!------------------------------------------------------------------------------
+     DO t = 1,GetNOFBoundaryElements()
         CurrentElement =>  GetBoundaryElement(t)
         IF (.NOT. ActiveBoundaryElement()) CYCLE
 
@@ -2075,166 +2543,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
      !------------------------------------------------------------------------------
      CALL DefaultFinishBoundaryAssembly()
+!------------------------------------------------------------------------------
+  END SUBROUTINE BoundaryAssembly
+!------------------------------------------------------------------------------
 
-     ! This is a matrix level routine for setting friction such that tangential
-     ! traction is the normal traction multiplied by a coefficient.
-3000 CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
-         'Friction Direction')
-     
-     CALL DefaultFinishAssembly()
-
-     ! One load case imposed as a prescribed displacement of the lumping boundary --
-     ! a pure translation or a pure rotation. Between the assembly and the Dirichlet
-     ! conditions, which is where StressSolve puts it and what the routine's own
-     ! comment requires: it sets boundary values directly into the matrix, and the
-     ! sif's own conditions must be applied after so that they win where both speak.
-     IF ( UseModelLumping .AND. Lump % FixDisplacement ) THEN
-       CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
-     END IF
-
-     CALL DefaultDirichletBCs()
-
-     IF (UseUMAT) THEN
-       ! ---------------------------------------------------------------------------------
-       ! Now the solution variable is the solution increment while the sif-file specifies
-       ! the Dirichlet BCs for the complete field. Modify BCs so that the right BC
-       ! is obtained for the solution increment.
-       ! ---------------------------------------------------------------------------------
-       DisplacementRot = Displacement
-       CALL RotateNTSystemAll(DisplacementRot, StressPerm, STDOFs)
-       
-       IF (ALLOCATED(StiffMatrix % ConstrainedDOF)) THEN
-         DO i=1,StiffMatrix % NumberOfRows
-           IF (StiffMatrix % ConstrainedDOF(i)) THEN
-             StiffMatrix % DValues(i) = StiffMatrix % DValues(i) - DisplacementRot(i)
-           END IF
-         END DO
-         CALL EnforceDirichletConditions(Solver, StiffMatrix, ForceVector)
-       END IF
-
-       ! The initial guess for the displacement increment:
-       Displacement = 0.0d0
-
-       ! ---------------------------------------------------------------------------------
-       ! Check whether the nonlinear iteration can be terminated:
-       ! ---------------------------------------------------------------------------------
-       IF (Iter == 1) THEN
-
-         IF (Parallel) THEN
-           IF (.NOT. ASSOCIATED(StiffMatrix % ParMatrix)) &
-               CALL ParallelInitMatrix(Solver, StiffMatrix)
-
-           PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
-           IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
-               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
-
-           ! Temporarily set the parallel rhs vector to be the plain source vector:
-           CALL ParallelUpdateRHS(StiffMatrix, StiffMatrix % BulkRHS)
-           Pb => PMatrix % RHS
-           Norm = MAXVAL(ABS(Pb))
-           Norm = ParallelReduction(Norm,2)
-         ELSE
-           Norm = MAXVAL(ABS(StiffMatrix % BulkRHS(:)))
-         END IF
-
-         NoExternalLoads = Norm < AEPS       
-         IF (NoExternalLoads) THEN
-           ! This appears to be a purely BC-loaded case, switch to using a different criterion
-           ! (use absolute norm, this can be hard ...):
-           CALL Info('ElasticSolver', 'No pressure external loads ... ', Level=4)
-           CALL Info('ElasticSolver', &
-               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
-           CALL Info('ElasticSolver', &
-               'This may give a hard stopping criterion',  Level=4)
-           NonlinRes0 = 1.0d0
-         ELSE
-           ! Compute the 2-norm of the external load vector
-           IF (Parallel)  THEN
-             Norm = 0.0d0
-             DO i=1,PMatrix % NumberOfRows
-               Norm = Norm + Pb(i)**2
-             END DO
-             NonlinRes0 = SQRT(ParallelReduction(Norm))
-           ELSE
-             NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
-           END IF
-         END IF
-       END IF
-
-
-       IF (Parallel) THEN
-         ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
-         Solver % Matrix % BulkRHS = Solver % Matrix % RHS
-         CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
-         Norm = 0.0d0
-         DO i=1,PMatrix % NumberOfRows
-           Norm = Norm + Pb(i)**2
-         END DO
-         NonlinRes = SQRT(ParallelReduction(Norm)) / NonlinRes0
-       ELSE
-         NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
-       END IF
-       WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
-           //I2S(Iter-1)//': ',NonLinRes
-       CALL Info('ElasticitySolver', Message, Level=5)        
-
-       IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
-         CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
-
-         ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
-         
-         Displacement(:) = TotalSol(:)
-         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
-         EXIT
-       END IF
-
-     ELSE
-       IF ( DefaultLinesearch( Converged ) ) GOTO 100
-       IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
-     END IF
-
-     !------------------------------------------------------------------------------
-     !     Solve the system and check for convergence
-     !------------------------------------------------------------------------------
-     UNorm = DefaultSolve()
-
-     ! One row or column of the lumped 6x6 stiffness, from the reactions this load
-     ! case produced on the lumping boundary; after the sixth it is inverted and
-     ! written out. Before the convergence tests below, not after: the sixth case
-     ! leaves through one of those EXITs, and a row missed there is a matrix never
-     ! written. The reactions come from BulkValues times the solution, which is why
-     ! "Constant Bulk System" had to be added to the list and not merely assumed.
-     IF ( UseModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
-
-     IF (UseUmat) THEN
-       Displacement(:) = TotalSol(:) + Displacement(:)
-       IF (iter==NonlinearIter) THEN
-         CALL Info('ElasticitySolver', &
-             'The maximum of nonlinear iterations reached: Terminating...', Level=5)        
-
-         ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
-         
-         IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
-         EXIT
-       END IF
-     ELSE
-       !----------------------------------------------------------------------------------
-       IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
-           ( iter >= MinNonlinearIter ) ) EXIT
-     END IF
-
-  !------------------------------------------------------------------------------
-  END DO ! of nonlinear iter
-  !------------------------------------------------------------------------------
-
+!------------------------------------------------------------------------------
+!> Staged-construction reference update, strain and stress computation, adaptive
+!> refinement and mesh displacement: everything after the nonlinear loop, moved
+!> out of ElasticSolver unchanged.
+!------------------------------------------------------------------------------
+  SUBROUTINE PostProcess()
+!------------------------------------------------------------------------------
   !-----------------------------------------------------------------------------
   ! Staged construction: the bodies whose "Update Reference Displacement" came out
   ! non-negative take this step's solution as their new reference, so that the next
@@ -2332,21 +2651,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CALL Info(Caller,'Displacing the mesh with computed displacement field')
      CALL DisplaceMesh( Mesh, Displacement, 1, StressPerm, STDOFs, .FALSE., dim )
   END IF
-
-  DEALLOCATE( PrevSOL )
-  IF (UseUmat) THEN
-    DEALLOCATE(DisplacementRot)
-    DEALLOCATE(LocalForceSaved)
-  END IF
-
-  CALL DefaultFinish()
-  
-  CALL Info('ElasticSolver','All done',Level=4)
-  CALL Info('ElasticSolver','------------------------------------------',Level=4)
-
+!------------------------------------------------------------------------------
+  END SUBROUTINE PostProcess
 !------------------------------------------------------------------------------
 
-CONTAINS
 
 !------------------------------------------------------------------------------
 !> Stop on a StressSolve keyword this solver does not implement, for the material
@@ -3336,6 +3644,7 @@ CONTAINS
     ! assembly does not. Pres/Pres0 are the mixed formulation's pressure now and at
     ! the previous step, zero without it.
     REAL(KIND=dp) :: xPhi, ShearModulus, MaxVisc, MuDer
+    REAL(KIND=dp) :: Tau, MuEff, GpaMag, hKe, Kfam, PeStab
     REAL(KIND=dp) :: LagStress(3,3), NewLagStress(3,3), ElasticStress(3,3)
     REAL(KIND=dp) :: LagVec(6), Pres, Pres0
     REAL(KIND=dp) :: NodalVelo(3,ntot)
@@ -3513,7 +3822,7 @@ CONTAINS
     !-------------------------------------------------------
     !    Integration stuff
     !-------------------------------------------------------
-    IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
+    IntegStuff = ElasticGaussPoints( element )
 
     U_Integ => IntegStuff % u
     V_Integ => IntegStuff % v
@@ -4028,6 +4337,117 @@ CONTAINS
        ! enters the residual and not this.
        IF ( MaxwellHere ) dStresses(:,:,1:cdim*ntot) = xPhi * dStresses(:,:,1:cdim*ntot)
 
+       !-----------------------------------------------------------------------
+       ! The pressure stabilisation parameter at this integration point.
+       !
+       ! Built on an EFFECTIVE shear modulus, not the elastic one, and for a
+       ! Maxwell material that modulus is mu/xPhi -- see the measurement at the
+       ! MuEff assignment below.
+       !
+       ! The incremental stiffness argument points the other way, and it is wrong
+       ! here: the whole response is scaled by xPhi = 1/(1 + mu dt/eta), so
+       ! xPhi*mu looks like what the increment sees, interpolating between mu for
+       ! a short step and eta/dt for a long one. That form was tried, and it does
+       ! not survive a timestep sweep. Recorded so it is not re-derived.
+       !
+       ! "Gravitational Prestress Advection" makes this more than a Stokes
+       ! problem: that term is first-derivative-of-trial against test-value, i.e.
+       ! an advection operator -- which is also why it is the one non-symmetric
+       ! term in the assembly. So tau follows the same interpolating form
+       ! NavierStokes uses, with rho*g in place of rho*|v|, reducing to the
+       ! diffusive limit mK*h^2/(8*mu_eff) when advection is weak. The two
+       ! branches agree in that limit (the rho*g cancels); the test on GpaMag is
+       ! only to avoid dividing by zero when there is no advection at all.
+       !
+       ! In the earth cases the Peclet number is ~3e-3, so the diffusive branch
+       ! is what runs there. It crosses over around dt ~ 500 years, which is
+       ! inside the range glacial isostatic adjustment actually uses -- so the
+       ! advective branch is written for a regime the current tests do not reach.
+       !-----------------------------------------------------------------------
+       IF ( PStab .AND. LinearIncompressible ) THEN
+          MuEff = Lame2
+          ! The relaxation enters as mu/xPhi, NOT xPhi*mu. That is the
+          ! opposite of what the incremental stiffness argument suggests, and it
+          ! is measured rather than argued: with xPhi*mu the optimal coefficient
+          ! moved 13 -> 10 -> 2.7 as the timestep went 0.25 -> 1 -> 4 on
+          ! ViscoElasticMaxwell, and with mu/xPhi the three error curves lie on
+          ! top of each other (-0.20, -0.22, -0.17 % at c=10) across the same
+          ! 2.15x range of xPhi. So the timestep dependence was the effective
+          ! modulus being inverted, not a separate effect.
+          !
+          ! The reading: tau scales with the modulus that resists the pressure
+          ! mode. Relaxation weakens the deviatoric response while leaving the
+          ! incompressibility constraint intact, so LESS stabilisation is needed
+          ! as the material relaxes, not more.
+          IF ( MaxwellHere ) MuEff = Lame2 / xPhi
+          GpaMag = ABS( GPAatIP )
+          hKe = Element % hK
+
+          ! The constant is per element family, and measured rather than
+          ! derived. One steady problem on one unit cube, meshed five ways, gave
+          ! the tau at which the stabilised pair reproduces MINI's displacement.
+          ! The optimum is a real minimum -- the error changes sign through it --
+          ! and it is mesh independent, checked at two resolutions on the
+          ! hexahedron, which is what says the h^2/mu scaling is right:
+          !
+          !   quad 404   0.0417    tri 303    0.0104
+          !   brick 808  0.0198    prism 706  0.0075
+          !                        tetra 504  0.0029
+          !
+          ! StabilizationMk stood here before and is dropped, but NOT because it
+          ! was wrong for the tensor families: it is 1/3 everywhere and 1/6 on
+          ! the hexahedron, and the measured tau for quad and brick differ by
+          ! exactly that factor of two, so mK described that pair correctly. It
+          ! is dropped because it says nothing about the simplices, which need
+          ! four to fourteen times less than a tensor element of the same mK --
+          ! consistent with hK being a DIAMETER, which overstates a simplex's
+          ! characteristic size. Stating all five directly is honest about which
+          ! part is measured and which is inherited from a convective scheme.
+          !
+          ! The pyramid has no measurement -- there is no incompressible pyramid
+          ! case to take one from -- so it sits between prism and tetra rather
+          ! than at a tensor value that would over-stabilise it.
+          !
+          ! The brick and prism values were re-measured against a MINI element
+          ! carrying FOUR bubbles rather than one. Four is the next count those
+          ! families actually have -- getBubbleDOFs offers 1, 4, 10 in 3D -- and
+          ! a single bubble is too thin a reference there: on the brick the two
+          ! MINI variants differ by 1.4% on the test mesh. The richer element is
+          ! the one to calibrate against, being the softer and, under refinement,
+          ! the nearer to the limit. The correction is a factor of about 1.17 on
+          ! the brick and 1.20 on the prism, and it is not an artifact of one
+          ! mesh: it narrows the gap to MINI on every refinement level tried
+          ! (brick, at c=1: 1.26%, 0.87%, 0.42% -- at the new value: 0.01%,
+          ! 0.46%, 0.24%). The triangle and tetrahedron keep a single bubble,
+          ! which is the classical MINI element and the right reference for
+          ! them, and the quadrilateral was calibrated at three.
+          SELECT CASE( Element % TYPE % ElementCode / 100 )
+          CASE( 3 )
+             Kfam = 0.0104_dp
+          CASE( 4 )
+             Kfam = 0.0417_dp
+          CASE( 5 )
+             Kfam = 0.0029_dp
+          CASE( 6 )
+             Kfam = 0.005_dp
+          CASE( 7 )
+             Kfam = 0.0090_dp
+          CASE DEFAULT
+             Kfam = 0.0232_dp
+          END SELECT
+
+          ! Advection, when "Gravitational Prestress Advection" is on, following
+          ! the interpolating form NavierStokes uses. Pe is scaled so that the
+          ! weak-advection limit returns exactly the diffusive expression below.
+          IF ( GpaMag * hKe > 0.0_dp ) THEN
+             PeStab = MIN( 1.0_dp, 2.0_dp * Kfam * GpaMag * hKe / MuEff )
+             Tau = hKe * PeStab / ( 2.0_dp * GpaMag )
+          ELSE
+             Tau = Kfam * hKe**2 / MuEff
+          END IF
+          Tau = PStabCoeff * Tau
+       END IF
+
        !----------------------------------------------------------------------------
        ! Loop over the test functions (stiffness matrix for Newton linearization):
        ! ---------------------------------------------------------------------------
@@ -4106,34 +4526,34 @@ CONTAINS
              ! law, leaving the load, and an addition to the matrix alone is
              ! therefore exactly an addition to the operator.
              !
-             ! ADDED AS ITS SYMMETRIC PART, which is not a modelling choice made
-             ! here but a reproduction of one made there. StressSolve symmetrises
-             ! its whole local stiffness wholesale before gluing it in --
-             ! "STIFF = (STIFF + TRANSPOSE(STIFF))/2" -- and every other term it
-             ! assembles is already symmetric, so the operator that reaches its
-             ! linear solver contains only the symmetric half of this one. Assembling
-             ! the term as written instead moves the earth cases 2.6%, and their
-             ! published reference norms are the symmetric-half ones.
+             ! ADDED IN FULL, and this is a deliberate departure from
+             ! StressSolveLegacy rather than a reproduction of it. That routine
+             ! symmetrises its whole local stiffness wholesale before gluing it in
+             ! -- "STIFF = (STIFF + TRANSPOSE(STIFF))/2" -- and since every other
+             ! term it assembles is already symmetric, the only thing that blanket
+             ! operation actually changed was this one, silently halving it and
+             ! adding its transpose. The term is GENUINELY NOT SYMMETRIC: it couples
+             ! the gradient of the VERTICAL displacement to every test component,
+             ! and its transpose is a different operator, so the wholesale
+             ! symmetrisation was discarding half of the intended model rather than
+             ! tidying a rounding asymmetry.
              !
-             ! THIS TERM IS GENUINELY NOT SYMMETRIC, and whether the symmetric half
-             ! is the intended model is an OPEN QUESTION, not something this comment
-             ! settles: it couples the gradient of the VERTICAL displacement to every
-             ! test component, and its transpose is a different operator. Nothing in
-             ! the sifs that use it forces the choice either -- they solve with GCR
-             ! and do not declare "Linear System Symmetric", so they could carry a
-             ! non-symmetric operator as they stand. So this reproduces StressSolve
-             ! because the merger requires it to, and if the answer is that the full
-             ! term belongs in the system, both solvers change together and the earth
-             ! reference norms move with them.
+             ! This solver previously reproduced the symmetric half so that the
+             ! merger changed no answers. That reproduction is now retired: the full
+             ! term is the model, and the reference norms of the cases that use it
+             ! moved accordingly. Nothing in their sifs objects -- they solve with
+             ! GCR or a direct method and do not declare "Linear System Symmetric",
+             ! so a non-symmetric operator is carried as they stand.
+             !
+             ! The legacy routine still symmetrises, so a solve forced down it with
+             ! "Legacy Assembly = Logical True" will not reproduce these answers.
+             ! No test does; the keyword is untested in the suite.
              !--------------------------------------------------------------------
              IF ( GotGPA ) THEN
                 DO q = 1,ntot
                    StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+cdim) = &
                         StiffMatrix(DOFs*(p-1)+i,DOFs*(q-1)+cdim) &
-                        + 0.5_dp*GPAatIP*dBasisdx(q,i)*Basis(p)*s
-                   StiffMatrix(DOFs*(q-1)+cdim,DOFs*(p-1)+i) = &
-                        StiffMatrix(DOFs*(q-1)+cdim,DOFs*(p-1)+i) &
-                        + 0.5_dp*GPAatIP*dBasisdx(q,i)*Basis(p)*s
+                        + GPAatIP*dBasisdx(q,i)*Basis(p)*s
                 END DO
              END IF
           END DO
@@ -4149,6 +4569,27 @@ CONTAINS
                    StiffMatrix(DOFs*p,DOFs*(q-1)+j) = StiffMatrix(DOFs*p,DOFs*(q-1)+j) &
                         - dBasisdx(q,j)*Basis(p)*s
                 END DO
+             END DO
+          END IF
+
+          ! Pressure stabilisation: -tau * grad(q).grad(p), the Brezzi-Pitkaranta
+          ! term, added to the same constraint row. The sign matches the negative
+          ! sign the divergence coupling above already carries, keeping the saddle
+          ! point in the form [A B^T; B -C] with C positive semi-definite.
+          !
+          ! Only over the corner nodes: the pressure lives on the lowest-order
+          ! basis, so rows and columns beyond n are not pressure degrees of
+          ! freedom. The load term of a fully consistent PSPG is deliberately
+          ! omitted -- for a linear displacement the momentum residual is grad(p)
+          ! minus the load, and dropping the load leaves the classical
+          ! Brezzi-Pitkaranta scheme, whose consistency error is O(h^2), the same
+          ! order as the discretisation. For a Maxwell material a consistent
+          ! residual would also need the divergence of the lag stress, which
+          ! lives at integration points and is not differentiable across them.
+          IF ( PStab .AND. LinearIncompressible .AND. p <= n ) THEN
+             DO q = 1,n
+                StiffMatrix(DOFs*p,DOFs*q) = StiffMatrix(DOFs*p,DOFs*q) &
+                     - Tau * SUM( dBasisdx(p,1:cdim)*dBasisdx(q,1:cdim) ) * s
              END DO
           END IF
        END DO
@@ -4353,7 +4794,7 @@ CONTAINS
        Identity(i,i) = 1.0D0
     END DO
 
-    IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
+    IntegStuff = ElasticGaussPoints( element )
 
     U_Integ => IntegStuff % u
     V_Integ => IntegStuff % v
@@ -4799,7 +5240,7 @@ CONTAINS
        END DO
     END IF
 
-    IP = GaussPoints( Element, RelOrder = RelIntegOrder )
+    IP = GaussPoints( Element, RelOrder = RelIntegOrderBC )
 
     DO t=1,IP % n
        u = IP % U(t)

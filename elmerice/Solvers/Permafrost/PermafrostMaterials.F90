@@ -2679,4 +2679,91 @@ CONTAINS
     kappaG = (3.0_dp*(1.0_dp - 2.0_dp * nuG))/EG
   END FUNCTION KappaG
   !---------------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> The integration rule the permafrost solvers ask for, set as a default in
+!> every _init that takes part.
+!>
+!> Two separate reasons it has to be stated, and both matter:
+!>
+!> Accuracy. The rule chosen by default integrates the BASIS functions exactly,
+!> which is the right default in general. But the permafrost material model is
+!> evaluated at the integration points, and ice saturation, porosity and the
+!> permeability that follows from them vary within a single element, so the
+!> integrand is not the polynomial the basis degree describes. Measured on
+!> Permafrost_Biot, the default cost about 1% on the groundwater norm and,
+!> through the coupling, nearly 3% on the bedrock deformation reading its
+!> pressure.
+!>
+!> Consistency. The solvers SHARE integration point variables -- "xi" is created
+!> by the heat transfer solver and written by the groundwater flow solver -- and
+!> CreateIpPerm sizes that storage from the rule of whichever solver declared
+!> it. If the solvers disagree about the rule, one of them writes past the end
+!> of each element's slice into the next element's, silently. So the rule is set
+!> here, once, and every participating _init calls this: they cannot drift
+!> apart. CheckIPVarSize below is the belt to this braces.
+!>
+!> Per family rather than a "Relative Integration Order" bump: a relative bump
+!> lands on top of each family's own default and those are not uniform (a
+!> tetrahedron already carries 150 points for "p:1 b:1" where a quadrilateral
+!> carries 9), and a mesh may mix families. Five points per direction, which is
+!> what the quadrilateral was measured to need. ListAddNew, so a sif stating its
+!> own rule still wins.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetPermafrostIntegrationRule( SolverParams )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: SolverParams
+
+    CALL ListAddNewString( SolverParams, 'Element Integration Points', &
+        '-quad 25 -brick 125 -prism 125' )
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetPermafrostIntegrationRule
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Stop if an integration-point variable's storage for this element does not
+!> match the number of points the element is actually being integrated over.
+!>
+!> IP variables are laid out as one contiguous slice per element, indexed as
+!> Perm(ElementID) + t, and that slice is sized once by CreateIpPerm -- which
+!> asks GaussPointsAdapt how many points the element has. If the rule in force
+!> when the element is assembled differs from the rule in force when the storage
+!> was created, the writes run off the end of this element's slice and into the
+!> next element's, silently: wrong values, no error, no crash. The two agree
+!> today only because these solvers happen to integrate through GaussPointsAdapt
+!> as well, which is a coincidence rather than a guarantee -- ElasticSolve, for
+!> one, integrates through plain GaussPoints and honours a different set of
+!> keywords, so the same code there needs an explicit check (it has one, for
+!> "ve_stress").
+!>
+!> Cheap: two integer loads and a comparison, once per element per variable.
+!------------------------------------------------------------------------------
+  SUBROUTINE CheckIPVarSize( Var, ElementID, nIP, Caller )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Variable_t), POINTER :: Var          !< the integration point variable
+    INTEGER, INTENT(IN) :: ElementID          !< index the slice is keyed by
+    INTEGER, INTENT(IN) :: nIP                !< points this element integrates over
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+!------------------------------------------------------------------------------
+    INTEGER :: nAlloc
+
+    IF ( .NOT. ASSOCIATED( Var ) ) RETURN
+    IF ( .NOT. ASSOCIATED( Var % Perm ) ) RETURN
+
+    ! The offset table has one entry per element plus a terminator, so the last
+    ! element can be asked for its length too. Anything outside that is not this
+    ! routine's business to diagnose.
+    IF ( ElementID < 1 .OR. ElementID + 1 > SIZE( Var % Perm ) ) RETURN
+
+    nAlloc = Var % Perm( ElementID + 1 ) - Var % Perm( ElementID )
+    IF ( nAlloc /= nIP ) THEN
+      CALL Fatal( Caller, 'Element '//I2S(ElementID)//' integrates over '// &
+          I2S(nIP)//' points but "'//TRIM(Var % Name)//'" was allocated '// &
+          I2S(nAlloc)//' of them' )
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE CheckIPVarSize
+!------------------------------------------------------------------------------
+
 END MODULE PermafrostMaterials

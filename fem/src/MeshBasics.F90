@@ -2346,6 +2346,12 @@ CONTAINS
             'Stabilization Method', Stat )=='vms'
         Stabilize = Stabilize .OR.  ListGetString( Solver % Values, &
             'Stabilization Method', Stat )=='stabilized'
+        ! Elasticity's pressure stabilisation needs mK as well: without one of
+        ! these keywords the ELSE branch below fills only hK, StabilizationMK
+        ! stays zero, and a tau built from it is silently zero -- the scheme
+        ! then does nothing at all rather than failing visibly.
+        Stabilize = Stabilize .OR. &
+            ListGetLogical( Solver % Values, 'Pressure Stabilization', Stat )
       END IF
     END DO
 

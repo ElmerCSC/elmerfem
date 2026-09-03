@@ -937,6 +937,66 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> The largest degree in a single coordinate direction reached by the bubble
+!> set of an element of degree p. Mirrors getBubbleDOFs above: that function is
+!> the VOLUME of the bubble index loops, this one is their EXTENT along one
+!> axis, and both are read off the same loop bounds in ElemInfo.F90 (and their
+!> copies in H1Basis.F90 for the vectorised path). Keep the three in step.
+!>
+!> This matters because tensor-product quadrature counts are formed as
+!> (degree+1)**dim, which is only valid for a PER-DIRECTION degree. The
+!> serendipity loops are constrained by a TOTAL degree, so the p they are
+!> indexed by overstates what one direction needs; the plain loops are already
+!> per-direction and return p unchanged. Feeding a serendipity total degree
+!> straight into the tensor count over-resolves badly: with "b:1" a brick asks
+!> for 343 points where 27 is exact, a prism 216 where 64 is, a quad 25 where 9
+!> is. The bubble is literally the same function in both schemes -- the basis
+!> routines use different index conventions (SD_* takes degrees directly, the
+!> plain ones add +2) and the loop bounds compensate -- so only the label moves.
+!------------------------------------------------------------------------------
+  FUNCTION getBubbleMaxDegree1D( Element, p ) RESULT(deg)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    TYPE(Element_t) :: Element
+    INTEGER, INTENT(IN) :: p
+    INTEGER :: deg
+
+    IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+      deg = p
+      RETURN
+    END IF
+
+    ! Only quad, prism and brick have a serendipity branch in getBubbleDOFs;
+    ! line, triangle, tetra and pyramid have none, so their p is already the
+    ! degree the loops reach.
+    deg = p
+    IF (Element % PDefs % Serendipity) THEN
+      SELECT CASE (Element % TYPE % ElementCode / 100)
+      ! Quad: "DO i=2,p-2 ; DO j=2,p-i" over Phi(i)*Phi(j), so with the other
+      ! index at its minimum of 2 one index reaches p-2.
+      CASE (4)
+        deg = p - 2
+      ! Prism: "DO i=0,p-5 ; DO j=0,p-5-i ; DO k=2,p-3-i-j" over
+      ! L1*L2*L3*LegendreP(i)*LegendreP(j)*Phi(k). The in-plane factor
+      ! L1*L2*L3 carries degree 3 on top of i+j <= p-5, giving p-2, which
+      ! dominates the out-of-plane k <= p-3.
+      CASE (7)
+        deg = p - 2
+      ! Brick: "DO i=2,p-4 ; DO j=2,p-i-2 ; DO k=2,p-i-j" over
+      ! Phi(i)*Phi(j)*Phi(k), so with the other two at their minimum of 2 one
+      ! index reaches p-4.
+      CASE (8)
+        deg = p - 4
+      END SELECT
+    END IF
+
+    deg = MAX(0, deg)
+!------------------------------------------------------------------------------
+  END FUNCTION getBubbleMaxDegree1D
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Checks whether any solver of the given model has been associated with
 !> p-element definitions  
 !------------------------------------------------------------------------------
@@ -1135,6 +1195,14 @@ CONTAINS
           END IF
         END IF
       END IF
+      ! The tensor count below is (degree+1)**dim, which needs a PER-DIRECTION
+      ! degree; under serendipity the bubble loops are indexed by a total
+      ! degree. Convert before taking the MAX. This is a no-op for a plain
+      ! "p:N" element, where edgeP == N already dominates and is genuinely
+      ! per-direction; it bites only when an explicit "b:" raises the bubble
+      ! degree above the edge and face degrees.
+      bubbleP = getBubbleMaxDegree1D( Element, bubbleP )
+
       ! Get the number r of Gauss points for the product of two basis functions: 
       ! r = (2*max(p)+1)/2
       maxp = MAX(1, edgeP, faceP, bubbleP) + 1

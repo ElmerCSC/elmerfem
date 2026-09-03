@@ -4317,6 +4317,140 @@ END FUNCTION SearchNodeL
 
 
 !------------------------------------------------------------------------------
+!> Parse an "Element Integration Points" string into a per family point count,
+!> indexed by ElementCode/100. Absent families are left at zero, meaning "use
+!> whatever rule the element would have chosen".
+!>
+!> Module level rather than internal to GaussPointsAdapt because two places have
+!> to agree on it: the assembly that integrates the element, and CreateIpPerm,
+!> which asks how many points an element has when it sizes an integration point
+!> variable. A solver that resolves its own rule -- ElasticSolver does, calling
+!> GaussPoints directly -- must read the keyword through the same parser, or the
+!> per element slices of "ve_stress" and its like are allocated for one rule and
+!> written for another.
+!>
+!> "Stated" reports which families the string actually named, separately from
+!> their values, because the same syntax now carries relative orders as well as
+!> absolute counts. Reading a count, zero can only mean "family not named".
+!> Reading an offset, zero is a legitimate value -- "this family keeps its own
+!> rule, whatever the scalar order says" -- so presence cannot be recovered from
+!> the value there.
+!------------------------------------------------------------------------------
+  SUBROUTINE ParseElementalGaussRules( GaussDef, ElementalNp, Stated )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=*), INTENT(IN) :: GaussDef
+    INTEGER, INTENT(OUT) :: ElementalNp(8)
+    LOGICAL, OPTIONAL, INTENT(OUT) :: Stated(8)
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,n,m,iostat
+
+    n = LEN_TRIM(GaussDef)
+    ElementalNp = 0
+    IF( PRESENT( Stated ) ) Stated = .FALSE.
+
+    DO i=2,8
+      j = 0
+      SELECT CASE( i )
+      CASE( 2 )
+        j = INDEX( GaussDef(1:n), '-line' );    m = 5
+      CASE( 3 )
+        j = INDEX( GaussDef(1:n), '-tri' );     m = 4
+      CASE( 4 )
+        j = INDEX( GaussDef(1:n), '-quad' );    m = 5
+      CASE( 5 )
+        j = INDEX( GaussDef(1:n), '-tetra' );   m = 6
+      CASE( 6 )
+        j = INDEX( GaussDef(1:n), '-pyramid' ); m = 8
+      CASE( 7 )
+        j = INDEX( GaussDef(1:n), '-prism' );   m = 6
+      CASE( 8 )
+        j = INDEX( GaussDef(1:n), '-brick' );   m = 6
+      END SELECT
+
+      IF( j > 0 ) THEN
+        READ( GaussDef(j+m:n), *, IOSTAT = iostat ) k
+        IF( iostat /= 0 ) THEN
+          CALL Fatal('ParseElementalGaussRules', &
+              'Problems reading integer from: '//TRIM(GaussDef(j+m:n)))
+        END IF
+        ElementalNp(i) = k
+        IF( PRESENT( Stated ) ) Stated(i) = .TRUE.
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ParseElementalGaussRules
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The point count an explicit "Element Integration Points" rule asks for on
+!> THIS element, or zero to leave the element its own rule.
+!>
+!> Zero for a p-element of degree above one. The keyword names one count per
+!> family and knows nothing about the basis actually carried: the counts anyone
+!> writes are measured on the linear element, with or without a bubble, and a
+!> p-refined element needs more, not the same. Clamping p:3 down to the count
+!> that suffices for p:1 would silently under-integrate it -- the one direction
+!> in which this keyword must not be allowed to act. A bubble augmentation is
+!> not excluded: "p:1 b:4" is still degree one in PDefs % P, and reducing its
+!> rule is the whole point of stating the keyword.
+!------------------------------------------------------------------------------
+  FUNCTION ElementalGaussNp( Element, ElementalNp ) RESULT( np )
+!------------------------------------------------------------------------------
+    USE PElementMaps, ONLY : isActivePElement
+    TYPE(Element_t) :: Element
+    INTEGER, INTENT(IN) :: ElementalNp(8)
+    INTEGER :: np
+!------------------------------------------------------------------------------
+    np = ElementalNp( Element % TYPE % ElementCode / 100 )
+    IF( np <= 0 ) RETURN
+
+    IF( isActivePElement( Element ) ) THEN
+      IF( ASSOCIATED( Element % PDefs ) ) THEN
+        IF( Element % PDefs % P > 1 ) np = 0
+      END IF
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION ElementalGaussNp
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The relative integration order a per family rule asks for on THIS element,
+!> and .TRUE. when its family was named at all.
+!>
+!> The relative twin of ElementalGaussNp. Unlike that one it carries no
+!> p-element clamp, and deliberately: an offset shifts from whatever rule the
+!> element chose for the basis it is actually carrying, so it keeps its meaning
+!> under p-refinement. An absolute count does not, which is the whole reason
+!> ElementalGaussNp has to switch itself off above degree one.
+!------------------------------------------------------------------------------
+  FUNCTION ElementalGaussRelOrder( Element, ElementalRelOrder, RelStated, RelOrder ) &
+      RESULT( Stated )
+!------------------------------------------------------------------------------
+    TYPE(Element_t) :: Element
+    INTEGER, INTENT(IN) :: ElementalRelOrder(8)
+    LOGICAL, INTENT(IN) :: RelStated(8)
+    INTEGER, INTENT(OUT) :: RelOrder
+    LOGICAL :: Stated
+!------------------------------------------------------------------------------
+    INTEGER :: Family
+
+    Family = Element % TYPE % ElementCode / 100
+    Stated = RelStated( Family )
+    IF( Stated ) THEN
+      RelOrder = ElementalRelOrder( Family )
+    ELSE
+      RelOrder = 0
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION ElementalGaussRelOrder
+!------------------------------------------------------------------------------
+
+
+
+
+!------------------------------------------------------------------------------
 !> Adaptive version for getting gaussian integration points.
 !> Also saves some time in initializations.
 !> Note: the routine uses the pointer to Solver to check whether definitions
@@ -4338,7 +4472,8 @@ END FUNCTION SearchNodeL
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder, BaseNp, BaseRelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
-    INTEGER :: i,j,n,ElementalNp(8),prevVisited = -1
+    LOGICAL :: ElementalRelRule, RelStated(8)
+    INTEGER :: i,j,n,ElementalNp(8),ElementalRelOrder(8),prevVisited = -1
     LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit, UseNameSpace, EdgePRef
     INTEGER :: EdgeBasisDegree
     REAL(KIND=dp) :: ElemPhi(27)
@@ -4379,7 +4514,8 @@ END FUNCTION SearchNodeL
     ! so. ElemNodes is left SAVE here (its POINTER components would leak on
     ! every call as a plain non-SAVE local) pending that rework.
     SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, BaseRelOrder, BaseNp, &
-        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemNodes
+        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemNodes, &
+        ElementalRelRule, ElementalRelOrder, RelStated
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -4429,7 +4565,12 @@ END FUNCTION SearchNodeL
         UseNameSpace = ListCheckPrefix( pSolver % Values,'bc gauss:')         
         IF( UseNameSpace) THEN
           CALL Info('GaussPointsAdapt','Using namespace "bc gauss:" for integration rules!',Level=10)
-          CALL ListPushNamespace('bcgauss:')
+          ! The pushed namespace has to be spelt as the keywords are. This read
+          ! "bcgauss:" with no space, so a sif writing "bc gauss: ..." passed the
+          ! prefix check above, announced itself in the message above, and was
+          ! then looked up under a prefix nothing in the sif used -- detected and
+          ! silently ignored. The bulk branch below has always been consistent.
+          CALL ListPushNamespace('bc gauss:')
         END IF
       ELSE
         UseNameSpace = ListCheckPrefix( pSolver % Values,'bulk gauss:')         
@@ -4439,7 +4580,57 @@ END FUNCTION SearchNodeL
         END IF
       END IF
                     
+      ElementalRelRule = .FALSE.
+      ElementalRelOrder = 0
+      RelStated = .FALSE.
+
       BaseRelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
+
+      ! The bulk and the boundary can be offset separately, because they are two
+      ! rules with very different budgets and the smaller one otherwise governs:
+      ! a tetrahedron carrying "p:1 b:1" integrates over 150 points and is exact
+      ! at 24, but the same offset lands on its boundary triangle whose count is
+      ! 3 and drives it to zero.
+      !
+      ! Read here as well as in the solvers that resolve the rule themselves,
+      ! because THIS function is what CreateIpPerm asks how many points an
+      ! element has when it sizes an integration point variable. If the two
+      ! disagree, the per-element slices of "ve_stress" and its like are
+      ! allocated for one rule and written for another.
+      IF( IsBC ) THEN
+        i = ListGetInteger( pSolver % Values,'Boundary Relative Integration Order',Found )
+      ELSE
+        i = ListGetInteger( pSolver % Values,'Bulk Relative Integration Order',Found )
+      END IF
+      IF( Found ) BaseRelOrder = i
+
+      ! The per family relative order. A keyword of its own rather than flags on
+      ! the three scalars above: those are typed Integer in the keyword database,
+      ! and that type is what the sif reader consults for a value carrying none
+      ! of its own, so it has to stay Integer for the plain "= -2" spelling to go
+      ! on being read as one. A per family value there would have to be written
+      ! as an explicit String and would draw a "given wrong type" warning from
+      ! CheckKeyword on every run, keyword checking being on by default. This one
+      ! is typed String from the start.
+      !
+      ! Applies to bulk and boundary elements alike, indexed by family the same
+      ! way "Element Integration Points" is -- in 3D the two never collide, the
+      ! boundary of a tetrahedron being a triangle.
+      GaussDef = ListGetString( pSolver % Values,'Element Relative Integration Order',Found )
+      IF( Found ) THEN
+        BLOCK
+          INTEGER :: ParsedOrder(8)
+          LOGICAL :: Stated(8)
+          CALL ParseElementalGaussRules( GaussDef, ParsedOrder, Stated )
+          DO i=1,8
+            IF( Stated(i) ) THEN
+              ElementalRelOrder(i) = ParsedOrder(i)
+              RelStated(i) = .TRUE.
+            END IF
+          END DO
+        END BLOCK
+      END IF
+      ElementalRelRule = ANY( RelStated )
       AdaptNp = 0
       AdaptSplit = .FALSE.
       BaseNp = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
@@ -4560,9 +4751,21 @@ END FUNCTION SearchNodeL
     Np = BaseNp
     RelOrder = BaseRelOrder
 
+    ! A per family relative order replaces the scalar one on the families it
+    ! names. Applied here rather than inside the branches below because a forced
+    ! Np wins over RelOrder at the bottom of the routine anyway, so an absolute
+    ! elemental rule still has the last word, and the adaptive branch still
+    ! zeroes both when it takes over.
+    IF( ElementalRelRule ) THEN
+      IF( ElementalGaussRelOrder( Element, ElementalRelOrder, RelStated, i ) ) RelOrder = i
+    END IF
+
     IF( ElementalRule ) THEN
-      ! Elemental explicit rule always has the prevalance
-      Np = ElementalNp( Element % TYPE % ElementCode / 100 )
+      ! Elemental explicit rule has the prevalence, except over a p-element of
+      ! degree above one, which it would only under-integrate. See
+      ! ElementalGaussNp. A zero leaves Np at BaseNp, hence the element's own.
+      i = ElementalGaussNp( Element, ElementalNp )
+      IF( i > 0 ) Np = i
     ELSE IF( UseAdapt ) THEN
       RelOrder = 0
       Np = 0
@@ -4727,52 +4930,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
       CHARACTER(LEN=*) :: GaussDef
 !------------------------------------------------------------------------------
-      INTEGER  :: i,j,k,n,m,iostat
-      
-
-      n = LEN_TRIM(GaussDef)
-      ElementalNp = 0
-
-      !PRINT *,'gauss def:',GaussDef(1:n)
-
-      DO i=2,8        
-        j = 0
-        
-        SELECT CASE( i )
-        CASE( 2 )
-          j =  INDEX( GaussDef(1:n), '-line' ) ! position of string "-line"
-          m = 5 ! length of string "-line" after which the integer should follow
-        CASE( 3 )
-          j =  INDEX( GaussDef(1:n), '-tri' ) 
-          m = 4
-        CASE( 4 )
-          j =  INDEX( GaussDef(1:n), '-quad' )
-          m = 5
-        CASE( 5 )
-          j =  INDEX( GaussDef(1:n), '-tetra' )
-          m = 6
-        CASE( 6 )
-          j =  INDEX( GaussDef(1:n), '-pyramid' )
-          m = 8
-        CASE( 7 )
-          j =  INDEX( GaussDef(1:n), '-prism' )
-          m = 6
-        CASE( 8 )
-          j =  INDEX( GaussDef(1:n), '-brick' )
-          m = 6
-        END SELECT
-        
-        IF( j > 0 ) THEN
-          READ( GaussDef(j+m:n), *, IOSTAT = iostat ) k
-          IF( iostat /= 0 ) THEN
-            CALL Fatal('ElementGaussRules','Problems reading integer from: '//TRIM(GaussDef(j+m:n)))
-          END IF
-          ElementalNp(i) = k
-        END IF
-      END DO
-
-      !PRINT *,'Elemental Gauss Rules:',ElementalNp
-      
+      CALL ParseElementalGaussRules( GaussDef, ElementalNp )
 !------------------------------------------------------------------------------
     END SUBROUTINE ElementalGaussRules
 !------------------------------------------------------------------------------
