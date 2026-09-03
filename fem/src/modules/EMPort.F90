@@ -141,10 +141,14 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     UnitVoltage = ListGetLogical(BC, "Unit Voltage", Found)
     IF (Ground .OR. UnitVoltage) THEN
       IF (Ground) THEN
-        CALL Info(Caller,'Setting tangential electric field to zero where "Port Ground" is True',Level=10)
-        c = 0.0_dp
+        CALL Info(Caller,'Enforcing zero tangential electric field where "Port Ground" is True',Level=10)
+        IF (UseV) THEN
+          CALL Info(Caller,'Enforcing zero scalar potential where "Port Ground" is True',Level=10)
+          c = 0.0_dp
+        END IF
       ELSE
-        CALL Info(Caller,'Setting unit scalar potential where "Unit Voltage" is True',Level=10)
+        CALL Info(Caller,'Enforcing zero tangential electric field where "Unit Voltage" is True',Level=10)
+        CALL Info(Caller,'Enforcing unit scalar potential where "Unit Voltage" is True',Level=10)
         c = 1.0_dp
       END IF
       
@@ -176,7 +180,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
 
   CALL Info(Caller, 'Setting default sorting and normalization for eigenmodes!', Level=7)
   CALL ListAddNewString( Params,'Eigen System Sorting','smallest real part')
-  CALL ListAddNewLogical( Params,'Eigen System Normalize To Unity',.TRUE.)
+  CALL ListAddNewLogical( Params,'Eigenvector Normalization by Power',.TRUE.)
   CALL ListAddNewLogical( Params,'Eigen System Shift Automatic',.TRUE.)
   
 !-----------------------------------------------------------------------------
