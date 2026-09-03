@@ -45,7 +45,38 @@ ENDIF()
 TARGET_INCLUDE_DIRECTORIES(ElmerGrid PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR})
 
-TARGET_COMPILE_DEFINITIONS(ElmerGrid PRIVATE DISABLE_MATC)
+# ---------------------------------------------------------------------------
+# MATC in ElmerGrid
+#
+# ElmerGrid can evaluate MATC expressions in .grd files: egnative.c calls
+# mtc_domath() and mtc_init() under "#if USE_MATC", and egdef.h derives
+# USE_MATC from DISABLE_MATC.  Defining DISABLE_MATC unconditionally, as this
+# file used to, made that unreachable and left no way to ask for it.
+#
+# The option is OFF by default, so nothing changes unless it is asked for.
+# Enabling it needs the matc library, which the Elmer build provides:
+# ADD_SUBDIRECTORY(matc) in the top level CMakeLists.txt is unconditional and
+# runs before this directory.  The TARGET check keeps a standalone ElmerGrid
+# build working, where no such target exists and MATC simply stays off.
+#
+# No header is needed: egnative.c declares both functions itself.
+#
+# See ElmerCSC/elmerfem#899 for what enabling this is ultimately for.
+# ---------------------------------------------------------------------------
+OPTION(ELMERGRID_WITH_MATC "Build ElmerGrid with MATC expression support" OFF)
+
+IF(ELMERGRID_WITH_MATC AND NOT TARGET matc)
+  MESSAGE(WARNING
+    "  [ElmerGrid] ELMERGRID_WITH_MATC is ON but no 'matc' target exists; "
+    "building without MATC.")
+ENDIF()
+
+IF(ELMERGRID_WITH_MATC AND TARGET matc)
+  MESSAGE(STATUS "  [ElmerGrid] MATC:                     ON")
+  TARGET_LINK_LIBRARIES(ElmerGrid PRIVATE matc)
+ELSE()
+  TARGET_COMPILE_DEFINITIONS(ElmerGrid PRIVATE DISABLE_MATC)
+ENDIF()
 
 TARGET_LINK_LIBRARIES(ElmerGrid PRIVATE metis m)
 IF(NOT(WIN32))
