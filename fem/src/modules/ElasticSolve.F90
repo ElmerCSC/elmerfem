@@ -411,6 +411,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: NonlinearIter, MinNonlinearIter, FlowNOFNodes, previ
   INTEGER :: EigenModes, Passes
   INTEGER :: RelIntegOrder
+  LOGICAL :: PStab = .FALSE.
+  REAL(KIND=dp) :: PStabCoeff
   INTEGER :: CoordinateSystem
   INTEGER :: NPROPS, NSTATEV, MAXSTATEV
 
@@ -1286,6 +1288,28 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! the element declares; fem/tests/ElastPelem2dPmultg* are StressSolve cases that
   ! turn it down to keep a p-refined solve affordable.
   RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order', GotIt )
+
+  ! Pressure stabilisation, as an alternative to the MINI element's bubble.
+  !
+  ! The incompressible formulation needs an inf-sup stable displacement/pressure
+  ! pair. Today the only route is MINI -- "Element = p:1 b:N" -- and the bubble
+  ! is not cheap: on a tetrahedron the lowest bubble is degree 4, so the element
+  ! is integrated over 150 points where the linear part needs 5. An equal-order
+  ! pair stabilised in the pressure is the standard alternative, and the two are
+  ! the same object seen differently: condensing a bubble analytically yields a
+  ! stabilisation with tau given by the bubble's integral.
+  !
+  ! Off by default and opt-in per solver, exactly as NavierStokes treats its own
+  ! choice between 'stabilized' and 'bubbles': it is a different discretisation,
+  ! not an optimisation, and it must never be selected behind a user's back.
+  PStab = ListGetLogical( SolverParams,'Pressure Stabilization', GotIt )
+  PStabCoeff = ListGetConstReal( SolverParams,'Pressure Stabilization Coefficient', GotIt )
+  IF( .NOT. GotIt ) PStabCoeff = 1.0_dp
+  IF( PStab ) THEN
+    CALL Info( Caller,'Using pressure stabilisation instead of bubbles',Level=5)
+    IF( .NOT. LinearIncompressible ) CALL Warn( Caller, &
+        '"Pressure Stabilization" has nothing to stabilise without "Incompressible"')
+  END IF
 
   ConstantSystem     = ListGetLogical( SolverParams, 'Constant System', GotIt )
   ConstantBulkSystem = ListGetLogical( SolverParams, 'Constant Bulk System', GotIt )
@@ -3389,6 +3413,7 @@ CONTAINS
     ! assembly does not. Pres/Pres0 are the mixed formulation's pressure now and at
     ! the previous step, zero without it.
     REAL(KIND=dp) :: xPhi, ShearModulus, MaxVisc, MuDer
+    REAL(KIND=dp) :: Tau, MuEff, GpaMag, hKe, mKe, PeStab
     REAL(KIND=dp) :: LagStress(3,3), NewLagStress(3,3), ElasticStress(3,3)
     REAL(KIND=dp) :: LagVec(6), Pres, Pres0
     REAL(KIND=dp) :: NodalVelo(3,ntot)
@@ -4081,6 +4106,44 @@ CONTAINS
        ! enters the residual and not this.
        IF ( MaxwellHere ) dStresses(:,:,1:cdim*ntot) = xPhi * dStresses(:,:,1:cdim*ntot)
 
+       !-----------------------------------------------------------------------
+       ! The pressure stabilisation parameter at this integration point.
+       !
+       ! Built on the EFFECTIVE shear modulus, not the elastic one. For a Maxwell
+       ! material the whole response is scaled by xPhi = 1/(1 + mu dt/eta), so
+       ! mu_eff = xPhi*mu is what the incremental problem actually sees: it tends
+       ! to mu for a short step and to eta/dt for a long one, which is the right
+       ! interpolation between the elastic and the relaxed limit.
+       !
+       ! "Gravitational Prestress Advection" makes this more than a Stokes
+       ! problem: that term is first-derivative-of-trial against test-value, i.e.
+       ! an advection operator -- which is also why it is the one non-symmetric
+       ! term in the assembly. So tau follows the same interpolating form
+       ! NavierStokes uses, with rho*g in place of rho*|v|, reducing to the
+       ! diffusive limit mK*h^2/(8*mu_eff) when advection is weak. The two
+       ! branches agree in that limit (the rho*g cancels); the test on GpaMag is
+       ! only to avoid dividing by zero when there is no advection at all.
+       !
+       ! In the earth cases the Peclet number is ~3e-3, so the diffusive branch
+       ! is what runs there. It crosses over around dt ~ 500 years, which is
+       ! inside the range glacial isostatic adjustment actually uses -- so the
+       ! advective branch is written for a regime the current tests do not reach.
+       !-----------------------------------------------------------------------
+       IF ( PStab .AND. LinearIncompressible ) THEN
+          MuEff = Lame2
+          IF ( MaxwellHere ) MuEff = xPhi * Lame2
+          GpaMag = ABS( GPAatIP )
+          hKe = Element % hK
+          mKe = Element % StabilizationMk
+          IF ( GpaMag * hKe > 0.0_dp ) THEN
+             PeStab = MIN( 1.0_dp, mKe * GpaMag * hKe / ( 4.0_dp * MuEff ) )
+             Tau = hKe * PeStab / ( 2.0_dp * GpaMag )
+          ELSE
+             Tau = mKe * hKe**2 / ( 8.0_dp * MuEff )
+          END IF
+          Tau = PStabCoeff * Tau
+       END IF
+
        !----------------------------------------------------------------------------
        ! Loop over the test functions (stiffness matrix for Newton linearization):
        ! ---------------------------------------------------------------------------
@@ -4202,6 +4265,27 @@ CONTAINS
                    StiffMatrix(DOFs*p,DOFs*(q-1)+j) = StiffMatrix(DOFs*p,DOFs*(q-1)+j) &
                         - dBasisdx(q,j)*Basis(p)*s
                 END DO
+             END DO
+          END IF
+
+          ! Pressure stabilisation: -tau * grad(q).grad(p), the Brezzi-Pitkaranta
+          ! term, added to the same constraint row. The sign matches the negative
+          ! sign the divergence coupling above already carries, keeping the saddle
+          ! point in the form [A B^T; B -C] with C positive semi-definite.
+          !
+          ! Only over the corner nodes: the pressure lives on the lowest-order
+          ! basis, so rows and columns beyond n are not pressure degrees of
+          ! freedom. The load term of a fully consistent PSPG is deliberately
+          ! omitted -- for a linear displacement the momentum residual is grad(p)
+          ! minus the load, and dropping the load leaves the classical
+          ! Brezzi-Pitkaranta scheme, whose consistency error is O(h^2), the same
+          ! order as the discretisation. For a Maxwell material a consistent
+          ! residual would also need the divergence of the lag stress, which
+          ! lives at integration points and is not differentiable across them.
+          IF ( PStab .AND. LinearIncompressible .AND. p <= n ) THEN
+             DO q = 1,n
+                StiffMatrix(DOFs*p,DOFs*q) = StiffMatrix(DOFs*p,DOFs*q) &
+                     - Tau * SUM( dBasisdx(p,1:cdim)*dBasisdx(q,1:cdim) ) * s
              END DO
           END IF
        END DO
