@@ -4429,7 +4429,12 @@ END FUNCTION SearchNodeL
         UseNameSpace = ListCheckPrefix( pSolver % Values,'bc gauss:')         
         IF( UseNameSpace) THEN
           CALL Info('GaussPointsAdapt','Using namespace "bc gauss:" for integration rules!',Level=10)
-          CALL ListPushNamespace('bcgauss:')
+          ! The pushed namespace has to be spelt as the keywords are. This read
+          ! "bcgauss:" with no space, so a sif writing "bc gauss: ..." passed the
+          ! prefix check above, announced itself in the message above, and was
+          ! then looked up under a prefix nothing in the sif used -- detected and
+          ! silently ignored. The bulk branch below has always been consistent.
+          CALL ListPushNamespace('bc gauss:')
         END IF
       ELSE
         UseNameSpace = ListCheckPrefix( pSolver % Values,'bulk gauss:')         
