@@ -490,6 +490,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: ProbeRelOrder = 0, ProbeNpFixed = 0, ProbeSample, ProbeTop
   INTEGER :: ProbeSeen(8), ProbeNp(8), ProbeDefNp(8), ProbeRelOff(8)
   LOGICAL :: ProbeFailed(8), ProbeIsRel(8)
+  REAL(KIND=dp) :: ProbeResid(8)
   REAL(KIND=dp) :: ProbeTol
   LOGICAL :: PStab = .FALSE.
   REAL(KIND=dp) :: PStabCoeff
@@ -1457,7 +1458,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
     ProbeTop = ListGetInteger( SolverParams,'Integration Rule Probe Steps Up', GotIt )
     IF( .NOT. GotIt ) ProbeTop = 2
     ProbeSeen = 0; ProbeNp = 0; ProbeDefNp = 0; ProbeFailed = .FALSE.
-    ProbeRelOff = 0; ProbeIsRel = .FALSE.
+    ProbeRelOff = 0; ProbeIsRel = .FALSE.; ProbeResid = 0.0_dp
   END IF
 
   ! An explicit per family rule, if one is stated -- by a sif, or by _Init for
@@ -1965,7 +1966,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ProbeThisElement()
 !------------------------------------------------------------------------------
-    INTEGER :: fam, r, rlo, nc, i, j, k, best, PrevNp, nsys, nblk, nTry
+    INTEGER :: fam, r, rlo, rhi, nc, i, j, k, best, PrevNp, nsys, nblk, nTry
     INTEGER, PARAMETER :: MaxCand = 32
     INTEGER :: CandNp(MaxCand), CandFixed(MaxCand), CandRel(MaxCand)
     INTEGER :: TryNp(MaxCand), TryFixed(MaxCand)
@@ -1977,7 +1978,7 @@ CONTAINS
     INTEGER, PARAMETER :: PrismNp(22) = &
         [ 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,28,44,48,85,100 ]
     REAL(KIND=dp), ALLOCATABLE :: Cand(:,:), Ref(:)
-    REAL(KIND=dp) :: Scale, Diff
+    REAL(KIND=dp) :: Scale, Diff, MinDiff
     TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
     fam = CurrentElement % TYPE % ElementCode / 100
@@ -1999,7 +2000,12 @@ CONTAINS
     ! The bottom of the ladder is asked for, not discovered: GaussPoints enforces
     ! its lower bound with Fatal, so one step too far would end the run.
     rlo = MAX( GaussPointsMinRelOrder( CurrentElement ), -8 )
-    IF( rlo >= ProbeTop ) RETURN
+    ! And the top is bounded too. A non-p element has only {-1,0,1}, and asking
+    ! for more is not a soft failure -- GaussPoints fatals. Every family in
+    ! ElasticStabilized is a p-element, which is why validating against those
+    ! five never exercised this and every plain-element contact case died.
+    rhi = MIN( ProbeTop, GaussPointsMaxRelOrder( CurrentElement ) )
+    IF( rlo >= rhi ) RETURN
 
     ! Collect the candidate rules FIRST, ascending, then assemble. The two
     ! keywords reach disjoint sets of rules and the smallest sufficient one may
@@ -2012,7 +2018,7 @@ CONTAINS
     TryNp = 0
     TryFixed = 0
     PrevNp = -1
-    DO r = rlo, ProbeTop
+    DO r = rlo, rhi
       IP = GaussPoints( CurrentElement, RelOrder = r )
       IF( IP % n <= 0 .OR. IP % n == PrevNp ) CYCLE
       PrevNp = IP % n
@@ -2056,7 +2062,7 @@ CONTAINS
       IF( ProbeNpFixed == 0 ) THEN
         ! Find the relative step that produced this count. Cheaper to re-walk
         ! than to carry it: the ladder is a handful of entries.
-        DO r = rlo, ProbeTop
+        DO r = rlo, rhi
           IP = GaussPoints( CurrentElement, RelOrder = r )
           IF( IP % n == TryNp(k) ) THEN
             ProbeRelOrder = r
@@ -2111,8 +2117,10 @@ CONTAINS
     IF( Scale <= TINY(Scale) ) Scale = 1.0_dp
 
     best = 0
+    MinDiff = HUGE( MinDiff )
     DO i=1,nc-1
       Diff = SQRT( SUM( (Cand(:,i)-Ref)**2 ) ) / Scale
+      MinDiff = MIN( MinDiff, Diff )
       IF( Diff <= ProbeTol ) THEN
         best = i                   ! candidates were built cheapest first
         EXIT
@@ -2133,6 +2141,9 @@ CONTAINS
       ! there. Say so, rather than reporting the top of the ladder as sufficient.
       ProbeFailed(fam) = .TRUE.
       ProbeNp(fam) = MAX( ProbeNp(fam), CandNp(nc) )
+      ! How close the ladder got. Without this the report cannot distinguish
+      ! "one more step would do it" from "this will never converge".
+      ProbeResid(fam) = MAX( ProbeResid(fam), MinDiff )
     ELSE
       ProbeNp(fam) = MAX( ProbeNp(fam), CandNp(best) )
     END IF
@@ -2194,11 +2205,23 @@ CONTAINS
       IF( ProbeSeen(fam) == 0 ) CYCLE
 
       IF( ProbeFailed(fam) ) THEN
-        CALL Info( Caller,'  '//TRIM(FamName(fam))//': '//I2S(ProbeSeen(fam))// &
-            ' elements, default '//I2S(ProbeDefNp(fam))//' points, NOT converged '// &
-            'even at '//I2S(ProbeNp(fam))//' -- raise "Integration Rule Probe Steps Up"',&
-            Level=3)
-        AnyUp = .TRUE.
+        ! Report how far off it still is, and do NOT simply advise more points.
+        ! Most of these never converge at any rule: a distorted element's inverse
+        ! Jacobian is RATIONAL, an axisymmetric weight and a coefficient varying
+        ! within the element both raise the integrand off the polynomials the
+        ! quadrature is exact for. For those the ladder is asymptotic and the
+        ! question is only whether the remaining difference matters.
+        WRITE( Message,'(A,I0,A,I0,A,I0,A,ES9.2)') '  '//TRIM(FamName(fam))//': ', &
+            ProbeSeen(fam),' elements, default ',ProbeDefNp(fam), &
+            ' points, still moving at ',ProbeNp(fam),', closest relative change ', &
+            ProbeResid(fam)
+        CALL Info( Caller, Message, Level=3 )
+        IF( ProbeResid(fam) > 1.0e-6_dp ) THEN
+          AnyUp = .TRUE.
+        ELSE
+          CALL Info( Caller,'      -- that is small; an integrand that is not '// &
+              'polynomial converges no further at any rule.',Level=3)
+        END IF
         CYCLE
       END IF
 
@@ -2230,9 +2253,10 @@ CONTAINS
           TRIM(ADJUSTL(RelLine))//'"',Level=3)
       IF( LEN_TRIM(Line) > 0 ) CALL Info( Caller, &
           '  Element Integration Points = String "'//TRIM(ADJUSTL(Line))//'"',Level=3)
-      IF( AnyUp ) CALL Info( Caller,'Some families want MORE than the default. A '// &
-          'convoluted material or a distorted mesh does that, and it is the '// &
-          'direction worth heeding.',Level=3)
+      IF( AnyUp ) CALL Info( Caller,'Some families are still moving at the top of '// &
+          'the ladder by more than 1e-6. Either they want more points, or their '// &
+          'integrand is not polynomial and never will converge -- check whether '// &
+          'the residual above is large enough to matter.',Level=3)
     ELSE
       CALL Info( Caller,'Every family is already at the rule it needs.',Level=3)
     END IF
