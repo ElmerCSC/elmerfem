@@ -83,18 +83,10 @@ Solver 1
   Eigen System Convergence Tolerance = Real 1.0e-8
 !  Eigen System Compute Residuals = True
 
-! defaulted these
+!  The following are set as default:
 !  Eigen System Sorting = string "smallest real part"
-!  Eigen System Normalize To Unity = True
 !  Mode Index = Integer 1
 
-
-!  Eigen System Select = smallest real part
-!  Eigen System Select = largest real part
-!  Eigen System Select = smallest imag part
-!  Eigen System Select = largest imag part
-!  Eigen System Select = smallest magnitude
-!  Eigen System Select = largest magnitude
 !  Eigen System Lanczos Vectors = 180
 !  Eigen System Max Iterations = 1
 
@@ -193,7 +185,7 @@ Solver 5
   Procedure = "SaveData" "SaveScalars"
   Save EigenValues = True
 
-! Compare the 1st eigenvalue when sorted from smallest (negative real)
+! Compare the 1st (sorted) eigenvalue
   Show Norm Index = 1 
 End
 
@@ -213,7 +205,7 @@ Boundary Condition 2
   Body Id = 3
   Port Type = "eigenmode"
 
-  ! If we are doing lumping then "Constraint Mode" works also instead of "Port Index"
+  ! If we are doing lumping, then "Constraint Mode" works also instead of "Port Index"
   Port Index = Integer 1
 End
 
@@ -226,6 +218,5 @@ Boundary Condition 3
   Port Passive = Logical True
 End
 
-Solver 2 :: Reference Norm = 2.38014933E-01
-!Solver 3 :: Reference Norm = 1.50653184E-06  ! very sensitive norm!
+Solver 2 :: Reference Norm = 3.55562262E-02
 Solver 5 :: Reference Norm = 1.46479527E+01

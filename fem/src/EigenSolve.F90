@@ -165,8 +165,7 @@ CONTAINS
       INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, IERR, iter, &
                        NCONV, maxitr, ishfts, mode, istat, Dofs
       LOGICAL   ::     First, Stat, Direct = .FALSE., &
-                       Iterative = .FALSE., NewSystem, Damped, Stability, &
-                       NormalizeToUnity
+                       Iterative = .FALSE., NewSystem, Damped, Stability
 
       LOGICAL :: Factorize, FreeFactorize,FoundFactorize,FoundFreeFactorize
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, r

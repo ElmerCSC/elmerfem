@@ -1,8 +1,7 @@
 !
-! This is a 3-D application of the 2-D test case ../EM_port_eigen. Here the 2-D
-! port model is first solved over a surface of a 3-D mesh. Boundary conditions
-! for the 3-D model are then created by using the propagation parameter and the
-! corresponding eigenfunction determined by the 2-D solution.
+! This problem is basically the same as EM_port_eigen_3D, but here prismatic
+! finite elements are used and a nodal finite discretization is used for
+! the preconditioning of the approximation in H(curl). 
 !
 ! The original author: M.M. 
 !
@@ -83,18 +82,7 @@ Solver 1
 
 ! defaulted these
 !  Eigen System Sorting = string "smallest real part"
-!  Eigen System Normalize To Unity = True
 !  Mode Index = Integer 1
-
-
-!  Eigen System Select = smallest real part
-!  Eigen System Select = largest real part
-!  Eigen System Select = smallest imag part
-!  Eigen System Select = largest imag part
-!  Eigen System Select = smallest magnitude
-!  Eigen System Select = largest magnitude
-!  Eigen System Lanczos Vectors = 180
-!  Eigen System Max Iterations = 1
 
   Calculate Nodal Field = Logical True
   post: linear system solver = direct
@@ -182,7 +170,7 @@ Solver 5
   Procedure = "SaveData" "SaveScalars"
   Save EigenValues = True
 
-! Compare the 1st eigenvalue when sorted from smallest (negative real)
+! Compare the 1st (sorted) eigenvalue
   Show Norm Index = 1 
 End
 
@@ -296,7 +284,7 @@ Boundary Condition 3
   Body Id = 3
   Port Type = "eigenmode"
 
-  ! If we are doing lumping then "Constraint Mode" works also instead of "Port Index"
+  ! If we are doing lumping, then "Constraint Mode" works also instead of "Port Index"
   Port Index = Integer 1
   Eigenfunction Index = Integer 2
 
@@ -317,6 +305,6 @@ Boundary Condition 4
   Bscalar 2 = Real -2.9152713305134146
 End
 
-Solver 2 :: Reference Norm = 2.89473634E-02
-Solver 3 :: Reference Norm = 3.41524737E-02
+Solver 2 :: Reference Norm = 4.49715886E-02
+Solver 3 :: Reference Norm = 1.20518452E-01
 Solver 5 :: Reference Norm = 1.46409335E+01

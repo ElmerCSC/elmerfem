@@ -87,20 +87,9 @@ Solver 1
   Eigen System Convergence Tolerance = Real 1.0e-8
 !  Eigen System Compute Residuals = True
 
-! defaulted these
+!  The following are set as default:
 !  Eigen System Sorting = string "smallest real part"
-!  Eigen System Normalize To Unity = True
 !  Mode Index = Integer 1
-
-
-!  Eigen System Select = smallest real part
-!  Eigen System Select = largest real part
-!  Eigen System Select = smallest imag part
-!  Eigen System Select = largest imag part
-!  Eigen System Select = smallest magnitude
-!  Eigen System Select = largest magnitude
-!  Eigen System Lanczos Vectors = 180
-!  Eigen System Max Iterations = 1
 
   Calculate Nodal Field = Logical True
   post: linear system solver = direct
@@ -197,7 +186,7 @@ Solver 5
   Procedure = "SaveData" "SaveScalars"
   Save EigenValues = True
 
-! Compare the 1st eigenvalue when sorted from smallest (negative real)
+! Compare the 1st (sorted) eigenvalue
   Show Norm Index = 1 
 End
 
@@ -217,7 +206,7 @@ Boundary Condition 2
   Port Type = "eigenmode"
   Eigenfunction Index = Integer 2
 
-  ! If we are doing lumping then "Constraint Mode" works also instead of "Port Index"
+  ! If we are doing lumping, then "Constraint Mode" works also instead of "Port Index"
   Port Index = Integer 1
 End
 
@@ -232,5 +221,5 @@ Boundary Condition 3
   Port Passive = Logical True
 End
 
-Solver 2 :: Reference Norm = 1.48351281E-01
+Solver 2 :: Reference Norm = 4.10595572E-02
 Solver 5 :: Reference Norm = 1.46479527E+01
