@@ -247,43 +247,34 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   ! bubble augmented linear element, and they need BOTH keywords, because the two
   ! keywords reach different rules and neither reaches all of them.
   !
-  ! THE SIMPLICES NEED THE RELATIVE FORM. A tetrahedron carrying "p:1 b:1"
-  ! defaults to 150 points and is bit-identical at the tabulated 24 point rule, a
-  ! triangle to 12 and identical at the tabulated 7. But those tabulated rules
-  ! cannot be asked for by name BY A P-ELEMENT, and MINI is one. On a plain
-  ! element an explicit count names a tabulated rule and is honoured exactly --
-  ! "-tetra 1" on a non-p tetrahedron really does give one point. But with np
-  ! present GaussPoints takes the p-branch, skipping TetraSimplexRulePoints /
-  ! TriangleSimplexRulePoints, so
-  ! "-tetra 24" does not give 24 points -- it reaches GaussPointsPTetra(24),
-  ! which computes NINT(24**(1/3)) = 3 and returns the collapsed brick rule
-  ! GaussPointsPBrick(3,3,4), i.e. 36 points. That collapsed rule is precisely
-  ! the one measured as NOT exact, moving the probe by 0.128%. A relative order
-  ! leaves np absent, the tables are consulted, and the answer is bit-identical
-  ! to the 150 point one. Measured both ways on ElasticStabilized:
+  ! The counts are the ones measured, stated directly. Each is the smallest rule
+  ! that leaves the answer bit-identical to the element's own, on the
+  ! ElasticStabilized family cases:
   !
-  !   tetrahedron   150 points          5.193236630685E-01
-  !                 "-tetra -2"         5.193236630685E-01   identical
-  !                 "Element Integration Points = -tetra 24"
-  !                                     5.199868986706E-01   +0.128%
-  !   triangle      12 points           1.223989545769E-01
-  !                 "-tri -1"           1.223989545769E-01   identical
+  !   triangle    b:1     12 -> 7
+  !   tetrahedron b:1    150 -> 24
+  !   prism       b:4    125 -> 85
   !
-  ! THE PRISM NEEDS THE ABSOLUTE FORM, for the mirror-image reason.
-  ! Integration.F90 dispatches family 7 three ways, but the triangle x segment
-  ! tensor rules and the economical rules are reachable ONLY when np is given:
-  ! with np absent it falls through to GaussPointsWedge, the collapsed n**3
-  ! ladder, so a relative order can only ever land on 125 or 64. 85 is
-  ! GaussPointsWedge2(17,5) and is the smallest rule bit-identical here -- 48 is
-  ! right to 3e-7 but not identical, and the economical family is not ordered by
-  ! accuracy (14 points lands at -0.23% while 15, 16, 18, 21 and 24 are all
-  ! worse), so that ladder cannot be walked down to the first miss either.
+  ! For a while these could not be written this way. An explicit count on a
+  ! p-element -- and MINI is one, being "p:1 b:N" -- used to skip the tabulated
+  ! simplex tables entirely and be read as a sizing target for a collapsed brick,
+  ! so "-tetra 24" delivered 36 points and "-tri 7" delivered 9. The counts had to
+  ! be expressed as relative orders instead, which leave np absent and so reach
+  ! the tables. GaussPoints now looks the count up in the table first, so the
+  ! measured numbers can be stated as themselves.
+  !
+  ! 85 on the prism is a rule only an explicit count can reach in any case:
+  ! Integration.F90 dispatches family 7 three ways, and with np absent it falls
+  ! through to GaussPointsWedge and the collapsed n**3 ladder, which can only land
+  ! on 125 or 64. 85 is GaussPointsWedge2(17,5). 48 is right to 3e-7 but not
+  ! identical, and the economical family is not ordered by accuracy -- 14 points
+  ! lands at -0.23% while 15, 16, 18, 21 and 24 are all worse -- so that ladder
+  ! cannot be walked down to the first miss either.
   !
   ! The quadrilateral and the brick get nothing. They are already tight at the
   ! bubble count they actually have -- b:3 and b:4, those being what
-  ! getBubbleDOFs offers -- so stating their own defaults back to them achieved
-  ! only a guard against a relative bump, and the relative rule below names no
-  ! family but the two simplices, leaving them alone anyway.
+  ! getBubbleDOFs offers -- so stating their own defaults back to them would
+  ! achieve nothing, and a family this string does not name keeps its own rule.
   !
   ! Gated on a bubble appearing in the element definition, because the other
   ! incompressible configuration is the equal-order pair held by pressure
@@ -305,10 +296,8 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     str = ListGetString( SolverParams,'Element', Found )
     IF( Found ) THEN
       IF( INDEX( str, 'b:' ) > 0 ) THEN
-        CALL ListAddNewString( SolverParams,'Element Relative Integration Order', &
-            '-tetra -2 -tri -1' )
         CALL ListAddNewString( SolverParams,'Element Integration Points', &
-            '-prism 85' )
+            '-tri 7 -tetra 24 -prism 85' )
       END IF
     END IF
   END IF
