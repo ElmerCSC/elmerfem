@@ -1,0 +1,110 @@
+! Pressure stabilization against the MINI element it replaces, on prisms.
+!
+! One of five sifs in this directory, one per element family, all the same
+! problem: a unit cube held on one face and sheared on the opposite one, with a
+! Poisson ratio just short of one half. Only the mesh differs.
+!
+! WHAT THE SET PINS. The stabilization constant is per element family and
+! MEASURED, not derived, and it spans a factor of fourteen: 0.0417 for a
+! quadrilateral down to 0.0029 for a tetrahedron. That spread is the whole
+! reason the constants are stated per family, so every family needs a case --
+! a single one would leave four constants unguarded. The constants are chosen
+! so that the default coefficient of one reproduces MINI, which is what the
+! probe below checks.
+!
+! Both discretisations run here as two solvers on one problem. That is possible
+! because this case is elastic: with "Maxwell Material" there is a "ve_stress"
+! integration point history exported under a fixed name, which two solvers would
+! share and corrupt. The creep counterpart therefore lives apart, in
+! ViscoElasticMaxwellStabilized.
+!
+! The two NORMS are not comparable with each other -- MINI carries bubble
+! degrees of freedom in the global system -- so each pins its own leg. The
+! SaveScalars probe is what compares them, and it is a physical quantity:
+!
+!            d 1 at the probe
+!   MINI     0.45150143
+!   stab     0.45385598      +0.521 %
+!
+! at the default coefficient of one, which is what the family constant is
+! calibrated to give.
+
+Header
+  Mesh DB "." "prismmesh"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = Real 0
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.4999
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+  Equation = "Elasticity MINI"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "m[md:3 mp:1]"
+  Element = p:1 b:1
+  Incompressible = Logical True
+  Large Deflection = False
+  Displace Mesh = Logical False
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "Elasticity Stabilized"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "s[sd:3 sp:1]"
+  Element = p:1
+  Incompressible = Logical True
+  Large Deflection = False
+  Displace Mesh = Logical False
+  Pressure Stabilization = Logical True
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 3
+  Equation = "SaveProbe"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Save Coordinates(1,3) = 1.0 1.0 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  md 1 = Real 0
+  md 2 = Real 0
+  md 3 = Real 0
+  sd 1 = Real 0
+  sd 2 = Real 0
+  sd 3 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 6
+  Force 1 = Real 0.1
+End
+
+Solver 1 :: Reference Norm = Real 0.50610405
+Solver 2 :: Reference Norm = Real 0.26542511
