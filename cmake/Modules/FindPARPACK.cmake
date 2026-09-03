@@ -21,55 +21,71 @@ ENDIF()
 
 IF(NOT PARPACK_FOUND)
   MESSAGE(STATUS "Finding parpack libraries")
-  # Try to find with CMake config file of upstream parpack.
-  FIND_PACKAGE(PARPACK CONFIG NAMES arpack arpackng arpack-ng parpack parpackng parpack-ng)
-  IF(PARPACK_FOUND)
-    GET_TARGET_PROPERTY(PARPACK_INCLUDE_DIR parpack INTERFACE_INCLUDE_DIRECTORIES)
-    # Most likely arpack and parpack are packed togeher (like in Arch linux)
-    # or they share the same include directory even in splitted packages (parpack-dev depends on arpack-dev)
-    # So in this point ARPACK_INCLUDE_DIR has to be defined or the information is loaded into the arpack
-    # interface
-    IF(NOT PARPACK_INCLUDE_DIR)
-      GET_TARGET_PROPERTY(PARPACK_INCLUDE_DIR arpack INTERFACE_INCLUDE_DIRECTORIES)
-    ENDIF()
-    GET_TARGET_PROPERTY(PARPACK_LIBRARIES parpack IMPORTED_LOCATION_RELEASE)
-    # Check if a debug build type was used
-    IF(NOT PARPACK_LIBRARIES)
-      GET_TARGET_PROPERTY(PARPACK_LIBRARIES parpack IMPORTED_LOCATION_DEBUG)
-    ENDIF()
+
+  # Plain search first, config package only as a fallback. Same reasoning as in
+  # FindARPACK.cmake: FIND_PACKAGE(... CONFIG) executes the distribution's
+  # config file, and the one Debian and Ubuntu ship include()s a targets file
+  # they do not package, which is fatal however the result is tested
+  # afterwards.
+  INCLUDE(FindPackageHandleStandardArgs)
+  MESSAGE(STATUS "Manual search of parpack")
+  # Try to find PARPACK header
+  SET(ARPACKINCLUDE
+    "${PARPACK_ROOT}/include"
+    "$ENV{PARPACK_ROOT}/include"
+    "${PARPACKROOT}/include"
+    "$ENV{PARPACKROOT}/include"
+    "${ARPACK_ROOT}/include"
+    "$ENV{ARPACK_ROOT}/include"
+    "${ARPACKROOT}/include"
+    "$ENV{ARPACKROOT}/include"
+    INTERNAL
+    )
+  FIND_PATH(PARPACK_INCLUDE_DIR NAMES parpack.h parpackng.h parpack-ng.h
+    HINTS ${ARPACKINCLUDE} PATH_SUFFIXES arpack arpackng arpack-ng parpack parpackng parpack-ng)
+  # Try to find PARPACK libraries
+  SET(ARPACKLIB
+    "${PARPACK_ROOT}/lib"
+    "$ENV{PARPACK_ROOT}/lib64"
+    "${PARPACKROOT}/lib"
+    "$ENV{PARPACKROOT}/lib64"
+    "${ARPACK_ROOT}/lib"
+    "$ENV{ARPACK_ROOT}/lib64"
+    "${ARPACKROOT}/lib"
+    "$ENV{ARPACKROOT}/lib64"
+    INTERNAL
+    )
+  FIND_LIBRARY(PARPACK_LIBRARIES NAMES parpack parpackng parpack-ng HINTS ${ARPACKLIB})
+
+  # PARPACK's header is frequently not shipped under its own name: arpack and
+  # parpack are one package on some distributions and share an include
+  # directory on others. Accept ARPACK's before concluding the plain search
+  # failed, or a perfectly good libparpack sends us into the config package
+  # looking for a header that was never going to be there.
+  IF(PARPACK_LIBRARIES AND NOT PARPACK_INCLUDE_DIR AND ARPACK_INCLUDE_DIR)
+    SET(PARPACK_INCLUDE_DIR "${ARPACK_INCLUDE_DIR}")
   ENDIF()
-  # There is no parpack-config script or something went wrong with the script
-  # Fall back to manual search
+
   IF(NOT PARPACK_LIBRARIES OR NOT PARPACK_INCLUDE_DIR)
-    INCLUDE(FindPackageHandleStandardArgs)
-    MESSAGE(STATUS "Manual search of parpack")
-    # Try to find PARPACK header
-    SET(ARPACKINCLUDE
-      "${PARPACK_ROOT}/include"
-      "$ENV{PARPACK_ROOT}/include"
-      "${PARPACKROOT}/include"
-      "$ENV{PARPACKROOT}/include"
-      "${ARPACK_ROOT}/include"
-      "$ENV{ARPACK_ROOT}/include"
-      "${ARPACKROOT}/include"
-      "$ENV{ARPACKROOT}/include"
-      INTERNAL
-      )
-    FIND_PATH(PARPACK_INCLUDE_DIR NAMES parpack.h parpackng.h parpack-ng.h
-      HINTS ${ARPACKINCLUDE} PATH_SUFFIXES arpack arpackng arpack-ng parpack parpackng parpack-ng)
-    # Try to find PARPACK libraries
-    SET(ARPACKLIB
-      "${PARPACK_ROOT}/lib"
-      "$ENV{PARPACK_ROOT}/lib64"
-      "${PARPACKROOT}/lib"
-      "$ENV{PARPACKROOT}/lib64"
-      "${ARPACK_ROOT}/lib"
-      "$ENV{ARPACK_ROOT}/lib64"
-      "${ARPACKROOT}/lib"
-      "$ENV{ARPACKROOT}/lib64"
-      INTERNAL
-      )
-    FIND_LIBRARY(PARPACK_LIBRARIES NAMES parpack parpackng parpack-ng HINTS ${ARPACKLIB})
+    # Try to find with CMake config file of upstream parpack.
+    FIND_PACKAGE(PARPACK CONFIG NAMES arpack arpackng arpack-ng parpack parpackng parpack-ng)
+    # IF(TARGET parpack) rather than IF(PARPACK_FOUND): a config file that ran
+    # to its end sets the latter even when it created nothing.
+    IF(TARGET parpack)
+      GET_TARGET_PROPERTY(PARPACK_INCLUDE_DIR parpack INTERFACE_INCLUDE_DIRECTORIES)
+      # Most likely arpack and parpack are packed togeher (like in Arch linux)
+      # or they share the same include directory even in splitted packages (parpack-dev depends on arpack-dev)
+      # So in this point ARPACK_INCLUDE_DIR has to be defined or the information is loaded into the arpack
+      # interface
+      IF(NOT PARPACK_INCLUDE_DIR AND TARGET arpack)
+        GET_TARGET_PROPERTY(PARPACK_INCLUDE_DIR arpack INTERFACE_INCLUDE_DIRECTORIES)
+      ENDIF()
+      GET_TARGET_PROPERTY(PARPACK_LIBRARIES parpack IMPORTED_LOCATION_RELEASE)
+      # Check if a debug build type was used
+      IF(NOT PARPACK_LIBRARIES)
+        GET_TARGET_PROPERTY(PARPACK_LIBRARIES parpack IMPORTED_LOCATION_DEBUG)
+      ENDIF()
+    ENDIF()
   ENDIF(NOT PARPACK_LIBRARIES OR NOT PARPACK_INCLUDE_DIR)
 
 ENDIF(NOT PARPACK_FOUND)
