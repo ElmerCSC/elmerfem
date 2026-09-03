@@ -1723,6 +1723,22 @@ CONTAINS
 !>    equilateral triangle used in the description of p-elements. In that case,
 !>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Whether GaussPointsTriangle holds a tabulated rule of exactly this many
+!> points, so a caller can ask before committing.
+!>
+!> A query is needed rather than a trial: an untabulated count does not fail
+!> softly in GaussPointsTriangle, it falls through to GaussPointsQuad, which
+!> Fatals on a count that is not a square. THE LIST MUST TRACK THE CASE LABELS
+!> BELOW; there is no way to derive one from the other.
+!------------------------------------------------------------------------------
+   FUNCTION TriangleRuleTabulated( n ) RESULT( yes )
+     INTEGER, INTENT(IN) :: n
+     LOGICAL :: yes
+     yes = ANY( n == [ 1, 3, 4, 6, 7, 11, 12, 17, 20 ] )
+   END FUNCTION TriangleRuleTabulated
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsTriangle( n, PReferenceElement ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n    !< number of points in the requested rule
@@ -2020,6 +2036,20 @@ CONTAINS
 !>    regular tetrahedron used in the description of p-elements. In that case,
 !>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Whether GaussPointsTetra holds a tabulated rule of exactly this many points.
+!>
+!> As for the triangle, a query rather than a trial: an untabulated count falls
+!> through to GaussPointsBrick, which Fatals unless the count is a cube. THE LIST
+!> MUST TRACK THE CASE LABELS BELOW.
+!------------------------------------------------------------------------------
+   FUNCTION TetraRuleTabulated( n ) RESULT( yes )
+     INTEGER, INTENT(IN) :: n
+     LOGICAL :: yes
+     yes = ANY( n == [ 1, 4, 5, 11, 24 ] )
+   END FUNCTION TetraRuleTabulated
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsTetra( n, PReferenceElement ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n      !< number of points in the requested rule
@@ -2847,8 +2877,17 @@ CONTAINS
           ! over collapsing a quadrilateral one, when a tabulated rule is exact
           ! to the degree this count was sized for. Skipped when the caller
           ! named a count explicitly (np), which is honoured literally.
+          ! An explicit count NAMES a rule, so look for one of that name before
+          ! anything else. Without this, naming a count was the one sure way not
+          ! to get the tabulated rule of that size: the lookup was skipped
+          ! whenever np was present and GaussPointsPTriangle read the count as a
+          ! sizing target for a collapsed quadrilateral instead.
           nsimplex = 0
-          IF( .NOT. PRESENT( np ) ) nsimplex = TriangleSimplexRulePoints( n )
+          IF( PRESENT( np ) ) THEN
+            IF( TriangleRuleTabulated( n ) ) nsimplex = n
+          ELSE
+            nsimplex = TriangleSimplexRulePoints( n )
+          END IF
           IF( nsimplex > 0 ) THEN
             IntegStuff = GaussPointsTriangle( nsimplex, PReferenceElement = .TRUE. )
           ELSE
@@ -2887,8 +2926,17 @@ CONTAINS
            ! rule and costs several times as many points for the same
            ! exactness. Skipped when the caller named a count explicitly (np),
            ! which is then honoured literally rather than reinterpreted.
+           ! As for the triangle: an explicit count names a rule, so try the
+           ! table for exactly that count first. "-tetra 24" used to yield 36
+           ! points, GaussPointsPTetra computing NINT(24**(1/3)) = 3 and
+           ! returning the collapsed GaussPointsPBrick(3,3,4) -- and 36 is the
+           ! rule measured as NOT exact where the tabulated 24 is.
            nsimplex = 0
-           IF( .NOT. PRESENT( np ) ) nsimplex = TetraSimplexRulePoints( n )
+           IF( PRESENT( np ) ) THEN
+             IF( TetraRuleTabulated( n ) ) nsimplex = n
+           ELSE
+             nsimplex = TetraSimplexRulePoints( n )
+           END IF
            IF( nsimplex > 0 ) THEN
               IntegStuff = GaussPointsTetra( nsimplex, PReferenceElement = .TRUE. )
            ELSE
