@@ -4445,6 +4445,24 @@ END FUNCTION SearchNodeL
       END IF
                     
       BaseRelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
+
+      ! The bulk and the boundary can be offset separately, because they are two
+      ! rules with very different budgets and the smaller one otherwise governs:
+      ! a tetrahedron carrying "p:1 b:1" integrates over 150 points and is exact
+      ! at 36, but the same offset lands on its boundary triangle whose count is
+      ! 3 and drives it to zero.
+      !
+      ! Read here as well as in the solvers that resolve the rule themselves,
+      ! because THIS function is what CreateIpPerm asks how many points an
+      ! element has when it sizes an integration point variable. If the two
+      ! disagree, the per-element slices of "ve_stress" and its like are
+      ! allocated for one rule and written for another.
+      IF( IsBC ) THEN
+        i = ListGetInteger( pSolver % Values,'Boundary Relative Integration Order',Found )
+      ELSE
+        i = ListGetInteger( pSolver % Values,'Bulk Relative Integration Order',Found )
+      END IF
+      IF( Found ) BaseRelOrder = i
       AdaptNp = 0
       AdaptSplit = .FALSE.
       BaseNp = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
