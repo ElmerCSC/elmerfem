@@ -1030,34 +1030,42 @@ CONTAINS
      CHARACTER(*), PARAMETER :: Caller="PrintProblemSize"
 
      Matrix => Solver % Matrix
-     IF(.NOT. ASSOCIATED(Matrix)) RETURN
-     
-     nx = Matrix % NumberOfRows
-     nz = SIZE(Matrix % Values)
-
-
-     Parallel = ParEnv % PEs > 1 .AND. .NOT. Solver % Mesh % SingleMesh 
+     IF(ASSOCIATED(Matrix) ) THEN
+       nx = Matrix % NumberOfRows
+       nz = SIZE(Matrix % Values)
+     ELSE
+       nx = 0
+       nz = 0
+     END IF
        
-     ! Is there any size info to print?
-     i = ParallelReduction( nx )
+     Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh )
+       
+     IF(Parallel) THEN
+       i = ParallelReduction( nx )
+     ELSE
+       i = nx
+     END IF
+
      IF(i==0) THEN
        CONTINUE
 
      ELSE IF( Parallel ) THEN
        no = 0; ns = 0
 
-       IF( Parallel ) HaveParInfo = ASSOCIATED(Matrix % ParallelInfo)
-       IF(HaveParInfo) THEN
-         HaveParInfo = ASSOCIATED(Matrix % ParallelInfo % NeighbourList)
-       END IF
+       IF(nx>0) THEN
+         HaveParInfo = ASSOCIATED(Matrix % ParallelInfo)
+         IF(HaveParInfo) THEN
+           HaveParInfo = ASSOCIATED(Matrix % ParallelInfo % NeighbourList)
+         END IF
 
-       IF(HaveParInfo) THEN
-         DO i=1,nx
-           IF( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPe) no=no+1
-           IF( SIZE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours) > 1) ns=ns+1
-         END DO
+         IF(HaveParInfo) THEN
+           DO i=1,nx
+             IF( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPe) no=no+1
+             IF( SIZE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours) > 1) ns=ns+1
+           END DO
+         END IF
        END IF
-
+         
        DO i=0,2
          nxpar(i) = ParallelReduction(nx,i)
          nzpar(i) = ParallelReduction(nz,i)
@@ -2813,11 +2821,9 @@ CONTAINS
      END IF
 
 
-     DoIt = ASSOCIATED( Solver % Matrix ) 
-     IF(DoIt) THEN
-       DoIt = InfoActive(20) .OR. ListGetLogical( CurrentModel % Simulation,'Size Info',Found)
+     IF( ListGetLogical( CurrentModel % Simulation,'Size Info',Found)  ) THEN
+       CALL PrintProblemSize( Solver )
      END IF
-     IF(DoIt) CALL PrintProblemSize( Solver )
          
 !------------------------------------------------------------------------------
    END SUBROUTINE AddEquationSolution
