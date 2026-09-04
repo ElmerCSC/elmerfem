@@ -1826,8 +1826,20 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
     CALL ListAddNewString(GetSolverParams(),'Element', &
       'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
   ELSE
+    ! The prism is b:9, not b:4 as the serendipity string above uses, because the
+    ! two bases have different bubble ladders and 4 is not on this one. The full
+    ! basis prism runs (p-1)^2*(p-2)/2 -- 0, 2, 9, 24 -- so asking for 4 sends
+    ! getEffectiveBubbleP to p=4, which yields NINE bubble functions while nb
+    ! stays 4. The basis routine then writes nine into space sized for four and
+    ! corrupts the heap: "Serendipity P Elements = False" on a prism mesh
+    ! segfaulted, and had done since this string was written. 9 is what p=4
+    ! actually delivers, so it is the count that string was reaching for.
+    !
+    ! The other five entries were checked against their own ladders and are all
+    ! on them: tri 1, tetra 1, quad 4 of (1,4,9), brick 8 of (1,8,27), pyramid 4
+    ! of (1,4,10).
     CALL ListAddNewString(GetSolverParams(),'Element', &
-      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:9 -pyramid b:4')
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
