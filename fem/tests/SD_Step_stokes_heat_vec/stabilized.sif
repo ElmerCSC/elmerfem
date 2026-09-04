@@ -1,3 +1,17 @@
+! The equal-order twin of Step.sif: the same problem with the method switched,
+! the velocity/pressure pair carried by "Pressure Stabilization" instead of by a
+! bubble. Nothing else is changed but the element, which becomes "n:1": one dof
+! per node and no bubble at all.
+!
+! Stating it is belt and braces -- _Init0 supplies exactly that when this keyword
+! is on, and each sif runs in its own ElmerSolver process so nothing carries over
+! from the bubble run before it. It is written out because a reader should not
+! have to know the default to see which pair is being solved, and because
+! ListAddNewString means the sif wins if that default ever changes.
+!
+! The two run back to back from one runtest.cmake, so the norms below are what
+! the stabilised pair gives against the MINI answer in Step.sif: -0.012 % and +0.041 %
+!
 ! Standard stokes equation except with heat equation
 ! hierarchically coupled.
 !
@@ -22,8 +36,6 @@ Simulation
 
   Output Intervals = 1
   Post File = "Step.vtu"
-
-  Serendipity P Elements = False
 End
 
 
@@ -54,6 +66,8 @@ Solver 1
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
+  Pressure Stabilization = Logical True
+  Element = "n:1"
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStabL
@@ -81,7 +95,7 @@ Solver 2
   Linear System Iterative Method = BiCGStabL
   Linear System Max Iterations = 500
 
-  Element = p:1 b:4
+  Element = p:1 b:3
   Bubbles in Global System = False
 
   Linear System Convergence Tolerance = 1.0e-8
@@ -134,5 +148,5 @@ End
 !Solver 1 :: Reference Norm = 0.30861526
 !Solver 2 :: Reference Norm = 6.32597086E-01
 
-Solver 1 :: Reference Norm = 3.08821397E-01
-Solver 2 :: Reference Norm = 6.30774428E-01
+Solver 1 :: Reference Norm = 3.08798725E-01
+Solver 2 :: Reference Norm = 6.30821407E-01
