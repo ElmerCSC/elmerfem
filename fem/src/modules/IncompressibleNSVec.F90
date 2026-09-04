@@ -103,7 +103,7 @@ CONTAINS
         rhoVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
         PressureMass(:,:), ForcePart(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
-        VeloVec(:,:), PresVec(:), GradVec(:,:,:), ConvVec(:,:)
+        VeloVec(:,:), PresVec(:), GradVec(:,:,:), ConvVec(:,:), MassPart(:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
     REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
     ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
@@ -149,7 +149,8 @@ CONTAINS
     ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
         rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), LoadAtIpVec(ngp,dim+1), &
         weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
-        PrevPressureVec(ngp), GradVec(ngp,dim,dim), ConvVec(ngp,ntot), STAT=allocstat)
+        PrevPressureVec(ngp), GradVec(ngp,dim,dim), ConvVec(ngp,ntot), &
+        MassPart(ntot,ntot), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
 
     ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), ForcePart(ntot))
@@ -573,6 +574,33 @@ CONTAINS
           CALL LinearForms_UdotV(ngp, ntot, elemdim, &
               ConvVec, dBasisdxVec(:,:,i), weight_b, StiffOrd(:,:,i,dofs))
         END DO
+
+        ! THE TRANSIENT TERM. rho*du/dt is part of the momentum residual whenever
+        ! the assembly carries a time derivative, so it must be part of what the
+        ! two weights are applied to, or the scheme stabilises an operator the
+        ! solver is not solving.
+        !
+        ! It goes into MASS rather than STIFF, and is then integrated by the same
+        ! Default1stOrderTime call as the Galerkin mass -- the derivative of the
+        ! unknown is the solver's to form, not this routine's. That is how
+        ! NavierStokes does it too. MASS carries no pressure row until now; the
+        ! PSPG half gives it one, which is correct: the constraint equation
+        ! genuinely acquires a time dependence through -tau*(grad q, rho*du/dt).
+        IF( Transient ) THEN
+          MassPart = 0.0_dp
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              ConvVec, BasisVec, weight_b, MassPart, rhoVec)
+          DO i = 1, dim
+            MASS(i::dofs,i::dofs) = MASS(i::dofs,i::dofs) + MassPart(1:ntot,1:ntot)
+          END DO
+
+          DO i = 1, dim
+            MassPart = 0.0_dp
+            CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                dBasisdxVec(:,:,i), BasisVec, weight_a, MassPart, rhoVec)
+            MASS(dofs::dofs,i::dofs) = MASS(dofs::dofs,i::dofs) + MassPart(1:ntot,1:ntot)
+          END DO
+        END IF
 
         ! The Newton term of the residual, rho*(v.grad)u linearised, so that the
         ! Jacobian matches the operator the stabilisation actually applies.
@@ -2067,22 +2095,19 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! the pressure gradient and the load, not the convective or transient terms,
     ! so it is a consistent scheme for Stokes and an inconsistent one for
     ! Navier-Stokes -- and it stabilises the pressure only, never the advection.
-    ! Navier-Stokes is carried by the SUPG/PSPG terms in LocalBulkMatrix. What is
-    ! still missing from the residual is rho*du/dt, so a run that actually carries
-    ! that term would be stabilising the wrong operator -- refused rather than
-    ! assembled quietly.
+    ! All three regimes this solver has are now covered, and it is worth naming
+    ! them because one flag separates them. A single IF(.NOT. StokesFlow) guard in
+    ! LocalBulkMatrix covers the mass matrix and the convection block together:
     !
-    ! The test is NOT on Transient alone. Under "Stokes Flow" the assembly takes
-    ! the branch that never reaches Default1stOrderTime and never fills MASS, so
-    ! the momentum equation has no time derivative even inside a transient
-    ! simulation: each step poses a quasi-static Stokes problem and the residual
-    ! here is complete. That is the normal shape of a prognostic glaciological
-    ! run -- ice creeps, the free surface evolves -- and FSSA_perlin2d is one, so
-    ! refusing on Transient would have locked out the case this is most wanted
-    ! for.
-    IF (Transient .AND. .NOT. StokesFlow) CALL Fatal(Caller, &
-        '"Pressure Stabilization" needs "Stokes Flow" in a transient run: '// &
-        'rho*du/dt is not part of the stabilised residual')
+    !   Stokes Flow, steady or transient   no convection, no du/dt
+    !   not Stokes, steady                 convection, no du/dt
+    !   not Stokes, transient              convection and du/dt
+    !
+    ! The stabilised residual holds rho*(u.grad)u + grad p - f in every case, and
+    ! rho*du/dt as well in the third, that last part entering through MASS so the
+    ! solver's own time integration forms the derivative. Convection was never the
+    ! difficulty -- SUPG and PSPG carry it -- and the time derivative is no longer
+    ! one either, so nothing here is refused on these grounds any more.
   END IF
   
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
