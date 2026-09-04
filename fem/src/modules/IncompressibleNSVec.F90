@@ -445,6 +445,28 @@ CONTAINS
         hStab = Element % hK
       END SELECT
 
+      ! An element size of zero makes tau vanish, and that does not fail -- it
+      ! quietly returns the unstabilised equal-order system, whose pressure has a
+      ! null space. The answer is then wherever round-off points, and it does not
+      ! move when the coefficient is changed, which is the signature to know it
+      ! by. So it is checked here, against the value actually used, rather than
+      ! once at start-up against element one.
+      !
+      ! That distinction is the whole point. MeshStabParams fills hK when a mesh
+      ! is loaded, but meshes get BUILT later too, and the low level builders do
+      ! not call it: CreateExtrudedMesh does not, nor do RemeshMMG3D,
+      ! SequentialRemeshParMMG or ParallelRemesh. Their callers all do today --
+      ! the calving and adaptive paths call MeshStabParams on the way out -- so
+      ! nothing is broken, but a mesh replaced MID RUN by adaptation would sail
+      ! past a start-up test, and a new caller that forgot would too. It does not
+      ! follow that every extruded or remeshed case is affected either: anything
+      ! that later moves the mesh repairs hK on the way past, DisplaceMesh
+      ! recomputing it per element, which is why FixTangentVelo never sees this.
+      IF( hStab <= 0.0_dp ) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix', &
+          'Stabilization element size is zero, so the stabilisation would '// &
+          'silently vanish. This mesh has not been through MeshStabParams -- a '// &
+          'freshly extruded or remeshed one is how that happens')
+
       ! tau. The diffusive expression Kfam*h^2/mu is what the constants were
       ! measured against and is exact for Stokes. With advection it becomes the
       ! interpolating form NavierStokes uses, scaled so that the weak advection
@@ -2023,24 +2045,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     IF (Transient .AND. .NOT. StokesFlow) CALL Fatal(Caller, &
         '"Pressure Stabilization" needs "Stokes Flow" in a transient run: '// &
         'rho*du/dt is not part of the stabilised residual')
-    ! tau is built from hK, and an hK of zero makes it vanish -- which does not
-    ! fail, it just returns the unstabilised equal-order system, whose pressure
-    ! has a null space. The answer is then whatever the solver's round-off points
-    ! at, and it does not move when the coefficient is changed, which is the
-    ! signature to recognise.
-    !
-    ! This is reachable. MeshStabParams fills hK when the mesh is loaded, but an
-    ! extruded mesh is built afterwards by CreateExtrudedMesh, which does not
-    ! call it -- so a freshly extruded mesh carries hK = 0. It does NOT follow
-    ! that every extruded case is affected: anything that later moves the mesh
-    ! repairs hK on the way past, DisplaceMesh recomputing it per element, so a
-    ! case running StructuredMeshMapper over its extrusion (FixTangentVelo, for
-    ! one) never sees this. Hence a test on the value rather than on how the
-    ! mesh was built.
-    IF ( Mesh % Elements( Solver % ActiveElements(1) ) % hK <= 0.0_dp ) &
-        CALL Fatal(Caller, 'Stabilization parameter hK is zero, so the '// &
-        'stabilisation would silently vanish. The mesh has not been through '// &
-        'MeshStabParams -- an extruded mesh is one way to get here')
   END IF
   
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
