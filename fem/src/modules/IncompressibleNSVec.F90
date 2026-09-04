@@ -372,21 +372,30 @@ CONTAINS
       ! a native 3D brick mesh -- where the optimum is 1.1x, so the inherited
       ! value stands as it is.
       !
-      ! It stands for THAT PROBLEM. The same sweep on Friction_WeertmanNewton3D,
-      ! a glacier slab, wants 4.6x instead -- mesh independently, at 10x10x3,
-      ! 20x20x3 and 40x40x5, on brick elements just the same. The two differ by a
-      ! factor of four and nothing in the element accounts for it: the aspect
-      ! ratios are comparable, 2.0 on the slab against 2.95 around the hole, so
-      ! the slab is if anything the more cubic of the two. What differs is the
-      ! problem -- Glen's law, a Weertman friction boundary and gravity driven
-      ! flow, against Newtonian flow through a duct.
+      ! A glacier slab, Friction_WeertmanNewton3D, appears to want 4.6x instead --
+      ! but that is a RESOLUTION artefact, not a property of the problem, and the
+      ! way it was first measured is the trap. Refining that case by hand gave
+      ! 4.8, 4.2 and 4.9 at 10x10x3, 20x20x3 and 40x40x5, which reads as mesh
+      ! independent. It is not: those meshes refine the HORIZONTAL divisions while
+      ! the vertical stays at three levels and then five. The slab is thin and its
+      ! velocity gradient is vertical, so the vertical spacing is what limits it,
+      ! and that was very nearly held fixed across all three.
       !
-      ! Folding the glacier figure into the constant would therefore have been
-      ! wrong; it would have over-stabilised every isotropic brick case fourfold.
-      ! But it is equally wrong to call 1.1x settled. This is the same problem
-      ! sensitivity the quadrilateral showed, an order of magnitude larger, and
-      ! it is not understood. A glaciological case is expected to need "Pressure
-      ! Stabilization Coefficient" well above one.
+      ! "Mesh Levels", which splits the same mesh uniformly, refines the direction
+      ! that matters and the crossing walks straight down:
+      !
+      !   Mesh Levels    1      2      3
+      !   optimum       4.2    2.0    1.6
+      !
+      ! heading for the same order as every other family. The error at coefficient
+      ! one falls with it, 0.32 -> 0.12 -> 0.086 %, so a refined glacier case needs
+      ! no special coefficient at all.
+      !
+      ! The lesson for anyone measuring one of these constants again: refine with
+      ! "Mesh Levels" rather than by regenerating meshes. Regenerating changes
+      ! element shape and resolution together, and a constant fitted that way can
+      ! look settled across three meshes while tracking whichever dimension was
+      ! not being refined.
       !
       ! Much of that factor is the LENGTH SCALE rather than the physics, and it is
       ! worth knowing that hK is not one measure. ElementDiameter returns the
