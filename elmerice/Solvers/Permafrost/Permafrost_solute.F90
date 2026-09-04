@@ -339,7 +339,8 @@ CONTAINS
     INTEGER, POINTER :: XiAtIPPerm(:)
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          ConstantDispersion=.FALSE.,ConstantDiffusion=.FALSE.,CryogenicSuction=.FALSE.,&
-         SolutePhaseForces=.FALSE.,InterFrost=.FALSE.,Linear=.FALSE.,Exponential=.FALSE.
+         SolutePhaseForces=.FALSE.,DirectFickian=.FALSE.,&
+         InterFrost=.FALSE.,Linear=.FALSE.,Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -398,6 +399,7 @@ CONTAINS
     ! This material switch is shared with the Darcy solver so both equations
     ! use the same definition of the diffusive solute flux JcF.
     SolutePhaseForces = GetLogical(Material,'Compute Solute Phase Forces',Found)
+    DirectFickian = GetLogical(Material,'Direct Fickian Solute Transport',Found)
 
     !meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",Found)
     !IF (.NOT.Found) THEN
@@ -591,7 +593,7 @@ CONTAINS
         KcAtIP = GetKc(RockMaterialID,DmAtIP,XiAtIP(IPPerm),JgwDAtIP,PorosityAtIP)
         !PRINT *,"Solute: Kc", KcAtIP(1,1), DmAtIP,XiAtIP(IPPerm),JgwDAtIP(1:2),PorosityAtIP
       END IF
-      KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
+      KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP,DirectFickian)
       !PRINT *,"Solute: KcYcYc", KcYcYcAtIP(1,1)
       fcAtIP = 0.0_dp
       IF (SolutePhaseForces) &

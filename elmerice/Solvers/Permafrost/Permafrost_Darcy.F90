@@ -480,7 +480,8 @@ CONTAINS
          rhoiPAtIP,rhoiTAtIP,&
          rhocPAtIP,rhocTAtIP,rhocYcAtIP,&
          rhogwPAtIP,rhogwTAtIP,rhogwYcAtIP, rhoGAtIP, rhow0
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ,elevationAtIp
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ,&
+         elevationAtIp,FlowBalanceWeight
     REAL(KIND=dp) :: TemperatureAtIP,PorosityAtIP,KPorosityAtIP,SalinityAtIP,PressureAtIP
     REAL(KIND=dp) :: TemperatureDtAtIP,SalinityDtAtIP,PressureDtAtIP,StressInvDtAtIP
     REAL(KIND=dp) :: Swres=1.0_dp, IFdeltaT=0.5_dp
@@ -490,7 +491,8 @@ CONTAINS
     INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw,IPPermFreshwaterHead
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
          ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE., &
-         SolutePhaseForces=.FALSE., Linear = .FALSE., Exponential=.FALSE.
+         SolutePhaseForces=.FALSE.,DirectFickian=.FALSE.,Boussinesq=.FALSE.,&
+         Linear=.FALSE.,Exponential=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -580,6 +582,8 @@ CONTAINS
     ! Use the same material switch as the solute solver so both equations
     ! evaluate the same diffusive solute flux JcF.
     SolutePhaseForces = GetLogical(Material,'Compute Solute Phase Forces',Found)
+    DirectFickian = GetLogical(Material,'Direct Fickian Solute Transport',Found)
+    Boussinesq = GetLogical(Material,'Boussinesq Groundwater Flow',Found)
     
  
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
@@ -760,10 +764,17 @@ CONTAINS
         rhocPAtIP   = rhocP(CurrentSoluteMaterial,rhocAtIP,ConstVal)
         rhocTAtIP   = rhocT(CurrentSoluteMaterial,rhocAtIP,T0,TemperatureAtIP,ConstVal)
         rhocYcAtIP  = rhocYc(CurrentSoluteMaterial,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal)
-        rhowYcAtIP  = rhowYc(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP)
+        IF (ConstVal) THEN
+          rhowYcAtIP = 0.0_dp
+        ELSE
+          rhowYcAtIP = rhowYc(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP)
+        END IF
         rhogwYcAtIP = rhogwYc(rhowAtIP, rhocAtIP, rhowYcAtIP,rhocYcAtIP,XiAtIP(IPPerm),SalinityAtIP)
       END IF
       rhogwAtIP = rhogw(rhowAtIP,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP)
+      ! The general model conserves groundwater mass. The optional Henry
+      ! benchmark mode instead assembles div(JgwD)=0.
+      FlowBalanceWeight = MERGE(1.0_dp,rhogwAtIP,Boussinesq)
       !PRINT *, "rhogwAtIP", rhogwAtIP,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP
       IF (OffsetDensity) THEN
 
@@ -892,7 +903,7 @@ CONTAINS
         IF (SolutePhaseForces) &
              fcAtIP = GetFc(rhocAtIP,rhowAtIP,Gravity,r12AtIP,XiTAtIP,XiPAtIP,&
              XiAtIP(IPPerm),gradPAtIP,gradTAtIP)
-        KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
+        KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP,DirectFickian)
         JcFAtIP = GetJcF(KcYcYcAtIP,KcAtIP,fcAtIP,gradYcAtIP,SalinityAtIP)        
       END IF
 
@@ -944,7 +955,8 @@ CONTAINS
           StiffPQ = 0.0
           DO i=1,DIM
             DO j=1,DIM
-              StiffPQ = StiffPQ +  rhogwAtIP * KgwppAtIP(i,j) * dBasisdx(p,j)* dBasisdx(q,i)              
+              StiffPQ = StiffPQ + FlowBalanceWeight * KgwppAtIP(i,j) *&
+                   dBasisdx(p,j)*dBasisdx(q,i)
             END DO
           END DO
           STIFF(p,q) = STIFF(p,q) + Weight * StiffPQ
@@ -954,15 +966,18 @@ CONTAINS
       ! body forces
       !--------------------------------------
       DO p=1,nd     
-        FORCE(p) = FORCE(p) + Weight * rhogwAtIP *  SUM(fluxgAtIP(1:DIM)*dBasisdx(p,1:DIM))
+        FORCE(p) = FORCE(p) + Weight * FlowBalanceWeight *&
+             SUM(fluxgAtIP(1:DIM)*dBasisdx(p,1:DIM))
         ! The known JcF term is moved from the left-hand side of weak form
         ! (4.8) to the pressure right-hand side; no extra Basis(p) occurs.
-        FORCE(p) = FORCE(p) + &
-             Weight * GlobalRockMaterial % etak(RockMaterialID) *&
-             (rhocAtIP - rhowAtIP)* SUM(JcFAtIP(1:DIM)*dBasisdx(p,1:DIM))
+        IF (.NOT.Boussinesq) &
+          FORCE(p) = FORCE(p) + &
+               Weight * GlobalRockMaterial % etak(RockMaterialID) *&
+               (rhocAtIP - rhowAtIP)*SUM(JcFAtIP(1:DIM)*dBasisdx(p,1:DIM))
         FORCE(p) = FORCE(p) + Weight * LoadAtIP * Basis(p)
         IF (CryogenicSuction) &
-             FORCE(p) = FORCE(p) + Weight * rhogwAtIP * SUM(fluxTAtIP(1:DIM)*dBasisdx(p,1:DIM))
+             FORCE(p) = FORCE(p) + Weight * FlowBalanceWeight *&
+             SUM(fluxTAtIP(1:DIM)*dBasisdx(p,1:DIM))
         IF (ComputeDt) THEN
           FORCE(p) = FORCE(p) + Weight * CgwpTAtIP * Basis(p)* TemperatureDtAtIP !dT/dt + v* grad T
           IF (.NOT. NoSalinity) &
@@ -1008,7 +1023,7 @@ CONTAINS
 
     REAL(KIND=dp) :: PressureAtIP, PorosityAtIP, SalinityAtIP, TemperatureAtIP, NormalAtIP(3)
     !REAL(KIND=dp), POINTER :: Nvector(:)
-    LOGICAL :: Stat,Found,FluxCondition,WeakDirichletCond,ConstVal,ConstantsRead,Recharge,&
+    LOGICAL :: Stat,Found,FluxCondition,WeakDirichletCond,ConstVal,ConstantsRead,Recharge,Boussinesq,&
          BoundaryNoSalinity,BoundarySalinityCondition,InflowSalinityCondition
     INTEGER :: i,t,p,q,DIM,body_id, other_body_id, material_id, RockMaterialID
     INTEGER, POINTER :: NodeIndexes(:)!, NPerm(:)
@@ -1116,6 +1131,7 @@ CONTAINS
       ConstVal = GetLogical(ParentMaterial,'Constant Permafrost Properties',Found)
       IF (ConstVal) &
            CALL INFO(FunctionName,'"Constant Permafrost Properties" set toPermafrost_HTEQ.F90: true',Level=9)
+      Boussinesq = GetLogical(ParentMaterial,'Boussinesq Groundwater Flow',Found)
       BoundaryNoSalinity = GetLogical(ParentMaterial,'No Salinity',Found)
       BoundaryPhaseChangeModel = &
            ReadPermafrostPhaseChangeModel(ParentMaterial,FunctionName)
@@ -1164,7 +1180,7 @@ CONTAINS
 
           SalinityAtIP = 0.0_dp ! WE ASSUME FRESHWATER INFLOW!!!
           rhogwAtIP =  rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)! WE ASSUME FRESHWATER INFLOW!!!
-          FluxAtIP = FluxAtIP*rhogwAtIP
+          IF (.NOT.Boussinesq) FluxAtIP = FluxAtIP*rhogwAtIP
         ELSE
           FluxAtIP = ListGetElementReal(GWFlux_h, Basis, Element, FluxCondition)
           IF (FluxCondition) THEN
@@ -1245,9 +1261,9 @@ CONTAINS
             rhogwAtIP = rhogw(rhowAtIP,rhocAtIP,XiAtIP,SalinityAtIP)
 
             ! The prescribed value is an inward-positive volumetric flux.
-            ! Convert it to the inward groundwater mass flux used by the
-            ! pressure-equation boundary term.
-            FluxAtIP = FluxAtIP * rhogwAtIP
+            ! The general mass balance converts it to groundwater mass flux;
+            ! the Boussinesq volume balance retains the prescribed value.
+            IF (.NOT.Boussinesq) FluxAtIP = FluxAtIP*rhogwAtIP
           END IF
         END IF
         

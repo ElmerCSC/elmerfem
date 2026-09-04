@@ -42,9 +42,12 @@ MODULE PermafrostMaterials
   USE SolverUtils
   IMPLICIT NONE
   REAL(KIND=dp), PARAMETER :: MinimumLiquidFraction = 0.001_dp
+  REAL(KIND=dp), PARAMETER :: SalinityRoundoffTolerance = &
+       1000.0_dp*EPSILON(1.0_dp)
   REAL(KIND=dp), PARAMETER :: HydraulicConductivityReferenceGravity = 9.81_dp
   REAL(KIND=dp), PARAMETER :: DefaultHydraulicConductivityLimit = 1.0e-14_dp
   LOGICAL, SAVE :: LiquidFractionClipWarningIssued = .FALSE.
+  LOGICAL, SAVE :: SalinityRoundoffWarningIssued = .FALSE.
   LOGICAL, SAVE :: HydraulicConductivityReferenceStateReported = .FALSE.
   LOGICAL, SAVE :: HydraulicConductivityLimitWarningIssued = .FALSE.
   LOGICAL, SAVE :: DefaultHydraulicConductivityLimitInfoIssued = .FALSE.
@@ -160,11 +163,24 @@ CONTAINS
 
   SUBROUTINE ValidateSalinityInput(Salinity,Caller)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: Salinity
+    REAL(KIND=dp), INTENT(INOUT) :: Salinity
     CHARACTER(LEN=*), INTENT(IN) :: Caller
 
     IF (Salinity .NE. Salinity) &
          CALL FATAL(Caller,'Salinity is NaN')
+
+    ! Roundoff around the valid freshwater endpoint must not abort a solve.
+    IF ((Salinity < 0.0_dp) .AND. &
+         (Salinity >= -SalinityRoundoffTolerance)) THEN
+      IF (.NOT.SalinityRoundoffWarningIssued) THEN
+        WRITE(Message,*) 'Salinity=',Salinity,&
+             ' reset locally to zero as floating-point roundoff. ',&
+             'Further salinity roundoff warnings are suppressed.'
+        CALL WARN(Caller,Message)
+        SalinityRoundoffWarningIssued = .TRUE.
+      END IF
+      Salinity = 0.0_dp
+    END IF
 
     IF ((Salinity < 0.0_dp) .OR. (Salinity >= 1.0_dp)) THEN
       WRITE(Message,*) 'Salinity=',Salinity,&
@@ -176,7 +192,8 @@ CONTAINS
 
   SUBROUTINE ValidateSalinity(Salinity,Xi,Caller)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: Salinity,Xi
+    REAL(KIND=dp), INTENT(INOUT) :: Salinity
+    REAL(KIND=dp), INTENT(IN) :: Xi
     CHARACTER(LEN=*), INTENT(IN) :: Caller
 
     CALL ValidateSalinityInput(Salinity,Caller)
@@ -309,9 +326,9 @@ CONTAINS
     ExponentialParams % Beta = GetConstReal(Params,"Exponential Beta",Found)
     IF (.NOT.Found) ExponentialParams % Beta = 0.0_dp
 
-    IF ((ExponentialParams % Swres <= 0.0_dp) .OR. &
+    IF ((ExponentialParams % Swres < 0.0_dp) .OR. &
          (ExponentialParams % Swres >= 1.0_dp)) &
-         CALL FATAL(Caller,'"Exponential Swres" must satisfy 0 < Swres < 1')
+         CALL FATAL(Caller,'"Exponential Swres" must satisfy 0 <= Swres < 1')
     IF (ExponentialParams % DeltaT <= 0.0_dp) &
          CALL FATAL(Caller,'"Exponential DeltaT" must be positive')
     IF (ExponentialParams % Beta < 0.0_dp) &
@@ -1973,7 +1990,8 @@ CONTAINS
     INTEGER :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP
     REAL(KIND=dp), INTENT(IN) :: GasConstant,p0,T0
-    REAL(KIND=dp), INTENT(IN) :: TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP
+    REAL(KIND=dp), INTENT(IN) :: TemperatureAtIP,PressureAtIP,PorosityAtIP
+    REAL(KIND=dp), INTENT(INOUT) :: SalinityAtIP
     REAL(KIND=dp), INTENT(OUT) :: XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP
     LOGICAL, INTENT(IN) :: ComputeXiT,ComputeXiYc,ComputeXiP,ComputeXiEta
     !---------------------------
@@ -2375,7 +2393,7 @@ CONTAINS
     REAL(KIND=dp) :: xc   
     !------------    
     xc = Salinity/Xi    
-    rhogwYc = ((1.0_dp - xc)*rhowYc + xc*rhocYc +  rhow + rhoc)/Xi
+    rhogwYc = ((1.0_dp - xc)*rhowYc + xc*rhocYc + rhoc - rhow)/Xi
   END FUNCTION rhogwYc
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION cs(RockMaterialID,T0,Temperature,ConstVal)
@@ -2977,12 +2995,18 @@ CONTAINS
     r12(2) = epsilonc * ( d1 + (d1 + d2)*aux + d2*aux*aux )
   END FUNCTION GetR
   !---------------------------------------------------------------------------------------------
-  FUNCTION  GetKcYcYc(Kc,r12) RESULT(KcYcYc)! All state variables or derived values
+  FUNCTION GetKcYcYc(Kc,r12,DirectFickian) RESULT(KcYcYc)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Kc(3,3),r12(2)
+    LOGICAL, INTENT(IN) :: DirectFickian
     REAL(KIND=dp) :: KcYcYc(3,3)
     !-------------------------
-    KcYcYc(1:3,1:3) = r12(2) * Kc(1:3,1:3) 
+    IF (DirectFickian) THEN
+      ! Fahs-type Fickian transport has no thermodynamic r2 multiplier.
+      KcYcYc(1:3,1:3) = Kc(1:3,1:3)
+    ELSE
+      KcYcYc(1:3,1:3) = r12(2) * Kc(1:3,1:3)
+    END IF
   END FUNCTION GetKcYcYc
   !---------------------------------------------------------------------------------------------
   FUNCTION GetFc(rhoc,rhow,Gravity,r12,XiT,XiP,Xi,gradP,gradT) RESULT(fc)! All state variables or derived values
