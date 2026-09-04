@@ -72,7 +72,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
        DivCurlForm, GradPVersion, SpecificLoad, StokesFlow, &
-       dt, LinearAssembly, nb, Newton, Transient, InitHandles, SchurSolver )
+       dt, LinearAssembly, nb, Newton, Transient, InitHandles, SchurSolver, &
+       PStab, PStabCoeff, PStabHmode )
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
@@ -83,6 +84,9 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: dt   
     LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles
     TYPE(Solver_t), POINTER :: SchurSolver
+    LOGICAL, INTENT(IN) :: PStab
+    REAL(KIND=dp), INTENT(IN) :: PStabCoeff
+    INTEGER, INTENT(IN) :: PStabHmode
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -109,6 +113,7 @@ CONTAINS
 
     INTEGER :: t, i, j, k, p, q, ngp, allocstat, elemdim
     INTEGER :: DOFs, tid
+    REAL(KIND=dp) :: Kfam, hStab
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
@@ -304,6 +309,152 @@ CONTAINS
       END DO
     END IF
 
+    !---------------------------------------------------------------------------
+    ! PRESSURE STABILISATION, the equal-order alternative to the bubble.
+    !
+    ! The pressure/pressure block is empty in every inf-sup stable pair above --
+    ! that is what a saddle point matrix looks like -- and here it is filled with
+    !
+    !   -tau * (grad q, grad p)
+    !
+    ! the Brezzi-Pitkaranta term, plus the load part of the momentum residual on
+    ! the right. The sign is negative because the constraint row assembled just
+    ! above is -(div u, q), so the system stays [A B^T; B -C] with C positive
+    ! semi-definite rather than turning the saddle point into something indefinite
+    ! in the wrong direction.
+    !
+    ! tau is built AT THE INTEGRATION POINTS, not once per element, because muVec
+    ! is a shear-rate dependent viscosity here: a non-Newtonian element can span a
+    ! decade in mu, and a single element value would over-stabilise the stiff end
+    ! of it and under-stabilise the soft end.
+    !
+    ! The load term is kept, which is where this departs from the same scheme in
+    ! ElasticSolve. There the load is a surface traction and dropping the volume
+    ! residual is the classical Brezzi-Pitkaranta simplification, consistent to
+    ! O(h^2). Here the load is typically gravity, and the whole pressure field is
+    ! the response to it -- grad p balances rho*g to leading order -- so dropping
+    ! it would leave the stabilisation fighting the hydrostatic gradient itself.
+    ! With it, the term vanishes identically on the exact hydrostatic solution.
+    !
+    ! What is deliberately NOT in the residual is -mu*div(grad u), which for the
+    ! equal-order linear basis this path forces is zero on simplices anyway, and
+    ! the convective and transient terms -- see the Stokes-only guard in the
+    ! solver. Adding those is what turns this into a full PSPG/SUPG scheme.
+    !---------------------------------------------------------------------------
+    IF ( PStab ) THEN
+      ! Per element family. The starting point is the same scheme in ElasticSolve,
+      ! whose incompressible limit IS Stokes with the shear modulus in place of
+      ! the viscosity, so the constants transfer in principle. Simplices need far
+      ! less than tensor elements of the same size, consistent with hK being a
+      ! diameter and so overstating a simplex.
+      !
+      ! MEASURED HERE, on the backward facing step of Step_stokes_vec, as the
+      ! value at which the stabilised pair reproduces the default MINI answer.
+      ! The optimum is a real minimum -- the error changes sign through it -- and
+      ! it is mesh independent, which is what says the h^2/mu scaling is right:
+      !
+      !   quad      500 / 2000 / 8000 elements, optimum at 0.63x the elastic
+      !             constant on all three; at 1x the error is -0.434 / -0.128 /
+      !             -0.033 %, so it also SHRINKS under refinement rather than
+      !             converging to something merely close
+      !   triangle  1062 / 4012 elements, optimum at 0.92x, i.e. the elastic
+      !             constant already
+      !
+      ! So the quadrilateral is restated at 0.0417*0.63 and the triangle at
+      ! 0.0104*0.92. That the two families moved by different factors is the
+      ! point: the discrepancy is NOT a global difference between the elastic and
+      ! flow references that could be absorbed into the coefficient. It is the
+      ! problem sensitivity ElasticSolve's own note flags as untested, now
+      ! measured once -- tens of percent on a quadrilateral, nothing on a
+      ! triangle.
+      !
+      ! The hexahedron is measured too, on FlowResNoslip -- flow around a hole,
+      ! a native 3D brick mesh -- where the optimum is 1.1x, so the inherited
+      ! value stands as it is.
+      !
+      ! It stands for THAT PROBLEM. The same sweep on Friction_WeertmanNewton3D,
+      ! a glacier slab, wants 4.6x instead -- mesh independently, at 10x10x3,
+      ! 20x20x3 and 40x40x5, on brick elements just the same. The two differ by a
+      ! factor of four and nothing in the element accounts for it: the aspect
+      ! ratios are comparable, 2.0 on the slab against 2.95 around the hole, so
+      ! the slab is if anything the more cubic of the two. What differs is the
+      ! problem -- Glen's law, a Weertman friction boundary and gravity driven
+      ! flow, against Newtonian flow through a duct.
+      !
+      ! Folding the glacier figure into the constant would therefore have been
+      ! wrong; it would have over-stabilised every isotropic brick case fourfold.
+      ! But it is equally wrong to call 1.1x settled. This is the same problem
+      ! sensitivity the quadrilateral showed, an order of magnitude larger, and
+      ! it is not understood. A glaciological case is expected to need "Pressure
+      ! Stabilization Coefficient" well above one.
+      !
+      ! Much of that factor is the LENGTH SCALE rather than the physics, and it is
+      ! worth knowing that hK is not one measure. ElementDiameter returns the
+      ! SHORTEST EDGE for every family in its default branch -- hexahedron,
+      ! tetrahedron, prism, pyramid -- an area based quantity for the triangle,
+      ! and a harmonic mean of two edges for the quadrilateral. So part of the
+      ! spread between the per-family constants above is the measure changing
+      ! under them, not the elements differing.
+      !
+      ! "Pressure Stabilization Element Size" exists because of what happens when
+      ! the measure is varied, at coefficient one:
+      !
+      !                    long/short   shortest    longest     volume
+      !   glacier slab        2.0        +0.323 %   +0.015 %   +0.147 %
+      !   flow past hole      2.95       +0.038 %   -0.828 %   -0.326 %
+      !
+      ! Each problem is best on a DIFFERENT measure, and the more anisotropic of
+      ! the two is the one happy with the shortest edge -- so this is not a
+      ! geometric correction waiting to be derived. Taking the longest edge on
+      ! the slab reproduces MINI outright, which is where its 4.6x went: long
+      ! over short is 2 there and tau goes as h^2. The same substitution on the
+      ! hole would predict 8.7x and the truth is 1.1x.
+      !
+      ! Hence a keyword and not a cleverer default. The default stays hK, which
+      ! is what every constant above was measured against.
+      !
+      ! THE TETRAHEDRON AND PYRAMID REMAIN UNMEASURED for this solver -- there is
+      ! no incompressible case of either to take a measurement from, exactly as
+      ! in ElasticSolve. Note also that extruding a 2D case is not a shortcut to
+      ! measuring anything: see the hK guard in the solver.
+      SELECT CASE( Element % TYPE % ElementCode / 100 )
+      CASE( 3 )
+        Kfam = 0.0096_dp
+      CASE( 4 )
+        Kfam = 0.0263_dp
+      CASE( 5 )
+        Kfam = 0.0029_dp
+      CASE( 6 )
+        Kfam = 0.005_dp
+      CASE( 7 )
+        Kfam = 0.0090_dp
+      CASE DEFAULT
+        Kfam = 0.0232_dp
+      END SELECT
+
+      ! The length scale. hK is the default and is what the constants above were
+      ! measured with, but it is not one measure -- see the note above -- so the
+      ! keyword lets a case pick a consistent one instead. The volume form is the
+      ! only genuinely family independent choice of the three.
+      SELECT CASE( PStabHmode )
+      CASE( 1 )
+        hStab = ElementDiameter( Element, Nodes, UseLongEdge = .TRUE. )
+      CASE( 2 )
+        hStab = SUM( DetJVec(1:ngp) ) ** ( 1.0_dp / elemdim )
+      CASE DEFAULT
+        hStab = Element % hK
+      END SELECT
+
+      tauVec(1:ngp) = PStabCoeff * Kfam * hStab**2 / muVec(1:ngp)
+
+      ! -tau * (grad q, grad p) into the pressure/pressure block
+      weight_a(1:ngp) = -tauVec(1:ngp) * detJVec(1:ngp)
+      DO i = 1, dim
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            dBasisdxVec(:,:,i), dBasisdxVec(:,:,i), weight_a, StiffOrd(:,:,dofs,dofs))
+      END DO
+    END IF
+
     ! Masses (use symmetry)
     ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
     IF ( .NOT. StokesFlow ) THEN
@@ -341,6 +492,23 @@ CONTAINS
       CALL LinearForms_UdotF(ngp, ntot, basisVec, detJVec, LoadAtIpVec(:,i), ForcePart)
       FORCE(i::dofs) = ForcePart(1:ntot)
     END DO
+
+    ! The load half of the stabilised constraint equation, -tau*(grad q, f). The
+    ! matrix half sits in the pressure/pressure block far above; this is the same
+    ! term with grad p replaced by the load it balances, so the two cancel on a
+    ! hydrostatic field and the stabilisation costs nothing there.
+    !
+    ! weight_a is rebuilt rather than carried down from that block: the convection
+    ! assembly between here and there overwrites it. tauVec is untouched.
+    IF ( PStab ) THEN
+      weight_a(1:ngp) = -tauVec(1:ngp) * detJVec(1:ngp)
+      ForcePart = 0._dp
+      DO i = 1,dim
+        CALL LinearForms_UdotF(ngp, ntot, dBasisdxVec(:,:,i), weight_a, &
+            LoadAtIpVec(:,i), ForcePart)
+      END DO
+      FORCE(dofs::dofs) = FORCE(dofs::dofs) + ForcePart(1:ntot)
+    END IF
 
     DO i = 1, DOFS
       DO j = 1, DOFS
@@ -1448,6 +1616,33 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------  
   LOGICAL :: Found, Serendipity
 
+  ! Equal-order stabilisation asks for the opposite element to everything below:
+  ! a plain "p:1" with no bubble at all, the velocity and the pressure carried on
+  ! the same nodal basis and the pressure mode held by the Brezzi-Pitkaranta term
+  ! in LocalBulkMatrix rather than by an inf-sup stable pair.
+  !
+  ! It has to be settled HERE and not in _Init. Def_Dofs is filled from the
+  ! "Element" string while the sif is read, before the mesh is loaded, and _Init0
+  ! is the only entry point that runs earlier (ModelDescription: the _Init0 sweep
+  ! precedes PrepareMesh). Adding the bubble string and removing it later would be
+  ! too late -- the bubble dofs are already counted into the mesh by then, which
+  ! is visible as EnlargeCoordinates growing the node array by nb per element.
+  !
+  ! ListAddNewString throughout, so an explicit sif "Element" still wins over
+  ! either branch. What that can produce -- stabilisation on top of a bubble -- is
+  ! refused in the solver, where the element is known.
+  !
+  ! "n:1" and not "p:1". Both give one dof per node and no bubble, but "p:1"
+  ! makes it a p-element, and then every basis evaluation goes through the
+  ! hierarchic path and GaussPointsAdapt through the p-element rule -- paid on
+  ! every element, every iteration, for a degree-one basis that the nodal path
+  ! already describes exactly. Reaching "n:1" needs the PDefs guard on the
+  ! GaussPointsAdapt call in the solver; without it this segfaults.
+  IF( GetLogical( GetSolverParams(), 'Pressure Stabilization', Found ) ) THEN
+    CALL ListAddNewString(GetSolverParams(),'Element','n:1')
+    RETURN
+  END IF
+
   Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
   IF(.NOT.Found) Serendipity = .TRUE.
   
@@ -1586,6 +1781,10 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
   LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
+  LOGICAL :: PStab
+  REAL(KIND=dp) :: PStabCoeff
+  INTEGER :: PStabHmode
+  CHARACTER(LEN=MAX_NAME_LEN) :: PStabStr
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
@@ -1644,7 +1843,12 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! This in not fully informative if several element types are present.
   !-----------------------------------------------------------------------------
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
-  IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+  ! PReferenceElement only where there is a p-element to take the reference from.
+  ! Asking for it unconditionally reads Element % PDefs, which a plain nodal
+  ! element does not have, and segfaults in GaussPoints. It never showed because
+  ! _Init0 always handed this solver a "p:1 ..." definition; an explicit
+  ! "Element = n:1" in a sif is enough to reach it.
+  IP = GaussPointsAdapt( Element, PReferenceElement = isActivePElement(Element) )
   CALL Info('IncompressibleNSSolver', &
       'Number of 1st integration points: '//I2S(IP % n), Level=5)
   
@@ -1656,6 +1860,74 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
   SpecificLoad = GetLogical(Params,'Specific Load',Found)
+
+  !-----------------------------------------------------------------------------
+  ! Equal-order velocity/pressure held by a stabilised pressure block instead of
+  ! an inf-sup stable pair. Opt-in per solver and never selected by default: it
+  ! is a different discretisation, not an optimisation, and the element it needs
+  ! was already chosen back in _Init0 on the strength of this same keyword.
+  !-----------------------------------------------------------------------------
+  PStab = GetLogical(Params, 'Pressure Stabilization', Found)
+  PStabCoeff = GetConstReal(Params, 'Pressure Stabilization Coefficient', Found)
+  IF (.NOT. Found) PStabCoeff = 1.0_dp
+
+  ! Which element size enters tau ~ h^2/mu. The default reproduces the constants
+  ! as they were measured; the other two exist because hK is not one quantity
+  ! across families, so a case spanning several of them -- or one whose elements
+  ! are far from cubic -- may want a measure it can reason about.
+  PStabHmode = 0
+  PStabStr = ListGetString(Params, 'Pressure Stabilization Element Size', Found)
+  IF (Found) THEN
+    SELECT CASE( PStabStr )
+    CASE( 'shortest edge' )
+      PStabHmode = 0
+    CASE( 'longest edge' )
+      PStabHmode = 1
+    CASE( 'volume' )
+      PStabHmode = 2
+    CASE DEFAULT
+      CALL Fatal(Caller, 'Unknown "Pressure Stabilization Element Size": '// &
+          TRIM(PStabStr)//'. Use "shortest edge", "longest edge" or "volume"')
+    END SELECT
+    IF (PStab) CALL Info(Caller, 'Stabilization element size: '//TRIM(PStabStr), Level=5)
+  END IF
+
+  IF (PStab) THEN
+    CALL Info(Caller, 'Using pressure stabilisation instead of bubbles', Level=5)
+    ! Both together would stabilise an already stable pair, which is not a
+    ! sharper answer but a softer one -- the bubble supplies the inf-sup
+    ! condition and the tau then only adds a consistent but unnecessary
+    ! perturbation. It can only arise from a sif overriding the _Init0 element.
+    IF ( GetElementNOFBDOFs( Mesh % Elements( Solver % ActiveElements(1) ) ) > 0 ) &
+        CALL Fatal(Caller, '"Pressure Stabilization" is the equal-order alternative '// &
+        'to the bubble: remove the "b:" from "Element", or the keyword')
+    ! Stage-limited on purpose. The residual assembled in LocalBulkMatrix carries
+    ! the pressure gradient and the load, not the convective or transient terms,
+    ! so it is a consistent scheme for Stokes and an inconsistent one for
+    ! Navier-Stokes -- and it stabilises the pressure only, never the advection.
+    IF (.NOT. GetLogical(Params, 'Stokes Flow', Found)) CALL Fatal(Caller, &
+        '"Pressure Stabilization" is implemented for "Stokes Flow" only: the '// &
+        'convective residual and the SUPG term an equal-order Navier-Stokes '// &
+        'needs are not assembled')
+    ! tau is built from hK, and an hK of zero makes it vanish -- which does not
+    ! fail, it just returns the unstabilised equal-order system, whose pressure
+    ! has a null space. The answer is then whatever the solver's round-off points
+    ! at, and it does not move when the coefficient is changed, which is the
+    ! signature to recognise.
+    !
+    ! This is reachable. MeshStabParams fills hK when the mesh is loaded, but an
+    ! extruded mesh is built afterwards by CreateExtrudedMesh, which does not
+    ! call it -- so a freshly extruded mesh carries hK = 0. It does NOT follow
+    ! that every extruded case is affected: anything that later moves the mesh
+    ! repairs hK on the way past, DisplaceMesh recomputing it per element, so a
+    ! case running StructuredMeshMapper over its extrusion (FixTangentVelo, for
+    ! one) never sees this. Hence a test on the value rather than on how the
+    ! mesh was built.
+    IF ( Mesh % Elements( Solver % ActiveElements(1) ) % hK <= 0.0_dp ) &
+        CALL Fatal(Caller, 'Stabilization parameter hK is zero, so the '// &
+        'stabilisation would silently vanish. The mesh has not been through '// &
+        'MeshStabParams -- an extruded mesh is one way to get here')
+  END IF
   
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
@@ -1724,7 +1996,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
           SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .TRUE., &
-          SchurSolver )
+          SchurSolver, PStab, PStabCoeff, PStabHmode )
     END DO
 
     ! The serial call above (element 1) resolved NSHandles(1) — the material/BF
@@ -1736,7 +2008,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
     !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
-    !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver ) &
+    !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver, &
+    !$OMP                 PStab, PStabCoeff, PStabHmode ) &
     !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
     !$OMP DO    
     DO Element_id=2,Active
@@ -1749,7 +2022,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
           SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE.,&
-          SchurSolver )
+          SchurSolver, PStab, PStabCoeff, PStabHmode )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
