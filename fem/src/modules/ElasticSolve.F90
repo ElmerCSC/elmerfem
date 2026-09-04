@@ -276,11 +276,15 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   ! getBubbleDOFs offers -- so stating their own defaults back to them would
   ! achieve nothing, and a family this string does not name keeps its own rule.
   !
-  ! Gated on a bubble appearing in the element definition, because the other
-  ! incompressible configuration is the equal-order pair held by pressure
-  ! stabilisation, whose "p:1" carries no bubble and whose default rule is far
-  ! smaller than these counts -- 1 point on a tetrahedron. Forcing 24 there
-  ! would integrate a linear element 24 times over for nothing.
+  ! Gated on a bubble appearing in the element definition, because MINI is not
+  ! the only incompressible configuration. The pressure elimination in
+  ! LocalMatrix clears every non-nodal pressure dof, so "p:2" is a Taylor-Hood
+  ! P2/P1 pair and "p:1" with pressure stabilisation is an equal-order one --
+  ! neither carries a bubble, and neither wants these counts. Stabilised "p:1"
+  ! defaults to a far smaller rule (1 point on a tetrahedron) and forcing 24
+  ! there would integrate a linear element 24 times over for nothing, while
+  ! "p:2" needs a LARGER rule than a bubble-augmented linear element, not this
+  ! one.
   !
   ! ListAddNew, so a sif stating its own rule still wins. A p-element of degree
   ! above one is left alone by ElementalGaussNp, which is what stops these
@@ -1446,12 +1450,15 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! Pressure stabilisation, as an alternative to the MINI element's bubble.
   !
   ! The incompressible formulation needs an inf-sup stable displacement/pressure
-  ! pair. Today the only route is MINI -- "Element = p:1 b:N" -- and the bubble
-  ! is not cheap: on a tetrahedron the lowest bubble is degree 4, so the element
-  ! is integrated over 150 points where the linear part needs 5. An equal-order
-  ! pair stabilised in the pressure is the standard alternative, and the two are
-  ! the same object seen differently: condensing a bubble analytically yields a
-  ! stabilisation with tau given by the bubble's integral.
+  ! pair. Without stabilisation there are two, both of them delivered by the
+  ! pressure elimination at the end of LocalMatrix: MINI, "Element = p:1 b:N",
+  ! and Taylor-Hood, "Element = p:2". Neither is cheap -- on a tetrahedron the
+  ! lowest bubble is degree 4, so MINI is integrated over 150 points where the
+  ! linear part needs 5, and P2 multiplies the displacement dofs instead. An
+  ! equal-order pair stabilised in the pressure is the standard alternative, and
+  ! it and MINI are the same object seen differently: condensing a bubble
+  ! analytically yields a stabilisation with tau given by the bubble's integral.
+  ! That is also why the calibration below is against MINI and not P2.
   !
   ! Off by default and opt-in per solver, exactly as NavierStokes treats its own
   ! choice between 'stabilized' and 'bubbles': it is a different discretisation,
@@ -4685,11 +4692,31 @@ CONTAINS
     END DO
 
     !--------------------------------------------------------------------------
-    ! The pressure lives on the lowest-order basis only, so the bubble and other
-    ! higher-order pressure degrees of freedom are eliminated with a unit
-    ! diagonal -- the MINI element, and the same elimination StressSolve writes.
-    ! It is done after the integration loop because it clears whole rows and
-    ! columns, which an integration point may not do.
+    ! The pressure is restricted to the corner nodes: every pressure degree of
+    ! freedom above the nodal ones is eliminated with a unit diagonal. The loop
+    ! runs to ntot = nd + nb, so it clears not only the bubbles but the whole
+    ! hierarchic tail of nd as well -- edge, face and interior dofs alike.
+    !
+    ! That is what picks the element pair, and it is more than MINI. The
+    ! displacement keeps whatever basis the sif asked for, the pressure is
+    ! always the continuous nodal one (the first n p-basis functions being the
+    ! linear/bilinear nodal set), so:
+    !
+    !   Element = p:1 b:N   ->  MINI, P1+bubble / P1
+    !   Element = p:2       ->  Taylor-Hood, P2 / P1
+    !
+    ! Both are inf-sup stable, and both are tested: ElasticIncompressible takes
+    ! the first, ElasticIncompressible3D the second. An equal-order pair with no
+    ! bubble is NOT stable, and this elimination is what leaves it that way --
+    ! the alternative there is PStab above.
+    !
+    ! Note that _Init's measured integration counts are gated on 'b:' appearing
+    ! in the element definition, so the p:2 pair keeps the default rule. That is
+    ! deliberate: those counts are calibrated for the bubble-augmented LINEAR
+    ! element and would under-integrate a quadratic displacement.
+    !
+    ! Done after the integration loop because it clears whole rows and columns,
+    ! which an integration point may not do. Same elimination StressSolve writes.
     !--------------------------------------------------------------------------
     IF ( LinearIncompressible ) THEN
        DO p = n+1,ntot
