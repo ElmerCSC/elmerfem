@@ -360,6 +360,21 @@ CONTAINS
       !   triangle  1062 / 4012 elements, optimum at 0.92x, i.e. the elastic
       !             constant already
       !
+      ! The quadrilateral has since been RE-CHECKED with "Mesh Levels", which
+      ! refines the one mesh uniformly instead of regenerating three, and it
+      ! holds: against the restated constant the optimum lands on 1.00 at every
+      ! level and the error there falls by about four per level,
+      !
+      !   Mesh Levels    1         2         3
+      !   error at 1x   -0.012 %  -0.002 %  -0.0006 %
+      !
+      ! which is second order convergence to the MINI answer. That check matters
+      ! because it is the one constant here that was actually CHANGED on measured
+      ! evidence, and because the same check demolished the glacier slab figure
+      ! below. The difference is that these three quadrilateral meshes refine
+      ! isotropically, so varying resolution by regenerating happened to vary the
+      ! dimension that mattered; the slab's did not.
+      !
       ! So the quadrilateral is restated at 0.0417*0.63 and the triangle at
       ! 0.0104*0.92. That the two families moved by different factors is the
       ! point: the discrepancy is NOT a global difference between the elastic and
