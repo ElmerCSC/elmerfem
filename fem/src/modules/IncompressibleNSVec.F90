@@ -103,7 +103,7 @@ CONTAINS
         rhoVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
         PressureMass(:,:), ForcePart(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
-        VeloVec(:,:), PresVec(:), GradVec(:,:,:)
+        VeloVec(:,:), PresVec(:), GradVec(:,:,:), ConvVec(:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
     REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
     ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
@@ -113,7 +113,7 @@ CONTAINS
 
     INTEGER :: t, i, j, k, p, q, ngp, allocstat, elemdim
     INTEGER :: DOFs, tid
-    REAL(KIND=dp) :: Kfam, hStab
+    REAL(KIND=dp) :: Kfam, hStab, VNorm, PeStab
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
@@ -149,7 +149,7 @@ CONTAINS
     ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
         rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), LoadAtIpVec(ngp,dim+1), &
         weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
-        PrevPressureVec(ngp), GradVec(ngp,dim,dim), STAT=allocstat)
+        PrevPressureVec(ngp), GradVec(ngp,dim,dim), ConvVec(ngp,ntot), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
 
     ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), ForcePart(ntot))
@@ -445,14 +445,104 @@ CONTAINS
         hStab = Element % hK
       END SELECT
 
-      tauVec(1:ngp) = PStabCoeff * Kfam * hStab**2 / muVec(1:ngp)
+      ! tau. The diffusive expression Kfam*h^2/mu is what the constants were
+      ! measured against and is exact for Stokes. With advection it becomes the
+      ! interpolating form NavierStokes uses, scaled so that the weak advection
+      ! limit returns that same expression rather than merely resembling it --
+      ! the identical construction as in ElasticSolve, so a case moving between
+      ! the two solvers sees one scheme.
+      !
+      ! Per integration point, since both |u| and mu vary within an element.
+      IF( StokesFlow ) THEN
+        tauVec(1:ngp) = PStabCoeff * Kfam * hStab**2 / muVec(1:ngp)
+      ELSE
+        DO t = 1, ngp
+          VNorm = SQRT( SUM( VeloPresVec(t,1:dim)**2 ) )
+          IF( rhoVec(t) * VNorm * hStab > 0.0_dp ) THEN
+            PeStab = MIN( 1.0_dp, 2.0_dp * Kfam * rhoVec(t) * VNorm * hStab / muVec(t) )
+            tauVec(t) = hStab * PeStab / ( 2.0_dp * rhoVec(t) * VNorm )
+          ELSE
+            tauVec(t) = Kfam * hStab**2 / muVec(t)
+          END IF
+        END DO
+        tauVec(1:ngp) = PStabCoeff * tauVec(1:ngp)
+      END IF
 
+      ! The convective operator applied to each basis function, rho*(u.grad)phi_q.
+      ! It is both the convective part of the residual SU and, tested against
+      ! itself, the SUPG weight SW -- so it is built once and used four ways.
+      ConvVec = 0.0_dp
+      IF( .NOT. StokesFlow ) THEN
+        DO k = 1, dim
+          DO q = 1, ntot
+            ConvVec(1:ngp,q) = ConvVec(1:ngp,q) + &
+                rhoVec(1:ngp) * VeloPresVec(1:ngp,k) * dBasisdxVec(1:ngp,q,k)
+          END DO
+        END DO
+      END IF
+
+      ! In LinearForms_UdotV the FIRST basis argument indexes the row (the test
+      ! function) and the second the column, which matters for every term below
+      ! but not for the symmetric one this started as.
+      !
       ! -tau * (grad q, grad p) into the pressure/pressure block
       weight_a(1:ngp) = -tauVec(1:ngp) * detJVec(1:ngp)
       DO i = 1, dim
         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             dBasisdxVec(:,:,i), dBasisdxVec(:,:,i), weight_a, StiffOrd(:,:,dofs,dofs))
       END DO
+
+      IF( .NOT. StokesFlow ) THEN
+        ! The rest of the residual, and the SUPG weight. Writing R for
+        ! rho*(u.grad)u + grad p - f, the scheme is
+        !
+        !   momentum_i  +=  tau * ( rho*(u.grad)v_i , R_i )      SUPG
+        !   constraint  += -tau * ( grad q          , R   )      PSPG
+        !
+        ! and the four matrix blocks below are those two weights against the two
+        ! operators in R. The load half of each goes in with the other forces.
+        !
+        ! The viscous part of R, -div(mu grad u), is NOT included. On the linear
+        ! equal-order basis this path forces it vanishes on simplices, and the
+        ! vectorized ElementInfoVec returns no second derivatives to build it from
+        ! on the others -- which is the classical simplification, consistent to
+        ! the order of the discretisation, not an oversight.
+
+        ! PSPG against convection: -tau * (grad q, rho*(u.grad)u)
+        DO j = 1, dim
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              dBasisdxVec(:,:,j), ConvVec, weight_a, StiffOrd(:,:,dofs,j))
+        END DO
+
+        weight_b(1:ngp) = tauVec(1:ngp) * detJVec(1:ngp)
+
+        ! SUPG against convection, diagonal in the velocity components
+        DO i = 1, dim
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              ConvVec, ConvVec, weight_b, StiffOrd(:,:,i,i))
+        END DO
+
+        ! SUPG against the pressure gradient
+        DO i = 1, dim
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              ConvVec, dBasisdxVec(:,:,i), weight_b, StiffOrd(:,:,i,dofs))
+        END DO
+
+        ! The Newton term of the residual, rho*(v.grad)u linearised, so that the
+        ! Jacobian matches the operator the stabilisation actually applies.
+        IF( Newton ) THEN
+          DO i = 1, dim
+            DO j = 1, dim
+              CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                  ConvVec, BasisVec, weight_b, StiffOrd(:,:,i,j), &
+                  rhoVec*GradVec(:,i,j))
+              CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                  dBasisdxVec(:,:,i), BasisVec, weight_a, StiffOrd(:,:,dofs,j), &
+                  rhoVec*GradVec(:,i,j))
+            END DO
+          END DO
+        END IF
+      END IF
     END IF
 
     ! Masses (use symmetry)
@@ -508,6 +598,18 @@ CONTAINS
             LoadAtIpVec(:,i), ForcePart)
       END DO
       FORCE(dofs::dofs) = FORCE(dofs::dofs) + ForcePart(1:ntot)
+
+      ! The SUPG half of the same load, this one per velocity component and with
+      ! the opposite sign, the momentum rows carrying the load on the right.
+      IF( .NOT. StokesFlow ) THEN
+        weight_b(1:ngp) = tauVec(1:ngp) * detJVec(1:ngp)
+        DO i = 1,dim
+          ForcePart = 0._dp
+          CALL LinearForms_UdotF(ngp, ntot, ConvVec, weight_b, &
+              LoadAtIpVec(:,i), ForcePart)
+          FORCE(i::dofs) = FORCE(i::dofs) + ForcePart(1:ntot)
+        END DO
+      END IF
     END IF
 
     DO i = 1, DOFS
@@ -1905,10 +2007,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! the pressure gradient and the load, not the convective or transient terms,
     ! so it is a consistent scheme for Stokes and an inconsistent one for
     ! Navier-Stokes -- and it stabilises the pressure only, never the advection.
-    IF (.NOT. GetLogical(Params, 'Stokes Flow', Found)) CALL Fatal(Caller, &
-        '"Pressure Stabilization" is implemented for "Stokes Flow" only: the '// &
-        'convective residual and the SUPG term an equal-order Navier-Stokes '// &
-        'needs are not assembled')
+    ! Navier-Stokes is carried by the SUPG/PSPG terms in LocalBulkMatrix. What is
+    ! still missing from the residual is the transient rho*du/dt, so a transient
+    ! run would be stabilising the wrong operator -- refused rather than assembled
+    ! quietly.
+    IF (Transient) CALL Fatal(Caller, &
+        '"Pressure Stabilization" is implemented for steady flow: the transient '// &
+        'term is not part of the stabilised residual')
     ! tau is built from hK, and an hK of zero makes it vanish -- which does not
     ! fail, it just returns the unstabilised equal-order system, whose pressure
     ! has a null space. The answer is then whatever the solver's round-off points
