@@ -1,3 +1,17 @@
+! The equal-order twin of case.sif: the same problem with the method switched,
+! the velocity/pressure pair carried by "Pressure Stabilization" instead of by a
+! bubble. The element becomes "n:1" -- one dof per node, no bubble -- and nothing
+! else changes, so a disagreement between the two is the discretisation.
+!
+! Stating the element is belt and braces: _Init0 supplies exactly that when the
+! keyword is on, and each sif runs in its own ElmerSolver process, so nothing
+! carries over from the bubble run before it. It is written out so a reader need
+! not know a default to see which pair is solved.
+!
+! The output level is raised only so the three timers reach the log; the two
+! variants are otherwise identical in what they print.
+!
+! Against the MINI answer in case.sif the norm below sits +0.010 %.
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!                                       !!
 !! Test for Weertman friction law        !!
@@ -5,6 +19,8 @@
 !! with Newton Linearisation             !!
 !!                                       !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! same as Friction_WeertmanNewton
+! but in x/y coordinate system instead of NT
 
 !check keywords warn
 !echo on
@@ -79,6 +95,8 @@ End
 Solver 2
   Equation = "Stokes-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Pressure Stabilization = Logical True
+  Element = "n:1"
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
@@ -110,11 +128,11 @@ Boundary Condition 1
   Target Boundaries = 1
 
  !! Normal-Tangential coordinate system
-    Normal-Tangential Velocity = Logical True
-    Velocity 1 = Real 0.0
+   ! Normal-Tangential Velocity = Logical True
+   ! Velocity 1 = Real 0.0
 
  !! OR x/y   
-  !Velocity 2 = Real 0.0
+  Velocity 2 = Real 0.0
 
 ! If we know that normal velocity is zero by construction no need
 ! to reduce it from the velocity field. 
@@ -154,5 +172,5 @@ Boundary Condition 4
   Target Boundaries = 4
 End
 
-Solver 2 :: Reference Norm = 570.12040
+Solver 2 :: Reference Norm = 5.70175423E+02
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4

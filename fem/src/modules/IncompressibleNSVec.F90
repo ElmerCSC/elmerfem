@@ -2008,12 +2008,21 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! so it is a consistent scheme for Stokes and an inconsistent one for
     ! Navier-Stokes -- and it stabilises the pressure only, never the advection.
     ! Navier-Stokes is carried by the SUPG/PSPG terms in LocalBulkMatrix. What is
-    ! still missing from the residual is the transient rho*du/dt, so a transient
-    ! run would be stabilising the wrong operator -- refused rather than assembled
-    ! quietly.
-    IF (Transient) CALL Fatal(Caller, &
-        '"Pressure Stabilization" is implemented for steady flow: the transient '// &
-        'term is not part of the stabilised residual')
+    ! still missing from the residual is rho*du/dt, so a run that actually carries
+    ! that term would be stabilising the wrong operator -- refused rather than
+    ! assembled quietly.
+    !
+    ! The test is NOT on Transient alone. Under "Stokes Flow" the assembly takes
+    ! the branch that never reaches Default1stOrderTime and never fills MASS, so
+    ! the momentum equation has no time derivative even inside a transient
+    ! simulation: each step poses a quasi-static Stokes problem and the residual
+    ! here is complete. That is the normal shape of a prognostic glaciological
+    ! run -- ice creeps, the free surface evolves -- and FSSA_perlin2d is one, so
+    ! refusing on Transient would have locked out the case this is most wanted
+    ! for.
+    IF (Transient .AND. .NOT. StokesFlow) CALL Fatal(Caller, &
+        '"Pressure Stabilization" needs "Stokes Flow" in a transient run: '// &
+        'rho*du/dt is not part of the stabilised residual')
     ! tau is built from hK, and an hK of zero makes it vanish -- which does not
     ! fail, it just returns the unstabilised equal-order system, whose pressure
     ! has a null space. The answer is then whatever the solver's round-off points

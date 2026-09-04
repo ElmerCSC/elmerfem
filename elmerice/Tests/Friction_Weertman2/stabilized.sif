@@ -1,3 +1,17 @@
+! The equal-order twin of ismip_weertman2.sif: the same problem with the method switched,
+! the velocity/pressure pair carried by "Pressure Stabilization" instead of by a
+! bubble. The element becomes "n:1" -- one dof per node, no bubble -- and nothing
+! else changes, so a disagreement between the two is the discretisation.
+!
+! Stating the element is belt and braces: _Init0 supplies exactly that when the
+! keyword is on, and each sif runs in its own ElmerSolver process, so nothing
+! carries over from the bubble run before it. It is written out so a reader need
+! not know a default to see which pair is solved.
+!
+! The output level is raised only so the three timers reach the log; the two
+! variants are otherwise identical in what they print.
+!
+! Against the MINI answer in ismip_weertman2.sif the norm below sits +0.0014 %.
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!                                       !!
 !! Test for Weertman friction law        !!
@@ -97,6 +111,8 @@ Solver 3
   Equation = "Navier-Stokes"
 
   Procedure = "IncompressibleNSVec" "InCompressibleNSSolver"
+  Pressure Stabilization = Logical True
+  Element = "n:1"
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
@@ -190,5 +206,5 @@ Boundary Condition 4
   ComputeNormal = Logical False
 End
 
-Solver 3 :: Reference Norm = 5.67318925E+01
+Solver 3 :: Reference Norm = 5.67326804E+01
 ! Norm of original test: 56.70374

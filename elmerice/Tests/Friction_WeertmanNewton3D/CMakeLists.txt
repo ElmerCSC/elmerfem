@@ -1,6 +1,7 @@
 INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
 CONFIGURE_FILE(case.sif case.sif COPYONLY)
+  CONFIGURE_FILE(stabilized.sif stabilized.sif COPYONLY)
 
 FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
