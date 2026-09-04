@@ -1985,6 +1985,20 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
   SpecificLoad = GetLogical(Params,'Specific Load',Found)
 
+  ! This solver assembles the Cartesian equations and only those. There is no
+  ! metric anywhere in LocalBulkMatrix, no r weighting of the integration and no
+  ! hoop term, so an axisymmetric or cylindrical case would not be approximated
+  ! here, it would be answered with the equations of a different problem. FlowSolve
+  ! handles those by dispatching to NavierStokesCylindricalCompose instead, a
+  ! separate assembly with the metric in it, and this solver has no counterpart.
+  !
+  ! Nothing about the sif makes that visible -- the run simply produces a number --
+  ! so it is refused here rather than discovered later.
+  IF( CurrentCoordinateSystem() /= Cartesian ) CALL Fatal(Caller, &
+      'This solver assembles the Cartesian equations only. Axisymmetric and '// &
+      'cylindrical coordinates need the metric terms, which are not here: use '// &
+      'FlowSolve, which dispatches to NavierStokesCylindrical for them')
+
   !-----------------------------------------------------------------------------
   ! Equal-order velocity/pressure held by a stabilised pressure block instead of
   ! an inf-sup stable pair. Opt-in per solver and never selected by default: it
