@@ -1,3 +1,17 @@
+! The equal-order twin of Step3d.sif, and an unusually clean comparison: the
+! shipped case runs "Stabilization Method = Stabilized" on the legacy FlowSolve,
+! which is ALREADY an equal-order SUPG/PSPG pair. So this is not a bubble against
+! a stabilised element, it is the same scheme in two independent implementations
+! -- FlowSolve's NavierStokes.F90 against IncompressibleNSVec -- on one mesh.
+!
+! They agree to 0.09 % here (0.16323 against 0.16308), and both sit within 0.13 %
+! of the MINI answer the same solver gives with a bubble. The residual difference
+! is mostly tau: FlowSolve uses mK/8, which is 0.0208 on a hexahedron, against
+! 0.0232 here, and it carries a grad-div term this does not.
+!
+! Solver 1 gains a reference norm, since the flow solution is what the
+! stabilisation actually changes; solver 2's vorticity keeps its loose tolerance,
+! being a derived quantity.
 Header
   Mesh DB "." "Step3d"
   Include Path ""
@@ -37,6 +51,15 @@ End
 
 Solver 1
   Equation = "Navier-Stokes"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+! Ns convect is already False in Equation 1; this is the same statement in the
+! form the vectorized solver reads, and it is what lets the stabilised residual
+! be complete -- see the transient/Stokes note in IncompressibleNSVec.
+  Stokes Flow = Logical True
+  Pressure Stabilization = Logical True
+  Element = "n:1"
+
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
@@ -45,7 +68,6 @@ Solver 1
   Linear System Iterative Method = BiCGStab
   Linear System Max Iterations = 500
 
-  Stabilization Method = String Stabilized
 
   Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = ILU1
@@ -107,6 +129,7 @@ Boundary Condition 4
   Velocity 3 = 0
 End
 
-Solver 2 :: Reference Norm = Real 0.887172
+Solver 1 :: Reference Norm = Real 0.16308254
+Solver 2 :: Reference Norm = Real 0.883414964
 Solver 2 :: Reference Norm Tolerance = Real 1e-2
 RUN
