@@ -111,12 +111,37 @@ MACRO(RUN_ELMERICE_TEST)
   ENDIF()
 
   IF(NPROCS GREATER "1")
-    FILE(READ "TEST.PASSED_${NPROCS}" RES)
+    SET(_passed_file "TEST.PASSED_${NPROCS}")
   ELSE()
-    FILE(READ "TEST.PASSED" RES)
+    SET(_passed_file "TEST.PASSED")
   ENDIF()
+
+  # Same reasoning as the fem copy of this macro: a missing result file means
+  # the solver produced nothing, and FILE(READ) would report only that a path
+  # does not exist. This macro sends its output to files rather than to a
+  # variable, so the norms are recovered from the log.
+  IF(NOT EXISTS "${_passed_file}")
+    MESSAGE(FATAL_ERROR
+      "the solver produced no ${_passed_file} at all -- it did not run to "
+      "completion.\n  See test-stdout.log and test-stderr.log in "
+      "${CMAKE_CURRENT_BINARY_DIR}.")
+  ENDIF()
+
+  FILE(READ "${_passed_file}" RES)
   IF(NOT RES EQUAL "1")
-    MESSAGE(FATAL_ERROR "Test failed")
+    SET(_cmp "")
+    IF(EXISTS "test-stdout.log")
+      FILE(STRINGS "test-stdout.log" _cmp_lines
+        REGEX "CompareToReferenceSolution")
+      IF(_cmp_lines)
+        STRING(REPLACE ";" "\n  " _cmp "${_cmp_lines}")
+        SET(_cmp "\n  ${_cmp}")
+      ENDIF()
+    ENDIF()
+    MESSAGE(FATAL_ERROR
+      "the solver ran but its result did not match the reference${_cmp}\n"
+      "  See test-stdout.log and test-stderr.log in "
+      "${CMAKE_CURRENT_BINARY_DIR}.")
   ENDIF()
 ENDMACRO()
 
