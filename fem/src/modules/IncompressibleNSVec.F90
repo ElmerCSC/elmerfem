@@ -1825,6 +1825,23 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   IF(Serendipity) THEN
     CALL ListAddNewString(GetSolverParams(),'Element', &
       'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+    ! The pyramid entry here CANNOT BE BUILT, and stays anyway. ElementInfoVec
+    ! refuses a p-pyramid under the serendipity scheme outright -- "p-Pyramid not
+    ! available for serendipity scheme, please use full polynomial scheme
+    ! instead" -- so a MINI element is unavailable on any mesh holding a pyramid
+    ! unless the sif also sets "Serendipity P Elements = False". A mixed mesh
+    ! with a hex-to-tet transition layer meets this.
+    !
+    ! Removing the entry would not make a serendipity pyramid possible, since
+    ! nothing can. It would only leave that pyramid with no bubble at all, which
+    ! trades a Fatal naming the remedy for a bubbleless equal-order element with
+    ! no stabilisation behind it -- a silent singularity instead of an error. So
+    ! it stays, and 4 is on the pyramid's ladder (1, 4, 10) in any case:
+    ! getBubbleDOFs has no serendipity branch for that family, so this entry is
+    ! exactly what makes the full basis string below work.
+    !
+    ! "Pressure Stabilization" avoids the whole question: "n:1" is not a
+    ! p-element, so the restriction does not reach it. See StokesUnitElements.
   ELSE
     ! The prism is b:9, not b:4 as the serendipity string above uses, because the
     ! two bases have different bubble ladders and 4 is not on this one. The full

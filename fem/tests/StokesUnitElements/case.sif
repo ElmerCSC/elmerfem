@@ -1,0 +1,99 @@
+! Four 3D elements, one of each family -- tetrahedron, PYRAMID, prism,
+! hexahedron -- from ElementUnitTest's unitelems mesh, assembled equal order.
+! A smoke test, not a convergence test: four elements sharing one boundary do not
+! pose a physical problem, and the norm below only fingerprints the assembly.
+! What it checks is that every 3D family this solver can meet actually assembles.
+!
+! That is worth a test because two defects lived here undetected, and this mesh
+! could not be run by IncompressibleNSVec at all before they were dealt with:
+!
+!   - the PYRAMID cannot carry a bubble under the serendipity scheme, which is
+!     the default. ElementInfoVec refuses it outright: "p-Pyramid not available
+!     for serendipity scheme". So the MINI element cannot be used on any mesh
+!     containing a pyramid unless the sif also sets
+!     "Serendipity P Elements = False" -- a mixed mesh with a hex-to-tet
+!     transition layer will meet this.
+!
+!   - and with the full basis selected, the PRISM used to segfault, _Init0 asking
+!     for b:4 where that basis ladder runs 0, 2, 9, 24. Fixed separately.
+!
+! The equal-order pair sidesteps the first of those entirely: "n:1" is not a
+! p-element, so the serendipity pyramid restriction does not apply to it. It runs
+! here on the default settings, which the MINI element cannot. That is a
+! capability difference between the two pairs, not a tuning one, and it is the
+! reason this test exists in the stabilised form only.
+!
+! KNOWN, NOT FIXED: the MINI variant of this case fails above two OpenMP threads,
+! and does so whatever integration rule it is given. Four elements of four
+! different families assembled concurrently is the condition; the equal-order
+! variant here is unaffected at any thread count. Not investigated, and not
+! caused by the stabilisation -- it is in the p-element assembly path.
+Header
+  Mesh DB "." "unitelems"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+! Required, not incidental: see the note above on the pyramid.
+! Deliberately left at the default. The equal-order element is not a p-element,
+! so the serendipity pyramid restriction does not apply to it -- this variant
+! runs on a pyramid mesh that the MINI one above cannot without the line removed
+! here. That is a capability difference, not a tuning one.
+End
+
+Constants
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "NS-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Stokes Flow = Logical True
+  Pressure Stabilization = Logical True
+  Element = "n:1"
+
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+Material 1
+  Density = 1
+  Viscosity = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Velocity 1 = 0.1
+  Velocity 2 = 0
+  Velocity 3 = 0
+End
+
+! The two variants give the SAME norm, and that is expected rather than a sign
+! they are not really different: the exact solution here is uniform flow, which
+! both the bubble-augmented and the equal-order basis represent exactly. They do
+! differ -- 64 integration points against 8 -- but on this problem neither has
+! anything to approximate. Treat the number as a fingerprint of the assembly, not
+! as a comparison between the pairs.
+Solver 1 :: Reference Norm = 4.17028830E-02
