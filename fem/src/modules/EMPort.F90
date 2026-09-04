@@ -538,8 +538,8 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         WRITE(Message,'(A,2ES15.6)') 'Port impedance (Im): ', AIMAG(1.0_dp /CONJG(Power))
         CALL Info(Caller, Message, Level=5)        
         
-        CALL ListAddConstReal(Model % Simulation,'res: Port Power'//I2S(PortInd), 0.5_dp*REAL(Power))
-        CALL ListAddConstReal(Model % Simulation,'res: Port Power Im'//I2S(PortInd), 0.5_dp*AIMAG(Power))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Power '//I2S(PortInd), 0.5_dp*REAL(Power))
+        CALL ListAddConstReal(Model % Simulation,'res: Port Power Im '//I2S(PortInd), 0.5_dp*AIMAG(Power))
         CALL ListAddConstReal(Model % Simulation,'res: Port Impedance '//I2S(PortInd), REAL(1.0_dp /CONJG(Power)))
         CALL ListAddConstReal(Model % Simulation,'res: Port Impedance Im '//I2S(PortInd), AIMAG(1.0_dp /CONJG(Power)))
 
