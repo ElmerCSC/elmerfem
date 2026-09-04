@@ -258,12 +258,44 @@ MACRO(RUN_ELMER_TEST)
 
   # Check the result file (with suffix is more than single task)
   IF(${MPIEXEC_NTASKS} GREATER 1)
-    FILE(READ "TEST.PASSED_${MPIEXEC_NTASKS}" RES)
+    SET(_passed_file "TEST.PASSED_${MPIEXEC_NTASKS}")
+    SET(_stdout_file "test-stdout_${MPIEXEC_NTASKS}.log")
+    SET(_stderr_file "test-stderr_${MPIEXEC_NTASKS}.log")
   ELSE()
-    FILE(READ "TEST.PASSED" RES)
+    SET(_passed_file "TEST.PASSED")
+    SET(_stdout_file "test-stdout.log")
+    SET(_stderr_file "test-stderr.log")
   ENDIF()
+
+  # No result file means the solver never reached its own verdict: it did not
+  # start, or it died before writing one. FILE(READ) on a missing path raises a
+  # raw CMake error whose text says only that the path does not exist, which
+  # reads as a harness bug rather than as a solver that produced nothing.
+  IF(NOT EXISTS "${_passed_file}")
+    MESSAGE(FATAL_ERROR
+      "the solver produced no ${_passed_file} at all -- it did not run to "
+      "completion.\n  See ${_stdout_file} and ${_stderr_file} in "
+      "${CMAKE_CURRENT_BINARY_DIR}.")
+  ENDIF()
+
+  FILE(READ "${_passed_file}" RES)
   IF(NOT RES EQUAL "1")
-    MESSAGE(FATAL_ERROR "Test failed")
+    # The comparison the solver actually made, lifted back out of its own
+    # output. "Test failed" on its own does not say which solver missed, by how
+    # much, or against what reference -- and on a CI runner the full log is
+    # routinely truncated long before these lines, so the one place the numbers
+    # existed is the one place nobody can read.
+    SET(_cmp "")
+    STRING(REGEX MATCHALL "[^\r\n]*CompareToReferenceSolution[^\r\n]*"
+      _cmp_lines "${TEST_STDOUT_VARIABLE}")
+    IF(_cmp_lines)
+      STRING(REPLACE ";" "\n  " _cmp "${_cmp_lines}")
+      SET(_cmp "\n  ${_cmp}")
+    ENDIF()
+    MESSAGE(FATAL_ERROR
+      "the solver ran but its result did not match the reference${_cmp}\n"
+      "  See ${_stdout_file} and ${_stderr_file} in "
+      "${CMAKE_CURRENT_BINARY_DIR}.")
   ELSE()
     STRING(REGEX MATCH
       "SOLVER TOTAL TIME\\(CPU,REAL\\):[ \t]*([0-9]+\\.[0-9]+)[ \t]+([0-9]+\\.[0-9]+)" 

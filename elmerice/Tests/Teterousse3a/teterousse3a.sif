@@ -52,7 +52,7 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  max output level = 4
+  Max Output Level = 5
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -161,6 +161,9 @@ End
  
 Solver 2
   Equation = "Navier-Stokes"
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
   
   Stabilization Method = String Stabilized
   Flow Model = Stokes

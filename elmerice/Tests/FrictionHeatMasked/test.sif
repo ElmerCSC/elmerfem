@@ -42,7 +42,7 @@ Simulation
   ascii output = true
   Post File = "test_$Step$.vtu"
 
-  max output level = 5
+  Max Output Level = 5
 
   Initialize Dirichlet Conditions = Logical False
 !  Extruded Mesh Levels = 3
@@ -119,6 +119,9 @@ End
 
 Solver 3
   Equation = "Navier-Stokes"
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
   Stabilization Method = String Bubbles
   Flow Model = Stokes
   Linear System Solver = Direct         

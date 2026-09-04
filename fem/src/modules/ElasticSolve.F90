@@ -482,6 +482,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: ElemGaussRelOrder(8)
   LOGICAL :: ElemGaussRelStated(8)
   LOGICAL :: ElementalRelRule
+  ! The integration rule probe. Only the ASSEMBLY half is here: what the probe
+  ! measures is the assembled system of THIS problem -- mass, stiffness and
+  ! damping with the material resolved and only the terms actually present --
+  ! and that is not visible outside the assembly. The bookkeeping half, which is
+  ! generic, is IntegRuleProbe_t in SolverBasics.
+  TYPE(IntegRuleProbe_t), SAVE :: Probe
   LOGICAL :: PStab = .FALSE.
   REAL(KIND=dp) :: PStabCoeff
   INTEGER :: CoordinateSystem
@@ -1434,6 +1440,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   ElementalRelRule = ANY( ElemGaussRelStated )
 
+  ! The probe. Reporting only -- see IntegRuleProbeReport for why it may not
+  ! simply adopt what it finds.
+  CALL IntegRuleProbeStart( Probe, SolverParams )
+
   ! An explicit per family rule, if one is stated -- by a sif, or by _Init for
   ! the incompressible MINI element. Parsed ONCE here, and through the same
   ! parser GaussPointsAdapt uses, because that function is what CreateIpPerm
@@ -1828,6 +1838,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   CALL PostProcess()
 
+  CALL IntegRuleProbeReport( Probe, Caller, &
+      'a UMAT or neo-Hookean material owns its own integration and is not probed.' )
+
 
   DEALLOCATE( PrevSOL )
   IF (UseUmat) THEN
@@ -1862,6 +1875,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: ngp, nRelOrder
 
+    ! While the probe is walking the ladder it dictates the rule, so that what is
+    ! re-assembled differs from the real assembly in the quadrature and nothing
+    ! else.
+    IF( Probe % Override ) THEN
+      IntegStuff = IntegRuleProbeRule( Probe, Element )
+      RETURN
+    END IF
+
     ngp = 0
     IF( ElementalGaussRule ) ngp = ElementalGaussNp( Element, ElemGaussNp )
     IF( ngp > 0 ) THEN
@@ -1882,6 +1903,84 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION ElasticGaussPoints
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Re-assemble THIS element at each rule the probe asks for. The ladder, the
+!> comparison and the report are IntegRuleProbe_t's; what belongs here is the
+!> assembly, and the two things about this assembly that the probe must not
+!> disturb.
+!>
+!> MAXWELL IS PROBED AS AN ELASTIC MATERIAL, deliberately, and it is not a
+!> compromise. Two things forbid re-entering the Maxwell branch: it writes the
+!> "ve_stress" integration point history, which repeated calls would corrupt, and
+!> that history is allocated for ONE point count -- so the count check a few
+!> hundred lines below would fatal on the probe's first candidate, this being the
+!> same guard that exists to catch a rule disagreeing with its storage. Passing
+!> MaxwellHere as .FALSE. avoids both, and costs nothing: the relaxation enters
+!> as a scalar xPhi on the stiffness and leaves the integrand's polynomial
+!> structure alone, which is why a sweep run as a Maxwell material reproduced the
+!> elastic percentages to the digit. The exception is a NON-NEWTONIAN viscosity,
+!> where the coefficient varies within the element and the equivalence no longer
+!> holds; the report is then a lower bound.
+!>
+!> First nonlinear iteration only. The material at iteration 30 is a different
+!> material, and the answer wanted is a rule to state in a sif, which has to hold
+!> for the whole run.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProbeThisElement()
+!------------------------------------------------------------------------------
+    INTEGER :: nsys, nblk, nvals
+    REAL(KIND=dp), ALLOCATABLE :: Vals(:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+!------------------------------------------------------------------------------
+    ! UMAT and the neo-Hookean law own their own integration and carry their own
+    ! state, so re-entering them would advance variables that are not ours.
+    IF( UseUMAT .OR. NeoHookeanMaterial ) RETURN
+
+    nsys = ntot*STDOFs
+    IF( nsys <= 0 .OR. nsys > SIZE(LocalStiffMatrix,1) ) RETURN
+    nblk = nsys*nsys
+
+    ! What this element takes today, so the report reads as a comparison.
+    IP = ElasticGaussPoints( CurrentElement )
+    IF( .NOT. IntegRuleProbeBegin( Probe, CurrentElement, IP % n ) ) RETURN
+
+    nvals = nblk
+    IF( NeedMass ) nvals = 3*nblk
+    ALLOCATE( Vals(nvals) )
+
+    DO WHILE( IntegRuleProbeNext( Probe, CurrentElement ) )
+      CALL LocalMatrix( LocalMassMatrix, LocalDampMatrix, &
+          LocalStiffMatrix, LocalForce, LoadVector, InertialLoad, ElasticModulus, &
+          PoissonRatio,Density,Damping,AxialSymmetry,PlaneStress,HeatExpansionCoeff, &
+          LocalTemperature,CurrentElement,n,ntot,ElementNodes,LocalDisplacement, &
+          Isotropic, RotateModuli, TransformMatrix, LargeDeflection, &
+          NodalStressLoad, NodalStrainLoad, LinearIncompressible, &
+          .FALSE., MaxwellViscosity, PrevLocalDisplacement, GotGPA, NodalGPA, &
+          GeometricActive, StabilityAnalysis, QuasiStationary, &
+          GotPressureLoad, NodalPressureLoad, &
+          EvalYoungIP, EvalPoissonIP, EvalBetaIP, EvalLoadIP )
+
+      ! Stiffness FIRST, since its diagonal is the metric the candidates are
+      ! compared in, then mass and damping when the problem has them.
+      Vals = 0.0_dp
+      Vals(1:nblk) = RESHAPE( LocalStiffMatrix(1:nsys,1:nsys), [nblk] )
+      IF( NeedMass ) THEN
+        Vals(nblk+1:2*nblk) = RESHAPE( LocalMassMatrix(1:nsys,1:nsys), [nblk] )
+        IF( AnyDamping ) &
+            Vals(2*nblk+1:3*nblk) = RESHAPE( LocalDampMatrix(1:nsys,1:nsys), [nblk] )
+      END IF
+      CALL IntegRuleProbeValue( Probe, nsys, Vals )
+    END DO
+
+    CALL IntegRuleProbeEnd( Probe )
+    DEALLOCATE( Vals )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProbeThisElement
+!------------------------------------------------------------------------------
+
+
 
 
 !------------------------------------------------------------------------------
@@ -2310,7 +2409,11 @@ CONTAINS
           CALL DefaultUpdateMass( LocalMassMatrix )
           IF( AnyDamping ) CALL DefaultUpdateDamp( LocalDampMatrix )
         END IF
-        
+
+        ! After the global update, never before: the probe re-assembles this
+        ! element several times and leaves the local arrays holding whichever
+        ! rule it tried last.
+        IF( Probe % Active .AND. iter == 1 ) CALL ProbeThisElement()
 
      END DO
 

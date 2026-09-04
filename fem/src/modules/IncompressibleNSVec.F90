@@ -64,6 +64,22 @@ MODULE IncompressibleLocalForms
   END TYPE NSHandles_t
   TYPE(NSHandles_t), ALLOCATABLE :: NSHandles(:)
 
+  ! The exported Shearrate/Viscosity/Viscosity Weight fields are GLOBAL mesh
+  ! variables that the assembly accumulates into, so they must be zeroed exactly
+  ! once per solve -- not once per thread, which would let a late starting thread
+  ! wipe what the others had already summed. Handle resolution is per thread;
+  ! this is not. Set .FALSE. before the serial first element and raised by it, so
+  ! every thread in the parallel region afterwards only ever reads it.
+  LOGICAL :: ViscVarsZeroed = .FALSE.
+  ! The integration rule probe. Module scope and not one slot per thread on
+  ! purpose: the probe re-enters LocalBulkMatrix in a SERIAL sweep of its own
+  ! after the threaded assembly loop, so neither this state nor the re-entered
+  ! assembly needs locking. The bookkeeping half is IntegRuleProbe_t in
+  ! SolverBasics; what is here is the assembly, and the state the assembly must
+  ! not disturb while NSProbe % Override is set -- the glue to the global matrix,
+  ! the bubble coefficients bx, and the saved shearrate/viscosity fields.
+  TYPE(IntegRuleProbe_t), SAVE :: NSProbe
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -72,7 +88,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBulkMatrix(Element, n, nd, ntot, dim, &
        DivCurlForm, GradPVersion, SpecificLoad, StokesFlow, &
-       dt, LinearAssembly, nb, Newton, Transient, InitHandles, SchurSolver )
+       dt, LinearAssembly, nb, Newton, Transient, InitHandles, SchurSolver, &
+       PStab, PStabCoeff, PStabHmode )
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
@@ -81,8 +98,12 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
     LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, SpecificLoad, StokesFlow
     REAL(KIND=dp), INTENT(IN) :: dt   
-    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles
+    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient
+    LOGICAL, INTENT(INOUT) :: InitHandles
     TYPE(Solver_t), POINTER :: SchurSolver
+    LOGICAL, INTENT(IN) :: PStab
+    REAL(KIND=dp), INTENT(IN) :: PStabCoeff
+    INTEGER, INTENT(IN) :: PStabHmode
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -99,7 +120,7 @@ CONTAINS
         rhoVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
         PressureMass(:,:), ForcePart(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
-        VeloVec(:,:), PresVec(:), GradVec(:,:,:)
+        VeloVec(:,:), PresVec(:), GradVec(:,:,:), ConvVec(:,:), MassPart(:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
     REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
     ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
@@ -108,7 +129,11 @@ CONTAINS
         JAC(ntot*(dim+1),ntot*(dim+1) )
 
     INTEGER :: t, i, j, k, p, q, ngp, allocstat, elemdim
-    INTEGER :: DOFs, tid
+    INTEGER :: DOFs, tid, nProbe
+    REAL(KIND=dp) :: Kfam, hStab, VNorm, PeStab
+    ! Set by LCondensate when the candidate rule the probe is walking cannot
+    ! integrate the bubble block; see there.
+    LOGICAL :: ProbeReject
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
@@ -131,9 +156,22 @@ CONTAINS
 
     DOFs = dim + 1
 
+    ! The size of the block that reaches the global matrix, which is the only
+    ! thing the probe may judge a rule on: where there are bubbles they are
+    ! condensed out below, so their rows are assembled but never glued.
+    nProbe = ntot*DOFs
+    IF( nb > 0 ) nProbe = nd*DOFs
+    ProbeReject = .FALSE.
+
     ! Numerical integration:
     !-----------------------
-    IP = GaussPointsAdapt(Element)
+    ! While the probe is walking its ladder it dictates the rule, so that the
+    ! re-assembly differs from the real one in the quadrature and nothing else.
+    IF( NSProbe % Override ) THEN
+      IP = IntegRuleProbeRule( NSProbe, Element )
+    ELSE
+      IP = GaussPointsAdapt(Element)
+    END IF
     ngp = IP % n
 
     ElemDim = Element % Type % Dimension
@@ -144,7 +182,8 @@ CONTAINS
     ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
         rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), LoadAtIpVec(ngp,dim+1), &
         weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
-        PrevPressureVec(ngp), GradVec(ngp,dim,dim), STAT=allocstat)
+        PrevPressureVec(ngp), GradVec(ngp,dim,dim), ConvVec(ngp,ntot), &
+        MassPart(ntot,ntot), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
 
     ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), ForcePart(ntot))
@@ -195,6 +234,11 @@ CONTAINS
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
               muDerVec0, Newton,  InitHandles, DetJVec, ViscWork )        
+
+    ! This thread's handles are resolved now -- both the ones above and the
+    ! viscosity ones inside EffectiveViscosityVec, which is why the flag is
+    ! cleared here and not next to the ListInitElementKeyword calls.
+    InitHandles = .FALSE.
 
     ! Rho 
     rhovec(1:ngp) = rho
@@ -304,6 +348,315 @@ CONTAINS
       END DO
     END IF
 
+    !---------------------------------------------------------------------------
+    ! PRESSURE STABILISATION, the equal-order alternative to the bubble.
+    !
+    ! The pressure/pressure block is empty in every inf-sup stable pair above --
+    ! that is what a saddle point matrix looks like -- and here it is filled with
+    !
+    !   -tau * (grad q, grad p)
+    !
+    ! the Brezzi-Pitkaranta term, plus the load part of the momentum residual on
+    ! the right. The sign is negative because the constraint row assembled just
+    ! above is -(div u, q), so the system stays [A B^T; B -C] with C positive
+    ! semi-definite rather than turning the saddle point into something indefinite
+    ! in the wrong direction.
+    !
+    ! tau is built AT THE INTEGRATION POINTS, not once per element, because muVec
+    ! is a shear-rate dependent viscosity here: a non-Newtonian element can span a
+    ! decade in mu, and a single element value would over-stabilise the stiff end
+    ! of it and under-stabilise the soft end.
+    !
+    ! The load term is kept, which is where this departs from the same scheme in
+    ! ElasticSolve. There the load is a surface traction and dropping the volume
+    ! residual is the classical Brezzi-Pitkaranta simplification, consistent to
+    ! O(h^2). Here the load is typically gravity, and the whole pressure field is
+    ! the response to it -- grad p balances rho*g to leading order -- so dropping
+    ! it would leave the stabilisation fighting the hydrostatic gradient itself.
+    ! With it, the term vanishes identically on the exact hydrostatic solution.
+    !
+    ! What is deliberately NOT in the residual is -mu*div(grad u), which for the
+    ! equal-order linear basis this path forces is zero on simplices anyway, and
+    ! the convective and transient terms -- see the Stokes-only guard in the
+    ! solver. Adding those is what turns this into a full PSPG/SUPG scheme.
+    !---------------------------------------------------------------------------
+    IF ( PStab ) THEN
+      ! Per element family. The starting point is the same scheme in ElasticSolve,
+      ! whose incompressible limit IS Stokes with the shear modulus in place of
+      ! the viscosity, so the constants transfer in principle. Simplices need far
+      ! less than tensor elements of the same size, consistent with hK being a
+      ! diameter and so overstating a simplex.
+      !
+      ! MEASURED HERE, on the backward facing step of Step_stokes_vec, as the
+      ! value at which the stabilised pair reproduces the default MINI answer.
+      ! The optimum is a real minimum -- the error changes sign through it -- and
+      ! it is mesh independent, which is what says the h^2/mu scaling is right:
+      !
+      !   quad      500 / 2000 / 8000 elements, optimum at 0.63x the elastic
+      !             constant on all three; at 1x the error is -0.434 / -0.128 /
+      !             -0.033 %, so it also SHRINKS under refinement rather than
+      !             converging to something merely close
+      !   triangle  1062 / 4012 elements, optimum at 0.92x, i.e. the elastic
+      !             constant already
+      !
+      ! The quadrilateral has since been RE-CHECKED with "Mesh Levels", which
+      ! refines the one mesh uniformly instead of regenerating three, and it
+      ! holds: against the restated constant the optimum lands on 1.00 at every
+      ! level and the error there falls by about four per level,
+      !
+      !   Mesh Levels    1         2         3
+      !   error at 1x   -0.012 %  -0.002 %  -0.0006 %
+      !
+      ! which is second order convergence to the MINI answer. That check matters
+      ! because it is the one constant here that was actually CHANGED on measured
+      ! evidence, and because the same check demolished the glacier slab figure
+      ! below. The difference is that these three quadrilateral meshes refine
+      ! isotropically, so varying resolution by regenerating happened to vary the
+      ! dimension that mattered; the slab's did not.
+      !
+      ! So the quadrilateral is restated at 0.0417*0.63 and the triangle at
+      ! 0.0104*0.92. That the two families moved by different factors is the
+      ! point: the discrepancy is NOT a global difference between the elastic and
+      ! flow references that could be absorbed into the coefficient. It is the
+      ! problem sensitivity ElasticSolve's own note flags as untested, now
+      ! measured once -- tens of percent on a quadrilateral, nothing on a
+      ! triangle.
+      !
+      ! The hexahedron is measured too, on FlowResNoslip -- flow around a hole,
+      ! a native 3D brick mesh -- where the optimum is 1.1x, so the inherited
+      ! value stands as it is.
+      !
+      ! A glacier slab, Friction_WeertmanNewton3D, appears to want 4.6x instead --
+      ! but that is a RESOLUTION artefact, not a property of the problem, and the
+      ! way it was first measured is the trap. Refining that case by hand gave
+      ! 4.8, 4.2 and 4.9 at 10x10x3, 20x20x3 and 40x40x5, which reads as mesh
+      ! independent. It is not: those meshes refine the HORIZONTAL divisions while
+      ! the vertical stays at three levels and then five. The slab is thin and its
+      ! velocity gradient is vertical, so the vertical spacing is what limits it,
+      ! and that was very nearly held fixed across all three.
+      !
+      ! "Mesh Levels", which splits the same mesh uniformly, refines the direction
+      ! that matters and the crossing walks straight down:
+      !
+      !   Mesh Levels    1      2      3
+      !   optimum       4.2    2.0    1.6
+      !
+      ! heading for the same order as every other family. The error at coefficient
+      ! one falls with it, 0.32 -> 0.12 -> 0.086 %, so a refined glacier case needs
+      ! no special coefficient at all.
+      !
+      ! The lesson for anyone measuring one of these constants again: refine with
+      ! "Mesh Levels" rather than by regenerating meshes. Regenerating changes
+      ! element shape and resolution together, and a constant fitted that way can
+      ! look settled across three meshes while tracking whichever dimension was
+      ! not being refined.
+      !
+      ! Much of that factor is the LENGTH SCALE rather than the physics, and it is
+      ! worth knowing that hK is not one measure. ElementDiameter returns the
+      ! SHORTEST EDGE for every family in its default branch -- hexahedron,
+      ! tetrahedron, prism, pyramid -- an area based quantity for the triangle,
+      ! and a harmonic mean of two edges for the quadrilateral. So part of the
+      ! spread between the per-family constants above is the measure changing
+      ! under them, not the elements differing.
+      !
+      ! "Pressure Stabilization Element Size" exists because of what happens when
+      ! the measure is varied, at coefficient one:
+      !
+      !                    long/short   shortest    longest     volume
+      !   glacier slab        2.0        +0.323 %   +0.015 %   +0.147 %
+      !   flow past hole      2.95       +0.038 %   -0.828 %   -0.326 %
+      !
+      ! Each problem is best on a DIFFERENT measure, and the more anisotropic of
+      ! the two is the one happy with the shortest edge -- so this is not a
+      ! geometric correction waiting to be derived. Taking the longest edge on
+      ! the slab reproduces MINI outright, which is where its 4.6x went: long
+      ! over short is 2 there and tau goes as h^2. The same substitution on the
+      ! hole would predict 8.7x and the truth is 1.1x.
+      !
+      ! Hence a keyword and not a cleverer default. The default stays hK, which
+      ! is what every constant above was measured against.
+      !
+      ! THE TETRAHEDRON AND PYRAMID REMAIN UNMEASURED for this solver -- there is
+      ! no incompressible case of either to take a measurement from, exactly as
+      ! in ElasticSolve. Note also that extruding a 2D case is not a shortcut to
+      ! measuring anything: see the hK guard in the solver.
+      SELECT CASE( Element % TYPE % ElementCode / 100 )
+      CASE( 3 )
+        Kfam = 0.0096_dp
+      CASE( 4 )
+        Kfam = 0.0263_dp
+      CASE( 5 )
+        Kfam = 0.0029_dp
+      CASE( 6 )
+        Kfam = 0.005_dp
+      CASE( 7 )
+        Kfam = 0.0090_dp
+      CASE DEFAULT
+        Kfam = 0.0232_dp
+      END SELECT
+
+      ! The length scale. hK is the default and is what the constants above were
+      ! measured with, but it is not one measure -- see the note above -- so the
+      ! keyword lets a case pick a consistent one instead. The volume form is the
+      ! only genuinely family independent choice of the three.
+      SELECT CASE( PStabHmode )
+      CASE( 1 )
+        hStab = ElementDiameter( Element, Nodes, UseLongEdge = .TRUE. )
+      CASE( 2 )
+        hStab = SUM( DetJVec(1:ngp) ) ** ( 1.0_dp / elemdim )
+      CASE DEFAULT
+        hStab = Element % hK
+      END SELECT
+
+      ! An element size of zero makes tau vanish, and that does not fail -- it
+      ! quietly returns the unstabilised equal-order system, whose pressure has a
+      ! null space. The answer is then wherever round-off points, and it does not
+      ! move when the coefficient is changed, which is the signature to know it
+      ! by. So it is checked here, against the value actually used, rather than
+      ! once at start-up against element one.
+      !
+      ! That distinction is the whole point. MeshStabParams fills hK when a mesh
+      ! is loaded, but meshes get BUILT later too, and the low level builders do
+      ! not call it: CreateExtrudedMesh does not, nor do RemeshMMG3D,
+      ! SequentialRemeshParMMG or ParallelRemesh. Their callers all do today --
+      ! the calving and adaptive paths call MeshStabParams on the way out -- so
+      ! nothing is broken, but a mesh replaced MID RUN by adaptation would sail
+      ! past a start-up test, and a new caller that forgot would too. It does not
+      ! follow that every extruded or remeshed case is affected either: anything
+      ! that later moves the mesh repairs hK on the way past, DisplaceMesh
+      ! recomputing it per element, which is why FixTangentVelo never sees this.
+      IF( hStab <= 0.0_dp ) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix', &
+          'Stabilization element size is zero, so the stabilisation would '// &
+          'silently vanish. This mesh has not been through MeshStabParams -- a '// &
+          'freshly extruded or remeshed one is how that happens')
+
+      ! tau. The diffusive expression Kfam*h^2/mu is what the constants were
+      ! measured against and is exact for Stokes. With advection it becomes the
+      ! interpolating form NavierStokes uses, scaled so that the weak advection
+      ! limit returns that same expression rather than merely resembling it --
+      ! the identical construction as in ElasticSolve, so a case moving between
+      ! the two solvers sees one scheme.
+      !
+      ! Per integration point, since both |u| and mu vary within an element.
+      IF( StokesFlow ) THEN
+        tauVec(1:ngp) = PStabCoeff * Kfam * hStab**2 / muVec(1:ngp)
+      ELSE
+        DO t = 1, ngp
+          VNorm = SQRT( SUM( VeloPresVec(t,1:dim)**2 ) )
+          IF( rhoVec(t) * VNorm * hStab > 0.0_dp ) THEN
+            PeStab = MIN( 1.0_dp, 2.0_dp * Kfam * rhoVec(t) * VNorm * hStab / muVec(t) )
+            tauVec(t) = hStab * PeStab / ( 2.0_dp * rhoVec(t) * VNorm )
+          ELSE
+            tauVec(t) = Kfam * hStab**2 / muVec(t)
+          END IF
+        END DO
+        tauVec(1:ngp) = PStabCoeff * tauVec(1:ngp)
+      END IF
+
+      ! The convective operator applied to each basis function, rho*(u.grad)phi_q.
+      ! It is both the convective part of the residual SU and, tested against
+      ! itself, the SUPG weight SW -- so it is built once and used four ways.
+      ConvVec = 0.0_dp
+      IF( .NOT. StokesFlow ) THEN
+        DO k = 1, dim
+          DO q = 1, ntot
+            ConvVec(1:ngp,q) = ConvVec(1:ngp,q) + &
+                rhoVec(1:ngp) * VeloPresVec(1:ngp,k) * dBasisdxVec(1:ngp,q,k)
+          END DO
+        END DO
+      END IF
+
+      ! In LinearForms_UdotV the FIRST basis argument indexes the row (the test
+      ! function) and the second the column, which matters for every term below
+      ! but not for the symmetric one this started as.
+      !
+      ! -tau * (grad q, grad p) into the pressure/pressure block
+      weight_a(1:ngp) = -tauVec(1:ngp) * detJVec(1:ngp)
+      DO i = 1, dim
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            dBasisdxVec(:,:,i), dBasisdxVec(:,:,i), weight_a, StiffOrd(:,:,dofs,dofs))
+      END DO
+
+      IF( .NOT. StokesFlow ) THEN
+        ! The rest of the residual, and the SUPG weight. Writing R for
+        ! rho*(u.grad)u + grad p - f, the scheme is
+        !
+        !   momentum_i  +=  tau * ( rho*(u.grad)v_i , R_i )      SUPG
+        !   constraint  += -tau * ( grad q          , R   )      PSPG
+        !
+        ! and the four matrix blocks below are those two weights against the two
+        ! operators in R. The load half of each goes in with the other forces.
+        !
+        ! The viscous part of R, -div(mu grad u), is NOT included. On the linear
+        ! equal-order basis this path forces it vanishes on simplices, and the
+        ! vectorized ElementInfoVec returns no second derivatives to build it from
+        ! on the others -- which is the classical simplification, consistent to
+        ! the order of the discretisation, not an oversight.
+
+        ! PSPG against convection: -tau * (grad q, rho*(u.grad)u)
+        DO j = 1, dim
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              dBasisdxVec(:,:,j), ConvVec, weight_a, StiffOrd(:,:,dofs,j))
+        END DO
+
+        weight_b(1:ngp) = tauVec(1:ngp) * detJVec(1:ngp)
+
+        ! SUPG against convection, diagonal in the velocity components
+        DO i = 1, dim
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              ConvVec, ConvVec, weight_b, StiffOrd(:,:,i,i))
+        END DO
+
+        ! SUPG against the pressure gradient
+        DO i = 1, dim
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              ConvVec, dBasisdxVec(:,:,i), weight_b, StiffOrd(:,:,i,dofs))
+        END DO
+
+        ! THE TRANSIENT TERM. rho*du/dt is part of the momentum residual whenever
+        ! the assembly carries a time derivative, so it must be part of what the
+        ! two weights are applied to, or the scheme stabilises an operator the
+        ! solver is not solving.
+        !
+        ! It goes into MASS rather than STIFF, and is then integrated by the same
+        ! Default1stOrderTime call as the Galerkin mass -- the derivative of the
+        ! unknown is the solver's to form, not this routine's. That is how
+        ! NavierStokes does it too. MASS carries no pressure row until now; the
+        ! PSPG half gives it one, which is correct: the constraint equation
+        ! genuinely acquires a time dependence through -tau*(grad q, rho*du/dt).
+        IF( Transient ) THEN
+          MassPart = 0.0_dp
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              ConvVec, BasisVec, weight_b, MassPart, rhoVec)
+          DO i = 1, dim
+            MASS(i::dofs,i::dofs) = MASS(i::dofs,i::dofs) + MassPart(1:ntot,1:ntot)
+          END DO
+
+          DO i = 1, dim
+            MassPart = 0.0_dp
+            CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                dBasisdxVec(:,:,i), BasisVec, weight_a, MassPart, rhoVec)
+            MASS(dofs::dofs,i::dofs) = MASS(dofs::dofs,i::dofs) + MassPart(1:ntot,1:ntot)
+          END DO
+        END IF
+
+        ! The Newton term of the residual, rho*(v.grad)u linearised, so that the
+        ! Jacobian matches the operator the stabilisation actually applies.
+        IF( Newton ) THEN
+          DO i = 1, dim
+            DO j = 1, dim
+              CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                  ConvVec, BasisVec, weight_b, StiffOrd(:,:,i,j), &
+                  rhoVec*GradVec(:,i,j))
+              CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                  dBasisdxVec(:,:,i), BasisVec, weight_a, StiffOrd(:,:,dofs,j), &
+                  rhoVec*GradVec(:,i,j))
+            END DO
+          END DO
+        END IF
+      END IF
+    END IF
+
     ! Masses (use symmetry)
     ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
     IF ( .NOT. StokesFlow ) THEN
@@ -341,6 +694,35 @@ CONTAINS
       CALL LinearForms_UdotF(ngp, ntot, basisVec, detJVec, LoadAtIpVec(:,i), ForcePart)
       FORCE(i::dofs) = ForcePart(1:ntot)
     END DO
+
+    ! The load half of the stabilised constraint equation, -tau*(grad q, f). The
+    ! matrix half sits in the pressure/pressure block far above; this is the same
+    ! term with grad p replaced by the load it balances, so the two cancel on a
+    ! hydrostatic field and the stabilisation costs nothing there.
+    !
+    ! weight_a is rebuilt rather than carried down from that block: the convection
+    ! assembly between here and there overwrites it. tauVec is untouched.
+    IF ( PStab ) THEN
+      weight_a(1:ngp) = -tauVec(1:ngp) * detJVec(1:ngp)
+      ForcePart = 0._dp
+      DO i = 1,dim
+        CALL LinearForms_UdotF(ngp, ntot, dBasisdxVec(:,:,i), weight_a, &
+            LoadAtIpVec(:,i), ForcePart)
+      END DO
+      FORCE(dofs::dofs) = FORCE(dofs::dofs) + ForcePart(1:ntot)
+
+      ! The SUPG half of the same load, this one per velocity component and with
+      ! the opposite sign, the momentum rows carrying the load on the right.
+      IF( .NOT. StokesFlow ) THEN
+        weight_b(1:ngp) = tauVec(1:ngp) * detJVec(1:ngp)
+        DO i = 1,dim
+          ForcePart = 0._dp
+          CALL LinearForms_UdotF(ngp, ntot, ConvVec, weight_b, &
+              LoadAtIpVec(:,i), ForcePart)
+          FORCE(i::dofs) = FORCE(i::dofs) + ForcePart(1:ntot)
+        END DO
+      END IF
+    END IF
 
     DO i = 1, DOFS
       DO j = 1, DOFS
@@ -404,7 +786,11 @@ CONTAINS
         STIFF(i,i) = 1._dp
       END DO
 
-      IF ( Transient ) THEN
+      ! Not while probing: with "Use Global Mass Matrix" this routine writes
+      ! straight into the global mass matrix, and the probe must leave the global
+      ! system untouched. The mass matrix goes to the probe as a block of its
+      ! own instead, so the term is still measured.
+      IF ( Transient .AND. .NOT. NSProbe % Override ) THEN
         CALL Default1stOrderTime( MASS, STIFF, FORCE )
       END IF
       IF (nb > 0) THEN
@@ -415,6 +801,24 @@ CONTAINS
           CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
         END IF
       END IF
+    END IF
+
+    ! Hand the assembled local system to the probe instead of the global matrix,
+    ! and leave before the Schur block, which is a global write too. Stiffness
+    ! first, since its diagonal is the metric the candidates are compared in --
+    ! and this is a saddle point system, so some of that diagonal is zero and the
+    ! scaling has to be guarded; then mass, then the force vector.
+    !
+    ! POST-condensation, so that what is compared is what the solve is handed. A
+    ! candidate whose bubble block could not be inverted simply reports nothing
+    ! and drops out of the comparison.
+    IF( NSProbe % Override ) THEN
+      IF( .NOT. ProbeReject ) &
+          CALL IntegRuleProbeValue( NSProbe, nProbe, &
+          [ RESHAPE( STIFF(1:nProbe,1:nProbe), [nProbe*nProbe] ), &
+            RESHAPE( MASS(1:nProbe,1:nProbe), [nProbe*nProbe] ), &
+            FORCE(1:nProbe) ] )
+      RETURN
     END IF
 
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
@@ -554,7 +958,7 @@ CONTAINS
           ELSE
             CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
-          NSHandles(tid) % ShearVar % Values = 0.0_dp
+          IF(.NOT. ViscVarsZeroed) NSHandles(tid) % ShearVar % Values = 0.0_dp
         END IF
 
         NSHandles(tid) % ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
@@ -570,7 +974,7 @@ CONTAINS
           ELSE
             CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
-          NSHandles(tid) % ViscVar % Values = 0.0_dp
+          IF(.NOT. ViscVarsZeroed) NSHandles(tid) % ViscVar % Values = 0.0_dp
         END IF
 
         SaveWeight = .FALSE.
@@ -581,7 +985,7 @@ CONTAINS
               CALL Fatal(Caller,'Invalid field type for "Viscosity Weight"!')
             END IF
             SaveWeight = .TRUE.
-            NSHandles(tid) % WeightVar % Values = 0.0_dp
+            IF(.NOT. ViscVarsZeroed) NSHandles(tid) % WeightVar % Values = 0.0_dp
           END IF
         END IF        
           
@@ -631,7 +1035,12 @@ CONTAINS
       END DO
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
-      IF(SaveShear) THEN
+      ! Never while probing. On nodes and on elements these accumulate, so a
+      ! re-assembly would add a second contribution; on gauss points the storage
+      ! IS the rule -- CreateIpPerm sized the slices from the rule in force --
+      ! and the count check below would fatal on the probe's first candidate.
+      ! That guard is doing its job; the probe simply must not reach it.
+      IF(SaveShear .AND. .NOT. NSProbe % Override ) THEN
         IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_nodes ) THEN
           DO i=1,n
             NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(Element % NodeIndexes(i))) = &
@@ -806,7 +1215,7 @@ CONTAINS
       END IF
       
       ! If requested, save viscosity field (on nodes, ip points or elements). 
-      IF(SaveVisc) THEN
+      IF(SaveVisc .AND. .NOT. NSProbe % Override ) THEN
         IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_nodes ) THEN
           DO i=1,n
             NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(Element % NodeIndexes(i))) = &
@@ -829,7 +1238,7 @@ CONTAINS
       END IF
 
       ! If requested, save normalization weight associated to viscosity (and shearrate).
-      IF(SaveWeight) THEN
+      IF(SaveWeight .AND. .NOT. NSProbe % Override ) THEN
         DO i=1,n
           NSHandles(tid) % WeightVar % Values(NSHandles(tid) % WeightVar % Perm(Element % NodeIndexes(i))) = &
               NSHandles(tid) % WeightVar % Values(NSHandles(tid) % WeightVar % Perm(Element % NodeIndexes(i))) + &
@@ -933,14 +1342,37 @@ CONTAINS
       Klb = K(Cdofs,Bdofs)
       Fb  = F(Bdofs)
 
+      ! The coarse end of the probe's ladder is a rule that cannot integrate the
+      ! bubble block: on a quad with b:4 the four point rule leaves Kbb singular,
+      ! and InvertMatrix ends the run rather than returning an answer. Such a
+      ! rule is not a usable rule at all, so the candidate is DISCARDED -- not
+      ! compared, and not compared uncondensed either, since the bubble rows are
+      ! never glued and judging a rule on them only over-states it.
+      IF( NSProbe % Override ) THEN
+        BLOCK
+          REAL(KIND=dp) :: KbbLU(nb*dim,nb*dim)
+          INTEGER :: ipiv(nb*dim), LUinfo
+          KbbLU = Kbb
+          CALL DGETRF( nb*dim, nb*dim, KbbLU, nb*dim, ipiv, LUinfo )
+          IF( LUinfo /= 0 ) THEN
+            ProbeReject = .TRUE.
+            RETURN
+          END IF
+        END BLOCK
+      END IF
+
       CALL InvertMatrix( Kbb,Nb*dim )
 
       F(cdofs) = F(cdofs) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
       K(cdofs,cdofs) = &
           K(cdofs,cdofs) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
 
-      ! The bubble part evaluated for the current solution candidate: 
-      IF (ComputeBubblePart) bx((Element_id-1)*dim*nb+1:Element_id*dim*nb) = &
+      ! The bubble part evaluated for the current solution candidate. Not while
+      ! probing: bx is state kept per element -- the same class of thing as an
+      ! integration point history -- and a re-assembly at another rule would
+      ! leave the wrong one behind for the next timestep to read.
+      IF (ComputeBubblePart .AND. .NOT. NSProbe % Override) &
+          bx((Element_id-1)*dim*nb+1:Element_id*dim*nb) = &
           MATMUL(Kbb,Fb-MATMUL(Kbl,xl))
       !------------------------------------------------------------------------------
     END SUBROUTINE LCondensate
@@ -1448,15 +1880,71 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------  
   LOGICAL :: Found, Serendipity
 
+  ! Equal-order stabilisation asks for the opposite element to everything below:
+  ! a plain "p:1" with no bubble at all, the velocity and the pressure carried on
+  ! the same nodal basis and the pressure mode held by the Brezzi-Pitkaranta term
+  ! in LocalBulkMatrix rather than by an inf-sup stable pair.
+  !
+  ! It has to be settled HERE and not in _Init. Def_Dofs is filled from the
+  ! "Element" string while the sif is read, before the mesh is loaded, and _Init0
+  ! is the only entry point that runs earlier (ModelDescription: the _Init0 sweep
+  ! precedes PrepareMesh). Adding the bubble string and removing it later would be
+  ! too late -- the bubble dofs are already counted into the mesh by then, which
+  ! is visible as EnlargeCoordinates growing the node array by nb per element.
+  !
+  ! ListAddNewString throughout, so an explicit sif "Element" still wins over
+  ! either branch. What that can produce -- stabilisation on top of a bubble -- is
+  ! refused in the solver, where the element is known.
+  !
+  ! "n:1" and not "p:1". Both give one dof per node and no bubble, but "p:1"
+  ! makes it a p-element, and then every basis evaluation goes through the
+  ! hierarchic path and GaussPointsAdapt through the p-element rule -- paid on
+  ! every element, every iteration, for a degree-one basis that the nodal path
+  ! already describes exactly. Reaching "n:1" needs the PDefs guard on the
+  ! GaussPointsAdapt call in the solver; without it this segfaults.
+  IF( GetLogical( GetSolverParams(), 'Pressure Stabilization', Found ) ) THEN
+    CALL ListAddNewString(GetSolverParams(),'Element','n:1')
+    RETURN
+  END IF
+
   Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
   IF(.NOT.Found) Serendipity = .TRUE.
   
   IF(Serendipity) THEN
     CALL ListAddNewString(GetSolverParams(),'Element', &
       'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+    ! The pyramid entry here CANNOT BE BUILT, and stays anyway. ElementInfoVec
+    ! refuses a p-pyramid under the serendipity scheme outright -- "p-Pyramid not
+    ! available for serendipity scheme, please use full polynomial scheme
+    ! instead" -- so a MINI element is unavailable on any mesh holding a pyramid
+    ! unless the sif also sets "Serendipity P Elements = False". A mixed mesh
+    ! with a hex-to-tet transition layer meets this.
+    !
+    ! Removing the entry would not make a serendipity pyramid possible, since
+    ! nothing can. It would only leave that pyramid with no bubble at all, which
+    ! trades a Fatal naming the remedy for a bubbleless equal-order element with
+    ! no stabilisation behind it -- a silent singularity instead of an error. So
+    ! it stays, and 4 is on the pyramid's ladder (1, 4, 10) in any case:
+    ! getBubbleDOFs has no serendipity branch for that family, so this entry is
+    ! exactly what makes the full basis string below work.
+    !
+    ! "Pressure Stabilization" avoids the whole question: "n:1" is not a
+    ! p-element, so the restriction does not reach it. See StokesUnitElements.
   ELSE
+    ! The prism is b:9, not b:4 as the serendipity string above uses, because the
+    ! two bases have different bubble ladders and 4 is not on this one. The full
+    ! basis prism runs (p-1)^2*(p-2)/2 -- 0, 2, 9, 24 -- so asking for 4 sends
+    ! getEffectiveBubbleP to p=4, which yields NINE bubble functions while nb
+    ! stays 4. The basis routine then writes nine into space sized for four and
+    ! corrupts the heap: "Serendipity P Elements = False" on a prism mesh
+    ! segfaulted, and had done since this string was written. 9 is what p=4
+    ! actually delivers, so it is the count that string was reaching for.
+    !
+    ! The other five entries were checked against their own ladders and are all
+    ! on them: tri 1, tetra 1, quad 4 of (1,4,9), brick 8 of (1,8,27), pyramid 4
+    ! of (1,4,10).
     CALL ListAddNewString(GetSolverParams(),'Element', &
-      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:9 -pyramid b:4')
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
@@ -1525,6 +2013,42 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
   END IF
 
+  ! The integration rule for the MINI element, per family, measured as the
+  ! smallest rule that leaves the answer BIT IDENTICAL to the element's own
+  ! default. ElasticSolve does the same for its incompressible MINI, and the two
+  ! agree exactly where they overlap -- 24 on the tetrahedron, 85 on the prism --
+  ! which is a reassuring cross-check of both, the elements being the same even
+  ! though the integrands are not.
+  !
+  ! They do NOT agree everywhere, and copying that solver's string verbatim would
+  ! have been a bug. It also carries "-tri 7", measured bit-identical there; here
+  ! seven points on a triangle makes the linear system DIVERGE. The smallest exact
+  ! triangle rule for this integrand is 11 against a default of 12, so it stays at
+  ! 12. The tensor families get nothing either, both already sitting on the
+  ! smallest exact rule they have: the quadrilateral defaults to 16 and 9 is close
+  ! but not exact, the hexahedron defaults to 64 and 27 likewise. That is the same
+  ! conclusion ElasticSolve reaches for those two, by the same argument.
+  !
+  ! So only the two that pay:
+  !
+  !   tetrahedron  150 -> 24
+  !   prism        125 -> 85
+  !
+  ! Gated on a bubble appearing in the element definition, which is what _Init0
+  ! supplies unless "Pressure Stabilization" is on. The equal-order element wants
+  ! none of this -- it integrates a linear basis over four points already, and
+  ! forcing 24 there would be twenty-four times the work for nothing.
+  !
+  ! ListAddNew, so a sif stating its own rule still wins. GaussPointsAdapt reads
+  ! the keyword itself, so nothing in the assembly changes.
+  str = ListGetString( Params,'Element', Found )
+  IF( Found ) THEN
+    IF( INDEX( str, 'b:' ) > 0 ) THEN
+      CALL ListAddNewString( Params,'Element Integration Points', &
+          '-tetra 24 -prism 85' )
+    END IF
+  END IF
+
   ! Backward compatibility with old FlowSolver
   str = GetString( Params, 'Flow Model', Found )
   IF( Found ) THEN
@@ -1585,7 +2109,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
-  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles, InitHandles
+  LOGICAL :: PStab
+  REAL(KIND=dp) :: PStabCoeff
+  INTEGER :: PStabHmode
+  CHARACTER(LEN=MAX_NAME_LEN) :: PStabStr
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
@@ -1639,12 +2167,21 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   Params => GetSolverParams() 
 
+  ! The integration rule probe. Reporting only -- see IntegRuleProbeReport for
+  ! why it may not simply adopt what it finds.
+  CALL IntegRuleProbeStart( NSProbe, Params )
+
   !-----------------------------------------------------------------------------
   ! Output the number of integration points as information.
   ! This in not fully informative if several element types are present.
   !-----------------------------------------------------------------------------
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
-  IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+  ! PReferenceElement only where there is a p-element to take the reference from.
+  ! Asking for it unconditionally reads Element % PDefs, which a plain nodal
+  ! element does not have, and segfaults in GaussPoints. It never showed because
+  ! _Init0 always handed this solver a "p:1 ..." definition; an explicit
+  ! "Element = n:1" in a sif is enough to reach it.
+  IP = GaussPointsAdapt( Element, PReferenceElement = isActivePElement(Element) )
   CALL Info('IncompressibleNSSolver', &
       'Number of 1st integration points: '//I2S(IP % n), Level=5)
   
@@ -1656,6 +2193,79 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
   SpecificLoad = GetLogical(Params,'Specific Load',Found)
+
+  ! This solver assembles the Cartesian equations and only those. There is no
+  ! metric anywhere in LocalBulkMatrix, no r weighting of the integration and no
+  ! hoop term, so an axisymmetric or cylindrical case would not be approximated
+  ! here, it would be answered with the equations of a different problem. FlowSolve
+  ! handles those by dispatching to NavierStokesCylindricalCompose instead, a
+  ! separate assembly with the metric in it, and this solver has no counterpart.
+  !
+  ! Nothing about the sif makes that visible -- the run simply produces a number --
+  ! so it is refused here rather than discovered later.
+  IF( CurrentCoordinateSystem() /= Cartesian ) CALL Fatal(Caller, &
+      'This solver assembles the Cartesian equations only. Axisymmetric and '// &
+      'cylindrical coordinates need the metric terms, which are not here: use '// &
+      'FlowSolve, which dispatches to NavierStokesCylindrical for them')
+
+  !-----------------------------------------------------------------------------
+  ! Equal-order velocity/pressure held by a stabilised pressure block instead of
+  ! an inf-sup stable pair. Opt-in per solver and never selected by default: it
+  ! is a different discretisation, not an optimisation, and the element it needs
+  ! was already chosen back in _Init0 on the strength of this same keyword.
+  !-----------------------------------------------------------------------------
+  PStab = GetLogical(Params, 'Pressure Stabilization', Found)
+  PStabCoeff = GetConstReal(Params, 'Pressure Stabilization Coefficient', Found)
+  IF (.NOT. Found) PStabCoeff = 1.0_dp
+
+  ! Which element size enters tau ~ h^2/mu. The default reproduces the constants
+  ! as they were measured; the other two exist because hK is not one quantity
+  ! across families, so a case spanning several of them -- or one whose elements
+  ! are far from cubic -- may want a measure it can reason about.
+  PStabHmode = 0
+  PStabStr = ListGetString(Params, 'Pressure Stabilization Element Size', Found)
+  IF (Found) THEN
+    SELECT CASE( PStabStr )
+    CASE( 'shortest edge' )
+      PStabHmode = 0
+    CASE( 'longest edge' )
+      PStabHmode = 1
+    CASE( 'volume' )
+      PStabHmode = 2
+    CASE DEFAULT
+      CALL Fatal(Caller, 'Unknown "Pressure Stabilization Element Size": '// &
+          TRIM(PStabStr)//'. Use "shortest edge", "longest edge" or "volume"')
+    END SELECT
+    IF (PStab) CALL Info(Caller, 'Stabilization element size: '//TRIM(PStabStr), Level=5)
+  END IF
+
+  IF (PStab) THEN
+    CALL Info(Caller, 'Using pressure stabilisation instead of bubbles', Level=5)
+    ! Both together would stabilise an already stable pair, which is not a
+    ! sharper answer but a softer one -- the bubble supplies the inf-sup
+    ! condition and the tau then only adds a consistent but unnecessary
+    ! perturbation. It can only arise from a sif overriding the _Init0 element.
+    IF ( GetElementNOFBDOFs( Mesh % Elements( Solver % ActiveElements(1) ) ) > 0 ) &
+        CALL Fatal(Caller, '"Pressure Stabilization" is the equal-order alternative '// &
+        'to the bubble: remove the "b:" from "Element", or the keyword')
+    ! Stage-limited on purpose. The residual assembled in LocalBulkMatrix carries
+    ! the pressure gradient and the load, not the convective or transient terms,
+    ! so it is a consistent scheme for Stokes and an inconsistent one for
+    ! Navier-Stokes -- and it stabilises the pressure only, never the advection.
+    ! All three regimes this solver has are now covered, and it is worth naming
+    ! them because one flag separates them. A single IF(.NOT. StokesFlow) guard in
+    ! LocalBulkMatrix covers the mass matrix and the convection block together:
+    !
+    !   Stokes Flow, steady or transient   no convection, no du/dt
+    !   not Stokes, steady                 convection, no du/dt
+    !   not Stokes, transient              convection and du/dt
+    !
+    ! The stabilised residual holds rho*(u.grad)u + grad p - f in every case, and
+    ! rho*du/dt as well in the third, that last part entering through MASS so the
+    ! solver's own time integration forms the derivative. Convection was never the
+    ! difficulty -- SUPG and PSPG carry it -- and the time derivative is no longer
+    ! one either, so nothing here is refused on these grounds any more.
+  END IF
   
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
@@ -1710,6 +2320,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     
     Newton = GetNewtonActive( Solver )
 
+    ! Zeroing happens in this serial pass and nowhere else; see ViscVarsZeroed.
+    ViscVarsZeroed = .FALSE.
+    InitHandles = .TRUE.
     DO Element_id=1,1
       Element => GetActiveElement(Element_id)
       n  = GetElementNOFNodes(Element)
@@ -1723,21 +2336,36 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .TRUE., &
-          SchurSolver )
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, InitHandles, &
+          SchurSolver, PStab, PStabCoeff, PStabHmode )
     END DO
 
-    ! The serial call above (element 1) resolved NSHandles(1) — the material/BF
-    ! keyword lookups and the ShearVar/ViscVar/WeightVar zeroing. Broadcast that
-    ! resolved state to every other thread's slot before the parallel bulk loop,
-    ! since each thread there calls LocalBulkMatrix with InitHandles=.FALSE. and
-    ! only ever touches its own NSHandles(tid).
-    IF (nthr > 1) NSHandles(2:nthr) = NSHandles(1)
+    ViscVarsZeroed = .TRUE.
+
+    ! EACH THREAD RESOLVES ITS OWN HANDLES. This used to broadcast the serially
+    ! resolved NSHandles(1) into every other slot, and that is a shallow copy of a
+    ! derived type whose components are POINTERS -- ValuesVec, Values, ParValues,
+    ! ParUsed, RTensor, and the Element/Nodes/Indexes "same element as last time"
+    ! caches. After the copy every thread's handle addressed ONE set of buffers.
+    !
+    ! ListGetElementRealVec grows its buffer by DEALLOCATE/ALLOCATE when an
+    ! element wants more integration points than the last, so on a mesh whose
+    ! elements differ in point count one thread frees the array the others are
+    ! still reading, and the run aborts in malloc. On a single family mesh the
+    ! grow branch fires once and the aliased writes all carry the same values, so
+    ! it stayed invisible: of 300 test meshes here, 283 are single family.
+    !
+    ! HeatSolveVec has had the right shape all along -- a per thread slot plus a
+    ! PRIVATE InitHandles set inside the parallel region -- and this now matches
+    ! it. The cost is one keyword resolution per thread instead of one per solve,
+    ! which is nothing beside an assembly.
+    InitHandles = .TRUE.
 
     !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
-    !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver ) &
-    !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
+    !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver, &
+    !$OMP                 PStab, PStabCoeff, PStabHmode ) &
+    !$OMP PRIVATE(Element, Element_id, n, nd, nb) FIRSTPRIVATE(InitHandles) DEFAULT(None)
     !$OMP DO    
     DO Element_id=2,Active
       Element => GetActiveElement(Element_id)
@@ -1748,12 +2376,36 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE.,&
-          SchurSolver )
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, InitHandles,&
+          SchurSolver, PStab, PStabCoeff, PStabHmode )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
-    
+
+    ! The probe, in a serial sweep of its own once the threaded assembly has
+    ! finished. Late and serial deliberately: it re-enters LocalBulkMatrix, so
+    ! from inside the parallel loop the probe's bookkeeping would need locking
+    ! and the sample would be whatever elements a thread happened to be handed.
+    !
+    ! First nonlinear iteration only. The effective viscosity at iteration 30 is
+    ! a different material, and the answer wanted is a rule to state in a sif,
+    ! which has to hold for the whole run.
+    IF( NSProbe % Active .AND. iter == 1 ) THEN
+      DO Element_id=1,Active
+        Element => GetActiveElement(Element_id)
+        n  = GetElementNOFNodes(Element)
+        ! Update=.TRUE. and in this order, exactly as the assembly loop above
+        ! does it: GetElementNOFDOFs reads the bubble count back off the mesh
+        ! element, and only the updating call puts it there. Ask for the counts
+        ! any other way and the probe assembles a system of a different SHAPE
+        ! from the real one -- the bubble block then lands on rows that were
+        ! never filled, and every candidate rule is rejected as singular.
+        nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+        nd = GetElementNOFDOFs(Element)
+        CALL ProbeThisElement()
+      END DO
+    END IF
+
     CALL DefaultFinishBulkAssembly()
     
     Active = GetNOFBoundaryElements()
@@ -1821,10 +2473,53 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     END DO
   END BLOCK
 
+  CALL IntegRuleProbeReport( NSProbe, Caller )
   
   CALL DefaultFinish()
   
   CALL Info( Caller,'All done',Level=10)
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> Re-assemble THIS element at each rule the probe asks for. The ladder, the
+!> comparison and the report are IntegRuleProbe_t's; what belongs here is the
+!> assembly.
+!>
+!> A NON-NEWTONIAN viscosity is probed as it stands, and the answer is then a
+!> LOWER bound: the effective viscosity varies within the element, so the
+!> integrand is not the polynomial the quadrature is exact for and the ladder is
+!> asymptotic rather than convergent. The report says which families never
+!> settled and by how much, which is the honest form of that answer.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProbeThisElement()
+    ! Never .TRUE.: the handles were resolved by the assembly this probe runs
+    ! after, and re-resolving them here would be resolution inside a sweep whose
+    ! whole purpose is to leave the assembly's state alone. A variable and not a
+    ! literal because LocalBulkMatrix clears it on the way out.
+    LOGICAL :: ProbeInitHandles
+!------------------------------------------------------------------------------
+    ! What this element is assembled at today, so the report reads as a
+    ! comparison. GaussPointsAdapt and not the probe's own rule: this is the
+    ! keyword path the real assembly takes.
+    IP = GaussPointsAdapt( Element )
+    IF( .NOT. IntegRuleProbeBegin( NSProbe, Element, IP % n ) ) RETURN
+
+    DO WHILE( IntegRuleProbeNext( NSProbe, Element ) )
+      ProbeInitHandles = .FALSE.
+      ! The stabilisation arguments are passed exactly as the assembly loop
+      ! passes them: the rule being sought has to be the rule for the integrand
+      ! the solver actually integrates, stabilisation included.
+      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim, DivCurlForm, GradPVersion, &
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, &
+          ProbeInitHandles, SchurSolver, PStab, PStabCoeff, PStabHmode )
+    END DO
+
+    CALL IntegRuleProbeEnd( NSProbe )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProbeThisElement
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver
 !------------------------------------------------------------------------------

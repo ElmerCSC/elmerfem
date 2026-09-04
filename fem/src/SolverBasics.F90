@@ -72,6 +72,44 @@ MODULE SolverBasics
    ! then import its own name (see module IpFieldInterface).
    PRIVATE :: Ip2DgFieldInElement
 
+!------------------------------------------------------------------------------
+!> The bookkeeping half of an integration rule probe, shared by the solvers that
+!> can re-run their own bulk assembly. The solver supplies the assembly and the
+!> place its integration rule is chosen; everything else -- which rules to try,
+!> in what metric to compare them, and what to print -- lives here.
+!>
+!> A probe holds per element FAMILY state, indexed by ElementCode/100, because
+!> the whole integration rule table is per family. Within a family it keeps the
+!> LARGEST requirement over the elements it sampled; see IntegRuleProbeReport.
+!------------------------------------------------------------------------------
+   TYPE IntegRuleProbe_t
+     LOGICAL :: Active = .FALSE.
+     !> Set only while the ladder is being walked. The solver's integration rule
+     !> hook MUST consult this and defer to IntegRuleProbeRule when it is set,
+     !> so that the re-assembly differs from the real one in the quadrature and
+     !> in nothing else. It is also the flag by which a solver suppresses its
+     !> writes to state -- the glue to the global matrix, integration point
+     !> history, saved diagnostic fields -- for the duration.
+     LOGICAL :: Override = .FALSE.
+     INTEGER :: Sample = 20               !< elements sampled per family
+     INTEGER :: Top = 2                   !< relative steps above the element's own rule
+     INTEGER :: Down = 8                  !< and below it; see IntegRuleProbeStart
+     REAL(KIND=dp) :: Tol = 1.0e-12_dp
+     ! Per family, indexed by ElementCode/100.
+     INTEGER :: Seen(8) = 0, Np(8) = 0, DefNp(8) = 0, RelOff(8) = 0
+     LOGICAL :: Failed(8) = .FALSE., IsRel(8) = .FALSE.
+     REAL(KIND=dp) :: Resid(8) = 0.0_dp
+     ! The element currently being walked, and the rule it is to be assembled at.
+     INTEGER :: Fam = 0, nTry = 0, iTry = 0, nc = 0, nsys = 0, nvals = 0
+     INTEGER :: NpFixed = 0, RelOrder = 0
+     INTEGER, ALLOCATABLE :: TryNp(:), TryFixed(:)
+     INTEGER, ALLOCATABLE :: CandNp(:), CandFixed(:), CandRel(:)
+     REAL(KIND=dp), ALLOCATABLE :: Cand(:,:)
+   END TYPE IntegRuleProbe_t
+
+   !> How many candidate rules one element may be assembled at.
+   INTEGER, PARAMETER :: IntegRuleProbeMaxCand = 32
+
 CONTAINS
 
 !> Initialize matrix structure and vector to zero initial value.
@@ -4936,7 +4974,677 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
         
   END FUNCTION GaussPointsAdapt
+
+
 !------------------------------------------------------------------------------
+!> Report the integration rule each element family is actually being integrated
+!> over, and say so when it is larger than this solver's own basis can account
+!> for. Reads nothing but the rule and the element; assembles nothing.
+!>
+!> WHAT THIS CATCHES, and it is not hypothetical. PDefs % GaussPoints is a field
+!> of the MESH element, set once by SetMeshMaxDOFs from getNumberOfGaussPoints,
+!> which sizes it from Element % BDOFs -- also a field of the mesh element. So
+!> the moment any solver's element definition puts bubbles on a mesh, EVERY
+!> solver reading those elements inherits a rule sized for the bubble, whatever
+!> basis it carries itself. A pressure-stabilized elasticity solver sharing a
+!> mesh with a MINI solver was integrating linear tetrahedra over 150 points
+!> where 4 is the element's own and 1 suffices. Nothing in the sif says so, no
+!> test notices, and the solver that pays is the one that opted out of the
+!> expensive basis.
+!>
+!> Nothing here is elasticity-specific: a bubble-stabilized FlowSolve beside a
+!> heat solver has exactly the same exposure.
+!>
+!> The comparison is against Element % TYPE % GaussPoints, the plain rule the
+!> element type carries in elements.def, and it is only reported as excess when
+!> THIS solver's own "Element" definition asks for nothing above a linear basis
+!> -- no bubble, no p above one. A genuinely p-refined solver needs its larger
+!> rule and must not be nagged about it.
+!>
+!> Reports only. Acting on it is a separate matter: an integration point
+!> variable's storage is sized from the rule in force before any assembly runs,
+!> and in permafrost's case several solvers must agree on it.
+!------------------------------------------------------------------------------
+  SUBROUTINE AuditIntegrationRules( Solver )
+!------------------------------------------------------------------------------
+    TYPE(Solver_t), TARGET :: Solver
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, fam, i, j, k, ios
+    INTEGER :: InForce(8), Plain(8), Seen(8)
+    INTEGER, POINTER :: ActiveSolvers(:)
+    LOGICAL :: Found, GotList, LinearBasis, AnyExcess
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(LEN=12) :: FamName(8)
+
+    IF( .NOT. ListGetLogical( Solver % Values,'Integration Rule Audit', Found ) ) RETURN
+    IF( Solver % NumberOfActiveElements <= 0 ) RETURN
+
+    FamName = [ CHARACTER(LEN=12) :: &
+        'point', '-line', '-tri', '-quad', '-tetra', '-pyramid', '-prism', '-brick' ]
+
+    ! Does this solver ask for anything above a linear basis? Read from its own
+    ! element definition, not from the mesh element, which is precisely the thing
+    ! that may have been inflated on its behalf.
+    !
+    ! All THREE places that definition can live, as AddEquationBasics itself
+    ! consults them: the Solver section, the Equation section of an equation this
+    ! solver is active in, and a Body section as "Solver N: Element". A sif that
+    ! declares its element in the Equation section would otherwise look like a
+    ! linear basis here and be wrongly accused.
+    !
+    ! Note the Solver section is the right FIRST place to look even though the
+    ! sif may say nothing there: a solver's own _Init may have installed one, as
+    ! ElasticSolver_Init0 installs "p:2" for a mixed neo-Hookean formulation. The
+    ! list is read, not the file, so that is picked up.
+    LinearBasis = .TRUE.
+
+    str = ListGetString( Solver % Values,'Element', Found )
+    IF( Found ) CALL NoteBasis( str )
+
+    IF( .NOT. Found ) THEN
+      DO j=1,CurrentModel % NumberOfEquations
+        ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(j) % Values, &
+            'Active Solvers', GotList )
+        IF( .NOT. GotList ) CYCLE
+        IF( .NOT. ANY( ActiveSolvers == Solver % SolverId ) ) CYCLE
+        str = ListGetString( CurrentModel % Equations(j) % Values,'Element', Found )
+        IF( Found ) CALL NoteBasis( str )
+      END DO
+    END IF
+
+    IF( .NOT. Found ) THEN
+      DO j=1,CurrentModel % NumberOfBodies
+        str = ListGetString( CurrentModel % Bodies(j) % Values, &
+            'Solver '//I2S(Solver % SolverId)//': Element', Found )
+        IF( Found ) CALL NoteBasis( str )
+      END DO
+    END IF
+
+    InForce = 0; Plain = 0; Seen = 0
+    DO t=1,Solver % NumberOfActiveElements
+      Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
+      fam = Element % TYPE % ElementCode / 100
+      IF( fam < 2 .OR. fam > 8 ) CYCLE
+      Seen(fam) = Seen(fam) + 1
+      IP = GaussPoints( Element )
+      InForce(fam) = MAX( InForce(fam), IP % n )
+      Plain(fam) = MAX( Plain(fam), Element % TYPE % GaussPoints )
+    END DO
+
+    ! "Declared", not "in force". This is the rule the ELEMENT carries, before any
+    ! per solver keyword -- a "Relative Integration Order" or an explicit count
+    ! moves the rule actually used away from it, and resolving that generically is
+    ! not possible here since not every solver reaches its rule through
+    ! GaussPointsAdapt. The declared rule is nonetheless exactly the right thing
+    ! to audit: the mesh-wide inflation this looks for happens to the declaration.
+    CALL Info('AuditIntegrationRules','Integration rule declared by the elements '// &
+        'of "'//TRIM(ListGetString(Solver % Values,'Equation',Found))// &
+        '" (before any per solver rule keyword):',Level=5)
+
+    AnyExcess = .FALSE.
+    DO fam=2,8
+      IF( Seen(fam) == 0 ) CYCLE
+      CALL Info('AuditIntegrationRules','  '//TRIM(FamName(fam))//': declared '// &
+          I2S(InForce(fam))//' points, the element type''s own rule is '// &
+          I2S(Plain(fam)),Level=5)
+      IF( LinearBasis .AND. InForce(fam) > Plain(fam) ) AnyExcess = .TRUE.
+    END DO
+
+    IF( AnyExcess ) THEN
+      CALL Warn('AuditIntegrationRules','Solver "'// &
+          TRIM(ListGetString(Solver % Values,'Equation',Found))// &
+          '" carries no bubble and no p above one, yet its elements declare more '// &
+          'integration points than the element type asks for.')
+      CALL Info('AuditIntegrationRules','The rule is set mesh-wide from the '// &
+          'largest basis any solver puts on these elements, so this one is '// &
+          'paying for another solver''s bubbles. Either drop the p-element '// &
+          'declaration from this solver, or state its rule explicitly.',Level=3)
+    END IF
+
+  CONTAINS
+
+    !> A bubble, or a p above one, in an element definition from wherever it came.
+    SUBROUTINE NoteBasis( def )
+      CHARACTER(LEN=*) :: def
+      INTEGER :: ip, ideg, istat
+      IF( INDEX( def,'b:' ) > 0 ) LinearBasis = .FALSE.
+      ip = INDEX( def,'p:' )
+      IF( ip > 0 ) THEN
+        READ( def(ip+2:), *, IOSTAT=istat ) ideg
+        IF( istat == 0 .AND. ideg > 1 ) LinearBasis = .FALSE.
+      END IF
+    END SUBROUTINE NoteBasis
+!------------------------------------------------------------------------------
+  END SUBROUTINE AuditIntegrationRules
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Read the probe's keywords. Returns with the probe inactive, and every entry
+!> point below a no-op, unless "Integration Rule Probe" is set.
+!------------------------------------------------------------------------------
+  SUBROUTINE IntegRuleProbeStart( Probe, Params )
+!------------------------------------------------------------------------------
+    TYPE(IntegRuleProbe_t) :: Probe
+    TYPE(ValueList_t), POINTER :: Params
+!------------------------------------------------------------------------------
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+    Probe % Active = ListGetLogical( Params,'Integration Rule Probe', Found )
+    IF( .NOT. Probe % Active ) RETURN
+
+    Probe % Tol = ListGetCReal( Params,'Integration Rule Probe Tolerance', Found )
+    IF( .NOT. Found ) Probe % Tol = 1.0e-12_dp
+
+    Probe % Sample = ListGetInteger( Params,'Integration Rule Probe Elements', Found )
+    IF( .NOT. Found ) Probe % Sample = 20
+
+    Probe % Top = ListGetInteger( Params,'Integration Rule Probe Steps Up', Found )
+    IF( .NOT. Found ) Probe % Top = 2
+
+    ! How far BELOW the element's own rule to look, and the one knob that can be
+    ! worth turning down. The probe hands the solver rules the solver was never
+    ! given, and a coarse one is not always survivable: on a mesh with flattened
+    ! elements -- FixTangentVelo maps a structured mesh down to a minimum height
+    ! of 2e-16 -- a one point rule on a degenerate prism leaves a Jacobian that
+    ! InvertMatrix ends the run over. The default reaches as deep as GaussPoints
+    ! allows, because that is where the large reductions are; lower it when a
+    ! probe run dies in the assembly rather than reporting.
+    Probe % Down = ListGetInteger( Params,'Integration Rule Probe Steps Down', Found )
+    IF( .NOT. Found ) Probe % Down = 8
+
+    Probe % Seen = 0
+    Probe % Np = 0
+    Probe % DefNp = 0
+    Probe % RelOff = 0
+    Probe % Resid = 0.0_dp
+    Probe % Failed = .FALSE.
+    Probe % IsRel = .FALSE.
+    Probe % Override = .FALSE.
+    Probe % NpFixed = 0
+    Probe % RelOrder = 0
+!------------------------------------------------------------------------------
+  END SUBROUTINE IntegRuleProbeStart
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Begin walking one element, and say whether it is worth walking at all.
+!>
+!> The candidate rules are collected FIRST, ascending, and only then assembled.
+!> The two keywords reach DISJOINT sets of rules and the smallest sufficient one
+!> may lie in either: a relative order leaves "np" absent and so reaches the
+!> tabulated simplex rules, while only an explicit count reaches the prism's
+!> triangle x segment and economical families. A ladder-only probe sees just the
+!> collapsed n**3 rungs on a prism, and so reports one already set to 85 points
+!> as needing 125 -- wrong, and wrong in the alarming direction.
+!>
+!> Both ends of the ladder are asked for rather than discovered, because
+!> GaussPoints enforces its bounds with Fatal: one step too far ends the run. A
+!> non-p element has exactly three tabulated rules, which is why a probe
+!> validated only against p-elements will abort on the first plain one.
+!------------------------------------------------------------------------------
+  FUNCTION IntegRuleProbeBegin( Probe, Element, DefNp ) RESULT( Walk )
+!------------------------------------------------------------------------------
+    TYPE(IntegRuleProbe_t) :: Probe
+    TYPE(Element_t) :: Element
+    INTEGER, INTENT(IN) :: DefNp     !< points this element is assembled at today
+    LOGICAL :: Walk
+!------------------------------------------------------------------------------
+    ! The counts family 7 actually dispatches on, taken from the CASE labels in
+    ! Integration.F90: the triangle x segment tensor rules and the economical
+    ! ones. Naming a count outside this set is NOT a soft failure -- it falls
+    ! through to GaussPointsWedge, which fatals -- so this list has to track that
+    ! dispatch and nothing may be added to it speculatively. A
+    ! GaussPointsValidNp query beside the tables would retire it, and would let
+    ! every family be offered absolute counts too.
+    INTEGER, PARAMETER :: PrismNp(22) = &
+        [ 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,28,44,48,85,100 ]
+    INTEGER :: fam, r, rlo, rhi, i, j, PrevNp
+    TYPE(GaussIntegrationPoints_t) :: IP
+!------------------------------------------------------------------------------
+    Walk = .FALSE.
+    IF( .NOT. Probe % Active ) RETURN
+
+    fam = Element % TYPE % ElementCode / 100
+    IF( fam < 2 .OR. fam > 8 ) RETURN
+    IF( Probe % Seen(fam) >= Probe % Sample ) RETURN
+
+    Probe % Fam = fam
+    Probe % DefNp(fam) = MAX( Probe % DefNp(fam), DefNp )
+
+    IF( .NOT. ALLOCATED( Probe % TryNp ) ) THEN
+      ALLOCATE( Probe % TryNp(IntegRuleProbeMaxCand), &
+          Probe % TryFixed(IntegRuleProbeMaxCand), &
+          Probe % CandNp(IntegRuleProbeMaxCand), &
+          Probe % CandFixed(IntegRuleProbeMaxCand), &
+          Probe % CandRel(IntegRuleProbeMaxCand) )
+    END IF
+
+    rlo = MAX( GaussPointsMinRelOrder( Element ), -Probe % Down )
+    rhi = MIN( Probe % Top, GaussPointsMaxRelOrder( Element ) )
+    IF( rlo >= rhi ) RETURN
+
+    Probe % nTry = 0
+    Probe % TryNp = 0
+    Probe % TryFixed = 0
+
+    PrevNp = -1
+    DO r = rlo, rhi
+      IP = GaussPoints( Element, RelOrder = r )
+      IF( IP % n <= 0 .OR. IP % n == PrevNp ) CYCLE
+      PrevNp = IP % n
+      CALL AddCandidate( IP % n, 0 )
+    END DO
+
+    IF( fam == 7 ) THEN
+      ! Bounded by the same floor as the ladder, and by the ladder's own bottom
+      ! rung rather than by the keyword: "how coarse may a rule get" is one
+      ! question, and it must get the same answer whichever keyword reaches it.
+      DO i=1,SIZE(PrismNp)
+        IF( Probe % nTry > 0 ) THEN
+          IF( PrismNp(i) < Probe % TryNp(1) ) CYCLE
+        END IF
+        CALL AddCandidate( PrismNp(i), PrismNp(i) )
+      END DO
+    END IF
+
+    IF( Probe % nTry < 2 ) RETURN
+
+    Probe % iTry = 0
+    Probe % nc = 0
+    Probe % nsys = 0
+    Probe % CandNp = 0
+    Probe % Override = .TRUE.
+    Walk = .TRUE.
+
+  CONTAINS
+
+    !> Keep the list ascending and free of duplicates. "Fixed" is the explicit
+    !> count that reaches this rule, or zero when only a relative order does.
+    SUBROUTINE AddCandidate( np, Fixed )
+      INTEGER, INTENT(IN) :: np, Fixed
+      INTEGER :: k
+
+      IF( Probe % nTry >= IntegRuleProbeMaxCand ) RETURN
+      IF( ANY( Probe % TryNp(1:Probe % nTry) == np ) ) RETURN
+
+      k = COUNT( Probe % TryNp(1:Probe % nTry) < np )
+      Probe % TryNp(k+2:Probe % nTry+1) = Probe % TryNp(k+1:Probe % nTry)
+      Probe % TryFixed(k+2:Probe % nTry+1) = Probe % TryFixed(k+1:Probe % nTry)
+      Probe % TryNp(k+1) = np
+      Probe % TryFixed(k+1) = Fixed
+      Probe % nTry = Probe % nTry + 1
+    END SUBROUTINE AddCandidate
+!------------------------------------------------------------------------------
+  END FUNCTION IntegRuleProbeBegin
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Advance to the next candidate rule, cheapest first, and return whether there
+!> is one. The solver assembles once per .TRUE., and the rule it gets comes from
+!> IntegRuleProbeRule.
+!------------------------------------------------------------------------------
+  FUNCTION IntegRuleProbeNext( Probe, Element ) RESULT( More )
+!------------------------------------------------------------------------------
+    TYPE(IntegRuleProbe_t) :: Probe
+    TYPE(Element_t) :: Element
+    LOGICAL :: More
+!------------------------------------------------------------------------------
+    INTEGER :: r, rlo, rhi
+    TYPE(GaussIntegrationPoints_t) :: IP
+!------------------------------------------------------------------------------
+    More = .FALSE.
+    IF( .NOT. Probe % Override ) RETURN
+
+    IF( Probe % iTry >= Probe % nTry ) THEN
+      ! Walked out. Leave nothing set that could reach the real assembly.
+      Probe % Override = .FALSE.
+      Probe % NpFixed = 0
+      Probe % RelOrder = 0
+      RETURN
+    END IF
+
+    Probe % iTry = Probe % iTry + 1
+    Probe % NpFixed = Probe % TryFixed( Probe % iTry )
+    Probe % RelOrder = 0
+
+    IF( Probe % NpFixed == 0 ) THEN
+      ! Find the relative step that produced this count. Cheaper to re-walk than
+      ! to carry it: the ladder is a handful of entries.
+      rlo = MAX( GaussPointsMinRelOrder( Element ), -Probe % Down )
+      rhi = MIN( Probe % Top, GaussPointsMaxRelOrder( Element ) )
+      DO r = rlo, rhi
+        IP = GaussPoints( Element, RelOrder = r )
+        IF( IP % n == Probe % TryNp( Probe % iTry ) ) THEN
+          Probe % RelOrder = r
+          EXIT
+        END IF
+      END DO
+    END IF
+
+    More = .TRUE.
+!------------------------------------------------------------------------------
+  END FUNCTION IntegRuleProbeNext
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The rule the current candidate asks for. A solver's integration rule hook
+!> calls this, and nothing else, while Override is set.
+!>
+!> Two ways in, because the two keywords reach disjoint sets of rules and the
+!> probe has to walk both.
+!------------------------------------------------------------------------------
+  FUNCTION IntegRuleProbeRule( Probe, Element ) RESULT( IntegStuff )
+!------------------------------------------------------------------------------
+    TYPE(IntegRuleProbe_t) :: Probe
+    TYPE(Element_t) :: Element
+    TYPE(GaussIntegrationPoints_t) :: IntegStuff
+!------------------------------------------------------------------------------
+    IF( Probe % NpFixed > 0 ) THEN
+      IntegStuff = GaussPoints( Element, np = Probe % NpFixed )
+    ELSE
+      IntegStuff = GaussPoints( Element, RelOrder = Probe % RelOrder )
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION IntegRuleProbeRule
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Hand over the local system just assembled at the current candidate rule.
+!>
+!> What is compared is the ASSEMBLED local system, not a proxy built from the
+!> basis alone. That is the whole point. Whether a mass term exists depends on
+!> the density being nonzero, whether an advection term exists depends on a
+!> prestress or a velocity being given, and an anisotropic coefficient weights
+!> the gradient components against each other. A proxy assembled with unit
+!> coefficients is the union of everything that COULD be present, so it can only
+!> over-state the requirement, and the reduction worth having is precisely what
+!> it discards.
+!>
+!> "Vals" is one or more nsys x nsys blocks flattened in order -- stiffness
+!> FIRST, since its diagonal is the metric -- optionally followed by a single
+!> vector of length nsys. A block that is identically zero costs nothing: it
+!> contributes to neither the reference norm nor the difference.
+!------------------------------------------------------------------------------
+  SUBROUTINE IntegRuleProbeValue( Probe, nsys, Vals )
+!------------------------------------------------------------------------------
+    TYPE(IntegRuleProbe_t) :: Probe
+    INTEGER, INTENT(IN) :: nsys
+    REAL(KIND=dp), INTENT(IN) :: Vals(:)
+!------------------------------------------------------------------------------
+    INTEGER :: nrem
+!------------------------------------------------------------------------------
+    IF( .NOT. Probe % Override ) RETURN
+    IF( nsys <= 0 .OR. SIZE(Vals) <= 0 ) RETURN
+
+    IF( Probe % nsys == 0 ) THEN
+      nrem = MODULO( SIZE(Vals), nsys*nsys )
+      IF( nrem /= 0 .AND. nrem /= nsys ) THEN
+        CALL Fatal('IntegRuleProbeValue','Local system of '//I2S(SIZE(Vals))// &
+            ' values is not whole '//I2S(nsys)//'-blocks, with or without a force vector')
+      END IF
+      Probe % nsys = nsys
+      Probe % nvals = SIZE(Vals)
+      IF( ALLOCATED( Probe % Cand ) ) THEN
+        IF( SIZE(Probe % Cand,1) < Probe % nvals ) DEALLOCATE( Probe % Cand )
+      END IF
+      IF( .NOT. ALLOCATED( Probe % Cand ) ) &
+          ALLOCATE( Probe % Cand( Probe % nvals, IntegRuleProbeMaxCand ) )
+    ELSE IF( nsys /= Probe % nsys .OR. SIZE(Vals) /= Probe % nvals ) THEN
+      ! The candidates would not be comparable, which can only be a caller bug:
+      ! the quadrature is meant to be the sole difference between them.
+      CALL Fatal('IntegRuleProbeValue','Local system changed size between candidates')
+    END IF
+
+    Probe % nc = Probe % nc + 1
+    Probe % Cand(1:Probe % nvals, Probe % nc) = Vals(1:Probe % nvals)
+    Probe % CandNp(Probe % nc) = Probe % TryNp( Probe % iTry )
+    ! Which keyword can actually ask for this rule again. Not a detail: the two
+    ! reach disjoint sets, so recommending the wrong one hands back a rule that
+    ! is not the one measured.
+    Probe % CandFixed(Probe % nc) = Probe % NpFixed
+    Probe % CandRel(Probe % nc) = Probe % RelOrder
+!------------------------------------------------------------------------------
+  END SUBROUTINE IntegRuleProbeValue
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Compare the candidates and record the smallest rule that reproduced the
+!> finest, for this element's family.
+!>
+!> The comparison is made in the metric the SOLVER sees, not in physical units.
+!> The local matrix is physical, but the global system is scaled to a unit
+!> diagonal before it is solved and the solution scaled back afterwards. In
+!> axisymmetry the r weight alone spreads row magnitudes by orders of magnitude
+!> and the quadrature moves precisely that, so a raw comparison reports a change
+!> the solve never sees.
+!>
+!> ONE metric for all candidates, taken from the finest. Scaling each by its own
+!> diagonal would normalise away part of the very difference being measured.
+!> Guarded, because these are saddle point systems -- the pressure rows of a
+!> mixed velocity/pressure or displacement/pressure formulation have no diagonal
+!> to scale by, and dividing by it would produce NaNs rather than advice. The
+!> first block's diagonal scales all the others, so that a term which is small in
+!> the assembled system stays small here.
+!------------------------------------------------------------------------------
+  SUBROUTINE IntegRuleProbeEnd( Probe )
+!------------------------------------------------------------------------------
+    TYPE(IntegRuleProbe_t) :: Probe
+!------------------------------------------------------------------------------
+    INTEGER :: fam, nsys, nblk, nblocks, i, j, k, ib, best, base
+    REAL(KIND=dp) :: Scale, Diff, MinDiff
+    REAL(KIND=dp), ALLOCATABLE :: DScale(:)
+!------------------------------------------------------------------------------
+    Probe % Override = .FALSE.
+    Probe % NpFixed = 0
+    Probe % RelOrder = 0
+
+    fam = Probe % Fam
+    IF( fam < 2 .OR. fam > 8 ) RETURN
+    IF( Probe % nc < 2 ) RETURN
+
+    nsys = Probe % nsys
+    nblk = nsys*nsys
+    nblocks = Probe % nvals / nblk
+
+    ALLOCATE( DScale(nsys) )
+    DO i=1,nsys
+      DScale(i) = SQRT( ABS( Probe % Cand( (i-1)*nsys + i, Probe % nc ) ) )
+      IF( DScale(i) <= TINY(1.0_dp) ) DScale(i) = 1.0_dp
+    END DO
+
+    DO k=1,Probe % nc
+      DO ib=0,nblocks-1
+        DO j=1,nsys
+          DO i=1,nsys
+            Probe % Cand( ib*nblk + (j-1)*nsys + i, k ) = &
+                Probe % Cand( ib*nblk + (j-1)*nsys + i, k ) / ( DScale(i)*DScale(j) )
+          END DO
+        END DO
+      END DO
+      ! The trailing force vector, if the caller appended one. In the scaled
+      ! system D^-1/2 A D^-1/2 y = D^-1/2 f, so it carries one factor, not two.
+      base = nblocks*nblk
+      DO i=1,Probe % nvals - base
+        Probe % Cand( base+i, k ) = Probe % Cand( base+i, k ) / DScale(i)
+      END DO
+    END DO
+    DEALLOCATE( DScale )
+
+    ! The finest rule tried is the reference.
+    Scale = SQRT( SUM( Probe % Cand(1:Probe % nvals, Probe % nc)**2 ) )
+    IF( Scale <= TINY(Scale) ) Scale = 1.0_dp
+
+    best = 0
+    MinDiff = HUGE( MinDiff )
+    DO i=1,Probe % nc-1
+      Diff = SQRT( SUM( ( Probe % Cand(1:Probe % nvals,i) - &
+          Probe % Cand(1:Probe % nvals,Probe % nc) )**2 ) ) / Scale
+      MinDiff = MIN( MinDiff, Diff )
+      IF( Diff <= Probe % Tol ) THEN
+        best = i                   ! candidates were assembled cheapest first
+        EXIT
+      END IF
+    END DO
+
+    Probe % Seen(fam) = Probe % Seen(fam) + 1
+
+    ! The family takes the LARGEST requirement over its sampled elements, and the
+    ! provenance travels with it.
+    IF( best > 0 ) THEN
+      IF( Probe % CandNp(best) >= Probe % Np(fam) .OR. Probe % Np(fam) == 0 ) THEN
+        Probe % IsRel(fam) = ( Probe % CandFixed(best) == 0 )
+        Probe % RelOff(fam) = Probe % CandRel(best)
+      END IF
+      Probe % Np(fam) = MAX( Probe % Np(fam), Probe % CandNp(best) )
+    ELSE
+      ! Nothing below the finest matched, so this element is not converged even
+      ! there. Say so, rather than reporting the top of the ladder as sufficient.
+      Probe % Failed(fam) = .TRUE.
+      Probe % Np(fam) = MAX( Probe % Np(fam), Probe % CandNp(Probe % nc) )
+      ! How close the ladder got. Without this the report cannot distinguish
+      ! "one more step would do it" from "this will never converge".
+      Probe % Resid(fam) = MAX( Probe % Resid(fam), MinDiff )
+    END IF
+
+    Probe % nc = 0
+    Probe % nsys = 0
+!------------------------------------------------------------------------------
+  END SUBROUTINE IntegRuleProbeEnd
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Print what the probe found, and change nothing.
+!>
+!> REPORTS, NEVER ACTS, and the reasons are structural rather than timid. An
+!> integration point variable's storage IS the rule: CreateIpPerm sizes the per
+!> element slices from the rule in force, long before any assembly, so a rule
+!> discovered during assembly cannot be adopted without relaying that storage --
+!> and permafrost is worse than one solver, since Permafrost_HTEQ creates "Xi"
+!> and Permafrost_Darcy writes into it, several solvers having to agree. In
+!> parallel each rank samples its own elements, so adopting a rule would need one
+!> Allreduce(MAX) before that sizing or ranks would allocate differently. And a
+!> rule that changed between timesteps would make the discrete operator
+!> discontinuous in time, which in a creep run is a non-physical kink.
+!>
+!> A printed line has none of those problems: pasted into the sif, the rule is
+!> pinned, reviewable, and reproducible across platforms and partitionings. It is
+!> also how the counts already in the tree were arrived at by hand.
+!------------------------------------------------------------------------------
+  SUBROUTINE IntegRuleProbeReport( Probe, Caller, NothingNote )
+!------------------------------------------------------------------------------
+    TYPE(IntegRuleProbe_t) :: Probe
+    CHARACTER(LEN=*), INTENT(IN) :: Caller
+    CHARACTER(LEN=*), OPTIONAL, INTENT(IN) :: NothingNote
+!------------------------------------------------------------------------------
+    INTEGER :: fam
+    CHARACTER(LEN=MAX_NAME_LEN) :: Line, RelLine
+    CHARACTER(LEN=12) :: FamName(8)
+    LOGICAL :: AnyUp, AnyFail
+!------------------------------------------------------------------------------
+    IF( .NOT. Probe % Active ) RETURN
+
+    FamName = [ CHARACTER(LEN=12) :: &
+        'point', '-line', '-tri', '-quad', '-tetra', '-pyramid', '-prism', '-brick' ]
+
+    WRITE( Message,'(A,ES9.2)') 'Integration rule probe, tolerance ',Probe % Tol
+    CALL Info( Caller, Message, Level=3 )
+
+    IF( ALL( Probe % Seen == 0 ) ) THEN
+      IF( PRESENT( NothingNote ) ) THEN
+        CALL Info( Caller,'Integration rule probe sampled nothing -- '//TRIM(NothingNote),Level=3)
+      ELSE
+        CALL Info( Caller,'Integration rule probe sampled nothing.',Level=3)
+      END IF
+      RETURN
+    END IF
+
+    Line = ''
+    RelLine = ''
+    AnyUp = .FALSE.
+    AnyFail = .FALSE.
+    DO fam=2,8
+      IF( Probe % Seen(fam) == 0 ) CYCLE
+
+      IF( Probe % Failed(fam) ) THEN
+        ! Report how far off it still is, and do NOT simply advise more points.
+        ! Most of these never converge at any rule: a distorted element's inverse
+        ! Jacobian is RATIONAL, an axisymmetric weight and a coefficient varying
+        ! within the element both raise the integrand off the polynomials the
+        ! quadrature is exact for. For those the ladder is asymptotic and the
+        ! question is only whether the remaining difference matters.
+        WRITE( Message,'(A,I0,A,I0,A,I0,A,ES9.2)') '  '//TRIM(FamName(fam))//': ', &
+            Probe % Seen(fam),' elements, default ',Probe % DefNp(fam), &
+            ' points, still moving at ',Probe % Np(fam),', closest relative change ', &
+            Probe % Resid(fam)
+        CALL Info( Caller, Message, Level=3 )
+        IF( Probe % Resid(fam) > 1.0e-6_dp ) THEN
+          AnyFail = .TRUE.
+        ELSE
+          CALL Info( Caller,'      -- that is small; an integrand that is not '// &
+              'polynomial converges no further at any rule.',Level=3)
+        END IF
+        CYCLE
+      END IF
+
+      CALL Info( Caller,'  '//TRIM(FamName(fam))//': '//I2S(Probe % Seen(fam))// &
+          ' elements, default '//I2S(Probe % DefNp(fam))//' points, sufficient at '// &
+          I2S(Probe % Np(fam)),Level=3)
+
+      IF( Probe % Np(fam) > Probe % DefNp(fam) ) AnyUp = .TRUE.
+      IF( Probe % Np(fam) == Probe % DefNp(fam) ) CYCLE
+
+      ! Name the keyword that can actually ASK for the rule that was measured.
+      ! Since a tabulated simplex rule became reachable by an explicit count both
+      ! forms usually can, but the relative one is still preferred where the
+      ! ladder found it: an absolute count disables itself above degree one, so it
+      ! is the p-refinement-safe form.
+      IF( Probe % IsRel(fam) ) THEN
+        RelLine = TRIM(RelLine)//' '//TRIM(FamName(fam))//' '//I2S(Probe % RelOff(fam))
+      ELSE
+        Line = TRIM(Line)//' '//TRIM(FamName(fam))//' '//I2S(Probe % Np(fam))
+      END IF
+    END DO
+
+    IF( LEN_TRIM(Line) > 0 .OR. LEN_TRIM(RelLine) > 0 ) THEN
+      CALL Info( Caller,'To adopt it, state in the Solver section:',Level=3)
+      IF( LEN_TRIM(RelLine) > 0 ) CALL Info( Caller, &
+          '  Element Relative Integration Order = String "'// &
+          TRIM(ADJUSTL(RelLine))//'"',Level=3)
+      IF( LEN_TRIM(Line) > 0 ) CALL Info( Caller, &
+          '  Element Integration Points = String "'//TRIM(ADJUSTL(Line))//'"',Level=3)
+    END IF
+
+    ! Three outcomes, and they must not be confused for one another. A family
+    ! wanting MORE than its default is the answer worth having, since
+    ! under-integration is the failure that does not announce itself. A family
+    ! that never settled is a different statement: the ladder is asymptotic, so
+    ! only the size of what remains says whether it matters. And "nothing to
+    ! report" may be said only when neither happened -- a report that named no
+    ! rule because every family FAILED to converge is not a clean bill.
+    IF( AnyUp ) CALL Info( Caller,'Some families need MORE points than they are '// &
+        'given. Under-integration does not announce itself in the answer, so '// &
+        'that is the finding worth acting on here.',Level=3)
+    IF( AnyFail ) CALL Info( Caller,'Some families are still moving at the top of '// &
+        'the ladder by more than 1e-6. Either they want more points, or their '// &
+        'integrand is not polynomial and never will converge -- check whether '// &
+        'the residual above is large enough to matter.',Level=3)
+    IF( .NOT. ( AnyUp .OR. AnyFail ) .AND. LEN_TRIM(Line) == 0 .AND. &
+        LEN_TRIM(RelLine) == 0 ) &
+        CALL Info( Caller,'Every family is already at the rule it needs.',Level=3)
+!------------------------------------------------------------------------------
+  END SUBROUTINE IntegRuleProbeReport
+!------------------------------------------------------------------------------
+
+
   
 
 !------------------------------------------------------------------------------

@@ -47,6 +47,9 @@ End
 Solver 2
   Equation = "Stokes"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStabL

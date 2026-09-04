@@ -2,6 +2,7 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
   CONFIGURE_FILE(test.sif test.sif COPYONLY)
+  CONFIGURE_FILE(stabilized.sif stabilized.sif COPYONLY)
 
   ADD_ELMERICETEST_MODULE(FrictionHeat DummySolver DummySolver.f90)
   FILE(COPY ELMERSOLVER_STARTINFO DummySolver.f90 cube.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")

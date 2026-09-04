@@ -2739,6 +2739,70 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Given element structure return Gauss integration points for the element.
 !----------------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> The most negative "RelOrder" GaussPoints will accept for this element.
+!>
+!> Stated here because GaussPoints ENFORCES the bound by calling Fatal, so a
+!> caller that walks the ladder downwards cannot discover the limit by trying:
+!> the first invalid step ends the run. A p-element's offset is arithmetic on the
+!> per-direction count, so it bottoms out when that count would reach zero; a
+!> non-p element has exactly three tabulated rules and so cannot go below -1.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsMinRelOrder( Element ) RESULT( rmin )
+!------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE(Element_t), TARGET :: Element
+     INTEGER :: rmin
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: elm
+     INTEGER :: n, eldim
+
+     elm => Element
+     IF( .NOT. isActivePElement(elm) ) THEN
+       rmin = -1
+       RETURN
+     END IF
+
+     n = 0
+     IF( ASSOCIATED( elm % PDefs ) ) n = elm % PDefs % GaussPoints
+     IF( n == 0 ) n = Element % TYPE % GaussPoints
+     eldim = MAX( Element % TYPE % DIMENSION, 1 )
+
+     ! p1d = NINT( n**(1/eldim) ) + RelOrder must stay >= 1
+     rmin = 1 - NINT( REAL(n,dp)**(1.0_dp/eldim) )
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsMinRelOrder
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The largest "RelOrder" GaussPoints will accept for this element.
+!>
+!> The companion of GaussPointsMinRelOrder, and needed for the same reason: the
+!> bound is enforced with Fatal, so a caller walking the ladder upwards cannot
+!> find the limit by trying. A NON-p element has exactly three tabulated rules --
+!> GaussPoints0 / GaussPoints / GaussPoints2 in elements.def -- so {-1,0,1} is
+!> all there is. A p-element's offset is arithmetic on the per-direction count
+!> and has no upper limit, so a ceiling is returned only to keep callers finite.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsMaxRelOrder( Element ) RESULT( rmax )
+!------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE(Element_t), TARGET :: Element
+     INTEGER :: rmax
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: elm
+
+     elm => Element
+     IF( isActivePElement(elm) ) THEN
+       rmax = 8
+     ELSE
+       rmax = 1
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsMaxRelOrder
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement, &
         EdgeBasisDegree) RESULT(IntegStuff)
 !---------------------------------------------------------------------------------------------
