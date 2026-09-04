@@ -1,0 +1,118 @@
+! The tetrahedral member of this test, and the only tetrahedral incompressible
+! flow case in the suite -- which is why it exists. Every other case here and in
+! the elmerice set is quadrilaterals, hexahedra or prisms, so the tetrahedron
+! constant in IncompressibleNSVec was inherited from ElasticSolve and never
+! measured for this solver until this case was written.
+!
+! What it measures: the tetrahedron is INSENSITIVE to the coefficient, far more
+! so than any other family. On this mesh the range 0.25 to 8 -- a factor of 32 --
+! moves the norm by 0.4 %, where the quadrilateral moved 3 % over a factor of 12.
+!
+! Refining with "Mesh Levels" shows there is no well defined optimum to find. The
+! error against MINI, in per cent:
+!
+!            c=1.0     c=1.5     c=2.0     c=3.0
+!   L=1      -0.037    ~0        +0.037      --
+!   L=2      -0.014    -0.011    -0.009    -0.008
+!   L=3      -0.008    -0.016    -0.023    -0.031
+!
+! The crossing sits near 1.5 on the coarse mesh, above 3 on the next and below 1
+! on the finest -- it wanders, because every one of these numbers is smaller than
+! the discretisation error itself and the curve has no real minimum to lock onto.
+! What IS clean is the convergence: at coefficient one the gap to MINI shrinks
+! 0.037 -> 0.014 -> 0.008 % under refinement, so the stabilised pair converges to
+! the MINI answer here as it does on the other families.
+!
+! Hence the inherited 0.0029 is left exactly as it is. Fitting a constant to a
+! wandering crossing inside the noise would be worse than not fitting one.
+!
+! The mesh is ElasticStabilized's tet.msh, a unit cube of 386 tetrahedra. Only
+! two of its surfaces carry a boundary id, 5 and 6, so the remaining faces are
+! natural -- traction free -- which is what sets the pressure level here.
+!
+! An iterative solve is used deliberately: it reproduces a umfpack solve to every
+! digit printed here, so the case needs no HAVE_UMFPACK guard and stays available
+! in every build.
+
+Header
+  Mesh DB "." "tetmesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Constants
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "NS-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Stokes Flow = Logical True
+
+! The point of the case. No "Element" with a bubble: _Init0 hands back "n:1"
+! when this keyword is on, and it is written out so a reader need not know that.
+  Pressure Stabilization = Logical True
+  Element = "n:1"
+
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1.0
+End
+
+Boundary Condition 1
+  Name = "driven"
+  Target Boundaries(1) = 5
+  Velocity 1 = Variable Coordinate 2
+     Real MATC "tx*(1-tx)"
+  Velocity 2 = 0
+  Velocity 3 = 0
+End
+
+Boundary Condition 2
+  Name = "wall"
+  Target Boundaries(1) = 6
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Velocity 3 = 0
+End
+
+! MINI ("p:1 -tetra b:1") on this mesh gives 5.66312290E-02, so the stabilised
+! answer below is 0.037 % under it. The element saving is the largest anywhere in
+! this work: MINI integrates a tetrahedron carrying a degree four bubble over 150
+! points, the equal-order element over 4, and assembly falls 0.0142 s to 0.0022 s.
+Solver 1 :: Reference Norm = 5.66103340E-02
