@@ -1896,6 +1896,42 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
   END IF
 
+  ! The integration rule for the MINI element, per family, measured as the
+  ! smallest rule that leaves the answer BIT IDENTICAL to the element's own
+  ! default. ElasticSolve does the same for its incompressible MINI, and the two
+  ! agree exactly where they overlap -- 24 on the tetrahedron, 85 on the prism --
+  ! which is a reassuring cross-check of both, the elements being the same even
+  ! though the integrands are not.
+  !
+  ! They do NOT agree everywhere, and copying that solver's string verbatim would
+  ! have been a bug. It also carries "-tri 7", measured bit-identical there; here
+  ! seven points on a triangle makes the linear system DIVERGE. The smallest exact
+  ! triangle rule for this integrand is 11 against a default of 12, so it stays at
+  ! 12. The tensor families get nothing either, both already sitting on the
+  ! smallest exact rule they have: the quadrilateral defaults to 16 and 9 is close
+  ! but not exact, the hexahedron defaults to 64 and 27 likewise. That is the same
+  ! conclusion ElasticSolve reaches for those two, by the same argument.
+  !
+  ! So only the two that pay:
+  !
+  !   tetrahedron  150 -> 24
+  !   prism        125 -> 85
+  !
+  ! Gated on a bubble appearing in the element definition, which is what _Init0
+  ! supplies unless "Pressure Stabilization" is on. The equal-order element wants
+  ! none of this -- it integrates a linear basis over four points already, and
+  ! forcing 24 there would be twenty-four times the work for nothing.
+  !
+  ! ListAddNew, so a sif stating its own rule still wins. GaussPointsAdapt reads
+  ! the keyword itself, so nothing in the assembly changes.
+  str = ListGetString( Params,'Element', Found )
+  IF( Found ) THEN
+    IF( INDEX( str, 'b:' ) > 0 ) THEN
+      CALL ListAddNewString( Params,'Element Integration Points', &
+          '-tetra 24 -prism 85' )
+    END IF
+  END IF
+
   ! Backward compatibility with old FlowSolver
   str = GetString( Params, 'Flow Model', Found )
   IF( Found ) THEN
