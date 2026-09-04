@@ -11,6 +11,11 @@ execute_process(COMMAND ${ELMERGRID_BIN} 1 2 square)
 # overwrites it, so the first is checked here by hand. That also lets a failure
 # name the variant that broke rather than just the test.
 EXECUTE_ELMER_SOLVER(stabilized.sif)
+IF(NOT EXISTS "TEST.PASSED")
+  MESSAGE(FATAL_ERROR
+    "the equal-order variant produced no TEST.PASSED at all -- it did not run to completion. "
+    "See stabilized.sif-stdout.log and -stderr.log in this directory.")
+ENDIF()
 FILE(READ "TEST.PASSED" _res)
 IF(NOT _res EQUAL "1")
   SET(_cmp "")

@@ -7,13 +7,12 @@ EXECUTE_PROCESS(COMMAND ${ELMERGRID_BIN} 14 2 teterousse.msh -autoclean -order 1
 # The same problem twice: teterousse3a.sif as shipped, on the legacy FlowSolve, then
 # stabilized.sif on IncompressibleNSVec with the equal-order pair. Both carry
 # the timers so the logs show what each costs.
-#
-# ELMER_MODULES_PATH must be set by hand: RUN_ELMERICE_TEST sets it, the bare
-# EXECUTE_ELMER_SOLVER in the same macro file does not, and these load
-# ElmerIceSolvers.
-SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/Solvers/MeshAdaptation_2D:${BINARY_DIR}/elmerice/UserFunctions")
-
 EXECUTE_ELMER_SOLVER(stabilized.sif)
+IF(NOT EXISTS "TEST.PASSED")
+  MESSAGE(FATAL_ERROR
+    "the equal-order variant produced no TEST.PASSED at all -- it did not run to "
+    "completion. See stabilized.sif-stdout.log and -stderr.log in this directory.")
+ENDIF()
 FILE(READ "TEST.PASSED" _res)
 IF(NOT _res EQUAL "1")
   SET(_cmp "")

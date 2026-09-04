@@ -11,6 +11,11 @@ execute_process(COMMAND ${ELMERGRID_BIN} 1 2 Step3d)
 # Only the closing RUN_ELMER_TEST() inspects TEST.PASSED and every run
 # overwrites it, so the first is checked here by hand.
 EXECUTE_ELMER_SOLVER(stabilized.sif)
+IF(NOT EXISTS "TEST.PASSED")
+  MESSAGE(FATAL_ERROR
+    "the equal-order variant produced no TEST.PASSED at all -- it did not run to completion. "
+    "See stabilized.sif-stdout.log and -stderr.log in this directory.")
+ENDIF()
 FILE(READ "TEST.PASSED" _res)
 IF(NOT _res EQUAL "1")
   SET(_cmp "")

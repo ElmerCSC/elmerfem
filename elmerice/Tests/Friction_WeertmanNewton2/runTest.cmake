@@ -6,13 +6,12 @@ EXECUTE_PROCESS(COMMAND ${ELMERGRID_BIN} 1 2 rectangle.grd)
 # shipped, on the MINI element, then stabilized.sif, the equal-order pair whose
 # pressure mode is held by "Pressure Stabilization". Both carry the timers, so
 # the logs show what the cheaper element costs and saves.
-#
-# ELMER_MODULES_PATH has to be set by hand here. RUN_ELMERICE_TEST sets it, but
-# the bare EXECUTE_ELMER_SOLVER in the same file does not, and these cases load
-# ElmerIceSolvers.
-SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/Solvers/MeshAdaptation_2D:${BINARY_DIR}/elmerice/UserFunctions")
-
 EXECUTE_ELMER_SOLVER(stabilized.sif)
+IF(NOT EXISTS "TEST.PASSED")
+  MESSAGE(FATAL_ERROR
+    "the equal-order variant produced no TEST.PASSED at all -- it did not run to "
+    "completion. See stabilized.sif-stdout.log and -stderr.log in this directory.")
+ENDIF()
 FILE(READ "TEST.PASSED" _res)
 IF(NOT _res EQUAL "1")
   SET(_cmp "")
