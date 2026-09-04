@@ -64,6 +64,14 @@ MODULE IncompressibleLocalForms
   END TYPE NSHandles_t
   TYPE(NSHandles_t), ALLOCATABLE :: NSHandles(:)
 
+  ! The exported Shearrate/Viscosity/Viscosity Weight fields are GLOBAL mesh
+  ! variables that the assembly accumulates into, so they must be zeroed exactly
+  ! once per solve -- not once per thread, which would let a late starting thread
+  ! wipe what the others had already summed. Handle resolution is per thread;
+  ! this is not. Set .FALSE. before the serial first element and raised by it, so
+  ! every thread in the parallel region afterwards only ever reads it.
+  LOGICAL :: ViscVarsZeroed = .FALSE.
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -82,7 +90,8 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
     LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, SpecificLoad, StokesFlow
     REAL(KIND=dp), INTENT(IN) :: dt   
-    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient, InitHandles
+    LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient
+    LOGICAL, INTENT(INOUT) :: InitHandles
     TYPE(Solver_t), POINTER :: SchurSolver
     LOGICAL, INTENT(IN) :: PStab
     REAL(KIND=dp), INTENT(IN) :: PStabCoeff
@@ -201,6 +210,11 @@ CONTAINS
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
               muDerVec0, Newton,  InitHandles, DetJVec, ViscWork )        
+
+    ! This thread's handles are resolved now -- both the ones above and the
+    ! viscosity ones inside EffectiveViscosityVec, which is why the flag is
+    ! cleared here and not next to the ListInitElementKeyword calls.
+    InitHandles = .FALSE.
 
     ! Rho 
     rhovec(1:ngp) = rho
@@ -898,7 +912,7 @@ CONTAINS
           ELSE
             CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
-          NSHandles(tid) % ShearVar % Values = 0.0_dp
+          IF(.NOT. ViscVarsZeroed) NSHandles(tid) % ShearVar % Values = 0.0_dp
         END IF
 
         NSHandles(tid) % ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
@@ -914,7 +928,7 @@ CONTAINS
           ELSE
             CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
-          NSHandles(tid) % ViscVar % Values = 0.0_dp
+          IF(.NOT. ViscVarsZeroed) NSHandles(tid) % ViscVar % Values = 0.0_dp
         END IF
 
         SaveWeight = .FALSE.
@@ -925,7 +939,7 @@ CONTAINS
               CALL Fatal(Caller,'Invalid field type for "Viscosity Weight"!')
             END IF
             SaveWeight = .TRUE.
-            NSHandles(tid) % WeightVar % Values = 0.0_dp
+            IF(.NOT. ViscVarsZeroed) NSHandles(tid) % WeightVar % Values = 0.0_dp
           END IF
         END IF        
           
@@ -2021,7 +2035,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
-  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles, InitHandles
   LOGICAL :: PStab
   REAL(KIND=dp) :: PStabCoeff
   INTEGER :: PStabHmode
@@ -2228,6 +2242,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     
     Newton = GetNewtonActive( Solver )
 
+    ! Zeroing happens in this serial pass and nowhere else; see ViscVarsZeroed.
+    ViscVarsZeroed = .FALSE.
+    InitHandles = .TRUE.
     DO Element_id=1,1
       Element => GetActiveElement(Element_id)
       n  = GetElementNOFNodes(Element)
@@ -2241,22 +2258,36 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .TRUE., &
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, InitHandles, &
           SchurSolver, PStab, PStabCoeff, PStabHmode )
     END DO
 
-    ! The serial call above (element 1) resolved NSHandles(1) — the material/BF
-    ! keyword lookups and the ShearVar/ViscVar/WeightVar zeroing. Broadcast that
-    ! resolved state to every other thread's slot before the parallel bulk loop,
-    ! since each thread there calls LocalBulkMatrix with InitHandles=.FALSE. and
-    ! only ever touches its own NSHandles(tid).
-    IF (nthr > 1) NSHandles(2:nthr) = NSHandles(1)
+    ViscVarsZeroed = .TRUE.
+
+    ! EACH THREAD RESOLVES ITS OWN HANDLES. This used to broadcast the serially
+    ! resolved NSHandles(1) into every other slot, and that is a shallow copy of a
+    ! derived type whose components are POINTERS -- ValuesVec, Values, ParValues,
+    ! ParUsed, RTensor, and the Element/Nodes/Indexes "same element as last time"
+    ! caches. After the copy every thread's handle addressed ONE set of buffers.
+    !
+    ! ListGetElementRealVec grows its buffer by DEALLOCATE/ALLOCATE when an
+    ! element wants more integration points than the last, so on a mesh whose
+    ! elements differ in point count one thread frees the array the others are
+    ! still reading, and the run aborts in malloc. On a single family mesh the
+    ! grow branch fires once and the aliased writes all carry the same values, so
+    ! it stayed invisible: of 300 test meshes here, 283 are single family.
+    !
+    ! HeatSolveVec has had the right shape all along -- a per thread slot plus a
+    ! PRIVATE InitHandles set inside the parallel region -- and this now matches
+    ! it. The cost is one keyword resolution per thread instead of one per solve,
+    ! which is nothing beside an assembly.
+    InitHandles = .TRUE.
 
     !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
     !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver, &
     !$OMP                 PStab, PStabCoeff, PStabHmode ) &
-    !$OMP PRIVATE(Element, Element_id, n, nd, nb)  DEFAULT(None)
+    !$OMP PRIVATE(Element, Element_id, n, nd, nb) FIRSTPRIVATE(InitHandles) DEFAULT(None)
     !$OMP DO    
     DO Element_id=2,Active
       Element => GetActiveElement(Element_id)
@@ -2267,7 +2298,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE.,&
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, InitHandles,&
           SchurSolver, PStab, PStabCoeff, PStabHmode )
     END DO
     !$OMP END DO

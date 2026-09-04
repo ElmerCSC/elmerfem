@@ -23,11 +23,15 @@
 ! capability difference between the two pairs, not a tuning one, and it is the
 ! reason this test exists in the stabilised form only.
 !
-! KNOWN, NOT FIXED: the MINI variant of this case fails above two OpenMP threads,
-! and does so whatever integration rule it is given. Four elements of four
-! different families assembled concurrently is the condition; the equal-order
-! variant here is unaffected at any thread count. Not investigated, and not
-! caused by the stabilisation -- it is in the p-element assembly path.
+! This case also found a threading defect, since fixed. The solver used to resolve
+! its keyword handles once serially and then SHALLOW COPY them into every thread's
+! slot -- and ValueHandle_t is full of POINTER components, so all threads ended up
+! addressing one set of scratch buffers. ListGetElementRealVec grows its buffer by
+! DEALLOCATE/ALLOCATE when an element wants more integration points than the last,
+! so on a mesh whose elements differ in point count one thread freed the array the
+! others were reading. On a single family mesh the sizes never differ and the
+! aliased writes all carry the same values, which is why it survived years of
+! threaded testing: 283 of 300 meshes here are single family. This one is not.
 Header
   Mesh DB "." "unitelems"
   Include Path ""
