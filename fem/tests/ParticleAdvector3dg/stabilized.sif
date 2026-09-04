@@ -1,3 +1,22 @@
+! The equal-order twin of case.sif. The shipped case runs FlowSolve with
+! "Stabilize = True", so its baseline is ALREADY an equal-order SUPG/PSPG pair
+! and this compares two implementations of one scheme, as vortex3d does.
+!
+! What it adds over the others is what happens DOWNSTREAM: solver 2 advects
+! particles through the velocity field, so it checks that the stabilised flow is
+! usable by something else and not merely close in a norm. It does discriminate
+! -- the three variants give 0.72784, 0.72958 and 0.72953 -- so it is a real
+! check rather than a constant.
+!
+! Flow solution norms: FlowSolve 0.37386427, this solver with MINI 0.37464545,
+! with the stabilised pair 0.37461702. So the element costs 0.0076 % and the port
+! between solvers 0.21 %, the same split as everywhere else. Triangles, and the
+! integration rule falls from 12 points to 3.
+!
+! Note the shipped case names its Procedure explicitly, unlike most legacy flow
+! cases: the line is REPLACED here rather than added to, since a second Procedure
+! later in the block would simply win and the run would silently be FlowSolve
+! again.
 ! Test case for the ParticleAdvector 
 ! Uses particle-specific timestep that strives to constant Courant number.
 ! This should optimize the accuracy in a FE mesh. As advected field is 
@@ -63,13 +82,14 @@ Solver 1
   Exec Solver = before all
 
   Equation = Navier-Stokes
-  Procedure = "FlowSolve" "FlowSolver"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Pressure Stabilization = Logical True
+  Element = "n:1"
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
   Variable = Flow Solution[Velocity:2 Pressure:1]
-  Stabilize = True
-  Bubbles = False
+
   Lumped Mass Matrix = False
   Steady State Convergence Tolerance = 1.0e-5
   Nonlinear System Convergence Tolerance = 1.0e-8
@@ -180,7 +200,8 @@ End
 ! Note that the target norm depends on how long we integrate as it is the 
 ! L2 norm of particle age.
 
-Solver 2 :: Reference Norm = 7.27838070E-01
+Solver 1 :: Reference Norm = 0.37461702
+Solver 2 :: Reference Norm = 7.29526450E-01
 Solver 2 :: Reference Norm Tolerance = 1.0e-3
 
 
