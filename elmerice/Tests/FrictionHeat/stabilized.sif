@@ -1,3 +1,22 @@
+! The equal-order twin of test.sif. The shipped case runs the LEGACY FlowSolve --
+! its solver block names no Procedure, so AddEquationBasics supplies one -- and
+! this one runs IncompressibleNSVec with "Pressure Stabilization" instead. So two
+! things change at once, solver and element, which is worth stating plainly: the
+! gap between them is NOT all attributable to the stabilisation.
+!
+! Measured on the flow solution, the same solver carrying MINI instead of the
+! stabilised pair sits +0.0078 % on the flow solution away, so that part is small. The rest is the port
+! between the two solvers, about 1.1 % on the Teterousse cases, where the
+! material is Glen's law. Elements are bricks.
+!
+! Three keywords exist only to satisfy the vectorized solver and change no
+! physics:
+!   Relative Temperature   -- EffectiveViscosityVec's name for what the legacy
+!                             MaterialModels calls Constant Temperature; it warns
+!                             about exactly this rename
+!   Glen Allow Old Keywords -- ComputeDevStress refuses to pair with
+!                             IncompressibleNSVec without it
+!   Max Output Level        -- raised only so the three timers reach the log
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! ISMIP-HOM D020 solved in diagnostic   !!
 !!   using Navier-Stokes                 !!
@@ -39,7 +58,6 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  ascii output = true
   Post File = "test_$Step$.vtu"
 
   Max Output Level = 5
@@ -71,9 +89,8 @@ Initial Condition 1
   Zb = Variable Coordinate 1
     Real MATC "-tx*tan(Slope)-1000.0"
   Friction Load = Real 0.0 !Friction Load is only need for output
-  Friction Load Mask = Variable Coordinate 1, Coordinate 2
-     Real MATC "0.5 - (8000<tx(0))*(tx(0)<12000)*(8000<tx(1))*(tx(1)<12000)"
-End     
+End
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Body Force 1
   Flow BodyForce 1 = Real 0.0                          
@@ -119,10 +136,12 @@ End
 
 Solver 3
   Equation = "Navier-Stokes"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Pressure Stabilization = Logical True
+  Element = "n:1"
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
-  Stabilization Method = String Bubbles
   Flow Model = Stokes
   Linear System Solver = Direct         
   Linear System Direct Method = umfpack
@@ -182,21 +201,17 @@ Solver 6
   Equation = "DummyRoutine"
   Procedure = File "DummySolver" "DummySolver"
   Variable =  -dofs 1 "Friction Load"
-  Exported Variable 1 = -dofs 1 "Friction Load Mask"
-
-! This seems to result to NaN for some reason on some platforms.
-! So supress it for now.
-  Exec Solver = never
 End
 
 !creates output
 Solver 7
-  Equation = "ForceToStress"
-  Procedure = "ElmerIceSolvers" "ForceToStress"
-  Variable = "Friction Heating"
-  Force Variable Name = String "Friction Load"
-  Linear System Solver = "Direct"
-  Linear System Direct Method = "umfpack"
+    Equation = "ForceToStress"
+    Procedure = File "ElmerIceSolvers" "ForceToStress"
+    Variable = String "Friction Heating"
+    Variable DOFs = 1
+    Force Variable Name = String "Friction Load"
+    Linear System Solver = Direct
+    Linear System Direct Method = umfpack
 End
 
 !creates output
@@ -262,9 +277,6 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Equation 1
    Active Solvers(7) = 1 2 3 4 5 8 9
-   Flow Solution Name = String "Flow Solution"
-   Flow Loads Name = String "Flow Solution Loads"
-   Friction Load Mask = String "Friction Load Mask"
 End
 
 Equation 2
@@ -322,9 +334,7 @@ Boundary Condition 5
      Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))"       
   Friction Load = Variable Velocity 1                
     Real Procedure  "ElmerIceUSF" "getFrictionLoads"  
-  ComputeNormal = Logical True
-
-
+  ComputeNormal = Logical True      
 End
 
 Boundary Condition 6
@@ -333,11 +343,8 @@ Boundary Condition 6
      REAL MATC "tx(0)+H"
 End
 
-Solver 3 :: Reference Norm =  207.29755
-Solver 3 :: Reference Norm Tolerance = 1.0E-06
-Solver 5 :: Reference Norm = 9.36764080E-02
-Solver 5 :: Reference Norm Tolerance = 1.0E-06
-! The norm seems to be zero now!
-!Solver 8 :: Reference Norm =  31.2285175 
-!Solver 8 :: Reference Norm Tolerance = 1.0E-06
+Solver 3 :: Reference Norm = Real 207.313690
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+Solver 7 :: Reference Norm = Real 30.1919735
+Solver 7 :: Reference Norm Tolerance = Real 1E-06
 

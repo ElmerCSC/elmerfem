@@ -1,14 +1,36 @@
+! The equal-order twin of teterousse3a.sif. The shipped case runs the LEGACY FlowSolve --
+! its solver block names no Procedure, so AddEquationBasics supplies one -- and
+! this one runs IncompressibleNSVec with "Pressure Stabilization" instead. So two
+! things change at once, solver and element, which is worth stating plainly: the
+! gap between them is NOT all attributable to the stabilisation.
+!
+! Measured on the flow solution, the same solver carrying MINI instead of the
+! stabilised pair sits +0.014 % on the flow solution away, so that part is small. The rest is the port
+! between the two solvers, about 1.1 % on the Teterousse cases, where the
+! material is Glen's law. Elements are prisms.
+!
+! Three keywords exist only to satisfy the vectorized solver and change no
+! physics:
+!   Relative Temperature   -- EffectiveViscosityVec's name for what the legacy
+!                             MaterialModels calls Constant Temperature; it warns
+!                             about exactly this rename
+!   Glen Allow Old Keywords -- ComputeDevStress refuses to pair with
+!                             IncompressibleNSVec without it
+!   Max Output Level        -- raised only so the three timers reach the log
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!                November  2013         !!
 !!                                       !!
-!! DeformationHeat  - Prognostic         !! 
+!! Elmer/Ice Course 2011                 !!
+!!                                       !!
+!! Olivier Gagliardini  May 2011         !!
+!!                                       !!
+!! Tete Rousse Step 3a  - Prognostic     !! 
 !!          zero water pressure          !!
 !!                                       !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Updated January 2014: comment Solver 5 (top freesurface)
-!    because of implementation problems when using 2 of
-!    the same solvers without recompiling one of them
-! Updated Sept 2020 for making it faster and some cleaning
+!    because of implementation problems when using 2 same solvers 
+!    without recompiling one of them
+! Updated September 2020 to make it faster and some cleaning
 
 check keywords warn
 echo on
@@ -44,7 +66,7 @@ Simulation
   BDF Order = 1
   TimeStep intervals = 1
   Timestep Sizes =  $10.0/365.            
-  Output Intervals = 1 
+  Output Intervals = 1
 
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
@@ -133,9 +155,9 @@ Material 1
   Critical Shear Rate = Real 1.0e-10
 
   Constant Temperature = Real -1.0
+  Relative Temperature = Real -1.0
+  Glen Allow Old Keywords = Logical True
 
-  ! we want to have the Cauchy stress
-  !----------------------------------
   Cauchy = Logical True 
 
   ! Bed condition
@@ -160,15 +182,19 @@ End
  
 Solver 2
   Equation = "Navier-Stokes"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Pressure Stabilization = Logical True
+  Element = "n:1"
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
   
-  Stabilization Method = String Stabilized
   Flow Model = Stokes
 
   Exported Variable 1 = -dofs 1 "dSdt" 
-  Exported Variable 2 = -dofs 1 "dS" 
+  Exported Variable 2 = -dofs 1 "dS"
+  Exported Variable 3 = -dofs 3 "velocity"
+  Exported Variable 4 = -dofs 1 "pressure"
 
   Linear System Solver = Direct         
   Linear System Direct Method = umfpack
@@ -183,16 +209,16 @@ Solver 2
   Steady State Convergence Tolerance = Real 1.0e-3
 End
 
+
 Solver 3
   Equation = Sij
   Procedure = "ElmerIceSolvers" "ComputeDevStress"          
   Variable = -nooutput "Sij"
   Variable DOFs = 1
-  ! the name of the variable containing the flow solution (U,V,W,Pressure)
-  !-----------------------------------------------------------------------
-  Flow Solver Name = String "Flow Solution"
+  Exported Variable 1 = -dofs 6 Stress
   Stress Variable Name = String "Stress"
-  Exported Variable 1 = -dofs 6 Stress[Sxx:1 Syy:1 Szz:1 Sxy:1 Syz:1 Szx:1]
+  
+  Flow Solver Name = String "Flow Solution"
 
   Linear System Solver = Direct         
   Linear System Direct Method = umfpack
@@ -203,28 +229,22 @@ Solver 4
    Procedure = "ElmerIceSolvers" "ComputeEigenValues"
    Variable = -nooutput dumy
    Variable DOFs = 1
- 
+  
    ! The 3 eigenvalues
    Exported Variable 1 = EigenStress
-   Exported Variable 1 DOFS = 3!
+   Exported Variable 1 DOFS = 3
 
+  ! The 3 eigenvectors (Option)
+   Exported Variable 2 = EigenVector1
+   Exported Variable 2 DOFS = 3
+   Exported Variable 3 = EigenVector2
+   Exported Variable 3 DOFS =  3
+   Exported Variable 4 = EigenVector3
+   Exported Variable 4 DOFS = 3
 End
 
 Solver 5
-  Equation = DeformationalHeat
-  Variable = "W"
-  Variable DOFs = 1
-
-  procedure =  "ElmerIceSolvers" "DeformationalHeatSolver"
-
-  Linear System Solver = direct
-  Linear System direct Method = umfpack
-  
-  Flow Solver Name = String "Flow Solution"
-End
-
-Solver 6
-  Exec Solver = Never !!!!!!!!
+  Exec Solver = Never
   Equation = "Free Surface Top"
   Variable = String "Zs Top" 
   Variable DOFs =  1
@@ -232,7 +252,7 @@ Solver 6
   Exported Variable 1 DOFs = 1
 
   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
-! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Linear System Solver = Iterative
   Linear System Max Iterations = 1500
@@ -248,7 +268,6 @@ Solver 6
 
   Steady State Convergence Tolerance = 1.0e-03
 
-  Stabilization Method = Bubbles    
   Apply Dirichlet = Logical False ! No limiter needed for the upper surface
 
 ! How much the free surface is relaxed
@@ -262,15 +281,17 @@ Solver 6
   Normal Flux = Logical False
 End
 
-Solver 7
+Solver 6
+  Exec Solver = Never
   Equation = "Free Surface Bottom"
   Variable = String "Zs Bottom" 
   Variable DOFs =  1
   Exported Variable 1 = String "Zs Bottom Residual"
   Exported Variable 1 DOFs = 1
 
-  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
-! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+  !Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Procedure = "./FreeSurface1" "FreeSurfaceSolver"
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Linear System Solver = Iterative
   Linear System Max Iterations = 1500
@@ -286,7 +307,6 @@ Solver 7
 
   Steady State Convergence Tolerance = 1.0e-03
 
-  Stabilization Method = Bubbles    
   Apply Dirichlet = Logical True  
 
 ! How much the free surface is relaxed
@@ -303,17 +323,17 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Volume
 Equation 1
-  Active Solvers(5) = 1 2 3 4 5
+  Active Solvers(4) = 1 2 3 4
 End
 ! Top surface
 Equation 2
-  Active Solvers(1) = 6
+  Active Solvers(1) = 5          
   Flow Solution Name = String "Flow Solution"
   Convection = String Computed
 End
 ! Bottom Surface
 Equation 3
-  Active Solvers(1) = 7        
+  Active Solvers(1) = 6          
   Flow Solution Name = String "Flow Solution"
   Convection = String Computed
 End
@@ -344,6 +364,7 @@ Boundary Condition 2
   Velocity 3 Condition = Variable Coordinate 3
     Real Procedure "./USF_TR" "MaskCavity"
 
+  !Save Line = Logical True
   Flux integrate = Logical True
 End
 
@@ -352,10 +373,9 @@ Boundary Condition 3
 !!! this BC is equal to body no. 2 !!!
   Body Id = 2
 
-  !Save Line = Logical True
+  Save Line = Logical True
   Flux integrate = Logical True
 End
 
-
-Solver 5 :: Reference Norm = Real  1.18445654E-02
-Solver 5 :: Reference Norm Tolerance = Real 1E-06
+Solver 3 :: Reference Norm = Real 1.34429852E-01
+Solver 3 :: Reference Norm Tolerance = Real 1E-06

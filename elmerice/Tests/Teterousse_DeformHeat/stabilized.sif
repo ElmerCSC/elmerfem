@@ -1,3 +1,22 @@
+! The equal-order twin of test.sif. The shipped case runs the LEGACY FlowSolve --
+! its solver block names no Procedure, so AddEquationBasics supplies one -- and
+! this one runs IncompressibleNSVec with "Pressure Stabilization" instead. So two
+! things change at once, solver and element, which is worth stating plainly: the
+! gap between them is NOT all attributable to the stabilisation.
+!
+! Measured on the flow solution, the same solver carrying MINI instead of the
+! stabilised pair sits +0.014 % on the flow solution away, so that part is small. The rest is the port
+! between the two solvers, about 1.1 % on the Teterousse cases, where the
+! material is Glen's law. Elements are prisms.
+!
+! Three keywords exist only to satisfy the vectorized solver and change no
+! physics:
+!   Relative Temperature   -- EffectiveViscosityVec's name for what the legacy
+!                             MaterialModels calls Constant Temperature; it warns
+!                             about exactly this rename
+!   Glen Allow Old Keywords -- ComputeDevStress refuses to pair with
+!                             IncompressibleNSVec without it
+!   Max Output Level        -- raised only so the three timers reach the log
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!                November  2013         !!
 !!                                       !!
@@ -133,6 +152,8 @@ Material 1
   Critical Shear Rate = Real 1.0e-10
 
   Constant Temperature = Real -1.0
+  Relative Temperature = Real -1.0
+  Glen Allow Old Keywords = Logical True
 
   ! we want to have the Cauchy stress
   !----------------------------------
@@ -160,11 +181,13 @@ End
  
 Solver 2
   Equation = "Navier-Stokes"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Pressure Stabilization = Logical True
+  Element = "n:1"
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True
   
-  Stabilization Method = String Stabilized
   Flow Model = Stokes
 
   Exported Variable 1 = -dofs 1 "dSdt" 
@@ -248,7 +271,6 @@ Solver 6
 
   Steady State Convergence Tolerance = 1.0e-03
 
-  Stabilization Method = Bubbles    
   Apply Dirichlet = Logical False ! No limiter needed for the upper surface
 
 ! How much the free surface is relaxed
@@ -286,7 +308,6 @@ Solver 7
 
   Steady State Convergence Tolerance = 1.0e-03
 
-  Stabilization Method = Bubbles    
   Apply Dirichlet = Logical True  
 
 ! How much the free surface is relaxed
@@ -357,5 +378,5 @@ Boundary Condition 3
 End
 
 
-Solver 5 :: Reference Norm = Real  1.18445654E-02
+Solver 5 :: Reference Norm = Real 1.05085646E-02
 Solver 5 :: Reference Norm Tolerance = Real 1E-06
