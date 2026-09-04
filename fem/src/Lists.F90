@@ -6527,14 +6527,7 @@ CONTAINS
      ListSame = .FALSE.
      ListFound = .FALSE.
       
-     ! We are looking for the same element as previous time
-     IF( ASSOCIATED( Element, Handle % Element ) ) THEN
-       ListSame = .TRUE.
-       List => Handle % List
-       RETURN
-     END IF
- 
-     ! Ok, not the same element, get the index that determines the list
+     ! Get the index that determines the list
      ThisBC = ASSOCIATED( Element % BoundaryInfo )
      IF( ThisBC ) THEN
        ! Different constraints can have the same body_id so we cannot use that as an indicator.
