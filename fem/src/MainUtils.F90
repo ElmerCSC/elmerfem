@@ -119,7 +119,7 @@ CONTAINS
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
         IF ( str == 'umfpack' .OR. str == 'big umfpack' ) THEN
           CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
-          str = 'mumps'
+          str = 'mumpslocal'
           CALL ListAddString( Params,'Linear System Direct Method', str)
         END IF
 #endif

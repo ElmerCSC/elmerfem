@@ -4163,7 +4163,7 @@ CONTAINS
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
     IF ( Method == 'umfpack' .OR. Method == 'big umfpack' ) THEN
       CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
-      Method = 'mumps'
+      Method = 'mumpslocal'
     END IF
 #endif
 
