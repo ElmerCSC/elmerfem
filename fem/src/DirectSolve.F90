@@ -1502,6 +1502,33 @@ CONTAINS
     CALL SMumps(A % SMumpsID)
     CALL Flush(6)
 
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % SMumpsID % INFOG(1) /= -8 .AND. A % SMumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % SMumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % SMumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('SMumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % SMumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % SMumpsID % ICNTL(14)),Level=5)
+      A % SMumpsID % job = 2
+      CALL SMumps(A % SMumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % SMumpsID % INFOG(1) < 0) THEN
+      IF (A % SMumpsID % INFOG(1) == -8 .OR. A % SMumpsID % INFOG(1) == -9) &
+          CALL Warn('SMumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % SMumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('SMumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % SMumpsID % INFOG(1))//' INFOG(2)='//I2S(A % SMumpsID % INFOG(2)))
+    END IF
+
     IF(.NOT.SerialMode) THEN
       A % SMumpsID % lsol_loc = A % Smumpsid % info(23)
       ALLOCATE(A % SMumpsID % sol_loc(A % SMumpsId % lsol_loc))
@@ -1728,6 +1755,33 @@ CONTAINS
     A % CMumpsID % job = 4
     CALL CMumps(A % CMumpsID)
     CALL Flush(6)
+
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % CMumpsID % INFOG(1) /= -8 .AND. A % CMumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % CMumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % CMumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('CMumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % CMumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % CMumpsID % ICNTL(14)),Level=5)
+      A % CMumpsID % job = 2
+      CALL CMumps(A % CMumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % CMumpsID % INFOG(1) < 0) THEN
+      IF (A % CMumpsID % INFOG(1) == -8 .OR. A % CMumpsID % INFOG(1) == -9) &
+          CALL Warn('CMumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % CMumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('CMumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % CMumpsID % INFOG(1))//' INFOG(2)='//I2S(A % CMumpsID % INFOG(2)))
+    END IF
 
     IF(.NOT.SerialMode) THEN
       A % CMumpsID % lsol_loc = A % CMumpsid % info(23)
@@ -2029,6 +2083,33 @@ CONTAINS
     CALL DMumps(A % MumpsID)
     CALL Flush(6)
 
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % MumpsID % INFOG(1) /= -8 .AND. A % MumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % MumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % MumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('Mumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % MumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % MumpsID % ICNTL(14)),Level=5)
+      A % MumpsID % job = 2
+      CALL DMumps(A % MumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % MumpsID % INFOG(1) < 0) THEN
+      IF (A % MumpsID % INFOG(1) == -8 .OR. A % MumpsID % INFOG(1) == -9) &
+          CALL Warn('Mumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % MumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('Mumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % MumpsID % INFOG(1))//' INFOG(2)='//I2S(A % MumpsID % INFOG(2)))
+    END IF
+
     IF(.NOT.SerialMode) THEN
       A % MumpsID % lsol_loc = A % mumpsid % info(23)
       ALLOCATE(A % MumpsID % sol_loc(A % MumpsId % lsol_loc))
@@ -2302,6 +2383,33 @@ CONTAINS
     A % ZMumpsID % job = 4
     CALL ZMumps(A % ZMumpsID)
     CALL Flush(6)
+
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % ZMumpsID % INFOG(1) /= -8 .AND. A % ZMumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % ZMumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % ZMumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('ZMumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % ZMumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % ZMumpsID % ICNTL(14)),Level=5)
+      A % ZMumpsID % job = 2
+      CALL ZMumps(A % ZMumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % ZMumpsID % INFOG(1) < 0) THEN
+      IF (A % ZMumpsID % INFOG(1) == -8 .OR. A % ZMumpsID % INFOG(1) == -9) &
+          CALL Warn('ZMumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % ZMumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('ZMumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % ZMumpsID % INFOG(1))//' INFOG(2)='//I2S(A % ZMumpsID % INFOG(2)))
+    END IF
 
     IF(.NOT.SerialMode) THEN
       A % ZMumpsID % lsol_loc = A % Zmumpsid % info(23)
