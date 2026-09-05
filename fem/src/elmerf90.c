@@ -62,23 +62,11 @@
 
 int main(int argc, char *argv[])
 {
-    const char *env_lib  = getenv("ELMER_LIB");
-    const char *env_home = getenv("ELMER_HOME");
-    const char *env_fc   = getenv("ELMER_Fortran_COMPILER");
-
-    /* Resolve LIBDIR and INCLUDE (mirrors shell-script priority) */
+    /* Get absolute path to headers and solver modules */
     char *libdir, *incdir;
-    if (env_lib && *env_lib) {
-        libdir = strdup(env_lib);
-        incdir = join(env_lib, "/../include");
-    } else if (env_home && *env_home) {
-        libdir = join(env_home, "/" ELMERF90_INSTALL_LIB);
-        incdir = join(env_home, "/share/elmersolver/include");
-    } else {
-        libdir = strdup(ELMERF90_LIBDIR);
-        incdir = strdup(ELMERF90_INCLUDE_DIR);
-    }
+    get_inc_lib_dirs(incdir, libdir);
 
+    const char *env_fc = getenv("ELMER_Fortran_COMPILER");
     const char *fc = (env_fc && *env_fc) ? env_fc : ELMERF90_FC;
 
     /* --- Build argv ---------------------------------------------------- */
