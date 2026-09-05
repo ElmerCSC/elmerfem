@@ -55,6 +55,13 @@ MODULE DirectSolve
 
    IMPLICIT NONE
 
+   ! How hard MumpsLocal_Factorize tries to grow ICNTL(14), the percentage of
+   ! extra working space, when Mumps reports the analysis estimate was too
+   ! small. Doubling from 20 five times reaches 640, which is far past what a
+   ! merely badly estimated case needs.
+   INTEGER, PARAMETER :: MumpsWorkspaceRetries = 5
+   INTEGER, PARAMETER :: MumpsWorkspaceMin = 20
+
 CONTAINS
 
 
@@ -2683,8 +2690,29 @@ CONTAINS
     CALL DMumps(A % mumpsIDL)
     CALL Flush(6)
 
+    ! INFO(1) = -8 or -9 only means the working space guessed at analysis time
+    ! was too small, which ICNTL(14) exists to enlarge. Retry the factorization
+    ! rather than dying: the analysis is still valid, so JOB=2 can simply be
+    ! repeated. Without this a case that UMFPACK factorizes happily is fatal as
+    ! soon as UMFPACK is not the one doing it.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % mumpsIDL % INFO(1) /= -8 .AND. A % mumpsIDL % INFO(1) /= -9) EXIT
+      icntlft = MAX(A % mumpsIDL % ICNTL(14), MumpsWorkspaceMin)
+      A % mumpsIDL % ICNTL(14) = 2*icntlft
+      CALL Info('MumpsLocal_Factorize','Mumps ran out of working space (INFO(1)='// &
+          I2S(A % mumpsIDL % INFO(1))//'), retrying with '// &
+          'ICNTL(14)='//I2S(A % mumpsIDL % ICNTL(14)),Level=5)
+      A % mumpsIDL % JOB = 2
+      CALL DMumps(A % mumpsIDL)
+      CALL Flush(6)
+    END DO
+
     ! Check return status
     IF (A % mumpsIDL % INFO(1)<0) THEN
+      IF (A % mumpsIDL % INFO(1) == -8 .OR. A % mumpsIDL % INFO(1) == -9) &
+          CALL Warn('MumpsLocal_Factorize','Still out of working space at ICNTL(14)='// &
+              I2S(A % mumpsIDL % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
       CALL Fatal('MumpsLocal_Factorize','Mumps factorize phase failed')
     END IF
 
@@ -2870,8 +2898,26 @@ CONTAINS
     CALL ZMumps(A % ZmumpsIDL)
     CALL Flush(6)
 
+    ! See the real valued counterpart: -8 and -9 are a working space guess that
+    ! was too small, not a failed factorization.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % ZmumpsIDL % INFO(1) /= -8 .AND. A % ZmumpsIDL % INFO(1) /= -9) EXIT
+      icntlft = MAX(A % ZmumpsIDL % ICNTL(14), MumpsWorkspaceMin)
+      A % ZmumpsIDL % ICNTL(14) = 2*icntlft
+      CALL Info('ZMumpsLocal_Factorize','Mumps ran out of working space (INFO(1)='// &
+          I2S(A % ZmumpsIDL % INFO(1))//'), retrying with '// &
+          'ICNTL(14)='//I2S(A % ZmumpsIDL % ICNTL(14)),Level=5)
+      A % ZmumpsIDL % JOB = 2
+      CALL ZMumps(A % ZmumpsIDL)
+      CALL Flush(6)
+    END DO
+
     ! Check return status
     IF (A % ZmumpsIDL % INFO(1)<0) THEN
+      IF (A % ZmumpsIDL % INFO(1) == -8 .OR. A % ZmumpsIDL % INFO(1) == -9) &
+          CALL Warn('ZMumpsLocal_Factorize','Still out of working space at ICNTL(14)='// &
+              I2S(A % ZmumpsIDL % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
       CALL Fatal('ZMumpsLocal_Factorize','Mumps factorize phase failed')
     END IF
 
