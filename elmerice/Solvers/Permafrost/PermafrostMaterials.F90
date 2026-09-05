@@ -43,7 +43,7 @@ MODULE PermafrostMaterials
   IMPLICIT NONE
   REAL(KIND=dp), PARAMETER :: MinimumLiquidFraction = 0.001_dp
   REAL(KIND=dp), PARAMETER :: SalinityRoundoffTolerance = &
-       1000.0_dp*EPSILON(1.0_dp)
+       10000.0_dp*EPSILON(1.0_dp)
   REAL(KIND=dp), PARAMETER :: HydraulicConductivityReferenceGravity = 9.81_dp
   REAL(KIND=dp), PARAMETER :: DefaultHydraulicConductivityLimit = 1.0e-14_dp
   LOGICAL, SAVE :: LiquidFractionClipWarningIssued = .FALSE.
