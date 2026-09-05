@@ -14,20 +14,11 @@
 
 int main(int argc, char *argv[])
 {
-    const char *env_lib  = getenv("ELMER_LIB");
-    const char *env_home = getenv("ELMER_HOME");
-    const char *env_fc   = getenv("ELMER_Fortran_COMPILER");
-
-    /* Resolve LIBDIR and INCLUDE (mirrors shell-script priority) */
+    /* Get absolute path to solver modules */
     char *libdir;
-    if (env_lib && *env_lib) {
-        libdir = strdup(env_lib);
-    } else if (env_home && *env_home) {
-        libdir = join(env_home, "/" ELMERF90_INSTALL_LIB);
-    } else {
-        libdir = strdup(ELMERF90_LIBDIR);
-    }
+    get_inc_lib_dirs(NULL, libdir);
 
+    const char *env_fc = getenv("ELMER_Fortran_COMPILER");
     const char *fc = (env_fc && *env_fc) ? env_fc : ELMERF90_FC;
 
     /* --- Build argv ---------------------------------------------------- */
