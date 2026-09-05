@@ -218,7 +218,7 @@ CONTAINS
       SecondOrder, n_pot, nd_pot, PotSol, ReadySystemMatrix)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Stiff(:,:), Force(:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n   ! The number of background element nodes
     INTEGER :: dim
     LOGICAL :: PiolaVersion, SecondOrder
@@ -516,7 +516,7 @@ CONTAINS
       SecondOrder, PhiSol, ReadySystemMatrix)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Stiff(:,:), Force(:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n, nd, dim
     LOGICAL :: PiolaVersion, SecondOrder
     REAL(KIND=dp) :: PhiSol(:)

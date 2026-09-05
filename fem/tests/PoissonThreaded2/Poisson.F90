@@ -123,10 +123,9 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
     INTEGER :: i, dim, ldbasis, ngp, allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:), dBasisdx(:,:,:), DetJ(:), LoadAtIPs(:)
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), DetJ(:), LoadAtIPs(:)
 !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJ, LoadAtIPs
-    !$OMP THREADPRIVATE(Nodes, Basis, dBasisdx, DetJ, LoadAtIPs)
 !------------------------------------------------------------------------------
     CALL GetElementNodesVec( Nodes, UElement=Element )
     STIFF = 0.0d0
@@ -138,22 +137,11 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
     ! IP = GaussPoints( Element, 512 )
     ngp = IP % n
 
-    ! Reserve workspace
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
-              DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('LocalMatrix',&
-                'Storage allocation for local element basis failed')
-      END IF
-    ELSE IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) THEN
-      DEALLOCATE(Basis, dBasisdx, DetJ, LoadAtIPs)
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
-              DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('LocalMatrix',&
-                'Storage allocation for local element basis failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
+            DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('LocalMatrix',&
+              'Storage allocation for local element basis failed')
     END IF
     
     ldbasis = SIZE(Basis,1)

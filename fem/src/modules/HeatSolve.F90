@@ -189,27 +189,27 @@ END SUBROUTINE HeatSolver_Init
      INTERFACE
         SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
           INTEGER :: Perm(:)
         END SUBROUTINE HeatSolver_Boundary_Residual
 
         SUBROUTINE HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2)
           INTEGER :: Perm(:)
         END SUBROUTINE HeatSolver_Edge_Residual
 
         SUBROUTINE HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Element
+          TYPE(Element_t) :: Element
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
           INTEGER :: Perm(:)
         END SUBROUTINE HeatSolver_Inside_Residual
@@ -315,9 +315,6 @@ END SUBROUTINE HeatSolver_Init
                  Pressure,              &
                  dPressureDt,           &
                  PressureCoeff,        &
-                 ElementNodes % x,      &
-                 ElementNodes % y,      &
-                 ElementNodes % z,      &
                  Density,Work,          &
                  LatentHeat,            &
                  PhaseVelocity,         &
@@ -342,6 +339,10 @@ END SUBROUTINE HeatSolver_Init
                  PerfusionDensity,      &
                  PerfusionHeatCapacity, &
                  PerfusionRefTemperature )
+          IF (ALLOCATED(ElementNodes % xyz)) THEN
+            DEALLOCATE(ElementNodes % xyz)
+            NULLIFY(ElementNodes % x, ElementNodes % y, ElementNodes % z)
+          END IF
        END IF
 
        ALLOCATE( &
@@ -351,9 +352,6 @@ END SUBROUTINE HeatSolver_Init
                  Pressure( N ),                        &
                  dPressureDt( N ),                     &
                  PressureCoeff( N ),                   &
-                 ElementNodes % x( N ),                &
-                 ElementNodes % y( N ),                &
-                 ElementNodes % z( N ),                &
                  Density( N ),Work( N ),               &
                  LatentHeat( N ),                      &
                  PhaseVelocity(3, N),                  &
@@ -1390,7 +1388,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE TabulateBoundaryAverages( Mesh, Emiss, Reflect )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     REAL(KIND=dp), ALLOCATABLE :: Emiss(:)
     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: Reflect(:)
  !------------------------------------------------------------------------------
@@ -2307,8 +2305,8 @@ CONTAINS
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Edge
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, EdgeNodes
@@ -2604,8 +2602,8 @@ CONTAINS
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2)
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Edge
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, EdgeNodes
@@ -2804,8 +2802,8 @@ CONTAINS
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes

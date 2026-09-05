@@ -1,0 +1,135 @@
+! Model lumping by six fixed displacements -- the DEFAULT method, since
+! "Fix Displacement" defaults to True, and the keyword is deliberately not given
+! here so that the default path is what runs.
+!
+! It was covered by nothing and it segfaulted. LumpedDisplacements reaches
+! SetDirichletPoint before DefaultDirichletBCs has allocated ConstrainedDOF and
+! DValues, and that routine wrote through them unguarded, so plain
+! "Model Lumping = True" crashed. Its sibling beam-springs escaped only by
+! setting the keyword False. SetDirichletPoint now allocates on demand, as
+! UpdateDirichletDof beside it always has.
+!
+! beam-springs is the same beam by the other method. The check that this branch
+! is right is physical rather than a norm: the two must agree on the lumped
+! stiffness written to kmat.dat, and they do -- same structure, off-diagonals at
+! 1e-12 either way, diagonal within 0.2 to 2.5%, which is the spread two lumping
+! approximations of one beam should have. The norm here is the displacement,
+! which legitimately differs: one method prescribes a load, the other a
+! displacement.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam3d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+! Max Output Level = 5
+
+  Coordinate System = "Cartesian 3D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+! Output File = "beam3d.dat"
+! Post File = "beam3d.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+
+  Stress Analysis = True
+  Calculate Stresses = Logical False
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Variable = -dofs 3 "Displacement"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Constant Bulk System = Logical True
+  Linear System Refactorize = Logical False
+
+  Model Lumping = Logical True
+  Model Lumping Filename = String "kmat.dat"
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Min Iterations = Integer 6
+  Nonlinear System Max Iterations = Integer 6
+  Time Derivative Order = 2
+
+End
+
+
+Material 1
+  Name = "Material1"
+
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+  Density = 2.7
+  ! Nonzero so that LumpedCartesianMass integrates something. beam-springs has
+  ! it at zero, which made its whole lumped mass matrix zero -- 126 lines whose
+  ! output was indistinguishable from broken. Steady state with no body force,
+  ! so this does not move the displacement norm.
+End
+
+Boundary Condition 1
+  Name = "wall_end"
+  Target Boundaries(1) = 5
+
+! The beam is fixed at the one end
+  Displacement 1 = 0
+  Displacement 2 = 0
+  Displacement 3 = 0
+End
+
+Boundary Condition 2
+  Name = "free_end"
+  Target Boundaries(1) = 6
+
+! The force is permutated in three steps through the main directions.
+  Model Lumping Boundary = Logical True
+End
+
+
+
+! The lumped mass matrix LumpedCartesianMass builds is reported through the
+! Simulation section as "res:" entries, which SaveScalars picks up. Checking one
+! turns those 126 lines from "produces numbers" into something guarded.
+!
+! The values are analytically verifiable for this beam -- 10 x 1 x 1 at density
+! 2.7, so mass 27, Izz = m(a^2+a^2)/12 = 4.5, and Ixx about the end
+! = m(L^2/3 + a^2/12) = 902.25 -- and the code reproduces all three exactly.
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Filename = "lumped.dat"
+  ! Column 5 is "res: moment of inertia xx" = 902.25 exactly. Read
+  ! lumped.dat.names if the columns ever move.
+  Show Norm Index = 5
+End
+
+
+Solver 1 :: Reference Norm = Real 1.62174367E-03
+Solver 2 :: Reference Norm = Real 9.022500000000E+002
+RUN

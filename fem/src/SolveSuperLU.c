@@ -77,105 +77,105 @@ FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n,
 
     if ( *iopt == 1 ) { /* LU decomposition */
 
-	/* Initialize the statistics variables. */
+        /* Initialize the statistics variables. */
         StatAlloc(*n, *nprocs, panel_size, relax, &stat);
         StatInit(*n, *nprocs, &stat);
  
-	/* Adjust to 0-based indexing */
-	for (i = 0; i < *nnz; ++i) --rowind[i];
-	for (i = 0; i <= *n; ++i)  --colptr[i];
+        /* Adjust to 0-based indexing */
+        for (i = 0; i < *nnz; ++i) --rowind[i];
+        for (i = 0; i <= *n; ++i)  --colptr[i];
 
-	dCreate_CompCol_Matrix(&A, *n, *n, *nnz, values, rowind, colptr,
-			       SLU_NC, SLU_D, SLU_GE);
-	L = (SuperMatrix *) SUPERLU_MALLOC( sizeof(SuperMatrix) );
-	U = (SuperMatrix *) SUPERLU_MALLOC( sizeof(SuperMatrix) );
-    	perm_r = intMalloc(*n);
-    	perm_c = intMalloc(*n);
+        dCreate_CompCol_Matrix(&A, *n, *n, *nnz, values, rowind, colptr,
+                      SLU_NC, SLU_D, SLU_GE);
+        L = (SuperMatrix *) SUPERLU_MALLOC( sizeof(SuperMatrix) );
+        U = (SuperMatrix *) SUPERLU_MALLOC( sizeof(SuperMatrix) );
+        perm_r = intMalloc(*n);
+        perm_c = intMalloc(*n);
 
-	/*
-	 * Get column permutation vector perm_c[], according to permc_spec:
-	 *   permc_spec = 0: natural ordering 
-	 *   permc_spec = 1: minimum degree on structure of A'*A
-	 *   permc_spec = 2: minimum degree on structure of A'+A
-	 *   permc_spec = 3: approximate minimum degree for unsymmetric matrices
-	 */    	
+        /*
+         * Get column permutation vector perm_c[], according to permc_spec:
+         *   permc_spec = 0: natural ordering 
+         *   permc_spec = 1: minimum degree on structure of A'*A
+         *   permc_spec = 2: minimum degree on structure of A'+A
+         *   permc_spec = 3: approximate minimum degree for unsymmetric matrices
+         */
         permc_spec = 1;
-  	get_perm_c(permc_spec, &A, perm_c);
-	
+        get_perm_c(permc_spec, &A, perm_c);
+
         pdgstrf_init(*nprocs, fact, trans, refact, panel_size, relax,
                  diag_pivot_thresh, usepr, drop_tol, perm_c, perm_r,
                  work, lwork, &A, &AC, &options, &stat);
 
         pdgstrf(&options, &AC, perm_r, L, U, &stat, info);
 
-	if ( *info == 0 ) {
-	    Lstore = (SCformat *) L->Store;
-	    Ustore = (NCformat *) U->Store;
-	    printf("No of nonzeros in factor L = %d\n", Lstore->nnz);
-	    printf("No of nonzeros in factor U = %d\n", Ustore->nnz);
-	    printf("No of nonzeros in L+U = %d\n", Lstore->nnz + Ustore->nnz);
-	} else {
-	    printf("dgstrf() error returns INFO= %d\n", *info);
-	    if ( *info <= *n ) { /* factorization completes */
-	    }
-	}
-	
-	/* Restore to 1-based indexing */
-	for (i = 0; i < *nnz; ++i) ++rowind[i];
-	for (i = 0; i <= *n; ++i) ++colptr[i];
+        if ( *info == 0 ) {
+          Lstore = (SCformat *) L->Store;
+          Ustore = (NCformat *) U->Store;
+          printf("No of nonzeros in factor L = %d\n", Lstore->nnz);
+          printf("No of nonzeros in factor U = %d\n", Ustore->nnz);
+          printf("No of nonzeros in L+U = %d\n", Lstore->nnz + Ustore->nnz);
+        } else {
+          printf("dgstrf() error returns INFO= %d\n", *info);
+          if ( *info <= *n ) { /* factorization completes */
+          }
+        }
 
-	/* Save the LU factors in the factors handle */
-	LUfactors = (factors_t*) SUPERLU_MALLOC(sizeof(factors_t));
-	LUfactors->L = L;
-	LUfactors->U = U;
-	LUfactors->perm_c = perm_c;
-	LUfactors->perm_r = perm_r;
-	*f_factors = (fptr) LUfactors;
+        /* Restore to 1-based indexing */
+        for (i = 0; i < *nnz; ++i) ++rowind[i];
+        for (i = 0; i <= *n; ++i) ++colptr[i];
 
-	/* Free un-wanted storage */
-	Destroy_SuperMatrix_Store(&A);
-/*	Destroy_CompCol_Permuted(&AC); Instead, as Fabien suggested (untested): */
+        /* Save the LU factors in the factors handle */
+        LUfactors = (factors_t*) SUPERLU_MALLOC(sizeof(factors_t));
+        LUfactors->L = L;
+        LUfactors->U = U;
+        LUfactors->perm_c = perm_c;
+        LUfactors->perm_r = perm_r;
+        *f_factors = (fptr) LUfactors;
+
+        /* Free un-wanted storage */
+        Destroy_SuperMatrix_Store(&A);
+/*      Destroy_CompCol_Permuted(&AC); Instead, as Fabien suggested (untested): */
         pxgstrf_finalize(&options, &AC);
-  	StatFree(&stat);
+        StatFree(&stat);
 
     } else if ( *iopt == 2 ) { /* Triangular solve */
-	/* Initialize the statistics variables. */
+        /* Initialize the statistics variables. */
         StatAlloc(*n, *nprocs, panel_size, relax, &stat);
         StatInit(*n, *nprocs, &stat);
 
-	/* Extract the LU factors in the factors handle */
-	LUfactors = (factors_t*) *f_factors;
-	L = LUfactors->L;
-	U = LUfactors->U;
-	perm_c = LUfactors->perm_c;
-	perm_r = LUfactors->perm_r;
+        /* Extract the LU factors in the factors handle */
+        LUfactors = (factors_t*) *f_factors;
+        L = LUfactors->L;
+        U = LUfactors->U;
+        perm_c = LUfactors->perm_c;
+        perm_r = LUfactors->perm_r;
 
-	dCreate_Dense_Matrix(&B, *n, *nrhs, b, *ldb, SLU_DN, SLU_D, SLU_GE);
+        dCreate_Dense_Matrix(&B, *n, *nrhs, b, *ldb, SLU_DN, SLU_D, SLU_GE);
 
         /* Solve the system A*X=B, overwriting B with X. */
         dgstrs (trans, L, U, perm_r, perm_c, &B, &stat, info);
 
-	Destroy_SuperMatrix_Store(&B);
+        Destroy_SuperMatrix_Store(&B);
         StatFree(&stat);
 
     } else if ( *iopt == 3 ) { /* Free storage */
-	/* Free the LU factors in the factors handle */
+        /* Free the LU factors in the factors handle */
 
-	LUfactors = (factors_t*)*f_factors;
-	SUPERLU_FREE (LUfactors->perm_r);
-	SUPERLU_FREE (LUfactors->perm_c);
+        LUfactors = (factors_t*)*f_factors;
+        SUPERLU_FREE (LUfactors->perm_r);
+        SUPERLU_FREE (LUfactors->perm_c);
 /*
-	Destroy_CompCol_Matrix(LUfactors->U);
-	Destroy_SuperNode_Matrix(LUfactors->L);
+        Destroy_CompCol_Matrix(LUfactors->U);
+        Destroy_SuperNode_Matrix(LUfactors->L);
 Instead,  as Fabien suggested (untested): */
         Destroy_SuperNode_SCP(LUfactors->L);
         Destroy_CompCol_NCP(LUfactors->U);
         SUPERLU_FREE (LUfactors->L);
         SUPERLU_FREE (LUfactors->U);
-	SUPERLU_FREE (LUfactors);
+        SUPERLU_FREE (LUfactors);
     } else {
-	fprintf(stderr,"Invalid iopt=%d passed to c_fortran_dgssv()\n",*iopt);
-	exit(-1);
+        fprintf(stderr,"Invalid iopt=%d passed to c_fortran_dgssv()\n",*iopt);
+        exit(-1);
     }
 }
 #endif

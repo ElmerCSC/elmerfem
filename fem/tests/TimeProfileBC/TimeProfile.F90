@@ -33,7 +33,7 @@ FUNCTION TimeProfile( Model, n, tx ) RESULT( f )
       CALL Fatal('TimeProfile','Item should be variable scalar: '//TRIM(Name))        
     END IF
     
-    IF ( ptr % PROCEDURE /= 0 ) THEN
+    IF ( C_ASSOCIATED(ptr % PROCEDURE) ) THEN
       CALL Fatal('TimeProfile','Item should not be a function: '//TRIM(Name))             
     END IF
       

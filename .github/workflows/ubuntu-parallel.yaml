@@ -30,7 +30,11 @@ jobs:
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
+            # The leading -D matters. This read "-WITH_OpenMP=ON" for a long
+            # time; cmake silently ignores an unknown -W argument (exit 0, no
+            # warning), so WITH_OpenMP kept its FALSE default and this job was
+            # in fact building and testing without OpenMP.
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
 
     env:
       CC: ${{ matrix.cc }}
@@ -41,9 +45,21 @@ jobs:
         run: lscpu
 
       - name: checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          submodules: recursive
+          submodules: false
+          fetch-depth: 0
+
+      - name: init and update Zoltan submodule
+        run: |
+          git submodule init
+          # Self-hosted runners keep the workspace between runs.  If a previous
+          # run left a shallow Zoltan clone at an old commit, unshallow it before
+          # updating to the new pointer — otherwise git refuses to fetch a commit
+          # not reachable from the shallow root ("refusing to merge unrelated
+          # histories").  The command is a no-op on a fresh workspace.
+          git -C contrib/Zoltan_v3.83 fetch --unshallow 2>/dev/null || true
+          git submodule update
 
       - name: install dependencies
         run: |
@@ -92,7 +108,11 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest . -j$(nproc) -L "parallel|fast"
+          # Capped at -j4 rather than -j$(nproc): each test now really does
+          # get OpenMP threads (see the -DWITH_OpenMP note above), and
+          # test_macros gives every MPI task PHYS_CPU/MPIEXEC_NTASKS of them,
+          # so concurrent tests multiply tasks x threads over the same cores.
+          ctest . -j4 -L "parallel|fast"
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -115,20 +135,16 @@ jobs:
             echo "::group::Content of ${test_root}/${test}"
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
-            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
-              for err_log in "${err_logs[@]}"; do
-                echo ---- Content of ${err_log} ----
-                cat ${err_log}
-              done
-            fi
-            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
-              for out_log in "${out_logs[@]}"; do
-                echo ---- Content of ${out_log} ----
-                cat ${out_log}
-              done
-            fi
+            err_logs=($(ls ${test_root}/${test}/test-stderr*.log 2>/dev/null))
+            for err_log in "${err_logs[@]}"; do
+              echo ---- Content of ${err_log} ----
+              cat ${err_log}
+            done
+            out_logs=($(ls ${test_root}/${test}/test-stdout*.log 2>/dev/null))
+            for out_log in "${out_logs[@]}"; do
+              echo ---- Content of ${out_log} ----
+              cat ${out_log}
+            done
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"

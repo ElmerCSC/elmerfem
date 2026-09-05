@@ -98,7 +98,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
       USE SParIterComm
       USE Interpolation
       USE CoordinateSystems
-      USE MeshUtils, ONLY: ReleaseMesh
+      USE MeshBasics, ONLY: ReleaseMesh
       TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
       TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
       LOGICAL, OPTIONAL :: UseQuadrantTree

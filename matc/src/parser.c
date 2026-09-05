@@ -1418,10 +1418,9 @@ void free_clause(CLAUSE *root)
     FREEMEM((char *)root);
 }
 
-VARIABLE *doit(char *line)
+CLAUSE *doit_compile(char *line)
 {
   CLAUSE *ptr, *root;
-  VARIABLE *res;
 
   str = buf;
   strcpy( str, line );
@@ -1438,6 +1437,16 @@ VARIABLE *doit(char *line)
       ptr = LINK(ptr);
     }
   }
+
+  return root;
+}
+
+VARIABLE *doit(char *line)
+{
+  CLAUSE *root;
+  VARIABLE *res;
+
+  root = doit_compile(line);
 
 /*  root = optimclause(root); */
 /*  printclause(root, math_out, 0);   */

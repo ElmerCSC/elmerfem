@@ -301,7 +301,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: Atomic
     
     TYPE(ListMatrixEntry_t), POINTER :: CEntryPtr, PEntryPtr, NEntryPtr
-    INTEGER :: TID, centry, sentry, rentry, col
+    INTEGER :: TID, centry, sentry, rentry, col, prevcol
         
     TID = 1
     !$ TID = omp_get_thread_num() + 1
@@ -330,12 +330,16 @@ CONTAINS
        sentry = 2
     END IF
     
+    prevcol = -1
+    IF (sentry > 1) prevcol = Indexes(Perm(1))
+
     ! Search a correct place for the element
     PEntryPtr => CEntryPtr
     CEntryPtr => CEntryPtr % Next
 
     DO centry=sentry,nentry
        col=Indexes(Perm(centry))
+       IF (col == prevcol) CYCLE
 
        ! Find a correct place to add index to
        DO WHILE( ASSOCIATED(CEntryPtr) )
@@ -365,11 +369,14 @@ CONTAINS
          ! List matrix row contains no more entries
          EXIT
        END IF
+       prevcol = col
      END DO
 
      ! Add rest of the entries in Indexes to list matrix row (if any)
      DO rentry=centry,nentry
        col=Indexes(Perm(rentry))
+       IF (col == prevcol) CYCLE
+       prevcol = col
        NEntryPtr => ListMatrixPool_GetListEntry(ListMatrixArray % Pool(TID), col, NULL())
        PEntryPtr % Next => NEntryPtr
        PEntryPtr => NEntryPtr
@@ -391,7 +398,6 @@ CONTAINS
      
      TYPE(ListMatrixEntry_t), POINTER :: CEntryPtr, PEntryPtr
      INTEGER :: TID
-     LOGICAL :: NotFound
      
      TID = 1
      !$ TID = omp_get_thread_num() + 1

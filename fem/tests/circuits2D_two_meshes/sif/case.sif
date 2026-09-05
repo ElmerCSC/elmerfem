@@ -1,0 +1,189 @@
+! Two circuit solvers on two different meshes in one run.
+!
+! The same geometry - two square coils in a box of air - is meshed twice, at two
+! densities, and both meshes are loaded. One circuit solver and its
+! magnetodynamics solver live on the coarse mesh and drive the first coil, the
+! other pair lives on the fine mesh and drives the second coil. Nothing is
+! shared: two CircuitModel_t containers, two MATC namespaces, two Lagrange
+! multipliers, two meshes. Anything in the package that is really per-run rather
+! than per-solver - a saved mesh pointer, a saved size, one set of circuit
+! structures - shows up as a changed norm here.
+!
+! Exercised here:
+!   - one CircuitModel_t per circuit solver, each built on its own mesh
+!   - "Mesh" on the circuit solver, its A solver and the output solver, so that
+!     the circuit rows are addressed in the matrix of a solver on that mesh
+!   - "Circuit Namespace", so the two read their own definitions out of the one
+!     MATC namespace
+!   - both directions of the binding: "Master Solver" on the first circuit
+!     solver, the host's "Circuit Solver" on the second
+!
+! See circuits2D_mesh_swap for the other half of the same question: one circuit
+! solver whose mesh is replaced under it while the run is going on.
+
+Check Keywords "Warn"
+INCLUDE sif/circuits-a.definitions
+INCLUDE sif/circuits-b.definitions
+
+Header 1
+   Mesh DB "." "coarse"
+End
+
+Simulation 1
+   Max Output Level = 5
+   Coordinate System = Cartesian 2D
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   Angular Frequency = 314.159265359
+End
+
+! ---------------- first circuit solver, on the coarse mesh ----------------
+! Bound from this end: this solver names its host, which also puts it in the
+! host's "Pre Solvers" slot and takes it out of the solver list.
+Solver 1
+   Equation = Circuits A
+   Variable = XA
+   No Matrix = Logical True
+   Circuit Namespace = String "ca"
+   Master Solver = 2
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 2
+   Equation = "MagA"
+   Variable = A1[A1 re:1 A1 im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Lagrange Multiplier Name = String "lagrange multiplier a"
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor = 1
+   Linear System Solver = Direct
+   Linear System Direct Method = UMFPACK
+   Linear System Complex = Logical True
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 3
+   Equation = Circuits Output A
+   Master Solver = 2
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+! ---------------- second circuit solver, on the fine mesh ----------------
+! Bound from the other end: the host claims both of them, which is the exact
+! inverse of "Master Solver" and does the same wiring.
+Solver 4
+   Equation = Circuits B
+   Mesh = "fine"
+   Variable = XB
+   No Matrix = Logical True
+   Circuit Namespace = String "cb"
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 5
+   Equation = "MagB"
+   Mesh = "fine"
+   Circuit Solver(2) = 4 6
+   Variable = A2[A2 re:1 A2 im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Lagrange Multiplier Name = String "lagrange multiplier b"
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor = 1
+   Linear System Solver = Direct
+   Linear System Direct Method = UMFPACK
+   Linear System Complex = Logical True
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 6
+   Equation = Circuits Output B
+   Mesh = "fine"
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Equation 1
+   Name = "air, seen by both meshes"
+   Active Solvers(2) = 2 5
+End
+
+Equation 2
+   Name = "coil of circuit A"
+   Active Solvers(3) = 1 2 3
+End
+
+Equation 3
+   Name = "coil of circuit B"
+   Active Solvers(3) = 4 5 6
+End
+
+Material 1
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+
+Material 2
+   Name = copper
+   Relative Permeability = 1
+   Electric Conductivity = 5.8e7
+End
+
+Body 1
+   Name = air
+   Target Bodies = 1
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = coil a
+   Target Bodies = 2
+   Equation = 2
+   Material = 2
+End
+
+! A body carries one "Component", so the two circuits need disjoint coil bodies
+! even though they never meet: they live on different meshes but on the same
+! body list.
+Body 3
+   Name = coil b
+   Target Bodies = 3
+   Equation = 3
+   Material = 2
+End
+
+Component 1
+   Name = String coil a
+   Master Bodies = Integer 2
+   Coil Type = String stranded
+   Number of Turns = Real 100
+End
+
+Component 2
+   Name = String coil b
+   Master Bodies = Integer 3
+   Coil Type = String stranded
+   Number of Turns = Real 50
+End
+
+Body Force 1
+   Name = "Circuit sources"
+   sourcea Re = Real 1.41421356237
+   sourcea Im = Real 0.0
+   sourceb Re = Real 0.0
+   sourceb Im = Real 2.82842712475
+End
+
+Boundary Condition 1
+   Target Boundaries = 1
+   Name = "far field"
+   A1 re = Real 0
+   A1 im = Real 0
+   A2 re = Real 0
+   A2 im = Real 0
+End
+
+Solver 2 :: Reference Norm = 1.05729540E-05
+Solver 5 :: Reference Norm = 1.06362260E-05

@@ -5,6 +5,11 @@ IF(WIN32)
   SET(CPACK_NSIS_HELP_LINK "http://www.elmerfem.org")
   #SET(CPACK_NSIS_CONTACT "TODO: elmeradm@csc.fi")
   SET(CPACK_NSIS_CONTACT "")
+
+  # Fix blurry installer on High-DPI screens
+  # Support introduced with CMake 3.18. It should be a no-op with older versions.
+  SET(CPACK_NSIS_MANIFEST_DPI_AWARE ON)
+
   LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS
 "   !include \\\"winmessages.nsh\\\"
    ; HKLM (all users) vs HKCU (current user) defines
@@ -37,6 +42,7 @@ IF(WIN32)
   SET(CPACK_COMPONENT_UNSPECIFIED_DISPLAY_NAME "Elmerfem solver")
   SET(CPACK_COMPONENT_UNSPECIFIED_DESCRIPTION "The main application: ElmerSolver, ElmerGrid, matc and runtime binaries.")
   SET(CPACK_COMPONENT_ELMERGUI_DISPLAY_NAME "ElmerGUI")
+  SET(CPACK_COMPONENT_ELMERGUI_DESCRIPTION "Graphical User Interface for ElmerFEM")
   SET(CPACK_COMPONENT_ELMERGUI_SAMPLES_DISPLAY_NAME "ElmerGUI samples")
   SET(CPACK_COMPONENT_ELMERGUI_SAMPLES_DESCRIPTION "Geometry samples for ElmerGUI")
 
@@ -44,5 +50,5 @@ IF(WIN32)
   SET(CPACK_COMPONENT_ELMERPOST_DESCRIPTION "A post processor for Elmer")
 
   SET(CPACK_NSIS_COMPONENT_INSTALL TRUE)
-  SET(CPACK_COMPONENT_INSTALL_ALL "elmergui gfortran_minimal Unspecified elmergui_samples ElmerPost")
+  SET(CPACK_COMPONENT_INSTALL_ALL "ELMERGUI gfortran_minimal Unspecified ELMERGUI_SAMPLES ElmerPost")
 ENDIF(WIN32)

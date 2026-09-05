@@ -1,12 +1,16 @@
-! P.R. 3.9.2025
+! Test case for internal AMS strategy for Elmer
+!
+! P.R. 3.9.2025 & 17.8.2026
 
-Check Keywords "Warn"
+Check Keywords "Warn" 
 
 $L=0.05
 $alpha=30.0
 $piola="False"
 $mono="False"
 $levels=1
+$suf="a"
+
 
 Header
   Mesh DB "." "wire3d"
@@ -21,11 +25,7 @@ Simulation
   Output Intervals(1) = 1
 
   Coordinate Scaling = 1.0e-2
-
-!  Dirty Finish = Logical True
-
   Mesh Levels = $levels
-
 !  Split Mesh Prisms = True
 End
 
@@ -67,11 +67,11 @@ Material 2
 End 
 
 Equation 1
-  Active Solvers(5) = 1 2 3 4 7
+  Active Solvers(4) = 1 2 3 4 
 End
 
 Equation 2
-  Active Solvers(4) = 1 3 4 7
+  Active Solvers(3) = 1 3 4 
 End
 
 
@@ -104,7 +104,6 @@ Solver 2
   Linear System Convergence Tolerance = 1e-10
   Linear System Iterative Method = BiCGStabL
   Linear System Residual Output = 20
-  Steady State Convergence Tolerance = 1e-06
 
   Desired Coil Current = Real 1.0e3
   Nonlinear System Consistent Norm = True
@@ -130,8 +129,7 @@ Solver 3
 
   Optimize Bandwidth = True
 
-
-  include linsys_nodalprec.sif
+!  include linsys_nodalprec.sif
 !  include linsys_hutiter.sif
 ! include linsys_ams.sif
 
@@ -177,7 +175,7 @@ Solver 5
   Exec Solver = after all
   Equation = "ResultOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case-zero
+  Output File Name = case_$suf$
   Vtu format = True
   Discontinuous Bodies = True
 !  Vtu Part collection = True
@@ -198,42 +196,6 @@ Solver 6
   Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
   Polyline Divisions(1) = 100
 End
-
-
-Solver 7
-! used as slave solver only  
-  exec solver = never
-
-  Equation = "MagnetodDynamicsNodal"
-!  Procedure = "MagnetoDynamics" "MagnetoDynamics3D"
-  Procedure = "MagnetoDynamics" "APrecSolver"
-
-  Preconditioning Solver = Logical True
-  Monolithic Solver = Logical $mono
-  
-  Edge Residual Name = String "a res"
-  Edge Update Name = String "a update"
-
-  Linear System Scaling = False
-  Linear System Solver = "Iterative"
-  Linear System Iterative Method = String "bicgstab2"
-
-  BiCGstabl polynomial degree = Integer 4  
-  Linear System Preconditioning = String "ILU2"
-  Linear System Max Iterations = Integer 1000
-  Linear System Convergence Tolerance = 1.0e-7
-  Linear system abort not converged = false
-  Linear System Residual Output = 10
-
-  Linear System Scaling = True
-
-  Optimize Bandwidth = False
-
-! Essential for performance!
-  No Precondition Recompute = True
-End
-
-
 
 
 Body Force 1
@@ -262,7 +224,6 @@ Body Force 2
 End
 
 
-
 Boundary Condition 1
   Name = "WireStart"
   Target Boundaries(2) = 10 11
@@ -271,9 +232,6 @@ Boundary Condition 1
 
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
-
-  Nodal A 1 = Real 0.0
-  Nodal A 2 = Real 0.0
 End
 
 Boundary Condition 2
@@ -282,9 +240,6 @@ Boundary Condition 2
 
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
-
-  Nodal A 1 = Real 0.0
-  Nodal A 2 = Real 0.0
 End
 
 Boundary Condition 3
@@ -295,11 +250,7 @@ Boundary Condition 3
 
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
-
-  Nodal A 1 = Real 0.0
-  Nodal A 2 = Real 0.0
 End
-
 
 Boundary Condition 4
   Name = "AirEnd"
@@ -307,9 +258,6 @@ Boundary Condition 4
 
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
-
-  Nodal A 1 = Real 0.0
-  Nodal A 2 = Real 0.0
 End
 
 Boundary Condition 5
@@ -317,11 +265,6 @@ Boundary Condition 5
   Target Boundaries(4) = 5 6 7 8 
 
   AV {e} = Real 0.0
-
-  Nodal A 1 = Real 0.0
-  Nodal A 2 = Real 0.0
-  Nodal A 3 = Real 0.0
-
   Fixed Boundary = True
 End
 
@@ -330,5 +273,9 @@ End
 !  Target Boundaries(5) = 1 2 3 4 9
 !End
 
-Solver 1 :: Reference Norm = 6.36587122E-01
-Solver 2 :: Reference Norm = 3.22270313E-03
+include linsys_nodalprec.sif
+
+
+Solver 1 :: Reference Norm = 6.36587123E-01
+Solver 2 :: Reference Norm = 3.26276951E-03
+Solver 3 :: Reference Norm = 4.55599571E-07

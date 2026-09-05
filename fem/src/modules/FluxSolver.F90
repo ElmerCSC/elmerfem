@@ -225,8 +225,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     END IF
 
     UNorm = DefaultSolve()
-    
-    TotNorm = TotNorm + Unorm ** 2
+
     Fields(i) % Values = Solver % Variable % Values
       
     IF( EnforcePositiveMagnitude .AND. i >= firstmag ) THEN
@@ -238,7 +237,14 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   
   DEALLOCATE( ForceVector )  
   Solver % Matrix % RHS => SaveRHS
-  TotNorm = SQRT(TotNorm)
+
+  ! Only the last component is asked for a nonlinear change, as above, so UNorm is
+  ! the norm of that one alone. For the others ComputeChange returns before it
+  ! touches the variable norm, and DefaultSolve hands back whatever was left there
+  ! -- zero on the first visit, the previous visit's value on every one after.
+  ! Accumulating those squares reported |U_last| the first time and 2*|U_last|
+  ! from then on, so the sum is dropped in favour of the one norm that is real.
+  TotNorm = UNorm
   Solver % Variable % Norm = Totnorm
 
   FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Flux_abs' )
@@ -485,7 +491,7 @@ CONTAINS
       IMPLICIT NONE
       REAL(KIND=dp) :: STIFF(:,:)
       INTEGER :: n,n1,n2
-      TYPE(Element_t), POINTER :: Face, P1, P2
+      TYPE(Element_t) :: Face, P1, P2
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: FaceBasis(n), P1Basis(n1), P2Basis(n2)
       REAL(KIND=dp) :: Jump(n1+n2), detJ, U, V, W, S
@@ -546,7 +552,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetTensorRank( Tensor ) RESULT ( Rank )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), POINTER :: Tensor(:,:,:)
+    REAL(KIND=dp) :: Tensor(:,:,:)
     INTEGER :: Rank
     
     IF ( SIZE(Tensor,1) == 1 ) THEN

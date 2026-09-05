@@ -1,6 +1,7 @@
 
 # Some implementations of MPI don't support all features with all compilers
-# on all platforms (e.g., 'MPI_IN_PLACE' with MSMPI and GFortran on Windows).
+# on all platforms (e.g., 'MPI_IN_PLACE' with MSMPI and GFortran on Windows
+# without specific "glue").
 # Check for those features using some tests.
 
 if(CMAKE_CROSSCOMPILING)
@@ -12,14 +13,21 @@ else()
 
   message(STATUS "Checking whether MPI_IN_PLACE is supported with ${MPI_Fortran_COMPILER}")
 
-  file(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.f90
+  file(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.F90
     "
     PROGRAM TEST_MPI_IN_PLACE
+
+#if defined(ELMER_HAVE_MPI_MODULE)
+      USE MPI
+#endif
+
       IMPLICIT NONE
       INTEGER :: ierr
       REAL(8) :: test1(3), test2(3)
 
+#if defined(ELMER_HAVE_MPIF_HEADER)
       INCLUDE \"mpif.h\"
+#endif
 
       test1(:) = 1
       test2 = test1
@@ -36,8 +44,16 @@ else()
 
     END PROGRAM TEST_MPI_IN_PLACE
     ")
+
+  if(MPI_Fortran_HAVE_F90_MODULE)
+    set(ELMER_MPI_DEFINITION "-DELMER_HAVE_MPI_MODULE")
+  else()
+    set(ELMER_MPI_DEFINITION "-DELMER_HAVE_MPIF_HEADER")
+  endif()
+
   try_run(CHECK_MPI_IN_PLACE_RUN_ERROR CHECK_MPI_IN_PLACE_COMPILE ${CMAKE_BINARY_DIR}
-    SOURCES ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.f90
+    SOURCES ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.F90
+    COMPILE_DEFINITIONS ${ELMER_MPI_DEFINITION}
     LINK_LIBRARIES MPI::MPI_Fortran)
 endif()
 

@@ -189,7 +189,7 @@ END SUBROUTINE StatElecSolver_Init
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
-  USE MeshUtils, ONLY : FollowCurvedBoundary
+  USE MeshBasics, ONLY : FollowCurvedBoundary
   USE DefUtils
   USE Adaptive
   IMPLICIT NONE
@@ -206,34 +206,48 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   INTEGER :: n, nb, nd, t, active, dim, RelOrder
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric, CVersion
-  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver'
+
+  ! Per-thread handle/cache storage for LocalMatrixVec, LocalMatrix and
+  ! LocalMatrixBC — NOT THREADPRIVATE (Windows/GCC emutls bug inherits the
+  ! master's ALLOCATABLE/POINTER THREADPRIVATE data into workers instead of
+  ! giving independent copies). Allocated once below, right after nthr is
+  ! known; each local subroutine only ever touches its own thread's slot.
+  ! SAVEd: each ValueHandle_t owns a scratch ValueList_t that is allocated on
+  ! first use and reused. Re-creating these arrays on every visit to the solver
+  ! dropped those lists unfreed, one per handle per timestep.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: VecSourceCoeff_h(:), VecEpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: SourceCoeff_h(:), EpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: Flux_h(:), Farfield_h(:), Infty_h(:), &
+      LayerEps_h(:), LayerH_h(:), LayerRho_h(:), LayerV_h(:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: VecEps0(:), Eps0(:), BCEps0(:)
 
   INTERFACE
     SUBROUTINE StatElecSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Boundary_Residual
     
     SUBROUTINE StatElecSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Edge
+      TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Edge_Residual
     
     SUBROUTINE StatElecSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
       USE Types
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t) :: Element
       TYPE(Model_t) :: Model
-      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t) :: Mesh
       REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Inside_Residual
@@ -266,6 +280,21 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 
   nthr = 1
   !$ nthr = omp_get_max_threads()
+
+  IF( ALLOCATED( VecSourceCoeff_h ) ) THEN
+    IF( SIZE( VecSourceCoeff_h ) /= nthr ) THEN
+      DEALLOCATE( VecSourceCoeff_h, VecEpsCoeff_h, VecEps0, &
+          SourceCoeff_h, EpsCoeff_h, Eps0, &
+          Flux_h, Farfield_h, Infty_h, LayerEps_h, &
+          LayerH_h, LayerRho_h, LayerV_h, BCEps0 )
+    END IF
+  END IF
+  IF( .NOT. ALLOCATED( VecSourceCoeff_h ) ) THEN
+    ALLOCATE( VecSourceCoeff_h(nthr), VecEpsCoeff_h(nthr), VecEps0(nthr), &
+        SourceCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr), &
+        Flux_h(nthr), Farfield_h(nthr), Infty_h(nthr), LayerEps_h(nthr), &
+        LayerH_h(nthr), LayerRho_h(nthr), LayerV_h(nthr), BCEps0(nthr) )
+  END IF
 
   nColours = GetNOFColours(Solver)
 
@@ -408,24 +437,23 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), SAVE, POINTER  :: EpsAtIpVec(:), SourceAtIpVec(:)
-    REAL(KIND=dp) :: eps0
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), POINTER  :: EpsAtIpVec(:), SourceAtIpVec(:)
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,p,q,dim,ngp,allocstat
+    INTEGER :: i,t,p,q,dim,ngp,allocstat,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, EpsCoeff_h
-    SAVE Eps0
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
-    !$OMP               STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, EpsCoeff_h, &
-    !$OMP               SourceAtIpVec, EpsAtIpVec )
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => VecSourceCoeff_h(tid), EpsCoeff_h => VecEpsCoeff_h(tid), &
+        Eps0 => VecEps0(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -438,7 +466,7 @@ CONTAINS
       IF( .NOT. Found ) Eps0 = 8.854187817e-12
       InitHandles = .FALSE.
     END IF
-    
+
     dim = CoordinateSystemDimension()
 
     IF( RelOrder /= 0 ) THEN
@@ -449,19 +477,10 @@ CONTAINS
       
     ngp = IP % n
 
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-      IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-            DEALLOCATE(Basis, dBasisdx, DetJVec, STIFF, FORCE )
-    END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-          STIFF(nd,nd), FORCE(nd), STAT=allocstat)      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        STIFF(nd,nd), FORCE(nd), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -496,6 +515,8 @@ CONTAINS
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
 
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
 
@@ -511,25 +532,30 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: InitHandles
     LOGICAL, INTENT(IN) :: CVersion 
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
-    COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: CSTIFF(:,:), CFORCE(:)
-    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+    COMPLEX(KIND=dp) :: CSTIFF(nd,nd), CFORCE(nd)
+    REAL(KIND=dp) :: weight
     REAL(KIND=dp) :: SourceAtIp, EpsAtIp, DetJ
     COMPLEX(KIND=dp) :: CEpsAtIp
     LOGICAL :: Stat,Found
-    INTEGER :: i,j,t,dim,m,allocstat
+    INTEGER :: i,j,t,dim,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, EpsCoeff_h
-    SAVE Eps0
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => SourceCoeff_h(tid), EpsCoeff_h => EpsCoeff_h(tid), &
+        Eps0 => Eps0(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=CVersion)
-      
+
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
@@ -537,24 +563,13 @@ CONTAINS
       IF( .NOT. Found ) Eps0 = 8.854187817e-12
       InitHandles = .FALSE.
     END IF
-    
+
     dim = CoordinateSystemDimension()
 
     IF( RelOrder /= 0 ) THEN
       IP = GaussPoints( Element, RelOrder = RelOrder)
     ELSE
       IP = GaussPoints( Element )
-    END IF
-      
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(Basis(m), dBasisdx(m,3),&
-          STIFF(m,m), FORCE(m), CSTIFF(m,m), CFORCE(m), STAT=allocstat)
-      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element )
@@ -607,6 +622,8 @@ CONTAINS
       CALL CondensateP( nd-nb, nb, STIFF, FORCE )
       CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
     END IF
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -622,22 +639,27 @@ CONTAINS
     LOGICAL :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Weight,Eps0,Alpha,Beta,Ext
+    REAL(KIND=dp) :: Weight,Alpha,Beta,Ext
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
     LOGICAL :: Stat,Found,GotSome
-    INTEGER :: i,t,p,q,dim
+    INTEGER :: i,t,p,q,dim,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueHandle_t), SAVE :: Flux_h, Farfield_h, Infty_h, &
-        LayerEps_h, LayerH_h, LayerRho_h, LayerV_h
-    REAL(KIND=dp) :: LayerEps, LayerV, LayerRho, LayerH    
-    SAVE Nodes, Eps0
-    !$OMP THREADPRIVATE(Nodes,Flux_h,Farfield_h)
+    REAL(KIND=dp) :: LayerEps, LayerV, LayerRho, LayerH
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( Flux_h => Flux_h(tid), Farfield_h => Farfield_h(tid), &
+        Infty_h => Infty_h(tid), LayerEps_h => LayerEps_h(tid), &
+        LayerH_h => LayerH_h(tid), LayerRho_h => LayerRho_h(tid), &
+        LayerV_h => LayerV_h(tid), Eps0 => BCEps0(tid) )
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Electric Flux')
@@ -728,6 +750,8 @@ CONTAINS
     END DO
     
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
@@ -1037,8 +1061,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalPostSolve( Element, n, A, b )
-!------------------------------------------------------------------------------    
-    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     REAL(KIND=dp) :: b(:,:), A(:,:)
 !------------------------------------------------------------------------------
@@ -1225,7 +1249,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GlobalPostAve()
 !------------------------------------------------------------------------------
-    USE MeshUtils, ONLY : CalculateBodyAverage
+    USE MeshBasics, ONLY : CalculateBodyAverage
     INTEGER :: i, Vari
     TYPE(Variable_t), POINTER :: pVar
 
@@ -1260,8 +1284,8 @@ SUBROUTINE StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnor
   TYPE(Model_t) :: Model
   INTEGER :: Perm(:)
   REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Edge
+  TYPE(Mesh_t) :: Mesh
+  TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
   TYPE(Nodes_t) :: Nodes, EdgeNodes
   TYPE(Element_t), POINTER :: Element
@@ -1489,8 +1513,8 @@ SUBROUTINE StatElecSolver_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator
   TYPE(Model_t) :: Model
   INTEGER :: Perm(:)
   REAL(KIND=dp) :: Quant(:), Indicator(2)
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Edge
+  TYPE(Mesh_t) :: Mesh
+  TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
   TYPE(Nodes_t) :: Nodes, EdgeNodes
   TYPE(Element_t), POINTER :: Element
@@ -1690,8 +1714,8 @@ SUBROUTINE StatElecSolver_Inside_residual(Model, Element, Mesh, &
   TYPE(Model_t) :: Model
   INTEGER :: Perm(:)
   REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Element
+  TYPE(Mesh_t) :: Mesh
+  TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
   TYPE(Nodes_t) :: Nodes
   INTEGER :: i, j, k, l, n, t, dim, nd

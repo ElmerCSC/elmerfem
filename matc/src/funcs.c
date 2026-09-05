@@ -306,6 +306,7 @@ VARIABLE *fnc_exec(FUNCTION *fnc, VARIABLE *par)
     */
    if (fnc->imports != NULL)
      for(i = 0; fnc->imports[i] != NULL; i++)
+     {
       if ((ptr = var_check(fnc->imports[i])) != NULL)
       {
         VAR_HEAD = (LIST *)par;
@@ -321,6 +322,7 @@ VARIABLE *fnc_exec(FUNCTION *fnc, VARIABLE *par)
       else
         PrintOut( "WARNING: %s: imported variable [%s] doesn't exist\n",
                           NAME(fnc), fnc->imports[i]);
+     }
 
 
    /*

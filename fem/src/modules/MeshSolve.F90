@@ -555,7 +555,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: STIFF(:,:),FORCE(:)
    REAL(KIND=dp) :: NodalAlpha(:,:),NodalBeta(:),LOAD(:,:)
-   TYPE(Element_t),POINTER  :: Element
+   TYPE(Element_t), TARGET  :: Element
    INTEGER :: n,nd,nb
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: Basis(nd)

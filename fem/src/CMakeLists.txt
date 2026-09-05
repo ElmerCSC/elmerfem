@@ -9,7 +9,7 @@ ADD_SUBDIRECTORY(view3d)
 ADD_SUBDIRECTORY(viewaxis)
 
 IF(WITH_MPI)
-  SET(ELMERSOLVER_OUTPUT_NAME "ElmerSolver_mpi") 
+  SET(ELMERSOLVER_OUTPUT_NAME "ElmerSolver_mpi")
 ELSE()
   SET(ELMERSOLVER_OUTPUT_NAME "ElmerSolver")
 ENDIF()
@@ -20,41 +20,41 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   NavierStokesCylindrical.F90 Lists.F90
   DiffuseConvectiveAnisotropic.F90 LoadMod.F90
   DiffuseConvectiveGeneralAnisotropic.F90 PElementMaps.F90
-  PElementBase.F90 ElementDescription.F90 Integration.F90 ListMatrixArray.F90
-  ModelDescription.F90 GeneralUtils.F90 Stress.F90 StressGeneral.F90
+  PElementBase.F90 ElementBasis.F90 ElementGeometry.F90 ElemInfo.F90 ElementDescription.F90 Integration.F90 ListMatrixArray.F90
+  ModelDescription.F90 GeneralUtils.F90 Constitutive.F90 Stress.F90 StressGeneral.F90 ModelLumping.F90
   LinearAlgebra.F90 CoordinateSystems.F90 ListMatrix.F90 CRSMatrix.F90
   BandMatrix.F90 BandwidthOptimize.F90 BlockSolve.F90
   MaterialModels.F90 DirectSolve.F90 IterSolve.F90
   IterativeMethods.F90 TimeIntegrate.F90 Types.F90 SolveBand.F90
   ElementUtils.F90 Radiation.F90 fft.c Load.c Differentials.F90
-  FreeSurface.F90 
-  Walls.F90 SolverUtils.F90 SolveSBand.F90 CPUTime.c Interpolation.F90
+  FreeSurface.F90
+  Walls.F90 MatrixScaling.F90 SolverBasics.F90 BoundaryConditionUtils.F90 SolveCore.F90 ContactUtils.F90 ProjectorUtils.F90 SolverUtils.F90 SolveSBand.F90 CPUTime.c Interpolation.F90
   MainUtils.F90 Adaptive.F90 EigenSolve.F90 HashTable.F90 MortarUtils.F90
-  MeshAllocations.F90 GeometryFitting.F90
-  MeshUtils.F90 SaveUtils.F90 SParIterGlobals.F90 SParIterComm.F90
+  MeshAllocations.F90 MeshIO.F90 GeometryFitting.F90
+  MeshBasics.F90 MeshGraph.F90 MeshTransform.F90 MeshSplit.F90 MeshTagging.F90 MeshLoad.F90 MeshExtrusion.F90 MeshUtils.F90 SaveUtils.F90 SParIterGlobals.F90 SParIterComm.F90
   SParIterPrecond.F90 SParIterSolver.F90 Messages.F90 Multigrid.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 CutFEMUtils.F90
-  RadiationFactors.F90 f_stubs.c
+  RadiationFactors.F90 f_stubs.c GFortranLocaleFix.c
   ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
   SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
-  cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
+  cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90 PElementVisual.F90 IpFieldInterface.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 VectorHelmholtzUtils.F90 LumpingUtils.F90 
-  ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 VectorHelmholtzUtils.F90 LumpingUtils.F90
+  ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90
   OptimizationUtils.F90 MeshGenerate.F90 ViewUtils.F90)
 
 #SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
-#	COMPILE_DEFINITIONS FULL_INDUCTION)
+#COMPILE_DEFINITIONS FULL_INDUCTION)
 
 IF(WITH_EXTOPTIM)
   LIST(APPEND solverlib_SOURCES minpack.F90 minpack_kinds.F90
   PowellOptBobyqa.F90 PowellOptNewuoa.F90)
   SET(HAVE_EXTOPTIM TRUE)
-ENDIF() 
-      
+ENDIF()
+
 IF(WITH_LUA)
   INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
   LIST(APPEND solverlib_SOURCES Lua.F90 elmer_lua_iface.c)
@@ -93,7 +93,7 @@ INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
 # Extract additional compile flags
 GET_DIRECTORY_PROPERTY( ELMER_CDEFS COMPILE_DEFINITIONS )
 FOREACH( d ${ELMER_CDEFS} )
-	 SET(ELMER_F90FLAGS "${ELMER_F90FLAGS} -D${d}")
+ SET(ELMER_F90FLAGS "${ELMER_F90FLAGS} -D${d}")
 ENDFOREACH()
 
 
@@ -104,38 +104,50 @@ IF(CMAKE_BUILD_TYPE)
   MARK_AS_ADVANCED(CMAKE_BUILD_TYPE_UPCASE)
 ENDIF(CMAKE_BUILD_TYPE)
 
-# Output elmerf90 and elmerld
-SET(HAVE_ELMERICE "FALSE")
+# Build elmerf90 and elmerld as compiled C binaries (replaces the shell script / .bat)
 IF(WITH_ElmerIce)
-  SET(HAVE_ELMERICE "TRUE")
+  SET(HAVE_ELMERICE_INT 1)
+  set(ELMERF90_ELMERICESOLVERS_LIB "\$\<TARGET_FILE_NAME:ElmerIceSolvers>")
+  set(ELMERF90_ELMERICEUSF_LIB "\$\<TARGET_FILE_NAME:ElmerIceUSF>")
+  set(ELMERF90_ELMERICEUTILS_LIB "\$\<TARGET_FILE_NAME:ElmerIceUtils>")
+ELSE()
+  SET(HAVE_ELMERICE_INT 0)
+  set(ELMERF90_ELMERICESOLVERS_LIB "")
+  set(ELMERF90_ELMERICEUSF_LIB "")
+  set(ELMERF90_ELMERICEUTILS_LIB "")
+ENDIF()
+IF(HAVE_MMG)
+  SET(HAVE_MMG_INT 1)
+ELSE()
+  SET(HAVE_MMG_INT 0)
+ENDIF()
+IF(HAVE_PARMMG)
+  SET(HAVE_PARMMG_INT 1)
+ELSE()
+  SET(HAVE_PARMMG_INT 0)
 ENDIF()
 
-IF(WIN32)
-  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.bat.in.cmake
-	  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90.bat)
-  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.bat.in.cmake
-	  ${CMAKE_CURRENT_BINARY_DIR}/elmerld.bat)
-ENDIF()
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90-helper.in.h
+  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90-helper.out.h @ONLY)
+FILE(GENERATE
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/elmerf90-helper.h
+  INPUT ${CMAKE_CURRENT_BINARY_DIR}/elmerf90-helper.out.h)
 
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90-nosh.in.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90-nosh)
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90)
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
+ADD_EXECUTABLE(elmerf90_bin ${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.c)
+SET_TARGET_PROPERTIES(elmerf90_bin PROPERTIES OUTPUT_NAME "elmerf90")
 
-# Create pkg-config file if requested and place it under ${PKGCONFIG_PC_PATH}
-# Defaults: PKGCONFIG_PC_PATH = ${CMAKE_INSTALL_PREFIX}/share/pkgconfig
+ADD_EXECUTABLE(elmerld_bin ${CMAKE_CURRENT_SOURCE_DIR}/elmerld.c)
+SET_TARGET_PROPERTIES(elmerld_bin PROPERTIES OUTPUT_NAME "elmerld")
+
+# Create pkg-config file if requested
 IF(CREATE_PKGCONFIG_FILE)
-  SET(PKGCONFIG_PC_PATH "${CMAKE_INSTALL_PREFIX}/share/pkgconfig" 
-    CACHE PATH "Path where to install elmer pkg-config file")
-  CONFIGURE_FILE(elmer.pc.cmake elmer.pc @ONLY)
-  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc 
-    DESTINATION ${PKGCONFIG_PC_PATH})
+  CONFIGURE_FILE(elmer.in.pc elmer.pc @ONLY)
+  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc
+    DESTINATION "share/pkgconfig")
 ENDIF(CREATE_PKGCONFIG_FILE)
 
 # Copy elements.def and SOLVER.KEYWORDS (to enable testing)
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elements.def 
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elements.def
   ${CMAKE_CURRENT_BINARY_DIR}/elements.def COPYONLY)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/SOLVER.KEYWORDS
   ${CMAKE_CURRENT_BINARY_DIR}/SOLVER.KEYWORDS COPYONLY)
@@ -153,7 +165,7 @@ SET_TARGET_PROPERTIES(mpi_stubs
 SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
 
-#We want MMG & Zoltan in the RPATH (if found), but given how many other 
+#We want MMG & Zoltan in the RPATH (if found), but given how many other
 #components use ELMERSOLVER_RPATH_STRING, it seemed best to make
 #a local copy just for ElmerSolver and libelmersolver
 SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING}")
@@ -170,7 +182,7 @@ IF(HAVE_PARMMG)
   SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}:${PARMMG_LIBDIR}")
   #TODO - add to RPath
 ENDIF()
-  
+
 IF(HAVE_ZOLTAN)
   IF(USE_SYSTEM_ZOLTAN)
     TARGET_LINK_LIBRARIES(elmersolver Zoltan::zoltan)
@@ -205,6 +217,12 @@ LIST(APPEND ELMERSOLVER_LIBRARIES
   ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES}
   ${CMAKE_DL_LIBS})
 
+# MUMPS: add includes and libraries regardless of MPI (supports serial build)
+IF(Mumps_LIBRARIES)
+  INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
+  LIST(APPEND ELMERSOLVER_LIBRARIES ${Mumps_LIBRARIES})
+ENDIF()
+
 IF(WITH_LUA)
   LIST(APPEND ELMERSOLVER_LIBRARIES ${LUA_LIBRARIES})
 ENDIF()
@@ -221,9 +239,9 @@ ADD_EXECUTABLE(Solver_TGT Solver.F90)
 SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES OUTPUT_NAME "${ELMERSOLVER_OUTPUT_NAME}")
 
 IF(WIN32)
-  # Increase stack size from the default 1 MB to 8 MB.
+  # Increase stack size from the default 1 MB to 16 MB.
   TARGET_LINK_OPTIONS(Solver_TGT PRIVATE
-    $<IF:$<Fortran_COMPILER_ID:MSVC>,/STACK:0x800000,-Wl$<COMMA>--stack$<COMMA>0x800000>)
+    $<IF:$<Fortran_COMPILER_ID:MSVC>,/STACK:0x1000000,-Wl$<COMMA>--stack$<COMMA>0x1000000>)
 ELSE()
   MESSAGE(STATUS " ELMERSOLVER_RPATH_STRING_MOD " ${ELMERSOLVER_RPATH_STRING_MOD})
   MESSAGE(STATUS " ELMERLIB_RPATH_STRING " ${ELMERLIB_RPATH_STRING})
@@ -240,13 +258,8 @@ ENDIF()
 IF(WITH_MPI)
   #ADD_LIBRARY(elmersolver_mpi SHARED ${solverlib_SOURCES})
 
-  # Add parpack and possibly others
-  IF(Mumps_LIBRARIES)
-    INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
-    # Link to SCALAPACK implicitly
-    LIST(APPEND ELMERSOLVER_LIBRARIES ${Mumps_LIBRARIES})
-  ELSEIF(MKL_CPARDISO_FOUND)
-    # Mumps includes SCALAPACK, but it is needed with CPARDISO
+  IF(MKL_CPARDISO_FOUND AND NOT Mumps_LIBRARIES)
+    # SCALAPACK is needed with CPARDISO when MUMPS is not present
     LIST(APPEND ELMERSOLVER_LIBRARIES ${SCALAPACK_LIBRARIES})
   ENDIF()
 
@@ -288,7 +301,7 @@ ELSE()
 ENDIF()
 IF(WITH_ROCALUTION)
   TARGET_LINK_LIBRARIES(elmersolver roc::rocalution)
-ENDIF()  
+ENDIF()
 
 IF(WITH_AMGX)
   TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_C "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
@@ -299,7 +312,7 @@ IF (WITH_CHOLMOD)
   SET(CURR_CFLAGS "-DHAVE_CHOLMOD")
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CHOLMOD_INCLUDE_DIR};${SPQR_INCLUDE_DIR}")
   TARGET_LINK_LIBRARIES(elmersolver "${CHOLMOD_LIBRARIES};${SPQR_LIBRARIES}")
-ENDIF()    
+ENDIF()
 
 # elmersolver -library
 #TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
@@ -312,7 +325,7 @@ ENDIF()
 
 # ElmerSolver
 #ADD_EXECUTABLE(ElmerSolver Solver.F90)
-#TARGET_LINK_LIBRARIES(ElmerSolver ${ELMERSOLVER_LIBRARIES} 
+#TARGET_LINK_LIBRARIES(ElmerSolver ${ELMERSOLVER_LIBRARIES}
                                   #mpi_stubs)
 
 # ViewFactors
@@ -348,47 +361,78 @@ ENDIF()
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")
 
 
-IF(NOT(WIN32))
-  IF(WITH_MPI)
-    INSTALL(TARGETS Solver_TGT elmersolver RUNTIME DESTINATION "bin"
-      LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
-    INSTALL(TARGETS Solver_TGT RUNTIME DESTINATION "bin"
-      LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
-  ELSE()
-    INSTALL(TARGETS Solver_TGT elmersolver mpi_stubs RUNTIME DESTINATION "bin" 
-      LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
-  ENDIF()
-ELSE()
-  INSTALL(TARGETS elmersolver mpi_stubs RUNTIME DESTINATION "${ELMER_INSTALL_LIB_DIR}" 
-    LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
-  INSTALL(TARGETS Solver_TGT elmersolver mpi_stubs RUNTIME DESTINATION "bin" 
-    LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
+INSTALL(TARGETS Solver_TGT elmersolver
+  RUNTIME DESTINATION "bin"
+  LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}"
+  ARCHIVE DESTINATION "${ELMER_INSTALL_LIB_DIR}")
+IF(NOT WITH_MPI)
+  INSTALL(TARGETS mpi_stubs
+    RUNTIME DESTINATION "bin"
+    LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}"
+    ARCHIVE DESTINATION "${ELMER_INSTALL_LIB_DIR}")
 ENDIF()
 
-IF(WIN32)
-  INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90.bat DESTINATION "bin")
-  INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld.bat DESTINATION  "bin")
-ENDIF()
-INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90 DESTINATION "bin")
-INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION  "bin")
+INSTALL(TARGETS elmerf90_bin RUNTIME DESTINATION "bin")
+INSTALL(TARGETS elmerld_bin RUNTIME DESTINATION "bin")
 
-                  
+
 INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
                   DESTINATION "share/elmersolver/include")
 
 IF(WITH_MPI)
   IF(NOT(WIN32))
-    # INSTALL(CODE "
-    # EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver
-    # WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/bin)")
-    ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver)
+    # Unix: expose the generic name "ElmerSolver" as a symlink to the actual
+    # MPI binary "ElmerSolver_mpi" (cheap and unprivileged here). Unchanged.
+    ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink
+      ElmerSolver_mpi${CMAKE_EXECUTABLE_SUFFIX}
+      ElmerSolver${CMAKE_EXECUTABLE_SUFFIX})
     ADD_DEPENDENCIES(elmersolver_link Solver_TGT)
-    INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver DESTINATION "bin")
+    INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver${CMAKE_EXECUTABLE_SUFFIX}
+      DESTINATION "bin")
   ELSE()
-    INSTALL(CODE "EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E copy
-    \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver_mpi.exe
-    \${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver.exe)")
+    # Windows: COPY rather than symlink. Creating a symlink needs
+    # SeCreateSymbolicLinkPrivilege (Developer Mode or an elevated shell),
+    # which a normal account lacks, so the previous create_symlink step failed
+    # the whole build for ordinary users. A copy works unprivileged (and
+    # survives being zipped/packaged). copy_if_different keeps it in sync on
+    # rebuilds; it runs after Solver_TGT so the source binary already exists.
+    ADD_CUSTOM_COMMAND(TARGET Solver_TGT POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:Solver_TGT>
+        ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver${CMAKE_EXECUTABLE_SUFFIX}
+      COMMENT "Copying ${ELMERSOLVER_OUTPUT_NAME} to generic name ElmerSolver")
+    INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver${CMAKE_EXECUTABLE_SUFFIX}
+      DESTINATION "bin")
   ENDIF()
 ENDIF()
 
+IF(CMAKE_SYSTEM_NAME MATCHES "Windows" AND CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
+  # Collect list of dependent DLLs using bundledlls
+  # This assumes that ElmerFEM is built using MSYS2.
+  FIND_PROGRAM(MSYS2_BASH NAMES bash REQUIRED)
+  ADD_CUSTOM_TARGET(elmersolver_bundle ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/bundle/bin
+    COMMAND ${MSYS2_BASH} -lc
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../contrib/msys2-bundledlls/bundledlls \
+      $<TARGET_FILE:elmersolver> ${CMAKE_BINARY_DIR}/bundle/bin"
+  )
 
+  ADD_DEPENDENCIES(elmersolver_bundle elmersolver)
+
+  IF(NOT EXTERNAL_ARPACK)
+    ADD_CUSTOM_COMMAND(
+      TARGET elmersolver_bundle POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/bundle/bin/libarpack.dll
+    )
+  ENDIF()
+
+  IF(NOT EXTERNAL_PARPACK)
+    ADD_CUSTOM_COMMAND(
+      TARGET elmersolver_bundle POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/bundle/bin/libparpack.dll
+    )
+  ENDIF()
+
+  INSTALL(DIRECTORY ${CMAKE_BINARY_DIR}/bundle/bin/
+    DESTINATION "bin")
+ENDIF()

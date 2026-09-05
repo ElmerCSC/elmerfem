@@ -1,0 +1,102 @@
+! The same case as the sibling ElasticStressLoad, run through StressSolve: an
+! additive stress and an eigenstrain, "Stress Load" and "Strain Load", making the
+! response affine rather than linear,
+!
+!   sigma = C : ( eps - "Strain Load" ) + "Stress Load"
+!
+! This half of the pair exists because StressSolve's implementation of these two
+! keywords was ITSELF unverified. A grep over every sif in fem/tests found no
+! "Stress Load", no "Strain Load", no "Pre Stress" and no "Pre Strain": the
+! reference implementation for the port to ElasticSolve had never been run by any
+! test. Porting a capability off an untested reference is worth exactly as much as
+! the reference, so both halves are pinned here rather than one.
+!
+! The two solvers agree on every printed digit of "Stress_yz" and "Stress_xx" and
+! to the last digit of the displacement, so the reference norm below is the same
+! number as the sibling's. If the two ever diverge, whichever of them moved is the
+! one that changed -- which is the reason for two directories rather than two RUNs
+! in one sif, where the second solver would inherit the first's state.
+!
+! Where the two implementations part company is worth recording, since it is not
+! visible from this file. StressSolve builds the offset as a Voigt 6-vector and
+! contracts it with the test function's strain operator in the force vector.
+! ElasticSolve adds it to the residual stress as a tensor, computing C : eps0
+! THROUGH the constitutive model, so that an anisotropic C or a condensed plane C
+! needs no second code path. Same equation, and on this problem the same digits.
+!
+! See ElasticStressLoad's case.sif for why the load is shear dominant and why the
+! two channels are scaled to contribute comparably; the sensitivity table there was
+! measured on ElasticSolve but the loading choice applies to both.
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = 1.0
+  Youngs modulus = 1.0e3
+  Poisson ratio = 0.3
+End
+
+Body Force 1
+  ! Elmer's Voigt order with engineering shear: (11, 22, 33, 12, 23, 13).
+  Stress Load(6) = Real 1.0 -2.0 0.5 3.0 -5.0 1.5
+  Strain Load(6) = Real 1.0e-3 -2.0e-3 0.5e-3 4.0e-3 -6.0e-3 2.0e-3
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 12
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  Variable 1 = String "Stress_yz"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_xx"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+Solver 2 :: Reference Norm = Real 4.54751054E+00
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

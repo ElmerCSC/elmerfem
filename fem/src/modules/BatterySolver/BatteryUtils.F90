@@ -92,10 +92,10 @@ CONTAINS
     END IF
 
     GasConstant = ListGetConstReal( CurrentModel % Constants,'Gas Constant',Found)
-    IF(.NOT. Found ) GasConstant = 8.31446261815324
+    IF(.NOT. Found ) GasConstant = 8.31446261815324_dp
     
     FaradayConstant = ListGetConstReal( CurrentModel % Constants,'Faraday Constant',Found)
-    IF(.NOT. Found ) FaradayConstant = 96485.33212 
+    IF(.NOT. Found ) FaradayConstant = 96485.33212_dp
     
     UseTimeAveFlux = ListGetLogicalAnySolver( CurrentModel,'Use Time Average Flux')
     IF( UseTimeAveFlux ) THEN

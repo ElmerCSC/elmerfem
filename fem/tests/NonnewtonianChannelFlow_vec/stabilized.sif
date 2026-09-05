@@ -1,0 +1,196 @@
+! The equal-order twin of case.sif: the same problem with the method switched,
+! the velocity/pressure pair carried by "Pressure Stabilization" instead of by a
+! bubble. Nothing else is changed but the element, which becomes "n:1": one dof
+! per node and no bubble at all.
+!
+! Stating it is belt and braces -- _Init0 supplies exactly that when this keyword
+! is on, and each sif runs in its own ElmerSolver process so nothing carries over
+! from the bubble run before it. It is written out because a reader should not
+! have to know the default to see which pair is being solved, and because
+! ListAddNewString means the sif wins if that default ever changes.
+!
+! The two run back to back from one runtest.cmake, so the norms below are what
+! the stabilised pair gives against the MINI answer in case.sif: -0.00004 % and +0.19 %
+!
+! The linear solver is the one thing that also had to change. tau falls to ~3e-9
+! against velocity entries of order 250 in this non-Newtonian case, and a
+! monolithic ILU stalls on that spread where MINI does not, its pressure block
+! being empty rather than merely tiny. The discretisation is unaffected -- a
+! direct solve and this block preconditioner agree to six digits. See the
+! conditioning note in IncompressibleNSVec.
+!
+! Test case for nonnewtoanin model with vectorized bulk assembly.
+! Note that this is not quite the same case as the unvectorized version.
+! The real reference is ref.sif
+!
+! P.R. 3.10.2019
+
+$ pext = 1.0
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = case.vtu
+
+  Serendipity P Elements = False
+End
+
+Constants
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
+  Pressure Stabilization = Logical True
+  Element = "n:1"
+  Linear System Solver = "Block"
+  Block Gauss-Seidel = Logical True
+  Block Preconditioner = Logical True
+  Block Scaling = Logical False
+
+  Outer: Linear System Solver = "Iterative"
+  Outer: Linear System Iterative Method = GCR
+  Outer: Linear System GCR Restart = 250
+  Outer: Linear System Max Iterations = 500
+  Outer: Linear System Convergence Tolerance = 1.0e-6
+  Outer: Linear System Residual Output = 0
+  Outer: Linear System Abort Not Converged = False
+
+  block 11: Linear System Solver = "iterative"
+  block 11: Linear System Iterative Method = idrs
+  block 11: Linear System Preconditioning = ilu
+  block 11: Linear System Convergence Tolerance = 0.01
+  block 11: Linear System Max Iterations = 1000
+  block 11: Linear System Residual Output = 0
+  block 11: Linear System Scaling = False
+
+  block 22: Linear System Solver = "iterative"
+  block 22: Linear System Iterative Method = idrs
+  block 22: Linear System Preconditioning = ilu
+  block 22: Linear System Convergence Tolerance = 0.01
+  block 22: Linear System Max Iterations = 1000
+  block 22: Linear System Residual Output = 0
+  block 22: Linear System Scaling = False
+
+  block 33: Linear System Solver = "iterative"
+  block 33: Linear System Iterative Method = idrs
+  block 33: Linear System Preconditioning = ilu
+  block 33: Linear System Convergence Tolerance = 0.01
+  block 33: Linear System Max Iterations = 1000
+  block 33: Linear System Residual Output = 0
+  block 33: Linear System Scaling = False
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+
+! activates also the newtonian linearization of viscosity
+! For some reason it does not improve things? 
+
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Tolerance = 0.0
+
+! This is set True by default both in FlowSolve and this solver
+!  Relative Pressure Relaxation = Logical True
+
+
+  Relative Integration Order = 1
+
+  BiCGStabl polynomial degree = 4
+
+  Stokes Flow = Logical True
+  GradP Discretization = Logical False
+  Div-Curl Discretization = Logical False
+
+! Test the postprocessing fields
+  Exported Variable 1 = -ip "ShearRate"
+  Exported Variable 2 = -elem "Viscosity"
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  
+  Show Norm Index = 1 
+  Variable 1 = Viscosity
+  Operator 1 = "int mean"
+  Procedure = "SaveData" "SaveScalars"  
+End 
+
+
+
+Equation 1 :: Active Solvers=1
+
+Material 1
+  Density = 1.0
+  Viscosity = 1.0
+
+! If this is more than zero the newtonian fluid prevails
+!  Newtonian Viscosity Condition = Variable "nonlin iter"
+!    Real 
+!      1.0 1.0
+!      2.0 -1.0
+!    End 
+
+! shear thinning power law fluid
+  Viscosity Model = String "power law"
+  Viscosity Exponent = 0.3
+  Critical Shear Rate = Real 1.0e-8
+  Nominal Shear Rate = Real 1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Name = "Right"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Left"
+  Velocity 2 = 0.0
+  External Pressure = Real $pext
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 1 
+  Name = "Bottom"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 3
+  Name = "Top"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 6.06595409E-03
+Solver 2 :: Reference Norm = 2.19670359E+03

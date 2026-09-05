@@ -291,8 +291,11 @@ CONTAINS
      INTEGER :: MyPe, PEs, proc
      REAL(KIND=dp), ALLOCATABLE, TARGET :: SendCoords(:)
      REAL(KIND=dp), POINTER :: pCoords(:)
-     INTEGER, ALLOCATABLE :: rPar(:)
+     REAL(KIND=dp), ALLOCATABLE :: rPar(:)
      INTEGER :: comm, ierr, status(MPI_STATUS_SIZE)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+     REAL(KIND=dp), ALLOCATABLE :: buffer(:)
+#endif
      !------------------------------------------------------------------------------
 
      MyPe = ParEnv % MyPe + 1
@@ -341,19 +344,31 @@ CONTAINS
      
      IF(PEs > 1 ) THEN        
        ALLOCATE(rPar(4*PEs))
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+       ALLOCATE(buffer(4*PEs))
+#endif
        comm = ELMER_COMM_WORLD
 
        ! Communiate the bounding box first. This is only needed in (x,y) plane.
        IF(GotMaxDist) THEN
          rPar = -HUGE(rPar)
          rPar(4*MyPe-3:4*MyPe) = RidgeData(MyPe) % MeshBB
-         CALL MPI_ALLREDUCE(MPI_IN_PLACE, rPar, 4*PEs, MPI_DOUBLE_PRECISION, MPI_MAX, comm, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+         buffer = rPar
+         CALL MPI_ALLREDUCE(buffer, &
+#else
+         CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+             rPar, 4*PEs, MPI_DOUBLE_PRECISION, MPI_MAX, comm, ierr)
          DO i=1,PEs
            IF(i==MyPe) CYCLE
            RidgeData(i) % MeshBB = rPar(4*i-3:4*i)
          END DO
          CALL MPI_BARRIER( comm, ierr )         
          DEALLOCATE(rPar)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+         DEALLOCATE(buffer)
+#endif
        END IF
 
        ! Calculate and sent the count of edges to send. 

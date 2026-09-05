@@ -68,7 +68,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 
   USE Types
   USE Lists
-  USE SolverUtils
+  USE SolverBasics
   USE CRSmatrix
   USE GeneralUtils
   USE Integration
@@ -1039,7 +1039,7 @@ CONTAINS
 
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
-    REAL(KIND=dp), POINTER :: Centers(:,:)
+    REAL(KIND=dp) :: Centers(:,:)
     INTEGER :: n, Indx( Model % NumberOfBodies )
 
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff

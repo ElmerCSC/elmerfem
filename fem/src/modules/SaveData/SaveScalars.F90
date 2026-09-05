@@ -122,7 +122,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Interpolation
   USE ElementUtils
-  USE MeshUtils, ONLY : ClosestElementInMesh, ClosestNodeInMesh, NodeToDGIndex
+  USE MeshBasics, ONLY : ClosestElementInMesh, ClosestNodeInMesh, NodeToDGIndex
   USE SaveUtils
   
   IMPLICIT NONE
@@ -418,8 +418,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   n = Mesh % MaxElementNodes 
-  ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
-      ElementValues( n ), CoordinateBasis(n), STAT=istat)
+  ALLOCATE(ElementValues( n ), CoordinateBasis(n), STAT=istat)
   IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 1') 	
 
   n = MAX( Model % NumberOfBodies, MAX(Model % NumberOfBCs, NoLines))
@@ -1125,7 +1124,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Coords(1:NoDims) = PointCoordinates(k,1:NoDims)
       IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
 
-      CALL CopyElementNodesFromMesh( ElementNodes, Mesh, n, NodeIndexes)
+      CALL CopyElementNodesFromMesh(ElementNodes, Mesh, n, NodeIndexes)
       
       Hit = PointInElement( Element, ElementNodes, &
           Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	          
@@ -1560,10 +1559,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CLOSE(MarkerUnit)
     END IF
   END IF
-
   
-  DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
-
   n = 1
   n = ParallelReduction(n) 
 
@@ -2852,7 +2848,7 @@ CONTAINS
 
 100 CONTINUE
 
-    DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z, PermIndexes )
+    DEALLOCATE(PermIndexes)
 
   END SUBROUTINE BoundaryIntegrals
 
@@ -3042,10 +3038,10 @@ CONTAINS
     n = Model % MaxElementNodes
     DIM = CoordinateSystemDimension()
 
-    ALLOCATE(ParentNodes % x(n), ParentNodes % y(n), ParentNodes % z(n), PermIndexes(n), &
-	SideNodes % x(n), SideNodes % y(n), SideNodes % z(n), SideIndexes(n), &
-	LineNodes % x(n), LineNodes % y(n), LineNodes % z(n), &
-	OnLine(Mesh % NumberOfNodes,2), STAT=istat )
+    ALLOCATE(PermIndexes(n), &
+      SideNodes % x(n), SideNodes % y(n), SideNodes % z(n), SideIndexes(n), &
+      LineNodes % x(n), LineNodes % y(n), LineNodes % z(n), &
+      OnLine(Mesh % NumberOfNodes,2), STAT=istat )
     IF( istat /= 0 ) CALL Fatal('PolylineIntegrals','Memory allocation error') 
 
 
@@ -3383,9 +3379,9 @@ CONTAINS
 
     END DO
 
-    DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z, PermIndexes, &
-        SideNodes % x, SideNodes % y, SideNodes % z, SideIndexes, &
-        LineNodes % x, LineNodes % y, LineNodes % z, OnLine)
+    DEALLOCATE(PermIndexes, SideIndexes, OnLine)
+    DEALLOCATE( LineNodes % x, LineNodes % y, LineNodes % z, &
+                SideNodes % x, SideNodes % y, SideNodes % z )
 
   END SUBROUTINE PolylineIntegrals
 !------------------------------------------------------------------------------

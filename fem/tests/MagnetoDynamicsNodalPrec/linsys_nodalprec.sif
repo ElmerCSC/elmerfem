@@ -1,20 +1,25 @@
+! Continue with settings for MagnetoStatics
+Solver 3
   Linear System Preconditioning = "auxiliary space solver"
+  Prec Solvers(2) = Integer 7 8  
 
-! Needed for auxiliary space preconditioning
-  Exported Variable 1 = a res
-  Exported Variable 2 = a update
-  Prec Solvers(1) = Integer 7
-  Preconditioning Residual = String "a res"
-  Preconditioning Update = String "a update"
+! Now set internally by solver
+! Exported Variable 1 = ams res
+! Exported Variable 2 = ams update
+! Preconditioning Residual = String "ams res"
+! Preconditioning Update = String "ams update"
+
+  Additive Smoother = Logical True
 
   MG Smoother = sgs
   MG Post Smoothing Iterations = 5
   MG Smoother Relaxation Factor = Real 1.0
 !  MG Smoother Relaxation Factor = Real $2.0/3.0
 
+!  MG Smoother Normalize Guess = Logical True
+
 ! Standard parameter for outer iteration
   Linear System Symmetric = False
-  Linear System Scaling = True
   Linear System Row Equilibration = False 
 
   Linear System Solver = String "Iterative"
@@ -24,7 +29,120 @@
   Linear system abort not converged = True
 
 ! Note: this is tuned so that the solver fails if >5 iterations needed!
-  Linear System Max Iterations = 10 !100
+  Linear System Max Iterations = 5 !100
  
+!  Linear System Scaling = False
+End 
 
 
+
+Solver 7
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "AmsVectorSolver"
+  Procedure = "AmsPrecSolver" "AmsVectorSolver"
+
+  Monolithic Solver = Logical $mono  
+!  Edge Residual Name = String "ams res"
+!  Edge Update Name = String "ams update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU2"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+! Essential for performance!
+  No Precondition Recompute = True
+End
+
+
+Solver 8
+! used as slave solver only  
+  exec solver = never
+
+  Equation = "AmsScalarSolver"
+  Procedure = "AmsPrecSolver" "AmsScalarSolver"
+
+!  Edge Residual Name = String "ams res"
+!  Edge Update Name = String "ams update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU2"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+! Essential for performance!
+  No Precondition Recompute = True
+End
+
+! Add the solvers without need to tamper "Active Solvers"
+Equation 1
+  AmsVectorSolver = Logical True
+  AmsScalarSolver = Logical True
+End
+
+Equation 2
+  AmsVectorSolver = Logical True
+  AmsScalarSolver = Logical True
+End
+
+
+
+! Additions to BC's related to AMS
+
+Boundary Condition 1
+  amsx = Real 0.0
+  amsy= Real 0.0
+  Amss = Real 0.0
+End
+
+Boundary Condition 2
+  amsx = Real 0.0
+  amsy= Real 0.0
+  Amss = Real 0.0
+End
+
+Boundary Condition 3
+  amsx = Real 0.0
+  amsy= Real 0.0
+  Amss = Real 0.0
+End
+
+
+Boundary Condition 4
+  amsx = Real 0.0
+  amsy= Real 0.0
+  amss = Real 0.0
+End
+
+Boundary Condition 5
+  amsx = Real 0.0
+  amsy= Real 0.0
+  amsz = Real 0.0
+  amss = Real 0.0
+End

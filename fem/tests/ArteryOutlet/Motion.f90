@@ -11,10 +11,10 @@ DOUBLE PRECISION :: t, uy, x, umax, tpulse
 x = Model % Nodes % x(n)
 
 ! Total displacement
-umax = 0.05
+umax = 0.05_dp
 
 ! Duration of the motion (umax)
-tpulse = 0.6
+tpulse = 0.6_dp
 
 x = Model % Nodes % x(n)
 

@@ -131,8 +131,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: Material, BF
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
 
@@ -274,8 +273,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: BC
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
   END SUBROUTINE BoundaryLocalMatrix

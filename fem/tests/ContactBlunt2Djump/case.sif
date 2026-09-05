@@ -61,8 +61,18 @@ Solver 1
 !  Procedure = "StressSolve" "StressSolver"
   Variable = -dofs 2 Displacement
 
-  Nonlinear System Convergence Tolerance = 1.0e-5
-  Nonlinear System Max Iterations = 20
+  ! The contact iteration here converges by alternating about the answer with a
+  ! slowly decaying amplitude, so at 1.0e-5 it stopped on the sixth swing rather
+  ! than at the solution: the norm was ~4e-6 off the limit and the neighbouring
+  ! iterates 3-9e-6 away, i.e. up to 90% of the reference tolerance, with the
+  ! iteration that happens to cross the threshold decided by rounding. That is
+  ! enough for a differently-threaded BLAS to stop one iteration off and fail.
+  ! Under-relaxation turns the oscillation into monotone convergence, which lets
+  ! the tolerance be tightened to land on the limit -- tightening alone does not
+  ! work, it just buys more iterations for the oscillation to wander in.
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Relaxation Factor = 0.7
+  Nonlinear System Max Iterations = 40
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = Ilu0
@@ -135,6 +145,7 @@ Boundary Condition 1
   Target Boundaries(2) = 1 2
 
   Mortar BC = 5
+  Contact Type = String "slide"
   Mortar BC Nonlinear = Logical True
 
 ! At start of each position set the contact off since otherwise
@@ -213,4 +224,4 @@ Boundary Condition 7
   Target Boundaries(1) = 10
 End
 
-Solver 1 :: Reference Norm = 1.2431580
+Solver 1 :: Reference Norm = 1.2431532

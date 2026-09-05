@@ -2,10 +2,6 @@
 !!!!!! ISMIP Test A - u, v, w, p CI selon SIA
 
 FUNCTION uSIAB ( Model, nodenumber, x) RESULT(u)
-   USE types
-   USE CoordinateSystems
-   USE SolverUtils
-   USE ElementDescription
    USE DefUtils
    IMPLICIT NONE
    TYPE(Model_t) :: Model
@@ -44,10 +40,6 @@ FUNCTION uSIAB ( Model, nodenumber, x) RESULT(u)
 END FUNCTION uSIAB   
 
 FUNCTION wSIAB ( Model, nodenumber, x) RESULT(v)
-   USE types
-   USE CoordinateSystems
-   USE SolverUtils
-   USE ElementDescription
    USE DefUtils
    IMPLICIT NONE
    TYPE(Model_t) :: Model

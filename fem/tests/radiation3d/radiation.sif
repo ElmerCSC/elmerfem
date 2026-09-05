@@ -55,14 +55,16 @@ End
 Solver 1
   Equation = Heat Equation
   Procedure = "HeatSolveVec" "HeatSolver"
+
   Variable = Temperature
   Stabilize = True
+
   Linear System Solver = iterative
 
   Radiation Solver = Logical True
 
-  Linear System Direct Method = Mumps
-  mumps percentage increase working space = 100000
+! Linear System Direct Method = Mumps
+! mumps percentage increase working space = 100000
 
   Linear System Symmetric = True
   Linear System Iterative Method = BiCGStabL
@@ -79,6 +81,15 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-5
   NonLinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Relaxation Factor = 1.0
+
+! Spell out how the view factors are resolved, so this test keeps exercising
+! the path it was blessed against even if the defaults change.
+!   Viewfactor Closed Form Integration : the inner ("to area") integral,
+!     closed form (exact for planar patches) or Gauss quadrature
+! Viewfactor Shadowing               : "ray casting" or "clipping"
+
+  Viewfactor Closed Form Integration = Logical False
+  Viewfactor Shadowing = String "ray casting"
 
   Viewfactor raytrace tolerance   = real 0.001
   Viewfactor area tolerance   = real 0.01

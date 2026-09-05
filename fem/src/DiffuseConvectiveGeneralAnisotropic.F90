@@ -555,7 +555,7 @@ MODULE DiffuseConvectiveGeneral
      REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:)
      REAL(KIND=dp) :: LoadVector(:),NodalAlpha(:)
      TYPE(Nodes_t)    :: Nodes
-     TYPE(Element_t),POINTER  :: Element
+     TYPE(Element_t), TARGET :: Element
 
      INTEGER :: n
 !------------------------------------------------------------------------------

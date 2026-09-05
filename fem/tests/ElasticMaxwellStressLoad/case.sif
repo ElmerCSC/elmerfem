@@ -1,0 +1,92 @@
+! The sibling of StressMaxwellStressLoad, run through ElasticSolve against the same
+! reference values: a Maxwell material and the additive stress offset of
+! "Stress Load" / "Strain Load" acting together.
+!
+! Here the two contributions compose by construction -- the lag stress is added into
+! the same StressOffset tensor that the keywords fill, rather than over it -- and that
+! is the behaviour StressSolve was corrected to. This half of the pair is what makes
+! the correction checkable: if either solver ever drops a contribution again, these
+! two directories disagree and the one that moved is the one that changed.
+!
+! Two directories rather than two solvers in one sif, because two Maxwell solvers
+! would each export a "ve_stress" variable of the same name and share one lag stress.
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Timestep Sizes = 1.0
+  Timestep Intervals = 5
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+! Viscosity chosen against the shear modulus so that the relaxation is strong at
+! this timestep: mu = E/(2(1+nu)) = 385, so mu/eta*dt is close to one and xPhi is
+! close to a half. A stiffer viscosity would make the case elastic and say nothing
+! about the interaction under test.
+Material 1
+  Density = 0.0
+  Youngs modulus = 1.0e3
+  Poisson ratio = 0.3
+  Maxwell material = Logical True
+  Viscosity = Real 400.0
+End
+
+! Elmer's Voigt order with engineering shear: (11, 22, 33, 12, 23, 13). The same
+! shear dominant, sign mixed pair the ElasticStressLoad tests use.
+Body Force 1
+  Stress Load(6) = Real 1.0 -2.0 0.5 3.0 -5.0 1.5
+  Strain Load(6) = Real 1.0e-3 -2.0e-3 0.5e-3 4.0e-3 -6.0e-3 2.0e-3
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 3 Displacement
+  Large Deflection = False
+  Calculate Stresses = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  Variable 1 = String "Stress_yz"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_xx"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+Solver 1 :: Reference Norm = Real 1.49794353E-02
+Solver 2 :: Reference Norm = Real 2.64105420E+01
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5

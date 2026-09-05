@@ -1,0 +1,5 @@
+include(test_macros)
+execute_process(COMMAND ${ELMERGRID_BIN} 1 2 box_in_box.grd)
+execute_process(COMMAND ${RADIATORS_BIN})
+execute_process(COMMAND ${VIEWFACTORS_BIN})
+RUN_ELMER_TEST()

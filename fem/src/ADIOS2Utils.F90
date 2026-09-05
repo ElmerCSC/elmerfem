@@ -35,7 +35,10 @@
 ! *****************************************************************************/
 
 MODULE ADIOS2Utils
-USE DefUtils
+USE Types
+use GeneralUtils
+USE SParIterGlobals
+USE SParIterComm
 USE ADIOS2
 IMPLICIT NONE
 
@@ -46,6 +49,7 @@ INTEGER, PARAMETER :: ADIOS2_MAX_VARNAME_LEN = 512
 ! Global array support added
 ! NOTE: Global arrays are catenated in first dimension across ranks. 
 ! NOTE: Local arrays are named part_#/<varname> where # is MPI rank
+
 
 TYPE :: AdiosWriter_t
   TYPE(adios2_adios), PRIVATE :: adios
@@ -75,8 +79,123 @@ TYPE :: AdiosWriter_t
   FINAL :: finalize_sub
 END TYPE AdiosWriter_t
 
+TYPE, extends(AdiosWriter_t) :: AdiosReader_t
+
+  CONTAINS
+  PROCEDURE, PRIVATE :: read_real_t, init_adios_r_t, finalize_adios_r_t
+
+  PROCEDURE, PUBLIC :: init => init_adios_r_t
+  PROCEDURE, PUBLIC :: finalize => finalize_adios_r_t
+
+  GENERIC, PUBLIC :: read_data => read_real_t
+  FINAL :: finalize_sub_r
+
+END TYPE AdiosReader_t
 
 CONTAINS
+
+!----------------------------------------
+! Reader specific subroutines
+
+SUBROUTINE finalize_sub_r(this)
+  IMPLICIT NONE
+  TYPE(AdiosReader_t) :: this
+  integer :: ierr
+  ierr = this % finalize()
+END SUBROUTINE
+
+FUNCTION finalize_adios_r_t(this) result(ierr)
+  IMPLICIT NONE
+  CLASS(AdiosReader_t) :: this
+  INTEGER :: ierr
+
+  IF ((.NOT. this % finalized) .AND. this % initialized) THEN
+    CALL adios2_close(this%engine, ierr)
+    CALL adios2_finalize(this%adios, ierr)
+  END IF
+  this % finalized = .true.
+  this % initialized = .false.
+
+END FUNCTION finalize_adios_r_t
+
+FUNCTION init_adios_r_t(this, fname, array_kind, write_offsets) result(ierr)
+  IMPLICIT NONE
+  CLASS(AdiosReader_t) :: this
+  INTEGER :: ierr
+  INTEGER, OPTIONAL :: array_kind
+  LOGICAL, OPTIONAL :: write_offsets
+  CHARACTER(*), INTENT(IN) :: fname
+
+  if (present(array_kind)) then
+    this % array_kind = array_kind
+  else
+    this % array_kind = ADIOS2_ARRAY_GLOBAL
+  end if
+
+  this % instep = .false.
+
+  call adios2_init(this % adios, parenv % activecomm, ierr)
+  call adios2_declare_io(this % io, this % adios, "ioReader", ierr)
+  this % finalized = .false.
+  call adios2_open(this % engine, this % io, fname, adios2_mode_read, ierr)
+  IF (ierr .ne. 0) THEN
+      CALL Warn("init_adios_r_t", "Failed to open stream " // fname)
+      this % initialized =.false.
+      RETURN
+  END IF
+  this % initialized = .true.
+END FUNCTION init_adios_r_t
+
+SUBROUTINE read_real_t(this, varname, X)
+  IMPLICIT NONE
+!---------
+  CLASS(AdiosReader_t) :: this
+  CHARACTER(*), INTENT(IN) :: varname
+  REAL(KIND=dp), INTENT(OUT) :: X(:)
+!---------
+  TYPE(adios2_variable) :: var
+  INTEGER(KIND=8), dimension(1) :: start_dim, count_dim
+  INTEGER :: ierr, local_count, global_offset
+  CHARACTER(ADIOS2_MAX_VARNAME_LEN) :: adios_varname
+
+  adios_varname = trim(varname)
+
+  IF (.NOT. this % initialized) THEN
+    Call Warn("AdiosReader_t % read_real_t", "Reader not initialized")
+    RETURN
+  END IF
+
+  call this % begin_step()
+  call adios2_inquire_variable(var, this % io, adios_varname, ierr)
+
+  IF(.NOT. var % valid) THEN
+    Call Warn("AdiosReader_t % read_real_t", "Variable not found: "//trim(adios_varname))
+    RETURN
+  END IF
+
+  SELECT CASE (this % array_kind)
+    CASE (ADIOS2_ARRAY_GLOBAL)
+      ! X must be pre-allocated to the correct local size same as done in write step
+      ! Per rank offset is computed to match one computed by the writer
+      local_count = size(X,1)
+      global_offset = 0
+      CALL MPI_Exscan(local_count, global_offset, 1, MPI_INTEGER, MPI_SUM, parenv%activecomm, ierr)
+      start_dim(1) = global_offset
+      count_dim(1) = local_count
+      CALL adios2_set_selection(var, 1, start_dim, count_dim, ierr)
+      CALL adios2_get(this%engine, var, X, adios2_mode_sync, ierr)
+
+    CASE (ADIOS2_ARRAY_LOCAL)
+    ! Not implemented yet
+    CASE DEFAULT
+  END SELECT
+
+  call this % end_step()
+
+END SUBROUTINE read_real_t
+
+!----------------------------------------
+! Writer specific subroutines
 
 SUBROUTINE begin_step(this)
 
@@ -88,14 +207,12 @@ SUBROUTINE begin_step(this)
     this % instep = .true.
   end if
 
-
 END SUBROUTINE
 
 SUBROUTINE end_step(this)
 
   class(AdiosWriter_t) :: this
   integer :: ierr
-
 
   if (this % instep .and. this % initialized) then
 
@@ -182,21 +299,15 @@ SUBROUTINE make_varname(this, varname, adios_varname)
   end if
 END SUBROUTINE
 
-FUNCTION init_adios_t(this, fname, array_kind, mode, write_offsets) result(ierr)
+FUNCTION init_adios_t(this, fname, array_kind, write_offsets) result(ierr)
   IMPLICIT NONE
   CLASS(AdiosWriter_t) :: this
   INTEGER :: ierr
   CHARACTER(*), intent(in) :: fname
-  INTEGER, OPTIONAL :: mode
   INTEGER, OPTIONAL :: array_kind
   LOGICAL, OPTIONAL :: write_offsets
-  INTEGER :: mode_, array_kind_
+  INTEGER :: array_kind_
 
-  IF (present(mode)) THEN
-    mode_ = mode
-  else
-    mode_ = adios2_mode_write
-  END IF
 
   if (present(array_kind)) then
     this % array_kind = array_kind
@@ -211,7 +322,7 @@ FUNCTION init_adios_t(this, fname, array_kind, mode, write_offsets) result(ierr)
 
   CALL adios2_init(this % adios, parenv % activecomm, ierr)
   CALL adios2_declare_io(this % io, this % adios, "ioWriter", ierr)
-  CALL adios2_open(this % engine, this % io, fname, mode_, ierr)
+  CALL adios2_open(this % engine, this % io, fname, adios2_mode_write, ierr)
   this % finalized = .false.
   this % initialized = .true.
 

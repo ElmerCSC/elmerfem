@@ -932,9 +932,9 @@ PRINT *,'niter minpack:',niter
         popsize = ListGetInteger(OptList,'Population Size',GotIt)
         IF(.NOT. GotIt) popsize = 5 * parsize
         popcoeff = ListGetConstReal(OptList,'Population Coefficient',GotIt)
-        IF(.NOT. GotIt) popcoeff = 0.7
+        IF(.NOT. GotIt) popcoeff = 0.7_dp
         popcross = ListGetConstReal(OptList,'Population Crossover',GotIt)
-        IF(.NOT. GotIt) popcross = 0.1
+        IF(.NOT. GotIt) popcross = 0.1_dp
         ALLOCATE(pars(parsize,popsize),vals(popsize),mask(parsize),rnds(parsize))
         IF(.FALSE.) THEN
           PRINT *,'popsize',popsize,'parsize',parsize

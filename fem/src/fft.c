@@ -20,7 +20,7 @@
 */
 
 /*
- * (Power of two) Fast Fourier Transform Subroutine Library
+ * Fast Fourier Transform Subroutine Library
  *
  * Power of two algorithm to compute the transform:
  *
@@ -57,13 +57,29 @@
  *
  * all the routines below at the end use cfftf (1D complex forward transform)
  * to actually compute the transform and do not in other ways depend on the
- * algorithm (which implies that input sequence lengths must be power of two,
- * serious limitation with storage for multidimensional transforms).so you can
- * substitute it for different algorithm if you like. for rfftf, rfftb, gfftf,
- * and gfftb (the real 1D transforms) the sequence lengths must be even.
+ * algorithm. so you can substitute it for different algorithm if you like.
  *
- * BTW. zero extend your input to next largest power of two when using the
- *      library. it does not check for it....
+ * cfftf accepts *any* sequence length; the power of two radix-2 kernel above
+ * is only its fast path. lengths which are not a power of two are handled by
+ *
+ *   - direct O(N^2) evaluation of the sum for very short sequences
+ *     (N < FFT_DIRECT_MAX), where that is cheaper than the setup below, and
+ *
+ *   - Bluestein's chirp-z algorithm otherwise, which rewrites the transform
+ *     as a cyclic convolution of length M >= 2*N-1. M is picked to be a power
+ *     of two, so the convolution itself is evaluated with the radix-2 kernel
+ *     and the whole thing stays O(N log N) for every N, primes included.
+ *     note that a prime length cannot be handled by subdividing alone - there
+ *     is nothing to subdivide - which is why this route is taken rather than
+ *     a mixed radix Cooley-Tukey decomposition.
+ *
+ * Bluestein needs O(M) scratch, M < 4*N, so a non power of two transform
+ * costs a few times the memory and ~3 power of two transforms of length M in
+ * time. if a particular composite length is performance critical it is worth
+ * adding a native radix for it instead.
+ *
+ * for rfftf, rfftb, gfftf, and gfftb (the real 1D transforms) the sequence
+ * lengths must be even, but need not be a power of two.
  *
  * The following routines are available:
  *
@@ -327,15 +343,8 @@ struct {
     int FBin;
     } FREQ;
 
-static double _FFT_PI = 3.14159265358979323844;
+#define _FFT_PI acos(-1.0)
 
-#define _FFT_MAX_LEVELS 30
-
-static double _FFT_SIN[_FFT_MAX_LEVELS];
-static double _FFT_COS[_FFT_MAX_LEVELS];
-
-static int _FFT_I;
-static int _FFT_Level;
 
 /*
  * log2: base two logarithm of an (power of two!!!) integer.
@@ -473,34 +482,6 @@ void sort(int N, double *Key, int *Ord)
 }
 
 /*
- * FFTInit: initialize internal sin & cos tables for (pi / N)
- *          N being power of two up to _FFT_MAX_LEVELS.
- *
- * Parameters: NONE.
- */
-static void FFTInit(void)
-{
-    static int InitDone = FALSE;
-
-    int k;
-    int n;
-
-    if ( InitDone ) {
-        return;
-        }
-
-    n = ( 1 << _FFT_MAX_LEVELS );
-    for( k = 0; k < _FFT_MAX_LEVELS; k++ ) {
-        _FFT_COS[k] =  cos( _FFT_PI / n );
-        _FFT_SIN[k] = -sin( _FFT_PI / n );
-        n /= 2;
-        }
-
-    InitDone = TRUE;
-}
-
-
-/*
  * FFTKernel: discrete fourier transform. output is in bitreversed order.
  *
  * Parameters:
@@ -513,7 +494,7 @@ static void FFTInit(void)
  * T(n) = sum(F(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N-1
  *
  */
-static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
+static void FFTKernel(int N, COMPLEX *F, COMPLEX *T, int *fft_i)
 {
     double ExpR;
     double ExpI;
@@ -550,23 +531,23 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
 
         TempR = F[0].Real; TempI = F[0].Imag;
 
-        T[_FFT_I].Real = TempR + F[1].Real;
-        T[_FFT_I].Imag = TempI + F[1].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR + F[1].Real;
+        T[*fft_i].Imag = TempI + F[1].Imag;
+        (*fft_i)++;
 
-        T[_FFT_I].Real = TempR - F[1].Real;
-        T[_FFT_I].Imag = TempI - F[1].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR - F[1].Real;
+        T[*fft_i].Imag = TempI - F[1].Imag;
+        (*fft_i)++;
 
         TempR = F[2].Real; TempI = F[2].Imag;
 
-        T[_FFT_I].Real = TempR + F[3].Real;
-        T[_FFT_I].Imag = TempI + F[3].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR + F[3].Real;
+        T[*fft_i].Imag = TempI + F[3].Imag;
+        (*fft_i)++;
 
-        T[_FFT_I].Real = TempR - F[3].Real;
-        T[_FFT_I].Imag = TempI - F[3].Imag;
-        _FFT_I++;
+        T[*fft_i].Real = TempR - F[3].Real;
+        T[*fft_i].Imag = TempI - F[3].Imag;
+        (*fft_i)++;
 
         return;
         }
@@ -576,8 +557,8 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
     /*
      *  ExpR + i*ExpI = exp(-i*2*pi*k/N ) = exp(-i*2*pi/N)^(k)
      */
-    ExpR = CO = _FFT_COS[_FFT_Level];
-    ExpI = SI = _FFT_SIN[_FFT_Level];
+    ExpR = CO = cos( _FFT_PI / N );
+    ExpI = SI = -sin( _FFT_PI / N );
 
     TempR = F[0].Real;
     TempI = F[0].Imag;
@@ -603,12 +584,188 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
         ExpI = CO * ExpI + SI * t;
         }
 
-    _FFT_Level++;
+    FFTKernel( N, &F[0], T, fft_i );
+    FFTKernel( N, &F[N], T, fft_i );
+}
 
-    FFTKernel( N, &F[0], T );
-    FFTKernel( N, &F[N], T );
+void cfftf(int N, COMPLEX *T, COMPLEX *F);
+void cfftb(int N, COMPLEX *F, COMPLEX *T);
 
-    _FFT_Level--;
+/*
+ * sequence lengths below this are transformed by direct evaluation of the sum
+ * rather than by DFTBluestein, whose workspace and three length (M >= 2*N-1)
+ * transforms do not pay off for a handful of points.
+ */
+#define FFT_DIRECT_MAX 8
+
+/*
+ * DFTDirect: discrete fourier transform by direct O(N^2) evaluation of the
+ *            defining sum. any length, output in natural order.
+ *
+ * Parameters:
+ *
+ * N     : int          / length of sequences.
+ * T     : COMPLEX[N]   / input sequence.
+ * F     : COMPLEX[N]   / transform sequence.
+ *                      / may point to same memory as T.
+ *
+ * F(n) = sum(T(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N-1
+ */
+static void DFTDirect(int N, COMPLEX *T, COMPLEX *F)
+{
+    COMPLEX *W;
+
+    double SumR;
+    double SumI;
+
+    double CO;
+    double SI;
+
+    double pi;
+    double a;
+
+    int k;
+    int n;
+
+    W = (COMPLEX *)malloc( N * sizeof( COMPLEX ) );
+
+    pi = 2 * _FFT_PI / N;
+
+    for( n = 0; n < N; n++ ) {
+        SumR = 0.0;
+        SumI = 0.0;
+
+        for( k = 0; k < N; k++ ) {
+            /*
+             * exp(-i*2*pi*n*k/N) is periodic in (n*k) with period (N), so
+             * reduce the product first to keep the argument small.
+             */
+            a = -pi * (double)( ( (long long)n * k ) % N );
+
+            CO = cos( a );
+            SI = sin( a );
+
+            SumR += T[k].Real * CO - T[k].Imag * SI;
+            SumI += T[k].Real * SI + T[k].Imag * CO;
+            }
+
+        W[n].Real = SumR;
+        W[n].Imag = SumI;
+        }
+
+    for( n = 0; n < N; n++ ) F[n] = W[n];
+
+    free( W );
+}
+
+/*
+ * DFTBluestein: discrete fourier transform of an arbitrary length sequence by
+ *               Bluestein's chirp-z algorithm. output in natural order.
+ *
+ * With
+ *     W = exp(-i*2*pi/N),  c(j) = exp(-i*pi*j^2/N)
+ * the identity
+ *     n*k = (n^2 + k^2 - (n-k)^2) / 2
+ * gives
+ *     W^(n*k) = c(n)*c(k)*conjg(c(n-k))
+ * and therefore
+ *     F(n) = c(n) * sum(T(k)*c(k)*conjg(c(n-k))), k=0..N-1
+ *
+ * the sum is a convolution of (a(k) = T(k)*c(k)) with (b(j) = conjg(c(j))),
+ * needing b at lags j=-(N-1)..N-1. as b is even in (j) it can be wrapped into
+ * a length (M >= 2*N-1) cyclic convolution, and (M) is chosen to be a power of
+ * two so that the cyclic convolution is evaluated with the radix-2 kernel:
+ *
+ *     conv = cfftb( cfftf(a) * cfftf(b) ) / M
+ *
+ * Parameters:
+ *
+ * N     : int          / length of sequences.
+ * T     : COMPLEX[N]   / input sequence.
+ * F     : COMPLEX[N]   / transform sequence.
+ *                      / may point to same memory as T.
+ *
+ * F(n) = sum(T(k)*exp(-i*2*pi*n*k/N)), k=0..N-1,n=0..N-1
+ */
+static void DFTBluestein(int N, COMPLEX *T, COMPLEX *F)
+{
+    COMPLEX *A;
+    COMPLEX *B;
+
+    double *ChirpR;
+    double *ChirpI;
+
+    double TempR;
+    double TempI;
+
+    double pi;
+    double a;
+
+    int M;
+    int k;
+    int n;
+
+    /*
+     * smallest power of two of at least (2*N-1); also at least (4), the
+     * shortest length the radix-2 kernel handles.
+     */
+    for( M = 4; M < 2 * N - 1; M *= 2 );
+
+    A = (COMPLEX *)calloc( M, sizeof( COMPLEX ) );
+    B = (COMPLEX *)calloc( M, sizeof( COMPLEX ) );
+
+    ChirpR = (double *)malloc( N * sizeof( double ) );
+    ChirpI = (double *)malloc( N * sizeof( double ) );
+
+    pi = _FFT_PI / N;
+
+    for( k = 0; k < N; k++ ) {
+        /*
+         * ChirpR + i*ChirpI = c(k) = exp(-i*pi*k^2/N), which is periodic in
+         * (k^2) with period (2*N), so reduce the square first.
+         */
+        a = pi * (double)( ( (long long)k * k ) % ( 2LL * N ) );
+
+        ChirpR[k] =  cos( a );
+        ChirpI[k] = -sin( a );
+
+        /* A = T*c, zero padded to (M) by the calloc above */
+        A[k].Real = T[k].Real * ChirpR[k] - T[k].Imag * ChirpI[k];
+        A[k].Imag = T[k].Real * ChirpI[k] + T[k].Imag * ChirpR[k];
+
+        /* B = conjg(c), wrapped to negative lags, zero in between */
+        B[k].Real =  ChirpR[k];
+        B[k].Imag = -ChirpI[k];
+
+        if ( k > 0 ) B[M - k] = B[k];
+        }
+
+    cfftf( M, A, A );
+    cfftf( M, B, B );
+
+    for( k = 0; k < M; k++ ) {
+        TempR = A[k].Real * B[k].Real - A[k].Imag * B[k].Imag;
+        TempI = A[k].Real * B[k].Imag + A[k].Imag * B[k].Real;
+
+        A[k].Real = TempR;
+        A[k].Imag = TempI;
+        }
+
+    /* cfftb is unnormalized, so this is (M) times the convolution */
+    cfftb( M, A, A );
+
+    for( n = 0; n < N; n++ ) {
+        TempR = A[n].Real / M;
+        TempI = A[n].Imag / M;
+
+        F[n].Real = TempR * ChirpR[n] - TempI * ChirpI[n];
+        F[n].Imag = TempR * ChirpI[n] + TempI * ChirpR[n];
+        }
+
+    free( A );
+    free( B );
+    free( ChirpR );
+    free( ChirpI );
 }
 
 /*
@@ -624,21 +781,48 @@ static void FFTKernel(int N, COMPLEX *F, COMPLEX *T)
  */
 void cfftf(int N, COMPLEX *T, COMPLEX *F)
 {
-    int logN;
+    double TempR;
+    double TempI;
+
     int k;
+    int fft_i = 0;
 
-    FFTInit( );
+    if ( N <= 0 ) return;
 
-    log2( logN, N );
-    _FFT_Level = _FFT_MAX_LEVELS - logN + 1;
+    if ( N == 1 ) {
+        F[0] = T[0];
+        return;
+        }
 
-    _FFT_I = 0;
+    if ( N == 2 ) {
+        TempR = T[0].Real;
+        TempI = T[0].Imag;
+
+        F[0].Real = TempR + T[1].Real;
+        F[0].Imag = TempI + T[1].Imag;
+
+        F[1].Real = TempR - T[1].Real;
+        F[1].Imag = TempI - T[1].Imag;
+
+        return;
+        }
+
+    /*
+     * not a power of two: the radix-2 kernel below does not apply.
+     */
+    if ( N & ( N - 1 ) ) {
+        if ( N < FFT_DIRECT_MAX )
+            DFTDirect( N, T, F );
+        else
+            DFTBluestein( N, T, F );
+        return;
+        }
 
     if ( F != T ) {
         for( k = 0; k < N; k++ ) F[k] = T[k];
         }
 
-    FFTKernel( N, F, F );
+    FFTKernel( N, F, F, &fft_i );
     BitReverseArray( N, F );
 }
 
@@ -682,6 +866,8 @@ void FC_FUNC(fcfftb,FCFFTB)(int *N, COMPLEX *F, COMPLEX *T)
 /*
  * rfftf: forward real FFT. First (N/2+1) coefficients returned.
  *        F(n) = Real(F(N-n))-i*Imag(F(N-n)), n=N/2+1..N-1.
+ *
+ * (N) must be even; it need not be a power of two.
  *
  * parameters:
  *
@@ -761,6 +947,9 @@ void rfftf(int N, double *T, COMPLEX *F)
 /*
  * rfftb: inverse real FFT.
  *
+ * (N) must be even; it need not be a power of two. both parities of the half
+ * length (N/2) are handled, see the comments in the body.
+ *
  * Parameters:
  *
  * N     : int              / length of output sequence.
@@ -794,16 +983,33 @@ void rfftb(int N, COMPLEX *F, double *T)
 
     W = (COMPLEX *)malloc( ( N + 1 ) * sizeof( COMPLEX ) );
 
+    /*
+     * Y(k) = G(k) + H(k), where G(k) = F(2*k) and H(k) = F(2*k+1)-F(2*k-1),
+     * k=0..N-1. only F(0..N) is given, so terms whose input index exceeds (N)
+     * are folded back with F(N+j) = conjg(F(N-j)) - that is the second loop
+     * below, which reads F(2*(N-k)) instead and conjugates.
+     *
+     * k=0 needs H(0) = F(1)-F(-1) = F(1)-conjg(F(1)) = 2*i*Imag(F(1)).
+     *
+     * the two loops meet where the input index (2*k) reaches (N). if (N) is
+     * even there is a term sitting exactly on that boundary, k=N/2, which
+     * neither loop can express and which is taken separately. if (N) is odd
+     * no term lands there - the largest index the first loop reaches is
+     * 2*k+1 = N, and the second loop starts at 2*(N-k)+1 = N - so the loops
+     * are adjacent and no special case exists.
+     */
     W[0].Imag = F[0].Imag + 2 * F[1].Imag;
     W[0].Real = F[0].Real;
 
-    W[N / 2].Real = F[N].Real;
-    W[N / 2].Imag = F[N].Imag - 2 * F[N - 1].Imag;
-
-    for( k = 1; k < N / 2; k++ ) {
+    for( k = 1; k <= ( N - 1 ) / 2; k++ ) {
         n = 2 * k;
         W[k].Real = F[n].Real + F[n + 1].Real - F[n - 1].Real;
         W[k].Imag = F[n].Imag + F[n + 1].Imag - F[n - 1].Imag;
+        }
+
+    if ( N % 2 == 0 ) {
+        W[N / 2].Real = F[N].Real;
+        W[N / 2].Imag = F[N].Imag - 2 * F[N - 1].Imag;
         }
 
     for( k = N / 2 + 1; k < N; k++ ) {
@@ -812,16 +1018,32 @@ void rfftb(int N, COMPLEX *F, double *T)
         W[k].Imag = -( F[n].Imag + F[n - 1].Imag - F[n + 1].Imag );
         }
 
-    Odds = F[1].Real;
-    Eves = 0.0;
-    for( k = 1; k < N / 2; k++ ) {
-        n = 2 * k;
-        Eves += F[n].Real;
-        Odds += F[n + 1].Real;
+    /*
+     * the two output points the loop at the end cannot reach, as sin() in its
+     * denominator vanishes there:
+     *
+     *     T(0)   = sum(F(n)),           n=0..2*N-1
+     *     T(N)   = sum((-1)^n * F(n)),  n=0..2*N-1
+     *
+     * by the symmetry above the coefficients (1..N-1) each contribute twice
+     * and the ends (0) and (N) once. (-1)^n is (+1) for the (0) end, and for
+     * the (N) end it follows the parity of (N) - so which of the two sums
+     * F(N) belongs to depends on that parity.
+     */
+    Eves = F[0].Real;
+    Odds = 0.0;
+
+    for( k = 1; k < N; k++ ) {
+        if ( k % 2 )
+            Odds += 2 * F[k].Real;
+        else
+            Eves += 2 * F[k].Real;
         }
-    Odds *= 2;
-    Eves *= 2;
-    Eves += F[0].Real + F[N].Real;
+
+    if ( N % 2 )
+        Odds += F[N].Real;
+    else
+        Eves += F[N].Real;
 
     cfftb( N, W, W );
     W[N] = W[0];

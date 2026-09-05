@@ -44,7 +44,8 @@
 !------------------------------------------------------------------------------
   USE Types
   USE Lists
-  USE SolverUtils
+  USE SolverBasics
+  USE SolveCore, ONLY : SolveLinearSystem
   USE CRSmatrix
   USE GeneralUtils
 

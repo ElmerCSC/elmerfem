@@ -90,7 +90,7 @@ void Parallel::defaultsButtonClicked()
   ui.nofProcessorsSpinBox->setValue(2);
   
 #ifdef WIN32
-  ui.parallelExecLineEdit->setText("mpiexec.exe");
+  ui.parallelExecLineEdit->setText("C:/Program Files/Microsoft MPI/Bin/mpiexec.exe");
   ui.parallelArgsLineEdit->setText("-n %n ElmerSolver_mpi.exe");
 #else
   ui.parallelExecLineEdit->setText("mpirun");

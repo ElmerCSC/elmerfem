@@ -211,7 +211,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     Model % Solvers(1:n) = Solvers
 
     DO i=n+1,n+2
-      Model % Solvers(i) % PROCEDURE = 0
+      Model % Solvers(i) % PROCEDURE = C_NULL_FUNPTR
       Model % Solvers(i) % Matrix => Null()
       Model % Solvers(i) % Mesh => Null()
       Model % Solvers(i) % Variable => Null()
@@ -305,16 +305,14 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
   END BLOCK
 
   Params => Solver % Values  
-  IF( ListGetString( Params,'Linear System Preconditioning') == "auxiliary space solver" ) THEN
+  IF( ListGetString( Params,'Linear System Preconditioning', Found ) == "auxiliary space solver" ) THEN
     IF(.NOT. ListCheckPresent(Params,'Prec Solvers') ) THEN
-      DO i=Model % NumberOfSolvers,1,-1
-        sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)      
-        IF( INDEX( sname,'APrecSolver') > 0 ) THEN
-          CALL ListAddInteger(Params,'Prec Solvers',i)
-          CALL Info('WhitneyAVSolver_init','Setting "Prec Solvers" to '//I2S(i))
-        END IF
-      END DO
+      CALL Fatal('WhitneyAVSolver_init','Give "Prec Solvers" for "auxiliary space solver" preconditioner!')
     END IF
+    CALL ListAddString( Params, NextFreeKeyword('Exported Variable', Params),"ams res")
+    CALL ListAddString( Params, NextFreeKeyword('Exported Variable', Params),"ams update")
+    CALL ListAddString( Params,'Preconditioning Residual',"ams res")
+    CALL ListAddString( Params,'Preconditioning Update',"ams update")
   END IF
   
 !------------------------------------------------------------------------------
@@ -365,7 +363,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
                                 ThinLineCrossect(:),ThinLineCond(:)
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:), &
-            JFixFORCE(:), JFixVec(:,:),PrevSol(:),nSTIFF(:,:),nFORCE(:)
+      JFixFORCE(:), JFixVec(:,:),PrevSol(:),AmsSTIFF(:,:),AmsSTIFF2(:,:),AmsFORCE(:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
   LOGICAL :: LaminateStack, CoilBody, HasHBCurve, HasReluctivityFunction, &
@@ -409,15 +407,16 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: TorqueTol
   LOGICAL :: UseTorqueTol
 
-  TYPE(Matrix_t), POINTER :: PrecMat
-  TYPE(Solver_t), POINTER :: PrecSolver
-  INTEGER :: PrecI
-  
+  LOGICAL :: AmsAny
+  TYPE(Matrix_t), POINTER :: AmsMat, AmsScalMat
+  TYPE(Solver_t), POINTER :: AmsSolver, AmsScalSolver
+  LOGICAL :: AmsCurlCurlForm, AmsMonolithic
+
   CHARACTER(*), PARAMETER :: Caller = 'WhitneyAVSolver'
   
   SAVE STIFF, LOAD, MASS, DAMP, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
-       Acoef_t, ThinLineCrossect, ThinLineCond, nSTIFF, nFORCE
+       Acoef_t, ThinLineCrossect, ThinLineCond, AmsSTIFF, AmsSTIFF2, AmsFORCE
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
@@ -445,19 +444,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SteadyGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. .NOT. Transient
   TransientGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. Transient
 
-  NULLIFY(PrecMat)
-  NULLIFY(PrecSolver)
-  PrecI = ListGetInteger(SolverParams,'Prec Solvers',Found )
-  IF(PrecI > 0) THEN
-    PrecSolver => Model % Solvers(PrecI)
-    PrecMat => Model % Solvers(PrecI) % Matrix    
-    CALL ListAddLogical(PrecSolver % Values,'Linear System Refactorize',.TRUE.)
-    CALL ListAddLogical(PrecSolver % Values,'Mortar BCs Fixed',.FALSE.)
-  END IF
-  IF(ASSOCIATED(PrecMat)) THEN
-    CALL Info(Caller,'Using special nodal component-wise preconditioning matrix!')
-  END IF
+  ! Initialize auxiliary solvers for preconditioning 
+  CALL GetAuxSolverInfo()
   
+  !CALL ListAddLogical(AmsSolver % Values,'Linear System Refactorize',.TRUE.)
+  !CALL ListAddLogical(AmsSolver % Values,'Mortar BCs Fixed',.FALSE.)
+    
   CoilCurrentName = GetString( SolverParams,'Current Density Name',UseCoilCurrent ) 
   IF(.NOT. UseCoilCurrent ) THEN
     UseCoilCurrent = GetLogical(SolverParams,'Use Nodal CoilCurrent',Found )
@@ -574,8 +566,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      IF(ALLOCATED(FORCE)) THEN
        DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, DAMP, TCoef, GapLength, AirGapMu, &
              Acoef, LamThick, LamCond, WBase, RotM, ThinLineCrossect, ThinLineCond )
-       IF(ASSOCIATED(PrecMat)) THEN
-         DEALLOCATE(nSTIFF, nFORCE)
+       IF(AmsAny) THEN
+         DEALLOCATE(AmsSTIFF, AmsSTIFF2, AmsFORCE)
        END IF
      END IF
 
@@ -587,12 +579,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      IF ( istat /= 0 ) THEN
         CALL Fatal( Caller, 'Memory allocation error.' )
      END IF
-     IF(ASSOCIATED(PrecMat)) THEN
-       IF(.NOT. ASSOCIATED(PrecSolver)) THEN
-         CALL Fatal(Caller,'PrecMat associated but not PrecSolver!')
-       END IF
-       i = PrecSolver % Variable % dofs
-       ALLOCATE(nSTIFF(i*n,i*n), nFORCE(i*n))
+     IF(AmsAny) THEN
+       ALLOCATE(AmsSTIFF(3*n,3*n), AmsSTIFF2(n,n),AmsFORCE(3*n))
+       AmsFORCE = 0.0_dp
      END IF
             
      IF(GetString(SolverParams,'Linear System Solver',Found)=='block') THEN
@@ -600,8 +589,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
        n_n = COUNT(Perm(1:n)>0)
        n_e = COUNT(Perm(n+1:)>0)
        ALLOCATE( Avals(n_e), Vvals(n_n) )
-       Vvals = Vecpot(1:n)
-       Avals = Vecpot(n+1:)
+       Vvals = Vecpot(1:n_n)
+       Avals = Vecpot(n_n+1:)
 
        ALLOCATE(Aperm(SIZE(Perm)),Vperm(SIZE(Perm)))
        Aperm = 0; Vperm = 0
@@ -702,8 +691,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CALL Info(Caller,'Nonlinear iteration: '//I2S(i),Level=8 )
     END IF
 
-    IF(PrecI > 0) THEN
-      CALL ListAddLogical(PrecSolver % Values,'Linear System Refactorize',.TRUE.)
+    IF(ASSOCIATED(AmsSolver)) THEN
+      CALL ListAddLogical(AmsSolver % Values,'Linear System Refactorize',.TRUE.)
     END IF
       
     IF( DoSolve(i) ) THEN
@@ -735,12 +724,62 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   CALL DefaultFinish()
 
+    
+  
   CALL Info(Caller,'All done',Level=8 )
   CALL Info(Caller,'-------------------------------------------',Level=8 )
 
 
 CONTAINS
 
+
+  SUBROUTINE GetAuxSolverInfo()
+
+    INTEGER, POINTER :: SolverIndexes(:)
+    INTEGER :: i,j
+    
+    AmsAny = .FALSE.
+    NULLIFY(AmsMat); NULLIFY(AmsScalMat)
+    NULLIFY(AmsSolver); NULLIFY(AmsScalSolver)
+
+    SolverIndexes => ListGetIntegerArray( SolverParams,'prec solvers',Found )     
+    IF(Found) THEN
+      DO i=1,SIZE(SolverIndexes)
+        j = SolverIndexes(i)
+        IF(ListGetLogical(Model % Solvers(j) % Values,'AMS Vector Solver', Found ) ) THEN
+          AmsSolver => Model % Solvers(j)
+          AmsMat => AmsSolver % Matrix           
+
+          ! For monolithic AMS matrix we may use curl-curl form.
+          AmsCurlCurlForm = .FALSE.
+          AmsMonolithic = ListGetLogical( AmsSolver % Values,'Monolithic Solver',Found)
+          IF( AmsMonolithic ) THEN
+            AmsCurlCurlForm = ListGetLogical( AmsSolver % Values,'curl-curl Form',Found )
+          END IF
+          IF(AmsCurlCurlForm) THEN
+            CALL Info(Caller,'Using curl-curl form for AMS preconditioner',Level=7)
+          END IF
+          AmsAny = .TRUE.
+        END IF
+        IF(ListGetLogical(Model % Solvers(j) % Values,'AMS Scalar Solver', Found ) ) THEN
+          AmsScalSolver => Model % Solvers(j)
+          AmsScalMat => AmsScalSolver % Matrix           
+          AmsAny = .TRUE.
+        END IF
+      END DO
+    END IF
+
+    IF(ASSOCIATED(AmsMat)) THEN
+      CALL Info(Caller,'Assembling nodal AMS vector matrix on the side!',Level=7)
+    END IF
+    IF(ASSOCIATED(AmsScalMat)) THEN
+      CALL Info(Caller,'Assembling nodal AMS scalar matrix on the side!',Level=7)
+    END IF    
+
+  END SUBROUTINE GetAuxSolverInfo
+
+
+  
 !------------------------------------------------------------------------------
   LOGICAL FUNCTION DoSolve(IterNo) RESULT(Converged)
 !------------------------------------------------------------------------------
@@ -783,7 +822,10 @@ CONTAINS
   ! Timing
   CALL ResetTimer('MGDynAssembly')
   CALL DefaultInitialize()
-  IF(ASSOCIATED(PrecMat)) PrecMat % Values = 0.0_dp
+
+  IF(ASSOCIATED(AmsMat)) AmsMat % Values = 0.0_dp
+  IF(ASSOCIATED(AmsScalMat)) AmsScalMat % Values = 0.0_dp
+
   Active = GetNOFActive()
   
   IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
@@ -925,7 +967,7 @@ CONTAINS
      CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-         Element, n, nd+nb, PiolaVersion, SecondOrder, nSTIFF )
+         Element, n, nd+nb, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2 )
        
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
@@ -942,10 +984,15 @@ CONTAINS
 
      CALL DefaultUpdateEquations(STIFF,FORCE)
 
-     IF(ASSOCIATED(PrecMat)) THEN
-       nFORCE = 0.0_dp
-       CurrentModel % Solver => PrecSolver
-       CALL DefaultUpdateEquations(nSTIFF,nFORCE,UElement=Element,USolver=PrecSolver)       
+     IF(ASSOCIATED(AmsMat)) THEN
+       CurrentModel % Solver => AmsSolver
+       CALL DefaultUpdateEquations(AmsSTIFF,AmsFORCE,UElement=Element,USolver=AmsSolver)       
+       CurrentModel % Solver => pSolver
+     END IF
+
+     IF(ASSOCIATED(AmsScalMat)) THEN
+       CurrentModel % Solver => AmsScalSolver
+       CALL DefaultUpdateEquations(AmsSTIFF2,AmsFORCE,UElement=Element,USolver=AmsScalSolver)       
        CurrentModel % Solver => pSolver
      END IF
      
@@ -1585,7 +1632,7 @@ END BLOCK
        
        IF(TorqueElem(i)) THEN
          zmin = MIN(MINVAL(Nodes % z(1:n)), zmin)
-         zmax = MAX(MAXVAL(Nodes % z(1:n)), zmin)
+         zmax = MAX(MAXVAL(Nodes % z(1:n)), zmax)
        END IF
      END DO
               
@@ -1661,7 +1708,7 @@ END BLOCK
      ! Numerical integration:
      !-----------------------
      IF( dim == 3 ) THEN
-       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+       IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
            EdgeBasisDegree=EdgeBasisDegree)       
      ELSE
        IP = GaussPoints(Element)
@@ -1721,7 +1768,7 @@ END BLOCK
            rho = SUM( density(1:n) * Basis(1:n) ) 
            IF( rho > EPSILON( rho ) ) THEN
              IA = IA + Weight
-             U = U + Weight * r * rho
+             IMoment = IMoment + Weight * r * rho
            END IF
          END IF
        END IF
@@ -1749,8 +1796,8 @@ END BLOCK
    END IF
    
    IF( CalcTorque ) THEN   
-     ! Arkkios formula assumes that rinner and router are nicely aligned with elements.
-     ! This may not the case, so the 1st time we make a geomeric correction. 
+     ! Arkkio's formula assumes that rinner and router are nicely aligned with elements.
+     ! This may not be the case, so at the 1st time we make a geometric correction. 
      IF(.NOT. Visited ) THEN
        WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
        CALL Info(Caller,Message,Level=6)
@@ -1859,9 +1906,8 @@ END BLOCK
     REAL(KIND=dp) :: B(3,nd), Bx, By, Bz
     INTEGER :: t
     LOGICAL :: stat, Found
-    TYPE(Nodes_t), SAVE :: Nodes, PNodes
+    TYPE(Nodes_t) :: Nodes, PNodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
 
     CALL GetElementNodes( Nodes, Element )
     Parent => Element % BoundaryInfo % Left
@@ -1871,7 +1917,7 @@ END BLOCK
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
          EdgeBasisDegree=EdgeBasisDegree)
 
     DO t=1,IP % n
@@ -1898,7 +1944,7 @@ END BLOCK
       Bx =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,1)) 
       By =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,2))
       Bz =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,3))
-      U = U + IP % s(t) * detJ * (Bx*Bz + By*Bz) /(PI*4.0d-7) !/ 2
+      U = U + IP % s(t) * detJ * (Bx*Bz*x + By*Bz*y) /(PI*4.0d-7) !/ 2
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE AxialForceSurf
@@ -1928,7 +1974,7 @@ SUBROUTINE LocalConstraintMatrix( Element, n, nd, PiolaVersion, SecondOrder )
   TYPE(Matrix_t), POINTER :: A
   REAL(KIND=dp), POINTER :: SaveRHS(:), SaveValues(:)
 
-  TYPE(Nodes_t), SAVE :: Nodes
+  TYPE(Nodes_t) :: Nodes
   !------------------------------------------------------------------------------
   IF (SecondOrder) THEN
     EdgeBasisDegree = 2
@@ -1950,7 +1996,7 @@ SUBROUTINE LocalConstraintMatrix( Element, n, nd, PiolaVersion, SecondOrder )
 
   !Numerical integration:
   !----------------------
-  IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+  IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
     EdgeBasisDegree=EdgeBasisDegree )
 
   np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
@@ -2020,7 +2066,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-            Element, n, nd, PiolaVersion, SecondOrder, nSTIFF )
+            Element, n, nd, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2 )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), JFixFORCE(:), JFixVec(:,:)
@@ -2032,7 +2078,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
-    REAL(KIND=dp) :: nSTIFF(:,:)
+    REAL(KIND=dp) :: AmsSTIFF(:,:), AmsSTIFF2(:,:)
     
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
@@ -2040,15 +2086,15 @@ END SUBROUTINE LocalConstraintMatrix
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3), A_t_der(3,3), eps=1.0e-3, Permittivity(nd), P_ip
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd), weight
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
     LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
     INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
-    
+    TYPE(Nodes_t) :: Nodes
+
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -2063,7 +2109,8 @@ END SUBROUTINE LocalConstraintMatrix
     MASS  = 0.0_dp
     DAMP  = 0.0_dp
     JAC = 0.0_dp
-    IF(ASSOCIATED(PrecMat)) nSTIFF = 0.0_dp
+    IF(ASSOCIATED(AmsMat)) AmsSTIFF = 0.0_dp
+    IF(ASSOCIATED(AmsScalMat)) AmsSTIFF2 = 0.0_dp
     
     IF( JFix ) THEN
       ! If we are solving for the JFix field we cannot yet use it!
@@ -2102,7 +2149,9 @@ END SUBROUTINE LocalConstraintMatrix
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
           RotBasis = RotWBasis, USolver = pSolver )
-
+      
+      weight = detJ * IP % s(t)
+      
        IF ( HasHBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
@@ -2448,32 +2497,62 @@ END SUBROUTINE LocalConstraintMatrix
 
        ! Assembly of the special nodal preconditioning matrix
        !-------------------------------------------------------
-       IF(ASSOCIATED(PrecMat)) THEN
+       IF(AmsAny) THEN
          BLOCK
-           REAL(KIND=dp) :: x,y,weight,Laplace
-           
-           weight = detJ * IP % s(t)
-           IF(PrecSolver % Variable % Dofs == 1 ) THEN 
-             DO p = 1,n
-               DO q = 1,n
-                 Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
-                 nSTIFF(p,q) = nSTIFF(p,q) + mu * Laplace 
-               END DO
-             END DO
-           ELSE
-             DO p = 1,n
-               DO q = 1,n
-                 Laplace = SUM(dBasisdx(p,:)*dBasisdx(q,:)) * weight
-                 nSTIFF(3*p-2,3*q-2) = nSTIFF(3*p-2,3*q-2) + mu * Laplace 
-                 nSTIFF(3*p-1,3*q-1) = nSTIFF(3*p-1,3*q-1) + mu * Laplace 
-                 nSTIFF(3*p,3*q) = nSTIFF(3*p,3*q) + mu * Laplace 
-               END DO
-             END DO
-           END IF
-         END BLOCK
-           
-       END IF
-     END DO
+           COMPLEX(KIND=dp) :: am, aw, ac, atot(3,3)
+           INTEGER :: idim, jdim
+
+           DO p = 1,n
+             DO q = 1,n
+               IF( ASSOCIATED( AmsMat ) ) THEN              
+                 IF(AmsCurlCurlForm) THEN              
+                   ! The grad-div operator is now zero. 
+                   am = 0.0_dp
+
+                   atot(1,1) = dBasisdx(q,3) * dBasisdx(p,3) + dBasisdx(q,2) * dBasisdx(p,2)
+                   atot(1,2) = -dBasisdx(q,1) * dBasisdx(p,2)
+                   atot(1,3) = -dBasisdx(q,1) * dBasisdx(p,3)
+
+                   atot(2,1) = -dBasisdx(q,2) * dBasisdx(p,1)
+                   atot(2,2) = dBasisdx(q,1) * dBasisdx(p,1) + dBasisdx(q,3) * dBasisdx(p,3)
+                   atot(2,3) = -dBasisdx(q,2) * dBasisdx(p,3)
+
+                   atot(3,1) = -dBasisdx(q,3) * dBasisdx(p,1)
+                   atot(3,2) = -dBasisdx(q,3) * dBasisdx(p,2)
+                   atot(3,3) = dBasisdx(q,1) * dBasisdx(p,1) + dBasisdx(q,2) * dBasisdx(p,2)
+
+                   ! Multiply after creating the curl-curl because of so many terms...
+                   atot = weight * mu * atot                
+                 ELSE
+                   ! grad-div operator
+                   am = mu * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
+                   atot = 0.0_dp
+                 END IF
+
+                IF( AmsMonolithic ) THEN
+                  DO idim=1,3
+                    atot(idim,idim) = atot(idim,idim) + weight * am 
+                  END DO
+                  DO idim=1,3
+                    DO jdim=1,3
+                      AmsSTIFF(3*(p-1)+idim,3*(q-1)+jdim) = AmsSTIFF(3*(p-1)+idim,3*(q-1)+jdim) + atot(idim,jdim)
+                    END DO
+                  END DO
+                ELSE
+                  atot(1,1) = atot(1,1) + weight * am 
+                  AmsSTIFF(p,q) = AmsSTIFF(p,q) + atot(1,1)
+                END IF
+              END IF
+                
+              IF( ASSOCIATED( AmsScalMat ) ) THEN
+                am = mu * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
+                AmsSTIFF2(p,q) = weight * am
+              END IF
+            END DO
+          END DO
+        END BLOCK
+      END IF
+    END DO
 
      
     IF ( Newton ) THEN
@@ -2504,7 +2583,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -2562,7 +2641,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t, i, p, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
@@ -2570,7 +2649,7 @@ END SUBROUTINE LocalConstraintMatrix
     ELSE
       EdgeBasisDegree = 1
     END IF
-    
+
     CALL GetElementNodes( Nodes )
 
     FORCE = 0.0_dp
@@ -2622,7 +2701,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -2722,7 +2801,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: t
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,  Element )
     !
@@ -2759,7 +2838,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
@@ -2817,7 +2896,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
@@ -2902,7 +2981,7 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: s,p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp
     TYPE(Matrix_t), POINTER :: Smat
-    TYPE(Nodes_t),SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: BC
 
     LOGICAL :: Found, Found1,Found2,Found3,L1,L2,L3
@@ -3041,7 +3120,7 @@ END SUBROUTINE LocalConstraintMatrix
         j = j + 1
         dMap(j) = Ltmp % Index; Ltmp => Ltmp % Next
       END DO
-      IF ( j<= 0 ) CYCLE
+      IF ( j<= 1 ) CYCLE
 
       !
       ! Orient edges to form a polygonal path:
@@ -3078,7 +3157,13 @@ END SUBROUTINE LocalConstraintMatrix
           END DO
         END DO
         L1 = m==3
-        IF ( .NOT. L1 ) Element=>Edge % BoundaryInfo % Right
+        IF ( .NOT. L1 ) THEN
+          Element => Edge % BoundaryInfo % Right
+          IF ( .NOT. ASSOCIATED(Element) ) THEN
+            CALL Warn('DirichletAfromB','Right boundary element not associated, skipping.')
+            CYCLE
+          END IF
+        END IF
         S = Bn(FaceMap(Element % ElementIndex))
       ELSE
         ! If not a triangle, try a (planar) polygonal test. This
@@ -3136,8 +3221,8 @@ END SUBROUTINE LocalConstraintMatrix
           q(m) = Mesh % Nodes % y(je2)
           q(n) = Mesh % Nodes % z(je2)
 
-          IF ((q(2)>cx(2)).NEQV.(p(2)>cx(2))) THEN
-            IF (cx(1)<(p(1)-q(1))*(cx(2)-q(2))/(p(2)-q(2))+q(1)) L1=.NOT.L1
+          IF ((q(m)>cx(m)).NEQV.(p(m)>cx(m))) THEN
+            IF (cx(l)<(p(l)-q(l))*(cx(m)-q(m))/(p(m)-q(m))+q(l)) L1=.NOT.L1
           END IF
         END DO
         IF (.NOT.L1) THEN
@@ -3229,6 +3314,7 @@ END SUBROUTINE LocalConstraintMatrix
     IF (.NOT.ASSOCIATED(Element)) RETURN
 
     n=FaceMap(Element % ElementIndex)
+    IF (n == 0) RETURN
     IF (UsedFaces(n)) THEN
       Found=.TRUE.; RETURN
     END IF
@@ -3242,11 +3328,9 @@ END SUBROUTINE LocalConstraintMatrix
 
       e => Mesh % Edges(j) % BoundaryInfo % Right
       IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)) RETURN
-!     L=FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)
 
       e => Mesh % Edges(j) % BoundaryInfo % Left
       IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)) RETURN
-!     L=FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)
     END DO
     Found=.TRUE.; RETURN
 !------------------------------------------------------------------------------
@@ -3269,7 +3353,7 @@ END SUBROUTINE LocalConstraintMatrix
     LOGICAL :: Stat
     INTEGER :: t, i, j, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -3583,11 +3667,11 @@ CONTAINS
     REAL(KIND=dp) :: PotSol(:)  ! The values of target field DOFS
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(3)
     REAL(KIND=dp) :: s, DetJ
@@ -3896,11 +3980,11 @@ CONTAINS
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(3)
     REAL(KIND=dp) :: s, DetJ

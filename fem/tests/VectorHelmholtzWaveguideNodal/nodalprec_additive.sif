@@ -63,18 +63,16 @@ Solver 1
 ! Needed for auxiliary space preconditioning
   Exported Variable 1 = -dofs 2 e res
   Exported Variable 2 = -dofs 2 e update
-  Prec Solvers(1) = Integer 3
-  Additive Prec Solvers(1) = Integer 2	
+  Prec Solvers(2) = Integer 3 2
+
   Preconditioning Residual = String "e res"
   Preconditioning Update = String "e update"
 
   MG Smoother = csgs
-!  MG Pre Smoothing Iterations = 7
   MG Post Smoothing Iterations = 7
   MG Smoother Relaxation Factor = Real 1.0
 
-  Additive Preconditioning = Logical True
-  Additive Pre-Smoothing = Logical False
+  Additive Smoother = Logical True
 End
 
 Solver 2

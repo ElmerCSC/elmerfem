@@ -1,0 +1,244 @@
+! Staged construction through ElasticSolve: "Update Reference Displacement" in a
+! body force, which re-references a body's displacement so that a later stage is
+! measured from where an earlier one left off. The sibling staged_sim is the same
+! eleven-stage thermal-mechanical sequence through StressSolve.
+!
+! ElasticSolve had no such keyword and ignored it in silence, so the sequence ran
+! unstaged and came out 3.2% wrong -- the sort of margin that reads as
+! discretisation error rather than as a missing capability. The keyword turned up
+! here because the cross-solver swap survey (plan doc section 5) listed this test as
+! a "near miss" and something had to explain the 3.2%.
+!
+! THE KEYWORD IS A SWITCH ON A SIGN, not a value: where its nodal values are mostly
+! non-negative the body's solution becomes the new reference at the end of the step,
+! and where they are mostly negative the body is solved measured from the reference
+! already stored, by adding K u_ref to its load. The sif drives the sequence by
+! flipping that sign over time. It is a majority vote over the nodes of an element
+! rather than a test of one value, because a keyword given as a table over time
+! crosses zero between stages and one element's nodes can straddle the crossing.
+!
+! Two things this deliberately does differently from the sibling:
+!
+! THE LINEAR SOLVE IS DIRECT. See the note in the solver section: the sibling's
+! iterative solve at 1e-6 on a system conditioned around 1e9 is worth 1e-4 of
+! displacement error, which is larger than anything the two solvers disagree about.
+! With a direct solve they agree to 4.5e-9 -- so the reference norm below is the
+! direct-solve value and differs from the sibling's stored norm by 1.1e-4, which is
+! the iterative solver's error and not a discrepancy between the solvers.
+!
+! "Large Deflection = False" IS REQUIRED and refused otherwise. The reference is
+! subtracted through the linear stiffness, which is not the tangent of a
+! geometrically nonlinear step.
+!
+! A missing "Reference Displacement" variable is also refused here where StressSolve
+! ignores the keyword: without somewhere to store the reference the keyword does
+! nothing, and the answer is the unstaged one.
+
+!echo on
+Check Keywords Warn
+
+Header
+  Mesh DB "." "mesh"
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+
+  Output Intervals = 1
+  Steady State Min Iterations = 11
+  Steady State Max Iterations = 11
+
+  Output Version Numbers = Logical True
+  Output File = disp.res
+  Post File = disp.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+  Body Force = 1
+End
+
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+
+Solver 1
+  Equation = heat equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0e-6
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+Solver 2
+  Equation = thermal stress
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Large Deflection = False
+  Variable = Displacement
+  Variable DOFs = 2
+
+  Exported Variable 1 = "Reference Displacement"
+  Exported Variable 1 DOFs = 2
+
+!  Optimize Bandwidth = False
+
+  ! DIRECT, where the sibling staged_sim is iterative at 1e-6. Not a preference:
+  ! the modulus of this problem steps from 1 to 1e9 between stages, so the system
+  ! is conditioned around 1e9 and an iterative solve stopped at a 1e-6 residual
+  ! leaves an error of order 1e-4 in the displacement. That is what the two
+  ! solvers were seen to differ by, and it is the iterative solver's tolerance
+  ! rather than anything either of them does: with this direct solve they agree
+  ! to 4.5e-9. A reference norm pinned to an iterative result on an ill
+  ! conditioned system pins the mood of the preconditioner too.
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+
+Material 1
+  Density = 1
+  Heat capacity = 1
+  Heat Conductivity = 1000
+
+  Youngs modulus = 1e9
+  Poisson Ratio = 0.29
+
+  Heat Expansion Coefficient = 1.0e-4
+  Reference Temperature = 0
+End
+
+
+Material 2
+  Density = 1
+  Heat capacity = 1
+  Heat Conductivity = 1000
+
+  Youngs modulus = Variable Time
+    Real
+       0.0    1.0
+       5.0    1.0
+       5.1    1e9
+       10.0   1e9
+     End
+
+  Poisson Ratio = 0.29
+
+  Heat Expansion Coefficient = 1.0e-4
+  Reference Temperature = Variable Time
+    Real
+       0.0     0.0
+       5.0    100.0
+       10.0   100.0
+     End
+
+End
+
+
+Body Force 1
+
+    Update Reference Displacement = Variable Time
+     Real
+      0.0    1.0
+      5.0    1.0
+      5.1   -3.0
+      10.0  -3.0
+     End   
+
+End
+
+
+Boundary Condition 1
+  Target Coordinates(1,2) = Real 2.5  1.0
+
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+
+  Displacement 1 Condition = Variable Time
+     Real
+      0.0    1.0
+      5.0    1.0
+      5.1   -3.0
+      10.0  -3.0
+     End   
+
+  Displacement 2 Condition = Variable Time
+     Real
+      0.0    1.0
+      5.0    1.0
+      5.1   -3.0
+      10.0  -3.0
+     End   
+
+End
+
+
+Boundary Condition 2
+  Target Coordinates(1,2) = Real 2.5  0.0
+
+  Displacement 1 = 0.0
+
+  Displacement 1 Condition = Variable Time
+     Real
+      0.0    1.0
+      5.0    1.0
+      5.1   -3.0
+      10.0  -3.0
+     End   
+
+End
+
+Boundary Condition 3
+  Target Boundaries = 1 
+
+  Temperature = Variable Time
+    Real
+      0.0     0.0
+      5.0   100.0
+      6.0   100.0
+     11.0     0.0
+    End
+
+End
+
+Boundary Condition 4
+  Target Boundaries = 2
+
+  Temperature = Variable Time
+    Real
+      0.0     0.0
+      5.0   100.0
+      6.0   100.0
+     11.0     0.0
+    End
+
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Solver 2 :: Reference Norm = Real 6.72337300E-03
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+
+! End of File

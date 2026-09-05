@@ -1,13 +1,20 @@
+MODULE mpi_stub
+  LOGICAL :: mpi_stub_init = .FALSE.
+END MODULE mpi_stub
+
+
 SUBROUTINE mpi_init(ierr)
+  USE mpi_stub
   INTEGER :: ierr
   ierr = 0
+  mpi_stub_init = .TRUE.
 END SUBROUTINE mpi_init
 
 SUBROUTINE mpi_initialized(init, ierr)
   LOGICAL :: init
   INTEGER :: ierr
-  init = .FALSE.
   ierr = 0
+  init = .FALSE.
 END SUBROUTINE mpi_initialized
 
 SUBROUTINE mpi_init_thread(req, prov, ierr)
@@ -17,8 +24,10 @@ SUBROUTINE mpi_init_thread(req, prov, ierr)
 END SUBROUTINE mpi_init_thread
 
 SUBROUTINE mpi_finalize(ierr)
+  USE mpi_stub
   INTEGER :: ierr
   ierr = 0
+  mpi_stub_init = .FALSE.
 END SUBROUTINE mpi_finalize
 
 SUBROUTINE mpi_comm_size(comm, csize, ierr)
@@ -38,6 +47,9 @@ SUBROUTINE mpi_comm_split(comm, color, key, newcomm, ierr)
   newcomm = comm
   ierr = 0
 END SUBROUTINE mpi_comm_split
+
+SUBROUTINE mpi_scan
+END SUBROUTINE mpi_scan
 
 SUBROUTINE mpi_allreduce
   RETURN
@@ -118,6 +130,10 @@ END SUBROUTINE mpi_allgatherv
 SUBROUTINE mpi_alltoallv
   RETURN
 END SUBROUTINE mpi_alltoallv
+
+SUBROUTINE mpi_alltoall
+  RETURN
+END SUBROUTINE mpi_alltoall
 
 SUBROUTINE mpi_gatherv
   RETURN

@@ -47,7 +47,7 @@
 
 #include "../config.h"
 
-#if defined(WIN32) | defined(MINGW32)
+#if defined(WIN32) || defined(MINGW32)
 #  include <direct.h>
 #  include <windows.h>
 #define ELMER_PATH_SEPARATOR ";"
@@ -55,6 +55,10 @@
 #include <strings.h>
 #  include <dlfcn.h>
 #  include <sys/stat.h>
+#  include <unistd.h>
+#  ifdef __APPLE__
+#    include <mach-o/dyld.h>
+#  endif
 #define ELMER_PATH_SEPARATOR ":"
 #endif
 
@@ -113,8 +117,7 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
   int n = 0;
 
   /* Get the full module file name  */
-  GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
-  if(appPath == NULL) return;
+  if(GetModuleFileName(NULL, appPath, MAX_PATH_LEN) == 0) return;
   exeName = strrchr(appPath, '\\');
   if(exeName == NULL) return;
   n = (int)(exeName - appPath);
@@ -138,6 +141,57 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
 }
 
 /*--------------------------------------------------------------------------
+  Return the directory holding the running executable, without a trailing
+  separator.  ElmerSolver spawns ViewFactors and Radiators when the radiation
+  factor files are missing; resolving those through PATH picks up whichever
+  build happens to come first there, which need not be the one this solver was
+  built or installed with.  Both live in the same directory as ElmerSolver
+  itself -- fem/src in a build tree, bin/ once installed -- so that is what to
+  ask for.  *len is left 0 when the path cannot be determined, and the caller
+  is then expected to fall back to the bare command name.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL getexedir( char *exeDir, int *len )
+#else
+void STDCALLBULL FC_FUNC(getexedir,GETEXEDIR) ( char *exeDir, int *len )
+#endif
+{
+  char path[MAX_PATH_LEN];
+  char *sep = NULL;
+  int n = 0;
+
+  *len = 0;
+
+#if defined(WIN32) || defined(MINGW32)
+  n = (int)GetModuleFileName( NULL, path, MAX_PATH_LEN );
+  if( n <= 0 || n >= MAX_PATH_LEN ) return;
+  path[n] = '\0';
+  sep = strrchr( path, '\\' );
+  if( sep == NULL ) sep = strrchr( path, '/' );
+#elif defined(__APPLE__)
+  {
+    uint32_t bufsize = MAX_PATH_LEN;
+    if( _NSGetExecutablePath( path, &bufsize ) != 0 ) return;
+    path[MAX_PATH_LEN-1] = '\0';
+    sep = strrchr( path, '/' );
+  }
+#else
+  n = (int)readlink( "/proc/self/exe", path, MAX_PATH_LEN-1 );
+  if( n <= 0 ) return;
+  path[n] = '\0';
+  sep = strrchr( path, '/' );
+#endif
+
+  if( sep == NULL ) return;
+
+  n = (int)(sep - path);
+  if( n <= 0 || n > MAX_PATH_LEN ) return;
+
+  strncpy( exeDir, path, n );
+  *len = n;
+}
+
+/*--------------------------------------------------------------------------
   This routine will create a directory given name of the directory.
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
@@ -156,6 +210,7 @@ void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY)
     }
 }
 
+#ifdef OBSOLITE
 #ifndef USE_ISO_C_BINDINGS
 /*--------------------------------------------------------------------------
   This routine execute a operating system command.
@@ -180,6 +235,25 @@ void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
     }
 }
 #endif
+#endif /* OBSOLITE */
+
+/*--------------------------------------------------------------------------
+  Set or clear ELMER_NO_MPI in the process environment.  Used by
+  RadiationFactors before/after spawning ViewFactors or Radiators so the
+  child does not try to join the parent's MPI job via inherited PMI vars.
+  Avoids shell-syntax tricks (VAR=1 cmd) that do not work on Windows.
+  ---------------------------------------------------------------------------*/
+void elmersetnompi( int *set )
+{
+#ifdef _WIN32
+    _putenv( *set ? "ELMER_NO_MPI=1" : "ELMER_NO_MPI=" );
+#else
+    if ( *set )
+        setenv( "ELMER_NO_MPI", "1", 1 );
+    else
+        unsetenv( "ELMER_NO_MPI" );
+#endif
+}
 
 /*--------------------------------------------------------------------------
   Internal: convert function names into to fortran mangled form for dynamical
@@ -196,7 +270,7 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
     for( i=0 ; i<strlen(mangled) ; i++ ) /* to lower case */
     {
       if ( mangled[i] >= 'A'  && mangled[i] <= 'Z' )
-	mangled[i] += 'a' - 'A';
+        mangled[i] += 'a' - 'A';
     }
   }
   if(ELMER_LINKTYP == 2)
@@ -204,7 +278,7 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
     for( i=0; i<strlen(mangled); i++ ) /* to upper case */
     {
       if ( mangled[i] >= 'a'  && mangled[i] <= 'z' )
-	mangled[i] += 'A' - 'a';
+        mangled[i] += 'A' - 'a';
     }
   }
 
@@ -217,7 +291,7 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
     uscore = 0;
     for( i=0; i<strlen(mangled); i++ )
       if(mangled[i] == '_')
-	uscore++;
+        uscore++;
 
     if(uscore == 0)
     {
@@ -274,7 +348,7 @@ static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
 #ifdef HAVE_DLOPEN_API
         if ((*Handle = dlopen(dl_names[i], RTLD_NOW)) == NULL) {
             strncat(errorBuf, dlerror(), MAX_PATH_LEN-1);
-            strncat(errorBuf, "\n", MAX_PATH_LEN)-1;
+            strncat(errorBuf, "\n", MAX_PATH_LEN-1);
         } else {
             break;
         }
@@ -376,19 +450,19 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
          strncat( ElmerLib, "/share/elmersolver/lib", 2*MAX_PATH_LEN-1 );
       } else {
 #if defined(WIN32) || defined(MINGW32)
-	/* Should not get here unless WIN32 implements DLOPEN_API */
-	GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
-	exeName = strrchr(appPath, '\\');
-	n = (int)(exeName - appPath);
-	if(n < 0) n = 0;
-	if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
+        /* Should not get here unless WIN32 implements DLOPEN_API */
+        GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
+        exeName = strrchr(appPath, '\\');
+        n = (int)(exeName - appPath);
+        if(n < 0) n = 0;
+        if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
         strncat(ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1);
-	strncat(ElmerLib, appPath, n);
-	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN-1);
+        strncat(ElmerLib, appPath, n);
+        strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN-1);
 #else
         strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1 );
-	strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN-1 );
-	strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN-1 );
+        strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN-1 );
+        strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN-1 );
 #endif
       }
    }
@@ -402,7 +476,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    try_open_solver(ElmerLib, Library, &Handle, ErrorBuffer);
    if ( Handle == NULL ) {
       fprintf(stderr, "%s", ErrorBuffer);
-      exit(0);
+      exit(1);
    }
 
 #ifdef HAVE_DLOPEN_API
@@ -410,7 +484,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    if ( (Function = (void(*)())dlsym( Handle,NewName)) == NULL && *abort_not_found )
    {
       fprintf( stderr, "Load: FATAL: Can't find procedure [%s]\n", NewName );
-      exit(0);
+      exit(1);
    }
 
 #elif defined(HAVE_LOADLIBRARY_API)
@@ -460,8 +534,7 @@ static void DoubleArrayExec(
    Execute given function returning double value
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void STDCALLBULL execrealarrayfunction_c( f_ptr Function, void *Model,
-										int *Node, double *Value, double *Array )
+void STDCALLBULL execrealarrayfunction_c( f_ptr Function, void *Model, int *Node, double *Value, double *Array )
 #else
 void STDCALLBULL FC_FUNC(execrealarrayfunction,EXECREALARRAYFUNCTION)
      ( f_ptr Function,
@@ -487,8 +560,7 @@ static double DoubleExec(
    Execute given function returning double value
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-double STDCALLBULL execrealfunction_c( f_ptr Function, void *Model,
-									 int *Node, double *Value )
+double STDCALLBULL execrealfunction_c( f_ptr Function, void *Model, int *Node, double *Value )
 #else
 double STDCALLBULL FC_FUNC(execrealfunction,EXECREALFUNCTION)
      ( f_ptr Function, void *Model,
@@ -514,8 +586,7 @@ static double ConstDoubleExec(
    Execute given function returning double value
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model,
-										  double *x, double *y, double *z )
+double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model, double *x, double *y, double *z )
 #else
 double STDCALLBULL FC_FUNC(execconstrealfunction,EXECCONSTREALFUNCTION)
      ( f_ptr Function, void *Model,
@@ -555,8 +626,7 @@ static void DoExecSolver(
    Call solver routines at given address
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void STDCALLBULL execsolver_c( f_ptr *SolverProc, void *Model, void *Solver,
-								void *dt, void *Transient )
+void STDCALLBULL execsolver_c( f_ptr *SolverProc, void *Model, void *Solver, void *dt, void *Transient )
 #else
 void STDCALLBULL FC_FUNC(execsolver,EXECSOLVER)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *dt, void *Transient )
@@ -583,8 +653,8 @@ static int DoLinSolveProcs(
    Call lin. solver routines at given address
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver,
-						void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
+int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix, 
+                  void *b, void *x, void *n, void *DOFs, void *Norm )
 #else
 int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
@@ -597,6 +667,59 @@ int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
 
 char *mtc_domath(char *);
 void mtc_init(FILE *,FILE *, FILE *);
+void *mtc_compile(char *);
+char *mtc_eval(void *);
+void  mtc_free_compiled(void *);
+void  mtc_set_real_array(const char *, double *, int);
+
+/* Compile-cache for per-element MATC expression evaluation.
+ * Variable-setting calls ("tx=1.5 2.3 ...") are always unique and go through
+ * mtc_domath as before.  Expression strings from ptr%CValue are constant for
+ * the lifetime of a simulation and are compiled once then re-evaluated. */
+
+typedef struct { char *expr; void *handle; } MtcCacheEntry_t;
+static MtcCacheEntry_t *mtc_cache     = NULL;
+static int              mtc_cache_n   = 0;
+static int              mtc_cache_cap = 0;
+static int              mtc_been_here = 0;
+#pragma omp threadprivate(mtc_cache, mtc_cache_n, mtc_cache_cap, mtc_been_here)
+
+static void mtc_init_once(void)
+{
+  char cc[32];
+  if (mtc_been_here) return;
+  /* mtc_init() must run in every thread (MATC uses per-thread state via
+   * the threadprivate cache), but concurrent first-use calls from different
+   * threads corrupt shared MATC initialisation state.  Serialise them. */
+#pragma omp critical (matc_init)
+  {
+    mtc_init(NULL, stdout, stderr);
+    strcpy(cc, "format( 12,\"rowform\")");
+    mtc_domath(cc);
+  }
+  mtc_been_here = 1;
+}
+
+static void *mtc_cache_lookup(const char *expr)
+{
+  int i;
+  for (i = 0; i < mtc_cache_n; i++)
+    if (strcmp(mtc_cache[i].expr, expr) == 0)
+      return mtc_cache[i].handle;
+  return NULL;
+}
+
+static void mtc_cache_insert(const char *expr, void *handle)
+{
+  if (mtc_cache_n == mtc_cache_cap) {
+    mtc_cache_cap = mtc_cache_cap ? mtc_cache_cap * 2 : 64;
+    mtc_cache = (MtcCacheEntry_t *)realloc(mtc_cache,
+                    mtc_cache_cap * sizeof(MtcCacheEntry_t));
+  }
+  mtc_cache[mtc_cache_n].expr   = strdup(expr);
+  mtc_cache[mtc_cache_n].handle = handle;
+  mtc_cache_n++;
+}
 
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc variable array values
@@ -618,26 +741,19 @@ void var_copy_transpose(char *name,double *values,int nrows,int ncols);
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL matc_c( char *cmd, int *len, char *result, int *reslen )
 #else
-void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*reslen)
+void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,int *reslen)
 #endif
 {
 #define MAXLEN 8192
 
-  static int been_here = 0;
-  char *ptr, c, cc[32], *ccmd;
+  char *ptr, *ccmd;
   int slen, start;
-#pragma omp threadprivate(been_here)
 
   /* MB: Critical section removed since Matc library
    * modified to be thread safe */
 
    slen = *len;
-   if ( been_here==0 ) {
-     mtc_init( NULL, stdout, stderr );
-     strcpy( cc, "format( 12,\"rowform\")" );
-     mtc_domath( cc );
-     been_here = 1;
-   }
+   mtc_init_once();
 
   ccmd = (char *)malloc(slen+1);
   strncpy( ccmd, cmd, slen);
@@ -664,7 +780,7 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
       if (start==0) {
           fprintf( stderr, "Solver input file error: %s\n", result );
           fprintf( stderr, "...offending input line: %s\n", ccmd );
-          exit(0);
+          exit(1);
       } else {
         result[0]=' ';
         *reslen = 0;
@@ -675,6 +791,102 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
     *result = ' ';
   }
   free(ccmd);
+}
+
+/*--------------------------------------------------------------------------
+  Like matc_c but compiles the expression on first use and re-evaluates the
+  cached parse tree on every subsequent call.  Used for MATC expressions that
+  appear as material/BC parameters — same string, many different variable
+  values per element.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc_c_cached( char *cmd, int *len, char *result, int *reslen )
+#else
+void STDCALLBULL FC_FUNC(matc_c_cached,MATC_C_CACHED) (char *cmd,int *cmdlen,char *result,int *reslen)
+#endif
+{
+  char *ptr, *ccmd;
+  int slen, start;
+  void *handle;
+
+  slen = *len;
+  mtc_init_once();
+
+  ccmd = (char *)malloc(slen + 1);
+  strncpy(ccmd, cmd, slen);
+  ccmd[slen] = '\0';
+
+  start = 0;
+  if (strncmp(ccmd, "nc:", 3) == 0) start = 3;
+
+  handle = mtc_cache_lookup(&ccmd[start]);
+  if (!handle) {
+    handle = mtc_compile(&ccmd[start]);
+    if (handle)
+      mtc_cache_insert(&ccmd[start], handle);
+  }
+
+  /* Failed compile: fall back to mtc_domath so the MATC ERROR message
+   * reaches Elmer's output — same behaviour as the non-cached path. */
+  if (!handle) {
+    ptr = mtc_domath(&ccmd[start]);
+  } else {
+    ptr = (char *)mtc_eval(handle);
+  }
+  if (ptr) {
+    slen = strlen(ptr) - 1; /* ignore linefeed */
+  } else {
+    slen = 0;
+  }
+
+  if (slen >= *reslen) {
+    fprintf(stderr, "MATC result too long %d %d\n", *len, *reslen);
+    exit(0);
+  } else if (slen > 0) {
+    *reslen = slen;
+    strncpy(result, (const char *)ptr, slen);
+
+    if (strncmp(result, "MATC ERROR:", 11) == 0 || strncmp(result, "WARNING:", 8) == 0) {
+      if (start == 0) {
+        fprintf(stderr, "Solver input file error: %s\n", result);
+        fprintf(stderr, "...offending input line: %s\n", ccmd);
+        exit(1);
+      } else {
+        result[0] = ' ';
+        *reslen = 0;
+      }
+    }
+  } else {
+    *reslen = 0;
+    *result = ' ';
+  }
+  free(ccmd);
+}
+
+/*--------------------------------------------------------------------------
+  Set a named MATC real variable directly from a Fortran array, bypassing
+  string formatting and parsing.  Called instead of matc_c for the variable-
+  setting step in SetGetMatcParams.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc_c_set_params( char *name, int *namelen,
+                                    double *values, int *n )
+#else
+void STDCALLBULL FC_FUNC(matc_c_set_params,MATC_C_SET_PARAMS)
+                        ( char *name, int *namelen, double *values, int *n )
+#endif
+{
+  char *cname;
+  int len = *namelen;
+
+  mtc_init_once();
+
+  cname = (char *)malloc(len + 1);
+  strncpy(cname, name, len);
+  cname[len] = '\0';
+
+  mtc_set_real_array(cname, values, *n);
+  free(cname);
 }
 
 /*--------------------------------------------------------------------------
@@ -696,7 +908,7 @@ static double DoViscFunction(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 double STDCALLBULL materialuserfunction_c( f_ptr Function, void *Model, void *Element,
-		void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
+    void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
 #else
 double STDCALLBULL FC_FUNC(materialuserfunction,MATERIALUSERFUNCTION)
   ( f_ptr Function, void *Model, void *Element, void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
@@ -795,7 +1007,7 @@ static void DoLocalCall(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL execlocalproc_c( f_ptr localProc, void *Model,void *Solver,
-								void *G, void *F, void *Element,void *n,void *nd )
+      void *G, void *F, void *Element,void *n,void *nd )
 #else
 void STDCALLBULL FC_FUNC(execlocalproc, EXECLOCALPROC )
      ( f_ptr localProc, void *Model,void *Solver,void *G, void *F, void *Element,void *n,void *nd )
@@ -823,9 +1035,8 @@ static void DoLocalAssembly(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL execlocalassembly_c( f_ptr LocalAssembly, void *Model,
-		         void *Solver,void *dt,void *transient,
-		         void *M, void *D, void *S,void *F,
-		         void *Element,void *n,void *nd )
+          void *Solver,void *dt,void *transient, void *M, void *D, void *S,void *F,
+                       void *Element,void *n,void *nd )
 #else
 void STDCALLBULL FC_FUNC(execlocalassembly, EXECLOCALASSEMBLY )
      ( f_ptr LocalAssembly, void *Model,void *Solver,void *dt,void *transient,void *M, void *D, void *S,void *F,void *Element,void *n,void *nd )
@@ -853,7 +1064,7 @@ static void DoMatVecSubr(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL matvecsubrext_c( f_ptr matvec, void **SpMV, void *n, void *rows,
-		                          void *cols, void *vals, void *u, void *v,void *reinit )
+               void *cols, void *vals, void *u, void *v,void *reinit )
 #else
 void STDCALLBULL FC_FUNC(matvecsubr, MMATVECSUBR)
      ( f_ptr matvec, void **SpMV, void *n, void *rows, void *cols, void *vals, void *u, void *v,void *reinit )

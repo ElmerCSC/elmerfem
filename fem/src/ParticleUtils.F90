@@ -49,7 +49,7 @@ MODULE ParticleUtils
   USE Lists
   USE ElementUtils, ONLY : FreeMatrix
   USE Interpolation, ONLY : CopyElementNodesFromMesh
-  USE MeshUtils, ONLY : FindMeshEdges
+  USE MeshBasics, ONLY : FindMeshEdges
   USE GeneralUtils
   USE SaveUtils
   
@@ -59,7 +59,7 @@ MODULE ParticleUtils
     INTEGER :: Dim, NumberOfParticles=0, MaxNumberOfParticles=0, &
                NumberOfMovingParticles = 0, &
                TimeOrder = 0, FirstGhost = 0, NumberOfGroups = 0
-    TYPE(Variable_t), POINTER :: Variables => NULL()	
+    TYPE(Variable_t), POINTER :: Variables => NULL()
     
     REAL(KIND=dp) :: time, dtime
     LOGICAL :: DtConstant = .TRUE., RK2 = .FALSE.  
@@ -131,19 +131,19 @@ CONTAINS
     INTEGER :: StatusCount(PARTICLE_GHOST)
     CHARACTER (len=12), PARAMETER :: StatusString(14) = [ &
         "Allocated   ", &
- 	"Waiting     ", &
-	"Initiated   ", &
-	"Located     ", &
-	"Moving      ", &
-	"FaceBoundary", &
+        "Waiting     ", &
+        "Initiated   ", &
+        "Located     ", &
+        "Moving      ", &
+        "FaceBoundary", &
         "PartBoundary", &
-	"Hit         ", &
-	"Ready       ", &
-	"FixedCoord  ", &
-	"FixedVelo   ", &
-	"WallBoundary", &
+        "Hit         ", &
+        "Ready       ", &
+        "FixedCoord  ", &
+        "FixedVelo   ", &
+        "WallBoundary", &
         "Lost        ", &
-	"Ghost       "]
+        "Ghost       "]
 
     StatusCount = 0
     NoParticles = Particles % NumberOfParticles
@@ -642,7 +642,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Velocity(:,:), Force(:,:), &
         Coordinate(:,:), PrevCoordinate(:,:), PrevVelocity(:,:)
     INTEGER, POINTER :: Status(:), ElementIndex(:), FaceIndex(:), NodeIndex(:), &
-	Closest(:),Partition(:),Group(:)
+                 Closest(:),Partition(:),Group(:)
     INTEGER :: PrevNoParticles, dofs, No, n, dim, TimeOrder, n1, n2, AllocParticles
     INTEGER, ALLOCATABLE :: Perm(:)
     
@@ -2145,7 +2145,7 @@ RETURN
       
       Cnt = Cnt + 1
       Velo(1:dim) = Velocity(i,1:dim)
-	
+
       Speed = SUM( Velo(1:dim) ** 2 ) 
       IF( UseMaxSpeed ) THEN
         MaxSpeed = MAX( MaxSpeed, Speed ) 
@@ -2973,14 +2973,14 @@ RETURN
         j = i
         IF( ASSOCIATED( AdvVar ) ) THEN
           j = AdvVar % Perm(i)
-	  IF(j==0) CYCLE
+          IF(j==0) CYCLE
         END IF
         Coordinate(j,1) = Mesh % Nodes % x(i)
         Coordinate(j,2) = Mesh % Nodes % y(i)
         IF( dim == 3 ) Coordinate(j,3) = Mesh % Nodes % z(i)
 
         IF(vdofs>0) THEN
-          DO k=1,dim	
+          DO k=1,dim
             Velocity(j,k) = VeloVar % Values(vdofs*(VeloVar % Perm(i)-1)+k)
           END DO
         END IF
@@ -3508,8 +3508,8 @@ RETURN
   SUBROUTINE SegmentElementIntersection(Mesh,BulkElement,&
       Rinit,Rfin,MinLambda,FaceElement)
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER   :: BulkElement
+    TYPE(Mesh_t), TARGET :: Mesh
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Rinit(3), Rfin(3), MinLambda
     TYPE(Element_t), POINTER :: FaceElement
     
@@ -3562,10 +3562,10 @@ RETURN
         j = i
       ELSE 
         IF( j > 0 ) THEN
-	  MinLambda = Lambda( j ) 
+          MinLambda = Lambda( j ) 
           EXIT
         ELSE IF( Lambda(i) >= NegEps ) THEN
-	  MinLambda = MAX( Lambda( i ), 0.0_dp )
+          MinLambda = MAX( Lambda( i ), 0.0_dp )
           j = i
         END IF
         EXIT
@@ -3599,8 +3599,8 @@ RETURN
   SUBROUTINE SegmentElementIntersection2(Mesh,BulkElement,&
       Rinit,Rfin,MinLambda,FaceElement)
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER   :: BulkElement
+    TYPE(Mesh_t), TARGET :: Mesh
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Rinit(3), Rfin(3), MinLambda
     TYPE(Element_t), POINTER :: FaceElement
     
@@ -3664,8 +3664,8 @@ RETURN
   !---------------------------------------------------------------------------
   FUNCTION SegmentElementInside(Mesh,BulkElement,Rfin,Debug) RESULT ( Inside )
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER   :: BulkElement
+    TYPE(Mesh_t), TARGET :: Mesh
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Rfin(3)
     LOGICAL :: Debug
     LOGICAL :: Inside
@@ -3901,7 +3901,7 @@ RETURN
     TYPE(ValueList_t), POINTER :: Params, BC
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Rtmp(3), Normal(3), MinLambda, eps, UnitVector(3), ds2, &
-	LocalCoord(3),Velo0(3)
+       LocalCoord(3),Velo0(3)
     LOGICAL :: Hit, DoInit, Stat, StopAtFace, AtWall, Visited = .FALSE.,&
         Debug,UseCenter,GotBC,GotBC2,ParticleBounce, Robust, Inside
     INTEGER :: i,j,k,n,dim,FaceIndex,MaxTrials,bc_id,cons_id,ElementIndex0,ParticleStatus0, &
@@ -3953,7 +3953,7 @@ RETURN
       DoInit = .TRUE.
       ElementIndex = 1
       UseCenter = .TRUE.
-    ELSE	
+    ELSE
       UseCenter = .NOT. AccurateAtFace
     END IF
     ElementIndex0 = ElementIndex
@@ -3983,7 +3983,7 @@ RETURN
     DO i=1,MaxTrials
 
       ! Use the previous element center if the true path is of no importance
-      !---------------------------------------------------------------------	
+      !---------------------------------------------------------------------
       IF( UseCenter ) THEN
         n = GetElementNOFNOdes(Element)
         CALL GetElementNodes(ElementNodes,Element)
@@ -4256,10 +4256,10 @@ RETURN
         END IF
 
         IF( Inside ) THEN
-	  Problems(1) = Problems(1) + 1
+           Problems(1) = Problems(1) + 1
            CALL Warn('LocateParticleInMeshMarch','Elements are same, found in NextElement!')          
           Element => NextElement
-          ParticleStatus = PARTICLE_HIT	  
+          ParticleStatus = PARTICLE_HIT
           EXIT
         END IF 
 
@@ -4275,9 +4275,9 @@ RETURN
         END IF
 
        IF( Inside ) THEN
-	  Problems(2) = Problems(2) + 1
+           Problems(2) = Problems(2) + 1
            CALL Warn('LocateParticleInMeshMarch','Elements are same, found in Element!')          
-          ParticleStatus = PARTICLE_HIT	  
+           ParticleStatus = PARTICLE_HIT
           EXIT
         END IF 
 
@@ -4299,7 +4299,7 @@ RETURN
 
     IF( ParticleStatus == PARTICLE_LOST ) THEN
       ElementIndex = 0
-    ELSE	
+    ELSE
       ElementIndex = Element % ElementIndex
     END IF
 
@@ -4556,7 +4556,7 @@ RETURN
     
     Stat = PointInElement( Element, ElementNodes, &
         GlobalCoord, LocalCoord, GlobalEps = -1.0_dp, LocalEps = 1.0e3_dp, &
-	LocalDistance = LocalDistance ) 
+        LocalDistance = LocalDistance ) 
 
     IF( .NOT. Stat ) THEN
       Misses(1) = Misses(1) + 1
@@ -4663,7 +4663,7 @@ RETURN
     IF( npos == n ) THEN
       DO i=1,n
         j = LocalPerm(i)
-	DO k=1,dofs
+        DO k=1,dofs
           ! For correct permutation we have to account for the full dimension
           ! of the Flow Solution (e.g., Stokes 3D : vx, vy,vz, p)
           LocalVelo(i,k) = Var % Values( Var % Dofs * (j-1) + k)
@@ -4690,13 +4690,21 @@ RETURN
 
     DO i=1,dofs
       Velo(i) = SUM( Basis(1:n) * LocalVelo(1:n,i) )
-      IF( PRESENT( GradVelo ) ) THEN
+    END DO
+
+    ! In a separate loop, as in GetScalarFieldInMesh: with the two sums in the
+    ! same loop nest gfortran -O3 hoists the stride checks of both above the
+    ! PRESENT test, and the one for the absent dBasisdx is then read from a
+    ! never-written stack slot. Harmless, but it is what makes the particle
+    ! tests the loudest cases in the whole valgrind suite.
+    IF( PRESENT( GradVelo ) ) THEN
+      DO i=1,dofs
         ! dBasisdx has only stuff up until the dimension!
         DO j=1,dim
           GradVelo(i,j) = SUM( dBasisdx(1:n,j) * LocalVelo(1:n,i) )
         END DO
-      END IF
-    END DO
+      END DO
+    END IF
     
     IF( npos < n ) THEN
       Velo(1:dofs) = Velo(1:dofs) / SumBasis
@@ -4900,7 +4908,7 @@ RETURN
       BulkElement2, VolumeFraction ) RESULT ( Property )
     
     CHARACTER(LEN=*) :: PropertyName
-    TYPE(Element_t), POINTER :: BulkElement
+    TYPE(Element_t), TARGET :: BulkElement
     REAL(KIND=dp) :: Basis(:)
     TYPE(Element_t), POINTER, OPTIONAL :: BulkElement2
     REAL(KIND=dp), OPTIONAL :: VolumeFraction
@@ -5368,7 +5376,7 @@ RETURN
         DO k=Particles % CumClosestParticle(j),Particles % CumClosestParticle(j+1)-1 
           No2 = Particles % ClosestParticle(k)
           
-          ! No self coupling in this list	
+          ! No self coupling in this list
           IF( No2 == No ) CYCLE
           
           ! Set symmetric forces Fij=-Fij so no need to go through twice
@@ -5510,7 +5518,7 @@ RETURN
     CHARACTER(*), PARAMETER :: Caller = 'ParticleAdvanceTimestep'
 
     SAVE TimeOrder, dim, Mass, Drag, Visited, dCoord, Coord, GotTimeVar, &
-	GotDistVar, TimeVar, DtVar, DistVar, MovingMesh,Speed0,HaveSpeed0, Params
+          GotDistVar, TimeVar, DtVar, DistVar, MovingMesh,Speed0,HaveSpeed0, Params
 
     
     IF(.NOT. Visited ) THEN
@@ -5614,7 +5622,7 @@ RETURN
       
       IF ( Status == PARTICLE_FIXEDCOORD ) THEN
         Particles % Velocity(No,:) = 0.0_dp
-	CYCLE
+        CYCLE
       ELSE IF( Status == PARTICLE_FIXEDVELO ) THEN
         CONTINUE
       ELSE IF( TimeOrder == 2 ) THEN
@@ -5634,7 +5642,7 @@ RETURN
          Velo(1:dim) = &
            ( 2 * Particles % Velocity(No,:) - Particles % PrevVelocity(No,:) )
        ELSE
-        Velo(1:dim) = Particles % Velocity(No,:) 	
+        Velo(1:dim) = Particles % Velocity(No,:)
       END IF
 
       IF( HaveSpeed0 ) THEN
@@ -5836,7 +5844,7 @@ RETURN
       Coord = 0._dp
       Coord(1:dim) = Particles % Coordinate(No,:) 
       Velo  = 0._dp
-      Velo(1:dim) = Particles % Velocity(No,:) 	
+      Velo(1:dim) = Particles % Velocity(No,:)
       
       Element => Mesh % Elements( Particles % ElementIndex(No) )            
       CurrentModel % CurrentElement => Element
@@ -6209,7 +6217,7 @@ RETURN
     
     SAVE dt0,dsgoal,hgoal,dtmax,dtmin,DtIs,Nstep,&
         tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,HgoalIsUniso,PrevTimeStep, &
-	DtVar,TimeVar
+        DtVar,TimeVar
 
 
     CALL Info('GetParticleTimestep','Setting timesteps for particles!',Level=20)
@@ -6318,7 +6326,7 @@ RETURN
         IF ( Status == PARTICLE_WALLBOUNDARY ) CYCLE
         IF ( Status == PARTICLE_FIXEDCOORD ) CYCLE
 
-	tprev = TimeVar % Values(No)        
+        tprev = TimeVar % Values(No)        
 
         IF( DtIs ) THEN
           dt = dt0 
@@ -6426,7 +6434,7 @@ RETURN
     NoParticles = Particles % MaxNumberOfParticles
     IF( NoParticles == 0 ) THEN
       CALL Warn('ParticleVariableCreate','No particles present!')
-    END IF	
+    END IF
 
     IF( PRESENT( Dofs ) ) THEN
       Dofs2 = Dofs
@@ -6456,7 +6464,7 @@ RETURN
   SUBROUTINE ParticleVariableInitialize( Particles, Mesh, ToName, FromName )
 !------------------------------------------------------------------------------
     TYPE(Particle_t), POINTER :: Particles
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     CHARACTER(LEN=*) :: ToName
     CHARACTER(LEN=*), OPTIONAL :: FromName
 !------------------------------------------------------------------------------
@@ -7252,7 +7260,7 @@ RETURN
     IF ( nTime == 1 ) THEN
       FilePrefix = ListGetString( Params,'Filename Prefix')
       CALL Info('ParticleOutputVtu','Saving in VTK XML unstructured format to file: ' &
-	//TRIM(FilePrefix)//'.vtu')
+       //TRIM(FilePrefix)//'.vtu')
       
       MinSaveStatus = ListGetInteger( Params,'Min Status for Saving',Found)
       IF(.NOT. Found ) MinSaveStatus = PARTICLE_INITIATED
@@ -8169,7 +8177,7 @@ RETURN
     IF ( nTime == 1 ) THEN
       FilePrefix = ListGetString( Params,'Filename Prefix')
       CALL Info('ParticleOutputVti','Saving in ImageData VTK XML format to file: ' &
-	//TRIM(FilePrefix)//'.vti')
+       //TRIM(FilePrefix)//'.vti')
     END IF
     
     Partitions = ParEnv % PEs

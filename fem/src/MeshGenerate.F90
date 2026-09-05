@@ -43,10 +43,10 @@
 MODULE MeshGenerate
 
   USE GeneralUtils
-  USE SolverUtils
+  USE SolverBasics
   USE ModelDescription
   USE LoadMod
-  USE MeshUtils, ONLY : MeshStabParams, ReleaseMesh, ReleaseMeshEdgeTables, &
+  USE MeshBasics, ONLY : MeshStabParams, ReleaseMesh, ReleaseMeshEdgeTables, &
       ReleaseMeshFaceTables, SetCurrentMesh, SetMeshMaxDOFs, &
       TransferCoordAndTime, UpdateSolverMesh, WriteMeshToDisk, WriteMeshToDisk2
   USE MeshRemeshing
@@ -363,7 +363,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION MMG_ReMesh( RefMesh ) RESULT( NewMesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t), POINTER :: RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh, TmpMesh
     INTEGER :: i,j,k,n

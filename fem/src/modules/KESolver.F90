@@ -62,7 +62,7 @@
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: NewtonLinearization = .FALSE.,gotIt
 !
-     LOGICAL :: AllocationsDone = .FALSE., Bubbles
+     LOGICAL :: AllocationsDone = .FALSE., Bubbles, BubblesDefault
 
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
@@ -91,9 +91,6 @@
          AllocationsDone,Viscosity,LocalNodes,Work,TurbulentViscosity, &
          LocalDissipation,LocalKinEnergy,KESigmaK,KESigmaE,KECmu,C0, &
          SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT
-
-     REAL(KIND=dp), POINTER :: SecInv(:)
-     SAVE SecInv
 
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 
@@ -148,7 +145,6 @@
          CALL Fatal( 'KESolver', 'Memory allocation error.' )
        END IF
 
-       NULLIFY(SecInv)
        AllocationsDone = .TRUE.
      END IF
 
@@ -166,9 +162,10 @@
 
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
-     Bubbles = GetString(GetSolverParams(), &
+     BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+     IF ( .NOT. GotIt ) BubblesDefault = GetString(GetSolverParams(), &
                'Stabilization method', GotIt ) == 'bubbles'
-     IF ( .NOT. GotIt ) Bubbles = .TRUE.
+     IF ( .NOT. GotIt ) BubblesDefault = .TRUE.
 
 !------------------------------------------------------------------------------
       DO i=1,Model % NumberOFBCs
@@ -216,6 +213,7 @@
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
+         Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
          IF ( Element % BodyId /= body_id ) THEN
             Material => GetMaterial()
             Equation => GetEquation()
@@ -454,8 +452,8 @@
 !      Kinetic Energy Solution should be positive
 !------------------------------------------------------------------------------
       n = Solver % Mesh % NumberOfNodes
-      Kmax = MAXVAL( Solver % Variable % Values(1:n:2) )
-      Emax = MAXVAL( Solver % Variable % Values(2:n:2) )
+      Kmax = MAXVAL( Solver % Variable % Values(1::2) )
+      Emax = MAXVAL( Solver % Variable % Values(2::2) )
       DO i=1,n
          k = Solver % Variable % Perm(i)
          IF ( k <= 0 ) CYCLE
@@ -466,7 +464,9 @@
          IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
 
          IF ( Eval < Clip*EMax ) THEN
-            KVal = Clip*EMax
+            ! Was Clip*EMax (ε-scale, dimensionally wrong); changed to Clip*KMax
+            ! so the viscous-sublayer bound ε_min = ρ·Cμ·k²/μ uses a k-scale floor.
+            KVal = Clip*KMax
             Eval = MAX(Density(1)*KECmu(1)*KVal**2/Viscosity(1),Clip*EMax)
          END IF
 
@@ -678,7 +678,6 @@ CONTAINS
        DO i=1,dim
          rho_g = rho_g + SUM(Density(1:n) * dBasisdx(1:n,i)) * Gravity(i)
        END DO
-       rho_g = 0._dp
 
        mu  = SUM( Viscosity(1:n) * Basis(1:n) )
        rho = SUM( Density(1:n) * Basis(1:n) )
@@ -795,10 +794,10 @@ CONTAINS
              DO i=1,dim
                DO j=1,dim
                   A(1,1) = A(1,1) + Metric(i,j) * C2(1) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                       dBasisdx(q,i) * dBasisdx(p,j)
 
                   A(2,2) = A(2,2) + Metric(i,j) * C2(2) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                       dBasisdx(q,i) * dBasisdx(p,j)
                END DO
              END DO
           END IF
@@ -848,7 +847,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE EpsilonWall( Element, n, STIFF, FORCE )
 !------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      INTEGER :: n
      REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
 !------------------------------------------------------------------------------

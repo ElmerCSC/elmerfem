@@ -134,8 +134,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: Material, BF
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
 
@@ -346,8 +345,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: BC
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
 
     BC => GetBC(Element)
@@ -413,9 +411,9 @@ CONTAINS
       INTEGER :: i,j,n
       LOGICAL ::  stat
 
-      REAL(KIND=dp), POINTER :: Hwrk(:,:,:) => NULL()
-!$omp threadprivate(Hwrk)
+      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
 !------------------------------------------------------------------------------
+      NULLIFY(Hwrk)
       Tensor = 0.0_dp
       IsScalar = .TRUE.
 

@@ -114,6 +114,8 @@ CONTAINS
     !------------------------------------------------------------------------------
 
     Debug = .FALSE.
+    !PRINT *, 'DebugIVTVR1: ',ParEnv % myPE
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     ALLOCATE( FoundNodes(NewMesh % NumberOfNodes),&
          PointLocalDistance(NewMesh % NumberOfNodes))
@@ -139,9 +141,12 @@ CONTAINS
     CALL InterpolateVarToVarReducedQ( OldMesh, NewMesh, HeightName, HeightDimensions, &
          FoundNodes, PointLocalDistance, OldNodeMask, NewNodeMask, &
          OldElemMask, Variables, GlobalEps, LocalEps, NumericalEps )
+    !PRINT *, 'DebugIVTVR2: ',ParEnv % myPE
     CALL MPI_BARRIER(ParEnv % ActiveComm, ierr)
+    !PRINT *, 'DebugIVTVR2.0: ',ParEnv % myPE
 
     IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
+    !PRINT *, 'DebugIVTVR2.1: ',ParEnv % myPE
 
     DO i=1,NewMesh % NumberOfNodes
       IF(.NOT. FoundNodes(i)) THEN
@@ -154,14 +159,17 @@ CONTAINS
       IF(Debug) PRINT *,ParEnv % MyPE,'Debug, point ',&
            i,' found with local dist: ',PointLocalDistance(i)
     END DO
+    !PRINT *, 'DebugIVTVR2.2: ',ParEnv % myPE
 
     !Sum up unfound nodes, and those where point wasn't exactly in element
     n = COUNT((.NOT. FoundNodes) .OR. (PointLocalDistance > 0.0_dp))
     dn = n
+    !PRINT *, 'DebugIVTVR2.3: ',ParEnv % myPE
     IF(Debug) THEN
        PRINT *, 'Partition ',ParEnv % MyPE,' could not find ',n,'points!'
     END IF
     CALL SParActiveSUM(dn,2)
+    !PRINT *, 'DebugIVTVR3: ',ParEnv % myPE
 
     !Special case: all found
     !----------------------
@@ -278,6 +286,7 @@ CONTAINS
        END DO
        DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
     END IF Sending
+    !PRINT *, 'DebugIVTVR4: ',ParEnv % myPE
 
     ! receive points from others:
     ! ----------------------------
@@ -302,6 +311,7 @@ CONTAINS
             1104, ELMER_COMM_WORLD, status, ierr )
     END DO
 
+    !PRINT *, 'DebugIVTVR5: ',ParEnv % myPE
     DO i=1,ParEnv % PEs
        IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
 
@@ -487,6 +497,7 @@ CONTAINS
        CALL ReleaseMesh(Nmesh)
        DEALLOCATE(foundnodes, SendLocalDistance, nMesh)
     END DO
+    !PRINT *, 'DebugIVTVR6: ',ParEnv % myPE
     DEALLOCATE(ProcRecv)
 
     ! Receive interpolated values:
@@ -614,6 +625,8 @@ CONTAINS
        DEALLOCATE(astore,vperm,RecvLocalDistance, BetterFound, ProcSend(proc+1) % perm)
 
     END DO
+    !PRINT *, 'DebugIVTVR7: ',ParEnv % myPE
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     DEALLOCATE(PointLocalDistance)
     IF ( ALLOCATED(Perm) ) DEALLOCATE(Perm,ProcSend)
@@ -651,7 +664,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
     REAL(KIND=dp), POINTER :: ElementValues(:)
     REAL(KIND=dp) :: detJ, u,v,w,s, LocalDist
-    LOGICAL :: Found, Debug, FirstTime=.TRUE.,GMUnfound=.FALSE.
+    LOGICAL :: Found, Debug, FirstTime=.TRUE., GMUnfound
     REAL(KIND=dp) :: eps_global_limit, eps_local_limit,&
          eps_global_init, eps_local_init, eps_global, eps_local, eps_numeric
 
@@ -663,6 +676,7 @@ CONTAINS
     !========================================
 
     Debug = .FALSE.
+    !PRINT *, 'DebugIVTVRQ1: ',ParEnv % myPE
 
     !For hydromesh calving purposes
     IF(HeightName == 'temp residual') THEN
@@ -711,6 +725,7 @@ CONTAINS
          NULLIFY(PermVar)
        ! This assumes that the mesh connectivity is the same...
        ELSE
+         !PRINT *, 'DebugIVTVRQ2b: ',ParEnv % myPE
          ALLOCATE( NewHeight(SIZE(OldHeight) ) )
          NewHeight = 0.0_dp
          ALLOCATE( NewPerm(SIZE(OldPerm) ) )
@@ -763,6 +778,7 @@ CONTAINS
     ElementNodes % x = 0.0_dp
     ElementNodes % y = 0.0_dp
     ElementNodes % z = 0.0_dp
+    !PRINT *, 'DebugIVTVRQ3: ',ParEnv % myPE
 
     !========================================
     !             Action
@@ -844,6 +860,7 @@ CONTAINS
           IF(eps_local > eps_local_limit) EXIT
 
        END DO
+       !PRINT *, 'DebugIVTVRQ4: ',ParEnv % myPE
 
        IF (.NOT.Found) THEN
           !CHANGE
@@ -851,6 +868,11 @@ CONTAINS
           !interpolating between ice mesh and larger footprint hydrological mesh
           IF(GMUnfound) THEN
             WorkVar => VariableGet(NewMesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+            IF(ASSOCIATED(WorkVar)) THEN
+              WorkVar % Values(WorkVar % Perm(i)) = -1.0
+            END IF
+            NULLIFY(WorkVar)
+            WorkVar => VariableGet(NewMesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
             IF(ASSOCIATED(WorkVar)) THEN
               WorkVar % Values(WorkVar % Perm(i)) = -1.0
             END IF
@@ -945,10 +967,12 @@ CONTAINS
        END IF
 
     END DO
+    !PRINT *, 'DebugIVTVRQ5: ',ParEnv % myPE
 
     DEALLOCATE( ElementNodes % x, ElementNodes % y, &
          ElementNodes % z, ElementValues )
 
+    !PRINT *, 'DebugIVTVRQ6: ',ParEnv % myPE
 
     !------------------------------------------------------------------------------
   END SUBROUTINE InterpolateVarToVarReducedQ
@@ -980,7 +1004,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: interpedValue(:), SuppNodeWeights(:),SumWeights(:),&
         InterpedPValue(:), PSumWeights(:)
     INTEGER :: i,j,n,idx,NoNeighbours,NoSuppNodes, MaskCount, PMaskCount
-    INTEGER, ALLOCATABLE :: WorkInt(:), SuppNodes(:)
+    INTEGER, ALLOCATABLE :: WorkInt(:), WorkTmp(:), SuppNodes(:)
     INTEGER, POINTER :: Neighbours(:)
 
     Debug = .TRUE.
@@ -1068,6 +1092,11 @@ CONTAINS
         END IF
 
         NoSuppNodes = NoSuppNodes + 1
+        IF(NoSuppNodes > SIZE(WorkInt)) THEN
+          ALLOCATE(WorkTmp(2*SIZE(WorkInt)))
+          WorkTmp(1:NoSuppNodes-1) = WorkInt
+          CALL MOVE_ALLOC(WorkTmp, WorkInt)
+        END IF
         WorkInt(NoSuppNodes) = idx
       END DO
     END DO
@@ -1136,7 +1165,12 @@ CONTAINS
       END IF
 
       IF(PRESENT(Variables)) THEN
-        MaskCount = 1; PMaskCount = SIZE(HeightVar % PrevValues,2)
+        MaskCount = 1
+        IF(ASSOCIATED(HeightVar % PrevValues)) THEN
+          PMaskCount = SIZE(HeightVar % PrevValues,2)
+        ELSE
+          PMaskCount = 0
+        END IF
         Var => Variables
         DO WHILE(ASSOCIATED(Var))
           MaskCount = MaskCount + 1
@@ -1149,7 +1183,8 @@ CONTAINS
             CYCLE
           ELSEIF(Var % Name == HeightName) THEN        !-already got
             MaskCount = MaskCount - 1
-            PMaskCount = PMaskCount - SIZE(Var % PrevValues,2)
+            IF(ASSOCIATED(Var % PrevValues)) &
+              PMaskCount = PMaskCount - SIZE(Var % PrevValues,2)
             Var => Var % Next
             CYCLE
           ELSE IF(LEN(Var % Name) >= 10) THEN
@@ -1211,7 +1246,12 @@ CONTAINS
     END IF
 
     IF(PRESENT(Variables)) THEN
-      MaskCount = 1; PMaskCount = SIZE(HeightVar % PrevValues,2)
+      MaskCount = 1
+      IF(ASSOCIATED(HeightVar % PrevValues)) THEN
+        PMaskCount = SIZE(HeightVar % PrevValues,2)
+      ELSE
+        PMaskCount = 0
+      END IF
       Var => Variables
       DO WHILE(ASSOCIATED(Var))
         MaskCount = MaskCount + 1
@@ -1224,7 +1264,8 @@ CONTAINS
           CYCLE
         ELSEIF(Var % Name == HeightName) THEN        !-already got
           MaskCount = MaskCount - 1
-          PMaskCount = PMaskCount - SIZE(Var % PrevValues,2)
+          IF(ASSOCIATED(Var % PrevValues)) &
+            PMaskCount = PMaskCount - SIZE(Var % PrevValues,2)
           Var => Var % Next
           CYCLE
         ELSE IF(LEN(Var % Name) >= 10) THEN
@@ -1293,8 +1334,8 @@ CONTAINS
          FinalInterpedValues(:), InterpedPValue(:), PartInterpedPValues(:,:), &
          FinalInterpedPValues(:), PSumWeights(:)
     INTEGER :: i,j,k,n,idx,NoNeighbours,NoSuppNodes,NoUsedNeighbours,&
-         proc,status(MPI_STATUS_SIZE), counter, ierr, MaskCount, PMaskCount
-    INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:), PartNoSuppNodes(:), WorkInt2(:), &
+         proc,status(MPI_STATUS_SIZE), counter, ierr, MaskCount, PMaskCount, MaxSuppNodes
+    INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), WorkTmp(:), SuppNodes(:), PartNoSuppNodes(:), WorkInt2(:), &
          GDOFs(:), PartGDOFs(:), GDOFLoc(:)
     INTEGER, POINTER :: Neighbours(:)
     Debug = .TRUE.
@@ -1372,6 +1413,14 @@ CONTAINS
         END IF
 
         NoSuppNodes = NoSuppNodes + 1
+        IF(NoSuppNodes > SIZE(WorkInt)) THEN
+          ALLOCATE(WorkTmp(2*SIZE(WorkInt)))
+          WorkTmp(1:NoSuppNodes-1) = WorkInt
+          CALL MOVE_ALLOC(WorkTmp, WorkInt)
+          ALLOCATE(WorkTmp(SIZE(WorkInt2)*2))
+          WorkTmp(1:NoSuppNodes-1) = WorkInt2
+          CALL MOVE_ALLOC(WorkTmp, WorkInt2)
+        END IF
         WorkInt(NoSuppNodes) = idx
         WorkInt2(NoSuppNodes) = Mesh % ParallelInfo % GlobalDOFs(idx)
       END DO
@@ -1402,6 +1451,8 @@ CONTAINS
       CALL MPI_RECV( PartNoSuppNodes(i+1) , 1, MPI_INTEGER, proc, &
         3998, ELMER_COMM_WORLD, status, ierr )
     END DO
+
+    MaxSuppNodes = MAXVAL(PartNoSuppNodes)
 
     ! is the proc used?
     NoUsedNeighbours=NoNeighbours
@@ -1559,7 +1610,12 @@ CONTAINS
       END IF
 
       IF(PRESENT(Variables)) THEN
-        MaskCount = 1; PMaskCount = SIZE(HeightVar % PrevValues,2)
+        MaskCount = 1
+        IF(ASSOCIATED(HeightVar % PrevValues)) THEN
+          PMaskCount = SIZE(HeightVar % PrevValues,2)
+        ELSE
+          PMaskCount = 0
+        END IF
         Var => Variables
         DO WHILE(ASSOCIATED(Var))
           MaskCount = MaskCount + 1
@@ -1573,7 +1629,8 @@ CONTAINS
             CYCLE
           ELSEIF(Var % Name == HeightName) THEN        !-already got
             MaskCount = MaskCount - 1
-            PMaskCount = PMaskCount - SIZE(Var % PrevValues,2)
+            IF(ASSOCIATED(Var % PrevValues)) &
+              PMaskCount = PMaskCount - SIZE(Var % PrevValues,2)
             Var => Var % Next
             CYCLE
           ELSE IF(LEN(Var % Name) >= 10) THEN
@@ -1610,7 +1667,7 @@ CONTAINS
     ! all parallel communication changed to use NoUsedNeighbours so neighbouring procs
     ! of those with zero suppnodes (no info) do not over allocate (eg allocate nans)
     !share SuppNodeMask
-    ALLOCATE(PartSuppNodeMask(NoUsedNeighbours+1, 25, MaskCount))
+    ALLOCATE(PartSuppNodeMask(NoUsedNeighbours+1, MaxSuppNodes, MaskCount))
     PartSuppNodeMask = .FALSE.
     PartSuppNodeMask(1,:NoSuppNodes,:) = SuppNodeMask
     counter=0
@@ -1629,7 +1686,7 @@ CONTAINS
     END DO
 
     !share SuppNodePMask for prevvalues
-    ALLOCATE(PartSuppNodePMask(NoUsedNeighbours+1, 25, PMaskCount))
+    ALLOCATE(PartSuppNodePMask(NoUsedNeighbours+1, MaxSuppNodes, PMaskCount))
     PartSuppNodePMask = .FALSE.
     PartSuppNodePMask(1,:NoSuppNodes,:) = SuppNodePMask
     counter=0
@@ -1682,7 +1739,7 @@ CONTAINS
     END DO
 
     !share suppnode weights
-    ALLOCATE(PartSuppNodeWeights(NoUsedNeighbours+1, 25))
+    ALLOCATE(PartSuppNodeWeights(NoUsedNeighbours+1, MaxSuppNodes))
     PartSuppNodeWeights=0.0_dp
     PartSuppNodeWeights(1,1:NoSuppNodes) = SuppNodeWeights
     counter=0

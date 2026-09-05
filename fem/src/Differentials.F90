@@ -60,7 +60,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION LorentzForce( Element,Nodes,u,v,w,n ) RESULT(L)
 !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     TYPE(Nodes_t) :: Nodes
     INTEGER :: n
     REAL(KIND=dp) :: L(3),u,v,w,x,y,z

@@ -125,7 +125,7 @@ CONTAINS
   SUBROUTINE LocalMatrix( Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: diff_coeff(n), conv_coeff(n),react_coeff(n), &
                      time_coeff(n), D,C,R, rho,Velo(3,n),a(3), Weight
@@ -229,7 +229,7 @@ CONTAINS
   SUBROUTINE LocalMatrixBC( Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Flux(n), Coeff(n), Ext_t(n), F,C,Ext, Weight
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP

@@ -1,0 +1,59 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "comb"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "PotSolver"
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+  Variable = "Potential"
+  Nonlinear System Consistent Norm = True
+  Steady State Convergence Tolerance = 1.0e-05
+  include linsys.sif
+End
+
+Material 1
+  Name = "Material"
+  Electric Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Current Source = 1.0
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1
+  Potential = 0.0
+End
+
+! The comb is cut so that one partition holds all four teeth, which touch each
+! other only through the base in the other partition. That subdomain is
+! therefore in four disconnected pieces, and with total FETI it floats, so its
+! kernel is four constants rather than one. Getting that wrong leaves its local
+! matrix singular. The value is the one a serial direct solve gives.
+Solver 1 :: Reference Norm = 1.58045490E-01

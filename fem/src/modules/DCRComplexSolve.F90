@@ -88,27 +88,27 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
      INTERFACE
         SUBROUTINE DCRComplexSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
           INTEGER :: Perm(:)
         END SUBROUTINE DCRComplexSolver_Boundary_Residual
 
         SUBROUTINE DCRComplexSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Edge
+          TYPE(Element_t) :: Edge
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2)
           INTEGER :: Perm(:)
         END SUBROUTINE DCRComplexSolver_Edge_Residual
 
         SUBROUTINE DCRComplexSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
           USE Types
-          TYPE(Element_t), POINTER :: Element
+          TYPE(Element_t) :: Element
           TYPE(Model_t) :: Model
-          TYPE(Mesh_t), POINTER :: Mesh
+          TYPE(Mesh_t) :: Mesh
           REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
           INTEGER :: Perm(:)
         END SUBROUTINE DCRComplexSolver_Inside_Residual
@@ -493,7 +493,7 @@ CONTAINS
     LOGICAL :: Bubbles
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(2*n),dBasisdx(2*n,3)
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,M,D,L1,L2
@@ -615,7 +615,7 @@ CONTAINS
          AscalarReal(:), AscalarImag(:), Bvector(:,:), BscalarReal(:), &
          BscalarImag(:)
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,L1,L2
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),X,Y,Z
@@ -730,8 +730,8 @@ END SUBROUTINE DCRComplexSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Edge
+     TYPE( Mesh_t ) :: Mesh
+     TYPE( Element_t ) :: Edge
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
@@ -1061,8 +1061,8 @@ END SUBROUTINE DCRComplexSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2)
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Edge
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Edge
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, EdgeNodes
@@ -1400,8 +1400,8 @@ END SUBROUTINE DCRComplexSolver
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-     TYPE( Mesh_t ), POINTER    :: Mesh
-     TYPE( Element_t ), POINTER :: Element
+     TYPE( Mesh_t )    :: Mesh
+     TYPE( Element_t ) :: Element
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes

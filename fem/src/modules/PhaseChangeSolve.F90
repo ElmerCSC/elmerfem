@@ -930,12 +930,12 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE VelocityLocalMatrix( StiffMatrix, MassMatrix, ForceVector,&
       Element, nCoord, Nodes )
-        
+
     ! external variables:
-    REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:), ForceVector(:)      
+    REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:), ForceVector(:)
     INTEGER :: nCoord
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     
     ! internal variables:
     TYPE(Nodes_t) :: PNodes

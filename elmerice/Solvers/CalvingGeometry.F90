@@ -459,15 +459,19 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        DO j=1,SIZE(Mesh % Elements(i) % NodeIndexes)
           IF(RemoveNode(Mesh % Elements(i) % NodeIndexes(j))) THEN
-            IF(PRESENT(OnLeft) .AND. OnLeft(Mesh % Elements(i) % NodeIndexes(j))) THEN
-              OnLeft(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
-              OnLeft(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            IF(PRESENT(OnLeft)) THEN
+              IF(OnLeft(Mesh % Elements(i) % NodeIndexes(j))) THEN
+                OnLeft(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+                OnLeft(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+              END IF
             END IF
-            IF(PRESENT(OnRight) .AND. OnRight(Mesh % Elements(i) % NodeIndexes(j))) THEN
-              PRINT*, 'replace', Mesh % Elements(i) % NodeIndexes(j),&
-              ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
-              OnRight(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
-              OnRight(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            IF(PRESENT(OnRight)) THEN
+              IF(OnRight(Mesh % Elements(i) % NodeIndexes(j))) THEN
+                PRINT*, 'replace', Mesh % Elements(i) % NodeIndexes(j),&
+                ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
+                OnRight(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+                OnRight(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+              END IF
             END IF
             Mesh % Elements(i) % NodeIndexes(j) = &
             ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
@@ -1500,41 +1504,62 @@ CONTAINS
   ! Constructs groups of nodes which fall below a given threshold for some variable
   ! Used with the result of ProjectCalving, it groups nodes which have crevasse 
   ! penetration beyond the threshold.
+  !
+  ! Added August 2024 (RupertGladstone1972@gmail.com):
+  ! Default is that valid mask values are only below the given threshold (e.g. shelf
+  ! only).  New logical optional argument AboveThreshold_Optional allows this to be
+  ! reversed such that valid mask values are above the threshold (e.g. grounded) 
   !-----------------------------------------------------------------------------
-  SUBROUTINE FindCrevasseGroups(Mesh, Variable, Neighbours, Threshold, Groups)
+  SUBROUTINE FindCrevasseGroups(Mesh, Variable, Neighbours, Threshold, Groups, AboveThreshold_Optional)
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Variable_t), POINTER :: Variable
-    INTEGER, POINTER :: Neighbours(:,:)
-    TYPE(CrevasseGroup3D_t), POINTER :: Groups, CurrentGroup
-    REAL(KIND=dp) :: Threshold
+    TYPE(Mesh_t), POINTER            :: Mesh
+    TYPE(Variable_t), POINTER        :: Variable
+    INTEGER, POINTER                 :: Neighbours(:,:)
+    TYPE(CrevasseGroup3D_t), POINTER :: Groups
+    REAL(KIND=dp), INTENT(IN)        :: Threshold
+    LOGICAL, INTENT(IN),OPTIONAL     :: AboveThreshold_Optional
     !---------------------------------------
+    TYPE(CrevasseGroup3D_t), POINTER :: CurrentGroup
     INTEGER :: i, ID
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: VPerm(:)
     INTEGER, ALLOCATABLE :: WorkInt(:)
     LOGICAL, ALLOCATABLE :: Condition(:)
-    LOGICAL :: First, Debug
+    LOGICAL :: First, Debug, AboveThreshold
     
     Debug = .FALSE.
 
+    IF (PRESENT(AboveThreshold_Optional)) THEN
+       AboveThreshold = AboveThreshold_Optional
+    ELSE
+       AboveThreshold = .FALSE.
+    END IF
+    
     Values => Variable % Values
     VPerm => Variable % Perm
 
     ALLOCATE(Condition(Mesh % NumberOfNodes))
     DO i=1, Mesh % NumberOfNodes
-
        IF(VPerm(i) <= 0) THEN
           Condition(i) = .FALSE.
-       ELSE IF(Values(VPerm(i)) < Threshold) THEN
-          Condition(i) = .TRUE.
        ELSE
-          Condition(i) = .FALSE.
+          IF (AboveThreshold) THEN
+             IF (Values(VPerm(i)) .GT. Threshold) THEN
+                Condition(i) = .TRUE.
+             ELSE
+                Condition(i) = .FALSE.
+             END IF
+          ELSE
+             IF (Values(VPerm(i)) .LT. Threshold) THEN
+                Condition(i) = .TRUE.
+             ELSE
+                Condition(i) = .FALSE.
+             END IF
+          END IF
        END IF
-
     END DO
-
+    
     First = .TRUE.
     ID = 1
     DO i=1,Mesh % NumberOfNodes
@@ -2408,7 +2433,15 @@ CONTAINS
        ! Gather node coords from all partitions
        ! Note, they're going into 'UnorderedNodes': though they are ordered
        ! within their partition, the partitions aren't ordered...
+       ! For some reason, need to allocate coord lists in non-boss PEs
        !-----------------------------------------------------------
+
+       IF(.NOT. Boss) THEN
+         ALLOCATE(UnorderedNodes % x(1), UnorderedNodes % y(1), UnorderedNodes % z(1))
+         UnorderedNodes % x(1) = 0
+         UnorderedNodes % y(1) = 0
+         UnorderedNodes % z(1) = 0
+       END IF
 
        !Global Node Numbers
        CALL MPI_GATHERV(Mesh % ParallelInfo % GlobalDOFs(OrderedNodeNums),&
@@ -3492,7 +3525,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: WorkMatrix=>NULL()
     LOGICAL :: Found, Global, GlobalBubbles, Debug, DoPrevValues, &
          NoMatrix, DoOptimizeBandwidth, PrimaryVar, HasValuesInPartition, &
-         PrimarySolver,CreatedParMatrix
+         PrimarySolver, CreatedParMatrix, HasParEnv
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL(), BulkUnfoundNodes(:)=>NULL()
     INTEGER :: i,j,k,DOFs, nrows,n, dummyint, ierr
     INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL(), &
@@ -3502,6 +3535,8 @@ CONTAINS
          globaleps, localeps
     LOGICAL, ALLOCATABLE :: PartActive(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, WorkName
+    TYPE(ParEnv_t), POINTER :: ParEnvSave
+    TYPE(ParEnv_t), POINTER :: SParMatrixDesc
 
     INTERFACE
        SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
@@ -3529,6 +3564,34 @@ CONTAINS
     CALL Info( 'Remesher', ' Switching from old to new mesh...',Level=4 )
     CALL Info( 'Remesher', '-------------------------------------',Level=4 )
     CALL Info( 'Remesher', ' ',Level=4 )
+
+    HasParEnv = ASSOCIATED(Solver % Matrix)
+    IF(HasParEnv) HasParEnv = ASSOCIATED(Solver % Matrix % ParMatrix)
+
+    IF(.NOT. HasParEnv) THEN
+      ALLOCATE( SParMatrixDesc )
+
+      ! we can't trush CalvingRemesh to provide accurate ParEnv info (PEs)
+      DO i=1, Model % NumberOfSolvers
+        WorkSolver => Model % Solvers(i)
+        IF(ASSOCIATED(WorkSolver % Matrix)) THEN
+          IF(ASSOCIATED(WorkSolver % Matrix % ParMatrix)) &
+            ParEnv => WorkSolver % ParEnv
+        END IF
+      END DO
+      NULLIFY(WorkSolver)
+
+      SParMatrixDesc = ParEnv
+      ALLOCATE(SParMatrixDesc % Active(ParEnv % PEs))
+      SParMatrixDesc % Active = ParEnv % Active
+      ! do we need more info? don't think so... only affects this solver
+      SParMatrixDesc % IsNeighbour => Null()
+      ParEnv => SParMatrixDesc
+    END IF
+
+    !assume all parts active since we may be pointing to another solvers parenv
+    CALL ParallelActive(.TRUE.)
+    ParEnvSave => ParEnv
 
     IF(ASSOCIATED(NewMesh % Variables)) CALL Fatal(SolverName,&
          "New mesh already has variables associated!")
@@ -3642,7 +3705,7 @@ CONTAINS
              END IF
 
              IF(.NOT. CreatedParMatrix) &
-              CALL MPI_AllGather(.NOT. NoMatrix, 1, MPI_LOGICAL, PartActive, 1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+               CALL MPI_AllGather(.NOT. NoMatrix, 1, MPI_LOGICAL, PartActive, 1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
 
              IF ( ASSOCIATED(Var % EigenValues) ) THEN
                 n = SIZE(Var % EigenValues)

@@ -2,7 +2,7 @@
 ! Test Case for the ComputeGroundingLineFlux Solver
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-#name="Case"
+$name="Case"
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Header
   Mesh DB "." "square-tri"
@@ -23,12 +23,12 @@ Simulation
   Extruded Mesh Ratio = 1.0
 
   Output Intervals = 1
-  Post File = "#name#.vtu"
+  Post File = $name$".vtu"
 
   max output level = 5
 
   !! scalar outputs
-  Scalars File = "Scalars_#name#.dat"
+  Scalars File = "Scalars_Case.dat"
     scalars: Exec Solver = String "After Timestep"
     scalars: Exec Intervals = Integer 1
     scalars: Parallel Reduce = Logical True
@@ -56,9 +56,9 @@ Initial Condition 1
 End
 Body Force 1
   Velocity 1 = Variable time
-    REAL LUA "1.0+tx[0]"
+    REAL MATC "1.0+tx(0)"
   Velocity 2 = Variable time
-    REAL LUA "1.0+tx[0]"
+    REAL MATC "1.0+tx(0)"
   Velocity 3 = Real -0.5
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -107,11 +107,11 @@ Solver 4
   Exported Variable 1 = -elem "bc_area"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!# Bulk
+! Bulk
 Equation 1
   Active Solvers (2)= 1 2
 End
-!# Bottom
+! Bottom
 Equation 2
  Active Solvers (2)=  3 4
 End
@@ -126,7 +126,7 @@ Boundary Condition 2
   Body Id = 2
 
   Bottom Surface = Variable Coordinate 1
-    REAL LUA "tx[0]-1.0"
+    REAL MATC "tx(0)-1.0"
 
 End
 
@@ -135,7 +135,7 @@ Boundary Condition 3
   Name = "Surface"
 
   Top Surface = Variable Coordinate 1
-    REAL LUA "1.5+tx[0]-1.0"
+    REAL MATC "1.5+tx(0)-1.0"
 End 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

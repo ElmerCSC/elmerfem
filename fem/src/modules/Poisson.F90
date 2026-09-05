@@ -143,7 +143,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:)
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     LOGICAL :: Stat
@@ -186,7 +186,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(KIND=dp), DIMENSION(:) :: FORCE, LOAD
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !----------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
     REAL(KIND=dp) :: detJ, LoadAtIP,&

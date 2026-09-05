@@ -1,0 +1,103 @@
+! Anisotropic elasticity in two dimensions, covering the two out-of-plane
+! components that the plane system does not carry but still determines, and which
+! StressSolve recovers afterwards for output:
+!
+!   plane strain -> Stress_zz = C31 exx + C32 eyy + C34 gxy
+!   plane stress -> Strain_zz = -( C31 exx + C32 eyy + C34 gxy ) / C33
+!
+! Both recoveries have a shear term, and it is reachable only for an anisotropic
+! material with C(3,4) /= 0 -- a coupling of out-of-plane normal stress to
+! in-plane shear. No other test in the suite gives a matrix valued "Youngs
+! Modulus" at all, which is how a factor of two in the plane strain recovery
+! survived: for an isotropic material C(4,3) stays zero and the term vanishes.
+!
+! The material is an isotropic base (E = 1e3, nu = 0.3) written out in Elmer's
+! Voigt order (11,22,33,12,23,13) with engineering shear, plus C(3,4) = C(4,3).
+! The boundary conditions prescribe displacement so that no load interpretation
+! enters, and shear the domain so that the shear term is a real contribution --
+! it is about 15% of Stress_zz here.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = 1.0
+  Youngs Modulus(6,6) = Real \
+    1346.154  576.923  576.923    0.000    0.000    0.000 \
+     576.923 1346.154  576.923    0.000    0.000    0.000 \
+     576.923  576.923 1346.154  200.000    0.000    0.000 \
+       0.000    0.000  200.000  384.615    0.000    0.000 \
+       0.000    0.000    0.000    0.000  384.615    0.000 \
+       0.000    0.000    0.000    0.000    0.000  384.615
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  ! The out-of-plane components, slot 3 of Elmer's 2D layout (11,22,33,12).
+  Variable 1 = String "Stress_zz"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Strain_zz"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Displacement 1 = Real 1.0e-3
+  Displacement 2 = Real 2.0e-3
+End
+
+! Plane strain, checking the recovered Stress_zz.
+Solver 2 :: Reference Norm = Real 2.574911913548E+001
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN
+
+! Plane stress, checking the recovered Strain_zz. Scalar 2 rather than 1, since
+! here it is the strain that the plane system leaves to be recovered.
+Equation 1 :: Plane Stress = Logical True
+Solver 2 :: Show Norm Index = Integer 2
+Solver 2 :: Reference Norm = Real 1.912791488602E-002
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

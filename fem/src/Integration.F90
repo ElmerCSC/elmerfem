@@ -50,8 +50,13 @@ MODULE Integration
    INTEGER, PARAMETER, PRIVATE :: MAXN = 13, MAXNPAD = 16 ! Padded to 64-byte alignment
    INTEGER, PARAMETER, PRIVATE :: MAX_INTEGRATION_POINTS = MAXN**3
 
-   LOGICAL, PRIVATE :: GInit = .FALSE.
-   !$OMP THREADPRIVATE(GInit)
+   LOGICAL, PRIVATE, SAVE :: GInit = .FALSE.
+   ! GInit and Points/Weights are shared (not THREADPRIVATE): Points are computed
+   ! once under !$OMP CRITICAL and then read-only.  The previous THREADPRIVATE
+   ! layout had a correctness issue on Windows GOMP where worker threads inherit
+   ! the master thread's GInit=.TRUE. (set by a serial GaussPoints call before
+   ! the first parallel region), causing workers to skip initialising their own
+   ! copies of Points while those copies remain uninitialised.
 
 !------------------------------------------------------------------------------
    TYPE GaussIntegrationPoints_t
@@ -60,18 +65,22 @@ MODULE Integration
 !DIR$ ATTRIBUTES ALIGN:64 :: u, v, w, s
    END TYPE GaussIntegrationPoints_t
 
-   TYPE(GaussIntegrationPoints_t), TARGET, PRIVATE, SAVE :: IntegStuff
-   !$OMP THREADPRIVATE(IntegStuff)
+   ! IntegStuff is written per-call (u(1:n) filled with Gauss coords) so it
+   ! must be per-thread.  A thread-indexed allocatable array is used instead of
+   ! THREADPRIVATE to avoid a Windows GOMP bug where worker threads inherit the
+   ! master's THREADPRIVATE pointer value, causing two threads to share the same
+   ! allocation and corrupt each other's Gauss-point data.
+   TYPE(GaussIntegrationPoints_t), TARGET, PRIVATE, SAVE, ALLOCATABLE :: IntegStuff(:)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-! Storage for 1d Gauss points, and weights. The values are computed on the
-! fly (see ComputeGaussPoints1D below). These values are used for quads and
-! bricks as well. To avoid NUMA issues, Points and Weights are private for each
-! thread.
+! Storage for 1d Gauss points and weights, computed once (see GaussPointsInit).
+! Previously THREADPRIVATE for NUMA locality; now shared for correctness — the
+! data is read-only after initialisation and the NUMA penalty is negligible
+! compared to the correctness hazard on platforms where THREADPRIVATE worker
+! copies inherit the master's already-initialised value.
 !------------------------------------------------------------------------------
    REAL(KIND=dp), PRIVATE, SAVE :: Points(MAXNPAD,MAXN),Weights(MAXNPAD,MAXN)
-   !$OMP THREADPRIVATE(Points, Weights)
 !DIR$ ATTRIBUTES ALIGN:64::Points, Weights
 !------------------------------------------------------------------------------
 
@@ -1506,25 +1515,42 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE GaussPointsInit
 !------------------------------------------------------------------------------
-     INTEGER :: i,n,istat
+     INTEGER :: n, istat, thread, nthreads
 
+     nthreads = 1
+     !$ nthreads = MAX(omp_get_max_threads(), omp_get_num_threads())
+
+     ! Unnamed !$OMP CRITICAL — avoids the lazy-init crash seen with named
+     ! critical sections (!$OMP CRITICAL(name)) in GOMP on Windows+MSMPI.
+     ! Named sections allocate their per-name mutex on first encounter (hash
+     ! table lookup + init); this lazy init crashes inside MPI-spawned
+     ! processes.  The unnamed form uses a pre-allocated global lock.
+     !$OMP CRITICAL
      IF ( .NOT. GInit ) THEN
-        DO n=1,MAXN
-          CALL ComputeGaussPoints1D( Points(1:n,n),Weights(1:n,n),n )
-        END DO
-        GInit = .TRUE.
+       DO n=1,MAXN
+         CALL ComputeGaussPoints1D( Points(1:n,n),Weights(1:n,n),n )
+       END DO
+       ALLOCATE( IntegStuff(nthreads) )
+       DO n=1,nthreads
+         NULLIFY( IntegStuff(n) % u, IntegStuff(n) % v, &
+                  IntegStuff(n) % w, IntegStuff(n) % s )
+       END DO
+       GInit = .TRUE.
      END IF
+     !$OMP END CRITICAL
 
-     ALLOCATE( IntegStuff % u(MAX_INTEGRATION_POINTS), &
-               IntegStuff % v(MAX_INTEGRATION_POINTS), &
-               IntegStuff % w(MAX_INTEGRATION_POINTS), &
-               IntegStuff % s(MAX_INTEGRATION_POINTS), STAT=istat )
-     IntegStuff % u = 0._dp
-     IntegStuff % v = 0._dp
-     IntegStuff % w = 0._dp
-     IntegStuff % s = 0._dp
-     IF ( istat /= 0 ) THEN
-       CALL Fatal( 'GaussPointsInit', 'Memory allocation error.' )
+     thread = 1
+     !$ thread = omp_get_thread_num() + 1
+     IF ( .NOT. ASSOCIATED( IntegStuff(thread) % u ) ) THEN
+       ALLOCATE( IntegStuff(thread) % u(MAX_INTEGRATION_POINTS), &
+                 IntegStuff(thread) % v(MAX_INTEGRATION_POINTS), &
+                 IntegStuff(thread) % w(MAX_INTEGRATION_POINTS), &
+                 IntegStuff(thread) % s(MAX_INTEGRATION_POINTS), STAT=istat )
+       IntegStuff(thread) % u = 0._dp
+       IntegStuff(thread) % v = 0._dp
+       IntegStuff(thread) % w = 0._dp
+       IntegStuff(thread) % s = 0._dp
+       IF ( istat /= 0 ) CALL Fatal( 'GaussPointsInit', 'Memory allocation error.' )
      END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GaussPointsInit
@@ -1532,22 +1558,51 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-   FUNCTION GaussPoints0D( n ) RESULT(p)
+!> Return a pointer to the calling thread's Gauss integration workspace,
+!> initialising it on first use.
+!> Implemented as a SUBROUTINE (not a FUNCTION) so that the pointer is passed
+!> via a dummy argument rather than as a function result.  Returning a pointer
+!> from a function called inside another pointer-result function can misfire on
+!> Windows x64 GFortran (MinGW/MSYS2) due to ABI differences in how aggregate
+!> return values are conveyed; a SUBROUTINE with a POINTER dummy argument is
+!> portable across all platforms.
+!------------------------------------------------------------------------------
+  SUBROUTINE GetIntegStuff(p)
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t), POINTER :: p
+    INTEGER :: thread
+    IF ( .NOT. GInit ) CALL GaussPointsInit
+    thread = 1
+    !$ thread = omp_get_thread_num() + 1
+    ! Guard: SIZE(IntegStuff) on an unallocated ALLOCATABLE is undefined (SIGSEGV).
+    ! If this fires, GInit became .TRUE. before ALLOCATE completed — ordering bug.
+    IF ( .NOT. ALLOCATED(IntegStuff) ) &
+      CALL Fatal('GetIntegStuff', &
+          'IntegStuff is not allocated despite GInit=TRUE — ordering bug')
+    IF ( thread > SIZE(IntegStuff) ) &
+      CALL Fatal('GetIntegStuff', 'Thread index exceeds IntegStuff slots — ' // &
+          'GaussPointsInit was called from a context where omp_get_num_threads()' // &
+          ' was not yet available; increase the slot count in GaussPointsInit.')
+    IF ( .NOT. ASSOCIATED( IntegStuff(thread) % u ) ) CALL GaussPointsInit
+    p => IntegStuff(thread)
+  END SUBROUTINE GetIntegStuff
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   FUNCTION GaussPoints0D( n ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
-!     INTEGER :: thread, omp_get_thread_num
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!     thread = 1
-! !$    thread = omp_get_thread_num()+1
-!     p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
       p % n = 1
       p % u(1) = 0
       p % v(1) = 0
       p % w(1) = 0
       p % s(1) = 1
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPoints0D
 !------------------------------------------------------------------------------
@@ -1556,18 +1611,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 1D line element
 !------------------------------------------------------------------------------
-   FUNCTION GaussPoints1D( n ) RESULT(p)
+   FUNCTION GaussPoints1D( n ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n   !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
-!     INTEGER :: thread, omp_get_thread_num
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!     thread = 1
-! !$    thread = omp_get_thread_num()+1
-!      p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
       IF ( n < 1 .OR. n > MAXN ) THEN
         p % n = 0
         WRITE( Message, * ) 'Invalid number of points: ',n
@@ -1579,23 +1630,70 @@ CONTAINS
       p % v(1:n) = 0.0d0
       p % w(1:n) = 0.0d0
       p % s(1:n) = Weights(1:n,n)
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPoints1D
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsPTriangle(n) RESULT(p)
+!------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED simplex rule that can serve a
+!> triangular p-element sized by getNumberOfGaussPoints, or 0 if none can.
+!> The tetrahedral counterpart is TetraSimplexRulePoints; see its comment for
+!> why the count can be inverted exactly. Degrees are as documented at each
+!> table above: 1 point for degree 1, 3 for 2, 4 for 3, 6 for 4, 7 for 5,
+!> 11 for 6, 12 for 7, 17 for 8, 20 for 9.
+!>
+!> Worth more here than a cheaper count alone: GaussPointsPTriangle serves the
+!> p-reference triangle by collapsing a quadrilateral rule onto it, which is
+!> not exact at the nominal degree, whereas these tables are genuine triangle
+!> rules. So the tabulated route is the more accurate one as well as the
+!> smaller, and answers may move where it replaces the collapsed rule.
+!------------------------------------------------------------------------------
+   FUNCTION TriangleSimplexRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg
+
+     maxp = NINT( SQRT( REAL(np,dp) ) )
+     ! One degree of headroom; see TetraSimplexRulePoints for why it is not spare.
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       m = 1
+     CASE( 2 )
+       m = 3
+     CASE( 3 )
+       m = 4
+     CASE( 4 )
+       m = 6
+     CASE( 5 )
+       m = 7
+     CASE( 6 )
+       m = 11
+     CASE( 7 )
+       m = 12
+     CASE( 8 )
+       m = 17
+     CASE( 9 )
+       m = 20
+     CASE DEFAULT
+       m = 0
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION TriangleSimplexRulePoints
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsPTriangle(n) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: i,n
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
       REAL (KIND=dp) :: uq, vq, sq
-!     INTEGER :: thread, omp_get_thread_num
 !------------------------------------------------------------------------------
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!      thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       ! Construct Gauss points for p (barycentric) triangle from
       ! Gauss points for quadrilateral
@@ -1614,6 +1712,7 @@ CONTAINS
       END DO
 
       p % w(1:n) = 0.0d0
+      IP = p
 !------------------------------------------------------------------------------
     END FUNCTION GaussPointsPTriangle
 !------------------------------------------------------------------------------
@@ -1624,10 +1723,27 @@ CONTAINS
 !>    equilateral triangle used in the description of p-elements. In that case,
 !>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsTriangle( n, PReferenceElement ) RESULT(p)
+!------------------------------------------------------------------------------
+!> Whether GaussPointsTriangle holds a tabulated rule of exactly this many
+!> points, so a caller can ask before committing.
+!>
+!> A query is needed rather than a trial: an untabulated count does not fail
+!> softly in GaussPointsTriangle, it falls through to GaussPointsQuad, which
+!> Fatals on a count that is not a square. THE LIST MUST TRACK THE CASE LABELS
+!> BELOW; there is no way to derive one from the other.
+!------------------------------------------------------------------------------
+   FUNCTION TriangleRuleTabulated( n ) RESULT( yes )
+     INTEGER, INTENT(IN) :: n
+     LOGICAL :: yes
+     yes = ANY( n == [ 1, 3, 4, 6, 7, 11, 12, 17, 20 ] )
+   END FUNCTION TriangleRuleTabulated
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsTriangle( n, PReferenceElement ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n    !< number of points in the requested rule
       LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       INTEGER :: i
@@ -1640,11 +1756,7 @@ CONTAINS
          ConvertToPTriangle =  PReferenceElement
       END IF
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!       thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       SELECT CASE (n)
       CASE (1)
@@ -1710,9 +1822,9 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the equilateral triangle used in the description of p-elements.
-	 ! We map the original integration points into their counterparts on the
-	 ! p-reference element and scale the weights by the determinant of the
-	 ! deformation gradient associated with the change of reference element.
+         ! We map the original integration points into their counterparts on the
+         ! p-reference element and scale the weights by the determinant of the
+         ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
         DO i=1,P % n
@@ -1726,6 +1838,7 @@ CONTAINS
       END IF
 
       p % w(1:n) = 0.0d0
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsTriangle
 !------------------------------------------------------------------------------
@@ -1734,12 +1847,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Return Gaussian integration points for 2D quad element
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsQuad( np, PMethod) RESULT(p)
+   FUNCTION GaussPointsQuad( np, PMethod) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: np     !< number of points in the requested rule
       LOGICAL, OPTIONAL ::  PMethod
-      TYPE(GaussIntegrationPoints_t), POINTER :: p
+      TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
       LOGICAL :: Economic
       INTEGER i,j,n,t
 !      INTEGER :: thread, omp_get_thread_num
@@ -1747,11 +1861,7 @@ CONTAINS
       Economic = .FALSE.
       IF (PRESENT(PMethod)) Economic = PMethod
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!      thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       IF (Economic .AND. (np > 4) .AND. (np <= 60)) THEN
         !PRINT *, 'SELECTING A SPECIAL QUADRATURE FOR p-ELEMENTS'
@@ -1798,6 +1908,7 @@ CONTAINS
 
         p % w(1:np) = 0.0_dp
         !PRINT *, 'NUMBER OF G-POINTS=',p % n
+        IP = p
         RETURN
       END IF
 
@@ -1822,24 +1933,75 @@ CONTAINS
         END DO
       END DO
       p % n = t
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsQuad
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsPTetra(np) RESULT(p)
+!------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED simplex rule that can serve a
+!> tetrahedral p-element sized by getNumberOfGaussPoints, or 0 if none can.
+!>
+!> getNumberOfGaussPoints forms a tensor-product count maxp**dim, where maxp is
+!> points per direction and maxp-1 the largest basis degree it was sized for.
+!> That count is what GaussPointsPTetra then collapses to a brick rule mapped
+!> onto the tetrahedron -- 150 points for maxp=5. But a simplex has its own,
+!> far cheaper rules, and GaussPointsTetra already maps them onto the
+!> p-reference tetrahedron when asked. So recover maxp (exactly, since the
+!> count was formed as its cube), hence the total degree 2*(maxp-1) reached by
+!> a product of two such basis functions, and pick the smallest table exact to
+!> at least that. Degrees are as documented at each table above: 1 point for
+!> degree 1, 4 for 2, 5 for 3, 11 for 4, 24 for 6.
+!>
+!> The tables stop at degree 6, so an element carrying explicit bubbles on a
+!> tetrahedron ("p:1 b:1" needs degree 8, "p:1 b:3" degree 10) returns 0 and
+!> keeps the mapped brick rule. Adding higher-degree simplex data is what would
+!> reach those.
+!------------------------------------------------------------------------------
+   FUNCTION TetraSimplexRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg
+
+     maxp = NINT( REAL(np,dp)**(1.0_dp/3.0_dp) )
+     ! One degree of headroom, matching what the tensor count it replaces already
+     ! carried: maxp points per direction are exact to 2*maxp-1, i.e. one degree
+     ! beyond the 2*(maxp-1) a product of two basis functions needs. That margin
+     ! is not spare -- the degree argument assumes an affine element and constant
+     ! material, and a curved element or a nonlinear law pushes the integrand
+     ! past it. Dropping it measurably lost accuracy (CooksMembrane, neo-Hookean).
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       m = 1
+     CASE( 2 )
+       m = 4
+     CASE( 3 )
+       m = 5
+     CASE( 4 )
+       m = 11
+     CASE( 5, 6 )
+       m = 24
+     CASE DEFAULT
+       m = 0
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION TetraSimplexRulePoints
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsPTetra(np) RESULT(IP)
 !------------------------------------------------------------------------------
    INTEGER :: i,np,n
+   TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(GaussIntegrationPoints_t), POINTER :: p
    REAL(KIND=dp) :: uh, vh, wh, sh
 !  INTEGER :: thread, omp_get_thread_num
 !------------------------------------------------------------------------------
-   IF ( .NOT. GInit ) CALL GaussPointsInit
-!    thread = 1
-! !$ thread = omp_get_thread_num()+1
-!    p => IntegStuff(thread)
-   p => IntegStuff
+   CALL GetIntegStuff(p)
    n = DBLE(np)**(1.0D0/3.0D0) + 0.5D0
 
    ! Get Gauss points of p brick
@@ -1863,6 +2025,7 @@ CONTAINS
       p % w(i)= SQRT(6d0)/3*(1d0 + wh)
       p % s(i)= -sh * SQRT(2d0)/16 * (1d0 - vh - wh + vh*wh) * (-1d0 + wh)
    END DO
+   IP = p
 !------------------------------------------------------------------------------
  END FUNCTION GaussPointsPTetra
 !------------------------------------------------------------------------------
@@ -1873,10 +2036,25 @@ CONTAINS
 !>    regular tetrahedron used in the description of p-elements. In that case,
 !>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsTetra( n, PReferenceElement ) RESULT(p)
+!------------------------------------------------------------------------------
+!> Whether GaussPointsTetra holds a tabulated rule of exactly this many points.
+!>
+!> As for the triangle, a query rather than a trial: an untabulated count falls
+!> through to GaussPointsBrick, which Fatals unless the count is a cube. THE LIST
+!> MUST TRACK THE CASE LABELS BELOW.
+!------------------------------------------------------------------------------
+   FUNCTION TetraRuleTabulated( n ) RESULT( yes )
+     INTEGER, INTENT(IN) :: n
+     LOGICAL :: yes
+     yes = ANY( n == [ 1, 4, 5, 11, 24 ] )
+   END FUNCTION TetraRuleTabulated
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsTetra( n, PReferenceElement ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n      !< number of points in the requested rule
       LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       REAL( KIND=dp ) :: ScaleFactor
@@ -1890,11 +2068,7 @@ CONTAINS
          ConvertToPTetrahedron =  PReferenceElement
       END IF
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!       thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       SELECT CASE (n)
       CASE (1)
@@ -1956,9 +2130,9 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the regular tetrahedron used in the description of p-elements
-	 ! We map the original integration points into their counterparts on the
-	 ! p-reference element and scale the weights by the determinant of the
-	 ! deformation gradient associated with the change of reference element.
+         ! We map the original integration points into their counterparts on the
+         ! p-reference element and scale the weights by the determinant of the
+         ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
         DO i=1,P % n
@@ -1972,23 +2146,21 @@ CONTAINS
             P % s(i) = SQRT(8.0d0)*2.0d0*sq
          END DO
       END IF
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsTetra
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsPPyramid( np ) RESULT(p)
+   FUNCTION GaussPointsPPyramid( np ) RESULT(IP)
 !------------------------------------------------------------------------------
    INTEGER :: np,n,i
    REAL(KIND=dp) :: uh,vh,wh,sh
+   TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(GaussIntegrationPoints_t), POINTER :: p
 !  INTEGER :: thread, omp_get_thread_num
 !------------------------------------------------------------------------------
-   IF ( .NOT. GInit ) CALL GaussPointsInit
-!    thread = 1
-! !$ thread = omp_get_thread_num()+1
-!    p => IntegStuff(thread)
-   p => IntegStuff
+   CALL GetIntegStuff(p)
 
    n = DBLE(np)**(1.0D0/3.0D0) + 0.5D0
 
@@ -2011,6 +2183,7 @@ CONTAINS
       p % w(i)= SQRT(2d0)/2*(1d0+wh)
       p % s(i)= sh * SQRT(2d0)/8 * (-1d0+wh)**2
    END DO
+   IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsPPyramid
 !------------------------------------------------------------------------------
@@ -2019,19 +2192,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D pyramid element.
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsPyramid( np ) RESULT(p)
+   FUNCTION GaussPointsPyramid( np ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: np     !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,n,t
 !       INTEGER :: thread, omp_get_thread_num
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!       thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
 
@@ -2063,23 +2233,21 @@ CONTAINS
         p % v(t) = p % v(t) * (1.0d0-p % w(t))
         p % s(t) = p % s(t) * (1.0d0-p % w(t))**2/2
       END DO
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsPyramid
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsPWedge(n) RESULT(p)
+   FUNCTION GaussPointsPWedge(n) RESULT(IP)
 !------------------------------------------------------------------------------
    INTEGER :: n, i
    REAL(KIND=dp) :: uh,vh,wh,sh
+   TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(GaussIntegrationPoints_t), POINTER :: p
 !   INTEGER :: thread, omp_get_thread_num
 !------------------------------------------------------------------------------
-   IF ( .NOT. GInit ) CALL GaussPointsInit
-!    thread = 1
-! !$ thread = omp_get_thread_num()+1
-!    p => IntegStuff(thread)
-   p => IntegStuff
+   CALL GetIntegStuff(p)
 
    ! Get Gauss points of brick
    p = GaussPointsBrick(n)
@@ -2099,6 +2267,7 @@ CONTAINS
       p % w(i)= wh
       p % s(i)= sh * SQRT(3d0)*(1-vh)/4
    END DO
+   IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsPWedge
 !------------------------------------------------------------------------------
@@ -2108,19 +2277,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D wedge element
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsWedge( np ) RESULT(p)
+   FUNCTION GaussPointsWedge( np ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: np     !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,n,t
 !       INTEGER :: thread, omp_get_thread_num
 !------------------------------------------------------------------------------
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!       thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       n = REAL(np)**(1.0d0/3.0d0) + 0.5d0
 
@@ -2151,6 +2317,7 @@ CONTAINS
         p % u(i) = (p % u(i) + 1)/2 * (1 - p % v(i))
         p % s(i) = p % s(i) * (1-p % v(i))/4
       END DO
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsWedge
 !------------------------------------------------------------------------------
@@ -2160,12 +2327,14 @@ CONTAINS
 !>  Here the reference element can also be that of the p-approximation.
 !>  A rule with m x n points is returned.
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsWedge2(m,n,PReferenceElement) RESULT(p)
+   FUNCTION GaussPointsWedge2(m,n,PReferenceElement) RESULT(IP)
 !------------------------------------------------------------------------------
-      TYPE(GaussIntegrationPoints_t), POINTER :: p
+      TYPE(GaussIntegrationPoints_t) :: IP
       INTEGER :: m     !< The number of points over a triangular face
       INTEGER :: n     !< The number of points in the orthogonal direction to the triangular faces
       LOGICAL, OPTIONAL ::  PReferenceElement !< Used for switching the reference element
+!------------------------------------------------------------------------------
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,t
       LOGICAL :: ConvertToPPrism
@@ -2176,8 +2345,7 @@ CONTAINS
       IF ( PRESENT(PReferenceElement) ) THEN
          ConvertToPPrism =  PReferenceElement
       END IF
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       SELECT CASE (m)
       CASE (1)
@@ -2337,6 +2505,7 @@ CONTAINS
                p % s(i) = p % s(i) * (1-p % v(i))/4
             END DO
          END IF
+         IP = p
          RETURN
       END SELECT
 
@@ -2352,6 +2521,7 @@ CONTAINS
          END DO
       END DO
       p % n = t
+      IP = p
 !------------------------------------------------------------------------------
     END FUNCTION GaussPointsWedge2
 !------------------------------------------------------------------------------
@@ -2361,10 +2531,11 @@ CONTAINS
 !>    Return Gaussian integration points for 3D wedge elements using
 !> economical quadratures that are not product of segment and triangle rules.
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsWedgeEconomic( n, PReferenceElement ) RESULT(p)
+   FUNCTION GaussPointsWedgeEconomic( n, PReferenceElement ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n      !< number of points in the requested rule
-      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element 
+      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       REAL( KIND=dp ) :: ScaleFactor
@@ -2378,11 +2549,7 @@ CONTAINS
         ConvertToPWedge = PReferenceElement
       END IF
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!       thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       SELECT CASE (n)
       CASE (4)
@@ -2464,6 +2631,7 @@ CONTAINS
         p % v(1:n) = ( p % v(1:n)+1.0d0 ) / 2.0d0 
         p % s(1:n) = p % s(1:n) / 4.0d0
       END IF
+      IP = p
 !------------------------------------------------------------------------------
     END FUNCTION GaussPointsWedgeEconomic
 !------------------------------------------------------------------------------
@@ -2475,21 +2643,18 @@ CONTAINS
 !>    composite rule
 !>    sum_i=1^nx(sum_j=1^ny(sum_k=1^nz w_ijk f(x_{i,j,k},y_{i,j,k},z_{i,j,k}))).
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsPBrick( nx, ny, nz ) RESULT(p)
+   FUNCTION GaussPointsPBrick( nx, ny, nz ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: nx    !< number of points in the requested rule in x direction
       INTEGER :: ny    !< number of points in the requested rule in y direction
       INTEGER :: nz    !< number of points in the requested rule in z direction
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       INTEGER i,j,k,t
 !       INTEGER :: thread, omp_get_thread_num
 !------------------------------------------------------------------------------
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!       thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       ! Check validity of number of integration points
       IF ( nx < 1 .OR. nx > MAXN .OR. &
@@ -2514,6 +2679,7 @@ CONTAINS
         END DO
       END DO
       p % n = t
+      IP = p
 !------------------------------------------------------------------------------
     END FUNCTION GaussPointsPBrick
 !------------------------------------------------------------------------------
@@ -2522,19 +2688,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D brick element
 !------------------------------------------------------------------------------
-   FUNCTION GaussPointsBrick( np ) RESULT(p)
+   FUNCTION GaussPointsBrick( np ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: np     !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       INTEGER i,j,k,n,t
 !      INTEGER :: thread, omp_get_thread_num
 
-      IF ( .NOT. GInit ) CALL GaussPointsInit
-!      thread = 1
-! !$    thread = omp_get_thread_num()+1
-!       p => IntegStuff(thread)
-      p => IntegStuff
+      CALL GetIntegStuff(p)
 
       SELECT CASE( np )
       CASE( 8 )
@@ -2567,6 +2730,7 @@ CONTAINS
         END DO
       END DO
       p % n = t
+      IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsBrick
 !------------------------------------------------------------------------------
@@ -2575,6 +2739,70 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Given element structure return Gauss integration points for the element.
 !----------------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> The most negative "RelOrder" GaussPoints will accept for this element.
+!>
+!> Stated here because GaussPoints ENFORCES the bound by calling Fatal, so a
+!> caller that walks the ladder downwards cannot discover the limit by trying:
+!> the first invalid step ends the run. A p-element's offset is arithmetic on the
+!> per-direction count, so it bottoms out when that count would reach zero; a
+!> non-p element has exactly three tabulated rules and so cannot go below -1.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsMinRelOrder( Element ) RESULT( rmin )
+!------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE(Element_t), TARGET :: Element
+     INTEGER :: rmin
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: elm
+     INTEGER :: n, eldim
+
+     elm => Element
+     IF( .NOT. isActivePElement(elm) ) THEN
+       rmin = -1
+       RETURN
+     END IF
+
+     n = 0
+     IF( ASSOCIATED( elm % PDefs ) ) n = elm % PDefs % GaussPoints
+     IF( n == 0 ) n = Element % TYPE % GaussPoints
+     eldim = MAX( Element % TYPE % DIMENSION, 1 )
+
+     ! p1d = NINT( n**(1/eldim) ) + RelOrder must stay >= 1
+     rmin = 1 - NINT( REAL(n,dp)**(1.0_dp/eldim) )
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsMinRelOrder
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The largest "RelOrder" GaussPoints will accept for this element.
+!>
+!> The companion of GaussPointsMinRelOrder, and needed for the same reason: the
+!> bound is enforced with Fatal, so a caller walking the ladder upwards cannot
+!> find the limit by trying. A NON-p element has exactly three tabulated rules --
+!> GaussPoints0 / GaussPoints / GaussPoints2 in elements.def -- so {-1,0,1} is
+!> all there is. A p-element's offset is arithmetic on the per-direction count
+!> and has no upper limit, so a ceiling is returned only to keep callers finite.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsMaxRelOrder( Element ) RESULT( rmax )
+!------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE(Element_t), TARGET :: Element
+     INTEGER :: rmax
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: elm
+
+     elm => Element
+     IF( isActivePElement(elm) ) THEN
+       rmax = 8
+     ELSE
+       rmax = 1
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsMaxRelOrder
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement, &
         EdgeBasisDegree) RESULT(IntegStuff)
 !---------------------------------------------------------------------------------------------
@@ -2588,7 +2816,7 @@ CONTAINS
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
      LOGICAL :: pElement, UsePRefElement, Economic, Hcurl
-     INTEGER :: n, eldim, p1d, ntri, nseg, necon
+     INTEGER :: n, eldim, p1d, ntri, nseg, necon, nsimplex
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
@@ -2621,6 +2849,17 @@ CONTAINS
      ELSE IF( PRESENT( RelOrder ) ) THEN
        IF (pElement) THEN
          n = elm % PDefs % GaussPoints
+         ! The count the element declares is set for bulk elements in
+         ! SetMeshMaxDOFs and copied to boundary elements in AssignLocalNumber.
+         ! That copy comes from the mesh Edge/Face, so it never happens when no
+         ! Edges/Faces were generated -- an explicit bubble augmentation such as
+         ! "Element = p:1 b:1" needs neither. The boundary element is then still
+         ! an active p-element with a declared count of zero. Fall back to the
+         ! rule of the element type, exactly as the branch below does when
+         ! RelOrder is absent; for p:1 the bubbles vanish on the boundary, so the
+         ! trace is of the element's own degree and that rule is the right one.
+         ! Without this, GaussPoints* is handed n=0 and calls Fatal.
+         IF( n == 0 ) n = elmt % GaussPoints
          IF( RelOrder == 0 ) THEN
            CONTINUE
          ELSE
@@ -2662,7 +2901,18 @@ CONTAINS
          ELSE IF( RelOrder == -1 ) THEN
            n = elmt % GaussPoints0
          ELSE
-           PRINT *,'RelOrder can only be {-1, 0, 1} !'
+           ! A non-p element has exactly three tabulated rules to choose from --
+           ! GaussPoints0 / GaussPoints / GaussPoints2 in elements.def -- so
+           ! there is nothing to return outside {-1,0,1}. This used to PRINT a
+           ! complaint and fall through with n never assigned, handing an
+           ! uninitialised count to the quadrature below. Say so and stop
+           ! instead: "Relative Integration Order" is a documented sif keyword,
+           ! so this is reachable from an ordinary input file. Note that a
+           ! p-element takes any integer -- that branch is arithmetic, not a
+           ! table lookup -- which is why the limit is stated for this case only.
+           WRITE( Message,'(A,I0,A)') 'Relative Integration Order = ',RelOrder, &
+               ' but a non-p element only has rules for {-1,0,1}'
+           CALL Fatal( 'GaussPoints', Message )
          END IF
        END IF
      ELSE
@@ -2687,7 +2937,26 @@ CONTAINS
 
      CASE (3)
         IF (pElement) THEN
-          IntegStuff = GaussPointsPTriangle(n)
+          ! As for the tetrahedron in CASE(5): prefer a genuine triangle rule
+          ! over collapsing a quadrilateral one, when a tabulated rule is exact
+          ! to the degree this count was sized for. Skipped when the caller
+          ! named a count explicitly (np), which is honoured literally.
+          ! An explicit count NAMES a rule, so look for one of that name before
+          ! anything else. Without this, naming a count was the one sure way not
+          ! to get the tabulated rule of that size: the lookup was skipped
+          ! whenever np was present and GaussPointsPTriangle read the count as a
+          ! sizing target for a collapsed quadrilateral instead.
+          nsimplex = 0
+          IF( PRESENT( np ) ) THEN
+            IF( TriangleRuleTabulated( n ) ) nsimplex = n
+          ELSE
+            nsimplex = TriangleSimplexRulePoints( n )
+          END IF
+          IF( nsimplex > 0 ) THEN
+            IntegStuff = GaussPointsTriangle( nsimplex, PReferenceElement = .TRUE. )
+          ELSE
+            IntegStuff = GaussPointsPTriangle(n)
+          END IF
         ELSE
           IntegStuff = GaussPointsTriangle(n)
         END IF
@@ -2716,7 +2985,27 @@ CONTAINS
 
      CASE (5)
         IF (pElement) THEN
-           IntegStuff = GaussPointsPTetra(n)
+           ! Prefer a tabulated simplex rule when one is exact to the degree
+           ! this count was sized for; GaussPointsPTetra otherwise maps a brick
+           ! rule and costs several times as many points for the same
+           ! exactness. Skipped when the caller named a count explicitly (np),
+           ! which is then honoured literally rather than reinterpreted.
+           ! As for the triangle: an explicit count names a rule, so try the
+           ! table for exactly that count first. "-tetra 24" used to yield 36
+           ! points, GaussPointsPTetra computing NINT(24**(1/3)) = 3 and
+           ! returning the collapsed GaussPointsPBrick(3,3,4) -- and 36 is the
+           ! rule measured as NOT exact where the tabulated 24 is.
+           nsimplex = 0
+           IF( PRESENT( np ) ) THEN
+             IF( TetraRuleTabulated( n ) ) nsimplex = n
+           ELSE
+             nsimplex = TetraSimplexRulePoints( n )
+           END IF
+           IF( nsimplex > 0 ) THEN
+              IntegStuff = GaussPointsTetra( nsimplex, PReferenceElement = .TRUE. )
+           ELSE
+              IntegStuff = GaussPointsPTetra(n)
+           END IF
         ELSE
            IntegStuff = GaussPointsTetra(n)
         END IF
@@ -2806,12 +3095,11 @@ CONTAINS
        pElement = isActivePElement(elm)
      END IF
 
-     IF(.NOT. Ginit) CALL GaussPointsInit()
-     ip => IntegStuff
-     
+     CALL GetIntegStuff(ip)
+
      ! Compute the number of corner nodes
      n = ecode / 100
-     IF( n >= 5 .AND. n <= 7 ) n = n-1 
+     IF( n >= 5 .AND. n <= 7 ) n = n-1
      ip % n = n
      ip % s(1:n) = 1.0_dp / n
      
@@ -2899,12 +3187,11 @@ CONTAINS
        pElement = isActivePElement(elm)
      END IF
 
-     IF(.NOT. Ginit) CALL GaussPointsInit()
-     ip => IntegStuff
-     
+     CALL GetIntegStuff(ip)
+
      ! Compute the number of corner nodes
      n = ecode / 100
-     IF( n >= 5 .AND. n <= 7 ) n = n-1 
+     IF( n >= 5 .AND. n <= 7 ) n = n-1
      ip % n = 1
      ip % s(1:n) = 1.0_dp
      

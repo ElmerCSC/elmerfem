@@ -1,0 +1,145 @@
+! An additive stress and an eigenstrain -- "Stress Load" and "Strain Load" --
+! through ElasticSolve, which had neither until the affine offset channel was
+! added to its LocalMatrix. Together the two keywords make the constitutive
+! response affine rather than linear:
+!
+!   sigma = C : ( eps - "Strain Load" ) + "Stress Load"
+!
+! and that is StressSolve's reading of them, which this test pins ElasticSolve to.
+!
+! NOTHING IN THE TREE COVERED THESE KEYWORDS ON EITHER SOLVER. A grep over every
+! sif in fem/tests found no "Stress Load", no "Strain Load", no "Pre Stress" and
+! no "Pre Strain", so StressSolve's implementation -- the reference for the port --
+! was itself unverified, and the first run of it in Elmer's history is this test
+! and its sibling StressStressLoad, which is the same case through StressSolve.
+!
+! WHY THIS NEEDS NO NEW ASSEMBLY ROUTINE, which is the interesting part. An affine
+! law is not linear in its strain measure, and ElasticSolve's LocalMatrix forms its
+! tangent by Gateaux derivatives, which requires linearity -- it asserts
+! MatModel % StrainLinear for that reason. The offset survives because of WHERE it
+! is added: to the residual stress alone, never to a term a derivative is taken
+! of. The tangent terms apply the law to strain INCREMENTS, so they exclude the
+! offset by construction. Adding it inside the constitutive model instead would
+! carry it into the derivative and the stiffness would be wrong.
+!
+! THE REFERENCE VALUE IS STRESSSOLVE'S, so this single-solver run carries a
+! cross-solver assertion. On this problem the two agree on every printed digit of
+! "Stress_yz" and "Stress_xx" and to the last digit of the displacement -- field by
+! field 2e-14 relative, the displacement control 2e-15.
+!
+! THE LOAD IS SHEAR DOMINANT AND THE TWO CHANNELS ARE BALANCED, and both of those
+! are the point of the test rather than arbitrary. Measured, by mimicking each
+! plausible coding error in the sif and comparing the fields:
+!
+!   error mimicked                                     moves Stress_yz by
+!   ---------------------------------------------------------------------
+!   eigenstrain shear not halved (engineering vs           87%
+!     tensor shear -- the classic Voigt mistake)
+!   Voigt slots 5 and 6 exchanged in "Strain Load"         68%
+!   Voigt slots 5 and 6 exchanged in "Stress Load"        143%
+!   "Stress Load" ignored                                 220%
+!   "Strain Load" ignored                                 120%
+!   offset added with the wrong sign                      441%
+!
+! With the more natural choice of a stress load a hundred times larger, the same
+! six errors moved the answer by 0.02% to 0.5% -- detectable against a 1e-5
+! tolerance but only just, because the shear terms were then a rounding error on
+! the normal ones and the two channels were not comparable in size. Hence the
+! deliberately shear-heavy, sign-mixed values below, and hence "Stress_yz" as the
+! checked component.
+!
+! Small strain on purpose, so the kinematics reduce to StressSolve's and what is
+! compared is the offset channel alone. Under "Large Deflection" the same offset
+! becomes a genuine pre-stress -- it reaches the tangent through the geometric
+! term, which is the capability StressSolve spells "Pre Stress" -- and that is a
+! separate matter from this test.
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = 1.0
+  Youngs modulus = 1.0e3
+  Poisson ratio = 0.3
+End
+
+Body Force 1
+  ! Elmer's Voigt order with engineering shear: (11, 22, 33, 12, 23, 13). All six
+  ! slots are distinct in size AND in sign, so a permutation cannot cancel, and
+  ! the three shear slots are the largest, so a factor of two lost on them cannot
+  ! hide behind the normal components.
+  !
+  ! The two channels are scaled to contribute comparably: C is of order 1e3 and
+  ! the eigenstrain of order 1e-3, so C : eps0 is of order 1 and the stress load
+  ! is given at order 1 to match.
+  Stress Load(6) = Real 1.0 -2.0 0.5 3.0 -5.0 1.5
+  Strain Load(6) = Real 1.0e-3 -2.0e-3 0.5e-3 4.0e-3 -6.0e-3 2.0e-3
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 3 Displacement
+
+  Large Deflection = False
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  ! The offset is affine, so the residual is independent of the iterate and one
+  ! Newton step is exact. More than one iteration is allowed here so that a
+  ! failure to converge would show as a failure rather than as a truncated solve.
+  Nonlinear System Max Iterations = 12
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  ! The shear component the sensitivity table above is measured on. Stress_xx is
+  ! reported alongside it as the normal-component witness: it is blind to both
+  ! slot exchanges, which is itself worth seeing in the log.
+  Variable 1 = String "Stress_yz"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_xx"
+  Operator 2 = String "max abs"
+End
+
+! One face clamped, everything else free: the offset is the only thing loading
+! the body, so nothing else can carry the answer.
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+Solver 2 :: Reference Norm = Real 4.54751054E+00
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

@@ -48,7 +48,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
   USE Types
   USE Lists
   USE DefUtils
-  USE MeshUtils
+  USE MeshBasics
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------

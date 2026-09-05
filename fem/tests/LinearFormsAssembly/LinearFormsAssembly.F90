@@ -20,7 +20,7 @@ SUBROUTINE LinearFormsAssembly( Model,Solver,dt,TransientSimulation )
 !     INPUT: Steady state or transient simulation
 !
 !******************************************************************************
-    USE MeshUtils, ONLY : AllocatePDefinitions
+    USE MeshBasics, ONLY : AllocatePDefinitions
     USE DefUtils
     USE LinearForms
     USE ISO_C_BINDING
@@ -317,8 +317,7 @@ CONTAINS
     INTEGER :: i,j,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
-    !$OMP THREADPRIVATE(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetReferenceElementNodes( Nodes, Element )
     STIFF = 0.0d0
@@ -375,10 +374,9 @@ CONTAINS
     INTEGER :: i, j, ngp, allocstat, gp
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:), dBasisdx(:,:,:), &
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
             DetJ(:), LoadAtIPs(:)
-    !$OMP THREADPRIVATE(Nodes, Basis, dBasisdx, DetJ, LoadAtIPs)
 !------------------------------------------------------------------------------
     CALL GetReferenceElementNodes( Nodes, Element )
 
@@ -393,22 +391,11 @@ CONTAINS
     END IF
     ngp = IP % n
 
-    ! Reserve workspace
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
-              DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('LocalMatrixVec',&
-                   'Storage allocation for local element basis failed')
-      END IF
-    ELSE IF (SIZE(Basis,1) /= ngp .OR. SIZE(Basis,2) /= nd) THEN
-      DEALLOCATE(Basis, dBasisdx, DetJ, LoadAtIPs)
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
-              DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('LocalMatrixVec',&
-                'Storage allocation for local element basis failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
+            DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('LocalMatrixVec',&
+                 'Storage allocation for local element basis failed')
     END IF
     
     ! Compute values of all basis functions at all integration points

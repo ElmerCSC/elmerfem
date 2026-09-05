@@ -164,8 +164,8 @@ CONTAINS
    ! Initialize mesh structures after the size information has been 
    ! retrieved.
    !----------------------------------------------------------------
-   SUBROUTINE InitializeMesh(Mesh, InitParallel)     
-     TYPE(Mesh_t), POINTER :: Mesh
+   SUBROUTINE InitializeMesh(Mesh, InitParallel)
+     TYPE(Mesh_t), TARGET :: Mesh
      LOGICAL, OPTIONAL :: InitParallel
      
      INTEGER :: i,j,k,NoElems,istat
@@ -257,7 +257,7 @@ CONTAINS
    !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMesh( Mesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
 !------------------------------------------------------------------------------
     TYPE(Projector_t), POINTER :: Projector
     TYPE(Projector_t), POINTER :: Projector1
@@ -388,7 +388,7 @@ CONTAINS
 
   SUBROUTINE ReleaseMeshElements(Mesh)
 
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     TYPE(BoundaryInfo_t), POINTER :: bInfo
     INTEGER :: i, n
 
@@ -451,7 +451,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMeshEdgeTables( Mesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
     INTEGER :: i
     TYPE(Element_t), POINTER :: Edge
@@ -492,7 +492,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMeshFaceTables( Mesh )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
     INTEGER :: i
     TYPE(Element_t), POINTER :: Face
@@ -505,6 +505,11 @@ CONTAINS
           Face => Mesh % Faces(i)
           IF ( ASSOCIATED( Face % NodeIndexes ) ) THEN
              DEALLOCATE( Face % NodeIndexes )
+          END IF
+          ! Given to the face by FindMeshEdges3D, after the face table was built
+          !--------------------------------------------------------------------
+          IF ( ASSOCIATED( Face % EdgeIndexes ) ) THEN
+             DEALLOCATE( Face % EdgeIndexes )
           END IF
           IF ( ASSOCIATED( Face % BoundaryInfo ) ) THEN
              DEALLOCATE( Face % BoundaryInfo )

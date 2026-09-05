@@ -184,8 +184,8 @@ CONTAINS
   ! Allocate particles for visualization
   !---------------------------------------------------------
   SUBROUTINE AllocateGridParticles(Particles,NoParticles)
-    
-    TYPE(Particle_t), POINTER :: Particles
+
+    TYPE(Particle_t), TARGET :: Particles
     INTEGER :: NoParticles   
     REAL(KIND=dp), POINTER :: Coordinate(:,:), UVW(:,:)
     INTEGER, POINTER :: Status(:), ElementIndex(:)
@@ -255,7 +255,7 @@ CONTAINS
 
   SUBROUTINE AddGridParticle(Particles,ElementIndex,GlobalCoords,LocalCoords)
 
-    TYPE(Particle_t), POINTER :: Particles
+    TYPE(Particle_t), TARGET :: Particles
     INTEGER :: ElementIndex
     REAL(KIND=dp) :: GlobalCoords(3),LocalCoords(3)
     
@@ -285,8 +285,8 @@ CONTAINS
   ! Find grid particles in a uniform grid
   !------------------------------------------------------------------     
   SUBROUTINE CreateGridParticles(Particles)
-     
-    TYPE(Particle_t), POINTER :: Particles
+
+    TYPE(Particle_t), TARGET :: Particles
 
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), gMinCoord(3), gMaxCoord(3)

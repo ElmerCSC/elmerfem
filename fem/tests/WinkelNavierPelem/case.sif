@@ -75,8 +75,8 @@ Solver 1
  
   Linear System Symmetric = True
   Optimize Bandwidth = False
-  Nonlinear System Consistent Norm = Logical True
   Linear System Scaling = True
+  Nonlinear System Consistent Norm = Logical True
 
   Displace Mesh = Logical False
 

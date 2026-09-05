@@ -772,6 +772,14 @@ CONTAINS
         CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: nrm0 = NaN.' )
       END IF
 
+      ! Zero RHS: exact solution is x=0, avoid 0/0 in errorind
+      IF (bnrm == 0.0d0) THEN
+        Converged = .TRUE.
+        x = 0.0d0
+        DEALLOCATE(work)
+        RETURN
+      END IF
+
       errorind = rnrm0 / bnrm
       IF(errorind /= errorind ) THEN
         CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: errorind = NaN.' )
@@ -977,23 +985,23 @@ CONTAINS
             rwork(1,y0), 1, zero, rwork(1,y), 1)
         kappa0 = ddot(l+1, rwork(1,y0), 1, rwork(1,y), 1)
 
-        ! If untreated this would result to NaN's
-        IF( kappa0 <= 0.0 ) THEN
+        ! If untreated this would result to NaN's; .NOT.(x>0) also catches NaN
+        IF( .NOT. (kappa0 > 0.0) ) THEN
           CALL Warn('RealBiCGStab(l)','kappa0^2 is non-positive, iteration halted')
           Halted = .TRUE.
           GOTO 100
         END IF
-        kappa0 = SQRT( kappa0 ) 
+        kappa0 = SQRT( kappa0 )
 
         CALL dsymv ('u', l+1, one, rwork(1,z), l+1, &
             rwork(1,yl), 1, zero, rwork(1,y), 1)
         kappal = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1 )
-        
-        ! If untreated this would result to NaN's
-        IF( kappal <= 0.0 ) THEN
+
+        ! If untreated this would result to NaN's; .NOT.(x>0) also catches NaN
+        IF( .NOT. (kappal > 0.0) ) THEN
           CALL Warn('RealBiCGStab(l)','kappal^2 is non-positive, iteration halted')
           Halted = .TRUE.
-          GOTO 100 
+          GOTO 100
         END IF
         kappal = SQRT( kappal )
 
@@ -1002,8 +1010,9 @@ CONTAINS
 
         varrho = ddot(l+1, rwork(1,yl), 1, rwork(1,y), 1) / &
             (kappa0*kappal)
-        
-        hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
+
+        ! SIGN(one,varrho) avoids 0/0 NaN when varrho=0
+        hatgamma = SIGN(one,varrho) * MAX(ABS(varrho),7d-1) * &
             kappa0/kappal
         DO i=1,l+1
            rwork(i,y0) = rwork(i,y0) - hatgamma * rwork(i,yl)
@@ -1176,7 +1185,7 @@ CONTAINS
 !>   This routine solves real linear systems Ax = b by using the GCR algorithm 
 !> (Generalized Conjugate Residual).
 !------------------------------------------------------------------------------
- SUBROUTINE itermethod_gcr( xvec, rhsvec, &
+ RECURSIVE SUBROUTINE itermethod_gcr( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
@@ -1259,8 +1268,8 @@ CONTAINS
   CONTAINS 
     
     
-    SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
-        Converged, Diverged, OutputInterval, m, MinIter) 
+    RECURSIVE SUBROUTINE GCR( n, A, x, b, Rounds, MinTolerance, MaxTolerance, Residual, &
+        Converged, Diverged, OutputInterval, m, MinIter)
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: Rounds, MinIter
@@ -1292,9 +1301,9 @@ CONTAINS
               //I2S(n)//' x '//I2S(m-1))
         END IF
         
-         V(1:n,1:m-1) = 0.0d0	
+         V(1:n,1:m-1) = 0.0d0
          S(1:n,1:m-1) = 0.0d0
-      END IF	
+      END IF
       
       CALL C_matvec( x, r, ipar, matvecsubr )
       r(1:n) = b(1:n) - r(1:n)
@@ -1396,7 +1405,7 @@ CONTAINS
          IF ( j /= m ) THEN
            S(1:n,j) = T1(1:n)
            V(1:n,j) = T2(1:n)
-	 END IF       
+         END IF       
 
          !--------------------------------------------------------------
          ! Check whether the convergence criterion is met 
@@ -2064,6 +2073,10 @@ CONTAINS
       LOGICAL, INTENT(OUT) :: converged
       REAL(KIND=dp), INTENT(OUT) :: final_norm_gp
       INTEGER :: ierr, comm, n_beyond
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+      INTEGER :: ibuffer
+      REAL(KIND=dp) :: rbuffer
+#endif
       
       INTEGER :: itl
       REAL(KIND=dp) :: normv
@@ -2194,7 +2207,13 @@ CONTAINS
 
           n_beyond = COUNT(bs * yy(:) < bs * c(:))
           IF(ParEnv % PEs > 1) THEN
-            CALL MPI_ALLREDUCE( MPI_IN_PLACE, n_beyond, 1, MPI_INTEGER, MPI_SUM, comm, ierr )              
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+            ibuffer = n_beyond
+            CALL MPI_ALLREDUCE( ibuffer, &
+#else
+            CALL MPI_ALLREDUCE( MPI_IN_PLACE, &
+#endif
+                n_beyond, 1, MPI_INTEGER, MPI_SUM, comm, ierr )
           END IF
 
           IF (n_beyond == 0) THEN
@@ -2241,7 +2260,13 @@ CONTAINS
             a_f = MINVAL((x-c) / p,p_mask)
             
             IF(ParEnv % PEs > 1) THEN
-              CALL MPI_ALLREDUCE( MPI_IN_PLACE, a_f, 1, MPI_DOUBLE_PRECISION, MPI_MIN, comm, ierr )              
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+              rbuffer = a_f
+              CALL MPI_ALLREDUCE( rbuffer, &
+#else
+              CALL MPI_ALLREDUCE( MPI_IN_PLACE, &
+#endif
+                  a_f, 1, MPI_DOUBLE_PRECISION, MPI_MIN, comm, ierr )              
             END IF
               
             IF (a_f < 0.0_dp) a_f = 0.0_dp
@@ -2520,7 +2545,7 @@ CONTAINS
          czero = CMPLX( 0.0_dp, 0.0_dp, KIND=dp )
          V(1:n,1:m-1) = czero
          S(1:n,1:m-1) = czero
-      END IF	
+      END IF
       
       CALL matvecsubr( x, r, ipar )
       r(1:n) = b(1:n) - r(1:n)
@@ -2538,8 +2563,8 @@ CONTAINS
       IF( Converged .OR. Diverged) RETURN
       
       DO k=1,Rounds
-	 !----------------------------------------------
-	 ! Check for restarting
+         !----------------------------------------------
+         ! Check for restarting
          !--------------------------------------------- 
          IF ( MOD(k,m)==0 ) THEN
             j = m
@@ -2578,10 +2603,10 @@ CONTAINS
          beta = dotprodfun(n, T2(1:n), 1, r(1:n), 1 )
          x(1:n) = x(1:n) + beta * T1(1:n)      
          r(1:n) = r(1:n) - beta * T2(1:n)
-	 IF ( j /= m ) THEN
+         IF ( j /= m ) THEN
             S(1:n,j) = T1(1:n)
             V(1:n,j) = T2(1:n)
-	 END IF       
+         END IF       
 
          !--------------------------------------------------------------
          ! Check whether the convergence criterion is met 
@@ -2753,6 +2778,14 @@ CONTAINS
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
+      ! Zero RHS: exact solution is x=0, avoid 0/0 in errorind
+      IF (bnrm == 0.0d0) THEN
+        Converged = .TRUE.
+        x = zzero
+        DEALLOCATE(work, rwork)
+        RETURN
+      END IF
+
       errorind = rnrm0 / bnrm
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
@@ -2860,12 +2893,22 @@ CONTAINS
          call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,yl), rwork(1:l+1,y), l+1 )
          kappal = SQRT( ABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )  ! replace zdotc
 
+         ! .NOT.(x>0) catches both zero and NaN; ABS() needed since kappa is COMPLEX
+         IF( .NOT. (ABS(kappa0) > 0.0) .OR. .NOT. (ABS(kappal) > 0.0) ) THEN
+           CALL Warn('ComplexBiCGStab(l)','kappa^2 is zero or NaN, iteration halted')
+           EXIT
+         END IF
+
          call zmv( rwork(1:l+1,z:z+l), rwork(1:l+1,y0), rwork(1:l+1,y), l+1 )
          varrho = zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &           ! replace zdotc
               (kappa0*kappal)
 
-         hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
-              kappa0/kappal
+         ! Guard varrho=0 to avoid 0/0 NaN; treat zero varrho as unit direction
+         IF( ABS(varrho) > 0.0 ) THEN
+           hatgamma = (varrho/ABS(varrho)) * MAX(ABS(varrho),7d-1) * kappa0/kappal
+         ELSE
+           hatgamma = 7d-1 * kappa0/kappal
+         END IF
          rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
 
          !  --- Update

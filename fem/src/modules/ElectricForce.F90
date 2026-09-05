@@ -43,10 +43,10 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE Types
   USE Lists
-  USE MeshUtils
+  USE MeshBasics
   USE Integration
   USE ElementDescription
-  USE SolverUtils
+  USE SolverBasics
   USE DefUtils
 
   IMPLICIT NONE

@@ -31,15 +31,14 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found
+  LOGICAL :: Found
   TYPE(Element_t),POINTER :: Element
 
   REAL(KIND=dp) :: Norm, d_val, diag, rt, ct, eps, f
-  INTEGER :: sz, i, j, k, l, m, n, nelem, nb, nd, t, istat, Active, bActive, maxi,maxnd
+  INTEGER :: sz, i, j, k, l, m, n, nelem, nb, nd, t, Active, bActive, maxi
 
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce, BC
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:)
 
   REAL(KIND=dp), POINTER :: x(:)
   REAL(KIND=dp), ALLOCATABLE :: b(:)
@@ -63,22 +62,9 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   TYPE(np_t), ALLOCATABLE :: np(:)
   INTEGER, ALLOCATABLE :: tp(:)
   TYPE(ed_t), ALLOCATABLE, TARGET :: ed(:)
-
-  SAVE STIFF, LOAD, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
 
-   !Allocate some permanent storage, this is done first time only:
-   !--------------------------------------------------------------
    Mesh => GetMesh()
-
-   IF ( .NOT. AllocationsDone ) THEN
-      N = Solver % Mesh % MaxElementDOFs  ! just big enough for elemental arrays
-      ALLOCATE( FORCE(N), LOAD(N), STIFF(N,N), STAT=istat )
-      IF ( istat /= 0 ) THEN
-         CALL Fatal( 'PoissonSolve', 'Memory allocation error.' )
-      END IF
-      AllocationsDone = .TRUE.
-   END IF
 
    Active = GetNOFActive()
    bActive = GetNOFBoundaryElements()
@@ -90,29 +76,39 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
    !System assembly:
    !----------------
-   maxnd = 0
-!$omp parallel do private(t,i,n,nb,nd,element,load,stiff,force,bodyforce,found)
+!$omp parallel do private(t,i,n,nb,nd,element,bodyforce,found)
    DO t=1,Active
      Element => GetActiveElement(t)
      n  = GetElementNOFNodes(Element)
      nd = GetElementNOFDOFs(Element)
      nb = GetElementNOFBDOFs(Element)
 
-     Load = 0.0_dp
-     BodyForce => GetBodyForce(Element)
-     IF ( ASSOCIATED(BodyForce) ) THEN
-       Load(1:n) = GetReal( BodyForce, 'Source', Found )
-     END IF
+     BLOCK
+       ! Per-iteration automatic arrays: STIFF/FORCE/LOAD used to be SAVEd
+       ! allocatables shared via an OMP "private" clause, but privatizing an
+       ! already-allocated allocatable gives each thread an UNALLOCATED copy
+       ! (the allocation is not inherited) -- LocalMatrix's assumed-shape
+       ! dummies then received an invalid actual argument, causing the
+       ! intermittent SIGSEGV. Automatic arrays sized here are genuinely
+       ! thread-local and correctly shaped for every call, no allocation or
+       ! private-clause bookkeeping required.
+       REAL(KIND=dp) :: STIFF(nd+nb,nd+nb), FORCE(nd+nb), LOAD(n)
 
-     !Get element local matrix and rhs vector:
-     !----------------------------------------
-     CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd+nb )
-     CALL LCondensate( nd, nb, STIFF, FORCE )
+       Load = 0.0_dp
+       BodyForce => GetBodyForce(Element)
+       IF ( ASSOCIATED(BodyForce) ) THEN
+         Load(1:n) = GetReal( BodyForce, 'Source', Found )
+       END IF
 
-     ed(t) % nd = nd
-     maxnd = MAX(maxnd,nd)
-     ed(t) % Stiff = STIFF(1:nd,1:nd)
-     ed(t) % Force = FORCE(1:nd)
+       !Get element local matrix and rhs vector:
+       !----------------------------------------
+       CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd+nb )
+       CALL LCondensate( nd, nb, STIFF, FORCE )
+
+       ed(t) % nd = nd
+       ed(t) % Stiff = STIFF(1:nd,1:nd)
+       ed(t) % Force = FORCE(1:nd)
+     END BLOCK
      ed(t) % dofIndeces = [(i,i=1,nd)]
      nd =  GetElementDOFs(ed(t) % dofIndeces, Element)
      ed(t) % dofIndeces = Solver % Variable % Perm(ed(t) % dofIndeces)
@@ -121,26 +117,30 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
 
    ! BC's
-!$omp parallel do private(t,i,j,n,nd,stiff,force,load,bc,found,element)
+!$omp parallel do private(t,i,j,n,nd,bc,found,element)
    DO t=1,GetNOFBoundaryElements()
      Element => GetBoundaryElement(t)
 
      n  = GetElementNOFNodes(Element)
      nd = GetElementNofDOFs(Element)
-
-     BC => GetBC(Element)
-     IF ( ASSOCIATED(BC)) THEN
-       Load(1:n) = GetReal( BC, 'Flux', Found )
-       CALL LocalMatrixBC(STIFF, FORCE, LOAD, Element, n, nd)
-     ELSE
-       FORCE(1:nd) = 0.0_dp
-       STIFF(1:nd,1:nd) = 0.0_dp
-     END IF
-
      j = t + Active
-     ed(j) % nd = nd
-     ed(j) % Stiff = STIFF(1:nd,1:nd)
-     ed(j) % Force = FORCE(1:nd)
+
+     BLOCK
+       REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
+
+       BC => GetBC(Element)
+       IF ( ASSOCIATED(BC)) THEN
+         Load(1:n) = GetReal( BC, 'Flux', Found )
+         CALL LocalMatrixBC(STIFF, FORCE, LOAD, Element, n, nd)
+       ELSE
+         FORCE(1:nd) = 0.0_dp
+         STIFF(1:nd,1:nd) = 0.0_dp
+       END IF
+
+       ed(j) % nd = nd
+       ed(j) % Stiff = STIFF(1:nd,1:nd)
+       ed(j) % Force = FORCE(1:nd)
+     END BLOCK
      ed(j) % dofIndeces = [(i,i=1,nd)]
      nd =  GetElementDOFs(ed(j) % dofIndeces, Element)
      ed(j) % dofIndeces = Solver % Variable % Perm(ed(j) % dofIndeces)
@@ -222,6 +222,19 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
    END DO
 !$omp end parallel do
 
+   ! Assemble the global RHS from the per-element force vectors as an OpenMP
+   ! reduction on the ALLOCATABLE array b. gfortran gives each thread a private
+   ! allocatable copy (allocate/zero/combine/deallocate); that per-thread
+   ! malloc/free churn used to intermittently surface as a SIGSEGV inside
+   ! libgfortran's per-I/O setlocale during a later formatted WRITE (the
+   ! post-solve ComputeChange norm print -- crash "after the last Linear System
+   ! Timing line", all worker threads already parked). The root cause was NOT
+   ! this reduction but libgfortran's non-thread-safe per-I/O setlocale on
+   ! MinGW/UCRT (it merely amplified how often that fired); it is now
+   ! neutralized once at startup by elmer_fix_numeric_locale()
+   ! (fem/src/GFortranLocaleFix.c). With that fix in place the reduction is
+   ! safe -- verified 2100/2100 clean at 4 threads, p:9 -- so we keep this
+   ! clearer form rather than a hand-rolled atomic scatter.
 !$omp parallel do private(i,j,k,nd) reduction(+:b)
    DO i=1,SIZE(ed)
      nd = SIZE(ed(i) % dofIndeces)
@@ -254,8 +267,11 @@ CONTAINS
     INTEGER :: i,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(nodes)
+    ! Plain per-call local: a SAVEd/threadprivate Nodes here relied on
+    ! !$omp threadprivate applying cleanly to a variable local to a
+    ! CONTAINS-nested internal procedure, re-used across both threads and
+    ! calls. Simpler and safe to just fetch it fresh every call instead.
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes )
     STIFF = 0.0_dp
@@ -297,8 +313,11 @@ CONTAINS
     INTEGER :: i,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(nodes)
+    ! Plain per-call local: a SAVEd/threadprivate Nodes here relied on
+    ! !$omp threadprivate applying cleanly to a variable local to a
+    ! CONTAINS-nested internal procedure, re-used across both threads and
+    ! calls. Simpler and safe to just fetch it fresh every call instead.
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes )
     STIFF = 0.0_dp

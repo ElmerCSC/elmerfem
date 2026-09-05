@@ -167,7 +167,7 @@
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), gamma
        INTEGER :: n,nl,nr
-       TYPE(Element_t), POINTER :: Elm, LeftParent, RightParent
+       TYPE(Element_t), TARGET :: Elm, LeftParent, RightParent
 
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n), dBasisdx(n,3)
@@ -267,7 +267,7 @@
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), gamma
        INTEGER :: n,nl,nr
-       TYPE(Element_t), POINTER :: Elm, LeftParent, RightParent
+       TYPE(Element_t), TARGET :: Elm, LeftParent, RightParent
 
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n), dBasisdx(n,3)
@@ -369,7 +369,7 @@
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:)
        INTEGER :: n
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L
@@ -427,7 +427,7 @@
        REAL(KIND=dp) :: STIFF(:,:),  FORCE(:), &
             LOAD(:), EpsilonBoundary(:), Gamma
        INTEGER :: n, k
-       TYPE(Element_t), POINTER :: Element, ParentElement
+       TYPE(Element_t), TARGET :: Element, ParentElement
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n), dBasisdx(n,3)
        REAL(KIND=dp) :: ParentBasis(k), ParentdBasisdx(k,3), &

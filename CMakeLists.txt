@@ -12,10 +12,10 @@
 #
 
 IF(NOT CMAKE_BUILD_TYPE)
-  SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
+  SET(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
 
 if(POLICY CMP0074)
     cmake_policy(SET CMP0074 NEW)
@@ -116,6 +116,8 @@ SET(INCLUDE_ELMER_MODULES "" CACHE STRING "Semicolon separated list of solver mo
 # Let user select if the contiguous attribute is used or not
 SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
 
+OPTION(EXTERNAL_METIS "Link to external Metis library" OFF)
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 # if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
@@ -208,6 +210,9 @@ IF(WITH_OpenMP)
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
   SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  IF(OpenMP_Fortran_INCLUDE_DIR)
+    INCLUDE_DIRECTORIES("${OpenMP_Fortran_INCLUDE_DIR}")
+  ENDIF()
 
   # Set variables for supported OpenMP version
   IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.0)
@@ -241,6 +246,27 @@ IF(WITH_MPI)
     )
 
   FIND_PACKAGE(MPI REQUIRED)
+
+  # The test suite runs cases with up to eight tasks, more than the cores of a
+  # typical runner or workstation. OpenMPI counts slots and refuses to place more
+  # ranks than it has, so those cases fail to launch at all rather than merely
+  # running slowly. Ask for oversubscription so that they run. The flag is
+  # OpenMPI's own and other launchers reject arguments they do not know, so
+  # settle the vendor by asking mpiexec rather than by guessing from its path.
+  # RUN_ELMER_TEST already divides OMP_NUM_THREADS by the task count and pins
+  # OMP_WAIT_POLICY to PASSIVE, which is what keeps the resulting
+  # oversubscription a graceful slowdown instead of a stall.
+  IF(MPIEXEC AND NOT MPIEXEC_PREFLAGS)
+    EXECUTE_PROCESS(COMMAND "${MPIEXEC}" --version
+      RESULT_VARIABLE MPIEXEC_VERSION_RESULT
+      OUTPUT_VARIABLE MPIEXEC_VERSION_OUTPUT
+      ERROR_VARIABLE MPIEXEC_VERSION_OUTPUT
+      TIMEOUT 60)
+    IF(MPIEXEC_VERSION_RESULT EQUAL 0 AND MPIEXEC_VERSION_OUTPUT MATCHES "Open MPI")
+      SET(MPIEXEC_PREFLAGS "--oversubscribe")
+      MESSAGE(STATUS "  MPI test launcher: OpenMPI, adding --oversubscribe")
+    ENDIF()
+  ENDIF()
 
   # Check features of found MPI
   INCLUDE(testMPIcapabilities)
@@ -565,11 +591,12 @@ FIND_PACKAGE(LAPACK REQUIRED)
 SET(CMAKE_REQUIRED_LIBRARIES
   ${CMAKE_REQUIRED_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
+# Mumps: supports both parallel (MPI+ScaLAPACK) and sequential builds
+IF(WITH_Mumps)
+  FIND_PACKAGE(Mumps REQUIRED)
+ENDIF()
+
 IF(MPI_FOUND)
-  # Mumps
-  IF(WITH_Mumps)
-    FIND_PACKAGE(Mumps REQUIRED)
-  ENDIF()
   # Hypre
   IF(WITH_Hypre)
     FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv FEI core QUIET)
@@ -585,6 +612,74 @@ IF(Mumps_FOUND)
   SET(HAVE_MUMPS TRUE)
   MARK_AS_ADVANCED(HAVE_MUMPS)
   # LINK_DIRECTORIES(${MUMPS_LIBRARIES})
+
+  # The distributed right-hand side -- ICNTL(20)=10 with RHS_loc, IRHS_loc,
+  # Nloc_RHS and LRHS_loc -- appeared in MUMPS 5.3. Probe for the field itself
+  # rather than compare version strings: the field is what the code needs, and
+  # it has to be present in both the real and the complex struct.
+  SET(_mumps_dist_rhs TRUE)
+  FOREACH(_h dmumps_struc.h zmumps_struc.h)
+    SET(_mumps_hit "")
+    FOREACH(_d ${Mumps_INCLUDE_DIR})
+      IF(EXISTS "${_d}/${_h}")
+        FILE(STRINGS "${_d}/${_h}" _mumps_hit REGEX "IRHS_loc")
+      ENDIF()
+      IF(_mumps_hit)
+        BREAK()
+      ENDIF()
+    ENDFOREACH()
+    IF(NOT _mumps_hit)
+      SET(_mumps_dist_rhs FALSE)
+    ENDIF()
+  ENDFOREACH()
+
+  # MUMPS's own reductions cannot work on MinGW if MUMPS is built without
+  # -DAVOID_MPI_IN_PLACE. The reason is that MPI_IN_PLACE of MS-MPI is unusable
+  # with Fortran 77 and GFortran: mpif.h keeps the sentinel in COMMON /MPIPRIV1/
+  # and imports the block with a !DEC$ directive, Intel syntax that GFortran
+  # treats as a comment. GFortran does not support dllimport attributes on
+  # COMMON blocks at all. So with GFortran, each application uses its own
+  # zero-filled copy, the address matches nothing the C layer compares against,
+  # and MPI reads that memory as a real send buffer.
+  # MUMPS provides -DAVOID_MPI_IN_PLACE for exactly this case. MSYS2 uses it
+  # since August 2026. For versions of MUMPS compiled without that definition on
+  # MinGW, all 27 of its in-place reductions won't work correctly. ICNTL(20)=10
+  # walks into them every time: analysis and factorization are unaffected
+  # (INFO(1)=0), the solve then corrupts the heap or returns zeros. Established
+  # in a Windows VM with a standalone MUMPS program containing no Elmer at all,
+  # on MUMPS 5.9.0 and on the 5.7.3, and confirmed by rebuilding MUMPS from
+  # source: without the macro the distributed right-hand side gives sum(x)=0 in
+  # five runs out of five - with it, the answer is correct. Other platforms are
+  # not affected because they share variables across shared library borders
+  # differently.
+  # Elmer's own reductions are not affected because they use the Fortran 90
+  # module of MPI (which has a work-around to "DLLIMPORT" MPI_IN_PLACE in
+  # MSYS2), or they take a copy path via ELMER_BROKEN_MPI_IN_PLACE if necessary.
+  # There are four additional sites (in ?sol_distrhs.F) in MUPMPS where the
+  # guard is missing altogether. (Those turn out to be latent: the value misread
+  # there is zero, which that code reads as "no allocation failure". What runs
+  # instead is the gathered assembly under the #else in DirectSolve.F90, the
+  # route every MUMPS older than 5.3 takes.)
+  # With versions of MUMPS 5.3 or later on MinGW that are built without
+  # -DAVOID_MPI_IN_PLACE, set -DELMER_MUMPS_DIST_RHS=OFF when configuring Elmer
+  # to avoid the problematic code paths.
+  OPTION(ELMER_MUMPS_DIST_RHS
+    "Hand MUMPS a distributed right-hand side (requires MUMPS 5.3 or newer)"
+    ON)
+  MARK_AS_ADVANCED(ELMER_MUMPS_DIST_RHS)
+
+  IF(_mumps_dist_rhs AND ELMER_MUMPS_DIST_RHS)
+    SET(HAVE_MUMPS_DIST_RHS TRUE)
+    MARK_AS_ADVANCED(HAVE_MUMPS_DIST_RHS)
+    MESSAGE(STATUS "Mumps has the distributed right-hand side")
+  ELSEIF(_mumps_dist_rhs)
+    MESSAGE(STATUS "Mumps has the distributed right-hand side but "
+                   "ELMER_MUMPS_DIST_RHS is off; the right-hand side will be "
+                   "gathered instead")
+  ELSE()
+    MESSAGE(STATUS "Mumps has no distributed right-hand side (needs 5.3 or "
+                   "newer); the right-hand side will be gathered instead")
+  ENDIF()
 ENDIF()
 
 IF(Hypre_FOUND)
@@ -841,12 +936,6 @@ IF(WITH_MPI)
   MESSAGE(STATUS "  MPI C libraries:   " "${MPI_C_LIBRARIES}")
   MESSAGE(STATUS "  MPI C flags:       " "${MPI_C_LINK_FLAGS}")
   MESSAGE(STATUS "------------------------------------------------")
-  IF(WITH_Mumps)
-    MESSAGE(STATUS "  Mumps:             " "${Mumps_FOUND}")
-    MESSAGE(STATUS "  Mumps include:     " "${Mumps_INCLUDE_DIR}")
-    MESSAGE(STATUS "  Mumps libraries:   " "${Mumps_LIBRARIES}")
-    MESSAGE(STATUS "------------------------------------------------")
-  ENDIF(WITH_Mumps)
   IF(WITH_Hypre)
     MESSAGE(STATUS "  Hypre:             " "${Hypre_FOUND}")
     MESSAGE(STATUS "  Hypre include:     " "${Hypre_INCLUDE_DIR}")
@@ -854,6 +943,13 @@ IF(WITH_MPI)
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF(WITH_Hypre)
 ENDIF(WITH_MPI)
+
+IF(WITH_Mumps)
+  MESSAGE(STATUS "  Mumps:             " "${Mumps_FOUND}")
+  MESSAGE(STATUS "  Mumps include:     " "${Mumps_INCLUDE_DIR}")
+  MESSAGE(STATUS "  Mumps libraries:   " "${Mumps_LIBRARIES}")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(WITH_Mumps)
 
 IF(WITH_Trilinos)
   MESSAGE(STATUS "  Trilinos:           " "${Trilinos_FOUND}")

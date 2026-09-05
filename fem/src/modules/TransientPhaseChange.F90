@@ -547,8 +547,8 @@ CONTAINS
     REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:), ForceVector(:)      
     INTEGER :: n, nd
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
-    
+    TYPE(Element_t), TARGET :: Element
+
     ! internal variables:
     TYPE(Nodes_t) :: PNodes
     TYPE(Element_t), POINTER :: Parent      
@@ -720,8 +720,8 @@ CONTAINS
     REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:), ForceVector(:)      
     INTEGER :: nCoord
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
-    
+    TYPE(Element_t), TARGET :: Element
+
     ! internal variables:
     REAL(KIND=dp) :: Basis(3*nCoord),dBasisdx(3*nCoord,3), &
         U,V,W,S,detJ,NodalVelo(nCoord), xcoord

@@ -114,6 +114,14 @@ MATRIX *mat_new(int type, int nrow, int ncol)
 {
    MATRIX *res;
 
+    if (type == TYPE_DOUBLE && nrow == 1 && ncol == 1) {
+        res = (MATRIX *)ALLOCMEM(MATRIXSIZE + sizeof(double));
+        TYPE(res) = TYPE_DOUBLE;
+        NROW(res) = NCOL(res) = 1;
+        MATR(res) = (double *)((char *)res + MATRIXSIZE);
+        return res;
+    }
+
     res = (MATRIX *)ALLOCMEM(MATRIXSIZE);
     TYPE(res) = type;
     NROW(res) = nrow;
@@ -139,7 +147,8 @@ void mat_free(MATRIX *mat)
 {
     if (mat == (MATRIX *)NULL) return;
 
-    FREEMEM((char *)MATR(mat));
+    if (!MAT_DATA_EMBEDDED(mat))
+        FREEMEM((char *)MATR(mat));
     FREEMEM((char *)mat);
 }
 

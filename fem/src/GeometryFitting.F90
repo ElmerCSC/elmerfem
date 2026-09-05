@@ -64,9 +64,9 @@ CONTAINS
   !    in the chosen plane to three representative points. Currently the fitting
   !    can only be done in x-y plane. 
   !---------------------------------------------------------------------------
-  SUBROUTINE CylinderFit(PMesh, PParams, BCind, dim, FitParams) 
+  SUBROUTINE CylinderFit(PMesh, PParams, BCind, dim, FitParams)
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: PMesh
+    TYPE(Mesh_t) :: PMesh
     TYPE(Valuelist_t), POINTER :: PParams
     INTEGER, OPTIONAL :: BCind
     INTEGER, OPTIONAL :: dim
@@ -189,8 +189,8 @@ CONTAINS
     IF(GotNormal) GOTO 100 
 
     ! Only in BC mode we do currently parallel reduction.
-    ! This could be altered too. 
-    IF( BCMode ) THEN
+    ! This could be altered too.
+    IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
 #ifdef ELMER_BROKEN_MPI_IN_PLACE
       buffer = NiNj
       CALL MPI_ALLREDUCE(buffer, &
@@ -451,10 +451,10 @@ CONTAINS
   ! Computes the center of a mesh or given set of bodies.
   !----------------------------------------------------------------------------  
   SUBROUTINE ComputeEntityCenter(Mesh, Center, TargetBodies, TargetBCs)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Center(3)
-    INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
-    INTEGER, POINTER, OPTIONAL :: TargetBCs(:)
+    INTEGER, OPTIONAL :: TargetBodies(:)
+    INTEGER, OPTIONAL :: TargetBCs(:)
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s
@@ -536,27 +536,32 @@ CONTAINS
 
   ! Computes the normal of inertia of a mesh or given set of bodies.
   !----------------------------------------------------------------------------  
-  SUBROUTINE ComputeEntityInertiaNormal(Mesh, Center, INormal, TargetBodies, TargetBCs)
-    TYPE(Mesh_t), POINTER :: Mesh
+  SUBROUTINE ComputeEntityInertiaNormal(Mesh, Center, INormal, TargetBodies, TargetBCs, ConsistentNormal)
+    TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Center(3)
     REAL(KIND=dp) :: INormal(3)
-    INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
-    INTEGER, POINTER, OPTIONAL :: TargetBCs(:)
+    INTEGER, OPTIONAL :: TargetBodies(:)
+    INTEGER, OPTIONAL :: TargetBCs(:)
+    LOGICAL, OPTIONAL :: ConsistentNormal
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s
     INTEGER :: t,t1,tend,i,j,k,n,ierr
-    LOGICAL :: stat
+    LOGICAL :: stat, UseConsistentNormal
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
-    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), CP(3)
+    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), AveNormal(3), CP(3)
     REAL(KIND=dp) :: EigWrk(20)
     INTEGER :: EigInfo, Three
     TYPE(GaussIntegrationPoints_t) :: IP
 
+    UseConsistentNormal = PRESENT(ConsistentNormal)
+    IF( UseConsistentNormal ) UseConsistentNormal = ConsistentNormal
+
     n = Mesh % MaxElementNodes
-    ALLOCATE( Basis(n) )   
+    ALLOCATE( Basis(n) )
     Imoment = 0.0_dp
+    AveNormal = 0.0_dp
 
     IF(PRESENT(TargetBCs)) THEN
       t1 = Mesh % NumberOfBulkElements+1
@@ -570,6 +575,10 @@ CONTAINS
       Element => Mesh % Elements(t)
       IF( PRESENT( TargetBodies ) ) THEN
         IF( ALL( TargetBodies /= Element % BodyId ) ) CYCLE
+      END IF
+      IF( PRESENT( TargetBCs ) ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+        IF( ALL( TargetBCs /= Element % BoundaryInfo % Constraint ) ) CYCLE
       END IF
 
       n  = Element % Type % NumberOfNodes
@@ -586,10 +595,12 @@ CONTAINS
         
         r(1) = SUM(Nodes % x(1:n) * Basis(1:n))
         r(2) = SUM(Nodes % y(1:n) * Basis(1:n))
-        r(3) = SUM(Nodes % z(1:n) * Basis(1:n))        
+        r(3) = SUM(Nodes % z(1:n) * Basis(1:n))
         s = IP % s(k) * detJ
         r = r - Center
-        
+        IF( UseConsistentNormal ) &
+            AveNormal = AveNormal + s * NormalVector( Element, Nodes, IP % U(k), IP % V(k), .TRUE. )
+
         DO i=1,3
           Imoment(3*(i-1)+i) = Imoment(3*(i-1)+i) + s * SUM( r**2 )
           DO j=1,3
@@ -602,6 +613,10 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
       Imoment = ParTmp
+      IF( UseConsistentNormal ) THEN
+        CALL MPI_ALLREDUCE(AveNormal,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+        AveNormal = ParTmp(1:3)
+      END IF
     END IF
 
     s = 1.0_dp    
@@ -624,26 +639,34 @@ CONTAINS
     CALL Info('ComputeEntityIntertiaNormal',Message,Level=30)
     INormal = EigVec(:,3)  ! axis of maximum inertia
 
-    ! Check the sign of the normal using the right-hand-rule.
-    ! This is not generic but a rule is still a rule
-    CP = CrossProduct( Center, INormal )
-    j = 1 
-    DO i = 2, 3
-      IF( ABS( CP(i) ) > ABS( CP(j) ) ) j = i
-    END DO
-    IF( CP(j) < 0 ) THEN
-      CALL Info('ComputeEntityIntertiaNormal','Inverting sign of normal',Level=20)
-      INormal = -INormal
-    END IF    
+    ! Check the sign of the normal.
+    IF( UseConsistentNormal ) THEN
+      ! Align with the average outward surface normal.
+      IF( SUM( AveNormal * INormal ) < 0.0_dp ) THEN
+        CALL Info('ComputeEntityIntertiaNormal','Inverting sign of normal',Level=20)
+        INormal = -INormal
+      END IF
+    ELSE
+      ! Default: cross-product heuristic (original method).
+      CP = CrossProduct( Center, INormal )
+      j = 1
+      DO i = 2, 3
+        IF( ABS( CP(i) ) > ABS( CP(j) ) ) j = i
+      END DO
+      IF( CP(j) < 0 ) THEN
+        CALL Info('ComputeEntityIntertiaNormal','Inverting sign of normal',Level=20)
+        INormal = -INormal
+      END IF
+    END IF
 
   END SUBROUTINE ComputeEntityInertiaNormal
 
     
   
   !---------------------------------------------------------------------------
-  SUBROUTINE TorusFit(PMesh, PParams, BCind, FitParams) 
+  SUBROUTINE TorusFit(PMesh, PParams, BCind, FitParams)
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: PMesh
+    TYPE(Mesh_t) :: PMesh
     TYPE(Valuelist_t), POINTER :: PParams
     INTEGER, OPTIONAL :: BCind
     REAL(KIND=dp), OPTIONAL :: FitParams(:)
@@ -669,7 +692,8 @@ CONTAINS
     IF(Found ) THEN
       Normal(1:3) = pArray(1:3,1)
     ELSE      
-      CALL ComputeEntityInertiaNormal(PMesh, Center, Normal, TargetBCs = EntityInds )
+      CALL ComputeEntityInertiaNormal(PMesh, Center, Normal, TargetBCs = EntityInds, &
+          ConsistentNormal = ListGetLogical(PParams,'Consistent Inertia Normal', Found))
       rArray(1:3,1) = Normal
       CALL ListAddConstRealArray( PParams,'Torus Normal',3,1,rArray)
     END IF
@@ -677,10 +701,12 @@ CONTAINS
     Rmajor = ListGetConstReal( PParams,'Torus Radius',UnfoundFatal=.TRUE.)
     Rminor = ListGetConstReal( PParams,'Torus Minor Radius',UnfoundFatal=.TRUE.)    
 
-    FitParams(1:3) = Center
-    FitParams(4:6) = Normal
-    FitParams(7) = Rmajor
-    FitParams(8) = Rminor
+    IF( PRESENT( FitParams ) ) THEN
+      FitParams(1:3) = Center
+      FitParams(4:6) = Normal
+      FitParams(7) = Rmajor
+      FitParams(8) = Rminor
+    END IF
 
     DEALLOCATE(EntityInds)
     
@@ -689,8 +715,8 @@ CONTAINS
   
   ! Code for fitting a sphere. Not yet used.
   !-------------------------------------------------------------------------
-  SUBROUTINE SphereFit(Mesh, Params, BCind, FitParams ) 
-    TYPE(Mesh_t), POINTER :: Mesh
+  SUBROUTINE SphereFit(Mesh, Params, BCind, FitParams )
+    TYPE(Mesh_t) :: Mesh
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, OPTIONAL :: BCind
     REAL(KIND=dp), OPTIONAL :: FitParams(:)
@@ -789,7 +815,7 @@ CONTAINS
     !------------------------------------------------------------------------
     SUBROUTINE SphereFitfun(n,x,y,z,xc,yc,zc,R)
       INTEGER :: n
-      REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+      REAL(KIND=dp) :: x(:),y(:),z(:)
       REAL(KIND=dp) :: xc,yc,zc,R
       
       REAL(KIND=dp) :: Sx,Sy,Sz,Sxx,Syy,Szz,Sxy,Sxz,Syz,&
@@ -817,7 +843,8 @@ CONTAINS
         Szzz = ParallelReduction(Szzz); Sxyy = ParallelReduction(Sxyy);
         Sxzz = ParallelReduction(Sxzz); Sxxy = ParallelReduction(Sxxy);
         Sxxz = ParallelReduction(Sxxz); Syyz = ParallelReduction(Syyz);
-        Syzz = ParallelReduction(Syzz);       
+        Syzz = ParallelReduction(Syzz);
+        N = NINT( ParallelReduction( REAL(N, dp) ) )
       END IF
            
       A1 = Sxx +Syy +Szz;

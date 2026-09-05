@@ -74,7 +74,7 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), TARGET :: Mesh
     INTEGER :: This, Trgt
-    TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     LOGICAL :: Success
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,n1,n2,e1,e2,f1,f2,k1,k2,ind,Constraint,DIM,ii,jj,kk
@@ -414,7 +414,7 @@ CONTAINS
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
 
         ELSE IF( ElemCode == 409 ) THEN
-          SplitSizes(1:n) = [ 4,4,4,4 ]
+          SplitSizes(1:nSplit) = [ 4,4,4,4 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
@@ -441,7 +441,7 @@ CONTAINS
           PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, 4 )
           
         ELSE IF( ElemCode == 306 ) THEN
-          SplitSizes(1:n) = [ 3,3,3,3 ]
+          SplitSizes(1:nSplit) = [ 3,3,3,3 ]
           DO ii=1,nSplit
             jj = ind-nSplit+ii
             m = SplitSizes(ii)
@@ -457,7 +457,7 @@ CONTAINS
               SplitMap(1:m) = [ 4, 5, 6 ]
             END SELECT
 
-            CALL AllocateVector(PMesh % Elements(j) % NodeIndexes, m )
+            CALL AllocateVector(PMesh % Elements(jj) % NodeIndexes, m )
             PMesh % Elements(jj) % NodeIndexes(1:m) = &
                 Element % NodeIndexes(SplitMap(1:m))
             PMesh % Elements(jj) % TYPE => GetElementType(101*m)
@@ -674,7 +674,7 @@ CONTAINS
 
         IF (BPerm2(i)>0) THEN
           k2 = k2 + 1
-          BMesh1 % InvPerm(k2 + l + e2) =  j + Mesh % NumberOfEdges + i
+          BMesh2 % InvPerm(k2 + l + e2) =  j + Mesh % NumberOfEdges + i
         END IF
       END DO
         
@@ -728,9 +728,9 @@ CONTAINS
 !> vectors of the first element. Also check that all other elements are
 !> aligned with the first one. Only then is it possible to determine the angle.
 !------------------------------------------------------------------------------
-  SUBROUTINE CheckInterfaceMeshAngle(BMesh1, BMesh2, Angles, GotAngles) 
+  SUBROUTINE CheckInterfaceMeshAngle(BMesh1, BMesh2, Angles, GotAngles)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     REAL(KIND=dp) :: Angles(3)
     LOGICAL :: GotAngles
     !---------------------------------------------------------------------------
@@ -839,7 +839,7 @@ CONTAINS
 !---------------------------------------------------------------------------
   SUBROUTINE OverlayIntefaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t) :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     LOGICAL :: GotIt, GotRotate
@@ -1068,7 +1068,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE PreRotationalProjector(BMesh1, BMesh2, MirrorNode )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t) :: BMesh1, BMesh2
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     !--------------------------------------------------------------------------
     LOGICAL :: AntiPeriodic
@@ -1169,13 +1169,13 @@ CONTAINS
       NodePerm, InvPerm, InvPermM, SumArea ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
-    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Element_t) :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
     LOGICAL :: pElemBasis, Biorthogonal, DualMaster, DualLCoeff
     INTEGER :: NoGaussPoints
     TYPE(Matrix_t) :: Projector
     REAL(KIND=dp) :: NodeScale, SumArea
-    INTEGER, POINTER :: NodePerm(:), InvPerm(:), InvPermM(:)
+    INTEGER :: NodePerm(:), InvPerm(:), InvPermM(:)
     !----------------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: ElementP, ElementLin
@@ -1212,7 +1212,7 @@ CONTAINS
       
     nM = ElementM % TYPE % NumberOfNodes
     neM = ElementM % TYPE % ElementCode / 100      
-    ElemCodeM = Element % TYPE % ElementCode 
+    ElemCodeM = ElementM % TYPE % ElementCode
     LinCodeM = 101 * neM
     IF( pElemBasis ) THEN
       ndM = mGetElementDOFs(pIndexesM,ElementM,notDG=.TRUE.)
@@ -1388,7 +1388,7 @@ CONTAINS
       Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, InvPerm, InvPermM, SumArea ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
-    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Element_t) :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
     INTEGER :: sgn0
     LOGICAL :: pElemBasis, Biorthogonal, CreateDual, DualMaster, DualLCoeff
@@ -1397,7 +1397,7 @@ CONTAINS
     REAL(KIND=dp) :: NodeCoeff, ArcCoeff, NodeScale, SumArea
     INTEGER :: NodePerm(:)
     INTEGER, ALLOCATABLE :: DualNodePerm(:)
-    INTEGER, POINTER :: InvPerm(:), InvPermM(:)
+    INTEGER :: InvPerm(:), InvPermM(:)
     !----------------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IPT
     INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip,Linds(20)
@@ -1533,7 +1533,7 @@ CONTAINS
           IF(i<=nM) ii=InvPermM(ii)
           Linds(i) = ii
         END DO
-        LVals(1:nd) = -sgn0 * NodeScale * BasisM(1:ndM) * val 
+        LVals(1:ndM) = -sgn0 * NodeScale * BasisM(1:ndM) * val
         CALL List_AddMatrixRow(Projector % ListMatrix,nrow,ndM,Linds,Lvals,KeepOrder=BiOrthogonal)
         
         IF(Biorthogonal) THEN
@@ -1558,7 +1558,7 @@ CONTAINS
           Lvals(1:nM) = sgn0 * BasisM(1:nM) * val
           CALL List_AddMatrixRow(DualProjector % ListMatrix,nrow,nM,Linds,Lvals)
 
-          Linds(1:n) = InvPerm(IndexesM(1:nM))
+          Linds(1:n) = InvPerm(Indexes(1:n))
           Lvals(1:n) = -NodeScale * Basis(1:n) * val
           CALL List_AddMatrixRow(DualProjector % ListMatrix,nrow,n,Linds,Lvals)
         END DO
@@ -1590,7 +1590,7 @@ CONTAINS
      NodePerm, InvPerm, InvPermM, SumArea, BC ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
-    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Element_t) :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
     INTEGER :: sgn0
     LOGICAL :: pElemBasis
@@ -1599,7 +1599,7 @@ CONTAINS
     REAL(KIND=dp) :: ArcCoeff, NodeScale, SumArea
     INTEGER :: NodePerm(:)
     INTEGER, ALLOCATABLE :: DualNodePerm(:)
-    INTEGER, POINTER :: InvPerm(:), InvPermM(:)
+    INTEGER :: InvPerm(:), InvPermM(:)
     TYPE(ValueList_t), POINTER :: BC
     !----------------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IPT
@@ -1810,7 +1810,7 @@ CONTAINS
           IF(i<=nM) ii = InvPermM(ii)
 
           LCols(i) = ii
-          LVals(i) = sgns(1) * SUM(dBasisdxM(Ind(j),:)*NrmM) * BasisM(i) &
+          LVals(i) = sgns(1) * SUM(dBasisdxM(IndM(j),:)*NrmM) * BasisM(i) &
               + sgns(2) * SUM(dBasisdxM(IndM(i),:)*NrmM) * BasisM(j) &
               + BasisM(i) * BasisM(j) / EsizeM / Gamma 
         END DO
@@ -1820,7 +1820,7 @@ CONTAINS
           IF(i<=n) ii = InvPerm(ii)
 
           LCols(ndM+i) = ii
-          LVals(ndM+i) = -NodeScale * ( sgns(3) * SUM(dBasisdxM(Ind(j),:)*NrmM) * Basis(i) &
+          LVals(ndM+i) = -NodeScale * ( sgns(3) * SUM(dBasisdxM(IndM(j),:)*NrmM) * Basis(i) &
               + sgns(4) * SUM(dBasisdx(Ind(i),:)*Nrm) * BasisM(j) &
               + Basis(i) * BasisM(j) / EsizeM / Gamma )
         END DO        
@@ -1844,7 +1844,7 @@ CONTAINS
   !---------------------------------------------------------------------------
    FUNCTION NormalProjector(BMesh2, BMesh1, BC) RESULT ( Projector )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -2631,7 +2631,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -2660,7 +2660,7 @@ CONTAINS
       CALL Info(Caller,'Number of edge intersections: '&
           //I2S(EdgeHits),Level=10)
       CALL Info(Caller,'Number of corners inside element: '&
-          //I2S(EdgeHits),Level=10)
+          //I2S(CornerHits),Level=10)
 
       CALL Info(Caller,'Number of initial corners: '&
           //I2S(InitialHits),Level=10)
@@ -3087,7 +3087,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -3140,7 +3140,7 @@ CONTAINS
        UseQuadrantTree, Repeating, AntiRepeating ) &
       RESULT ( Projector )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -3205,7 +3205,7 @@ CONTAINS
   !---------------------------------------------------------------------------
    FUNCTION NodalProjectorDiscont( Mesh, bc ) RESULT ( Projector )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     INTEGER :: bc
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -3285,7 +3285,7 @@ CONTAINS
     !---------------------------------------------------------------------------
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t) :: BMesh1, BMesh2
     LOGICAL :: DoNodes, DoEdges
     LOGICAL :: Repeating, AntiRepeating, FullCircle, NotAllQuads, NotAllQuads2
     REAL(KIND=dp) :: Radius, NodeScale, EdgeScale
@@ -4717,16 +4717,16 @@ CONTAINS
           
           IF(DoNodes .AND. .NOT. pElemBasis) ndM = nM
 
-          ElemCodeM = Element % TYPE % ElementCode 
+          ElemCodeM = ElementM % TYPE % ElementCode
           LinCodeM = 101 * neM
-            
+
           IF( DebugElem ) THEN
             PRINT *,'Candidate Elem:',indM,nM,NeM, ElemCodeM,LinCodeM
           END IF
  
           IF( HaveMaxDistance ) THEN
             zminm = MINVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:neM)) )
-            zmaxm = MINVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:neM)) )
+            zmaxm = MAXVAL( BMesh2 % Nodes % z(ElementM % NodeIndexes(1:neM)) )
             IF( zmaxm < zmin - MaxDistance ) CYCLE
             IF( zminm > zmax + MaxDistance ) CYCLE
           END IF
@@ -4796,7 +4796,7 @@ CONTAINS
               END DO
               IF( CenterJM > 0 ) THEN
                 alphaM(CenterJM) = 0.0_dp
-                alphaM(CenterJM) = SUM( AlphaM(1:ne) ) / ( ne - 1 ) 
+                alphaM(CenterJM) = SUM( AlphaM(1:neM) ) / ( neM - 1 )
               END IF
               aminm = MINVAL( AlphaM(1:neM) )
               amaxm = MAXVAL( AlphaM(1:neM) )                        
@@ -5465,7 +5465,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -5512,7 +5512,7 @@ CONTAINS
       CALL Info(Caller,'Number of edge intersections: '&
           //I2S(EdgeHits),Level=10)
       CALL Info(Caller,'Number of corners inside element: '&
-          //I2S(EdgeHits),Level=10)
+          //I2S(CornerHits),Level=10)
 
       CALL Info(Caller,'Number of initial corners: '&
           //I2S(InitialHits),Level=10)
@@ -6611,7 +6611,7 @@ CONTAINS
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
           MaxErr = Err
-          MaxErrInd = Err
+          MaxErrInd = ind
         END IF
         IF( Err < MinErr ) THEN
           MinErr = Err
@@ -6656,7 +6656,7 @@ CONTAINS
 
   SUBROUTINE MarkHaloNodes( Mesh, HaloNode, FoundHaloNodes )
 
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, POINTER :: HaloNode(:)
     LOGICAL :: FoundHaloNodes
 
@@ -6727,7 +6727,7 @@ CONTAINS
 !---------------------------------------------------------------------------
   FUNCTION WeightedProjectorDiscont(Mesh, bc ) RESULT ( Projector )
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: bc
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
@@ -7272,7 +7272,7 @@ CONTAINS
   SUBROUTINE RotationalInterfaceMeshes(BMesh1, BMesh2, BParams, Cylindrical, &
       Radius, FullCircle )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     REAL(KIND=dp) :: Radius
     LOGICAL :: FullCircle, Cylindrical
@@ -7534,7 +7534,7 @@ CONTAINS
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
     END IF
 
-    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh2:',err1
+    WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius for Mesh2:',err2
     IF( err2 > eps_rad ) THEN
       CALL Info('RotationalInterfaceMeshes',Message,Level=3)    
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
@@ -7630,7 +7630,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE AxialInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
@@ -7788,8 +7788,8 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE RadialInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
-    TYPE(Valuelist_t), POINTER :: BParams
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
+    TYPE(Valuelist_t) :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3), x(3), r, phi, z, &
@@ -7899,7 +7899,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE FlatInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Bmesh
@@ -7995,7 +7995,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE PlaneInterfaceMeshes(BMesh1, BMesh2, BParams )
     !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Bmesh
@@ -8134,7 +8134,8 @@ CONTAINS
       END IF
     END DO
 
-    Bmesh % MeshDim = 2
+    BMesh1 % MeshDim = 2
+    BMesh2 % MeshDim = 2
 
   END SUBROUTINE PlaneInterfaceMeshes
   !------------------------------------------------------------------------------
@@ -8146,7 +8147,7 @@ CONTAINS
   !---------------------------------------------------------------------------
   SUBROUTINE MapInterfaceCoordinate(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Mesh_t), TARGET :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
     LOGICAL :: Found
@@ -8254,9 +8255,9 @@ CONTAINS
           NodalJump ) &
          RESULT ( Projector )
         USE Types
-        TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+        TYPE(Mesh_t) :: BMesh1, BMesh2
         REAL(KIND=dp) :: PeriodicScale
-        INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
+        INTEGER :: InvPerm1(:), InvPerm2(:)
         LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
         TYPE(Matrix_t), POINTER :: Projector
         LOGICAL :: NodalJump
@@ -9429,7 +9430,7 @@ CONTAINS
   !---------------------------------------------------------------------------------
   SUBROUTINE ConformingEdgePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic, &
       GradientVersion)
-    TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
+    TYPE(Mesh_t) :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic
@@ -9599,7 +9600,7 @@ CONTAINS
       IF(dim==3) THEN
         zm1 = EdgeMZ(1,em)
         zm2 = EdgeMZ(2,em)
-        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) + (z1-z1)*(zm1-zm2)
+        coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) + (z1-z2)*(zm1-zm2)
       ELSE
         coordprod = (x1-x2)*(xm1-xm2) + (y1-y2)*(ym1-ym2) 
       END IF
@@ -9657,10 +9658,10 @@ CONTAINS
     
     ! Create edge centers for the mapping routines.
     !------------------------------------------------------------------------------
-    SUBROUTINE CreateEdgeCenters( Mesh, EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY, EdgeZ ) 
+    SUBROUTINE CreateEdgeCenters( Mesh, EdgeMesh, noedges, EdgeInds, EdgeX, EdgeY, EdgeZ )
 
-      TYPE(Mesh_t), POINTER :: Mesh
-      TYPE(Mesh_t), POINTER :: EdgeMesh
+      TYPE(Mesh_t) :: Mesh
+      TYPE(Mesh_t) :: EdgeMesh
       INTEGER :: noedges
       INTEGER, ALLOCATABLE :: EdgeInds(:)
       REAL(KIND=dp), ALLOCATABLE :: EdgeX(:,:), EdgeY(:,:), EdgeZ(:,:)
@@ -9787,7 +9788,7 @@ CONTAINS
     nofaces = BMesh1 % NumberOfBulkElements
     nofacesm = BMesh2 % NumberOfBulkElements
 
-    IF (nofaces == 0 .OR. nofaces == 0) RETURN
+    IF (nofaces == 0 .OR. nofacesm == 0) RETURN
 
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
@@ -10117,7 +10118,7 @@ CONTAINS
   ! Create a permutation to eliminate nodal DOFs in a conforming case.
   !----------------------------------------------------------------------
   SUBROUTINE ConformingNodePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
-    TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
+    TYPE(Mesh_t) :: Mesh, BMesh1, BMesh2
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER, OPTIONAL :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 

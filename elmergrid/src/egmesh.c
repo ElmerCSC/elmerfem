@@ -1877,7 +1877,7 @@ int CreatePoints(struct CellType *cell,struct FemType *data,
 		 struct BoundaryType *bound,
 		 int param1,int param2,int pointmode,int pointtype,int info)
 {
-  int size,i,no,corner,times,elem,node;
+  int size,i,no,corner,times,elem=0,node;
 
   bound->created = FALSE;
   bound->nosides = 0;    
@@ -2926,7 +2926,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 		int nooverlap, int info)
 /* Unites two meshes for one larger mesh */
 {
-  int i,j,k;
+  int i,j,k=0;
   int noelements,noknots,nonodes,maxnodes;
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
@@ -7060,7 +7060,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 {
   int i,j,k,l,sideelemtype,sideelemtype2,elemind,elemind2,sideelem,sameelem;
   int sideind[MAXNODESD1],sideind2[MAXNODESD1],elemsides,side,hit,same,minelemtype;
-  int sidenodes,sidenodes2,maxelemtype,elemtype,elemdim,sideelements,material;
+  int sidenodes,sidenodes2=0,maxelemtype,elemtype,elemdim,sideelements,material;
   int *moveelement=NULL,*parentorder=NULL,*possible=NULL,**invtopo=NULL;
   int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim,minelemdim,maxelemdim;
   int debug,unmoved,removed,elemhits,loopdim,lowdimbulk;
@@ -8147,7 +8147,7 @@ int CreateBoundaryLayer(struct FemType *data,struct BoundaryType *bound,
 /* Create Boundary layers that may be used to solve accurately fluid
    flow problems and similar equations. */
 {
-  int i,j,k,l,m,n,i2,i3,nonodes,maxbc,newbc;
+  int i,j,k,l,m,n,i2,i3,nonodes,maxbc,newbc=0;
   int noknots,noelements,elemindx,nodeindx,elemtype;
   int oldnoknots,oldnoelements,maxelemtype,oldmaxnodes;
   int nonewnodes,nonewelements,dolayer,dim,order,midpoints;

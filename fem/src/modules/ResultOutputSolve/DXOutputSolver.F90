@@ -25,7 +25,7 @@
 !------------------------------------------------------------------------------
    MODULE DXFile
 
-      USE MeshUtils
+      USE MeshBasics
       USE ElementDescription
       
       IMPLICIT NONE
@@ -120,7 +120,10 @@
             END DO
             str(1:1) = CHAR(ICHAR(str(1:1))-ICHAR('a')+ICHAR('A'))
             
-            CALL WriteVariable( TRIM(str), Var, Model % NumberOfNodes, &
+            ! Only str(1:Var % NameLen) has been set, and the loop above has
+            ! turned every blank within it into '_'. TRIM(str) would therefore
+            ! not stop here but run on into the uninitialized tail of str.
+            CALL WriteVariable( str(1:Var % NameLen), Var, Model % NumberOfNodes, &
                 Var % DOFs, 0,  nTime, MasterUnit, Prefix )
           END SELECT
           Var => Var % Next
@@ -617,6 +620,7 @@
 CONTAINS
 
   SUBROUTINE WriteData( Prefix, Model, nTime )
+    USE GeneralUtils, ONLY : ComplexValues
     CHARACTER(*), INTENT(IN) :: Prefix
     TYPE(Model_t) :: Model
     INTEGER, INTENT(IN) :: nTime
@@ -625,6 +629,7 @@ CONTAINS
     INTEGER :: i, j, k
     LOGICAL :: EigAnal
     REAL(dp), POINTER :: OldValues(:)
+    COMPLEX(dp), POINTER :: cValues(:)
     CHARACTER(MAX_NAME_LEN) :: Dir
     
     Mesh => Model % Mesh
@@ -647,10 +652,8 @@ CONTAINS
           
           IF ( Model % Solvers(i) % Matrix % COMPLEX ) THEN
             ALLOCATE( Var % Values(2*SIZE(Var%EigenVectors,2)) )
-            FORALL ( k = 1:SIZE(Var % Values)/2 )
-              Var%Values(2*k-1) = REAL(Var%EigenVectors(j,k))
-              Var%Values(2*k) = AIMAG(Var%EigenVectors(j,k))
-            END FORALL
+            cValues => ComplexValues( Var % Values )
+            cValues(1:SIZE(cValues)) = Var % EigenVectors(j,1:SIZE(cValues))
           ELSE
             ALLOCATE( Var % Values(SIZE(Var % EigenVectors,2)) )
             Var % Values = Var % EigenVectors(j,:)

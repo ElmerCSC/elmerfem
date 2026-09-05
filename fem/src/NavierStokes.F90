@@ -1359,7 +1359,7 @@ MODULE NavierStokes
 
    INTEGER :: n,pn
 
-   TYPE(Element_t),POINTER  :: Element, Parent
+   TYPE(Element_t), TARGET :: Element, Parent
    TYPE(Nodes_t)    :: Nodes, ParentNodes
 
    LOGICAL :: NormalTangential

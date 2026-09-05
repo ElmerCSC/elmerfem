@@ -61,6 +61,8 @@ typedef struct {
 } pcg32_rng_t;
 
 static pcg32_rng_t **rbuf = NULL;
+static int rbufn = 0;     /* allocated length of rbuf */
+static int MPIRank = 0;   /* set by viewfactors3d before parallel region */
 
 static inline uint32_t pcg32_random(pcg32_rng_t *rng)
 {
@@ -70,6 +72,43 @@ static inline uint32_t pcg32_random(pcg32_rng_t *rng)
     uint32_t x = ((old >> 18u) ^ old) >> 27u;
     uint32_t r = old >> 59u;
     return (x >> r) | (x << ((-r) & 31));
+}
+
+/* Mix a work-item key into a well-separated RNG seed.  splitmix64 is the
+ * usual companion seeder for pcg/xoshiro: consecutive keys give unrelated
+ * streams, which is what we need since the keys here are consecutive
+ * element indices. */
+static inline uint64_t splitmix64( uint64_t x )
+{
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
+/* Reseed the calling thread's stream from a work-item key.  Binding the
+ * stream to the work item instead of to the thread is what makes the result
+ * independent of the thread count and of the dynamic schedule: with a
+ * per-thread stream, which rays a given element pair gets depends on which
+ * thread happened to pick that pair up and how far that thread's stream had
+ * already advanced. */
+void vrand_seed( uint64_t key )
+{
+#ifdef _OPENMP
+    int tid = omp_get_thread_num();
+#else
+    int tid = 0;
+#endif
+    rbuf[tid]->state = splitmix64( key + 0x853c49e6748fea9bULL );
+    rbuf[tid]->inc   = splitmix64( key + 0xda3e39cb94b95bdbULL );
+}
+
+/* Key for the element pair (a,b), symmetric so that the same physical pair
+ * draws the same rays whichever of the two rows drives the integration. */
+uint64_t vrand_pair_key( int a, int b, int n )
+{
+    int lo = (a<b) ? a : b, hi = (a<b) ? b : a;
+    return (uint64_t)lo * (uint64_t)n + (uint64_t)hi;
 }
 
 inline double vrand()
@@ -85,24 +124,39 @@ inline double vrand()
 void vrand_init()
 {
 #ifdef _OPENMP
-   int tid = omp_get_thread_num(), tidn = 1;
+   int tid = omp_get_thread_num(), tidn = omp_get_num_threads();
 #else
    int tid = 0, tidn = 1;
 #endif
 
+/* The whole initialization is serialized: it runs once per thread per parallel
+ * region, so the cost is irrelevant.  The first thread of a team to get here
+ * sizes rbuf for the entire team, so the remaining threads never resize it --
+ * no realloc can then race with a vrand() call from a thread that has already
+ * finished its own init. */
 #pragma omp critical
 {
-   if ( !rbuf ) {
-#ifdef _OPENMP
-     tidn = omp_get_num_threads();
-#endif
-     rbuf = malloc(sizeof(pcg32_rng_t*)*tidn);
-   }
-}
+   int i;
 
-   rbuf[tid] = malloc(sizeof(pcg32_rng_t));
-   rbuf[tid]->state = 0x853c49e6748fea9bULL+ tid;
-   rbuf[tid]->inc   = 0xda3e39cb94b95bdbULL + (tid << 1);
+   /* rbuf used to be sized once, from the team size of whichever parallel
+    * region got here first, and never resized.  vrand_init is also called
+    * from the serial radiator path (team size 1), so a later, wider region
+    * would index past the end of the table.  Grow it instead. */
+   if ( tidn > rbufn || tid >= rbufn ) {
+     int newn = ( tidn > tid+1 ) ? tidn : tid+1;
+     rbuf = realloc( rbuf, sizeof(pcg32_rng_t *) * newn );
+     for( i=rbufn; i<newn; i++ ) rbuf[i] = NULL;
+     rbufn = newn;
+   }
+
+   /* reuse the slot on a repeat call: reseeding is what matters, and
+    * mallocing a fresh one each time just leaked the previous stream */
+   if ( !rbuf[tid] ) rbuf[tid] = malloc(sizeof(pcg32_rng_t));
+
+   /* Include MPI rank in seed so different ranks generate independent streams */
+   rbuf[tid]->state = 0x853c49e6748fea9bULL + (uint64_t)MPIRank * 128 + tid;
+   rbuf[tid]->inc   = 0xda3e39cb94b95bdbULL + (((uint64_t)MPIRank * 128 + tid) << 1);
+}
 }
 /* end copilot code */
 
@@ -188,7 +242,18 @@ Compute viewfactors for elements of the model
 24 Aug 1995
 
 *******************************************************************************/
-static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int LineFlag, int N,double *Factors)
+/*
+ * iStart : global index of first source row assigned to this MPI rank (0 in serial)
+ * nLocal : number of source rows assigned to this rank (= N in serial)
+ * Factors: sized nLocal*N; row (i - iStart) stored at Factors[(i-iStart)*N + j]
+ *
+ * Cross-rank symmetry is not exploited: each rank computes its own rows fully
+ * (all j != i) without writing to rows owned by other ranks.  Within-rank
+ * symmetry (both i and j in [iStart, iStart+nLocal)) is preserved to halve
+ * within-block computation.
+ */
+static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int LineFlag,
+                                   int N, double *Factors, int iStart, int nLocal)
 {
     double T,s,F,Fmin=DBL_MAX,Fmax=-DBL_MAX,Favg=0.0,*RowSums,Fact,rx,ry,rz,nx,ny,nz,ct,realtime();
     int i,j,k,l,Imin,Imax,Ns;
@@ -214,13 +279,23 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
       vrand_init();
 
       #pragma omp for private(i,j,k,l,Fact) schedule(dynamic,10)
-      for( i=0; i<N; i++ )
+      for( i=iStart; i<iStart+nLocal; i++ )
       {
-         for( j=i; j<N; j++ ) Factors[i*N+j] = 0.0;
+         int li = i - iStart;   /* local (rank-relative) row index */
+
+         /* Zero only entries not pre-filled by within-block symmetry.
+          * Entries j in [iStart, i) are written when row j is processed
+          * (upper-triangle pass, symmetric fill) — do not zero them here.
+          *   j < iStart  : before our block, computed in lower-triangle loop
+          *   j >= i      : standard upper triangle, not yet computed        */
+         for( j=0;      j<iStart; j++ ) Factors[li*N+j] = 0.0;
+         for( j=i;      j<N;      j++ ) Factors[li*N+j] = 0.0;
          if ( lel[i].Area<1.0e-10 ) continue;
 
+         /* upper triangle: j > i — store own entry, also fill symmetric
+          * entry when j is within this rank's local block               */
          for( j=i+1; j<N; j++ )
-         { 
+         {
             if ( lel[j].Area<1.0e-10 ) continue;
 
             FreeLinks( &lel[i] );
@@ -229,10 +304,33 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
             lel[j].Flags |= GEOMETRY_FLAG_LEAF;
             lel[i].Flags |= GEOMETRY_FLAG_LEAF;
 
+            vrand_seed( vrand_pair_key(i,j,N) );
             (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
             Fact = ComputeViewFactorValue( &lel[i],0 );
-            Factors[i*N+j] = Fact / lel[i].Area;
-            Factors[j*N+i] = Fact / lel[j].Area;
+            Factors[li*N+j] = Fact / lel[i].Area;
+
+            /* fill F_ji only when row j is also owned by this rank */
+            if ( j >= iStart && j < iStart+nLocal )
+               Factors[(j-iStart)*N+i] = Fact / lel[j].Area;
+         }
+
+         /* lower triangle: j < i — only needed when j is NOT in our block
+          * (those entries were already filled by symmetry above)         */
+         for( j=0; j<i; j++ )
+         {
+            if ( j >= iStart && j < iStart+nLocal ) continue; /* done via symmetry */
+            if ( lel[j].Area<1.0e-10 ) continue;
+
+            FreeLinks( &lel[i] );
+            FreeLinks( &lel[j] );
+
+            lel[j].Flags |= GEOMETRY_FLAG_LEAF;
+            lel[i].Flags |= GEOMETRY_FLAG_LEAF;
+
+            vrand_seed( vrand_pair_key(i,j,N) );
+            (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
+            Fact = ComputeViewFactorValue( &lel[i],0 );
+            Factors[li*N+j] = Fact / lel[i].Area;
          }
 
          FreeChilds( lel[i].Left );
@@ -290,26 +388,74 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 
     k = 0;
     Ns = NofRadiators;
-    if ( NofRadiators==0 ) Ns = N;
+    if ( NofRadiators==0 ) Ns = nLocal;   /* only local rows */
     for(i=0; i<Ns; i++ )
     {
          s = 0.0;
-         for( j=0; j<N; j++ ) s += Factors[i*N+j];
+         for( j=0; j<N; j++ ) s += Factors[i*N+j];   /* Factors row i is local row i */
 
          if ( s < Fmin )
          {
             Fmin = s;
-            Imin = i+1;
+            Imin = iStart + i + 1;   /* report global row number */
          }
          if ( s > Fmax )
          {
             Fmax = s;
-            Imax = i+1;
+            Imax = iStart + i + 1;
          }
          Favg += s;
     }
-   fprintf( stdout, "surfs: %d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f, cput=%-4.2f\n", 
-                       N,Imin,Fmin,Imax,Fmax,Favg/Ns, realtime()-ct );
+   fprintf( stdout, "rank %d: surfs: %d/%d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f, cput=%-4.2f\n",
+                       MPIRank, nLocal, N, Imin,Fmin,Imax,Fmax,Favg/Ns, realtime()-ct );
+}
+
+
+/*
+ * Tell the user whether the closed form inner integral actually got used.
+ * A large miss count means patches are warped or carry non geometric normals,
+ * and those pairs silently kept the old quadrature.
+ */
+void ReportClosedForm()
+{
+   long hits,miss,tot;
+
+   if ( !ClosedFormInteg ) return;
+
+   ContourCountSum( &hits,&miss );
+   tot = hits + miss;
+   if ( tot == 0 ) return;
+
+   fprintf( stdout, "rank %d: closed form inner integral: %ld/%ld patch pairs "
+                    "(%.1f%%), %ld fell back to quadrature\n",
+                     MPIRank, hits, tot, 100.0*hits/tot, miss );
+}
+
+
+/*
+ * How much visibility work would the clipping path actually have to do?
+ * Bucket 0 is the prize: pairs with no candidate blocker at all, which need
+ * no shadow handling of any kind and can take the closed form directly.
+ */
+void ReportShaftCull()
+{
+   static const char *Label[SC_NBUCKET] =
+     { "none", "1-2", "3-4", "5-8", "9-16", ">16", "overflow",
+       "MISSED BLOCKER (cull bug)", "no shaft (face away)" };
+   long b[SC_NBUCKET], tot = 0;
+   int i;
+
+   if ( !ShaftStats ) return;
+
+   ShaftCountSum( b );
+   for( i=0; i<SC_NBUCKET; i++ ) if ( i != 7 ) tot += b[i];
+   if ( tot == 0 ) return;
+
+   fprintf( stdout, "rank %d: shaft cull over %ld resolved patch pairs:\n", MPIRank, tot );
+   for( i=0; i<SC_NBUCKET; i++ )
+      if ( b[i] )
+         fprintf( stdout, "rank %d:   candidate blockers %-8s %10ld  (%5.1f%%)\n",
+                    MPIRank, Label[i], b[i], 100.0*b[i]/tot );
 }
 
 
@@ -559,7 +705,8 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
 
 void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int RT_N0,
     int *RT_Topo0, double *RT_Data, int *RT_Perm, int *RT_Type, double *RT_Coord,
-      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine )
+      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine,
+        int ClosedForm, int ShaftStat, int Clip, int RayCull )
 {
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
@@ -568,6 +715,16 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
    RayEPS    = Reps; 
    FactorEPS = Feps; 
    Nrays     = Nr;
+
+   ClosedFormInteg = ClosedForm;
+   ContourCountInit();
+
+   ShaftStats = ShaftStat;
+   ShaftCountInit();
+
+   ClipShadows   = Clip;
+   ShaftRayCull  = RayCull;      /* -1: decide below, once the shadow mesh
+                                    size is known */
 
    InitShapeFunctions();
 
@@ -600,6 +757,37 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
    FillIPointArrays(NInteg2,NInteg3,NInteg4);
    InitGeometryTypes();
    InitVolumeBounds(2,NOFRayElements,RTElements);
+   ShaftInitBoxes(NOFRayElements,RTElements);
+
+   /*
+    * Should the rays of a pair be culled to that pair's shaft candidates?
+    *
+    * The cull replaces Nrays tree traversals by one shaft build per pair, so
+    * it pays when the traversals it saves cost more than the shaft does.  A
+    * traversal is not O(1): the tree is built over a surface, so a ray meets
+    * on the order of sqrt(NOFRayElements) cells on its way through, while
+    * the shaft costs the same whatever the mesh.  Hence the product below
+    * rather than a ray count alone -- a ray count alone gets it backwards on
+    * a small shadow mesh, where the traversal is nearly free.
+    *
+    * Calibrated on the two ends of that range at one thread, timing the view
+    * factor stage with the cull forced on and off:
+    *
+    *   shadow mesh   rays   Nrays*sqrt(N)   cull on / cull off
+    *     6 (box_in_box)   8       20            0.62x   (a real loss)
+    *     6               40       98            1.07x
+    *   536 (radiation3d)  1       23            0.78x   (a real loss)
+    *   536               4        93            1.16x
+    *   536               8       185            1.98x
+    *   536             100      2315            7.77x
+    *
+    * Both meshes break even near 70 despite being 89x apart in size, which
+    * is what the sqrt scaling buys.  Near the threshold it is a wash either
+    * way; well past it the win grows without bound, so a late switch costs
+    * little and an early one costs 40%.
+    */
+   if ( ShaftRayCull < 0 )
+      ShaftRayCull = ( Nrays*sqrt((double)NOFRayElements) >= 70.0 );
 }
 
 /* Fortran callable interface routines */
@@ -607,21 +795,43 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
 void radiatorfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0, double *RT_Data,
       int *RT_Perm, int *RT_Type, double *RT_Coord, int *NofRadiators, double *RadiatorCoords, int *LineFlag,
-        double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine )
+        double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine,
+          int *ClosedForm, int *ShaftStat, int *Clip, int *RayCull )
 {
+   /* Radiator factors: no MPI row decomposition (radiators typically few) */
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
-       *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
+       *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine, *ClosedForm, *ShaftStat, *Clip, *RayCull );
 
-   IntegrateFromGeometry(*NofRadiators,RadiatorCoords,*LineFlag,*N,Factors);
+   *RayCull = ShaftRayCull;     /* tell the caller how an automatic (-1) went */
+
+   IntegrateFromGeometry(*NofRadiators,RadiatorCoords,*LineFlag,*N,Factors,0,*NofRadiators);
+
+   ReportClosedForm();
+   ReportShaftCull();
 }
 
+/*
+ * MPI-aware entry point.
+ * iStart : 0-based global index of first source row on this rank
+ * nLocal : number of source rows on this rank
+ * mpiRank: MPI rank (for RNG seeding; 0 in serial)
+ * Factors: caller allocates nLocal*N doubles
+ */
 void viewfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0,
        double *RT_Data, int *RT_Perm, int *RT_Type, double *RT_Coord, double *Factors, double *Feps, double *Aeps,
-          double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int  *Combine )
+          double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int *Combine,
+          int *iStart, int *nLocal, int *mpiRank, int *ClosedForm, int *ShaftStat, int *Clip, int *RayCull )
 {
-   InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
-            *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
+   MPIRank = *mpiRank;
 
-   IntegrateFromGeometry(0,NULL,0,*N,Factors);
+   InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
+            *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine, *ClosedForm, *ShaftStat, *Clip, *RayCull );
+
+   *RayCull = ShaftRayCull;     /* tell the caller how an automatic (-1) went */
+
+   IntegrateFromGeometry(0,NULL,0,*N,Factors,*iStart,*nLocal);
+
+   ReportClosedForm();
+   ReportShaftCull();
 }

@@ -46,13 +46,47 @@ MODULE HydrostaticNSUtils
 
   INTEGER, POINTER, SAVE :: UpPointer(:), DownPointer(:)
 
+  ! Per-thread handle/cache storage for LocalBulkMatrix and EffectiveViscosityVec.
+  ! These used to be plain SAVE locals of those two routines, i.e. one shared copy
+  ! for every thread, while the routines are called per element from the threaded
+  ! bulk assembly loop. A ValueHandle_t is a mutable cache: ElementHandleList
+  ! writes Handle % ListId and Handle % List, and the accessors write
+  ! Handle % Element and the cached value, so with a shared handle one thread can
+  ! find "same list as last time" true because another thread had just cached its
+  ! own element, and read the wrong material's value. Silently wrong answers, and
+  ! only when more than one material is present, which is why it went unnoticed.
+  !
+  ! Deliberately NOT THREADPRIVATE (the Windows/GCC emutls bug inherits the
+  ! master's ALLOCATABLE/POINTER THREADPRIVATE data into the workers instead of
+  ! giving them independent copies). This is a plain module-level array indexed by
+  ! omp_get_thread_num()+1; each thread only ever touches its own slot. Slot 1 is
+  ! filled by the serial InitHandles=.TRUE. pass over element 1, and
+  ! HydrostaticNSSolver broadcasts slot 1 to the rest before the parallel region,
+  ! so every thread enters with identical resolved handle configuration. Same
+  ! arrangement as NSHandles_t in IncompressibleNSVec.
+  TYPE :: HydroNSHandles_t
+    TYPE(ValueHandle_t) :: Dens_h, Load_h(3)
+    TYPE(ValueHandle_t) :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
+        ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
+        ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
+        ViscTemp_h
+    REAL(KIND=dp) :: R = 8.314_dp, NewtonRelax = 0.0_dp
+    LOGICAL :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
+    LOGICAL :: SaveShear = .FALSE., SaveVisc = .FALSE., SaveWeight = .FALSE.
+    ! POINTERs get re-targeted and so cannot be ASSOCIATE names; they are copied
+    ! to and from plain local pointers in the routines below.
+    TYPE(Variable_t), POINTER :: ShearVar => NULL(), ViscVar => NULL(), WeightVar => NULL()
+    TYPE(Variable_t), POINTER :: HeightVar => NULL()
+  END TYPE HydroNSHandles_t
+  TYPE(HydroNSHandles_t), ALLOCATABLE :: HydroNSHandles(:)
+
 CONTAINS
 
   ! Compute effective viscosity. This is needed not only by the bulkassembly but also 
   ! by the postprocessing when estimating pressure.
   !----------------------------------------------------------------------------------
   FUNCTION EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-      InitHandles, ViscNewton, ViscDerVec, DetJVec ) RESULT ( EffViscVec ) 
+      InitHandles, ViscNewton, ViscDerVec, DetJVec, ViscWork ) RESULT ( EffViscVec ) 
 
     IMPLICIT NONE 
     
@@ -65,26 +99,24 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: ViscDerVec(:)
     REAL(KIND=dp), POINTER  :: EffViscVec(:)
     REAL(KIND=dp), OPTIONAL, ALLOCATABLE :: DetJVec(:)
+    ! ViscWork is supplied by the caller so that the vector this function returns a
+    ! pointer to is owned by the caller's frame: a local of a routine called inside
+    ! the parallel region, hence per-thread by construction and released on return.
+    ! It was POINTER+SAVE+THREADPRIVATE before; as a plain local pointer it leaked
+    ! ngp reals per call, and routing it through a module-level per-thread struct
+    ! ended up shared between threads.
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
 
-    INTEGER :: allocstat,i,j,k,dim,dofs,n
-    LOGICAL :: Found     
+    INTEGER :: allocstat,i,j,k,dim,dofs,n,tid
+    LOGICAL :: Found
     CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
-    TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
-        ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
-        ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
-        ViscTemp_h
-    REAL(KIND=dp) :: R, vgrad(2,3), NewtonRelax
+    REAL(KIND=dp) :: vgrad(2,3)
     REAL(KIND=dp) :: c1, c2, c3, c4, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
-    LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., DoNewton, GotRelax = .FALSE.
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
-    REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
-    TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar, WeightVar
-    LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
+    LOGICAL :: DoNewton
+    REAL(KIND=dp), ALLOCATABLE :: ss(:), s(:), ArrheniusFactorVec(:)
+    REAL(KIND=dp), POINTER :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:)
+    TYPE(Variable_t), POINTER :: ShearVar, ViscVar, WeightVar
     CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
-
-    SAVE NewtonRelax, R
-    
-    !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
 
     dim = 3
     dofs = 2
@@ -94,7 +126,47 @@ CONTAINS
       CALL Fatal(Caller,'Newton linearization requires "ViscDerVec"')
     END IF
     n = Element % Type % NumberOfNodes
-    
+
+    ! All handle and cache state lives in HydroNSHandles(tid); see
+    ! HydroNSHandles_t at module scope for why it may not be shared or
+    ! THREADPRIVATE.
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( Visc_h => HydroNSHandles(tid) % Visc_h, &
+        ViscModel_h => HydroNSHandles(tid) % ViscModel_h, &
+        ViscExp_h => HydroNSHandles(tid) % ViscExp_h, &
+        ViscCritical_h => HydroNSHandles(tid) % ViscCritical_h, &
+        ViscNominal_h => HydroNSHandles(tid) % ViscNominal_h, &
+        ViscDiff_h => HydroNSHandles(tid) % ViscDiff_h, &
+        ViscTrans_h => HydroNSHandles(tid) % ViscTrans_h, &
+        ViscYasuda_h => HydroNSHandles(tid) % ViscYasuda_h, &
+        ViscGlenExp_h => HydroNSHandles(tid) % ViscGlenExp_h, &
+        ViscGlenFactor_h => HydroNSHandles(tid) % ViscGlenFactor_h, &
+        ViscArrSet_h => HydroNSHandles(tid) % ViscArrSet_h, &
+        ViscArr_h => HydroNSHandles(tid) % ViscArr_h, &
+        ViscTLimit_h => HydroNSHandles(tid) % ViscTLimit_h, &
+        ViscRate1_h => HydroNSHandles(tid) % ViscRate1_h, &
+        ViscRate2_h => HydroNSHandles(tid) % ViscRate2_h, &
+        ViscEne1_h => HydroNSHandles(tid) % ViscEne1_h, &
+        ViscEne2_h => HydroNSHandles(tid) % ViscEne2_h, &
+        ViscTemp_h => HydroNSHandles(tid) % ViscTemp_h, &
+        R => HydroNSHandles(tid) % R, &
+        NewtonRelax => HydroNSHandles(tid) % NewtonRelax, &
+        ConstantVisc => HydroNSHandles(tid) % ConstantVisc, &
+        Visited => HydroNSHandles(tid) % Visited, &
+        GotRelax => HydroNSHandles(tid) % GotRelax, &
+        SaveShear => HydroNSHandles(tid) % SaveShear, &
+        SaveVisc => HydroNSHandles(tid) % SaveVisc, &
+        SaveWeight => HydroNSHandles(tid) % SaveWeight )
+
+    ! The cached field pointers cannot be ASSOCIATE names because the init block
+    ! below re-targets them; carry them in plain locals and keep the per-thread
+    ! slot in step.
+    ShearVar  => HydroNSHandles(tid) % ShearVar
+    ViscVar   => HydroNSHandles(tid) % ViscVar
+    WeightVar => HydroNSHandles(tid) % WeightVar
+
     IF(InitHandles ) THEN
       CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
 
@@ -205,6 +277,13 @@ CONTAINS
       END IF
 
       Visited = .TRUE.
+
+      ! Publish what the init pass resolved into this thread's slot. For the
+      ! serial element 1 pass that is slot 1, which the solver then broadcasts to
+      ! the other slots before the parallel loop.
+      HydroNSHandles(tid) % ShearVar  => ShearVar
+      HydroNSHandles(tid) % ViscVar   => ViscVar
+      HydroNSHandles(tid) % WeightVar => WeightVar
     END IF
 
     ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
@@ -225,17 +304,16 @@ CONTAINS
       RETURN      
     END IF
 
-    ! Deallocate too small storage if needed 
-    IF (ALLOCATED(ss)) THEN
-      IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ArrheniusFactorVec )
+    ALLOCATE(ss(ngp),s(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
+    IF( .NOT. ALLOCATED( ViscWork ) ) THEN
+      ALLOCATE( ViscWork(ngp) )
+    ELSE IF( SIZE( ViscWork ) < ngp ) THEN
+      DEALLOCATE( ViscWork )
+      ALLOCATE( ViscWork(ngp) )
     END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(ss)) THEN
-      ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ViscVec => ViscWork(1:ngp)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     ! For non-newtonian models compute the viscosity here
@@ -458,6 +536,8 @@ CONTAINS
       END DO
     END IF
 
+    END ASSOCIATE
+
   END FUNCTION EffectiveViscosityVec
 
   
@@ -484,29 +564,38 @@ CONTAINS
     REAL(KIND=dp), TARGET :: STIFF(ntot*2,ntot*2), FORCE(ntot*2)
     REAL(KIND=dp) :: NodalVelo(2,ntot),NodalHeight(ntot)
     REAL(KIND=dp) :: s, rho, crho
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
+    ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
+    REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
         rhoVec(:), loadAtIpVec(:,:), ForcePart(:), GradVec(:,:,:), GradHeight(:,:), &
-        weight_1(:), weight_2(:), weight_4(:), tauVec(:)        
+        weight_1(:), weight_2(:), weight_4(:), tauVec(:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
     REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
     REAL(kind=dp) :: stifford(ntot,ntot,2,2), jacord(ntot,ntot,2,2), &
         JAC(ntot*2,ntot*2 ), SOL(ntot*2)
 
-    INTEGER :: t, i, j, k, p, q, ngp, allocstat, dofs
+    INTEGER :: t, i, j, k, p, q, ngp, allocstat, dofs, tid
+    ! Never assigned anywhere; LinearForms_UdotV declares the matching dummy but
+    ! does not use it, so this is dead weight rather than a bug. SAVE keeps every
+    ! thread reading the same zero.
     INTEGER, SAVE :: elemdim
     CHARACTER(LEN=MAX_NAME_LEN):: str
 
-    TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
-    TYPE(Variable_t), POINTER, SAVE :: HeightVar 
+    TYPE(Variable_t), POINTER :: HeightVar
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE, weight_1, weight_2, weight_4
-!$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec, ElemDim )
-!$OMP THREADPRIVATE(ForcePart, weight_1, weight_2, weight_4)
-!$OMP THREADPRIVATE(tauVec, GradVec, GradHeight, Nodes)
-
-    SAVE Nodes
 !------------------------------------------------------------------------------
+
+    ! Dens_h/Load_h and HeightVar live in this thread's slot; see
+    ! HydroNSHandles_t at module scope.
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( Dens_h => HydroNSHandles(tid) % Dens_h, &
+        Load_h => HydroNSHandles(tid) % Load_h )
+
+    HeightVar => HydroNSHandles(tid) % HeightVar
 
     CALL GetElementNodesVec( Nodes )
     STIFF = 0._dp
@@ -530,24 +619,13 @@ CONTAINS
     ! Storage size depending ngp
     !-------------------------------------------------------------------------------
     
-    ! Deallocate storage if needed 
-    IF (ALLOCATED(BasisVec)) THEN
-      IF (SIZE(BasisVec,1) < ngp .OR. SIZE(BasisVec,2) < ntot) &
-          DEALLOCATE(BasisVec,dBasisdxVec, DetJVec, rhoVec, &
-          LoadAtIpVec, weight_1, weight_2, weight_4, tauVec, &
-          ForcePart, GradVec, GradHeight)
-    END IF
-    
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(BasisVec)) THEN
-      ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
-          rhoVec(ngp), LoadAtIpVec(ngp,2), &
-          weight_1(ngp), weight_2(ngp), weight_4(ngp), tauVec(ngp), &
-          ForcePart(ntot), GradVec(ngp,3,3), GradHeight(ngp,dim), &
-          STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('HydrostaticNSSolver::LocalBulkMatrix','Local storage allocation failed')
-      END IF
+    ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
+        rhoVec(ngp), LoadAtIpVec(ngp,2), &
+        weight_1(ngp), weight_2(ngp), weight_4(ngp), tauVec(ngp), &
+        ForcePart(ntot), GradVec(ngp,3,3), GradHeight(ngp,dim), &
+        STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('HydrostaticNSSolver::LocalBulkMatrix','Local storage allocation failed')
     END IF
 
     IF (Newton) THEN
@@ -561,9 +639,12 @@ CONTAINS
       CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')
       CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3')
 
+      ! Runs only on the serial element 1 pass, so the static hidden length of
+      ! ListGetString's ALLOCATABLE deferred-length result is not contended here.
       str = ListGetString( CurrentModel % Solver % Values,'Height Variable Name',Found )
-      IF(.NOT. Found) str = 'height'            
-      HeightVar => VariableGet( CurrentModel % Mesh % Variables, str) 
+      IF(.NOT. Found) str = 'height'
+      HeightVar => VariableGet( CurrentModel % Mesh % Variables, str)
+      HydroNSHandles(tid) % HeightVar => HeightVar
     END IF
     
     ! Vectorized basis functions
@@ -588,7 +669,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-        InitHandles, Newton, muDerVec0, DetJVec )
+        InitHandles, Newton, muDerVec0, DetJVec, ViscWork )
     
     ! Rho 
     rhovec(1:ngp) = rho
@@ -713,6 +794,8 @@ CONTAINS
     
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
 
+    END ASSOCIATE
+
   END SUBROUTINE LocalBulkMatrix
 !------------------------------------------------------------------------------
 
@@ -740,18 +823,17 @@ CONTAINS
     REAL(KIND=dp) :: ExtPressure, s, detJ, wut0, wexp, wcoeff, ut
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), &
         Velo(3), TanFrictionCoeff, DummyVals(1)
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, IntPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         WeertmanCoeff_h, WeertmanExp_h, FrictionUt0_h, FrictionCoeff_h
     TYPE(VariableHandle_t), SAVE :: Velo_v
     TYPE(Variable_t), POINTER, SAVE :: NrmSol, HeightVar
-    TYPE(ValueList_t), POINTER :: BC    
+    TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp) :: TanFder,JAC(nd*2,nd*2),SOL(nd*2),NodalSol(2,nd),NewtonRelax
     TYPE(Variable_t), POINTER, SAVE :: SlipCoeffVar, SlipSpeedVar, SlipWeightVar
     LOGICAL, SAVE :: SaveSlipSpeed, SaveSlipCoeff, SaveSlipWeight
 
-    
-    SAVE Basis, dBasisdx, NewtonRelax, GotRelax
+    SAVE NewtonRelax, GotRelax
     
     !------------------------------------------------------------------------------
 
@@ -806,15 +888,7 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    IF( ALLOCATED( Basis ) ) THEN
-      IF( SIZE( Basis ) < nd ) THEN
-        DEALLOCATE( Basis, dBasisdx ) 
-      END IF
-    END IF
-
-    IF( .NOT. ALLOCATED( Basis ) ) THEN
-      ALLOCATE( Basis(nd), dBasisdx(nd,3) )
-    END IF
+    ALLOCATE( Basis(nd), dBasisdx(nd,3) )
 
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
@@ -1027,14 +1101,12 @@ CONTAINS
     INTEGER :: NodalPerm(ntot)
     REAL(KIND=dp) :: NodalVelo(2,ntot), duz_elem(ntot), wuz_elem(ntot), dp_elem(ntot), ub_elem(ntot), &
         vgrad(2), w, velo(2), zgrad(2)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
+    ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
     INTEGER :: t, i, j, k, ngp, allocstat
 
-
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec
-!$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, Nodes)
-
-    SAVE Nodes
 !------------------------------------------------------------------------------
 
     CALL GetElementNodesVec( Nodes )
@@ -1049,18 +1121,9 @@ CONTAINS
 
     DoVisc = PRESENT(dpr)
     
-    ! Deallocate storage if needed 
-    IF (ALLOCATED(BasisVec)) THEN
-      IF (SIZE(BasisVec,1) < ngp .OR. SIZE(BasisVec,2) < ntot) &
-          DEALLOCATE(BasisVec,dBasisdxVec, DetJVec )
-    END IF
-    
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(BasisVec)) THEN
-      ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('HydrostaticNSSolver::LocalBulkMatrix','Local storage allocation failed')
-      END IF
+    ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('HydrostaticNSSolver::LocalDuz','Local storage allocation failed')
     END IF
     
     ! Vectorized basis functions
@@ -1079,7 +1142,7 @@ CONTAINS
     IF(DoVisc) THEN
       dp_elem = 0.0_dp
       muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-          InitHandles = FirstElem )
+          InitHandles = FirstElem, ViscWork = ViscWork )
     END IF
       
     duz_elem = 0.0_dp
@@ -1227,7 +1290,7 @@ CONTAINS
       IF(Found) THEN
         g = ABS(gWork(SIZE(gWork,1),1))
       ELSE
-        CALL Warn('HydrostaticNSVec','"Gravity" not found in simulation section, setting to 1')
+        CALL Warn('HydrostaticNSVec','"Gravity" not found in Constants section, setting to 1')
       END IF      
       PressureCorr = ListGetLogical( Params,'Pressure Correction',Found ) 
     END IF
@@ -1531,7 +1594,7 @@ SUBROUTINE HydrostaticNSSolver_init(Model, Solver, dt, Transient)
     CALL Fatal( Caller,'Use >Surface Traction 1< instead of >Pressure 1<')
   END IF
   IF( ListCheckPresentAnyBC( Model, 'Pressure 2' ) ) THEN
-    CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 2<')
+    CALL Fatal( Caller,'Use >Surface Traction 2< instead of >Pressure 2<')
   END IF
   IF( ListCheckPresentAnyBC( Model, 'Pressure 3' ) ) THEN
     CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 3<')
@@ -1579,7 +1642,7 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   USE DefUtils
   USE HydrostaticNSUtils
   USE MainUtils
-  USE MeshUtils, ONLY : DetectExtrudedStructure
+  USE MeshTransform, ONLY : DetectExtrudedStructure
   
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -1596,7 +1659,7 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   TYPE(Solver_t), POINTER :: pSolver 
   TYPE(GaussIntegrationPoints_t) :: IP
   INTEGER :: Element_id
-  INTEGER :: i, n, nb, nd, dim, Active, maxiter, iter
+  INTEGER :: i, n, nb, nd, dim, Active, maxiter, iter, nthr
   REAL(KIND=dp) :: Norm
   LOGICAL :: Found, Converged
   LOGICAL :: SpecificLoad, InitBCHandles
@@ -1627,7 +1690,14 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   END IF
 
   CALL DefaultStart()
-  
+
+  ! Per-thread ValueHandle_t/cache storage for LocalBulkMatrix and
+  ! EffectiveViscosityVec (see HydroNSHandles_t at module scope). Not reached
+  ! concurrently, so no locking needed here.
+  nthr = 1
+  !$ nthr = OMP_GET_MAX_THREADS()
+  IF (.NOT. ALLOCATED(HydroNSHandles)) ALLOCATE(HydroNSHandles(nthr))
+
   !-----------------------------------------------------------------------------
   ! Output the number of integration points as information.
   ! This in not fully informative if several element types are present.
@@ -1675,6 +1745,13 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, &
           SpecificLoad, LinearAssembly, nb, Newton, .TRUE.)
     END DO
+
+    ! The serial call above (element 1) resolved HydroNSHandles(1) -- the material
+    ! and body force keyword lookups, the height variable, and the
+    ! ShearVar/ViscVar/WeightVar zeroing. Broadcast that resolved state to every
+    ! other thread's slot before the parallel loop, where each thread calls
+    ! LocalBulkMatrix with InitHandles=.FALSE. and only touches its own slot.
+    IF (nthr > 1) HydroNSHandles(2:nthr) = HydroNSHandles(1)
 
     !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, &
     !$OMP                 dt, LinearAssembly, Newton ) &

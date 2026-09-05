@@ -1,0 +1,137 @@
+! Recreates a 3D isosurface on every timestep, in parallel.
+!
+! Two things are exercised that no other isosurface test covers:
+!
+! 1) The solver is called repeatedly and has to recreate the surface. The
+!    temporal simplex mesh it builds for that must not leave anything of its
+!    own behind in the parent mesh.
+!
+! 2) The isosurface value is chosen so high that it exists only in the
+!    partitions near the hottest region. The partitions the surface misses
+!    take an early exit, and they must still take part in the collective
+!    reduction of the mesh sizes, or the run deadlocks.
+!
+! 3) The isosurface mesh is saved. Every partition has to create the mesh even
+!    when the surface misses it, empty in that case, because the output stage
+!    walks Model % Meshes and barriers once per mesh. Saving it also checks
+!    that the elements claim their partition, as the savers skip anything that
+!    looks like a halo element. The STL file is gathered from all partitions,
+!    which is collective too, and at the first timestep two of the partitions
+!    hand it an empty mesh.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Extruded Mesh Levels = 5
+
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Transient"
+  Timestepping Method = "BDF"
+  BDF Order = 1
+  Timestep Sizes(1) = 0.2
+  Timestep Intervals(1) = 4
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = "res.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-09
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 0
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+End
+
+Solver 2
+  Exec Solver = "After Timestep"
+  Equation = "isosurface"
+  Procedure = "Isosurface" "IsosurfaceSolver"
+
+  IsoSurface Variable = Temperature
+  IsoSurface Values(1) = 2.4
+
+  Isosurface Interpolant 1 = String "Temperature"
+  Isomesh Output Active = Logical True
+
+! Gathered from all partitions into one file by the master.
+  Save STL File = Logical True
+  STL Filename = File "iso.stl"
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Capacity = 1
+  Heat Conductivity = 3
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = 100.0
+  Create Isosurface = Logical True
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1
+  Temperature = 0
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries(1) = 2
+  Temperature = 0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(1) = 3
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = 1.08640266E+00
+! This is the value a serial run of this same case gives, and that is the
+! point of it: the isosurface solver's pseudonorm is the summed sizes of the
+! meshes involved, so it only agrees with the serial one once every entity is
+! counted once globally rather than once per partition holding it. The element
+! counts already do, being uniquely owned; the nodes and the edges need the
+! isosurface mesh to carry ParallelInfo.
+Solver 2 :: Reference Norm = 6.57900000E+03

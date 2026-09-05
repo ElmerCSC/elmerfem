@@ -67,7 +67,7 @@
    SUBROUTINE AdvectionDiffusionSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
 
-     USE SolverUtils
+     USE SolverBasics
      USE Differentials
      USE DefUtils
 
@@ -633,6 +633,23 @@
                   C2(i,j,:) = Density * Diffusivity(i,j,:)
                END DO
             END DO
+!------------------------------------------------------------------------------
+!            The Nernst-Planck drift velocity is built from C2 in the compose
+!            routines (Velo = Velo - C2*NEConst*grad(phi)) and the convection
+!            matrix then multiplies it by C1. In relative mass units C1=Density
+!            and C2=Density*Diffusivity, so the assembled drift would carry
+!            Density twice. The physical term is Density*Diffusivity*NEConst,
+!            so drop the surplus factor here. This cannot be done by dividing
+!            with C1 at the point of use: C1 is set to zero below when there is
+!            neither convection nor migration. Where the density vanishes the
+!            relative mass formulation is degenerate (C1=CT=0), so leave the
+!            drift at zero rather than generate a NaN.
+!------------------------------------------------------------------------------
+            WHERE ( Density(1:n) /= 0.0d0 )
+               NEConst(1:n) = NEConst(1:n) / Density(1:n)
+            ELSEWHERE
+               NEConst(1:n) = 0.0d0
+            END WHERE
          ELSE
             CT = 1.0d0
             DO i=1,3
@@ -657,7 +674,19 @@
             END DO
          END IF
 
-         C0 = Density
+!------------------------------------------------------------------------------
+!        C0 is used only as the carrier for the Soret (thermal diffusion)
+!        coefficient: the compose routines copy NodalC0 into NodalCThermal and
+!        then zero NodalC0, so it never acts as a reaction term. The Soret flux
+!        is Density*SoretDiffusivity*grad(T) in relative mass units, where the
+!        species equation carries the extra factor of the density, and
+!        SoretDiffusivity*grad(T) in absolute mass units, where it does not.
+!------------------------------------------------------------------------------
+         IF (.NOT. AbsoluteMass) THEN
+            C0 = Density
+         ELSE
+            C0 = 1.0d0
+         END IF
          IF ( ScaledToSolubility ) THEN
             MaxSol = ListGetConstReal( Material, &
               TRIM(ComponentName(Solver % Variable)) // &
@@ -1173,7 +1202,7 @@ CONTAINS
      INTEGER :: n
 
      TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1539,7 +1568,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      TYPE(Nodes_t) :: Nodes, ParentNodes
-     TYPE(Element_t), POINTER :: Element, Parent
+     TYPE(Element_t), TARGET :: Element, Parent
      REAL(KIND=dp) :: BoundaryMatrix(:,:), Ratio
      INTEGER :: n, pn
 
@@ -1803,7 +1832,7 @@ CONTAINS
      INTEGER :: n
 
      TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -2237,7 +2266,7 @@ CONTAINS
 !******************************************************************************
 
      TYPE(Nodes_t)   :: Nodes, ParentNodes
-     TYPE(Element_t), POINTER :: Element, Parent
+     TYPE(Element_t), TARGET :: Element, Parent
      REAL(KIND=dp) :: BoundaryMatrix(:,:), Ratio
      INTEGER :: n, pn
 
@@ -2374,7 +2403,7 @@ CONTAINS
      REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:)
      REAL(KIND=dp) :: LoadVector(:),NodalAlpha(:)
      TYPE(Nodes_t)    :: Nodes
-     TYPE(Element_t),POINTER  :: Element
+     TYPE(Element_t), TARGET  :: Element
 
      INTEGER :: n
 !------------------------------------------------------------------------------

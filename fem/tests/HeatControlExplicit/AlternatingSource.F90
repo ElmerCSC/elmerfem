@@ -10,7 +10,7 @@ FUNCTION AlternatingSource( Model, n, x ) RESULT(f)
   INTEGER :: n
   REAL(KIND=dp) :: x(2), f
 
-  REAL(KIND=dp) :: tlim = 0.07, tcenter, time
+  REAL(KIND=dp) :: tlim = 0.07_dp, tcenter, time
   INTEGER :: sgn = 1
   
   SAVE sgn

@@ -173,7 +173,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
 
     IMPLICIT NONE
 
-    TYPE(Mesh_t),POINTER :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     TYPE(Element_t),POINTER :: Element
     LOGICAL :: Boundaries(:)
     !---------------

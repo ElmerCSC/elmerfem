@@ -88,6 +88,7 @@ PROGRAM Solver
      DEALLOCATE(buf)
    END IF
 
+!  WRITE( *, * ) 'Calling Elmer library now.'; FLUSH(6)
    CALL ElmerSolver(Initialize, args, nargs)
 
    IF ( .NOT. Silent ) THEN

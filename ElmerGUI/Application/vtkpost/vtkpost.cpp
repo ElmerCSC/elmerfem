@@ -2708,10 +2708,10 @@ void VtkPost::hideTextSlot()
 void VtkPost::drawTextSlot()
 {
   if(!postFileRead) return;
-  renderer->RemoveActor2D(textActor);
+  renderer->RemoveViewProp(textActor);
   if(!drawTextAct->isChecked()) return;
   text->draw(this);
-  renderer->AddActor2D(textActor);
+  renderer->AddViewProp(textActor);
 #if VTK_MAJOR_VERSION >= 9
   qvtkWidget->renderWindow()->Render();
 #else

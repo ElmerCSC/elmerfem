@@ -1,0 +1,128 @@
+! A bimetal strip bending under a constant dT = 100, through ElasticSolve. This is
+! the sibling ThermalBiMetal's case, mesh, materials and REFERENCE NORM, with the
+! solver swapped, and the reason for having it is what ElasticSolve used to do with
+! it: nothing at all.
+!
+! THE CAPABILITY WAS SILENTLY ABSENT. ElasticSolve read "Heat Expansion
+! Coefficient" and "Reference Temperature" from the material, gathered the
+! temperature difference per element, passed both into its assembly routine -- and
+! the assembly never read either argument. Thermal strain was dropped, with no
+! warning and no unused-keyword complaint, and the answer that came back was a
+! converged zero. No test in the tree ran ElasticSolve with a heat expansion
+! coefficient, which is why nothing said so.
+!
+! Run with the coefficients zeroed, this case returns a displacement norm of
+! EXACTLY zero against a reference of 1.4e-3 -- the whole answer is the thermal
+! strain -- so the test detects the old behaviour completely rather than by a
+! margin.
+!
+! HOW IT IS IMPLEMENTED, and why it is not a term of its own. alpha * dT is an
+! eigenstrain, so it enters through the affine offset channel that "Strain Load"
+! uses (see fem/tests/ElasticStressLoad): sigma = C : ( eps - eps0 ), with the
+! thermal part added to eps0 and C : eps0 contracted THROUGH the constitutive
+! model. StressSolve keeps its thermal term and its "Strain Load" term apart, in
+! different lines of its force vector; they are one capability, and unifying them
+! is what made the second one arrive with the first.
+!
+! Also fixed here rather than separately: the reported STRAIN. StressSolve reports
+! the elastic strain, with the thermal part subtracted, and the stress that follows
+! from it. ElasticSolve's postprocessing did neither, so had the assembly alone
+! been fixed the fields would have disagreed even though the displacement matched.
+!
+! The material is deliberately the sibling's: two bodies whose expansion
+! coefficients differ by a factor of two, which is what makes the strip bend rather
+! than merely grow, and the bending is what a dropped or mis-signed eigenstrain
+! cannot fake. Plane strain, small deflection, direct solve.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "beams"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Name = "metal1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "metal2"
+  Equation = 1
+  Material = 2
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 400.0
+End
+
+Equation 1
+  Active Solvers = 1
+  Plane Stress = FALSE
+End
+
+Solver 1
+  Equation = "LinearDisp"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = "Displacement"
+  Variable DOFs = Integer 2
+
+  ! Small strain, so the kinematics are StressSolve's and the reference norm below
+  ! is comparable digit for digit.
+  Large Deflection = False
+
+  ! The scalar the thermal strain is measured against. Present where Displacement
+  ! is, and initialised above to something other than the reference temperature.
+  Exported Variable 1 = Temperature
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Convergence Tolerance = Real 1.0e-7
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Relaxation Factor = Real 1
+
+  Steady State Convergence Tolerance = 1.0e-6
+  Optimize Bandwidth = True
+End
+
+Material 1
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 1.0e-4
+End
+
+Material 2
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 2.0e-4
+End
+
+Boundary Condition 1
+  Name = "beam_fixed"
+  Target Boundaries(2) = 4 7
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+! StressSolve's own published value for this case, unchanged. ElasticSolve
+! reproduces it to 6.5e-12 relative.
+Solver 1 :: Reference Norm = Real 1.39759434511988389E-003
+RUN

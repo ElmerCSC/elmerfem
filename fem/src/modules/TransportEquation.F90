@@ -51,7 +51,7 @@
      USE Lists
      USE Integration
      USE ElementDescription
-     USE SolverUtils
+     USE SolverBasics
      USE ElementUtils
 
      IMPLICIT NONE
@@ -488,7 +488,7 @@
           V1(:), V2(:), V3(:)
       INTEGER :: n, VariableComponents
       TYPE(Nodes_t) :: Nodes
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
       REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,temp1,temp2
@@ -558,7 +558,7 @@
            V1(:), V2(:), V3(:)
        INTEGER :: n, VariableComponents
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,NormVel
@@ -621,7 +621,7 @@
        TYPE(Model_t) :: Model
        CHARACTER(LEN=*) :: Name 
        INTEGER :: Component, VariableComponents, Perm(:)
-       REAL(KIND=dp), POINTER :: U(:) 
+       REAL(KIND=dp) :: U(:)
 !------------------------------------------------------------------------------
        TYPE(Element_t), POINTER :: CurrentElement
        INTEGER, POINTER :: NodeIndexes(:)

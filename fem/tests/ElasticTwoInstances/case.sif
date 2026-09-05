@@ -1,0 +1,116 @@
+! TWO ElasticSolve instances in one sif, which is what this test is for rather than
+! any physics. The solver keeps its per-element storage and much of its configuration
+! in SAVEd variables, so everything below is shared between the two instances, and two
+! separate defects lived in that sharing. Both were silent and both are guarded here.
+!
+! 1. THE ARRAYS WERE SIZED BY WHICHEVER INSTANCE RAN FIRST. Solver 1 has two degrees
+!    of freedom per node and Solver 2 has three, the pressure of the incompressible
+!    formulation being the third, and Solver 1 runs first. The second then indexed
+!    arrays sized for the first: its norm came out 5.20E+03 against the 3.83E-02 it
+!    gives when it runs alone -- five orders of magnitude, which is what reading past
+!    the end of an array looks like when it does not crash.
+!
+! 2. THE POSTPROCESSING KEYWORDS WERE READ ONCE, under the same shared flag. Solver 1
+!    does not ask for stresses and Solver 2 does; the second's request was never read,
+!    it inherited the first's silence, and its projected stress came back a converged
+!    ZERO instead of the 1.16E+00 pinned below. The two defects need different fixes,
+!    which is why one test asks for both: a size test on the allocation guard cannot
+!    reach the second, two instances of equal size needing no reallocation at all.
+!
+! The reference values are each solver's OWN answer, taken from running it alone in the
+! same case, so a divergence here means the instances are interfering rather than that
+! the physics moved.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+! The ratio is read by Solver 1 and ignored by Solver 2, whose formulation takes
+! mu = E/3 -- so the two answer differently on the same material, as they should.
+Material 1
+  Density = Real 0
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+! First, and deliberately the SMALLER of the two: two dofs per node, and no request
+! for stresses. Whatever this instance allocates and reads, the next one must not
+! inherit.
+Solver 1
+  Equation = "Plain elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "pDisp[pDisp:2]"
+  Large Deflection = False
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+! Second, larger by one dof per node, and it does ask for stresses.
+Solver 2
+  Equation = "Mixed elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "eSol[eDisp:2 ePres:1]"
+  Element = p:1 b:3
+  Incompressible = Logical True
+  Large Deflection = False
+  Displace Mesh = Logical False
+  Calculate Stresses = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+  Show Norm Index = 1
+
+  Variable 1 = String "Stress_xx"
+  Operator 1 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  pDisp 1 = Real 0
+  pDisp 2 = Real 0
+  eDisp 1 = Real 0
+  eDisp 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Force 1 = Real 0.1
+End
+
+Solver 1 :: Reference Norm = Real 9.49732130E-02
+Solver 2 :: Reference Norm = Real 3.83178687E-02
+! The projected stress of the SECOND instance, zero before the keywords were read
+! per call.
+Solver 3 :: Reference Norm = Real 1.15923585E+00

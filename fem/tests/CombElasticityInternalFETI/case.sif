@@ -1,0 +1,83 @@
+! Linear elasticity on a comb: four teeth joined along a base. Cut lengthwise,
+! one partition gets the base and the other all four teeth, so that subdomain is
+! in four disconnected pieces.
+!
+! The Poisson version of this case has one DOF per node and so cannot exercise
+! anything that depends on the block size of the matrix. This one has three.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "comb"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = LinElast
+  Variable = -dofs 3 Displacement
+  Procedure = "StressSolve" "StressSolver"
+
+  Exec Solver = Always
+  Stabilize = False
+  Bubbles = False
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Consistent Norm = Logical True
+
+  Optimize Bandwidth = False
+
+  include linsys.sif
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs Modulus = 1.0e9
+  Density = 1.0e3
+  Poisson Ratio = 0.3
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Stress Bodyforce 2 = Real -9.82e3
+End
+
+Boundary Condition 1
+  Name = "Fixed"
+  Target Boundaries(1) = 1
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+! The value a serial direct solve gives. The teeth partition is in four
+! disconnected pieces, so with total FETI its kernel is four sets of rigid body
+! modes, and the Lagrange coefficient route assembles the constraint rows onto a
+! matrix that has three DOFs per node.
+Solver 1 :: Reference Norm = 1.76235700E-06

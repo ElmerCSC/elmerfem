@@ -70,6 +70,8 @@ END INTERFACE
 
     REAL(KIND=dp), PRIVATE :: AdvanceTime1, AdvanceTime2
 
+    PRIVATE :: i2s_ndigits
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -152,72 +154,122 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Converts integer to string. Handy when writing output with integer data.
 !------------------------------------------------------------------------------
+  ! Number of characters I2S needs to represent IVAL (including a '-' sign).
+  ! PURE so it can appear in the length spec of I2S's automatic-length result.
+  PURE FUNCTION i2s_ndigits(ival) RESULT(n)
+!------------------------------------------------------------------------------
+    INTEGER, INTENT(in) :: ival
+    INTEGER :: n, v
+!------------------------------------------------------------------------------
+    n = 1
+    IF (ival < 0) n = 2          ! sign takes one extra character
+    v = ABS(ival)
+    DO WHILE (v >= 10)
+      n = n + 1
+      v = v / 10
+    END DO
+  END FUNCTION i2s_ndigits
+
   PURE FUNCTION i2s(ival) RESULT(s)
 !------------------------------------------------------------------------------
     INTEGER, INTENT(in) :: ival
-    CHARACTER(:), ALLOCATABLE :: s
+    ! NB: the result is an automatic-length CHARACTER, deliberately NOT
+    ! CHARACTER(:),ALLOCATABLE. gfortran (>=15.2) miscompiles a concatenation
+    ! whose operand is a deferred-length ALLOCATABLE function result when it is
+    ! evaluated inside an OpenMP region: the temporary is intermittently given
+    ! the wrong length, causing a heap-buffer-overflow (root cause of the
+    ! radiation2d_spectral / HeatSolveVec intermittent CI crashes). A
+    ! non-allocatable result avoids that path entirely, is standard F90 (more
+    ! portable), and is cheaper (no per-call heap allocation).
+    CHARACTER(LEN=i2s_ndigits(ival)) :: s
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,n,t,v,len
-    INTEGER(8) :: m
+    INTEGER :: i, v
     CHARACTER, PARAMETER :: DIGITS(0:9)=['0','1','2','3','4','5','6','7','8','9']
 !------------------------------------------------------------------------------
-
-     IF(ival>=0) THEN
-       v = ival
-       IF (v<10) THEN
-         s = DIGITS(v)
-       ELSE IF (ival<100) THEN
-         i = v/10
-         s = DIGITS(i)//DIGITS(v-10*i)
-       ELSE
-         n=3
-         m=100
-         DO WHILE(10*m<=v)
-           n=n+1
-           m=m*10
-         END DO
-
-         ALLOCATE(CHARACTER(n)::s)
-         DO i=1,n
-           t = v / m
-           s(i:i) = DIGITS(t)
-           v = v - t*m
-           m = m / 10
-         END DO
-       END IF
-     ELSE
-       v = -ival
-       IF (v<10) THEN
-         s = '-'//DIGITS(v)
-       ELSE IF (v<100) THEN
-         i = v/10
-         s = '-'//DIGITS(i)//DIGITS(v-10*i)
-       ELSE
-         n=3
-         m=100
-         DO WHILE(10*m<=v)
-           n=n+1
-           m=m*10
-         END DO
-
-         ALLOCATE(CHARACTER(n+1)::s)
-         s(1:1) = '-'
-         DO i=2,n+1
-           t = v / m
-           s(i:i) = DIGITS(t)
-           v = v - t*m
-           m = m / 10
-         END DO
-       END IF
-     END IF
+    v = ABS(ival)
+    IF (ival < 0) s(1:1) = '-'
+    ! Fill least-significant digit first, right to left.
+    DO i = LEN(s), MERGE(2,1,ival<0), -1
+      s(i:i) = DIGITS(MOD(v,10))
+      v = v / 10
+    END DO
 !------------------------------------------------------------------------------
   END FUNCTION i2s
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Return a COMPLEX pointer view into a REAL array that stores a complex field
+!> in the standard Elmer interleaved form, x(2i-1)=Re, x(2i)=Im. Nothing is
+!> copied: the result aliases the argument, so writes through it are seen by the
+!> caller. Optionally map only the first n complex entries.
+!>
+!> The dummy is deliberately declared TARGET but *without* the CONTIGUOUS
+!> attribute. With CONTIGUOUS the compiler is free to pass a packed copy of a
+!> strided actual argument, and the view would then silently alias a temporary
+!> that dies on return. Without it an assumed-shape dummy is always passed by
+!> descriptor, so the view aliases the real thing -- and the actual requirement,
+!> that the entries occupy consecutive memory, is checked here at runtime.
+!> Note that the CONTIG macro is set at configuration time and expands to
+!> nothing unless the build enables it, so declarations alone guarantee nothing.
+!------------------------------------------------------------------------------
+  FUNCTION ComplexValues( x, n ) RESULT ( cx )
+!------------------------------------------------------------------------------
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY : C_LOC, C_F_POINTER
+    REAL(KIND=dp), TARGET :: x(:)      !< real array holding (Re,Im) pairs
+    INTEGER, OPTIONAL :: n             !< number of complex entries to map
+    COMPLEX(KIND=dp), POINTER :: cx(:) !< complex view aliasing x
+!------------------------------------------------------------------------------
+    INTEGER :: m
+!------------------------------------------------------------------------------
+    m = SIZE(x) / 2
+    IF( PRESENT(n) ) m = n
+
+    cx => NULL()
+    IF( m <= 0 ) RETURN
+
+    IF( 2*m > SIZE(x) ) THEN
+      CALL Fatal('ComplexValues','Real array of size '//i2s(SIZE(x))// &
+          ' cannot host '//i2s(m)//' complex entries')
+    END IF
+
+    IF( .NOT. IS_CONTIGUOUS(x) ) THEN
+      CALL Fatal('ComplexValues','Cannot alias a non-contiguous real array as complex')
+    END IF
+
+    CALL C_F_POINTER( C_LOC(x(1)), cx, [m] )
+!------------------------------------------------------------------------------
+  END FUNCTION ComplexValues
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
-!> Converts string of length n to an integer number. 
+!> Complex view of the values of a field variable that is really complex, i.e.
+!> stored as consecutive (Re,Im) pairs. Returns NULL if there is nothing to
+!> view. See ComplexValues() for the contiguity requirement.
+!------------------------------------------------------------------------------
+  FUNCTION ComplexVariableValues( Var ) RESULT ( cx )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    COMPLEX(KIND=dp), POINTER :: cx(:)
+!------------------------------------------------------------------------------
+    cx => NULL()
+    IF( .NOT. ASSOCIATED( Var % Values ) ) RETURN
+    IF( SIZE( Var % Values ) == 0 ) RETURN
+
+    IF( MODULO( Var % DOFs, 2 ) /= 0 ) THEN
+      CALL Fatal('ComplexVariableValues','Variable "'//TRIM(Var % Name)// &
+          '" has an odd number of dofs and cannot be complex: '//i2s(Var % DOFs))
+    END IF
+
+    cx => ComplexValues( Var % Values )
+!------------------------------------------------------------------------------
+  END FUNCTION ComplexVariableValues
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Converts string of length n to an integer number.
 !------------------------------------------------------------------------------
   PURE FUNCTION s2i(str,n) RESULT(ival)
 !------------------------------------------------------------------------------
@@ -306,12 +358,73 @@ CONTAINS
   END SUBROUTINE WaitSec
     
 !------------------------------------------------------------------------------
-  SUBROUTINE SystemCommand( cmd ) 
+  SUBROUTINE SystemCommand( cmd, Status ) 
 !------------------------------------------------------------------------------
     CHARACTER(LEN=*) :: cmd
-    CALL SystemC( TRIM(cmd) // CHAR(0) )
+    !> Nonzero if the command could not be run, or ran and exited nonzero.
+    !> Absent means the caller does not care, which is the historical behaviour.
+    INTEGER, OPTIONAL, INTENT(OUT) :: Status
+    CALL SystemC( TRIM(cmd) // CHAR(0), Status )
 !------------------------------------------------------------------------------
   END SUBROUTINE SystemCommand
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Return the directory holding the running executable, without a trailing
+!> separator, or an empty string if it cannot be determined.  Companion
+!> binaries -- ViewFactors, Radiators -- sit beside the solver both in a build
+!> tree and in an install tree, so this is how to name the one belonging to
+!> this build rather than whichever the PATH happens to offer.
+!------------------------------------------------------------------------------
+  FUNCTION ExecutableDirectory() RESULT( ExeDir )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=MAX_PATH_LEN) :: ExeDir
+    INTEGER :: n
+    
+    ExeDir = ' '
+    n = 0
+    CALL GetExeDir( ExeDir, n )
+    IF ( n <= 0 .OR. n > LEN(ExeDir) ) THEN
+      ExeDir = ' '
+    ELSE
+      ExeDir = ExeDir(1:n)
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION ExecutableDirectory
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Name a companion binary for a system call, as an absolute path next to the
+!> running executable when that can be determined, and as a bare name -- left
+!> for the PATH to resolve, as before -- when it cannot.  The absolute form is
+!> what keeps a solver from handing its work to some other Elmer's binary that
+!> merely happens to sit earlier in the PATH.  Quoted, so an install path with
+!> a space in it survives the shell.
+!------------------------------------------------------------------------------
+  FUNCTION SpawnCommand( Name ) RESULT( Cmd )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=*) :: Name
+    CHARACTER(:), ALLOCATABLE :: Cmd
+    CHARACTER(LEN=MAX_PATH_LEN) :: ExeDir
+    CHARACTER(LEN=1) :: Sep
+    
+    ExeDir = ExecutableDirectory()
+    
+    IF ( LEN_TRIM(ExeDir) == 0 ) THEN
+      Cmd = TRIM(Name)
+      RETURN
+    END IF
+
+    ! Join with whatever separator the directory itself came back with, so a
+    ! Windows path stays all backslashes and cmd.exe recognizes it as a path.
+    Sep = '/'
+    IF ( INDEX(ExeDir,'\') > 0 ) Sep = '\'
+    
+    Cmd = '"' // TRIM(ExeDir) // Sep // TRIM(Name) // '"'
+!------------------------------------------------------------------------------
+  END FUNCTION SpawnCommand
 !------------------------------------------------------------------------------
 
 
@@ -339,7 +452,11 @@ CONTAINS
     LOGICAL :: L
     CHARACTER(*), INTENT(IN) :: file
 !------------------------------------------------------------------------------
-    L = INDEX(file,':')>0 .OR. file(1:1)=='/' .OR. file(1:1)==Backslash
+    IF ( LEN(file) == 0 ) THEN
+      L = .FALSE.
+    ELSE
+      L = INDEX(file,':')>0 .OR. file(1:1)=='/' .OR. file(1:1)==Backslash
+    END IF
 !------------------------------------------------------------------------------
   END FUNCTION FileNameQualified
 !------------------------------------------------------------------------------
@@ -887,7 +1004,7 @@ CONTAINS
 !>  lowercase.The logical line can continue the several physical lines by adding
 !>  the backslash (\) mark at the end of a physical line. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ReadAndTrim( Unit,str,echo,literal,noeval ) RESULT(l)
+   FUNCTION ReadAndTrim( Unit,str,echo,literal,noeval ) RESULT(l)
 !------------------------------------------------------------------------------
      INTEGER :: Unit                       !< Fortran unit number to read from
      CHARACTER(LEN=:), ALLOCATABLE :: str  !< The string read from the file
@@ -896,22 +1013,24 @@ CONTAINS
      LOGICAL, OPTIONAL :: noeval
      LOGICAL :: l                          !< Success of the read operation
 !------------------------------------------------------------------------------     
-     INTEGER, PARAMETER :: MAXLEN = 163840
+     INTEGER, PARAMETER :: IncludeUnitBase = 28, MAXLEN = 163840, ilen = 12
      
      CHARACTER(LEN=:), ALLOCATABLE :: temp
-     CHARACTER(LEN=12) :: tmpstr
-     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr = ' ', matcstr=' ' , IncludePath=' '
+     CHARACTER(LEN=ilen) :: tmpstr
+     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' '
+     CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr, matcstr
 
      LOGICAL :: InsideQuotes, OpenSection=.FALSE., DoEval
-     INTEGER :: i,j,k,m,ValueStarts=0,inlen,ninlen,outlen,IncludeUnit=28,IncludeUnitBase=28
+     INTEGER :: i,j,k,m,ios,ValueStarts=0,inlen,ninlen,outlen,IncludeUnit=IncludeUnitBase
 
      CHARACTER(LEN=MAX_NAME_LEN) :: Prefix = '  '
 
      INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A'),Tab=9
-     CHARACTER(LEN=MAXLEN) :: tmatcstr, tcmdstr
      INTEGER :: tninlen
+     CHARACTER(LEN=MAXLEN) :: tmatcstr, tcmdstr
 
-     SAVE ReadStr, ValueStarts, Prefix, OpenSection
+     SAVE ReadStr, ValueStarts, Prefix, OpenSection, IncludeUnit, IncludePath
+!------------------------------------------------------------------------------     
 
      IF ( PRESENT(literal) ) literal=.FALSE.
      l = .TRUE.
@@ -933,34 +1052,36 @@ CONTAINS
      END IF
 
      IF ( ValueStarts == 0 ) THEN
-        tmpstr = ' '
+        tmpstr = ''
         DO WHILE( .TRUE. )
           IF ( IncludeUnit < IncludeUnitBase ) THEN
-            READ( IncludeUnit,'(A)',END=1,ERR=1 ) readstr
-            GO TO 2
-1           CLOSE(IncludeUnit)
-            IncludeUnit = IncludeUnit+1
-            READ( IncludeUnit,'(A)',END=10,ERR=10 ) readstr
-2           CONTINUE
+            READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) THEN
+              CLOSE(IncludeUnit)
+              IncludeUnit = IncludeUnit+1
+              READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+              IF ( ios /= 0 ) GO TO 10
+            END IF
           ELSE
-            READ( Unit,'(A)',END=10,ERR=10 ) readstr
+            READ( Unit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) GO TO 10
           END IF
 
           readstr = ADJUSTL(readstr)
 
-          DO k=1,12
+          DO k=1,ilen
             j = ICHAR(readstr(k:k))
             IF ( j >= A .AND. j<= Z ) THEN
-              Tmpstr(k:k) = CHAR(j+U2L)
+              tmpstr(k:k) = CHAR(j+U2L)
             ELSE
               tmpstr(k:k) = readstr(k:k)
             END IF
           END DO
 
-          IF ( SEQL(Tmpstr, 'include path') ) THEN
+          IF ( SEQL(tmpstr, 'include path') ) THEN
             k = LEN_TRIM(readstr)
-            IncludePath(1:k-13) = readstr(14:k)
-            Tmpstr = ''
+            includePath(1:k-ilen-1) = readstr(ilen+2:k)
+            tmpstr = ''
           ELSE
             EXIT
           END IF
@@ -993,12 +1114,13 @@ CONTAINS
           
           CALL OpenIncludeFile( IncludeUnit, TRIM(readstr(9:)), IncludePath )
           
-          READ( IncludeUnit,'(A)',END=3,ERR=3 ) readstr
-          GO TO 4
-3         CLOSE(IncludeUnit)
-          IncludeUnit = IncludeUnit+1
-          READ( Unit,'(A)',END=10,ERR=10 ) readstr
-4         CONTINUE
+          READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
+          IF ( ios /= 0 ) THEN
+            CLOSE(IncludeUnit)
+            IncludeUnit = IncludeUnit+1
+            READ( Unit,'(A)',IOSTAT=ios ) readstr
+            IF ( ios /= 0 ) GO TO 10
+          END IF
         END IF
         ninlen = LEN_TRIM(readstr)
      ELSE
@@ -1142,14 +1264,14 @@ CONTAINS
 
      IF ( i <= inlen ) THEN
        Prefix = ' '
-       IF ( ReadStr(i:i) == '=' ) THEN
+       IF ( readstr(i:i) == '=' ) THEN
          ValueStarts = i + 1
-       ELSE IF ( ReadStr(i:i) == ';' ) THEN
+       ELSE IF ( readstr(i:i) == ';' ) THEN
          ValueStarts = i + 1
-       ELSE IF ( ReadStr(i:i) == '(' ) THEN
+       ELSE IF ( readstr(i:i) == '(' ) THEN
          ValueStarts = i + 1
          Prefix = 'Size'
-       ELSE IF ( ReadStr(i:i+1) == '::' ) THEN
+       ELSE IF ( readstr(i:i+1) == '::' ) THEN
          ValueStarts = i + 2
          Prefix = '::'
        ELSE IF ( ICHAR(readstr(i:i)) < 32 ) THEN
@@ -1230,7 +1352,13 @@ CONTAINS
               character(kind=c_char), dimension(*) :: locale
             END SUBROUTINE  setlocale
           END INTERFACE
-          CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+          ! Force period-decimal for Fortran's list-directed READ of the
+          ! substituted value, matching mtc_eval's setlocale(LC_ALL,"C").
+          ! The former "en_US.UTF-8" is a UTF-8 codepage locale whose composite
+          ! locale string trips an intermittent UCRT invalid-parameter fast-fail
+          ! (0xC0000409) inside libgfortran's locale save/restore during the
+          ! subsequent sif READ. "C" is canonical, always valid, and '.'-decimal.
+          CALL setlocale(0,"C"//CHAR(0))
         END BLOCK
 
        closed_region = .false.
@@ -1322,6 +1450,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
+
+    ! If the dofs has just one component, no use trying to find components.
+    IF(Var % dofs == 1 ) THEN
+      str = TRIM(Var % Name)
+      RETURN
+    END IF
+
     IF ( Var % Name(1:Var % NameLen) == 'flow solution' ) THEN
       str='flow solution'
       IF ( .NOT. PRESENT(Component) ) RETURN
@@ -2021,7 +2156,7 @@ END FUNCTION ComponentNameVar
 #if defined(ELMER_HAVE_MPI_MODULE)
       USE mpi
 #endif
-      TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
+      TYPE(Matrix_t), INTENT(INOUT) :: Matrix
 #if defined(ELMER_HAVE_MPIF_HEADER)
       INCLUDE "mpif.h"
 #endif

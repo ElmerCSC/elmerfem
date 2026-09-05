@@ -415,7 +415,7 @@ c     | Get machine dependent constant. |
 c     %---------------------------------%
 c
       eps23 = pdlamch10(comm, 'Epsilon-Machine')
-      eps23 = eps23**(2.0  / 3.0 )
+      eps23 = eps23**(2.0d0 / 3.0d0)
 c
 c     %--------------%
 c     | Quick return |

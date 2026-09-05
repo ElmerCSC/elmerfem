@@ -99,7 +99,7 @@ jobs:
         run: lscpu
 
       - name: checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -116,6 +116,7 @@ jobs:
             $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "libblas-dev liblapack-dev" || echo "libopenblas-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "without" ] && echo "libmumps-seq-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "librocalution-dev") \
             libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
@@ -141,7 +142,7 @@ jobs:
             ${{ matrix.openmp-cmake-flags }} \
             -DWITH_LUA=ON \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=ON" || echo "-DWITH_Zoltan=OFF") \
-            $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
+            $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_CHOLMOD=ON" || echo "-DWITH_CHOLMOD=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ROCALUTION=ON" || echo "-DWITH_ROCALUTION=OFF") \
@@ -173,10 +174,18 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
+          # -j2 instead of -j$(nproc) on the MPI+OpenMP job. The hosted runners
+          # have 4 vCPUs on 2 physical cores and the test macro derives
+          # OMP_NUM_THREADS from the physical core count, so -j$(nproc) ran
+          # 4 tests x 2 OpenMP threads on 4 vCPUs. Trying whether backing that
+          # 2x oversubscription off changes the intermittent SIGSEGVs seen
+          # inside PMIx during MPI init. The other entries keep -j$(nproc):
+          # all but one build without OpenMP, and the one that does (gcc,
+          # no MPI) has no MPI stack for oversubscription to destabilise.
           ctest . \
             -LE slow \
-            -j$(nproc) \
-            --timeout 300
+            -j$([ "${{ matrix.mpi }}" == "with" ] && [ "${{ matrix.openmp }}" == "with" ] && echo 2 || nproc) \
+            --timeout 600
 
       - name: Re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -199,20 +208,16 @@ jobs:
             echo "::group::Content of ${test_root}/${test}"
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
-            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
-              for err_log in "${err_logs[@]}"; do
-                echo ---- Content of ${err_log} ----
-                cat ${err_log}
-              done
-            fi
-            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
-              for out_log in "${out_logs[@]}"; do
-                echo ---- Content of ${out_log} ----
-                cat ${out_log}
-              done
-            fi
+            err_logs=($(ls ${test_root}/${test}/test-stderr*.log 2>/dev/null))
+            for err_log in "${err_logs[@]}"; do
+              echo ---- Content of ${err_log} ----
+              cat ${err_log}
+            done
+            out_logs=($(ls ${test_root}/${test}/test-stdout*.log 2>/dev/null))
+            for out_log in "${out_logs[@]}"; do
+              echo ---- Content of ${out_log} ----
+              cat ${out_log}
+            done
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"

@@ -187,7 +187,7 @@
          CALL Info(Caller,'Using direct solver for radiation factors',Level=6)
        END IF
      END IF
-       
+
      ComputeViewFactors = GetLogical( Params, 'Compute View Factors',Found )
      ComputeRadiatorFactors = GetLogical( Params, 'Compute Radiator Factors',Found )
 
@@ -213,8 +213,12 @@
      ALLOCATE(ActiveMe(0:ParEnv % PEs-1), ActiveTasks(0:ParEnv % PEs-1))
      ActiveMe = .FALSE.
      ActiveMe(ParEnv % myPE) = RadiationSurfaces > 0
-     CALL MPI_ALLREDUCE( ActiveMe, ActiveTasks, ParEnv % PEs, &
-        MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, i )
+     IF ( ParEnv % PEs>1 )THEN
+       CALL MPI_ALLREDUCE( ActiveMe, ActiveTasks, ParEnv % PEs, &
+          MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, i )
+     ELSE
+       ActiveTasks = ActiveMe
+     END IF
 
      IF ( RadiationSurfaces == 0 ) THEN
        IF( FirstTime ) THEN
@@ -222,7 +226,7 @@
        END IF
        RETURN
      END IF
-       
+
      ! Check that the geometry has really changed before computing the viewfactors 
      IF(.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors)) THEN
        IF( .NOT. CheckMeshHasChanged() ) THEN
@@ -243,13 +247,13 @@
        CALL Info(Caller,'Total number of Radiation Surfaces '//I2S(RadiationSurfaces)// &
            ' out of '//I2S(Model % NumberOfBoundaryElements),Level=5)
      END IF
-       
+
 !-----------------------------------------------------------------------------------
 !    Check that the needed files exist if os assumed, if not, recompute
 !    view factors and radiator factors
 !-----------------------------------------------------------------------------------
      CALL CheckFactorsFilesExist()
-     
+
 !------------------------------------------------------------------------------
 !    Rewrite the nodes for view factor computations if they have changed
 !    and compute the view factors and/or radiator factors with an external
@@ -263,21 +267,24 @@
      END IF
 
      IF(UpdateGeometry) THEN
-       IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) ) THEN 
+       IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) .OR. &
+           ListGetLogicalAnySolver(Model,'Viewfactor Mapping Solver') ) THEN 
          CALL Info(Caller,'Viewfactor geometry will be changed by its own rigid mesh mapping!',Level=4)
          UpdateGeometry = .FALSE.
        END IF
      END IF
-       
+
      CALL ComputeViewFactorsAndRadiators()
 
      IF(RadiatorsFound) THEN
        IF (FirstTime .OR. UpdateRadiatorFactors) CALL ReadRadiatorFactorsFromFile()
      END IF
+
      IF( .NOT. DiffuseGrayRadiationFound ) THEN
        CALL Info(Caller,'No diffuse grey radiation found!',Level=12)
        RETURN       
      END IF
+
 !------------------------------------------------------------------------------
 
      TopologyFixed = GetLogical( Params, 'Matrix Topology Fixed',Found)
@@ -327,7 +334,7 @@
      END IF     
 
      FirstTime = .FALSE.
-     
+
      IF( Radiosity ) THEN
        WRITE (Message,'(A,T35,ES15.4)') 'Radiosity vector determined (s)',CPUTime()-at
      ELSE
@@ -335,7 +342,6 @@
      END IF
      CALL Info(Caller,Message,Level=4)
      CALL Info(Caller,'----------------------------------------------------',Level=5)
-
 
    CONTAINS
 
@@ -409,7 +415,7 @@
      SUBROUTINE FixGeometryAfter(n,Element, BC, BCind)
        INTEGER :: n, BCind
        TYPE(ValueList_t), POINTER :: BC
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 
        LOGICAL :: Found
        REAL(KIND=dp) :: x0(1), y0(1), MeshU(n)
@@ -644,6 +650,7 @@
      SUBROUTINE ComputeViewFactorsAndRadiators()
 
        CHARACTER(:), ALLOCATABLE :: cmd, OutputName, OutputName2
+       INTEGER :: cmdStatus
        LOGICAL :: DoScale
        INTEGER :: i,j
        REAL(KIND=dp), POINTER :: Wrk(:,:)
@@ -680,16 +687,35 @@
          CLOSE(VFUnit)
        END IF
 
-       ! Compute the factors using an external program call
+       ! Compute the factors using an external program call.
+       ! Only rank 0 spawns the subprocess; other ranks wait at a barrier.
+       ! Set ELMER_NO_MPI in the process environment so the child ViewFactors
+       ! does not try to join the parent's MPI job via inherited PMI/PMIx vars.
        IF (ComputeViewFactors .OR.  .NOT.FirstTime .AND. UpdateViewFactors ) THEN
-         cmd = 'ViewFactors '//TRIM(GetSifName())
-         CALL SystemCommand( cmd )
+         IF ( ParEnv % MyPE == 0 ) THEN
+           cmd = SpawnCommand('ViewFactors')//' '//TRIM(GetSifName())
+           CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
+           CALL ElmerSetNoMPI( 1 )
+           CALL SystemCommand( cmd, cmdStatus )
+           CALL ElmerSetNoMPI( 0 )
+           IF ( cmdStatus /= 0 ) CALL Fatal('ComputeViewFactorsAndRadiators', &
+               'View factor computation failed, command was: '//TRIM(cmd))
+         END IF
+         IF ( ParEnv % PEs > 1 ) CALL MPI_Barrier( ELMER_COMM_WORLD, i )
        END IF
 
        IF( RadiatorsFound ) THEN
          IF (ComputeRadiatorFactors .OR. .NOT.FirstTime .AND. UpdateRadiatorFactors ) THEN
-           cmd = 'Radiators '//TRIM(GetSifName())
-           CALL SystemCommand( cmd )
+           IF ( ParEnv % MyPE == 0 ) THEN
+             cmd = SpawnCommand('Radiators')//' '//TRIM(GetSifName())
+             CALL Info('ComputeViewFactorsAndRadiators','Using system call: '//TRIM(cmd),Level=15)
+             CALL ElmerSetNoMPI( 1 )
+             CALL SystemCommand( cmd, cmdStatus )
+             CALL ElmerSetNoMPI( 0 )
+             IF ( cmdStatus /= 0 ) CALL Fatal('ComputeViewFactorsAndRadiators', &
+                 'Radiator factor computation failed, command was: '//TRIM(cmd))
+           END IF
+           IF ( ParEnv % PEs > 1 ) CALL MPI_Barrier( ELMER_COMM_WORLD, i )
          END IF
        END IF
      
@@ -1082,13 +1108,14 @@
 
        TYPE(Element_t), POINTER :: Element
        LOGICAL :: DG, Found
-       INTEGER :: i,n
+       INTEGER :: i,j,n,m
+       REAL(KIND=dp) :: s
        INTEGER, POINTER :: Inds(:)
        INTEGER, TARGET :: DGInds(27)
 
-       DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. & 
-            ListGetLogical(Params, 'DG Reduced Basis',Found ) 
- 
+       DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. &
+            ListGetLogical(Params, 'DG Reduced Basis',Found )
+
        DO i=1,RadiationSurfaces
          Element => Mesh % Elements(ElementNumbers(i))
          n = GetElementNOFNodes(Element)
@@ -1098,7 +1125,14 @@
          ELSE
            Inds => Element % NodeIndexes(1:n)
          END IF
-         SurfT(i) = SUM(T(Tperm(Inds)))/n
+         s = 0.0_dp; m = 0
+         DO j=1,n
+           IF (Tperm(Inds(j)) > 0) THEN
+             s = s + T(Tperm(Inds(j)))
+             m = m + 1
+           END IF
+         END DO
+         IF (m > 0) SurfT(i) = s / m
        END DO
      END SUBROUTINE TabulateSurfaceTemperatures
 
@@ -1315,8 +1349,6 @@
      SUBROUTINE CalculateRadiation()
 
        INTEGER :: istat
-       real(kind=dp) :: st=0
-
 
        !IF(Radiosity .AND. FirstTime) RETURN
 
@@ -1353,7 +1385,7 @@
      SUBROUTINE CalculateGebhartFactors()
 
        REAL(KIND=dp) :: MinFactor, MaxOmittedFactor, ConsideredSum
-       INTEGER :: Colj,i,j,k,n,t, ImplicitEntries, MatrixEntries
+       INTEGER :: Colj,i,j,k,n,t, ImplicitEntries, MatrixEntries, previ
        LOGICAL :: gTriv, gSymm, ImplicitLimitIs
        REAL(KIND=dp) :: r,s,st,PrevSelf, MinSum,MaxSum,SolSum,FactorSum,ImplicitSum,&
            ImplicitLimit, NeglectLimit
@@ -1399,6 +1431,7 @@
            Cols => ViewFactors(i) % Elements
            
            if ( gSymm ) r = Reflectivity(i)
+           IF( .NOT. UseFullMatrix ) previ = G % Rows(i)-1
            DO j=1,ViewFactors(i) % NumberOfFactors
              IF (gSymm) THEN
                s = Reflectivity(i)*Reflectivity(Cols(j))
@@ -1408,7 +1441,7 @@
              IF (UseFullMatrix) THEN
                G_full(i,Cols(j)) = G_full(i,Cols(j)) - s*Vals(j)
              ELSE
-               CALL CRS_AddToMatrixElement(G,i,Cols(j),-s*Vals(j))
+               CALL CRS_AddToMatrixElement(G,i,Cols(j),-s*Vals(j),previ)
              END  IF
            END DO
            Diag(i) = r*RelAreas(i)
@@ -1824,7 +1857,7 @@
          PRINT *,'Emis range:',MINVAL(Emissivity),MAXVAL(Emissivity)
          PRINT *,'Abs range:',MINVAL(Absorptivity),MAXVAL(Absorptivity)
        END IF
-         
+
        IF( Spectral ) THEN
          CALL SpectralRadiosity(SurfaceTemperature)
        ELSE
@@ -1862,7 +1895,7 @@
          e = Emissivity(i)
          a = Absorptivity(i)
          r = 1-a  ! 1-e
-         c = RelAreas(i) * (r/a)  ! (r/e) 
+         c = RelAreas(i) * (r/a)  ! (r/e)
          Temp = SurfaceTemperature(i)
          Black = Sigma*Temp**4
          RHS(i) = -c*e*Black
@@ -1880,7 +1913,7 @@
              !r = Reflectivity(i)
              r = 1-a  ! e
              c = RelAreas(i) * (r/a) !(r/e)
-             RHS(i) = RHS(i) - c*r* & 
+             RHS(i) = RHS(i) - c*r* &
                  SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
            END IF
          END DO
@@ -1897,7 +1930,11 @@
 
        ! Store the results for access by e.g. heat equation solvers:
        !------------------------------------------------------------
-       CALL UpdateRadiosityFactors(SOL,SOL_d)
+       IF(Newton) THEN
+         CALL UpdateRadiosityFactors(SOL,SOL_d)
+       ELSE
+         CALL UpdateRadiosityFactors(SOL)
+       END IF
      END SUBROUTINE ConstantRadiosity
        
      
@@ -2097,9 +2134,13 @@
            
            ! Initialize matrix equation
            Diag = 0.0_dp
-           RHS = 0.0_dp         
-           G % Values = 0.0_dp
-           
+           RHS = 0.0_dp
+           IF ( UseFullMatrix ) THEN
+             G_full = 0.0_dp
+           ELSE
+             G % Values = 0.0_dp
+           END IF
+
            CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.TRUE.,SimpleTdep)
            CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
            DO i=1,RadiationSurfaces
@@ -2133,7 +2174,11 @@
 
        ! Store the results for access by e.g. heat equation solvers:
        !------------------------------------------------------------
-       CALL UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
+       IF(Newton) THEN
+         CALL UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
+       ELSE
+         CALL UpdateRadiosityFactors(SOL,EffAbs=EffAbs,EffTemp=EffTemp)
+       END IF
      END SUBROUTINE SpectralRadiosity
      
 
@@ -2254,15 +2299,18 @@
        REAL(KIND=dp) :: bscal, eps
        INTEGER :: i,j, maxiter, FirstActive
 
-       real(kind=dp) :: st=0
-
        ! Solve serially and distribute the result afterwards, memory bandwidth
        ! destroys the performance otherwise (at least for non-supercomputer systems)
-       DO i=0,ParEnv % PEs-1
-         IF (ActiveTasks(i)) THEN
-           FirstActive=i; EXIT
-         END IF
-       END DO
+       IF ( ParEnv % PEs <= 1 ) THEN
+         FirstActive = ParEnv % myPE
+       ELSE
+         FirstActive = -1
+         DO i=0,ParEnv % PEs-1
+           IF (ActiveTasks(i)) THEN
+             FirstActive=i; EXIT
+           END IF
+         END DO
+       END IF
 
        scal = .TRUE.
        IF(PRESENT(Scaling)) scal = Scaling
@@ -2308,27 +2356,27 @@
                Gm % NumberOfRows = n
                mvProc = ADDRFUNC(fm_MatVec)
                CALL RadiationCG( n, Gm, x, b, eps, maxiter )
-!              CALL IterSolver( Gm, x, b, Solver, MatvecF=mvproc )
                DEALLOCATE(Gm)
              END BLOCK
            ELSE
              CALL RadiationCG( n, A, x, b, eps, maxiter )
-!            CALL IterSolver( A, x, b, Solver )
            END IF
-         ELSE           
+         ELSE
            CALL DirectSolver( A, x, b, Solver )
          END IF
          x = x * bscal * Diag
        END IF
 
+       IF ( ParEnv % Pes <= 1 ) RETURN
+
        ! Distribute the linear system result
        BLOCK
-         INTEGER :: sz, Status(MPI_STATUS_SIZE), ierr, SendInfo(n), RecvInfo(n)
-         REAL(KIND=dp) :: y(n)
-         INTEGER, ALLOCATABLE :: RecvPerm(:)
-
+         INTEGER :: sz, Status(MPI_STATUS_SIZE), ierr
+         INTEGER, ALLOCATABLE :: SendInfo(:), RecvInfo(:), RecvPerm(:)
+         REAL(KIND=dp), ALLOCATABLE :: y(:)
 
          IF(ParEnv % myPE==FirstActive ) THEN
+           ALLOCATE(SendInfo(n))
            DO i=1,n
              Element => Mesh % Elements(ElementNumbers(i))
              SendInfo(i) = Element % GElementIndex
@@ -2340,6 +2388,7 @@
              CALL MPI_BSEND(x,n,MPI_DOUBLE_PRECISION,i,12007,ELMER_COMM_WORLD,ierr)
            END DO
          ELSE
+           ALLOCATE(RecvInfo(n), y(n))
            CALL MPI_RECV( RecvInfo,n,MPI_INTEGER,FirstActive,12006,ELMER_COMM_WORLD,status,ierr )
            CALL MPI_RECV( y,n,MPI_DOUBLE_PRECISION,FirstActive,12007,ELMER_COMM_WORLD,status,ierr )
 
@@ -2362,8 +2411,6 @@
        END BLOCK
      END SUBROUTINE RadiationLinearSolver
 
-#define TESTCG
-#ifdef TESTCG
      ! Tailored local CG algo for speed testing (somewhat faster than any of the 
      ! library routines but not so much...)
      !-------------------------------------------------------------------------
@@ -2373,9 +2420,12 @@
        TYPE(Matrix_t), POINTER :: A
 
        REAL(KIND=dp):: alpha, beta, rho, oldrho
-       REAL(KIND=dp) :: r(n), p(n), q(n), z(n), s
+       REAL(KIND=dp), ALLOCATABLE :: r(:), p(:), q(:)
+       REAL(KIND=dp) :: s
        INTEGER :: iter, i, j, k
        REAL(KIND=dp) :: residual, eps2,st
+
+       ALLOCATE(r(n), p(n), q(n))
 
        eps2 = eps*eps
 
@@ -2422,15 +2472,15 @@
        r = b - r
        residual = SQRT(SUM(r*r))
        WRITE (*, '(I8, E11.4)') iter, residual
+       DEALLOCATE(r, p, q)
      END SUBROUTINE RadiationCG
-#endif
 
 
      ! Update the outside (heat equation solver) view of the radiosities:
      ! ------------------------------------------------------------------
      SUBROUTINE UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
-       REAL(KIND=dp) :: SOL(:), SOL_d(:)
-       REAL(KIND=dp), OPTIONAL :: EffAbs(:), EffTemp(:)
+       REAL(KIND=dp) :: SOL(:)
+       REAL(KIND=dp), OPTIONAL :: SOL_d(:), EffAbs(:), EffTemp(:)
        
        TYPE(Element_t), POINTER :: Element
        INTEGER :: i
@@ -2454,14 +2504,14 @@
          END IF
 
          RadiosityFactors % Factors(1) = SOL(i)
-         IF(Newton) RadiosityFactors % Factors(2) = SOL_d(i)
+         IF(Newton .AND. PRESENT(SOL_d)) RadiosityFactors % Factors(2) = SOL_d(i)
          IF(PRESENT(EffAbs))  RadiosityFactors % Factors(3) = EffAbs(i)
          IF(PRESENT(EffTemp)) RadiosityFactors % Factors(4) = EffTemp(i)
        END DO
 
        IF(InfoActive(30)) THEN
          PRINT *,'SOL_0 range:',MINVAL(SOL),MAXVAL(SOL),SUM(SOL)/SIZE(SOL)       
-         IF(Newton) PRINT *,'SOL_d range:',MINVAL(SOL_d),MAXVAL(SOL_d),SUM(SOL_d)/SIZE(SOL_d)
+         IF(Newton .AND. PRESENT(SOL_d)) PRINT *,'SOL_d range:',MINVAL(SOL_d),MAXVAL(SOL_d),SUM(SOL_d)/SIZE(SOL_d)
        END IF
        
      END SUBROUTINE UpdateRadiosityFactors

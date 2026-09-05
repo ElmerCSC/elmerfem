@@ -35,23 +35,22 @@
 !>  utility routines for fwd (LonLat => xy) and inv. (xy => LonLat) projections
 !>  Currently supported projections:
 !     > polar stereographic projections north and south
-!     > generic from proj4 definition (requires fortrangis libraries with proj support)
+!     > generic from proj definition (requires proj library)
 !--------------------------------------------------------------------------------
       MODULE ProjUtils
       USE DefUtils
 
 #ifdef HAVE_PROJ
-      USE fortranc
-      USE proj
+      USE proj6_interface
 #endif
 
       IMPLICIT NONE
 
       INTERFACE proj_inv
-        MODULE PROCEDURE projinv_proj4,projinv_stereo
+        MODULE PROCEDURE projinv_proj6,projinv_stereo
       END INTERFACE
       INTERFACE proj_fwd
-        MODULE PROCEDURE projfwd_proj4,projfwd_stereo
+        MODULE PROCEDURE projfwd_proj6,projfwd_stereo
       END INTERFACE
 
       LOGICAL :: PjInitialized=.FALSE.
@@ -61,7 +60,9 @@
       REAL(KIND=dp) :: xmax,ymax,xmin,ymin
 
 #ifdef HAVE_PROJ
-      TYPE(pj_object) :: pj
+      TYPE(pj_t) :: pj
+      TYPE(pj_area_t) :: pj_area
+      CHARACTER(LEN=*),PARAMETER :: proj_stringf = 'EPSG:4326'
 #endif
 
       !WGS84 ellipsoid parameters : radius and flattening 
@@ -96,9 +97,10 @@
              Lat=MinLat+(y-ymin)*(MaxLat-MinLat)/(ymax-ymin)
 
 #ifdef HAVE_PROJ
-          CASE('proj4')
+          CASE('proj')
              CALL proj_inv(x,y,Lon,Lat)
 #endif
+
           CASE DEFAULT
             CALL FATAL('xy2LonLat','unsuported projection type: '//TRIM(proj_type))
         END SELECT
@@ -121,9 +123,10 @@
              x=-x
              y=-y
 #ifdef HAVE_PROJ
-          CASE('proj4')
+          CASE('proj')
              CALL proj_fwd(Lon,Lat,x,y)
 #endif
+
           CASE DEFAULT
             CALL FATAL('LonLat2xy','unsuported projection type: '//TRIM(proj_type))
         END SELECT
@@ -184,11 +187,30 @@
                  CALL FATAL("ProjINIT","(MaxLon-MinLon) <= 0")
 
 #ifdef HAVE_PROJ
-            CASE('proj4')
-               proj_string=ListGetString(GetSimulation(),'proj4',UnFoundFatal=.True.)
-               pj = pj_init_plus(TRIM(proj_string)//CHAR(0))
-               IF (.NOT.pj_associated(pj)) CALL FATAL('ProjINIT','proj not associated')
+           CASE('proj')
+               !> Get the mesh projection CRS     
+               proj_string=ListGetString(GetSimulation(),'CRS code',UnFoundFatal=.True.)
+
+               ! > detroy pj pointer in case it has already been initialised
+               IF (proj_associated(pj)) pj=proj_destroy(pj)
+
+               ! > Create projection from EPSG:4326 (proj_stringf) to mesh CRS
+               ! > use deafult_context for now
+               ! > do not use pj_area  for now
+               pj = proj_create_crs_to_crs(pj_default_ctx,TRIM(proj_stringf)//CHAR(0), &
+                      TRIM(proj_string)//CHAR(0), pj_area_null)
+
+               !> Raise error and stop is something wrong
+               IF (.NOT.proj_associated(pj)) THEN
+                     CALL print_proj_error(pj_default_ctx)
+                     CALL FATAL('ProjINIT','proj not associated')
+               ENDIF
+               ! > Print some projection informations
+               CALL print_proj_info(pj)
 #endif
+          CASE('proj4')
+             CALL FATAL('ProjINIT',& 
+                   'projection type <proj4> deprecated - use proj - see elmerice/Utils/Documentation/ProjUtils.md')
 
             CASE DEFAULT
                CALL FATAL('ProjINIT','unsuported projection type: '//TRIM(proj_type))
@@ -199,38 +221,40 @@
 !------------------------------------------------------------------------------
 ! proj4 : Inverse projection : x,y (m) => Lon,Lat (degrees)
 !------------------------------------------------------------------------------
-      SUBROUTINE projinv_proj4(x,y,lon,lat)
+      SUBROUTINE projinv_proj6(x,y,lon,lat)
         REAL(KIND=dp),INTENT(IN) :: x,y
         REAL(KIND=dp),INTENT(OUT) :: lon,lat
 #ifdef HAVE_PROJ
-        TYPE(pjuv_object) :: coordp,coordg
+        TYPE(pj_coord_t) :: coordp,coordg
 
-        coordp = pjuv_object(x,y)
-        coordg = pj_inv(coordp, pj)
-        lon = coordg % u * pj_rad_to_deg
-        lat = coordg % v * pj_rad_to_deg
+        coordp%x = x
+        coordp%y = y
+        coordg = proj_trans(pj, pj_inv, coordp)
+        lon = coordg % y
+        lat = coordg % x
 #else
-        CALL FATAL('projinv_proj4','proj not supported')
+        CALL FATAL('projinv_proj6','proj not supported')
 #endif
-      END SUBROUTINE projinv_proj4
+      END SUBROUTINE projinv_proj6
 
 !------------------------------------------------------------------------------
 ! proj4 : fwd projection  Lon,Lat (degrees) => x,y (m)
 !------------------------------------------------------------------------------
-      SUBROUTINE projfwd_proj4(lon,lat,x,y)
+      SUBROUTINE projfwd_proj6(lon,lat,x,y)
         REAL(KIND=dp),INTENT(IN) :: lon,lat
         REAL(KIND=dp),INTENT(OUT) :: x,y
 #ifdef HAVE_PROJ
-        TYPE(pjuv_object) :: coordp,coordg
+        TYPE(pj_coord_t) :: coordp,coordg
 
-        coordg = pjuv_object(lon*pj_deg_to_rad,lat*pj_deg_to_rad)
-        coordp = pj_fwd(coordg, pj)
-        x = coordp % u 
-        y = coordp % v 
+        coordg%x=lat
+        coordg%y=lon
+        coordp = proj_trans(pj, pj_fwd, coordg)
+        x = coordp % x
+        y = coordp % y
 #else
-        CALL FATAL('proj_proj4','proj not supported')
+        CALL FATAL('proj_proj','proj not supported')
 #endif
-      END SUBROUTINE projfwd_proj4
+      END SUBROUTINE projfwd_proj6
 
 
 !------------------------------------------------------------------------------
@@ -295,6 +319,51 @@
         y=-r*cos(lon-rlon)
 
       END SUBROUTINE projfwd_stereo
+
+#ifdef HAVE_PROJ
+
+      SUBROUTINE print_proj_info(pj)
+       TYPE(pj_t), INTENT(in) :: pj
+       TYPE(pj_info_t)   :: prinfo
+       TYPE(pj_proj_info_t)   :: pjinfo
+       CHARACTER(*), PARAMETER :: Caller="proj_info"
+       INTEGER, PARAMETER :: olevel=3
+
+       CALL INFO(Caller,"==== Projection Initialisation ====", level=olevel)
+
+       !> Get info about proj version:
+       prinfo = proj_info()
+       CALL INFO(Caller," > ==== Proj library ====", level=olevel)
+       CALL INFO(Caller,"  release: "//TRIM(cstrtof(prinfo%release)), level=olevel)
+
+       !> Get info about the transformation:
+       pjinfo=proj_pj_info(pj)
+       CALL INFO(Caller," > ==== Requested transformation ====", level=olevel)
+       CALL INFO(Caller,'  id: '//TRIM(cstrtof(pjinfo%id)), level=olevel)
+       CALL INFO(Caller,'  desc: '//TRIM(cstrtof(pjinfo%description)), level=olevel)
+       CALL INFO(Caller,'  def: '//TRIM(cstrtof(pjinfo%definition)), level=olevel)
+       CALL INFO(Caller,'  has inv: '//I2S(pjinfo%has_inverse), level=olevel)
+       write(Message,*) ' accuracy: ',pjinfo%accuracy
+       CALL INFO(Caller,Message, level=olevel)
+       CALL INFO(Caller,'============================',level=olevel)
+
+      END SUBROUTINE print_proj_info
+
+      SUBROUTINE print_proj_error(ctx)
+        TYPE(pj_context_t),INTENT(in) :: ctx
+        CHARACTER(*), PARAMETER :: Caller="proj_error"
+        INTEGER :: errno
+
+        errno = proj_context_errno(ctx)
+        IF (errno /= 0) THEN
+         CALL INFO(Caller, &
+                 TRIM(cstrtof(proj_context_errno_string(ctx,errno))), &
+                 level=1)
+        ENDIF
+
+      END SUBROUTINE print_proj_error
+#endif
+
 
       END MODULE ProjUtils
       

@@ -48,7 +48,9 @@
      USE Lists
      USE Integration
      USE ElementDescription
-     USE SolverUtils
+     USE SolverBasics
+     USE SolveCore, ONLY : SolveLinearSystem, SolveSystem
+     USE BoundaryConditionUtils, ONLY : SetDirichletBoundaries
      USE ElementUtils
 
      IMPLICIT NONE
@@ -338,7 +340,7 @@
        REAL(KIND=dp), DIMENSION(3) :: vel
        INTEGER :: n, VariableComponents
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,temp

@@ -48,7 +48,7 @@ Solver 1
   Variable = "Temperature"
   
 ! Linear System Solver = "Direct"
-  Linear System Direct Method = "MUMPS"
+! Linear System Direct Method = "MUMPS"
 
    Linear System Solver = "Iterative"
   Linear System Iterative Method = "BiCGStab"

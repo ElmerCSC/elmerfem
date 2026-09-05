@@ -53,7 +53,13 @@ Solver 1
   Linear System Solver = "Iterative"
   Linear System Iterative Method = "BiCGStab"
   Linear System Max Iterations = 350
-  Linear System Convergence Tolerance = 1.0e-08
+  ! 1.0e-8 left a ~7e-7 wobble in Temperature that the flux/gradient recovery
+  ! amplified ~10x into Solver 2's norm: an 8.5e-6 wide run-to-run band against
+  ! the 1e-5 reference tolerance, i.e. no margin left for a differently-threaded
+  ! BLAS. The wobble is OpenMP reduction ordering -- at one thread the norm was
+  ! bit-identical across runs. At 1e-12 the band is 3.5e-10, for 11 extra
+  ! BiCGStab iterations and no measurable time.
+  Linear System Convergence Tolerance = 1.0e-12
   Linear System Abort Not Converged = True
   Linear System Preconditioning = "ILU0"
   Linear System Residual Output = 10
@@ -140,6 +146,6 @@ End
 
 
 
-Solver 2 :: Reference Norm = Real 0.15711091
+Solver 2 :: Reference Norm = Real 0.157110575
 RUN
 !End Of File

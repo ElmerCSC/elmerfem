@@ -282,7 +282,9 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   USE DefUtils
   USE GeneralUtils
   USE ElementDescription
-  USE MeshUtils  
+  USE MeshUtils
+  USE MeshLoad, ONLY : LoadMesh2
+  USE MeshExtrusion, ONLY : MeshExtrude
   USE SParIterComm
   USE CalvingGeometry
 
@@ -998,6 +1000,13 @@ CONTAINS
           DO i=2,PEs
              disps(i) = disps(i-1) + PFaceNodeCount(i-1)
           END DO
+       END IF
+
+       IF(.NOT. Boss) THEN
+         ALLOCATE(FaceNodesT % x(1), FaceNodesT % y(1), FaceNodesT % z(1))
+         FaceNodesT % x(1) = 0
+         FaceNodesT % y(1) = 0
+         FaceNodesT % z(1) = 0
        END IF
 
        !Global NodeNumbers

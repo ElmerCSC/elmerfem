@@ -48,6 +48,7 @@ MODULE ElementUtils
     USE DirectSolve
     USE ListMatrixArray
     USE Integration
+    USE IpFieldInterface
     USE Lists
     USE Interpolation
     USE BandwidthOptimize
@@ -55,6 +56,9 @@ MODULE ElementUtils
       CrossProduct, NormalVector, InterpolateInElement, mGetElementDOFs
             
     IMPLICIT NONE
+    ! Not re-exported: the external procedure itself USEs modules that would
+    ! then import its own name (see module IpFieldInterface).
+    PRIVATE :: Ip2DgFieldInElement
 
 CONTAINS
 
@@ -66,6 +70,8 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: Matrix
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
+     ! Stand-in for the Free_Fact call below when the matrix has no solver
+     TYPE(Solver_t) :: DummySolver
      REAL(KIND=dp) :: x(1), b(1)
      INTEGER :: i
      LOGICAL :: Active
@@ -93,8 +99,18 @@ CONTAINS
 
      IF ( .NOT. ASSOCIATED( Matrix ) ) RETURN
 
+     ! DirectSolver takes Solver by value, so it must not be handed a
+     ! disassociated pointer, and matrices with no solver attached do reach
+     ! here. Every Free_Fact path deals with the matrix and returns without
+     ! looking at Solver, so a default initialized stand-in is enough; passing
+     ! one rather than skipping the call keeps the matrix-only frees, such as
+     ! FreeMumpsFactorizations, running for those matrices.
      Solver => Matrix % Solver
-     CALL DirectSolver( Matrix,x,b,Solver,Free_Fact=.TRUE.)
+     IF ( ASSOCIATED( Solver ) ) THEN
+       CALL DirectSolver( Matrix,x,b,Solver,Free_Fact=.TRUE.)
+     ELSE
+       CALL DirectSolver( Matrix,x,b,DummySolver,Free_Fact=.TRUE.)
+     END IF
 
      IF ( ASSOCIATED( Matrix % Perm ) )        DEALLOCATE( Matrix % Perm )
      IF ( ASSOCIATED( Matrix % InvPerm ) )     DEALLOCATE( Matrix % InvPerm )
@@ -140,6 +156,16 @@ CONTAINS
 
      IF ( ASSOCIATED( Matrix % CValues ) )     DEALLOCATE( Matrix % CValues )
      IF ( ASSOCIATED( Matrix % CILUValues ) )  DEALLOCATE( Matrix % CILUValues )
+
+     ! Parallel collection state of the AMGX interface, see AMGXCollection_t.
+     ! Allocatable components go with it.
+     IF ( ASSOCIATED( Matrix % AMGXColl ) )    DEALLOCATE( Matrix % AMGXColl )
+
+     ! Block CRS view, if one was built alongside the scalar form
+     IF ( ASSOCIATED( Matrix % BRows ) )       DEALLOCATE( Matrix % BRows )
+     IF ( ASSOCIATED( Matrix % BCols ) )       DEALLOCATE( Matrix % BCols )
+     IF ( ASSOCIATED( Matrix % BDiag ) )       DEALLOCATE( Matrix % BDiag )
+     IF ( ASSOCIATED( Matrix % CPrecValues ) ) DEALLOCATE( Matrix % CPrecValues )
 
      IF ( ASSOCIATED(Matrix % CMassValues) )  DEALLOCATE( Matrix % CMassValues )
      IF ( ASSOCIATED(Matrix % CDampValues) )  DEALLOCATE( Matrix % CDampValues )
@@ -297,26 +323,34 @@ CONTAINS
        END IF
        DEALLOCATE(s)
 
-       IF(ASSOCIATED(Solver % ParEnv % Active)) THEN
-         active = .FALSE.
+       ! The parallel environment arrays belong to this matrix, so they are
+       ! released here. Every solver that still mirrors them, the one owning
+       ! this matrix included, is left with a clean environment rather than
+       ! with freed arrays.
+       IF(ASSOCIATED(p % ParEnv % Active)) THEN
          DO i=1,CurrentModel % NumberOfSolvers
-           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
-           IF ( ASSOCIATED(Solver  % ParEnv % Active, CurrentModel % Solvers(i) % ParEnv % Active) ) &
-                   active = .TRUE.
+           IF ( ASSOCIATED(CurrentModel % Solvers(i) % ParEnv % Active, p % ParEnv % Active) ) &
+               CurrentModel % Solvers(i) % ParEnv % Active => Null()
          END DO
-         IF( .NOT. active ) DEALLOCATE(Solver % ParEnv % Active)
-         Solver % ParEnv % Active => Null()
+         IF( ASSOCIATED(Solver) ) THEN
+           IF ( ASSOCIATED(Solver % ParEnv % Active, p % ParEnv % Active) ) &
+               Solver % ParEnv % Active => Null()
+         END IF
+         DEALLOCATE(p % ParEnv % Active)
+         p % ParEnv % Active => Null()
        END IF
 
-       IF(ASSOCIATED(Solver % ParEnv % Isneighbour)) THEN
-         active = .FALSE.
+       IF(ASSOCIATED(p % ParEnv % Isneighbour)) THEN
          DO i=1,CurrentModel % NumberOfSolvers
-           IF  (ASSOCIATED(Solver,CurrentModel % Solvers(i))) CYCLE
-           IF ( ASSOCIATED(Solver  % ParEnv % IsNeighbour, CurrentModel % Solvers(i) % ParEnv % IsNeighbour) ) &
-                   Active = .TRUE.
+           IF ( ASSOCIATED(CurrentModel % Solvers(i) % ParEnv % IsNeighbour, p % ParEnv % IsNeighbour) ) &
+               CurrentModel % Solvers(i) % ParEnv % IsNeighbour => Null()
          END DO
-         IF ( .NOT. Active ) DEALLOCATE(Solver % ParEnv % Isneighbour)
-         Solver % ParEnv % IsNeighbour => Null()
+         IF( ASSOCIATED(Solver) ) THEN
+           IF ( ASSOCIATED(Solver % ParEnv % IsNeighbour, p % ParEnv % IsNeighbour) ) &
+               Solver % ParEnv % IsNeighbour => Null()
+         END IF
+         DEALLOCATE(p % ParEnv % Isneighbour)
+         p % ParEnv % IsNeighbour => Null()
        END IF
 
        DEALLOCATE(p)
@@ -958,25 +992,7 @@ CONTAINS
 
           CALL Info(Caller,'Adding matrix topology for BC: '//I2S(This),Level=10)
 
-          DO i=1,Projector % NumberOfRows
-            k = Reorder( Projector % InvPerm(i) )
-            IF ( k > 0 ) THEN
-              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
-                IF ( Projector % Cols(l) <= 0 ) CYCLE
-                m = Reorder( Projector % Cols(l) )
-                IF ( m > 0 ) THEN
-                  Lptr => List_GetMatrixIndex( List,k,m )
-                  Lptr => List_GetMatrixIndex( List,m,k ) ! keep structure symm.
-                  CList => List(k) % Head
-                  DO WHILE( ASSOCIATED( CList ) )
-                    Lptr => List_GetMatrixIndex( List,m,CList % Index )
-                    Lptr => List_GetMatrixIndex( List,CList % Index,m ) ! keep structure symm.
-                    CList => CList % Next
-                  END DO
-                END IF
-              END DO
-            END IF
-          END DO
+          CALL ProjectorTopology( List, Reorder, Projector )
         END DO
       END IF ! DoProjectors
 
@@ -1045,7 +1061,7 @@ CONTAINS
 #if 0    
     SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
 
-      TYPE(Element_t), POINTER :: Element
+      TYPE(Element_t), TARGET :: Element
       INTEGER :: n
       INTEGER :: ElemInds(:)
 
@@ -1103,7 +1119,7 @@ CONTAINS
   !--------------------------------------------------------------------------
   SUBROUTINE DgRadiationIndexes(Element,n,ElemInds,DiffuseGray)
 
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     INTEGER :: ElemInds(:)
     LOGICAL :: DiffuseGray
@@ -1587,25 +1603,7 @@ CONTAINS
           CALL Info(Caller,'Adding matrix topology for BC: '//I2S(This),Level=10)
 
           ! TODO: Add multithreading
-          DO i=1,Projector % NumberOfRows
-            k = Reorder( Projector % InvPerm(i) )
-            IF ( k > 0 ) THEN
-              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
-                IF ( Projector % Cols(l) <= 0 ) CYCLE
-                m = Reorder( Projector % Cols(l) )
-                IF ( m > 0 ) THEN
-                  CALL ListMatrixArray_AddEntry(List, k, m)
-                  CALL ListMatrixArray_AddEntry(List, m, k)
-                  CList => List % Rows(k) % Head
-                  DO WHILE( ASSOCIATED( CList ) )
-                    CALL ListMatrixArray_AddEntry(List, m, CList % Index)
-                    CALL ListMatrixArray_AddEntry(List, CList % Index, m)
-                    CList => CList % Next
-                  END DO
-                END IF
-              END DO
-            END IF
-          END DO
+          CALL ProjectorTopologyArray( List, Reorder, Projector )
         END DO
       END IF ! DoProjectors
 
@@ -1646,6 +1644,209 @@ CONTAINS
   END SUBROUTINE MakeListMatrixArray
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Add the matrix topology implied by an implicitly treated projector. For each
+!> projector row the master dof k and its slave dofs must be connected to each
+!> other and to everything k is already connected to, and the structure is kept
+!> symmetric. Adding that one entry at a time re-walks row k for every slave dof
+!> and searches each target row from its head, so instead the index sets are
+!> collected first and every row is extended in a single merge pass.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorTopology( List, Reorder, Projector )
+!------------------------------------------------------------------------------
+    TYPE(ListMatrix_t), POINTER :: List(:)
+    INTEGER :: Reorder(:)
+    TYPE(Matrix_t), POINTER :: Projector
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,l,k,m,nm,ns
+    INTEGER, ALLOCATABLE :: Ms(:), Ss(:)
+    TYPE(ListMatrixEntry_t), POINTER :: CList
+
+    CALL ProjectorTopologySizes( Projector, nm, Ms )
+    IF( nm == 0 ) RETURN
+
+    DO i=1,Projector % NumberOfRows
+      k = Reorder( Projector % InvPerm(i) )
+      IF( k <= 0 ) CYCLE
+
+      CALL ProjectorRowSlaves( Projector, Reorder, i, nm, Ms )
+      IF( nm == 0 ) CYCLE
+
+      ! Row k gains the slave dofs of this projector row
+      CALL List_AddMatrixIndexes( List, k, nm, Ms )
+
+      ! Everything row k is connected to now, plus k itself. The row is kept
+      ! sorted, so gathering it in order gives a sorted set.
+      ns = List(k) % Degree + 1
+      IF( ALLOCATED(Ss) ) THEN
+        IF( SIZE(Ss) < ns ) DEALLOCATE( Ss )
+      END IF
+      IF( .NOT. ALLOCATED(Ss) ) ALLOCATE( Ss(ns) )
+
+      CALL GatherRowWithSelf( List(k) % Head, k, ns, Ss )
+
+      ! Each slave dof gets the whole set, and everything in the set gets the
+      ! slave dofs. Together these give the same symmetric structure that the
+      ! entry-at-a-time version converged to.
+      DO j=1,nm
+        CALL List_AddMatrixIndexes( List, Ms(j), ns, Ss )
+      END DO
+      DO j=1,ns
+        CALL List_AddMatrixIndexes( List, Ss(j), nm, Ms )
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorTopology
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> As ProjectorTopology() but for the threaded ListMatrixArray_t structure.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorTopologyArray( List, Reorder, Projector )
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixArray_t) :: List
+    INTEGER :: Reorder(:)
+    TYPE(Matrix_t), POINTER :: Projector
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,l,k,m,nm,ns
+    INTEGER, ALLOCATABLE :: Ms(:), Ss(:), MPerm(:), SPerm(:)
+    TYPE(ListMatrixEntry_t), POINTER :: CList
+
+    CALL ProjectorTopologySizes( Projector, nm, Ms )
+    IF( nm == 0 ) RETURN
+
+    ! ListMatrixArray_AddEntries() takes the ordering as a separate permutation,
+    ! and the sets are sorted in place here, so identity permutations are used.
+    ALLOCATE( MPerm(SIZE(Ms)) )
+    DO i=1,SIZE(MPerm)
+      MPerm(i) = i
+    END DO
+
+    DO i=1,Projector % NumberOfRows
+      k = Reorder( Projector % InvPerm(i) )
+      IF( k <= 0 ) CYCLE
+
+      CALL ProjectorRowSlaves( Projector, Reorder, i, nm, Ms )
+      IF( nm == 0 ) CYCLE
+
+      CALL ListMatrixArray_AddEntries( List, k, nm, Ms, MPerm )
+
+      ns = List % Rows(k) % Degree + 1
+      IF( ALLOCATED(Ss) ) THEN
+        IF( SIZE(Ss) < ns ) DEALLOCATE( Ss, SPerm )
+      END IF
+      IF( .NOT. ALLOCATED(Ss) ) THEN
+        ALLOCATE( Ss(ns), SPerm(ns) )
+        DO j=1,ns
+          SPerm(j) = j
+        END DO
+      END IF
+
+      CALL GatherRowWithSelf( List % Rows(k) % Head, k, ns, Ss )
+
+      DO j=1,nm
+        CALL ListMatrixArray_AddEntries( List, Ms(j), ns, Ss, SPerm )
+      END DO
+      DO j=1,ns
+        CALL ListMatrixArray_AddEntries( List, Ss(j), nm, Ms, MPerm )
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorTopologyArray
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Allocate the slave dof workspace for the projector topology routines, sized
+!> by the longest projector row. Returns nm=0 if the projector has no entries.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorTopologySizes( Projector, nm, Ms )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: Projector
+    INTEGER :: nm
+    INTEGER, ALLOCATABLE :: Ms(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i
+
+    nm = 0
+    DO i=1,Projector % NumberOfRows
+      nm = MAX( nm, Projector % Rows(i+1) - Projector % Rows(i) )
+    END DO
+    IF( nm > 0 ) ALLOCATE( Ms(nm) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorTopologySizes
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Collect the permuted slave dofs of one projector row into a sorted set.
+!------------------------------------------------------------------------------
+  SUBROUTINE ProjectorRowSlaves( Projector, Reorder, i, nm, Ms )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: Projector
+    INTEGER :: Reorder(:)
+    INTEGER :: i, nm
+    INTEGER :: Ms(:)
+!------------------------------------------------------------------------------
+    INTEGER :: l, m
+
+    nm = 0
+    DO l=Projector % Rows(i), Projector % Rows(i+1)-1
+      IF( Projector % Cols(l) <= 0 ) CYCLE
+      m = Reorder( Projector % Cols(l) )
+      IF( m <= 0 ) CYCLE
+      nm = nm + 1
+      Ms(nm) = m
+    END DO
+
+    ! Duplicates may remain, they are skipped when the row is added
+    CALL Sort( nm, Ms )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ProjectorRowSlaves
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Gather the sorted indexes of a matrix row, with the row index itself merged
+!> in so that the master dof is included even if the diagonal entry is missing.
+!------------------------------------------------------------------------------
+  SUBROUTINE GatherRowWithSelf( Head, k, ns, Ss )
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixEntry_t), POINTER :: Head
+    INTEGER :: k, ns
+    INTEGER :: Ss(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: GotK
+    TYPE(ListMatrixEntry_t), POINTER :: CList
+
+    ns = 0
+    GotK = .FALSE.
+    CList => Head
+    DO WHILE( ASSOCIATED(CList) )
+      IF( .NOT. GotK ) THEN
+        IF( CList % Index >= k ) THEN
+          IF( CList % Index > k ) THEN
+            ns = ns + 1
+            Ss(ns) = k
+          END IF
+          GotK = .TRUE.
+        END IF
+      END IF
+      ns = ns + 1
+      Ss(ns) = CList % Index
+      CList => CList % Next
+    END DO
+
+    IF( .NOT. GotK ) THEN
+      ns = ns + 1
+      Ss(ns) = k
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GatherRowWithSelf
+!------------------------------------------------------------------------------
+
   
 
 !------------------------------------------------------------------------------
@@ -1656,7 +1857,7 @@ CONTAINS
   SUBROUTINE InitializeMatrix( Matrix, n, List, DOFs, Reorder, InvInitialReorder )
 !------------------------------------------------------------------------------
     INTEGER :: DOFs, n
-    TYPE(Matrix_t),POINTER :: Matrix
+    TYPE(Matrix_t), TARGET :: Matrix
     TYPE(ListMatrix_t) :: List(:)
     INTEGER, OPTIONAL :: Reorder(:), InvInitialReorder(:)
 !------------------------------------------------------------------------------
@@ -2333,7 +2534,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-#if 1
 !------------------------------------------------------------------------------
    SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
        Normals,Tangent1,Tangent2 )
@@ -2423,75 +2623,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE RotateMatrix
 !------------------------------------------------------------------------------
-#else
-
-! This should be the same as above but more economical but it does not work...
-!------------------------------------------------------------------------------
-  SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
-                   Normals,Tangent1,Tangent2 )
-!------------------------------------------------------------------------------
-
-    REAL(KIND=dp) :: Matrix(:,:),Vector(:)
-    REAL(KIND=dp), POINTER :: Normals(:,:), Tangent1(:,:),Tangent2(:,:)
-    INTEGER :: n,DIM,DOFs,NodeIndexes(:)
-!------------------------------------------------------------------------------
-
-    INTEGER :: i,ii,j,k,l
-    REAL(KIND=dp) :: s,R(DOFs,DOFs),Force0(Dofs),Force(Dofs),SubMat(Dofs,Dofs), &
-        SubMat0(Dofs,Dofs),N1(dofs),T1(dofs),T2(dofs)
-    INTEGER :: iInds(n),jInds(n)
-    LOGICAL :: Found
-!------------------------------------------------------------------------------
-    DO i=1,MIN(n,SIZE(NodeIndexes))
-      ii = NodeIndexes(i)
-      IF ( ii <= 0 .OR. ii > SIZE(Normals,1) ) CYCLE
-
-      IF(ASSOCIATED(CurrentModel % Mesh % PeriodicPerm)) THEN
-        j = CurrentModel % Mesh % PeriodicPerm(i)
-        IF(j>0) THEN
-          IF( ListGetLogical( CurrentModel % Solver % Values, &
-              'Apply Conforming BCs',Found ) ) ii = NodeIndexes(j)
-        END IF
-      END IF
-      
-      SELECT CASE(DIM)
-      CASE (2)
-        R(1,1:2) = Normals(ii,1:2)
-        R(2,1) = -R(1,2)
-        R(2,2) = R(1,1)
-      CASE (3)
-        R(1,1:3) = Normals(ii,:)
-        R(2,1:3) = Tangent1(ii,:)
-        R(3,1:3) = Tangent2(ii,:)
-      END SELECT
-
-      DO k=1,Dofs
-        iInds(k) = Dofs*(i-1)+k
-      END DO
-
-      DO j=1,n
-        DO k=1,Dofs
-          jInds(k) = Dofs*(j-1)+k
-        END DO
-
-        SubMat0 = Matrix(iInds,jInds)
-        SubMat = MATMUL(R,SubMat0)
-        Matrix(iInds,jInds) = SubMat
-        
-        SubMat0 = Matrix(jInds,iInds)
-        SubMat = MATMUL(SubMat0,TRANSPOSE(R))
-        Matrix(jInds,iInds) = SubMat
-      END DO
-
-      Force0 = Vector(iInds)
-      Force = MATMUL(R,Force0)
-      Vector(iInds) = Force
-      
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE RotateMatrix
-!------------------------------------------------------------------------------
-#endif
 
 
 !------------------------------------------------------------------------------
@@ -3213,7 +3344,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ElementArea( Mesh,Element,N ) RESULT(A)
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
      INTEGER :: N
      TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
@@ -3308,8 +3439,8 @@ CONTAINS
    !------------------------------------------------------------------------------
    !> If element has two of the same indexes regard the element as degenerate.
    !------------------------------------------------------------------------------
-   FUNCTION DegenerateElement( Element ) RESULT ( Stat ) 
-     TYPE(Element_t), POINTER :: Element
+   FUNCTION DegenerateElement( Element ) RESULT ( Stat )
+     TYPE(Element_t), TARGET :: Element
      LOGICAL Stat
 
      INTEGER :: i,n
@@ -3436,7 +3567,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      IMPLICIT NONE
      INTEGER :: n,nedge
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,jb1,jb2,je1,je2
@@ -3479,7 +3610,7 @@ CONTAINS
      IMPLICIT NONE
      INTEGER :: n
      TYPE(Element_t) :: Boundary
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,m
      TYPE(Element_t), POINTER :: Parent, Face
@@ -3511,12 +3642,12 @@ CONTAINS
    SUBROUTINE FindParentUVW( Element, n, Parent, np, U, V, W, Basis ) 
 !------------------------------------------------------------------------------
      IMPLICIT NONE
-     TYPE( Element_t ), POINTER :: Element
-     TYPE( Element_t ), POINTER :: Parent
+     TYPE( Element_t ), TARGET :: Element
+     TYPE( Element_t ), TARGET :: Parent
      INTEGER :: n, np
      REAL( KIND=dp ) :: U, V, W, Basis(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, j, nParent, check 
+    INTEGER :: i, j, nParent, check
     REAL(KIND=dp) :: NodalParentU(n), NodalParentV(n), NodalParentW(n)
 !------------------------------------------------------------------------------
 
@@ -3559,8 +3690,8 @@ CONTAINS
   SUBROUTINE SetParentBasis( Element, n, Basis, Parent, np, Basisp ) 
 !------------------------------------------------------------------------------
      IMPLICIT NONE
-     TYPE( Element_t ), POINTER :: Element
-     TYPE( Element_t ), POINTER :: Parent
+     TYPE( Element_t ), TARGET :: Element
+     TYPE( Element_t ), TARGET :: Parent
      INTEGER :: n, np
      REAL( KIND=dp ) :: Basis(:), Basisp(:)
 !------------------------------------------------------------------------------
@@ -3635,15 +3766,6 @@ CONTAINS
     REAL(KIND=dp), POINTER :: rValues(:)
     COMPLEX(KIND=dp), POINTER :: cValues(:)
 
-    INTERFACE 
-      SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
-        USE Types
-        TYPE(Mesh_t), POINTER :: Mesh
-        TYPE(Element_t), POINTER :: Parent
-        INTEGER :: nip, np
-        REAL(KIND=dp) :: fip(:), fdg(:)
-      END SUBROUTINE Ip2DgFieldInElement
-    END INTERFACE
 
     IF(PRESENT(GotEdge)) GotEdge = .FALSE.
     IF(PRESENT(GotEigen)) GotEIgen = .FALSE.
@@ -4059,8 +4181,8 @@ CONTAINS
       
   CONTAINS
 
-    FUNCTION PickDgIndexes(Element,PParent) RESULT ( PToInds) 
-      TYPE(Element_t), POINTER :: Element
+    FUNCTION PickDgIndexes(Element,PParent) RESULT ( PToInds)
+      TYPE(Element_t), TARGET :: Element
       INTEGER, POINTER :: PtoInds(:)
       TYPE(Element_t), POINTER, OPTIONAL :: PParent
 
@@ -4109,7 +4231,7 @@ CONTAINS
 
      ! Parameters
      TYPE(Mesh_t) :: Mesh
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), TARGET :: Element
      INTEGER :: indSize, Indexes(:)
      
      ! Variables

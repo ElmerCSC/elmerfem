@@ -44,7 +44,7 @@
 !------------------------------------------------------------------------------
    SUBROUTINE PartitionMeshSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
-     USE MeshUtils, ONLY : WriteMeshToDiskPartitioned
+     USE MeshBasics, ONLY : WriteMeshToDiskPartitioned
      USE DefUtils
      USE MeshPartition
 

@@ -136,8 +136,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: Material, BF
 
-    TYPE(Nodes_t), SAVE :: Nodes
-!$omp threadprivate(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     dim=CoordinateSystemDimension()
     L=dim+1
@@ -314,7 +313,8 @@ CONTAINS
   SUBROUTINE BoundaryLocalMatrix( Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element, Parent
+    TYPE(Element_t), TARGET :: Element
+    TYPE(Element_t), POINTER :: Parent
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: MASS(3*nd,3*nd), STIFF(3*nd,3*nd), FORCE(3*nd)
     REAL(KIND=dp), POINTER :: A(:,:),M(:,:)
@@ -327,8 +327,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: BC
 
-    TYPE(Nodes_t), SAVE :: Nodes, PNodes
-!$omp threadprivate(Nodes,PNodes)
+    TYPE(Nodes_t) :: Nodes, PNodes
 !------------------------------------------------------------------------------
     dim = CoordinateSystemDimension()
     L = dim+1

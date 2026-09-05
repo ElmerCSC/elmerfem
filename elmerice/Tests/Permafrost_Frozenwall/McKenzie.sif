@@ -1,15 +1,15 @@
 !echo on
 !Check Keywords "Warn"
 
-#p0=100132.0
-#gauge=500.0
-#grav=9.81
-#Toffset = 0.0
-#deltaT = 4.0
-#yc0=0.0
-#rhogw = 999.9 + yc0*(1740.0 - 999.9)
-#Toffset = 0.0
-#deltaT = 4.0
+$p0=100132.0
+$gauge=500.0
+$grav=9.81
+$Toffset = 0.0
+$deltaT = 4.0
+$yc0=0.0
+$rhogw = 999.9 + yc0*(1740.0 - 999.9)
+$Toffset = 0.0
+$deltaT = 4.0
 
 $elmntstrng="p:1 b:1"
 
@@ -24,7 +24,7 @@ Simulation
   Simulation Type = Transient
   TimeStepping Method = BDF  
   BDF Order = 1
-  Timestep Sizes(1) = #10.0*24.0 * 3600
+  Timestep Sizes(1) = $10.0*24.0 * 3600
   TimeStep Intervals(1) =  4
   Output Intervals(1) = 1 !only applies to result output, if there is
   Steady State Max Iterations = 10
@@ -34,10 +34,10 @@ End
 
 Constants
   Gas Constant = Real 8.3145	
-  Gravity(4) = 0 -1 0 #grav
+  Gravity(4) = $ 0 -1 0 grav
   Reference Temperature = Real 273.15
-  Reference Pressure = Real #p0
-  Permafrost DeltaT = Real #deltaT
+  Reference Pressure = Real $p0
+  Permafrost DeltaT = Real $deltaT
   Permafrost eps = Real 0.99
   Gas Constant = Real 8.3145
   Avogadro Number = Real 6.022140857E23
@@ -103,7 +103,7 @@ Solver 3
   Procedure = "ElmerIceSolvers" "PermaFrostHeatTransfer"
   Output Xi = Logical True
   Linear System Solver = Iterative
-  Linear System Iterative Method  = BiCGStab
+  Linear System Iterative Method  = BiCGStabL
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1.0e-07
   Nonlinear System Convergence Tolerance = 1.0e-05
@@ -143,30 +143,30 @@ End
 
 Initial Condition 1
   Porosity = Real 0.1
-  PFTemp = Real #273.15 + 5.0 + Toffset
-  GWPressure = Real #p0
-  Salinity = Real #yc0
+  PFTemp = Real $273.15 + 5.0 + Toffset
+  GWPressure = Real $p0
+  Salinity = Real $yc0
 End
 
 Boundary Condition 1
   Name = "inflow"
   Target Boundaries = 1
-  PFTemp = Real #273.15 + 5.0 + Toffset
+  PFTemp = Real $273.15 + 5.0 + Toffset
   GWPressure = Variable Coordinate 2
-     Real Lua "p0 + gauge + 10.0*(1.0 - 0.1*tx[0])*rhogw*grav"
+     Real MATC "p0 + gauge + 10.0*(1.0 - 0.1*tx(0))*rhogw*grav"
 End
 
 Boundary Condition 2
   Name = "outflow"
   Target Boundaries = 2
   GWPressure = Variable Coordinate 2
-     Real Lua "p0 + 10.0*(1.0 - 0.1*tx[0])*rhogw*grav"
+     Real MATC "p0 + 10.0*(1.0 - 0.1*tx(0))*rhogw*grav"
 End
 
 Boundary Condition 3
   Name = "wall"
   Target Boundaries = 3
-  PFTemp = Real #273.15 - 5.0  + Toffset
+  PFTemp = Real $273.15 - 5.0  + Toffset
 End
 
 Boundary Condition 4

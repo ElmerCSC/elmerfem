@@ -166,25 +166,20 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
-    REAL(KIND=dp), SAVE, POINTER  :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), POINTER  :: DiffCoeff(:), ConvCoeff(:), ReactCoeff(:), &
         TimeCoeff(:), SourceCoeff(:), Velo1Coeff(:), Velo2Coeff(:), Velo3Coeff(:)
-    REAL(KIND=dp), SAVE, POINTER  :: VeloCoeff(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: VeloCoeff(:,:)
     LOGICAL :: Stat,Found
     INTEGER :: t,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, DiffCoeff_h, ReactCoeff_h, TimeCoeff_h, ConvCoeff_h, &
         Velo1Coeff_h, Velo2Coeff_h, Velo3Coeff_h
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJ, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, DiffCoeff_h, ReactCoeff_h, TimeCoeff_h, &
-    !$OMP               ConvCoeff_h, Velo1Coeff_h, Velo2Coeff_h, Velo3Coeff_h, &
-    !$OMP               SourceCoeff, DiffCoeff, ReactCoeff, TimeCoeff, &
-    !$OMP               ConvCoeff, Velo1Coeff, Velo2Coeff, Velo3Coeff, VeloCoeff )
+    !$OMP THREADPRIVATE(SourceCoeff_h, DiffCoeff_h, ReactCoeff_h, TimeCoeff_h, &
+    !$OMP               ConvCoeff_h, Velo1Coeff_h, Velo2Coeff_h, Velo3Coeff_h)
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJ
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
@@ -202,25 +197,15 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    
+
     dim = CoordinateSystemDimension()
     IP = GaussPoints( Element )
     ngp = IP % n
 
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-      IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-            DEALLOCATE(Basis,dBasisdx, DetJ, MASS, STIFF, FORCE, VeloCoeff )
-    END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJ(ngp), &
-          MASS(nd,nd), STIFF(nd,nd), FORCE(nd), VeloCoeff(ngp,3), STAT=allocstat)
-      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJ(ngp), &
+        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), VeloCoeff(ngp,3), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -317,12 +302,10 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(ValueList_t), POINTER :: BC
-       
+
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h
-
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes,Flux_h,Robin_h,Ext_h)
+    !$OMP THREADPRIVATE(Flux_h,Robin_h,Ext_h)
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN

@@ -102,15 +102,13 @@ Solver 2
   Fix Input Current Density = Logical False
 
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = ILU0
+  Linear System Preconditioning = ILU2
   Linear System Residual Output = 20
-  Linear System Max Iterations = 500
-  Linear System Iterative Method = BiCGStabl
-  BicGStabL Polynomial Degree = 4
-  Idrs Parameter = 6
-  Linear System GCR Restart = 500
-  Linear System Convergence Tolerance = 1e-8
+  Linear System Max Iterations = 1200
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 600
   Linear System Abort Not Converged = False
+  Linear System Convergence Tolerance = 5e-5
 
   Steady State Convergence Tolerance = 1e-09
 
@@ -371,8 +369,7 @@ Boundary Condition 16
 End 
 
 
-Solver 2 :: Reference Norm = 4.22134445E-03
-Solver 3 :: Reference Norm = 6.66996883E-02
+Solver 2 :: Reference Norm = 4.22067257E-03
 Solver 7 :: Reference Norm = 5.92002332E-01
 
 Solver 2 :: Reference Norm Tolerance = 2e-4

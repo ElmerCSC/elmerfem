@@ -1,0 +1,37 @@
+! Second-order basis functions with a p-multigrid preconditioner, smoothed by
+! the complex symmetric Gauss-Seidel smoother (ComplexSGS in Smoothers.F90).
+! This is the cjacobi setup of VectorHelmholtzWaveguide4/pmult.sif with the
+! smoother swapped, so the two share a reference norm.
+
+  Use Piola Transform = True
+  Quadratic Approximation = True
+  Gradient Basis Functions = True
+
+! Outer iteration
+  Linear System Solver = iterative
+  Linear System Iterative Method = GCR
+  Linear System Max Iterations = 200
+  Linear System GCR Restart = 50
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Residual Output = 1
+  Linear System Scaling = True
+
+  Linear System Preconditioning = multigrid
+
+! MG parameters only active when preconditioning is set as "multigrid"
+  Edge Basis = True
+  MG Method = p
+  MG Levels = 2
+  MG Max Iterations = 1
+  MG Smoother = csgs
+  MG Pre Smoothing iterations = 6
+  MG Post Smoothing Iterations = 6
+  MG Smoother Relaxation Factor = $ 1/6
+
+  MG Lowest Linear Solver = Direct
+  mglowest: Linear System Scaling = True
+  mglowest: Linear System Direct Method = umfpack
+
+! The reference norm is inherited from the serial cjacobi variant, so the norm
+! has to be counted the same way when the case is run on several partitions.
+  Nonlinear System Consistent Norm = True

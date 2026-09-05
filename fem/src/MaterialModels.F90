@@ -195,7 +195,7 @@ this ise not in USE
      TYPE(Nodes_t)  :: Nodes
      INTEGER :: n,nd
      INTEGER, OPTIONAL :: LocalIP
-     TYPE(Element_t),POINTER :: Element
+     TYPE(Element_t), POINTER :: Element
 
      !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
@@ -208,18 +208,19 @@ this ise not in USE
 
      CHARACTER(:), ALLOCATABLE :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
      TYPE(ValueList_t), POINTER :: Material
-     REAL(KIND=dp) :: x, y, z, c1n(n), c2n(n), c3n(n), c4n(n), &
+     REAL(KIND=dp) :: x, y, z, &
           c1, c2, c3, c4, c5, c6, c7, Temp, NodalTemperature(n), Tlimit, TempCoeff, &
-          h, A1, A2, Q1, Q2, R, NodalEhF(n), EhF, ArrheniusFactor
+          h, A1, A2, Q1, Q2, R, EhF, ArrheniusFactor
 
+     REAL(KIND=dp), ALLOCATABLE :: c1n(:), c2n(:), c3n(:), c4n(:), NodalEhF(:), Vals(:)
      ! Temperature is needed for thermal models
      TYPE(Variable_t), POINTER :: TempSol 
      REAL(KIND=dp), POINTER :: Temperature(:)
      INTEGER, POINTER :: TempPerm(:)
-     INTEGER(KIND=AddrInt) :: Fnc
+     TYPE(C_FUNPTR) :: Fnc
      TYPE(Variable_t), POINTER :: Var
      REAL(KIND=dp) :: dist,F2,F3
-     REAL(KIND=dp) :: KE_K, KE_E, KE_Z, CT, TimeScale,Clip, Cmu, Vals(n)
+     REAL(KIND=dp) :: KE_K, KE_E, KE_Z, CT, TimeScale,Clip, Cmu
      CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: SetArrheniusFactor=.FALSE.
 
@@ -263,9 +264,9 @@ this ise not in USE
      !-------------------------------------------------------------------
      ss = 0.5_dp * SecondInvariant(Velo,dVelodx,Metric,Symb)
 
+     ALLOCATE(c1n(n), c2n(n), c3n(n), c4n(n), Vals(n), NodalEhF(n) )
 
      SELECT CASE( ViscosityFlag )
-
 
      CASE('glen')
         c2n = ListGetReal( Material, 'Glen Exponent', n, Element % NodeIndexes, GotIt ) ! this is the real exponent, n, not 1/n
@@ -596,7 +597,7 @@ this ise not in USE
      ! for backward compatibility this is activated by an existing keyword
      !--------------------------------------------------------------------
      c1 = ListGetConstReal( Material, 'Viscosity Temp Exp',GotIt)
-     IF( GotIt ) THEN 	
+     IF( GotIt ) THEN
         TempSol => VariableGet( CurrentModel % Variables, 'Temperature' )
         IF ( ASSOCIATED( TempSol) ) THEN
            TempPerm    => TempSol % Perm
@@ -644,7 +645,7 @@ this ise not in USE
      ! Temperature is needed for thermal models
      TYPE(Variable_t), POINTER :: TempSol 
 
-     INTEGER(KIND=AddrInt) :: Fnc
+     TYPE(C_FUNPTR) :: Fnc
      CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
      PCond = Conductivity

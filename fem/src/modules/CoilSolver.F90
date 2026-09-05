@@ -783,7 +783,7 @@ CONTAINS
    !------------------------------------------------------------------------------
    SUBROUTINE MarkCoilNodes(TargetBodies, Coil, CoilActive ) 
 
-     INTEGER, POINTER :: TargetBodies(:)
+     INTEGER :: TargetBodies(:)
      INTEGER :: Coil
      LOGICAL :: CoilActive
 
@@ -825,7 +825,7 @@ CONTAINS
   SUBROUTINE DefineCoilCenter(CoilCenter, Params, TargetBodies)
     REAL(KIND=dp) :: CoilCenter(3)
     TYPE(ValueList_t), POINTER :: Params 
-    INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
+    INTEGER, OPTIONAL :: TargetBodies(:)
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s
@@ -925,7 +925,7 @@ CONTAINS
       Params, TargetBodies )
     REAL(KIND=dp) :: CoilNormal(3), CoilTangent1(3), CoilTangent2(3)
     TYPE(ValueList_t), POINTER :: Params
-    INTEGER, POINTER, OPTIONAL :: TargetBodies(:)
+    INTEGER, OPTIONAL :: TargetBodies(:)
 
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
@@ -1087,10 +1087,10 @@ CONTAINS
   SUBROUTINE ChooseFixedBulkNodesNarrow( Set, SetNo, SelectNodes )
     
     INTEGER :: SetNo
-    INTEGER, POINTER :: Set(:)
+    INTEGER :: Set(:)
     LOGICAL :: SelectNodes
 
-    LOGICAL :: Mirror 
+    LOGICAL :: Mirror
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: x,y,z,x0,y0
     REAL(KIND=dp) :: r(3),rp(3),MinCut, MaxCut, CutDist(27)
@@ -1206,7 +1206,7 @@ CONTAINS
   ! has multiple circles. 
   !---------------------------------------------------------------------------------
   SUBROUTINE ChooseCoilCut(Set, SelectNodes )
-    INTEGER, POINTER :: Set(:)
+    INTEGER :: Set(:)
     LOGICAL :: SelectNodes
 
     LOGICAL :: Ready, GotAny, Parallel
@@ -1401,8 +1401,8 @@ CONTAINS
   ! to use the same way to computed the resulting currents.
   !--------------------------------------------------------------------
   SUBROUTINE ChooseFixedEndNodes( Set )
-    
-    INTEGER, POINTER :: Set(:)
+
+    INTEGER :: Set(:)
 
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Indexes(:)
@@ -1440,7 +1440,7 @@ CONTAINS
   !----------------------------------------------------------
   SUBROUTINE CountFixingNodes( Set, SetNo )
 
-    INTEGER, POINTER :: Set(:)
+    INTEGER :: Set(:)
     INTEGER :: SetNo   
     INTEGER :: i,j,nplus,nminus
   
@@ -1483,7 +1483,7 @@ CONTAINS
   SUBROUTINE LocalPotMatrix( Element, n, nd )
     !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,GradAtIp(3), &
         FixAtIp, AbsGradAtIp, CondAtIp(3), DistGradAtIp(3),AbsDistGradAtIp,AbsCondAtIp
@@ -1606,7 +1606,7 @@ CONTAINS
   SUBROUTINE LocalFixMatrix( Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: diff_coeff(n), AbsGradAtIp, Weight, Dreg, AbsCondAtIp
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,GradAtIp(3),DistGradAtIp(3)
@@ -1694,7 +1694,7 @@ CONTAINS
   SUBROUTINE LocalFluxMatrix( Element, n, nd, dimi  )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd, dimi
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),Weight,DetJ,LoadAtIP,FixAtIp, &
          GradAtIp(3),AbsGradAtIp,CondAtIp(3),DistGradAtIp(3),AbsDistGradAtIp, &
@@ -1824,7 +1824,7 @@ CONTAINS
   SUBROUTINE LocalCorrMatrix( Element, n, nd )
     !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,L(3),Lfix(3,nd)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
@@ -1874,7 +1874,7 @@ CONTAINS
   SUBROUTINE LocalCorrCurrent( Element, n, nd )
     !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),NodalPot(nd),DetJ,Weight
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd,3),x(nd)

@@ -46,7 +46,7 @@
      USE Integration
      USE ElementDescription
      USE Differentials
-     USE SolverUtils
+     USE SolverBasics
      USE ElementUtils
      USE Adaptive
      USE DefUtils
@@ -539,7 +539,7 @@ CONTAINS
     REAL(KIND=dp) :: StiffMatrix(:,:),Force(:),Load(:), Permittivity(:)
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
  
     REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)

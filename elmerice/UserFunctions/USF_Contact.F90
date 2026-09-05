@@ -45,34 +45,36 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
   IMPLICIT NONE
 
-  TYPE(Model_t) :: Model
+  TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
-  TYPE(variable_t), POINTER :: TimeVar, NormalVar, VarSurfResidual, GroundedMaskVar, HydroVar, DistanceVar, FrictionVar
-  TYPE(ValueList_t), POINTER :: BC
-  TYPE(Element_t), POINTER :: Element, CurElement, BoundaryElement
-  TYPE(Nodes_t), SAVE :: Nodes
+  TYPE(variable_t), POINTER :: TimeVar, NormalVar, VarSurfResidual, GroundedMaskVar
+  TYPE(variable_t), POINTER :: HydroVar, DistanceVar, FrictionVar
+  TYPE(ValueList_t),POINTER :: BC, Constants, ElemBC
+  TYPE(Element_t), POINTER  :: Element, CurElement, BoundaryElement
+  TYPE(Nodes_t), SAVE       :: Nodes
 
-  REAL(KIND=dp), POINTER :: NormalValues(:), ResidValues(:), GroundedMask(:), Hydro(:), &
-       Distance(:), FrictionValues(:)
-  REAL(KIND=dp) :: Bdrag, t, told, thresh, FrictionValue
-  REAL(KIND=dp), ALLOCATABLE :: Normal(:), Fwater(:), Fbase(:)
-
-  INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:), &
-       DistancePerm(:), FrictionPerm(:)
+  INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:)
+  INTEGER, POINTER :: DistancePerm(:), FrictionPerm(:)
   INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, MSum, ZSum
 
-  LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction, UnFoundFatal=.TRUE.
+  REAL(KIND=dp), POINTER     :: NormalValues(:), ResidValues(:), GroundedMask(:), Hydro(:)
+  REAL(KIND=dp), POINTER     :: Distance(:), FrictionValues(:)
+  REAL(KIND=dp), ALLOCATABLE :: Normal(:), Fwater(:), Fbase(:)
+  REAL(KIND=dp) :: Bdrag, t, told, thresh, FrictionValue
+  REAL(KIND=dp) :: y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb
+  REAL(KIND=dp) :: comp, cond, TestContact, GZEPT_scaling
 
-  REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb
-
-  REAL(KIND=dp) :: comp, cond, TestContact
   CHARACTER(LEN=MAX_NAME_LEN) :: USF_Name='SlidCoef_Contact', Sl_Law, GLtype, FrictionVarName
-  CHARACTER(LEN=MAX_NAME_LEN) :: FlowLoadsName, FlowSolutionName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FlowLoadsName, FlowSolutionName, MaskName
+  LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction, UnFoundFatal=.TRUE.
+  LOGICAL :: ApplyFrontFriction = .FALSE.
+  LOGICAL, ALLOCATABLE :: IceFrontNode(:)
 
   SAVE FirstTime, yeschange, told, GLmoves, thresh, GLtype, TestContact
-  SAVE DIM, USF_Name, Normal, Fwater, Fbase, relChangeOld, Sl_Law
+  SAVE DIM, USF_Name, Normal, Fwater, Fbase, relChangeOld, Sl_Law, MaskName
   SAVE FrictionVar, FrictionValues, FrictionValue, FrictionPerm, BC, FlowLoadsName
   SAVE FlowSolutionName
+  SAVE ApplyFrontFriction, IceFrontNode
 
 !----------------------------------------------------------------------------
 
@@ -80,24 +82,27 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   Timevar => VariableGet( Model % Variables,'Time')
   t = TimeVar % Values(1)
 
-! GroundedMask import
-  GroundedMaskVar => VariableGet( Model % Mesh % Variables, 'GroundedMask',UnFoundFatal=UnFoundFatal)
-  GroundedMask => GroundedMaskVar % Values
-  GroundedMaskPerm => GroundedMaskVar % Perm
-  
   relchange = Model % Solver % Variable % NonLinChange
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! First time step for the First time
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  IF (FirstTime) THEN
+  First: IF (FirstTime) THEN
      DIM = CoordinateSystemDimension()
      FirstTime = .FALSE.
      n = Model % MaxElementNodes
      told = t
      
-! means have the possibility to change
+     ! Allow user-named grounded mask
+     Constants => GetConstants()
+     MaskName = ListGetString(Constants, 'Grounded Mask Variable Name', GotIt)
+     IF (.NOT. GotIt) MaskName = 'GroundedMask'
+!     MaskName = ListGetString(Constants,'Grounded Mask Variable Name',UnFoundFatal=.FALSE.,DefValue='GroundedMask')  
+     WRITE( Message, * ) 'Grounded mask name is:', MaskName
+     CALL INFO(USF_Name, Message, level=5)
+
+     ! means have the possibility to change
      yesChange = .TRUE.
      ALLOCATE( Normal(DIM), Fwater(DIM), Fbase(DIM) )
      
@@ -162,7 +167,45 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
      ELSE
         CALL INFO( USF_Name, 'far inland nodes will not detach', level=3)
      END IF
-  ENDIF
+     ! Add-on to the "discontinuous" GL definition:
+     ! optionally re-apply basal friction under elements whose only floating
+     ! (GroundedMask = -1) nodes lie on the ice front. These are typically
+     ! one-element-wide numerical shelves (the grounding line a single element
+     ! behind the calving front) that otherwise run away through the Glen
+     ! shear-thinning feedback (strain rate explodes, viscosity collapses).
+     ! The ice-front nodes are flagged once, here.
+     ! Requires "Ice Front = Logical True" on the calving-front BC.
+     ApplyFrontFriction = GetLogical( BC, 'Tiny shelf drag', GotIt )
+     IF (.NOT. GotIt) ApplyFrontFriction = .FALSE.
+     IF (ApplyFrontFriction) THEN
+        IF (TRIM(GLtype) /= 'discontinuous') THEN
+           CALL Warn(USF_Name, '"Tiny shelf drag" only active with &
+                &"Grounding Line Definition = discontinuous"; switching it off')
+           ApplyFrontFriction = .FALSE.
+        ELSE
+           CALL Info(USF_Name, 'Applying friction under ice-front slivers &
+                &(discontinuous add-on)', Level=3)
+           ALLOCATE( IceFrontNode( Model % Mesh % NumberOfNodes ) )
+           IceFrontNode = .FALSE.
+           CurElement => Model % CurrentElement
+           DO tt = 1, Model % NumberOfBoundaryElements
+              Element => GetBoundaryElement(tt)
+              IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+              ElemBC => GetBC(Element)
+              IF (.NOT. ASSOCIATED(ElemBC)) CYCLE
+              IF (GetLogical(ElemBC, 'Ice Front', GotIt)) THEN
+                 n = GetElementNOFNodes(Element)
+                 IceFrontNode( Element % NodeIndexes(1:n) ) = .TRUE.
+              END IF
+           END DO
+           Model % CurrentElement => CurElement
+        END IF
+     END IF
+  ENDIF First
+
+  GroundedMaskVar => VariableGet( Model % Mesh % Variables, MaskName,UnFoundFatal=UnFoundFatal)
+  GroundedMask => GroundedMaskVar % Values
+  GroundedMaskPerm => GroundedMaskVar % Perm
   
   IF(Sl_Law(1:10) == 'prescribed') THEN
     IF(Sl_Law(1:16) == 'prescribed value') THEN
@@ -332,7 +375,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   relChangeOld = relChange  
   
   
-  IF (GroundedMaskPerm(nodenumber) > 0) THEN
+  LowerSurface: IF (GroundedMaskPerm(nodenumber) > 0) THEN
   ! for the bottom surface, where the GroundedMask is defined
      cond = GroundedMask(GroundedMaskPerm(nodenumber))
      
@@ -349,13 +392,30 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
         IF (cond > 0.5) Friction = .TRUE. 
      CASE('discontinuous')
         BoundaryElement => Model % CurrentElement
-        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))>-0.5)) Friction = .TRUE. 
+        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))>-0.5)) THEN
+           Friction = .TRUE.
+        ELSE IF (ApplyFrontFriction) THEN
+           ! sliver add-on: keep friction if every floating node of this
+           ! element sits on the ice front, otherwise leave it free-slip
+           Friction = .TRUE.
+           DO ii = 1, GetElementNOFNodes(BoundaryElement)
+              jj = BoundaryElement % NodeIndexes(ii)
+              Nn = GroundedMaskPerm(jj)
+              IF (Nn == 0) CYCLE
+              IF (GroundedMask(Nn) < -0.5_dp) THEN
+                 IF (.NOT. IceFrontNode(jj)) THEN
+                    Friction = .FALSE.
+                    EXIT
+                 END IF
+              END IF
+           END DO
+        END IF
      CASE DEFAULT
         WRITE(Message, '(A,A)') 'GL type not recognised ', GLtype 
         CALL FATAL( USF_Name, Message)
      END SELECT
 
-     IF (Friction) THEN
+     ApplyDrag: IF (Friction) THEN
         ! grounded node
         SELECT CASE(Sl_law)
         CASE ('weertman')
@@ -376,15 +436,101 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
            WRITE(Message, '(A,A)') 'Sliding law not recognised ',Sl_law
            CALL FATAL( USF_Name, Message)
         END SELECT
+
+        Bdrag = Bdrag * GZEPT_scaling(Model, nodenumber, y)
      ELSE
         ! floating node
         Bdrag = 0.0_dp
-     END IF
+     END IF ApplyDrag
   ELSE
      ! for other surfaces, typically for lateral surfaces within buttressing experiments
      Bdrag = Sliding_weertman(Model, nodenumber, y)
-  END IF
+   END IF LowerSurface
+   
 END FUNCTION SlidCoef_Contact
 
 
+! ******************************************************************************
+! *  Authors: Rupert Gladstone
+! *  Email:   RupertGladstone1972@gmail.com
+! ******************************************************************************
+!
+! Grounding Zone Effective Pressure Threshold scaling (GZEPT) for Stokes.
+! This is the Stokes equivalent of HAF scaling.
+! It is linear scaling to be applied to the basal resistance from zero at zero
+! effective pressure up to 1 at the GZEPT (read from BC).
+! Note that it probably does not make sense to apply this approach when the
+! sliding parameterisation contains explicit dependence on effective pressure,
+! e.g. Regularised Coulomb sliding.
+!
+! Uses the EffectivePressure function (see USF_Sliding). See aso that function
+! for comments on prerequisites.
+!
+! Note: depends on Stress tensor from ComputeDevStress solver, but is computed
+! during the Stokes execution. This can be unstable unless the stress tensor is
+! already defined, such as restarting from a previous simulation in which
+! ComputeDevStress was executed.
+!
+! Activated by calling SlidCoef_Contact and setting GZEPT to a real value
+! (units MPa), both in the lower surface BC. Example:
+!
+!  Slip Coefficient 2 = Variable Coordinate 3
+!    Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
+!  Slip Coefficient 3 = Variable Coordinate 3
+!    Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
+!
+!  Sliding Law = String Weertman
+!  Weertman Friction Coefficient = Real 0.001
+!  Weertman Exponent = Real 1.0
+!  Weertman Linear Velocity = Real 0.001
+!
+!  GZEPT = Real 0.1 ! specified in MPa                                                    
+!
+! See also:
+!  https://www.overleaf.com/read/xwwfbyznhtkq#a01cf8
+!
+FUNCTION GZEPT_scaling(Model, nodenumber, y) RESULT(scaling)
 
+  USE ElementDescription
+  USE DefUtils
+
+  IMPLICIT NONE
+
+  TYPE(Model_t)  :: Model
+  REAL(KIND=dp)  :: scaling, GZEPT, ep, EffectivePressure, y
+  INTEGER        :: nodenumber
+  LOGICAL        :: FirstTime = .TRUE., UseGZEPT = .FALSE.
+  TYPE(ValueList_t),POINTER :: BC
+  TYPE(Element_t),  POINTER :: BoundaryElement
+
+
+  SAVE FirstTime, GZEPT, UseGZEPT
+  
+  scaling = 1.0
+
+  IF (FirstTime) THEN
+    FirstTime = .FALSE.
+    BoundaryElement => Model % CurrentElement
+    BC => GetBC(BoundaryElement)
+    GZEPT = GetConstReal( BC, 'GZEPT', UseGZEPT)
+    IF (UseGZEPT) THEN
+      WRITE(Message,*) 'Setting Grounding Zone Effective Pressure Threshold (GZEPT) to: ',GZEPT
+      CALL INFO("GZEPT_scaling", Message, Level=4)
+    END IF
+  END IF
+  
+  IF(.NOT. UseGZEPT) THEN
+    !      CALL INFO('GZEPT_scaling', 'GZEPT not specified on lower surface BC, ignoring'
+    RETURN
+  END IF
+  
+  ep = EffectivePressure (Model, nodenumber, y)
+
+  IF (ep.LE.GZEPT) THEN
+    scaling = ep / GZEPT
+    IF (scaling.LT.0.0) scaling = 0.0
+  END IF
+
+  NULLIFY(BC, BoundaryElement)
+
+END FUNCTION GZEPT_scaling

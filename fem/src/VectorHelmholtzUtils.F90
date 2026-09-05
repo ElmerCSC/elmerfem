@@ -55,8 +55,8 @@
 !------------------------------------------------------------------------------
   SUBROUTINE DefinePortParameters(Model, Mesh)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE 
-    TYPE(Model_t) :: Model 
+    IMPLICIT NONE
+    TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: ElementNodes
@@ -66,6 +66,9 @@
     INTEGER, POINTER :: Indexes(:)
     REAL(KIND=dp) :: s,detJ,Width,Area,Length,RadInner, RadOuter,CenterArray(3,1),Scale
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), LumpVec(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer(7)
+#endif
     TYPE(ValueList_t), POINTER :: BC, BC0
     CHARACTER(:), ALLOCATABLE :: PortType
     LOGICAL :: Found, stat
@@ -158,11 +161,25 @@
       
       ! Do parallel communication, if needed.
       IF( ParEnv % PEs > 1 ) THEN
+        ! The three reductions take disjoint slices, so one copy serves them all.
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        buffer = LumpVec(1:7)
+        CALL MPI_ALLREDUCE( buffer(1:3), LumpVec(1:3), 3, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(1:3), 3, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr )
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        CALL MPI_ALLREDUCE( buffer(4:6), LumpVec(4:6), 3, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(4:6), 3, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr )
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        CALL MPI_ALLREDUCE( buffer(7:7), LumpVec(7:7), 1, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(7:7), 1, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
 
@@ -227,16 +244,16 @@
 !------------------------------------------------------------------------------
      INTEGER :: Phase
      TYPE(Solver_t) :: Solver
-     LOGICAL, OPTIONAL :: GotPort
      TYPE(Element_t), POINTER, OPTIONAL :: Element
+     LOGICAL, OPTIONAL :: GotPort
      COMPLEX(KIND=dp), OPTIONAL :: B, L(:)
      REAL(KIND=dp), OPTIONAL :: Basis(:), dBasisdx(:,:), WBasis(:,:)
 
-     LOGICAL :: Found
+     LOGICAL :: Found, UseV
      TYPE(Solver_t), POINTER :: EigenSolver
      TYPE(Variable_t), POINTER :: EigenVar, PotVar
      REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:), ParentBasis(:)
-     INTEGER :: EigenInd, PortDirection, PortTypeIndex, p, n, nd, m, i
+     INTEGER :: EigenInd, PortDirection, PortTypeIndex, p, n, nd, m, i, ndofs, np
      INTEGER, ALLOCATABLE :: DofInds(:)
      COMPLEX(KIND=dp) :: PortZ, PortBeta
      REAL(KIND=dp) :: Omega, PortLength, PortScale, PortCenter(3), mu0inv, muinv, eps0, rob0, &
@@ -250,9 +267,9 @@
      CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzUtils'
      
      
-     SAVE Omega, mu0inv, PortTypeIndex, EigenInd, Re_Eigenf, Im_Eigenf, EigenSolver, EigenVar, &
+     SAVE Omega, mu0inv, PortTypeIndex, EigenInd, Re_Eigenf, Im_Eigenf, UseV, EigenSolver, EigenVar, &
          PortBeta, PortZ, PortScale, PortDirection, PortLength, PortCenter, PortPassive, &
-         DofInds, ParentBasis, m,  n, nd, eps0, rob0, Parent, PotVar
+         DofInds, ParentBasis, m,  n, nd, ndofs, np, eps0, rob0, Parent, PotVar
           
      
      SELECT CASE ( Phase ) 
@@ -303,6 +320,9 @@
            ALLOCATE(Re_Eigenf(n), Im_Eigenf(n))
          END IF
          EigenVar => EigenSolver % Variable
+         UseV = ListGetLogical(Eigensolver % Values, 'Use Potential', Found)
+       ELSE
+         UseV = .FALSE.
        END IF       
 
        str = ListGetString( Solver % Values,'tem potential name',Found)
@@ -331,8 +351,11 @@
          EigenInd = MAX(1,ListGetElementInteger(EigenInd_h, Element, Found))
 
          n = Element % Type % NumberOfNodes
+         ndofs = MAXVAL(EigenSolver % Def_Dofs(Element % TYPE % ElementCode / 100,:,1))
+         np = n * ndofs
+         
          m = mGetElementDOFs( DofInds, Element, USolver = EigenSolver )
-         nd = m - n
+         nd = m - np
          
          Re_eigenf(1:m) = REAL( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )
          Im_eigenf(1:m) = AIMAG( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )         
@@ -365,8 +388,15 @@
          B = im * PortBeta
          IF( PRESENT(L)) THEN
            DO p=1,nd
-             L(:) = L(:) + CMPLX(Re_Eigenf(n+p) * WBasis(p,:), Im_Eigenf(n+p) * WBasis(p,:), kind=dp) 
+             L(:) = L(:) + CMPLX(Re_Eigenf(np+p) * WBasis(p,:), Im_Eigenf(np+p) * WBasis(p,:), kind=dp) 
            END DO
+
+           IF (UseV) THEN
+             DO i=1,3
+               L(i) = L(i) - CMPLX(SUM(Re_Eigenf(2:np:ndofs)*dBasisdx(1:n,i)), &
+                   SUM(Im_Eigenf(2:np:ndofs)*dBasisdx(1:n,i)), KIND=dp)
+             END DO
+           END IF
          END IF
        ELSE IF( PortTypeIndex == 4 ) THEN
          epsr = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found )

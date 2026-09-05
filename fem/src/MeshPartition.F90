@@ -48,10 +48,12 @@ MODULE MeshPartition
   USE ParallelUtils
   USE CoordinateSystems
   USE ElementDescription, ONLY : GetElementType
-  USE MeshUtils, ONLY : AllocateMesh, BackCoordinateTransformation, &
-      ComputeCRSIndexes, CoordinateTransformation, FindMeshEdges, &
-      FindMeshEdges2D, FindMeshEdges3D, FindMeshFaces3D, PrepareMesh, &
+  USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, &
+      FindMeshEdges2D, FindMeshEdges3D, FindMeshFaces3D, &
       ReleaseMesh, ReleaseMeshEdgeTables, ReleaseMeshFaceTables, GetDefs
+  USE MeshTransform, ONLY : BackCoordinateTransformation, CoordinateTransformation
+  USE MeshGraph, ONLY : ComputeCRSIndexes
+  USE MeshLoad, ONLY : PrepareMesh
   USE ClusteringMethods
   
 #ifdef HAVE_ZOLTAN
@@ -90,17 +92,17 @@ CONTAINS
                                 StartImbalanceTol, TolChange, MinElems )
 
 #ifdef HAVE_ZOLTAN
-    USE MeshUtils
+    USE MeshBasics
     USE Zoltan
 #endif
 
     IMPLICIT NONE
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, OPTIONAL :: SerialMode
     INTEGER, OPTIONAL :: NoPartitions, MinElems
-    LOGICAL, POINTER, OPTIONAL :: PartitionCand(:)
+    LOGICAL, OPTIONAL :: PartitionCand(:)
     REAL(KIND=dp), OPTIONAL :: StartImbalanceTol, TolChange
     !------------------------
 
@@ -620,7 +622,7 @@ CONTAINS
   !> of the connected element.
   !---------------------------------------------------------------------------------------------
   SUBROUTINE GlobalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:),ElemAdjProc(:)
     INTEGER :: DIM
     !-------------------------------------
@@ -850,7 +852,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   SUBROUTINE LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM, &
       PartitionPerm )
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:),ElemAdjProc(:)
     INTEGER :: DIM
     INTEGER, OPTIONAL, ALLOCATABLE :: PartitionPerm(:)
@@ -1019,7 +1021,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:),ElemIdx(:),ElemAdjProc(:)
     INTEGER, OPTIONAL :: COMM
     !---------------------------
@@ -1497,7 +1499,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(Mesh_t),POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL :: Mask(:)
     INTEGER, ALLOCATABLE :: GDOFs(:)
     INTEGER, OPTIONAL :: DIM
@@ -1599,7 +1601,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(Mesh_t),POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL :: Mask(:)
     INTEGER, ALLOCATABLE :: ElemStream(:)
     INTEGER, OPTIONAL :: custom_tag(:)
@@ -1791,7 +1793,7 @@ CONTAINS
   !If only RmElem is provided, no nodes are removed 
   !(should this be changed? i.e. detect orphaned nodes?)
   SUBROUTINE CutMesh(Mesh, RmNode, RmElem)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL, OPTIONAL :: RmNode(:)
     LOGICAL, OPTIONAL, TARGET :: RmElem(:)
     !--------------------------------
@@ -2077,7 +2079,8 @@ CONTAINS
   !------------------------------------------------------------------------------
   FUNCTION RedistributeMesh( Model, Mesh, ParallelMesh, FreeOldMesh, NodalVals) RESULT( NewMesh )
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh, NewMesh
+    TYPE(Mesh_t), POINTER :: NewMesh
+    TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: ParallelMesh, FreeOldMesh
     REAL(KIND=dp), POINTER, OPTIONAL :: NodalVals(:,:)
     
@@ -2241,9 +2244,9 @@ CONTAINS
 
   
   FUNCTION ElementPartitions( Mesh, ElemInd, NewPart, IndPart ) RESULT ( npart )
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: ElemInd
-    INTEGER, POINTER :: NewPart(:)
+    INTEGER, TARGET :: NewPart(:)
     INTEGER, ALLOCATABLE :: IndPart(:)
     INTEGER :: nPart
     
@@ -2273,7 +2276,7 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     LOGICAL :: ParallelMesh
     INTEGER, POINTER :: NewPart(:)
     INTEGER :: NoPartitions, dim
@@ -2610,7 +2613,7 @@ CONTAINS
   SUBROUTINE CommunicateMeshPieces(Model, Mesh, ParallelMesh, NoPartitions, SentPack, RecPack)
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: NoPartitions
     LOGICAL :: ParallelMesh
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: SentPack(:), RecPack(:)
@@ -2766,9 +2769,9 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER, ALLOCATABLE :: GlobalToLocal(:)
-    INTEGER, POINTER :: NewPart(:)
+    INTEGER, TARGET :: NewPart(:)
     INTEGER :: NoPartitions, newnodes, newnbulk, newnbdry, minind, maxind
     TYPE( MeshPack_t), ALLOCATABLE, TARGET :: RecPack(:)
     LOGICAL :: ParallelMesh
@@ -2951,9 +2954,9 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh, NewMesh
+    TYPE(Mesh_t) :: Mesh, NewMesh
     LOGICAL :: ParallelMesh
-    INTEGER, POINTER :: NewPart(:)
+    INTEGER, TARGET :: NewPart(:)
     INTEGER, ALLOCATABLE :: GlobalToLocal(:)
     INTEGER :: dim,minind,maxind
     REAL(KIND=dp), POINTER, OPTIONAL :: NodalVals(:,:)
@@ -3417,7 +3420,7 @@ CONTAINS
   ! The list is conservative including all old and possible new nodes.
   !------------------------------------------------------------------------------
   SUBROUTINE UpdateInterfaceNodeCandidates(Mesh)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     
     INTEGER :: i,j,k,n,m,part,allocstat
     TYPE(Element_t), POINTER :: Element
@@ -3487,7 +3490,7 @@ CONTAINS
   !-------------------------------------------------------------------
   SUBROUTINE FindRepartitionInterfaces(Model, Mesh, DIM)
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: DIM
     !--------------------------------------
     INTEGER :: i,j,k,n,loc,ierr,nneighs, counter
@@ -3616,7 +3619,7 @@ CONTAINS
   ! Works out potential neighbour partitions based on Mesh % Nodes bounding box
   !-----------------------------------------------------------------------------
   FUNCTION FindMeshNeighboursGeometric(Mesh,DIM,Buffer) RESULT(PartIsNearby)
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t) :: Mesh
     INTEGER :: DIM
     REAL(KIND=dp) :: Buffer
     LOGICAL, ALLOCATABLE :: PartIsNearby(:)
@@ -3678,7 +3681,7 @@ CONTAINS
      IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
-     TYPE(Mesh_t), POINTER  :: Mesh, ParallelMesh
+     TYPE(Mesh_t), POINTER :: Mesh, ParallelMesh
      TYPE(ValueList_t), POINTER :: Params 
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: SectionParams

@@ -117,7 +117,7 @@ CONTAINS
     INTEGER :: EdgeBasisDegree 
     LOGICAL :: Found
     INTEGER :: eps_tries
-    REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_numeric
+    REAL(KIND=dp) :: eps1 = 0.1_dp, eps2, eps_global, eps_local, eps_numeric
     INTEGER, ALLOCATABLE :: RhsInd(:), FixInd(:)
     TYPE(Solver_t), POINTER :: GSolver
     TYPE(ValueList_t), POINTER :: Params

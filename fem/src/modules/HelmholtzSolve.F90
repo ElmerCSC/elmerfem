@@ -513,7 +513,7 @@ CONTAINS
          SoundSpeed(:), Damping(:), Load(:,:), ConvVelo(:,:)
     LOGICAL :: Bubbles
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(2*nd),dBasisdx(2*nd,3)
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,WaveNumber,M,D,L1,L2
@@ -672,7 +672,7 @@ CONTAINS
     REAL(KIND=dp) :: Impedance(:,:),Load(:,:)
     REAL(KIND=dp) :: AngularFrequency, ConvVelo(:,:)
     INTEGER :: n,nd
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Impedance1,Impedance2,L1,L2
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),X,Y,Z
@@ -776,7 +776,7 @@ CONTAINS
     REAL(KIND=dp) :: AngularFrequency
     COMPLEX(KIND=dp) :: WallVelo(:,:)
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Impedance1,Impedance2,L1,L2
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),X,Y,Z

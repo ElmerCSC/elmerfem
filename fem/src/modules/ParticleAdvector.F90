@@ -45,7 +45,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE Interpolation
-  USE MeshUtils
+  USE MeshBasics
   USE ElementUtils
   USE ParticleUtils
 
@@ -1114,7 +1114,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
 
   USE DefUtils
   USE Interpolation
-  USE MeshUtils
+  USE MeshBasics
   USE ElementUtils
   USE ParticleUtils
 

@@ -88,19 +88,41 @@ MODULE NetCDFInterface
       REAL(KIND=dp), INTENT(OUT) :: dt                ! Time resolution
       LOGICAL, INTENT(OUT)       :: UniformCoords     ! Will only be true if all coordinate variables appear to be uniform
       !------------------------------------------------------------------------------
-      LOGICAL :: Found
+      LOGICAL :: Found, FilePerTimestep, FirstTime=.TRUE.
       CHARACTER (len=MAX_NAME_LEN) :: DimName         ! Name of the space or time dimension
       CHARACTER (len=MAX_NAME_LEN) :: CoordName       ! Name of the space or time coordinate variable (may be same as dimension)
       CHARACTER (len=MAX_STRING_LEN) :: FileName        ! File name for reading the data (of .nc format)
-      CHARACTER (len=MAX_NAME_LEN) :: str
-      INTEGER :: i, j, k, dimid, size, VarDim, IndVec(1)
+      CHARACTER (len=MAX_NAME_LEN) :: str, CounterString, NewFileName
+      INTEGER :: i, j, k, dimid, size, VarDim, IndVec(1), FileCounter, Offset
       REAL(KIND=dp) :: FirstTwo(2), LastTwo(2), dx0, dx1, dx2
+      SAVE FileCounter, FirstTime
 
       ! Opening the NetCDF file
       !------------------------------------------------------------------------------
       FileName = GetString( Params, "Filename", Found )
       IF ( .NOT. Found ) CALL Fatal(Caller,'No > Filename < specified')
-      NetCDFstatus = NF90_OPEN(FileName,NF90_NOWRITE,FileId)
+
+      FilePerTimestep = GetLogical(Params, "File Per Timestep", Found)
+      IF (.NOT. Found) FilePerTimestep = .FALSE.
+      Offset = GetInteger(Params, "Offset", Found)
+      IF (.NOT. Found) Offset = 0
+
+      IF(FilePerTimestep) THEN
+        IF(FirstTime) THEN
+          FileCounter = 1 + Offset
+          FirstTime = .FALSE.
+        END IF
+        CounterString = i2s(FileCounter)
+        FileCounter = FileCounter + 1
+        NewFileName = TRIM(FileName) // TRIM(CounterString) // '.nc'
+        !PRINT *, 'NFN: ',CounterString,FileName,NewFileName,FileCounter
+      END IF
+
+      IF(FilePerTimestep) THEN
+        NetCDFstatus = NF90_OPEN(NewFileName,NF90_NOWRITE,FileId)
+      ELSE
+        NetCDFstatus = NF90_OPEN(FileName,NF90_NOWRITE,FileId)
+      END IF
       IF ( NetCDFstatus /= NF90_NOERR ) THEN
         CALL Fatal( Caller, 'NetCDF file could not be opened: '//TRIM(FileName))
       END IF

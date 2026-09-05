@@ -10,7 +10,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-!  Post File = "ptest.vtu"
+! Post File = "ptest.vtu"
 
   Set Dirichlet BCs By BC Numbering = True
 ! Output File = "ptest.dat"
@@ -32,20 +32,19 @@ End
  
 Solver 1
   Equation = "Stokes"
+
   Variable = "Stokes"
+  Variable DOFs = 3
+
+  Procedure = "Stokes1" "StokesSolver"
 
   Element = "p:2"
 
-  Variable DOFs = 3
-  Procedure = "Stokes1" "StokesSolver"
+  Linear System[Solver = "Iterative"; Iterative Method="BiCGStabL"; Max Iterations=100;
+                  Convergence Tolerance=1e-6;  Preconditioning="ILU";]
 
   Nonlinear System Relaxation Factor = 1
 
-  Linear System Solver = "Iterative"
-  Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations = 100
-  Linear System Convergence Tolerance = 1.0e-6
-  Linear System Preconditioning = ILU1
   Steady State Convergence Tolerance = 1e-05
   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 End

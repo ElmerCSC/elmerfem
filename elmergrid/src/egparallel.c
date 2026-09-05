@@ -50,7 +50,7 @@
 #include "../config.h"
 
 #if USE_METIS
-#include "metis-5.1.0/include/metis.h"
+#include <metis.h>
 #endif
 
 
@@ -622,7 +622,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   int partitions1,partitions2,partitions3,partitions;
   int vpartitions1,vpartitions2,vpartitions3,vpartitions;
   int noelements0,noelements1,noparts0;
-  int *indx,*nopart,*inpart,*elemconnect;
+  int *indx,*nopart,*inpart,*elemconnect=NULL;
   Real *arrange;
   Real x,y,z,cx,cy,cz;
 
@@ -1688,6 +1688,7 @@ static int SetMetisOptions(idx_t *options, struct ElmergridType *eg,int info)  {
   if( eg->metis_ncuts > 1) options[METIS_OPTION_NCUTS] = eg->metis_ncuts;
   if( eg->metis_volcut) options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_VOL;
   if( eg->metis_minconn) options[METIS_OPTION_MINCONN] = 1;
+  return(0);
 }
 
 
@@ -1950,7 +1951,7 @@ int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
 			       int elemlayers,int info) 
 {
   int i,j,k,l,m,n,nonodes,noknots,noelements,totpartelems,nparts,set;
-  int minpartelems,maxpartelems,refcount,refpart,part;
+  int minpartelems,maxpartelems,refcount,refpart=0,part;
   int *partelems,*elemconnect;
   int *invrow,*invcol;
 
@@ -2394,8 +2395,8 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
    there exists only one elementtype. If this condition is not met then this routine cannot be 
    used. If the elements are higher order nodal elements then use only the linear basis. */
 {
-  int i,j,k,periodic, noelements, noknots, sides, highorder;
-  int nodesd2, etype, numflag,mintype,maxtype,elemtype,minnodes,ninv;
+  int i,j,k,periodic, noelements, noknots, sides, highorder=0;
+  int nodesd2, etype, numflag,mintype=0,maxtype=0,elemtype,minnodes=0,ninv;
   int *neededby,*indxper,*inpart;
   idx_t *metistopo,*eptr,*npart,*epart;
   idx_t ne,nn,ncommon,edgecut,nparts;
@@ -2625,7 +2626,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 {
   int i,j,k,noelements,noknots,errstat;
   int nn,ncon,con,maxcon,totcon;
-  int *xadj,*adjncy,*vwgt,*adjwgt,wgtflag,*npart,**graph;
+  int *xadj,*adjncy,*vwgt,*adjwgt,wgtflag,*npart=NULL,**graph;
   int numflag,nparts,edgecut,maxconset;
   struct CRSType *dualgraph;
   idx_t options[METIS_NOPTIONS];
@@ -3836,7 +3837,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int halobulkelems,halobcs,savethis,fail=0,cdstat,immersed,halocopies,anyparthalo;
   int totsides,singleprec;
   
-  FILE *out,*outfiles[MAXPARTITIONS+1];
+  FILE *out=NULL,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart;
 
 

@@ -46,7 +46,7 @@ Solver 1
   gamma2 = Real 0.001 ! BC-stab
 
   !Linear System Solver = Direct 
-  Linear System Direct Method = mumps 
+  !Linear System Direct Method = mumps 
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab

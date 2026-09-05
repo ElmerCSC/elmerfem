@@ -159,21 +159,9 @@ CONTAINS
     IF ( isDamp ) &
       isDamp = isDamp .AND. SIZE(A % DampValues) == SIZE(A % Values)
 
-    DO i=A % Rows(n),A % Rows(n+1)-1
-      A % Values(i) = 0.0_dp
-    END DO
-
-    IF ( isMass ) THEN
-      DO i=A % Rows(n),A % Rows(n+1)-1
-         A % MassValues(i) = 0.0_dp
-      END DO
-    END IF
-
-    IF ( isDamp )  THEN
-      DO i=A % Rows(n),A % Rows(n+1)-1
-        A % DampValues(i) = 0.0_dp
-      END DO
-    END IF
+    A % Values(A % Rows(n):A % Rows(n+1)-1) = 0.0_dp
+    IF ( isMass ) A % MassValues(A % Rows(n):A % Rows(n+1)-1) = 0.0_dp
+    IF ( isDamp )  A % DampValues(A % Rows(n):A % Rows(n+1)-1) = 0.0_dp
 
   END SUBROUTINE CRS_ZeroRow
 !------------------------------------------------------------------------------
@@ -706,7 +694,7 @@ CONTAINS
     END DO
 
     IF( PRESENT( movecoeff ) ) THEN      
-      DO i = A % Rows(n2), A % Rows(n2)-1
+      DO i = A % Rows(n2), A % Rows(n2+1)-1
         i2 = i - A % Rows(n2) + 1 
         j = A % Cols(i)
         val = Row2(i2)
@@ -758,22 +746,14 @@ CONTAINS
          DO j=1,n
            Col = Indeces(j)
            IF ( Col <= 0 ) CYCLE
-           IF (Col >= Row ) THEN
-             DO c=Diag(Row),Rows(Row+1)-1
-               IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                 Values(c) = Values(c) + LocalMatrix(i,j)
-                 EXIT
-               END IF
-             END DO
+           IF (Col >= Row) THEN
+             c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
            ELSE
-             DO c=Rows(Row),Diag(Row)-1
-               IF ( Cols(c) == Col ) THEN
+             c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+           END IF
+           IF (c > 0) THEN
 !$omp atomic
-                 Values(c) = Values(c) + LocalMatrix(i,j)
-                 EXIT
-               END IF
-             END DO
+             Values(c) = Values(c) + LocalMatrix(i,j)
            END IF
          END DO
        END DO
@@ -788,27 +768,50 @@ CONTAINS
                    IF ( Indeces(j) <= 0 ) CYCLE
                    Col  = Dofs * Indeces(j) - l
                    IF ( Col >= Row ) THEN
-                     DO c=Diag(Row),Rows(Row+1)-1
-                        IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
+                     c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
                    ELSE
-                     DO c=Rows(Row),Diag(Row)-1
-                        IF ( Cols(c) == Col ) THEN
+                     c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+                   END IF
+                   IF (c > 0) THEN
 !$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
+                     Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
                    END IF
                 END DO
              END DO
           END DO
        END DO
      END IF
+
+  CONTAINS
+
+    PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: arr(:)
+      INTEGER, INTENT(IN) :: key, lind, tind
+      INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
+      INTEGER :: keyloc
+      INTEGER :: li, ti, mi
+      li = lind
+      ti = tind
+      DO WHILE ((li+LINSEARCHTHRESH)<ti)
+        mi = li + ((ti - li) / 2)
+        IF (arr(mi)<key) THEN
+          li = mi + 1
+        ELSE
+          ti = mi
+        END IF
+      END DO
+      IF (li<ti) THEN
+        keyloc = 0
+        DO mi=li,ti
+          IF (arr(mi)==key) keyloc = mi
+        END DO
+      ELSE IF (li == ti .AND. arr(li)==key) THEN
+        keyloc = li
+      ELSE
+        keyloc = 0
+      END IF
+    END FUNCTION BinarySearch
 
   END SUBROUTINE CRS_GlueLocalMatrix
 !------------------------------------------------------------------------------
@@ -831,6 +834,11 @@ CONTAINS
     INTEGER :: i,j, nzind
     INTEGER :: ci, ri, rli, rti, rdof, cdof, nidx, pnidx
 
+    ! Entries the CRS structure has no room for; see NoteMissingEntry below.
+    INTEGER :: nmiss, missrow, misscol
+    REAL(KIND=dp) :: missmax
+    CHARACTER(LEN=256) :: msg
+
     INTEGER, POINTER CONTIG :: gia(:), gja(:)
     REAL(KIND=dp), POINTER CONTIG :: gval(:)
 !DIR$ ATTRIBUTES ALIGN:64::Lind
@@ -839,9 +847,14 @@ CONTAINS
     gia  => Gmtr % Rows
     gja   => Gmtr % Cols
     gval => Gmtr % Values
-    
+
     pnidx = -8
-    
+
+    nmiss = 0
+    missrow = 0
+    misscol = 0
+    missmax = 0.0_dp
+
     ! Get permutation such that Indices(pind(1:N)) is sorted
 !DIR$ INLINE
     CALL InsertionSort(N, Indices, pind)
@@ -862,13 +875,18 @@ CONTAINS
             ! Get row pointers
             rli = gia(ri)
             rti = gia(ri+1)-1
+            pnidx = rli - 9
             DO j=1,N
               ! Get global matrix index for entry (ri,Indices(j)).
               IF (Indices(pind(j)) > 0) THEN
-                nzind = nzind + 1
                 ! Get global matrix index for entry (ri,Indices(j)).
 !DIR$ INLINE
                 nidx = GetNextIndex(gja,Indices(pind(j)), rli, rti)
+                IF (nidx == 0) THEN
+                  CALL NoteMissingEntry(ri, Indices(pind(j)), Lmtr(pind(i),pind(j)))
+                  CYCLE
+                END IF
+                nzind = nzind + 1
                 Lind(nzind)=nidx
                 Lvals(nzind)=Lmtr(pind(i),pind(j))
 #ifdef __INTEL_COMPILER
@@ -895,6 +913,7 @@ CONTAINS
               ! Get row pointers
               rli = gia(ri)
               rti = gia(ri+1)-1
+              pnidx = rli - 9
               DO j=1,N
                 IF (Indices(pind(j)) > 0) THEN
                   DO cdof=1,NDOFs
@@ -902,6 +921,11 @@ CONTAINS
                     ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                     nidx=GetNextIndex(gja, ci, rli, rti)
+                    IF (nidx == 0) THEN
+                      CALL NoteMissingEntry(ri, ci, &
+                          Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof))
+                      CYCLE
+                    END IF
                     nzind = nzind + 1
                     Lind(nzind)=nidx
                     Lvals(nzind)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
@@ -926,7 +950,11 @@ CONTAINS
       IF (NDOFs == 1) THEN
         ! Separate case for only 1 DOF per node
 
-        ! Construct index array
+        ! Construct index array. A running nzind rather than the N*(i-1)+j layout
+        ! this used to have, so that an entry the structure lacks can be left out
+        ! the same way as in the masked branches above. Nothing outside the
+        ! contribution loop below depends on the packing.
+        nzind = 0
         DO i=1,N
           ! Row index
           ri = Indices(pind(i))
@@ -934,12 +962,18 @@ CONTAINS
           ! Get row pointers
           rli = gia(ri)
           rti = gia(ri+1)-1
+          pnidx = rli - 9
           DO j=1,N
             ! Get global matrix index for entry (ri,Indices(j)).
 !DIR$ INLINE
             nidx=GetNextIndex(gja,Indices(pind(j)), rli, rti)
-            Lind(N*(i-1)+j)=nidx
-            Lvals(N*(i-1)+j)=Lmtr(pind(i),pind(j))
+            IF (nidx == 0) THEN
+              CALL NoteMissingEntry(ri, Indices(pind(j)), Lmtr(pind(i),pind(j)))
+              CYCLE
+            END IF
+            nzind = nzind + 1
+            Lind(nzind)=nidx
+            Lvals(nzind)=Lmtr(pind(i),pind(j))
 #ifdef __INTEL_COMPILER
             ! Issue prefetch for every new cache line of gval(nidx)
             IF (nidx > pnidx+8) THEN
@@ -949,7 +983,6 @@ CONTAINS
 #endif
           END DO
         END DO
-        nzind = N*N
       ELSE
         ! More than 1 DOF per node
 
@@ -963,12 +996,18 @@ CONTAINS
             ! Get row pointers
             rli = gia(ri)
             rti = gia(ri+1)-1
+            pnidx = rli - 9
             DO j=1,N
               DO cdof=1,NDOFs
                 ci = NDOFs*(Indices(pind(j))-1)+cdof
                 ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                 nidx = GetNextIndex(gja, ci, rli, rti)
+                IF (nidx == 0) THEN
+                  CALL NoteMissingEntry(ri, ci, &
+                      Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof))
+                  CYCLE
+                END IF
                 nzind = nzind + 1
                 Lind(nzind) = nidx
                 Lvals(nzind) = Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof)
@@ -986,9 +1025,67 @@ CONTAINS
       END IF ! NDOFs==1 check
     END IF ! Masking check
 
-    ! The actual contribution loop
+    ! Entries the CRS structure does not have have been left out above. Report them
+    ! on the same terms as the scalar path, CRS_AddToMatrixElement, which drops a
+    ! zero valued one without a word and warns about a nonzero one:
+    !
+    !   IF ( k==0 .AND. val/=0 ) THEN ... Warn ... ; A % FORMAT = MATRIX_LIST ; END IF
+    !   IF ( k==0 ) RETURN
+    !
+    ! The parallel radiation tests hit the silent case: the boundary local matrix
+    ! carries zeroes for radiation couplings the matrix topology never reserved.
+    ! Serially those went through the scalar path and were dropped as intended, and
+    ! it was only the default "Vector Assembly = nthr > 1" that made anything appear
+    ! to be thread dependent about it.
+    !
+    ! Deliberately not doing the scalar path's A % FORMAT = MATRIX_LIST here. That
+    ! only helps subsequent additions -- the offending value is dropped either way --
+    ! and it would be an unsynchronised write to the shared matrix from what may be
+    ! a threaded assembly loop.
+    IF (nmiss > 0 .AND. missmax > 0.0_dp) THEN
+      WRITE(msg,'(A,I0,A,I0,A,I0,A,ES12.3)') 'Dropped ',nmiss, &
+          ' entries absent from the matrix structure, largest at row ',missrow, &
+          ' col ',misscol,' value ',missmax
+      CALL Warn('CRS_GlueLocalMatrixVec',msg)
+    END IF
+
+    ! The actual contribution loop.
+    !
+    ! Neither branch is bitwise reproducible run to run under threading, and
+    ! that is a property of the accumulation rather than of anything fixable
+    ! here. The ATOMIC protects against a lost update but says nothing about
+    ! the order two threads reach the same entry in, and floating point
+    ! addition is not associative.
+    !
+    ! Measured with HeatSolveVec on a 4000 element mesh, 37076 nonzeroes, the
+    ! assembled matrix dumped through "Linear System Save" and compared
+    ! bitwise: identical across six runs at four and at eight threads, and
+    ! different on every one of six runs at sixteen and at thirty-two. Where
+    ! it differs, 33 to 315 entries move, by at most 4.4e-16 relative, with
+    ! the nonzero count unchanged -- last-bit reordering, not a lost update.
+    ! It takes oversubscription to show at all because !$OMP DO defaults to a
+    ! static schedule: threads only contend where their chunks meet, and the
+    ! thread opening a chunk almost always reaches those entries before the
+    ! one closing the previous chunk does.
+    !
+    ! Making this branch deterministic in place would mean staging the
+    ! contributions per thread and merging them in thread order, i.e. nnz *
+    ! nthreads doubles, or accumulating in fixed point, which is exact and
+    ! order free but changes every value relative to the serial sum. Neither
+    ! is worth a last-bit effect.
+    !
+    ! The MCAssembly branch is not the answer either, although it looks like
+    ! it should be: a colour is race free within itself, so the order is
+    ! fixed once the colouring is. It is not. ElmerGraphColour is threaded and
+    ! partitions differently from run to run -- 357/357/6 elements in the
+    ! first three colours on one run of the case above, 356/356/8 on the next
+    ! two -- so which colour an element lands in, and hence the order the
+    ! colours deposit into a shared entry, varies. Deterministic threaded
+    ! assembly needs a deterministic colouring; it does not need a change to
+    ! the two loops below.
     IF (MCAssembly) THEN
       !_ELMER_OMP_SIMD
+!DIR$ IVDEP
       DO i=1,nzind
         gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
       END DO
@@ -1036,8 +1133,16 @@ CONTAINS
       END IF
     END FUNCTION BinarySearch
     
-    ! Find index matching key from arr(lind:tind). lind is set to location of 
-    ! arr(keyloc))=key, i.e., keyloc once the search ends
+    ! Find index matching key from arr(lind:tind). lind is advanced to the location
+    ! of arr(keyloc)=key, so that the next and larger key can carry on from there.
+    !
+    ! Returns 0 when the key is not in arr(lind:tind), leaving lind alone, and the
+    ! caller must then not touch the matrix. This used to return tind+1 instead,
+    ! with no not-found case at all, which aliases onto the first entry of the next
+    ! row -- and on the last row is gval(nnz+1), one element past A % Values. That
+    ! is the invalid 8 byte read and write valgrind reports from the parallel
+    ! radiation tests. Leaving lind alone on a miss keeps the monotonic advance
+    ! correct: a later, larger key still cannot sit before the current position.
     FUNCTION GetNextIndex(arr, key, lind, tind) RESULT(keyloc)
       IMPLICIT NONE
 
@@ -1053,9 +1158,27 @@ CONTAINS
       DO ci=lind,tind
          IF (arr(ci)==key) EXIT
       END DO
-      keyloc = ci
-      lind = keyloc
+      IF (ci > tind) THEN
+        keyloc = 0
+      ELSE
+        keyloc = ci
+        lind = keyloc
+      END IF
     END FUNCTION GetNextIndex
+
+    ! Bookkeeping for entries the CRS structure does not have, so that one warning
+    ! can be issued per call instead of one per entry.
+    SUBROUTINE NoteMissingEntry( row, col, val )
+      INTEGER, INTENT(IN) :: row, col
+      REAL(KIND=dp), INTENT(IN) :: val
+
+      nmiss = nmiss + 1
+      IF ( ABS(val) > missmax ) THEN
+        missmax = ABS(val)
+        missrow = row
+        misscol = col
+      END IF
+    END SUBROUTINE NoteMissingEntry
 
   END SUBROUTINE CRS_GlueLocalMatrixVec
 
@@ -1097,9 +1220,9 @@ CONTAINS
      INTEGER, INTENT(IN) :: RowDofs  !< Number of dofs for row variable
      INTEGER, INTENT(IN) :: ColDofs  !< Number of dofs for column variable
      INTEGER, INTENT(IN) :: Col0     !< Offset for column variable
-	 INTEGER, INTENT(IN) :: Row0     !< Offset for row variable
+     INTEGER, INTENT(IN) :: Row0     !< Offset for row variable
      INTEGER, INTENT(IN) :: RowInds(:)  !< Permutation of the row dofs
-	 INTEGER, INTENT(IN) :: ColInds(:)  !< Permutation of the column dofs
+     INTEGER, INTENT(IN) :: ColInds(:)  !< Permutation of the column dofs
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,l,c,Row,Col
      INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
@@ -1114,47 +1237,53 @@ CONTAINS
         DO k=0,RowDofs-1
            IF ( RowInds(i) <= 0 ) CYCLE
            Row  = Row0 + RowDofs * RowInds(i) - k
-
            DO j=1,Ncol
               DO l=0,ColDofs-1
                  IF ( ColInds(j) <= 0 ) CYCLE
                  Col  = Col0 + ColDofs * ColInds(j) - l
-
-! If Diag does not exist then one cannot separate the gluing into two parts
-! In fact this cannot be guarateed for the off-diagonal block matrices and hence 
-! this condition is set active.
-                IF( .TRUE. ) THEN
-                    DO c=Rows(Row),Rows(Row+1)-1
-                       IF ( Cols(c) == Col ) THEN
+                 c = BinarySearch(Cols, Col, Rows(Row), Rows(Row+1)-1)
+                 IF (c > 0) THEN
 !$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
-                     IF( Cols(c) /= Col ) PRINT *,'NO HIT 1',Row,Col
-                 ELSE IF ( Col >= Row ) THEN
-                    DO c=Diag(Row),Rows(Row+1)-1
-                       IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                          Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-                          EXIT
-                       END IF
-                    END DO
-                    IF( Cols(c) /= Col ) PRINT *,'NO HIT 2',Row,Col
+                   Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
                  ELSE
-                    DO c=Rows(Row),Diag(Row)-1
-                       IF ( Cols(c) == Col ) THEN
-!$omp atomic
-                           Values(c) = Values(c) + LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-                           EXIT
-                        END IF
-                     END DO
-                     IF( Cols(c) /= Col ) PRINT *,'NO HIT 3',Row,Col
-                  END IF
+                   PRINT *, 'NO HIT', Row, Col
+                 END IF
                END DO
             END DO
          END DO
       END DO
+
+  CONTAINS
+
+    PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: arr(:)
+      INTEGER, INTENT(IN) :: key, lind, tind
+      INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
+      INTEGER :: keyloc
+      INTEGER :: li, ti, mi
+      li = lind
+      ti = tind
+      DO WHILE ((li+LINSEARCHTHRESH)<ti)
+        mi = li + ((ti - li) / 2)
+        IF (arr(mi)<key) THEN
+          li = mi + 1
+        ELSE
+          ti = mi
+        END IF
+      END DO
+      IF (li<ti) THEN
+        keyloc = 0
+        DO mi=li,ti
+          IF (arr(mi)==key) keyloc = mi
+        END DO
+      ELSE IF (li == ti .AND. arr(li)==key) THEN
+        keyloc = li
+      ELSE
+        keyloc = 0
+      END IF
+    END FUNCTION BinarySearch
+
     END SUBROUTINE CRS_GlueLocalSubMatrix
 !------------------------------------------------------------------------------
 
@@ -1437,6 +1566,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     NULLIFY( A % ILUValues )
     NULLIFY( A % CILUValues )
+    NULLIFY( A % BRows, A % BCols, A % BDiag, A % CValues, A % CPrecValues )
 
     A % ndeg = ndeg
     A % NumberOfRows = n
@@ -1469,7 +1599,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       ! First touch matrix values with similar access pattern as in sparse dgemv
       !$OMP DO
       DO i=1,N+1
-        A % Rows(i) = REAL(0,dp)
+        A % Rows(i) = 0
       END DO
       !$OMP END DO
     END IF
@@ -1490,13 +1620,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     !$OMP DO
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i), A % Rows(i+1)-1
-        A % Cols(j) = REAL(0,dp)
+        A % Cols(j) = 0
       END DO
     END DO
     !$OMP END DO NOWAIT
     !$OMP DO
     DO i=1,n
-      A % Diag(i) = REAL(0,dp)
+      A % Diag(i) = 0
     END DO
     !$OMP END DO
 #else
@@ -1515,11 +1645,15 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 !>    Matrix vector product (v = Au) for a matrix given in CRS format.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_MatrixVectorMultiply( A,u,v )
+  SUBROUTINE CRS_MatrixVectorMultiply( A,u,v,UseValues )
 !------------------------------------------------------------------------------
     REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
     REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
     TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    !> Coefficients to use in place of A % Values, sharing A's structure. Lets a
+    !> caller take the product against a sibling array -- the mass matrix, say --
+    !> without repointing A % Values at it and putting it back afterwards.
+    REAL(KIND=dp), DIMENSION(:), TARGET, OPTIONAL, INTENT(IN) :: UseValues
 !------------------------------------------------------------------------------
      INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
      REAL(KIND=dp), POINTER  CONTIG :: Values(:)
@@ -1545,8 +1679,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Rows   => A % Rows
     Cols   => A % Cols
     Values => A % Values
+    IF( PRESENT( UseValues ) ) Values => UseValues
     
-    IF  ( A % MatvecSubr /= 0 ) THEN
+    IF  ( C_ASSOCIATED(A % MatvecSubr) ) THEN
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN
     END IF
@@ -1556,15 +1691,33 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
 #else
 
+    ! The unrolled loops below step through each row ndeg entries at a time and
+    ! assume the columns of each step are consecutive, so every row has to hold a
+    ! whole number of blocks. Code that edits a matrix in place can break that --
+    ! dropping stored zeros, or appending columns to a row -- and the result is
+    ! then a silently wrong product rather than a crash, which is expensive to
+    ! track down. The scan is over rows, not entries, so it costs about a
+    ! percent of the multiplication it guards. Whoever changes the structure
+    ! should set ndeg to 1.
+    IF ( A % ndeg > 1 ) THEN
+      DO i=1,n
+        IF ( MODULO(Rows(i+1)-Rows(i), A % ndeg) /= 0 ) THEN
+          WRITE(Message,'(A,I0,A,I0,A,I0)') 'Row ',i,' holds ',Rows(i+1)-Rows(i), &
+              ' entries, which is not a multiple of ndeg = ',A % ndeg
+          CALL Fatal('CRS_MatrixVectorMultiply',Message)
+        END IF
+      END DO
+    END IF
+
     ! There may be a small structured block in the CRS matrix that is due to the problem
     ! being initially vector valued. For example, in 3D elasticity we usually have dofs related
     ! to (x,y,z) displacements following each other. Using this small dense block we may reduce
     ! indirect memory addressing a little.
     !-------------------------------------------------------------------------------------------
     SELECT CASE( A % ndeg )
-      
+
     CASE( 5, 10 )
-      !$omp parallel do private(j,l,r1,r2,r3,r4,r5)
+      !$omp parallel do private(j,l,r1,r2,r3,r4,r5) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
         !DIR$ IVDEP
@@ -1581,7 +1734,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       !$omp end parallel do
 
     CASE( 4, 8 )
-      !$omp parallel do private(j,l,r1,r2,r3,r4)
+      !$omp parallel do private(j,l,r1,r2,r3,r4) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
         !DIR$ IVDEP
@@ -1597,7 +1750,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       !$omp end parallel do
 
     CASE( 3, 6 )
-      !$omp parallel do private(j,l,r1,r2,r3)
+      !$omp parallel do private(j,l,r1,r2,r3) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
         !DIR$ IVDEP
@@ -1610,9 +1763,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         v(i) = r1 + r2 + r3
       END DO
       !$omp end parallel do
-      
+
     CASE( 2 )
-      !$omp parallel do private(j,l,r1,r2)
+      !$omp parallel do private(j,l,r1,r2) schedule(guided)
       DO i=1,n
         r1 = 0.0_dp; r2 = 0.0_dp
         !DIR$ IVDEP
@@ -1624,18 +1777,25 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         v(i) = r1 + r2
       END DO
       !$omp end parallel do
-      
-    CASE DEFAULT      
-      !$omp parallel do private(j,r1)
+
+    CASE DEFAULT
+      !$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
       DO i=1,n
-        r1 = 0.0_dp
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+        k = Rows(i+1) - Rows(i)
         !DIR$ IVDEP
-        DO j=Rows(i),Rows(i+1)-1
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          r1 = r1 + u(Cols(j))   * Values(j)
+          r2 = r2 + u(Cols(j+1)) * Values(j+1)
+          r3 = r3 + u(Cols(j+2)) * Values(j+2)
+          r4 = r4 + u(Cols(j+3)) * Values(j+3)
+        END DO
+        DO j=Rows(i)+4*(k/4),Rows(i+1)-1
           r1 = r1 + u(Cols(j)) * Values(j)
         END DO
-        v(i) = r1 
+        v(i) = r1 + r2 + r3 + r4
       END DO
-      !$omp end parallel do      
+      !$omp end parallel do
     END SELECT
 #endif
 !------------------------------------------------------------------------------
@@ -1651,12 +1811,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
     REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
     TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
-    REAL(KIND=dp), OPTIONAL :: c                   !< multiplier    
+    REAL(KIND=dp), OPTIONAL :: c                   !< multiplier
     !------------------------------------------------------------------------------
      INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
      REAL(KIND=dp), POINTER  CONTIG :: Values(:)
-     INTEGER :: i,j,n
-     REAL(KIND=dp) :: rsum
+     INTEGER :: i,j,k,n,l
+     REAL(KIND=dp) :: r1,r2,r3,r4,r5,cval
 
 !------------------------------------------------------------------------------
 
@@ -1665,21 +1825,96 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Cols   => A % Cols
      Values => A % Values
 
-     !$omp parallel do private(j,rsum)
-     DO i=1,n
-       rsum = 0.0d0
-       !DIR$ IVDEP
-       DO j=Rows(i),Rows(i+1)-1
-         rsum = rsum + u(Cols(j)) * Values(j)
+     IF( PRESENT(c) ) THEN
+       cval = c
+     ELSE
+       cval = 1.0_dp
+     END IF
+
+     SELECT CASE( A % ndeg )
+
+     CASE( 5, 10 )
+       !$omp parallel do private(j,l,r1,r2,r3,r4,r5) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,5
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+           r3 = r3 + u(l+2) * Values(j+2)
+           r4 = r4 + u(l+3) * Values(j+3)
+           r5 = r5 + u(l+4) * Values(j+4)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3 + r4 + r5)
        END DO
-       
-       IF( PRESENT(c) ) THEN
-         v(i) = v(i) + c * rsum
-       ELSE
-         v(i) = v(i) + rsum
-       END IF
-     END DO
-     !$omp end parallel do
+       !$omp end parallel do
+
+     CASE( 4, 8 )
+       !$omp parallel do private(j,l,r1,r2,r3,r4) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,4
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+           r3 = r3 + u(l+2) * Values(j+2)
+           r4 = r4 + u(l+3) * Values(j+3)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3 + r4)
+       END DO
+       !$omp end parallel do
+
+     CASE( 3, 6 )
+       !$omp parallel do private(j,l,r1,r2,r3) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,3
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+           r3 = r3 + u(l+2) * Values(j+2)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3)
+       END DO
+       !$omp end parallel do
+
+     CASE( 2 )
+       !$omp parallel do private(j,l,r1,r2) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i+1)-1,2
+           l = Cols(j)
+           r1 = r1 + u(l)   * Values(j)
+           r2 = r2 + u(l+1) * Values(j+1)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2)
+       END DO
+       !$omp end parallel do
+
+     CASE DEFAULT
+       !$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
+       DO i=1,n
+         r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+         k = Rows(i+1) - Rows(i)
+         !DIR$ IVDEP
+         DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+           r1 = r1 + u(Cols(j))   * Values(j)
+           r2 = r2 + u(Cols(j+1)) * Values(j+1)
+           r3 = r3 + u(Cols(j+2)) * Values(j+2)
+           r4 = r4 + u(Cols(j+3)) * Values(j+3)
+         END DO
+         DO j=Rows(i)+4*(k/4),Rows(i+1)-1
+           r1 = r1 + u(Cols(j)) * Values(j)
+         END DO
+         v(i) = v(i) + cval * (r1 + r2 + r3 + r4)
+       END DO
+       !$omp end parallel do
+
+     END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE CRS_AdditiveMatrixVectorMultiply
 !------------------------------------------------------------------------------
@@ -1769,41 +2004,50 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !>  components. This special mv subroutine may be needed in connection with
 !>  certain stopping criteria for iterative linear solvers. 
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_ABSMatrixVectorMultiply( A,u,v )
+  SUBROUTINE CRS_ABSMatrixVectorMultiply( A,u,v,UseValues )
 !------------------------------------------------------------------------------
     REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< The vector u
     REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< The result vector v
     TYPE(Matrix_t), INTENT(IN) :: A                !< The structure holding the matrix A
+    !> Coefficients to use in place of A % Values; see CRS_MatrixVectorMultiply.
+    REAL(KIND=dp), DIMENSION(:), TARGET, OPTIONAL, INTENT(IN) :: UseValues
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
     REAL(KIND=dp), POINTER  CONTIG :: Values(:), Abs_Values(:)
 
     
-    INTEGER :: i,j,n
-    REAL(KIND=dp) :: rsum
+    INTEGER :: i,j,k,n
+    REAL(KIND=dp) :: r1,r2,r3,r4
 !------------------------------------------------------------------------------
 
     n = A % NumberOfRows
     Rows   => A % Rows
     Cols   => A % Cols
     Values => A % Values
+    IF( PRESENT( UseValues ) ) Values => UseValues
 
-    IF  ( A % MatvecSubr /= 0 ) THEN
+    IF  ( C_ASSOCIATED(A % MatvecSubr) ) THEN
       ALLOCATE(Abs_Values(SIZE(A % Values)))
       Abs_Values = ABS(Values)
-      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0) ! TODO: (bug) must be ABS(Values)
+      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0)
       DEALLOCATE(Abs_Values)
       RETURN
     END IF
 
-!$omp parallel do private(j,rsum)
+!$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
     DO i=1,n
-      rsum = 0.0d0
-!DIR$ IVDEP
-      DO j=Rows(i),Rows(i+1)-1
-        rsum = rsum + u(Cols(j)) * ABS(Values(j))
+      r1=0.0_dp; r2=0.0_dp; r3=0.0_dp; r4=0.0_dp
+      k = Rows(i+1) - Rows(i)
+      DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+        r1=r1+u(Cols(j))*ABS(Values(j))
+        r2=r2+u(Cols(j+1))*ABS(Values(j+1))
+        r3=r3+u(Cols(j+2))*ABS(Values(j+2))
+        r4=r4+u(Cols(j+3))*ABS(Values(j+3))
       END DO
-      v(i) = rsum
+      DO j=Rows(i)+4*(k/4),Rows(i+1)-1
+        r1 = r1 + u(Cols(j)) * ABS(Values(j))
+      END DO
+      v(i) = r1 + r2 + r3 + r4
     END DO
 !$omp end parallel do
 !------------------------------------------------------------------------------
@@ -1906,16 +2150,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      INTEGER :: i,j,k,n,m
      REAL(KIND=dp) :: rsum
 #ifdef HAVE_MKL
-	INTERFACE
-		SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-	 		USE Types
-	 		CHARACTER :: transa
-	 		INTEGER :: m
-	 		REAL(KIND=dp) :: a(*)
-	 		INTEGER :: ia(*), ja(*)
-	 		REAL(KIND=dp) :: x(*), y(*)
-	 	END SUBROUTINE mkl_dcsrgemv
-	END INTERFACE
+     INTERFACE
+       SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
+         USE Types
+         CHARACTER :: transa
+         INTEGER :: m
+         REAL(KIND=dp) :: a(*)
+         INTEGER :: ia(*), ja(*)
+         REAL(KIND=dp) :: x(*), y(*)
+       END SUBROUTINE mkl_dcsrgemv
+     END INTERFACE
 #endif
 !------------------------------------------------------------------------------
 
@@ -1923,7 +2167,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Rows   => A % Rows
      Cols   => A % Cols
      Values => A % Values     
-          
+
      ! Use MKL to perform mvp if it is available
 #ifdef HAVE_MKL
      CALL mkl_dcsrgemv('T', n, Values, Rows, Cols, u, v)
@@ -1950,9 +2194,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A             !< Structure holding the master matrix
     TYPE(Matrix_t), POINTER :: B             !< Structure holding the slave matrix
-    TYPE(Matrix_t), POINTER, OPTIONAL :: C   !< Structure holding the sum matrix
-    INTEGER, POINTER, OPTIONAL :: PermA(:)   !< Permutation of the master dofs
-    INTEGER, POINTER, OPTIONAL :: PermB(:)   !< Permutation of the slave dofs
+    TYPE(Matrix_t), OPTIONAL :: C   !< Structure holding the sum matrix
+    INTEGER, OPTIONAL :: PermA(:)   !< Permutation of the master dofs
+    INTEGER, OPTIONAL :: PermB(:)   !< Permutation of the slave dofs
     INTEGER, POINTER, OPTIONAL :: PermC(:)   !< Permutation of the combined dofs
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: ColsA(:),RowsA(:),ColsB(:),RowsB(:),&
@@ -2191,6 +2435,228 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
+!> Build (or refresh) a block CRS view of a complex matrix.
+!>
+!> A complex system is stored as 2N real rows of 2x2 blocks [Re -Im; Im Re],
+!> which is fourfold redundant: the even row is determined by the odd one and
+!> the column index is repeated four times per block. The odd row already IS
+!> the block row, so the structure costs nothing to derive --
+!>     block row i runs Rows(2*i-1) .. Rows(2*i)-1 in steps of two
+!>     block column   = (Cols(j)+1)/2
+!> and only the coefficients have to be gathered. CMPLX(V(j),-V(j+1)) recovers
+!> a rather than conj(a), since the odd row physically stores (Re,-Im).
+!>
+!> This is the same structure CRS_ComplexIncompleteLU derives for the ILU
+!> factors, which have been held in compact complex form all along. Aliasing
+!> BRows/BCols onto ILURows/ILUCols would save the structure arrays whenever
+!> the factorisation has no fill, but only ILU0 guarantees that: ILUT drops and
+!> adds, so an equal nonzero count would not prove an equal structure, and the
+!> matvec would then outlive an ILU rebuild pointing at freed memory. Own the
+!> arrays instead; they are the small part.
+!>
+!> The structure is built once and the values refreshed on every call, because
+!> assembly writes the scalar form, which stays canonical.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_BuildBlockCRS( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,n,nb,istat
+!------------------------------------------------------------------------------
+    n  = A % NumberOfRows / 2
+    nb = ( A % Rows(A % NumberOfRows+1) - 1 ) / 4
+
+    IF( .NOT. ASSOCIATED( A % BCols ) ) THEN
+      ALLOCATE( A % BRows(n+1), A % BCols(nb), A % BDiag(n), STAT=istat )
+      IF( istat /= 0 ) CALL Fatal('CRS_BuildBlockCRS', &
+          'Memory allocation error for block structure of size: '//I2S(nb))
+
+      ! BDiag(i) locates the diagonal block of block row i, the counterpart of
+      ! Diag for the scalar form. Noted here rather than searched for later: the
+      ! complex diagonal preconditioner wants exactly this, once per iteration.
+      A % BDiag = 0
+      k = 1
+      DO i=1,n
+        A % BRows(i) = k
+        DO j=A % Rows(2*i-1), A % Rows(2*i)-1, 2
+          A % BCols(k) = ( A % Cols(j) + 1 ) / 2
+          IF( A % BCols(k) == i ) A % BDiag(i) = k
+          k = k + 1
+        END DO
+      END DO
+      A % BRows(n+1) = k
+
+      ! A block row with no diagonal block leaves BDiag at zero, and a consumer
+      ! indexing CValues(0) would read rubbish rather than fail. Drop the whole
+      ! array in that case so consumers fall back to the scalar diagonal, which
+      ! is no worse off than it was before the view existed.
+      IF( ANY( A % BDiag(1:n) == 0 ) ) THEN
+        CALL Info('CRS_BuildBlockCRS', &
+            'Some block row has no diagonal block; no block diagonal offered',Level=6)
+        DEALLOCATE( A % BDiag )
+        NULLIFY( A % BDiag )
+      END IF
+
+      CALL Info('CRS_BuildBlockCRS','Block view: '//I2S(n)//' block rows, '// &
+          I2S(nb)//' blocks, from '//I2S(A % NumberOfRows)//' scalar rows and '// &
+          I2S(A % Rows(A % NumberOfRows+1)-1)//' scalar entries',Level=6)
+    END IF
+
+    IF( .NOT. ASSOCIATED( A % CValues ) ) THEN
+      ALLOCATE( A % CValues(nb), STAT=istat )
+      IF( istat /= 0 ) CALL Fatal('CRS_BuildBlockCRS', &
+          'Memory allocation error for block values of size: '//I2S(nb))
+    END IF
+
+    k = 1
+    DO i=1,n
+      DO j=A % Rows(2*i-1), A % Rows(2*i)-1, 2
+        A % CValues(k) = CMPLX( A % Values(j), -A % Values(j+1), KIND=dp )
+        k = k + 1
+      END DO
+    END DO
+
+    ! A separate preconditioning matrix shares this structure, so view it too --
+    ! it is what the complex ILU factorizes whenever it exists.
+    IF( ASSOCIATED( A % PrecValues ) ) THEN
+      IF( .NOT. ASSOCIATED( A % CPrecValues ) ) THEN
+        ALLOCATE( A % CPrecValues(nb), STAT=istat )
+        IF( istat /= 0 ) CALL Fatal('CRS_BuildBlockCRS', &
+            'Memory allocation error for block prec values of size: '//I2S(nb))
+        CALL Info('CRS_BuildBlockCRS', &
+            'Block view of the preconditioning matrix too',Level=6)
+      END IF
+
+      k = 1
+      DO i=1,n
+        DO j=A % Rows(2*i-1), A % Rows(2*i)-1, 2
+          A % CPrecValues(k) = CMPLX( A % PrecValues(j), &
+              -A % PrecValues(j+1), KIND=dp )
+          k = k + 1
+        END DO
+      END DO
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE CRS_BuildBlockCRS
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Rebuild the scalar 2N values of a complex matrix from its block view, i.e.
+!> the exact inverse of the value pass of CRS_BuildBlockCRS. Block row i owns
+!> scalar rows 2i-1 and 2i, holding (x,-y) and (y,x) for a coefficient x+iy, so
+!> nothing here rounds -- component extraction and negation are exact -- and the
+!> array comes back with the bits it had before it was released.
+!>
+!> A % Values must already be allocated to its original length. The structure
+!> arrays are untouched throughout, so they are still the ones the view was
+!> derived from.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_ExpandBlockCRS( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+!------------------------------------------------------------------------------
+    INTEGER :: i,k,n,t,nj,o,e
+!------------------------------------------------------------------------------
+    IF( .NOT. ASSOCIATED( A % CValues ) .OR. .NOT. ASSOCIATED( A % BRows ) ) THEN
+      CALL Fatal('CRS_ExpandBlockCRS','No block view to expand from')
+    END IF
+
+    n = A % NumberOfRows / 2
+
+    k = 1
+    DO i=1,n
+      o  = A % Rows(2*i-1)
+      e  = A % Rows(2*i)
+      nj = e - o
+      DO t=0,nj-1,2
+        A % Values(o+t)   =  REAL(  A % CValues(k), KIND=dp )
+        A % Values(o+t+1) = -AIMAG( A % CValues(k) )
+        A % Values(e+t)   =  AIMAG( A % CValues(k) )
+        A % Values(e+t+1) =  REAL(  A % CValues(k), KIND=dp )
+        k = k + 1
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CRS_ExpandBlockCRS
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Release the block CRS view, if one was built. The sparsity pattern may
+!> change between solves; this drops the view so it is rederived.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_FreeBlockCRS( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+!------------------------------------------------------------------------------
+    IF( ASSOCIATED( A % BRows ) )   DEALLOCATE( A % BRows )
+    IF( ASSOCIATED( A % BCols ) )   DEALLOCATE( A % BCols )
+    IF( ASSOCIATED( A % BDiag ) )   DEALLOCATE( A % BDiag )
+    IF( ASSOCIATED( A % CValues ) ) DEALLOCATE( A % CValues )
+    IF( ASSOCIATED( A % CPrecValues ) ) DEALLOCATE( A % CPrecValues )
+    NULLIFY( A % BRows, A % BCols, A % BDiag, A % CValues, A % CPrecValues )
+!------------------------------------------------------------------------------
+  END SUBROUTINE CRS_FreeBlockCRS
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Matrix vector product (v = Au) against the block CRS view. Same arithmetic
+!> as CRS_ComplexMatrixVectorMultiply, but reading one contiguous COMPLEX per
+!> block instead of two reals strided out of a fourfold redundant array, and
+!> one block column index instead of four scalar ones.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_BlockComplexMatrixVectorMultiply( A,u,v )
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< Vector to be multiplied
+    COMPLEX(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
+    TYPE(Matrix_t), INTENT(IN) :: A                   !< Structure holding matrix
+!------------------------------------------------------------------------------
+    INTEGER, POINTER :: BCols(:),BRows(:)
+    COMPLEX(KIND=dp), POINTER :: CValues(:)
+    INTEGER :: i,j,k,n
+    COMPLEX(KIND=dp) :: r1,r2,r3,r4
+!------------------------------------------------------------------------------
+    n = A % NumberOfRows / 2
+    BRows   => A % BRows
+    BCols   => A % BCols
+    CValues => A % CValues
+
+    ! The sum is split over four partial sums so that the products do not have
+    ! to wait on each other, exactly as the CASE DEFAULT branch of
+    ! CRS_ComplexMatrixVectorMultiply does. Matching its grouping is not just
+    ! for speed: summation order decides the rounding, and keeping the two the
+    ! same is what makes this product bit-for-bit identical to the scalar one.
+    ! k counts the blocks of the row, one complex entry each.
+    !
+    ! No ndeg-blocked variants here yet. They would pay off the same way as in
+    ! the scalar product -- for even ndeg > 2 the block columns of a step run
+    ! consecutively, so u(BCols(j)+1) etc. could replace the repeated BCols
+    ! loads -- but ndeg is 2 for an ordinary complex field, which lands here.
+!$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
+    DO i=1,n
+       r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+       k = BRows(i+1) - BRows(i)
+!DIR$ IVDEP
+       DO j=BRows(i),BRows(i)+4*(k/4)-1,4
+          r1 = r1 + CValues(j)   * u(BCols(j))
+          r2 = r2 + CValues(j+1) * u(BCols(j+1))
+          r3 = r3 + CValues(j+2) * u(BCols(j+2))
+          r4 = r4 + CValues(j+3) * u(BCols(j+3))
+       END DO
+       DO j=BRows(i)+4*(k/4),BRows(i+1)-1
+          r1 = r1 + CValues(j) * u(BCols(j))
+       END DO
+       v(i) = r1 + r2 + r3 + r4
+    END DO
+!$omp end parallel do
+!------------------------------------------------------------------------------
+  END SUBROUTINE CRS_BlockComplexMatrixVectorMultiply
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !>    Matrix vector product (v = Au) for a matrix given in CRS format
 !>    assuming complex valued matrix equation.
 !------------------------------------------------------------------------------
@@ -2200,27 +2666,133 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     COMPLEX(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< Result vector
     TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
 !------------------------------------------------------------------------------
-    INTEGER, POINTER :: Cols(:),Rows(:)
-    REAL(KIND=dp), POINTER :: Values(:)
-    INTEGER :: i,j,n
-    COMPLEX(KIND=dp) :: s,rsum
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    INTEGER :: i,j,k,l,m,n
+    COMPLEX(KIND=dp) :: r1,r2,r3,r4,r5
 !------------------------------------------------------------------------------
     n = A % NumberOfRows / 2
     Rows   => A % Rows
     Cols   => A % Cols
     Values => A % Values
 
-!$omp parallel do private(rsum,j,s)
-    DO i=1,n
-       rsum = CMPLX( 0.0d0, 0.0d0,KIND=dp )
-!DIR$ IVDEP
-       DO j=Rows(2*i-1),Rows(2*i)-1,2
-          s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-          rsum = rsum + s * u((Cols(j)+1)/2)
-       END DO
-       v(i) = rsum
-    END DO
-!$omp end parallel do
+    ! The complex equation is stored in a real matrix where every complex entry
+    ! takes two consecutive real ones, the real part and the negated imaginary
+    ! part, and complex row i is the odd numbered one of a pair of real rows. So
+    ! the entries of complex row i are read off real row 2i-1 two at a time.
+    !
+    ! As in the real product a small dense block may be used to cut down indirect
+    ! memory addressing. Here ndeg counts real dofs, so a block spans ndeg/2
+    ! complex entries whose columns follow each other, and only an even ndeg says
+    ! anything about a complex matrix.
+    !-------------------------------------------------------------------------------
+    m = 0
+    IF( A % ndeg > 2 .AND. MODULO( A % ndeg, 2 ) == 0 ) m = A % ndeg / 2
+
+    ! The unrolled loops below step through each row a whole block at a time and
+    ! assume the columns of each step are consecutive, so every row has to hold a
+    ! whole number of blocks. Code that edits a matrix in place can break that --
+    ! dropping stored zeros, or appending columns to a row -- and the result is
+    ! then a silently wrong product rather than a crash, which is expensive to
+    ! track down. The scan is over rows, not entries, so it costs about a
+    ! percent of the multiplication it guards. Whoever changes the structure
+    ! should set ndeg to 1.
+    IF( m > 1 ) THEN
+      DO i=1,n
+        IF( MODULO(Rows(2*i)-Rows(2*i-1), A % ndeg) /= 0 ) THEN
+          WRITE(Message,'(A,I0,A,I0,A,I0)') 'Row ',2*i-1,' holds ',Rows(2*i)-Rows(2*i-1), &
+              ' entries, which is not a multiple of ndeg = ',A % ndeg
+          CALL Fatal('CRS_ComplexMatrixVectorMultiply',Message)
+        END IF
+      END DO
+    END IF
+
+    SELECT CASE( m )
+
+    CASE( 5, 10 )
+      !$omp parallel do private(j,l,r1,r2,r3,r4,r5) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,10
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u(l+2)
+          r4 = r4 + CMPLX( Values(j+6),-Values(j+7), KIND=dp ) * u(l+3)
+          r5 = r5 + CMPLX( Values(j+8),-Values(j+9), KIND=dp ) * u(l+4)
+        END DO
+        v(i) = r1 + r2 + r3 + r4 + r5
+      END DO
+      !$omp end parallel do
+
+    CASE( 4, 8 )
+      !$omp parallel do private(j,l,r1,r2,r3,r4) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,8
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u(l+2)
+          r4 = r4 + CMPLX( Values(j+6),-Values(j+7), KIND=dp ) * u(l+3)
+        END DO
+        v(i) = r1 + r2 + r3 + r4
+      END DO
+      !$omp end parallel do
+
+    CASE( 3, 6 )
+      !$omp parallel do private(j,l,r1,r2,r3) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,6
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u(l+2)
+        END DO
+        v(i) = r1 + r2 + r3
+      END DO
+      !$omp end parallel do
+
+    CASE( 2 )
+      !$omp parallel do private(j,l,r1,r2) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i)-1,4
+          l = (Cols(j)+1)/2
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u(l)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u(l+1)
+        END DO
+        v(i) = r1 + r2
+      END DO
+      !$omp end parallel do
+
+    CASE DEFAULT
+      ! No block to lean on, but the sum may still be split over four partial sums
+      ! so that the products do not have to wait on each other. k counts the
+      ! complex entries of the row.
+      !$omp parallel do private(j,k,r1,r2,r3,r4) schedule(guided)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+        k = ( Rows(2*i) - Rows(2*i-1) ) / 2
+        !DIR$ IVDEP
+        DO j=Rows(2*i-1),Rows(2*i-1)+8*(k/4)-1,8
+          r1 = r1 + CMPLX( Values(j),  -Values(j+1), KIND=dp ) * u((Cols(j)+1)/2)
+          r2 = r2 + CMPLX( Values(j+2),-Values(j+3), KIND=dp ) * u((Cols(j+2)+1)/2)
+          r3 = r3 + CMPLX( Values(j+4),-Values(j+5), KIND=dp ) * u((Cols(j+4)+1)/2)
+          r4 = r4 + CMPLX( Values(j+6),-Values(j+7), KIND=dp ) * u((Cols(j+6)+1)/2)
+        END DO
+        DO j=Rows(2*i-1)+8*(k/4),Rows(2*i)-1,2
+          r1 = r1 + CMPLX( Values(j),-Values(j+1), KIND=dp ) * u((Cols(j)+1)/2)
+        END DO
+        v(i) = r1 + r2 + r3 + r4
+      END DO
+      !$omp end parallel do
+    END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_ComplexMatrixVectorMultiply
 !------------------------------------------------------------------------------
@@ -2394,10 +2966,31 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        GlobalMatrix % Ordered = .TRUE.
     END IF
 
-    DO i=1,n/2
-       A = CMPLX( Values(Diag(2*i-1)), -Values(Diag(2*i-1)+1), KIND=dp )
-       u(i) = v(i) / A
-    END DO
+    ! Take the diagonal block straight from the view when there is one. This is
+    ! the only preconditioner that reads the coefficients on EVERY iteration, so
+    ! it is also the only one where the compact read is worth anything in time
+    ! rather than only in what the scalar form is still needed for.
+    !
+    ! Note the sort above: it reorders Cols and Values, which would leave a view
+    ! built earlier misaligned. It is dead in practice -- SParIterSolver sorts
+    ! InsideMatrix during setup and CRS_SortMatrix marks it Ordered, so by the
+    ! time IterSolver derives the view the branch is never taken -- but anything
+    ! that reordered a matrix under a live view would corrupt it silently.
+    IF( ASSOCIATED( GlobalMatrix % BDiag ) .AND. &
+        ASSOCIATED( GlobalMatrix % CValues ) ) THEN
+      !$OMP PARALLEL DO
+      DO i=1,n/2
+         u(i) = v(i) / GlobalMatrix % CValues( GlobalMatrix % BDiag(i) )
+      END DO
+      !$OMP END PARALLEL DO
+    ELSE
+      !$OMP PARALLEL DO PRIVATE(A)
+      DO i=1,n/2
+         A = CMPLX( Values(Diag(2*i-1)), -Values(Diag(2*i-1)+1), KIND=dp )
+         u(i) = v(i) / A
+      END DO
+      !$OMP END PARALLEL DO
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_ComplexDiagPrecondition
 !------------------------------------------------------------------------------
@@ -3477,10 +4070,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status            !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     LOGICAL :: Warned, Retry, Found
-    INTEGER :: i,j,k,l,m,n,istat
+    INTEGER :: i,j,k,l,m,n,p,istat
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER :: ILUValues(:), Values(:)
-    REAL(KIND=dp) :: st, tx, scl, cFactor
+    REAL(KIND=dp) :: st, tx, scl, cFactor, r1, r2, r3, r4
     LOGICAL, ALLOCATABLE :: C(:), D(:)
     REAL(KIND=dp), ALLOCATABLE ::  S(:), T(:)
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
@@ -3605,12 +4198,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        S(i) = Scl * T(i)
        DO m=ILURows(i),ILUDiag(i)-1
          j = ILUCols(m)
-         S(j) = T(j)
-         DO l = ILURows(j),ILUDiag(j)-1
-           k = ILUCols(l)
-           S(j) = S(j) - S(k) * ILUValues(l)
+         r1 = T(j); r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+         p = ILUDiag(j) - ILURows(j)
+!DIR$ IVDEP
+         DO l = ILURows(j),ILURows(j)+4*(p/4)-1,4
+           r1 = r1 - S(ILUCols(l))   * ILUValues(l)
+           r2 = r2 - S(ILUCols(l+1)) * ILUValues(l+1)
+           r3 = r3 - S(ILUCols(l+2)) * ILUValues(l+2)
+           r4 = r4 - S(ILUCols(l+3)) * ILUValues(l+3)
          END DO
-         S(j) = S(j) * ILUValues(ILUDiag(j))
+         DO l = ILURows(j)+4*(p/4),ILUDiag(j)-1
+           r1 = r1 - S(ILUCols(l)) * ILUValues(l)
+         END DO
+         S(j) = (r1 + r2 + r3 + r4) * ILUValues(ILUDiag(j))
          S(i) = S(i) - S(j)**2
        END DO
 
@@ -3672,8 +4272,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          IF ( S(k) == 0._dp ) CYCLE
 
          IF ( ABS(ILUValues(ILUDiag(k))) > AEPS ) &
-           S(k) = S(k) / ILUValues(ILUDiag(k)) 
+           S(k) = S(k) / ILUValues(ILUDiag(k))
 
+!DIR$ IVDEP
          DO l = ILUDiag(k)+1, ILURows(k+1)-1
            j = ILUCols(l)
            IF ( C(j) ) THEN
@@ -3854,13 +4455,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, INTENT(IN) :: ILUn   !< Order of fills allowed 0-9
     LOGICAL :: Status  !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,m,n,istat
+    INTEGER :: i,j,k,l,m,n,p,istat
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER ::  Values(:)
+    ! Scattering a row of A into the dense work row is the only place the
+    ! factorization touches A itself; everything below it already works on the
+    ! compact complex factors. Read the block view of A where one exists, which
+    ! is a contiguous walk over one COMPLEX per block rather than a strided one
+    ! over a fourfold redundant real array. The scalar path stays as the
+    ! fallback: the view is optional and the preconditioner cannot depend on it.
+    LOGICAL :: UseBlock
+    INTEGER, POINTER :: BCols(:),BRows(:)
+    COMPLEX(KIND=dp), POINTER :: CValues(:)
     COMPLEX(KIND=dp), POINTER :: ILUValues(:)
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
     TYPE(Matrix_t), POINTER :: A1
     REAL(KIND=dp) :: st
+    COMPLEX(KIND=dp) :: r1, r2, r3, r4
     LOGICAL, ALLOCATABLE :: C(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: S(:), T(:)
 !------------------------------------------------------------------------------
@@ -3879,6 +4490,24 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     ELSE
       CALL Info( 'CRS_ComplexIncompleteLU', 'Factorizing the primary matrix', Level=20 )
       Values => A % Values
+    END IF
+
+    ! Read the rows from whichever view mirrors the array being factorized. The
+    ! two share BRows and BCols; only the coefficients differ.
+    UseBlock = ASSOCIATED( A % BCols )
+    IF( UseBlock ) THEN
+      IF( ASSOCIATED( A % PrecValues ) ) THEN
+        UseBlock = ASSOCIATED( A % CPrecValues )
+        IF( UseBlock ) CValues => A % CPrecValues
+      ELSE
+        UseBlock = ASSOCIATED( A % CValues )
+        IF( UseBlock ) CValues => A % CValues
+      END IF
+    END IF
+    IF( UseBlock ) THEN
+      BRows   => A % BRows
+      BCols   => A % BCols
+      CALL Info( 'CRS_ComplexIncompleteLU', 'Reading rows from the block view', Level=20 )
     END IF
 
     IF ( .NOT.ASSOCIATED(A % CILUValues) ) THEN
@@ -3968,9 +4597,15 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        ! Convert current row to full form for speed,
        ! only flagging the nonzero entries:
        ! -------------------------------------------
-       DO k = Rows(2*i-1), Rows(2*i)-1,2
-          T((Cols(k)+1)/2) = CMPLX( Values(k), -Values(k+1), KIND=dp )
-       END DO
+       IF( UseBlock ) THEN
+          DO k = BRows(i), BRows(i+1)-1
+             T(BCols(k)) = CValues(k)
+          END DO
+       ELSE
+          DO k = Rows(2*i-1), Rows(2*i)-1,2
+             T((Cols(k)+1)/2) = CMPLX( Values(k), -Values(k+1), KIND=dp )
+          END DO
+       END IF
 
        DO j=ILURows(i), ILUDiag(i)
           C(ILUCols(j)) = .TRUE.
@@ -3982,12 +4617,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        S(i) = T(i)
        DO m=ILURows(i),ILUDiag(i)-1
          j = ILUCols(m)
-         S(j) = T(j)
-         DO l = ILURows(j),ILUDiag(j)-1
-           k = ILUCols(l)
-           S(j) = S(j) - S(k) * CONJG(ILUValues(l))
+         r1 = T(j); r2 = (0.0_dp,0.0_dp); r3 = (0.0_dp,0.0_dp); r4 = (0.0_dp,0.0_dp)
+         p = ILUDiag(j) - ILURows(j)
+!DIR$ IVDEP
+         DO l = ILURows(j),ILURows(j)+4*(p/4)-1,4
+           r1 = r1 - S(ILUCols(l))   * CONJG(ILUValues(l))
+           r2 = r2 - S(ILUCols(l+1)) * CONJG(ILUValues(l+1))
+           r3 = r3 - S(ILUCols(l+2)) * CONJG(ILUValues(l+2))
+           r4 = r4 - S(ILUCols(l+3)) * CONJG(ILUValues(l+3))
          END DO
-         S(j) = S(j) * ILUValues(ILUDiag(j))
+         DO l = ILURows(j)+4*(p/4),ILUDiag(j)-1
+           r1 = r1 - S(ILUCols(l)) * CONJG(ILUValues(l))
+         END DO
+         S(j) = (r1 + r2 + r3 + r4) * ILUValues(ILUDiag(j))
          S(i) = S(i) - S(j)*CONJG(S(j))
        END DO
 
@@ -3995,9 +4637,15 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
        ! Convert the row back to  CRS format:
        ! ------------------------------------
-       DO k = Rows(2*i-1), Rows(2*i)-1,2
-         T((Cols(k)+1)/2) =  0._dp
-       END DO
+       IF( UseBlock ) THEN
+         DO k = BRows(i), BRows(i+1)-1
+           T(BCols(k)) =  0._dp
+         END DO
+       ELSE
+         DO k = Rows(2*i-1), Rows(2*i)-1,2
+           T((Cols(k)+1)/2) =  0._dp
+         END DO
+       END IF
 
        DO k=ILURows(i), ILUDiag(i)
          ILUValues(k)  = S(ILUCols(k))
@@ -4019,9 +4667,15 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          C(ILUCols(k)) = .TRUE.
        END DO
 
-       DO k = Rows(2*i-1), Rows(2*i)-1,2
-         S((Cols(k)+1)/2) = CMPLX( Values(k), -Values(k+1), KIND=dp )
-       END DO
+       IF( UseBlock ) THEN
+         DO k = BRows(i), BRows(i+1)-1
+           S(BCols(k)) = CValues(k)
+         END DO
+       ELSE
+         DO k = Rows(2*i-1), Rows(2*i)-1,2
+           S((Cols(k)+1)/2) = CMPLX( Values(k), -Values(k+1), KIND=dp )
+         END DO
+       END IF
 
        ! This is the factorization part for the current row:
        ! ---------------------------------------------------
@@ -4030,8 +4684,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          IF ( S(k) == 0._dp ) CYCLE
 
          IF ( ABS(ILUValues(ILUDiag(k))) > AEPS ) &
-           S(k) = S(k) / ILUValues(ILUDiag(k)) 
+           S(k) = S(k) / ILUValues(ILUDiag(k))
 
+!DIR$ IVDEP
          DO l = ILUDiag(k)+1, ILURows(k+1)-1
            j = ILUCols(l)
            IF ( C(j) ) THEN
@@ -4231,13 +4886,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       TYPE(Matrix_t) :: A
 !------------------------------------------------------------------------------
       INTEGER, PARAMETER :: WORKN = 128
-      INTEGER :: i,j,k,l,istat, RowMin, RowMax
+      INTEGER :: i,j,k,l,m,istat, RowMin, RowMax
       REAL(KIND=dp) :: NORMA
       REAL(KIND=dp), POINTER CONTIG :: Values(:), ILUValues(:), CWork(:)
       INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:), &
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
       LOGICAL :: C(n)
       REAL(KIND=dp) :: S(n), cptime, ttime, t
+      REAL(KIND=dp), ALLOCATABLE :: RowNorms(:)
 !------------------------------------------------------------------------------
 
       ttime  = CPUTime()
@@ -4264,6 +4920,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       IF ( istat /= 0 ) THEN
          CALL Fatal( 'CRS_ILUT', 'Memory allocation error.' )
       END IF
+!     Precompute row norms for drop tolerance (original A, not modified during factorization)
+      ALLOCATE( RowNorms(n) )
+      !$OMP PARALLEL DO
+      DO i=1,n
+        RowNorms(i) = NORM2( Values(Rows(i):Rows(i+1)-1) )
+      END DO
+      !$OMP END PARALLEL DO
+
 !
 !     The factorization row by row:
 !     -----------------------------
@@ -4308,7 +4972,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !        This is the ILUT part, drop element ILU(i,j), if
 !        ABS(ILU(i,j)) <= NORM(A(i,:))*TOL:
 !        -------------------------------------------------
-         NORMA = SQRT( SUM( ABS(Values(Rows(i):Rows(i+1)-1))**2 ) )
+         NORMA = RowNorms(i)
 
          j = ILURows(i)-1
          DO k=RowMin, RowMax
@@ -4336,22 +5000,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
                t = CPUTime()
 !              k = ILURows(i+1) + MIN( WORKN, n-i ) * n
                k = ILURows(i+1) + MIN( 0.75d0*ILURows(i+1), (n-i)*(1.0d0*n) )
+               m = ILURows(i+1) - 1
                ALLOCATE( IWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 IWork(j) = ILUCols(j)
-               END DO
+               IWork(1:m) = ILUCols(1:m)
                DEALLOCATE( ILUCols )
 
                ALLOCATE( CWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 CWork(j) = ILUValues(j)
-               END DO
+               CWork(1:m) = ILUValues(1:m)
                DEALLOCATE( ILUValues )
 
                ILUCols   => IWork
@@ -4375,6 +5036,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
       A % ILUCols   => ILUCols
       A % ILUValues => ILUValues
+      DEALLOCATE( RowNorms )
 !------------------------------------------------------------------------------
     END SUBROUTINE ComputeILUT
 !------------------------------------------------------------------------------
@@ -4434,7 +5096,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
       INTEGER, PARAMETER :: WORKN = 128
 
-      INTEGER :: i,j,k,l,istat,RowMin,RowMax
+      INTEGER :: i,j,k,l,m,istat,RowMin,RowMax
       REAL(KIND=dp) :: NORMA
 
       REAL(KIND=dp), POINTER CONTIG :: Values(:)
@@ -4445,6 +5107,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
       LOGICAL :: C(n)
       COMPLEX(KIND=dp) :: S(n)
+      REAL(KIND=dp), ALLOCATABLE :: RowNorms(:)
+      INTEGER, POINTER CONTIG :: BRows(:), BCols(:)
+      COMPLEX(KIND=dp), POINTER CONTIG :: CValues(:)
+      LOGICAL :: UseBlock
 !------------------------------------------------------------------------------
 
       Diag => A % Diag
@@ -4454,6 +5120,25 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         Values => A % PrecValues
       ELSE
         Values => A % Values
+      END IF
+
+      ! Read the rows from the block view mirroring whatever is being
+      ! factorized, as CRS_ComplexIncompleteLU does. Both views share BRows and
+      ! BCols; only the coefficients differ.
+      UseBlock = ASSOCIATED( A % BCols )
+      IF( UseBlock ) THEN
+        IF( ASSOCIATED( A % PrecValues ) ) THEN
+          UseBlock = ASSOCIATED( A % CPrecValues )
+          IF( UseBlock ) CValues => A % CPrecValues
+        ELSE
+          UseBlock = ASSOCIATED( A % CValues )
+          IF( UseBlock ) CValues => A % CValues
+        END IF
+      END IF
+      IF( UseBlock ) THEN
+        BRows => A % BRows
+        BCols => A % BCols
+        CALL Info( 'CRS_ComplexILUT','Reading rows from the block view', Level=20 )
       END IF
 
       ALLOCATE( A % ILURows(n+1),A % ILUDiag(n),STAT=istat )
@@ -4468,6 +5153,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       IF ( istat /= 0 ) THEN
          CALL Fatal( 'CRS_ComplexILUT', 'Memory allocation error.' )
       END IF
+!     Precompute row norms for drop tolerance
+      ALLOCATE( RowNorms(n) )
+      ! The block form of the odd scalar row is (x1,-y1,x2,-y2,...), so building
+      ! that sequence back and handing it to the same intrinsic keeps the norm
+      ! bit-identical. It matters: RowNorms sets the drop tolerance, so a
+      ! last-bit difference would silently change which entries ILUT keeps.
+      !$OMP PARALLEL DO
+      DO i=1,n
+        IF( UseBlock ) THEN
+          RowNorms(i) = NORM2( [ ( REAL(CValues(k),KIND=dp), &
+              -AIMAG(CValues(k)), k=BRows(i),BRows(i+1)-1 ) ] )
+        ELSE
+          RowNorms(i) = NORM2( Values(Rows(2*i-1):Rows(2*i)-1) )
+        END IF
+      END DO
+      !$OMP END PARALLEL DO
+
 !
 !     The factorization row by row:
 !     -----------------------------
@@ -4480,16 +5182,28 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !        Convert the current row to full form for speed,
 !        only flagging the nonzero entries:
 !        -----------------------------------------------
-         DO k=Rows(2*i-1), Rows(2*i)-1,2
-            C((Cols(k)+1) / 2) = .TRUE.
-            S((Cols(k)+1) / 2) = CMPLX( Values(k), -Values(k+1), KIND=dp )
-         END DO
+         IF( UseBlock ) THEN
+            DO k=BRows(i), BRows(i+1)-1
+               C(BCols(k)) = .TRUE.
+               S(BCols(k)) = CValues(k)
+            END DO
+         ELSE
+            DO k=Rows(2*i-1), Rows(2*i)-1,2
+               C((Cols(k)+1) / 2) = .TRUE.
+               S((Cols(k)+1) / 2) = CMPLX( Values(k), -Values(k+1), KIND=dp )
+            END DO
+         END IF
 !
 !        Check bandwidth for speed, bandwidth optimization
 !        helps here A LOT, use it!
 !        -------------------------------------------------
-         RowMin = (Cols(Rows(2*i-1)) + 1) / 2
-         RowMax = (Cols(Rows(2*i)-1) + 1) / 2
+         IF( UseBlock ) THEN
+            RowMin = BCols(BRows(i))
+            RowMax = BCols(BRows(i+1)-1)
+         ELSE
+            RowMin = (Cols(Rows(2*i-1)) + 1) / 2
+            RowMax = (Cols(Rows(2*i)-1) + 1) / 2
+         END IF
 !
 !        Here is the factorization part for the current row:
 !        ---------------------------------------------------
@@ -4513,11 +5227,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !        This is the ILUT part, drop element ILUT(i,j), if
 !        ABS(ILUT(i,j)) <= NORM(A(i,:))*TOL:
 !        -------------------------------------------------
-         NORMA = 0.0d0
-         DO k = Rows(2*i-1), Rows(2*i)-1, 2
-            NORMA = NORMA + Values(k)**2 + Values(k+1)**2
-         END DO
-         NORMA = SQRT(NORMA)
+         NORMA = RowNorms(i)
 
          j = ILURows(i)-1
          DO k=RowMin, RowMax
@@ -4543,23 +5253,20 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
             IF ( SIZE(ILUCols) < ILURows(i+1) + n ) THEN
 !              k = ILURows(i+1) + MIN( WORKN, n-i ) * n
                k = ILURows(i+1) + MIN( 0.75d0*ILURows(i+1), (n-i)*(1.0d0*n) )
+               m = ILURows(i+1) - 1
 
                ALLOCATE( IWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ComplexILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 IWork(j) = ILUCols(j)
-               END DO
+               IWork(1:m) = ILUCols(1:m)
                DEALLOCATE( ILUCols )
 
                ALLOCATE( CWork(k), STAT=istat )
                IF ( istat /= 0 ) THEN
                   CALL Fatal( 'CRS_ComplexILUT', 'Memory allocation error.' )
                END IF
-               DO j=1,ILURows(i+1)-1
-                 CWork(j) = ILUValues(j)
-               END DO
+               CWork(1:m) = ILUValues(1:m)
                DEALLOCATE( ILUValues )
 
                ILUCols   => IWork
@@ -4581,6 +5288,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       A % ILUCols    => ILUCols
       A % CILUValues => ILUValues
       NULLIFY( ILUCols, ILUValues )
+      DEALLOCATE( RowNorms )
 !------------------------------------------------------------------------------
     END SUBROUTINE ComplexComputeILUT
 !------------------------------------------------------------------------------
@@ -4639,10 +5347,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, INTENT(IN) :: N   !< Size of the system
     DOUBLE PRECISION :: b(n)   !< on entry the RHS vector, on exit the solution vector.
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,row,col,nn
-    DOUBLE PRECISION :: s
+    INTEGER :: i,j,k
+    DOUBLE PRECISION :: s1,s2,s3,s4
     DOUBLE PRECISION, POINTER CONTIG :: Values(:)
     INTEGER, POINTER CONTIG :: Cols(:),Rows(:),Diag(:)
+#ifdef HAVE_MKL
+    INTERFACE
+      SUBROUTINE mkl_dcsrtrsv(uplo, transa, diag, m, a, ia, ja, x, y)
+        USE Types
+        CHARACTER :: uplo, transa, diag
+        INTEGER :: m
+        REAL(KIND=dp) :: a(*)
+        INTEGER :: ia(*), ja(*)
+        REAL(KIND=dp) :: x(*), y(*)
+      END SUBROUTINE mkl_dcsrtrsv
+    END INTERFACE
+    DOUBLE PRECISION, ALLOCATABLE :: tmp(:)
+#endif
 !------------------------------------------------------------------------------
 
     Diag => A % ILUDiag
@@ -4655,26 +5376,51 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !   -------------------------------------
     IF ( .NOT. ASSOCIATED( Values ) ) THEN
        DO i=1,A % NumberOfRows
-         s = A % Values(A % Diag(i))
-         IF(s /= 0 ) b(i) = b(i) / s
+         s1 = A % Values(A % Diag(i))
+         IF(s1 /= 0 ) b(i) = b(i) / s1
        END DO
        RETURN
     END IF
+
+#ifdef HAVE_MKL
+    IF ( .NOT. A % Cholesky ) THEN
+      ALLOCATE(tmp(n))
+      ! Forward: L is unit lower triangular
+      CALL mkl_dcsrtrsv('L', 'N', 'U', n, Values, Rows, Cols, b, tmp)
+      b(1:n) = tmp(1:n)
+      ! Backward: unit upper triangular solve, then apply pre-inverted diagonal
+      CALL mkl_dcsrtrsv('U', 'N', 'U', n, Values, Rows, Cols, b, tmp)
+      !$OMP PARALLEL DO
+      DO i=1,n
+        b(i) = Values(Diag(i)) * tmp(i)
+      END DO
+      !$OMP END PARALLEL DO
+      DEALLOCATE(tmp)
+      RETURN
+    END IF
+#endif
 
     IF ( A % Cholesky ) THEN
       !
       ! Forward substitute (solve z from Lz = b)
       DO i=1,n
-        s = b(i)
+        s1 = b(i); s2 = 0.0d0; s3 = 0.0d0; s4 = 0.0d0
+        k = Diag(i) - Rows(i)
 !DIR$ IVDEP
-        DO j=Rows(i),Diag(i)-1
-           s = s - Values(j) * b(Cols(j))
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
         END DO
-        b(i) = s * Values(Diag(i))
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = (s1 + s2 + s3 + s4) * Values(Diag(i))
       END DO
 
       !
-      ! Backward substitute (solve x from L^Tx = z)
+      ! Backward substitute (solve x from L^Tx = z) — scatter, no unrolling
       DO i=n,1,-1
         b(i) = b(i) * Values(Diag(i))
 !DIR$ IVDEP
@@ -4684,25 +5430,39 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
     ELSE
       !
-      ! Forward substitute (solve z from Lz = b)
+      ! Forward substitute (solve z from Lz = b), L unit lower triangular
       DO i=1,n
-         s = b(i)
+        s1 = b(i); s2 = 0.0d0; s3 = 0.0d0; s4 = 0.0d0
+        k = Diag(i) - Rows(i)
 !DIR$ IVDEP
-         DO j=Rows(i),Diag(i)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = s 
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = s1 + s2 + s3 + s4
       END DO
 
       !
-      ! Backward substitute (solve x from UDx = z)
+      ! Backward substitute (solve x from UDx = z), D is pre-inverted
       DO i=n,1,-1
-         s = b(i)
+        s1 = b(i); s2 = 0.0d0; s3 = 0.0d0; s4 = 0.0d0
+        k = Rows(i+1) - Diag(i) - 1
 !DIR$ IVDEP
-         DO j=Diag(i)+1,Rows(i+1)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = Values(Diag(i)) * s
+        DO j=Diag(i)+1,Diag(i)+4*(k/4),4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Diag(i)+4*(k/4)+1,Rows(i+1)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = Values(Diag(i)) * (s1 + s2 + s3 + s4)
       END DO
     END IF
 
@@ -4717,14 +5477,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !>    iterative solver.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_ComplexLUSolve( N,A,b )
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
     TYPE(Matrix_t), INTENT(IN) :: A   !< Structure holding input matrix
     INTEGER, INTENT(IN) :: N          !< Size of the system
     COMPLEX(KIND=dp) :: b(N)          !< on entry the RHS vector, on exit the solution vector.
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), POINTER :: Values(:)
-    INTEGER :: i,j
-    COMPLEX(KIND=dp) :: x, s
+    INTEGER :: i,j,k
+    COMPLEX(KIND=dp) :: s1,s2,s3,s4
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
 
@@ -4742,15 +5502,22 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       !
       ! Forward substitute
       DO i=1,n
-         s = b(i)
-         DO j=Rows(i),Diag(i)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = s * Values(Diag(i))
+        s1 = b(i); s2 = (0.0_dp,0.0_dp); s3 = (0.0_dp,0.0_dp); s4 = (0.0_dp,0.0_dp)
+        k = Diag(i) - Rows(i)
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = (s1 + s2 + s3 + s4) * Values(Diag(i))
       END DO
 
       !
-      ! Backward substitute
+      ! Backward substitute — scatter, no unrolling
       DO i=n,1,-1
          b(i) = b(i) * Values(Diag(i))
          DO j=Rows(i),Diag(i)-1
@@ -4759,23 +5526,37 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
     ELSE
       !
-      ! Forward substitute
+      ! Forward substitute, L unit lower triangular
       DO i=1,n
-         s = b(i)
-         DO j=Rows(i),Diag(i)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = s
+        s1 = b(i); s2 = (0.0_dp,0.0_dp); s3 = (0.0_dp,0.0_dp); s4 = (0.0_dp,0.0_dp)
+        k = Diag(i) - Rows(i)
+        DO j=Rows(i),Rows(i)+4*(k/4)-1,4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Rows(i)+4*(k/4),Diag(i)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = s1 + s2 + s3 + s4
       END DO
 
       !
-      ! Backward substitute
+      ! Backward substitute, D is pre-inverted
       DO i=n,1,-1
-         s = b(i)
-         DO j=Diag(i)+1,Rows(i+1)-1
-            s = s - Values(j) * b(Cols(j))
-         END DO
-         b(i) = Values(Diag(i)) * s
+        s1 = b(i); s2 = (0.0_dp,0.0_dp); s3 = (0.0_dp,0.0_dp); s4 = (0.0_dp,0.0_dp)
+        k = Rows(i+1) - Diag(i) - 1
+        DO j=Diag(i)+1,Diag(i)+4*(k/4),4
+          s1 = s1 - Values(j)   * b(Cols(j))
+          s2 = s2 - Values(j+1) * b(Cols(j+1))
+          s3 = s3 - Values(j+2) * b(Cols(j+2))
+          s4 = s4 - Values(j+3) * b(Cols(j+3))
+        END DO
+        DO j=Diag(i)+4*(k/4)+1,Rows(i+1)-1
+          s1 = s1 - Values(j) * b(Cols(j))
+        END DO
+        b(i) = Values(Diag(i)) * (s1 + s2 + s3 + s4)
       END DO
     END IF
 
@@ -4792,128 +5573,20 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< Structure holding info HUTIter-iterative solver package
     REAL(KIND=dp), INTENT(IN) :: u(*)  !< vector to multiply u
     REAL(KIND=dp) :: v(*)              !< result vector
-
 !------------------------------------------------------------------------------
-    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
-    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
-
-#ifdef HAVE_MKL
-    INTERFACE
-      SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-        USE Types
-        CHARACTER :: transa
-        INTEGER :: m
-        REAL(KIND=dp) :: a(*)
-        INTEGER :: ia(*), ja(*)
-        REAL(KIND=dp) :: x(*), y(*)
-      END SUBROUTINE mkl_dcsrgemv
-    END INTERFACE
-#endif
-
-    INTEGER :: i,j,l,n,ndeg
-    REAL(KIND=dp) :: s,r1,r2,r3,r4,r5
-    
+    INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
+    INTEGER :: i,j,n
+    REAL(KIND=dp) :: s
 !------------------------------------------------------------------------------
 
-    n = GlobalMatrix % NumberOfRows
+    n      =  GlobalMatrix % NumberOfRows
     Rows   => GlobalMatrix % Rows
     Cols   => GlobalMatrix % Cols
     Values => GlobalMatrix % Values
-    ndeg = GlobalMatrix % ndeg
-    
-    IF  ( GlobalMatrix % MatVecSubr /= 0 ) THEN
-      CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-          GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
-      RETURN
-    END IF
 
     IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
-#ifdef HAVE_MKL
-      CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
-#else
-
-    ! There may be a small structured block in the CRS matrix that is due to the problem
-    ! being initially vector valued. For example, in 3D elasticity we usually have dofs related
-    ! to (x,y,z) displacements following each other. Using this small dense block we may reduce
-    ! indirect memory addressing a little.
-    !-------------------------------------------------------------------------------------------
-      SELECT CASE( ndeg )
-      
-      CASE( 5, 10 )
-        !$omp parallel do private(j,l,r1,r2,r3,r4,r5)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1,5
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-            r3 = r3 + u(l+2) * Values(j+2)
-            r4 = r4 + u(l+3) * Values(j+3)
-            r5 = r5 + u(l+4) * Values(j+4)
-          END DO
-          v(i) = r1 + r2 + r3 + r4 + r5
-        END DO
-        !$omp end parallel do
-        
-      CASE( 4, 8 )
-        !$omp parallel do private(j,l,r1,r2,r3,r4)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1,4
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-            r3 = r3 + u(l+2) * Values(j+2)
-            r4 = r4 + u(l+3) * Values(j+3)
-          END DO
-          v(i) = r1 + r2 + r3 + r4
-        END DO
-        !$omp end parallel do
-        
-      CASE( 3, 6 )
-        !$omp parallel do shared(n,rows,cols,values) private(i,j,l,r1,r2,r3)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
-          DO j=Rows(i),Rows(i+1)-1,3
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-            r3 = r3 + u(l+2) * Values(j+2)
-          END DO
-          v(i) = r1 + r2 + r3
-        END DO
-        !$omp end parallel do
-        
-      CASE( 2 )
-        !$omp parallel do private(j,l,r1,r2)
-        DO i=1,n
-          r1 = 0.0_dp; r2 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1,2
-            l = Cols(j)
-            r1 = r1 + u(l) * Values(j)
-            r2 = r2 + u(l+1) * Values(j+1)
-          END DO
-          v(i) = r1 + r2
-        END DO
-        !$omp end parallel do
-        
-      CASE DEFAULT      
-        !$omp parallel do private(j,r1)
-        DO i=1,n
-          r1 = 0.0_dp
-          !DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1
-            r1 = r1 + u(Cols(j)) * Values(j)
-          END DO
-          v(i) = r1
-        END DO        
-        !$omp end parallel do      
-
-      END SELECT
-#endif
+      CALL CRS_MatrixVectorMultiply( GlobalMatrix, u, v )
     ELSE
       v(1:n) = 0.0d0
       DO i=1,n
@@ -4923,30 +5596,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         END DO
       END DO
     END IF
-
-!    IF ( ASSOCIATED( GlobalMatrix % EMatrix ) ) THEN
-!       n = GlobalMatrix % EMatrix % NumberOFRows
-!       Rows   => GlobalMatrix % EMatrix % Rows
-!       Cols   => GlobalMatrix % EMatrix % Cols
-!       Values => GlobalMatrix % EMatrix % Values
-!
-!       allocate( w(n) )
-!       DO i=1,n
-!          s = 0.0d0
-!          DO j=Rows(i),Rows(i+1)-1
-!             s = s + Values(j) * u(Cols(j))
-!          END DO
-!          w(i) = s
-!       END DO
-!
-!       DO i=1,n
-!          s = w(i)
-!          DO j=Rows(i),Rows(i+1)-1
-!             v(Cols(j)) = v(Cols(j)) + s * Values(j)
-!          END DO
-!       END DO
-!       deallocate( w )
-!    END IF
 
   END SUBROUTINE CRS_MatrixVectorProd
 !------------------------------------------------------------------------------
@@ -4959,11 +5608,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_ComplexMatrixVectorProd( u,v,ipar )
 !------------------------------------------------------------------------------
-
     INTEGER, DIMENSION(*), INTENT(IN) :: ipar      !< Structure holding info HUTIter-iterative solver package
-    COMPLEX(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)      !< vector to multiply u
-    COMPLEX(KIND=dp) :: v(HUTI_NDIM)  !< result vector
-
+    COMPLEX(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)   !< vector to multiply u
+    COMPLEX(KIND=dp) :: v(HUTI_NDIM)               !< result vector
 !------------------------------------------------------------------------------
     INTEGER, POINTER :: Cols(:),Rows(:)
     INTEGER :: i,j,n
@@ -4971,35 +5618,47 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp), POINTER :: Values(:)
 !------------------------------------------------------------------------------
 
-    n = HUTI_NDIM
+    n      =  HUTI_NDIM
     Rows   => GlobalMatrix % Rows
     Cols   => GlobalMatrix % Cols
     Values => GlobalMatrix % Values
 
     IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
-!$omp parallel do private(rsum,j,s)
-       DO i=1,n
-          rsum = CMPLX( 0.0d0, 0.0d0, KIND=dp )
-          DO j=Rows(2*i-1),Rows(2*i)-1,2
-             s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-             rsum = rsum + s * u((Cols(j)+1)/2)
-          END DO
-          v(i) = rsum
-       END DO
-!$omp end parallel do
+      CALL CRS_ComplexMatrixVectorMultiply( GlobalMatrix, u, v )
     ELSE
-       v = CMPLX( 0.0d0, 0.0d0, KIND=dp )
-       DO i=1,n
-          rsum = u(i)
+      v = CMPLX( 0.0d0, 0.0d0, KIND=dp )
+      DO i=1,n
+        rsum = u(i)
 !DIR$ IVDEP
-          DO j=Rows(2*i-1),Rows(2*i)-1,2
-             s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-             v((Cols(j)+1)/2) = v((Cols(j)+1)/2) + s * rsum
-          END DO
-       END DO
+        DO j=Rows(2*i-1),Rows(2*i)-1,2
+          s = CMPLX( Values(j), -Values(j+1), KIND=dp )
+          v((Cols(j)+1)/2) = v((Cols(j)+1)/2) + s * rsum
+        END DO
+      END DO
     END IF
 
   END SUBROUTINE CRS_ComplexMatrixVectorProd
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!>    As CRS_ComplexMatrixVectorProd, but the untransposed product is taken
+!>    against the block CRS view. The transposed branch stays on the scalar
+!>    path: it is a scatter rather than a gather and gains nothing here.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_BlockComplexMatrixVectorProd( u,v,ipar )
+!------------------------------------------------------------------------------
+    INTEGER, DIMENSION(*), INTENT(IN) :: ipar      !< Structure holding info HUTIter-iterative solver package
+    COMPLEX(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)   !< vector to multiply u
+    COMPLEX(KIND=dp) :: v(HUTI_NDIM)               !< result vector
+!------------------------------------------------------------------------------
+    IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
+      CALL CRS_BlockComplexMatrixVectorMultiply( GlobalMatrix, u, v )
+    ELSE
+      CALL CRS_ComplexMatrixVectorProd( u, v, ipar )
+    END IF
+
+  END SUBROUTINE CRS_BlockComplexMatrixVectorProd
 !------------------------------------------------------------------------------
 
 
@@ -5315,7 +5974,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       DEALLOCATE(Cols0,Rows0)
       InitDone = .FALSE.
       
-      A % ndeg = -1 
+      A % ndeg = -1
+
+      ! Any block CRS view describes the old sparsity pattern and is now wrong.
+      CALL CRS_FreeBlockCRS( A )
+
       CALL Info('CRS_ChangeTopology','Matrix topology changed',Level=30)
     END IF
           

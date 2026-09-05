@@ -169,7 +169,7 @@ END SUBROUTINE VectorHelmholtzNodal_Init
 SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE MeshUtils, ONLY : FollowCurvedBoundary
+  USE MeshBasics, ONLY : FollowCurvedBoundary
   USE CRSMatrix, ONLY : CRS_TransposeMatrixVectorMultiply
   USE VectorHelmholtzUtils
   IMPLICIT NONE

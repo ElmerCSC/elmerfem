@@ -42,7 +42,7 @@
 !------------------------------------------------------------------------------
      USE Types
      USE DefUtils
-     USE SolverUtils
+     USE SolverBasics
      USE MaterialModels
      USE Integration
 
@@ -55,7 +55,7 @@
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,n,t,iter,istat,bf_id,CoordinateSystem
+     INTEGER :: i,j,k,n,t,iter,istat,bf_id
  
      TYPE(Matrix_t),POINTER  :: StiffMatrix
      TYPE(Nodes_t)   :: ElementNodes
@@ -67,12 +67,12 @@
      INTEGER, POINTER :: SurfPerm(:), NodeIndexes(:)
      REAL(KIND=dp), POINTER :: Surface(:), ForceVector(:), Surf(:), PrevSurface(:) 
      REAL(KIND=dp), ALLOCATABLE :: LocalMassMatrix(:,:),&
-       LocalStiffMatrix(:,:),Load(:),LocalForce(:),TimeForce(:)
-     INTEGER :: NSDOFs,NonlinearIter,body_id,mat_id,dim
-     REAL(KIND=dp) :: dt, r, ct, DsMax
+       LocalStiffMatrix(:,:),LocalForce(:),TimeForce(:)
+     INTEGER :: NonlinearIter,body_id,mat_id,dim
+     REAL(KIND=dp) :: dt, DsMax
      REAL(KIND=dp), ALLOCATABLE :: ElemVelo(:,:), SurfaceFlux(:)
 
-     SAVE LocalMassMatrix,LocalStiffMatrix,Load, &
+     SAVE LocalMassMatrix,LocalStiffMatrix, &
          TimeForce, LocalForce, ElementNodes,AllocationsDone, &
          ElemVelo, Surf, SurfaceFlux
 
@@ -89,7 +89,6 @@
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
-     CoordinateSystem = CurrentCoordinateSystem()
      dim = CoordinateSystemDimension()
 
      Surface => Solver % Variable % Values
@@ -180,7 +179,7 @@
          ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
          ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
 
-         Surf = Surface( SurfPerm(NodeIndexes) )
+         Surf(1:n) = Surface( SurfPerm(NodeIndexes) )
 
 !------------------------------------------------------------------------------
 !         Computed velocity field
@@ -309,9 +308,9 @@ CONTAINS
      REAL(KIND=dp) :: Velo(3),Force,Grad(3),GradAbs
      REAL(KIND=dp) :: A,M,Load, FL
      REAL(KIND=dp) :: VNorm,hK,mK
-     REAL(KIND=dp) :: Lambda=1.0,Pe,Pe1,Pe2,Tau,x,y,z
+     REAL(KIND=dp) :: Pe,Tau
 
-     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ,NBasis
+     INTEGER :: i,j,k,p,q,t,dim,N_Integ,NBasis
      REAL(KIND=dp) :: s,u,v,w
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      REAL(KIND=dp) :: SU(n),SW(n)
@@ -322,7 +321,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
-     c = dim + 1
 
      ForceVector = 0.0D0
      StiffMatrix = 0.0D0

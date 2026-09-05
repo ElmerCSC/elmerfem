@@ -207,7 +207,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 CONTAINS
 
   SUBROUTINE MakeVarSimilarToModelVar(Var, ModelVar) 
-    TYPE(Variable_t), POINTER :: Var, ModelVar
+    TYPE(Variable_t), TARGET :: Var, ModelVar
     INTEGER :: istat
 
     IF (SIZE(Var % Values) /= SIZE(ModelVar % Values)) THEN

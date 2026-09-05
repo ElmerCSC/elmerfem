@@ -288,9 +288,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetTensorRank( Tensor ) RESULT ( Rank )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), POINTER :: Tensor(:,:,:)
+    REAL(KIND=dp) :: Tensor(:,:,:)
     INTEGER :: Rank
-    
+
     IF ( SIZE(Tensor,1) == 1 ) THEN
       Rank = 1
     ELSE IF ( SIZE(Tensor,2) == 1 ) THEN

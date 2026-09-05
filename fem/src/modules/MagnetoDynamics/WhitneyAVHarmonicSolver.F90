@@ -90,7 +90,7 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
     Model % Solvers(1:n) = Solvers
 
     DO i=n+1,n+2
-      Model % Solvers(i) % PROCEDURE = 0
+      Model % Solvers(i) % PROCEDURE = C_NULL_FUNPTR
       NULLIFY( Model % Solvers(i) % Matrix )
       NULLIFY( Model % Solvers(i) % Mesh )
       NULLIFY( Model % Solvers(i) % Variable )
@@ -893,19 +893,6 @@ END BLOCK
      END IF
    END DO
 
-   zzforce = 0
-   IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-     DO i=1,Mesh % NumberOFBoundaryElements
-       Element => GetBoundaryElement(i)
-       IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
-
-       Parent => Element % BoundaryInfo % Left
-       n  = GetELementNofNodes(Parent)
-       nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
-     END DO
-   END IF
-
    IF( CalcPotential ) THEN
      DO i=1,nbf
        a(i) = ParallelReduction(a(i))
@@ -933,19 +920,33 @@ END BLOCK
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) re', REAL(zforce))
      CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) im', AIMAG(zforce))
 
-   zzforce = 0
-   IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-     DO i=1,Mesh % NumberOFBoundaryElements
-       Element => GetBoundaryElement(i)
-       IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
-
-       Parent => Element % BoundaryInfo % Left
-       n  = GetELementNofNodes(Parent)
-       nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
-     END DO
-   END IF
+     zzforce = 0
      IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
+       DO i=1,Mesh % NumberOFBoundaryElements
+         Element => GetBoundaryElement(i)
+         IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
+
+         Parent => Element % BoundaryInfo % Left
+         n  = GetELementNofNodes(Parent)
+         nd = GetELementNofDOFs(Parent)
+         CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
+       END DO
+       zzforce = ParallelReduction(zzforce)
+       CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) re', REAL(zzforce))
+       CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) im', AIMAG(zzforce))
+     END IF
+   ELSE
+     zzforce = 0
+     IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
+       DO i=1,Mesh % NumberOFBoundaryElements
+         Element => GetBoundaryElement(i)
+         IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
+
+         Parent => Element % BoundaryInfo % Left
+         n  = GetELementNofNodes(Parent)
+         nd = GetELementNofDOFs(Parent)
+         CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
+       END DO
        zzforce = ParallelReduction(zzforce)
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) re', REAL(zzforce))
        CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) im', AIMAG(zzforce))
@@ -975,9 +976,8 @@ END BLOCK
     REAL(KIND=dp) :: Basis(n), DetJ,x,y,r,Density(n)
     INTEGER :: t
     LOGICAL :: stat,Found
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
 
     Density(1:n) = GetReal(GetMaterial(),'Density',Found,Element)
     IF(.NOT.Found) RETURN
@@ -1016,9 +1016,8 @@ END BLOCK
     COMPLEX(KIND=dp) :: B(3,nd), POTC(nd), Br, Bp, Bx, By
     INTEGER :: t
     LOGICAL :: stat, Found
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
 
     r0 = GetCReal(GetBodyParams(),'r inner',Found)
     r1 = GetCReal(GetBodyParams(),'r outer',Found)
@@ -1033,7 +1032,7 @@ END BLOCK
 
     CALL GetLocalSolution(POT, UElement=Element)
     POTC = CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
-  
+
     !Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -1075,9 +1074,8 @@ END BLOCK
     COMPLEX(KIND=dp) :: B(3,nd), POTC(nd), Bx, By, Bz, Br, Bp
     INTEGER :: t
     LOGICAL :: stat, Found
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
 
     r0 = GetCReal(GetBodyParams(),'r inner',Found)
     r1 = GetCReal(GetBodyParams(),'r outer',Found)
@@ -1092,7 +1090,7 @@ END BLOCK
 
     CALL GetLocalSolution(POT, UElement=Element)
     POTC = CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
-  
+
     !Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -1103,7 +1101,7 @@ END BLOCK
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
           RotBasis = RotWBasis, USolver = pSolver )
-      
+
       x = SUM(Nodes % x(1:n)*Basis(1:n))
       y = SUM(Nodes % y(1:n)*Basis(1:n))
       r = SQRT(x**2+y**2)
@@ -1136,9 +1134,8 @@ END BLOCK
     COMPLEX(KIND=dp) :: B(3,nd), POTC(nd), Bx, By, Bz
     INTEGER :: t
     LOGICAL :: stat, Found
-    TYPE(Nodes_t), SAVE :: Nodes, PNodes
+    TYPE(Nodes_t) :: Nodes, PNodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
 
     CALL GetElementNodes( Nodes, Element )
     Parent => Element % BoundaryInfo % Left
@@ -1199,15 +1196,14 @@ END BLOCK
     COMPLEX(KIND=dp) :: POTC(nd)
     INTEGER :: t
     LOGICAL :: stat, WbaseFound
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
 
     CALL GetElementNodes( Nodes )
 
     Omega = GetAngularFrequency(UElement=Element)
     CALL GetLocalSolution(POT,UElement=Element)
-    POTC = Omega*CMPLX( POT(2,1:nd), POT(1,1:nd), KIND=dp )
+    POTC = im*Omega*CMPLX( POT(1,1:nd), POT(2,1:nd), KIND=dp )
 
     CALL GetLocalSolution(Wpot,'W',UElement=Element)
     W = [0._dp, 0._dp, 1._dp]
@@ -1273,7 +1269,7 @@ END BLOCK
     INTEGER :: t, i, j, p, q, np, EdgeBasisDegree
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
@@ -1636,7 +1632,7 @@ END BLOCK
     LOGICAL :: Stat 
     INTEGER :: t, i, p, np, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
       EdgeBasisDegree = 2
@@ -1697,7 +1693,7 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -1787,7 +1783,7 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
@@ -1850,7 +1846,7 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
@@ -1958,8 +1954,8 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp) :: invZs, DAMP(nd,nd)
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
-    
-    TYPE(Nodes_t), SAVE :: Nodes
+
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
@@ -2067,7 +2063,7 @@ END BLOCK
     INTEGER :: t
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,  Element )
     !
@@ -2240,7 +2236,7 @@ END BLOCK
         j = j + 1
         dMap(j) = Ltmp % Index; Ltmp => Ltmp % Next
       END DO
-      IF ( j<= 0 ) CYCLE
+      IF ( j<= 1 ) CYCLE
 
       !
       ! Orient edges to form a polygonal path:
@@ -2425,6 +2421,7 @@ END BLOCK
     IF (.NOT.ASSOCIATED(Element)) RETURN
 
     n=FaceMap(Element % ElementIndex)
+    IF (n == 0) RETURN
     IF (UsedFaces(n)) THEN
       Found=.TRUE.; RETURN
     END IF
@@ -2754,11 +2751,11 @@ CONTAINS
     REAL(KIND=dp) :: PotSol(:,:)  ! The values of target field DOFS
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(2,3)
     REAL(KIND=dp) :: u, v, w, s, DetJ
@@ -3090,11 +3087,11 @@ CONTAINS
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(2,3)
     REAL(KIND=dp) :: s, DetJ

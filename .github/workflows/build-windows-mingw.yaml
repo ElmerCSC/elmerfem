@@ -18,7 +18,7 @@ jobs:
 
     runs-on: windows-latest
 
-    name: MSYS2 (${{ matrix.dependencies }} dependencies, ${{ matrix.msystem }})
+    name: MSYS2 (${{ matrix.msystem }} ${{ matrix.mpi }} MPI, ${{ matrix.dependencies }} dependencies)
 
     defaults:
       run:
@@ -31,10 +31,11 @@ jobs:
       matrix:
         msystem: [UCRT64]
         dependencies: [bundled, external]
+        mpi: [with, without]
         include:
           - dependencies: external
-            external-packages: parpack:p
-            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON
+            external-packages: parpack:p metis:p
+            external-cmake-flags: -DEXTERNAL_UMFPACK=ON -DEXTERNAL_ARPACK=ON -DEXTERNAL_PARPACK=ON -DEXTERNAL_METIS=ON
 
     steps:
       - name: get CPU name
@@ -43,9 +44,14 @@ jobs:
           Get-CIMInstance -Class Win32_Processor | Select-Object -Property Name
 
       - name: checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      - name: unshallow Zoltan submodule
+        shell: bash
+        run: git -C contrib/Zoltan_v3.83 fetch --unshallow 2>/dev/null || true
 
       - name: install dependencies
         uses: msys2/setup-msys2@v2
@@ -59,9 +65,9 @@ jobs:
             cc:p
             fc:p
             cmake:p
-            msmpi:p
+            ${{ matrix.mpi == 'with' && 'msmpi:p' || 'openblas:p' }}
             openblas:p
-            parmetis:p
+            ${{ matrix.mpi == 'with' && 'parmetis:p' || 'openblas:p' }}
             mumps:p
             suitesparse:p
             qt6-declarative:p
@@ -73,6 +79,7 @@ jobs:
             cgns:p
             cli11:p
             eigen3:p
+            exprtk:p
             fast_float:p
             ffmpeg:p
             gl2ps:p
@@ -82,13 +89,17 @@ jobs:
             openslide:p
             openvdb:p
             pdal:p
-            scnlib:p 
+            scnlib:p
+            seacas:p
             unixodbc:p
             utf8cpp:p
             opencascade:p
+            nlohmann-json:p
             ${{ matrix.external-packages }}
+            ${{ matrix.dependencies == 'bundled' && 'nsis:p ntldd:p' || '' }}
 
       - name: install MSMPI
+        if: matrix.mpi == 'with'
         uses: mpi4py/setup-mpi@v1
         with:
           mpi: msmpi
@@ -99,24 +110,47 @@ jobs:
         run: |
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
+          declare -a _extra_config
+          if [ "${{ matrix.mpi }}" == "with" ]; then
+            _extra_config+=("-DWITH_MPI=ON"
+                            "-DMPI_TEST_MAXPROC=$(nproc)"
+                            "-DMPIEXEC_EXECUTABLE=$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe"
+                            "-DWITH_Zoltan=ON"
+                            "-DWITH_ElmerIce=ON"
+                            "-DParMetis_LIBRARIES=$(pkg-config --libs parmetis)"
+                            "-DParMetis_INCLUDE_DIR=$(pkg-config --cflags parmetis)"
+                            "-DWITH_Mumps=ON"
+                            "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dmo mumps-zmo mumps-smo mumps-cmo)"
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo)")
+          else
+            _extra_config+=("-DWITH_MPI=OFF"
+                            "-DWITH_Zoltan=OFF"
+                            "-DWITH_ElmerIce=OFF"
+                            "-DWITH_Mumps=ON"
+                            "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dto mumps-zto mumps-sto mumps-cto)"
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto)")
+          fi
+          if [ "${{ matrix.dependencies }}" == "bundled" ]; then
+            SANITIZED_REF_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^A-Za-z0-9._-]/_/g')
+            # add flags for creating a bundle with CPack
+            _extra_config+=("-DCPACK_PACKAGE_BASE_FILE_NAME=elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-${SANITIZED_REF_NAME}"
+                            "-DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=ON"
+                            "-DBUNDLE_MSYS2_PACKAGES=ON"
+                            "-DBUNDLE_MSYS2_PACKAGES_PREFIX=$(cygpath -m "${GITHUB_WORKSPACE}")/msys2_prefix")
+            if [ "${{ matrix.mpi }}" == "with" ]; then
+              _extra_config+=("-DBUNDLE_MSMPI_REDIST=ON")
+            fi
+          else
+            _extra_config+=("-DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF")
+          fi
           cmake \
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
-            -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF \
+            "${_extra_config[@]}" \
             -DBLA_VENDOR="OpenBLAS" \
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
-            -DWITH_MPI=ON \
-            -DMPI_TEST_MAXPROC=$(nproc) \
-            -DMPIEXEC_EXECUTABLE="$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe" \
-            -DWITH_Zoltan=ON \
             -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
-            -DParMetis_LIBRARIES="$(pkg-config --libs parmetis)" \
-            -DParMetis_INCLUDE_DIR="$(pkg-config --cflags parmetis)" \
-            -DWITH_Mumps=ON \
-            -DMumps_LIBRARIES="$(pkg-config -libs mumps-dmo);$(pkg-config -libs mumps-zmo);$(pkg-config -libs mumps-smo);$(pkg-config -libs mumps-cmo)" \
-            -DMumps_INCLUDE_DIR="$(pkg-config --variable=includedir mumps-dmo);$(pkg-config --variable=includedir mumps-zmo);$(pkg-config --variable=includedir mumps-smo);$(pkg-config --variable=includedir mumps-cmo)" \
-            -DWITH_ElmerIce=ON \
             -DWITH_ELMERGUI=ON \
             -DWITH_QT6=ON \
             -DWITH_VTK=ON \
@@ -127,10 +161,63 @@ jobs:
             ${{ matrix.external-cmake-flags }} \
             ..
 
+      - name: exclude build output from Windows Defender scanning
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+
       - name: build
         run: |
           cd ${GITHUB_WORKSPACE}/build
           cmake --build .
+
+      - name: create bundles
+        if: matrix.dependencies == 'bundled'
+        id: create-bundles
+        run: |
+          MSYS2_GITHUB_WORKSPACE="$(cygpath -u "${GITHUB_WORKSPACE}")"
+          echo "::group::Download packages from MSYS2"
+          mkdir -p "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages
+          pactree -u ${MINGW_PACKAGE_PREFIX}-fc | \
+            pacman -Sw --noconfirm \
+            --cachedir "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages -
+          echo "::endgroup::"
+          echo "::group::Extract MSYS2 packages"
+          mkdir -p "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix
+          for pkg in "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages/*.pkg.tar.zst; do
+            echo "extracting $pkg..."
+            bsdtar -xf "$pkg" -C "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix --strip-component=1
+          done
+          # remove files with metadata
+          rm -rf "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix/.{PKGINFO,BUILDINFO,MTREE}
+          echo "::endgroup::"
+          if [ "${{ matrix.mpi }}" == "with" ]; then
+            echo "::group::Copy MSMPI installer to a location where it can be found"
+            mkdir ${GITHUB_WORKSPACE}/../msmpi_redist
+            cp "$(cygpath -m "${MSMPI_BIN}")/../Redist/MSMpiSetup.exe" "${GITHUB_WORKSPACE}/../msmpi_redist/"
+            echo "::endgroup::"
+          fi
+          echo "::group::Create bundles"
+          cd ${GITHUB_WORKSPACE}/build
+          cpack -G "ZIP;NSIS64" .
+          echo "::endgroup::"
+          # store name of bundle for following steps
+          cmake -LA -N .. | awk -F= '$1~/CPACK_PACKAGE_FILE_NAME:STRING/{print "bundle-name="$2}' >> $GITHUB_OUTPUT
+
+      - name: upload installer
+        if: matrix.dependencies == 'bundled'
+        uses: actions/upload-artifact@v7
+        with:
+          name: elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-installer
+          path: ${{ github.workspace }}/build/${{ steps.create-bundles.outputs.bundle-name }}.exe
+          archive: false
+
+      - name: upload zip archive
+        if: matrix.dependencies == 'bundled'
+        uses: actions/upload-artifact@v7
+        with:
+          name: elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-zip
+          path: ${{ github.workspace }}/build/${{ steps.create-bundles.outputs.bundle-name }}.zip
+          archive: false
 
       - name: install
         run: |
@@ -146,7 +233,7 @@ jobs:
           cd ${GITHUB_WORKSPACE}/build
           ctest . \
             -LE slow \
-            --timeout 300
+            --timeout 600
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')
@@ -169,20 +256,16 @@ jobs:
             echo "::group::Content of ${test_root}/${test}"
             echo ---- Files ----
             ls -Rl ${test_root}/${test}
-            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
-              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
-              for err_log in "${err_logs[@]}"; do
-                echo ---- Content of ${err_log} ----
-                cat ${err_log}
-              done
-            fi
-            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
-              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
-              for out_log in "${out_logs[@]}"; do
-                echo ---- Content of ${out_log} ----
-                cat ${out_log}
-              done
-            fi
+            err_logs=($(ls ${test_root}/${test}/test-stderr*.log 2>/dev/null))
+            for err_log in "${err_logs[@]}"; do
+              echo ---- Content of ${err_log} ----
+              cat ${err_log}
+            done
+            out_logs=($(ls ${test_root}/${test}/test-stdout*.log 2>/dev/null))
+            for out_log in "${out_logs[@]}"; do
+              echo ---- Content of ${out_log} ----
+              cat ${out_log}
+            done
             echo "::endgroup::"
           done
           echo "::group::Re-run failing tests"

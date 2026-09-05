@@ -227,7 +227,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
 
   TransitionVolume = ListGetConstReal( &
       Solver % Values, 'Artificial Compressibility Critical Volume',gotIt )
-  IF(.NOT. gotIt) TransitionVolume = 0.01;
+  IF(.NOT. gotIt) TransitionVolume = 0.01_dp
  
   ScaleCompressibility = ListGetLogical( &
       Solver % Values, 'Artificial Compressibility Scale',gotIt )
@@ -243,7 +243,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
 
 
   Norm = CompressScale
-  IF(TimeStepVisited == 0) Norm = Norm * 2.0
+  IF(TimeStepVisited == 0) Norm = Norm * 2.0_dp
   Solver % Variable % Norm = Norm
 
   TimeStepVisited = TimeStepVisited + 1
@@ -282,7 +282,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
@@ -388,7 +388,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: Compressibility(:), TotalVolume, TotalVolumeCompress
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
@@ -650,7 +650,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), ElemDisp(:,:), ElemPres(:) 
     INTEGER :: n
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(1,1,1),  PresAtIp
     REAL(KIND=dp) :: DetJ1, DetJ0, U, V, W, S, x, dVolume, Volume0, Volume1

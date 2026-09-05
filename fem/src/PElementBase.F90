@@ -7643,12 +7643,12 @@ MODULE PElementBase
 
     END FUNCTION ddPyramidEdgePBasis
 
-	
-!-----------------------------------------------------------------------------	
+
+!-----------------------------------------------------------------------------
 !>     Pyramid face basis at point (u,v,w)
-!-----------------------------------------------------------------------------	
+!-----------------------------------------------------------------------------
     FUNCTION PyramidFacePBasis(face, i, j, u, v, w, localNumbers ) RESULT(value)
-!-----------------------------------------------------------------------------	
+!-----------------------------------------------------------------------------
 !
 !  ARGUMENTS:
 !    INTEGER :: face
@@ -7714,11 +7714,11 @@ MODULE PElementBase
       END SELECT
     END FUNCTION PyramidFacePBasis
 
-!-----------------------------------------------------------------------------	
+!-----------------------------------------------------------------------------
 !>     Gradient of pyramid face basis at point (u,v,w)
-!-----------------------------------------------------------------------------		
+!-----------------------------------------------------------------------------
     FUNCTION dPyramidFacePBasis(face, i, j, u, v, w, localNumbers )  RESULT(grad)
-!-----------------------------------------------------------------------------	
+!-----------------------------------------------------------------------------
 !
 !  ARGUMENTS:
 !    INTEGER :: face
@@ -7814,12 +7814,12 @@ MODULE PElementBase
       END SELECT
     END FUNCTION dPyramidFacePBasis
 
-	
-!-----------------------------------------------------------------------------	
+
+!-----------------------------------------------------------------------------
 !>     Gradient of pyramid face basis at point (u,v,w)
-!-----------------------------------------------------------------------------		
+!-----------------------------------------------------------------------------
     FUNCTION ddPyramidFacePBasis(face, i, j, u, v, w, localNumbers )  RESULT(grad)
-!-----------------------------------------------------------------------------	
+!-----------------------------------------------------------------------------
 !
 !  ARGUMENTS:
 !    INTEGER :: face
@@ -8037,8 +8037,8 @@ MODULE PElementBase
       END SELECT
     END FUNCTION ddPyramidFacePBasis
 
-	
-	
+
+
 !------------------------------------------------------------------------------
 !>    Pyramid bubble basis at point (u,v,w)
 !------------------------------------------------------------------------------
@@ -8726,7 +8726,7 @@ MODULE PElementBase
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
-      REAL (KIND=dp), PARAMETER :: dx = 0.001 !1E-10
+      REAL (KIND=dp), PARAMETER :: dx = 0.001_dp !1E-10
       REAL (KIND=dp) :: value, vp, vm
 
       ! 
@@ -8847,7 +8847,7 @@ MODULE PElementBase
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
       REAL (KIND=dp) :: value, vp, vm
-      REAL (KIND=dp), PARAMETER :: dx = 0.001 !1E-10
+      REAL (KIND=dp), PARAMETER :: dx = 0.001_dp !1E-10
 
       ! 
       SELECT CASE(i)
