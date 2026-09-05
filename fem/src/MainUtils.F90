@@ -160,8 +160,10 @@ CONTAINS
         
       ELSE
         IF ( .NOT. Parallel ) THEN
-#ifdef HAVE_UMFPACK
+#if defined(HAVE_UMFPACK)
           str = 'umfpack'
+#elif defined(HAVE_MUMPS)
+          str = 'mumpslocal'
 #else
           str = 'banded'
 #endif
