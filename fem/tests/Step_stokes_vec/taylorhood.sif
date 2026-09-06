@@ -1,0 +1,129 @@
+! The Taylor-Hood P2/P1 twin of Step.sif: the same problem with the
+! velocity/pressure pair changed and nothing else. "Element = p:2" is the whole
+! of it -- LocalBulkMatrix already enforces a P1/Q1 pressure by constraining
+! every non-nodal pressure dof, so a quadratic velocity over a linear pressure
+! is what the solver assembles. No bubble, no stabilization term.
+!
+! The element family is left unstated: serendipity is the default and that is
+! what a user gets.
+!
+! Velocity at the probe point (7, 1) agrees with the MINI element: 0.12172179 against 0.12133310, 0.32 %
+
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+
+  Serendipity P Elements = False
+End
+
+
+Constants
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  initial condition = 1
+End
+
+initial condition 1
+ velocity 1 = 0
+ velocity 2 = 0
+end
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+  NS Convect = False
+End
+
+
+Solver 1
+  Equation = "NS-Vec"
+
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Element = p:2
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
+
+  Linear System Solver = Iterative
+
+!  Linear System Direct Method = mumps
+
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 3
+
+!
+! This case pins the element rather than taking the solver's default, which for a
+! quadrilateral would be "b:3" -- see the "Serendipity P Elements = False" above,
+! the two selecting the full basis and its four interior modes instead.
+!
+! Bubbles are no longer the only way to a stable solution here: equal-order
+! interpolation with "Pressure Stabilization = Logical True" is the alternative,
+! and StokesStabilized runs this same problem that way. Note it is that keyword
+! and not "Stabilization Method", which this solver does not read.
+!
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1e3
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Coordinate 2
+     Real MATC "(2-tx)*(tx-1)"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+
+!  Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+ 
+Solver 1 :: Reference Norm = 4.40003751E-02
