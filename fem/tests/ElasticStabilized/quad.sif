@@ -55,7 +55,7 @@ Material 1
 End
 
 Equation 1
-  Active Solvers(3) = 1 2 3
+  Active Solvers(4) = 1 2 3 4
 End
 
 ! The bubble count is not free: getBubbleDOFs offers 1, 3, 6 ... on triangles
@@ -106,7 +106,32 @@ Solver 3
   Equation = "SaveProbe"
   Procedure = "SaveData" "SaveScalars"
   Exec Solver = After Simulation
+  Show Norm Index = 10
   Save Coordinates(1,2) = 0.5 1.0
+End
+
+! The third leg: Taylor-Hood, P2 displacement over P1 pressure. The pressure
+! elimination at the end of LocalMatrix clears every non-nodal pressure dof, so
+! "Element = p:2" IS the P2/P1 pair -- no bubble, no stabilization. It is the
+! inf-sup stable pair the other two legs approximate by different means, which
+! makes it the natural third point of comparison here.
+!
+! No "Serendipity P Elements" declaration: the default (serendipity) is what a
+! user gets, so that is what is tested. On this family it costs 0.2% in the
+! probe displacement against the full basis -- measured, not assumed -- while
+! the SOLUTION NORM moves 17%, for the dof-counting reason set out below.
+Solver 4
+  Equation = "Elasticity Taylor-Hood"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "t[td:2 tp:1]"
+  Element = p:2
+  Incompressible = Logical True
+  Large Deflection = False
+  Displace Mesh = Logical False
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-9
 End
 
 Boundary Condition 1
@@ -115,6 +140,8 @@ Boundary Condition 1
   md 2 = Real 0
   sd 1 = Real 0
   sd 2 = Real 0
+  td 1 = Real 0
+  td 2 = Real 0
 End
 
 Boundary Condition 2
@@ -139,3 +166,11 @@ End
 ! 7.9e-3, so there is a factor of about 7 of margin.
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
 Solver 2 :: Reference Norm = Real 0.69240337E-01
+
+! THE TAYLOR-HOOD LEG IS PINNED BY THE PROBE DISPLACEMENT, NOT BY ITS NORM, and
+! for exactly the reason given above for MINI: p:2 carries edge dofs, its
+! solution vector norm counts them along with the pressure, and a norm over dofs
+! that are not themselves well determined is not a quantity to pin. The
+! displacement at the probe is, so that is what is checked. Column 10 is "td 1"
+! -- two components plus a pressure per leg, after the three coordinates.
+Solver 3 :: Reference Norm = Real 1.230491764348E-001

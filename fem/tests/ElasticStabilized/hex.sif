@@ -59,7 +59,7 @@ Material 1
 End
 
 Equation 1
-  Active Solvers(3) = 1 2 3
+  Active Solvers(4) = 1 2 3 4
 End
 
 ! The bubble count is not free: getBubbleDOFs offers 1, 3, 6 ... on triangles
@@ -110,7 +110,49 @@ Solver 3
   Equation = "SaveProbe"
   Procedure = "SaveData" "SaveScalars"
   Exec Solver = After Simulation
+  Show Norm Index = 12
   Save Coordinates(1,3) = 1.0 1.0 1.0
+End
+
+! The third leg: Taylor-Hood, P2 displacement over P1 pressure. The pressure
+! elimination at the end of LocalMatrix clears every non-nodal pressure dof, so
+! "Element = p:2" IS the P2/P1 pair -- no bubble, no stabilization. It is the
+! inf-sup stable pair the other two legs approximate by different means, which
+! makes it the natural third point of comparison here.
+!
+! No "Serendipity P Elements" declaration: the default is what a user gets, so
+! that is what is tested. Its cost against the full basis is in the probe
+! displacement, not the norm -- 0.2% on quadrilaterals, nothing at all on
+! simplices, where at degree two there is no interior function to drop. The
+! SOLUTION NORM moves 17% on the same change, for the dof-counting reason the
+! MINI leg's note below sets out.
+!
+! WHY THIS LEG EARNS ITS KEEP HERE: on this mesh the linear pairs are nowhere
+! near converged and P2/P1 nearly is. Measured on hexahedra, displacement at the
+! probe, refining the 4x4x2 mesh this family ships:
+!
+!            MINI      stabilized   P2/P1
+!   4x4x2    0.449438  0.449284     0.601181
+!   8x8x4    0.553210  0.550916     0.619490
+!   12x12x6  0.583776  0.582025     0.624194
+!   16x16x8  0.598296  0.596986     0.626348
+!
+! Over a 64x range in element count P2/P1 moves 4% while MINI moves 33% and is
+! still climbing towards it. So the three legs disagreeing by 26-44% on the
+! shipped 3D meshes is the linear pairs being coarse, not P2/P1 being wrong --
+! and it is exactly why a P2/P1 leg is worth having on a mesh this size.
+Solver 4
+  Equation = "Elasticity Taylor-Hood"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "t[td:3 tp:1]"
+  Element = p:2
+  Incompressible = Logical True
+  Large Deflection = False
+  Displace Mesh = Logical False
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-9
 End
 
 Boundary Condition 1
@@ -121,6 +163,9 @@ Boundary Condition 1
   sd 1 = Real 0
   sd 2 = Real 0
   sd 3 = Real 0
+  td 1 = Real 0
+  td 2 = Real 0
+  td 3 = Real 0
 End
 
 Boundary Condition 2
@@ -145,3 +190,11 @@ End
 ! 7.0e-2, so there is a factor of about 70 of margin.
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
 Solver 2 :: Reference Norm = Real 0.23178345
+
+! THE TAYLOR-HOOD LEG IS PINNED BY THE PROBE DISPLACEMENT, NOT BY ITS NORM, and
+! for exactly the reason given above for MINI: p:2 carries edge dofs, its
+! solution vector norm counts them along with the pressure, and a norm over dofs
+! that are not themselves well determined is not a quantity to pin. The
+! displacement at the probe is, so that is what is checked. Column 12 is "td 1"
+! -- three components plus a pressure per leg, after the three coordinates.
+Solver 3 :: Reference Norm = Real 6.703996448380E-001

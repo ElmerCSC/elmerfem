@@ -1,4 +1,33 @@
-! Pressure stabilization against the MINI element it replaces, on prisms.
+! The same three incompressible legs as ElasticStabilized/hex.sif -- MINI,
+! pressure stabilized equal order, and Taylor-Hood P2/P1 -- on a mesh fine
+! enough that they agree. That test ships a 4x4x2 cube and keeps it, because its
+! job is the stabilization constant and its norms are pinned to that mesh; this
+! one exists to show what the three legs converge to, which a 32 element mesh
+! cannot.
+!
+! WHY IT IS WORTH A TEST OF ITS OWN: in 3D on a coarse mesh P2/P1 is simply the
+! better discretisation, by a wide margin, and nothing in the other test says
+! so. Displacement at the probe, refining the 4x4x2 mesh:
+!
+!            MINI      stabilized   P2/P1
+!   4x4x2    0.449438  0.449284     0.601181
+!   8x8x4    0.553210  0.550916     0.619490
+!   12x12x6  0.583776  0.582025     0.624194
+!   16x16x8  0.598296  0.596986     0.626348
+!
+! Across a 64x range in element count P2/P1 moves 4% and the linear pairs move
+! 33%, still climbing towards it. On the shipped 4x4x2 the two families differ
+! by 37%; that is the linear pairs being far from converged, not P2/P1 being
+! wrong, and it is the whole argument for the P2/P1 leg on meshes of this size.
+!
+! 12x12x6 here is a compromise: 8% between the legs instead of 37%, for 17
+! seconds of runtime instead of the minutes 16x16x8 would cost.
+!
+! (The probe below sits at the loaded corner, so the numbers it reports are
+! larger than the mid-face values tabulated above. The comparison that matters
+! is between legs at one mesh, and both probes tell the same story.)
+
+! Pressure stabilization against the MINI element it replaces, on hexahedra.
 !
 ! One of five sifs in this directory, one per element family, all the same
 ! problem: a unit cube held on one face and sheared on the opposite one.
@@ -23,8 +52,8 @@
 ! SaveScalars probe is what compares them, and it is a physical quantity:
 !
 !            d 1 at the probe
-!   MINI     0.4586433
-!   stab     0.4585580      -0.019 %
+!   MINI     0.4883896
+!   stab     0.4884079      +0.004 %
 !
 ! at the default coefficient of one, which is what the family constant is
 ! calibrated to give. The brick and prism constants were re-measured against the
@@ -34,7 +63,7 @@
 ! not an artifact of this mesh.
 
 Header
-  Mesh DB "." "prismmesh"
+  Mesh DB "." "cube"
 End
 
 Simulation
@@ -67,7 +96,8 @@ End
 ! asking for a number in between does NOT round up -- BDOFs takes the number
 ! asked for and the assembly uses that many of the functions available, which
 ! is a partial enrichment rather than a coarser element. Here b:4, because
-! as for the brick; four is the next count a prism actually has.
+! as for the quadrilateral, one is too thin; four is the next count a
+! brick actually has.
 Solver 1
   Equation = "Elasticity MINI"
   Procedure = "ElasticSolve" "ElasticSolver"
@@ -186,9 +216,9 @@ End
 ! The tolerance below is still loosened from the default 1e-5, and guards what
 ! this test is
 ! for -- doubling this family's stabilization constant moves the norm by
-! 8.6e-2, so there is a factor of about 70 of margin.
+! 7.0e-2, so there is a factor of about 70 of margin.
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
-Solver 2 :: Reference Norm = Real 0.25898055
+Solver 2 :: Reference Norm = Real 0.217584750
 
 ! THE TAYLOR-HOOD LEG IS PINNED BY THE PROBE DISPLACEMENT, NOT BY ITS NORM, and
 ! for exactly the reason given above for MINI: p:2 carries edge dofs, its
@@ -196,4 +226,4 @@ Solver 2 :: Reference Norm = Real 0.25898055
 ! that are not themselves well determined is not a quantity to pin. The
 ! displacement at the probe is, so that is what is checked. Column 12 is "td 1"
 ! -- three components plus a pressure per leg, after the three coordinates.
-Solver 3 :: Reference Norm = Real 6.698335546307E-001
+Solver 3 :: Reference Norm = Real 6.879116132995E-001
