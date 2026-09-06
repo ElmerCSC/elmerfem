@@ -126,6 +126,8 @@ static const char *base_name(const char *p)
  * built libelmersolver. Setting ELMER_Fortran_COMPILER remains the way to be
  * explicit.
  *
+ * Returns the error code of the spawned process on Windows.
+ * On other platforms:
  * Returns only on failure; on success the process has been replaced.
  */
 static int exec_compiler(const char *fc, const char *who)
