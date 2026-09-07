@@ -91,29 +91,29 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  CHARACTER(*), PARAMETER :: Caller = 'MarchingODESolver'
-  LOGICAL :: Found
   REAL(KIND=dp) :: Norm, Change, dz, dtime, velo, NonLinTol, Beta, &
       Hparam, dth, mincons, sumcons, corr
   INTEGER :: t,i,j,n,m,iter,MaxIter,BotNodes,layer,dtn,dti,NoActive
-  TYPE(ValueList_t), POINTER :: Params
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Solver_t), POINTER :: PSolver
-  TYPE(Element_t), POINTER :: Element
-  INTEGER, POINTER :: BotPointer(:), UpPointer(:),BotPerm(:),InvPerm(:),&
-      PrevInvPerm(:),MaskPerm(:),SingleIndex(:)
+  TYPE(ValueList_t), POINTER :: Params=>NULL()
+  TYPE(Mesh_t), POINTER :: Mesh=>NULL()
+  TYPE(Solver_t), POINTER :: PSolver=>NULL()
+  TYPE(Element_t), POINTER :: Element=>NULL()
+  INTEGER, POINTER :: BotPointer(:)=>NULL(), UpPointer(:)=>NULL(),BotPerm(:)=>NULL(),&
+      InvPerm(:)=>NULL(),PrevInvPerm(:)=>NULL(),MaskPerm(:)=>NULL(),SingleIndex(:)=>NULL()
   INTEGER, ALLOCATABLE :: ParentElem(:)
   INTEGER :: NumberOfLayers, NoBCNodes, dofs, subt, maxsubt
-  TYPE(Variable_t), POINTER :: ExtVar, Var3D, AddVar
-  TYPE(ValueList_t), POINTER :: Material
-  LOGICAL :: MaskExist, ParabolicModel, RequireBC, DoTransient, AnyDG, VectorSource
-  REAL(KIND=dp), POINTER :: Coord(:)
+  TYPE(Variable_t), POINTER :: ExtVar=>NULL(), Var3D=>NULL(), AddVar=>NULL()
+  TYPE(ValueList_t), POINTER :: Material=>NULL()
+  LOGICAL :: Found,MaskExist=.FALSE., ParabolicModel=.FALSE., RequireBC=.FALSE., &
+      DoTransient=.FALSE., AnyDG=.FALSE., VectorSource=.FALSE.
+  REAL(KIND=dp), POINTER :: Coord(:)=>NULL()
   CHARACTER(LEN=MAX_NAME_LEN) :: TimeMethod, VarName, str
   LOGICAL, ALLOCATABLE :: BCNode(:)
-  REAL(KIND=dp), POINTER :: xvec(:),xivec(:),dxvec(:),x0vec(:),&
-      fvec(:),rvec(:),cvec(:),f0vec(:),r0vec(:),c0vec(:)
+  REAL(KIND=dp), POINTER :: xvec(:)=>NULL(),xivec(:)=>NULL(),dxvec(:)=>NULL(),x0vec(:)=>NULL(),&
+      fvec(:)=>NULL(),rvec(:)=>NULL(),cvec(:)=>NULL(),f0vec(:)=>NULL(),r0vec(:)=>NULL(),c0vec(:)=>NULL()
   LOGICAL :: HaveF, HaveC, HaveR, UseInternalVals, SetMin, SetSum  
   LOGICAL, SAVE :: Initialized = .FALSE.
+  CHARACTER(*), PARAMETER :: Caller = 'MarchingODESolver'
 !------------------------------------------------------------------------------
 
   SAVE :: BotPointer, UpPointer, BotPerm, InvPerm, PrevInvPerm, ParentElem, &
@@ -160,7 +160,6 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ELSE
       CALL Info(Caller,'All elements are of type: '//I2S(i),Level=12)
     END IF
-
   
     CALL Info(Caller,'Initializing structured mesh and ODE structures',Level=6)
     CALL Info(Caller,'Solving for variable: '//TRIM(VarName),Level=6)
@@ -195,7 +194,6 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     
     AnyDG = ListGetLogicalAnySolver( Model,'Discontinuous Galerkin')
 
-    AddVar => NULL()
     UseInternalVals = ListGetLogical( Params,'Use Internal Values', Found ) 
     str = ListGetString( Params,'Additional Internal Variable', Found ) 
     IF(Found) THEN
@@ -208,14 +206,13 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 
     mincons = ListGetCReal( Params,'Minimum Cons',SetMin )
     SetSum = ListGetLogical( Params,'Enforce Unity Sum',Found )    
-    
-    
+        
     ! It is not trivial to know to which element a node belongs to.
     ! This structure is needed when we want to know the DG field value of a given node.
     ! Only if we also have "Discontinuous Bodies" within this active domain will this be
     ! uniquely defined. 
     !-----------------------------------------------------------------------------------
-    IF( MaskExist .OR. AnyDG ) THEN
+    IF( MaskExist .OR. AnyDG .OR. UseInternalVals ) THEN
       CALL Info(Caller,'Creating inverse node parent look-up table',Level=7)
       ALLOCATE( ParentElem(Mesh % NumberOfNodes) )
       ParentElem = 0
@@ -290,7 +287,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     m = dofs * n
     ALLOCATE( xvec(m), fvec(m), rvec(m), cvec(m), f0vec(m), r0vec(m), &
         c0vec(m), xivec(m), dxvec(m), x0vec(m) )
-       
+
+    IF( RequireBC ) DEALLOCATE(BcNode)
+    
     Initialized = .TRUE.
     CALL Info(Caller,'Initialization done',Level=10)
   END IF
@@ -409,17 +408,18 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   
   CALL GetLayerValues( xvec ) 
   
-  ! 0-values at values at the previous layer
-  ! The 1st layer cannot really change since it is the BC. 
-  CALL GetCoefficients(Set0=.TRUE., xlayer = xvec)
-  x0vec = xvec
-      
   maxsubt = ListGetInteger( Params,'Timestep Divisions',Found)
   IF(.NOT. Found) maxsubt = 1
   IF( maxsubt > 1 .AND. .NOT. UseInternalVals ) THEN
     CALL Fatal(caller,'We can only have substeps when we use internal values!')
   END IF
-  
+    
+  ! 0-values at values at the previous layer
+  ! The 1st layer cannot really change since it is the BC.  
+  layer = 0
+  CALL GetCoefficients(Set0=.TRUE., xlayer = xvec)
+  x0vec = xvec
+      
   
   DO layer=1,NumberOfLayers
 
@@ -709,21 +709,20 @@ CONTAINS
             END IF
             
             addv(interp) = AddVar % Values(AddVar % Perm(k))
-            IF(maxsubt == 1 ) EXIT
+            IF(maxsubt == 1 .OR. layer == 0) EXIT
 
             IF(interp == 1) THEN
               j = PrevInvPerm(i)        
             END IF
           END DO
 
-          IF(maxsubt == 1 ) THEN
-            qadd = 1.0_dp
+          IF(layer == 0 .OR. maxsubt == 1 ) THEN
+            xloc(1) = addv(1) 
           ELSE
             qadd = 1.0_dp * subt / maxsubt
-          END IF
+            xloc(1) = qadd * addv(1) + (1-qadd) * addv(2)
+          END IF          
           
-          xloc(1) = qadd * addv(1) + (1-qadd) * addv(2)
-
           k = 1
         ELSE
           k = 0
