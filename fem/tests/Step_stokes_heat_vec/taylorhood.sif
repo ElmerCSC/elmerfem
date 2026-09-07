@@ -149,5 +149,5 @@ End
 !Solver 1 :: Reference Norm = 0.30861526
 !Solver 2 :: Reference Norm = 6.32597086E-01
 
-Solver 1 :: Reference Norm = 1.79576447E-01
-Solver 2 :: Reference Norm = 6.27606426E-01
+Solver 1 :: Reference Norm = 1.79576246E-01
+Solver 2 :: Reference Norm = 6.27608314E-01

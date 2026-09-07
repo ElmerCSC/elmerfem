@@ -2030,6 +2030,13 @@ CONTAINS
            IF (ll==1) THEN
              CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
                    Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
+             ! The mesh edge degrees are whatever the highest-order solver on
+             ! this mesh asked for, so cap them by what THIS solver owns. Without
+             ! it a nodal solver sharing a mesh with a p:2 one silently picks up
+             ! the other's edge functions; cf. the scalar path, which caps via
+             ! GetEdgeDOFs(Element, pSolver % Def_Dofs(4,BodyId,6)).
+             EdgeDegree(1:4) = MIN(EdgeDegree(1:4), MAX(pSolver % Def_Dofs(4,BodyId,6),1))
+             EdgeMaxDegree = MAXVAL(EdgeDegree(1:4))
            END IF
 
            ! Compute basis function values
