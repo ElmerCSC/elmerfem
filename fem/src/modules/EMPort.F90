@@ -214,9 +214,10 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: Beta
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
-  COMPLEX(KIND=dp), POINTER :: cValues(:)
+  COMPLEX(KIND=dp), POINTER :: cValues(:), cu(:), cv(:)
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: u_part(:), v_part(:)
   REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum
-  COMPLEX(KIND=dp) :: E2, Power
+  COMPLEX(KIND=dp) :: E2, Power, udotu, udotv
 
   TYPE(Variable_t), POINTER :: EMVar
   INTEGER, ALLOCATABLE :: SavePerm(:)
@@ -467,6 +468,11 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       CALL Info(Caller, 'Solving an additional component to satisfy nonhomogeneous BCs', Level=5) 
       CALL ListAddLogical(Params, 'Eigen Analysis', .FALSE.)
 
+      IF (ParEnv % PEs > 1 ) THEN
+        m = Solver % Matrix % NumberOfRows
+        ALLOCATE(u_part(m), v_part(m))
+      END IF
+      
       m = Solver % Matrix % NumberOfRows/2
       DO j=1,i
         Solver % Matrix % Values = Solver % Matrix % Values - &
@@ -481,13 +487,34 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         ! the original eigenfunction and the particular solution to obtain another solution to the nonhomogeneous
         ! problem, so this step is a matter of choice. Remove the component along the homogeneous eigenvector to
         ! obtain uniqueness:
-        Solver % Variable % EigenVectors(j,1:m) = cValues(1:m) - &
-            SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * cValues(1:m)) * Solver % Variable % EigenVectors(j,1:m) / &
-            SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * Solver % Variable % EigenVectors(j,1:m))
+        IF (ParEnv % PEs > 1 ) THEN
+          DO k = 1,m
+            v_part(2*k-1) = REAL(Solver % Variable % EigenVectors(j,k))
+            v_part(2*k) = AIMAG(Solver % Variable % EigenVectors(j,k))
+          END DO
+          CALL PartitionVector(Solver % Matrix, u_part, v_part)
+          cu => ComplexValues(u_part, m)
+          CALL PartitionVector(Solver % Matrix, v_part, Solver % Variable % Values)
+          cv => ComplexValues(v_part, m)
+          udotv = ParallelCdot(m, cu, cv)
+          udotu = ParallelCdot(m, cu, cu)
+        ELSE
+          udotv = SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * cValues(1:m))
+          udotu = SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * Solver % Variable % EigenVectors(j,1:m))
+        END IF
+
+        PRINT *, 'Parallel component = ', udotv/udotu
         
+        Solver % Variable % EigenVectors(j,1:m) = cValues(1:m) - &
+            udotv/udotu * Solver % Variable % EigenVectors(j,1:m)
+          
         Solver % Matrix % Values = Solver % Matrix % Values + &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
       END DO
+      
+      IF (ParEnv % PEs > 1 ) THEN
+        DEALLOCATE(u_part, v_part)
+      END IF
       CALL ListAddLogical(Params, 'Eigen Analysis', .TRUE.)
     END IF
     

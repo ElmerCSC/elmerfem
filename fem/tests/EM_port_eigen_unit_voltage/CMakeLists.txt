@@ -1,0 +1,8 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( with_potential.sif with_potential.sif COPYONLY)
+
+file(COPY port ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(EM_port_eigen_unit_voltage NPROCS 1 2 LABELS quick )

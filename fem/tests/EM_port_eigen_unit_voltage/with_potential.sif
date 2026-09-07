@@ -1,0 +1,136 @@
+Check Keywords "Warn"
+
+$  f0 = 10.0e+9
+$  w = 2*pi*f0
+$  epsr = 11.45
+
+! The dimensionless wavenumber w*L/c, with L = 50e-6:
+$ wref = 1.0479e-02
+
+Header
+  Mesh DB "." "port"
+End
+
+Simulation
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  Max Output Level = 8
+!  Coordinate Scaling = 2e-2
+!  Coordinate Scaling = 50e-6
+End
+
+Constants
+  Permeability of Vacuum = 1.0
+  Permittivity of Vacuum = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+End
+
+Material 1
+  Name = "Substrate"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = $ epsr
+End 
+
+Material 2
+  Name = "Vacuum"
+  Relative Reluctivity = 1.0
+  Relative Permittivity = 1.0
+End 
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+  Equation = "Port mode"
+  Procedure = "EMPort" "EMPortSolver"
+
+  Use Potential = Logical True
+  Number of Nonhomogeneous Modes = Integer 1
+  Calculate Impedance = Logical True
+
+  Angular Frequency = $wref
+  
+  Use Piola Transform = True
+!  Quadratic Approximation = True
+  Steady State Convergence Tolerance = 1e-09
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = mumps
+
+!   Linear System Solver = Iterative
+  Linear System Convergence Tolerance = real 1e-6
+  Linear System Iterative Method = GCR ! BiCGStabl
+  BiCGStabl Polynomial Degree = 2
+  Linear System Residual Output = integer 1
+  Linear System Max Iterations = integer 2000
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Residual Output = 1
+  Linear System GCR Restart = 500
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-10
+  Eigen System Compute Residuals = True
+!  Eigen System Max Iterations = 1
+
+  Eigenfunction Index = Integer 1
+
+  Calculate Nodal Field = Logical True
+  post: Linear System Solver = Iterative
+  post: Linear System Convergence Tolerance = real 1e-8
+  post: Linear System Iterative Method = CG
+  post: Linear System Residual Output = integer 10
+  post: Linear System Max Iterations = integer 2000
+  post: Linear System Preconditioning = ILU0
+End
+
+Solver 2
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = with_potentials
+  Vtu Format = Logical True
+  Save Geometry IDs = True
+  Ascii Output = True
+  Eigen Analysis = False
+End
+
+Solver 3
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+
+! Compare the norm of the first eigenvalue
+  Show Norm Index = 1
+End
+
+Boundary Condition 1
+  ! A PEC BC for metal surfaces: 
+
+  Target Boundaries(1) = 1
+  Port Ground = True
+End
+
+Boundary Condition 2
+  ! Unit voltage for a strip
+
+  Target Boundaries(1) = 2
+  Unit Voltage = True
+End
+
+Solver 3 :: Reference Norm = 0.74892907E-03
