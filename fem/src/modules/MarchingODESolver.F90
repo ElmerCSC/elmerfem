@@ -94,15 +94,15 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   CHARACTER(*), PARAMETER :: Caller = 'MarchingODESolver'
   LOGICAL :: Found
   REAL(KIND=dp) :: Norm, Change, dz, dtime, velo, NonLinTol, Beta, &
-      Hparam, dth, time, mincons, sumcons
-  INTEGER :: t,i,j,n,m,iter,MaxIter,TimeOrder,BotNodes,layer,dtn,dti,NoActive
+      Hparam, dth, mincons, sumcons, corr
+  INTEGER :: t,i,j,n,m,iter,MaxIter,BotNodes,layer,dtn,dti,NoActive
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Element_t), POINTER :: Element
-  INTEGER, POINTER :: BotPointer(:), UpPointer(:)
-  INTEGER, POINTER :: BotPerm(:),InvPerm(:),PrevInvPerm(:),MaskPerm(:),SingleIndex(:),Node2DG(:)
-  INTEGER, ALLOCATABLE :: ParentElem(:),DGIndexes(:)
+  INTEGER, POINTER :: BotPointer(:), UpPointer(:),BotPerm(:),InvPerm(:),&
+      PrevInvPerm(:),MaskPerm(:),SingleIndex(:)
+  INTEGER, ALLOCATABLE :: ParentElem(:)
   INTEGER :: NumberOfLayers, NoBCNodes, dofs, subt, maxsubt
   TYPE(Variable_t), POINTER :: ExtVar, Var3D, AddVar
   TYPE(ValueList_t), POINTER :: Material
@@ -195,11 +195,15 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     
     AnyDG = ListGetLogicalAnySolver( Model,'Discontinuous Galerkin')
 
+    AddVar => NULL()
     UseInternalVals = ListGetLogical( Params,'Use Internal Values', Found ) 
     str = ListGetString( Params,'Additional Internal Variable', Found ) 
     IF(Found) THEN
-      AddVar => VariableGet( Mesh % Variables, str )
+      AddVar => VariableGet( Mesh % Variables, str, UnfoundFatal = .TRUE. )
       CALL Info(Caller,'Using additional internal variable: '//TRIM(AddVar % Name))      
+      IF(InfoActive(20)) THEN
+        CALL VectorValuesRange(AddVar % Values,SIZE(AddVar % Values),'AddVar')
+      END IF
     END IF
 
     mincons = ListGetCReal( Params,'Minimum Cons',SetMin )
@@ -307,7 +311,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         Beta = 1.0_dp
       ELSE IF( TimeMethod == 'explicit euler' ) THEN
         Beta = 0.0_dp
-      ELSE IF( TimeMethod == 'crank-nicolsen' ) THEN
+      ELSE IF( TimeMethod == 'crank-nicolson' ) THEN
         Beta = 0.5_dp
       ELSE IF( TimeMethod == 'newmark' ) THEN
         Beta = ListGetCReal( Params,'Newmark Beta',UnfoundFatal=.TRUE. )
@@ -492,9 +496,11 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         IF(SetSum) THEN
           DO i=1,n
             sumcons = SUM(xvec(dofs*(i-1)+1:dofs*i))
+
             ! The scaling get a little bit more complex when we want to maintain the minimum cuts.
             IF(SetMin) THEN
-              xvec(dofs*(i-1)+1:dofs*i) = (1-dofs*mincons)/(sumcons-dofs*mincons)*xvec(dofs*(i-1)+1:dofs*i)
+              corr = (1-dofs*mincons) / (sumcons - dofs*mincons)
+              xvec(dofs*(i-1)+1:dofs*i) = corr * ( xvec(dofs*(i-1)+1:dofs*i) - mincons) + mincons
             ELSE
               xvec(dofs*(i-1)+1:dofs*i) = xvec(dofs*(i-1)+1:dofs*i) / sumcons
             END IF
@@ -691,9 +697,13 @@ CONTAINS
           addv = 0.0_dp
           DO interp=1,2
             IF( AddVar % TYPE == Variable_on_nodes_on_elements ) THEN
+              k = 0
               DO l=1,Element % TYPE % NumberOfNodes
                 IF(Element % NodeIndexes(l) == j) k = Element % DGIndexes(l)
               END DO
+              IF(k==0) THEN
+                CALL Fatal('GetCoefficients','Could not define DG index!')
+              END IF
             ELSE
               k = j
             END IF
@@ -713,6 +723,7 @@ CONTAINS
           END IF
           
           xloc(1) = qadd * addv(1) + (1-qadd) * addv(2)
+
           k = 1
         ELSE
           k = 0
