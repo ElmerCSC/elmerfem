@@ -4700,17 +4700,21 @@ CONTAINS
           ! sign the divergence coupling above already carries, keeping the saddle
           ! point in the form [A B^T; B -C] with C positive semi-definite.
           !
-          ! Only over the corner nodes: the pressure lives on the lowest-order
-          ! basis, so rows and columns beyond n are not pressure degrees of
-          ! freedom. The load term of a fully consistent PSPG is deliberately
-          ! omitted -- for a linear displacement the momentum residual is grad(p)
-          ! minus the load, and dropping the load leaves the classical
-          ! Brezzi-Pitkaranta scheme, whose consistency error is O(h^2), the same
-          ! order as the discretisation. For a Maxwell material a consistent
-          ! residual would also need the divergence of the lag stress, which
-          ! lives at integration points and is not differentiable across them.
-          IF ( PStab .AND. LinearIncompressible .AND. p <= n ) THEN
-             DO q = 1,n
+          ! Over EVERY pressure dof up to ntot, not just the corner nodes: an
+          ! element degree above p:1 carries edge/face pressure dofs too (the
+          ! pressure basis is the same Basis()/dBasisdx() array the displacement
+          ! uses), and those need stabilising exactly like the corner ones, or
+          ! the elimination below would have to fall back to pinning them, which
+          ! collapses the pair to P(k)/P1 instead of a genuine equal-order one.
+          ! The load term of a fully consistent PSPG is deliberately omitted --
+          ! for a linear displacement the momentum residual is grad(p) minus the
+          ! load, and dropping the load leaves the classical Brezzi-Pitkaranta
+          ! scheme, whose consistency error is O(h^2), the same order as the
+          ! discretisation. For a Maxwell material a consistent residual would
+          ! also need the divergence of the lag stress, which lives at
+          ! integration points and is not differentiable across them.
+          IF ( PStab .AND. LinearIncompressible ) THEN
+             DO q = 1,ntot
                 StiffMatrix(DOFs*p,DOFs*q) = StiffMatrix(DOFs*p,DOFs*q) &
                      - Tau * SUM( dBasisdx(p,1:cdim)*dBasisdx(q,1:cdim) ) * s
              END DO
@@ -4795,10 +4799,11 @@ CONTAINS
     END DO
 
     !--------------------------------------------------------------------------
-    ! The pressure is restricted to the corner nodes: every pressure degree of
-    ! freedom above the nodal ones is eliminated with a unit diagonal. The loop
-    ! runs to ntot = nd + nb, so it clears not only the bubbles but the whole
-    ! hierarchic tail of nd as well -- edge, face and interior dofs alike.
+    ! Without stabilisation, the pressure is restricted to the corner nodes:
+    ! every pressure degree of freedom above the nodal ones is eliminated with a
+    ! unit diagonal. The loop runs to ntot = nd + nb, so it clears not only the
+    ! bubbles but the whole hierarchic tail of nd as well -- edge, face and
+    ! interior dofs alike.
     !
     ! That is what picks the element pair, and it is more than MINI. The
     ! displacement keeps whatever basis the sif asked for, the pressure is
@@ -4813,15 +4818,26 @@ CONTAINS
     ! bubble is NOT stable, and this elimination is what leaves it that way --
     ! the alternative there is PStab above.
     !
+    ! With PStab this elimination is SKIPPED instead: the stabilisation term
+    ! above already covers every pressure dof up to ntot, so "Element = p:2"
+    ! plus "Pressure Stabilization" is now a genuine equal-order P2/P2 (or
+    ! Q2/Q2) pair, not Taylor-Hood with a redundant term bolted on. Before this
+    ! change the two configurations were indistinguishable: this loop ran
+    ! regardless of PStab and silently pinned every non-corner pressure dof back
+    ! to zero, so "p:2 stabilized" measured the SAME discretisation as p:2
+    ! Taylor-Hood, just with an unnecessary term added to an already inf-sup
+    ! stable pair.
+    !
     ! Note that _Init's measured integration counts are gated on 'b:' appearing
     ! in the element definition, so the p:2 pair keeps the default rule. That is
     ! deliberate: those counts are calibrated for the bubble-augmented LINEAR
-    ! element and would under-integrate a quadratic displacement.
+    ! element and would under-integrate a quadratic displacement -- and are
+    ! UNMEASURED for the genuine equal-order p:2 PStab pair this now enables.
     !
     ! Done after the integration loop because it clears whole rows and columns,
     ! which an integration point may not do. Same elimination StressSolve writes.
     !--------------------------------------------------------------------------
-    IF ( LinearIncompressible ) THEN
+    IF ( LinearIncompressible .AND. .NOT. PStab ) THEN
        DO p = n+1,ntot
           i = DOFs*p
           ForceVector(i)   = 0.0d0

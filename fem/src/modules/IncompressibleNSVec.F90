@@ -762,7 +762,7 @@ CONTAINS
     IF(StokesFlow) THEN
       IF ( nb>0 ) THEN
         CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
-      ELSE
+      ELSE IF ( .NOT. PStab ) THEN
         DO p = n+1,ntot
           i = DOFs * p
           FORCE(i)   = 0._dp
@@ -783,20 +783,25 @@ CONTAINS
                    NodalSol, Element % ElementIndex)
     ELSE
       !-------------------------------------------------------------------------
-      ! The cases handled here include the MINI element approximation with the 
+      ! The cases handled here include the MINI element approximation with the
       ! velocity bubbles left in the global system and P2/Q2-P1/Q1 approximation.
-      ! First, enforce P1/Q1 pressure approximation by setting Dirichlet 
-      ! constraints for unused dofs: 
+      ! First, enforce P1/Q1 pressure approximation by setting Dirichlet
+      ! constraints for unused dofs -- unless "Pressure Stabilization" is on, in
+      ! which case the stabilisation block above (StiffOrd(:,:,dofs,dofs), sized
+      ! to ntot, not n) already covers every pressure dof, making the pair
+      ! genuinely equal order rather than P(k)/P1 with a redundant term added.
       !-------------------------------------------------------------------------
-      DO p = n+1,ntot
-        i = DOFs * p
-        FORCE(i)   = 0._dp
-        MASS(:,i)  = 0._dp
-        MASS(i,:)  = 0._dp
-        STIFF(i,:) = 0._dp
-        STIFF(:,i) = 0._dp
-        STIFF(i,i) = 1._dp
-      END DO
+      IF ( .NOT. PStab ) THEN
+        DO p = n+1,ntot
+          i = DOFs * p
+          FORCE(i)   = 0._dp
+          MASS(:,i)  = 0._dp
+          MASS(i,:)  = 0._dp
+          STIFF(i,:) = 0._dp
+          STIFF(:,i) = 0._dp
+          STIFF(i,i) = 1._dp
+        END DO
+      END IF
 
       ! The time derivative is formed ONCE, and which routine forms it depends on
       ! whether there is a bubble to condense.
