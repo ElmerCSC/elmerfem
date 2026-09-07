@@ -32,8 +32,8 @@
 ! reaches the counting path with both a bubble and an edge dof to account for.
 !
 ! Velocity 1 just past the step, at (0.637, 1.5) and at the end of the run:
-! 0.15362 here against 0.16140 for the MINI element ("p:1 -quad b:4") on the same
-! problem, 4.8 %. That is the front of the starting flow, where the two schemes
+! 0.15674 here against 0.16140 for the MINI element ("p:1 -quad b:4") on the same
+! problem, 2.9 %. That is the front of the starting flow, where the two schemes
 ! are furthest apart; further downstream the velocity is still near zero at t=0.5
 ! and the comparison says nothing.
 
@@ -138,4 +138,15 @@ Boundary Condition 3
 End
 
 ! Velocity dofs only -- the solver sets "Nonlinear System Norm DOFs = dim".
-Solver 1 :: Reference Norm = 1.27628237E-02
+!
+! This was 1.27628237E-02 until the fix to LCondensate's transient mass term
+! (Default1stOrderTime was ALSO adding M/dt for nb>0 and nd/=n, this element's
+! own combination -- see the IncompressibleNSVec.F90 log for the full story).
+! That bug was in the code when this reference was first measured; verified by
+! reverting the fix and reproducing the old value exactly, and independently by
+! rerunning this same case on "p:2" with the bubble dropped: Taylor-Hood P2/P1
+! is already LBB-stable, so a redundant condensed bubble must leave the
+! retained solution untouched, and with the fix it does -- the norm and the
+! probed velocity below both match "p:2" to every printed digit. Under the old
+! bug they did not, which is what the spurious extra mass term looked like.
+Solver 1 :: Reference Norm = 1.33189411E-02
