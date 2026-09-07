@@ -4424,30 +4424,36 @@ END FUNCTION SearchNodeL
 !> The point count an explicit "Element Integration Points" rule asks for on
 !> THIS element, or zero to leave the element its own rule.
 !>
-!> Zero for a p-element of degree above one. The keyword names one count per
-!> family and knows nothing about the basis actually carried: the counts anyone
-!> writes are measured on the linear element, with or without a bubble, and a
-!> p-refined element needs more, not the same. Clamping p:3 down to the count
-!> that suffices for p:1 would silently under-integrate it -- the one direction
-!> in which this keyword must not be allowed to act. A bubble augmentation is
-!> not excluded: "p:1 b:4" is still degree one in PDefs % P, and reducing its
-!> rule is the whole point of stating the keyword.
+!> Honoured verbatim, at any p, family being the only thing it is indexed by.
+!> This used to zero itself above degree one, on the reasoning that a count
+!> measured on a linear (or bubble-augmented linear) element would silently
+!> under-integrate a p-refined one sharing the same family. That protected a
+!> scenario nothing in the test suite exercises -- one solver spanning elements
+!> of different p within a family -- at the cost of a worse one: a sif naming a
+!> count for an ordinary uniform-p element (a Taylor-Hood "p:2" leg, say) had it
+!> silently discarded with no warning, which is how the ElasticStabilized and
+!> *_taylorhood tests' own stated prism/tetra/triangle counts went dead on
+!> arrival. A stated count now wins unconditionally, as it does for every other
+!> element rule keyword -- getting the count right for the p actually present is
+!> on the sif, the same way it already is for "Relative Integration Order".
+!>
+!> SIF-WRITER WARNING, not a runtime check: "Element Integration Points" names
+!> one absolute count per family and does not know what degree it is being
+!> asked to integrate. Stating it is only safe when every element of that
+!> family in this solver's mesh carries the same p -- the ordinary case. Over
+!> a mesh with mixed p in one family (h-p adaptivity, a shared mesh where
+!> another solver p-refines elements this one also touches), an absolute count
+!> sized for one p will silently under- or over-integrate the others; use
+!> "Element Relative Integration Order" there instead, since an offset stays
+!> correct as the element's own degree changes under it.
 !------------------------------------------------------------------------------
   FUNCTION ElementalGaussNp( Element, ElementalNp ) RESULT( np )
 !------------------------------------------------------------------------------
-    USE PElementMaps, ONLY : isActivePElement
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: ElementalNp(8)
     INTEGER :: np
 !------------------------------------------------------------------------------
     np = ElementalNp( Element % TYPE % ElementCode / 100 )
-    IF( np <= 0 ) RETURN
-
-    IF( isActivePElement( Element ) ) THEN
-      IF( ASSOCIATED( Element % PDefs ) ) THEN
-        IF( Element % PDefs % P > 1 ) np = 0
-      END IF
-    END IF
 !------------------------------------------------------------------------------
   END FUNCTION ElementalGaussNp
 !------------------------------------------------------------------------------
@@ -4457,11 +4463,11 @@ END FUNCTION SearchNodeL
 !> The relative integration order a per family rule asks for on THIS element,
 !> and .TRUE. when its family was named at all.
 !>
-!> The relative twin of ElementalGaussNp. Unlike that one it carries no
-!> p-element clamp, and deliberately: an offset shifts from whatever rule the
-!> element chose for the basis it is actually carrying, so it keeps its meaning
-!> under p-refinement. An absolute count does not, which is the whole reason
-!> ElementalGaussNp has to switch itself off above degree one.
+!> The relative twin of ElementalGaussNp. Both are now honoured verbatim at
+!> any p; the difference is only what each keyword means under p-refinement --
+!> an offset shifts from whatever rule the element chose for the basis it is
+!> actually carrying, so a sif written once keeps meaning what it said as the
+!> element degree changes, where an absolute count does not.
 !------------------------------------------------------------------------------
   FUNCTION ElementalGaussRelOrder( Element, ElementalRelOrder, RelStated, RelOrder ) &
       RESULT( Stated )
@@ -5605,8 +5611,10 @@ END FUNCTION SearchNodeL
       ! Name the keyword that can actually ASK for the rule that was measured.
       ! Since a tabulated simplex rule became reachable by an explicit count both
       ! forms usually can, but the relative one is still preferred where the
-      ! ladder found it: an absolute count disables itself above degree one, so it
-      ! is the p-refinement-safe form.
+      ! ladder found it: an absolute count is a fixed number that stops meaning
+      ! what it said if the element's own p later changes, where an offset keeps
+      ! meaning "relative to the basis actually carried" -- see the p-refinement
+      ! warning on ElementalGaussNp.
       IF( Probe % IsRel(fam) ) THEN
         RelLine = TRIM(RelLine)//' '//TRIM(FamName(fam))//' '//I2S(Probe % RelOff(fam))
       ELSE
