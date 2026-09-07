@@ -5206,8 +5206,25 @@ END FUNCTION SearchNodeL
     ! dispatch and nothing may be added to it speculatively. A
     ! GaussPointsValidNp query beside the tables would retire it, and would let
     ! every family be offered absolute counts too.
-    INTEGER, PARAMETER :: PrismNp(22) = &
-        [ 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,28,44,48,85,100 ]
+    !
+    ! 10, 14 and 24 are deliberately withheld from the economical family, even
+    ! though Integration.F90 does dispatch an explicit "-prism 10/14/24" to a
+    ! real rule (GaussPointsWedgeEconomic, the Kubatko et al. 2013 tables).
+    ! Those three have quadrature points OUTSIDE the reference wedge -- n=10
+    ! and n=14 marginally (v as far as -1.11), n=24 badly (u,v to -1.83/+2.66,
+    ! w to +-1.25, well outside even the enclosing [-1,1]^3 box). Verified by
+    ! moment test against the exact integral that all three are still correctly
+    ! transcribed and genuinely exact to their stated degree -- this is not a
+    ! typo, it is a real property of these minimal-point-count rules -- so it
+    ! is harmless for the affine polynomial elasticity this probe is measured
+    ! against, but a probe recommendation is meant to be pasted into ANY sif,
+    ! including ones with a curved/p-refined prism or a spatially varying
+    ! material law, where sampling outside the element is silently wrong. Not
+    ! offering them here is a probe-side judgement call, not a claim that
+    ! GaussPointsWedgeEconomic itself is broken -- the tables and the explicit
+    ! keyword path are untouched.
+    INTEGER, PARAMETER :: PrismNp(19) = &
+        [ 1,2,3,4,5,6,7,8,11,12,15,16,18,21,28,44,48,85,100 ]
     INTEGER :: fam, r, rlo, rhi, i, j, PrevNp
     TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
@@ -5608,14 +5625,21 @@ END FUNCTION SearchNodeL
       IF( Probe % Np(fam) > Probe % DefNp(fam) ) AnyUp = .TRUE.
       IF( Probe % Np(fam) == Probe % DefNp(fam) ) CYCLE
 
-      ! Name the keyword that can actually ASK for the rule that was measured.
-      ! Since a tabulated simplex rule became reachable by an explicit count both
-      ! forms usually can, but the relative one is still preferred where the
-      ! ladder found it: an absolute count is a fixed number that stops meaning
-      ! what it said if the element's own p later changes, where an offset keeps
-      ! meaning "relative to the basis actually carried" -- see the p-refinement
-      ! warning on ElementalGaussNp.
-      IF( Probe % IsRel(fam) ) THEN
+      ! Report the absolute count everywhere: Probe % Np(fam) is already the
+      ! literal point count measured sufficient, whichever keyword's search
+      ! path found it, and an absolute number is what a sif author reads and
+      ! pastes without translating. The one exception is the prism: naming a
+      ! count outside the enumerated triangle x segment / economical list
+      ! (Integration.F90 CASE(7)) falls through to GaussPointsPWedge, which
+      ! reinterprets it as a SIZING TARGET rather than a literal count -- the
+      ! same bug class SimplexRulesByName fixed for tetra/tri, not here. The
+      ! relative sweep can only ever reach that same collapsed path for the
+      ! prism (an explicit np is required to reach the enumerated tables), so
+      ! a prism rule found ONLY via the relative ladder has no absolute count
+      ! that is safe to print -- naming it verbatim would hand back a
+      ! different rule than the one measured. Report it as a relative order
+      ! there instead, which is guaranteed to reproduce it.
+      IF( fam == 7 .AND. Probe % IsRel(fam) ) THEN
         RelLine = TRIM(RelLine)//' '//TRIM(FamName(fam))//' '//I2S(Probe % RelOff(fam))
       ELSE
         Line = TRIM(Line)//' '//TRIM(FamName(fam))//' '//I2S(Probe % Np(fam))
@@ -5624,11 +5648,11 @@ END FUNCTION SearchNodeL
 
     IF( LEN_TRIM(Line) > 0 .OR. LEN_TRIM(RelLine) > 0 ) THEN
       CALL Info( Caller,'To adopt it, state in the Solver section:',Level=3)
-      IF( LEN_TRIM(RelLine) > 0 ) CALL Info( Caller, &
-          '  Element Relative Integration Order = String "'// &
-          TRIM(ADJUSTL(RelLine))//'"',Level=3)
       IF( LEN_TRIM(Line) > 0 ) CALL Info( Caller, &
-          '  Element Integration Points = String "'//TRIM(ADJUSTL(Line))//'"',Level=3)
+          '  Element Integration Points = "'//TRIM(ADJUSTL(Line))//'"',Level=3)
+      IF( LEN_TRIM(RelLine) > 0 ) CALL Info( Caller, &
+          '  Element Relative Integration Order = "'// &
+          TRIM(ADJUSTL(RelLine))//'"',Level=3)
     END IF
 
     ! Three outcomes, and they must not be confused for one another. A family

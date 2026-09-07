@@ -2323,6 +2323,82 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED wedge rule -- segment x triangle
+!> tensor (GaussPointsWedge2), or the safe subset of the economical family
+!> (GaussPointsWedgeEconomic) -- that can serve a prism p-element sized by
+!> getNumberOfGaussPoints, or 0 if none can. Companion to
+!> TetraSimplexRulePoints/TriangleSimplexRulePoints: same purpose and the same
+!> headroom convention, so that the implicit path below (no explicit "np")
+!> resolves to a count the CASE(7) dispatch then routes through the identical
+!> rule an explicit count of that size would reach -- there is deliberately
+!> only the one dispatch, not two tables kept in step by hand.
+!>
+!> The triangle table is the one shared with CASE(3)/TriangleSimplexRulePoints
+!> restated by degree directly, since the degree is already in hand here. The
+!> segment count is the smallest 1D Gauss rule of at least that degree, exact
+!> since the headroom formula always produces an odd degree. The economical
+!> entries are offered only where they are smaller than the tensor product AND
+!> not one of 10, 14, 24 -- see the CASE(7) comment on why those are withheld.
+!------------------------------------------------------------------------------
+   FUNCTION WedgeRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg, mtri, nseg, mecon
+
+     maxp = NINT( REAL(np,dp)**(1.0_dp/3.0_dp) )
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       mtri = 1
+     CASE( 2 )
+       mtri = 3
+     CASE( 3 )
+       mtri = 4
+     CASE( 4 )
+       mtri = 6
+     CASE( 5 )
+       mtri = 7
+     CASE( 6 )
+       mtri = 11
+     CASE( 7 )
+       mtri = 12
+     CASE( 8 )
+       mtri = 17
+     CASE( 9 )
+       mtri = 20
+     CASE DEFAULT
+       mtri = 0
+     END SELECT
+
+     IF( mtri == 0 ) THEN
+       m = 0
+       RETURN
+     END IF
+
+     nseg = (deg+1)/2
+     m = mtri * nseg
+
+     SELECT CASE( deg )
+     CASE( :2 )
+       mecon = 4
+     CASE( 3 )
+       mecon = 7
+     CASE( 4 )
+       mecon = 11
+     CASE( 5 )
+       mecon = 15
+     CASE DEFAULT
+       mecon = 0
+     END SELECT
+
+     IF( mecon > 0 ) m = MIN( m, mecon )
+!------------------------------------------------------------------------------
+   END FUNCTION WedgeRulePoints
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !>  Return an optimized number of Gaussian points for integrating over prisms.
 !>  Here the reference element can also be that of the p-approximation.
 !>  A rule with m x n points is returned.
@@ -2815,7 +2891,7 @@ CONTAINS
      INTEGER, OPTIONAL :: EdgeBasisDegree ! The degree of edge elements
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
-     LOGICAL :: pElement, UsePRefElement, Economic, Hcurl
+     LOGICAL :: pElement, UsePRefElement, Economic, Hcurl, UseTabulated
      INTEGER :: n, eldim, p1d, ntri, nseg, necon, nsimplex
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
@@ -3018,12 +3094,30 @@ CONTAINS
         END IF
 
       CASE (7)
-        IF( PRESENT( np ) ) THEN
+        ntri = 0; nseg = 0; necon = 0
+        UseTabulated = PRESENT( np )
+
+        ! No explicit count was named: this is the implicit path (Relative
+        ! Integration Order, or the element's own declared rule). Prefer a
+        ! tabulated wedge rule of the same degree, through the SAME dispatch
+        ! an explicit count reaches below, instead of going straight to the
+        ! collapsed GaussPointsPWedge ladder -- the CASE(3)/(5) pattern.
+        ! Restricted to p-elements, again as CASE(3)/(5) are: a non-p
+        ! element's "n" here is one of its three tabulated elements.def
+        ! rules, not a degree target, and reinterpreting it would silently
+        ! change what a plain wedge element integrates at.
+        IF( .NOT. UseTabulated .AND. pElement ) THEN
+          nsimplex = WedgeRulePoints( n )
+          IF( nsimplex > 0 ) THEN
+            n = nsimplex
+            UseTabulated = .TRUE.
+          END IF
+        END IF
+
+        IF( UseTabulated ) THEN
           ! possible values:
           ! triangle = 1, 3, 4, 6, 7, 11, 12, 17, 20
           ! segment  = 1, 2, 3, 4, 5, 6,  7,  8,  9,
-
-          ntri = 0; nseg = 0; necon = 0
 
           SELECT CASE( n )
 
@@ -3039,10 +3133,25 @@ CONTAINS
           CASE( 85, 100 )
             nseg = 5
 
-            ! The economical rules
-          CASE( 4, 5, 7, 10, 11, 14, 15, 16, 24 )
+            ! The economical rules. 10, 14 and 24 verify by moment test as
+            ! correctly transcribed and exact to their stated degree, but
+            ! they place quadrature points outside the reference wedge
+            ! (n=24 badly -- outside even the enclosing box), which silently
+            ! mismeasures anything non-polynomial sampled there (a curved
+            ! element, a spatially varying material law) -- harmless for the
+            ! affine, constant-coefficient elasticity this dispatch is
+            ! mostly used for, which is exactly why ElasticStabilized's own
+            ! Taylor-Hood leg names "-prism 10" deliberately and is pinned
+            ! against it. So an EXPLICIT count still reaches them here, same
+            ! as any other named rule -- getting it right for the problem at
+            ! hand is on the sif, per the ElementalGaussNp warning. Only
+            ! WedgeRulePoints' own choice for the IMPLICIT path withholds
+            ! them (see its comment), since that path is reached by every
+            ! p-element sharing this family whether or not its problem is
+            ! affine and polynomial.
             ! Note: we would have 6 and 8 point rules from the economic family as well
-            necon = n 
+          CASE( 4, 5, 7, 10, 11, 14, 15, 16, 24 )
+            necon = n
           END SELECT
 
           IF( nseg > 0 ) THEN
@@ -3054,7 +3163,7 @@ CONTAINS
             RETURN
           END IF
         END IF
-        
+
         IF (pElement) THEN
            IntegStuff = GaussPointsPWedge(n)
         ELSE
