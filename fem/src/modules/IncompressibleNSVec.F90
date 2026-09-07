@@ -41,7 +41,19 @@ MODULE IncompressibleLocalForms
 
   USE DefUtils
 
+  ! The condensed velocity bubble coefficients, current and previous timestep,
+  ! for every BULK element of the mesh -- LCondensate addresses them by
+  ! Element % ElementIndex, which is a mesh index and not a running count of the
+  ! elements this solver happens to be active on.
+  !
+  ! bxStride is the distance between two elements' blocks, and it is
+  ! dim*MaxBDOFs and NOT dim*nb. Keying the stride on the element's own nb
+  ! misplaces every block after the first element whose nb differs from the
+  ! mesh maximum: on a mixed tri/quad mesh ("-tri b:1 -quad b:3") the blocks
+  ! then overlap and elements read each other's bubbles. Only nb of the
+  ! MaxBDOFs slots in a block are written; the rest stay zero.
   REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+  INTEGER, SAVE :: bxStride = 0
 
   ! Per-thread handle/cache storage for LocalBulkMatrix and EffectiveViscosityVec.
   ! NOT THREADPRIVATE (Windows/GCC emutls bug inherits master's ALLOCATABLE/POINTER
@@ -786,13 +798,27 @@ CONTAINS
         STIFF(i,i) = 1._dp
       END DO
 
-      ! Not while probing: with "Use Global Mass Matrix" this routine writes
+      ! The time derivative is formed ONCE, and which routine forms it depends on
+      ! whether there is a bubble to condense.
+      !
+      ! With one, LCondensate does it: it needs the bubble-augmented system, so it
+      ! adds M/dt to K and M*xlprev/dt to F over the WHOLE local block, bubble rows
+      ! included, before eliminating them. Default1stOrderTime cannot do that part
+      ! -- the previous bubble coefficients are not in the global solution it reads,
+      ! being condensed away -- and calling it as well ADDED M/dt A SECOND TIME to
+      ! the retained rows. Reachable with nb > 0 and nd /= n, that is a bubble on
+      ! top of a P2/Q2 velocity, which is not a combination that gets used in
+      ! practice; it is fixed here because it was arithmetic and not a choice.
+      !
+      ! With no bubble this is the P2/Q2-P1/Q1 element and Default1stOrderTime is
+      ! the right routine: it carries the scheme the solver was asked for rather
+      ! than LCondensate's BDF(1), which is all the recovery of a condensed bubble
+      ! has ever supported.
+      !
+      ! Not while probing: with "Use Global Mass Matrix" Default1stOrderTime writes
       ! straight into the global mass matrix, and the probe must leave the global
-      ! system untouched. The mass matrix goes to the probe as a block of its
-      ! own instead, so the term is still measured.
-      IF ( Transient .AND. .NOT. NSProbe % Override ) THEN
-        CALL Default1stOrderTime( MASS, STIFF, FORCE )
-      END IF
+      ! system untouched. The mass matrix goes to the probe as a block of its own
+      ! instead, so the term is still measured.
       IF (nb > 0) THEN
         IF (Transient) THEN
           CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE, &
@@ -800,6 +826,8 @@ CONTAINS
         ELSE
           CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
         END IF
+      ELSE IF ( Transient .AND. .NOT. NSProbe % Override ) THEN
+        CALL Default1stOrderTime( MASS, STIFF, FORCE )
       END IF
     END IF
 
@@ -1329,7 +1357,7 @@ CONTAINS
         DO p = 1,nb
           DO i = 1,dim
             q = q + 1
-            xlprev(bdofs(q)) = bxprev((Element_id-1)*dim*nb+q)
+            xlprev(bdofs(q)) = bxprev((Element_id-1)*bxStride+q)
           END DO
         END DO
 
@@ -1372,7 +1400,7 @@ CONTAINS
       ! integration point history -- and a re-assembly at another rule would
       ! leave the wrong one behind for the next timestep to read.
       IF (ComputeBubblePart .AND. .NOT. NSProbe % Override) &
-          bx((Element_id-1)*dim*nb+1:Element_id*dim*nb) = &
+          bx((Element_id-1)*bxStride+1:(Element_id-1)*bxStride+dim*nb) = &
           MATMUL(Kbb,Fb-MATMUL(Kbl,xl))
       !------------------------------------------------------------------------------
     END SUBROUTINE LCondensate
@@ -1963,7 +1991,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
   TYPE(ValueList_t), POINTER :: Params 
-  LOGICAL :: Found
+  LOGICAL :: Found, GotIt
   INTEGER :: dim
   CHARACTER(:), ALLOCATABLE :: str
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver_init'
@@ -2004,13 +2032,16 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
 
-  ! The recovery of transient bubble DOFs is done such that at least two 
-  ! iterations within the same time step are needed. The multiple solutions are
-  ! ensured by making at least two nonlinear iterations. However, if "steady 
-  ! state" iterations are performed, computing just one nonlinear iterate 
-  ! is sufficient.
-  IF ( .NOT. ListGetLogical(Params, 'Bubbles In Global System', Found) ) THEN
-    CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
+  ! Backward compatibility with old FlowSolver
+  str = GetString( Params, 'Flow Model', Found )
+  IF( Found ) THEN
+    SELECT CASE(str)
+    CASE('no convection')
+      CALL Warn(Caller,'Option "Flow Model = no convection" not used in this Solver!')
+    CASE('stokes')
+      CALL ListAddNewLogical( Params,'Stokes Flow',.TRUE.)
+    CASE DEFAULT
+    END SELECT
   END IF
 
   ! The integration rule for the MINI element, per family, measured as the
@@ -2046,19 +2077,31 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     IF( INDEX( str, 'b:' ) > 0 ) THEN
       CALL ListAddNewString( Params,'Element Integration Points', &
           '-tetra 24 -prism 85' )
-    END IF
-  END IF
 
-  ! Backward compatibility with old FlowSolver
-  str = GetString( Params, 'Flow Model', Found )
-  IF( Found ) THEN
-    SELECT CASE(str)
-    CASE('no convection')
-      CALL Warn(Caller,'Option "Flow Model = no convection" not used in this Solver!')
-    CASE('stokes')
-      CALL ListAddNewLogical( Params,'Stokes Flow',.TRUE.)
-    CASE DEFAULT
-    END SELECT
+      ! The recovery of the transient bubble DOFs needs at least TWO solves
+      ! within one timestep. LCondensate writes bx for the nodal iterate it was
+      ! handed, which on the first iteration is still the solution of the
+      ! PREVIOUS timestep, and bxprev -- the bubble part the BDF(1) time
+      ! derivative of the next step is formed from -- is that same bx. One
+      ! iteration per step therefore feeds the next step a bubble belonging to
+      ! the step before, and the error accumulates as a slow drift rather than
+      ! showing up as a wrong answer anywhere.
+      !
+      ! Only where a bubble is actually condensed out: with bubbles left in the
+      ! global system they are solved for like any other DOF, the equal-order
+      ! stabilised element has none, and a steady iteration has no bxprev to be
+      ! consistent with. The Stokes branch of LocalBulkMatrix condenses without
+      ! recovering, so it needs nothing either.
+      !
+      ! Max Iterations as well: its default here is ONE, so a floor of two on
+      ! its own would be a floor the loop bound cannot reach. Both ListAddNew,
+      ! so a sif stating either still wins.
+      IF( Transient .AND. .NOT. ListGetLogical(Params,'Stokes Flow',GotIt) .AND. &
+          .NOT. ListGetLogical(Params,'Bubbles In Global System',GotIt) ) THEN
+        CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
+        CALL ListAddNewInteger(Params, 'Nonlinear System Max Iterations', 2)
+      END IF
+    END IF
   END IF
 
   IF( GetLogical( Params,'Save Viscosity', Found ) ) THEN
@@ -2103,7 +2146,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   INTEGER :: Element_id
-  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, iter, nthr
+  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, miniter, iter, nthr
   INTEGER :: stimestep = -1
  
   REAL(KIND=dp) :: Norm
@@ -2151,7 +2194,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! the velocity solution (current and previous). These are needed in order to
     ! evaluate the time derivative of the bubble part.
     !
-    nbdofs = Mesh % MaxBDOFs*dim*GetNOFActive()
+    ! Sized by the number of BULK elements and not by GetNOFActive(): the index
+    ! LCondensate uses is Element % ElementIndex, so the highest index reached is
+    ! the last active element's position in the mesh, which exceeds the count of
+    ! active elements as soon as the solver is active on only some of the bodies.
+    !
+    bxStride = Mesh % MaxBDOFs*dim
+    nbdofs = bxStride*Mesh % NumberOfBulkElements
     ALLOCATE(bx(nbdofs), bxprev(nbdofs)); 
     bx=0.0_dp; bxprev=0.0_dp
 
@@ -2269,6 +2318,26 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
+
+  ! "Nonlinear System Min Iterations" is honoured HERE, unconditionally, and not
+  ! left to the generic convergence test. ComputeChange does read the keyword,
+  ! but its guard sits inside IF( NonlinConverged > 1 ) -- that is, it only ever
+  ! enforces a floor on the paths that mean DIVERGED or "exit condition", never
+  ! on NonlinConverged == 1, which is the ordinary converged-to-tolerance exit.
+  ! So the one case a floor is asked for is the one case it was never applied.
+  ! With a small timestep the very first iterate is already within tolerance of
+  ! the previous step, so the loop left after a single solve however the keyword
+  ! was set. ElasticSolve and StressSolve carry the same local guard, for the
+  ! same reason.
+  !
+  ! What the floor buys is the transient bubble part: see the _Init routine, which
+  ! is where the default of two comes from and where the reason is written down.
+  Miniter = GetInteger(Params, 'Nonlinear system min iterations', Found)
+  IF (.NOT.Found) Miniter = 1
+  IF( Miniter > Maxiter ) THEN
+    CALL Warn(Caller,'"Nonlinear System Min Iterations" exceeds max, using: '//I2S(Maxiter))
+    Miniter = Maxiter
+  END IF
   !-----------------------------------------------------------------------------
 
   IF (DivCurlForm) CALL Info(Caller, 'The div-curl form is used for the viscous terms')
@@ -2440,11 +2509,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! Check stepsize for nonlinear iteration
     !------------------------------------------------------------------------------
     IF( DefaultLinesearch( Converged ) ) GOTO 100
-    IF( Converged ) EXIT
+    IF( Converged .AND. iter >= Miniter ) EXIT
     
     Norm = DefaultSolve()
 
-    IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
+    IF ( Solver % Variable % NonlinConverged == 1 .AND. iter >= Miniter ) EXIT
   END DO
 
   BLOCK

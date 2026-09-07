@@ -1,0 +1,126 @@
+! TRANSIENT MINI, with the velocity bubble CONDENSED OUT -- the one path in this
+! solver that carries state from one timestep to the next, and the only test of
+! it. Every other Step_*_vec case here is steady.
+!
+! What the path is: the bubble DOFs never reach the global matrix (the default
+! "Bubbles in Global System = False"), so LCondensate eliminates them and keeps
+! their coefficients in the module array bx. The BDF(1) time derivative of the
+! bubble part at the next timestep is formed from bxprev, which is that same bx.
+!
+! Why the case is written this way: LCondensate computes bx for the nodal iterate
+! it is HANDED, and on the first nonlinear iteration of a step that is still the
+! solution of the PREVIOUS step. So one iteration per timestep leaves every step
+! holding a bubble that belongs to the step before it, and the answer drifts
+! rather than being wrong anywhere in particular. Two solutions inside the step
+! are the minimum that makes bx consistent with the nodal solution it condenses
+! against, which is what "Nonlinear System Min Iterations" is set to 2 for in the
+! _Init routine -- deliberately NOT stated here, so that the test exercises that
+! default and fails if it stops being applied.
+!
+! case_singleiter.sif is the same problem held to one iteration per step. It is
+! the answer this case gave for years while the floor was silently inert, and its
+! norm is 0.85 % away from this one -- that gap is what the pair pins.
+!
+! Reynolds number is about 100 on the step height, laminar and attracted to a
+! steady state, so 20 steps of 0.05 land on a repeatable answer while the time
+! derivative is still large enough for the bubble history to matter.
+!
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.05
+  Timestep Intervals = 20
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+
+  Serendipity P Elements = False
+End
+
+Constants
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Pressure = 0
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "NS-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  ! No "Stokes Flow" here on purpose: the convection term and the mass matrix
+  ! are switched by that one flag together, and this case wants both.
+  Element = "p:1 -quad b:4"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  ! Max only. The floor of two comes from _Init, which is the point of the case,
+  ! and it raises this default of one to two along with it -- a floor of two
+  ! cannot be met by a loop that is allowed a single pass.
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1.0e-2
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "(2-tx)*(tx-1)"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+Solver 1 :: Reference Norm = 0.72785603E-01
