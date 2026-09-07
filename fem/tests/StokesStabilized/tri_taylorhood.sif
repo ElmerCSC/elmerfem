@@ -44,6 +44,7 @@ Solver 1
   Equation = "NS-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
   Element = p:2
+  Element Integration Points = "-tri 4"
 
 ! The point of the case. Equal order velocity/pressure, the pressure mode held
 ! by the Brezzi-Pitkaranta term rather than by a bubble. Note that no "Element"

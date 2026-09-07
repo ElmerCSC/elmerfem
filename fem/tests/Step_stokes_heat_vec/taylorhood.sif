@@ -67,6 +67,7 @@ Solver 1
 
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
   Element = p:2
+  Element Integration Points = "-quad 9"
   Solver Timing = Logical True
   Bulk Assembly Timing = Logical True
   Linear System Timing = Logical True

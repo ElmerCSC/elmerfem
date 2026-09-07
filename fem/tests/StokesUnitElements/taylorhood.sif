@@ -85,6 +85,7 @@ Solver 1
   Equation = "NS-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
   Element = p:2
+  Element Integration Points = "-tetra 5 -prism 18"
   Stokes Flow = Logical True
 
   Solver Timing = Logical True

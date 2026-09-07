@@ -125,6 +125,7 @@ Solver 4
   Procedure = "ElasticSolve" "ElasticSolver"
   Variable = String "t[td:2 tp:1]"
   Element = p:2
+  Element Integration Points = "-quad 9"
   Incompressible = Logical True
   Large Deflection = False
   Displace Mesh = Logical False
