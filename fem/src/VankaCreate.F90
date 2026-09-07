@@ -1110,19 +1110,19 @@
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
     REAL(KIND=dp) :: rnorm, coeff
     LOGICAL :: Found, ScaleRHS, DoMask, AdditiveSmoother
-    CHARACTER(MAX_NAME_LEN) :: str   
+    CHARACTER(MAX_NAME_LEN) :: str
     INTEGER :: SlaveInd, SlaveCnt
     INTEGER :: n, m, i, DOFs
 
 !-------------------------------------------------------------------------------
-    
+
     Solver => CurrentModel % Solver
     Params => Solver % Values
-    Mesh => Solver % Mesh 
+    Mesh => Solver % Mesh
     Amat => Solver % Matrix
     n = SIZE(Solver % Variable % Values)
     DOFs = Solver % Variable % dofs
-    
+
     str = ListGetString( Params,'Preconditioning Residual',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
@@ -1135,14 +1135,14 @@
     res => pVar % Values
 
     IF( ParEnv % PEs > 1 ) THEN
-      ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs)
+      ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs).
       !res(1:n) = v(1:n)
       m = 0
       DO i=1,n
         IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) m=m+1
       END DO
       CALL PartitionVector( Amat, res, v(1:m) )
-    ELSE      
+    ELSE
       res(1:n) = v(1:n)
     END IF
     
@@ -1173,7 +1173,13 @@
       IF( SlaveInd > 1 ) THEN
         r(1:n) = 0.0_dp
         CALL MatrixVectorMultiply(Amat, z, r)
-        res(1:n) = v(1:n) - r(1:n)
+        IF( ParEnv % PEs > 1 ) THEN
+          ! "v" is short (owned dofs only); rebuild the long vector before combining.
+          CALL PartitionVector( Amat, res, v(1:m) )
+          res(1:n) = res(1:n) - r(1:n)
+        ELSE
+          res(1:n) = v(1:n) - r(1:n)
+        END IF
       END IF
       
       IF (ScaleRHS) THEN
@@ -1212,7 +1218,11 @@
       ! At final solver revert the cumulative solution back to origonal vectors.
       IF(SlaveInd == SlaveCnt) THEN
         dx(1:n) = z(1:n)
-        res(1:n) = v(1:n) 
+        IF( ParEnv % PEs > 1 ) THEN
+          CALL PartitionVector( Amat, res, v(1:m) )
+        ELSE
+          res(1:n) = v(1:n)
+        END IF
         DEALLOCATE(z)
         EXIT
       END IF
