@@ -68,6 +68,7 @@ Solver 1
 
   Linear System Solver = "Direct"
   Linear System Direct Method = mumps
+  Linear System Complex = False
 
 !   Linear System Solver = Iterative
   Linear System Convergence Tolerance = real 1e-6
