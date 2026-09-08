@@ -66,8 +66,26 @@ int main(int argc, char *argv[])
     char *libdir, *incdir;
     get_inc_lib_dirs(&incdir, &libdir);
 
+    /* Get (absolute) path to Fortran compiler */
     const char *env_fc = getenv("ELMER_Fortran_COMPILER");
-    const char *fc = (env_fc && *env_fc) ? env_fc : ELMERF90_FC;
+    const char *fc;
+    if (env_fc && *env_fc)
+        fc = env_fc;
+    else
+#if defined(RELOCATE_PREFIX)
+    {
+        /* Assume that the Fortran compiler is in the same directory as the
+           compiler wrapper */
+        char *fc_path = strdup(ELMERF90_FC);
+        strip_n_suffix_folders(fc_path, 1);
+        if (strlen(fc_path) > 1)
+            fc = single_path_relocation(fc_path, ELMERF90_FC);
+        else
+            fc = ELMERF90_FC;
+    }
+#else
+        fc = ELMERF90_FC;
+#endif
 
     /* --- Build argv ---------------------------------------------------- */
 
