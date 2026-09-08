@@ -196,15 +196,27 @@ jobs:
             cp "$(cygpath -m "${MSMPI_BIN}")/../Redist/MSMpiSetup.exe" "${GITHUB_WORKSPACE}/../msmpi_redist/"
             echo "::endgroup::"
           fi
-          echo "::group::Create bundles"
+          echo "::group::Create zip archive"
           cd ${GITHUB_WORKSPACE}/build
-          cpack -G "ZIP;NSIS64" .
+          if ! cpack -G "ZIP" .; then
+            echo "zip-archive-failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Failed to create zip archive"
+          fi
+          echo "::endgroup::"
+          echo "::group::Create NSIS64 installer"
+          cd ${GITHUB_WORKSPACE}/build
+          if ! cpack -G "NSIS64" .; then
+            echo "nsis64-installer-failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Failed to create NSIS64 installer"
+          fi
           echo "::endgroup::"
           # store name of bundle for following steps
-          cmake -LA -N .. | awk -F= '$1~/CPACK_PACKAGE_FILE_NAME:STRING/{print "bundle-name="$2}' >> $GITHUB_OUTPUT
+          cmake -LA -N .. | awk -F= '$1~/CPACK_PACKAGE_FILE_NAME:STRING/{print "bundle-name="$2}' >> "$GITHUB_OUTPUT"
 
       - name: upload installer
-        if: matrix.dependencies == 'bundled'
+        if: |
+          matrix.dependencies == 'bundled' &&
+          steps.create-bundles.outputs.nsis64-installer-failed != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-installer
@@ -212,7 +224,9 @@ jobs:
           archive: false
 
       - name: upload zip archive
-        if: matrix.dependencies == 'bundled'
+        if: |
+          matrix.dependencies == 'bundled' &&
+          steps.create-bundles.outputs.zip-archive-failed != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: elmerfem-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-zip
