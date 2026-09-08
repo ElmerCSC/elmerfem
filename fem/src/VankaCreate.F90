@@ -1108,6 +1108,7 @@
     TYPE(Variable_t), POINTER :: pVar
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
+    REAL(KIND=dp), ALLOCATABLE :: zshort(:), rshort(:)
     REAL(KIND=dp) :: rnorm, coeff
     LOGICAL :: Found, ScaleRHS, DoMask, AdditiveSmoother
     CHARACTER(MAX_NAME_LEN) :: str
@@ -1141,6 +1142,7 @@
       DO i=1,n
         IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) m=m+1
       END DO
+      res = 0
       CALL PartitionVector( Amat, res, v(1:m) )
     ELSE
       res(1:n) = v(1:n)
@@ -1156,7 +1158,6 @@
     END IF
     dx => pVar % Values
 
-
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
 
@@ -1164,46 +1165,64 @@
     AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
     
     ALLOCATE(r(n))
-      
+    IF( ParEnv % PEs > 1 ) ALLOCATE(zshort(m), rshort(m))
+
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
     DO SlaveInd = 1, 10
-      
+
       ! Calculate remaining residual, if we have just one slave we just need the initial residual.
       IF( SlaveInd > 1 ) THEN
         r(1:n) = 0.0_dp
-        CALL MatrixVectorMultiply(Amat, z, r)
         IF( ParEnv % PEs > 1 ) THEN
+          ! The serial matvec, mimicked with its parallel equivalent: the local
+          ! matrix only carries this partition's share of a split row, so a
+          ! plain local product is incomplete at the interface. SParMatrixVectorVals
+          ! is the routine HUTIter itself uses for the same product: local SpMV
+          ! plus an MPI exchange that sums in the neighbours' interface contribution.
+          ! It works on the short (owned-dofs-only) vector convention.
+          CALL ParallelVector( Amat, zshort, z )
+          CALL SParMatrixVectorVals( zshort, rshort, .FALSE. )
+          CALL PartitionVector( Amat, r, rshort )
           ! "v" is short (owned dofs only); rebuild the long vector before combining.
           CALL PartitionVector( Amat, res, v(1:m) )
           res(1:n) = res(1:n) - r(1:n)
         ELSE
+          CALL MatrixVectorMultiply(Amat, z, r)
           res(1:n) = v(1:n) - r(1:n)
         END IF
       END IF
-      
+
       IF (ScaleRHS) THEN
-        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff. 
+        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
         CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
       END IF
 
       ! (dx,res) are the vectors that should go in here by their name
       dx(1:n) = 0.0_dp
       CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd, SlaveCnt = SlaveCnt  )
-      
+
       IF (ScaleRHS) THEN
         ! Transform the search direction so that it corresponds to the scaled linear system
         CALL ScaleLinearSystemVectors(AMat, res, n, dx)
       END IF
-      
+
       IF( AdditiveSmoother ) THEN
-        CALL TailoredSmooth(dx,res,SlaveInd)      
+        CALL TailoredSmooth(dx,res,SlaveInd)
+        ! MGSmooth only updates dx at owned rows; broadcast the fresh value to
+        ! every partition holding a non-owned copy, or it stays frozen at
+        ! whatever it was before this sweep.
+        IF( ParEnv % PEs > 1 ) THEN
+          CALL ParallelVector( Amat, zshort, dx )
+          CALL PartitionVector( Amat, dx, zshort )
+          CALL ParallelSumVector( Amat, dx )
+        END IF
       END IF
 
       ! This is just to test that the suggested search direction is a good one.
-      ! Ideally we need to multiply by "1" to get minimum norm. 
-      CALL ExperimentalStuff()            
-      
+      ! Ideally we need to multiply by "1" to get minimum norm.
+      CALL ExperimentalStuff()
+
       ! If we just have one solver, no need to cumulative summation etc. 
       IF( SlaveCnt == 1 ) EXIT
 
@@ -1238,14 +1257,14 @@
     END IF
     
     DEALLOCATE(r)
+    IF( ParEnv % PEs > 1 ) DEALLOCATE(zshort, rshort)
 
     IF( ParEnv % PEs > 1 ) THEN
       CALL ParallelVector( Amat, u(1:m), dx )
     ELSE
-      u(1:n) = dx(1:n) 
+      u(1:n) = dx(1:n)
     END IF
-      
-    
+
   CONTAINS
 
     SUBROUTINE TailoredSmooth(dx,res,Level)

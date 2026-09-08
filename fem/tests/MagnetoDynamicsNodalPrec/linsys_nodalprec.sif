@@ -11,27 +11,24 @@ Solver 3
 
   Additive Smoother = Logical True
 
-  MG Smoother = sgs
+  MG Smoother = L1Jacobi+iSGS
   MG Post Smoothing Iterations = 5
-  MG Smoother Relaxation Factor = Real 1.0
-!  MG Smoother Relaxation Factor = Real $2.0/3.0
+  MG Smoother Relaxation Factor = Real $2.0/3.0
 
 !  MG Smoother Normalize Guess = Logical True
 
 ! Standard parameter for outer iteration
   Linear System Symmetric = False
-  Linear System Row Equilibration = False 
+  Linear System Row Equilibration = False
 
-  Linear System Solver = String "Iterative"
-  Linear System Iterative Method = String "gcr"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "GCR"
   Linear System Convergence Tolerance = 1.0e-6
   Linear System Residual Output = 1
-  Linear system abort not converged = True
+  Linear system abort not converged = False
 
-! Note: this is tuned so that the solver fails if >5 iterations needed!
-  Linear System Max Iterations = 5 !100
- 
-!  Linear System Scaling = False
+! Note: this is tuned so that the solver fails if >100 iterations needed!
+  Linear System Max Iterations = 100
 End 
 
 
@@ -49,20 +46,19 @@ Solver 7
 
   Linear System Scaling = False
   Linear System Solver = "Iterative"
-  Linear System Iterative Method = String "bicgstab2"
+  Linear System Iterative Method = String "BiCGStabL"
 
-  BiCGstabl polynomial degree = Integer 4  
-  Linear System Preconditioning = String "ILU2"
+  Linear System Preconditioning = String "ILU"
   Linear System Max Iterations = Integer 1000
-  Linear System Convergence Tolerance = 1.0e-7
-  Linear system abort not converged = false
+  Linear System Convergence Tolerance = 1.0e-8
   Linear System Residual Output = 10
+  Linear system abort not converged = false
 
   Linear System Scaling = True
-  Optimize Bandwidth = False
+  Optimize Bandwidth = True
 
-!  Linear System Solver = Direct
-!  Linear System Direct Method = umfpack
+! Linear System Solver = Direct
+! Linear System Direct Method = mumps
 
 ! Essential for performance!
   No Precondition Recompute = True
@@ -79,22 +75,21 @@ Solver 8
 !  Edge Residual Name = String "ams res"
 !  Edge Update Name = String "ams update"
 
-  Linear System Scaling = False
   Linear System Solver = "Iterative"
-  Linear System Iterative Method = String "bicgstab2"
+  Linear System Scaling = False
+  Linear System Iterative Method = String "BiCGStabL"
 
-  BiCGstabl polynomial degree = Integer 4  
-  Linear System Preconditioning = String "ILU2"
+  Linear System Preconditioning = String "ILU"
   Linear System Max Iterations = Integer 1000
-  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Convergence Tolerance = 1.0e-8
   Linear system abort not converged = false
   Linear System Residual Output = 10
 
   Linear System Scaling = True
-  Optimize Bandwidth = False
+  Optimize Bandwidth = True
 
-!  Linear System Solver = Direct
-!  Linear System Direct Method = umfpack
+! Linear System Solver = Direct
+! Linear System Direct Method = mumps
 
 ! Essential for performance!
   No Precondition Recompute = True
@@ -110,7 +105,6 @@ Equation 2
   AmsVectorSolver = Logical True
   AmsScalarSolver = Logical True
 End
-
 
 
 ! Additions to BC's related to AMS

@@ -77,7 +77,8 @@ CONTAINS
       REAL(KIND=dp) :: Omega, Bnorm, TOL
       REAL(KIND=dp), POINTER :: TmpArray(:,:)
       REAL(KIND=dp), ALLOCATABLE :: Q(:), Z(:), Ri(:), T(:), &
-             T1(:), T2(:), S(:), V(:), Pr(:), dx(:),diag(:),invdiag(:)
+             T1(:), T2(:), S(:), V(:), Pr(:), dx(:),diag(:),invdiag(:), &
+             L1InvDiag(:), L1Long(:)
 !------------------------------------------------------------------------------
       TYPE( IfLColsT), POINTER :: IfL, IfO
       INTEGER :: row
@@ -101,16 +102,16 @@ CONTAINS
         Diag = A % Values(A % Diag)
       ELSE
         CALL ParallelUpdateSolve( A,x,r )
-        M => ParallelMatrix( A, Mx, Mb, Mr )        
+        M => ParallelMatrix( A, Mx, Mb, Mr )
         n = M % NumberOfRows
         ALLOCATE(Diag(n), InvDiag(n))
         Diag = M % Values(M % Diag)
-        ! If this is not associated, we get in trouble later on. 
-        IF(.NOT. ASSOCIATED(Mb)) THEN          
+        ! allocate & polulate M % rhs aka Mb if needed, instead of silent zero.
+        IF(.NOT. ASSOCIATED(Mb)) THEN
           ALLOCATE(M % rhs(n))
-          Mb => M % rhs 
-          Mb = 0.0_dp
+          Mb => M % rhs
         END IF
+        CALL ParallelVector( A, Mb, b )
       END IF
       WHERE (Diag /= 0.0_dp)
         InvDiag = 1.0_dp / Diag
@@ -212,6 +213,26 @@ CONTAINS
         CALL Info('MGSmooth','Applying post-smoother: '//TRIM(IterMethod), Level=10 )
       END IF
 
+      ! L1-Jacobi: scale by the row's L1-norm (sum of |A_ij|) instead of the
+      ! plain diagonal. 
+      IF( IterMethod == 'l1jacobi' .OR. IterMethod == 'l1jacobi+isgs' ) THEN
+        ALLOCATE( L1Long(A % NumberOfRows), L1InvDiag(n) )
+        DO i=1,A % NumberOfRows
+          L1Long(i) = SUM(ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)))
+        END DO
+        IF( Parallel ) THEN
+          CALL ParallelSumVector( A, L1Long )
+          CALL ParallelVector( A, L1InvDiag, L1Long )
+        ELSE
+          L1InvDiag = L1Long
+        END IF
+        DEALLOCATE( L1Long )
+        WHERE( L1InvDiag /= 0.0_dp )
+          L1InvDiag = 1.0_dp / L1InvDiag
+        ELSEWHERE
+          L1InvDiag = 0.0_dp
+        END WHERE
+      END IF
 
       SELECT CASE( IterMethod )
       CASE( 'jacobi' )
@@ -240,6 +261,18 @@ CONTAINS
         IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
 
         CALL SmoothedJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+
+      CASE( 'l1jacobi' )
+        CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+
+      CASE( 'l1jacobi+isgs' )
+        CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+        IF(Parallel) CALL ParallelUpdateResult(A,x,r)
+
+        CALL InternalSGS( n, A, M, x, b, r, Rounds)
+        IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
+
+        CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
       CASE( 'cjacobi+isgs' )
         CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
@@ -338,7 +371,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-    CONTAINS 
+    CONTAINS
 
 !------------------------------------------------------------------------------
       FUNCTION MGnorm( n, x ) RESULT(s)
@@ -513,6 +546,30 @@ CONTAINS
         END DO
 !------------------------------------------------------------------------------
       END SUBROUTINE SmoothedJacobi
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+      SUBROUTINE L1Jacobi( n, A, M, x, b, r, w, Rounds )
+!------------------------------------------------------------------------------
+        IMPLICIT NONE
+        TYPE(Matrix_t), POINTER :: A
+        TYPE(Matrix_t) :: M
+        INTEGER :: Rounds
+        REAL(KIND=dp) :: w
+        REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
+!------------------------------------------------------------------------------
+        INTEGER :: i,j,n
+!------------------------------------------------------------------------------
+        DO i=1,Rounds
+          CALL MGmv( A, x, r )
+          DO j=1,n
+            r(j) = b(j) - r(j)
+            x(j) = x(j) + w * r(j) * L1InvDiag(j)
+          END DO
+        END DO
+!------------------------------------------------------------------------------
+      END SUBROUTINE L1Jacobi
 !------------------------------------------------------------------------------
 
 
