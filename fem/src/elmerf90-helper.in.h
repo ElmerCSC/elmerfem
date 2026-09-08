@@ -126,6 +126,8 @@ static const char *base_name(const char *p)
  * built libelmersolver. Setting ELMER_Fortran_COMPILER remains the way to be
  * explicit.
  *
+ * Returns the error code of the spawned process on Windows.
+ * On other platforms:
  * Returns only on failure; on success the process has been replaced.
  */
 static int exec_compiler(const char *fc, const char *who)
@@ -197,4 +199,51 @@ static int exec_compiler(const char *fc, const char *who)
     }
     return 127;
 #endif
+}
+
+/*
+ * Get absolute paths to the ElmerSolver modules and the headers.
+ *
+ * If the environment variable ELMER_LIB is set, it is used as the absolute path
+ * to the solver modules. Typically, that is $[prefix]/lib/elmersolver (where
+ * $[prefix] is the installation prefix).
+ *
+ * If the environment variable ELMER_HOME is set, it is used to derive the
+ * absolute path to the directory with the headers (as
+ * ${ELMER_HOME}/share/elmersolver/include).
+ *
+ * If the environment variable ELMER_HOME is set but ELMER_LIB is not set, the
+ * absolute path to the solver modules is derived as
+ * ${ELMER_HOME}/$[ELMERF90_INSTALL_LIB] (where the value of
+ * $[ELMERF90_INSTALL_LIB] can be changed during configuration, but it is
+ * lib/elmersolver by default).
+ *
+ * If any of the absolute directories cannot be derived from these environment
+ * variables, values that are derived from the installation prefix that has been
+ * set during configuration are used.
+ *
+ * The arguments are allowed to be NULL in which case determination of the
+ * respective path is skipped.
+ */
+
+static void get_inc_lib_dirs(char **pincdir, char **plibdir)
+{
+    const char *env_home = getenv("ELMER_HOME");
+
+    if (pincdir) {
+        if (env_home && *env_home)
+            *pincdir = join(env_home, "/share/elmersolver/include");
+        else
+            *pincdir = strdup(ELMERF90_INCLUDE_DIR);
+    }
+
+    if (plibdir) {
+        const char *env_lib = getenv("ELMER_LIB");
+        if (env_lib && *env_lib)
+            *plibdir = strdup(env_lib);
+        else if (env_home && *env_home)
+            *plibdir = join(env_home, "/" ELMERF90_INSTALL_LIB);
+        else
+            *plibdir = strdup(ELMERF90_LIBDIR);
+    }
 }
