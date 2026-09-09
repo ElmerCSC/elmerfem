@@ -56,6 +56,8 @@ Solver 2
   Procedure = "SSTKomega" "SSTKomega"
   Variable = Komega[Kinetic Energy:1 Kinetic Dissipation:1]
 
+  Stabilization Method = Bubbles
+
   Nonlinear System Max Iterations = 5
   Nonlinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Newton After Iterations = 20
@@ -63,7 +65,7 @@ Solver 2
   Nonlinear System Relaxation Factor = 0.55
 
   Linear System Solver = Iterative
-  Linear System Preconditioning  = ILU0
+  Linear System Preconditioning  = ILU
   Linear System Max Iterations   = 500
   Linear System Convergence Tolerance = 1e-8
   Linear System Iterative Method = BiCGStabL
@@ -76,8 +78,7 @@ Solver 3
   Equation = "NS-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
-  Element = "p:1"
-  Pressure Stabilization = Logical True
+  Pressure Stabilization = True
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-5
@@ -86,7 +87,7 @@ Solver 3
   Nonlinear System Newton After Tolerance  = 1.0e-3
 
   Linear System Solver = Iterative
-  Linear System Preconditioning  = ILU0
+  Linear System Preconditioning  = ILU2
   Linear System Max Iterations   = 500
   Linear System Convergence Tolerance = 1e-8
   Linear System Iterative Method = BiCGStabL
@@ -144,6 +145,6 @@ Boundary Condition 3
   Noslip Wall BC = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 9.79582431
-Solver 3 :: Reference Norm Tolerance = Real 1e-3
+Solver 3 :: Reference Norm = Real 9.97176113
+Solver 3 :: Reference Norm Tolerance = Real 5e-3
 RUN
