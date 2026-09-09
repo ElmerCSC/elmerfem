@@ -36,3 +36,19 @@
        END
 
 ! ******************************************************************************
+
+       SUBROUTINE SolveLapackSym( N,A,x )
+
+       INTEGER  N
+       DOUBLE PRECISION  A(n*n),x(n)
+
+       IF ( N <= 0 ) RETURN
+       CALL DPOTRF( 'L',N,A,N,INFO )
+       IF ( info /= 0 ) PRINT*,'DPOTRF: ', info
+
+       CALL DPOTRS( 'L',N,1,A,N,X,N,INFO )
+       IF ( info /= 0 ) PRINT*,'DPOTRS: ', info
+
+       END
+
+! ******************************************************************************

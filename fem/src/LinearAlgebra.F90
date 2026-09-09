@@ -408,6 +408,244 @@ MODULE LinearAlgebra
   END SUBROUTINE ComplexLUDecomp
 
 
+!----------------------------------------------------------------------
+!> Cholesky decomposition of a real symmetric positive definite matrix.
+!> No pivoting is needed (or possible) since positive definiteness
+!> guarantees the pivots stay away from zero.
+!
+!> Result : A = L L^T ; only the lower triangle of A is referenced and
+!> is overwritten by L. The upper triangle is left untouched.
+!----------------------------------------------------------------------
+  SUBROUTINE CholeskyDecomp( A,n,erroneous )
+
+    REAL(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: erroneous
+
+    INTEGER :: i,j
+    REAL(KIND=dp) :: s
+
+    IF (PRESENT(erroneous)) erroneous = .FALSE.
+
+    DO j=1,n
+      s = A(j,j) - SUM( A(j,1:j-1)**2 )
+      IF ( s <= 0.0d0 ) THEN
+        CALL Error( 'CholeskyDecomp', 'Matrix is not positive definite.' )
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
+        RETURN
+      END IF
+      A(j,j) = SQRT(s)
+
+      DO i=j+1,n
+        A(i,j) = ( A(i,j) - SUM( A(i,1:j-1)*A(j,1:j-1) ) ) / A(j,j)
+      END DO
+    END DO
+
+  END SUBROUTINE CholeskyDecomp
+
+
+!----------------------------------------------------------------------
+!> Solves A x = b given the Cholesky factor L (in the lower triangle of
+!> A, as produced by CholeskyDecomp) via forward/backward substitution.
+!> Set Factorized=.TRUE. to skip the decomposition when A already holds
+!> L from a previous call (e.g. to re-solve for several right sides).
+!----------------------------------------------------------------------
+  SUBROUTINE CholeskySolve( n,A,x,Factorized )
+    REAL(KIND=dp) :: A(:,:)
+    REAL(KIND=dp) :: x(n)
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: Factorized
+
+    REAL(KIND=dp) :: s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    IF ( .NOT. ( PRESENT(Factorized) .AND. Factorized ) ) THEN
+      CALL CholeskyDecomp( A,n,erroneous )
+      IF (erroneous) CALL Fatal('CholeskySolve', 'Cholesky decomposition fails')
+    END IF
+
+    ! Forward substitute: solve L y = b
+    DO i=1,n
+      s = x(i)
+      DO j=1,i-1
+        s = s - A(i,j) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+    ! Backward substitute: solve L^T z = y
+    DO i=n,1,-1
+      s = x(i)
+      DO j=i+1,n
+        s = s - A(j,i) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+  END SUBROUTINE CholeskySolve
+
+
+!----------------------------------------------------------------------
+!> Inverts a real symmetric positive definite matrix via its Cholesky
+!> factor: A = L L^T  =>  INV(A) = INV(L)^T INV(L). Result is symmetric
+!> and stored fully (both triangles).
+!----------------------------------------------------------------------
+  SUBROUTINE CholeskyInvertMatrix( A,n )
+
+    REAL(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+
+    REAL(KIND=dp) :: Linv(n,n), s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    CALL CholeskyDecomp( A,n,erroneous )
+    IF (erroneous) CALL Fatal('CholeskyInvertMatrix', 'inversion needs a positive definite matrix')
+
+    ! INV(L), lower triangular, computed column-by-column via forward
+    ! substitution against unit vectors (L is left untouched in A).
+    Linv = 0.0d0
+    DO j=1,n
+      Linv(j,j) = 1.0d0 / A(j,j)
+      DO i=j+1,n
+        s = SUM( A(i,j:i-1)*Linv(j:i-1,j) )
+        Linv(i,j) = -s / A(i,i)
+      END DO
+    END DO
+
+    ! A = INV(L)^T INV(L)
+    DO i=1,n
+      DO j=i,n
+        s = SUM( Linv(MAX(i,j):n,i)*Linv(MAX(i,j):n,j) )
+        A(i,j) = s
+        A(j,i) = s
+      END DO
+    END DO
+
+  END SUBROUTINE CholeskyInvertMatrix
+
+
+!----------------------------------------------------------------------
+!> Cholesky decomposition of a complex SYMMETRIC (not Hermitian) matrix,
+!> i.e. A = A^T as produced by Elmer's own complex FE assembly (no
+!> conjugation of test functions). No pivoting; can fail if a diagonal
+!> pivot lands at exactly zero, same caveat as ComplexLUDecomp.
+!
+!> Result : A = L L^T ; only the lower triangle of A is referenced and
+!> is overwritten by L. The upper triangle is left untouched.
+!----------------------------------------------------------------------
+  SUBROUTINE ComplexCholeskyDecomp( A,n,erroneous )
+
+    COMPLEX(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: erroneous
+
+    INTEGER :: i,j
+    COMPLEX(KIND=dp) :: s
+
+    IF (PRESENT(erroneous)) erroneous = .FALSE.
+
+    DO j=1,n
+      s = A(j,j) - SUM( A(j,1:j-1)**2 )
+      IF ( ABS(s) == 0.0d0 ) THEN
+        CALL Error( 'ComplexCholeskyDecomp', 'Matrix is singular.' )
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
+        RETURN
+      END IF
+      A(j,j) = SQRT(s)   ! principal branch; sign choice is immaterial
+
+      DO i=j+1,n
+        A(i,j) = ( A(i,j) - SUM( A(i,1:j-1)*A(j,1:j-1) ) ) / A(j,j)
+      END DO
+    END DO
+
+  END SUBROUTINE ComplexCholeskyDecomp
+
+
+!----------------------------------------------------------------------
+!> Solves A x = b given the complex-symmetric Cholesky factor L (in the
+!> lower triangle of A, as produced by ComplexCholeskyDecomp). No
+!> conjugation, consistent with ComplexCholeskyDecomp's A = L L^T.
+!> Set Factorized=.TRUE. to skip the decomposition when A already holds
+!> L from a previous call.
+!----------------------------------------------------------------------
+  SUBROUTINE ComplexCholeskySolve( n,A,x,Factorized )
+    COMPLEX(KIND=dp) :: A(:,:)
+    COMPLEX(KIND=dp) :: x(n)
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: Factorized
+
+    COMPLEX(KIND=dp) :: s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    IF ( .NOT. ( PRESENT(Factorized) .AND. Factorized ) ) THEN
+      CALL ComplexCholeskyDecomp( A,n,erroneous )
+      IF (erroneous) CALL Fatal('ComplexCholeskySolve', 'Cholesky decomposition fails')
+    END IF
+
+    ! Forward substitute: solve L y = b
+    DO i=1,n
+      s = x(i)
+      DO j=1,i-1
+        s = s - A(i,j) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+    ! Backward substitute: solve L^T z = y (no conjugation)
+    DO i=n,1,-1
+      s = x(i)
+      DO j=i+1,n
+        s = s - A(j,i) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+  END SUBROUTINE ComplexCholeskySolve
+
+
+!----------------------------------------------------------------------
+!> Inverts a complex SYMMETRIC (not Hermitian) matrix via its complex
+!> Cholesky factor: A = L L^T  =>  INV(A) = INV(L)^T INV(L) (no
+!> conjugation). Result is symmetric and stored fully (both triangles).
+!----------------------------------------------------------------------
+  SUBROUTINE ComplexCholeskyInvertMatrix( A,n )
+
+    COMPLEX(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+
+    COMPLEX(KIND=dp) :: Linv(n,n), s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    CALL ComplexCholeskyDecomp( A,n,erroneous )
+    IF (erroneous) CALL Fatal('ComplexCholeskyInvertMatrix', 'inversion needs successful Cholesky decomposition')
+
+    ! INV(L), lower triangular, computed column-by-column via forward
+    ! substitution against unit vectors (L is left untouched in A).
+    Linv = 0.0d0
+    DO j=1,n
+      Linv(j,j) = 1.0d0 / A(j,j)
+      DO i=j+1,n
+        s = SUM( A(i,j:i-1)*Linv(j:i-1,j) )
+        Linv(i,j) = -s / A(i,i)
+      END DO
+    END DO
+
+    ! A = INV(L)^T INV(L)  (no conjugation)
+    DO i=1,n
+      DO j=i,n
+        s = SUM( Linv(MAX(i,j):n,i)*Linv(MAX(i,j):n,j) )
+        A(i,j) = s
+        A(j,i) = s
+      END DO
+    END DO
+
+  END SUBROUTINE ComplexCholeskyInvertMatrix
+
+
 !------------------------------------------------------------------------------
 !> Solves a 2 x 2 linear system.
 !------------------------------------------------------------------------------
@@ -542,7 +780,52 @@ MODULE LinearAlgebra
   END SUBROUTINE SolveLinSys
 !------------------------------------------------------------------------------
 
-  
+
+!> Solves a small dense SYMMETRIC POSITIVE DEFINITE linear system,
+!> dispatching to Lapack's Cholesky only once the system is large enough
+!> for its blocked routines to pay off. A holds only the lower triangle
+!> on entry (as CholeskyDecomp expects); the upper triangle is ignored.
+!------------------------------------------------------------------------------
+  SUBROUTINE SymmetricSolveLinSys( A, x, n )
+!------------------------------------------------------------------------------
+     INTEGER :: n
+     REAL(KIND=dp) :: A(n,n), x(n), b(n)
+
+     LOGICAL :: erroneous
+
+     INTERFACE
+       SUBROUTINE SolveLapackSym( N,A,x )
+         INTEGER  N
+         DOUBLE PRECISION  A(n*n),x(n)
+       END SUBROUTINE
+     END INTERFACE
+
+     ! Threshold measured against LAPACK's DPOTRF+DPOTRS (OpenBLAS-backed):
+     ! plain CholeskyDecomp+CholeskySolve wins below n~20, loses beyond it.
+     INTEGER, PARAMETER :: LapackThreshold = 20
+
+!------------------------------------------------------------------------------
+     SELECT CASE(n)
+     CASE(1)
+       x(1) = x(1) / A(1,1)
+     CASE(2)
+       b = x
+       CALL SolveLinSys2x2(A,x,b)
+     CASE(3)
+       b = x
+       CALL SolveLinSys3x3(A,x,b)
+     CASE(4:LapackThreshold)
+       CALL CholeskyDecomp(A,n,erroneous)
+       IF (erroneous) CALL Fatal('SymmetricSolveLinSys', 'matrix is not positive definite')
+       CALL CholeskySolve(n,A,x,Factorized=.TRUE.)
+     CASE DEFAULT
+       CALL SolveLapackSym(n,A,x)
+     END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE SymmetricSolveLinSys
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3( G,GI,detG )
 !------------------------------------------------------------------------------
