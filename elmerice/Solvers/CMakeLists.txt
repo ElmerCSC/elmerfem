@@ -26,17 +26,38 @@ ELSE()
   MESSAGE(WARNING "  \n Missing: <NETCDF_INCLUDE_DIR> , <NETCDF_LIBRARY>,  <NETCDFF_LIBRARY> \n some functionalities will be disabled")
 ENDIF()
 
-FIND_PACKAGE(YAC)
+# ------------------- #
+# -- YAC libraries -- #
+#-------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for YAC libraries")
 
-IF(YAC_FOUND)
-  MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
-  MESSAGE(STATUS "  YAC_INC:       " "${YAC_INCLUDE_DIR}")
-  MESSAGE(STATUS "  YAC_LIBS:      " "${YAC_LIBRARIES}")
-  MESSAGE(STATUS "  yac2elmer will be available under ElmerIceSolvers")
-ELSE()
-  MESSAGE(STATUS "  YAC not found ")
-  MESSAGE(STATUS "  No yac2elmer in ElmerIceSolvers")
+IF(WITH_YAC)
+
+  # YAC >= 3.21.0 with CMake config and Fortran component support is required.
+  # No compatibility range: bump this minimum freely as newer YAC releases
+  # become the recommended baseline.
+  FIND_PACKAGE(YAC 3.21 CONFIG QUIET COMPONENTS Fortran)
+  IF(NOT YAC_FOUND)
+    IF(YAC_NOT_FOUND_MESSAGE)
+      # YAC's own config sets this when the base package/version matched
+      # but the requested Fortran component did not.
+      MESSAGE(FATAL_ERROR
+        "YAC ${YAC_VERSION} was found, but is missing the Fortran component. "
+        "Please rebuild YAC with Fortran enabled (for example -DYAC_ENABLE_FORTRAN=ON).")
+    ELSE()
+      MESSAGE(FATAL_ERROR
+        "YAC >= 3.21.0, built with CMake and the Fortran component enabled, is required. "
+        "Hint: install/build YAC so YACConfig.cmake is available.")
+    ENDIF()
+  ENDIF()
+
+  IF(YAC_FOUND)
+    MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
+    MESSAGE(STATUS "  yac2elmer will be available under ElmerIceSolvers")
+  ENDIF()
 ENDIF()
+
 # ---------------------- #
 # -- HDF5 libraries -- #
 #----------------------- #

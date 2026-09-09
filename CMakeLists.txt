@@ -595,44 +595,32 @@ IF (WITH_YAC)
     ENDIF()
   ENDIF()
 
-  FIND_PACKAGE(YAXT)
-
-  MESSAGE(STATUS "  YAXT_FOUND:     " "${YAXT_FOUND}")
-  MESSAGE(STATUS "  YAXT_INC:       " "${YAXT_INCLUDE_DIR}")
-  MESSAGE(STATUS "  YAXT_LIB :      " "${YAXT_LIBRARIES}")
-
-  IF(YAXT_FOUND)
-    SET(HAVE_YAXT TRUE)
-    MARK_AS_ADVANCED(HAVE_YAXT)
-    INCLUDE_DIRECTORIES(${YAXT_INCLUDE_DIR})
-    LINK_DIRECTORIES(${YAXT_LIBRARIES})
-    ADD_DEFINITIONS(-DHAVE_YAXT)
-  ELSE()
-    MESSAGE(FATAL_ERROR "WITH_YAC requires YAXT_FOUND.  ${YAXT_FAILMSG}")
-  ENDIF()
-
-  FIND_PACKAGE(YAML)
-
-  MESSAGE(STATUS "  YAML_FOUND:     " "${YAML_FOUND}")
-  MESSAGE(STATUS "  YAML_INC:       " "${YAML_INCLUDE_DIR}")
-  MESSAGE(STATUS "  YAML_LIB :      " "${YAML_LIBRARIES}")
-
-  IF(YAML_FOUND)
-    SET(HAVE_YAML TRUE)
-    MARK_AS_ADVANCED(HAVE_YAML)
-    INCLUDE_DIRECTORIES(${YAML_INCLUDE_DIR})
-    LINK_DIRECTORIES(${YAML_LIBRARIES})
-    ADD_DEFINITIONS(-DHAVE_YAML)
-  ELSE()
-    MESSAGE(FATAL_ERROR "WITH_YAC requires YAML_FOUND.  YAML not found ")
-  ENDIF()
-
   MESSAGE(STATUS "------------------------------------------------")
   MESSAGE(STATUS "  Looking for YAC ")
 
-  FIND_PACKAGE(YAC)
+  # YAC >= 3.21.0 with CMake config and Fortran component support is required.
+  # No compatibility range: bump this minimum freely as newer YAC releases
+  # become the recommended baseline.
+  FIND_PACKAGE(YAC 3.21 CONFIG QUIET COMPONENTS Fortran)
+  IF(NOT YAC_FOUND)
+    IF(YAC_NOT_FOUND_MESSAGE)
+      # YAC's own config sets this when the base package/version matched
+      # but the requested Fortran component did not.
+      MESSAGE(FATAL_ERROR
+        "YAC ${YAC_VERSION} was found, but is missing the Fortran component. "
+        "Please rebuild YAC with Fortran enabled (for example -DYAC_ENABLE_FORTRAN=ON).")
+    ELSE()
+      MESSAGE(FATAL_ERROR
+        "YAC >= 3.21.0, built with CMake and the Fortran component enabled, is required. "
+        "Hint: install/build YAC so YACConfig.cmake is available.")
+    ENDIF()
+  ENDIF()
+
+  GET_TARGET_PROPERTY(YAC_INCLUDE_DIR YAC::yac_mci INTERFACE_INCLUDE_DIRECTORIES)
+  SET(YAC_LIBRARIES YAC::yac_mci)
 
   MESSAGE(STATUS "  YAC:           " "${YAC_FOUND}")
+  MESSAGE(STATUS "  YAC_VER:       " "${YAC_VERSION}")
   MESSAGE(STATUS "  YAC_INC:       " "${YAC_INCLUDE_DIR}")
   MESSAGE(STATUS "  YAC_LIB :      " "${YAC_LIBRARIES}")
 
@@ -641,8 +629,6 @@ IF (WITH_YAC)
     MARK_AS_ADVANCED(HAVE_YAC)
     INCLUDE_DIRECTORIES(${YAC_INCLUDE_DIR})
     ADD_DEFINITIONS(-DHAVE_YAC)
-  ELSE()
-    MESSAGE(STATUS "  ${YAC_FAILMSG}")
   ENDIF()
 
   MESSAGE(STATUS "------------------------------------------------")
