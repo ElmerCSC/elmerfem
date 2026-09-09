@@ -140,6 +140,7 @@ jobs:
             if [ "${{ matrix.mpi }}" == "with" ]; then
               _extra_config+=("-DBUNDLE_MSMPI_REDIST=ON")
             fi
+            _extra_config+=("-DRELOCATE_PREFIX=ON")
           else
             _extra_config+=("-DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=OFF")
           fi

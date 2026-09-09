@@ -118,6 +118,9 @@ SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
 
 OPTION(EXTERNAL_METIS "Link to external Metis library" OFF)
 
+# Optionally, relocate the installation prefix based on binary location
+OPTION(RELOCATE_PREFIX "Relocate installation prefix on runtime" OFF)
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 # if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
@@ -766,6 +769,16 @@ ENDIF()
 # IF("${isSystemDir}" STREQUAL "-1")
 #    SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 # ENDIF("${isSystemDir}" STREQUAL "-1")
+
+IF (RELOCATE_PREFIX)
+  # Helper functions for relocating the installation prefix on runtime
+  IF(WIN32)
+    MESSAGE(STATUS "Using runtime relocation")
+    ADD_SUBDIRECTORY(contrib/pathtools)
+  ELSE()
+    MESSAGE(STATUS "Support for runtime relocation is currently Windows-only.")
+  ENDIF()
+ENDIF()
 
 ADD_SUBDIRECTORY(matc)
 
