@@ -1,13 +1,12 @@
 ! Twin of Step_ke, with Solver 2 (Navier-Stokes) using IncompressibleNSVec
 ! instead of FlowSolve. Both solvers use the same p-element bubble family
 ! ("Element = p:1 b:3") rather than KESolver's legacy "Stabilization Method
-! = Bubbles" paired with NS-Vec's equal-order Pressure Stabilization: mixing
+! = Bubbles" paired with NS-Vec's P-element stabilization: mixing
 ! element families between solvers sharing a mesh turned out to be the
 ! fragile combination (a slow-growing oscillation past ~iteration 180 on the
-! same mesh with legacy Bubbles/Pressure Stabilization mixed), not bubbles
-! vs. equal-order per se. Matching families here converges faster and
-! tighter (24 iterations, RELC ~4e-7) than the mixed-family recipe used by
-! the other _vec twins.
+! same mesh with legacy Bubbles/p-element bubbles). Bubbles  vs. equal-order
+! stabilized element in NS-Vec is also fine as other "_vec" -variant tests
+! demonstrate.
 $ bndry_layer = 0.05
 
 Header
