@@ -499,12 +499,16 @@ MODULE LinearAlgebra
 !------------------------------------------------------------------------------
 
 
-!> Solves a small dense linear system using Lapack routines
+!> Solves a small dense linear system, dispatching to Lapack only once the
+!> system is large enough for its blocked routines to pay off.
 !------------------------------------------------------------------------------
   SUBROUTINE SolveLinSys( A, x, n )
 !------------------------------------------------------------------------------
      INTEGER :: n
      REAL(KIND=dp) :: A(n,n), x(n), b(n)
+
+     INTEGER :: pivot(n)
+     LOGICAL :: erroneous
 
      INTERFACE
        SUBROUTINE SolveLapack( N,A,x )
@@ -512,6 +516,10 @@ MODULE LinearAlgebra
          DOUBLE PRECISION  A(n*n),x(n)
        END SUBROUTINE
      END INTERFACE
+
+     ! Threshold measured against LAPACK's DGETRF+DGETRS (OpenBLAS-backed):
+     ! plain LUDecomp+LUSolve wins below n~25, loses beyond it.
+     INTEGER, PARAMETER :: LapackThreshold = 25
 
 !------------------------------------------------------------------------------
      SELECT CASE(n)
@@ -523,6 +531,10 @@ MODULE LinearAlgebra
      CASE(3)
        b = x
        CALL SolveLinSys3x3(A,x,b)
+     CASE(4:LapackThreshold)
+       CALL LUDecomp(A,n,pivot,erroneous)
+       IF (erroneous) CALL Fatal('SolveLinSys', 'LU-decomposition fails')
+       CALL LUSolve(n,A,x,pivot)
      CASE DEFAULT
        CALL SolveLapack(n,A,x)
      END SELECT
