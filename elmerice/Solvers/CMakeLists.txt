@@ -34,29 +34,22 @@ MESSAGE(STATUS "Elmer/Ice package: Looking for YAC libraries")
 
 IF(WITH_YAC)
 
-  # Check for Fortran target (will be available in YAC >= 3.19)
-  FIND_PACKAGE(YAC 3.15 CONFIG QUIET)
+  # YAC >= 3.21.0 with CMake config and Fortran component support is required.
+  # No compatibility range: bump this minimum freely as newer YAC releases
+  # become the recommended baseline.
+  FIND_PACKAGE(YAC 3.21 CONFIG QUIET COMPONENTS Fortran)
   IF(NOT YAC_FOUND)
-    MESSAGE(FATAL_ERROR
-      "YAC >= 3.15.0 with CMake support is required. "
-      "Hint: install/build YAC so YACConfig.cmake is available.")
-  ENDIF()
-
-  # 2) If version is 3.19+, require Fortran explicitly
-  IF(DEFINED YAC_VERSION AND YAC_VERSION VERSION_GREATER_EQUAL 3.19)
-    # If YAC >= 3.19, require Fortran component
-    UNSET(YAC_FOUND)
-    FIND_PACKAGE(YAC 3.19 CONFIG QUIET COMPONENTS Fortran)
-
-    # Robust check: imported target existence
-    IF(NOT YAC_FOUND)
+    IF(YAC_NOT_FOUND_MESSAGE)
+      # YAC's own config sets this when the base package/version matched
+      # but the requested Fortran component did not.
       MESSAGE(FATAL_ERROR
-        "YAC ${YAC_VERSION} found, but Fortran component is missing. "
+        "YAC ${YAC_VERSION} was found, but is missing the Fortran component. "
         "Please rebuild YAC with Fortran enabled (for example -DYAC_ENABLE_FORTRAN=ON).")
+    ELSE()
+      MESSAGE(FATAL_ERROR
+        "YAC >= 3.21.0, built with CMake and the Fortran component enabled, is required. "
+        "Hint: install/build YAC so YACConfig.cmake is available.")
     ENDIF()
-  ELSE()
-    # For YAC < 3.19, cannot check for Fortran component; assuming it is available
-    MESSAGE(WARNING "YAC version " ${YAC_VERSION} " < 3.19 detected. YAC >= 3.19 is recommended for more robust checks.")
   ENDIF()
 
   IF(YAC_FOUND)
