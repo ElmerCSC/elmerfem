@@ -414,7 +414,7 @@ CONTAINS
        SigmaO = 2.000_dp
        rGamma = 5._dp/9._dp
 
-       Tmu = rho*K/Omega
+       Tmu = rho*K/MAX(Omega,1.0d-10)
        Effmu(1) = mu + Tmu / SigmaK
        Effmu(2) = mu + Tmu / SigmaO
 
@@ -500,6 +500,7 @@ CONTAINS
      Parent => Element % BoundaryInfo % Left
      IF ( .NOT. ASSOCIATED(Parent) ) &
        Parent => Element % BoundaryInfo % Right
+     IF ( .NOT. ASSOCIATED(Parent) ) RETURN
 
      np = GetElementNOFNodes(Parent)
 
@@ -520,6 +521,7 @@ CONTAINS
        z = Model % Nodes % z(j)
 
        dist = MINVAL( (x-x0(1:n))**2 + (y-y0(1:n))**2 + (z-z0(1:n))**2 )
+       IF ( dist < AEPS ) CYCLE
 
 !      omega_wall = 2*mu(i)/0.09_dp/rho(i)/dist
        omega_wall = 6*mu(i)/rho(i)/0.075_dp/dist

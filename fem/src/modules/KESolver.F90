@@ -82,7 +82,8 @@
          Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
          TurbulentViscosity(:),LocalDissipation(:), &
          LocalKinEnergy(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
-         KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:)
+         KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:), &
+         NodalDensity(:), NodalViscosity(:), NodalCmu(:)
 
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
 
@@ -90,7 +91,8 @@
          ElementNodes,LayerThickness,Density,&
          AllocationsDone,Viscosity,LocalNodes,Work,TurbulentViscosity, &
          LocalDissipation,LocalKinEnergy,KESigmaK,KESigmaE,KECmu,C0, &
-         SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT
+         SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT, &
+         NodalDensity, NodalViscosity, NodalCmu
 
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 
@@ -137,6 +139,9 @@
                  LocalKinEnergy( N ),     &
                  LocalDissipation( N ),&
                  LocalV2(N), V2FCT(N), &
+                 NodalDensity(Solver % Mesh % NumberOfNodes), &
+                 NodalViscosity(Solver % Mesh % NumberOfNodes), &
+                 NodalCmu(Solver % Mesh % NumberOfNodes), &
                  MASS( 2*DOFs*N,2*DOFs*N ), &
                  STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
                  FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), STAT=istat )
@@ -321,6 +326,10 @@
          Density(1:n)   = GetReal( Material,'Density' )
          Viscosity(1:n) = GetReal( Material,'Viscosity' )
 
+         NodalDensity(NodeIndexes(1:n))   = Density(1:n)
+         NodalViscosity(NodeIndexes(1:n)) = Viscosity(1:n)
+         NodalCmu(NodeIndexes(1:n))       = KECmu(1:n)
+
 !------------------------------------------------------------------------------
 !        Get element local matrices, and RHS vectors
 !------------------------------------------------------------------------------
@@ -464,10 +473,10 @@
          IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
 
          IF ( Eval < Clip*EMax ) THEN
-            ! Was Clip*EMax (ε-scale, dimensionally wrong); changed to Clip*KMax
-            ! so the viscous-sublayer bound ε_min = ρ·Cμ·k²/μ uses a k-scale floor.
-            KVal = Clip*KMax
-            Eval = MAX(Density(1)*KECmu(1)*KVal**2/Viscosity(1),Clip*EMax)
+            ! Floor epsilon only; must not clobber a valid, converged K.
+            ! Uses the viscous-sublayer bound eps_min = rho*Cmu*k^2/mu, with
+            ! this node's own material properties (not a leftover element's).
+            Eval = MAX(NodalDensity(i)*NodalCmu(i)*KVal**2/NodalViscosity(i),Clip*EMax)
          END IF
 
          Solver % Variable % Values(2*k-1) = MAX( KVal, 1.0d-10 )
@@ -904,9 +913,9 @@ CONTAINS
 
        s = detJ * IntegStuff % s(t)
        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-         x = SUM( Nodes % x(1:n)*Basis(1:n) )
-         y = SUM( Nodes % y(1:n)*Basis(1:n) )
-         z = SUM( Nodes % z(1:n)*Basis(1:n) )
+         x = SUM( Nodes % x(1:n)*BasisB(1:n) )
+         y = SUM( Nodes % y(1:n)*BasisB(1:n) )
+         z = SUM( Nodes % z(1:n)*BasisB(1:n) )
          s = s *  CoordinateSqrtMetric(x,y,z)
        END IF
 
@@ -939,7 +948,7 @@ CONTAINS
        DO p=1,np
          DO q=1,np
            STIFF(2*p,2*q)   = STIFF(2*p,2*q) + s*Basis(q)*Basis(p)
-           STIFF(2*p,2*q-1) = STIFF(2*p,2*q-1) - s*Relax*2*mu/rho*Kder**2*BasisK(q)/K*Basis(p)
+           STIFF(2*p,2*q-1) = STIFF(2*p,2*q-1) - s*Relax*2*mu/rho*Kder**2*BasisK(q)/MAX(K,AEPS)*Basis(p)
          END DO
          FORCE(2*p) = FORCE(2*p) + s*(1-Relax)*E*Basis(p)
        END DO

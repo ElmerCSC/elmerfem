@@ -65,7 +65,7 @@
        STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:)
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
      REAL(KIND=dp) :: at,at0, KMax, EMax, KVal, EVal
-     
+
      SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce
 
 !------------------------------------------------------------------------------
@@ -367,7 +367,7 @@ CONTAINS
 
        mu   = SUM( Viscosity(1:n) * Basis(1:n) )
        rho  = SUM( Density(1:n) * Basis(1:n) )
-       dist = SUM( Distance(1:n) * Basis(1:n) )
+       dist = MAX( SUM( Distance(1:n) * Basis(1:n) ), 1.0d-10 )
 
        Cb1 = 0.1355_dp
        Cb2 = 0.6220_dp
@@ -391,7 +391,7 @@ CONTAINS
        St = VorticityMeasure + 2 * MIN(0.0_dp, StrainMeasure-VorticityMeasure)
        St = St + Tmu / dist**2 / 0.41_dp**2 * fw2
 
-       r  = Tmu / St / 0.41_dp**2 / dist**2
+       r  = Tmu / MAX( St, 1.0d-10 ) / 0.41_dp**2 / dist**2
        g  = r + Cw2 * (r**6-r)
        fw = g*((1+Cw3**6)/(g**6+Cw3**6))**(1._dp/6._dp)
 

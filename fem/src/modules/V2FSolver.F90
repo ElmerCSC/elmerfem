@@ -482,8 +482,8 @@ CONTAINS
 !      Coefficient of the convection and time derivative terms
 !      at the integration point
 !------------------------------------------------------------------------------
-       K   = SUM( KinEne(1:n) * Basis(1:n) )
-       E   = SUM( KinDis(1:n) * Basis(1:n) )
+       K   = MAX( SUM( KinEne(1:n) * Basis(1:n) ), 1.0d-10 )
+       E   = MAX( SUM( KinDis(1:n) * Basis(1:n) ), 1.0d-10 )
        LF  = SUM( F(1:n)  * Basis(1:n) )
        LV2 = SUM( V2(1:n) * Basis(1:n) )
 

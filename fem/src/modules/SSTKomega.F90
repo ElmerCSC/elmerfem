@@ -493,7 +493,7 @@ CONTAINS
        DO i=1,dim
          rho_g = rho_g + SUM(Density(1:n) * dBasisdx(1:n,i)) * Gravity(i)
        END DO
-       dist = SUM( Distance(1:n) * Basis(1:n) )
+       dist = MAX( SUM( Distance(1:n) * Basis(1:n) ), 1.0d-10 )
 
        Sound_speed_sq = (SUM(Basis(1:n)*Pressure(1:n))+ReferencePressure) * &
                      SpecificHeatRatio / rho

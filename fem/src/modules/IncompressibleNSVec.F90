@@ -40,6 +40,7 @@
 MODULE IncompressibleLocalForms
 
   USE DefUtils
+  USE MaterialModels, ONLY : TurbulentViscosityVec
 
   ! The condensed velocity bubble coefficients, current and previous timestep,
   ! for every BULK element of the mesh -- LCondensate addresses them by
@@ -243,9 +244,9 @@ CONTAINS
           dofs, 0._dp, VeloPresVec, ngp)
     END IF
 
-    ! Return the effective viscosity. Currently only non-newtonian models supported.
+    ! Return the effective viscosity. Non-newtonian and turbulence models supported.
     muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-              muDerVec0, Newton,  InitHandles, DetJVec, ViscWork )        
+              muDerVec0, Newton,  InitHandles, DetJVec, ViscWork, rho )
 
     ! This thread's handles are resolved now -- both the ones above and the
     ! viscosity ones inside EffectiveViscosityVec, which is why the flag is
@@ -874,7 +875,7 @@ CONTAINS
 
 
     FUNCTION EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
-        ViscDerVec, ViscNewton, InitHandles, DetJVec, ViscWork ) RESULT ( EffViscVec ) 
+        ViscDerVec, ViscNewton, InitHandles, DetJVec, ViscWork, Density ) RESULT ( EffViscVec )
 
       INTEGER :: ngp
       REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
@@ -884,6 +885,9 @@ CONTAINS
       LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
       REAL(KIND=dp), ALLOCATABLE :: DetJVec(:)
+      ! Element-constant density (this solver assumes constant density so far,
+      ! see LocalBulkMatrix), needed by the turbulence-model viscosity cases.
+      REAL(KIND=dp) :: Density
       ! ViscWork is supplied by the caller so that the vector this function returns a
       ! pointer to is owned by the caller's frame: a local of a routine called inside
       ! the parallel region, hence per-thread by construction and released on return.
@@ -895,7 +899,7 @@ CONTAINS
       LOGICAL :: Found
       CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
-      REAL(KIND=dp), ALLOCATABLE :: ss(:), s(:), ArrheniusFactorVec(:)
+      REAL(KIND=dp), ALLOCATABLE :: ss(:), s(:), ArrheniusFactorVec(:), DensVec(:)
       REAL(KIND=dp), POINTER :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:)
       CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
 
@@ -1027,7 +1031,7 @@ CONTAINS
 
       ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
 
-      ViscModel = ListGetElementString( ViscModel_h, Element, Found ) 
+      ViscModel = ListGetElementString( ViscModel_h, Element, Found )
       IF( .NOT. Found ) THEN
         ! Return the plain viscosity
         EffViscVec => ViscVec0
@@ -1045,7 +1049,8 @@ CONTAINS
         RETURN      
       END IF
         
-      ALLOCATE(ss(ngp), s(ngp), ArrheniusFactorVec(ngp))
+      ALLOCATE(ss(ngp), s(ngp), ArrheniusFactorVec(ngp), DensVec(ngp))
+      DensVec(1:ngp) = Density
       IF( .NOT. ALLOCATED( ViscWork ) ) THEN
         ALLOCATE( ViscWork(ngp) )
       ELSE IF( SIZE( ViscWork ) < ngp ) THEN
@@ -1238,8 +1243,14 @@ CONTAINS
           END WHERE
         END IF
 
-      CASE DEFAULT 
-        CALL Fatal(Caller,'Unknown material model')
+      CASE('ke','k-epsilon','rng k-epsilon','spalart-allmaras','k-omega','sst k-omega')
+        ! Shared with the scalar EffectiveViscosity in MaterialModels.
+        CALL TurbulentViscosityVec( ViscModel, Element, n, ngp, BasisVec, &
+            ViscVec0(1:ngp), DensVec(1:ngp), ss(1:ngp), ViscVec(1:ngp), Found )
+        IF( .NOT. Found ) CALL Fatal(Caller,'Unknown turbulence model: ['//TRIM(ViscModel)//']')
+
+      CASE DEFAULT
+        CALL Fatal(Caller,'Unknown material model: ['//TRIM(ViscModel)//']')
 
       END SELECT
 
@@ -1435,17 +1446,24 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp,no_slip_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
-        HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, &
+        HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, HaveWallLaw, &
         FoundLoad, GotRelax, LocalNewton, HaveNormalSlip
-    REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho
+    REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho, mu, &
+        WallDist, WallRoughness, FrictionVelocity, DFX
     REAL(KIND=dp) :: SlipCoeff(3), NormalSlipCoeff, SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
         Vect(3), Velo(3), TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum, &
-        NewtonRelax 
+        NewtonRelax
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, NormalSlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
         FrictionUt0_h, FrictionNormal_h, FrictionCoeff_h, &
+        WallLayerThickness_h, WallRoughness_h, Visc_h, &
         FSSAtheta_h, Dens_h, Load_h(3), FSSAaccum_h
+    INTERFACE
+      SUBROUTINE SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX)
+        DOUBLE PRECISION :: DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX
+      END SUBROUTINE SOLVE_UFRIC
+    END INTERFACE
     TYPE(VariableHandle_t), SAVE :: Velo_v
     TYPE(Variable_t), POINTER, SAVE :: NrmSol, VeloSol
     TYPE(ValueList_t), POINTER :: BC    
@@ -1491,8 +1509,12 @@ CONTAINS
       
       !CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
 
+      CALL ListInitElementKeyword( WallLayerThickness_h,'Boundary Condition','Boundary Layer Thickness')
+      CALL ListInitElementKeyword( WallRoughness_h,'Boundary Condition','Surface Roughness')
+
       CALL ListInitElementVariable( Velo_v )
       CALL ListInitElementKeyword( Dens_h,'Material','Density')
+      CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')
       DO i=1,dim 
         CALL ListInitElementKeyword( Load_h(i),'Body Force','Flow Bodyforce '//I2S(i))
       END DO
@@ -1557,11 +1579,18 @@ CONTAINS
     FSSAFlag = GetString(BC, 'FSSA Flag', Found)
     IF (.NOT.Found) FSSAFlag = 'none'
     
-    HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient') 
+    HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient')
     HaveFrictionU = ListCheckPresent( BC,'Friction Coefficient')
     HaveFriction = HaveFrictionU .OR. HaveFrictionW
-    
-    IF( HaveFriction ) THEN
+
+    ! Turbulent boundary-layer log-law wall function, as used by FlowSolve's
+    ! "Wall Law" BC and by the turbulence-model solvers' own wall treatment
+    ! (KESolver's EpsilonWall, Komega/SSTKomega's OmegaWall). Treated as just
+    ! another nonlinear friction law feeding the slip-coefficient mechanism
+    ! below, Picard-linearized like the generic "Friction Coefficient" case.
+    HaveWallLaw = ListGetLogical( BC, 'Wall Law', Found ) .AND. .NOT. HaveFriction
+
+    IF( HaveFriction .OR. HaveWallLaw ) THEN
       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
       FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element ) 
     END IF
@@ -1616,10 +1645,11 @@ CONTAINS
       
       ! Nothing to do, exit the routine
       !---------------------------------
-      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveNormalSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
+      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveNormalSlip .OR. &
+          HaveFriction .OR. HaveWallLaw .OR. HaveFSSA)) RETURN
 
       ! Calculate normal vector only if needed, which is almost always...
-      IF( HavePres .OR. NormalTangential .OR. HaveFriction  .OR. HaveFSSA .OR. HaveNormalSlip ) THEN
+      IF( HavePres .OR. NormalTangential .OR. HaveFriction .OR. HaveWallLaw .OR. HaveFSSA .OR. HaveNormalSlip ) THEN
         Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
         IF(.NOT. Found) Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t),.TRUE. )
 
@@ -1643,18 +1673,18 @@ CONTAINS
       ! Because of backward compatibility we cannot allow for both slip and
       ! friction at the same time.
       !---------------------------------------------------------------------
-      IF( HaveFriction  .AND. .NOT. HaveSlip ) THEN
+      IF( (HaveFriction .OR. HaveWallLaw) .AND. .NOT. HaveSlip ) THEN
         ! Velocity at integration point for nonlinear friction laws
         Velo = ListGetElementVectorSolution( Velo_v, Basis, Element, dofs = dim )
 
         ! It seems futile to take normal component away as it is usually zero by construction!
-        ! We include here the option not to remove it. 
+        ! We include here the option not to remove it.
         IF(.NOT. FrictionNormal ) THEN
           un = SUM( Normal(1:dim) * Velo(1:dim) )
           velo(1:dim) = velo(1:dim)-un*normal(1:dim)
         END IF
         ut = MAX(wut0, SQRT(SUM(Velo(1:dim)**2)))
-                     
+
         IF( HaveFrictionW ) THEN
           ! Weertman friction law computed internally
           wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, GaussPoint = t )
@@ -1667,11 +1697,25 @@ CONTAINS
                 TanFder = (wexp-1.0_dp) * wcoeff * ut**(wexp-2.0_dp)
             LocalNewton = .TRUE.
           END IF
-        ELSE
+        ELSE IF( HaveFrictionU ) THEN
           ! Else, user defined friction law
-          DummyVals(1) = ut          
+          DummyVals(1) = ut
           TanFrictionCoeff = ListGetElementReal( FrictionCoeff_h, Basis, Element, &
-              GaussPoint = t, DummyVals = DummyVals )             
+              GaussPoint = t, DummyVals = DummyVals )
+        ELSE
+          ! HaveWallLaw: turbulent boundary-layer log-law (Reichardt's wall law,
+          ! same Solve_UFric root-find FlowSolve's NavierStokesWallLaw and the
+          ! turbulence solvers' own wall functions use). ut is floored to
+          ! MAX(wut0, ...) above, i.e. at least the 1.d-9 default, so Solve_UFric
+          ! never sees ut==0. Picard-linearized: no analytic d(TanFrictionCoeff)/dut.
+          rho = ListGetElementRealParent( Dens_h, Basis, Element, Found )
+          mu  = ListGetElementRealParent( Visc_h, Basis, Element, Found )
+          WallDist = ListGetElementReal( WallLayerThickness_h, Basis, Element, GaussPoint = t )
+          WallRoughness = ListGetElementReal( WallRoughness_h, Basis, Element, GaussPoint = t, Found = Found )
+          IF( .NOT. Found ) WallRoughness = 0._dp
+
+          CALL Solve_UFric( rho, mu, WallDist, WallRoughness, MAX(ut,1.0d-9), FrictionVelocity, DFX )
+          TanFrictionCoeff = rho * FrictionVelocity**2 / MAX(ut,1.0d-9)
         END IF
 
         ! We Do not set the slip in normal direction if given by friction model only. 
@@ -2179,6 +2223,33 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   dim = CoordinateSystemDimension()
   Mesh => GetMesh()
+
+  ! Expand "Noslip Wall BC" into explicit zero Dirichlet velocity components,
+  ! same mechanism FlowSolve.F90 uses ("IMPLEMENT NOSLIP WALL BC CODE"): this
+  ! solver has no code of its own for the keyword, so without this a BC that
+  ! only sets "Noslip Wall BC = True" is silently left unconstrained.
+  BLOCK
+    TYPE(ValueList_t), POINTER :: WallBC
+    LOGICAL :: NoslipGot
+    INTEGER :: bc_i, dof_j
+    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+
+    VarName = GetVarName(Solver % Variable)
+    DO bc_i = 1, Model % NumberOfBCs
+      WallBC => Model % BCs(bc_i) % Values
+      IF ( GetLogical( WallBC, 'Noslip Wall BC', NoslipGot ) ) THEN
+        IF ( VarName == 'flow solution' ) THEN
+          CALL ListAddConstReal( WallBC, 'Velocity 1', 0.0_dp )
+          CALL ListAddConstReal( WallBC, 'Velocity 2', 0.0_dp )
+          IF ( dim == 3 ) CALL ListAddConstReal( WallBC, 'Velocity 3', 0.0_dp )
+        ELSE
+          DO dof_j = 1, dim
+            CALL ListAddConstReal( WallBC, ComponentName( Solver % Variable % Name, dof_j ), 0.0_dp )
+          END DO
+        END IF
+      END IF
+    END DO
+  END BLOCK
 
   ! Per-thread ValueHandle_t/cache storage for LocalBulkMatrix and
   ! EffectiveViscosityVec (see NSHandles_t, IncompressibleLocalForms module scope).
