@@ -86,8 +86,7 @@
            KinDis,KinEne,KESigmaK,KESigmaE,KECmu, &
              TimeForce, KEC1, KEC2, &
                V2, F, V2FCnu, V2FC1, V2FC2, V2FCL, V2FCT, V2FSigma
-     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal, &
-         V2MaxNodal, V2MinNodal, FMaxNodal, FMinNodal
+     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 !------------------------------------------------------------------------------
 
 
@@ -271,7 +270,7 @@
 !        Get element local matrices, and RHS vectors
 !------------------------------------------------------------------------------
          CALL LocalMatrix( MASS,STIFF,FORCE,LOAD, &
-             U,V,W,Element,n,nd+nb,ElementNodes )
+             U,V,W,Element,n,nd,ElementNodes )
 !------------------------------------------------------------------------------
          TimeForce = 0.0_dp
          IF ( TransientSimulation ) CALL Default1stOrderTime(MASS,STIFF,FORCE)
@@ -314,35 +313,7 @@
       Solver % Variable % Values(1::2) = &
         MAX( Solver % Variable % Values(1::2), 1.0d-9 )
 
-      ! Clamp bubble-DOF V2,F against the nodal field's own extrema. With
-      ! p-element bubbles global ("Bubbles in Global System" at its default
-      ! True), a bubble DOF is a local, element-interior correction with no
-      ! neighbors to diffuse a runaway production term against (unlike a
-      ! nodal DOF); see the matching clamp and its rationale in KESolver.F90.
-      n = Solver % Mesh % NumberOfNodes
-      V2MaxNodal = -HUGE(V2MaxNodal); V2MinNodal = HUGE(V2MinNodal)
-      FMaxNodal  = -HUGE(FMaxNodal);  FMinNodal  = HUGE(FMinNodal)
-      DO i=1,n
-         j = Solver % Variable % Perm(i)
-         IF ( j <= 0 ) CYCLE
-         V2MaxNodal = MAX( V2MaxNodal, Solver % Variable % Values(2*j-1) )
-         V2MinNodal = MIN( V2MinNodal, Solver % Variable % Values(2*j-1) )
-         FMaxNodal  = MAX( FMaxNodal,  Solver % Variable % Values(2*j-0) )
-         FMinNodal  = MIN( FMinNodal,  Solver % Variable % Values(2*j-0) )
-      END DO
-      DO i=n+1,SIZE(Solver % Variable % Perm)
-         j = Solver % Variable % Perm(i)
-         IF ( j <= 0 ) CYCLE
-         Solver % Variable % Values(2*j-1) = &
-             MIN( MAX( Solver % Variable % Values(2*j-1), V2MinNodal ), V2MaxNodal )
-         Solver % Variable % Values(2*j-0) = &
-             MIN( MAX( Solver % Variable % Values(2*j-0), FMinNodal ), FMaxNodal )
-      END DO
-
 !------------------------------------------------------------------------------
-      WRITE( Message,* ) 'nodal V2,F max/min: ', V2MaxNodal, V2MinNodal, FMaxNodal, FMinNodal
-      CALL Info( 'V2-F-Solver', Message, Level=1 )
-
       WRITE( Message,* ) 'Result Norm   : ',Norm
       CALL Info( 'V2-F-Solver', Message, Level = 4 )
 
@@ -428,7 +399,7 @@ CONTAINS
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     REAL(KIND=dp) :: C1,C2,CT,CL,Cnu,Cmu,TimeScale,LengthScale2,aparm(nd),KBound
+     REAL(KIND=dp) :: C1,C2,CT,CL,Cnu,Cmu,TimeScale,LengthScale2,aparm(nd)
      REAL(KIND=dp) :: SecInv,X,Y,Z,Re_T
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
@@ -541,20 +512,6 @@ CONTAINS
 !      Prod = SUM(ProdTensor * dVelodx) / Rho
        Prod = Tmu * SecInv / Rho
 
-       ! Bound K away from zero for the (C1-6)/K/TimeScale coupling term
-       ! below: unlike Prod/Tmu/TimeScale/EffVisc above (which all use the
-       ! raw interpolated K), this term divides by K directly in the
-       ! assembled matrix, not just the RHS. Near the true no-slip wall K
-       ! is legitimately forced toward zero while E stays large (dissipation
-       ! peaks at a wall), and that combination sends this one matrix entry
-       ! to ~1e8+, corrupting the assembled system -- diagnosed by tracing a
-       ! divergence back to element 805 at steady iteration 3, where K had
-       ! collapsed to ~4.6e-6 while E was ~600-1300. Floor uses the same
-       ! viscous-sublayer K~sqrt(nu*E/Cmu) scaling already used for the
-       ! near-wall epsilon floor in KESolver.F90, so it's consistent with
-       ! the rest of the model rather than an arbitrary constant.
-       KBound = MAX( K, SQRT( (mu/rho) * E / Cmu ) )
-
 !------------------------------------------------------------------------------
 !      Loop Over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -571,7 +528,7 @@ CONTAINS
           A(1,1) = A(1,1) + 6 * Rho / TimeScale  * Basis(q) * Basis(p)
           A(1,2) = A(1,2) - Rho * K * Basis(q) * Basis(p)
 
-          A(2,1) = A(2,1) + (C1-6) / KBound / TimeScale * Basis(q) * Basis(p)
+          A(2,1) = A(2,1) + (C1-6) / K / TimeScale * Basis(q) * Basis(p)
           A(2,2) = A(2,2) + Basis(q) * Basis(p)
 
           ! The diffusion term:

@@ -62,7 +62,7 @@
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: NewtonLinearization = .FALSE.,gotIt
 !
-     LOGICAL :: AllocationsDone = .FALSE., Bubbles, BubblesDefault, KWasSmall
+     LOGICAL :: AllocationsDone = .FALSE., Bubbles, BubblesDefault
 
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
@@ -94,7 +94,7 @@
          SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT, &
          NodalDensity, NodalViscosity, NodalCmu
 
-     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal, KMaxNodal, EMaxNodal
+     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -463,64 +463,20 @@
       n = Solver % Mesh % NumberOfNodes
       Kmax = MAXVAL( Solver % Variable % Values(1::2) )
       Emax = MAXVAL( Solver % Variable % Values(2::2) )
-
-      ! Nodal-only K,E maxima: used below as an upper clamp for bubble DOFs.
-      ! Kmax/Emax above are contaminated by the very bubble blow-up we're
-      ! trying to clamp (they're MAXVAL over ALL DOFs, bubbles included), so
-      ! they're useless as a ceiling for that; the nodal field is the only
-      ! part of the solution we still trust as a physical scale reference.
-      KmaxNodal = -HUGE(KmaxNodal)
-      EmaxNodal = -HUGE(EmaxNodal)
       DO i=1,n
-         k = Solver % Variable % Perm(i)
-         IF ( k <= 0 ) CYCLE
-         KmaxNodal = MAX( KmaxNodal, Solver % Variable % Values(2*k-1) )
-         EmaxNodal = MAX( EmaxNodal, Solver % Variable % Values(2*k-0) )
-      END DO
-
-      ! Loop over the full Perm range, not just the mesh nodes: with p-element
-      ! bubbles global ("Bubbles in Global System" left at its default True).
-      DO i=1,SIZE(Solver % Variable % Perm)
          k = Solver % Variable % Perm(i)
          IF ( k <= 0 ) CYCLE
 
          Kval = Solver % Variable % Values(2*k-1)
          Eval = Solver % Variable % Values(2*k-0)
 
-         ! Record whether K itself was genuinely near-wall-small *before*
-         ! flooring it, so the epsilon formula below can be gated on it.
-         KWasSmall = ( KVal < Clip*Kmax )
-         IF ( KWasSmall ) Kval = Clip*KMax
+         IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
 
          IF ( Eval < Clip*EMax ) THEN
-            IF ( i <= n .AND. KWasSmall ) THEN
-               ! Floor epsilon only; must not clobber a valid, converged K.
-               ! Uses the viscous-sublayer bound eps_min = rho*Cmu*k^2/mu, with
-               ! this node's own material properties (not a leftover element's).
-               ! Gated on K itself being small: this formula assumes mu_t~mu
-               ! (deep viscous sublayer), which only holds when K is also at
-               ! that near-wall scale -- applied at an ordinary-magnitude K
-               ! (whose epsilon just happened to dip low), rho*Cmu*K^2/mu
-               ! turns a perfectly normal K into an epsilon many orders of
-               ! magnitude too large (K~400, mu~1.5e-5 -> epsilon ~2.5e9),
-               ! which then drives K itself up next iteration via the K-E
-               ! matrix coupling -- a runaway with nothing to do with bubbles.
-               Eval = MAX(NodalDensity(i)*NodalCmu(i)*KVal**2/NodalViscosity(i),Clip*EMax)
-            ELSE
-               Eval = Clip*EMax
-            END IF
-         END IF
-
-         IF ( i > n ) THEN
-            ! Bubble DOF: also clamp from above against the nodal field's own
-            ! extrema. A bubble is a local, element-interior correction and
-            ! has no neighbors to diffuse a runaway K^2/E production term
-            ! against (SolverBasics.F90 ComputeChange relaxes it exactly like
-            ! a nodal DOF, but that alone isn't enough -- see the divergence
-            ! this case hits without this clamp). It should never legitimately
-            ! exceed what the nodal solution itself reaches.
-            Kval = MIN( Kval, KmaxNodal )
-            Eval = MIN( Eval, EmaxNodal )
+            ! Floor epsilon only; must not clobber a valid, converged K.
+            ! Uses the viscous-sublayer bound eps_min = rho*Cmu*k^2/mu, with
+            ! this node's own material properties (not a leftover element's).
+            Eval = MAX(NodalDensity(i)*NodalCmu(i)*KVal**2/NodalViscosity(i),Clip*EMax)
          END IF
 
          Solver % Variable % Values(2*k-1) = MAX( KVal, 1.0d-10 )
@@ -752,15 +708,7 @@ CONTAINS
        IF ( KEModel=='v2-f' ) THEN
          LV2 = SUM( LocalV2(1:n) * Basis(1:n) )
          LCT = SUM( V2FCT(1:n) * Basis(1:n) )
-
-         ! Bound LV2 away from zero for the K/LV2 ratio below: V2 is
-         ! Dirichlet-zeroed at the true no-slip wall (V2FSolver's own
-         ! Noslip Wall BC handling), and floored only to 1e-9 elsewhere, so
-         ! SQRT(K/LV2) can reach ~1e5 right where K is still an ordinary
-         ! magnitude -- the same class of bug as V2FSolver's own (C1-6)/K
-         ! term, just with the roles of K and V2 swapped. Same viscous-
-         ! sublayer floor as used there and for KESolver's own epsilon floor.
-         LC1 = 1.4_dp * (1+V2FCp*SQRT(K/MAX(LV2,SQRT((mu/rho)*E/Cmu))))
+         LC1 = 1.4_dp * (1+V2FCp*SQRT(K/LV2))
 
          Timescale = MAX(K/E,LCT*SQRT(mu/rho/E))
          Tmu = Rho * Cmu * LV2 * TimeScale

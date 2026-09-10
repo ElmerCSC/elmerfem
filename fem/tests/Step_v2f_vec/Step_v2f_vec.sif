@@ -72,7 +72,6 @@ Solver 1
   Variable = V2F[V2:1 F:1]
 
   Element = "p:1 b:3"
-  Bubbles in Global System = False
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-5
