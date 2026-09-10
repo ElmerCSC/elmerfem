@@ -57,8 +57,9 @@
 
 MODULE EigenSolve
 
-   USE Messages
-   IMPLICIT NONE
+  USE Messages
+  USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
+  IMPLICIT NONE
 
 CONTAINS
 
@@ -1181,7 +1182,7 @@ END SUBROUTINE CheckResiduals
       CHARACTER ::     BMAT*1, Which*2
       INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, IERR, iter, &
                        NCONV, maxitr, ishfts, mode, istat, dofs
-      LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize,&
+      LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize, ScaleSystem, &
                        Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize
 
       CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
@@ -1304,6 +1305,13 @@ END SUBROUTINE CheckResiduals
       CALL ListAddLogical( Params,  &
                      'Linear System Free Factorization',.FALSE. )
 
+      IF (ListGetLogical(Params, 'Linear System Skip Scaling', stat)) THEN     
+        CALL Info(Caller, 'This time skipping scaling', Level=20)
+        ScaleSystem = .FALSE.
+      ELSE
+        ScaleSystem = ListGetLogical(Params, 'Linear System Scaling', stat, DefValue = .TRUE.)
+       END IF
+      
       IF ( Matrix % Lumped ) THEN
         ! No implementation to call znaupd in Mode 2
         CONTINUE
@@ -1317,6 +1325,8 @@ END SUBROUTINE CheckResiduals
           Matrix % Values = Matrix % Values - Sigma * Matrix % MassValues
         END IF
 
+        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix)
+        
         Method = ListGetString( Params,'Linear System Solver', stat )         
         IF ( Method == 'direct' ) THEN
           DirectMethod = ListGetString( Params, &
@@ -1539,12 +1549,6 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
 
-         ! Restore matrix values, if modified when using shift:
-         ! ---------------------------------------------------
-         IF ( Sigma /= 0._dp ) THEN
-           Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
-         END IF
-
          EigVectors = -1.0_dp
 
          k = 1
@@ -1558,6 +1562,15 @@ END SUBROUTINE CheckResiduals
             END DO
          END DO
 
+
+         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenScaling = .TRUE. )
+         
+         ! Restore matrix values, if modified when using shift:
+         ! ---------------------------------------------------
+         IF ( Sigma /= 0._dp ) THEN
+           Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
+         END IF
+         
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
            CALL Info(Caller,'Computing eigen system residuals',Level=8)
            CALL CheckResidualsComplex( Matrix, Neig, EigValues, EigVectors )

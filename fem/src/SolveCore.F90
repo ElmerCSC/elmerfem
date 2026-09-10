@@ -1277,14 +1277,24 @@ CONTAINS
 !   If solving eigensystem go there:
 !   --------------------------------
     IF ( EigenAnalysis ) THEN
-      IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A )
+      IF ( ScaleSystem ) THEN
+        ! WIP: The serial complex-valued eigensolver does the scaling.
+        !      The other versions have not yet been modified to do so.
+        IF (.NOT. A % Complex .OR. .NOT. ParEnv % PEs <= 1) THEN
+          CALL ScaleLinearSystem(Solver, A )
+        END IF
+      END IF
 
       CALL SolveEigenSystem( &
           A, Solver %  NOFEigenValues, &
           Solver % Variable % EigenValues,       &
           Solver % Variable % EigenVectors, Solver )
       
-      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. ) 
+      IF ( ScaleSystem ) THEN
+        IF (.NOT. A % Complex .OR. .NOT. ParEnv % PEs <= 1) THEN
+          CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. )
+        END IF
+      END IF
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
 
       Norm = ComputeNorm(Solver,n,x)

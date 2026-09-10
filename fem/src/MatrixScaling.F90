@@ -42,8 +42,12 @@
 
 MODULE MatrixScaling
 
-    USE ModelDescription
-    USE ParallelUtils
+    USE Types,         ONLY : dp, Solver_t, Matrix_t
+    USE Messages,      ONLY : Info, Warn, Fatal, Message
+    USE Lists,         ONLY : ListGetLogical, ListGetString
+    USE GeneralUtils,  ONLY : I2S
+    USE ParallelUtils, ONLY : ParallelReduction, ParallelSumVector, &
+                              ParallelInitSolve, ParallelMatrixVector
     IMPLICIT NONE
 
 CONTAINS
