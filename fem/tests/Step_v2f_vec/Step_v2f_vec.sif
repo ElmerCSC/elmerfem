@@ -4,9 +4,16 @@
 ! KESolver/V2FSolver's legacy "Stabilization Method = Bubbles" with NS-Vec's
 ! equal-order Pressure Stabilization.
 !
-! Solver 2 (KESolver) needs "Bubbles in Global System = False"; without it,
-! "Element = p:1 b:3" defaults to global (uncondensed) bubble DOFs for its
-! Kinetic Energy/Dissipation unknowns, and the run diverges.
+! Both Solver 1 (V2-F) and Solver 2 (KESolver) need "Bubbles in Global System
+! = False": with "Element = p:1 b:3" and no override, bubbles default to
+! GLOBAL (uncondensed) DOFs, and each field's bubble mode is then a free
+! per-element unknown driven by strongly nonlinear reaction terms with no
+! neighboring element to diffuse against and no floor -- KESolver's K/E
+! bubbles diverge to NaN within a couple of iterations in that configuration.
+! Condensing them out locally (this setting) is the stable choice, and is
+! also what lets KESolver/V2FSolver track a proper transient bubble history
+! (see CondensatePTransient in MatrixAssembly.F90) for a future transient
+! version of this case.
 !
 Header
   Mesh DB "." "Step_v2f"
