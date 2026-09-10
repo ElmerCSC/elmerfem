@@ -7234,10 +7234,14 @@ void MainWindow::compileSolverSlot() {
   }
 
 #ifdef _WIN32
+  QString workingDir;
   QString compilerWrapper;
   QByteArray elmer_home = qgetenv("ELMER_HOME");
   if (! elmer_home.isEmpty())
-    compilerWrapper = QString(elmer_home) + "/bin/elmerf90.exe";
+  {
+    workingDir =  QString(elmer_home) + "/bin";
+    compilerWrapper = workingDir + "/elmerf90.exe";
+  }
   else
   {
 #  if defined(RELOCATE_PREFIX)
@@ -7249,7 +7253,8 @@ void MainWindow::compileSolverSlot() {
     }
     // Assume the compiler wrapper is in the same directory as ElmerGUI.exe.
     strip_n_suffix_folders(exe_path, 1);
-    compilerWrapper = QString(exe_path) + "/elmerf90.exe";
+    workingDir = QString(exe_path);
+    compilerWrapper = workingDir + "/elmerf90.exe";
 #  else
     logMessage("The environment variable ELMER_HOME must be set to use Run->compiler");
     return;
@@ -7261,6 +7266,7 @@ void MainWindow::compileSolverSlot() {
   args << fileName.left(fileName.lastIndexOf(".")) + ".dll";
   args << fileName;
 
+  compiler->setWorkingDirectory(workingDir);
   compiler->start(compilerWrapper, args);
 #else
   logMessage("Run->compiler is currently not implemented on this platform");
