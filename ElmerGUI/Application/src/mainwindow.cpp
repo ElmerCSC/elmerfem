@@ -7305,10 +7305,11 @@ void MainWindow::compilerStderrSlot() {
 
 // Signal (int) emitted by compiler when finished:
 //-----------------------------------------------------------------------------
-void MainWindow::compilerFinishedSlot(int) {
-  logMessage("Ready");
-  solverLogWindow->statusBar()->showMessage("Ready");
-  solverLogWindow->getTextEdit()->append("Ready");
+void MainWindow::compilerFinishedSlot(int exitCode) {
+  QString msg = QString("Compilation finished with exit code %1").arg(exitCode);
+  logMessage(msg);
+  solverLogWindow->statusBar()->showMessage(msg);
+  solverLogWindow->getTextEdit()->append(msg);
 }
 
 //*****************************************************************************
