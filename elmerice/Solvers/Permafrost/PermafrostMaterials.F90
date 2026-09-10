@@ -506,6 +506,17 @@ CONTAINS
           END IF
         END IF
         IF (.NOT. fexist) THEN
+          CALL GetSolverHome(MaterialFileName, k)
+          IF ( k > 0 ) THEN
+            MaterialFileName = MaterialFileName(1:k) // '/lib/' // 'permafrostmaterialdb.dat'
+            INQUIRE(FILE=TRIM(MaterialFileName), EXIST=fexist)
+          END IF
+          IF ((.NOT. fexist) .AND. k>0) THEN
+            MaterialFileName = MaterialFileName(1:k) // '/../../' // 'permafrostmaterialdb.dat'
+            INQUIRE(FILE=TRIM(MaterialFileName), EXIST=fexist)
+          END IF
+        END IF
+        IF (.NOT. fexist) THEN
           CALL Fatal('CheckKeyWord', 'permafrostmaterialdb.dat not found')
         END IF
       END IF
