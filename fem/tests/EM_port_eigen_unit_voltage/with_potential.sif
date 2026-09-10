@@ -133,4 +133,4 @@ Boundary Condition 2
   Unit Voltage = True
 End
 
-Solver 3 :: Reference Norm = 0.74892907E-03
+Solver 3 :: Reference Norm = 7.32605102E-04
