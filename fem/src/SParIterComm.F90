@@ -5205,6 +5205,7 @@ SUBROUTINE ParEnvFinalize()
 #ifdef HAVE_XIOS
   IF (USE_XIOS) THEN
     CALL xios_context_finalize()
+    CALL MPI_Comm_free(ELMER_COMM_WORLD, ierr)
     CALL xios_finalize()
   ENDIF
 #endif
