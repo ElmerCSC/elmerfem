@@ -69,16 +69,16 @@ Solver 1
   Linear System Solver = "Direct"
   Linear System Direct Method = mumps
 
-!   Linear System Solver = Iterative
-  Linear System Convergence Tolerance = real 1e-6
+!  Linear System Solver = Iterative
+  Linear System Convergence Tolerance = 1e-6
   Linear System Iterative Method = GCR ! BiCGStabl
   BiCGStabl Polynomial Degree = 2
-  Linear System Residual Output = integer 1
-  Linear System Max Iterations = integer 2000
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 2000
   Linear System Preconditioning = ILU0
   Linear System ILUT Tolerance = 1.0e-3
-  Linear System Residual Output = 1
-  Linear System GCR Restart = 500
+  Linear System GCR Restart = 200
+  Linear System Nullify Guess = True
 
   Eigen Analysis = True
   Eigen System Values = 10

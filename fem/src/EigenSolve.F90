@@ -1310,7 +1310,11 @@ END SUBROUTINE CheckResiduals
         ScaleSystem = .FALSE.
       ELSE
         ScaleSystem = ListGetLogical(Params, 'Linear System Scaling', stat, DefValue = .TRUE.)
-       END IF
+        ! Row equilibration wouldn't lead to a Hermitian matrix
+        IF (ListGetLogical(Params, 'Linear System Row Equilibration', stat)) THEN
+          CALL Fatal(Caller, 'Set Linear System Row Equilibration = False for the eigen solution')
+        END IF
+      END IF
       
       IF ( Matrix % Lumped ) THEN
         ! No implementation to call znaupd in Mode 2
