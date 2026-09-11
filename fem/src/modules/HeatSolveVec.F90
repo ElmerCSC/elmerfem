@@ -524,17 +524,17 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! iterate that is. Rather than keep this region serial, the test's
     ! Solver 3 tolerance has been widened (see case.sif) to absorb that
     ! noise, and this region is parallel again to get real CI data on it.
-    !$OMP PARALLEL &
-    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
-    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !!OMP PARALLEL &
+    !!OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
+    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
+    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
     InitHandles = .TRUE.
     DO col=1,nColours
-      !$OMP SINGLE
+      !!$OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !$OMP END SINGLE
-      !$OMP DO
+      !!OMP END SINGLE
+      !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         totelem = totelem + 1
@@ -549,9 +549,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
           END IF
         END IF
       END DO
-      !$OMP END DO
+      !!OMP END DO
     END DO
-    !$OMP END PARALLEL
+    !!OMP END PARALLEL
     
     IF( DG ) THEN
       BLOCK
