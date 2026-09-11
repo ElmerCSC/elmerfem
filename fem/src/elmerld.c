@@ -101,5 +101,5 @@ int main(int argc, char *argv[])
 #endif
     printf("\n");
 
-    exec_compiler(fc, "elmerld");
+    return exec_compiler(fc, "elmerld");
 }
