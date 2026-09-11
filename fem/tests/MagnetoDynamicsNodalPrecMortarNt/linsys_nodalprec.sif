@@ -23,11 +23,10 @@ Solver 3
   Additive Smoother = Logical True
 
   MG Post Smoothing Iterations(2) = 5 5 
-  MG Smoother Relaxation Factor = Real 1.0
-!  MG Smoother Relaxation Factor = Real $2.0/3.0
+  MG Smoother Relaxation Factor = Real $1.0/3.0
 
   MG Smoother Normalize Guess = Logical True
-  MG Smoother = "masked sgs"
+  MG Smoother = "wjacobi"
   Linear System Skip Mask = Logical True
 
 ! Standard parameter for outer iteration
@@ -39,7 +38,7 @@ Solver 3
   Linear System Convergence Tolerance = 1.0e-6
   Linear System Residual Output = 1
   Linear system abort not converged = True
-  Linear System Max Iterations = $niter
+  Linear System Max Iterations = 20 !$niter
   Linear System Abort Not Converged = False
 
 !  Linear System Scaling = False
@@ -72,7 +71,7 @@ Solver 7
   Linear System Iterative Method = "idrs"
 
   BiCGstabl polynomial degree = Integer 4  
-  Linear System Preconditioning = "ILU0"
+  Linear System Preconditioning = "ILU3"
   Linear System Max Iterations = $niter
   Linear System Convergence Tolerance = $tol
   Linear system abort not converged = false
@@ -82,7 +81,7 @@ Solver 7
   Optimize Bandwidth = False
 
 !  Linear System Solver = Direct
-!  Linear System Direct Method = umfpack
+!  Linear System Direct Method = mumps 
 
 ! Essential for performance!
   No Precondition Recompute = True

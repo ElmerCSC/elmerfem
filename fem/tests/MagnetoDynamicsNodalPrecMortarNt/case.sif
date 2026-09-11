@@ -32,6 +32,9 @@ Simulation
   Mesh Levels = $levels
 
 !  Split Mesh Prisms = True
+
+! Needed to have consistent n-t system for rotational interface
+  Use Cylinder System = Logical True
 End
 
 Body 1
@@ -235,7 +238,7 @@ Boundary Condition 1
   AV {e} 2 = Real 0.0
 
   amsx = Real 0.0
-  amsy= Real 0.0
+  amsy = Real 0.0
   amss = Real 0.0
 End
 
@@ -286,7 +289,7 @@ Boundary Condition 5
   Rotational Projector = Logical True
   Level Projector = True
   Level Projector Generic = True
-  Level Projector Strong = True !False
+  Level Projector Strong = True
 End
 
 Boundary Condition 6
@@ -316,4 +319,4 @@ include linsys_nodalprec.sif
 !End
 
 Solver 2 :: Reference Norm = 1.66878054E-03
-Solver 3 :: Reference Norm = 4.37638167E-07
+Solver 3 :: Reference Norm = 4.37624035E-07
