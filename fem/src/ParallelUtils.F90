@@ -1330,6 +1330,31 @@ CONTAINS
     END SUBROUTINE ParallelVector
 !-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelVectorI(A, vec_out, vec_in)
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), INTENT(in) :: A
+      INTEGER, INTENT(inout) :: vec_out(:)
+      INTEGER, INTENT(in), OPTIONAL :: vec_in(:)
+!-------------------------------------------------------------------------------
+      INTEGER :: i,j,k
+!-------------------------------------------------------------------------------
+      j = 0
+      DO i=1,A % NumberOfRows
+        IF ( A % ParallelInfo % Neighbourlist(i) % &
+                   Neighbours(1)==Parenv % Mype ) THEN
+          j=j+1
+          IF(PRESENT(vec_in)) THEN
+            vec_out(j) = vec_in(i)
+          ELSE
+            vec_out(j) = vec_out(i)
+          END IF
+        END IF
+      END DO
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelVectorI
+!-------------------------------------------------------------------------------
+
 
 !-------------------------------------------------------------------------------
     SUBROUTINE PartitionVector(A, vec_out, vec_in)
@@ -1337,10 +1362,11 @@ CONTAINS
       TYPE(Matrix_t), INTENT(in) :: A
       REAL(KIND=dp), INTENT(inout) :: vec_in(:), vec_out(:)
 !-------------------------------------------------------------------------------
-      INTEGER :: i,j,k
+      INTEGER :: i,j,k,n
 !-------------------------------------------------------------------------------
+      n = A % NumberOfRows
+      vec_out(1:n) = 0._dp
       j = 0
-      vec_out = 0._dp
       DO i=1,A % NumberOfRows
         IF ( A % ParallelInfo % Neighbourlist(i) % &
                    Neighbours(1)==Parenv % Mype ) THEN
@@ -1558,7 +1584,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
-    SUBROUTINE ParallelIter( SourceMatrix, ParallelInfo, DOFs, XVec, &
+    RECURSIVE SUBROUTINE ParallelIter( SourceMatrix, ParallelInfo, DOFs, XVec, &
               RHSVec, Solver, SParMatrixDesc )
 !-------------------------------------------------------------------------------
        TYPE (Matrix_t) :: SourceMatrix

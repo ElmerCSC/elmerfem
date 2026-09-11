@@ -109,9 +109,69 @@ END SUBROUTINE AmsVectorSolver_Init ! }}}
 
 
 !------------------------------------------------------------------------------
+!> Parallel-aware replacement for CRS_TransposeMatrixVectorMultiply(Proj,u,v)
+!> when Proj is one of the H(curl)->H1/grad interpolation matrices built by
+!> NodalToNedelecInterpolation_GlobalMatrix / NodalGradientToNedelecInterpolation_
+!> GlobalMatrix: Proj's rows (edges) are each a purely local, closed-form
+!> geometric quantity, identically duplicated on every partition that locally
+!> has that edge - not summed from multiple elements the way an assembled
+!> stiffness row is. So a transpose matvec that loops every local row double-
+!> counts any edge shared between partitions into their shared target nodes'
+!> entries. Restricting the loop to edges this partition owns avoids the
+!> double count, but then a shared node's entry is short of the contributions
+!> from edges owned by neighbouring partitions - so those still have to be
+!> gathered in with a genuine parallel exchange (ParallelSumNodalVector, once
+!> per component since it is a plain per-node exchange, not dofs-aware).
+!------------------------------------------------------------------------------
+SUBROUTINE ParallelProjTransposeMultiply( Proj, EdgeMatrix, Mesh, NodalPerm, dofs, u, v )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+  TYPE(Matrix_t), POINTER :: Proj, EdgeMatrix
+  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER, POINTER :: NodalPerm(:)
+  INTEGER :: dofs
+  REAL(KIND=dp) :: u(:), v(:)
+!------------------------------------------------------------------------------
+  INTEGER, POINTER CONTIG :: Cols(:), Rows(:)
+  REAL(KIND=dp), POINTER CONTIG :: Values(:)
+  INTEGER :: i,j,k,n,compi
+!------------------------------------------------------------------------------
+  n = Proj % NumberOfRows
+  Rows => Proj % Rows; Cols => Proj % Cols; Values => Proj % Values
+
+  v(1:SIZE(v)) = 0.0_dp
+
+  IF( ParEnv % PEs > 1 ) THEN
+    DO i=1,n
+      IF( EdgeMatrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPe ) CYCLE
+      DO j=Rows(i),Rows(i+1)-1
+        k = Cols(j)
+        v(k) = v(k) + u(i)*Values(j)
+      END DO
+    END DO
+    ! This actually spoils the residual. The standard FEM assembly assumes that
+    ! the residual is distributed and this doubles it!
+    !    DO compi=1,dofs
+    !      CALL ParallelSumNodalVector( Mesh, v(compi::dofs), NodalPerm, EdgeMatrix )
+    !    END DO
+  ELSE
+    DO i=1,n
+      DO j=Rows(i),Rows(i+1)-1
+        k = Cols(j)
+        v(k) = v(k) + u(i)*Values(j)
+      END DO
+    END DO
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE ParallelProjTransposeMultiply
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Solve the magnetic vector potential expressed in terms of a single component.
 !> The solver may take into account rotating boundary conditions.
-!> Also optionally compute moments and inertia. 
+!> Also optionally compute moments and inertia.
 !------------------------------------------------------------------------------
 SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
@@ -123,6 +183,16 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulatio
   LOGICAL :: Transient           !< Steady state or transient simulation
 !------------------------------------------------------------------------------
+  INTERFACE
+    SUBROUTINE ParallelProjTransposeMultiply( Proj, EdgeMatrix, Mesh, NodalPerm, dofs, u, v )
+      USE DefUtils
+      TYPE(Matrix_t), POINTER :: Proj, EdgeMatrix
+      TYPE(Mesh_t), POINTER :: Mesh
+      INTEGER, POINTER :: NodalPerm(:)
+      INTEGER :: dofs
+      REAL(KIND=dp) :: u(:), v(:)
+    END SUBROUTINE ParallelProjTransposeMultiply
+  END INTERFACE
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: Found
@@ -214,7 +284,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
 
   IF (.NOT. ASSOCIATED(Proj)) THEN
     CALL Info(Caller,'Creating projection matrix to map a nodal solution into vector element space', Level=10)
-    SkipFaces = ListGetLogical( SolverParams,'Skip Faces in Projection',Found ) 
+    SkipFaces = ListGetLogical( SolverParams,'Skip Faces in Projection',Found )
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Avar, EdgeSolVar, Proj, cdim=3, &
         SkipFaces = SkipFaces, NodalOffset = n0)
     IF(InfoActive(20)) THEN
@@ -229,8 +299,9 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   ! we may solve the residual correction equation by using the nodal basis.
   !-----------------------------------------------------------------------------
   CALL Info(Caller,'Using Transposed Projection Matrix: H(curl) -> H1', Level=10)
-  CALL CRS_TransposeMatrixVectorMultiply(Proj, EdgeResVar % Values, allrhs )           
-   
+  CALL ParallelProjTransposeMultiply(Proj, EdgeResVar % Solver % Matrix, Mesh, &
+      AVar % Perm, dofs, EdgeResVar % Values, allrhs )
+
   IF(InfoActive(20)) THEN
     CALL VectorValuesRange(Allrhs,SIZE(Allrhs),'allrhs')       
   END IF
@@ -242,7 +313,12 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     NodeSkip = .FALSE.
     CALL CreateNodeSkipMask(NodeSkip,SVar)
     n = COUNT(NodeSkip)
-    IF(n==0) DEALLOCATE(NodeSkip)
+    IF(n==0) THEN
+      CALL Info(Caller,'Node skip mask set is empty!')
+      DEALLOCATE(NodeSkip)
+    ELSE
+      CALL Info(Caller,'Node skip mask set entries: '//I2S(n))
+    END IF
   END IF
 
   ! By construction do not apply any residual to the mortar boundary. 
@@ -306,7 +382,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
       END DO
 
       CALL EnforceDirichletConditions( Solver, A, b )
-      
+
       Norm = DefaultSolve()
 
       IF( ns == 1 ) THEN
@@ -323,9 +399,9 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.) 
   END IF
   CALL ListAddLogical( SolverParams,'Mortar BCs Fixed',.TRUE.)
-  
+
   CALL Info(Caller,'Projecting nodal solution to vector element space', Level=20)
-  CALL CRS_MatrixVectorMultiply(Proj, Avar % Values, EdgeSolVar % Values ) 
+  CALL CRS_MatrixVectorMultiply(Proj, Avar % Values, EdgeSolVar % Values )
 
   IF(InfoActive(20)) THEN
     CALL VectorValuesRange(Avar % Values,SIZE(Avar % Values),'VecPotNodal')       
@@ -514,11 +590,21 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
   LOGICAL :: Transient           !< Steady state or transient simulation
 !------------------------------------------------------------------------------
+  INTERFACE
+    SUBROUTINE ParallelProjTransposeMultiply( Proj, EdgeMatrix, Mesh, NodalPerm, dofs, u, v )
+      USE DefUtils
+      TYPE(Matrix_t), POINTER :: Proj, EdgeMatrix
+      TYPE(Mesh_t), POINTER :: Mesh
+      INTEGER, POINTER :: NodalPerm(:)
+      INTEGER :: dofs
+      REAL(KIND=dp) :: u(:), v(:)
+    END SUBROUTINE ParallelProjTransposeMultiply
+  END INTERFACE
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: Found
   REAL(KIND=dp) :: Norm
-  INTEGER :: i,j,k,n, nb, nd, t, dof
+  INTEGER :: i,j,k,n, nb, nd, t, dof, vdofs
   TYPE(Mesh_t),   POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Variable_t), POINTER :: Vvar, EdgeSolVar, EdgeResVar
@@ -529,6 +615,7 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   LOGICAL, SAVE :: Visited = .FALSE., SkipFaces, IsComplex
   LOGICAL, POINTER, SAVE :: NodeSkip(:)
   TYPE(Matrix_t), POINTER :: A
+  REAL(KIND=dp), POINTER :: allrhs(:) => NULL()
   CHARACTER(*), PARAMETER :: Caller = 'AmsScalarSolver'
   
 !------------------------------------------------------------------------------
@@ -536,6 +623,7 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   Mesh => Solver % Mesh 
   SolverParams => Solver % Values
   VVar => Solver % Variable
+  vdofs = VVar % dofs
   A => Solver % Matrix
   
   CALL Info( Caller,'-------------------------------------------------------', Level=10 )
@@ -544,7 +632,7 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
 
   IsComplex = ListGetLogical( SolverParams, 'Linear System Complex', Found )
 
-  IF(VVar % dofs > 2) CALL Fatal(Caller,'Solution size should be <=2!')
+  IF(vdofs > 2) CALL Fatal(Caller,'Solution size should be <=2!')
   VVar % Values = 0.0_dp
 
   sname = ListGetString( SolverParams, 'Edge Update Name', Found)
@@ -571,11 +659,12 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   ! we may solve the residual correction equation by using the nodal basis.
   !-----------------------------------------------------------------------------
   CALL Info(Caller,'Using Transposed Projection Matrix: H(curl) -> Grad', Level=10)
-  CALL CRS_TransposeMatrixVectorMultiply(Proj, EdgeResVar % Values, A % rhs ) 
+  CALL ParallelProjTransposeMultiply(Proj, EdgeResVar % Solver % Matrix, Mesh, &
+      VVar % Perm, VVar % dofs, EdgeResVar % Values, A % rhs )
 
-  ! Potentially create a mask that avoids residual values being applied on the mortar BC. 
+  ! Potentially create a mask that avoids residual values being applied on the mortar BC.
   IF(.NOT. Visited  ) THEN
-    n = SIZE(A % rhs)
+    n = SIZE(VVar % Values) / vdofs
     ALLOCATE(NodeSkip(n))    
     NodeSkip = .FALSE.
     CALL CreateNodeSkipMask(NodeSkip,VVar)
@@ -585,41 +674,41 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
 
   ! By construction do not apply any residual to the mortar boundary. 
   IF(ASSOCIATED(NodeSkip)) THEN
-    WHERE(NodeSkip)
-      A % rhs = 0.0_dp
-    END WHERE
+    allrhs => A % rhs
+    DO i=1,SIZE(NodeSkip)
+      IF(NodeSkip(i)) THEN
+        allrhs(vdofs*(i-1)+1:vdofs*i) = 0.0_dp
+      END IF
+    END DO
   END IF
 
   IF(ALLOCATED(A % ConstrainedDOF ) ) A % ConstrainedDOF = .FALSE.
-  DO dof=1,VVar % dofs
-    sname = ComponentName(VVar,dof)    
+  DO dof=1,vdofs
+    IF( vdofs > 1 ) THEN
+      sname = ComponentName(VVar,dof)    
+    ELSE
+      sname = VVar % Name
+    END IF
     CALL SetDirichletBoundaries( CurrentModel, A, A % rhs, sname, & 
-        dof, VVar % dofs, VVar % Perm )
+        dof, vdofs, VVar % Perm )
   END DO
   CALL EnforceDirichletConditions( Solver, A, A % rhs )
 
-  Norm = DefaultSolve()    
+  Norm = DefaultSolve()
 
   CALL ListAddLogical( SolverParams,'Mortar BCs Fixed',.TRUE.)
-    
+
   CALL Info(Caller,'Projecting nodal solution to vector element space', Level=10)
-  CALL CRS_MatrixVectorMultiply(Proj, VVar % Values, EdgeSolVar % Values ) 
+  CALL CRS_MatrixVectorMultiply(Proj, VVar % Values, EdgeSolVar % Values )
 
-  BLOCK
-    LOGICAL, POINTER :: SkipMask(:)
-    LOGICAL :: DoMask
-    DoMask = ListGetLogical( SolverParams,'Zero Mortar Fix',Found)
-    IF(DoMask) THEN
-      n = SIZE(EdgeSolVar % Values)
-      ALLOCATE(SkipMask(n))
-      SkipMask = .FALSE.
-      CALL CreateEdgeSkipMask(SkipMask)
-      WHERE(SkipMask) EdgeSolVar % Values = 0.0_dp
-      DEALLOCATE(SkipMask)
+  IF( ListGetLogical( SolverParams,'Zero Mortar Fix',Found) ) THEN
+    IF(ASSOCIATED(EdgeSolVar % Solver % Matrix % SkipMask) ) THEN
+      WHERE(EdgeSolVar % Solver % Matrix % SkipMask)
+        EdgeSolVar % Values = 0.0_dp
+      END WHERE
     END IF
-  END BLOCK
+  END IF
 
-  
   IF(InfoActive(20)) THEN
     CALL VectorValuesRange(Vvar % Values,SIZE(Vvar % Values),'ScalarPotNodal')       
     CALL VectorValuesRange(EdgeSolVar % Values,SIZE(EdgeSolVar % Values),'VecPotEdge')       

@@ -51,7 +51,7 @@ MODULE SParIterComm
   USE LoadMod, ONLY : RealTime
   USE Messages
   USE SParIterGlobals
-
+  
 #ifdef HAVE_XIOS
   USE XIOS
 #endif
@@ -4926,6 +4926,104 @@ FUNCTION SParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 END FUNCTION SParDotProd
 !*********************************************************************
 
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelVectorL(A, vec_out, vec_in)
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), INTENT(in) :: A
+      LOGICAL, INTENT(inout) :: vec_out(:)
+      LOGICAL, INTENT(in), OPTIONAL :: vec_in(:)
+!-------------------------------------------------------------------------------
+      INTEGER :: i,j,k
+!-------------------------------------------------------------------------------
+      j = 0
+      DO i=1,A % NumberOfRows
+        IF ( A % ParallelInfo % Neighbourlist(i) % &
+            Neighbours(1)==Parenv % Mype ) THEN
+          j=j+1
+          IF(PRESENT(vec_in)) THEN
+            vec_out(j) = vec_in(i)
+          ELSE
+            vec_out(j) = vec_out(i)
+          END IF
+        END IF
+      END DO
+      
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelVectorL
+!-------------------------------------------------------------------------------
+
+    
+
+!*********************************************************************
+FUNCTION MaskedSParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
+!*********************************************************************
+  IMPLICIT NONE
+
+  ! Parameters
+
+  INTEGER :: ndim, xind, yind
+  REAL(KIND=dp) :: x(*)
+  REAL(KIND=dp) :: y(*)
+  REAL(KIND=dp) :: dres
+
+  ! Local variables
+
+  REAL(KIND=dp) :: s
+  INTEGER :: i
+  TYPE(Matrix_t), POINTER :: A
+  LOGICAL, ALLOCATABLE :: SkipMask(:)
+  
+  A => CurrentModel % Solver % Matrix
+  IF(.NOT. ASSOCIATED(A % SkipMask)) THEN
+    CALL Fatal('MaskedSParDotProd','SkipMask not associated but here we are!?')
+  END IF
+    
+  ALLOCATE(SkipMask(ndim))
+  SkipMask = .FALSE.
+  CALL ParallelVectorL(A,SkipMask,A % SkipMask)
+
+  !*********************************************************************
+   ! Deterministic reduction: see the note above the inner products in
+   ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.
+   BLOCK
+     REAL(KIND=dp), ALLOCATABLE :: part(:)
+     REAL(KIND=dp) :: psum
+     INTEGER :: nthr, thr
+     nthr = 1
+!$  nthr = omp_get_max_threads()
+     IF( nthr <= 1 ) THEN
+       dres = 0
+       DO i = 1, ndim
+         IF(SkipMask(i)) CYCLE
+         dres = dres + y(i) * x(i)
+       END DO
+     ELSE
+       ALLOCATE( part(nthr) )
+       part = 0
+!$OMP PARALLEL PRIVATE(i,thr,psum) SHARED(part) NUM_THREADS(nthr)
+       thr = 1
+!$    thr = omp_get_thread_num() + 1
+       psum = 0
+!$OMP DO SCHEDULE(STATIC)
+       DO i = 1, ndim
+         IF(SkipMask(i)) CYCLE
+         psum = psum + y(i) * x(i)
+       END DO
+!$OMP END DO NOWAIT
+       part(thr) = psum
+!$OMP END PARALLEL
+       dres = 0
+       DO i = 1, nthr
+         dres = dres + part(i)
+       END DO
+       DEALLOCATE( part )
+     END IF
+   END BLOCK
+   CALL SParActiveSUM(dres,0)
+!*********************************************************************
+ END FUNCTION MaskedSParDotProd
+!*********************************************************************
+
 
 !*********************************************************************
 !*********************************************************************
@@ -4983,6 +5081,77 @@ FUNCTION SParNorm( ndim, x, xind ) RESULT(dres)
 !*********************************************************************
 END FUNCTION SParNorm
 !*********************************************************************
+
+
+
+FUNCTION MaskedSParNorm( ndim, x, xind ) RESULT(dres)
+  IMPLICIT NONE
+
+  ! Parameters
+
+  INTEGER :: ndim, xind
+  REAL(KIND=dp) :: x(*)
+  REAL(KIND=dp) :: dres
+
+  ! Local variables
+  INTEGER :: i
+  TYPE(Matrix_t), POINTER :: A
+  LOGICAL, ALLOCATABLE :: SkipMask(:)
+  
+  A => CurrentModel % Solver % Matrix
+  IF(.NOT. ASSOCIATED(A % SkipMask)) THEN
+    CALL Fatal('MaskedSParNorm','SkipMask not associated but here we are!?')
+  END IF
+    
+  ALLOCATE(SkipMask(ndim))
+  SkipMask = .FALSE.
+  CALL ParallelVectorL(A,SkipMask,A % SkipMask)
+  
+  !*********************************************************************
+  ! Deterministic reduction: see the note above the inner products in
+  ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.
+  BLOCK
+    REAL(KIND=dp), ALLOCATABLE :: part(:)
+    REAL(KIND=dp) :: psum
+    INTEGER :: nthr, thr
+
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+    IF( nthr <= 1 ) THEN
+      dres = 0
+      DO i = 1, ndim
+        IF(SkipMask(i)) CYCLE
+        dres = dres + x(i)*x(i)
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,psum) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      psum = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i = 1, ndim
+        IF(SkipMask(i)) CYCLE
+        psum = psum + x(i)*x(i)
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = psum
+!$OMP END PARALLEL
+      dres = 0
+      DO i = 1, nthr
+        dres = dres + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+  END BLOCK
+  CALL SParActiveSUM(dres,0)
+  dres = SQRT(dres)
+!*********************************************************************
+END FUNCTION MaskedSParNorm
+!*********************************************************************
+
+
 
 
 !*********************************************************************

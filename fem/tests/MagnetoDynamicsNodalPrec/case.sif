@@ -6,7 +6,7 @@ Check Keywords "Warn"
 
 $L=0.05
 $alpha=30.0
-$piola="False"
+$piola="false"
 $mono="False"
 $levels=1
 $suf="a"
@@ -26,6 +26,8 @@ Simulation
 
   Coordinate Scaling = 1.0e-2
   Mesh Levels = $levels
+
+  Post File = a.vtu
 !  Split Mesh Prisms = True
 End
 
@@ -84,6 +86,7 @@ Solver 1
 
   Variable = MeshRelax
   Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
@@ -119,6 +122,7 @@ Solver 3
   Variable = "AV"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
+
   Fix Input Current Density = False
   Use Piola Transform = $piola
 ! quadratic approximation = logical true
@@ -127,10 +131,17 @@ Solver 3
   Edge Basis = Logical True
   NonLinear System Consistent Norm = True
 
+! Linear System Solver = iterative
+! Linear System Iterative Method = BiCGstabL
+! Linear System Max Iterations = 1000
+! Linear System Preconditioning = none
+! Linear System Scaling = True
+! Linear System Convergence Tolerance = 1e-6
+
   Optimize Bandwidth = True
 
-!  include linsys_nodalprec.sif
-!  include linsys_hutiter.sif
+! include linsys_nodalprec.sif
+! include linsys_hutiter.sif
 ! include linsys_ams.sif
 
   Linear System Timing = True
@@ -184,7 +195,7 @@ Solver 5
   Save Geometry Ids = True
   ascii output = true
 
-  exec solver = never
+! exec solver = never
 End
 
 Solver 6
@@ -274,7 +285,6 @@ End
 !End
 
 include linsys_nodalprec.sif
-
 
 Solver 1 :: Reference Norm = 6.36587123E-01
 Solver 2 :: Reference Norm = 3.26276951E-03

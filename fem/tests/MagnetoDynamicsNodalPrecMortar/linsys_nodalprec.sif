@@ -22,17 +22,20 @@ Solver 3
 
   Additive Smoother = Logical True
 
-  MG Post Smoothing Iterations(2) = 5 5 
-  MG Smoother Relaxation Factor = Real 1.0
-!  MG Smoother Relaxation Factor = Real $2.0/3.0
+  MG Post Smoothing Iterations(1) = 5
+  MG Smoother Relaxation Factor = Real $1.0/3.0
 
-  MG Smoother Normalize Guess = Logical True
-  MG Smoother = "masked sgs"
+!  MG Smoother Normalize Guess = Logical True
+
+! We choose a smoother that should also work in parallel...
+  MG Smoother = "wjacobi"
+
+! This keyword is important for 
   Linear System Skip Mask = Logical True
 
 ! Standard parameter for outer iteration
 !  Linear System Symmetric = True
-  Linear System Row Equilibration = True 
+  Linear System Row Equilibration = False 
 
   Linear System Solver = String "Iterative"
   Linear System Iterative Method = "gcr"
@@ -45,8 +48,6 @@ Solver 3
 !  Linear System Scaling = False
 
   Apply Mortar BCs = False
-
-!  MG Smoother = "masked jacobi"
 
 ! Standard parameter for outer iteration
   Linear System Scaling = True
@@ -130,7 +131,7 @@ Solver 8
 !  Apply Mortar BCs = True
   Apply Mortar BCs = False !True
 
-  Zero Mortar Fix = Logical True
+  Zero Mortar Fix  = Logical True
 End
 
 
