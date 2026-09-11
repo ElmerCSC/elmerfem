@@ -77,7 +77,8 @@
            Density(:),Viscosity(:),KinDis(:), &
                  KinEne(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
                    KEC2(:), TimeForce(:), V2(:), f(:), &
-                    V2FCnu(:), V2FC1(:), V2FC2(:), V2FCL(:), V2FCT(:), V2FSigma(:)
+                    V2FCnu(:), V2FC1(:), V2FC2(:), V2FCL(:), V2FCT(:), V2FSigma(:), &
+                     PrevV2(:), PrevF(:), xl(:), xlprev(:)
 
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
 
@@ -85,7 +86,17 @@
          AllocationsDone,Viscosity,LocalNodes, &
            KinDis,KinEne,KESigmaK,KESigmaE,KECmu, &
              TimeForce, KEC1, KEC2, &
-               V2, F, V2FCnu, V2FC1, V2FC2, V2FCL, V2FCT, V2FSigma
+               V2, F, V2FCnu, V2FC1, V2FC2, V2FCL, V2FCT, V2FSigma, &
+                 PrevV2, PrevF, xl, xlprev
+
+     ! Per-element bubble history (current and previous timestep), needed to
+     ! form a consistent BDF(1) time derivative for a condensed bubble: see
+     ! CondensatePTransient in MatrixAssembly.F90 and IncompressibleNSVec's
+     ! LCondensate, which this mirrors (also mirrored in KESolver.F90).
+     REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+     INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
+     INTEGER :: boff
+
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 !------------------------------------------------------------------------------
 
@@ -123,6 +134,8 @@
                  KinDis( N ),  &
                  V2( N ),      &
                  F( N ),       &
+                 PrevV2( N ), PrevF( N ), &
+                 xl(DOFs*N), xlprev(DOFs*N), &
                  MASS( 2*DOFs*N,2*DOFs*N ), &
                  STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
                  FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), STAT=istat )
@@ -132,6 +145,30 @@
        END IF
 
        AllocationsDone = .TRUE.
+     END IF
+
+     ! Per-element bubble history for the transient condensed-bubble case:
+     ! allocate once, sized by the mesh's own worst-case bubble count (not
+     ! this solver's nb, which can vary element to element) times the number
+     ! of BULK elements. The stride covers both p-bubbles (MaxBDOFs) and
+     ! legacy "Bubbles = True" bubbles, one per node (MaxElementNodes) --
+     ! whichever is larger. No Solver % GlobalBubbles check here -- see the
+     ! matching block and its rationale in KESolver.F90.
+     IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
+       bxStride = DOFs * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
+       ALLOCATE( bx( bxStride * Solver % Mesh % NumberOfBulkElements ), &
+                 bxprev( bxStride * Solver % Mesh % NumberOfBulkElements ) )
+       bx = 0.0_dp
+       bxprev = 0.0_dp
+     END IF
+
+     ! A new timestep started: the bubble part left over from the last solve
+     ! of the previous timestep becomes "previous" for this one. Must happen
+     ! only once per timestep -- see the matching comment in KESolver.F90.
+     IF ( TransientSimulation .AND. ALLOCATED(bx) .AND. &
+          GetTimestep() /= BubbleTimestep ) THEN
+       bxprev = bx
+       BubbleTimestep = GetTimestep()
      END IF
 
 !------------------------------------------------------------------------------
@@ -263,6 +300,15 @@
          CALL GetScalarLocalSolution( KinEne, 'Kinetic Energy' )
          CALL GetScalarLocalSolution( KinDis, 'Kinetic Dissipation' )
 
+         ! Legacy bubbles always need this (never gated on Solver %
+         ! GlobalBubbles, see the legacy branch below); a p-bubble needs it
+         ! only when actually condensed locally.
+         IF ( TransientSimulation .AND. &
+             ( Bubbles .OR. ( nb > 0 .AND. .NOT. Solver % GlobalBubbles ) ) ) THEN
+           CALL GetScalarLocalSolution( PrevV2, 'V2', tStep=-1 )
+           CALL GetScalarLocalSolution( PrevF, 'F', tStep=-1 )
+         END IF
+
          CALL GetScalarLocalSolution( U, 'Velocity 1' )
          CALL GetScalarLocalSolution( V, 'Velocity 2' )
          CALL GetScalarLocalSolution( W, 'Velocity 3' )
@@ -270,17 +316,61 @@
 !        Get element local matrices, and RHS vectors
 !------------------------------------------------------------------------------
          CALL LocalMatrix( MASS,STIFF,FORCE,LOAD, &
-             U,V,W,Element,n,nd,ElementNodes )
+             U,V,W,Element,n,nd+nb,ElementNodes )
 !------------------------------------------------------------------------------
          TimeForce = 0.0_dp
-         IF ( TransientSimulation ) CALL Default1stOrderTime(MASS,STIFF,FORCE)
 !------------------------------------------------------------------------------
 !        Update global matrices from local matrices
 !------------------------------------------------------------------------------
          IF ( Bubbles ) THEN
-           CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+           IF ( TransientSimulation ) THEN
+             ! Same reasoning as the nb > 0 branch below, just with the legacy
+             ! "as many bubbles as nodes" convention (Nb = n rather than nb).
+             ! No Solver % GlobalBubbles check here: unlike a p-element bubble,
+             ! a legacy bubble is never given a real global dof to begin with
+             ! -- it is always locally condensed -- and Solver % GlobalBubbles
+             ! can be TRUE for reasons that have nothing to do with THIS
+             ! solver's own bubbles (SetGlobalBubblesFlag also inherits it
+             ! from another solver's p-bubble "Element" on the same Equation
+             ! or Body). Gating on it here would wrongly fall back to plain
+             ! Condensate + Default1stOrderTime -- the very combination this
+             ! whole fix replaces -- whenever such an unrelated solver happens
+             ! to be active alongside this one.
+             xl(1:2*n-1:2)     = V2(1:n)
+             xl(2:2*n:2)       = F(1:n)
+             xlprev(1:2*n-1:2) = PrevV2(1:n)
+             xlprev(2:2*n:2)   = PrevF(1:n)
+
+             boff = (Element % ElementIndex - 1) * bxStride
+             CALL CondensatePTransient( n, n, DOFs, dt, MASS, STIFF, FORCE, &
+                 xlprev(1:DOFs*n), xl(1:DOFs*n), &
+                 bxprev(boff+1:boff+DOFs*n), bx(boff+1:boff+DOFs*n) )
+           ELSE
+             IF ( TransientSimulation ) CALL Default1stOrderTime(MASS,STIFF,FORCE)
+             CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+           END IF
          ELSE IF ( nb > 0 ) THEN
-           CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
+           IF ( TransientSimulation .AND. .NOT. Solver % GlobalBubbles ) THEN
+             ! A condensed bubble's own history isn't in the global solution
+             ! vector, so Default1stOrderTime cannot form its time derivative
+             ! -- CondensatePTransient does, over the full bubble-augmented
+             ! block, before eliminating the bubble rows/columns. See the
+             ! matching comment in KESolver.F90.
+             xl(1:2*nd-1:2)     = V2(1:nd)
+             xl(2:2*nd:2)       = F(1:nd)
+             xlprev(1:2*nd-1:2) = PrevV2(1:nd)
+             xlprev(2:2*nd:2)   = PrevF(1:nd)
+
+             boff = (Element % ElementIndex - 1) * bxStride
+             CALL CondensatePTransient( nd, nb, DOFs, dt, MASS, STIFF, FORCE, &
+                 xlprev(1:DOFs*nd), xl(1:DOFs*nd), &
+                 bxprev(boff+1:boff+DOFs*nb), bx(boff+1:boff+DOFs*nb) )
+           ELSE
+             IF ( TransientSimulation ) CALL Default1stOrderTime(MASS,STIFF,FORCE)
+             CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
+           END IF
+         ELSE
+           IF ( TransientSimulation ) CALL Default1stOrderTime(MASS,STIFF,FORCE)
          END IF
          CALL DefaultUpdateEquations( STIFF, FORCE )
 !------------------------------------------------------------------------------
@@ -580,5 +670,78 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   END SUBROUTINE V2F_LDM
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Initialization for the primary solver: V2F_LDM
+!> \ingroup Solvers
+!------------------------------------------------------------------------------
+   SUBROUTINE V2F_LDM_Init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+     USE DefUtils
+
+     IMPLICIT NONE
+!------------------------------------------------------------------------------
+     TYPE(Model_t)  :: Model
+     TYPE(Solver_t) :: Solver
+
+     REAL(KIND=dp) :: dt
+     LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: SolverParams
+     LOGICAL :: Found, PBubble, LegacyBubbles
+     CHARACTER(LEN=MAX_NAME_LEN) :: str
+!------------------------------------------------------------------------------
+     SolverParams => GetSolverParams()
+
+     ! Everything below is specific to a p-element bubble ("Element =
+     ! p:.. b:.."); the legacy "Stabilization Method = Bubbles" path (no
+     ! "Element" override) doesn't go through GetElementNOFBDOFs'
+     ! Solver % GlobalBubbles branch at all, so touching the list there would
+     ! be a no-op at best and, via bandwidth optimization/mesh-level bubble
+     ! DOF bookkeeping that DOES consult Solver % GlobalBubbles regardless of
+     ! which bubble path a solver actually uses, a real (if tiny) unintended
+     ! perturbation at worst -- see the matching comment and diffuser_v2f
+     ! regression in KESolver_Init, which caught this the same way.
+     str = ListGetString( SolverParams,'Element', Found )
+     PBubble = .FALSE.
+     IF ( Found ) PBubble = INDEX( str, 'b:' ) > 0
+
+     IF ( PBubble ) THEN
+       ! Left in the global system, a V2/F bubble mode is a free
+       ! per-element unknown driven by strongly nonlinear reaction terms,
+       ! with no neighboring element to diffuse against and no floor.
+       ! Condense it out locally by default instead, like KESolver_Init and
+       ! IncompressibleNSVec already do for their own bubbles;
+       ! CondensatePTransient below makes that choice work for transient
+       ! runs too. ListAddNew, so an explicit sif setting still wins.
+       CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)
+
+       ! The recovery of a transient condensed bubble (see bx/bxprev and
+       ! CondensatePTransient in V2F_LDM, mirroring IncompressibleNSVec's
+       ! own bx/bxprev, and the identical logic in KESolver_Init) needs at
+       ! least TWO solves within one timestep. Only relevant where a
+       ! bubble is actually condensed out.
+       IF ( TransientSimulation .AND. &
+            .NOT. ListGetLogical(SolverParams,'Bubbles in Global System',Found) ) THEN
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Min Iterations', 2)
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Max Iterations', 2)
+       END IF
+     ELSE IF ( TransientSimulation ) THEN
+       ! No p-element bubble configured. The legacy "Bubbles = True" /
+       ! "Stabilization Method = Bubbles" path condenses out one bubble per
+       ! node unconditionally, and needs the very same two-solve minimum as
+       ! the p-bubble case above, for the same reason. Mirrors the
+       ! "BubblesDefault" resolution used in V2F_LDM itself.
+       LegacyBubbles = ListGetLogical( SolverParams, 'Bubbles', Found )
+       IF ( .NOT. Found ) LegacyBubbles = .TRUE.
+
+       IF ( LegacyBubbles ) THEN
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Min Iterations', 2)
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Max Iterations', 2)
+       END IF
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE V2F_LDM_Init
 !------------------------------------------------------------------------------
 

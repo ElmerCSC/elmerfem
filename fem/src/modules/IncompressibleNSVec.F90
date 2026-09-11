@@ -1979,7 +1979,14 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   ! every element, every iteration, for a degree-one basis that the nodal path
   ! already describes exactly. Reaching "n:1" needs the PDefs guard on the
   ! GaussPointsAdapt call in the solver; without it this segfaults.
-  IF( GetLogical( GetSolverParams(), 'Pressure Stabilization', Found ) ) THEN
+  !
+  ! "Stabilize"/"Stabilization Method" (GetStabilizeFlag) is a synonym for
+  ! "Pressure Stabilization" here: the same equal-order keyword pair legacy
+  ! solvers like HeatSolve/FlowSolve already use, so a case migrating from one
+  ! of those need not learn a second spelling. Neither keyword collides with
+  ! anything else this solver reads.
+  IF( GetLogical( GetSolverParams(), 'Pressure Stabilization', Found ) .OR. &
+      GetStabilizeFlag( GetSolverParams() ) ) THEN
     CALL ListAddNewString(GetSolverParams(),'Element','n:1')
     RETURN
   END IF
@@ -2339,7 +2346,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! is a different discretisation, not an optimisation, and the element it needs
   ! was already chosen back in _Init0 on the strength of this same keyword.
   !-----------------------------------------------------------------------------
-  PStab = GetLogical(Params, 'Pressure Stabilization', Found)
+  ! "Stabilize"/"Stabilization Method" is an accepted synonym -- see the
+  ! matching comment in IncompressibleNSSolver_Init0.
+  PStab = GetLogical(Params, 'Pressure Stabilization', Found) .OR. GetStabilizeFlag(Params)
   PStabCoeff = GetConstReal(Params, 'Pressure Stabilization Coefficient', Found)
   IF (.NOT. Found) PStabCoeff = 1.0_dp
 

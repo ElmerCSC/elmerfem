@@ -1473,7 +1473,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! Off by default and opt-in per solver, exactly as NavierStokes treats its own
   ! choice between 'stabilized' and 'bubbles': it is a different discretisation,
   ! not an optimisation, and it must never be selected behind a user's back.
-  PStab = ListGetLogical( SolverParams,'Pressure Stabilization', GotIt )
+  ! "Stabilize"/"Stabilization Method" is an accepted synonym for "Pressure
+  ! Stabilization" -- the same equal-order keyword pair legacy solvers like
+  ! HeatSolve/FlowSolve already resolve, and IncompressibleNSVec now also
+  ! accepts (see IncompressibleNSSolver_Init0/_init). Neither keyword collides
+  ! with anything else this solver reads.
+  PStab = ListGetLogical( SolverParams,'Pressure Stabilization', GotIt ) .OR. &
+      GetStabilizeFlag( SolverParams )
   ! The default of one is calibrated, not nominal: the per-family constants in
   ! LocalMatrix are chosen so that unity reproduces the MINI displacement, and
   ! it does so to better than 0.5% for every family, at three mesh resolutions

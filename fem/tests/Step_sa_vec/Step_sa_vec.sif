@@ -30,6 +30,7 @@ Simulation
   Restart File = "warmup.dat"
   Restart Position = 0
 
+  Output Intervals = 100
   Post File = "Step_small.vtu"
 End
 
@@ -83,7 +84,6 @@ Solver 2
   Equation = "NS-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
-  Element = "p:1"
   Pressure Stabilization = Logical True
 
   Nonlinear System Max Iterations = 1
@@ -215,6 +215,6 @@ Boundary Condition 3
 End
 
 
-Solver 2 :: Reference Norm = Real 21.176025
+Solver 2 :: Reference Norm = Real 21.0325760
 Solver 2 :: Reference Norm Tolerance = Real 1e-3
 RUN

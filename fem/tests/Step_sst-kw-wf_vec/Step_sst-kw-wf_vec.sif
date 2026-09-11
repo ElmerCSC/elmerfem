@@ -15,7 +15,9 @@ Simulation
   Simulation Type = Steady
 
   Steady State Max Iterations  = 80
-  Output Intervals = 1
+
+  Post File = Step.vtu
+  Output Intervals = 100
 End
 
 
@@ -54,7 +56,6 @@ Solver 2
   Equation = "NS-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
-  Element = "p:1"
   Pressure Stabilization = Logical True
 
   Linear System Solver = Iterative
@@ -79,6 +80,7 @@ Solver 3
   Procedure = "SSTKomega" "SSTKomega"
   Variable = "ko[Kinetic Energy:1 Kinetic Dissipation:1]"
 
+  Stabilization Method = Bubbles
   Linear System Solver = Iterative
   Linear System Max Iterations = 1000
   Linear System Iterative Method = BiCGStabL
@@ -173,6 +175,6 @@ Boundary Condition 3
 End
 
 
-Solver 3 :: Reference Norm = Real 1.49045066
+Solver 3 :: Reference Norm = Real 1.51159546
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-3
 RUN

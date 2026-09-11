@@ -1,5 +1,20 @@
 ! Twin of Step_v2f, with Solver 3 (Navier-Stokes) using IncompressibleNSVec
-! (equal-order Pressure Stabilization) instead of FlowSolve (Bubbles).
+! instead of FlowSolve. All three solvers share the same p-element bubble
+! family ("Element = p:1 b:3", same idea as Step_ke_vec) rather than mixing
+! KESolver/V2FSolver's legacy "Stabilization Method = Bubbles" with NS-Vec's
+! equal-order Pressure Stabilization.
+!
+! Both Solver 1 (V2-F) and Solver 2 (KESolver) need "Bubbles in Global System
+! = False": with "Element = p:1 b:3" and no override, bubbles default to
+! GLOBAL (uncondensed) DOFs, and each field's bubble mode is then a free
+! per-element unknown driven by strongly nonlinear reaction terms with no
+! neighboring element to diffuse against and no floor -- KESolver's K/E
+! bubbles diverge to NaN within a couple of iterations in that configuration.
+! Condensing them out locally (this setting) is the stable choice, and is
+! also what lets KESolver/V2FSolver track a proper transient bubble history
+! (see CondensatePTransient in MatrixAssembly.F90) for a future transient
+! version of this case.
+!
 Header
   Mesh DB "." "Step_v2f"
 End
@@ -12,10 +27,12 @@ Simulation
   Simulation Type = Steady
 
   Steady State Max Iterations  = 200
-  Output Intervals = 1
 
   Set Dirichlet BCs by BC Numbering = True
 
+  Coordinate Scaling(3) = 2 1 0
+
+  Output Intervals = 100
   Post File = "Step_small.vtu"
 End
 
@@ -37,7 +54,8 @@ End
 
 
 Initial Condition 1
-  Velocity 1 = 1
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2"
   Velocity 2 = 0
 
   F = Variable Coordinate 2
@@ -47,7 +65,7 @@ Initial Condition 1
    Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2"
 
   Kinetic Energy = Variable Coordinate 2
-   Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2+1"
+   Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2"
 
   Kinetic Dissipation = 3
 End
@@ -60,12 +78,13 @@ Solver 1
   Procedure = "V2FSolver" "V2F_LDM"
   Variable = V2F[V2:1 F:1]
 
-  Stabilization Method = String Bubbles
+  Element = "p:1 b:3"
+
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Relaxation Factor = 0.75
+  Nonlinear System Relaxation Factor = 0.5
 
   Linear System Solver = Direct
   Linear System Direct Method = UMFPack
@@ -80,16 +99,18 @@ Solver 2
   Procedure = "KESolver" "KESolver"
   Variable = KEpsilon[Kinetic Energy:1 Kinetic Dissipation:1]
 
-  Stabilization Method = String Bubbles
-  Nonlinear System Max Iterations = 5
+  Element = "p:1 b:3"
+  Bubbles in Global System = False
+
+  Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Relaxation Factor = Variable Time
-    Real MATC "max(min((tx/10) 0.75) 0.1)"
+  Nonlinear System Relaxation Factor = 0.5
 
   Linear System Solver = Direct
-  Linear System Direct Method = UMFPack
+  Linear System Direct Method = Umfpack
+
   Steady State Convergence Tolerance = 1.0e-4
 End
 
@@ -98,13 +119,13 @@ Solver 3
   Equation = "NS-Vec"
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
-  Pressure Stabilization = True
+  Element = "p:1 b:3"
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Newton After Iterations = 10
   Nonlinear System Newton After Tolerance  = 1.0e-2
-  Nonlinear System Relaxation Factor = 0.7
+  Nonlinear System Relaxation Factor = 0.5
 
   Linear System Solver = Direct
   Linear System Direct Method = UMFPack
@@ -129,7 +150,7 @@ Material 1
   Viscosity = 1.49691e-5
   Density = 1
 
-  KE Clip   = Real 1.0e-12
+  KE Clip   = Real 1.0e-8
   KE Model  = V2-F
   Viscosity Model = ke
 End
@@ -229,6 +250,6 @@ Boundary Condition 3
 End
 
 
-Solver 3 :: Reference Norm = Real 21.039870
+Solver 3 :: Reference Norm = Real 21.0611512
 Solver 3 :: Reference Norm Tolerance = Real 1e-3
 RUN

@@ -59,6 +59,10 @@
 #include "mainwindow.h"
 #include "newprojectdialog.h"
 
+#if defined(RELOCATE_PREFIX)
+#  include "pathtools.h"
+#endif
+
 #ifdef EG_VTK
 #include "vtkpost/vtkpost.h"
 VtkPost *vtkp;
@@ -7230,12 +7234,39 @@ void MainWindow::compileSolverSlot() {
   }
 
 #ifdef _WIN32
-  QString compilerWrapper(QString(qgetenv("ELMER_HOME")) + "\\bin\\elmerf90.exe");
+  QString workingDir;
+  QString compilerWrapper;
+  QByteArray elmer_home = qgetenv("ELMER_HOME");
+  if (! elmer_home.isEmpty())
+  {
+    workingDir =  QString(elmer_home) + "/bin";
+    compilerWrapper = workingDir + "/elmerf90.exe";
+  }
+  else
+  {
+#  if defined(RELOCATE_PREFIX)
+    char exe_path[MAX_PATH];
+    if (get_executable_path(nullptr, exe_path, MAX_PATH) < 1)
+    {
+      logMessage("Unable to determine path to executable. Set the environment variable ELMER_HOME to use Run->compiler");
+      return;
+    }
+    // Assume the compiler wrapper is in the same directory as ElmerGUI.exe.
+    strip_n_suffix_folders(exe_path, 1);
+    workingDir = QString(exe_path);
+    compilerWrapper = workingDir + "/elmerf90.exe";
+#  else
+    logMessage("The environment variable ELMER_HOME must be set to use Run->compiler");
+    return;
+#  endif
+  }
+
   QStringList args;
   args << "-o";
   args << fileName.left(fileName.lastIndexOf(".")) + ".dll";
   args << fileName;
 
+  compiler->setWorkingDirectory(workingDir);
   compiler->start(compilerWrapper, args);
 #else
   logMessage("Run->compiler is currently not implemented on this platform");
@@ -7280,10 +7311,11 @@ void MainWindow::compilerStderrSlot() {
 
 // Signal (int) emitted by compiler when finished:
 //-----------------------------------------------------------------------------
-void MainWindow::compilerFinishedSlot(int) {
-  logMessage("Ready");
-  solverLogWindow->statusBar()->showMessage("Ready");
-  solverLogWindow->getTextEdit()->append("Ready");
+void MainWindow::compilerFinishedSlot(int exitCode) {
+  QString msg = QString("Compilation finished with exit code %1").arg(exitCode);
+  logMessage(msg);
+  solverLogWindow->statusBar()->showMessage(msg);
+  solverLogWindow->getTextEdit()->append(msg);
 }
 
 //*****************************************************************************
