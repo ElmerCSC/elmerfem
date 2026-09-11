@@ -13,7 +13,16 @@ IF(NOT(HAVE_ADIOS2))
 ENDIF()
 
 LIST(APPEND SKIP_LIST contrib)
+LIST(APPEND SKIP_LIST TurbulenceModels)
 ADD_ELMER_MODULES(SKIP ${SKIP_LIST})
+
+# Turbulence model solvers live under TurbulenceModels/ for source tree
+# tidiness, but each is still its own independent solver module/library.
+FOREACH(_TurbMod KESolver Komega SSTKomega Spalart-Allmaras V2FSolver)
+  IF(NOT INCLUDE_ELMER_MODULES OR _TurbMod IN_LIST INCLUDE_ELMER_MODULES)
+    ADD_ELMER_MODULE(${_TurbMod} SOURCES TurbulenceModels/${_TurbMod}.F90)
+  ENDIF()
+ENDFOREACH()
 
 IF(WITH_CONTRIB)
   ADD_SUBDIRECTORY(contrib)
