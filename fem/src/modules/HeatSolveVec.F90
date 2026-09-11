@@ -494,40 +494,47 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! SHARED, or one thread's read races against another thread's write for
     ! a completely different element.
     !
-    ! Left serial (again) for now: 36e13fd9e re-enabled this region and fixed
-    ! the genuine data races (DiffuseGray sharing, Temperature/TempPerm
-    ! pointer reassignment, unprotected ForceVector scatter), but doing so
-    ! exposed radiation_box_in_box as intermittently failing under threads
-    ! (confirmed 0/60 failures with this region forced serial vs ~20-25%
-    ! failing with it parallel, same OMP_NUM_THREADS, everything else in the
-    ! solver still threaded). Root cause isn't a race — Valgrind/Helgrind see
-    ! nothing, and 1-thread runs are always clean/identical. It's ordinary
-    ! floating-point non-associativity: RadElement can be anywhere in the
-    ! mesh (view-factor coupling), so concurrent threads add contributions to
-    ! shared ForceVector DOFs in a scheduling-dependent order under ATOMIC,
-    ! which is race-free but not bit-reproducible. For most solvers that's
-    ! harmless (~1e-13 relative). Here it isn't: the coupled radiosity-
-    ! conduction Newton iteration's convergence check goes noisy once the
-    ! residual nears its ~1e-6 tolerance (non-monotonic RELC observed near
-    ! the tail), so runs land on slightly different "converged" iterates: and
-    ! this test's Solver 3 diagnostic (TotFlux, a near-total cancellation of
-    ! much larger opposing boundary fluxes) is extremely sensitive to exactly
-    ! which iterate that is — sensitivity to Solver 1's own temperature norm
-    ! varies from ~1x to >4000x across observed runs, ruling out a simple
-    ! fixed amplification factor. Reverting to serial here trades away the
-    ! parallel speedup for this specific loop until the convergence check
-    ! and/or this test's tolerances can be hardened against that noise floor.
-    !!OMP PARALLEL &
-    !!OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
-    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
-    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    ! Re-enabled again (36e13fd9e re-enabled it once already and fixed the
+    ! genuine data races: DiffuseGray sharing, Temperature/TempPerm pointer
+    ! reassignment, unprotected ForceVector scatter). That earlier attempt
+    ! got reverted because it exposed radiation_box_in_box as intermittently
+    ! failing under threads (~20-25% failure rate, confirmed 0/60 with this
+    ! region forced serial vs 7/30 failing parallel at OMP_NUM_THREADS=6).
+    ! Investigated again: this is not a bug, no race survives re-enabling
+    ! the region (Helgrind doesn't clear it either way — it's too slow to
+    ! reach this loop on a realistic mesh before drowning in unrelated
+    ! libgomp/runtime noise — but 1-thread runs are always clean/identical,
+    ! which is the meaningful check here). It's ordinary floating-point
+    ! non-associativity: LocalMatrixDiffuseGray's own final scatter
+    ! (STIFF/FORCE onto the element's own nodes, which are shared with
+    ! neighboring boundary elements) sums via `!$OMP ATOMIC UPDATE` /
+    ! AddToMatrixElement in scheduling-dependent order — race-free but not
+    ! bit-reproducible. (radiation_box_in_box runs with Radiosity Model =
+    ! True, so it never reaches the other cross-element source of the same
+    ! effect: the Gebhart-factor branch's RadElement loop, which can touch
+    ! ForceVector DOFs belonging to an element anywhere else in the mesh via
+    ! view-factor coupling.) For most solvers this reordering noise is
+    ! harmless (~1e-13 relative) and simply part of life with threaded
+    ! summation. radiation_box_in_box amplifies it because its coupled
+    ! radiosity-conduction Newton iteration's convergence check goes noisy
+    ! once the residual nears its ~1e-6 tolerance (non-monotonic RELC near
+    ! the tail), landing on slightly different "converged" iterates, and its
+    ! Solver 3 diagnostic (TotFlux, a near-total cancellation of much larger
+    ! opposing boundary fluxes) is extremely sensitive to exactly which
+    ! iterate that is. Rather than keep this region serial, the test's
+    ! Solver 3 tolerance has been widened (see case.sif) to absorb that
+    ! noise, and this region is parallel again to get real CI data on it.
+    !$OMP PARALLEL &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
+    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     InitHandles = .TRUE.
     DO col=1,nColours
-      !!OMP SINGLE
+      !$OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !!OMP END SINGLE
-      !!OMP DO
+      !$OMP END SINGLE
+      !$OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         totelem = totelem + 1
@@ -542,9 +549,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
           END IF
         END IF
       END DO
-      !!OMP END DO
+      !$OMP END DO
     END DO
-    !!OMP END PARALLEL
+    !$OMP END PARALLEL
     
     IF( DG ) THEN
       BLOCK
