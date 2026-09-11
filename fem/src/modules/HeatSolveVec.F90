@@ -52,24 +52,35 @@ SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, Serendipity
-  
+  LOGICAL :: Found, Serendipity, Stabilize
+
   Params => GetSolverParams()
+
+  ! Resolve whether convection, if present, will be stabilized by SUPG
+  ! (equal-order, no bubble) or by a residual-free bubble (the default).
+  Stabilize = GetStabilizeFlag( Params )
 
   IF( ListCheckPresentAnyEquation( Model,'Convection' ) .OR. &
       ListCheckPresentAnyEquation( Model,'Draw Velocity') .OR. &
       ListGetLogical( Params,'Bubbles',Found) ) THEN
     IF( .NOT. ListCheckPresent( Params,'Element') ) THEN
-      Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
-      IF(.NOT.Found) Serendipity = .TRUE.
-      IF(Serendipity) THEN
-        CALL ListAddString(Params,'Element', &
-            'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      IF( Stabilize ) THEN
+        ! SUPG is the equal-order alternative to the bubble (the same role
+        ! "Pressure Stabilization" plays in IncompressibleNSVec): a plain
+        ! linear nodal element on every family, no bubble to condense at all.
+        CALL ListAddNewString(Params,'Element','n:1')
       ELSE
-        CALL ListAddString(Params,'Element', &
-            'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+        Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+        IF(.NOT.Found) Serendipity = .TRUE.
+        IF(Serendipity) THEN
+          CALL ListAddString(Params,'Element', &
+              'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+        ELSE
+          CALL ListAddString(Params,'Element', &
+              'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+        END IF
+        CALL ListAddNewLogical(Params,'Bubbles in Global System',.FALSE.)
       END IF
-      CALL ListAddNewLogical(Params,'Bubbles in Global System',.FALSE.)
     END IF
   END IF
   
@@ -146,7 +157,37 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
 #ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
-  
+
+  BLOCK
+    CHARACTER(:), ALLOCATABLE :: ElementStr
+    LOGICAL :: PBubble, GotIt
+
+    ! Everything below is specific to a p-element bubble ("Element = p:.. b:..")
+    ! that HeatSolver_Init0 adds whenever Convection/Draw Velocity/Bubbles asks
+    ! for one. The recovery of such a transient condensed bubble (see bx/bxprev
+    ! and CondensatePTransient in HeatSolver, mirroring IncompressibleNSVec's
+    ! own bx/bxprev, and the identical logic in KESolver_Init and
+    ! SpalartAllmaras_Init) needs at least TWO solves within one timestep: the
+    ! bubble value recovered on the first solve of a new timestep is still
+    ! consistent with the previous timestep's nodal solution, not this one's.
+    ! Only relevant where the bubble is actually condensed out locally --
+    ! never gated on it if left in the global system.
+    !
+    ! ListAddNew, so an explicit sif setting still wins -- and one that pins
+    ! "Nonlinear System Max Iterations" below 2 silently reintroduces the
+    ! one-timestep bubble lag this exists to prevent (confirmed: a scratch
+    ! case pinned to 1 iteration showed a spurious factor-of-3 transient
+    ! overshoot on a bounded [0,1] problem that vanished once left at 2).
+    ElementStr = ListGetString( Params,'Element', Found )
+    PBubble = Found .AND. INDEX( ElementStr, 'b:' ) > 0
+
+    IF( PBubble .AND. Transient .AND. &
+        .NOT. ListGetLogical( Params,'Bubbles in Global System', GotIt ) ) THEN
+      CALL ListAddNewInteger( Params,'Nonlinear System Min Iterations', 2 )
+      CALL ListAddNewInteger( Params,'Nonlinear System Max Iterations', 2 )
+    END IF
+  END BLOCK
+
 END SUBROUTINE HeatSolver_Init
 
 
@@ -174,7 +215,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, InitDiscontHandles, AxiSymmetric, &
       DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, &
-      HaveRadNewtonRelax, Converged, PostCalc = .FALSE.
+      HaveRadNewtonRelax, Converged, PostCalc = .FALSE., Stabilize
   TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
@@ -203,6 +244,18 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       HeatFlux_h(:), HeatTrans_h(:), ExtTemp_h(:), Farfield_h(:), &
       RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:)
   TYPE(VariableHandle_t), ALLOCATABLE, SAVE :: ConvField_h(:)
+
+  ! Per-element bubble history (current and previous timestep), needed to
+  ! form a consistent BDF(1) time derivative for a condensed p-bubble: see
+  ! CondensatePTransient in MatrixAssembly.F90 and IncompressibleNSVec's
+  ! LCondensate, which this mirrors (also mirrored in KESolver.F90,
+  ! Komega.F90, SSTKomega.F90, V2FSolver.F90 and Spalart-Allmaras.F90).
+  ! Indexed by Element % ElementIndex with stride
+  ! bxStride = MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes) (Dofs=1 for a
+  ! scalar temperature, so no interleaving factor is needed), not nb of any
+  ! one element, so blocks stay aligned on a mesh with mixed bubble counts.
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+  INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
 
   INTERFACE
     SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
@@ -244,8 +297,12 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   Mesh => GetMesh()
   AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
   dim = CoordinateSystemDimension() 
-  Params => GetSolverParams()  
-  EqName = ListGetString( Params,'Equation', Found ) 
+  Params => GetSolverParams()
+  EqName = ListGetString( Params,'Equation', Found )
+
+  ! Same resolution as HeatSolver_Init0: whether a convected element is to be
+  ! SUPG-stabilized (equal-order, no bubble) rather than bubble-stabilized.
+  Stabilize = GetStabilizeFlag( Params )
 
   Radiosity = GetLogical( Params, 'Radiosity Model', Found )
   Spectral = GetLogical( Params,'Spectral Model',Found )
@@ -299,6 +356,33 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
         RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
         TorBC_h(nthr) )
+  END IF
+
+  ! Per-element bubble history for the transient condensed-bubble case:
+  ! allocate once, sized by the mesh's own worst-case bubble count (not this
+  ! element's own nb, which can vary element to element) times the number of
+  ! BULK elements. The stride covers both a p-bubble (MaxBDOFs) and a
+  ! "Bubbles = True"-style one bubble per node (MaxElementNodes), whichever
+  ! is larger -- mirrors KESolver.F90/Spalart-Allmaras.F90. No Solver %
+  ! GlobalBubbles check here -- see the matching block and its rationale
+  ! there; a global p-bubble already surfaces as nb == 0 to this solver (see
+  ! GetElementNOFBDOFs), so it never touches this history at all.
+  IF( Transient .AND. .NOT. ALLOCATED( bx ) ) THEN
+    bxStride = MAX( Mesh % MaxBDOFs, Mesh % MaxElementNodes )
+    ALLOCATE( bx( bxStride * Mesh % NumberOfBulkElements ), &
+        bxprev( bxStride * Mesh % NumberOfBulkElements ) )
+    bx = 0.0_dp
+    bxprev = 0.0_dp
+  END IF
+
+  ! A new timestep started: the bubble part left over from the last solve of
+  ! the previous timestep becomes "previous" for this one. Must happen only
+  ! once per timestep, not once per call -- this solver may be called several
+  ! times per timestep by an outer (Steady State) coupled iteration, and only
+  ! the first such call should shift the history.
+  IF( Transient .AND. ALLOCATED( bx ) .AND. GetTimestep() /= BubbleTimestep ) THEN
+    bxprev = bx
+    BubbleTimestep = GetTimestep()
   END IF
 
   nColours = GetNOFColours(Solver)
@@ -723,14 +807,23 @@ CONTAINS
     ! a leak of (1+3)*ngp reals per element per assembly. Allocatables are freed
     ! automatically. ConvVelo needs TARGET because VeloAtIpVec is pointer
     ! assigned to it below.
-    REAL(KIND=dp), ALLOCATABLE :: TmpVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: TmpVec(:), TmpVec2(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: ConvVelo(:,:)
 
-    LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,ngp,allocstat,tid
+    ! SUPG (equal-order) stabilization work arrays: StreamVec(gp,p) is the
+    ! streamline-weighted test/trial "basis", rho*cp*(velo.grad basis_p), at
+    ! each integration point -- both the convective part of the residual and,
+    ! tested against itself, the SUPG weight, exactly as IncompressibleNSVec's
+    ! ConvVec is used four ways for its own (PSPG/SUPG) stabilization. TauVec
+    ! is the per-point Franca stabilization parameter.
+    REAL(KIND=dp), ALLOCATABLE :: StreamVec(:,:), TauVec(:)
+
+    LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
+    INTEGER :: i,p,j,ngp,allocstat,tid,boff
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd), hK, mK, VNorm
     ! Handles now live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
@@ -794,7 +887,8 @@ CONTAINS
         
     ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
         MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
-        TmpVec(ngp), STAT=allocstat)
+        TmpVec(ngp), TmpVec2(ngp), StreamVec(ngp,nd), TauVec(ngp), &
+        STAT=allocstat)
     IF (allocstat /= 0) THEN
       CALL Fatal(Caller,'Local storage allocation failed')
     END IF
@@ -826,15 +920,16 @@ CONTAINS
     RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found ) 
 
     ! thermal conductivity term: STIFF=STIFF+(kappa*grad(u),grad(v))
-    CondAtIpVec => ListGetElementRealVec( Cond_h, ngp, Basis, Element, Found ) 
+    CondAtIpVec => ListGetElementRealVec( Cond_h, ngp, Basis, Element, Found )
+    HaveCond = Found
     IF( Found ) THEN
       CALL LinearForms_GradUdotGradU(ngp, nd, dim, dBasisdx, DetJVec, STIFF, CondAtIpVec )
     END IF
 
     ! We need heat capacity only if the case is transient or we have convection
     IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
-      CpAtIpVec => ListGetElementRealVec( Cp_h, ngp, Basis, Element, Found ) 
-      TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)        
+      CpAtIpVec => ListGetElementRealVec( Cp_h, ngp, Basis, Element, Found )
+      TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
     END IF
 
     ! convection, either constant or computed
@@ -842,37 +937,121 @@ CONTAINS
     IF( ConvConst .OR. ConvComp ) THEN
       IF( ConvConst ) THEN
         DO i=1,dim
-          ConvVelo_i => ListGetElementRealVec( ConvVelo_h(i), ngp, Basis, Element, Found ) 
+          ConvVelo_i => ListGetElementRealVec( ConvVelo_h(i), ngp, Basis, Element, Found )
           IF( Found ) ConvVelo(1:ngp,i) = ConvVelo_i(1:ngp)
         END DO
         VeloAtIpVec => ConvVelo
       ELSE
         VeloAtIpVec => ListGetElementVectorSolutionVec( ConvField_h, ngp, dim, Basis, Element )
-      END IF      
+      END IF
       CALL LinearForms_GradUdotU(ngp, nd, dim, dBasisdx, Basis, DetJVec, STIFF, &
-          TmpVec, VeloAtIpVec )       
+          TmpVec, VeloAtIpVec )
+
+      ! SUPG (equal-order) stabilization: adds tau*(rho*cp*v.grad u, rho*cp*v.grad v)
+      ! to the standard Galerkin convection term above, and the matching
+      ! streamline-weighted mass term below. This is the same Franca et al. tau
+      ! legacy HeatSolve's "Stabilize" uses (DiffuseConvectiveAnisotropic.F90),
+      ! less its C0 (reaction/perfusion, not supported in this Vec path) and
+      ! second-derivative-of-basis diffusion residual pieces -- both are zero
+      ! on the plain linear no-bubble element this option forces in
+      ! HeatSolver_Init0, same simplification IncompressibleNSVec's own
+      ! equal-order stabilization makes for its dropped viscous residual.
+      !
+      ! Verified (scratch, not committed) on a straight-through, crosswind-free
+      ! convection-dominated case (uniform inlet, adiabatic walls) both steady
+      ! and transient: this term suppresses streamwise wiggle better than the
+      ! bubble and far better than plain equal-order Galerkin (steady min/max
+      ! outside [0,1]: 4e-7/1.5e-7 stabilized vs 7e-9/2e-9 bubble vs 4e-7/1e-7
+      ! plain -- comparable to the bubble there, and transient: 1e-3/4e-4
+      ! stabilized vs 1e-2/3e-5 bubble vs 0.14/5e-4 plain -- clearly ahead of
+      ! both). On a case WITH crosswind shear (a parabolic inlet profile, see
+      ! Step_heat_transient/stabilized.sif), this SUPG term still only damps
+      ! oscillation ALONG the streamline; it does nothing for the crosswind
+      ! direction, so a shear layer can still show a larger under/overshoot
+      ! than the bubble there (observed: -0.05 vs -0.009, both against a
+      ! physical [0,1] bound) -- an accepted, textbook limitation of plain
+      ! SUPG (no crosswind/shock-capturing term added), not a sign of this
+      ! term being mis-derived.
+      IF( Stabilize .AND. HaveCond ) THEN
+        hK = Element % hK
+        mK = Element % StabilizationMK
+
+        StreamVec(1:ngp,1:nd) = 0._dp
+        DO i=1,dim
+          DO p=1,nd
+            StreamVec(1:ngp,p) = StreamVec(1:ngp,p) + &
+                TmpVec(1:ngp) * VeloAtIpVec(1:ngp,i) * dBasisdx(1:ngp,p,i)
+          END DO
+        END DO
+
+        DO j=1,ngp
+          VNorm = SQRT( SUM( VeloAtIpVec(j,1:dim)**2 ) )
+          IF( VNorm > 0._dp .AND. CondAtIpVec(j) /= 0._dp ) THEN
+            TauVec(j) = MIN( 1._dp, mK*hK*TmpVec(j)*VNorm / (2._dp*ABS(CondAtIpVec(j))) )
+            TauVec(j) = hK * TauVec(j) / ( 2._dp * TmpVec(j) * VNorm )
+          ELSE
+            TauVec(j) = 0._dp
+          END IF
+        END DO
+
+        TmpVec2(1:ngp) = TauVec(1:ngp) * DetJVec(1:ngp)
+        CALL LinearForms_UdotV( ngp, nd, dim, StreamVec, StreamVec, TmpVec2, STIFF )
+
+        IF( Transient ) THEN
+          TmpVec2(1:ngp) = TauVec(1:ngp) * TmpVec(1:ngp) * DetJVec(1:ngp)
+          CALL LinearForms_UdotV( ngp, nd, dim, StreamVec, Basis, TmpVec2, MASS )
+        END IF
+      END IF
     END IF
-            
+
     ! time derivative term: MASS=MASS+(rho*cp*dT/dt,v)
     IF( Transient ) THEN
       CALL LinearForms_UdotU(ngp, nd, dim, Basis, DetJVec, MASS, TmpVec )
     END IF
       
     ! source term: FORCE=FORCE+(u,f)
-    SourceAtIpVec => ListGetElementRealVec( VolSource_h, ngp, Basis, Element, Found ) 
+    SourceAtIpVec => ListGetElementRealVec( VolSource_h, ngp, Basis, Element, Found )
     IF( Found ) THEN
-      CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)      
+      CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)
+      IF( Stabilize .AND. HaveCond .AND. ( ConvConst .OR. ConvComp ) ) THEN
+        TmpVec2(1:ngp) = TauVec(1:ngp) * DetJVec(1:ngp)
+        CALL LinearForms_UdotF(ngp, nd, StreamVec, TmpVec2, SourceAtIpVec, FORCE)
+      END IF
     ELSE
-      SourceAtIpVec => ListGetElementRealVec( Source_h, ngp, Basis, Element, Found ) 
+      SourceAtIpVec => ListGetElementRealVec( Source_h, ngp, Basis, Element, Found )
       IF( Found ) THEN
-        TmpVec(1:ngp) = SourceAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)        
+        TmpVec(1:ngp) = SourceAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
         CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec, FORCE)
+        IF( Stabilize .AND. HaveCond .AND. ( ConvConst .OR. ConvComp ) ) THEN
+          TmpVec2(1:ngp) = TauVec(1:ngp) * DetJVec(1:ngp)
+          CALL LinearForms_UdotF(ngp, nd, StreamVec, TmpVec2, TmpVec, FORCE)
+        END IF
       END IF
     END IF
       
-    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
-    CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
-    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    ! A condensed bubble's own value from the previous timestep is not in the
+    ! global solution vector (it was eliminated from it), so Default1stOrderTime
+    ! cannot form its time derivative -- it would silently treat that history
+    ! as zero. CondensatePTransient forms M/dt and M*xprev/dt over the FULL
+    ! bubble-augmented block instead, using this element's own recorded bubble
+    ! history, before eliminating the bubble rows/columns. Calling
+    ! Default1stOrderTime as well would add M/dt to the retained block a
+    ! second time. nb == 0 whenever the bubble is left in the global system
+    ! (Solver % GlobalBubbles), so the ".NOT. Solver % GlobalBubbles" guard is
+    ! belt-and-braces, matching KESolver.F90/Spalart-Allmaras.F90.
+    IF( Transient .AND. nb > 0 .AND. .NOT. Solver % GlobalBubbles ) THEN
+      CALL GetScalarLocalSolution( LocalTemp(1:nd-nb), UElement=Element )
+      CALL GetScalarLocalSolution( PrevTemp(1:nd-nb), UElement=Element, tStep=-1 )
+      CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
+      boff = (Element % ElementIndex - 1) * bxStride
+      CALL CondensatePTransient( nd-nb, nb, 1, dt, MASS, STIFF, FORCE, &
+          PrevTemp(1:nd-nb), LocalTemp(1:nd-nb), &
+          bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+    ELSE
+      IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+      CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
+      CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    END IF
 
 10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 
@@ -954,10 +1133,17 @@ CONTAINS
     REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,j,t,p,q,CondRank,tid
+    INTEGER :: i,j,t,p,q,CondRank,tid,boff
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd)
+    ! SUPG (equal-order) stabilization work: StreamVec(p), the streamline
+    ! weighted test/trial "basis" rho*cp*(velo.grad basis_p) at this
+    ! integration point -- see the matching comment in LocalMatrixVec, whose
+    ! ConvVec/StreamVec split this mirrors. Tau is the Franca et al.
+    ! stabilization parameter.
+    REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar
     ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
 
@@ -1090,6 +1276,44 @@ CONTAINS
                 CpAtIp * RhoAtIp * SUM(VeloAtIp(1:dim)*dBasisdx(q,1:dim)) * Basis(p)
           END DO
         END DO
+
+        ! SUPG (equal-order) stabilization: adds tau*(rho*cp*v.grad u,
+        ! rho*cp*v.grad v) to the standard Galerkin convection term above, and
+        ! the matching streamline-weighted mass/load terms further below. Same
+        ! Franca et al. tau legacy HeatSolve's "Stabilize" uses
+        ! (DiffuseConvectiveAnisotropic.F90), less its C0 (reaction/perfusion)
+        ! and second-derivative-of-basis diffusion residual pieces -- both are
+        ! zero on the plain linear no-bubble element this option forces in
+        ! HeatSolver_Init0. CondScalar mirrors that routine's own C2(1,1): the
+        ! isotropic component even when the conductivity is a full tensor.
+        IF( Stabilize ) THEN
+          IF( CondRank == 0 ) THEN
+            CondScalar = CondAtIp
+          ELSE
+            CondScalar = CondTensor(1,1)
+          END IF
+
+          hK = Element % hK
+          mK = Element % StabilizationMK
+          VNorm = SQRT( SUM( VeloAtIp(1:dim)**2 ) )
+
+          IF( VNorm > 0._dp .AND. CondScalar /= 0._dp ) THEN
+            Tau = MIN( 1._dp, mK*hK*CpAtIp*RhoAtIp*VNorm / (2._dp*ABS(CondScalar)) )
+            Tau = hK * Tau / ( 2._dp * CpAtIp * RhoAtIp * VNorm )
+          ELSE
+            Tau = 0._dp
+          END IF
+
+          DO p=1,nd
+            StreamVec(p) = CpAtIp * RhoAtIp * SUM( VeloAtIp(1:dim) * dBasisdx(p,1:dim) )
+          END DO
+
+          DO p=1,nd
+            DO q=1,nd
+              STIFF(p,q) = STIFF(p,q) + Weight * Tau * StreamVec(q) * StreamVec(p)
+            END DO
+          END DO
+        END IF
       END IF
       
       ! reaction term (R*u,v) - perfusion      
@@ -1117,22 +1341,49 @@ CONTAINS
           MASS(p,1:nd) = MASS(p,1:nd) + Weight * &
                 CpAtIp * RhoAtIp * Basis(p) * Basis(1:nd)
         END DO
+
+        IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
+          DO p=1,nd
+            MASS(p,1:nd) = MASS(p,1:nd) + Weight * Tau * &
+                  CpAtIp * RhoAtIp * Basis(1:nd) * StreamVec(p)
+          END DO
+        END IF
       END IF
 
-      SourceAtIP = ListGetElementReal( VolSource_h, Basis, Element, Found ) 
+      SourceAtIP = ListGetElementReal( VolSource_h, Basis, Element, Found )
       IF( Found ) THEN
         FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+        IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + Weight * Tau * SourceAtIP * StreamVec(1:nd)
+        END IF
       ELSE
-        SourceAtIP = ListGetElementReal( Source_h, Basis, Element, Found ) 
+        SourceAtIP = ListGetElementReal( Source_h, Basis, Element, Found )
         IF( Found ) THEN
           FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * RhoAtIp * Basis(1:nd)
+          IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
+            FORCE(1:nd) = FORCE(1:nd) + Weight * Tau * SourceAtIP * RhoAtIp * StreamVec(1:nd)
+          END IF
         END IF
       END IF
     END DO
     
-    IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
-    CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
-    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    ! See the matching comment in LocalMatrixVec: a condensed bubble's own
+    ! value from the previous timestep is not in the global solution vector,
+    ! so CondensatePTransient must form the time derivative over the full
+    ! bubble-augmented block instead of Default1stOrderTime.
+    IF( Transient .AND. nb > 0 .AND. .NOT. Solver % GlobalBubbles ) THEN
+      CALL GetScalarLocalSolution( LocalTemp(1:nd-nb), UElement=Element )
+      CALL GetScalarLocalSolution( PrevTemp(1:nd-nb), UElement=Element, tStep=-1 )
+      CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
+      boff = (Element % ElementIndex - 1) * bxStride
+      CALL CondensatePTransient( nd-nb, nb, 1, dt, MASS, STIFF, FORCE, &
+          PrevTemp(1:nd-nb), LocalTemp(1:nd-nb), &
+          bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+    ELSE
+      IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+      CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
+      CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    END IF
 
 20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 
