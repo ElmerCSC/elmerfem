@@ -48,6 +48,8 @@
 !------------------------------------------------------------------------------
 MODULE IterSolve
 
+!$ USE omp_lib ! conditionally, for the thread ids in the dot products below
+
    USE Lists
    USE BandMatrix
    USE IterativeMethods
@@ -337,6 +339,33 @@ CONTAINS
 
 !> Computed masked dot product.
 !----------------------------------------------------------------------
+!> The inner products below are the reason a threaded solve is not
+!> reproducible run to run unless they are written this way. With
+!> REDUCTION(+:s) the per-thread partial sums are combined in the order the
+!> threads happen to arrive, so the last bits of every dot product are a
+!> function of the scheduling, not of the data. A Krylov method turns that
+!> into a different iterate: BiCGStab on ContactBlunt2Djump stopped between
+!> 65 and 67 iterations from the same bitwise identical matrix and rhs, and
+!> the solution moved by ~1e-6 relative -- far above the 1e-8 linear
+!> tolerance, since the contact system is ill conditioned. The contact
+!> iteration then took anywhere from 23 to 32 nonlinear steps against a
+!> limit of 40, i.e. the test was passing on luck.
+!>
+!> Accumulating into per-thread slots under SCHEDULE(STATIC) and summing the
+!> slots in thread order instead makes the result bitwise reproducible for a
+!> given thread count. It does NOT make it agree with the serial sum, and is
+!> not meant to: reproducibility across runs is what a regression test needs.
+!>
+!> END DO NOWAIT matters here. A thread writes only its own slot, and the join
+!> at END PARALLEL already orders those writes against the serial sum that
+!> follows, so the barrier at END DO buys nothing -- and it is not free: on a
+!> 5141 long vector, the length of the ContactBlunt2Djump system, keeping it
+!> cost 21% at four threads and 15% at two against the REDUCTION this replaced,
+!> while with NOWAIT the same measurement is within 1-2% of it. Longer vectors
+!> are memory bound and show no difference either way; at one thread this path
+!> skips the parallel region altogether and is ~11% faster than the original.
+!----------------------------------------------------------------------
+!----------------------------------------------------------------------
 FUNCTION MaskedDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 !----------------------------------------------------------------------
   IMPLICIT NONE
@@ -358,13 +387,41 @@ FUNCTION MaskedDotProd( ndim, x, xind, y, yind ) RESULT(dres)
     CALL CreateEdgeSkipMask(SkipMask)
   END IF
     
-  dres = 0
-  !$OMP PARALLEL DO REDUCTION(+:dres)
-  DO i = 1, ndim
-    IF(SkipMask(i)) CYCLE
-    dres = dres + y(i) * x(i)
-  END DO
-  !$OMP END PARALLEL DO 
+  BLOCK
+    REAL(KIND=dp), ALLOCATABLE :: part(:)
+    REAL(KIND=dp) :: s
+    INTEGER :: nthr, thr
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+
+    IF( nthr <= 1 ) THEN
+      dres = 0
+      DO i=1,ndim
+      IF(SkipMask(i)) CYCLE
+        dres = dres + y(i) * x(i)
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,s) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      s = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i=1,ndim
+      IF(SkipMask(i)) CYCLE
+        s = s + y(i) * x(i)
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = s
+!$OMP END PARALLEL
+      dres = 0
+      DO i=1,nthr
+        dres = dres + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+  END BLOCK
 !!!CALL SParActiveSUM(dres,0)
 
 !----------------------------------------------------------------------
@@ -393,13 +450,41 @@ FUNCTION MaskedNorm( ndim, x, xind ) RESULT(dres)
     CALL CreateEdgeSkipMask(SkipMask)
   END IF
 
-  dres = 0
-  !$OMP PARALLEL DO REDUCTION(+:dres)
-  DO i = 1, ndim
-    IF(SkipMask(i)) CYCLE
-    dres = dres + x(i)*x(i)
-  END DO
-  !$OMP END PARALLEL DO
+  BLOCK
+    REAL(KIND=dp), ALLOCATABLE :: part(:)
+    REAL(KIND=dp) :: s
+    INTEGER :: nthr, thr
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+
+    IF( nthr <= 1 ) THEN
+      dres = 0
+      DO i=1,ndim
+      IF(SkipMask(i)) CYCLE
+        dres = dres + x(i)*x(i)
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,s) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      s = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i=1,ndim
+      IF(SkipMask(i)) CYCLE
+        s = s + x(i)*x(i)
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = s
+!$OMP END PARALLEL
+      dres = 0
+      DO i=1,nthr
+        dres = dres + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+  END BLOCK
 !!!CALL SParActiveSUM(dres,0)
   dres = SQRT(dres)
 
@@ -426,12 +511,39 @@ END FUNCTION MaskedNorm
        RETURN
     END IF
 
-    dres = 0
-!$OMP PARALLEL do shared(x,y) reduction(+:dres)
-    DO i=1,ndim
-       dres = dres + x(i) * y(i)
-    END DO
-!$OMP END PARALLEL DO
+    BLOCK
+    REAL(KIND=dp), ALLOCATABLE :: part(:)
+    REAL(KIND=dp) :: s
+    INTEGER :: nthr, thr
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+
+    IF( nthr <= 1 ) THEN
+      dres = 0
+      DO i=1,ndim
+        dres = dres + x(i) * y(i)
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,s) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      s = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i=1,ndim
+        s = s + x(i) * y(i)
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = s
+!$OMP END PARALLEL
+      dres = 0
+      DO i=1,nthr
+        dres = dres + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+    END BLOCK
 
 !----------------------------------------------------------------------
   END FUNCTION Otmp_ddot
@@ -456,12 +568,39 @@ END FUNCTION MaskedNorm
        RETURN
     END IF
 
-    zres = 0
-!$OMP PARALLEL do shared(x,y) reduction(+:zres)
-    DO i=1,ndim
-       zres = zres + DCONJG(x(i)) * y(i)
-    END DO
-!$OMP END PARALLEL DO
+    BLOCK
+    COMPLEX(KIND=dp), ALLOCATABLE :: part(:)
+    COMPLEX(KIND=dp) :: s
+    INTEGER :: nthr, thr
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+
+    IF( nthr <= 1 ) THEN
+      zres = 0
+      DO i=1,ndim
+        zres = zres + DCONJG(x(i)) * y(i)
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,s) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      s = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i=1,ndim
+        s = s + DCONJG(x(i)) * y(i)
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = s
+!$OMP END PARALLEL
+      zres = 0
+      DO i=1,nthr
+        zres = zres + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+    END BLOCK
 
 !----------------------------------------------------------------------
   END FUNCTION Otmp_zdotc
@@ -495,12 +634,39 @@ END FUNCTION MaskedNorm
        RETURN
     END IF
 
-    zres = 0
-!$OMP PARALLEL do shared(x,y) reduction(+:zres)
-    DO i=1,ndim
-       zres = zres + x(i) * y(i)
-    END DO
-!$OMP END PARALLEL DO
+    BLOCK
+    COMPLEX(KIND=dp), ALLOCATABLE :: part(:)
+    COMPLEX(KIND=dp) :: s
+    INTEGER :: nthr, thr
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+
+    IF( nthr <= 1 ) THEN
+      zres = 0
+      DO i=1,ndim
+        zres = zres + x(i) * y(i)
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,s) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      s = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i=1,ndim
+        s = s + x(i) * y(i)
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = s
+!$OMP END PARALLEL
+      zres = 0
+      DO i=1,nthr
+        zres = zres + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+    END BLOCK
 
 !----------------------------------------------------------------------
   END FUNCTION Otmp_zdotu
@@ -577,7 +743,7 @@ END FUNCTION MaskedNorm
 
 
   RECURSIVE SUBROUTINE IterSolver( A,x,b,Solver,ndim,DotF, &
-              NormF,MatvecF,PrecF,StopcF,MatvecReadsNoValues )
+              NormF,MatvecF,PrecF,StopcF,MatvecReadsNoValues,DotFU )
 !------------------------------------------------------------------------------
     USE huti_sfe
     USE ListMatrix
@@ -595,6 +761,13 @@ END FUNCTION MaskedNorm
     LOGICAL, OPTIONAL :: MatvecReadsNoValues
     INTEGER, OPTIONAL :: ndim
     INTEGER(KIND=AddrInt), OPTIONAL :: DotF, NormF, MatVecF, PrecF, StopcF
+    !> The unconjugated (bilinear) counterpart of DotF, for a caller that
+    !> supplies its own complex inner product. CG needs this form and every
+    !> other complex method here needs DotF; a caller cannot pick between them
+    !> without duplicating the keyword parsing that decides IterType below, so
+    !> it hands over both and the choice is made here. Ignored for real
+    !> systems and for any method other than CG.
+    INTEGER(KIND=AddrInt), OPTIONAL :: DotFU
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: Adiag,CM,PrecMat,SaveGlobalM
 
@@ -1456,14 +1629,21 @@ END FUNCTION MaskedNorm
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )
       END IF
 
-      IF ( dotProc  == 0 ) THEN
-        IF ( IterType == ITER_CG ) THEN
-          ! CG needs the unconjugated bilinear form on these complex symmetric
-          ! systems; the other complex methods want the Hermitian product.
+      IF ( IterType == ITER_CG ) THEN
+        ! CG needs the unconjugated bilinear form on these complex symmetric
+        ! systems; the other complex methods want the Hermitian product. This
+        ! has to be honoured for a caller-supplied product too, not just the
+        ! default: the parallel path hands in SParCDotProd, and with the
+        ! conjugating form CG has no self-adjoint operator to work with and
+        ! diverges outright -- HelmholtzFEM's CG pass ran the residual up to
+        ! 5.5e+01 over 301 iterations at np=2 and np=4 alike before this.
+        IF ( PRESENT( DotFU ) ) THEN
+          dotProc = DotFU
+        ELSE IF ( dotProc == 0 ) THEN
           dotProc = AddrFunc(Otmp_zdotu)
-        ELSE
-          dotProc = AddrFunc(Otmp_zdotc)
         END IF
+      ELSE IF ( dotProc == 0 ) THEN
+        dotProc = AddrFunc(Otmp_zdotc)
       END IF
 
     END IF

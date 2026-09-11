@@ -1,0 +1,90 @@
+Header
+  Mesh DB "." "steptri"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+End
+
+Constants
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "NS-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+! The point of the case. Equal order velocity/pressure, the pressure mode held
+! by the Brezzi-Pitkaranta term rather than by a bubble. Note that no "Element"
+! is stated: the solver's _Init0 reads this keyword and hands the equal order
+! "n:1" back instead of its usual MINI definition, so stating an element here
+! would defeat the test. Stating one WITH a bubble is refused outright.
+  Pressure Stabilization = Logical True
+
+! Stage one is the Stokes problem: the stabilised residual carries the pressure
+! gradient and the load, not the convective or transient terms, and the solver
+! refuses anything else rather than assembling an inconsistent scheme quietly.
+  Stokes Flow = Logical True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-3
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1e3
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+  Velocity 1 = Variable Coordinate 2
+     Real MATC "(2-tx)*(tx-1)"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+! Classical MINI ("p:1 -tri b:1") on this mesh gives 7.58789798E-02, so the
+! stabilised answer below sits 0.001 % under it. See quad.sif for what the
+! comparison is for.
+Solver 1 :: Reference Norm = 7.58780150E-02

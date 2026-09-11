@@ -1229,8 +1229,9 @@ CONTAINS
       IF( CreatePermPar ) THEN
         j = A % InvPerm(i)
         IF(j<0 .OR. j>SIZE(B % Perm)) THEN
-          PRINT *,'Too big j:',j,SIZE(B % Perm),i,SIZE(A % Perm),SIZE(A % InvPerm)
-          STOP
+          CALL Fatal('BlockPickMatrixPerm','Invalid permutation index j='//I2S(j)//&
+              ', SIZE(B % Perm)='//I2S(SIZE(B % Perm))//', i='//I2S(i)//&
+              ', SIZE(A % Perm)='//I2S(SIZE(A % Perm))//', SIZE(A % InvPerm)='//I2S(SIZE(A % InvPerm)))
         END IF
         B % Perm(j) = bi
         B % InvPerm(bi) = j
@@ -1683,8 +1684,8 @@ CONTAINS
             ne = Edge % Type % NumberOfNodes
 
             IF( Indexes(i) /= Mesh % NumberOfNodes + Element % EdgeIndexes(i) ) THEN
-              PRINT *,'ind com:',Indexes(i), Mesh % NumberOfNodes + Element % EdgeIndexes(i), &
-                  Mesh % NumberOfNodes 
+              !PRINT *,'ind com:',Indexes(i), Mesh % NumberOfNodes + Element % EdgeIndexes(i), &
+              !    Mesh % NumberOfNodes
             END IF
 
             IF( ActiveCoordinate == 1 ) THEN
@@ -2540,6 +2541,10 @@ CONTAINS
         IF (.NOT. ASSOCIATED(PMat % Values)) THEN
           CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
           CALL CRS_CopyMatrixTopology( AMat, PMat )
+          ! Only the topology is wanted here. CopyMatrixTopology also allocates and
+          ! zeroes a value array of its own, which the assignment below replaces, so
+          ! give that one back before losing the last pointer to it.
+          DEALLOCATE( PMat % Values )
         ELSE
           ! Make a partial check that PrecMat has been derived from the right template:
           IF (.NOT. ASSOCIATED(AMat % Rows, PMat % Rows)) &
@@ -3006,7 +3011,7 @@ CONTAINS
         j1 = offset(j)+1
         j2 = offset(j+1)
 
-        IF ( ListGetLogical(SolverRef % Values, 'Dummy block'//I2S(i), Found) ) CYCLE
+        IF ( ListGetLogical(SolverRef % Values, 'Dummy block '//I2S(i), Found) ) CYCLE
         A => TotMatrix % SubMatrix(i,j) % Mat
         IF ( .NOT. ASSOCIATED(A) )  CYCLE
         IF ( A % NumberOfRows == 0) CYCLE
@@ -3033,9 +3038,9 @@ CONTAINS
           
         IF( InfoActive( 25 ) ) THEN
           PRINT *,'MatVecProdNorm u:',i,j,&
-              SQRT(SUM(u(j1:j2)**2)),SUM( u(j1:j2) ), MINVAL( u(j1:j2) ), MAXVAL( u(j1:j2) ) 
+              SQRT(SUM(u(j1:j2)**2)),SUM( u(j1:j2) ), MINVAL( u(j1:j2) ), MAXVAL( u(j1:j2) )
           PRINT *,'MatVecProdNorm s:',i,j,&
-              SQRT(SUM(s**2)), SUM( s ), MINVAL( s ), MAXVAL( s ) 
+              SQRT(SUM(s**2)), SUM( s ), MINVAL( s ), MAXVAL( s )
         END IF
 
         v(offset(i)+1:offset(i+1)) = v(offset(i)+1:offset(i+1)) + s(1:offset(i+1)-offset(i))
@@ -3050,7 +3055,7 @@ CONTAINS
               SQRT(SUM(b**2)),SUM( b ), MINVAL( b ), MAXVAL( b )
         END IF
         PRINT *,'MatVecProdNorm v:',i,&
-            SQRT(SUM(v(i1:i2)**2)), SUM( v(i1:i2) ), MINVAL( v(i1:i2) ), MAXVAL( v(i1:i2) ) 
+            SQRT(SUM(v(i1:i2)**2)), SUM( v(i1:i2) ), MINVAL( v(i1:i2) ), MAXVAL( v(i1:i2) )
       END IF
     END DO
     
@@ -3118,7 +3123,7 @@ CONTAINS
         IF(k /= l) THEN
           CALL Warn('ParallelShrinkPerm','Different size for ParPerm '&
               //I2S(l)//': '//I2S(k)//' vs. '//I2S(l))
-          PRINT *,'ParBlockPerm skipped1',ParEnv % MyPe, m, j
+          !PRINT *,'ParBlockPerm skipped1',ParEnv % MyPe, m, j
           DEALLOCATE(TotMatrix % SubMatrix(j,j) % ParPerm )
           Halt = .TRUE.
         END IF
@@ -3190,7 +3195,7 @@ CONTAINS
     ! We can only make the ParBlockPerm if also BlockPerm exists!
     BlockPerm => TotMatrix % BlockPerm 
     IF(.NOT. ASSOCIATED(BlockPerm) ) THEN
-      IF(Halt) STOP
+      IF(Halt) CALL Fatal('ParallelShrinkPerm','Inconsistent parallel permutation size (see warning above)')
       RETURN
     END IF
       
@@ -3214,7 +3219,7 @@ CONTAINS
       k = SIZE(TotMatrix % ParBlockPerm)
       IF(k /= l) THEN
         CALL Warn('ParallelShrinkPerm','Different size for ParBlockPerm: '//I2S(k)//' vs. '//I2S(l))
-        PRINT *,'ParBlockPerm skipped2',ParEnv % MyPe, m
+        !PRINT *,'ParBlockPerm skipped2',ParEnv % MyPe, m
         DEALLOCATE(TotMatrix % ParBlockPerm)
         Halt = .TRUE.
       END IF
@@ -3232,8 +3237,8 @@ CONTAINS
       ParBlockPerm(RenumPerm(i)) = ShrinkPerm(BlockPerm(i))
     END DO
 
-    IF(Halt) STOP 
-    
+    IF(Halt) CALL Fatal('ParallelShrinkPerm','Inconsistent parallel permutation size (see warning above)')
+
   END SUBROUTINE ParallelShrinkPerm
 
   
@@ -3895,7 +3900,7 @@ CONTAINS
       WRITE(Message,'(A,I0)') 'Solving block: ',i
       CALL Info('BlockMatrixPrec',Message,Level=8)
 
-      IF ( ListGetLogical( Solver % Values, 'Dymmy block '//I2S(i), Found) ) THEN
+      IF ( ListGetLogical( Solver % Values, 'Dummy block '//I2S(i), Found) ) THEN
          u(offset(i)+1:offset(i+1)) = v(offset(i)+1:offset(i+1)); cycle
       end if
 
@@ -4146,7 +4151,7 @@ CONTAINS
                 IF (Parenv % MyPE /= A % ParallelInfo % NeighbourList(kk) % Neighbours(1)) CYCLE
                 ll = ll+1
                 rtmp(ll) = rtmp(kk)
-                IF(parperm(ll) /= kk) PRINT *,'Problem:',ll,kk,parperm(ll)
+                !IF(parperm(ll) /= kk) PRINT *,'Problem:',ll,kk,parperm(ll)
               END DO
 #endif
               
@@ -4300,27 +4305,29 @@ CONTAINS
           CALL BlockUpdateRhs(TotMatrix,RowVar)
         END IF
         
-        IF( ListGetLogical( Params,'Block Prec Reuse',GotIt) ) THEN
-          DO j = 1, NoVar
-            IF( j == RowVar ) CYCLE
-            IF( CRS_CopyMatrixPrec( TotMatrix % Submatrix(j,j) % Mat, A ) ) EXIT
-          END DO
-        END IF
-        
         b => TotMatrix % SubVector(RowVar) % rhs
-        
+
         IF( InfoActive( 15 ) ) THEN
           PRINT *,'rhs'//I2S(i)//':',SQRT( SUM(b**2) ), MINVAL( b ), MAXVAL( b ), SUM( b )
         END IF
 
         Var => TotMatrix % SubVector(RowVar) % Var
         Solver % Variable => Var
-        
+
         A => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(RowVar,RowVar) % Mat
         ELSE
           CALL Info('BlockStandardIter','Using preconditioning block: '//I2S(RowVar),Level=8)
+        END IF
+
+        ! Reuse block preconditioner from the first block to other components
+        !--------------------------------------------------------------------
+        IF( ListGetLogical( Params,'Block Prec Reuse',GotIt) ) THEN
+          DO j = 1, NoVar
+            IF( j == RowVar ) CYCLE
+            IF( CRS_CopyMatrixPrec( TotMatrix % Submatrix(j,j) % Mat, A ) ) EXIT
+          END DO
         END IF
 
         !Solver % Matrix => A

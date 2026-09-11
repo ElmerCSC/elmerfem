@@ -4690,13 +4690,21 @@ RETURN
 
     DO i=1,dofs
       Velo(i) = SUM( Basis(1:n) * LocalVelo(1:n,i) )
-      IF( PRESENT( GradVelo ) ) THEN
+    END DO
+
+    ! In a separate loop, as in GetScalarFieldInMesh: with the two sums in the
+    ! same loop nest gfortran -O3 hoists the stride checks of both above the
+    ! PRESENT test, and the one for the absent dBasisdx is then read from a
+    ! never-written stack slot. Harmless, but it is what makes the particle
+    ! tests the loudest cases in the whole valgrind suite.
+    IF( PRESENT( GradVelo ) ) THEN
+      DO i=1,dofs
         ! dBasisdx has only stuff up until the dimension!
         DO j=1,dim
           GradVelo(i,j) = SUM( dBasisdx(1:n,j) * LocalVelo(1:n,i) )
         END DO
-      END IF
-    END DO
+      END DO
+    END IF
     
     IF( npos < n ) THEN
       Velo(1:dofs) = Velo(1:dofs) / SumBasis

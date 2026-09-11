@@ -1437,27 +1437,52 @@ CONTAINS
   ! This is still not general.
   ! We should sort out the direction of the normal for true 3D meshes.
   !-------------------------------------------------------------------
-  SUBROUTINE SaveSTLSurface(Mesh,Params)
+  SUBROUTINE SaveSTLSurface(Mesh,Params,KeepOrientation)
+#if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#endif
 
     TYPE(Mesh_t) :: Mesh
     TYPE(ValueList_t), POINTER :: Params
+    ! Set by a caller whose facets already carry a meaningful orientation, an
+    ! isosurface being pointed up the gradient of its own level function. The
+    ! patches are then left facing the way they came rather than being turned
+    ! to face away from a centre, which for such a surface means nothing.
+    LOGICAL, OPTIONAL :: KeepOrientation
 
     TYPE(Element_t), POINTER :: Element, Parent
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename
     LOGICAL :: Found, CalcNrm
-    INTEGER, PARAMETER :: GeoUnit = 10
-    INTEGER :: i,j,k,kmax,n,pn,ReverseCnt, ElemCnt, t_start, t_end, StlInds(3), &
+    INTEGER :: GeoUnit, iostat
+    INTEGER :: i,j,k,kmax,n,ReverseCnt, ElemCnt, t_start, t_end, StlInds(3), &
         BodyId, MinBody, MaxBody 
     INTEGER, POINTER :: NodeInds(:)    
     TYPE(Nodes_t) :: Nodes 
     REAL(KIND=dp) :: Normal(3), MeshCenter(3), ElemCenter(3), dVec(3), NormalP(3)
-    LOGICAL :: Reverse, BodyStarted, DoBodies, DoBCs
+    LOGICAL :: DoBodies, DoBCs
     CHARACTER(:), ALLOCATABLE :: Str
     REAL(KIND=dp), POINTER :: RefResults(:,:), ArrayResults(:,:), ThisResults(:)
-    
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('SaveSTLSurface','Not implemented yet in parallel')
-    END IF
+
+    ! An STL facet is a normal and three vertices, written out as plain
+    ! coordinates. There is no connectivity and no node numbering, so in
+    ! parallel the partitions need not agree on anything: their facets are
+    ! simply gathered and concatenated.
+    !----------------------------------------------------------------------
+    INTEGER, PARAMETER :: FacetVals = 13
+    INTEGER :: nFacet, nFacetTot, nAlloc, ierr, ipe, nComp, nBad, nBadIn
+    REAL(KIND=dp) :: Vote
+    INTEGER, ALLOCATABLE :: RecvCnt(:), Displs(:)
+    REAL(KIND=dp), ALLOCATABLE :: FacetBuf(:,:), FacetAll(:,:)
+    REAL(KIND=dp) :: CenterSum(3), CenterTmp(3)
+    LOGICAL :: Master, Serial, KeepDir
+#if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE "mpif.h"
+#endif
+
+    Serial = ( ParEnv % PEs <= 1 )
+    Master = ( ParEnv % MyPe == 0 )
+    KeepDir = .FALSE.
+    IF( PRESENT( KeepOrientation ) ) KeepDir = KeepOrientation
 
     Filename = ListGetString(Params,'STL Filename',Found)
     IF( .NOT. Found ) Filename = 'mesh.stl'
@@ -1475,11 +1500,28 @@ CONTAINS
     n = 4
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n))
 
+    ! The mesh may be empty in this partition while others have something to
+    ! write, so it cannot be asked about its first element unguarded.
+    !----------------------------------------------------------------------
     DoBodies = .FALSE.
     DoBCs = .FALSE.
-    IF(Mesh % Elements(1) % TYPE % ElementCode > 500 ) THEN
-      DoBodies = ListGetLogical(Params,'STL Separate Bodies', Found ) 
-      DoBCs = ListGetLogical(Params,'STL Separate BCs', Found ) 
+    IF( Mesh % NumberOfBulkElements > 0 ) THEN
+      IF(Mesh % Elements(1) % TYPE % ElementCode > 500 ) THEN
+        DoBodies = ListGetLogical(Params,'STL Separate Bodies', Found )
+        DoBCs = ListGetLogical(Params,'STL Separate BCs', Found )
+      END IF
+    END IF
+    IF( .NOT. Serial ) THEN
+      ! ...and the partitions have to agree, as the body loop below is
+      ! collective.
+      i = 0
+      IF( DoBodies ) i = 1
+      CALL MPI_ALLREDUCE(i,j,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
+      DoBodies = ( j > 0 )
+      i = 0
+      IF( DoBCs ) i = 1
+      CALL MPI_ALLREDUCE(i,j,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
+      DoBCs = ( j > 0 )
     END IF
 
     IF(DoBodies .OR. DoBCs ) THEN    
@@ -1498,20 +1540,56 @@ CONTAINS
       ! We just need some value such that looping over [MinBody,MaxBody] results to one cycle only.
       MinBody = 1
       MaxBody = MinBody
-      ! Use global center to define normal direction. 
+      ! Use global center to define normal direction. The centre only fixes
+      ! the sign of the normals, but it has to be the same centre in every
+      ! partition or they would wind their facets inconsistently, giving a
+      ! file that looks valid and is not. Nodes on partition interfaces are
+      ! counted once per partition sharing them, which tilts the centre a
+      ! little and does not matter.
+      !------------------------------------------------------------------
       n = Mesh % NumberOfNodes
-      MeshCenter(1) = SUM(Mesh % Nodes % x(1:n)) / n
-      MeshCenter(2) = SUM(Mesh % Nodes % y(1:n)) / n
-      MeshCenter(3) = SUM(Mesh % Nodes % z(1:n)) / n    
+      CenterSum(1) = SUM(Mesh % Nodes % x(1:n))
+      CenterSum(2) = SUM(Mesh % Nodes % y(1:n))
+      CenterSum(3) = SUM(Mesh % Nodes % z(1:n))
+      IF( .NOT. Serial ) THEN
+        CenterTmp = CenterSum
+        CALL MPI_ALLREDUCE(CenterTmp,CenterSum,3,MPI_DOUBLE_PRECISION,MPI_SUM,&
+            ELMER_COMM_WORLD,ierr)
+        i = n
+        CALL MPI_ALLREDUCE(i,n,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+      END IF
+      IF( n > 0 ) MeshCenter = CenterSum / n
     END IF
     
     ElemCnt = 0
     ReverseCnt = 0
+    MeshCenter = 0.0_dp
     BodyId = MinBody
-    OPEN( UNIT=GeoUnit, FILE=Filename, STATUS='UNKNOWN')     
+    IF( Master ) THEN
+      OPEN( NEWUNIT=GeoUnit, FILE=Filename, STATUS='UNKNOWN', IOSTAT=iostat )
+      IF( iostat /= 0 ) THEN
+        CALL Fatal('SaveSTLSurface','Could not open file: '//TRIM(Filename))
+      END IF
+    END IF
     str = 'body'
-    
-10  BodyStarted = .FALSE.
+
+    nAlloc = 100
+    ALLOCATE( FacetBuf(FacetVals,nAlloc) )
+
+    ! The name of the solid is settled here rather than at the first element
+    ! of it, since a partition may hold no elements of this body at all and
+    ! still has to take part in the gather below.
+    !----------------------------------------------------------------------
+10  CONTINUE
+    IF( DoBodies ) THEN
+      str = ListGetString( CurrentModel % Bodies(BodyId) % Values,'Name',Found)
+      IF(.NOT. Found) str = 'body'//I2S(BodyId)
+    ELSE IF( DoBCs ) THEN
+      str = ListGetString( CurrentModel % BCs(BodyId) % Values,'Name',Found)
+      IF(.NOT. Found) str = 'boundary'//I2S(BodyId)
+    END IF
+    nFacet = 0
+
     DO i=t_start,t_end 
       Element => Mesh % Elements(i)
 
@@ -1541,38 +1619,16 @@ CONTAINS
           END IF
         END IF
         IF(.NOT. Found) CYCLE
-        IF(.NOT. BodyStarted) THEN
-          Found = .FALSE.
-          IF(DoBodies) THEN
-            str = ListGetString( CurrentModel % Bodies(BodyId) % Values,'Name',Found)
-          END IF
-          IF(.NOT. Found) str = 'body'//I2S(BodyId)
-        END IF
-#if 0 
-        Normal = NormalVector( Element, Nodes, Parent = Parent )  
-        Normal = -Normal
-        ! Normal points differently than the normal pointing outward of parent, then reverse.
-        Reverse = .FALSE. !(SUM(Normal*NormalP) > 0.0)
-#else
-        Normal = NormalVector( Element, Nodes )  
-
-        ! Center of boundary element
-        ElemCenter(1) = SUM(Nodes % x(1:n)) / n
-        ElemCenter(2) = SUM(Nodes % y(1:n)) / n
-        ElemCenter(3) = SUM(Nodes % z(1:n)) / n
-
-        ! Center of parent element
-        pn = Parent % Type % NumberOfNodes
-        MeshCenter(1) = SUM(Mesh % Nodes % x(Parent % NodeIndexes))/pn
-        MeshCenter(2) = SUM(Mesh % Nodes % y(Parent % NodeIndexes))/pn
-        MeshCenter(3) = SUM(Mesh % Nodes % y(Parent % NodeIndexes))/pn
-           
-        ! Parent center is always within body.
-        dVec = ElemCenter - MeshCenter 
-
-        ! If the normal points differently than dVec then reverse nodes. 
-        Reverse = (SUM(Normal*dVec) < 0.0)
-#endif
+        ! A boundary element of a body has nothing to guess about: the parent
+        ! is inside, so NormalVector with a Parent gives the outward normal
+        ! outright, having flipped it if it pointed towards the parent (see
+        ! CheckNormalDirectionParent). The vote is then just whether the node
+        ! order of this facet agrees with that, which is what the author left
+        ! written down in a comment here.
+        !--------------------------------------------------------------------
+        NormalP = NormalVector( Element, Nodes, Parent = Parent )
+        Normal = NormalVector( Element, Nodes )
+        Vote = SUM(Normal*NormalP)
       ELSE IF( DoBCs ) THEN
         IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
         IF(Element % BoundaryInfo % Constraint /= BodyId) CYCLE
@@ -1581,95 +1637,387 @@ CONTAINS
         IF(.NOT. ASSOCIATED(Parent) ) THEN
           Parent => Element % BoundaryInfo % Right
         END IF
-        IF(.NOT. BodyStarted) THEN
-          Found = .FALSE.
-          IF(DoBCs) THEN
-            str = ListGetString( CurrentModel % BCs(BodyId) % Values,'Name',Found)
-          END IF
-          IF(.NOT. Found) str = 'boundary'//I2S(BodyId)
-        END IF
         Normal = NormalVector( Element, Nodes, Parent = Parent )  
         !Normal = NormalVector( Element, Nodes )  
         !Normal = -Normal
         
         ! Normal points differently than the normal pointing outward of parent, then reverse.
-        Reverse = .FALSE. !(SUM(Normal*NormalP) > 0.0)
+        Vote = 1.0_dp !(SUM(Normal*NormalP) > 0.0)
       ELSE                
         ElemCenter(1) = SUM(Nodes % x(1:n)) / n
         ElemCenter(2) = SUM(Nodes % y(1:n)) / n
         ElemCenter(3) = SUM(Nodes % z(1:n)) / n
 
         ! For simple geometries "MeshCenter" should be inside the object.
+        ! Note that this only settles the sign of the normal, and it does so
+        ! poorly for a facet whose normal is nearly perpendicular to dVec, an
+        ! open surface such as an isosurface being full of them. The centre is
+        ! the same in every partition, so a given file is at least consistent
+        ! with itself, but it is weighted by the nodes on partition interfaces
+        ! being counted once per partition sharing them. That shifts it by a
+        ! little, and the near tangential facets can therefore come out wound
+        ! the other way than in a serial run. Removing that last difference
+        ! needs the interface nodes identified, i.e. the mesh to carry
+        ! ParallelInfo.
         dVec = ElemCenter - MeshCenter
 
         ! If the normal points differently than dVec then reverse nodes. 
         Normal = NormalVector( Element, Nodes )  
-        Reverse = (SUM(Normal*dVec) < 0.0)
+        Vote = SUM(Normal*dVec)
       END IF
 
-      IF( Reverse) THEN
-        ReverseCnt = ReverseCnt + kmax
-        Normal = -Normal
-      END IF
       ElemCnt = ElemCnt + kmax
 
-      
-      IF(.NOT. BodyStarted) THEN
-        WRITE( GeoUnit,'(A)') 'solid '//TRIM(str)
-        BodyStarted = .TRUE.
-        CALL Info('SaveSTLSurface','Starting writing surface: '//TRIM(str),Level=15)
-        IF(CalcNrm) ThisResults(1) = ThisResults(1) + 1
-      END IF
-              
       DO k=1,kmax
         IF(k==1) THEN
-          IF( Reverse ) THEN
-            StlInds(1:3) = [3,2,1]
-          ELSE
-            StlInds(1:3) = [1,2,3]
-          END IF
+          StlInds(1:3) = [1,2,3]
         ELSE
-          IF( Reverse ) THEN
-            StlInds(1:3) = [4,3,1]
-          ELSE
-            StlInds(1:3) = [1,3,4]
-          END IF
+          StlInds(1:3) = [1,3,4]
         END IF
 
-        IF(CalcNrm) THEN
-          ThisResults(2) = ThisResults(2) + 1
-          ThisResults(3) = ThisResults(3) + SUM(Normal)
-          ThisResults(4) = ThisResults(4) + Nodes % x(stlInds(1))
-          ThisResults(5) = ThisResults(5) + Nodes % y(stlInds(1))
-          ThisResults(6) = ThisResults(6) + Nodes % z(stlInds(1))
+        ! Collect rather than write, so that the partitions can be
+        ! concatenated below.
+        !--------------------------------------------------------------
+        nFacet = nFacet + 1
+        IF( nFacet > nAlloc ) THEN
+          CALL GrowFacetBuf()
         END IF
-        
-        WRITE( GeoUnit,'(A,3ES15.6)')   '  facet normal',Normal 
+        FacetBuf(1:3,nFacet) = Normal
+        DO j=1,3
+          FacetBuf(3*j+1,nFacet) = Nodes % x(StlInds(j))
+          FacetBuf(3*j+2,nFacet) = Nodes % y(StlInds(j))
+          FacetBuf(3*j+3,nFacet) = Nodes % z(StlInds(j))
+        END DO
+        FacetBuf(FacetVals,nFacet) = Vote
+      END DO
+    END DO
+
+    ! Gather this solid from all the partitions and let the master write it.
+    !----------------------------------------------------------------------
+    IF( Serial ) THEN
+      nFacetTot = nFacet
+      ALLOCATE( FacetAll(FacetVals,MAX(nFacetTot,1)) )
+      IF( nFacetTot > 0 ) FacetAll(:,1:nFacetTot) = FacetBuf(:,1:nFacet)
+    ELSE
+      ALLOCATE( RecvCnt(ParEnv % PEs), Displs(ParEnv % PEs) )
+      CALL MPI_ALLGATHER(nFacet,1,MPI_INTEGER,RecvCnt,1,MPI_INTEGER,&
+          ELMER_COMM_WORLD,ierr)
+      nFacetTot = SUM(RecvCnt)
+      RecvCnt = RecvCnt * FacetVals
+      Displs(1) = 0
+      DO ipe=2,ParEnv % PEs
+        Displs(ipe) = Displs(ipe-1) + RecvCnt(ipe-1)
+      END DO
+      ALLOCATE( FacetAll(FacetVals,MAX(nFacetTot,1)) )
+      CALL MPI_GATHERV(FacetBuf,nFacet*FacetVals,MPI_DOUBLE_PRECISION,&
+          FacetAll,RecvCnt,Displs,MPI_DOUBLE_PRECISION,0,ELMER_COMM_WORLD,ierr)
+      DEALLOCATE( RecvCnt, Displs )
+    END IF
+
+    ! Orient the patches before writing. Done here, on the gathered facets,
+    ! this gives the same file whatever the partitioning.
+    !----------------------------------------------------------------------
+    IF( Master .AND. nFacetTot > 0 ) THEN
+      CALL OrientFacets( FacetAll, nFacetTot, k, nComp, nBad, nBadIn, KeepDir )
+      ReverseCnt = ReverseCnt + k
+      CALL Info('SaveSTLSurface','Surface '//TRIM(str)//' has '//I2S(nComp)//&
+          ' connected patch(es)',Level=8)
+      IF( nBadIn > 0 ) THEN
+        CALL Info('SaveSTLSurface','Aligned '//I2S(nBadIn)//&
+            ' inconsistently wound edges',Level=8)
+      END IF
+      IF( nBad > 0 ) THEN
+        CALL Warn('SaveSTLSurface','Could not orient '//I2S(nBad)//&
+            ' edges consistently, the surface may be non-orientable!')
+      END IF
+    END IF
+
+    IF( Master .AND. nFacetTot > 0 ) THEN
+      CALL Info('SaveSTLSurface','Writing surface: '//TRIM(str)//' with '&
+          //I2S(nFacetTot)//' facets',Level=15)
+      WRITE( GeoUnit,'(A)') 'solid '//TRIM(str)
+      DO i=1,nFacetTot
+        WRITE( GeoUnit,'(A,3ES15.6)')   '  facet normal',FacetAll(1:3,i)
         WRITE( GeoUnit,'(A)')           '    outer loop'
         DO j=1,3
-          WRITE( GeoUnit,'(A,3ES15.6)') '      vertex',&
-              Nodes % x(StlInds(j)), Nodes % y(StlInds(j)), Nodes % z(StlInds(j)) 
+          WRITE( GeoUnit,'(A,3ES15.6)') '      vertex',FacetAll(3*j+1:3*j+3,i)
         END DO
         WRITE( GeoUnit,'(A)')           '    endloop'
         WRITE( GeoUnit,'(A)')           '  endfacet'
       END DO
-    END DO
-
-    IF(BodyStarted) THEN
       WRITE( GeoUnit,'(A)') 'endsolid '//TRIM(str)
     END IF
+
+    ! The checksums are taken from the gathered facets, so that they describe
+    ! the file that was actually written rather than one partition's share.
+    !----------------------------------------------------------------------
+    IF( CalcNrm .AND. Master .AND. nFacetTot > 0 ) THEN
+      ThisResults(1) = ThisResults(1) + 1
+      DO i=1,nFacetTot
+        ThisResults(2) = ThisResults(2) + 1
+        ThisResults(3) = ThisResults(3) + SUM(FacetAll(1:3,i))
+        ThisResults(4) = ThisResults(4) + FacetAll(4,i)
+        ThisResults(5) = ThisResults(5) + FacetAll(5,i)
+        ThisResults(6) = ThisResults(6) + FacetAll(6,i)
+      END DO
+    END IF
+    DEALLOCATE( FacetAll )
+
     BodyId = BodyId + 1 
     IF(BodyId <= MaxBody ) GOTO 10 
-      
-    CLOSE( GeoUnit ) 
-    
+
+    IF( Master ) CLOSE( GeoUnit )
+    DEALLOCATE( FacetBuf )
+
+    IF( .NOT. Serial ) THEN
+      i = ElemCnt
+      CALL MPI_ALLREDUCE(i,ElemCnt,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+      ! ReverseCnt was counted on the master, which alone saw every facet.
+      CALL MPI_BCAST(ReverseCnt,1,MPI_INTEGER,0,ELMER_COMM_WORLD,ierr)
+    END IF
+
     CALL Info('SaveSTLSurface','Number of triangular elements in STL file: '//I2S(ElemCnt))
     CALL Info('SaveSTLSurface','Number of element with reversed normal: '//I2S(ReverseCnt))
     CALL Info('SaveSTLSurface','Finished writing the STL file!')
     
     IF(CalcNrm) THEN
+      ! Only the master saw the whole file, so hand the checksums round and
+      ! every partition reports the same pseudonorm.
+      !--------------------------------------------------------------------
+      IF( .NOT. Serial ) THEN
+        CALL MPI_BCAST(ThisResults,6,MPI_DOUBLE_PRECISION,0,ELMER_COMM_WORLD,ierr)
+      END IF
       CALL ListAddConstRealArray( Params,'This Values', 6, 1, ArrayResults )
     END IF
+
+  CONTAINS
+
+    !------------------------------------------------------------------
+    !> Give the gathered facets a coherent orientation.
+    !>
+    !> Orientation is a property of a connected patch, not of a single facet:
+    !> two facets sharing an edge have to traverse it in opposite directions.
+    !> Deciding facet by facet from a mesh centre cannot ensure that, and does
+    !> not -- on an isosurface it asks which way is outward for a surface that
+    !> has no outside, and neighbours can disagree.
+    !>
+    !> So walk each patch and align it, then let the per facet votes decide,
+    !> once for the patch as a whole, which way it should face. Doing this on
+    !> the gathered facets makes the file independent of the partitioning.
+    !------------------------------------------------------------------
+    SUBROUTINE OrientFacets( F, nF, nRev, nComp, nBad, nBadIn, KeepDir )
+
+      REAL(KIND=dp) :: F(:,:)
+      INTEGER :: nF, nRev, nComp, nBad, nBadIn
+      LOGICAL :: KeepDir
+
+      TYPE HashEntry_t
+        INTEGER :: ix,iy,iz,ind
+        TYPE(HashEntry_t), POINTER :: Next => NULL()
+      END TYPE HashEntry_t
+      TYPE HashHead_t
+        TYPE(HashEntry_t), POINTER :: Head => NULL()
+      END TYPE HashHead_t
+
+      TYPE(HashHead_t), ALLOCATABLE :: Hash(:)
+      TYPE(HashEntry_t), POINTER :: Hp, Hp1
+      INTEGER, ALLOCATABLE :: VertId(:,:), Nbr(:,:), EdgeOf(:,:), Stack(:), Comp(:)
+      LOGICAL, ALLOCATABLE :: Flip(:), SameDir(:,:), Visited(:)
+      REAL(KIND=dp) :: cmin(3),cmax(3),q,c(3),Vote
+      INTEGER :: i,j,k,l,m,nH,nVert,va,vb,wa,wb,nStack,nc,ic
+      INTEGER(KIND=8) :: h
+      INTEGER :: iv(3), ie(2,3)
+      LOGICAL :: da, db
+
+      nRev = 0; nComp = 0; nBad = 0; nBadIn = 0
+      IF( nF <= 0 ) RETURN
+
+      ie(:,1) = [1,2]; ie(:,2) = [2,3]; ie(:,3) = [3,1]
+
+      ! Weld the vertices. Facets cut in different partitions carry their own
+      ! copy of a node on the partition interface, and the two copies can
+      ! differ in the last bit, so they are matched on a grid far coarser than
+      ! round-off and far finer than the distance between distinct nodes. A
+      ! missed match only leaves the two patches unjoined, never merges nodes
+      ! that are actually apart.
+      !------------------------------------------------------------------
+      cmin = F(4:6,1); cmax = F(4:6,1)
+      DO i=1,nF
+        DO j=1,3
+          c = F(3*j+1:3*j+3,i)
+          cmin = MIN(cmin,c); cmax = MAX(cmax,c)
+        END DO
+      END DO
+      q = MAXVAL(cmax-cmin)
+      IF( q <= 0.0_dp ) q = 1.0_dp
+      q = 1.0e-7_dp * q
+
+      nH = 2*3*nF + 1
+      ALLOCATE( Hash(nH), VertId(3,nF) )
+      nVert = 0
+      DO i=1,nF
+        DO j=1,3
+          c = F(3*j+1:3*j+3,i)
+          iv(1) = NINT( (c(1)-cmin(1))/q )
+          iv(2) = NINT( (c(2)-cmin(2))/q )
+          iv(3) = NINT( (c(3)-cmin(3))/q )
+          h = MODULO( INT(iv(1),8)*73856093_8 + INT(iv(2),8)*19349663_8 + &
+              INT(iv(3),8)*83492791_8, INT(nH,8) ) + 1
+          k = 0
+          Hp => Hash(INT(h)) % Head
+          DO WHILE( ASSOCIATED(Hp) )
+            IF( Hp % ix == iv(1) .AND. Hp % iy == iv(2) .AND. Hp % iz == iv(3) ) THEN
+              k = Hp % ind; EXIT
+            END IF
+            Hp => Hp % Next
+          END DO
+          IF( k == 0 ) THEN
+            nVert = nVert + 1
+            k = nVert
+            ALLOCATE( Hp )
+            Hp % ix = iv(1); Hp % iy = iv(2); Hp % iz = iv(3); Hp % ind = k
+            Hp % Next => Hash(INT(h)) % Head
+            Hash(INT(h)) % Head => Hp
+          END IF
+          VertId(j,i) = k
+        END DO
+      END DO
+      DO i=1,nH
+        Hp => Hash(i) % Head
+        DO WHILE( ASSOCIATED(Hp) )
+          Hp1 => Hp % Next; DEALLOCATE(Hp); Hp => Hp1
+        END DO
+      END DO
+      DEALLOCATE( Hash )
+
+      ! Neighbours over the shared edges. An edge that is not shared by
+      ! exactly two facets is left as a patch boundary.
+      !------------------------------------------------------------------
+      ALLOCATE( Nbr(3,nF), EdgeOf(3,nF), SameDir(3,nF) )
+      Nbr = 0; EdgeOf = 0; SameDir = .FALSE.
+      nH = 2*3*nF + 1
+      ALLOCATE( Hash(nH) )
+      DO i=1,nF
+        DO j=1,3
+          va = VertId(ie(1,j),i); vb = VertId(ie(2,j),i)
+          wa = MIN(va,vb); wb = MAX(va,vb)
+          h = MODULO( INT(wa,8)*73856093_8 + INT(wb,8)*19349663_8, INT(nH,8) ) + 1
+          Hp => Hash(INT(h)) % Head
+          k = 0
+          DO WHILE( ASSOCIATED(Hp) )
+            IF( Hp % ix == wa .AND. Hp % iy == wb ) THEN
+              k = Hp % ind; l = Hp % iz; EXIT
+            END IF
+            Hp => Hp % Next
+          END DO
+          IF( k == 0 ) THEN
+            ALLOCATE( Hp )
+            Hp % ix = wa; Hp % iy = wb; Hp % ind = i; Hp % iz = j
+            Hp % Next => Hash(INT(h)) % Head
+            Hash(INT(h)) % Head => Hp
+          ELSE IF( Nbr(l,k) == 0 ) THEN
+            Nbr(j,i) = k; EdgeOf(j,i) = l
+            Nbr(l,k) = i; EdgeOf(l,k) = j
+            da = ( VertId(ie(1,j),i) < VertId(ie(2,j),i) )
+            db = ( VertId(ie(1,l),k) < VertId(ie(2,l),k) )
+            SameDir(j,i) = ( da .EQV. db )
+            SameDir(l,k) = SameDir(j,i)
+          END IF
+        END DO
+      END DO
+      DO i=1,nH
+        Hp => Hash(i) % Head
+        DO WHILE( ASSOCIATED(Hp) )
+          Hp1 => Hp % Next; DEALLOCATE(Hp); Hp => Hp1
+        END DO
+      END DO
+      DEALLOCATE( Hash, VertId )
+
+      ! How much aligning there was to do, which is worth knowing: facets
+      ! that arrive already consistent were oriented by whoever made them.
+      !------------------------------------------------------------------
+      DO i=1,nF
+        DO j=1,3
+          IF( Nbr(j,i) <= i ) CYCLE
+          IF( SameDir(j,i) ) nBadIn = nBadIn + 1
+        END DO
+      END DO
+
+      ! Walk each patch, aligning as we go, then turn the whole patch
+      ! according to the votes of the facets in it.
+      !------------------------------------------------------------------
+      ALLOCATE( Flip(nF), Visited(nF), Stack(nF), Comp(nF) )
+      Flip = .FALSE.; Visited = .FALSE.
+
+      DO i=1,nF
+        IF( Visited(i) ) CYCLE
+        nComp = nComp + 1
+        nStack = 1; Stack(1) = i; Visited(i) = .TRUE.
+        nc = 0
+        DO WHILE( nStack > 0 )
+          k = Stack(nStack); nStack = nStack - 1
+          nc = nc + 1; Comp(nc) = k
+          DO j=1,3
+            l = Nbr(j,k)
+            IF( l == 0 ) CYCLE
+            IF( Visited(l) ) CYCLE
+            Flip(l) = ( SameDir(j,k) .NEQV. Flip(k) )
+            Visited(l) = .TRUE.
+            nStack = nStack + 1; Stack(nStack) = l
+          END DO
+        END DO
+
+        Vote = 0.0_dp
+        DO m=1,nc
+          k = Comp(m)
+          IF( Flip(k) ) THEN
+            Vote = Vote - F(FacetVals,k)
+          ELSE
+            Vote = Vote + F(FacetVals,k)
+          END IF
+        END DO
+        IF( Vote < 0.0_dp .AND. .NOT. KeepDir ) THEN
+          DO m=1,nc
+            Flip(Comp(m)) = .NOT. Flip(Comp(m))
+          END DO
+        END IF
+      END DO
+
+      ! What is left inconsistent after the walk, if anything.
+      !------------------------------------------------------------------
+      DO i=1,nF
+        DO j=1,3
+          k = Nbr(j,i)
+          IF( k <= i ) CYCLE
+          IF( SameDir(j,i) .NEQV. (Flip(i) .NEQV. Flip(k)) ) nBad = nBad + 1
+        END DO
+      END DO
+
+      ! Turn the facets that came out the wrong way round.
+      !------------------------------------------------------------------
+      DO i=1,nF
+        IF( .NOT. Flip(i) ) CYCLE
+        nRev = nRev + 1
+        F(1:3,i) = -F(1:3,i)
+        c = F(4:6,i)
+        F(4:6,i) = F(10:12,i)
+        F(10:12,i) = c
+      END DO
+
+      DEALLOCATE( Nbr, EdgeOf, SameDir, Flip, Visited, Stack, Comp )
+
+    END SUBROUTINE OrientFacets
+
+
+    SUBROUTINE GrowFacetBuf()
+      REAL(KIND=dp), ALLOCATABLE :: Tmp(:,:)
+      ALLOCATE( Tmp(FacetVals,nAlloc) )
+      Tmp = FacetBuf
+      DEALLOCATE( FacetBuf )
+      ALLOCATE( FacetBuf(FacetVals,2*nAlloc) )
+      FacetBuf(:,1:nAlloc) = Tmp
+      nAlloc = 2*nAlloc
+    END SUBROUTINE GrowFacetBuf
     
   END SUBROUTINE SaveSTLSurface
 

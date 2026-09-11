@@ -120,6 +120,9 @@ SUBROUTINE IPVariableInit(Model, Solver, Timestep, TransientSimulation )
         CALL INFO(SolverName,'Number of Gauss points for 1st element:'&
             //I2S(IP % n),Level=7)
       END IF
+
+      ! Initialised as Perm(i)+t below, so the slice must be IP % n long.
+      CALL CheckIPVarSize( IPVar, Element % ElementIndex, IP % n, SolverName )
       
       CALL GetElementNodes( Nodes )
       ICid = GetICId( Element, Found )
@@ -903,6 +906,13 @@ CONTAINS
     FORCE = 0._dp
     LOAD = 0._dp
 
+
+    ! Only assigned inside the conditionals below and declared without
+    ! initialisation, so ASSOCIATED() on them is undefined until then. Nullify
+    ! explicitly (not "=> NULL()", which would imply SAVE) so the
+    ! CheckIPVarSize calls are well defined.
+    NULLIFY( rhogwAtIPVar, mugwAtIPVar, kGpeAtIPVar, KGTTAtIPVar, XikG0hyAtIPVar, CgwTTAtIPVar )
+
     XiAtIPVar => VariableGet( Solver % Mesh % Variables, 'Xi')
     IF (.NOT.ASSOCIATED(XiAtIPVar)) THEN
       WRITE(Message,*) 'Variable Xi is not associated'
@@ -996,6 +1006,17 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPointsAdapt( Element )
+
+    ! Every one of these is written as Perm(ElementID)+t below, so each slice
+    ! must be exactly IP % n long. See CheckIPVarSize.
+    CALL CheckIPVarSize( XiAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( rhogwAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( mugwAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( kGpeAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( KGTTAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( XikG0hyAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( CgwTTAtIPVar, ElementID, IP % n, SolverName )
+
     DO t=1,IP % n
       IPPerm = XiAtIPPerm(ElementID) + t
       

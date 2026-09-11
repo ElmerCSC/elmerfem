@@ -317,6 +317,20 @@ double BiLinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     }
     Rs = R;
 
+    /*
+     * Closed form inner integral for a planar patch.  This is the one off
+     * path (the subdivision estimates); the integration loops below prepare
+     * the target once and call ContourEvaluate directly.
+     */
+    if ( ClosedFormInteg && !Cyl && Rs != 0.0 )
+    {
+        ContourTarget_t CT;
+        double CF;
+
+        if ( ContourPrepare(GB,&CT) &&
+               ContourEvaluate(&CT,FX,FY,FZ,NFX,NFY,NFZ,&CF) ) return CF;
+    }
+
     F  = 0.0;
     cosA = 1;
     for( i=0; i<N_Integ; i++ )
@@ -433,6 +447,86 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
     {
         GeometryList_t *Link;
 
+        /*
+         * The shaft of this pair: the candidate blockers.  Built once and
+         * used by everything below -- the statistics, the clipping, and the
+         * ray casting, whose rays can only ever meet these same candidates.
+         */
+        int Clipped = FALSE, HaveShaft = FALSE, nc = -1;
+        int Cand[SC_MAXCAND];
+        ContourTarget_t TA,TB;
+        Shaft_t Sh;
+
+        if ( (ShaftRayCull || ShaftStats || ClipShadows) && GA != GB )
+        {
+            if ( ContourPrepare(GA,&TA) && ContourPrepare(GB,&TB) &&
+                    ShaftInit(&Sh,&TA,&TB) )
+            {
+                nc = ShaftCandidates( &Sh,Cand,SC_MAXCAND );
+                HaveShaft = ( nc >= 0 );
+            }
+        }
+
+        if ( ShaftStats ) ShaftCountAdd( HaveShaft ? nc : -3 );
+
+        /*
+         * Visibility by clipping.  Falls through to the ray casting below
+         * whenever it does not apply: a geometry without a polygon boundary,
+         * a shaft with too many candidate blockers, or a fragment count that
+         * runs away.
+         */
+        if ( ClipShadows && HaveShaft )
+        {
+            {
+                /*
+                 * Accept or subdivide on the same terms as the ray path: an
+                 * unobstructed pair outright, a partly blocked one only when
+                 * the factors are small.  The outer integral still has a kink
+                 * across the penumbra edge, so that criterion still earns its
+                 * keep even though the inner one is now exact.
+                 */
+                if ( nc > 0 && !((Fa<FactorEPS/2 || GB->Area < AreaEPS/2) &&
+                                 (Fb<FactorEPS/2 || GA->Area < AreaEPS/2)) )
+                    goto subdivide;
+
+                F = 0.0;
+                Clipped = TRUE;
+
+                for( i=0; i<N_Integ; i++ )
+                {
+                    double XP[3],NF[3],DR,DF;
+
+                    U = U_Integ[i];
+                    V = V_Integ[i];
+
+                    XP[0] = BiLinearValue(U,V,X);
+                    XP[1] = BiLinearValue(U,V,Y);
+                    XP[2] = BiLinearValue(U,V,Z);
+
+                    NF[0] = BiLinearValue(U,V,NX);
+                    NF[1] = BiLinearValue(U,V,NY);
+                    NF[2] = BiLinearValue(U,V,NZ);
+
+                    DR = NF[0]*NF[0] + NF[1]*NF[1] + NF[2]*NF[2];
+                    if ( DR <= 0.0 ) { Clipped = FALSE; break; }
+                    DR = 1.0/sqrt(DR);
+                    NF[0] *= DR; NF[1] *= DR; NF[2] *= DR;
+
+                    if ( !ClipVisible(&TB,Cand,nc,XP,NF,&DF) )
+                       { Clipped = FALSE; break; }
+
+                    F += S_Integ[i]*BiLinearEofA(U,V,X,Y,Z)*DF;
+                }
+
+                if ( Clipped )
+                {
+                    if ( F <= 0.0 ) return;         /* fully shadowed */
+                    F /= PI;
+                    goto store;
+                }
+            }
+        }
+
         Hit = Nrays;
         for( i=0; i<Nrays; i++ )
         {
@@ -451,17 +545,31 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
             DY = FunctionValue(GB,U,V,1) - FY;
             DZ = FunctionValue(GB,U,V,2) - FZ;
 
-            Hit -= RayHitGeometry( FX,FY,FZ,DX,DY,DZ );
+            /* the rays of this pair can only meet its own candidates */
+            if ( !ShaftRayCull || !HaveShaft )
+                Hit -= RayHitGeometry( FX,FY,FZ,DX,DY,DZ );
+            else if ( nc > 0 )
+                Hit -= RayHitCandidates( Cand,nc,FX,FY,FZ,DX,DY,DZ );
         }
+
+        /* the cull claimed nothing could block: the rays must agree */
+        if ( ShaftStats && HaveShaft && nc == 0 && Hit < Nrays ) ShaftCountAdd( -2 );
 
         if ( Hit == 0 ) return;
 
         if ( Hit == Nrays || ((Fa<FactorEPS/2 || GB->Area < AreaEPS/2) &&
                  (Fb<FactorEPS/2 || GA->Area < AreaEPS/2) ))
         {
+            /* the target is the same for every source point, so prepare
+               the closed form once here instead of inside the loop */
+            ContourTarget_t CT;
+            int UseCF = ClosedFormInteg && ContourPrepare( GB,&CT );
+
             F = 0.0;
             for( i=0; i<N_Integ; i++ )
             {
+                double DF, DR;
+
                 U = U_Integ[i];
                 V = V_Integ[i];
 
@@ -473,12 +581,25 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
                 DY = BiLinearValue(U,V,NY);
                 DZ = BiLinearValue(U,V,NZ);
 
+                if ( UseCF )
+                {
+                    DR = DX*DX + DY*DY + DZ*DZ;
+                    if ( DR > 0.0 )
+                    {
+                        DR = 1.0/sqrt(DR);
+                        ContourEvaluate( &CT,FX,FY,FZ,DX*DR,DY*DR,DZ*DR,&DF );
+                    } else
+                        DF = 0.0;
+                } else
+                    DF = (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
+
                 EA = BiLinearEofA(U,V,X,Y,Z);
-                F += S_Integ[i]*EA*
-                    (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
+                F += S_Integ[i]*EA*DF;
             }
 
             F = Hit*F / (PI*Nrays);
+
+store:
             Fb = F / GB->Area;
             Fa = F / GA->Area;
 

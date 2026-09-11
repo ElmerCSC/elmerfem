@@ -351,3 +351,9 @@ Solver 5 :: Reference Norm = 4.97812953E-01
 Solver 6 :: Reference Norm = 2.97827702E-02
 Solver 7 :: Reference Norm = 4.83969877E-01
 
+! Solver 8 is the isosurface, and this is its pseudonorm, the summed sizes of
+! the meshes involved. The three levels here are far enough apart that no
+! element is crossed by more than one of them, so this pins the sizes but
+! says nothing about that case; see the IsosurfaceLevels test for it.
+Solver 8 :: Reference Norm = 1.91300000E+03
+

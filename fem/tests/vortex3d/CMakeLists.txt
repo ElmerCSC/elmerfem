@@ -2,6 +2,8 @@ INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( Step3d.sif Step3d.sif COPYONLY)
+CONFIGURE_FILE(stabilized.sif stabilized.sif COPYONLY)
+CONFIGURE_FILE(taylorhood.sif taylorhood.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO Step3d.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 

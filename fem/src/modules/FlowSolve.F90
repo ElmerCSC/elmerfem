@@ -52,9 +52,61 @@
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: Params
+     LOGICAL :: Found, Bubbles, Stabilize
+     CHARACTER(LEN=MAX_NAME_LEN) :: StabilizeFlag, ElementStr
 
      Params => GetSolverParams()
      CALL ListAddInteger( Params,'Time Derivative Order',1 )
+
+     ! Resolve whether this run will condense a velocity bubble (of either
+     ! flavor: a p-element "Element = p:.. b:.." bubble, or the legacy
+     ! "Bubbles = True"/"Stabilization Method = Bubbles" one-bubble-per-node
+     ! convention) -- mirrors the resolution FlowSolver itself does from
+     ! "Bubbles"/"Stabilize"/"Stabilization Method"/"Element". Doesn't cover
+     ! the P2/Q2-P1/Q1 (P2P1) special case, which is decided per element
+     ! (basis function degree) and so cannot be resolved here.
+     Bubbles   = ListGetLogical( Params,'Bubbles', Found )
+     Stabilize = ListGetLogical( Params,'Stabilize', Found )
+     StabilizeFlag = ListGetString( Params,'Stabilization Method', Found )
+     IF ( .NOT. Found ) THEN
+       IF ( .NOT. Stabilize ) THEN
+         Bubbles = Bubbles .OR. ListCheckPresent(Params,'Element')
+       END IF
+     ELSE
+       SELECT CASE( StabilizeFlag )
+       CASE( 'bubbles', 'pbubbles' )
+         Bubbles = .TRUE.
+       END SELECT
+     END IF
+
+     ! FlowSolve always condenses a p-element bubble locally (nb > 0 always
+     ! triggers NSCondensate/NSCondensateTransient here -- there is no
+     ! "Bubbles in Global System = True" branch in FlowSolver itself), so nd
+     ! (the retained dof count) must NOT also fold the bubble dofs into the
+     ! global system, or the two bubble-counting mechanisms disagree with
+     ! each other and corrupt the condensed system. Left unset,
+     ! SetGlobalBubblesFlag defaults "Bubbles in Global System" to TRUE
+     ! whenever "Element" contains "p:"/"b:" -- default it to FALSE instead,
+     ! exactly as KESolver_Init and friends already do for their own p-bubble
+     ! case. ListAddNew, so an explicit sif setting still wins.
+     ElementStr = ListGetString( Params,'Element', Found )
+     IF ( Found ) THEN
+       IF ( INDEX(ElementStr,'b:') > 0 ) THEN
+         CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
+       END IF
+     END IF
+
+     ! The recovery of a transient condensed bubble (see bx/bxprev and
+     ! NSCondensateTransient in FlowSolve, mirroring IncompressibleNSVec's own
+     ! bx/bxprev, and the identical logic in KESolver_Init and friends) needs
+     ! at least TWO solves within one timestep: the bubble value recovered on
+     ! the first solve of a new timestep is still consistent with the
+     ! previous timestep's nodal solution, not this one's. ListAddNew, so an
+     ! explicit sif setting still wins.
+     IF ( TransientSimulation .AND. Bubbles .AND. .NOT. Stabilize ) THEN
+       CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
+       CALL ListAddNewInteger(Params, 'Nonlinear System Max Iterations', 2)
+     END IF
 
    END SUBROUTINE FlowSolver_init
 
@@ -83,7 +135,7 @@
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER :: StiffMatrix
      
-     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m
+     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m,boff
 
      TYPE(ValueList_t),POINTER :: Material, BC, BodyForce, Equation
      TYPE(Nodes_t) :: ElementNodes
@@ -141,7 +193,8 @@
        LocalTemperature(:), GasConstant(:), HeatCapacity(:),             &
        LocalTempPrev(:),SlipCoeff(:,:), PseudoCompressibility(:),        &
        PseudoPressure(:), Drag(:,:), PotentialField(:),    &
-       PotentialCoefficient(:)
+       PotentialCoefficient(:), PrevU(:), PrevV(:), PrevW(:),            &
+       xloc(:,:), xprevloc(:,:)
 
      SAVE U,V,W,MASS,STIFF,LoadVector,Viscosity, TimeForce,FORCE,ElementNodes,  &
        Alpha,Beta,ExtPressure,Pressure,PrevPressure, PrevDensity,Density,       &
@@ -150,7 +203,22 @@
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
        PseudoPressureExists, Drag, PotentialField, PotentialCoefficient, &
-       ComputeFree, Indexes
+       ComputeFree, Indexes, PrevU, PrevV, PrevW, xloc, xprevloc
+
+     ! Per-element bubble history (current and previous timestep), needed to
+     ! form a consistent BDF(1) time derivative for a condensed velocity
+     ! bubble (of either flavor -- a p-element "Element = p:.. b:.." bubble,
+     ! or the legacy "Bubbles = True"/"Stabilization Method = Bubbles" one
+     ! bubble-per-node convention): see NSCondensateTransient in
+     ! MatrixAssembly.F90, and IncompressibleNSVec's LCondensate, which it
+     ! mirrors. Indexed by Element % ElementIndex with stride
+     ! bxStride = (NSDOFs-1)*MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes),
+     ! not (NSDOFs-1)*nb of any one element, so blocks stay aligned on a mesh
+     ! with mixed bubble counts. FlowSolve never leaves a bubble in the
+     ! global system (no "Bubbles in Global System" support here), so unlike
+     ! the turbulence solvers this needs no Solver % GlobalBubbles check.
+     REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+     INTEGER, SAVE :: bxStride = 0
 
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
 !------------------------------------------------------------------------------
@@ -296,6 +364,8 @@
           DEALLOCATE(                               &
                U,  V,  W,                           &
                MU, MV, MW,                          &
+               PrevU, PrevV, PrevW,                 &
+               xloc, xprevloc,                      &
                Indexes,                             &
                Pressure,                            &
                PrevPressure,                        &
@@ -319,6 +389,8 @@
 
        ALLOCATE( U(N),  V(N),  W(N),                     &
                  MU(N), MV(N), MW(N),                    &
+                 PrevU(N), PrevV(N), PrevW(N),            &
+                 xloc(NSDOFs,N), xprevloc(NSDOFs,N),      &
                  Indexes( N ),                           &
                  Pressure( N ),                          &
                  PrevPressure( N ),                      &
@@ -388,11 +460,26 @@
      END IF
 !------------------------------------------------------------------------------
 
+     ! Per-element bubble history for the transient condensed-bubble case:
+     ! allocate once, sized by the mesh's own worst-case bubble count (not
+     ! this solver's nb, which can vary element to element) times the number
+     ! of BULK elements, since NSCondensateTransient-based recovery below
+     ! indexes bx/bxprev by Element % ElementIndex. The stride covers both
+     ! p-bubbles (MaxBDOFs) and legacy "Bubbles = True" bubbles, one per node
+     ! (MaxElementNodes) -- whichever is larger.
+     IF ( Transient .AND. .NOT. ALLOCATED(bx) ) THEN
+       bxStride = (NSDOFs-1) * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
+       ALLOCATE( bx( bxStride * Solver % Mesh % NumberOfBulkElements ), &
+                 bxprev( bxStride * Solver % Mesh % NumberOfBulkElements ) )
+       bx = 0.0_dp
+       bxprev = 0.0_dp
+     END IF
 
      TimeVar => VariableGet( Solver % Mesh % Variables, 'Timestep')
      Timestep = NINT(Timevar % Values(1))
      IF ( SaveTimestep /= Timestep ) THEN
        IF ( ALLOCATED(pDensity0) ) pDensity0 = pDensity1
+       IF ( ALLOCATED(bx) ) bxprev = bx
        SaveTimestep=Timestep
      END IF
 
@@ -1062,26 +1149,88 @@
             StabilizeFlag = 'bubbles'
          END IF
          
-         ! If bubbles are requested, but not in element formulation.
-         IF ( nb==0 .AND. Bubbles ) nb = n
-           
+         ! If bubbles are requested, but not in element formulation. Guarded on
+         ! .NOT. ASSOCIATED(Element % PDefs) (mirroring KESolver/Komega/
+         ! SSTKomega/Spalart-Allmaras/V2FSolver's own "Bubbles = BubblesDefault
+         ! .AND. .NOT. ASSOCIATED(Element % PDefs)"): for a genuine p-element
+         ! bubble, nb==0 means GetElementNOFBDOFs() saw Solver % GlobalBubbles
+         ! and correctly reports "no local bubble to condense, it is a real
+         ! global dof" -- a legitimate, user-selectable choice needing no
+         ! special handling here. Falling back to the legacy one-bubble-per-
+         ! node convention in that case forces local condensation the user
+         ! explicitly opted out of, mismatched against the real p-bubble
+         ! indexing, which is what used to hand NSCondensateTransient a wrong
+         ! retained/bubble dof split and abort in InvertMatrix with "LUDecomp:
+         ! Matrix is singular". A legacy (non-p) element has no PDefs, so this
+         ! fallback still fires unconditionally for it, same as before.
+         IF ( nb==0 .AND. Bubbles .AND. .NOT. ASSOCIATED(Element % PDefs) ) nb = n
+
 !------------------------------------------------------------------------------
-!        If time dependent simulation, add mass matrix to global 
+!        If time dependent simulation, add mass matrix to global
 !        matrix and global RHS vector
 !------------------------------------------------------------------------------
          TimeForce = 0.0_dp
-         IF ( Transient ) THEN
+         IF ( nb > 0 .AND. Transient ) THEN
+           ! A condensed velocity bubble's own value from the previous
+           ! timestep is not in the global solution vector (it was
+           ! eliminated from it), so Default1stOrderTime cannot form its
+           ! time derivative -- it would silently treat that history as
+           ! zero. NSCondensateTransient forms M/dt and M*xprev/dt over the
+           ! FULL retained+bubble block instead, using this element's own
+           ! recorded bubble history, before eliminating the bubble
+           ! rows/columns. Calling Default1stOrderTime as well would add
+           ! M/dt to the retained block a second time.
+           SELECT CASE( NSDOFs )
+             CASE(3)
+               PrevU(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-2,1)
+               PrevV(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-1,1)
+             CASE(4)
+               PrevU(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-3,1)
+               PrevV(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-2,1)
+               PrevW(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-1,1)
+           END SELECT
+
+           xloc(1,1:nd) = U(1:nd)
+           xloc(2,1:nd) = V(1:nd)
+           xprevloc(1,1:nd) = PrevU(1:nd)
+           xprevloc(2,1:nd) = PrevV(1:nd)
+           IF ( NSDOFs == 4 ) THEN
+             xloc(3,1:nd) = W(1:nd)
+             xprevloc(3,1:nd) = PrevW(1:nd)
+           END IF
+           ! The pressure row of xloc/xprevloc couples into the bubble
+           ! momentum rows through the pressure gradient term either way, so
+           ! xloc always needs the real current pressure. xprevloc's previous
+           ! -pressure entry is only read against the mass matrix's own
+           ! pressure row, which is genuinely zero for incompressible flow
+           ! (continuity has no dp/dt) but NOT for a compressible model
+           ! (PerfectGas1/UserDefined1/UserDefined2/Thermal all give
+           ! continuity a real time derivative) -- so it must be the real
+           ! previous pressure, not an assumed zero; fetch it fresh here
+           ! rather than relying on the CompressibilityModel-specific fetch
+           ! above (PerfectGas1 only, and unconditional on nb).
+           xloc(NSDOFs,1:nd) = Pressure(1:nd)
+           xprevloc(NSDOFs,1:nd) = Solver % Variable % PrevValues( &
+               NSDOFs*FlowPerm(Indexes(1:nd)),1 )
+
+           boff = (Element % ElementIndex - 1) * bxStride
+           CALL NSCondensateTransient( nd, nb, NSDOFs-1, dt, MASS, STIFF, FORCE, &
+               xprevloc(:,1:nd), xloc(:,1:nd), &
+               bxprev(boff+1:boff+(NSDOFs-1)*nb), bx(boff+1:boff+(NSDOFs-1)*nb) )
+         ELSE
+           IF ( Transient ) THEN
 !------------------------------------------------------------------------------
-!          NOTE: the following will replace STIFF and FORCE
-!          with the combined information
+!            NOTE: the following will replace STIFF and FORCE
+!            with the combined information
 !------------------------------------------------------------------------------
-           CALL Default1stOrderTime( MASS, STIFF, FORCE )
+             CALL Default1stOrderTime( MASS, STIFF, FORCE )
+           END IF
+
+           IF ( nb > 0 ) THEN
+             CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
+           END IF
          END IF
-         
-         IF ( nb > 0 ) THEN
-           CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
-         END IF
-         
+
 !------------------------------------------------------------------------------
 !        Add local stiffness matrix and force vector to global matrix & vector
 !------------------------------------------------------------------------------

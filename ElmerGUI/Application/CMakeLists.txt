@@ -32,14 +32,8 @@ SET(HEADERS src/bodypropertyeditor.h
   src/objectbrowser.h 
   src/solverlogwindow.h 
   src/newprojectdialog.h 
-  plugins/egconvert.h 
-  plugins/egdef.h 
-  plugins/egmain.h 
-  plugins/egmesh.h 
-  plugins/egnative.h 
-  plugins/egtypes.h 
-  plugins/egutils.h 
-  plugins/elmergrid_api.h 
+  plugins/egmain.h
+  plugins/elmergrid_api.h
   plugins/nglib_api.h 
   plugins/tetgen.h 
   plugins/tetlib_api.h 
@@ -90,12 +84,8 @@ SET(SOURCES src/bodypropertyeditor.cpp
   src/solverlogwindow.cpp 
   src/objectbrowser.cpp 
   src/newprojectdialog.cpp
-  plugins/egconvert.cpp 
-  plugins/egmain.cpp 
-  plugins/egmesh.cpp 
-  plugins/egnative.cpp 
-  plugins/egutils.cpp 
-  plugins/elmergrid_api.cpp 
+  plugins/egmain.cpp
+  plugins/elmergrid_api.cpp
   plugins/nglib_api.cpp 
   plugins/tetlib_api.cpp 
   twod/renderarea.cpp 
@@ -218,6 +208,12 @@ ENDIF()
 
 ADD_EXECUTABLE(ElmerGUI WIN32 ${SOURCES} ${UI_HEADERS} ${UI_RESOURCES})
 SET(CPACK_PACKAGE_EXECUTABLES ElmerGUI "ElmerGUI")
+
+# The ElmerGrid routines embedded in ElmerGUI come from elmergrid/src via this
+# library.  ElmerGUI used to keep its own copies of those sources; see
+# elmergrid/src/CMakeLists.txt.  The target carries its own include directory
+# and the EG_PLUGIN definition, so nothing else is needed here.
+TARGET_LINK_LIBRARIES(ElmerGUI elmergrid_core)
 
 IF(WITH_QT6)
   TARGET_LINK_LIBRARIES(ElmerGUI Qt6::OpenGLWidgets Qt6::Qml Qt6::Xml Qt6::Gui Qt6::Core Qt6::Svg Qt6::Widgets Qt6::PrintSupport Qt6::OpenGLWidgets) 

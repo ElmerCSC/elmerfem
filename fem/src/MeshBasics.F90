@@ -958,12 +958,14 @@ CONTAINS
    ! parents any more!
    !------------------------------------------------------------------------------
    SUBROUTINE DropFalseParents()
-     INTEGER :: i,j,t,n,t1,t2,right,hits,nact,npass,nfalse
+     INTEGER :: i,j,t,n,t1,t2,right,hits,nact,npass,nfalse,norphan,torphan
      TYPE(Element_t), POINTER :: Parent, Element
      
      t1 = Mesh % NumberOfBulkElements
      t2 = Mesh % NumberOfBoundaryElements
      nfalse = 0
+     norphan = 0
+     torphan = 0
      
      DO t = t1+1,t1+t2
        Element => Mesh % Elements(t)
@@ -1002,12 +1004,20 @@ CONTAINS
          END IF
        END DO
 
-       IF(npass>0 .AND. nact==0) THEN         
-         CALL Warn('DropFalseParents','Boundary element '//I2S(t)//' no longer has parents with same indexes!')
+       IF(npass>0 .AND. nact==0) THEN
+         norphan = norphan + 1
+         IF( torphan == 0 ) torphan = t
        END IF
 
        nfalse = nfalse + npass
      END DO
+
+     ! One line for the lot rather than one per element: the count is what
+     ! tells whether this is a stray element or the whole boundary.
+     IF( norphan > 0 ) THEN
+       CALL Warn('DropFalseParents','Boundary elements with no parents of same indexes: '&
+           //I2S(norphan)//', first one: '//I2S(torphan))
+     END IF
 
      CALL Info('DropFalseParents','Number of parents no longer parents: '//I2S(nfalse),Level=6)
                       
@@ -1884,6 +1894,19 @@ CONTAINS
        IF(PRESENT(ParOper)) CommI = ParOper
      END IF
      
+     ! The caller may hand us the ParallelInfo of a matrix that was created
+     ! but never passed through ParallelInitMatrix. Both the structure itself
+     ! and GInterface are pointers, so SIZE() below would segfault rather than
+     ! say anything useful about which matrix is at fault.
+     IF(.NOT. ASSOCIATED( ParallelInfo ) ) THEN
+       CALL Fatal('CommunicateParallelSystemTag',&
+           'ParallelInfo not created, call ParallelInitMatrix for the matrix first!')
+     END IF
+     IF(.NOT. ASSOCIATED( ParallelInfo % GInterface ) ) THEN
+       CALL Fatal('CommunicateParallelSystemTag',&
+           'ParallelInfo % GInterface not created, call ParallelInitMatrix for the matrix first!')
+     END IF
+
      nsize = SIZE( ParallelInfo % GInterface)
      IF( PRESENT(Ltag) ) THEN
        nsize = MIN(nsize, SIZE(Ltag) )
@@ -2017,7 +2040,9 @@ CONTAINS
                END IF
              ELSE
                IF( CommI == 0 ) THEN
-                 Itag(i) = Itag(k) + r_i(j)
+                 ! "i" here is the neighbour loop counter, the row to update
+                 ! is the one SearchNode found, i.e. "k".
+                 Itag(k) = Itag(k) + r_i(j)
                ELSE IF( CommI == 1 ) THEN
                  ITag(k) = MIN(r_i(j),Itag(k))
                ELSE IF( CommI == 2 ) THEN
@@ -2321,6 +2346,12 @@ CONTAINS
             'Stabilization Method', Stat )=='vms'
         Stabilize = Stabilize .OR.  ListGetString( Solver % Values, &
             'Stabilization Method', Stat )=='stabilized'
+        ! Elasticity's pressure stabilisation needs mK as well: without one of
+        ! these keywords the ELSE branch below fills only hK, StabilizationMK
+        ! stays zero, and a tau built from it is silently zero -- the scheme
+        ! then does nothing at all rather than failing visibly.
+        Stabilize = Stabilize .OR. &
+            ListGetLogical( Solver % Values, 'Pressure Stabilization', Stat )
       END IF
     END DO
 

@@ -142,6 +142,7 @@ Boundary Condition 2
   Target Boundaries(1) = 5
 
   Mortar BC = Integer 3
+  Contact Type = String "slide"
   Mortar BC Nonlinear = Logical True
 
   Normal-Tangential Displacement = Logical True

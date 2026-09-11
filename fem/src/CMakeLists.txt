@@ -127,6 +127,8 @@ ELSE()
   SET(HAVE_PARMMG_INT 0)
 ENDIF()
 
+GET_FILENAME_COMPONENT(ELMER_ABS_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}" ABSOLUTE)
+
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90-helper.in.h
   ${CMAKE_CURRENT_BINARY_DIR}/elmerf90-helper.out.h @ONLY)
 FILE(GENERATE
@@ -138,6 +140,12 @@ SET_TARGET_PROPERTIES(elmerf90_bin PROPERTIES OUTPUT_NAME "elmerf90")
 
 ADD_EXECUTABLE(elmerld_bin ${CMAKE_CURRENT_SOURCE_DIR}/elmerld.c)
 SET_TARGET_PROPERTIES(elmerld_bin PROPERTIES OUTPUT_NAME "elmerld")
+
+IF (RELOCATE_PREFIX)
+  # relocate installation prefix using location of executables on the file system
+  TARGET_LINK_LIBRARIES(elmerf90_bin PRIVATE pathtools)
+  TARGET_LINK_LIBRARIES(elmerld_bin PRIVATE pathtools)
+ENDIF()
 
 # Create pkg-config file if requested
 IF(CREATE_PKGCONFIG_FILE)

@@ -378,6 +378,7 @@ CONTAINS
     INTEGER :: bc, ind, NoBoundaryActive, NoBCs, ierr
     LOGICAL :: OnlyGivenBCs, IgnorePeriodic
     LOGICAL :: UseVar, Parallel
+    LOGICAL, SAVE :: SharedWarned = .FALSE.
 
 
     Parallel = Solver % Parallel
@@ -609,7 +610,15 @@ CONTAINS
       DO i=1,CurrentModel % NumberOfBCs 
         IF( BoundaryActive(i) == 0 ) CYCLE
         IF( BoundaryShared(i) > 0) THEN
-          CALL Warn('CalculateLoads','Boundary '//I2S(i)//' includes inseparable dofs!')
+          ! This is a property of the mesh and the BCs, so it does not change
+          ! between the calls -- and there is one call per nonlinear iteration
+          ! and timestep. Say it once, then keep it for the curious only.
+          IF( SharedWarned ) THEN
+            CALL Info('CalculateLoads','Boundary '//I2S(i)//&
+                ' includes inseparable dofs!',Level=8)
+          ELSE
+            CALL Warn('CalculateLoads','Boundary '//I2S(i)//' includes inseparable dofs!')
+          END IF
         END IF
         NoBoundaryActive = NoBoundaryActive + 1
 
@@ -627,6 +636,7 @@ CONTAINS
           CALL Info('CalculateLoads',Message,Level=6)
         END DO
       END DO
+      SharedWarned = .TRUE.
       
       IF( NoBoundaryActive > 1 ) THEN
         DO j=1,DOFs
@@ -1743,6 +1753,28 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Deterministic probe value for a global dof index, used by the
+!> 'AMGX Verify Gather' check in AMGXSolver().
+!>
+!> Every partition must obtain exactly the same value for the same global index,
+!> so this is an integer hash (the MINSTD multiplier) rather than anything that
+!> would depend on the libm in use. The product stays well inside INTEGER(8):
+!> global indices are below 2**31 and 48271*2**31 is about 1.0e14.
+!------------------------------------------------------------------------------
+  PURE FUNCTION AMGXProbeValue( g ) RESULT ( v )
+!------------------------------------------------------------------------------
+    INTEGER, INTENT(IN) :: g
+    REAL(KIND=dp) :: v
+!------------------------------------------------------------------------------
+    INTEGER(KIND=8), PARAMETER :: Mult = 48271_8, Modulus = 2147483647_8
+!------------------------------------------------------------------------------
+    v = REAL( MOD( INT(g,8)*Mult, Modulus ), dp ) / REAL( Modulus, dp ) - 0.5_dp
+!------------------------------------------------------------------------------
+  END FUNCTION AMGXProbeValue
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
   SUBROUTINE AMGXSolver( A, x, b, Solver )
 !------------------------------------------------------------------------------
     USE iso_c_binding, only: C_INTPTR_T, C_CHAR, C_NULL_CHAR
@@ -1767,7 +1799,7 @@ CONTAINS
          INTEGER :: rows(*), cols(*), nonlin_update, n, comm, ng, part_vec(*), solve_status
       END SUBROUTINE AMGXSolve
     END INTERFACE
-
+#endif
 
     ! AMGX_SOLVE_STATUS values, mirrored from https://github.com/NVIDIA/AMGX/tree/main/include
     INTEGER, PARAMETER :: AMGX_SOLVE_SUCCESS = 0, AMGX_SOLVE_FAILED = 1, &
@@ -1775,13 +1807,34 @@ CONTAINS
 
     CHARACTER(KIND=C_CHAR) :: cfg(MAX_NAME_LEN)
     CHARACTER(LEN=MAX_NAME_LEN) :: config
-    LOGICAL :: found, isparallel , nlin, DoFatal
+    LOGICAL :: found, isparallel , nlin, DoFatal, VerifyGather, VerifyOnly, Rebuild
     INTEGER :: nonlin_update, i, j, n, lrow, me, you, solve_status
     REAL(KIND=dp)  :: bnrm
 
     TYPE(Matrix_t), POINTER :: Bm
-    INTEGER, SAVE :: ng
-    INTEGER, ALLOCATABLE, SAVE :: Owner(:), APerm(:), part_vec(:), iLPerm(:)
+
+    ! The collection state belongs to the matrix, not to this routine: see
+    ! AMGXCollection_t in Types. > AC < is only a shorthand for it, so that
+    ! several solvers using AMGX on different matrices keep their own.
+    TYPE(AMGXCollection_t), POINTER :: AC
+    INTEGER :: ng
+
+    ! The collection of the partition-local matrices into whole owned rows below
+    ! is plain Elmer + MPI: it needs no AMGX. Its correctness can therefore be
+    ! checked on any machine, GPU or not, which is what 'AMGX Verify Gather'
+    ! does. Without the library linked in that check is the only thing this
+    ! routine can do, and it stops before the solve.
+    VerifyGather = ListGetLogical( Solver % Values, 'AMGX Verify Gather', Found )
+    VerifyOnly = .FALSE.
+#ifndef HAVE_AMGX
+    IF( .NOT. VerifyGather ) THEN
+      CALL Fatal('AMGXSolver', "AMGX doesn't seem to be included.")
+    END IF
+    VerifyOnly = .TRUE.
+    CALL Info('AMGXSolver','AMGX is not linked in: verifying the matrix gather only.',Level=4)
+#endif
+
+    solve_status = AMGX_SOLVE_SUCCESS
 
     nlin = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
     IF ( nlin .OR. .NOT. Found ) THEN
@@ -1790,7 +1843,10 @@ CONTAINS
       nonlin_update = 0
     END IF
 
-    config = ListGetString( Solver % Values, 'AMGX Config')
+    config = ListGetString( Solver % Values, 'AMGX Config', Found )
+    IF(.NOT. Found .AND. .NOT. VerifyOnly ) THEN
+      CALL Fatal('AMGXSolver','Keyword > AMGX Config < is required!')
+    END IF
     DO i=1,LEN_TRIM(config)
       cfg(i) = config(i:i)
     END DO
@@ -1801,10 +1857,15 @@ CONTAINS
 
     IF(isParallel) THEN
 
+      IF( .NOT. ASSOCIATED( A % AMGXColl ) ) ALLOCATE( A % AMGXColl )
+      AC => A % AMGXColl
+      ng = AC % ng
+
       BLOCK
         INTEGER, ALLOCATABLE :: part_vec_tmp(:)
+        INTEGER, ALLOCATABLE :: Owner(:)
 
-        INTEGER, ALLOCATABLE, SAVE :: GlobalToLocal(:),rRows(:),rSize(:),cBuf(:),SendTo(:)
+        INTEGER, ALLOCATABLE :: rRows(:),rSize(:),cBuf(:)
         REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
         INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt,proc,totcnt,totnnz
 
@@ -1812,55 +1873,88 @@ CONTAINS
           INTEGER, ALLOCATABLE :: Size(:), Rows(:)
         END TYPE SendStuff_t
         TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
+
+        ! Received (Bm row, global column) per entry, in the order the values
+        ! arrive. Turned into > AC % RecvIdx < once Bm has its CRS structure.
+        TYPE(IdxList_t), ALLOCATABLE :: RecvRow(:), RecvCol(:)
+        INTEGER :: icnt, slot, nsend, nrecv
+        REAL(KIND=dp), ALLOCATABLE :: sbuf(:), rbuf(:)
  
         IF(.NOT. ASSOCIATED(A % CollectionMatrix)) THEN
-          IF(ALLOCATED(Owner))THEN
-            DEALLOCATE(Owner,APerm,ILperm,part_vec, SendTo, GlobalToLocal)
+          ! Re-entering for this same matrix, its collection matrix having been
+          ! dropped: throw the stale pattern away.
+          IF(ALLOCATED(AC % APerm))THEN
+            DEALLOCATE(AC % APerm, AC % iLPerm, AC % part_vec, AC % SendTo, &
+                AC % GlobalToLocal)
+            IF(ALLOCATED(AC % LocalMap)) DEALLOCATE(AC % LocalMap)
+            IF(ALLOCATED(AC % SendIdx)) DEALLOCATE(AC % SendIdx)
+            IF(ALLOCATED(AC % RecvIdx)) DEALLOCATE(AC % RecvIdx)
           END IF
 
+          ! This is a different matrix from the one the cached pattern, if any,
+          ! was built for.
+          AC % PatternReady = .FALSE.
+          AC % nnzA = -1
+          AC % nrowsA = -1
+
           n = SIZE(A % ParallelInfo % GlobalDOFs)
-          ALLOCATE( Owner(n), Aperm(n) )
-          CALL ContinuousNumbering(A % ParallelInfo,A % Perm,APerm,Owner)
+          ALLOCATE( Owner(n), AC % APerm(n) )
+          CALL ContinuousNumbering(A % ParallelInfo,A % Perm,AC % APerm,Owner)
 
           ng = 0
           DO i=1, A % NumberOfRows
             IF(A % ParallelInfo % NeighbourList(i) % Neighbours(1) == me) ng=ng+1
           END DO
           ng = NINT(ParallelReduction(1._dp*ng))
+          AC % ng = ng
 
-          ALLOCATE(part_vec(ng), part_vec_tmp(ng));
-          part_vec_tmp=-1; part_vec=-1
+          ALLOCATE(AC % part_vec(ng), part_vec_tmp(ng));
+          part_vec_tmp=-1; AC % part_vec=-1
           DO i=1,A % NumberOfRows
-            part_vec_tmp(APerm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+            part_vec_tmp(AC % APerm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
           END DO
-          CALL MPI_ALLREDUCE( part_vec_tmp, part_vec, ng, MPI_INTEGER, MPI_MAX, &
+          CALL MPI_ALLREDUCE( part_vec_tmp, AC % part_vec, ng, MPI_INTEGER, MPI_MAX, &
                             ELMER_COMM_WORLD, ierr )
           DEALLOCATE(part_vec_tmp)
 
           Bm => AllocateMatrix(); Bm % Format = MATRIX_LIST
-          ALLOCATE(SendTo(ParEnv % Pes),GlobalToLocal(ng),iLPerm(A % NumberOfRows))
+          ALLOCATE(AC % SendTo(ParEnv % Pes),AC % GlobalToLocal(ng),AC % iLPerm(A % NumberOfRows))
         ELSE
           Bm => A % CollectionMatrix
         END IF
 
-        IF( Bm % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
-          iLPerm = 0
+        ! The pattern has to be rebuilt on the first pass, if the structure of A
+        ! changed under us, or if CRS_AddToMatrixElement() hit a column the
+        ! gathered matrix does not have and flipped it back to list format.
+        Rebuild = .NOT. AC % PatternReady .OR. Bm % Format == MATRIX_LIST .OR. &
+            AC % nnzA /= SIZE(A % Values) .OR. AC % nrowsA /= A % NumberOfRows
+
+        ! The decision has to be unanimous. The two branches below use different
+        ! message patterns, so partitions disagreeing would deadlock -- and every
+        ! term above is local: CRS_AddToMatrixElement() flips > Bm % Format <
+        ! back to list format on the one partition that met an unknown column.
+        i = 0
+        IF( Rebuild ) i = 1
+        Rebuild = ( NINT( ParallelReduction( 1._dp*i, 2 ) ) > 0 )
+
+        IF( Rebuild ) THEN
+          AC % iLPerm = 0
           LRow = 0
-          SendTo = 0
-          GlobalToLocal = 0
+          AC % SendTo = 0
+          AC % GlobalToLocal = 0
  
           IF (Bm % Format == MATRIX_CRS  ) Bm % Values = 0._dp
           DO i=1,A % NumberofRows
             you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
             IF ( you == me ) THEN
               LRow = LRow+1
-              iLPerm(LRow) = i
+              AC % iLPerm(LRow) = i
               DO j=A % Rows(i+1)-1, A % Rows(i),-1
-                CALL AddToMatrixElement(Bm,LRow,APerm(A  % Cols(j)), A % Values(j))
+                CALL AddToMatrixElement(Bm,LRow,AC % APerm(A  % Cols(j)), A % Values(j))
               END DO
-              GlobalToLocal(APerm(i)) = LRow
+              AC % GlobalToLocal(AC % APerm(i)) = LRow
             ELSE
-              SendTo(you+1) = SendTo(you+1)+1
+              AC % SendTo(you+1) = AC % SendTo(you+1)+1
             END IF
           END DO
 
@@ -1869,45 +1963,68 @@ CONTAINS
             IF( i-1==me ) CYCLE
             IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
   
-            ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
-            ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
+            ALLOCATE( SendStuff(i) % Rows(AC % SendTo(i)) )
+            ALLOCATE( SendStuff(i) % Size(AC % SendTo(i)) )
           END DO
  
-          SendTo = 0
+          AC % SendTo = 0
           DO i=1,a % NumberOfRows
             you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
             IF ( you /= me ) THEN
-              SendTo(you+1) = SendTo(you+1)+1
-              SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
-              SendStuff(you+1) % Rows(Sendto(you+1))  = i
+              AC % SendTo(you+1) = AC % SendTo(you+1)+1
+              SendStuff(you+1) % Size(AC % SendTo(you+1))  = A % Rows(i+1)-A % Rows(i)
+              SendStuff(you+1) % Rows(AC % SendTo(you+1))  = i
             END IF
+          END DO
+
+          ! Cache the flat list of value indices per neighbour, in exactly the
+          ! order the rows are shipped below, so that later solves can send the
+          ! values alone.
+          IF(ALLOCATED(AC % SendIdx)) DEALLOCATE(AC % SendIdx)
+          IF(ALLOCATED(AC % RecvIdx)) DEALLOCATE(AC % RecvIdx)
+          ALLOCATE(AC % SendIdx(ParEnv % PEs), AC % RecvIdx(ParEnv % PEs))
+          ALLOCATE(RecvRow(ParEnv % PEs), RecvCol(ParEnv % PEs))
+          DO i=1,ParEnv % PEs
+            IF( i-1==me .OR. .NOT. ParEnv % IsNeighbour(i) .OR. AC % SendTo(i)==0 ) THEN
+              ALLOCATE(AC % SendIdx(i) % Ind(0))
+              CYCLE
+            END IF
+            ALLOCATE(AC % SendIdx(i) % Ind(SUM(SendStuff(i) % Size)))
+            l = 0
+            DO j=1,AC % SendTo(i)
+              k = SendStuff(i) % Rows(j)
+              DO you=A % Rows(k), A % Rows(k+1)-1
+                l = l+1
+                AC % SendIdx(i) % Ind(l) = you
+              END DO
+            END DO
           END DO
 
           ! Ensure the MPI buffered-send pool is large enough for this loop's
           ! traffic: call CheckBuffer, similarily to RocSolver
-          totcnt = SUM(SendTo)
+          totcnt = SUM(AC % SendTo)
           totnnz = 0
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
-            IF(SendTo(i)>0) totnnz = totnnz + SUM(SendStuff(i) % Size)
+            IF(AC % SendTo(i)>0) totnnz = totnnz + SUM(SendStuff(i) % Size)
           END DO
           CALL CheckBuffer( ParEnv % PEs*(1+MPI_BSEND_OVERHEAD) + 2*totcnt + 3*totnnz + &
-                     (3*COUNT(SendTo/=0) + 2*totcnt)*MPI_BSEND_OVERHEAD )
+                     (3*COUNT(AC % SendTo/=0) + 2*totcnt)*MPI_BSEND_OVERHEAD )
 
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-            CALL MPI_BSEND(SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD, ierr)
-            IF(Sendto(i)==0) CYCLE
+            CALL MPI_BSEND(AC % SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD, ierr)
+            IF(AC % SendTo(i)==0) CYCLE
 
-            CALL MPI_BSEND(APerm(SendStuff(i) % Rows),SendTo(i),MPI_INTEGER,i-1, &
+            CALL MPI_BSEND(AC % APerm(SendStuff(i) % Rows),AC % SendTo(i),MPI_INTEGER,i-1, &
                           1201,ELMER_COMM_WORLD,ierr )
   
-            CALL MPI_BSEND( SendStuff(i) % Size,SendTo(i),MPI_INTEGER,i-1, &
+            CALL MPI_BSEND( SendStuff(i) % Size,AC % SendTo(i),MPI_INTEGER,i-1, &
                           1202,ELMER_COMM_WORLD,ierr )
-            DO j=1,SendTo(i)
+            DO j=1,AC % SendTo(i)
               k = SendStuff(i) % Rows(j)
-              CALL MPI_BSEND(APerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)),SendStuff(i) % Size(j), &
+              CALL MPI_BSEND(AC % APerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)),SendStuff(i) % Size(j), &
                          MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, ierr )
 
               CALL MPI_BSEND(A % Values(A % Rows(k):A % Rows(k+1)-1),SendStuff(i) % Size(j), &
@@ -1926,10 +2043,22 @@ CONTAINS
 
             CALL MPI_RECV(rRows,rcnt,MPI_INTEGER,proc,1201,ELMER_COMM_WORLD,status,ierr)
             CALL MPI_RECV(rSize,rcnt,MPI_INTEGER,proc,1202,ELMER_COMM_WORLD,status,ierr)
+
+            ALLOCATE( RecvRow(proc+1) % Ind(SUM(rSize)), &
+                      RecvCol(proc+1) % Ind(SUM(rSize)) )
+            icnt = 0
+
             DO j=1,rcnt
-              k = GlobalToLocal(rRows(j))
+              k = AC % GlobalToLocal(rRows(j))
               IF ( k==0 ) THEN
                 PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j)
+                ! Account for the values anyway: the neighbour ships them and
+                ! the cached flat ordering has to line up with what it sends.
+                DO l=1,rSize(j)
+                  icnt = icnt+1
+                  RecvRow(proc+1) % Ind(icnt) = 0
+                  RecvCol(proc+1) % Ind(icnt) = 0
+                END DO
                 CYCLE
               END IF
               ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
@@ -1941,6 +2070,9 @@ CONTAINS
 
               DO l=1,rSize(j)
                 CAll AddToMatrixElement(Bm,k,cBuf(l),vBuf(l))
+                icnt = icnt+1
+                RecvRow(proc+1) % Ind(icnt) = k
+                RecvCol(proc+1) % Ind(icnt) = cBuf(l)
               END DO
               DEALLOCATE(cbuf, vbuf)
             END DO
@@ -1953,8 +2085,162 @@ CONTAINS
             CALL List_toCRSMatrix(Bm)
             A % CollectionMatrix => Bm
           END IF
+
+          ! Bm now has its final CRS structure, so the (row,column) pairs above
+          ! can be resolved to value slots once and for all.
+          IF( Bm % Format == MATRIX_CRS ) THEN
+            IF(ALLOCATED(AC % LocalMap)) DEALLOCATE(AC % LocalMap)
+            ALLOCATE(AC % LocalMap(SIZE(A % Values)))
+            AC % LocalMap = 0
+
+            DO lrow=1,Bm % NumberOfRows
+              i = AC % iLPerm(lrow)
+              IF( i<=0 ) CYCLE
+              DO j=A % Rows(i), A % Rows(i+1)-1
+                slot = CRS_Search( Bm % Rows(lrow+1)-Bm % Rows(lrow), &
+                    Bm % Cols(Bm % Rows(lrow):Bm % Rows(lrow+1)-1), AC % APerm(A % Cols(j)) )
+                IF( slot>0 ) AC % LocalMap(j) = slot + Bm % Rows(lrow) - 1
+              END DO
+            END DO
+
+            DO i=1,ParEnv % PEs
+              IF( .NOT. ALLOCATED(RecvRow(i) % Ind) ) THEN
+                ALLOCATE(AC % RecvIdx(i) % Ind(0))
+                CYCLE
+              END IF
+              nrecv = SIZE(RecvRow(i) % Ind)
+              ALLOCATE(AC % RecvIdx(i) % Ind(nrecv))
+              AC % RecvIdx(i) % Ind = 0
+              DO l=1,nrecv
+                k = RecvRow(i) % Ind(l)
+                IF( k<=0 ) CYCLE
+                slot = CRS_Search( Bm % Rows(k+1)-Bm % Rows(k), &
+                    Bm % Cols(Bm % Rows(k):Bm % Rows(k+1)-1), RecvCol(i) % Ind(l) )
+                IF( slot>0 ) AC % RecvIdx(i) % Ind(l) = slot + Bm % Rows(k) - 1
+              END DO
+            END DO
+
+            AC % nnzA = SIZE(A % Values)
+            AC % nrowsA = A % NumberOfRows
+            AC % PatternReady = .TRUE.
+            CALL Info('AMGXSolver','Collection pattern cached; later solves exchange values only.',Level=6)
+          END IF
+
+        ELSE IF( nonlin_update == 1 ) THEN
+          ! Values-only refresh through the cached pattern: one contiguous
+          ! message of doubles per neighbour, no indices, no per-row messages.
+          Bm % Values = 0._dp
+
+          DO j=1,SIZE(A % Values)
+            IF( AC % LocalMap(j)>0 ) &
+                Bm % Values(AC % LocalMap(j)) = Bm % Values(AC % LocalMap(j)) + A % Values(j)
+          END DO
+
+          totnnz = 0
+          k = 0
+          DO i=1,ParEnv % PEs
+            nsend = SIZE(AC % SendIdx(i) % Ind)
+            IF(nsend>0) THEN
+              totnnz = totnnz + nsend
+              k = k+1
+            END IF
+          END DO
+          CALL CheckBuffer( 2*totnnz + (1+k)*MPI_BSEND_OVERHEAD )
+
+          DO i=1,ParEnv % PEs
+            nsend = SIZE(AC % SendIdx(i) % Ind)
+            IF( nsend==0 ) CYCLE
+            ALLOCATE(sbuf(nsend))
+            sbuf = A % Values(AC % SendIdx(i) % Ind)
+            CALL MPI_BSEND(sbuf,nsend,MPI_DOUBLE_PRECISION,i-1,1210, &
+                ELMER_COMM_WORLD,ierr)
+            DEALLOCATE(sbuf)
+          END DO
+
+          DO i=1,ParEnv % PEs
+            nrecv = SIZE(AC % RecvIdx(i) % Ind)
+            IF( nrecv==0 ) CYCLE
+            ALLOCATE(rbuf(nrecv))
+            CALL MPI_RECV(rbuf,nrecv,MPI_DOUBLE_PRECISION,i-1,1210, &
+                ELMER_COMM_WORLD,status,ierr)
+            DO l=1,nrecv
+              IF( AC % RecvIdx(i) % Ind(l)>0 ) &
+                  Bm % Values(AC % RecvIdx(i) % Ind(l)) = &
+                      Bm % Values(AC % RecvIdx(i) % Ind(l)) + rbuf(l)
+            END DO
+            DEALLOCATE(rbuf)
+          END DO
         END IF
       END BLOCK
+
+      ! Verify the gather above against the parallel matrix itself.
+      !
+      ! The parallel matrix is a sum of partition-local contributions,
+      ! A = SUM_p A_p, because every element is assembled on exactly one
+      ! partition. Hence for any vector u on which all partitions agree,
+      ! SUM_p (A_p u) is the exact global product A*u, and ParallelSumVector
+      ! performs that sum. This gives a reference for the gathered matrix Bm
+      ! that needs neither AMGX nor the SplittedMatrix glue.
+      !
+      ! Note that Elmer splits the parallel matrix by *column* ownership
+      ! (SplitMatrix in SParIterSolver.F90), which lets the parallel
+      ! matrix-vector product be formed from local u alone, whereas AMGX wants
+      ! whole *rows* on the owning rank -- hence the gather. An orientation
+      ! error between the two cancels for a symmetric matrix and does not for a
+      ! general one, so run this on a strongly unsymmetric case, with a
+      ! symmetric one as the control.
+      IF( VerifyGather ) THEN
+        BLOCK
+          REAL(KIND=dp), ALLOCATABLE :: vref(:), vtst(:)
+          REAL(KIND=dp) :: s, emax, vmax, relerr
+          INTEGER :: ii, kk
+
+          ALLOCATE( vref(A % NumberOfRows), vtst(Bm % NumberOfRows) )
+
+          ! Reference: the local product of every partition, then summed.
+          DO ii=1,A % NumberOfRows
+            s = 0._dp
+            DO kk=A % Rows(ii), A % Rows(ii+1)-1
+              s = s + A % Values(kk) * AMGXProbeValue( AC % APerm(A % Cols(kk)) )
+            END DO
+            vref(ii) = s
+          END DO
+          CALL ParallelSumVector( A, vref )
+
+          ! Candidate: the same product from the gathered whole rows. Bm % Cols
+          ! already carry the global (AC % APerm) numbering.
+          DO ii=1,Bm % NumberOfRows
+            s = 0._dp
+            DO kk=Bm % Rows(ii), Bm % Rows(ii+1)-1
+              s = s + Bm % Values(kk) * AMGXProbeValue( Bm % Cols(kk) )
+            END DO
+            vtst(ii) = s
+          END DO
+
+          emax = 0._dp; vmax = 0._dp
+          DO ii=1,Bm % NumberOfRows
+            emax = MAX( emax, ABS( vtst(ii) - vref(AC % iLPerm(ii)) ) )
+            vmax = MAX( vmax, ABS( vref(AC % iLPerm(ii)) ) )
+          END DO
+          emax = ParallelReduction( emax, 2 )
+          vmax = ParallelReduction( vmax, 2 )
+
+          relerr = emax
+          IF( vmax > 0._dp ) relerr = emax / vmax
+
+          WRITE(Message,'(A,ES12.5)') 'AMGX gather vs. parallel matrix-vector, relative error: ',relerr
+          IF( relerr > 1.0e-9_dp ) THEN
+            CALL Warn('AMGXSolver',Message)
+            CALL Warn('AMGXSolver','The gathered matrix does not reproduce the parallel product!')
+          ELSE
+            CALL Info('AMGXSolver',Message,Level=4)
+          END IF
+
+          DEALLOCATE( vref, vtst )
+        END BLOCK
+
+        IF( VerifyOnly ) RETURN
+      END IF
 
       BLOCK
         REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
@@ -1967,27 +2253,36 @@ CONTAINS
         CALL ParallelSumVector(A, r)
 
         DO i=1,n
-          bb(i) = r(iLPerm(i))
-          xb(i) = x(iLPerm(i))
+          bb(i) = r(AC % iLPerm(i))
+          xb(i) = x(AC % iLPerm(i))
         END DO
         bnrm = SQRT(ParallelReduction(SUM(bb**2)))
 
+#ifdef HAVE_AMGX
         CALL AMGXSolve( A % AMGX, n, Bm % Rows-1, Bm % Cols-1, Bm % Values,  &
-          bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, part_vec, bnrm, solve_status )
+          bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, AC % part_vec, bnrm, solve_status )
+#endif
 
         x = 0
         DO i=1,n
-          x(iLPerm(i)) = xb(i)
+          x(AC % iLPerm(i)) = xb(i)
         END DO
         CALL ParallelSumVector(A, x)
       END BLOCK
     ELSE
+      IF( VerifyGather ) THEN
+        CALL Info('AMGXSolver','Serial run: there is no gather to verify.',Level=4)
+        IF( VerifyOnly ) RETURN
+      END IF
+
       n = A % NumberOfRows
       bnrm = SQRT(SUM(b**2))
 
+#ifdef HAVE_AMGX
       CALL AMGXSolve( A % AMGX, n, A % Rows-1, A % Cols-1, &
         A % Values, b, x, nonlin_update, cfg, ELMER_COMM_WORLD, n, &
            A % Diag, bnrm, solve_status ) ! <--- a % diag  for dummy
+#endif
     END IF
 
     IF( solve_status == AMGX_SOLVE_SUCCESS ) THEN
@@ -2012,9 +2307,6 @@ CONTAINS
       END SELECT
       IF( ASSOCIATED( Solver % Variable ) ) Solver % Variable % LinConverged = 0
     END IF
-#else
-    CALL Fatal('AMGXSolver', "AMGX doesn't seem to be included.")
-#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXSolver
 !------------------------------------------------------------------------------
@@ -2770,6 +3062,10 @@ CONTAINS
 
     BLOCK
       LOGICAL :: LFact, FreeFact, ConstraintMatrixConstant
+      ! Hoisted out of the constraint-elimination branch below: nested BLOCKs
+      ! are miscompiled by some compilers (Intel 20.0), and the extra scope
+      ! bought nothing here.
+      TYPE(Matrix_t), POINTER :: Acoll
 
       ConstraintMatrixConstant = ListGetLogical( Solver % Values,  &
           'Constraint Modes Constant Matrix', Found)
@@ -2794,30 +3090,27 @@ CONTAINS
         ! Here activate constraint solve only if constraints are not treated as blocks
         IF( RestrictionMode .AND. &
             ListGetLogical( Params, 'Eliminate Linear Constraints', Found) ) THEN
-          BLOCK 
-            TYPE(Matrix_t), POINTER :: Acoll      
-            Acoll  => AllocateMatrix()
-            Acoll % FORMAT = MATRIX_LIST        
-            CALL Info(Caller,'Eliminating constraints before going into block matrix!')
-            CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
-            CALL List_ToCRSMatrix(Acoll)
+          Acoll  => AllocateMatrix()
+          Acoll % FORMAT = MATRIX_LIST
+          CALL Info(Caller,'Eliminating constraints before going into block matrix!')
+          CALL EliminateLinearRestriction( A, bb, A % ConstraintMatrix, Acoll, Solver, .TRUE. )
+          CALL List_ToCRSMatrix(Acoll)
 
-            Acoll % Comm = A % Comm 
-            Acoll % AddMatrix => A % AddMatrix
-            CALL ParallelInitMatrix(Solver, Acoll)
-          
-            CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
+          Acoll % Comm = A % Comm
+          Acoll % AddMatrix => A % AddMatrix
+          CALL ParallelInitMatrix(Solver, Acoll)
 
-            CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
-            NULLIFY( Acoll % AddMatrix )         
+          CALL BlockSolveExt( Acoll, x, Acoll % rhs, Solver )
 
-            CALL FreeMatrix(Acoll)
-            ! The environment of the freed collection matrix is gone with it,
-            ! return to the one of the system matrix.
-            CALL SetMatrixParEnv( A )
+          CALL Info(Caller,'Freeing collection matrix after solution',Level=10)
+          NULLIFY( Acoll % AddMatrix )
 
-            Acoll => NULL()
-          END BLOCK
+          CALL FreeMatrix(Acoll)
+          ! The environment of the freed collection matrix is gone with it,
+          ! return to the one of the system matrix.
+          CALL SetMatrixParEnv( A )
+
+          Acoll => NULL()
         ELSE
           CALL BlockSolveExt( A, x, bb, Solver )
         END IF
@@ -6500,7 +6793,8 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros, SaveSum
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros, SaveSum, &
+        SaveAdios2, SaveStiff
     CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystem'
 !------------------------------------------------------------------------------
 
@@ -6531,8 +6825,22 @@ CONTAINS
 
     SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
 
-    SkipZeros = ListGetLogical( Params,'Linear System Save Skip Zeros', Found ) 
-    
+    SkipZeros = ListGetLogical( Params,'Linear System Save Skip Zeros', Found )
+
+    SaveAdios2 = ListGetLogical( Params,'Linear System Save Adios2', Found )
+
+    SaveStiff = ListGetLogical( Params,'Linear System Save Stiff', Found )
+    IF(.NOT. Found ) SaveStiff = .TRUE.
+
+    SaveSol = ListGetLogical( Params,'Linear System Save Solution',Found)
+    IF( SaveSol ) THEN
+      Sol => Solver % Variable % Values
+      IF( .NOT. ASSOCIATED( Sol ) ) THEN
+        CALL Warn(Caller,'Solution not associated!')
+        SaveSol = .FALSE.
+      END IF
+    END IF
+
     IF( PRESENT( LinSysName ) ) THEN
       dumpprefix = TRIM(LinSysName) 
     ELSE
@@ -6540,6 +6848,8 @@ CONTAINS
       IF(.NOT. Found ) dumpprefix = 'linsys'
     END IF
           
+    IF(.NOT. SaveAdios2) THEN
+
     dumpfile = TRIM(dumpprefix)//'_a.dat'
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
     CALL Info(Caller,'Saving matrix to: '//TRIM(dumpfile),Level=5)
@@ -6575,22 +6885,15 @@ CONTAINS
     END IF
 
 
-    SaveSol = ListGetLogical( Params,'Linear System Save Solution',Found)
     IF( SaveSol ) THEN
-      Sol => Solver % Variable % Values
-      IF( .NOT. ASSOCIATED( Sol ) ) THEN
-        CALL Warn(Caller,'Solution not associated!')
-        SaveSol = .FALSE.
-      ELSE
-        dumpfile = TRIM(dumpprefix)//'_sol.dat'
-        IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
-        CALL Info(Caller,'Saving solution to: '//TRIM(dumpfile),Level=5)
-        OPEN(1,FILE=dumpfile, STATUS='Unknown')
-        DO i=1,SIZE(Sol)
-          WRITE(1,'(I0,ES15.6)') i,Sol(i)
-        END DO
-        CLOSE( 1 ) 
-      END IF
+      dumpfile = TRIM(dumpprefix)//'_sol.dat'
+      IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
+      CALL Info(Caller,'Saving solution to: '//TRIM(dumpfile),Level=5)
+      OPEN(1,FILE=dumpfile, STATUS='Unknown')
+      DO i=1,SIZE(Sol)
+        WRITE(1,'(I0,ES15.6)') i,Sol(i)
+      END DO
+      CLOSE( 1 )
     END IF
     
     
@@ -6618,13 +6921,102 @@ CONTAINS
       IF( SavePerm ) WRITE(1,*) ParallelReduction(SIZE( Perm ))
       CLOSE(1)
     END IF
-    
+
+    ELSE
+      dumpfile = TRIM(dumpprefix)//'.bp'
+      CALL SaveLinearSystemAdios2( A, dumpfile, Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol, Sol )
+    END IF
+
     IF( ListGetLogical( Params,'Linear System Save and Stop',Found ) ) THEN
       CALL Info(Caller,'Just saved matrix and stopped!',Level=4)
       STOP EXIT_OK
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveLinearSystem
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Saves the linear system (CRS matrix, optionally mass/damp matrices, and rhs)
+!> using ADIOS2Utils. Global dofs from A % parallelinfo % globaldofs is saved to the output file
+!> or if CNumbering is enabled, then the output of ContinuousNumbering A % Gorder is saved.
+!> Note! The ADIOS2 file is finalized at the end of the call so multiple timesteps will cause problems.
+!------------------------------------------------------------------------------
+  SUBROUTINE SaveLinearSystemAdios2( A, dumpfile, Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol, Sol )
+!------------------------------------------------------------------------------
+#ifdef HAVE_ADIOS2
+    USE ADIOS2Utils
+#endif
+    TYPE(Matrix_t) :: A
+    CHARACTER(LEN=*) :: dumpfile
+    LOGICAL :: Parallel, CNumbering, SaveMass, SaveDamp, SaveStiff, SaveSol
+    REAL(KIND=dp), POINTER :: Sol(:)
+!------------------------------------------------------------------------------
+#ifdef HAVE_ADIOS2
+    TYPE(AdiosWriter_t) :: Writer
+    INTEGER, ALLOCATABLE :: Owner(:)
+    INTEGER, ALLOCATABLE :: GlobalRows(:), GlobalCols(:), RowNnz(:)
+    INTEGER :: i, j, n, nnz, ierr
+    CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystemAdios2'
+
+    CALL Info(Caller,'Saving linear system using Adios2 to: '//TRIM(dumpfile),Level=5)
+
+    n = A % NumberOfRows
+    nnz = A % Rows(n+1) - 1
+
+    ALLOCATE( GlobalRows(n),  )
+
+
+    IF( Parallel ) THEN
+      IF( CNumbering ) THEN
+        IF( .NOT. ASSOCIATED( A % Gorder ) ) THEN
+          ALLOCATE( A % Gorder(n), Owner(n) )
+          CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+        END IF
+        GlobalRows(1:n) = A % Gorder(1:n)
+      ELSE
+        GlobalRows(1:n) = A % ParallelInfo % GlobalDOFs(1:n)
+      END IF
+    ELSE
+      DO i=1,n
+        GlobalRows(i) = i
+      END DO
+    END IF
+
+    ierr = Writer % init( dumpfile, array_kind = ADIOS2_ARRAY_GLOBAL )
+
+    CALL Writer % write_data( 'global_dofs', GlobalRows )
+    CALL Writer % write_data( 'rows', A % rows )
+    CALL Writer % write_data( 'cols', A % cols )
+
+    IF( SaveStiff ) THEN
+      CALL Writer % write_data( 'values', A % Values(1:nnz) )
+    END IF
+
+    IF( SaveMass ) THEN
+      CALL Writer % write_data( 'mass_values', A % MassValues(1:nnz) )
+    END IF
+
+    IF( SaveDamp ) THEN
+      CALL Writer % write_data( 'damp_values', A % DampValues(1:nnz) )
+    END IF
+
+    IF( ASSOCIATED( A % rhs ) ) THEN
+      CALL Writer % write_data( 'rhs', A % rhs(1:n) )
+    END IF
+
+    IF( SaveSol ) THEN
+      CALL Writer % write_data( 'solution', Sol )
+    END IF
+
+    ierr = Writer % finalize()
+
+    DEALLOCATE( GlobalRows )
+#else
+    CALL Fatal('SaveLinearSystemAdios2','Elmer was not compiled with ADIOS2 support!')
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE SaveLinearSystemAdios2
+!------------------------------------------------------------------------------
 
   SUBROUTINE LinearSystemMultiply( Solver )
 !----------------------------------------------------------------------------------    

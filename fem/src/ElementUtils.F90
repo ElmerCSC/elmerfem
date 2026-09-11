@@ -157,6 +157,10 @@ CONTAINS
      IF ( ASSOCIATED( Matrix % CValues ) )     DEALLOCATE( Matrix % CValues )
      IF ( ASSOCIATED( Matrix % CILUValues ) )  DEALLOCATE( Matrix % CILUValues )
 
+     ! Parallel collection state of the AMGX interface, see AMGXCollection_t.
+     ! Allocatable components go with it.
+     IF ( ASSOCIATED( Matrix % AMGXColl ) )    DEALLOCATE( Matrix % AMGXColl )
+
      ! Block CRS view, if one was built alongside the scalar form
      IF ( ASSOCIATED( Matrix % BRows ) )       DEALLOCATE( Matrix % BRows )
      IF ( ASSOCIATED( Matrix % BCols ) )       DEALLOCATE( Matrix % BCols )

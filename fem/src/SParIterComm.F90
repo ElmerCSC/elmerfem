@@ -46,6 +46,8 @@
 
 MODULE SParIterComm
 
+!$ USE omp_lib ! conditionally, for the thread ids in the inner products below
+
   USE LoadMod, ONLY : RealTime
   USE Messages
   USE SParIterGlobals
@@ -520,7 +522,7 @@ CONTAINS
       END DO
       ALLOCATE( buf(2*sz) )
 
-      CALL CheckBuffer( 4*n+Parenv % NumOfNeighbours*(4+MPI_BSEND_OVERHEAD) )
+      CALL CheckBuffer( 4*n+ParEnvNeighbourCount(ParEnv)*(4+MPI_BSEND_OVERHEAD) )
 
       DO i=1,ParEnv % PEs
         IF ( .NOT. ParEnv % IsNeighbour(i) ) CYCLE
@@ -546,7 +548,7 @@ CONTAINS
       DEALLOCATE(NeighList, buf )
 
       m = SIZE(ParallelInfo % GlobalDOFs)
-      DO i=1,ParEnv % NumOfNeighbours
+      DO i=1,ParEnvNeighbourCount(ParEnv)
         CALL MPI_RECV( sz,1,MPI_INTEGER,MPI_ANY_SOURCE,20000,ELMER_COMM_WORLD,status,ierr)
         IF (sz>0 ) THEN
           proc = status(MPI_SOURCE)
@@ -2753,7 +2755,7 @@ END  SUBROUTINE SParIterAllReduceOR
 
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -3191,7 +3193,7 @@ END SUBROUTINE ExchangeInterfaces
 
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -3634,7 +3636,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
         send_size(:), perm(:), neigh(:), Replications(:)
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   IF ( n<= 0 ) RETURN
 
   oper = OPER_SUM  ! Operator. See Types.F90 for valid values.
@@ -3825,7 +3827,7 @@ SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
         send_size(:), perm(:), neigh(:)
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   IF ( n<= 0 ) RETURN
 
   oper = 0 ! 0=sum, 1=min, 2=max
@@ -4003,7 +4005,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
         send_size(:), OwnerPerm(:), neigh(:)
   !*********************************************************************
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   IF ( n<= 0 ) RETURN
 
   oper = 0 ! 0=sum, 1=min, 2=max
@@ -4186,7 +4188,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
         send_size(:), perm(:), neigh(:)
   !*********************************************************************
 
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -4370,7 +4372,7 @@ SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
         send_size(:), perm(:), neigh(:)
   !*********************************************************************
 
-  n = ParEnv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n) )
 
   n = 0
@@ -4534,7 +4536,7 @@ SUBROUTINE BuildRevVecIndices( SplittedMatrix )
   !*********************************************************************
 tt = realTime()
 
-  n = Parenv % NumOfNeighbours
+  n = ParEnvNeighbourCount( ParEnv )
   ALLOCATE( neigh(n), sbuf(n), L(n) )
   n = 0
   DO i = 1,ParEnv % PEs
@@ -4885,12 +4887,40 @@ FUNCTION SParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
   INTEGER :: i
 
   !*********************************************************************
-   dres = 0
-   !$OMP PARALLEL DO REDUCTION(+:dres)
-   DO i = 1, ndim
-      dres = dres + y(i) * x(i)
-   END DO
-   !$OMP END PARALLEL DO 
+   ! Deterministic reduction: see the note above the inner products in
+   ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.
+   BLOCK
+     REAL(KIND=dp), ALLOCATABLE :: part(:)
+     REAL(KIND=dp) :: psum
+     INTEGER :: nthr, thr
+     nthr = 1
+!$  nthr = omp_get_max_threads()
+     IF( nthr <= 1 ) THEN
+       dres = 0
+       DO i = 1, ndim
+         dres = dres + y(i) * x(i)
+       END DO
+     ELSE
+       ALLOCATE( part(nthr) )
+       part = 0
+!$OMP PARALLEL PRIVATE(i,thr,psum) SHARED(part) NUM_THREADS(nthr)
+       thr = 1
+!$    thr = omp_get_thread_num() + 1
+       psum = 0
+!$OMP DO SCHEDULE(STATIC)
+       DO i = 1, ndim
+         psum = psum + y(i) * x(i)
+       END DO
+!$OMP END DO NOWAIT
+       part(thr) = psum
+!$OMP END PARALLEL
+       dres = 0
+       DO i = 1, nthr
+         dres = dres + part(i)
+       END DO
+       DEALLOCATE( part )
+     END IF
+   END BLOCK
    CALL SParActiveSUM(dres,0)
 !*********************************************************************
 END FUNCTION SParDotProd
@@ -4914,12 +4944,40 @@ FUNCTION SParNorm( ndim, x, xind ) RESULT(dres)
   ! Local variables
   INTEGER :: i
   !*********************************************************************
-  dres = 0
-  !$OMP PARALLEL DO REDUCTION(+:dres)
-  DO i = 1, ndim
-    dres = dres + x(i)*x(i)
-  END DO
-  !$OMP END PARALLEL DO
+  ! Deterministic reduction: see the note above the inner products in
+  ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.
+  BLOCK
+    REAL(KIND=dp), ALLOCATABLE :: part(:)
+    REAL(KIND=dp) :: psum
+    INTEGER :: nthr, thr
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+    IF( nthr <= 1 ) THEN
+      dres = 0
+      DO i = 1, ndim
+        dres = dres + x(i)*x(i)
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,psum) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      psum = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i = 1, ndim
+        psum = psum + x(i)*x(i)
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = psum
+!$OMP END PARALLEL
+      dres = 0
+      DO i = 1, nthr
+        dres = dres + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+  END BLOCK
   CALL SParActiveSUM(dres,0)
   dres = SQRT(dres)
 !*********************************************************************
@@ -4951,11 +5009,40 @@ FUNCTION SParCDotProd( ndim, x, xind, y, yind ) result (dres)
   !*********************************************************************
   dres = 0.0d0
   IF ( xind == 1 .AND. yind  == 1 ) THEN
-     !$OMP PARALLEL DO REDUCTION(+:dres)
-     DO i = 1, ndim
-        dres = dres + dconjg(x(i)) * y(i)
-     END DO
-     !$OMP END PARALLEL DO
+     ! Deterministic reduction: see the note above the inner products in
+     ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.
+     BLOCK
+       COMPLEX(KIND=dp), ALLOCATABLE :: part(:)
+       COMPLEX(KIND=dp) :: psum
+       INTEGER :: nthr, thr
+       nthr = 1
+!$    nthr = omp_get_max_threads()
+       IF( nthr <= 1 ) THEN
+         dres = 0
+         DO i = 1, ndim
+           dres = dres + dconjg(x(i)) * y(i)
+         END DO
+       ELSE
+         ALLOCATE( part(nthr) )
+         part = 0
+!$OMP PARALLEL PRIVATE(i,thr,psum) SHARED(part) NUM_THREADS(nthr)
+         thr = 1
+!$     thr = omp_get_thread_num() + 1
+         psum = 0
+!$OMP DO SCHEDULE(STATIC)
+         DO i = 1, ndim
+           psum = psum + dconjg(x(i)) * y(i)
+         END DO
+!$OMP END DO NOWAIT
+         part(thr) = psum
+!$OMP END PARALLEL
+         dres = 0
+         DO i = 1, nthr
+           dres = dres + part(i)
+         END DO
+         DEALLOCATE( part )
+       END IF
+     END BLOCK
   ELSE
      CALL Fatal( 'SParCDotProd', 'xind or yind not 1' )
   END IF
@@ -4996,11 +5083,40 @@ FUNCTION SParCDotProdU( ndim, x, xind, y, yind ) result (dres)
   !*********************************************************************
   dres = 0.0d0
   IF ( xind == 1 .AND. yind  == 1 ) THEN
-     !$OMP PARALLEL DO REDUCTION(+:dres)
-     DO i = 1, ndim
-        dres = dres + x(i) * y(i)
-     END DO
-     !$OMP END PARALLEL DO
+     ! Deterministic reduction: see the note above the inner products in
+     ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.
+     BLOCK
+       COMPLEX(KIND=dp), ALLOCATABLE :: part(:)
+       COMPLEX(KIND=dp) :: psum
+       INTEGER :: nthr, thr
+       nthr = 1
+!$    nthr = omp_get_max_threads()
+       IF( nthr <= 1 ) THEN
+         dres = 0
+         DO i = 1, ndim
+           dres = dres + x(i) * y(i)
+         END DO
+       ELSE
+         ALLOCATE( part(nthr) )
+         part = 0
+!$OMP PARALLEL PRIVATE(i,thr,psum) SHARED(part) NUM_THREADS(nthr)
+         thr = 1
+!$     thr = omp_get_thread_num() + 1
+         psum = 0
+!$OMP DO SCHEDULE(STATIC)
+         DO i = 1, ndim
+           psum = psum + x(i) * y(i)
+         END DO
+!$OMP END DO NOWAIT
+         part(thr) = psum
+!$OMP END PARALLEL
+         dres = 0
+         DO i = 1, nthr
+           dres = dres + part(i)
+         END DO
+         DEALLOCATE( part )
+       END IF
+     END BLOCK
   ELSE
      CALL Fatal( 'SParCDotProdU', 'xind or yind not 1' )
   END IF
@@ -5029,12 +5145,40 @@ FUNCTION SParCNorm( ndim, x, xind ) result (norm)
   INTEGER :: i
 
   !*********************************************************************
-  norm = 0.0d0
-  !$OMP PARALLEL DO REDUCTION(+:norm)
-  DO i = 1, ndim
-     norm = norm + REAL(x(i))**2 + AIMAG(x(i))**2
-  END DO
-  !$OMP END PARALLEL DO 
+  ! Deterministic reduction: see the note above the inner products in
+  ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.
+  BLOCK
+    REAL(KIND=dp), ALLOCATABLE :: part(:)
+    REAL(KIND=dp) :: psum
+    INTEGER :: nthr, thr
+    nthr = 1
+!$  nthr = omp_get_max_threads()
+    IF( nthr <= 1 ) THEN
+      norm = 0
+      DO i = 1, ndim
+        norm = norm + REAL(x(i))**2 + AIMAG(x(i))**2
+      END DO
+    ELSE
+      ALLOCATE( part(nthr) )
+      part = 0
+!$OMP PARALLEL PRIVATE(i,thr,psum) SHARED(part) NUM_THREADS(nthr)
+      thr = 1
+!$    thr = omp_get_thread_num() + 1
+      psum = 0
+!$OMP DO SCHEDULE(STATIC)
+      DO i = 1, ndim
+        psum = psum + REAL(x(i))**2 + AIMAG(x(i))**2
+      END DO
+!$OMP END DO NOWAIT
+      part(thr) = psum
+!$OMP END PARALLEL
+      norm = 0
+      DO i = 1, nthr
+        norm = norm + part(i)
+      END DO
+      DEALLOCATE( part )
+    END IF
+  END BLOCK
   CALL SparActiveSUM(norm,0)
   norm = SQRT(norm)
 !*********************************************************************
@@ -5061,6 +5205,7 @@ SUBROUTINE ParEnvFinalize()
 #ifdef HAVE_XIOS
   IF (USE_XIOS) THEN
     CALL xios_context_finalize()
+    CALL MPI_Comm_free(ELMER_COMM_WORLD, ierr)
     CALL xios_finalize()
   ENDIF
 #endif

@@ -158,12 +158,7 @@ End
 
 Boundary Condition 1
   Target Boundaries(6) = 1 2 3 4 5 6
-  Eport re {n} 1 = Real 0.0
-  Eport re {n} 2 = Real 0.0
-  Eport im {n} 1 = Real 0.0
-  Eport im {n} 2 = Real 0.0	
-  Eport re {e} = Real 0.0
-  Eport im {e} = Real 0.0
+  Port Ground = True
 End
 
 Solver 1 :: Reference Norm = 2.91466642E+00

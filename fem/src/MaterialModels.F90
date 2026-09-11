@@ -219,8 +219,7 @@ this ise not in USE
      INTEGER, POINTER :: TempPerm(:)
      TYPE(C_FUNPTR) :: Fnc
      TYPE(Variable_t), POINTER :: Var
-     REAL(KIND=dp) :: dist,F2,F3
-     REAL(KIND=dp) :: KE_K, KE_E, KE_Z, CT, TimeScale,Clip, Cmu
+     REAL(KIND=dp) :: TurbBasisVec(1,n), TurbViscVec(1), TurbDensVec(1), TurbSSVec(1), TurbEffViscVec(1)
      CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: SetArrheniusFactor=.FALSE.
 
@@ -461,100 +460,15 @@ this ise not in USE
         IF ( PRESENT(muder) ) muder = &
              Density*c2*h**2*SQRT(2._dp)/(4*SQRT(ss))
 
-     CASE( 'ke','k-epsilon' )
-        IF (ListGetString(Material,'KE Model',gotIt)/='v2-f' ) THEN
-           Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
-           IF ( .NOT. ASSOCIATED( Var ) ) &
-                CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
-           KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-           Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
-           IF ( .NOT. ASSOCIATED( Var ) ) &
-                CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
-           KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-           Vals(1:n) = ListGetReal( Material, 'KE Cmu',n,Element % NodeIndexes,gotIt )
-           IF ( .NOT. GotIt ) THEN
-              Cmu = SUM( Basis(1:n) * Vals(1:n) )
-           ELSE
-              Cmu = 0.09_dp 
-           END IF
-           mu = Viscosity + Cmu*Density*KE_K**2 / KE_E
-        ELSE
-           Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
-           IF ( .NOT. ASSOCIATED( Var ) ) &
-                CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
-           KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-           Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
-           IF ( .NOT. ASSOCIATED( Var ) ) &
-                CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
-           KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-           Var => VariableGet( CurrentModel % Variables, 'V2' )
-           IF ( .NOT. ASSOCIATED( Var ) ) &
-                CALL Fatal( 'Viscosity Model', 'The V2 variable not defined?' )
-           KE_Z = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-           Vals(1:n) = ListGetReal( Material, 'V2-F CT',n,Element % NodeIndexes )
-           CT = SUM( Basis(1:n) * Vals(1:n) )
-           TimeScale = MAX( KE_K/KE_E, CT*SQRT(Viscosity/Density/KE_E) )
-
-           Vals(1:n) = ListGetReal( Material, 'KE Cmu',n,Element % NodeIndexes )
-           Cmu = SUM( Basis(1:n) * Vals(1:n) )
-
-           mu = Viscosity + Cmu*Density*KE_Z*TimeScale
-        END IF
-
-     CASE( 'rng k-epsilon' )
-        Var => VariableGet( CurrentModel % Variables, 'Effective Viscosity')
-        mu = SUM( Basis(1:n) * Var % Values( Var % Perm( Element % NodeIndexes )))
-
-     CASE( 'spalart-allmaras' )
-        Var => VariableGet( CurrentModel % Variables, 'Turbulent Viscosity')
-        IF ( .NOT. ASSOCIATED( Var ) ) &
-             CALL Fatal( 'Viscosity Model', 'The turbulent viscosity variable not defined?' )
-        mu = SUM( Basis(1:n) * Var % Values( Var % Perm( Element % NodeIndexes )))
-        c1 = mu/(Viscosity/Density)
-        c1 = c1**3 / (c1**3 + 7.1_dp**3) 
-        mu = Viscosity + mu*Density*c1
-
-     CASE( 'k-omega' )
-        Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
-        IF ( .NOT. ASSOCIATED( Var ) ) &
-             CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
-        KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-        Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
-        IF ( .NOT. ASSOCIATED( Var ) ) &
-             CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
-        KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-        mu = Viscosity + Density * KE_K / KE_E
-
-     CASE( 'sst k-omega' )
-        Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
-        IF ( .NOT. ASSOCIATED( Var ) ) &
-             CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
-        KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-        Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
-        IF ( .NOT. ASSOCIATED( Var ) ) &
-             CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
-        KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-        Var => VariableGet( CurrentModel % Variables, 'Wall distance' )
-        IF ( .NOT. ASSOCIATED( Var ) ) &
-             CALL Fatal( 'Viscosity Model', 'The wall distance variable not defined?' )
-        Dist = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
-
-        F2 = TANH( MAX(2*SQRT(KE_K)/(0.09_dp*KE_E*Dist), &
-             500._dp*Viscosity/(Density*KE_E*Dist**2))**2)
-
-        !        F3 = 1-TANH((150*Viscosity/Density/KE_E/Dist**2)**4)
-        F3 = 1
-
-        mu = Viscosity+0.31_dp*Density*KE_K/MAX(0.31_dp*KE_E,SQRT(ss)*F2*F3)
+     CASE( 'ke','k-epsilon','rng k-epsilon','spalart-allmaras','k-omega','sst k-omega' )
+        ! Shared with IncompressibleNSVec's EffectiveViscosityVec; ngp=1 here.
+        TurbBasisVec(1,1:n) = Basis(1:n)
+        TurbViscVec(1) = Viscosity
+        TurbDensVec(1) = Density
+        TurbSSVec(1)   = ss
+        CALL TurbulentViscosityVec( ViscosityFlag, Element, n, 1, TurbBasisVec, &
+             TurbViscVec, TurbDensVec, TurbSSVec, TurbEffViscVec, GotIt )
+        mu = TurbEffViscVec(1)
 
      CASE( 'levelset' )
         TempSol => VariableGet( CurrentModel % Variables, 'Surface' )
@@ -616,6 +530,114 @@ this ise not in USE
 
      !------------------------------------------------------------------------------
    END FUNCTION EffectiveViscosity
+
+
+!------------------------------------------------------------------------------
+!> Turbulence-model contribution to the effective viscosity, vectorized over
+!> ngp integration points. Shared by the scalar EffectiveViscosity (called
+!> with ngp=1) and IncompressibleNSVec's EffectiveViscosityVec, so the two
+!> solvers cannot drift apart on what a given "Viscosity Model" means.
+!> Found is returned .FALSE. for any model name this routine does not know,
+!> letting the caller fall back to its own default/warning/fatal behaviour.
+!------------------------------------------------------------------------------
+   SUBROUTINE TurbulentViscosityVec( ViscModel, Element, n, ngp, BasisVec, &
+       Viscosity0Vec, DensityVec, ssVec, EffViscVec, Found )
+!------------------------------------------------------------------------------
+     CHARACTER(*) :: ViscModel
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: n, ngp
+     REAL(KIND=dp) :: BasisVec(:,:)
+     REAL(KIND=dp) :: Viscosity0Vec(:), DensityVec(:), ssVec(:)
+     REAL(KIND=dp) :: EffViscVec(:)
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: Material
+     TYPE(Variable_t), POINTER :: Var
+     INTEGER :: k
+     REAL(KIND=dp) :: KVec(ngp), EVec(ngp), V2Vec(ngp), DistVec(ngp), TVec(ngp), &
+         XiVec(ngp), F2Vec(ngp)
+     REAL(KIND=dp) :: Cmu, CT
+     CHARACTER(:), ALLOCATABLE :: KEModel
+     LOGICAL :: GotIt
+!------------------------------------------------------------------------------
+     Found = .TRUE.
+
+     k = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values, 'Material', &
+         minv=1, maxv=CurrentModel % NumberOfMaterials )
+     Material => CurrentModel % Materials(k) % Values
+
+     SELECT CASE( ViscModel )
+
+     CASE('ke','k-epsilon')
+       KVec = InterpVar('Kinetic Energy')
+       EVec = MAX( InterpVar('Kinetic Dissipation'), 1.0d-10 )
+
+       KEModel = ListGetString( Material, 'KE Model', GotIt )
+       IF( GotIt .AND. KEModel == 'v2-f' ) THEN
+         V2Vec = InterpVar('V2')
+         CT = ListGetConstReal( Material, 'V2-F CT', GotIt )
+         IF( .NOT. GotIt ) CT = 6.0_dp
+         Cmu = ListGetConstReal( Material, 'KE Cmu', GotIt )
+         IF( .NOT. GotIt ) Cmu = 0.22_dp
+         EffViscVec(1:ngp) = Viscosity0Vec(1:ngp) + Cmu*DensityVec(1:ngp)*V2Vec(1:ngp) * &
+             MAX( KVec(1:ngp)/EVec(1:ngp), &
+                  CT*SQRT(Viscosity0Vec(1:ngp)/DensityVec(1:ngp)/EVec(1:ngp)) )
+       ELSE
+         Cmu = ListGetConstReal( Material, 'KE Cmu', GotIt )
+         IF( .NOT. GotIt ) Cmu = 0.09_dp
+         EffViscVec(1:ngp) = Viscosity0Vec(1:ngp) + Cmu*DensityVec(1:ngp)*KVec(1:ngp)**2/EVec(1:ngp)
+       END IF
+
+     CASE('rng k-epsilon')
+       Var => VariableGet( CurrentModel % Variables, 'Effective Viscosity' )
+       IF( .NOT. ASSOCIATED(Var) ) &
+           CALL Fatal( 'TurbulentViscosityVec', 'The Effective Viscosity variable not defined?' )
+       EffViscVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), &
+           Var % Values( Var % Perm( Element % NodeIndexes(1:n) ) ) )
+
+     CASE('spalart-allmaras')
+       TVec = InterpVar('Turbulent Viscosity')
+       XiVec(1:ngp) = TVec(1:ngp)*DensityVec(1:ngp)/Viscosity0Vec(1:ngp)
+       EffViscVec(1:ngp) = Viscosity0Vec(1:ngp) + TVec(1:ngp)*DensityVec(1:ngp) * &
+           XiVec(1:ngp)**3 / ( XiVec(1:ngp)**3 + 7.1_dp**3 )
+
+     CASE('k-omega')
+       KVec = InterpVar('Kinetic Energy')
+       EVec = MAX( InterpVar('Kinetic Dissipation'), 1.0d-10 )
+       EffViscVec(1:ngp) = Viscosity0Vec(1:ngp) + DensityVec(1:ngp)*KVec(1:ngp)/EVec(1:ngp)
+
+     CASE('sst k-omega')
+       KVec = InterpVar('Kinetic Energy')
+       EVec = MAX( InterpVar('Kinetic Dissipation'), 1.0d-10 )
+       DistVec = MAX( InterpVar('Wall distance'), 1.0d-10 )
+
+       F2Vec(1:ngp) = TANH( MAX( 2*SQRT(KVec(1:ngp))/(0.09_dp*EVec(1:ngp)*DistVec(1:ngp)), &
+           500._dp*Viscosity0Vec(1:ngp)/(DensityVec(1:ngp)*EVec(1:ngp)*DistVec(1:ngp)**2) )**2 )
+
+       EffViscVec(1:ngp) = Viscosity0Vec(1:ngp) + 0.31_dp*DensityVec(1:ngp)*KVec(1:ngp) / &
+           MAX( 0.31_dp*EVec(1:ngp), SQRT(ssVec(1:ngp))*F2Vec(1:ngp) )
+
+     CASE DEFAULT
+       Found = .FALSE.
+
+     END SELECT
+
+   CONTAINS
+
+     FUNCTION InterpVar(VarName) RESULT(ValVec)
+       CHARACTER(*) :: VarName
+       REAL(KIND=dp) :: ValVec(ngp)
+       TYPE(Variable_t), POINTER :: LVar
+
+       LVar => VariableGet( CurrentModel % Variables, VarName )
+       IF( .NOT. ASSOCIATED(LVar) ) &
+           CALL Fatal( 'TurbulentViscosityVec', 'Variable not defined: '//TRIM(VarName) )
+       ValVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), &
+           LVar % Values( LVar % Perm( Element % NodeIndexes(1:n) ) ) )
+     END FUNCTION InterpVar
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE TurbulentViscosityVec
 !------------------------------------------------------------------------------
 
 

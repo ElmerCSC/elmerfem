@@ -1,0 +1,152 @@
+! A transient IncompressibleNSVec run on the Step mesh, on "p:2 b:1".
+!
+! Two things are being covered that the steady Step_stokes_vec variants do not
+! reach:
+!
+!  - time integration. The flow starts from rest and the inflow profile is
+!    ramped in, so every timestep has a nonzero mass-matrix contribution and the
+!    answer at the end still carries the history. Viscosity and density are both
+!    1 here, not the 1e3/1 of the steady cases: with a channel of height 1 the
+!    viscous time scale is then 1 s, and 10 steps of 0.05 stop well inside the
+!    transient rather than on the steady solution.
+!
+!  - the boundary assembly loop with a p-basis. The walls carry a Navier slip
+!    condition instead of a Dirichlet no-slip one, which is what makes
+!    LocalBoundaryMatrix do work: it returns without assembling anything unless
+!    the BC names a traction, a slip or a friction law, and a Dirichlet-only
+!    case therefore never exercises the boundary path at all.
+!
+! That second point is the one to keep. On "p:2 b:1" a 202 boundary element has
+! 3 dofs -- two nodal and one on its single edge -- and LocalBoundaryMatrix sizes
+! STIFF and FORCE from GetElementNOFDOFs while DefaultUpdateEquations glues them
+! with GetElementDOFs. The two used to disagree here (2 against 3), because
+! GetElementNOFDOFs declared the edges done after a loop that had CYCLEd over the
+! element's own edge, which gated out the parent-based count that would have
+! added the edge dof. 45 of the 81 matrix entries and 3 of the 9 force entries
+! then came from past the end of the local arrays. Reverting that fix turns this
+! case into a NaN within two timesteps.
+!
+! Note "Bubbles in Global System" is False for this solver, so the b:1 bubble is
+! condensed away locally and the element is a Taylor-Hood P2/P1 pair in the
+! global system -- the bubble is here because it is the element string that
+! reaches the counting path with both a bubble and an edge dof to account for.
+!
+! Velocity 1 just past the step, at (0.637, 1.5) and at the end of the run:
+! 0.15674 here against 0.16140 for the MINI element ("p:1 -quad b:4") on the same
+! problem, 2.9 %. That is the front of the starting flow, where the two schemes
+! are furthest apart; further downstream the velocity is still near zero at t=0.5
+! and the comparison says nothing.
+
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 2
+  Timestep Sizes = 0.05
+  Timestep Intervals = 10
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+
+  Serendipity P Elements = False
+End
+
+Constants
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Pressure = 0
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+  NS Convect = True
+End
+
+Solver 1
+  Equation = "NS-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Element = "p:2 b:1"
+
+! Direct, so that a failure here is the assembly and not the iteration: the
+! velocity/pressure system of a Taylor-Hood pair is what ILU is worst at, and a
+! stalled BiCGStab would mask the thing this case is watching.
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 3
+
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+
+! The steady profile of the shipped case, multiplied by a ramp that is at 63 %
+! after the first quarter of the run and at 86 % at its end.
+  Velocity 1 = Variable Coordinate 2, Time
+     Real MATC "(1-exp(-4*tx(1)))*(2-tx(0))*(tx(0)-1)"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+
+! Navier slip rather than no-slip. 100 against a viscosity of 1 over elements of
+! this size leaves the wall velocity small, so the flow is still the one the
+! steady cases solve, but the slip term now has to be integrated over every wall
+! element -- including its edge dof.
+  Slip Coefficient 1 = Real 100.0
+  Slip Coefficient 2 = Real 100.0
+End
+
+! Velocity dofs only -- the solver sets "Nonlinear System Norm DOFs = dim".
+!
+! This was 1.27628237E-02 until the fix to LCondensate's transient mass term
+! (Default1stOrderTime was ALSO adding M/dt for nb>0 and nd/=n, this element's
+! own combination -- see the IncompressibleNSVec.F90 log for the full story).
+! That bug was in the code when this reference was first measured; verified by
+! reverting the fix and reproducing the old value exactly, and independently by
+! rerunning this same case on "p:2" with the bubble dropped: Taylor-Hood P2/P1
+! is already LBB-stable, so a redundant condensed bubble must leave the
+! retained solution untouched, and with the fix it does -- the norm and the
+! probed velocity below both match "p:2" to every printed digit. Under the old
+! bug they did not, which is what the spurious extra mass term looked like.
+Solver 1 :: Reference Norm = 1.33189411E-02

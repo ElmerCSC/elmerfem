@@ -80,7 +80,7 @@
      !---------------------------------------------------
      INTEGER :: divide, LineFlag, LineInteg, TriInteg, QuadInteg, NSymmetry
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
-     INTEGER :: NRays, CombineInt
+     INTEGER :: NRays, CombineInt, ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt
      LOGICAL :: Combine, Combine3D, ElimBB
      REAL(KIND=dp), POINTER :: Coord(:)
      INTEGER, POINTER :: Type(:)
@@ -89,7 +89,7 @@
 
      ! misc variables
      ! --------------
-     CHARACTER(:), ALLOCATABLE :: RadiationFlag
+     CHARACTER(:), ALLOCATABLE :: str    
      CHARACTER(LEN=MAX_NAME_LEN) :: ModelName
      LOGICAL :: CylindricSymmetry, GotIt, Found, Radiation
 
@@ -113,6 +113,10 @@
      LOGICAL :: DoRadiators, DoMapping
      REAL(KIND=dp), POINTER :: Radiators(:,:)
 
+     ! .TRUE. only when InitMPI() really took MPI up.  ELMER_NO_MPI leaves it
+     ! down, and MPI must then not be touched again on the way out either.
+     LOGICAL :: MPIInitDone = .FALSE.
+
      INTEGER, PARAMETER :: VFUnit = 10
      CHARACTER(*), PARAMETER :: Caller = 'ViewFactors'
 !------------------------------------------------------------------------------
@@ -120,7 +124,7 @@
         SUBROUTINE RadiatorFactors3D(n, Surf, Type, Coord, Normals, &
            RT_n, RT_Surf, RT_Data, RT_Perm, RT_Type, RT_Coord, &
                NofRadiators, RadiatorCoord, LineFlag, Factors, Feps, &
-                 Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine) BIND(C)
+                 Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine, ClosedForm, ShaftStat, Clip, RayCull) BIND(C)
 
           USE, INTRINSIC :: ISO_C_BINDING
           IMPLICIT NONE
@@ -135,13 +139,14 @@
 
           REAL(KIND=dp) :: Feps, Aeps, Reps
           INTEGER :: Nr, NInteg2, NInteg3, NInteg4, Combine, LineFlag
+          INTEGER :: ClosedForm, ShaftStat, Clip, RayCull
         END SUBROUTINE RadiatorFactors3D
 
 
         SUBROUTINE ViewFactors3D(n, Surf, Type, Coord, Normals, &
           RT_n, RT_Surf, RT_Data, RT_Perm, RT_Type, RT_Coord, &
               Factors, Feps, Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine, &
-              iStart, nLocal, mpiRank) BIND(C)
+              iStart, nLocal, mpiRank, ClosedForm, ShaftStat, Clip, RayCull) BIND(C)
 
             USE, INTRINSIC :: ISO_C_BINDING
             IMPLICIT NONE
@@ -156,7 +161,7 @@
 
             REAL(KIND=dp) :: Feps, Aeps, Reps
             INTEGER :: Nr, NInteg2, NInteg3, NInteg4, Combine
-            INTEGER :: iStart, nLocal, mpiRank
+            INTEGER :: iStart, nLocal, mpiRank, ClosedForm, ShaftStat, Clip, RayCull
         END SUBROUTINE ViewFactors3D
 
 
@@ -289,8 +294,8 @@
        BC => GetBC()
        IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
 
-       RadiationFlag = GetString( BC, 'Radiation',GotIt )
-       IF ( GotIt .AND. RadiationFlag == 'diffuse gray' ) THEN
+       str = GetString( BC, 'Radiation',GotIt )
+       IF ( GotIt .AND. str == 'diffuse gray' ) THEN
          t = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ) )
          MaxRadiationBody = MAX(t, MaxRadiationBody)
        END IF
@@ -423,7 +428,7 @@
          ! ---------------------------------------------------------------------------
 
          CALL GetCartParameters( AreaEPS, FactEPS, RayEps, Nrays, LineInteg, QuadInteg, &
-                        TriInteg, UseSymmetry )
+                        TriInteg, UseSymmetry, ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt )
 
          Mesh % NumberOfBulkElements = n
          Mesh % Elements => RadElements
@@ -476,6 +481,13 @@
            INTEGER, POINTER :: RT_Type(:)
            REAL(KIND=dp), POINTER :: RT_Coord(:)
            INTEGER, ALLOCATABLE ::  RT_Surf(:), RT_Perm(:), Ref(:)
+
+           ! Hoisted out of the two branches further down: nested BLOCKs are
+           ! miscompiled by some compilers (Intel 20.0), and neither branch
+           ! needed a scope of its own.
+           INTEGER :: base_n, rem_n, n2
+           INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
+           REAL(KIND=dp), ALLOCATABLE :: dummy_recv(:)
            !------------------------------------------------------
 
            RT_n = 0
@@ -524,6 +536,17 @@
                  CPUTime()-at2, Realtime()-rt2
              CALL Info( Caller,Message, Level=3 )
              at2 = CPUTime(); rt2 = RealTime()
+
+             ! This is mean mainly for debugging & creating pictures of the joining algorithm.
+             ! End-users will use this probably very rarely.
+             IF ( GetLogical( Params,'Shadow Mesh Save', GotIt) ) THEN
+               str = "ShadowMesh"
+               CALL MakeDirectory(TRIM(str) // CHAR(0))
+               CALL WriteMeshToDisk2(Model, RT_Mesh, str )               
+               CALL Info(Caller,'Saved shadow mesh to file: '//TRIM(str))
+               IF ( GetLogical( Params,'Shadow Mesh Stop', GotIt) ) STOP
+             END IF
+             
            END IF
 
            ! ... and finally the beef:
@@ -534,58 +557,57 @@
              IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
              CALL RadiatorFactors3d( n, Surf, TYPE, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, NofRadiators, Radiators, LineFlag, &
-                       Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
+                       Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
+                         ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt )
            ELSE
              CALL ViewFactors3D( n, Surf, Type, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, Factors_local, AreaEPS, FactEPS, RayEPS, &
                       Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
-                      iStart_local, nLocal, myRank )
+                      iStart_local, nLocal, myRank, ClosedFormInt, ShaftStatInt, ClipInt, RayCullInt )
+
+             ! RayCullInt comes back resolved: the automatic setting is only
+             ! decided in InitStuff, which is where the shadow mesh size is
+             ! finally known.
+             IF ( RayCullInt == 1 ) &
+               CALL Info(Caller,'Culling the rays of each pair to its shaft candidates',Level=8)
 
              ! Gather local rows to rank 0 only — only rank 0 needs the full
              ! matrix for normalisation and output.  Non-root ranks send their
              ! rows but receive nothing, saving O(N²) memory and Newton work.
              IF ( nProcs > 1 ) THEN
-               BLOCK
-                 INTEGER :: base_n, rem_n
-                 INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
-                 REAL(KIND=dp), ALLOCATABLE :: dummy_recv(:)
-                 ALLOCATE( recvcounts(0:nProcs-1), displs(0:nProcs-1) )
-                 base_n = n_global / nProcs;  rem_n = MOD(n_global, nProcs)
-                 DO i = 0, nProcs-1
-                   recvcounts(i) = (base_n + MERGE(1,0,i<rem_n)) * n_global
-                 END DO
-                 displs(0) = 0
-                 DO i = 1, nProcs-1
-                   displs(i) = displs(i-1) + recvcounts(i-1)
-                 END DO
-                 IF ( myRank == 0 ) THEN
-                   ALLOCATE( Factors(n_global * n_global), STAT=istat )
-                   IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
-                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
-                       Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
-                 ELSE
-                   ALLOCATE( dummy_recv(1) )  ! receive buffer ignored on non-root
-                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
-                       dummy_recv, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
-                 END IF
-                 DEALLOCATE( recvcounts, displs )
-               END BLOCK
+               ALLOCATE( recvcounts(0:nProcs-1), displs(0:nProcs-1) )
+               base_n = n_global / nProcs;  rem_n = MOD(n_global, nProcs)
+               DO i = 0, nProcs-1
+                 recvcounts(i) = (base_n + MERGE(1,0,i<rem_n)) * n_global
+               END DO
+               displs(0) = 0
+               DO i = 1, nProcs-1
+                 displs(i) = displs(i-1) + recvcounts(i-1)
+               END DO
+               IF ( myRank == 0 ) THEN
+                 ALLOCATE( Factors(n_global * n_global), STAT=istat )
+                 IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+                 CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                     Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+               ELSE
+                 ALLOCATE( dummy_recv(1) )  ! receive buffer ignored on non-root
+                 CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                     dummy_recv, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+               END IF
+               DEALLOCATE( recvcounts, displs )
              ELSE
                IF( UseSymmetry ) THEN
                  ! Do not ever create the full matrix but directly reduce the size to half.
-                 BLOCK
-                   INTEGER :: n2
-                   n2 = n_global/2
-                   ALLOCATE( Factors(n2*n2), STAT=istat )
-                   IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
-                   DO i=1,n2
-                     DO j=1,n2
-                       Factors((i-1)*n2+j) = Factors_local((i-1)*n+j) + Factors_local((i-1)*n+j+n2)
-                     END DO
+                 n2 = n_global/2
+                 ALLOCATE( Factors(n2*n2), STAT=istat )
+                 IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+                 DO i=1,n2
+                   DO j=1,n2
+                     Factors((i-1)*n2+j) = Factors_local((i-1)*n+j) + Factors_local((i-1)*n+j+n2)
                    END DO
-                   n = n2
-                   ni = n2
-                 END BLOCK
+                 END DO
+                 n = n2
+                 ni = n2
                ELSE
                  ALLOCATE( Factors(n_global * n_global), STAT=istat )
                  IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
@@ -648,7 +670,12 @@
      CALL Info( Caller,Message, Level=3 )
 
      CALL FLUSH(6)
-     CALL ParallelFinalize()
+     ! Skipped under ELMER_NO_MPI: ParEnvFinalize() opens with an
+     ! MPI_BARRIER on ELMER_COMM_WORLD, and handing MPI_Comm_f2c a
+     ! communicator before MPI_Init aborts the process.  That abort came
+     ! after the factors were computed and written, so with the exit status
+     ! of the spawn discarded it used to leave no trace at all.
+     IF ( MPIInitDone ) CALL ParallelFinalize()
 
 CONTAINS
 
@@ -742,8 +769,10 @@ CONTAINS
        ParEnv % PEs  = 1
        ParEnv % ActiveComm = 0
        ParEnv % ExternalInit = .FALSE.
+       MPIInitDone = .FALSE.
      ELSE
        penv => ParallelInit()
+       MPIInitDone = .TRUE.
      END IF
    END SUBROUTINE InitMPI
 
@@ -807,8 +836,15 @@ CONTAINS
        END  IF
      END IF
 
-     IF ( NoArgs>1 ) THEN
+     ! A single argument is the sif to read.  Without this it fell through to
+     ! ELMERSOLVER_STARTINFO and the name given on the command line was
+     ! silently ignored, so "ViewFactors a.sif" and "ViewFactors b.sif" both
+     ! computed whichever case STARTINFO happened to name -- wrong, and quiet
+     ! about it.  "-radiators" on its own is a flag, not a model name.
+     IF ( NoArgs > 1 ) THEN
        CALL GET_COMMAND_ARGUMENT(NoArgs, ModelName)
+     ELSE IF ( NoArgs == 1 .AND. .NOT. DoRadiators ) THEN
+       CONTINUE                       ! ModelName already holds the argument
      ELSE
        OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
        IF( iostat /= 0 ) THEN
@@ -1104,7 +1140,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE MirrorMesh(Mesh,c,Plane )
+   SUBROUTINE MirrorMesh(Mesh,c,Plane,NoDoubles)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -1112,10 +1148,14 @@ CONTAINS
      TYPE(Mesh_t) :: Mesh
      INTEGER :: c
      REAL(KIND=dp) :: Plane
+     LOGICAL :: NoDoubles
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: el(:)
-     INTEGER :: i,j,ne, nd, nn, nb, nv
+     INTEGER :: i,j,ne, nd, nn, nb, nv, ns, nd2
      REAL(KIND=dp), POINTER :: ox(:), oy(:), oz(:)
+     INTEGER, ALLOCATABLE :: SymPerm(:)
+     LOGICAL, ALLOCATABLE :: SymNode(:)
+     REAL(KIND=dp) :: Eps
 !------------------------------------------------------------------------------
 
      nv  = Mesh % NumberOfBulkElements
@@ -1126,27 +1166,74 @@ CONTAINS
      ox => Mesh % Nodes % x
      oy => Mesh % Nodes % y
      oz => Mesh % Nodes % z
-     ALLOCATE(Mesh % Nodes % x(2*nd), Mesh % Nodes % y(2*nd), Mesh % Nodes % z(2*nd), STAT=istat )
-     IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh nodes.')
 
+     CALL Info('MirrorMesh','Mirroring mesh aroud axsis: '//I2S(c),Level=12)
+
+     ! Mirroring is easier when we don't need to eliminate the double nodes at the symmetry axis.
+     ! However, if we don't eliminate them, the shadow mesh inverstigation fails to recognize
+     ! continuity of elements over symmetry axis as they do not share any node.
+     ! Hence this flag could save some resources. 
+     !---------------------------------------------------------------------------------------
+     IF(NoDoubles) THEN
+       ALLOCATE(SymNode(nd),SymPerm(nd))
+       SymNode = .FALSE.
+       Eps = 1.0e-8              
+       SELECT CASE(c)
+       CASE(1,2)
+         SymNode = ( ABS( ox(1:nd) - Plane) < eps ) 
+       CASE(3,4)
+         SymNode = ( ABS( oy(1:nd) - Plane) < eps ) 
+       CASE(5,6)
+         SymNode = ( ABS( oz(1:nd) - Plane) < eps ) 
+       END SELECT
+
+       ns = COUNT(SymNode)
+       nd2 = nd - ns
+
+       j = nd
+       DO i=1,nd
+         IF(SymNode(i)) THEN
+           SymPerm(i) = i
+         ELSE
+           j = j+1
+           SymPerm(i) = j
+         END IF
+       END DO
+
+       CALL Info(Caller,'Number of symmetry nodes to eliminate: '//I2S(ns))
+     ELSE
+       nd2 = nd
+     END IF
+
+     ALLOCATE(Mesh % Nodes % x(nd+nd2), Mesh % Nodes % y(nd+nd2), Mesh % Nodes % z(nd+nd2), STAT=istat )
+     IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh nodes.')
+     
        
      DO i=1,nd
        Mesh % Nodes % x(i) = ox(i)
        Mesh % Nodes % y(i) = oy(i)
        Mesh % Nodes % z(i) = oz(i)
+
+       IF(NoDoubles) THEN
+         j = SymPerm(i)
+         IF(j==i) CYCLE
+       ELSE
+         j = i+nd
+       END IF
+
        SELECT CASE(c)
        CASE(1,2)
-         Mesh % Nodes % x(i+nd) = 2*Plane - ox(i)
-         Mesh % Nodes % y(i+nd) = oy(i)
-         Mesh % Nodes % z(i+nd) = oz(i)
+         Mesh % Nodes % x(j) = 2*Plane - ox(i)
+         Mesh % Nodes % y(j) = oy(i)
+         Mesh % Nodes % z(j) = oz(i)
        CASE(3,4)
-         Mesh % Nodes % x(i+nd) = ox(i)
-         Mesh % Nodes % y(i+nd) = 2*Plane - oy(i)
-         Mesh % Nodes % z(i+nd) = oz(i)
+         Mesh % Nodes % x(j) = ox(i)
+         Mesh % Nodes % y(j) = 2*Plane - oy(i)
+         Mesh % Nodes % z(j) = oz(i)
        CASE(5,6)
-         Mesh % Nodes % x(i+nd) = ox(i)
-         Mesh % Nodes % y(i+nd) = oy(i)
-         Mesh % Nodes % z(i+nd) = 2*Plane - oz(i)
+         Mesh % Nodes % x(j) = ox(i)
+         Mesh % Nodes % y(j) = oy(i)
+         Mesh % Nodes % z(j) = 2*Plane - oz(i)
        END SELECT
      END DO
 
@@ -1160,8 +1247,12 @@ CONTAINS
        nn = el(i) % Type % NumberOfNodes
        ALLOCATE(Mesh % Elements(i+nv) % NodeIndexes(nn),STAT=istat)
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh node indexes.')
-       
-       Mesh % Elements(i+nv) % NodeIndexes = el(i) % NodeIndexes+nd
+
+       IF(NoDoubles) THEN
+         Mesh % Elements(i+nv) % NodeIndexes = SymPerm(el(i) % NodeIndexes)
+       ELSE
+         Mesh % Elements(i+nv) % NodeIndexes = el(i) % NodeIndexes+nd
+       END IF
        Mesh % Elements(i+nv) % ElementIndex = i+nv
      END DO
 
@@ -1173,8 +1264,12 @@ CONTAINS
        
        ALLOCATE(Mesh % Elements(j+nb) % NodeIndexes(nn),STAT=istat)
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh NodeIndexes.')         
-       Mesh % Elements(j+nb) % NodeIndexes = el(i) % NodeIndexes+nd
-
+       IF(NoDoubles) THEN
+         Mesh % Elements(j+nb) % NodeIndexes = SymPerm(el(i) % NodeIndexes)
+       ELSE
+         Mesh % Elements(j+nb) % NodeIndexes = el(i) % NodeIndexes+nd
+       END IF
+         
        ALLOCATE(Mesh % Elements(j) % BoundaryInfo)
        Mesh % Elements(j) % BoundaryInfo    = el(i) % BoundaryInfo
 
@@ -1194,7 +1289,7 @@ CONTAINS
 
      DEALLOCATE(ox,oy,oz)
 
-     Mesh % NumberOfNodes = 2*nd
+     Mesh % NumberOfNodes = nd + nd2
      Mesh % NumberOfBulkElements = 2*Mesh % NumberOfBulkElements
      Mesh % NumberOfBoundaryElements = 2*Mesh % NumberOfBoundaryElements
 
@@ -1214,7 +1309,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Plane
      INTEGER :: i
-     LOGICAL :: Found, GotIt
+     LOGICAL :: Found, GotIt, NoDoubles
 !------------------------------------------------------------------------------
      IF(PRESENT(NSymmetry)) Nsymmetry = 0
 
@@ -1239,10 +1334,12 @@ CONTAINS
 
        IF(.NOT. Found ) CYCLE
 
+       NoDoubles = ListGetLogical( Params,'Viewfactor Symmetry Eliminate Nodes', GotIt )
+       
        CALL Info(Caller,'Duplicating mesh in coordinate direction: '//I2S((i+1)/2))
        IF(PRESENT(NSymmetry)) NSymmetry = NSymmetry + 1
        
-       CALL MirrorMesh(Mesh, i, Plane)
+       CALL MirrorMesh(Mesh, i, Plane, NoDoubles )
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE SymmetryDuplication
@@ -1426,10 +1523,10 @@ CONTAINS
            Model % Mesh => RT_Mesh 
            CALL RigidMeshMapping( Model, RT_Mesh, .TRUE. )
            Model % Mesh => Mesh 
-         END IF
-                   
-         CALL SymmetryDuplication(RT_Mesh)
+         END IF         
 
+         CALL SymmetryDuplication(RT_Mesh)
+           
          i0 = RT_Mesh % NumberOfBulkElements
          j = 0
          DO i=1,RT_Mesh % NumberOfBoundaryElements
@@ -1581,7 +1678,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      INTEGER :: i,j,t
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: BC
-     CHARACTER(:), ALLOCATABLE :: RadiationFlag
+     CHARACTER(:), ALLOCATABLE :: str 
 !------------------------------------------------------------------------------
      RadiationSurf = 0
      RadiationOpen = .FALSE.
@@ -1601,8 +1698,8 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
            RadElements(RadiationSurf) = Mesh % Elements(j)
          END IF
        ELSE
-         RadiationFlag = GetString( BC, 'Radiation', Found )
-         IF ( Found .AND. RadiationFlag == 'diffuse gray' ) THEN
+         str = GetString( BC, 'Radiation', Found )
+         IF ( Found .AND. str == 'diffuse gray' ) THEN
            t = MAX(1, GetInteger( BC, 'Radiation Boundary', Found ))
            IF(t == RadiationBody) THEN
              RadiationBC(GetBCId()) = .TRUE.
@@ -1690,9 +1787,10 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
           NodeAtBBox(:,3+i) = .TRUE.
         END WHERE
       END DO
-      
+
+#if 0
       ! Assume cylindrical BB
-      ! We give it a shot without playing with keywords...
+      ! We give it a shot without playing with keywords...      
       pX => Mesh % Nodes % x
       pY => Mesh % Nodes % y
 
@@ -1706,7 +1804,8 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
         NodeAtBBox(:,7) = .TRUE.
       END WHERE
       DEALLOCATE(pR)
-
+#endif
+      
       IF(InfoActive(10)) THEN
         DO i=1,7
           j = COUNT(NodeAtBBox(:,i))
@@ -1715,7 +1814,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
       END IF
 
           
-      ! We skip the elements an bounding box boundaries from the active set. 
+      ! We skip the elements at bounding box boundaries from the active set. 
       nActive = 0
       DO i=1,n
         Element => Mesh % Elements(i)
@@ -1728,11 +1827,12 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
         END IF
         nActive = nActive + 1
       END DO
-      ! Set this to zero, next time the bounding box is not used. 
-      Ref = 0      
       IF(nActive < n) THEN
         CALL Info(Caller,'Number of shading elements: '//I2S(nActive)//' (vs. '//I2S(n)//')')
       END IF
+
+      ! Set this to zero, next time the bounding box is not used. 
+      Ref = 0      
     END IF
     
     ALLOCATE( TYPE(nActive) )
@@ -1758,7 +1858,10 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
     IF(mActive < m) THEN
       CALL Info(Caller,'Number of shading nodes: '//I2S(mActive)//' (vs. '//I2S(m)//')')
     END IF
+!    Mesh % NumberOfBulkElements = l
 
+
+    
     IF ( .NOT.ALLOCATED(Surf) ) ALLOCATE(Surf(4*nActive))
     ALLOCATE(Coord(3*mActive))
     
@@ -1827,8 +1930,14 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
       CASE DEFAULT
         CALL Fatal(Caller,'Uknown Element!')
       END SELECT
+
+      ! This messes with the mesh but I don't think we need it after.
+      Mesh % Elements(l) = Mesh % Elements(i)
+
     END DO
-    
+
+    Mesh % NumberOfBulkElements = nActive
+          
 !------------------------------------------------------------------------------
    END SUBROUTINE ExtractMeshInfo
 !------------------------------------------------------------------------------
@@ -1893,13 +2002,15 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
 !------------------------------------------------------------------------------
    SUBROUTINE GetCartParameters( AreaEPS, FactEPS, RayEPS, Nray, LineInteg, QuadInteg, &
-       TriInteg, UseSymmetry )
+       TriInteg, UseSymmetry, ClosedForm, ShaftStat, Clip, RayCull )
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: AreaEPS, FactEPS, RayEPS
      LOGICAL :: UseSymmetry
-     INTEGER :: Nray, LineInteg, QuadInteg, TriInteg
+     INTEGER :: Nray, LineInteg, QuadInteg, TriInteg, ClosedForm, ShaftStat, Clip, RayCull
+     LOGICAL :: ClosedFormGiven
 !------------------------------------------------------------------------------
      LOGICAL :: GotIt
+     CHARACTER(LEN=MAX_NAME_LEN) :: Str
 !------------------------------------------------------------------------------
      AreaEPS = GetConstReal( Params, 'Viewfactor Area Tolerance',  GotIt )
      IF ( .NOT. GotIt ) AreaEPS = 1.0d-1
@@ -1921,6 +2032,65 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
      TriInteg = GetInteger( Params, 'Viewfactor Triangle Integration Points ',  GotIt )
      IF ( .NOT. GotIt ) TriInteg = 3;  ! ---> 1,3,6
+
+     ! Evaluate the inner ("to area") integral in closed form rather than by
+     ! quadrature.  Exact for planar patches, and much more accurate than the
+     ! Gauss rule when the two patches are close together.  Warped quads and
+     ! non-geometric normals fall back to quadrature automatically.
+     ClosedForm = 0
+     IF ( GetLogical( Params, 'Viewfactor Closed Form Integration', GotIt ) ) ClosedForm = 1
+     ClosedFormGiven = GotIt
+     IF ( GotIt .AND. ClosedForm == 1 ) &
+       CALL Info(Caller,'Using closed form evaluation of the inner view factor integral')
+
+     ! Report how many patch pairs have no possible blocker between them, i.e.
+     ! how much visibility work a clipping based scheme would actually face.
+     ! Diagnostic only: it costs a shaft cull per pair on top of the ray casting.
+     ShaftStat = 0
+     IF ( GetLogical( Params, 'Viewfactor Shaft Cull Statistics', GotIt ) ) ShaftStat = 1
+
+     ! How the blocking of the view between two patches is resolved.  Ray
+     ! casting samples it; clipping removes the shadows of the blockers from
+     ! the target and integrates what is left, which is exact for the pair
+     ! and gets the penumbra right instead of scaling by a hit fraction.
+     ! Needs the closed form integration, and turns it on when asked for.
+     ! Cull the rays of a patch pair to that pair's shaft candidates instead
+     ! of walking the whole element tree once per ray.  The answer is bit for
+     ! bit the same; it just replaces one tree traversal per ray by one per
+     ! pair.  Whether that pays depends on the size of the shadow mesh as
+     ! much as on the ray count, and the shadow mesh is only known once the
+     ! element combining has run, so -1 asks InitStuff to decide.
+     RayCull = -1
+     IF ( ListCheckPresent( Params, 'Viewfactor Shaft Cull' ) ) THEN
+       RayCull = 0
+       IF ( GetLogical( Params, 'Viewfactor Shaft Cull', GotIt ) ) RayCull = 1
+     END IF
+
+     ClipInt = 0
+     Str = ListGetString( Params, 'Viewfactor Shadowing', GotIt )
+     IF ( GotIt ) THEN
+       SELECT CASE( Str )
+       CASE('ray casting')
+         ClipInt = 0
+       CASE('clipping')
+         ClipInt = 1
+         ! Clipping defaults to the closed form, which integrates a fragment
+         ! natively.  It does not force it: asking for quadrature explicitly
+         ! selects the fourth corner of the 2x2, where the same clipped
+         ! fragments are fan triangulated and integrated by the triangle rule.
+         ! That corner is a cross check -- it is slower and less accurate --
+         ! but it is the only configuration that tells an error in the inner
+         ! integral apart from an error in the shadowing.
+         IF ( .NOT. ClosedFormGiven ) THEN
+           ClosedForm = 1
+         ELSE IF ( ClosedForm == 0 ) THEN
+           CALL Info(Caller,'Clipping with numerical integration of the fragments')
+         END IF
+         CALL Info(Caller,'Resolving shadowing by clipping')
+       CASE DEFAULT
+         CALL Fatal(Caller,'Unknown "Viewfactor Shadowing": '//TRIM(Str))
+       END SELECT
+     END IF
 
      ! We may cheat with the symmetry by only counting the first half of the symmetric elements.
      UseSymmetry = .FALSE.

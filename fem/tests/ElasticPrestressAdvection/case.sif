@@ -5,17 +5,24 @@
 ! the two elmer_earth_2d_2layer cases, which need a Maxwell material as well and so
 ! cannot say which of the two capabilities an answer came from; here it is alone.
 !
-! WHAT THE TEST IS REALLY FOR. The term is not symmetric, and StressSolve symmetrises
-! its whole local stiffness before gluing it in -- every other term it assembles being
-! symmetric already -- so only the symmetric half of this one ever reaches its linear
-! solver. Reproducing the term as written instead of as its symmetric part is
-! therefore the mistake to guard against, and it is a loud one here: the second norm
-! becomes 9.16E-02 against this 2.61E-01. On the earth cases the same mistake is worth
+! WHAT THE TEST IS REALLY FOR. The term is genuinely not symmetric: it couples the
+! gradient of the vertical displacement to every test component, so its transpose is
+! a different operator. StressSolveLegacy symmetrises its whole local stiffness
+! before gluing it in, and since every other term it assembles is symmetric already,
+! that blanket operation only ever changed this one -- silently halving it and adding
+! its transpose. ElasticSolver assembles the term in full, which is the model; this
+! test is what pins that, and the difference is loud here. The symmetric half gives
+! 2.61E-01 against this 9.16E-02. On the earth cases the same difference is worth
 ! only 2.6%, which is why this case exists rather than relying on them.
 !
+! The sign is a check in its own right. Without the keyword at all the norm is
+! 1.93E-01, so the full term STIFFENS the body -- a smaller displacement than no
+! advection -- as a restoring force should, while the symmetric half softened it to
+! 2.61E-01. If a future change makes this norm exceed 1.93E-01 the term has changed
+! sign or lost half of itself again.
+!
 ! The load is vertical, since a term coupling to the vertical displacement cannot be
-! exercised by shear alone, and the coefficient is chosen to be worth about a third of
-! the answer: without the keyword the norm is 1.93E-01 against this 2.61E-01.
+! exercised by shear alone.
 
 Header
   Mesh DB "." "square"
@@ -91,5 +98,5 @@ Boundary Condition 2
   Force 2 = Real -0.05
 End
 
-Solver 1 :: Reference Norm = Real 2.60547590E-01
-Solver 2 :: Reference Norm = Real 2.60547590E-01
+Solver 1 :: Reference Norm = Real 9.16218950E-02
+Solver 2 :: Reference Norm = Real 9.16218950E-02

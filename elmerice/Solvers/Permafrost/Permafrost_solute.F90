@@ -392,6 +392,8 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPointsAdapt( Element )
+    ! IP variables are indexed Perm(ElementID)+t; the slice must be IP % n long.
+    CALL CheckIPVarSize( XiAtIPVar, ElementID, IP % n, SolverName )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
           //I2S(IP % n),Level=7)

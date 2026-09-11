@@ -1068,6 +1068,31 @@ int RayHitGeometry( double FX,double FY,double FZ, double DX,double DY,double DZ
 
 }
 
+/*******************************************************************************
+
+Same, but against a precomputed candidate list instead of the whole model.
+
+Every ray of a patch pair runs between the same two patches, so it can only
+ever meet that pair's shaft candidates.  Culling once per pair and then
+testing the handful of survivors replaces one tree traversal per *ray* with
+one per *pair*, which is what makes a larger ray count affordable.
+
+*******************************************************************************/
+int RayHitCandidates( int *Cand, int nc, double FX,double FY,double FZ,
+                        double DX,double DY,double DZ )
+{
+    double L = sqrt(DX*DX + DY*DY + DZ*DZ);
+    int i,j,n;
+
+    for( i=0; i<nc; i++ )
+    {
+        j = Cand[i];
+        n = RTElements[j].GeometryType;
+        if ( (*RayHit[n])( &RTElements[j],FX,FY,FZ,DX,DY,DZ,L ) ) return TRUE;
+    }
+    return FALSE;
+}
+
 void VolumeBBox( VolumeBounds_t *Volume,Geometry_t *RTElements )
 {
     double xMin,yMin,zMin,xMax,yMax,zMax,x,y,z;
@@ -1082,11 +1107,11 @@ void VolumeBBox( VolumeBounds_t *Volume,Geometry_t *RTElements )
     for( i=0; i<N; i++ )
     {
          k = Volume->Elements[i];
-	 R = RTElements[k].Circle->RMax;
          switch(RTElements[k].GeometryType)
          {
             case GEOMETRY_CIRCLE:
               NC = 0;
+	      R = RTElements[k].Circle->RMax;
 	      xMin = RTElements[k].Circle->CenterPoint.x - R;
 	      xMax = RTElements[k].Circle->CenterPoint.x + R;
 	      yMin = RTElements[k].Circle->CenterPoint.y - R;

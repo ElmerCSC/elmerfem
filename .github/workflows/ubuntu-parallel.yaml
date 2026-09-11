@@ -30,7 +30,11 @@ jobs:
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
             cxx: "g++"
-            openmp-cmake-flags: "-WITH_OpenMP=ON"
+            # The leading -D matters. This read "-WITH_OpenMP=ON" for a long
+            # time; cmake silently ignores an unknown -W argument (exit 0, no
+            # warning), so WITH_OpenMP kept its FALSE default and this job was
+            # in fact building and testing without OpenMP.
+            openmp-cmake-flags: "-DWITH_OpenMP=ON"
 
     env:
       CC: ${{ matrix.cc }}
@@ -104,7 +108,11 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest . -j$(nproc) -L "parallel|fast"
+          # Capped at -j4 rather than -j$(nproc): each test now really does
+          # get OpenMP threads (see the -DWITH_OpenMP note above), and
+          # test_macros gives every MPI task PHYS_CPU/MPIEXEC_NTASKS of them,
+          # so concurrent tests multiply tasks x threads over the same cores.
+          ctest . -j4 -L "parallel|fast"
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')

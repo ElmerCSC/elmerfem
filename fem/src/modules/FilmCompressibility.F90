@@ -53,7 +53,7 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
       RelaxP, RelaxM, Relax, val, Volume, Area, PresInt, grav, rho, &
       dpmax, dhmax, H3Int, LSMin
   INTEGER, POINTER :: NodeIndexes(:)
-  INTEGER :: t, i, j, k, n, m, istat, dim, nlift
+  INTEGER :: t, i, j, k, n, m, istat, dim, nlift, nVisited = 0
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Nodes_t) :: Nodes 
   LOGICAL :: AllocationsDone = .FALSE., Found, PressureExists, DoIt
@@ -61,12 +61,13 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
 
   
   SAVE STIFF, FORCE, Nodes, ElemPres, ElemHeight, ElemSens, Density, Thickness, EqPres, &
-      PrevElemHeight, PrevElemPres, ACave, ACinst, AllocationsDone
+      PrevElemHeight, PrevElemPres, ACave, ACinst, AllocationsDone, nVisited 
 
   CALL Info(Caller,' ')
   CALL Info(Caller,'----------------------------------------------')
   CALL Info(Caller,'Solving compressibility field for FilmPressure')
   CALL Info(Caller,'----------------------------------------------')
+
   
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
@@ -131,6 +132,15 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
     END IF
   END IF
 
+  i = ListGetInteger( Params,'Fix AC After Iters',Found )
+  IF( i > 0 ) THEN
+    Var => VariableGet( Mesh % Variables,'coupled iter' )
+    IF( NINT(Var % Values(1)) > i ) RETURN
+  END IF
+    
+
+
+  
   Var => Solver % Variable  
   IF ( .NOT. AllocationsDone ) THEN
     n = Mesh % MaxElementNodes
@@ -277,6 +287,11 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
     RelaxP = ListGetCReal( Params,'AC Relaxation Factor Positive',Found )
     IF(.NOT. Found) RelaxP = Relax
 
+    IF( nVisited == 0 ) THEN
+      RelaxM = 1.0_dp
+      RelaxP = 1.0_dp
+    END IF
+    
     val = ListGetCReal( Params,'AC Multiplier',Found )
     IF(.NOT. Found ) val = 1.0_dp
     
@@ -299,6 +314,8 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   IF( InfoActive(15)) THEN
     CALL VectorValuesRange(ACave,SIZE(ACave),Var % Name)
   END IF
+  nVisited = nVisited + 1
+
   CALL Info(Caller,'All done for now!',Level=12)
   
   

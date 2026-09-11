@@ -461,16 +461,19 @@ CONTAINS
     REAL(KIND=dp) :: LocalCoords(3)
     
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
-    INTEGER :: split, i, corners, visited=0
+    INTEGER :: split, i, corners
     REAL(KIND=dp) :: Basis(2*n),dBasisdx(2*n,3)
-    REAL(KIND=dp) :: SqrtElementMetric,U,V,W=0.0d0
-
-    SAVE visited
-    visited = visited + 1
+    REAL(KIND=dp) :: SqrtElementMetric,U,V,W
 
     Inside = .FALSE.
     corners = MIN(n,4)
     LocalCoords = 0.0_dp
+
+    ! Only the local coordinates the element's own dimension uses are set below,
+    ! but all three are passed on to ElementInfo and copied to LocalCoords.
+    U = 0.0_dp
+    V = 0.0_dp
+    W = 0.0_dp
     
     Eps2 = SQRT(TINY(Eps2))    
 
@@ -596,15 +599,18 @@ CONTAINS
     REAL(KIND=dp) :: LocalCoords(3)
 
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
-    INTEGER :: split, i, corners, visited=0
+    INTEGER :: split, i, corners
     REAL(KIND=dp) :: Basis(2*n),dBasisdx(2*n,3)
-    REAL(KIND=dp) :: SqrtElementMetric,U,V,W=0.0d0
+    REAL(KIND=dp) :: SqrtElementMetric,U,V,W
 
-    SAVE visited
-    visited = visited + 1
-
+    Inside = .FALSE.
     corners = MIN(n,4)
     LocalCoords = 0.0_dp
+
+    ! As above: only U is set on this path, the rest still reach ElementInfo.
+    U = 0.0_dp
+    V = 0.0_dp
+    W = 0.0_dp
     
     Eps2 = SQRT(TINY(Eps2))    
 
@@ -660,6 +666,7 @@ CONTAINS
     IF(ABS(ds) > IntersectEpsilon) RETURN
 
     ! Ok, we are this far so we must be inside    
+    Inside = .TRUE.
     u = -1.0d0 + 2.0d0 * C(2)
 
     stat = ElementInfo( Element, Plane, U, V, W, SqrtElementMetric, &

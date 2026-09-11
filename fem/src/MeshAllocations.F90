@@ -506,6 +506,11 @@ CONTAINS
           IF ( ASSOCIATED( Face % NodeIndexes ) ) THEN
              DEALLOCATE( Face % NodeIndexes )
           END IF
+          ! Given to the face by FindMeshEdges3D, after the face table was built
+          !--------------------------------------------------------------------
+          IF ( ASSOCIATED( Face % EdgeIndexes ) ) THEN
+             DEALLOCATE( Face % EdgeIndexes )
+          END IF
           IF ( ASSOCIATED( Face % BoundaryInfo ) ) THEN
              DEALLOCATE( Face % BoundaryInfo )
           END IF

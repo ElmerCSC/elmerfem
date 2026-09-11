@@ -118,6 +118,8 @@ Boundary Condition 7
   Target Boundaries(1) = 7
 End
 
-Solver 1 :: Reference Values(6) = 26 13 4563 734 24336160 2408.25
+! Checksums of the STL file: solids, facets, sum of normals (zero for a
+! closed body wound coherently), and the sums of the first vertex coordinates.
+Solver 1 :: Reference Values(6) = 2 2112 0 3100 3168 1888
 Solver 1 :: Reference Norm = 1.0
 !End Of File

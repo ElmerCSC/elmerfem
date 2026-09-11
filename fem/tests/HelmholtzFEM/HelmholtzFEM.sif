@@ -53,6 +53,14 @@ Solver 1
 
   Linear System Solver = $ if( ~fem ) { "Direct" } else { "Iterative" }
   Linear System Iterative Method = "BiCGStab"
+
+! The reference norms below are the serial ones, and the default norm is
+! summed over each partition's own rows, so shared nodes are counted once per
+! owner and the reported value drifts with the partition count -- 1.3e-3 from
+! serial at np=2 and 2.1e-3 at np=4, purely in the reporting, with the
+! solution itself correct. This makes the norm partition independent so the
+! same references hold for every task count.
+  Nonlinear System Consistent Norm = Logical True
   Linear System Max Iterations = 300
   Linear System Convergence Tolerance = 1.0e-08
   Linear System Abort Not Converged = True

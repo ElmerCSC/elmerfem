@@ -58,7 +58,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
   INTEGER :: i, j, k, n, InstDofs, MeanDofs, NoVar, Nsize, LoopSize, Nsine, Ncosine, &
       Nseries, TimesVisited=0, n0, n1
   INTEGER, POINTER :: Perm(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: Oper, OldOper, OperName, VarName, MeanVarName, Name, &
+  CHARACTER(LEN=MAX_NAME_LEN) :: Oper, VarName, MeanVarName, Name, &
       FilterName, OldVarName, tmpname
   REAL(KIND=dp) :: st, t0, t1, time, Phase, Ratio, Weight, Relax, val, cnew, cold, &
       freq, fcoeff, dt, q, prevval
@@ -363,7 +363,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
    
     DO i=1,LoopSize
       
-      SELECT CASE(OperName)
+      SELECT CASE(Oper)
         
       CASE('square')
         val = InstField(i)**2

@@ -358,12 +358,73 @@ CONTAINS
   END SUBROUTINE WaitSec
     
 !------------------------------------------------------------------------------
-  SUBROUTINE SystemCommand( cmd ) 
+  SUBROUTINE SystemCommand( cmd, Status ) 
 !------------------------------------------------------------------------------
     CHARACTER(LEN=*) :: cmd
-    CALL SystemC( TRIM(cmd) // CHAR(0) )
+    !> Nonzero if the command could not be run, or ran and exited nonzero.
+    !> Absent means the caller does not care, which is the historical behaviour.
+    INTEGER, OPTIONAL, INTENT(OUT) :: Status
+    CALL SystemC( TRIM(cmd) // CHAR(0), Status )
 !------------------------------------------------------------------------------
   END SUBROUTINE SystemCommand
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Return the directory holding the running executable, without a trailing
+!> separator, or an empty string if it cannot be determined.  Companion
+!> binaries -- ViewFactors, Radiators -- sit beside the solver both in a build
+!> tree and in an install tree, so this is how to name the one belonging to
+!> this build rather than whichever the PATH happens to offer.
+!------------------------------------------------------------------------------
+  FUNCTION ExecutableDirectory() RESULT( ExeDir )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=MAX_PATH_LEN) :: ExeDir
+    INTEGER :: n
+    
+    ExeDir = ' '
+    n = 0
+    CALL GetExeDir( ExeDir, n )
+    IF ( n <= 0 .OR. n > LEN(ExeDir) ) THEN
+      ExeDir = ' '
+    ELSE
+      ExeDir = ExeDir(1:n)
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION ExecutableDirectory
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Name a companion binary for a system call, as an absolute path next to the
+!> running executable when that can be determined, and as a bare name -- left
+!> for the PATH to resolve, as before -- when it cannot.  The absolute form is
+!> what keeps a solver from handing its work to some other Elmer's binary that
+!> merely happens to sit earlier in the PATH.  Quoted, so an install path with
+!> a space in it survives the shell.
+!------------------------------------------------------------------------------
+  FUNCTION SpawnCommand( Name ) RESULT( Cmd )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=*) :: Name
+    CHARACTER(:), ALLOCATABLE :: Cmd
+    CHARACTER(LEN=MAX_PATH_LEN) :: ExeDir
+    CHARACTER(LEN=1) :: Sep
+    
+    ExeDir = ExecutableDirectory()
+    
+    IF ( LEN_TRIM(ExeDir) == 0 ) THEN
+      Cmd = TRIM(Name)
+      RETURN
+    END IF
+
+    ! Join with whatever separator the directory itself came back with, so a
+    ! Windows path stays all backslashes and cmd.exe recognizes it as a path.
+    Sep = '/'
+    IF ( INDEX(ExeDir,'\') > 0 ) Sep = '\'
+    
+    Cmd = '"' // TRIM(ExeDir) // Sep // TRIM(Name) // '"'
+!------------------------------------------------------------------------------
+  END FUNCTION SpawnCommand
 !------------------------------------------------------------------------------
 
 

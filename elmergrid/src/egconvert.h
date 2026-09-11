@@ -1,6 +1,12 @@
 /* femfilein.h -> egconvert.h */
 /* Routines for importing meshes and data from other formats. */
 
+/* These routines are C. ElmerGUI compiles the ElmerGrid core as a library and
+   calls into it from C++, so the declarations need C linkage there. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
 int LoadAbaqusOutput(struct FemType *data,char *prefix,int info);
 int LoadFidapInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
@@ -19,3 +25,7 @@ int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,char *pref
 int LoadCGsimMesh(struct FemType *data,char *prefix,int info);
 int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
 int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
+
+#ifdef __cplusplus
+}
+#endif

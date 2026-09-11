@@ -48,6 +48,13 @@ End
 Solver 1
   Equation = Heat Equation
   Procedure = "HeatSolveVec" "HeatSolver"
+! Spell out how the view factors are resolved, so this test keeps exercising
+! the path it was blessed against even if the defaults change.
+!   Viewfactor Closed Form Integration : the inner ("to area") integral,
+!     closed form (exact for planar patches) or Gauss quadrature
+!   Viewfactor Shadowing               : "ray casting" or "clipping"
+  Viewfactor Closed Form Integration = Logical False
+  Viewfactor Shadowing = String "ray casting"
 
   Variable = Temperature
 
@@ -191,4 +198,5 @@ End
 
 
 Solver 1 :: Reference Norm = 3.10640900E+02
+Solver 1 :: Reference Norm Tolerance = 1.0e-4
 Solver 2 :: Reference Norm = 1000

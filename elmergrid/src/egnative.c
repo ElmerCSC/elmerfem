@@ -257,8 +257,9 @@ void Instructions()
 
 void Goodbye()
 {
-  printf("\nThank you for using Elmergrid!\n");
-  printf("Send bug reports and feature wishes to elmeradm@csc.fi\n");
+  printf("\nThank you for using ElmerGrid!\n");
+  printf("Repository: https://github.com/ElmerCSC/elmerfem\n");
+  printf("Contact: elmeradm@csc.fi\n");
   exit(0);
 }
 

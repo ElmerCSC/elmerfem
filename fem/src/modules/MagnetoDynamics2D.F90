@@ -255,6 +255,25 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         CALL LocalMatrixHandles( Element, n, nd+nb, nb )
       END DO
     ELSE
+      ! Threading is on again. The value lists were never the culprit: the earlier
+      ! zero-length "Coil Type" that aborted circuits2D_transient_london with
+      !   ERROR:: MagnetoDynamics2D: Non existent Coil Type Chosen 1
+      ! (~7 of 30 runs at OMP_NUM_THREADS=6, 0 of 350 at 1 thread) was not a race
+      ! inside ListFind but gfortran's implementation of the ALLOCATABLE
+      ! deferred-length CHARACTER result of GetString. The hidden length that goes
+      ! with such a result lands in file scope static storage -- the 'slen.NNN'
+      ! symbols in .bss -- shared by every thread, and there were two of them on
+      ! the way, one in LocalMatrix and one in DefUtils::GetString. The statement
+      ! compiles to zero the static slen -> call, callee writes the real length
+      ! through that pointer -> reload the static and copy that many characters
+      ! out, so a second thread reaching the zeroing between the write and the
+      ! reload of the first leaves the first with nothing to copy. Hence Found
+      ! .TRUE. together with a blank string, and hence re-reading the same keyword
+      ! a moment later returning "massive". The window is a handful of
+      ! instructions, so -O0 widening it to 9-11 of 30 fits this and is not
+      ! evidence against it. Both LocalMatrix and LocalMatrixHarmonic therefore
+      ! read that keyword through GetStringThreadSafe; see the comment on it in
+      ! DefUtils.F90 for why the RECURSIVE attribute and -frecursive do not help.
 !$omp parallel do private(Element,n,nd,nb,t) if(.NOT. HasZirka)
       DO t=1,active
         Element => GetActiveElement(t)
@@ -816,6 +835,7 @@ CONTAINS
 
     LOGICAL :: CoilBody, StrandedCoil
     LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
+    LOGICAL :: SerialAsm
 
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
@@ -828,7 +848,19 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
+    ! The local matrix copy shortcut is order dependent: it jumps to label 10 with
+    ! STIFF and FORCE left untouched, and they are filled in only inside
+    ! DefaultUpdateEquations -> UseLocalMatrixStorage from the local system stored
+    ! by a *representative* element (element 1 for 'Local Matrix Identical', the
+    ! first element of the body for 'Local Matrix Identical Bodies'). Nothing
+    ! orders or synchronizes that store against these reads in the threaded loop
+    ! above, so only take the shortcut when we are running serially. Assembling
+    ! the element the long way is always a valid answer, just slower.
+    SerialAsm = .TRUE.
+    !$ SerialAsm = .NOT. omp_in_parallel()
+    IF( SerialAsm ) THEN
+      IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
+    END IF
 
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -875,18 +907,27 @@ CONTAINS
     LondonEquations = .TRUE.
     CompParams => GetComponentParams( Element )
     IF (ASSOCIATED(CompParams)) THEN
-      CoilType = GetString(CompParams, 'Coil Type', Found)
+      ! This used to be, and in spirit still is,
+      !   !$OMP CRITICAL
+      !   CoilType = GetString(CompParams, 'Coil Type', Found)
+      !   !$OMP END CRITICAL
+      ! the critical section being needed because gfortran implements the
+      ! ALLOCATABLE deferred-length CHARACTER result of GetString with a hidden
+      ! length in static, thread shared storage. GetStringThreadSafe does the
+      ! same thing one level down, where it only has to be got right once.
+      CALL GetStringThreadSafe(CompParams, 'Coil Type', CoilType, Found)
       IF (Found) THEN
         CoilBody = .TRUE.
         SELECT CASE (CoilType)
         CASE ('stranded')
           StrandedCoil = .TRUE.
         CASE ('massive')
-          LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
+          LondonEquations = GetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
 !          CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
-          CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+          CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+          CALL Fatal (Caller, 'Non existent Coil Type Chosen 1!')
         END SELECT
       END IF
     END IF
@@ -1186,7 +1227,8 @@ CONTAINS
       CASE ('foil winding')
         CONTINUE
       CASE DEFAULT
-        CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+        CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+        CALL Fatal (Caller, 'Non existent Coil Type Chosen 2!')
       END SELECT
     END IF
         
@@ -2237,9 +2279,15 @@ CONTAINS
     StrandedCoil = .FALSE.
     LondonEquations = .TRUE.
     IF (ASSOCIATED(CompParams)) THEN
-!$OMP CRITICAL
-      CoilType = GetString(CompParams, 'Coil Type', Found)
-!$OMP END CRITICAL
+      ! This used to be, and in spirit still is,
+      !   !$OMP CRITICAL
+      !   CoilType = GetString(CompParams, 'Coil Type', Found)
+      !   !$OMP END CRITICAL
+      ! the critical section being needed because gfortran implements the
+      ! ALLOCATABLE deferred-length CHARACTER result of GetString with a hidden
+      ! length in static, thread shared storage. GetStringThreadSafe does the
+      ! same thing one level down, where it only has to be got right once.
+      CALL GetStringThreadSafe(CompParams, 'Coil Type', CoilType, Found)
       IF (Found) THEN
         CoilBody = .TRUE.
         SELECT CASE (CoilType)
@@ -2261,7 +2309,7 @@ CONTAINS
           END IF
 
         CASE ('massive')
-          LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
+          LondonEquations = GetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
   !         CALL GetElementRotM(Element, RotM, n)
           InPlaneProximity = GetLogical(CompParams, 'Foil In Plane Proximity', Found)
@@ -2273,7 +2321,8 @@ CONTAINS
             foilthickness = coilthickness/nofturns
           END IF
         CASE DEFAULT
-          CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+          CALL Info( Caller, 'Coil Type: ' // TRIM(CoilType) )
+          CALL Fatal (Caller, 'Non existent Coil Type Chosen 3!')
         END SELECT
       END IF
     END IF
@@ -3722,11 +3771,11 @@ CONTAINS
              END DO
            END DO
   
-           CALL ListAddConstReal( Model % Simulation,'res: Power re & 
-                 in Component '//i2s(j), CirCompComplexPower(1,j) )
+           CALL ListAddConstReal( Model % Simulation, &
+               'res: Power re in Component '//i2s(j), CirCompComplexPower(1,j) )
                          
-           CALL ListAddConstReal( Model % Simulation,'res: Power im & 
-                 in Component '//i2s(j), CirCompComplexPower(2,j) )
+           CALL ListAddConstReal( Model % Simulation, &
+               'res: Power im in Component '//i2s(j), CirCompComplexPower(2,j) )
          END IF
        END DO
     END IF

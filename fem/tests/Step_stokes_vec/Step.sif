@@ -48,6 +48,9 @@ Solver 1
   Equation = "NS-Vec"
 
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
 
   Linear System Solver = Iterative
 
@@ -66,11 +69,16 @@ Solver 1
   Nonlinear System Newton After Iterations = 3
 
 !
-! Note: Stabilization terms for equal-order interpolation have not been implemented.
-! The only way to get a stable solution is to apply bubbles or p2-p1 approximation.
-!       
+! This case pins the element rather than taking the solver's default, which for a
+! quadrilateral would be "b:3" -- see the "Serendipity P Elements = False" above,
+! the two selecting the full basis and its four interior modes instead.
+!
+! Bubbles are no longer the only way to a stable solution here: equal-order
+! interpolation with "Pressure Stabilization = Logical True" is the alternative,
+! and StokesStabilized runs this same problem that way. Note it is that keyword
+! and not "Stabilization Method", which this solver does not read.
+!
   Element = "p:1 -quad b:4"
-!  Stabilization Method = String Stabilized   !Note: this keyword is not supported
   GradP Discretization = Logical False
   Div-Curl Form = Logical False
 End

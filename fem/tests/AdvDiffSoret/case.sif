@@ -1,0 +1,91 @@
+! Soret (thermal) diffusion in AdvectionDiffusion, relative mass units.
+!
+! Steady 1D species transport in a quiescent fluid with a linear temperature
+! across the gap, concentration fixed at y = 0 and a natural (zero flux)
+! condition at y = Ly. At steady state the total flux vanishes, so
+!
+!   -D dC/dy + D_T dT/dy = 0   =>   dC/dy = (D_T/D)(dT/dy) = constant
+!
+! With D = 1e-9, D_T = 5e-12, Ly = 1 mm and T going 300 -> 400 K the gradient
+! is 500 /m, so C(Ly) = 0.5 for C(0) = 1. The reference norm is sensitive in
+! both directions: it differs from the flat C = 1 profile obtained when
+! 'Soret Diffusivity' stops being read, and from the profile obtained if the
+! Soret coefficient is scaled by an extra factor of the density.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "strip"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 2
+  Output Intervals = 1
+End
+
+Body 1
+  Name = "Fluid"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat and species"
+  Active Solvers(2) = 1 2
+  Convection = "Constant"
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable DOFs = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-10
+End
+
+Solver 2
+  Equation = "Advection Diffusion"
+  Procedure = "AdvectionDiffusion" "AdvectionDiffusionSolver"
+  Variable = "Conc"
+  Variable DOFs = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-10
+  Bubbles = False
+End
+
+Material 1
+  Name = "Fluid"
+  Density = Real 1000.0
+  Heat Conductivity = Real 0.6
+  Heat Capacity = Real 4000.0
+  Conc Diffusivity = Real 1.0e-9
+  Conc Soret Diffusivity = Real 5.0e-12
+  Temperature Field Variable = String "Temperature"
+  Reference Temperature = Real 300.0
+  Convection Velocity 1 = Real 0.0
+  Convection Velocity 2 = Real 0.0
+End
+
+Boundary Condition 1
+  Name = "Cold side, y = 0"
+  Target Boundaries(1) = 1
+  Temperature = Real 300.0
+  Conc = Real 1.0
+End
+
+Boundary Condition 2
+  Name = "Hot side, y = Ly, no species condition"
+  Target Boundaries(1) = 3
+  Temperature = Real 400.0
+End
+
+Solver 1 :: Reference Norm = Real 351.20032
+Solver 2 :: Reference Norm = Real 0.76389899

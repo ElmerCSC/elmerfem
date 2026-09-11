@@ -48,6 +48,9 @@ Solver 1
   Equation = "NS-Vec"
 
   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
 
   Linear System Solver = "Block"
   Block Gauss-Seidel = Logical True

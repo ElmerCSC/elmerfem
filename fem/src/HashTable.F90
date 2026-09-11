@@ -49,7 +49,7 @@ MODULE HashTable
   IMPLICIT NONE
 
   TYPE HashValue_t
-     CHARACTER(LEN=MAX_NAME_LEN) :: Block,Type
+     CHARACTER(LEN=MAX_NAME_LEN) :: Type
   END TYPE HashValue_t
 
 
@@ -81,7 +81,7 @@ CONTAINS
 !       InitialBucketSize, MaxAvgEntries, EqualKeys )
 ! 
 !> Initialize a hash table given initial bucket size. The size of the
-!> bucket is rounded up to next power of two. The bucket doubles in size
+!> bucket is rounded up to next power of two. The bucket grows fourfold
 !> whenever the size of the hash table grows over "MaxAvgEntries"
 !> entries / bucket on the average. Keep the "MaxAvgEntries" small enough
 !> (ordinarily from 3 entries up ?) to keep the hash table build & lookup
@@ -101,7 +101,7 @@ CONTAINS
     TYPE(HashTable_t), POINTER :: Hash
     INTEGER :: InitialBucketSize, MaxAvgEntries
 
-    INTEGER :: i, RoundBits, Stat
+    INTEGER :: i, Stat
 
     NULLIFY( Hash )
     IF ( InitialBucketSize <= 0 ) THEN
@@ -110,11 +110,15 @@ CONTAINS
        RETURN
     END IF
 
-    RoundBits = CEILING( LOG(1.0d0*InitialBucketSize) / LOG(2.0d0) )
-
     ALLOCATE( Hash )
 
-    Hash % BucketSize = 2**RoundBits
+    ! Round up to the next power of two, which HashStringFunc relies on. Done
+    ! by doubling rather than by CEILING(LOG(n)/LOG(2)), which is at the mercy
+    ! of the last bit of two logarithms just where n already is a power of two.
+    Hash % BucketSize = 1
+    DO WHILE( Hash % BucketSize < InitialBucketSize )
+       Hash % BucketSize = 2 * Hash % BucketSize
+    END DO
 
     ALLOCATE( Hash % Bucket( Hash % BucketSize ), STAT=stat )
 
@@ -133,6 +137,12 @@ CONTAINS
 
     Hash % TotalEntries  = 0
     Hash % MaxAvgEntries = MaxAvgEntries
+
+    ! The walk state has to start out defined: HashNext tests CurrentEntry
+    ! with ASSOCIATED(), which is only meaningful for a pointer that has been
+    ! given a status.
+    Hash % CurrentBucket = 0
+    NULLIFY( Hash % CurrentEntry )
    END FUNCTION HashCreate
 
 !--------------------------------------------------------------------------
@@ -150,10 +160,15 @@ CONTAINS
      keylen = LEN_TRIM(key)
      Ind = 0
      DO i=1,keylen
-        Ind = Ind*31 + ICHAR(key(i:i))
+        ! Masking inside the loop instead of only after it keeps the
+        ! accumulator from overflowing, which it otherwise does for any key
+        ! longer than a handful of characters. As "size" is a power of two,
+        ! (a*31+c) mod size depends only on a mod size, so this gives exactly
+        ! the same index as accumulating first and masking last did.
+        Ind = IAND( Ind*31 + ICHAR(key(i:i)), size-1 )
      END DO
 
-     Ind = IAND( Ind, size-1 ) + 1
+     Ind = Ind + 1
    END FUNCTION HashStringFunc
 
 !--------------------------------------------------------------------------
@@ -236,6 +251,8 @@ CONTAINS
     INTEGER :: n, keylen
     TYPE(HashEntry_t), POINTER :: Entry
 
+    Success = .FALSE.
+    IF ( .NOT. ASSOCIATED( Hash ) ) RETURN
     Success = .TRUE.
 
     entry => HashFind( hash,key, n )
@@ -254,6 +271,7 @@ CONTAINS
        IF ( stat /= 0 ) THEN
           CALL Error( 'HashAdd', 'add failed: unable to allocate ' // &
                '(a few bytes of) memory ?' )
+          Success = .FALSE.
           RETURN
        END IF
 
@@ -305,6 +323,13 @@ CONTAINS
             prev % next => entry % next
           ELSE
             hash % Bucket(n) % Head => Entry % next
+         END IF
+
+         ! An ongoing walk must not be left pointing at what we are about
+         ! to free. Removing the entry the walk sits on ends that walk.
+         IF ( ASSOCIATED( Hash % CurrentEntry, Entry ) ) THEN
+            Hash % CurrentBucket = 0
+            NULLIFY( Hash % CurrentEntry )
          END IF
 
          DEALLOCATE(Entry)
@@ -385,15 +410,15 @@ CONTAINS
    DO i=1,Hash % BucketSize
       Entry => Hash % Bucket(i) % Head
       DO WHILE( ASSOCIATED( Entry ) )
-         IF ( .NOT. HashAdd( Newhash, Entry % Key, Entry % Value ) ) RETURN
+         IF ( .NOT. HashAdd( Newhash, Entry % Key, Entry % Value ) ) THEN
+            CALL HashDelete( NewHash )
+            RETURN
+         END IF
          Entry => Entry % Next
       END DO
    END DO
 
-   CALL HashClean( Hash )
-   DEALLOCATE( Hash % Bucket )
-
-   DEALLOCATE( Hash )
+   CALL HashDelete( Hash )
    Hash => NewHash
    Success = .TRUE.
  END FUNCTION HashRebuild
@@ -424,6 +449,7 @@ CONTAINS
 !--------------------------------------------------------------------------
  SUBROUTINE HashInitWalk( Hash )
    TYPE(HashTable_t), POINTER :: Hash
+   IF ( .NOT. ASSOCIATED( Hash ) ) RETURN
    Hash % CurrentBucket = 0
    NULLIFY( Hash % CurrentEntry )
  END SUBROUTINE HashInitWalk
@@ -454,12 +480,16 @@ CONTAINS
    ELSE
       Hash % CurrentBucket = Hash % CurrentBucket + 1
 
-      DO WHILE(  Hash % CurrentBucket < Hash % BucketSize .AND. &
-             .NOT.ASSOCIATED( Hash % Bucket(Hash % CurrentBucket) % Head) )
+      ! The buckets are indexed 1:BucketSize, so the last one must be visited
+      ! as well. The bound is not folded into the DO WHILE condition since
+      ! Fortran does not guarantee short circuit evaluation of .AND., and the
+      ! loop does run one past the end of the array.
+      DO WHILE( Hash % CurrentBucket <= Hash % BucketSize )
+         IF ( ASSOCIATED( Hash % Bucket(Hash % CurrentBucket) % Head) ) EXIT
          Hash % CurrentBucket = Hash % CurrentBucket + 1
       END DO
 
-      IF ( Hash % CurrentBucket >= Hash % BucketSize ) RETURN
+      IF ( Hash % CurrentBucket > Hash % BucketSize ) RETURN
 
       Hash % CurrentEntry => Hash % Bucket(Hash % CurrentBucket) % Head
    END IF

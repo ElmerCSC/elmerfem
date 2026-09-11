@@ -720,12 +720,12 @@
             CALL Warn( 'CircuitPrec', 'Umfpack solver not installed, using MUMPS instead!' )
             str = "mumps"
           END IF
-#elseif !defined (HAVE_MUMPS) && defined(HAVE_UMFPACK)
+#elif !defined (HAVE_MUMPS) && defined(HAVE_UMFPACK)
           IF( str == "mumps" ) THEN
             CALL Warn( 'CircuitPrec', 'MUMPS solver not installed, using Umfpack instead!' )
             str = "umfpack"
           END IF
-#elseif !defined (HAVE_MUMPS) && !defined(HAVE_UMFPACK)
+#elif !defined (HAVE_MUMPS) && !defined(HAVE_UMFPACK)
           CALL Fatal( 'CircuitPrec', 'Preconditioner "circuit" needs either Umfpack or MUMPS!')
 #endif
           CALL ListAddString( sv % Values, 'Linear System Direct Method', TRIM(str) )
@@ -789,12 +789,12 @@
             CALL Warn( 'CircuitPrecComplex', 'Umfpack solver not installed, using MUMPS instead!' )
             str = "mumps"
           END IF
-#elseif !defined (HAVE_MUMPS) && defined(HAVE_UMFPACK)
+#elif !defined (HAVE_MUMPS) && defined(HAVE_UMFPACK)
           IF( str == "mumps" ) THEN
             CALL Warn( 'CircuitPrecComplex', 'MUMPS solver not installed, using Umfpack instead!' )
             str = "umfpack"
           END IF
-#elseif !defined (HAVE_MUMPS) && !defined(HAVE_UMFPACK)
+#elif !defined (HAVE_MUMPS) && !defined(HAVE_UMFPACK)
           CALL Fatal( 'CircuitPrecComplex', 'Preconditioner "circuit" needs either Umfpack or MUMPS!')
 #endif
           CALL ListAddString( sv % Values, 'Linear System Direct Method', TRIM(str) )

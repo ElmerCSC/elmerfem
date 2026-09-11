@@ -1353,6 +1353,55 @@ CONTAINS
   END FUNCTION GetString
 
 
+!> Returns a string by its name, for use inside OpenMP parallel regions.
+!>
+!> The value lists themselves are only read here, and ListGetString and ListFind
+!> under it are perfectly happy with several threads at once. What is not, is
+!> gfortran's implementation of the ALLOCATABLE deferred-length CHARACTER result
+!> that GetString above returns (checked up to gfortran 15.2): the hidden length
+!> that goes with such a result is emitted as FILE SCOPE STATIC storage -- the
+!> 'slen.NNN' symbols in .bss -- and is therefore shared by every thread. A
+!> statement such as
+!>
+!>   CoilType = GetString( CompParams, 'Coil Type', Found )
+!>
+!> compiles into "zero the static slen, call, let the callee write the true
+!> length through that pointer, reload the static, copy that many characters
+!> out", and there are two such statics on the way, one in the caller and one in
+!> GetString itself. Let a second thread reach the zeroing between the write and
+!> the reload of the first, and the first copies nothing: the caller is handed
+!> Found = .TRUE. together with an empty string, while the value list it read is
+!> of course untouched and yields the right answer when read again a moment
+!> later. That was the source of the intermittent
+!>
+!>   ERROR:: MagnetoDynamics2D: Non existent Coil Type Chosen 1
+!>
+!> in circuits2D_transient_london, roughly 7 runs out of 30 at six threads and
+!> none at all out of 350 at one thread. Neither the RECURSIVE attribute nor
+!> -frecursive nor -fno-automatic persuades gfortran to put slen on the stack.
+!>
+!> Bracketing the assignment in the caller with !$OMP CRITICAL does cure it, and
+!> the calls in MagnetoDynamics2D used to do exactly that, but it leaves the
+!> obligation with every call site. This routine takes it over. Being a
+!> SUBROUTINE with a fixed length result is the whole point: the caller does a
+!> plain CALL and so gets no hidden length temporary of its own, and the single
+!> one left, belonging to the assignment below, is covered by the CRITICAL.
+!>
+!> The CRITICAL must stay UNNAMED. A named variant deterministically SIGSEGVs
+!> several MPI tests on the Windows MSYS2/UCRT MinGW gomp runtime; see the
+!> identical notes in GaussPointsAdapt and UseLocalMatrixStorage.
+  SUBROUTINE GetStringThreadSafe( List, Name, CValue, Found )
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*) :: CValue
+     LOGICAL, OPTIONAL :: Found
+
+     !$OMP CRITICAL
+     CValue = ListGetString(List, Name, Found)
+     !$OMP END CRITICAL
+  END SUBROUTINE GetStringThreadSafe
+
+
 !> Returns an integer by its name if found in the list structure
   FUNCTION GetInteger( List, Name, Found ) RESULT(i)
      TYPE(ValueList_t), POINTER :: List
@@ -1375,6 +1424,38 @@ CONTAINS
 
      l = ListGetLogical( List, Name, Found, UnfoundFatal, DefValue )
   END FUNCTION GetLogical
+
+
+!> Resolves whether SUPG/equal-order stabilization (as opposed to a
+!> residual-free bubble) has been requested, from the two keywords a solver
+!> would otherwise resolve by hand: "Stabilize" (a plain boolean) and
+!> "Stabilization Method" (one of "none", "bubbles" or "stabilized", which
+!> overrides "Stabilize" when given). Mirrors the resolution legacy solvers
+!> such as HeatSolve/FlowSolve already do inline. A solver that instead spells
+!> this "Pressure Stabilization" (IncompressibleNSVec, ElasticSolve) can OR
+!> this in as a synonym, since neither keyword collides with anything those
+!> solvers already read.
+  FUNCTION GetStabilizeFlag( List, Found ) RESULT(Stabilize)
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL, OPTIONAL :: Found
+
+     LOGICAL :: Stabilize, GotIt
+     CHARACTER(:), ALLOCATABLE :: StabilizeFlag
+
+     Stabilize = ListGetLogical( List,'Stabilize', GotIt )
+     IF( PRESENT(Found) ) Found = GotIt
+
+     StabilizeFlag = ListGetString( List,'Stabilization Method', GotIt )
+     IF( GotIt ) THEN
+       IF( PRESENT(Found) ) Found = .TRUE.
+       SELECT CASE( StabilizeFlag )
+       CASE('stabilized')
+         Stabilize = .TRUE.
+       CASE('bubbles','none')
+         Stabilize = .FALSE.
+       END SELECT
+     END IF
+  END FUNCTION GetStabilizeFlag
 
 
 !> Returns a constant real by its name if found in the list structure
@@ -2083,12 +2164,25 @@ CONTAINS
        INTEGER :: face_id
        TYPE(Element_t), POINTER :: Parent, Edge
   
+       ! NOTE: this edge/face block mirrors mGetElementDOFs (ElemInfo.F90); the
+       ! two routines must return the same count, so keep them in step. The
+       ! "Done" flags are optimistic and cleared whenever an iteration cycles,
+       ! since a cycled loop has counted nothing and the parent-based branches
+       ! below are the ones that then have to do the work.
        EdgesDone = .FALSE.; FacesDone = .FALSE.
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
+         EdgesDone = .TRUE.
          DO j=1,Element % Type % NumberOFEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF (Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF (.NOT. Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
+             ! The "edge" is the element itself. That only carries dofs of its
+             ! own when the element is a lower-dimensional body (BodyId>0 while
+             ! sitting on a boundary) and bubbles live in the global system.
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                   Element % BodyId>0 .AND. ASSOCIATED(Element % BoundaryInfo)) ) THEN
+               EdgesDone = .FALSE.
+               CYCLE
+             END IF
            END IF
 
            EDOFs = 0 
@@ -2100,15 +2194,19 @@ CONTAINS
            END IF
            n = n + EDOFs
          END DO
-         EdgesDone = .TRUE.
        END IF
 
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+         FacesDone = .TRUE.
          DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
 
            IF (Face % Type % ElementCode==Element % Type % ElementCode) THEN
-             IF ( .NOT.Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                   Element % BodyId>0 .AND. ASSOCIATED(Element % BoundaryInfo)) ) THEN
+               FacesDone = .FALSE.
+               CYCLE
+             END IF
            END IF
 
            k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
@@ -2123,22 +2221,26 @@ CONTAINS
                face_id  = Face % BoundaryInfo % Left % BodyId
                k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
              END IF
-             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-               face_id = Face % BoundaryInfo % Right % BodyId
-               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             IF (k == 0) THEN
+               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                 face_id = Face % BoundaryInfo % Right % BodyId
+                 k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+               END IF
              END IF
+           END IF
 
-             FDOFs = 0
-             IF (k > 0) THEN
-               FDOFs = k
-             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+           ! Outside the k==0 branch: with face dofs given explicitly (k>0 from
+           ! Def_Dofs(...,3)) this is the only assignment FDOFs gets, and n was
+           ! being incremented by a stale value without it.
+           FDOFs = 0
+           IF (k > 0) THEN
+             FDOFs = k
+           ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
 ! TO DO: This is not yet perfect; cf. what is done in InitialPermutation
-               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
-             END IF
+             FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
            END IF
            n = n + FDOFs
          END DO
-         FacesDone = .TRUE.
        END IF
 
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
@@ -3931,8 +4033,11 @@ CONTAINS
 
 
      SolveAdjoint = ListGetLogical(Params,'Solve Adjoint Equation', Found )
-
      IF( SolveAdjoint ) THEN
+       ! This routine uses the existing linear system and computes an additional solution
+       ! with different r.h.s. that can come from given source vector or given source term.
+       ! This can be used to compute sensitivities for problems that are self-adjoined.
+       !----------------------------------------------------------------------------------
        BLOCK
          INTEGER :: n
          REAL(KIND=dp) :: Norm
@@ -4094,6 +4199,106 @@ CONTAINS
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------
 
+
+   !------------------------------------------------------------------------------
+   !> Calculate full derivative resulting from a change in another field solver.
+   !> This routine modifies one field, and returns to do assembly ans solution
+   !> of the primary field and then computes the sensitivity on the 2nd round. 
+   !------------------------------------------------------------------------------
+   FUNCTION DefaultSensitivity(uSolver) RESULT ( omstart )  
+     TYPE(Solver_t), TARGET, OPTIONAL :: uSolver
+     LOGICAL :: Omstart
+     
+     TYPE(ValueList_t), POINTER :: Params
+     LOGICAL :: SensActive = .FALSE.
+     TYPE(Variable_t), POINTER :: changeVar, sensVar, primVar, changeVeloVar, dtVar
+     TYPE(Solver_t), POINTER :: Solver
+     REAL(KIND=dp) :: changeEps, aid, Nrm
+     LOGICAL :: Found, ApplyLImiter
+     CHARACTER(:), ALLOCATABLE :: str
+     INTEGER :: i
+     
+     
+     SAVE SensActive, changeVar, sensVar, changeEps, ApplyLimiter, primVar, &
+         dtVar, changeVeloVar, Nrm
+     
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+     
+     Params => Solver % Values     
+     Omstart = .FALSE.
+     IF(.NOT. ListGetLogical( Params,'Calculate Sensitivity', Found ) ) RETURN
+     
+     IF(.NOT. SensActive ) THEN
+       CALL Info('DefaultSensitivity','Making a small variation and recomputing the solution!',Level=12)
+
+       ! Find the variable that is internally used to update the gap 
+       str = ListGetString(Params,'Change Variable', UnfoundFatal = .TRUE.)
+       changeVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE. )
+       changeEps = ListGetCReal( Params,'Change Epsilon', UnfoundFatal = .TRUE. )
+       changeVar % Values = changeVar % Values + changeEps
+
+       ! We may need to compute the derivative of the changing variable too!
+       NULLIFY( changeVeloVar ) 
+       str = ListGetString(Params,'Change Velocity Variable', Found )
+       IF( Found ) THEN         
+         changeVeloVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE.)                 
+         dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size', UnfoundFatal = .TRUE.)
+         changeVeloVar % Values = (changeVar % Values(:) - changeVar % PrevValues(:,1)) / dtVar % Values(1)
+       END IF
+
+       ! Get pointer to the sensitivity variable
+       str = ListGetString(Params,'Sensitivity Variable', UnfoundFatal = .TRUE.)        
+       SensVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal=.TRUE.)
+       
+       ! The primary variable
+       PrimVar => Solver % Variable
+       Nrm = Solver % Variable % Norm
+       ! Remember the old values
+       SensVar % Values = PrimVar % Values
+
+       ApplyLimiter = ListGetLogical( Params,'Apply Limiter', Found )
+       IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .FALSE. ) 
+       CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
+       
+       SensActive = .TRUE.
+       Omstart = .TRUE.
+     ELSE
+       CALL Info('DefaultSensitivity','Computing sensitivity from numerical derivative!',Level=12)
+
+       ! Return the gap as it was
+       changeVar % Values = changeVar % Values - changeEps
+
+       ! Revert back to the velocity
+       IF( ASSOCIATED(changeVeloVar) ) THEN         
+         changeVeloVar % Values = (changeVar % Values(:) - changeVar % PrevValues(:,1)) / dtVar % Values(1)
+       END IF
+
+       ! Calculate the sensitivity from one-sided differential, we need to swap the values
+       ! so let's do it one value at the time.
+       DO i=1,SIZE(SensVar % Values)
+         aid = SensVar % Values(i)
+         SensVar % Values(i) = ( PrimVar % Values(i) - aid) / changeEps
+         PrimVar % Values(i) = aid
+       END DO
+       Solver % Variable % Norm = Nrm
+                
+       ! Return solver variable and solver settings as they were
+       IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .TRUE. ) 
+       CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
+
+       SensActive = .FALSE.
+       Omstart = .FALSE.
+     END IF
+     
+   END FUNCTION DefaultSensitivity
+
+
+
+   
    FUNCTION DefaultCutFEM(Solver) RESULT( Swap ) 
      TYPE(Solver_t), TARGET, OPTIONAL :: Solver
 

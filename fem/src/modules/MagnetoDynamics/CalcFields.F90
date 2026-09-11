@@ -2512,8 +2512,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            TYPE(Variable_t), POINTER :: CoilCurr
            INTEGER, POINTER :: MasterEntities(:)
            COMPLEX(KIND=dp) :: Curr
-           REAL(KIND=dp) :: Area
-           
+           REAL(KIND=dp) :: Area, CurrRe
+           LOGICAL :: GotEnergy, GotArea
+
+           GotEnergy = .FALSE.
            MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )
            IF(ASSOCIATED(MasterEntities)) THEN
              str = ListGetString( CompParams,'W Vector Variable Name',Found )
@@ -2525,15 +2527,42 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                  CoilCurr => VariableGet( Mesh % Variables,'CoilCurrent',ThisOnly=.TRUE.)
                END IF
              END IF
-             s = ComponentCoilEnergy(Model, Mesh, MasterEntities, pSolver % Variable, CoilCurr )            
+             ! CVar is a non-pointer dummy of ComponentCoilEnergy, so handing it
+             ! an unassociated pointer segfaults on the first reference to it.
+             IF( ASSOCIATED(CoilCurr) ) THEN
+               s = ComponentCoilEnergy(Model, Mesh, MasterEntities, pSolver % Variable, CoilCurr )
+               GotEnergy = .TRUE.
+             ELSE
+               CALL Warn(Caller,'No coil current density for component '//I2S(j)//&
+                   ', cannot compute its flux linkage over the volume!')
+             END IF
            END IF
 
-           Curr = GetComponentCurrent(j,Found) 
-           Area = GetComponentArea(j,Found)
-           s = s / (Area * Curr)
-           
-           WRITE(Message,'(A,ES12.3)') 'FluxLinkage '//I2S(j)//' volume:',s
-           CALL Info(Caller,Message,Level=5)
+           ! Only when the energy really was computed: otherwise s still holds the
+           ! flux linkage from the area variant above and scaling that would print
+           ! a meaningless number under the volume label.
+           IF( GotEnergy ) THEN
+             Curr = GetComponentCurrent(j,Found)
+             Area = GetComponentArea(j,GotArea)
+
+             ! Scale by the real part of the current, explicitly. This used to
+             ! divide by the complex current and let the quotient narrow to REAL
+             ! implicitly, which is not the same thing: 1/(a+ib) = (a-ib)/(a^2+b^2),
+             ! so a nonzero imaginary part moves the real part of the result too.
+             ! The real part keeps the sign, as the line and area variants above do.
+             CurrRe = REAL(Curr,dp)
+
+             IF( .NOT. GotArea ) THEN
+               CONTINUE
+             ELSE IF( ABS(CurrRe) <= TINY(Area) ) THEN
+               CALL Warn(Caller,'Component '//I2S(j)//' carries no current, '//&
+                   'cannot scale its flux linkage!')
+             ELSE
+               s = s / (Area * CurrRe)
+               WRITE(Message,'(A,ES12.3)') 'FluxLinkage '//I2S(j)//' volume:',s
+               CALL Info(Caller,Message,Level=5)
+             END IF
+           END IF
          END BLOCK
            
        END IF

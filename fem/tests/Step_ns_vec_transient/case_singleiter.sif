@@ -1,0 +1,120 @@
+! The companion of case.sif: the same transient condensed MINI problem, held to
+! ONE nonlinear iteration per timestep.
+!
+! One iteration is not enough for the condensed bubble part. LCondensate writes
+! bx for the nodal iterate it is handed, which on the first iteration of a step
+! is still the previous step's solution, so bxprev -- the bubble the BDF(1)
+! derivative of the next step is formed from -- is always one step stale. This
+! is the answer the solver gave for years, because the "Nonlinear System Min
+! Iterations = 2" that _Init sets to prevent it was never applied: the guard
+! enforcing that keyword in ComputeChange sits inside IF(NonlinConverged > 1),
+! which the ordinary converged-to-tolerance exit (NonlinConverged == 1) does not
+! reach.
+!
+! So the norm below is not the right answer to the problem, it is the answer of
+! one Picard step per timestep, and it is here to pin the SIZE of the effect:
+! 0.85 % away from case.sif. Should the floor in case.sif ever stop being
+! applied, that case's norm walks over to this one and the pair fails.
+!
+! It is a legitimate thing to ask for -- "Nonlinear System Max Iterations = 1"
+! means one iteration and the solver does one -- and it doubles as the test that
+! the min/max clamp warns instead of looping past the max.
+!
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.05
+  Timestep Intervals = 20
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+
+  Serendipity P Elements = False
+End
+
+Constants
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Pressure = 0
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "NS-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  ! No "Stokes Flow" here on purpose: the convection term and the mass matrix
+  ! are switched by that one flag together, and this case wants both.
+  Element = "p:1 -quad b:4"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  ! ONE, stated explicitly, which also clamps the floor _Init asks for -- the
+  ! solver warns that it cannot honour it and settles for what the max allows.
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1.0e-2
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "(2-tx)*(tx-1)"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+Solver 1 :: Reference Norm = 0.73401428E-01

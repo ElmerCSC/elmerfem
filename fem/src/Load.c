@@ -55,6 +55,10 @@
 #include <strings.h>
 #  include <dlfcn.h>
 #  include <sys/stat.h>
+#  include <unistd.h>
+#  ifdef __APPLE__
+#    include <mach-o/dyld.h>
+#  endif
 #define ELMER_PATH_SEPARATOR ":"
 #endif
 
@@ -134,6 +138,57 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
   *len = strlen(ELMER_SOLVER_HOME);
   if(*len > MAX_PATH_LEN) *len = MAX_PATH_LEN;
 #endif
+}
+
+/*--------------------------------------------------------------------------
+  Return the directory holding the running executable, without a trailing
+  separator.  ElmerSolver spawns ViewFactors and Radiators when the radiation
+  factor files are missing; resolving those through PATH picks up whichever
+  build happens to come first there, which need not be the one this solver was
+  built or installed with.  Both live in the same directory as ElmerSolver
+  itself -- fem/src in a build tree, bin/ once installed -- so that is what to
+  ask for.  *len is left 0 when the path cannot be determined, and the caller
+  is then expected to fall back to the bare command name.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL getexedir( char *exeDir, int *len )
+#else
+void STDCALLBULL FC_FUNC(getexedir,GETEXEDIR) ( char *exeDir, int *len )
+#endif
+{
+  char path[MAX_PATH_LEN];
+  char *sep = NULL;
+  int n = 0;
+
+  *len = 0;
+
+#if defined(WIN32) || defined(MINGW32)
+  n = (int)GetModuleFileName( NULL, path, MAX_PATH_LEN );
+  if( n <= 0 || n >= MAX_PATH_LEN ) return;
+  path[n] = '\0';
+  sep = strrchr( path, '\\' );
+  if( sep == NULL ) sep = strrchr( path, '/' );
+#elif defined(__APPLE__)
+  {
+    uint32_t bufsize = MAX_PATH_LEN;
+    if( _NSGetExecutablePath( path, &bufsize ) != 0 ) return;
+    path[MAX_PATH_LEN-1] = '\0';
+    sep = strrchr( path, '/' );
+  }
+#else
+  n = (int)readlink( "/proc/self/exe", path, MAX_PATH_LEN-1 );
+  if( n <= 0 ) return;
+  path[n] = '\0';
+  sep = strrchr( path, '/' );
+#endif
+
+  if( sep == NULL ) return;
+
+  n = (int)(sep - path);
+  if( n <= 0 || n > MAX_PATH_LEN ) return;
+
+  strncpy( exeDir, path, n );
+  *len = n;
 }
 
 /*--------------------------------------------------------------------------

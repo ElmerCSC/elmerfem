@@ -64,6 +64,14 @@ MODULE LoadMod
     END INTERFACE
 
     INTERFACE
+        SUBROUTINE getexedir(exeDir, len) BIND(C,name='getexedir')
+            USE, INTRINSIC :: iso_c_binding
+            CHARACTER(C_CHAR) :: exeDir(*)
+            INTEGER(C_INT) :: len
+        END SUBROUTINE getexedir
+    END INTERFACE
+
+    INTERFACE
         SUBROUTINE makedirectory(name) BIND(C,name='makedirectory')
             USE, INTRINSIC :: iso_c_binding
             CHARACTER(C_CHAR) :: name(*)
@@ -225,9 +233,14 @@ MODULE LoadMod
           CALL matc_c_cached(cmd,cmdlen,res,reslen)
         END FUNCTION MatcCached
 
-        SUBROUTINE systemc(cmd)
+        SUBROUTINE systemc(cmd, Status)
             IMPLICIT NONE
             CHARACTER(LEN=*) :: cmd
+            ! Nonzero if the command could not be run or exited nonzero.  The
+            ! return used to be dropped here, so a child that died left no
+            ! trace beyond a message and the caller carried on as if it had
+            ! worked.
+            INTEGER, OPTIONAL, INTENT(OUT) :: Status
             CHARACTER(LEN=40) :: buf
             INTEGER :: estat, cstat
 
@@ -259,6 +272,14 @@ MODULE LoadMod
             END IF
             IF (cstat /= 0) THEN
                 CALL Error('systemc','Unable to execute system command')
+            END IF
+
+            IF (PRESENT(Status)) THEN
+                IF (cstat /= 0) THEN
+                    Status = cstat
+                ELSE
+                    Status = estat
+                END IF
             END IF
         END SUBROUTINE systemc
 

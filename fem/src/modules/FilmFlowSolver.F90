@@ -138,7 +138,12 @@ SUBROUTINE FilmFlowSolver_init(Model, Solver, dt, Transient)
         'Heating Energy' )
   END IF
     
-  
+  IF( ListGetLogical( Params,'Calculate Sensitivity', Found ) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-dofs '//I2S(mdim+1)//' Flow Sensitivity')        
+    CALL ListAddString(Params,'Sensitivity Variable','Flow Sensitivity' )
+  END IF
+    
   
 !------------------------------------------------------------------------------ 
 END SUBROUTINE FilmFlowSolver_Init
@@ -327,11 +332,10 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       CALL Info(Caller,'Skipping first solution phase completely!',Level=5)
       RETURN
     END IF
-
   END IF
 
-
   itime = GetTimestep()
+
   IF( CalcHeating) THEN
     ! If we are visiting the same timestep several times only compute the nodal heat flux once.
     ! Hence we need to subtract the previous values from the simulation. 
@@ -357,6 +361,13 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     ! When we do more than one nonlinear iteration the pressure used for FSI iteration
     ! differs from the current pressure. Hence we memorize the pressure at the start.
     AcPrevPressure = pVar % Values
+
+    IF( InfoActive(12) ) THEN
+      WRITE(Message,'(A,2E15.4)') 'PrevPressure: ',&
+          SUM(AcPrevPressure)/SIZE(AcPrevPressure), MAXVAL(AcPrevPressure)
+      CALL Info(Caller,Message,Level=5)
+    END IF
+
     FsiRhs = 0.0_dp
   END IF
    
@@ -376,6 +387,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     END IF
   END IF
 
+
+100 CONTINUE
   
   DO iter=1,maxiter    
     !Initialize the system and do the assembly:
@@ -475,8 +488,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
     CALL DefaultFinishBulkAssembly()
-
-
+    
     IF( GotAC ) THEN
       BLOCK
         REAL(KIND=dp) :: sorig, sfsi, coeff
@@ -534,6 +546,11 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     FirstRound = .FALSE.
   END DO
 
+  IF(DefaultSensitivity()) THEN
+    maxiter = 1
+    GOTO 100
+  END IF
+      
   CALL DefaultFinish()
 
   IF( CalcHeating ) THEN   
@@ -748,10 +765,8 @@ CONTAINS
        rho = SUM( Basis(1:n) * Nodalrho(1:n) )
        gap = SUM( Basis(1:n) * NodalGap(1:n) ) 
        gap0 = SUM( Basis(1:n) * NodalGap0(1:n) ) 
-       
-       AcPres = SUM( NodalAcPres(1:n) * Basis(1:n) )
-       AcPres = MAX(MinPres,AcPres)
 
+       AcPres = MAX(MinPres, SUM( NodalAcPres(1:n) * Basis(1:n) ) )
        Pres = SUM(NodalPres(1:n) * Basis(1:n) )
        
        DO i=1,mdim
@@ -921,21 +936,19 @@ CONTAINS
          i = (mdim+1) * (p-1) + 1
          F => FORCE(i:i+mdim)
          
-         ! This is the explit term in artificial compressibility for FSI coupling
-         IF( GotAC ) F(mdim+1) = F(mdim+1) + ac * s * rho * Basis(p) * AcPres         
-
          ! Body force for velocity components and pressure
-         F(1:mdim+1) = F(1:mdim+1) + s * rho * Basis(p) * LoadAtIp(1:mdim+1)
+         F(1:mdim+1) = F(1:mdim+1) - s * rho * Basis(p) * LoadAtIp(1:mdim+1)
+         ! Additional body force from FSI velocity
+         F(mdim+1) = F(mdim+1) - s * rho * Basis(p) * LoadAtIp(mdim+2) 
 
          ! Gravity for the slope
          IF(GotGrav) THEN
            F(1:mdim) = F(1:mdim) - s * rho * Grav * Basis(p) * hGrad(1:mdim)
          END IF
          
-         ! Additional body force from FSI velocity
-         F(mdim+1) = F(mdim+1) - s * rho * Basis(p) * LoadAtIp(mdim+2) 
-
-
+         ! This is the explit term in artificial compressibility for FSI coupling
+         IF( GotAC ) F(mdim+1) = F(mdim+1) + ac * s * rho * Basis(p) * AcPres         
+         
          ! Robin condition for incoming flow in terms of (Flow Admittance) * (p - p_ext)
          F(mdim+1) = F(mdim+1) + s * rho * Basis(p) * LoadAtIp(mdim+3) * LoadAtIP(mdim+4) 
 
@@ -975,8 +988,7 @@ CONTAINS
        END IF
      END DO
      
-   ! for p2/p1 elements set Dirichlet constraint for unused dofs,
-   ! EliminateDirichlet will get rid of these:
+   ! for p2/p1 elements set Dirichlet constraint for unused dofs.
    !-------------------------------------------------------------
     DO p = n+1,ntot
       i = (mdim+1) * p

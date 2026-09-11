@@ -1,0 +1,104 @@
+! A linear element with an explicit bubble augmentation, "Element = p:1 b:1",
+! together with a Neumann boundary condition. This combination used to abort
+! every 3D solve with
+!
+!   ERROR:: GaussPointsQuad: Invalid number of points (max=13): 0
+!
+! The integration point count an element declares is set for bulk elements in
+! SetMeshMaxDOFs and copied to boundary elements by AssignLocalNumber, taken
+! from the mesh Edge/Face. A linear element with an explicit bubble needs
+! neither edges nor faces, so none are generated and the copy never happens --
+! yet the boundary element is still an active p-element, since a bare "p:"
+! definition sets Def_Dofs for all eight element families. It therefore declared
+! a count of zero, and the branch of GaussPoints taken when RelOrder is present
+! passed that zero down to the quadrature. Both elasticity solvers always pass
+! RelOrder, so both always took that branch.
+!
+! What this test pins is the fallback: a declared count of zero must fall back to
+! the rule of the element type. For p:1 the bubbles vanish on the boundary, so the
+! trace is of the element's own degree and that rule is the correct one, not just
+! a safe one -- which is why a reference norm is meaningful here rather than the
+! test merely checking that nothing aborts.
+!
+! Run through both solvers on one problem against one reference value, as
+! ElasticIncompressible3D does. StressSolver delegates to ElasticSolver, but it
+! reaches it by its own keyword mapping, so it is worth exercising both.
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = Real 0
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.3
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "sDisp[sDisp:3]"
+  Element = p:1 b:1
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Nonlinear System Max Iterations = 30
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Solver 2
+  Equation = "Elasticity Analysis"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "eDisp[eDisp:3]"
+  Element = p:1 b:1
+  Large Deflection = False
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Nonlinear System Max Iterations = 30
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+! The fixed face and the loaded face are different faces, so the Neumann
+! condition is what carries the load into the body: if the boundary assembly
+! were skipped the answer would be identically zero rather than merely wrong.
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  sDisp 1 = Real 0
+  sDisp 2 = Real 0
+  sDisp 3 = Real 0
+  eDisp 1 = Real 0
+  eDisp 2 = Real 0
+  eDisp 3 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Force 1 = Real 0.1
+  Force 2 = Real 0.05
+End
+
+Solver 1 :: Reference Norm = Real 6.49536230E-02
+Solver 2 :: Reference Norm = Real 6.49536230E-02
