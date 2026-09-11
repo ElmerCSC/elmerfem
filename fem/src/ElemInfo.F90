@@ -2529,7 +2529,12 @@ CONTAINS
        EdgeMaxDegree = 0
 
        IF( Mesh % MaxEdgeDofs == 0 ) THEN
-         CONTINUE             
+         ! EdgeDegree is INTENT(OUT): leaving it unset here is fine for callers
+         ! that only ever look at EdgeMaxDegree, but the quad path in
+         ! ElementInfoVec_ComputePElementBasis also re-derives EdgeMaxDegree
+         ! from EdgeDegree via MAXVAL, which would then taint it with stack
+         ! garbage -- explicitly zero it so that re-derivation stays correct.
+         EdgeDegree(1:Element % Type % NumberOfEdges) = 0
 
        ELSE IF (Mesh % MinEdgeDOFs == Mesh % MaxEdgeDOFs) THEN
           EdgeDegree(1:Element % Type % NumberOfEdges) = Mesh % MaxEdgeDOFs + 1
