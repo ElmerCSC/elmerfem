@@ -2712,13 +2712,51 @@ CONTAINS
 
 #ifdef HAVE_LUA
     BLOCK
-      INTEGER :: lstat, ompthread
+      INTEGER :: lstat, ompthread, k
       CHARACTER(LEN=256) :: txcmd
+      CHARACTER(LEN=MAX_PATH_LEN) :: default_lua
+      CHARACTER(LEN=:), ALLOCATABLE :: tstr, elmer_home, loadfile_cmd
+      LOGICAL :: fexist
 
-      character(len=256) :: elmer_home_env
-      CALL get_environment_variable("ELMER_HOME", elmer_home_env)
+      ! Get path to defaults.lua file
+      ! 1) ELMER_HOME environment variable
+      ! 2) ELMER_SOLVER_HOME preprocessor macro
+      ! 3) GetSolverHome function
 
-      !$OMP PARALLEL Shared(mype, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
+      ALLOCATE(CHARACTER(MAX_PATH_LEN) :: elmer_home)
+
+      tstr = 'ELMER_HOME'
+      CALL envir(tstr, elmer_home, k) 
+
+      fexist = .FALSE.
+      IF ( k > 0 ) THEN
+        default_lua = elmer_home(1:k) // '/share/elmersolver/lua-scripts/defaults.lua'
+        INQUIRE(FILE=TRIM(default_lua), EXIST=fexist)
+      ELSE
+        IF (.NOT. fexist) THEN
+          default_lua = ELMER_SOLVER_HOME // '/lua-scripts/defaults.lua'
+          INQUIRE(FILE=TRIM(default_lua), EXIST=fexist)
+        END IF
+        IF (.NOT. fexist) THEN
+          CALL GetSolverHome(elmer_home, k)
+          default_lua = elmer_home(1:k) // '/lua-scripts/defaults.lua'
+          INQUIRE(FILE=TRIM(default_lua), EXIST=fexist)
+        END IF
+      END IF
+      IF (.NOT. fexist) THEN
+        CALL Fatal(Caller, 'defaults.lua not found at ' // default_lua)
+      END IF
+
+#if defined(WIN32)
+      ! Replace backslashes in path with forward slashes for LUA command
+      DO k = 1, LEN(default_lua)
+        if (default_lua(k:k) == "\") default_lua(k:k) = "/"
+      END DO
+#endif
+
+      !$OMP PARALLEL Shared(mype, ModelName, default_lua) &
+      !$OMP          Private(txcmd, ompthread, lstat, loadfile_cmd) &
+      !$OMP          Default(none)
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
@@ -2734,23 +2772,13 @@ CONTAINS
       !$ ompthread = omp_get_thread_num()
       WRITE(txcmd,'(A,I0)') 'ELMER_PARALLEL["thread"] = ', ompthread
       lstat = lua_dostring(LuaState, txcmd // c_null_char)
-      
+
+      loadfile_cmd = 'loadfile("' // TRIM(default_lua) // '")()'
+      lstat = lua_dostring(LuaState, loadfile_cmd // c_null_char)
+
       WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
 
-      ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
-      ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
-
-      IF (TRIM(elmer_home_env) == "") THEN
-        lstat = lua_dostring(LuaState, &
-            'loadfile("' // &
-            ELMER_SOLVER_HOME &
-            // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
-      ELSE
-        lstat = lua_dostring(LuaState, &
-            'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
-      END IF
-
-      ! Execute lua parts 
+      ! Execute lua parts
       lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
       lstat = lua_dostring(LuaState,  trim(txcmd)// c_null_char)
       LuaState % tx => lua_getusertable(LuaState, 'tx'//c_null_char)
