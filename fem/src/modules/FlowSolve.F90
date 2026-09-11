@@ -1149,8 +1149,21 @@
             StabilizeFlag = 'bubbles'
          END IF
          
-         ! If bubbles are requested, but not in element formulation.
-         IF ( nb==0 .AND. Bubbles ) nb = n
+         ! If bubbles are requested, but not in element formulation. Guarded on
+         ! .NOT. ASSOCIATED(Element % PDefs) (mirroring KESolver/Komega/
+         ! SSTKomega/Spalart-Allmaras/V2FSolver's own "Bubbles = BubblesDefault
+         ! .AND. .NOT. ASSOCIATED(Element % PDefs)"): for a genuine p-element
+         ! bubble, nb==0 means GetElementNOFBDOFs() saw Solver % GlobalBubbles
+         ! and correctly reports "no local bubble to condense, it is a real
+         ! global dof" -- a legitimate, user-selectable choice needing no
+         ! special handling here. Falling back to the legacy one-bubble-per-
+         ! node convention in that case forces local condensation the user
+         ! explicitly opted out of, mismatched against the real p-bubble
+         ! indexing, which is what used to hand NSCondensateTransient a wrong
+         ! retained/bubble dof split and abort in InvertMatrix with "LUDecomp:
+         ! Matrix is singular". A legacy (non-p) element has no PDefs, so this
+         ! fallback still fires unconditionally for it, same as before.
+         IF ( nb==0 .AND. Bubbles .AND. .NOT. ASSOCIATED(Element % PDefs) ) nb = n
 
 !------------------------------------------------------------------------------
 !        If time dependent simulation, add mass matrix to global
