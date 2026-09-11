@@ -500,41 +500,40 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! got reverted because it exposed radiation_box_in_box as intermittently
     ! failing under threads (~20-25% failure rate, confirmed 0/60 with this
     ! region forced serial vs 7/30 failing parallel at OMP_NUM_THREADS=6).
-    ! Investigated again: this is not a bug, no race survives re-enabling
-    ! the region (Helgrind doesn't clear it either way — it's too slow to
-    ! reach this loop on a realistic mesh before drowning in unrelated
-    ! libgomp/runtime noise — but 1-thread runs are always clean/identical,
-    ! which is the meaningful check here). It's ordinary floating-point
-    ! non-associativity: LocalMatrixDiffuseGray's own final scatter
-    ! (STIFF/FORCE onto the element's own nodes, which are shared with
-    ! neighboring boundary elements) sums via `!$OMP ATOMIC UPDATE` /
-    ! AddToMatrixElement in scheduling-dependent order — race-free but not
-    ! bit-reproducible. (radiation_box_in_box runs with Radiosity Model =
-    ! True, so it never reaches the other cross-element source of the same
-    ! effect: the Gebhart-factor branch's RadElement loop, which can touch
-    ! ForceVector DOFs belonging to an element anywhere else in the mesh via
-    ! view-factor coupling.) For most solvers this reordering noise is
-    ! harmless (~1e-13 relative) and simply part of life with threaded
-    ! summation. radiation_box_in_box amplifies it because its coupled
-    ! radiosity-conduction Newton iteration's convergence check goes noisy
-    ! once the residual nears its ~1e-6 tolerance (non-monotonic RELC near
-    ! the tail), landing on slightly different "converged" iterates, and its
-    ! Solver 3 diagnostic (TotFlux, a near-total cancellation of much larger
-    ! opposing boundary fluxes) is extremely sensitive to exactly which
-    ! iterate that is. Rather than keep this region serial, the test's
-    ! Solver 3 tolerance has been widened (see case.sif) to absorb that
-    ! noise, and this region is parallel again to get real CI data on it.
-    !!OMP PARALLEL &
-    !!OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
-    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
-    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    ! Previously misdiagnosed as harmless floating-point non-associativity
+    ! in the STIFF/FORCE scatter (ordinary reordering noise from concurrent
+    ! `!$OMP ATOMIC UPDATE`/AddToMatrixElement). That was wrong: both
+    ! (a) wrapping LocalMatrixDiffuseGray's body in CRITICAL and (b) simply
+    ! deleting its redundant re-check of the BC's 'Radiation' keyword (see
+    ! comment there) independently make radiation_box_in_box and
+    ! beamer3d_box2 return an exactly constant norm on every run, not just
+    ! a smaller spread — which floating-point reordering cannot explain.
+    ! The real cause is that the re-check used ListGetString(BC,...)
+    ! directly instead of the thread-safe RadFlag_h/ListCompareElementString
+    ! handle this file uses everywhere else: ListGetString's result is
+    ! CHARACTER(:), ALLOCATABLE, and gfortran keeps that hidden length
+    ! temporary in shared static storage rather than per-thread, so
+    ! concurrent calls race on it independently of the (read-only during
+    ! assembly) value lists themselves — same mechanism previously found
+    ! behind the intermittent MagnetoDynamics2D "Non existent Coil Type
+    ! Chosen 1" abort. Fixed by removing the racing call outright (it is
+    ! provably redundant, see below) rather than by serializing the whole
+    ! subroutine with CRITICAL, which would have thrown away the
+    ! parallelism to route around a single bad string read. The test's
+    ! Solver 3 tolerance was previously widened (see case.sif) to absorb
+    ! what was assumed to be unavoidable reordering noise; worth revisiting
+    ! now that the actual cause is fixed rather than papered over.
+    !$OMP PARALLEL &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
+    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     InitHandles = .TRUE.
     DO col=1,nColours
-      !!$OMP SINGLE
+      !$OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !!OMP END SINGLE
-      !!OMP DO
+      !$OMP END SINGLE
+      !$OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         totelem = totelem + 1
@@ -549,9 +548,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
           END IF
         END IF
       END DO
-      !!OMP END DO
+      !$OMP END DO
     END DO
-    !!OMP END PARALLEL
+    !$OMP END PARALLEL
     
     IF( DG ) THEN
       BLOCK
@@ -1758,7 +1757,12 @@ CONTAINS
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
     
-    IF( ListGetString( BC,'Radiation',Found) /= 'diffuse gray' ) RETURN
+    ! The caller (LocalMatrixBC) only invokes this subroutine when it has
+    ! already established RadDiffuse == .TRUE. for this same Element, via
+    ! the thread-safe RadFlag_h handle + ListCompareElementString. Re-checking
+    ! the same condition here via the raw ListGetString(BC,'Radiation',Found)
+    ! was both redundant and, per the note above, the actual source of the
+    ! threaded non-determinism — removed rather than replaced.
 
     AssFrac = BCAssemblyFraction(Element)
     IF( AssFrac < TINY( AssFrac ) ) RETURN
@@ -1813,8 +1817,8 @@ CONTAINS
 
     Radiators = ALLOCATED(Element % BoundaryInfo % Radiators) .AND. &
              ALLOCATED(RadiatorPowers)
-        
-    IF(Radiosity) THEN 
+
+    IF(Radiosity) THEN
       IF( BCOpen ) THEN
         CALL Fatal(Caller,'Radiosity model not yet working with open boundaries!')
       END IF
