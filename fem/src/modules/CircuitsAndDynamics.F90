@@ -365,7 +365,7 @@ CONTAINS
     DO i=1,Circuit % n
       Cvar => Circuit % CircuitVariables(i)
 
-      IF( Parallel ) THEN
+      IF( Ckt % Parallel ) THEN
         IF(Cvar % Owner /= ParEnv % myPE) CYCLE
       END IF
         
