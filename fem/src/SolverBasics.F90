@@ -3163,7 +3163,7 @@ END FUNCTION SearchNodeL
     
     INTEGER :: NormDim, NormDofs, Dofs,i,j,k,n,nn,totn,PermStart
     INTEGER, POINTER :: NormComponents(:)
-    INTEGER, ALLOCATABLE :: iPerm(:)
+    INTEGER, ALLOCATABLE :: iPerm(:), RowOf(:)
     REAL(KIND=dp) :: Norm, nscale, val
     LOGICAL :: Stat, ComponentsAllocated, ConsistentNorm
     REAL(KIND=dp), POINTER :: x(:)
@@ -3243,7 +3243,10 @@ END FUNCTION SearchNodeL
       ALLOCATE(y(n))
       y = x(iPerm(1:n))
       x => y
-      DEALLOCATE(iPerm)
+      ! iPerm is kept (not deallocated here): it is the only map from the
+      ! compacted index used below back to the original matrix/mesh row, and
+      ! ConsistentNorm's ownership check needs that original row, not the
+      ! compacted one.
     END IF
 
     IF( ListGetLogical( Solver % Values,'Nonlinear System Nodal Norm', Stat ) ) THEN
@@ -3267,7 +3270,7 @@ END FUNCTION SearchNodeL
       Norm = 0.0_dp
 
       IF( ASSOCIATED(Solver % Matrix) ) THEN
-        ! Usually the neighbours are available in the parallel matrix. 
+        ! Usually the neighbours are available in the parallel matrix.
         NeighbourList => Solver % Matrix % ParallelInfo % NeighbourList
       ELSE
         ! There are some exceptions when no matrix, and hence no associated
@@ -3275,13 +3278,28 @@ END FUNCTION SearchNodeL
         ! of the mesh. Note that this is currently limited to scalar fields!
         NeighbourList => Solver % Mesh % ParallelInfo % NeighbourList
       END IF
-      
+
+      ! When "Norm Permutation" compacted x above, j below indexes that
+      ! compacted array, but NeighbourList is still indexed by the original
+      ! matrix/mesh row -- translate back through iPerm, or ownership gets
+      ! checked against an unrelated row (a real bug for any solver using
+      ! "Norm Permutation", e.g. edge-basis solvers with a nodal offset to
+      ! skip; plain nodal solvers never hit this since they don't set it).
+      ALLOCATE(RowOf(n))
+      IF( ALLOCATED(iPerm) ) THEN
+        RowOf(1:n) = iPerm(1:n)
+      ELSE
+        DO j=1,n
+          RowOf(j) = j
+        END DO
+      END IF
+
       SELECT CASE(NormDim)
 
-      CASE(0) 
+      CASE(0)
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = MAX( Norm, ABS( val ) )
           totn = totn + 1
@@ -3290,16 +3308,16 @@ END FUNCTION SearchNodeL
       CASE(1)
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = Norm + ABS(val)
           totn = totn + 1
         END DO
 
-      CASE(2)          
+      CASE(2)
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = Norm + val**2
           totn = totn + 1
@@ -3308,12 +3326,13 @@ END FUNCTION SearchNodeL
       CASE DEFAULT
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
-          Norm = Norm + val**NormDim 
+          Norm = Norm + val**NormDim
           totn = totn + 1
         END DO
       END SELECT
+      DEALLOCATE(RowOf)
       
       totn = ParallelReduction(totn) 
       IF(totn == 0) GOTO 10

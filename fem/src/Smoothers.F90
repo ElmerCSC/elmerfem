@@ -69,7 +69,7 @@ CONTAINS
       LOGICAL, OPTIONAL :: SkipMask(:)
 !------------------------------------------------------------------------------
       CHARACTER(:), ALLOCATABLE :: IterMethod
-      LOGICAL :: Parallel, Found, Lowest, Pre
+      LOGICAL :: Parallel, Found, Lowest, Pre, DoIt
       TYPE(Matrix_t), POINTER :: M
       INTEGER :: i, j, k, n, Rounds, InvLevel, me
       INTEGER, POINTER :: Iters(:)
@@ -77,7 +77,8 @@ CONTAINS
       REAL(KIND=dp) :: Omega, Bnorm, TOL
       REAL(KIND=dp), POINTER :: TmpArray(:,:)
       REAL(KIND=dp), ALLOCATABLE :: Q(:), Z(:), Ri(:), T(:), &
-             T1(:), T2(:), S(:), V(:), Pr(:), dx(:),diag(:),invdiag(:)
+             T1(:), T2(:), S(:), V(:), Pr(:), dx(:),diag(:),invdiag(:), &
+             L1InvDiag(:), L1Long(:)
 !------------------------------------------------------------------------------
       TYPE( IfLColsT), POINTER :: IfL, IfO
       INTEGER :: row
@@ -88,31 +89,48 @@ CONTAINS
 !      SAVE Z, Pr, Q, Ri, T, T1, T2, S, V
 !------------------------------------------------------------------------------
 
-      Parallel = ParEnv % PEs > 1
+      
+      Parallel = ( ParEnv % PEs > 1 )
 
       IF ( .NOT. Parallel ) THEN
         M  => A
         Mx => x
         Mb => b
         Mr => r
-
         n = A % NumberOfRows
         ALLOCATE(Diag(n), InvDiag(n))
         Diag = A % Values(A % Diag)
       ELSE
         CALL ParallelUpdateSolve( A,x,r )
         M => ParallelMatrix( A, Mx, Mb, Mr )
-
         n = M % NumberOfRows
         ALLOCATE(Diag(n), InvDiag(n))
+
         Diag = M % Values(M % Diag)
+        ! allocate & polulate M % rhs aka Mb if needed, instead of silent zero.
+        IF(.NOT. ASSOCIATED(Mb)) THEN
+          ALLOCATE(M % rhs(n))
+          Mb => M % rhs
+        END IF
+        CALL ParallelVector( A, Mb, b )
       END IF
+      
       WHERE (Diag /= 0.0_dp)
         InvDiag = 1.0_dp / Diag
       ELSEWHERE
         InvDiag = 0.0_dp
       END WHERE
 
+#if 0
+      ! Just for debugging...
+      DO i=1,n
+        j = A % Cols(A % Diag(i))
+        IF(i/=j) THEN
+          CALL Fatal('MGSmooth','Matrix Diag does not point to diag: '//I2S(i)//', '//I2S(j))
+        END IF
+      END DO
+#endif
+      
       ! If we have a MG algo then the Smoother count order is reversed.
       ! The other use case is, for example, "Prec Solvers" where the
       ! smoother count order is maintained. 
@@ -121,8 +139,7 @@ CONTAINS
       ELSE
         InvLevel = Level
       END IF
-
-        
+      
       Lowest = .FALSE.
       IF( PRESENT( LowestSmooth ) ) Lowest = LowestSmooth
 
@@ -207,22 +224,68 @@ CONTAINS
         CALL Info('MGSmooth','Applying post-smoother: '//TRIM(IterMethod), Level=10 )
       END IF
 
+      ! L1-Jacobi: scale by the row's L1-norm (sum of |A_ij|) instead of the
+      ! plain diagonal.
+      DoIt = ( INDEX(IterMethod,'l1jacobi') > 0 )       
+      IF( DoIt ) THEN
+        ALLOCATE( L1Long(A % NumberOfRows), L1InvDiag(n) )
+        DO i=1,A % NumberOfRows
+          L1Long(i) = SUM(ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)))
+        END DO
+        IF( Parallel ) THEN
+          CALL ParallelSumVector( A, L1Long )
+          CALL ParallelVector( A, L1InvDiag, L1Long )
+        ELSE
+          L1InvDiag = L1Long
+        END IF
+        DEALLOCATE( L1Long )
+        WHERE( L1InvDiag /= 0.0_dp )
+          L1InvDiag = 1.0_dp / L1InvDiag
+        ELSEWHERE
+          L1InvDiag = 0.0_dp
+        END WHERE
+      END IF
 
+      IF( INDEX(IterMethod,'masked') > 0 ) THEN
+        IF(.NOT. PRESENT(SkipMask)) THEN
+          CALL Fatal('MGSmooth','"masked" smoother requires SkipMask to be present!')
+        END IF
+      END IF
+        
+      
+      ! We may use the InvDiag to enforce a mask in all routines using InvDiag.
+      ! This is more efficient than having extra IF statement and minimizes code.
+      IF(PRESENT(SkipMask)) THEN
+        j = 0
+        DO i=1,A % NumberOfRows
+          IF( Parallel ) THEN
+            ! For parallel problems the size of InvDiag is short while SkipMask is always long
+            IF ( A % ParallelInfo % Neighbourlist(i) % Neighbours(1) /= Parenv % Mype ) CYCLE
+          END IF
+          j=j+1
+          IF(SkipMask(i)) THEN
+            InvDiag(j) = 0.0_dp
+            IF(DoIt) L1InvDiag(j) = 0.0_dp
+          END IF
+        END DO
+      END IF
+
+      
       SELECT CASE( IterMethod )
-      CASE( 'jacobi' ) 
+      CASE( 'jacobi' )
         CALL Jacobi( n, A, M, Mx, Mb, Mr, Rounds )
        
       CASE( 'gs' )                         
         CALL GS( n, A, M, Mx, Mb, Mr, Rounds )
 
       CASE( 'bgs' )                         
-        CALL BGS( n, A, M, Mx, Mb, Mr, DOFs,Rounds )
+        CALL BGS( n, A, M, Mx, Mb, Mr, DOFs, Rounds )
        
       CASE( 'sgs' )                                     
         CALL SGS( n, A, M, Mx, Mb, Mr, Rounds)
 
       CASE( 'isgs' )                                     
-        CALL InternalSGS( n, A, M, x, b, r, Rounds)
+        CALL InternalSGS( n, A, M, x, b, r, Rounds, SkipMask )
 
       CASE( 'icsgs' )
         CALL InternalComplexSGS( n, A, M, x, b, r, Omega, Rounds)
@@ -236,6 +299,51 @@ CONTAINS
 
         CALL SmoothedJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
+      CASE( 'l1jacobi' )
+        CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+          
+      CASE( 'l1jacobi+isgs' )
+#if 0 
+        CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+        IF(Parallel) CALL ParallelUpdateResult(A,x,r)
+
+        CALL InternalSGS( n, A, M, x, b, r, Rounds, SkipMask )
+        IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
+
+        CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+#else
+        DO i=1,Rounds
+          IF(Parallel) THEN
+            CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, 1 )
+            CALL ParallelUpdateResult(A,x,r)
+          END IF
+            
+          CALL InternalSGS( n, A, M, x, b, r, 1, SkipMask )
+
+          IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
+        END DO
+#endif
+        
+      CASE( 'el1jacobi+isgs' )
+#if 0   
+        CALL ExternalL1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+        IF(Parallel) CALL ParallelUpdateResult(A,x,r)
+
+        CALL InternalSGS( n, A, M, x, b, r, Rounds )
+        IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
+
+        CALL ExternalL1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
+#else
+        DO i=1,Rounds
+          CALL InternalSGS( n, A, M, x, b, r, 1, SkipMask )
+          IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
+
+          IF( Parallel ) THEN
+            CALL ExternalL1Jacobi( n, A, M, Mx, Mb, Mr, Omega, 1)
+            CALL ParallelUpdateResult(A,x,r)
+          END IF
+        END DO
+#endif          
       CASE( 'cjacobi+isgs' )
         CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
         IF(Parallel) CALL ParallelUpdateResult(A,x,r)
@@ -260,10 +368,7 @@ CONTAINS
         CALL SmoothedJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
       CASE( 'masked jacobi' )
-        IF(.NOT. PRESENT(SkipMask)) THEN
-          CALL Fatal('MGSmooth','"masked jacobi" requires SkipMask to be present!')
-        END IF
-        CALL MaskedJacobi( n, A, M, Mx, Mb, Mr, Omega, SkipMask, Rounds)
+        CALL SmoothedJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
         
       CASE( 'wgs' )                                   
         CALL SmoothedGS( n, A, M, Mx, Mb, Mr, Omega, Rounds )
@@ -281,10 +386,7 @@ CONTAINS
         CALL PostSGS( n, A, M, Mx, Mb, Mr, CF, Rounds)
 
       CASE( 'masked sgs' )
-        IF(.NOT. PRESENT(SkipMask)) THEN
-          CALL Fatal('MGSmooth','"masked sgs" requires SkipMask to be present!')
-        END IF
-        CALL MaskedSGS( n, A, M, Mx, Mb, Mr, Omega, SkipMask, Rounds)
+        CALL SmoothedSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
       CASE( 'direct1d' )                                     
         ALLOCATE( dx(n) )
@@ -314,8 +416,7 @@ CONTAINS
         CALL TestGS( n, A, M, Mx, Mb, Mr, Rounds )
 
       CASE DEFAULT
-        CALL Warn('MGSmooth','Unknown smoother - '//TRIM(IterMethod)//' using Jacobi')
-        CALL Jacobi( n, A, M, Mx, Mb, Mr, Rounds )
+        CALL Fatal('MGSmooth','Unknown "MG Smoother", cannot continue: '//TRIM(IterMethod))
       END SELECT
 
 10    CONTINUE
@@ -333,7 +434,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-    CONTAINS 
+    CONTAINS
 
 !------------------------------------------------------------------------------
       FUNCTION MGnorm( n, x ) RESULT(s)
@@ -465,7 +566,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-      SUBROUTINE Jacobi( n, A, M, x, b, r, Rounds)
+      SUBROUTINE Jacobi( n, A, M, x, b, r, Rounds )
 !-------------------------------------------------------------------------------
         IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A
@@ -512,7 +613,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-      SUBROUTINE MaskedJacobi( n, A, M, x, b, r, w, Mask, Rounds )
+      SUBROUTINE L1Jacobi( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
         TYPE(Matrix_t), POINTER :: A
@@ -520,22 +621,55 @@ CONTAINS
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
-        LOGICAL :: Mask(:)
 !------------------------------------------------------------------------------
         INTEGER :: i,j,n
 !------------------------------------------------------------------------------
         DO i=1,Rounds
           CALL MGmv( A, x, r )
           DO j=1,n
-            IF( Mask(j) ) CYCLE
             r(j) = b(j) - r(j)
-            x(j) = x(j) + w * r(j) * InvDiag(j)
+            x(j) = x(j) + w * r(j) * L1InvDiag(j)
           END DO
         END DO
 !------------------------------------------------------------------------------
-      END SUBROUTINE MaskedJacobi
+      END SUBROUTINE L1Jacobi
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+! This smooher only affects the dofs that are on the interface between domains.
+! This way it completes the smoothers that are only applied within the domain. 
+!------------------------------------------------------------------------------
+      SUBROUTINE ExternalL1Jacobi( n, A, M, x, b, r, w, Rounds )
+!------------------------------------------------------------------------------
+        IMPLICIT NONE
+        TYPE(Matrix_t), POINTER :: A
+        TYPE(Matrix_t) :: M
+        INTEGER :: Rounds
+        REAL(KIND=dp) :: w
+        REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
+!------------------------------------------------------------------------------
+        INTEGER :: i,j,k,n
+!------------------------------------------------------------------------------
+        IF(.NOT. Parallel) RETURN
+
+        DO i=1,Rounds
+          CALL MGmv( A, x, r )
+
+          k = 0
+          DO j=1,A % NumberOFRows           
+            IF ( A % ParallelInfo % Neighbourlist(j) % &
+                Neighbours(1) /= Parenv % Mype ) CYCLE
+            k=k+1
+            IF( .NOT. A % ParallelInfo % GInterface(j) ) CYCLE
+
+            r(k) = b(k) - r(k)
+            x(k) = x(k) + w * r(k) * L1InvDiag(k)
+          END DO
+        END DO
+!------------------------------------------------------------------------------
+      END SUBROUTINE ExternalL1Jacobi
+!------------------------------------------------------------------------------
+      
 
 !------------------------------------------------------------------------------
       SUBROUTINE ComplexJacobi( n, A, M, rx, rb, rr, w, Rounds )
@@ -853,12 +987,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Internal symmetric-gauss-seidel for parallel computations
 !------------------------------------------------------------------------------
-      SUBROUTINE InternalSGS( n, A, M, x, b, r, Rounds )
+      SUBROUTINE InternalSGS( n, A, M, x, b, r, Rounds, SkipMask )
 !------------------------------------------------------------------------------
         IMPLICIT NONE
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
+        LOGICAL, OPTIONAL :: SkipMask(:)
+        
         INTEGER :: i,j,k,n
         REAL(KIND=dp) :: s
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
@@ -874,7 +1010,11 @@ CONTAINS
             IF( Parallel ) THEN
               IF( A % ParallelInfo % GInterface(i) ) CYCLE
             END IF
-
+            ! Skip the elements that are on the mortar boundary
+            IF(PRESENT(SkipMask)) THEN
+              IF(SkipMask(i)) CYCLE
+            END IF
+            
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
@@ -887,73 +1027,20 @@ CONTAINS
             IF( Parallel ) THEN
               IF( A % ParallelInfo % GInterface(i) ) CYCLE
             END IF
+            IF(PRESENT(SkipMask)) THEN
+              IF(SkipMask(i)) CYCLE
+            END IF
 
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            r(i) = (b(i)-s) / (A % Values(A % Diag(i)))
+            r(i) = (b(i)-s) / A % Values(A % Diag(i))
             x(i) = x(i) + r(i)
           END DO
         END DO
       END SUBROUTINE InternalSGS
 !------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> Masked symmetric-gauss-seidel for cases where we don't want to change the
-!> interface values (at the rotating boundary).  
-!------------------------------------------------------------------------------
-      SUBROUTINE MaskedSGS( n, A, M, x, b, r, w, Mask, Rounds )
-!------------------------------------------------------------------------------
-        IMPLICIT NONE
-        TYPE(Matrix_t) :: A, M
-        REAL(KIND=dp) :: w
-        INTEGER :: Rounds
-        REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
-        INTEGER :: i,j,k,n
-        REAL(KIND=dp) :: s,dia
-        INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
-        REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        LOGICAL :: Mask(:)
-
-        Rows   => A % Rows
-        Cols   => A % Cols 
-        Values => A % Values
-        
-        DO k=1,Rounds
-          DO i=1,A % NumberOFRows
-            ! Skip the interface elements as the gauss-seidel cannot be used to update them
-            IF( Mask(i) ) CYCLE
-            !IF(A % Diag(i) == 0) CYCLE
-            dia = A % Values(A % Diag(i))
-            !IF(ABS(dia) < 100*AEPS) CYCLE
-
-            s = 0.0d0
-            DO j=Rows(i),Rows(i+1)-1
-              s = s + x(Cols(j)) * Values(j)
-            END DO
-            r(i) = (b(i)-s) / dia
-            x(i) = x(i) + w * r(i)
-          END DO
-          
-          DO i=A % NumberOfRows,1,-1
-            IF(Mask(i)) CYCLE
-            !IF(A % Diag(i) == 0) CYCLE
-            dia = A % Values(A % Diag(i))
-            !IF(ABS(dia) < 100*AEPS) CYCLE
-
-            s = 0.0d0
-            DO j=Rows(i),Rows(i+1)-1
-              s = s + x(Cols(j)) * Values(j)
-            END DO
-            r(i) = (b(i)-s) / dia 
-            x(i) = x(i) + w * r(i)
-          END DO
-        END DO
-      END SUBROUTINE MaskedSGS
-!------------------------------------------------------------------------------
-
 
       
 !------------------------------------------------------------------------------
