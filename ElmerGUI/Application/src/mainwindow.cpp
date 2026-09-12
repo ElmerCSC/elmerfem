@@ -59,10 +59,6 @@
 #include "mainwindow.h"
 #include "newprojectdialog.h"
 
-#if defined(RELOCATE_PREFIX)
-#  include "pathtools.h"
-#endif
-
 #ifdef EG_VTK
 #include "vtkpost/vtkpost.h"
 VtkPost *vtkp;
@@ -78,6 +74,28 @@ VtkPost *vtkp;
 using namespace std;
 
 #undef MPICH2
+
+#if defined(_WIN32)
+static QString ElmerGUI_BinDir()
+{
+  // Helper function to get the directory with the Elmer binaries.
+  static QString bindir;
+
+  if (! bindir.isEmpty())
+    return bindir;
+
+  QByteArray elmer_home = qgetenv("ELMER_HOME");
+  if (! elmer_home.isEmpty())
+  {
+    // ELMER_HOME is the path to the root where Elmer is installed
+    bindir = QString(elmer_home) + "/bin";
+    return bindir;
+  }
+
+  bindir = QCoreApplication::applicationDirPath();
+  return bindir;
+}
+#endif
 
 // Construct main window...
 //-----------------------------------------------------------------------------
@@ -159,12 +177,40 @@ MainWindow::MainWindow() {
   meshingThread = new MeshingThread(this);
   meshutils = new Meshutils;
   solverLogWindow = new SolverLogWindow(this);
+
   solver = new QProcess(this);
   post = new QProcess(this);
   paraview = new QProcess(this);
   compiler = new QProcess(this);
   meshSplitter = new QProcess(this);
   meshUnifier = new QProcess(this);
+
+#if defined(_WIN32)
+  // Windows does not have an RPATH mechanism.
+  // Assume that all Elmer binaries are installed at the same prefix as
+  // ElmerGUI and prepend the directory with the Elmer binaries to the PATH
+  // environment variable of the child processes.
+  // NOTE: DLLs in the working directory might still take precedence in the
+  // load order.
+  QString bindir = ElmerGUI_BinDir();
+  QProcessEnvironment processEnv = QProcessEnvironment::systemEnvironment();
+  QString pathStr = processEnv.value("PATH");
+  if (pathStr.isEmpty())
+    // This should never be empty. But be on the save side.
+    pathStr = ElmerGUI_BinDir();
+  else
+    pathStr.prepend(ElmerGUI_BinDir() + QDir::listSeparator());
+  processEnv.insert("PATH", pathStr);
+
+  solver->setProcessEnvironment(processEnv);
+  post->setProcessEnvironment(processEnv);
+  paraview->setProcessEnvironment(processEnv);
+  compiler->setProcessEnvironment(processEnv);
+  meshSplitter->setProcessEnvironment(processEnv);
+  meshUnifier->setProcessEnvironment(processEnv);
+#endif
+
+
   generalSetup = new GeneralSetup(this);
   summaryEditor = new SummaryEditor(this);
   sifGenerator = new SifGenerator;
@@ -7234,39 +7280,12 @@ void MainWindow::compileSolverSlot() {
   }
 
 #ifdef _WIN32
-  QString workingDir;
-  QString compilerWrapper;
-  QByteArray elmer_home = qgetenv("ELMER_HOME");
-  if (! elmer_home.isEmpty())
-  {
-    workingDir =  QString(elmer_home) + "/bin";
-    compilerWrapper = workingDir + "/elmerf90.exe";
-  }
-  else
-  {
-#  if defined(RELOCATE_PREFIX)
-    char exe_path[MAX_PATH];
-    if (get_executable_path(nullptr, exe_path, MAX_PATH) < 1)
-    {
-      logMessage("Unable to determine path to executable. Set the environment variable ELMER_HOME to use Run->compiler");
-      return;
-    }
-    // Assume the compiler wrapper is in the same directory as ElmerGUI.exe.
-    strip_n_suffix_folders(exe_path, 1);
-    workingDir = QString(exe_path);
-    compilerWrapper = workingDir + "/elmerf90.exe";
-#  else
-    logMessage("The environment variable ELMER_HOME must be set to use Run->compiler");
-    return;
-#  endif
-  }
-
+  QString compilerWrapper = ElmerGUI_BinDir() + "/elmerf90.exe";
   QStringList args;
   args << "-o";
   args << fileName.left(fileName.lastIndexOf(".")) + ".dll";
   args << fileName;
 
-  compiler->setWorkingDirectory(workingDir);
   compiler->start(compilerWrapper, args);
 #else
   logMessage("Run->compiler is currently not implemented on this platform");
