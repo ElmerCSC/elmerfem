@@ -25,6 +25,7 @@
 #cmakedefine RELOCATE_PREFIX
 
 #if defined (RELOCATE_PREFIX)
+#  include <windows.h>
 #  include "pathtools.h"
 #endif
 
@@ -147,6 +148,38 @@ static int exec_compiler(const char *fc, const char *who)
 
 #if defined (_WIN32)
     /* Spawn new process and wait for its exit code on Windows. */
+
+#  if defined (RELOCATE_PREFIX)
+    /* Windows does not have an RPATH mechanism. Instead, the OS resolves DLL
+       dependencies on load time by checking the working directory and the
+       directories in the PATH environment variable.
+       Prepend the PATH environment variable with the path to the wrapper
+       executable (assuming that all DLLs for child and grandchild processes
+       are in that folder). */
+    char exe_path[MAX_PATH];
+    if (get_executable_path(NULL, exe_path, MAX_PATH) >= 1) {
+        // executable name
+        strip_n_suffix_folders(exe_path, 1);
+        size_t exe_path_len = strlen(exe_path);
+
+        // get current value of PATH environment variable
+        DWORD buffer_size = GetEnvironmentVariableA("PATH", NULL, 0);
+        if (buffer_size > 0) {
+            // allocate sufficiently large buffer to hold the final PATH
+            char *path_env = (char *) malloc(buffer_size + exe_path_len + 1);
+            GetEnvironmentVariableA("PATH", path_env, buffer_size);
+
+            // prepend executable path
+            memmove(path_env + exe_path_len + 1, path_env, buffer_size);
+            memcpy(path_env, exe_path, exe_path_len);
+            path_env[exe_path_len] = ';';
+
+            // set new value of PATH environment variable
+            SetEnvironmentVariableA("PATH", path_env);
+        }
+    }
+#  endif
+
     /* _spawnvp wants argv as 'const char *const *'; our argv is built
        as 'char **', and the mismatch warning is elevated to an error
        by default with GCC 14 or later. Cast at the call site rather
