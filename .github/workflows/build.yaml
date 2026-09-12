@@ -114,6 +114,7 @@ jobs:
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
             $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "libblas-dev liblapack-dev" || echo "libopenblas-dev") \
+            libarpack2-dev $([ "${{ matrix.mpi }}" == "with" ] && echo "libparpack2-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "without" ] && echo "libmumps-seq-dev") \
@@ -132,6 +133,10 @@ jobs:
           if [ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ]; then
             sudo sed -i '/find_dependency(HIP)/d' /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/cmake/rocalution/rocalution-config.cmake
           fi
+          # work around incomplete ARPKACK-ng CMake config files distributed by Ubuntu
+          if [ "${{ matrix.mpi }}" == "with" ]; then
+            sudo rm -f /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/cmake/arpack-ng/*.cmake
+          fi
           mkdir ${GITHUB_WORKSPACE}/build
           cd ${GITHUB_WORKSPACE}/build
           cmake \
@@ -140,6 +145,7 @@ jobs:
             $([ "${{ matrix.compiler }}" == "flang" ] && echo "-DHAVE_QP=OFF" || echo "-DHAVE_QP=ON") \
             $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "-DBLA_VENDOR=Generic" || echo "-DBLA_VENDOR=OpenBLAS") \
             ${{ matrix.openmp-cmake-flags }} \
+            -DEXTERNAL_ARPACK=ON $([ "${{ matrix.mpi }}" == "with" ] && echo "-DEXTERNAL_PARPACK=ON") \
             -DWITH_LUA=ON \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Zoltan=ON" || echo "-DWITH_Zoltan=OFF") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "-DWITH_Mumps=ON" || echo "-DWITH_Mumps=OFF") \
