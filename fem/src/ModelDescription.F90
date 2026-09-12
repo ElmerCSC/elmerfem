@@ -2642,7 +2642,62 @@ CONTAINS
    END SUBROUTINE SetCoordinateSystem
 !------------------------------------------------------------------------------
 
-   
+#ifdef HAVE_LUA
+!------------------------------------------------------------------------------
+!> Initialize Lua in the maximum number of threads
+!------------------------------------------------------------------------------
+  SUBROUTINE InitializeLua (Caller, ModelName, mype, default_lua)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    CHARACTER(*) :: Caller
+    CHARACTER(LEN=*) :: ModelName
+    INTEGER :: mype
+    CHARACTER(LEN=*) :: default_lua
+
+    INTEGER :: lstat, ompthread
+    CHARACTER(LEN=:), ALLOCATABLE :: loadfile_cmd
+    CHARACTER(LEN=256) :: txcmd
+
+    ! Initialize the threadprivate LuaState for all potential threads.
+    !$OMP PARALLEL Shared(Caller, ModelName, mype, default_lua) &
+    !$OMP          Private(txcmd, ompthread, lstat, loadfile_cmd) &
+    !$OMP          Default(none)
+
+    ! The Lua functions are not thread-safe.
+    ! Run initialization for each thread serially.
+    !$OMP CRITICAL
+    LuaState = lua_init()
+    IF(.NOT. LuaState % Initialized) THEN
+      CALL Fatal(Caller, 'Failed to initialize Lua subsystem.')
+    END IF
+
+    ! Store mpi task and omp thread ids in a table
+    lstat = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
+    write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ', mype
+    lstat = lua_dostring(LuaState, txcmd // c_null_char)
+
+    ompthread = 1
+    !$ ompthread = omp_get_thread_num()
+    WRITE(txcmd,'(A,I0)') 'ELMER_PARALLEL["thread"] = ', ompthread
+    lstat = lua_dostring(LuaState, txcmd // c_null_char)
+
+    loadfile_cmd = 'loadfile("' // TRIM(default_lua) // '")()'
+    lstat = lua_dostring(LuaState, loadfile_cmd // c_null_char)
+
+    WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
+
+    ! Execute lua parts
+    lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
+    lstat = lua_dostring(LuaState,  trim(txcmd)// c_null_char)
+    LuaState % tx => lua_getusertable(LuaState, 'tx'//c_null_char)
+    !$OMP END CRITICAL
+    !$OMP END PARALLEL
+!------------------------------------------------------------------------------
+  END SUBROUTINE
+!------------------------------------------------------------------------------
+#endif
+
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
 !------------------------------------------------------------------------------
@@ -2712,50 +2767,49 @@ CONTAINS
 
 #ifdef HAVE_LUA
     BLOCK
-      INTEGER :: lstat, ompthread
-      CHARACTER(LEN=256) :: txcmd
+      INTEGER :: k
+      CHARACTER(LEN=:), ALLOCATABLE :: tstr, elmer_home, default_lua
+      LOGICAL :: fexist
 
-      character(len=256) :: elmer_home_env
-      CALL get_environment_variable("ELMER_HOME", elmer_home_env)
+      ! Get path to defaults.lua file
+      ! 1) ELMER_HOME environment variable
+      ! 2) ELMER_SOLVER_HOME preprocessor macro
+      ! 3) GetSolverHome function
 
-      !$OMP PARALLEL Shared(mype, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
-      !$OMP CRITICAL
-      LuaState = lua_init()
-      IF(.NOT. LuaState % Initialized) THEN
-        CALL Fatal(Caller, 'Failed to initialize Lua subsystem.')
-      END IF
+      ! FIXME: The fixed-length elmer_home buffer might be too short for the
+      !        actual length of the ELMER_HOME environment variable.
+      ALLOCATE(CHARACTER(MAX_PATH_LEN) :: elmer_home)
 
-      ! Store mpi task and omp thread ids in a table
-      LSTAT = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
-      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ',  mype
-      lstat = lua_dostring(LuaState, txcmd // c_null_char)
+      tstr = 'ELMER_HOME'
+      CALL envir(tstr, elmer_home, k) 
 
-      ompthread = 1
-      !$ ompthread = omp_get_thread_num()
-      WRITE(txcmd,'(A,I0)') 'ELMER_PARALLEL["thread"] = ', ompthread
-      lstat = lua_dostring(LuaState, txcmd // c_null_char)
-      
-      WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
-
-      ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
-      ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
-
-      IF (TRIM(elmer_home_env) == "") THEN
-        lstat = lua_dostring(LuaState, &
-            'loadfile("' // &
-            ELMER_SOLVER_HOME &
-            // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
+      fexist = .FALSE.
+      IF ( k > 0 ) THEN
+        default_lua = elmer_home(1:k) // '/share/elmersolver/lua-scripts/defaults.lua'
+        INQUIRE(FILE=TRIM(default_lua), EXIST=fexist)
       ELSE
-        lstat = lua_dostring(LuaState, &
-            'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+        IF (.NOT. fexist) THEN
+          default_lua = ELMER_SOLVER_HOME // '/lua-scripts/defaults.lua'
+          INQUIRE(FILE=TRIM(default_lua), EXIST=fexist)
+        END IF
+        IF (.NOT. fexist) THEN
+          CALL GetSolverHome(elmer_home, k)
+          default_lua = elmer_home(1:k) // '/lua-scripts/defaults.lua'
+          INQUIRE(FILE=TRIM(default_lua), EXIST=fexist)
+        END IF
+      END IF
+      IF (.NOT. fexist) THEN
+        CALL Fatal(Caller, 'defaults.lua not found at ' // default_lua)
       END IF
 
-      ! Execute lua parts 
-      lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
-      lstat = lua_dostring(LuaState,  trim(txcmd)// c_null_char)
-      LuaState % tx => lua_getusertable(LuaState, 'tx'//c_null_char)
-      !$OMP END CRITICAL
-      !$OMP END PARALLEL
+#if defined(WIN32)
+      ! Replace backslashes in path with forward slashes for LUA command
+      DO k = 1, LEN(default_lua)
+        if (default_lua(k:k) == "\") default_lua(k:k) = "/"
+      END DO
+#endif
+
+      CALL InitializeLua (Caller, ModelName, mype, default_lua)
     END BLOCK
 #endif
 
