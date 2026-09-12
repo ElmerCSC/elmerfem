@@ -2642,7 +2642,7 @@ CONTAINS
    END SUBROUTINE SetCoordinateSystem
 !------------------------------------------------------------------------------
 
-   
+
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
 !------------------------------------------------------------------------------
@@ -2712,10 +2712,9 @@ CONTAINS
 
 #ifdef HAVE_LUA
     BLOCK
-      INTEGER :: lstat, ompthread, k
-      CHARACTER(LEN=256) :: txcmd
-      CHARACTER(LEN=MAX_PATH_LEN) :: defaults_lua
-      CHARACTER(LEN=:), ALLOCATABLE :: tstr, elmer_home, loadfile_cmd
+      INTEGER :: k
+      CHARACTER(LEN=:), ALLOCATABLE :: tstr, elmer_home
+      CHARACTER(LEN=:), ALLOCATABLE :: defaults_lua, loadfile_cmd
       LOGICAL :: fexist
 
       ! Get path to defaults.lua file
@@ -2724,6 +2723,8 @@ CONTAINS
       ! 2) ELMER_SOLVER_HOME preprocessor macro
       ! 3) GetSolverHome function
 
+      ! FIXME: The fixed-length elmer_home buffer might be too short for the
+      !        actual length of the ELMER_HOME environment variable.
       ALLOCATE(CHARACTER(MAX_PATH_LEN) :: elmer_home)
 
       tstr = 'ELMER_HOME'
@@ -2755,36 +2756,12 @@ CONTAINS
       END DO
 #endif
 
-      !$OMP PARALLEL Shared(mype, ModelName, defaults_lua) &
-      !$OMP          Private(txcmd, ompthread, lstat, loadfile_cmd) &
-      !$OMP          Default(none)
-      !$OMP CRITICAL
-      LuaState = lua_init()
-      IF(.NOT. LuaState % Initialized) THEN
-        CALL Fatal(Caller, 'Failed to initialize Lua subsystem.')
-      END IF
-
-      ! Store mpi task and omp thread ids in a table
-      LSTAT = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
-      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ',  mype
-      lstat = lua_dostring(LuaState, txcmd // c_null_char)
-
-      ompthread = 1
-      !$ ompthread = omp_get_thread_num()
-      WRITE(txcmd,'(A,I0)') 'ELMER_PARALLEL["thread"] = ', ompthread
-      lstat = lua_dostring(LuaState, txcmd // c_null_char)
-
+      ! FIXME: The absolute path to the `defaults.lua` file might be too long
+      !        for the functions used in Lua. (On Windows, `fopen` is limited
+      !        to a path length of 260 characters by default.)
       loadfile_cmd = 'loadfile("' // TRIM(defaults_lua) // '")()'
-      lstat = lua_dostring(LuaState, loadfile_cmd // c_null_char)
 
-      WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
-
-      ! Execute lua parts
-      lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
-      lstat = lua_dostring(LuaState,  trim(txcmd)// c_null_char)
-      LuaState % tx => lua_getusertable(LuaState, 'tx'//c_null_char)
-      !$OMP END CRITICAL
-      !$OMP END PARALLEL
+      CALL InitializeLua (Caller, ModelName, mype, loadfile_cmd)
     END BLOCK
 #endif
 
@@ -3509,7 +3486,57 @@ CONTAINS
       END DO
 
     END SUBROUTINE TagRadiationSolver
-    
+
+#ifdef HAVE_LUA
+    ! Initialize Lua in the maximum number of threads
+    !------------------------------------------------------------------------------
+    SUBROUTINE InitializeLua (Caller, ModelName, mype, loadfile_cmd)
+      IMPLICIT NONE
+
+      CHARACTER(*) :: Caller
+      CHARACTER(LEN=*) :: ModelName
+      INTEGER :: mype
+      CHARACTER(LEN=*) :: loadfile_cmd
+
+      INTEGER :: lstat, ompthread
+      CHARACTER(LEN=256) :: txcmd
+
+      ! Initialize the threadprivate LuaState for all potential threads.
+      !$OMP PARALLEL Shared(Caller, ModelName, mype, loadfile_cmd) &
+      !$OMP          Private(txcmd, ompthread, lstat) &
+      !$OMP          Default(none)
+
+      ! The Lua functions are not thread-safe.
+      ! Run initialization for each thread serially.
+      !$OMP CRITICAL
+      LuaState = lua_init()
+      IF(.NOT. LuaState % Initialized) THEN
+        CALL Fatal(Caller, 'Failed to initialize Lua subsystem.')
+      END IF
+
+      ! Store mpi task and omp thread ids in a table
+      lstat = lua_dostring(LuaState, 'ELMER_PARALLEL = {}' // c_null_char)
+      write(txcmd,'(A,I0)') 'ELMER_PARALLEL["pe"] = ', mype
+      lstat = lua_dostring(LuaState, txcmd // c_null_char)
+
+      ompthread = 1
+      !$ ompthread = omp_get_thread_num()
+      WRITE(txcmd,'(A,I0)') 'ELMER_PARALLEL["thread"] = ', ompthread
+      lstat = lua_dostring(LuaState, txcmd // c_null_char)
+
+      lstat = lua_dostring(LuaState, loadfile_cmd // c_null_char)
+
+      WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
+
+      ! Execute lua parts
+      lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
+      lstat = lua_dostring(LuaState,  trim(txcmd)// c_null_char)
+      LuaState % tx => lua_getusertable(LuaState, 'tx'//c_null_char)
+      !$OMP END CRITICAL
+      !$OMP END PARALLEL
+    END SUBROUTINE InitializeLua
+#endif
+
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
 !------------------------------------------------------------------------------
