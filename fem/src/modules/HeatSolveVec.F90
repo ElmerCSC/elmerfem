@@ -488,41 +488,6 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       END IF
     END BLOCK
 
-    ! DiffuseGray is a per-element out-parameter of LocalMatrixBC (set, then
-    ! immediately read back here to decide whether to also call
-    ! LocalMatrixDiffuseGray for the same element) — it must be PRIVATE, not
-    ! SHARED, or one thread's read races against another thread's write for
-    ! a completely different element.
-    !
-    ! Re-enabled again (36e13fd9e re-enabled it once already and fixed the
-    ! genuine data races: DiffuseGray sharing, Temperature/TempPerm pointer
-    ! reassignment, unprotected ForceVector scatter). That earlier attempt
-    ! got reverted because it exposed radiation_box_in_box as intermittently
-    ! failing under threads (~20-25% failure rate, confirmed 0/60 with this
-    ! region forced serial vs 7/30 failing parallel at OMP_NUM_THREADS=6).
-    ! Previously misdiagnosed as harmless floating-point non-associativity
-    ! in the STIFF/FORCE scatter (ordinary reordering noise from concurrent
-    ! `!$OMP ATOMIC UPDATE`/AddToMatrixElement). That was wrong: both
-    ! (a) wrapping LocalMatrixDiffuseGray's body in CRITICAL and (b) simply
-    ! deleting its redundant re-check of the BC's 'Radiation' keyword (see
-    ! comment there) independently make radiation_box_in_box and
-    ! beamer3d_box2 return an exactly constant norm on every run, not just
-    ! a smaller spread — which floating-point reordering cannot explain.
-    ! The real cause is that the re-check used ListGetString(BC,...)
-    ! directly instead of the thread-safe RadFlag_h/ListCompareElementString
-    ! handle this file uses everywhere else: ListGetString's result is
-    ! CHARACTER(:), ALLOCATABLE, and gfortran keeps that hidden length
-    ! temporary in shared static storage rather than per-thread, so
-    ! concurrent calls race on it independently of the (read-only during
-    ! assembly) value lists themselves — same mechanism previously found
-    ! behind the intermittent MagnetoDynamics2D "Non existent Coil Type
-    ! Chosen 1" abort. Fixed by removing the racing call outright (it is
-    ! provably redundant, see below) rather than by serializing the whole
-    ! subroutine with CRITICAL, which would have thrown away the
-    ! parallelism to route around a single bad string read. The test's
-    ! Solver 3 tolerance was previously widened (see case.sif) to absorb
-    ! what was assumed to be unavoidable reordering noise; worth revisiting
-    ! now that the actual cause is fixed rather than papered over.
     !$OMP PARALLEL &
     !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
     !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
