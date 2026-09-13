@@ -1038,7 +1038,7 @@ CONTAINS
     ! a whole array-section statement, so use CRITICAL instead (once per
     ! element, not per integration point).
     IF( NeedScaling ) THEN
-      !$OMP CRITICAL (StatCurrentPostWeightVector)
+      !$OMP CRITICAL
       IF( ConstantWeights ) THEN
         WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
             WeightVector( WeightPerm( Element % NodeIndexes ) ) + 1.0_dp
@@ -1046,7 +1046,7 @@ CONTAINS
         WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
             WeightVector( WeightPerm( Element % NodeIndexes ) ) + Force(1,1:n)
       END IF
-      !$OMP END CRITICAL (StatCurrentPostWeightVector)
+      !$OMP END CRITICAL
     END IF
 
     END ASSOCIATE
@@ -1109,12 +1109,17 @@ CONTAINS
             ind = pVar % dofs * (pVar % Perm(Element % DGIndexes(1:n))-1)+m
             pVar % Values(ind(1:n)) = x(1:n)          
           ELSE IF( pVar % TYPE == variable_on_nodes ) THEN
+            ! Nodes are shared between elements, so different threads can
+            ! accumulate into the same pVar % Values entries here — guard
+            ! with CRITICAL (as with WeightVector in LocalPostAssembly).
             ind = pVar % dofs * (pVar % Perm(Element % NodeIndexes(1:n))-1)+m
+            !$OMP CRITICAL
             IF( ConstantWeights ) THEN
-              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + x(1:n)                    
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + x(1:n)
             ELSE
-              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + b(1,1:n) * x(1:n)                               
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + b(1,1:n) * x(1:n)
             END IF
+            !$OMP END CRITICAL
           ELSE IF( pVar % TYPE == variable_on_elements ) THEN
             j = pVar % dofs * ( pVar % Perm( Element % ElementIndex )-1)+m
             pVar % Values(j) = SUM( x(1:n) ) / n

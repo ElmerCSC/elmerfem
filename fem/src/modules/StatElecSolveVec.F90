@@ -779,8 +779,8 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
-  INTEGER :: i, n, nd, t
-  LOGICAL :: Found, InitHandles = .TRUE.
+  INTEGER :: i, n, nd, t, active, nthr
+  LOGICAL :: Found, InitHandles
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),FORCE(:,:),MASS(:,:),&
       PotInteg(:),PotVol(:)
@@ -790,7 +790,12 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
       Axisymmetric, CalcAvePotential, DoAve
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) :: EnergyTot, Voltot
-  
+
+  ! Per-thread handle/cache storage for LocalPostAssembly; see StatElecSolver
+  ! above for why this is not THREADPRIVATE.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: SourceCoeff_h(:), EpsCoeff_h(:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: Eps0(:)
+
   TYPE PostVars_t
     TYPE(Variable_t), POINTER :: Var => NULL()
     INTEGER :: FieldType = -1
@@ -871,12 +876,32 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   n = Mesh % MaxElementDOFs
   ALLOCATE( MASS(n,n), FORCE(8,n) ) ! 1+1+3+3 components for force
 
-  CALL Info(Caller,'Calculating local field values',Level=12) 
+  nthr = 1
+  !$ nthr = omp_get_max_threads()
+  IF( ALLOCATED( SourceCoeff_h ) ) THEN
+    IF( SIZE( SourceCoeff_h ) /= nthr ) &
+        DEALLOCATE( SourceCoeff_h, EpsCoeff_h, Eps0 )
+  END IF
+  IF( .NOT. ALLOCATED( SourceCoeff_h ) ) THEN
+    ALLOCATE( SourceCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr) )
+  END IF
 
-  InitHandles = .TRUE.
+  CALL Info(Caller,'Calculating local field values',Level=12)
+
   EnergyTot = 0.0_dp
   VolTot = 0.0_dp
-  DO t = 1, GetNOFActive()
+
+  !$OMP PARALLEL &
+  !$OMP SHARED(Solver, Active) &
+  !$OMP PRIVATE(t, Element, n, nd, InitHandles, MASS, FORCE)
+
+  !$OMP SINGLE
+  Active = GetNOFActive(Solver)
+  !$OMP END SINGLE
+  InitHandles = .TRUE.
+
+  !$OMP DO
+  DO t = 1, Active
     Element => GetActiveElement(t)
     IF( ParEnv % PEs > 1 ) THEN
       IF( ParEnv % MyPe /= Element % PartIndex ) CYCLE
@@ -886,8 +911,10 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
     CALL LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
     CALL LocalPostSolve( Element, n, MASS, FORCE )
   END DO
+  !$OMP END DO
+  !$OMP END PARALLEL
 
-  
+
   IF( NeedScaling ) THEN
     CALL Info(Caller,'Scaling the field values with weights',Level=12)
     CALL GlobalPostScale()
@@ -937,18 +964,23 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: InitHandles
     REAL(KIND=dp) :: MASS(:,:), FORCE(:,:)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:),ElementPot(:)
-    REAL(KIND=dp) :: eps0, weight
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),ElementPot(:)
+    REAL(KIND=dp) :: weight
     REAL(KIND=dp) :: EpsAtIp, DetJ
     REAL(KIND=dp) :: EpsGrad(3), Grad(3), Heat
     LOGICAL :: Stat,Found
-    INTEGER :: i,j,t,dim,m,allocstat
+    INTEGER :: i,j,t,dim,m,allocstat,tid
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, EpsCoeff_h
-    SAVE Eps0
-    
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => SourceCoeff_h(tid), EpsCoeff_h => EpsCoeff_h(tid), &
+        Eps0 => Eps0(tid) )
+
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
@@ -963,14 +995,10 @@ CONTAINS
 
     dim = CoordinateSystemDimension()
 
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = Mesh % MaxElementDOFs   
-      ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)      
-      Basis = 0.0_dp; dBasisdx = 0.0_dp; ElementPot = 0.0_dp
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    m = Mesh % MaxElementDOFs
+    ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element, USolver=Solver )
@@ -1034,17 +1062,29 @@ CONTAINS
         Force(2,1:n) = Force(2,1:n) + Heat * Weight * Basis(1:n)
       END IF
 
+      ! PotVol/PotInteg/VolTot/EnergyTot are shared across threads (accumulated
+      ! over all elements) — this loop runs inside an OMP DO, so plain "+="
+      ! updates would race. ATOMIC makes each individual update safe.
       IF( CalcAvePotential ) THEN
         i = Element % BodyId
+        !$OMP ATOMIC UPDATE
         PotVol(i) = PotVol(i) + Weight
-        PotInteg(i) = PotInteg(i) + Weight * SUM( Basis(1:n) * ElementPot(1:n) ) 
+        !$OMP ATOMIC UPDATE
+        PotInteg(i) = PotInteg(i) + Weight * SUM( Basis(1:n) * ElementPot(1:n) )
       END IF
-      
+
+      !$OMP ATOMIC UPDATE
       VolTot = VolTot + Weight
-      EnergyTot = EnergyTot + Weight * Heat 
+      !$OMP ATOMIC UPDATE
+      EnergyTot = EnergyTot + Weight * Heat
     END DO
 
+    ! WeightVector is likewise shared; nodes are shared between elements so
+    ! different threads can update the same entries — ATOMIC doesn't apply to
+    ! a whole array-section statement, so use CRITICAL instead (once per
+    ! element, not per integration point).
     IF( NeedScaling ) THEN
+      !$OMP CRITICAL
       IF( ConstantWeights ) THEN
         WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
             WeightVector( WeightPerm( Element % NodeIndexes ) ) + 1.0_dp
@@ -1052,8 +1092,10 @@ CONTAINS
         WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
             WeightVector( WeightPerm( Element % NodeIndexes ) ) + Force(1,1:n)
       END IF
+      !$OMP END CRITICAL
     END IF
-      
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalPostAssembly
 !------------------------------------------------------------------------------
@@ -1114,12 +1156,17 @@ CONTAINS
             ind = pVar % dofs * (pVar % Perm(Element % DGIndexes(1:n))-1)+m
             pVar % Values(ind(1:n)) = x(1:n)          
           ELSE IF( pVar % TYPE == variable_on_nodes ) THEN
+            ! Nodes are shared between elements, so different threads can
+            ! accumulate into the same pVar % Values entries here — guard
+            ! with CRITICAL (as with WeightVector in LocalPostAssembly).
             ind = pVar % dofs * (pVar % Perm(Element % NodeIndexes(1:n))-1)+m
+            !$OMP CRITICAL
             IF( ConstantWeights ) THEN
-              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + x(1:n)                    
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + x(1:n)
             ELSE
-              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + b(1,1:n) * x(1:n)                               
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + b(1,1:n) * x(1:n)
             END IF
+            !$OMP END CRITICAL
           ELSE IF( pVar % TYPE == variable_on_elements ) THEN
             j = pVar % dofs * ( pVar % Perm( Element % ElementIndex )-1)+m
             pVar % Values(j) = SUM( x(1:n) ) / n
