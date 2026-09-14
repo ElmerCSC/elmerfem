@@ -22,167 +22,278 @@
 ! *****************************************************************************/
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Leila Puska, Antti Pursula, Peter Råback
-! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Module for static electric fields.
+! *  Based on the multithreaded and vectorized StatCurrentSolveVec that is based on
+! *  ModelPDE by Mikko Byckling. This is the solver named "StatElecSolve"/
+! *  "StatElecSolver" -- the vectorized/threaded implementation formerly named
+! *  StatElecSolveVec, now the default. The original scalar-element solver
+! *  lives on in StatElecSolveLegacy.F90 (subroutine StatElecSolverLegacy),
+! *  reachable either directly by that name or via "Legacy Assembly = Logical
+! *  True" here (see StatElecSolveFront below).
+! *
+! *  "Permittivity Of Vacuum" convention: this file defaults it to 1.0 when a
+! *  sif does not set it (matching legacy's own historical default, so a plain
+! *  "Charge Density"/"Electric Flux"/etc. sif that never mentions it keeps
+! *  working unchanged after the rename) -- reached this way, the equation is
+! *  solved in natural/relative units, "eps_r*div(grad(V))=source", with no
+! *  absolute physical constant anywhere. StatElecSolveVec.F90's thin front
+! *  instead injects the real physical value as the default (matching what it
+! *  always defaulted to before this rename), since existing sifs naming it
+! *  directly are tuned against that. Either way, a sif that sets "Permittivity
+! *  Of Vacuum" explicitly always wins; only the unset-default differs. An Info
+! *  banner at solver start reports which value is actually in effect.
+! *
+! *  Authors: Peter Råback
+! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
-! *  Original Date: 20 Jun 2002
+! *  Created: 20.4.2021
 ! *
 ! *****************************************************************************/
 
+MODULE StatElecSolveFront
+  USE DefUtils
+  USE LoadMod, ONLY: ExecSolver
+  IMPLICIT NONE
+
+CONTAINS
+
+  FUNCTION LegacyAssembly( Solver ) RESULT( Legacy )
+    TYPE(Solver_t) :: Solver
+    LOGICAL :: Legacy, Found
+
+    Legacy = ListGetLogical( Solver % Values, 'Legacy Assembly', Found )
+  END FUNCTION LegacyAssembly
+
+!------------------------------------------------------------------------------
+!> Call one of StatElecSolveLegacy's entry points with this solver. The name is
+!> resolved at run time, as the core resolves any solver, so this file and
+!> StatElecSolveLegacy.so stay independent of one another.
+!------------------------------------------------------------------------------
+  SUBROUTINE DelegateToStatElecLegacy( Entry, Model, Solver, dt, Transient )
+    CHARACTER(LEN=*) :: Entry
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t) :: Solver
+    REAL(KIND=dp) :: dt
+    LOGICAL :: Transient
+
+    TYPE(C_FUNPTR) :: Proc
+
+    Proc = GetProcAddr( 'StatElecSolveLegacy '//TRIM(Entry), abort = .FALSE. )
+    IF ( .NOT. C_ASSOCIATED( Proc ) ) CALL Fatal( 'StatElecSolver', &
+        '"Legacy Assembly" was requested but "'//TRIM(Entry)//'" could not be found. '// &
+        'Is StatElecSolveLegacy.so installed beside this solver?' )
+
+    CALL ExecSolver( Proc, Model, Solver, dt, Transient )
+  END SUBROUTINE DelegateToStatElecLegacy
+
+END MODULE StatElecSolveFront
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE StatElecSolver_Init0( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE StatElecSolveFront
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver_Init0'
+!------------------------------------------------------------------------------
+  ! Legacy has no complex/harmonic-mode setup at all, so there is nothing to
+  ! delegate to here -- just skip it.
+  IF ( LegacyAssembly( Solver ) ) RETURN
+
+  IF (ListCheckPresentAnyMaterial(Model, 'Relative Permittivity Im')) THEN
+    CALL Info(Caller, 'Complex-valued solution triggered by Relative Permittivity Im', Level=7)
+    Params => GetSolverParams()
+    CALL ListAddNewLogical(Params, 'Linear System Complex', .TRUE.)
+    CALL ListAddNewInteger(Params, 'Variable DOFs', 2)
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE StatElecSolver_Init0
+!------------------------------------------------------------------------------
+  
+  
 !------------------------------------------------------------------------------
 !> Initialization of the primary solver, i.e. StatElecSolver.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
+SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
-    USE DefUtils
-    IMPLICIT NONE
-!------------------------------------------------------------------------------
-    TYPE(Model_t)  :: Model
-    TYPE(Solver_t), TARGET :: Solver
-    LOGICAL ::  TransientSimulation
-    REAL(KIND=dp) :: dt
-!------------------------------------------------------------------------------
-    LOGICAL :: Found, Calculate, CalculateCapMatrix
-    TYPE(ValueList_t), POINTER :: Params
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
-    INTEGER :: i,dim
-
-    Params => GetSolverParams()
-    dim = CoordinateSystemDimension()
-
-    IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) &
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Electric Energy Density' )
-    
-    Calculate = ListGetLogical(Params,'Calculate Electric Field',Found)
-    IF( Calculate ) THEN
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-dofs '//I2S(dim)//' electric field' )
-    END IF
-    
-    Calculate = ListGetLogical(Params,'Calculate Electric Flux',Found)
-    IF( Calculate ) THEN
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-dofs '//I2S(dim)//' electric flux' )
-    END IF
-
-    str = ListGetString(Params,'Element',Found )
-    IF( Found ) THEN
-      CALL Info('StatElecSolver_init',&
-          'p-elements are supported by the modernized StatElecSolveVec module',Level=3)
-      IF(str(1:2) == 'p:') CALL Fatal('StatElecSolver_init','No support for p-elements in solver!')
-    END IF
-        
-    ! If computation of capacitance matrix is requested then compute 
-    ! set the flag for load computation also.
-    !------------------------------------------------------------------
-    CalculateCapMatrix = ListGetLogical( Params, &
-        'Calculate Capacitance Matrix', Found )
-    IF(.NOT. Found ) THEN
-      DO i = 1, Model % NumberOfEquations 
-        CalculateCapMatrix = ListGetLogical( Model % Equations(i) % Values, &
-            'Calculate Capacitance Matrix', Found )
-        IF ( CalculateCapMatrix ) THEN
-          CALL ListAddLogical( Params,'Calculate Capacitance Matrix',.TRUE.)
-          EXIT
-        END IF
-      END DO
-    END IF
-    IF( CalculateCapMatrix ) THEN
-      CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
-    END IF
-
-    CALL ListAddInteger( Params,'Time Derivative Order', 0 )
-
-!------------------------------------------------------------------------------
-END SUBROUTINE StatElecSolver_Init
-!------------------------------------------------------------------------------
-
-
-
-!------------------------------------------------------------------------------
-!>  Solves the Poisson equation for the electric potential and compute the 
-!>  electric field, flux, energy and capacitance as requested using nodal averaging.
-!
-!>  Note that the permittivity of vacuum is divided into the right hand side of the 
-!>  equation. This has to be accounted for in setting the body forces and
-!>  assigning flux boundary conditions
-!> \ingroup Solvers
-!------------------------------------------------------------------------------
-SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-  USE Types
-  USE Lists 
-  USE Integration
-  USE ElementDescription
-  USE Differentials
-  USE SolverBasics
-  USE ElementUtils
-  USE Adaptive
-  USE DefUtils
-!$ USE omp_lib ! Include module conditionally
-  
+  USE StatElecSolveFront
   IMPLICIT NONE
 !------------------------------------------------------------------------------
- 
+  TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-  TYPE(Solver_t), TARGET:: Solver
-  REAL (KIND=DP) :: dt
-  LOGICAL :: TransientSimulation
-      
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------
-!    Local variables
+  CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver_init'
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Found, CalculateElemental, CalculateNodal, PostActive
+  INTEGER :: dim
+
+  IF ( LegacyAssembly( Solver ) ) THEN
+    CALL DelegateToStatElecLegacy( 'StatElecSolverLegacy_Init', Model, Solver, dt, Transient )
+    RETURN
+  END IF
+
+  Params => GetSolverParams()
+  dim = CoordinateSystemDimension()
+
+  IF (ListGetInteger(Params, 'Variable DOFs', Found) == 2) THEN
+    CALL ListAddNewString( Params,'Variable','Potential[Potential re:1 Potential im:1]')
+  ELSE
+    CALL ListAddNewString( Params,'Variable','Potential')
+  END IF
+    
+  PostActive = .FALSE.
+  
+  CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
+  CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
+
+  IF(.NOT. (CalculateElemental .OR. CalculateNodal ) ) THEN
+    CalculateNodal = .TRUE.
+  END IF
+
+  IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
+    IF( CalculateElemental ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-dg Electric Energy Density e' )
+    IF( CalculateNodal ) &
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Electric Energy Density' )
+    PostActive = .TRUE.
+  END IF
+
+  IF( ListGetLogical(Params,'Calculate Electric Flux',Found) ) THEN
+    IF( CalculateElemental ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-dg Electric Flux e[Electric Flux e:'//I2S(dim)//']' )
+    IF( CalculateNodal ) &
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Electric Flux[Electric Flux:'//I2S(dim)//']' )       
+    PostActive = .TRUE.
+  END IF
+
+  IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
+    IF( CalculateElemental ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-dg Electric Field e[Electric Field e:'//I2S(dim)//']' )
+    IF( CalculateNodal ) & 
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Electric Field[Electric Field:'//I2S(dim)//']' )
+    PostActive = .TRUE.
+  END IF
+
+  ! Nodal fields that may directly be associated as nodal loads
+  IF (ListGetLogical(Params,'Calculate Nodal Energy',Found))  THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+        'Nodal Energy Density' )
+    PostActive = .TRUE.
+  END IF
+  IF( ListGetLogical(Params,'Calculate Nodal Flux',Found) ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        'Nodal Electric Flux[Nodal Electric Flux:'//I2S(dim)//']' )
+    PostActive = .TRUE.
+  END IF
+
+  ! These use one flag to call library features to compute automatically
+  ! a capacitance matrix.
+  IF( ListGetLogical(Params,'Calculate Capacitance Matrix',Found ) ) THEN
+    CALL Info('StatElecSolver_init','Using Constraint Modes functionality for Capacitance Matrix')
+    CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Matrix Symmetric',.TRUE.)
+    IF( ListCheckPresent( Params,'Capacitance Matrix Filename') ) THEN
+      CALL ListRename( Params,'Capacitance Matrix Filename',&
+          'Constraint Modes Matrix Filename', Found ) 
+    ELSE     
+      CALL ListAddNewString( Params,'Constraint Modes Matrix Filename',&
+          'CapacitanceMatrix.dat',.FALSE.)
+    END IF
+    CALL ListRenameAllBC( Model,'Capacitance Body','Constraint Mode Potential')
+    CALL ListRenameAllBodyForce( Model,'Capacitance Body','Constraint Mode Potential')
+    CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
+    CALL Info('StatElecSolver_init','Suppressing bandwidth optimization in Capacitance Matrix computation!')
+  END IF
+
+  CALL ListAddInteger( Params,'Time Derivative Order', 0 )
+  
+  CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
+  IF( ListCheckPresentAnyBC(Model,'infinity bc') ) THEN
+    CALL Fatal('StatElecSolver_init','Use "Electric Infinity BC" instead of "Infinity BC"')
+  END IF
+  
+  ! If no fields need to be computed do not even call the _post solver!
+  CALL ListAddLogical(Params,'PostSolver Active',PostActive)
+
+  ! If library adaptivity is compiled with, use that by default.
+#ifdef LIBRARY_ADAPTIVITY
+  CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
+#endif
+  
+END SUBROUTINE StatElecSolver_Init
+
+
+!-----------------------------------------------------------------------------
+!> A modern version for static current conduction supporting multithreading and
+!> SIMD friendly ElmerSolver kernels. 
 !------------------------------------------------------------------------------
-  TYPE(Matrix_t), POINTER  :: StiffMatrix
-  TYPE(Element_t), POINTER :: CurrentElement
-  TYPE(Variable_t), POINTER :: TimeVar, Var
-
-  REAL (KIND=DP), POINTER :: ForceVector(:), Potential(:)
-  REAL (KIND=DP), POINTER :: Field(:),Flux(:),Energy(:)
-  REAL (KIND=dp), POINTER CONTIG :: PValues(:)
-  REAL (KIND=dp), POINTER :: Charges(:)
-  REAL (KIND=DP), ALLOCATABLE :: CapMatrix(:,:),CapMatrixPara(:,:)
-
-  REAL(KIND=dp) :: RelPerm1, RelPerm2
-  REAL(KIND=dp) :: PermittivityOfVacuum, Norm, RelativeChange
-  REAL (KIND=DP) :: Wetot, at0, ss
-  REAL (KIND=DP) :: at, st, PotentialDifference, Capacitance
-  REAL (KIND=DP) :: MinPotential, MaxPotential
-
-  INTEGER, POINTER :: NodeIndexes(:), CapBodyIndex(:), Ivals(:)
-  INTEGER, POINTER :: PotentialPerm(:), EnergyPerm(:), SurfPerm(:)
-  INTEGER, POINTER :: FieldPerm(:), FluxPerm(:)
-  INTEGER :: CapBodies, CapBody, Permi, Permj, iter, MaxIterations
-  INTEGER :: i, j, k, l, m, istat, bf_id, LocalNodes, dim, NonlinearIter, &
-      nsize, N, ntot, t, TID
-
-  LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC, OpenBc, LayerBC
-  LOGICAL :: CalculateField, CalculateFlux, CalculateEnergy
-  LOGICAL :: CalculateCapMatrix, ConstantWeights
-  LOGICAL :: ConstantBulk = .FALSE., AssemblyDone = .FALSE.
-
+SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE MeshBasics, ONLY : FollowCurvedBoundary
+  USE DefUtils
+  USE Adaptive
+  USE StatElecSolveFront
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(Element_t),POINTER :: Element
+  REAL(KIND=dp) :: Norm
+  INTEGER :: n, nb, nd, t, active, dim, RelOrder
+  INTEGER :: iter, maxiter, nColours, col, totelem, nthr
+  LOGICAL :: Found, VecAsm, InitHandles, AxiSymmetric, CVersion
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Matrix_t), POINTER :: CM
-  LOGICAL, ALLOCATABLE :: Done(:)
-  LOGICAL :: DoneL
-
-  CHARACTER(LEN=MAX_NAME_LEN) :: CapMatrixFile, Name, VarName
-  TYPE(ValueList_t), POINTER :: Params, BC
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver'
 
-  SAVE CalculateFlux, CalculateEnergy, &
-      AllocationsDone, &
-      CapBodies, CalculateCapMatrix, CapBodyIndex, &
-      CapMatrix, CalculateField, CapMatrixFile, ConstantWeights, &
-      ConstantBulk, AssemblyDone, Charges
-  
+  ! Set once per nonlinear iteration (see the assembly loop below), read by
+  ! LocalMatrixVec/LocalMatrix through host association for "Piezo Material"
+  ! coupling -- NULL if no "Displacement" field exists in the model at all.
+  TYPE(Variable_t), POINTER :: DisplVar
+
+  ! Per-thread handle/cache storage for LocalMatrixVec, LocalMatrix and
+  ! LocalMatrixBC — NOT THREADPRIVATE (Windows/GCC emutls bug inherits the
+  ! master's ALLOCATABLE/POINTER THREADPRIVATE data into workers instead of
+  ! giving independent copies). Allocated once below, right after nthr is
+  ! known; each local subroutine only ever touches its own thread's slot.
+  ! SAVEd: each ValueHandle_t owns a scratch ValueList_t that is allocated on
+  ! first use and reused. Re-creating these arrays on every visit to the solver
+  ! dropped those lists unfreed, one per handle per timestep.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: VecSourceCoeff_h(:), VecEpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: SourceCoeff_h(:), EpsCoeff_h(:)
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: Flux_h(:), Farfield_h(:), Infty_h(:), &
+      LayerEps_h(:), LayerH_h(:), LayerRho_h(:), LayerV_h(:), SurfaceCharge_h(:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: VecEps0(:), Eps0(:), BCEps0(:)
+
   INTERFACE
-    SUBROUTINE StatElecSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
+    SUBROUTINE StatElecSolver_Boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
       USE Types
       TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
@@ -191,7 +302,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Boundary_Residual
     
-    SUBROUTINE StatElecSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
+    SUBROUTINE StatElecSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm,Indicator)
       USE Types
       TYPE(Element_t) :: Edge
       TYPE(Model_t) :: Model
@@ -200,7 +311,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Edge_Residual
     
-    SUBROUTINE StatElecSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
+    SUBROUTINE StatElecSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
       USE Types
       TYPE(Element_t) :: Element
       TYPE(Model_t) :: Model
@@ -209,1900 +320,1840 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Inside_Residual
   END INTERFACE
-  
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!    Get variables needed for solution
-!------------------------------------------------------------------------------
+  IF ( LegacyAssembly( Solver ) ) THEN
+    CALL DelegateToStatElecLegacy( 'StatElecSolverLegacy', Model, Solver, dt, Transient )
+    RETURN
+  END IF
 
-  
+  CALL Info(Caller,'------------------------------------------------')
+  CALL Info(Caller,'Solving static electric field for insulators')
+
+  ! "Permittivity Of Vacuum" banner: this file defaults it to 1.0 (natural/
+  ! relative units) when a sif does not set it -- unlike StatElecSolveVec.F90's
+  ! thin front, which defaults it to the real physical value instead. Report
+  ! which is actually in effect so the physical setup is never silently
+  ! ambiguous.
+  BLOCK
+    REAL(KIND=dp) :: EpsBanner
+    LOGICAL :: FoundBanner
+
+    FoundBanner = .FALSE.
+    EpsBanner = 1.0_dp
+    IF( ASSOCIATED( Model % Constants ) ) THEN
+      EpsBanner = ListGetCReal( Model % Constants,'Permittivity Of Vacuum', FoundBanner )
+    END IF
+    IF( FoundBanner ) THEN
+      WRITE( Message,'(A,ES13.6,A)' ) 'Permittivity Of Vacuum = ', EpsBanner, &
+          ' (set explicitly in Constants)'
+      CALL Info(Caller,Message,Level=4)
+    ELSE
+      CALL Info(Caller,'"Permittivity Of Vacuum" not set: defaulting to 1.0 -- '// &
+          'solving in natural/relative units, not absolute SI',Level=4)
+    END IF
+  END BLOCK
+
+  Mesh => GetMesh()
   Params => GetSolverParams()
 
-  PotentialPerm => Solver % Variable % Perm
-  IF ( COUNT(PotentialPerm > 0) == 0 ) RETURN
-
-  Potential => Solver % Variable % Values
-  StiffMatrix => Solver % Matrix
-  ForceVector => StiffMatrix % RHS
-  VarName = GetVarName( Solver % Variable )
-  Mesh => Solver % Mesh
-
-  Norm = Solver % Variable % Norm
-  dim = CoordinateSystemDimension()
+  CVersion = Solver % Variable % DOFs == 2
+  IF (CVersion) CALL Info(Caller, &
+      'Performing assembly for a complex-valued system',Level=7)
   
-!------------------------------------------------------------------------------
-!    Allocate some permanent storage, this is done first time only
-!------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone ) THEN
-
-    CalculateField = ListGetLogical( Params,'Calculate Electric Field', GotIt )
-    CalculateFlux = ListGetLogical( Params,'Calculate Electric Flux', GotIt )
-    CalculateEnergy = ListGetLogical( Params,'Calculate Electric Energy', GotIt )
-
-    ConstantBulk = ListGetLogical( Params,'Constant Bulk System',GotIt)
-    ConstantBulk = ConstantBulk .OR. ListGetLogical( Params,'Save Bulk System',GotIt)
-
-    ConstantWeights = ListGetLogical( Params,'Constant Weights', GotIt )
-
-    CalculateCapMatrix = ListGetLogical( Params, &
-        'Calculate Capacitance Matrix', GotIt )
-
-    IF(CalculateCapMatrix) THEN
-      ConstantBulk = .TRUE.
-      CapBodies = ListGetInteger( Params, 'Capacitance Bodies',GotIt)
-      IF(.NOT. GotIt) THEN
-        DO i = 1, Model % NumberOfBCs
-          j = ListGetInteger( Model % BCs(i) % Values, &
-            'Capacitance Body', GotIt )
-          IF( j > CapBodies ) CapBodies = j
-        END DO
-      END IF
-
-      IF( CapBodies == 0 ) THEN
-        CALL Fatal(Caller,&
-            'Capacitance calculation requested without any > Capacitance Body <')
-      END IF
-
-      nsize = Mesh % NumberOfNodes
-      ALLOCATE(CapBodyIndex(nsize), &
-          Charges(nsize), &
-          CapMatrix(CapBodies,CapBodies), &
-          STAT = istat)
-      IF ( istat /= 0 ) THEN
-        CALL Fatal( Caller, 'Memory allocation error 1' )
-      END IF
-
-      CapMatrix = 0.0_dp
-      CapBodyIndex = 0
-    END IF
-
-    AllocationsDone = .TRUE.
+  IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
+    CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
   END IF
-
-!------------------------------------------------------------------------------
-!  Get the result fields
-!  These should have been automatically created by the 
-!  'Exported Variables' defined in the _init section
-!------------------------------------------------------------------------------
-
-  IF ( CalculateField ) THEN
-    Var => VariableGet( Solver % Mesh % Variables,'Electric Field')
-    IF( .NOT. ASSOCIATED( Var) ) CALL Fatal(Caller,'"Electric Field" does not exist')
-    Field => Var % Values
-  END IF
-  
-  IF ( CalculateFlux ) THEN
-    Var => VariableGet( Solver % Mesh % Variables,'Electric Flux')
-    IF( .NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'"Electric Flux" does not exist')
-    Flux => Var % Values
-  END IF
-
-  IF ( CalculateEnergy ) THEN
-    Var => VariableGet( Solver % Mesh % Variables,'Electric Energy Density')
-    IF( .NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'"Electric Energy Density" does not exist')
-    Energy => Var % Values
-  END IF
-   
-!------------------------------------------------------------------------------
-!    Do some additional initialization, and go for it
-!------------------------------------------------------------------------------
-
-  PermittivityOfVacuum = ListGetConstReal( Model % Constants, &
-      'Permittivity Of Vacuum', GotIt )
-  IF ( .NOT. GotIt ) PermittivityOfVacuum = 1.0_dp
-  
-  NonlinearIter = ListGetInteger( Params, &
-      'Nonlinear System Max Iterations', GotIt )
-  IF ( .NOT. GotIt ) NonlinearIter = 1
- 
-  IF(CalculateCapMatrix) NonlinearIter = CapBodies
-  
-!------------------------------------------------------------------------------
-  CALL Info( Caller, '-------------------------------------',Level=4 )
-  CALL Info( Caller, 'Electrostatics solver:  ', Level=4 )
-  CALL Info( Caller, '-------------------------------------',Level=4 )
-
+      
   CALL DefaultStart()
 
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
+  dim = CoordinateSystemDimension() 
+
+  maxiter = ListGetInteger( Params, &
+      'Nonlinear System Max Iterations',Found,minv=1)
+  IF(.NOT. Found ) maxiter = 1
+
+  nthr = 1
+  !$ nthr = omp_get_max_threads()
+
+  IF( ALLOCATED( VecSourceCoeff_h ) ) THEN
+    IF( SIZE( VecSourceCoeff_h ) /= nthr ) THEN
+      DEALLOCATE( VecSourceCoeff_h, VecEpsCoeff_h, VecEps0, &
+          SourceCoeff_h, EpsCoeff_h, Eps0, &
+          Flux_h, Farfield_h, Infty_h, LayerEps_h, &
+          LayerH_h, LayerRho_h, LayerV_h, SurfaceCharge_h, BCEps0 )
+    END IF
+  END IF
+  IF( .NOT. ALLOCATED( VecSourceCoeff_h ) ) THEN
+    ALLOCATE( VecSourceCoeff_h(nthr), VecEpsCoeff_h(nthr), VecEps0(nthr), &
+        SourceCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr), &
+        Flux_h(nthr), Farfield_h(nthr), Infty_h(nthr), LayerEps_h(nthr), &
+        LayerH_h(nthr), LayerRho_h(nthr), LayerV_h(nthr), SurfaceCharge_h(nthr), BCEps0(nthr) )
+  END IF
+
+  nColours = GetNOFColours(Solver)
+
+  VecAsm = ListGetLogical( Params,'Vector Assembly',Found )
+  IF(.NOT. Found ) THEN
+    VecAsm = (nColours > 1) .OR. (nthr > 1)
+  END IF
   
-  DO iter = 1, NonlinearIter
-     at  = CPUTime()
-     at0 = RealTime()
+  IF( VecAsm .AND. AxiSymmetric ) THEN
+    CALL Info(Caller,'Vectorized loop not yet available in axisymmetric case',Level=7)    
+    VecAsm = .FALSE.
+  END IF
 
-     CALL DefaultInitialize()
+  IF (CVersion) VecAsm = .FALSE.
   
-     IF ( NonlinearIter > 1 ) THEN
-       CALL Info( Caller,'Electrostatic iteration: '//I2S(iter) , Level=5 )
-     END IF
-     CALL Info( Caller, 'Starting Assembly...', Level=7 )
+  IF( VecAsm ) THEN
+    CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
+  ELSE
+    CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)      
+  END IF
 
-!------------------------------------------------------------------------------
-!    Do the assembly
-!------------------------------------------------------------------------------
-    IF ( ConstantBulk .AND. AssemblyDone ) THEN
-      Solver % Matrix % RHS = Solver % Matrix % BulkRHS
-      Solver % Matrix % Values = Solver % Matrix % BulkValues
-    ELSE
-      CALL BulkAssembly()
-      CALL DefaultFinishBulkAssembly()
-      AssemblyDone = .TRUE.
-    END IF
+  RelOrder = GetInteger( Params,'Relative Integration Order',Found ) 
 
-    CALL BoundaryAssembly()
- 
-!------------------------------------------------------------------------------
-!    Solve the system and we are done.
-!------------------------------------------------------------------------------
-    st = CPUTime()
+  ! Nonlinear iteration loop:
+  !--------------------------
+  DO iter=1,maxiter
 
-    Norm = DefaultSolve()
-    RelativeChange = Solver % Variable % NonlinChange
-    st = CPUTime() - st
-    WRITE( Message, * ) 'Solve (s)             :',st
-    CALL Info( Caller, Message, Level=5 )
+    ! System assembly:
+    !----------------
+    CALL DefaultInitialize()
 
-!------------------------------------------------------------------------------
-!    Compute the electric field from the potential: E = -grad Phi
-!    Compute the electric flux: D = epsilon (-grad Phi)
-!    Compute the total electric energy: W_e,tot = Integral (E . D)dV
-!------------------------------------------------------------------------------
+    DisplVar => VariableGet( Model % Variables, 'Displacement' )
 
-    IF ( CalculateField .OR. CalculateFlux .OR. CalculateEnergy ) THEN
-      CALL GeneralElectricFlux( Mesh, Potential )
-    END IF
+    totelem = 0
 
-    IF ( CalculateEnergy ) THEN
-      Wetot = ParallelReduction(Wetot)      
-      WRITE( Message, * ) 'Tot. Electric Energy  :', Wetot
-      CALL Info( Caller, Message, Level=4 )
-      CALL ListAddConstReal( Model % Simulation,'res: Electric Energy', Wetot )
-    END IF
+    CALL ResetTimer( Caller//'BulkAssembly' )
 
-!------------------------------------------------------------------------------
-!    Try to find a potential difference for scalar capacitance calculation
-!------------------------------------------------------------------------------
-    IF ( .NOT. CalculateCapMatrix ) THEN      
-      PotentialDifference = ListGetConstReal( Params, &
-           'Potential Difference',gotIt )
-      IF ( .NOT.gotIt )  PotentialDifference = ListGetConstReal( &
-          Model % Simulation, 'Potential Difference',gotIt )
-      IF ( .NOT. gotIt ) THEN
-        DO i = 1, Model % NumberOfMaterials
-          PotentialDifference = &
-              ListGetConstReal( Model % Materials(i) % Values, &
-              'Potential Difference', GotIt )
-          IF ( GotIt )  EXIT
-        END DO
-      END IF
+    !$OMP PARALLEL &
+    !$OMP SHARED(Solver, Active, nColours, VecAsm, CVersion) &
+    !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    InitHandles = .TRUE.
       
-      IF(.NOT. GotIt) THEN
-        ! parallel reduction needed
-        MinPotential = ParallelReduction(MinPotential,1)
-        MaxPotential = ParallelReduction(MaxPotential,2)
-        PotentialDifference = MaxPotential - MinPotential
-      END IF
+    DO col=1,nColours
       
-      IF(PotentialDifference > TINY(PotentialDifference)) THEN
-        CALL ListAddConstReal( Model % Simulation, &
-            'res: Potential Difference', PotentialDifference )
-        
-        IF(CalculateEnergy) THEN
-          Capacitance = 2*Wetot / (PotentialDifference*PotentialDifference)
-          WRITE( Message,* ) 'Potential difference: ',PotentialDifference
-          CALL Info( Caller, Message, Level=8 )
-          
-          WRITE( Message, * ) 'Capacitance           :', Capacitance
-          CALL Info( Caller, Message, Level=4 )
-          
-          CALL ListAddConstReal( Model % Simulation, &
-              'res: Capacitance', Capacitance )
-        END IF
-      END IF
-    END IF
-    
-!------------------------------------------------------------------------------
-
-    IF(CalculateCapMatrix) THEN
-
-      PValues => Solver % Matrix % Values
-      Solver % Matrix % Values => Solver % Matrix % BulkValues
-      CALL MatrixVectorMultiply( Solver % Matrix, Potential, Charges)
-      Solver % Matrix % Values => PValues
-      Charges = Charges * PermittivityOfVacuum
-
-      IF( iter == 1 ) CapMatrix = 0.0_dp
-      Permi = iter
-      DO i=1,Mesh % NumberOfNodes
-        Permj = CapBodyIndex(i)
-        IF(Permj > 0) THEN
-          j = PotentialPerm(i)
-          CapMatrix(Permi, Permj) = CapMatrix(Permi, Permj) + Charges(j)
-        END IF
-      END DO
-      DO Permj = 1, CapBodies
-        IF(Permi == Permj) CYCLE
-        CapMatrix(Permi, Permi) = CapMatrix(Permi, Permi) + CapMatrix(Permi, Permj)
-        CapMatrix(Permi, Permj) = -CapMatrix(Permi, Permj)
-      END DO
-
-    ELSE
-
-      WRITE( Message, * ) 'Result Norm   : ',Norm
-      CALL Info( Caller, Message, Level=4 )
-      WRITE( Message, * ) 'Relative Change : ',RelativeChange
-      CALL Info( Caller, Message, Level=4 )       
-      
-      IF( Solver % Variable % NonlinConverged == 1 ) EXIT
-    END IF
-    
-  END DO
-   
-   IF(CalculateCapMatrix) THEN
-     ! Symmetrisize the capacitance matrix as we know from physics it should be symmetric!
-     ! This is a way also to get more accuracy.
-     
-     IF( ParEnv % PEs > 1 ) THEN
-       ALLOCATE( CapMatrixPara( CapBodies, CapBodies ) )
-       CapMatrixPara = CapMatrix
-       CALL MPI_ALLREDUCE(CapMatrixPara, CapMatrix, CapBodies**2, MPI_DOUBLE_PRECISION, MPI_SUM, &
-           ELMER_COMM_WORLD, i)
-       DEALLOCATE( CapMatrixPara )
-     END IF
-
-     IF( ParEnv % MyPE == 0 ) THEN
-       CapMatrix = 0.5_dp * (CapMatrix + TRANSPOSE(CapMatrix))
-       
-       CALL Info(Caller,'Capacitance matrix computation performed (i,j,C_ij)',Level=4)
-       DO i=1, CapBodies 
-         DO j = i, CapBodies
-           WRITE( Message, '(I3,I3,ES15.5)' ) i,j,CapMatrix(i,j)
-           CALL Info( Caller, Message, Level=4 )
-         END DO
-       END DO
-      
-       CapMatrixFile = ListGetString(Params,'Capacitance Matrix Filename',GotIt )
-       IF( GotIt ) THEN
-         OPEN (10, FILE=CapMatrixFile)
-         DO i=1,CapBodies
-           DO j=1,CapBodies
-             WRITE (10,'(ES17.9)',advance='no') CapMatrix(i,j)
-           END DO
-           WRITE(10,'(A)') ' '
-         END DO
-         CLOSE(10)     
-         WRITE(Message,'(A,A)') 'Capacitance matrix was saved to file ',CapMatrixFile
-         CALL Info(Caller,Message)
-       END IF
-     END IF
-   END IF
-
-   IF ( ListGetLogical( Params, 'Adaptive Mesh Refinement', GotIt ) ) THEN
-     IF ( .NOT. ListGetLogical( Params, 'Library Adaptivity', GotIt ) ) THEN
-       CALL RefineMesh( Model, Solver, Potential, PotentialPerm, &
-       StatElecSolver_Inside_Residual, StatElecSolver_Edge_Residual, &
-       StatElecSolver_Boundary_Residual )
-     END IF
-   END IF
-   
-   CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Potential')
-
-   IF ( CalculateField ) THEN
-     CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Field')
-   END IF
-   
-   IF ( CalculateFlux ) THEN
-     CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Flux')
-   END IF
-   
-   IF ( CalculateEnergy ) THEN
-     CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Energy Density')
-   END IF
-
-   CALL DefaultFinish()
-
-   
-!------------------------------------------------------------------------------
- 
-   CONTAINS
-
-!------------------------------------------------------------------------------
-     SUBROUTINE BulkAssembly()
-
-       INTEGER :: Nelem
-
-       Nelem = GetNOFActive()
-       
-       Var => VariableGet( Model % Variables, 'Displacement' )
-
-       !------------------------------------------------------------------------------
-       !$omp parallel shared(Solver, Model, dim, at0, &
-       !$omp                 PermittivityOfVacuum, Message, nElem, Var) &
-       !$omp          private(t, TID) default(none)
-
-       TID = 1
-       !$ TID = omp_get_thread_num()+1
-
-       !$omp do
-       DO t = 1,Nelem
-         CALL LocalMatrix(t)
-         IF ( TID == 1 .AND. RealTime() - at0 > 1.0 ) THEN
-           WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
-                 (Solver % Mesh % NumberOfBulkElements-t) / &
-                 (1.0*Solver % Mesh % NumberOfBulkElements)), ' % done'
-           CALL Info( Caller, Message, Level=5 )
-           at0 = RealTime()
-         END IF
-       END DO
-       !$omp end do
-       !$omp end parallel
-     !------------------------------------------------------------------------------
-     END SUBROUTINE BulkAssembly
-     !------------------------------------------------------------------------------
-
-     !------------------------------------------------------------------------------
-     SUBROUTINE BoundaryAssembly()
-       !------------------------------------------------------------------------------
-       !------------------------------------------------------------------------------
-       !     Neumann boundary conditions
-       !------------------------------------------------------------------------------
-       CM => Solver % Matrix % ConstraintMatrix
-       IF (ASSOCIATED(CM) ) THEN
-         CM % Values = 0._dp
-         IF ( .NOT. CM % Ordered ) CALL CRS_SortMatrix(CM)
-
-         ALLOCATE( Done(Solver % Mesh % NumberOfNodes) )
-         Done = .FALSE.
-
-         Ivals => ListGetIntegerArray( Params, &
-               'Constraint DOF 1 Body', Gotit )
-         IF (ASSOCIATED(Ivals)) THEN
-
-           Solver % Matrix % ConstraintMatrix % RHS(1) = &
-                 GetCReal( Params, 'Constraint DOF 1 Value', GotIt )
-
-           !$omp parallel shared(Ivals, PotentialPerm, Done, CM, Solver) &
-           !$omp private(i, j, k, l, m, DoneL, CurrentElement, NodeIndexes) default(none)
-
-           !$omp do
-           DO i=1,GetNOFBoundaryElements()
-             CurrentElement => GetBoundaryElement(i)
-             IF ( .NOT. ActiveBoundaryElement(CurrentElement) ) CYCLE
-
-             j = -1
-             IF ( ASSOCIATED(CurrentElement % BoundaryInfo % Left) ) &
-                   j = CurrentElement % BoundaryInfo % Left % BodyId
-
-             k = -1
-             IF ( ASSOCIATED(CurrentElement % BoundaryInfo % Right) ) &
-                   k = CurrentElement % BoundaryInfo % Right % BodyId
-
-             IF ( ANY(Ivals==j.OR.Ivals==k) ) THEN
-               NodeIndexes => CurrentElement % NodeIndexes
-               DO j=1,GetElementNOFNodes()
-                 l = PotentialPerm(NodeIndexes(j))
-                 
-                 ! IF ( Done(l) ) CYCLE
-                 ! Done(l) = .TRUE.
-                                
-                 ! NOTE: critical could be replace by atomic capture
-                 !$omp critical(StatElecSolvePermDone)
-                 DoneL = Done(l)
-                 Done(l) = .TRUE.
-                 !$omp end critical(StatElecSolvePermDone)
-                 IF (DoneL) CYCLE
-
-                 !$omp atomic
-                 CM % RHS(1) = CM % RHS(1)+Solver % Matrix % RHS(l)
-                 m = CM % Rows(1)
-                 DO k=Solver % Matrix % Rows(l),Solver % Matrix % Rows(l+1)-1
-                   DO WHILE(m<CM % Rows(2))
-                     IF ( CM % Cols(m)>=Solver % Matrix % Cols(k) ) EXIT
-                     m = m+1  
-                   END DO
-                   IF ( m>=CM % Rows(2) ) EXIT
-                   IF ( CM % Cols(m) == Solver % Matrix % Cols(k) ) THEN
-                     !$omp atomic
-                     CM % Values(m) = CM % Values(m)+Solver % Matrix % Values(k)
-                   END IF
-                 END DO
-               END DO
-             END IF
-           END DO
-           !$omp end do
-           !$omp end parallel
-         END IF
-
-         DEALLOCATE(Done)
-       END IF
-
-       MinPotential = HUGE(MinPotential)
-       MaxPotential = -HUGE(MaxPotential)
-
-       !$omp parallel shared(Solver, Mesh, PermittivityOfVacuum, VarName) &
-       !$omp          private(t) &
-       !$omp          reduction(min:MinPotential) reduction(max:MaxPotential) default(none)
-
-       !$omp do
-       DO t= 1, Mesh % NumberOfBoundaryElements
-         CALL LocalBoundaryMatrix(t)
-       END DO   ! Neumann BCs
-       !------------------------------------------------------------------------------
-       !$omp end do
-       !$omp end parallel
-
-       !------------------------------------------------------------------------------
-       !    FinishAssembly must be called after all other assembly steps, but before
-       !    Dirichlet boundary settings. Actually no need to call it except for
-       !    transient simulations.
-       !------------------------------------------------------------------------------
-       CALL DefaultFinishBoundaryAssembly()
-       CALL DefaultFinishAssembly()
-
-       !------------------------------------------------------------------------------
-       !   This sets the BC flags so that the potential form a permulation
-       !------------------------------------------------------------------------------
-       IF(CalculateCapMatrix) THEN
-         CALL SetPermutationBoundaries( Model, StiffMatrix, ForceVector, &
-               'Capacitance Body',PotentialPerm, iter)
-       END IF
-
-       !------------------------------------------------------------------------------
-       !    Dirichlet boundary conditions
-       !------------------------------------------------------------------------------
-       CALL DefaultDirichletBCs()
-
-       at = CPUTime() - at
-       WRITE( Message, * ) 'Assembly (s)          :',at
-       CALL Info( Caller, Message, Level=4 )
-       !------------------------------------------------------------------------------
-     END SUBROUTINE BoundaryAssembly
-     !------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-!  Per-element bulk assembly kernel: all workspace is local (implicitly private
-!  in the enclosing !$OMP DO loop).
-!------------------------------------------------------------------------------
-     SUBROUTINE LocalMatrix(t)
-!------------------------------------------------------------------------------
-       INTEGER, INTENT(IN) :: t
-
-       TYPE(Element_t), POINTER :: Elem
-       TYPE(Nodes_t) :: ENodes
-       INTEGER, POINTER :: NodeIdx(:)
-       INTEGER :: nn, nntot, matid, bfid, i, j, istat2
-       LOGICAL :: GotIt2, PiezoMat
-
-       REAL(KIND=dp), ALLOCATABLE :: LStiff(:,:), LForce(:), LLoad(:)
-       REAL(KIND=dp), ALLOCATABLE :: Perm3(:,:,:), PzCoeff(:,:,:)
-       REAL(KIND=dp), ALLOCATABLE :: Bas(:), dBas(:,:)
-       REAL(KIND=dp), ALLOCATABLE :: Displ(:,:)
-       REAL(KIND=dp), POINTER :: Pwrk2(:,:,:), Pz_w2(:,:,:)
-
-       Elem => GetActiveElement(t)
-       nn   = GetElementNOFNodes(Elem)
-       nntot = GetElementNOFDOFs(Elem)
-
-       ALLOCATE( ENodes % x(nn), ENodes % y(nn), ENodes % z(nn), &
-           LStiff(nntot,nntot), LForce(nntot), LLoad(nn), &
-           Perm3(3,3,nn), Bas(nntot), dBas(nntot,dim), &
-           PzCoeff(dim,2*dim,nn), Displ(nn,dim), &
-           STAT=istat2 )
-       IF ( istat2 /= 0 ) CALL Fatal( Caller, 'LocalMatrix: memory allocation error' )
-
-       NULLIFY( Pwrk2, Pz_w2 )
-
-       NodeIdx => Elem % NodeIndexes
-       ENodes % x(1:nn) = Solver % Mesh % Nodes % x(NodeIdx)
-       ENodes % y(1:nn) = Solver % Mesh % Nodes % y(NodeIdx)
-       ENodes % z(1:nn) = Solver % Mesh % Nodes % z(NodeIdx)
-
-       bfid = ListGetInteger( Model % Bodies(Elem % BodyId) % &
-             Values, 'Body Force',GotIt2, minv=1, maxv=Model % NumberOfBodyForces )
-       LLoad  = 0.0_dp
-       PiezoMat = .FALSE.
-       IF ( GotIt2 ) THEN
-         LLoad(1:nn) = ListGetReal( Model % BodyForces(bfid) % Values, &
-               'Charge Density', nn, NodeIdx, GotIt2 )
-         LLoad(1:nn) = LLoad(1:nn) / PermittivityOfVacuum
-         PiezoMat = GetLogical( Model % BodyForces(bfid) % Values, &
-               'Piezo Material', GotIt2 )
-       END IF
-
-       matid = ListGetInteger( Model % Bodies(Elem % BodyId) % &
-             Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
-
-       !------------------------------------------------------------------------------
-       !  Read permittivity (might be a tensor)
-       !------------------------------------------------------------------------------
-       CALL ListGetRealArray( Model % Materials(matid) % Values, &
-             'Relative Permittivity', Pwrk2, nn, NodeIdx, GotIt2 )
-       IF ( .NOT. GotIt2 ) &
-             CALL ListGetRealArray( Model % Materials(matid) % Values, &
-             'Permittivity', Pwrk2, nn, NodeIdx, GotIt2 )
-       IF ( .NOT. GotIt2 ) CALL Fatal( Caller, &
-             'No > Relative permittivity < found!' )
-
-       Perm3 = 0.0_dp
-       IF ( SIZE(Pwrk2,1) == 1 ) THEN
-         DO i=1,3
-           Perm3( i,i,1:nn ) = Pwrk2( 1,1,1:nn )
-         END DO
-       ELSE IF ( SIZE(Pwrk2,2) == 1 ) THEN
-         DO i=1,MIN(3,SIZE(Pwrk2,1))
-           Perm3(i,i,1:nn) = Pwrk2(i,1,1:nn)
-         END DO
-       ELSE
-         DO i=1,MIN(3,SIZE(Pwrk2,1))
-           DO j=1,MIN(3,SIZE(Pwrk2,2))
-             Perm3( i,j,1:nn ) = Pwrk2(i,j,1:nn)
-           END DO
-         END DO
-       END IF
-
-       !------------------------------------------------------------------------------
-       !  Read piezo material coefficients if applicable
-       !------------------------------------------------------------------------------
-       IF ( PiezoMat ) THEN
-         IF (.NOT.ASSOCIATED(Var)) CALL Fatal(Caller, 'No displacements' )
-
-         PzCoeff = 0.0_dp
-         CALL GetRealArray( Model % Materials(matid) % Values, Pz_w2, &
-               'Piezo Material Coefficients', GotIt2, Elem )
-         IF ( .NOT. GotIt2 )  CALL Fatal( Caller, &
-               'No > Piezo Material Coefficients < defined!' )
-
-         DO i=1, dim
-           DO j=1, 2*dim
-             PzCoeff(i,j,1:nn) = Pz_w2(i,j,1:nn)
-           END DO
-         END DO
-
-         Displ = 0.0_dp
-         DO i = 1, Var % DOFs
-           Displ(1:nn,i) = &
-                 Var % Values(Var % DOFs*(Var % Perm(NodeIdx)-1)+i)
-         END DO
-       END IF
-
-       !------------------------------------------------------------------------------
-       !  Build element stiffness matrix and force vector
-       !------------------------------------------------------------------------------
-       CALL StatElecCompose( LStiff, LForce, PiezoMat, &
-             PzCoeff, Perm3, LLoad, Elem, nn, nntot, ENodes, &
-             Displ, Bas, dBas )
-
-       CALL DefaultUpdateEquations( LStiff, LForce, UElement=Elem )
-
-       DEALLOCATE( ENodes % x, ENodes % y, ENodes % z, &
-           LStiff, LForce, LLoad, Perm3, Bas, dBas, PzCoeff, Displ )
-       IF ( ASSOCIATED(Pwrk2) ) DEALLOCATE(Pwrk2)
-       IF ( ASSOCIATED(Pz_w2) ) DEALLOCATE(Pz_w2)
-
-     END SUBROUTINE LocalMatrix
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-!  Per-element boundary assembly kernel: all workspace is local (implicitly
-!  private in the enclosing !$OMP DO loop).  Also accumulates min/max potential.
-!------------------------------------------------------------------------------
-     SUBROUTINE LocalBoundaryMatrix(t)
-!------------------------------------------------------------------------------
-       INTEGER, INTENT(IN) :: t
-
-       TYPE(Element_t), POINTER :: BElem
-       TYPE(ValueList_t), POINTER :: BC2
-       TYPE(Nodes_t) :: ENodes
-       INTEGER, POINTER :: NodeIdx(:)
-       INTEGER :: nn, nntot, istat2
-       LOGICAL :: GotIt2, FluxBC2, OpenBC2, LayerBC2
-
-       REAL(KIND=dp), ALLOCATABLE :: LStiff(:,:), LForce(:), LLoad(:)
-       REAL(KIND=dp), ALLOCATABLE :: LAlpha(:), LBeta(:), LLayerH(:), LLayerV(:)
-       REAL(KIND=dp), ALLOCATABLE :: LPermIso(:)
-
-       BElem => GetBoundaryElement(t)
-       BC2 => GetBC(BElem)
-       IF ( .NOT.ASSOCIATED( BC2 ) ) RETURN
-
-       IF ( .NOT. ActiveBoundaryElement(BElem) ) RETURN
-
-       nn   = GetElementNOFNodes(BElem)
-       nntot = GetElementNOFDOFs(BElem)
-       NodeIdx => BElem % NodeIndexes
-
-       ALLOCATE( ENodes % x(nn), ENodes % y(nn), ENodes % z(nn), &
-           LStiff(nntot,nntot), LForce(nntot), LLoad(nn), &
-           LAlpha(nn), LBeta(nn), LLayerH(nn), LLayerV(nn), &
-           LPermIso(nn), STAT=istat2 )
-       IF ( istat2 /= 0 ) CALL Fatal( Caller, 'LocalBoundaryMatrix: memory allocation error' )
-
-       !------------------------------------------------------------------------------
-       !  Track min/max potential for scalar capacitance calculation
-       !------------------------------------------------------------------------------
-       LLoad(1:nn) = ListGetReal( BC2, &
-             ComponentName(Solver % Variable), nn, NodeIdx, GotIt2)
-       IF(GotIt2) THEN
-         MinPotential = MIN(MinPotential, MINVAL(LLoad(1:nn)))
-         MaxPotential = MAX(MaxPotential, MAXVAL(LLoad(1:nn)))
-       END IF
-
-       ENodes % x(1:nn) = Mesh % Nodes % x(NodeIdx)
-       ENodes % y(1:nn) = Mesh % Nodes % y(NodeIdx)
-       ENodes % z(1:nn) = Mesh % Nodes % z(NodeIdx)
-
-       !------------------------------------------------------------------------------
-       !  BC: epsilon*dPhi/dn = g
-       !------------------------------------------------------------------------------
-       LLoad = 0.0_dp
-       LLoad(1:nn) = ListGetReal( BC2,'Electric Flux', nn, NodeIdx, FluxBC2 )
-       IF ( .NOT. FluxBC2 )  LLoad(1:nn) = ListGetReal( BC2, &
-             'Surface Charge Density', nn, NodeIdx, FluxBC2 )
-       IF(FluxBC2) THEN
-         LLoad(1:nn) = LLoad(1:nn) / PermittivityOfVacuum
-       END IF
-
-       !------------------------------------------------------------------------------
-       !  BC: -epsilon*dPhi/dn = -alpha*Phi + beta
-       !------------------------------------------------------------------------------
-       LAlpha(1:nn) = ListGetReal( BC2, &
-             'Layer Relative Permittivity', nn, NodeIdx, LayerBC2 )
-       LBeta(1:nn) = 0.0_dp
-
-       OpenBC2 = ListGetLogical( BC2,'Electric Infinity BC',GotIt2)
-       IF(.NOT. GotIt2) OpenBC2 = ListGetLogical( BC2,'Infinity BC '//TRIM(VarName),GotIt2)
-
-       IF(.NOT. ( LayerBC2 .OR. FluxBC2 .OR. OpenBC2) ) THEN
-         DEALLOCATE( ENodes % x, ENodes % y, ENodes % z, &
-             LStiff, LForce, LLoad, LAlpha, LBeta, LLayerH, LLayerV, LPermIso )
-         RETURN
-       END IF
-
-       IF ( LayerBC2 ) THEN
-         LLayerH(1:nn) = ListGetReal( BC2, &
-               'Layer Thickness', nn, NodeIdx, GotIt2 )
-         IF ( .NOT. GotIt2 ) THEN
-           CALL Fatal( Caller,'Charge > Layer thickness < not given!' )
-         END IF
-         LAlpha(1:nn) = LAlpha(1:nn) / LLayerH(1:nn)
-
-         LLayerV(1:nn) = ListGetReal( BC2, &
-               'Electrode Potential', nn, NodeIdx, GotIt2 )
-         LBeta(1:nn) = ListGetReal( BC2, &
-               'Layer Charge Density', nn, NodeIdx, GotIt2 )
-         LBeta(1:nn) = LAlpha(1:nn)*LLayerV(1:nn) + &
-               0.5_dp*LBeta(1:nn)*LLayerH(1:nn) / PermittivityOfVacuum
-       END IF
-
-       !------------------------------------------------------------------------------
-       !  BC: -epsilon*dPhi/dn = epsilon*Phi*(r.n)/r^2  (infinity BC)
-       !------------------------------------------------------------------------------
-       IF( OpenBC2 ) THEN
-         LPermIso(1:nn) = GetParentMatProp('Relative Permittivity', BElem, GotIt2)
-         IF(.NOT. GotIt2) THEN
-           LPermIso(1:nn) = GetParentMatProp('Relative Permittivity', BElem, GotIt2)
-         END IF
-         IF(.NOT. GotIt2) THEN
-           CALL Fatal( Caller,'Could not find > Relative Permittivity < for parent!' )
-         END IF
-       END IF
-
-       CALL StatElecBoundary( LStiff, LForce, &
-             LLoad, LAlpha, LBeta, OpenBC2, LPermIso, BElem, nn, ENodes )
-
-       CALL DefaultUpdateEquations( LStiff, LForce, UElement=BElem )
-
-       DEALLOCATE( ENodes % x, ENodes % y, ENodes % z, &
-           LStiff, LForce, LLoad, LAlpha, LBeta, LLayerH, LLayerV, LPermIso )
-
-     END SUBROUTINE LocalBoundaryMatrix
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-!> Compute the Electric Flux, Electric Field and Electric Energy at model nodes.
-!------------------------------------------------------------------------------
-   SUBROUTINE GeneralElectricFlux( Mesh, Potential )
-!------------------------------------------------------------------------------
-     TYPE(Mesh_t) :: Mesh
-     REAL(KIND=dp) :: Potential(:)
-!------------------------------------------------------------------------------
-     TYPE(Element_t), POINTER :: Element, Parent
-     TYPE(Nodes_t) :: Nodes, BoundaryNodes
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
-     REAL(KIND=dp), POINTER :: U_Integ(:), V_Integ(:), W_Integ(:), S_Integ(:)
-     REAL(KIND=dp), ALLOCATABLE :: SumOfWeights(:), SurfWeights(:), x(:), y(:), z(:)
-     REAL(KIND=dp) :: PermittivityOfVacuum
-     REAL(KIND=DP) :: SqrtElementMetric, detJ
-     REAL(KIND=dp), ALLOCATABLE :: ElementPot(:)
-     REAL(KIND=dp), ALLOCATABLE :: Permittivity_L(:,:,:), Basis_L(:), dBasisdx_L(:,:)
-     REAL(KIND=dp), POINTER :: Pwrk_L(:,:,:)
-     REAL(KIND=dp) :: EnergyDensity, Sigma, Normal(3)
-     REAL(KIND=dp) :: NodalFlux(3), NodalField(3), ElemVol
-     REAL(KIND=dp) :: s, ug, vg, wg, Grad(3), EpsGrad(3)
-     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-     REAL(KIND=dp) :: xpos, ypos, zpos
-     INTEGER, ALLOCATABLE :: Indexes(:), PotIndexes(:)
-     INTEGER :: n, N_Integ, t, tg, i, j, k, dim, p, nPar, matId, nd, istat
-     LOGICAL :: Stat
-
-!------------------------------------------------------------------------------
-     IF(CalculateEnergy) Energy = 0.0_dp
-     IF(CalculateFlux) Flux = 0.0_dp
-     IF(CalculateField) Field = 0.0_dp
-     
-     dim = CoordinateSystemDimension()
-     Wetot = 0.0_dp
-
-     ALLOCATE(SumOfWeights(SIZE(Potential)), STAT=istat)
-     IF (istat /= 0) CALL Fatal('GeneralElectricFlux',&
-                                'Memory allocation failed 1')
-     SumOfWeights = 0.0_dp
-     
-     PermittivityOfVacuum = ListGetConstReal( Model % Constants, &
-           'Permittivity Of Vacuum',gotIt )
-     IF ( .NOT.gotIt ) PermittivityOfVacuum = 1
-
-     !$omp parallel shared(Mesh, Model, Solver, dim, Energy, Flux, &
-     !$omp                 Field, PermittivityOfVacuum, PotentialPerm, &
-     !$omp                 Potential, ConstantWeights, CalculateEnergy, &
-     !$omp                 CalculateFlux, CalculateField, SumOfWeights) &
-     !$omp          private(tg, t, i, j, k, n, s, nd, ug, vg, wg, Element, &
-     !$omp                  Indexes, NodeIndexes, xpos, ypos, zpos, &
-     !$omp                  PotIndexes, ElementPot, Nodes, &
-     !$omp                  Permittivity_L, Basis_L, dBasisdx_L, Pwrk_L, &
-     !$omp                  IntegStuff, U_Integ, V_Integ, Symb, dSymb, &
-     !$omp                  SqrtMetric, Metric, &
-     !$omp                  W_Integ, S_Integ, N_Integ, EnergyDensity, &
-     !$omp                  NodalFlux, NodalField, ElemVol, &
-     !$omp                  SqrtElementMetric, &
-     !$omp                  Grad, EpsGrad, istat, gotIt, stat) &
-     !$omp                  reduction(+:Wetot) default(none)
-
-     n = Mesh % MaxElementNodes
-     NULLIFY( Pwrk_L )
-     ! Allocate thread local workspace
-     ALLOCATE(Nodes % x(n), Nodes % y(n), Nodes % z(n), &
-              Indexes(Mesh % MaxElementDofs), &
-              PotIndexes(Mesh % MaxElementDofs), &
-              ElementPot(Mesh % MaxElementDofs), &
-              Permittivity_L(3,3,n), &
-              Basis_L(Mesh % MaxElementDofs), &
-              dBasisdx_L(Mesh % MaxElementDofs,dim), STAT=istat)
-     IF (istat /= 0) CALL Fatal('GeneralElectricFlux',&
-                                'Memory allocation failed 2')
-
-!------------------------------------------------------------------------------
-!   Go through model elements, we will compute on average of elementwise
-!   fluxes to nodes of the model
-!------------------------------------------------------------------------------
-
-     !$omp do
-     DO t=1,Solver % NumberOfActiveElements
-
-!------------------------------------------------------------------------------
-!        Check if this element belongs to a body where electrostatics
-!        should be calculated
-!------------------------------------------------------------------------------
-
-       Element => GetActiveElement(t)
-       NodeIndexes => Element % NodeIndexes
-       n = GetElementNOFNOdes(Element)
-       nd = GetElementDOFs(Indexes, Element)
-
-       PotIndexes(1:nd) = PotentialPerm( Indexes(1:nd) )
-       ElementPot(1:nd) = Potential( PotIndexes(1:nd) )
-
-       Nodes % x(1:n) = Mesh % Nodes % x( NodeIndexes )
-       Nodes % y(1:n) = Mesh % Nodes % y( NodeIndexes )
-       Nodes % z(1:n) = Mesh % Nodes % z( NodeIndexes )
-
-!------------------------------------------------------------------------------
-!    Gauss integration stuff
-!------------------------------------------------------------------------------
-       IntegStuff = GaussPointsAdapt( Element )
-       U_Integ => IntegStuff % u
-       V_Integ => IntegStuff % v
-       W_Integ => IntegStuff % w
-       S_Integ => IntegStuff % s
-       N_Integ =  IntegStuff % n
-!------------------------------------------------------------------------------
-
-       k = ListGetInteger( Model % Bodies( Element % BodyId ) % &
-             Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
-
-       CALL ListGetRealArray( Model % Materials(k) % Values, &
-             'Relative Permittivity', Pwrk_L, n, NodeIndexes, gotIt )
-       IF ( .NOT. gotIt ) &
-             CALL ListGetRealArray( Model % Materials(k) % Values, &
-             'Permittivity', Pwrk_L, n, NodeIndexes, gotIt )
-
-       Permittivity_L = 0.0_dp
-       IF ( SIZE(Pwrk_L,1) == 1 ) THEN
-         DO i=1,3
-           Permittivity_L( i,i,1:n ) = Pwrk_L( 1,1,1:n )
-         END DO
-       ELSE IF ( SIZE(Pwrk_L,2) == 1 ) THEN
-         DO i=1,MIN(3,SIZE(Pwrk_L,1))
-           Permittivity_L(i,i,1:n) = Pwrk_L(i,1,1:n)
-         END DO
-       ELSE
-         DO i=1,MIN(3,SIZE(Pwrk_L,1))
-           DO j=1,MIN(3,SIZE(Pwrk_L,2))
-             Permittivity_L( i,j,1:n ) = Pwrk_L(i,j,1:n)
-           END DO
-         END DO
-       END IF
-
-       EnergyDensity = 0.0_dp
-       NodalFlux = 0.0_dp
-       NodalField = 0.0_dp
-       ElemVol = 0.0_dp
-
-!------------------------------------------------------------------------------
-! Loop over Gauss integration points
-!------------------------------------------------------------------------------
-       DO tg=1,N_Integ
-
-         ug = U_Integ(tg)
-         vg = V_Integ(tg)
-         wg = W_Integ(tg)
-
-!------------------------------------------------------------------------------
-! Need SqrtElementMetric and Basis at the integration point
-!------------------------------------------------------------------------------
-         stat = ElementInfo( Element, Nodes,ug,vg,wg, &
-               SqrtElementMetric,Basis_L,dBasisdx_L )
-
-!------------------------------------------------------------------------------
-!      Coordinatesystem dependent info
-!------------------------------------------------------------------------------
-         IF (CurrentCoordinateSystem() /= Cartesian ) THEN
-           xpos = SUM( Nodes % x(1:n) * Basis_L(1:n) )
-           ypos = SUM( Nodes % y(1:n) * Basis_L(1:n) )
-           zpos = SUM( Nodes % z(1:n) * Basis_L(1:n) )
-         END IF
-
-         CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,xpos,ypos,zpos )
-
-         s = SqrtMetric * SqrtElementMetric * S_Integ(tg)
-
-         !------------------------------------------------------------------------------
-
-         EpsGrad = 0.0_dp
-         DO j=1, dim
-           Grad(j) = SUM( dBasisdx_L(1:nd,j) * ElementPot(1:nd) )
-           DO i = 1, dim
-             EpsGrad(j) = EpsGrad(j) + SUM( Permittivity_L(j,i,1:n) * &
-                   Basis_L(1:n) ) * SUM( dBasisdx_L(1:nd,i) * ElementPot(1:nd) )
-           END DO
-         END DO
-
-         Wetot = Wetot + s * SUM( Grad(1:dim) * EpsGrad(1:dim) )
-
-         EnergyDensity = EnergyDensity + &
-               s * SUM(Grad(1:dim) * EpsGrad(1:dim))
-
-         DO j = 1,dim
-           NodalFlux(j) = NodalFlux(j) - EpsGrad(j) * s
-           NodalField(j) = NodalField(j) - Grad(j) * s
-         END DO
-
-         ElemVol = ElemVol + s
-       END DO ! Gauss point integration
-
-!------------------------------------------------------------------------------
-!   Weight with element area if required
-!------------------------------------------------------------------------------
-       IF ( ConstantWeights ) THEN
-         EnergyDensity = EnergyDensity / ElemVol
-         NodalFlux(1:dim) = NodalFlux(1:dim) / ElemVol
-         NodalField(1:dim) = NodalField(1:dim) / ElemVol
-         DO j=1,nd
-           !$omp atomic
-           SumOfWeights( PotIndexes(j) ) = &
-                 SumOfWeights( PotIndexes(j) ) + 1
-         END DO
-       ELSE
-         DO j=1,nd
-           !$omp atomic
-           SumOfWeights( PotIndexes(j) )  = &
-                 SumOfWeights( PotIndexes(j) ) + ElemVol
-         END DO
-       END IF
-
-!------------------------------------------------------------------------------
-
-       IF(CalculateEnergy) THEN
-         DO j=1,nd
-           !$omp atomic
-           Energy( PotIndexes(j) ) = Energy( PotIndexes(j) ) + EnergyDensity
-         END DO
-       END IF
-
-       IF(CalculateFlux) THEN
-         NodalFlux = NodalFlux * PermittivityOfVacuum
-         DO i=1,dim
-           DO j=1,nd
-             !$omp atomic
-             Flux( dim * ( PotIndexes(j)-1) + i ) = &
-                   Flux( dim * ( PotIndexes(j)-1) + i ) + NodalFlux(i)
-           END DO
-         END DO
-       END IF
-
-       IF(CalculateField) THEN
-         DO i=1,dim
-           DO j=1,nd
-             !$omp atomic
-             Field( dim * ( PotIndexes(j)-1) + i ) = &
-                   Field( dim * ( PotIndexes(j)-1) + i ) + NodalField(i)
-           END DO
-         END DO
-       END IF
-
-     END DO ! element loop
-     !$omp end do
-     
-
-!------------------------------------------------------------------------------
-!   Finally, compute average of the fluxes at nodes
-!------------------------------------------------------------------------------
-     !$omp do 
-     DO j = 1, SIZE( Potential )
-       IF ( ABS( SumOfWeights(j) ) > 0.0_dp ) THEN
-         IF ( CalculateEnergy )  Energy(j) = &
-             0.5_dp * PermittivityOfVacuum * Energy(j) / SumOfWeights( j )
-
-         IF ( CalculateField ) THEN
-           DO k=1,dim
-             Field( dim*(j-1)+k ) = Field( dim*(j-1)+k) / SumOfWeights( j )
-           END DO
-         END IF
-
-         IF ( CalculateFlux ) THEN
-           DO k=1,dim
-             Flux( dim*(j-1)+k ) = Flux( dim*(j-1)+k) / SumOfWeights( j )
-           END DO
-         END IF
-       END IF
-     END DO
-     !$omp end do
-
-     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
-                 Indexes, PotIndexes, ElementPot, &
-                 Permittivity_L, Basis_L, dBasisdx_L )
-     IF ( ASSOCIATED(Pwrk_L) ) DEALLOCATE(Pwrk_L)
-     !$omp end parallel
-
-     DEALLOCATE(SumOfWeights)
-
-     ! Compute total energy
-     Wetot = PermittivityOfVacuum * Wetot / 2.0_dp
-!------------------------------------------------------------------------------
-   END SUBROUTINE GeneralElectricFlux
-!------------------------------------------------------------------------------
-
- 
-!------------------------------------------------------------------------------
-     SUBROUTINE StatElecCompose( StiffMatrix,Force,PiezoMaterial, PiezoCoeff, &
-                            Permittivity,Load,Element,n,ntot,Nodes, Displacement, &
-                            Basis_, dBasisdx_ )
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: StiffMatrix(:,:),Force(:),Load(:), Permittivity(:,:,:)
-       REAL(KIND=dp) :: PiezoCoeff(:,:,:), Displacement(:,:)
-       REAL(KIND=dp) :: Basis_(:), dBasisdx_(:,:)
-       INTEGER :: n
-       TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), TARGET :: Element
-       LOGICAL :: PiezoMaterial
-!------------------------------------------------------------------------------
-
-       REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
-       REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
-       REAL(KIND=dp) :: PiezoForce(ntot), LocalStrain(6), PiezoLoad(3)
-
-       LOGICAL :: Stat
-
-       INTEGER :: i,j,p,q,t,dim,ntot,Nbasis
-
-       TYPE(GaussIntegrationPoints_t) :: IntegStuff
-!------------------------------------------------------------------------------
-
-       dim = CoordinateSystemDimension()
-       NBasis = ntot
-
-       PiezoForce = 0.0_dp
-       Force = 0.0_dp
-       StiffMatrix = 0.0_dp
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-!      Numerical integration
-!------------------------------------------------------------------------------
-       IntegStuff = GaussPointsAdapt( Element )
-
-       DO t=1,IntegStuff % n
-         U = IntegStuff % u(t)
-         V = IntegStuff % v(t)
-         W = IntegStuff % w(t)
-         S = IntegStuff % s(t)
-!------------------------------------------------------------------------------
-!        Basis function values & derivatives at the integration point
-!------------------------------------------------------------------------------
-         stat = ElementInfo( Element,Nodes,U,V,W,SqrtElementMetric, &
-                    Basis_,dBasisdx_ )
-!------------------------------------------------------------------------------
-!      Coordinatesystem dependent info
-!------------------------------------------------------------------------------
-         IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-           x = SUM( Nodes % x(1:n) * Basis_(1:n) )
-           y = SUM( Nodes % y(1:n) * Basis_(1:n) )
-           z = SUM( Nodes % z(1:n) * Basis_(1:n) )
-         END IF
-
-         CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
-
-         S = S * SqrtElementMetric * SqrtMetric
-!------------------------------------------------------------------------------
-!        The piezo force term
-!------------------------------------------------------------------------------
-
-         IF ( PiezoMaterial ) THEN
-           ! So far only plane strain in 2D  (LocalStrain(3) = 0)
-           LocalStrain = 0.0_dp
-           DO i = 1, Dim
-             LocalStrain(i) = SUM( dBasisdx_(1:n,i) * Displacement(1:n,i) )
-           END DO
-           LocalStrain(4) = 0.5_dp * ( SUM( dBasisdx_(1:n,1) * Displacement(1:n,2) ) &
-               + SUM( dBasisdx_(1:n,2) * Displacement(1:n,1) ) )
-           IF ( Dim == 3 ) THEN
-             LocalStrain(5) = 0.5_dp * ( SUM( dBasisdx_(1:n,2) * Displacement(1:n,3) ) &
-                 + SUM( dBasisdx_(1:n,3) * Displacement(1:n,2) ) )
-             LocalStrain(6) = 0.5_dp * ( SUM( dBasisdx_(1:n,1) * Displacement(1:n,3) ) &
-                 + SUM( dBasisdx_(1:n,3) * Displacement(1:n,1) ) )
-           END IF
-
-           PiezoLoad = 0.0_dp
-           DO i = 1, Dim
-             DO j = 1, 2*Dim
-               PiezoLoad(i) = PiezoLoad(i) + SUM( Basis_(1:n) * PiezoCoeff(i,j,1:n) ) * &
-                   LocalStrain(j)
-             END DO
-           END DO
-         END IF
-
-!------------------------------------------------------------------------------
-         L = SUM( Load(1:n) * Basis_ )
-         DO i=1,dim
-           DO j=1,dim
-             C(i,j) = SUM( Permittivity(i,j,1:n) * Basis_(1:n) )
-           END DO
-         END DO
-!------------------------------------------------------------------------------
-!        The Poisson equation
-!------------------------------------------------------------------------------
-         DO p=1,Nbasis
-           DO q=1,Nbasis
-             A = 0._dp
-             DO i=1,dim
-               DO J=1,dim
-                 A = A + C(i,j) * dBasisdx_(p,i) * dBasisdx_(q,j)
-               END DO
-             END DO
-             StiffMatrix(p,q) = StiffMatrix(p,q) + S*A
-           END DO
-           Force(p) = Force(p) + S*L*Basis_(p)
-
-           IF ( PiezoMaterial ) THEN
-             PiezoForce(p) = PiezoForce(p) + S * SUM( dBasisdx_(p,1:Dim) * PiezoLoad(1:Dim) )
-           END IF
-
-        END DO
-!------------------------------------------------------------------------------
-       END DO
-
-       IF ( PiezoMaterial )  Force = Force + PiezoForce
-!       IF ( PiezoMaterial )  Force = Force + PiezoForce / PermittivityOfVacuum ?
-
-!------------------------------------------------------------------------------
-     END SUBROUTINE StatElecCompose
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> To compute the capacitance matrix for m bodies, also m permutations are 
-!> required. This subroutine sets at permutation i, the body i to 1, 
-!> and all else to 0.
-!------------------------------------------------------------------------------
-  SUBROUTINE SetPermutationBoundaries( Model, StiffMatrix, ForceVector, &
-      Name, Perm, Permutation)
-!------------------------------------------------------------------------------
-
-    TYPE(Model_t) :: Model
-    TYPE(Matrix_t), POINTER :: StiffMatrix
-    REAL(KIND=dp) :: ForceVector(:)
-    CHARACTER(LEN=*) :: Name 
-    INTEGER :: Perm(:), Permutation
-!------------------------------------------------------------------------------
-
-    TYPE(Element_t), POINTER :: CurrentElement
-    INTEGER, POINTER :: NodeIndexes(:)
-    INTEGER :: i,j,k,n,t,k1,k2, Body, MaxBody
-    LOGICAL :: GotIt
-    REAL(KIND=dp) :: val,s
-
-!------------------------------------------------------------------------------
-!  Manipulates the list structure of the BCs so that the permutations BCs
-!  are translated into corresponding Dirichlet conditions.
-!------------------------------------------------------------------------------
-    MaxBody = 0
-    DO i=1,Model % NumberOfBCs
-      BC => Model % BCs(i) % Values
-      Body = ListGetInteger( BC, Name, gotIt )
-      
-      IF ( gotIt ) THEN           
-        IF(Body == Permutation) THEN
-          val = 1.0_dp
+      !$OMP SINGLE
+      CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
+      Active = GetNOFActive(Solver)
+      !$OMP END SINGLE
+
+      !$OMP DO
+      DO t=1,Active
+        Element => GetActiveElement(t)
+        totelem = totelem + 1
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        IF( VecAsm ) THEN
+          CALL LocalMatrixVec(  Element, n, nd+nb, nb, VecAsm, InitHandles )
         ELSE
-          val = 0.0_dp
+          CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles, CVersion )
         END IF
-        
-        CALL ListAddConstReal( BC,TRIM(VarName),val)
-        MaxBody = MAX( MaxBody, Body ) 
+      END DO
+      !$OMP END DO
+    END DO
+    !$OMP END PARALLEL 
+
+    CALL CheckTimer(Caller//'BulkAssembly',Delete=.TRUE.)
+    totelem = 0
+
+    CALL DefaultFinishBulkAssembly()
+
+    ! If a complex-valued problem, the assembly for boundaries is not yet ready
+    IF (CVersion) GOTO 201
+    
+    nColours = GetNOFBoundaryColours(Solver)
+
+    CALL Info(Caller,'Performing boundary element assembly',Level=12)
+    CALL ResetTimer(Caller//'BCAssembly')
+
+    !$OMP PARALLEL &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm) &
+    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    InitHandles = .TRUE. 
+    DO col=1,nColours
+      !$OMP SINGLE
+      CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
+      Active = GetNOFBoundaryActive(Solver)
+      !$OMP END SINGLE
+
+      !$OMP DO
+      DO t=1,Active
+        Element => GetBoundaryElement(t)
+        !WRITE (*,*) Element % ElementIndex
+        totelem = totelem + 1
+        IF(ActiveBoundaryElement(Element)) THEN
+          n  = GetElementNOFNodes(Element)
+          nd = GetElementNOFDOFs(Element)
+          nb = GetElementNOFBDOFs(Element)
+          CALL LocalMatrixBC(  Element, n, nd+nb, nb, VecAsm, InitHandles )
+        END IF
+      END DO
+      !$OMP END DO
+    END DO
+    !$OMP END PARALLEL
+
+    CALL CheckTimer(Caller//'BCAssembly',Delete=.TRUE.)
+201 CONTINUE
+    CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
+
+    ! And finally, solve:
+    !--------------------
+    Norm = DefaultSolve()
+
+    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+
+  END DO
+
+  CALL DefaultFinish()
+
+  IF (ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)) THEN
+    IF(.NOT. ListGetLogical( Solver % Values,'Library Adaptivity',Found )) THEN
+      CALL RefineMesh(Model, Solver, Solver % Variable % Values, Solver % Variable % Perm, &
+          StatElecSolver_Inside_Residual, StatElecSolver_Edge_Residual, &
+          StatElecSolver_Boundary_Residual)
+    END IF
+  END IF
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> Piezoelectric coupling: "Body Force > Piezo Material" turns on an extra RHS
+!> term derived from the strain of the "Displacement" field (from a coupled
+!> elasticity solver), weighted by the material's "Piezo Material
+!> Coefficients" tensor. Ported from the legacy StatElecSolve, which read these
+!> per element rather than through the Vec ListGetElementReal handle API --
+!> "Piezo Material Coefficients" is a (dim,2*dim) array, not the square
+!> (dim,dim) tensor that API's Rdim/Rtensor probing understands, so this keeps
+!> the same raw GetRealArray/VariableGet approach instead.
+!------------------------------------------------------------------------------
+  SUBROUTINE GetPiezoElementData( Element, nn, PiezoMat, PiezoCoeff, Displ )
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: nn
+    LOGICAL :: PiezoMat
+    REAL(KIND=dp), ALLOCATABLE :: PiezoCoeff(:,:,:), Displ(:,:)
+!------------------------------------------------------------------------------
+    INTEGER :: bfid, matid, i
+    LOGICAL :: GotIt
+    INTEGER, POINTER :: NodeIdx(:)
+    REAL(KIND=dp), POINTER :: Pz_w2(:,:,:)
+!------------------------------------------------------------------------------
+    PiezoMat = .FALSE.
+
+    bfid = ListGetInteger( Model % Bodies(Element % BodyId) % Values, &
+        'Body Force', GotIt, minv=1, maxv=Model % NumberOfBodyForces )
+    IF( GotIt ) THEN
+      PiezoMat = GetLogical( Model % BodyForces(bfid) % Values, 'Piezo Material', GotIt )
+    END IF
+    IF( .NOT. PiezoMat ) RETURN
+
+    IF( .NOT. ASSOCIATED( DisplVar ) ) CALL Fatal( Caller, &
+        '"Piezo Material" requires a "Displacement" field from a coupled elasticity solver' )
+
+    matid = ListGetInteger( Model % Bodies(Element % BodyId) % Values, &
+        'Material', GotIt, minv=1, maxv=Model % NumberOfMaterials )
+
+    NULLIFY( Pz_w2 )
+    CALL GetRealArray( Model % Materials(matid) % Values, Pz_w2, &
+        'Piezo Material Coefficients', GotIt, Element )
+    IF( .NOT. GotIt ) CALL Fatal( Caller, 'No > Piezo Material Coefficients < defined!' )
+
+    IF( .NOT. ALLOCATED( PiezoCoeff ) ) ALLOCATE( PiezoCoeff(dim,2*dim,nn) )
+    PiezoCoeff = 0._dp
+    PiezoCoeff(1:dim,1:2*dim,1:nn) = Pz_w2(1:dim,1:2*dim,1:nn)
+    DEALLOCATE( Pz_w2 )
+
+    IF( .NOT. ALLOCATED( Displ ) ) ALLOCATE( Displ(nn,dim) )
+    Displ = 0._dp
+    NodeIdx => Element % NodeIndexes
+    DO i = 1, DisplVar % DOFs
+      Displ(1:nn,i) = DisplVar % Values( DisplVar % DOFs*(DisplVar % Perm(NodeIdx(1:nn))-1) + i )
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetPiezoElementData
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The piezo force contribution at one integration point (basis/derivatives
+!> already evaluated there), added into FORCE. Same math as legacy's
+!> StatElecCompose: strain from "Displ" in Voigt notation (plane strain in 2D,
+!> i.e. the 3rd normal component is left zero), then the piezo tensor turns
+!> that into a load that couples into the electrostatic RHS through grad(w).
+!------------------------------------------------------------------------------
+  SUBROUTINE AddPiezoForce( nn, nd, Basis_pt, dBasisdx_pt, PiezoCoeff, Displ, Weight, Eps0, FORCE )
+!------------------------------------------------------------------------------
+    INTEGER :: nn, nd
+    REAL(KIND=dp) :: Basis_pt(:), dBasisdx_pt(:,:), Weight, Eps0
+    REAL(KIND=dp) :: PiezoCoeff(:,:,:), Displ(:,:)
+    REAL(KIND=dp) :: FORCE(:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: LocalStrain(6), PiezoLoad(3)
+    INTEGER :: i, j, p
+!------------------------------------------------------------------------------
+    LocalStrain = 0._dp
+    DO i=1,dim
+      LocalStrain(i) = SUM( dBasisdx_pt(1:nn,i) * Displ(1:nn,i) )
+    END DO
+    LocalStrain(4) = 0.5_dp * ( SUM( dBasisdx_pt(1:nn,1) * Displ(1:nn,2) ) &
+        + SUM( dBasisdx_pt(1:nn,2) * Displ(1:nn,1) ) )
+    IF( dim == 3 ) THEN
+      LocalStrain(5) = 0.5_dp * ( SUM( dBasisdx_pt(1:nn,2) * Displ(1:nn,3) ) &
+          + SUM( dBasisdx_pt(1:nn,3) * Displ(1:nn,2) ) )
+      LocalStrain(6) = 0.5_dp * ( SUM( dBasisdx_pt(1:nn,1) * Displ(1:nn,3) ) &
+          + SUM( dBasisdx_pt(1:nn,3) * Displ(1:nn,1) ) )
+    END IF
+
+    PiezoLoad = 0._dp
+    DO i=1,dim
+      DO j=1,2*dim
+        PiezoLoad(i) = PiezoLoad(i) + SUM( Basis_pt(1:nn) * PiezoCoeff(i,j,1:nn) ) * LocalStrain(j)
+      END DO
+    END DO
+
+    ! Legacy formulates the whole equation relative (STIFF uses only "Relative
+    ! Permittivity", RHS terms like Charge Density are pre-divided by Eps0);
+    ! this solver's STIFF is scaled by the absolute Eps0 instead (see
+    ! Eps0*STIFF above), so the piezo term -- ported unscaled, on legacy's
+    ! relative RHS convention -- needs the same Eps0 factor to match.
+    DO p=1,nd
+      FORCE(p) = FORCE(p) + Eps0 * Weight * SUM( dBasisdx_pt(p,1:dim) * PiezoLoad(1:dim) )
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddPiezoForce
+!------------------------------------------------------------------------------
+
+
+! Assembly of the matrix entries arising from the bulk elements. SIMD version.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
+!------------------------------------------------------------------------------
+    USE LinearForms
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(IN) :: VecAsm
+    LOGICAL, INTENT(INOUT) :: InitHandles
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), POINTER  :: EpsAtIpVec(:), SourceAtIpVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: PiezoCoeff(:,:,:), Displ(:,:)
+    LOGICAL :: Stat,Found,PiezoMat
+    INTEGER :: i,t,p,q,dim,ngp,allocstat,tid
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
+    !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
+    !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE
+!------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => VecSourceCoeff_h(tid), EpsCoeff_h => VecEpsCoeff_h(tid), &
+        Eps0 => VecEps0(tid) )
+
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      ! "Charge Density" here, matching the scalar LocalMatrix below, the _post
+      ! routine, and legacy StatElecSolve -- this used to say "Charge Source",
+      ! a name no .sif in the tree ever sets, silently dropping this body
+      ! force whenever the SIMD path (the common case) was taken.
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
+      Found = .FALSE.
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 1.0_dp   ! natural/relative units by default; see file header
+      InitHandles = .FALSE.
+    END IF
+
+    dim = CoordinateSystemDimension()
+
+    IF( RelOrder /= 0 ) THEN
+      IP = GaussPoints( Element, RelOrder = RelOrder)
+    ELSE
+      IP = GaussPoints( Element )
+    END IF
+      
+    ngp = IP % n
+
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        STIFF(nd,nd), FORCE(nd), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
+    END IF
+
+    CALL GetElementNodesVec( Nodes, UElement=Element )
+
+    ! Initialize
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    ! Numerical integration:
+    ! Compute basis function values and derivatives at integration points
+    !--------------------------------------------------------------
+    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, detJvec, &
+        SIZE(Basis,2), Basis, dBasisdx )
+
+    ! Compute actual integration weights (recycle the memory space of DetJVec)
+    DO i=1,ngp
+      DetJVec(i) = IP % s(i) * DetJVec(i)
+    END DO
+
+    ! diffusivity term: STIFF=STIFF+(eps*grad(u),grad(v))
+    EpsAtIpVec => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element )
+    CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, &
+        DetJVec, STIFF, EpsAtIpVec )
+    STIFF(1:nd,1:nd) = Eps0 * STIFF(1:nd,1:nd)
+
+    ! source term: FORCE=FORCE+(u,f)
+    SourceAtIpVec => ListGetElementRealVec( SourceCoeff_h, ngp, Basis, Element, Found )
+    IF( Found ) THEN
+      CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)
+    END IF
+
+    ! piezoelectric coupling term, if this element's body force requests it
+    CALL GetPiezoElementData( Element, n, PiezoMat, PiezoCoeff, Displ )
+    IF( PiezoMat ) THEN
+      DO t=1,ngp
+        CALL AddPiezoForce( n, nd, Basis(t,:), dBasisdx(t,:,:), PiezoCoeff, Displ, DetJVec(t), Eps0, FORCE )
+      END DO
+    END IF
+
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    END ASSOCIATE
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixVec
+
+
+!------------------------------------------------------------------------------
+! Assembly of the matrix entries arising from the bulk elements. Not vectorized.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles, CVersion )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(INOUT) :: InitHandles
+    LOGICAL, INTENT(IN) :: CVersion 
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+    COMPLEX(KIND=dp) :: CSTIFF(nd,nd), CFORCE(nd)
+    REAL(KIND=dp) :: weight
+    REAL(KIND=dp) :: SourceAtIp, EpsAtIp, DetJ
+    COMPLEX(KIND=dp) :: CEpsAtIp
+    REAL(KIND=dp), ALLOCATABLE :: PiezoCoeff(:,:,:), Displ(:,:)
+    LOGICAL :: Stat,Found,PiezoMat
+    INTEGER :: i,j,t,dim,tid
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
+!------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => SourceCoeff_h(tid), EpsCoeff_h => EpsCoeff_h(tid), &
+        Eps0 => Eps0(tid) )
+
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=CVersion)
+
+      Found = .FALSE.
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 1.0_dp   ! natural/relative units by default; see file header
+      InitHandles = .FALSE.
+    END IF
+
+    dim = CoordinateSystemDimension()
+
+    IF( RelOrder /= 0 ) THEN
+      IP = GaussPoints( Element, RelOrder = RelOrder)
+    ELSE
+      IP = GaussPoints( Element )
+    END IF
+
+    CALL GetElementNodes( Nodes, UElement=Element )
+
+    ! Initialize
+    STIFF = 0._dp
+    FORCE = 0._dp
+    IF (CVersion) THEN
+      CSTIFF =  CMPLX(0.0_dp, 0.0_dp, kind=dp)
+      CFORCE =  CMPLX(0.0_dp, 0.0_dp, kind=dp)
+    END IF
+
+    ! Piezoelectric coupling is not supported in the complex/harmonic path,
+    ! same as legacy StatElecSolve.
+    PiezoMat = .FALSE.
+    IF( .NOT. CVersion ) THEN
+      CALL GetPiezoElementData( Element, n, PiezoMat, PiezoCoeff, Displ )
+    END IF
+
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )
+      Weight = IP % s(t) * DetJ
+
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+
+      ! diffusion term (D*grad(u),grad(v)):
+      ! -----------------------------------
+      IF (CVersion) THEN
+        CEpsAtIp = ListGetElementComplex(EpsCoeff_h, Basis, Element, Found, GaussPoint = t)
+        CSTIFF(1:nd,1:nd) = CSTIFF(1:nd,1:nd) + Weight * &
+            Eps0 * CEpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      ELSE
+        EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
+            Eps0 * EpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      END IF
+
+      SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found )
+      IF( Found ) THEN
+        IF (CVersion) THEN
+          CFORCE(1:nd) = CFORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+        ELSE
+          FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+        END IF
+      END IF
+
+      IF( PiezoMat ) THEN
+        CALL AddPiezoForce( n, nd, Basis, dBasisdx, PiezoCoeff, Displ, Weight, Eps0, FORCE )
       END IF
     END DO
 
-    IF( Permutation == 1 ) THEN
-      DO t = Mesh % NumberOfBulkElements + 1, &
-          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    IF (CVersion) THEN
+      CALL CondensateP( nd-nb, nb, CStiff, CForce )
+      CALL DefaultUpdateEquations(CStiff, CForce)
+    ELSE
+      CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+      CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+    END IF
+
+    END ASSOCIATE
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+
+! Assembly of the matrix entries arising from the Neumann and Robin conditions.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixBC( Element, n, nd, nb, VecAsm, InitHandles )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: VecAsm
+    LOGICAL, INTENT(INOUT) :: InitHandles
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Weight,Alpha,Beta,Ext
+    REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), LOAD(n)
+    LOGICAL :: Stat,Found,GotSome
+    INTEGER :: i,t,p,q,dim,tid
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: LayerEps, LayerV, LayerRho, LayerH
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
+!------------------------------------------------------------------------------
+    BC => GetBC(Element)
+    IF (.NOT.ASSOCIATED(BC) ) RETURN
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( Flux_h => Flux_h(tid), Farfield_h => Farfield_h(tid), &
+        Infty_h => Infty_h(tid), LayerEps_h => LayerEps_h(tid), &
+        LayerH_h => LayerH_h(tid), LayerRho_h => LayerRho_h(tid), &
+        LayerV_h => LayerV_h(tid), SurfaceCharge_h => SurfaceCharge_h(tid), &
+        Eps0 => BCEps0(tid) )
+
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Electric Flux')
+      ! "Surface Charge Density" is an alternate name for the same flux BC
+      ! (D.n = sigma), used as a fallback below exactly as legacy StatElecSolve
+      ! does -- this was missing entirely, silently giving a zero flux BC.
+      CALL ListInitElementKeyword( SurfaceCharge_h,'Boundary Condition','Surface Charge Density')
+      CALL ListInitElementKeyword( Infty_h,'Boundary Condition','Electric Infinity BC')
+      CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Potential')
+      CALL ListInitElementKeyword( LayerEps_h,'Boundary Condition','Layer Relative Permittivity')
+      CALL ListInitElementKeyword( LayerH_h,'Boundary Condition','Layer Thickness')
+      CALL ListInitElementKeyword( LayerRho_h,'Boundary Condition','Layer Charge Density')
+      CALL ListInitElementKeyword( LayerV_h,'Boundary Condition','Electrode Potential')
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 1.0_dp   ! natural/relative units by default; see file header 
+      InitHandles = .FALSE.
+    END IF
+    
+    dim = CoordinateSystemDimension()
+
+    CALL GetElementNodes( Nodes, UElement=Element )
+    STIFF = 0._dp
+    FORCE = 0._dp
+    LOAD = 0._dp
+           
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints( Element )
+    
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis )
+      Weight = IP % s(t) * DetJ
+      
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+
+      ! Evaluate terms at the integration point:
+      ! BC: -epsilon@Phi/@n = -alpha Phi + beta
+      !------------------------------------------
+
+      ! Given flux:
+      ! -----------
+      Alpha = 0.0_dp
+      Beta = ListGetElementReal( Flux_h, Basis, Element, GotSome )
+      IF( .NOT. GotSome ) THEN
+        Beta = ListGetElementReal( SurfaceCharge_h, Basis, Element, GotSome )
+      END IF
+
+      IF( ListGetElementLogical( Infty_h, Element, Found ) ) THEN
+        ! Robin type of condition for farfield potential (r*(u-u_0)):
+        ! -----------------------------------------------------------
+        GotSome = .TRUE.
+        Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
+        Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
+        Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
         
-        CurrentElement => Mesh % Elements(t)
+        Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
+        Ext = ListGetElementReal( Farfield_h, Basis, Element, Found )
+
+        Alpha = Eps0 * SUM( Coord * Normal ) / SUM( Coord * Coord )         
+        Beta = Beta + Alpha * Ext
+      ELSE
+        ! Boundary condition for electrostatic layer on the boundary.
+        !------------------------------------------------------------
+        LayerEps = ListGetElementReal( LayerEps_h, Basis, Element, Found )
+        IF(Found) THEN
+          GotSome = .TRUE.
+          LayerH = ListGetElementReal( LayerH_h, Basis, Element, Found )
+          IF ( .NOT. Found) THEN
+            CALL Fatal( Caller,'Charge > Layer thickness < not given!' )
+          END IF 
+          LayerV = ListGetElementReal( LayerV_h, Basis, Element, Found )
+          LayerRho = ListGetElementReal( LayerRho_h, Basis, Element, Found )
+
+          Alpha = LayerEps / LayerH          
+          Beta = Beta + Alpha * LayerV + 0.5_dp * LayerRho * LayerH / Eps0
+        END IF
+      END IF
+
+      IF( GotSome ) THEN      
+        DO p=1,nd
+          DO q=1,nd
+            STIFF(p,q) = STIFF(p,q) + Weight * Alpha * Basis(q) * Basis(p)
+          END DO
+        END DO
+        FORCE(1:nd) = FORCE(1:nd) + Weight * Beta * Basis(1:nd)
+      END IF
+
+    END DO
+    
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
-!      Set the current element pointer in the model structure to
-!      reflect the element being processed
+  END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
-        Model % CurrentElement => Mesh % Elements(t)
+
 !------------------------------------------------------------------------------
-        n = CurrentElement % TYPE % NumberOfNodes
-        NodeIndexes => CurrentElement % NodeIndexes
+END SUBROUTINE StatElecSolver
+!------------------------------------------------------------------------------
+
+
+
+!-----------------------------------------------------------------------------
+!> A solver performing the postprocessing for the primary solver.
+!> This solver is called at the DefaultFinish() slot of the primary solver.
+!------------------------------------------------------------------------------
+SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE StatElecSolveFront
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(Element_t),POINTER :: Element
+  INTEGER :: i, n, nd, t, active, nthr
+  LOGICAL :: Found, InitHandles
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),FORCE(:,:),MASS(:,:),&
+      PotInteg(:),PotVol(:)
+  INTEGER, POINTER :: WeightPerm(:)
+  CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver_post'
+  LOGICAL :: CalcCurrent, CalcField, CalcElectricDisp, NeedScaling, ConstantWeights, &
+      Axisymmetric, CalcAvePotential, DoAve
+  TYPE(ValueList_t), POINTER :: Params
+  REAL(KIND=dp) :: EnergyTot, Voltot
+
+  ! Per-thread handle/cache storage for LocalPostAssembly; see StatElecSolver
+  ! above for why this is not THREADPRIVATE.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: SourceCoeff_h(:), EpsCoeff_h(:)
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: Eps0(:)
+
+  TYPE PostVars_t
+    TYPE(Variable_t), POINTER :: Var => NULL()
+    INTEGER :: FieldType = -1
+    LOGICAL :: NodalField = .FALSE.
+    LOGICAL :: HaveVar = .FALSE.
+  END TYPE PostVars_t
+  TYPE(PostVars_t) :: PostVars(8)
+  !------------------------------------------------------------------------------
+
+  ! When "Legacy Assembly" is set, StatElecSolver_init never turns on
+  ! "PostSolver Active", so the core does not call this routine at all -- this
+  ! guard is only a defensive fallback in case that keyword gets set some other
+  ! way.
+  IF ( LegacyAssembly( Solver ) ) RETURN
+
+  CALL Info(Caller,'------------------------------------------------')
+  CALL Info(Caller,'Calculating postprocessing fields')
+  
+  Mesh => GetMesh()
+  Params => GetSolverParams()
+    
+  ConstantWeights = ListGetLogical( Params,'Constant Weights',Found ) 
+
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )     
+
+  CalcAvePotential = ListGetLogical( Params,'Calculate Average Potential',Found )
+  DoAve = ListGetLogical( Params,'Average Within Materials',Found ) 
+  
+  IF( CalcAvePotential ) THEN   
+    n = Model % NumberOfBodies 
+    ALLOCATE( PotInteg(n), PotVol(n) )
+    PotInteg = 0.0_dp
+    PotVol = 0.0_dp
+  END IF
+  
+  ! Joule losses: type 1, component 1
+  PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Energy Density')
+  PostVars(1) % NodalField = .TRUE.
+  PostVars(2) % Var => VariableGet( Mesh % Variables, 'Electric Energy Density')
+  PostVars(3) % Var => VariableGet( Mesh % Variables, 'Electric Energy Density e')
+  PostVars(1:3) % FieldType = 1
+
+  ! Electric current: type 2, components 2:4
+  PostVars(4) % Var => VariableGet( Mesh % Variables, 'Nodal Electric Flux')
+  PostVars(4) % NodalField = .TRUE.
+  PostVars(5) % Var => VariableGet( Mesh % Variables, 'Electric Flux')
+  PostVars(6) % Var => VariableGet( Mesh % Variables, 'Electric Flux e')
+  PostVars(4:6) % FieldType = 2 
+
+  ! Electric field: type 3, components 5-7
+  PostVars(7) % Var => VariableGet( Mesh % Variables, 'Electric Field')
+  PostVars(8) % Var => VariableGet( Mesh % Variables, 'Electric Field e')
+  PostVars(7:8) % FieldType = 3 
+
+  ! Do this since the "associated" command cannot handle vectors!
+  ! Also initialize the field to zero since some of these are additive
+  DO i=1,8
+    PostVars(i) % HaveVar = ASSOCIATED( PostVars(i) % Var )
+    IF( PostVars(i) % HaveVar ) PostVars(i) % Var % Values = 0.0_dp
+  END DO
+  
+  CalcElectricDisp = ANY( PostVars(1:3) % HaveVar ) 
+  CalcCurrent = ANY( PostVars(4:6) % HaveVar ) 
+  CalcField = ANY( PostVars(7:8) % HaveVar ) 
+
+  n = COUNT( PostVars(1:8) % HaveVar )
+  CALL Info(Caller,'Number of '//I2S(n)//' postprocessing fields',Level=8)
+    
+  ! Only create the nodal weights if we need to scale some nodal field
+  NeedScaling = .FALSE.
+  DO i=1,8
+    IF( .NOT. PostVars(i) % HaveVar ) CYCLE
+    IF( PostVars(i) % NodalField ) CYCLE
+    IF( PostVars(i) % Var % TYPE == Variable_on_nodes ) THEN
+      CALL Info(Caller,'Creating a weighting for scaling purposes from '//I2S(i),Level=10)
+      NeedScaling = .TRUE.
+      WeightPerm => PostVars(i) % Var % Perm 
+      ALLOCATE( WeightVector( MAXVAL( WeightPerm ) ) )
+      WeightVector = 0.0_dp
+      EXIT
+    END IF
+  END DO
+
+  n = Mesh % MaxElementDOFs
+  ALLOCATE( MASS(n,n), FORCE(8,n) ) ! 1+1+3+3 components for force
+
+  nthr = 1
+  !$ nthr = omp_get_max_threads()
+  IF( ALLOCATED( SourceCoeff_h ) ) THEN
+    IF( SIZE( SourceCoeff_h ) /= nthr ) &
+        DEALLOCATE( SourceCoeff_h, EpsCoeff_h, Eps0 )
+  END IF
+  IF( .NOT. ALLOCATED( SourceCoeff_h ) ) THEN
+    ALLOCATE( SourceCoeff_h(nthr), EpsCoeff_h(nthr), Eps0(nthr) )
+  END IF
+
+  CALL Info(Caller,'Calculating local field values',Level=12)
+
+  EnergyTot = 0.0_dp
+  VolTot = 0.0_dp
+
+  !$OMP PARALLEL &
+  !$OMP SHARED(Solver, Active) &
+  !$OMP PRIVATE(t, Element, n, nd, InitHandles, MASS, FORCE)
+
+  !$OMP SINGLE
+  Active = GetNOFActive(Solver)
+  !$OMP END SINGLE
+  InitHandles = .TRUE.
+
+  !$OMP DO
+  DO t = 1, Active
+    Element => GetActiveElement(t)
+    IF( ParEnv % PEs > 1 ) THEN
+      IF( ParEnv % MyPe /= Element % PartIndex ) CYCLE
+    END IF
+    n  = GetElementNOFNodes(Element)
+    nd = GetElementNOFDOFs(Element)
+    CALL LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
+    CALL LocalPostSolve( Element, n, MASS, FORCE )
+  END DO
+  !$OMP END DO
+  !$OMP END PARALLEL
+
+
+  IF( NeedScaling ) THEN
+    CALL Info(Caller,'Scaling the field values with weights',Level=12)
+    CALL GlobalPostScale()
+  END IF
+
+  IF( DoAve ) THEN
+    CALl GlobalPostAve()
+  END IF
+
+  IF( CalcAvePotential ) THEN
+    BLOCK        
+      REAL(KIND=dp), ALLOCATABLE:: PotTmp(:)
+      INTEGER :: ierr      
+      REAL(KIND=dp) :: PotAve
+      n = Model % NumberOfBodies
+      IF( ParEnv % PEs > 1 ) THEN
+        ALLOCATE( PotTmp(n) )        
+        CALL MPI_ALLREDUCE(PotVol,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
+        PotVol = PotTmp
+        CALL MPI_ALLREDUCE(PotInteg,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
+        PotInteg = PotTmp
+        DEALLOCATE( PotTmp ) 
+      END IF
+
+      DO i = 1, n
+        IF( PotVol(i) < EPSILON( PotVol(i) ) ) CYCLE
+        PotAve = PotInteg(i) / PotVol(i)
+        WRITE( Message,'(A,ES12.5)') 'Average body'//I2S(i)//' potential: ',PotAve
+        CALL Info(Caller,Message,Level=7)
+        CALL ListAddConstReal( Model % Simulation,&
+            'res: Average body'//I2S(i)//' potential',PotAve)
+      END DO
+    END BLOCK
+  END IF
+    
+  CALL Info(Caller,'All done',Level=12)
+
+  
+
+CONTAINS
+   
+  SUBROUTINE LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(INOUT) :: InitHandles
+    REAL(KIND=dp) :: MASS(:,:), FORCE(:,:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),ElementPot(:)
+    REAL(KIND=dp) :: weight
+    REAL(KIND=dp) :: EpsAtIp, DetJ
+    REAL(KIND=dp) :: EpsGrad(3), Grad(3), Heat
+    LOGICAL :: Stat,Found
+    INTEGER :: i,j,t,dim,m,allocstat,tid
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    ! Handles/Eps0 live in parent scope as thread-indexed arrays; see ASSOCIATE below.
+!------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => SourceCoeff_h(tid), EpsCoeff_h => EpsCoeff_h(tid), &
+        Eps0 => Eps0(tid) )
+
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
+      Found = .FALSE.
+      IF( ASSOCIATED( Model % Constants ) ) THEN
+        Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
+      END IF
+      IF( .NOT. Found ) Eps0 = 1.0_dp   ! natural/relative units by default; see file header
+      InitHandles = .FALSE.
+    END IF
+
+    dim = CoordinateSystemDimension()
+
+    m = Mesh % MaxElementDOFs
+    ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
+    END IF
+
+    CALL GetElementNodes( Nodes, UElement=Element, USolver=Solver )
+    CALL GetScalarLocalSolution( ElementPot, UElement=Element, USolver=Solver) 
+    
+    ! Initialize
+    MASS  = 0._dp
+    FORCE = 0._dp
+
+    IP = GaussPoints( Element )
+    
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )
+      Weight = IP % s(t) * DetJ
+
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+       
+      DO i=1,n
+        DO j=1,n
+          MASS(i,j) = MASS(i,j) + Weight * Basis(i) * Basis(j)
+        END DO
+      END DO
+
+      ! Compute the integration weights 
+      !----------------------------------------------------------------------------
+      FORCE(1,1:n) = FORCE(1,1:n) + Weight * Basis(1:n)
+
+      EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found, &
+         GaussPoint = t )
         
-        DO i=1,Model % NumberOfBCs
-          IF ( CurrentElement % BoundaryInfo % Constraint == &
-              Model % BCs(i) % Tag ) THEN
-            
-            BC => Model % BCs(i) % Values
-            Body = ListGetInteger( BC, Name, gotIt )
-            IF( GotIt ) CapBodyIndex(NodeIndexes) = Body
+      ! Compute the electric field from the potential: E = -grad Phi
+      !------------------------------------------------------------------------------
+      DO j = 1, DIM
+        Grad(j) = SUM( dBasisdx(1:nd,j) * ElementPot(1:nd) )
+      END DO
+      IF( CalcField ) THEN
+        DO j=1,dim
+          Force(5+j,1:n) = Force(5+j,1:n) - Grad(j) * Weight * Basis(1:n)
+        END DO
+      END IF
+
+      ! Compute the volume current: J = eps (-grad Phi)
+      !------------------------------------------------------------------------------
+      EpsGrad(1:dim) = EpsAtIp * Grad(1:dim)
+
+      IF( CalcCurrent ) THEN
+        DO j=1,dim
+          Force(2+j,1:n) = Force(2+j,1:n) - EpsGrad(j) * Weight * Basis(1:n)
+        END DO
+      END IF
+
+      ! Compute the Joule heating: H,tot = Integral (E . D)dV
+      !------------------------------------------------------------------------------
+      Heat = SUM( Grad(1:dim) * EpsGrad(1:dim) )      
+      IF( CalcElectricDisp ) THEN
+        Force(2,1:n) = Force(2,1:n) + Heat * Weight * Basis(1:n)
+      END IF
+
+      ! PotVol/PotInteg/VolTot/EnergyTot are shared across threads (accumulated
+      ! over all elements) — this loop runs inside an OMP DO, so plain "+="
+      ! updates would race. ATOMIC makes each individual update safe.
+      IF( CalcAvePotential ) THEN
+        i = Element % BodyId
+        !$OMP ATOMIC UPDATE
+        PotVol(i) = PotVol(i) + Weight
+        !$OMP ATOMIC UPDATE
+        PotInteg(i) = PotInteg(i) + Weight * SUM( Basis(1:n) * ElementPot(1:n) )
+      END IF
+
+      !$OMP ATOMIC UPDATE
+      VolTot = VolTot + Weight
+      !$OMP ATOMIC UPDATE
+      EnergyTot = EnergyTot + Weight * Heat
+    END DO
+
+    ! WeightVector is likewise shared; nodes are shared between elements so
+    ! different threads can update the same entries — ATOMIC doesn't apply to
+    ! a whole array-section statement, so use CRITICAL instead (once per
+    ! element, not per integration point).
+    IF( NeedScaling ) THEN
+      !$OMP CRITICAL
+      IF( ConstantWeights ) THEN
+        WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
+            WeightVector( WeightPerm( Element % NodeIndexes ) ) + 1.0_dp
+      ELSE
+        WeightVector( WeightPerm( Element % NodeIndexes ) ) = &
+            WeightVector( WeightPerm( Element % NodeIndexes ) ) + Force(1,1:n)
+      END IF
+      !$OMP END CRITICAL
+    END IF
+
+    END ASSOCIATE
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalPostAssembly
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalPostSolve( Element, n, A, b )
+!------------------------------------------------------------------------------
+    TYPE(Element_t), TARGET :: Element
+    INTEGER :: n
+    REAL(KIND=dp) :: b(:,:), A(:,:)
+!------------------------------------------------------------------------------
+    INTEGER :: pivot(n),ind(n),i,j,m,dofs,dofcount,FieldType,Vari
+    REAL(KIND=dp) :: x(n)
+    TYPE(Variable_t), POINTER :: pVar
+    LOGICAL :: LocalSolved, Erroneous
+!------------------------------------------------------------------------------
+    
+    CALL LUdecomp(A,n,pivot,Erroneous)
+    IF (Erroneous) CALL Fatal('LocalPostSolve', 'LU-decomposition fails')
+
+    ! Weight is the 1st column
+    dofcount = 1
+    DO FieldType = 1, 3
+
+      IF( FieldType == 1 ) THEN
+        ! Joule heating has one component
+        dofs = 1
+      ELSE
+        ! Current and electric field has three components
+        dofs = 3
+      END IF
+     
+      DO m=1,dofs
+        dofcount = dofcount+1
+        x = b(dofcount,1:n)
+        LocalSolved = .FALSE.
+        
+        DO Vari = 1, 8
+          pVar => PostVars(Vari) % Var
+          IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+          IF( PostVars(Vari) % FieldType /= FieldType ) CYCLE
+
+          IF( m > pVar % Dofs ) CYCLE
+          
+          ! The nodal fields need not be solved for.
+          ! Note the nodal field should come before the distributed fields!!
+          IF( PostVars(Vari) % NodalField ) THEN
+            CONTINUE
+          ELSE IF(.NOT. LocalSolved ) THEN
+            CALL LUSolve(n,A,x,pivot)
+            LocalSolved = .TRUE.
+          END IF
+
+          ! Note that even though while calling we implicitly assumes elemental
+          ! and nodal fields the convention is not assumed here.
+          IF( pVar % TYPE == variable_on_nodes_on_elements ) THEN
+            ind = pVar % dofs * (pVar % Perm(Element % DGIndexes(1:n))-1)+m
+            pVar % Values(ind(1:n)) = x(1:n)          
+          ELSE IF( pVar % TYPE == variable_on_nodes ) THEN
+            ! Nodes are shared between elements, so different threads can
+            ! accumulate into the same pVar % Values entries here — guard
+            ! with CRITICAL (as with WeightVector in LocalPostAssembly).
+            ind = pVar % dofs * (pVar % Perm(Element % NodeIndexes(1:n))-1)+m
+            !$OMP CRITICAL
+            IF( ConstantWeights ) THEN
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + x(1:n)
+            ELSE
+              pVar % Values(ind(1:n)) = pVar % Values(ind(1:n)) + b(1,1:n) * x(1:n)
+            END IF
+            !$OMP END CRITICAL
+          ELSE IF( pVar % TYPE == variable_on_elements ) THEN
+            j = pVar % dofs * ( pVar % Perm( Element % ElementIndex )-1)+m
+            pVar % Values(j) = SUM( x(1:n) ) / n
+          ELSE
+            CALL Warn('LocalPostSolve','Do not know what to do with variable type: '//I2S(pVar % TYPE))
           END IF
         END DO
       END DO
-
-      PRINT *,'Number of permutation BCs'
-      DO i=1,MaxBody
-        PRINT *,'Capacitance body:',i,'no',COUNT(CapBodyIndex == i )
-      END DO
-    END IF
-
+    END DO   
 !------------------------------------------------------------------------------
-   END SUBROUTINE SetPermutationBoundaries
+  END SUBROUTINE LocalPostSolve
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE GlobalPostScale()
+!------------------------------------------------------------------------------
+   INTEGER :: dofs,i,j,Vari
+   TYPE(Variable_t), POINTER :: pVar
+   REAL(KIND=dp), ALLOCATABLE :: tmp(:)
+   REAL(KIND=dp) :: PotDiff, Capacitance, ControlTarget, ControlScaling, val
+   
+   VolTot = ParallelReduction(VolTot)
+   EnergyTot = ParallelReduction(EnergyTot)
 
-!------------------------------------------------------------------------------
-   SUBROUTINE StatElecBoundary( BoundaryMatrix, BoundaryVector, &
-        LoadVector, Alpha, Beta, OpenBC, Permittivity, Element, n, Nodes )
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: BoundaryMatrix(:,:)
-     REAL(KIND=dp) :: BoundaryVector(:)
-     REAL(KIND=dp) :: LoadVector(:)
-     REAL(KIND=dp) :: Alpha(:)  !< Coefficient of the Robin BC: g = alpha * u + beta
-     REAL(KIND=dp) :: Beta(:)   !< Coefficient of the Robin BC: g = alpha * u + beta
-     LOGICAL :: OpenBC
-     REAL(KIND=dp) :: Permittivity(:)
-     TYPE(Element_t), TARGET :: Element
-     TYPE(Element_t), POINTER :: PElement
-     INTEGER :: n
-     TYPE(Nodes_t)   :: Nodes
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Basis(n)
-     REAL(KIND=dp) :: dBasisdx(n,3),SqrtElementMetric
-     REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),&
-         Coord(3), Normal(3)
-     REAL(KIND=dp) :: u,v,w,s,x,y,z
-     REAL(KIND=dp) :: Force, AlphaAtIP, BetaAtIP, PermAtIP
-     REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
-     INTEGER :: t,p,q,N_Integ
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-     LOGICAL :: stat
-!------------------------------------------------------------------------------
+   ! The accumulated integral above is int(Eps0*eps_r*|E|^2)dV -- the true
+   ! electrostatic energy is half that (W = 0.5*int(eps*E^2)dV, matching
+   ! legacy's own "Wetot = PermittivityOfVacuum*Wetot/2.0_dp"; Eps0 is already
+   ! folded in per Gauss point here, unlike legacy which applies it only at
+   ! this last step, so only the /2 is still needed). This was missing
+   ! entirely, so both "res: Electric Energy" and the capacitance derived from
+   ! it below came out exactly 2x too large.
+   EnergyTot = EnergyTot / 2.0_dp
 
-     BoundaryVector = 0.0_dp
-     BoundaryMatrix = 0.0_dp
-!------------------------------------------------------------------------------
-!    Integration stuff
-!------------------------------------------------------------------------------
-     IntegStuff = GaussPoints( Element )
-     U_Integ => IntegStuff % u
-     V_Integ => IntegStuff % v
-     W_Integ => IntegStuff % w
-     S_Integ => IntegStuff % s
-     N_Integ =  IntegStuff % n
+   WRITE( Message,'(A,ES12.3)') 'Total Electric Energy:', Energytot
+   CALL Info( Caller, Message, Level=6 )
+   CALL ListAddConstReal( Model % Simulation,'res: Electric Energy', Energytot )
+   
+   PotDiff = DirichletDofsRange( Solver )     
+   IF( PotDiff > TINY( PotDiff ) ) THEN
+     CALL ListAddConstReal( Model % Simulation,'res: Potential Difference', PotDiff )
+     Capacitance = 2 * EnergyTot / PotDiff**2 
+     WRITE( Message,'(A,ES12.3)') 'Effective Capacitance:', Capacitance
+     CALL Info(Caller, Message, Level=6 )
+     CALL ListAddConstReal( Model % Simulation,&
+         'RES: Effective Capacitance', Capacitance )
+   END IF
+         
+   ! If we need to scale then also communicate the weight
+   IF (ParEnv % PEs>1 .AND. NeedScaling) THEN
+     CALL ParallelSumVector(Solver % Matrix, WeightVector )
+   END IF
 
-!------------------------------------------------------------------------------
-!   Now we start integrating
-!------------------------------------------------------------------------------
-     DO t=1,N_Integ
-       u = U_Integ(t)
-       v = V_Integ(t)
-       w = W_Integ(t)
-!------------------------------------------------------------------------------
-!     Basis function values & derivates at the integration point
-!------------------------------------------------------------------------------
-      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric, &
-                 Basis,dBasisdx )
+   DO Vari = 1, 8
+     pVar => PostVars(Vari) % Var
+     IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+     IF( PostVars(Vari) % NodalField ) CYCLE
+     
+     ! This is the only type of variable needing scaling!
+     IF( pVar % TYPE /= variable_on_nodes ) CYCLE
 
-!------------------------------------------------------------------------------
-!      Coordinatesystem dependent info
-!------------------------------------------------------------------------------
-      IF ( CurrentCoordinateSystem() /= Cartesian .OR. OpenBC ) THEN
-        x = SUM( Nodes % x(1:n)*Basis(1:n) )
-        y = SUM( Nodes % y(1:n)*Basis(1:n) )
-        z = SUM( Nodes % z(1:n)*Basis(1:n) )
-      END IF
-      
-      CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
-      
-      s = S_Integ(t) * SqrtElementMetric * SqrtMetric
-      
-      AlphaAtIP = SUM( Basis(1:n) * Alpha(1:n))
-      BetaAtIp = SUM( Basis(1:n) * Beta(1:n))
-
-      IF( OpenBC ) THEN
-        PermAtIP = SUM( Basis(1:n) * Permittivity(1:n) ) 
-        Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
-        Coord(1) = x
-        Coord(2) = y
-        Coord(3) = z
-        AlphaAtIP = PermAtIP * SUM( Coord * Normal ) / SUM( Coord * Coord ) 
-      END IF
-
-!------------------------------------------------------------------------------
-      Force = SUM( LoadVector(1:n) * Basis )
-      Force = Force + BetaAtIp
-      DO p=1,N
-        DO q=1,N
-          BoundaryMatrix(p,q) = BoundaryMatrix(p,q) + &
-              s * AlphaAtIp * Basis(q) * Basis(p)
-        END DO
-      END DO
-      
-      DO q=1,N
-        BoundaryVector(q) = BoundaryVector(q) + s * Basis(q) * Force
-      END DO
+     dofs = pVar % Dofs
+     
+     IF ( ParEnv % PEs > 1) THEN
+       IF( dofs == 1 ) THEN
+         CALL ParallelSumVector(Solver % Matrix, pVar % Values )
+       ELSE
+         IF(.NOT. ALLOCATED( tmp ) ) THEN
+           ALLOCATE( tmp( SIZE( WeightVector ) ) )         
+         END IF         
+         DO i=1,dofs
+           tmp = pVar % Values(i::dofs)
+           CALL ParallelSumVector(Solver % Matrix, tmp)
+           pVar % Values(i::dofs) = tmp
+         END DO
+       END IF
+     END IF
+     
+     DO i=1,dofs
+       WHERE( ABS( WeightVector ) > TINY( val ) ) &
+           pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
      END DO
-   END SUBROUTINE StatElecBoundary
+   END DO
+
+   ! Apply physical scaling in the end, if requested
+   !------------------------------------------------------------------------
+   ControlTarget = GetCReal( Params,'Energy Control',Found)
+   IF( Found ) THEN
+     CALL Info( Caller,'Scaling energy to desired value',Level=6)
+     ControlScaling = SQRT( ControlTarget / EnergyTot )
+   END IF
+
+   IF( .NOT. Found ) THEN
+     ControlTarget = GetCReal( Params,'Charge Control', Found ) 
+     IF( Found ) THEN
+       CALL Info( Caller,'Scaling charge to desired value',Level=6)      
+       IF( PotDiff < TINY( PotDiff ) ) THEN
+         CALL Fatal(Caller,'Charge cannot be controlled without pot. difference')
+       END IF
+       ControlScaling = ControlTarget / ( EnergyTot / PotDiff )
+     END IF
+   END IF
+     
+   IF( Found ) THEN
+     WRITE( Message,'(A,ES12.3)') 'Control Scaling:', ControlScaling
+     CALL Info(Caller, Message, Level=4 )
+     CALL ListAddConstReal( Model % Simulation,'RES: StatElec Scaling',ControlScaling )
+
+     Solver % Variable % Values = ControlScaling * Solver % Variable % Values
+          
+     DO Vari = 1, 8 
+       pVar => PostVars(Vari) % Var
+       IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+       IF( PostVars(Vari) % FieldType == 1 ) THEN
+         ! Energy density scales quadratically
+         pVar % Values = (ControlScaling**2) * pVar % Values
+       ELSE
+         ! other fields scave linearly         
+         pVar % Values = ControlScaling * pVar % Values
+       END IF
+     END DO
+   END IF
+
+#if 0
+   DO Vari = 1, 8 
+     pVar => PostVars(Vari) % Var
+     IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+     ! check this
+     CALL InvalidateVariable( Model % Meshes, Solver % Mesh,PostVars(Vari) % Var % Name ) 
+   END DO
+#endif
+   
+!------------------------------------------------------------------------------
+ END SUBROUTINE GlobalPostScale
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
- END SUBROUTINE StatElecSolver
+  SUBROUTINE GlobalPostAve()
 !------------------------------------------------------------------------------
+    USE MeshBasics, ONLY : CalculateBodyAverage
+    INTEGER :: i, Vari
+    TYPE(Variable_t), POINTER :: pVar
+
+    DO Vari = 1, 8
+      pVar => PostVars(Vari) % Var
+      IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+
+      ! This is the only type of variable needing averaging!
+      IF( pVar % TYPE == variable_on_nodes_on_elements ) THEN
+        ! We reset the flag since, otherwise this will not be averaged...
+        pVar % DgAveraged = .FALSE.
+        CALL Info(Caller,'Averaging for field: '//TRIM(pVar % Name),Level=10)
+        CALL CalculateBodyAverage(Mesh, pVar, .FALSE.)
+      END IF
+    END DO
+
+  END SUBROUTINE GlobalPostAve
+!------------------------------------------------------------------------------
+END SUBROUTINE StatElecSolver_Post
+!------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
-  SUBROUTINE StatElecSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator )
+! Subroutine for computing residuals for adaptive mesh refinement.
 !------------------------------------------------------------------------------
-     USE DefUtils
-     IMPLICIT NONE
+SUBROUTINE StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
 !------------------------------------------------------------------------------
-     TYPE(Model_t) :: Model
-     INTEGER :: Perm(:)
-     REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-     TYPE( Mesh_t )    :: Mesh
-     TYPE( Element_t ) :: Edge
+  USE DefUtils
+  IMPLICIT NONE
 !------------------------------------------------------------------------------
-     TYPE(Nodes_t) :: Nodes, EdgeNodes
-     TYPE(Element_t), POINTER :: Element
+  TYPE(Model_t) :: Model
+  INTEGER :: Perm(:)
+  REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+  TYPE(Mesh_t) :: Mesh
+  TYPE(Element_t) :: Edge
+!------------------------------------------------------------------------------
+  TYPE(Nodes_t) :: Nodes, EdgeNodes
+  TYPE(Element_t), POINTER :: Element
+  INTEGER :: i, j, k, n, l, t, dim, Pn, En, nd
+  LOGICAL :: stat, Found
+  INTEGER, ALLOCATABLE :: Indexes(:)
+  REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
+  REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
+  REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), &
+      EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
+      dBasisdx(:, :), Potential(:), Flux(:)  
+  REAL(KIND=dp) :: Normal(3), EdgeLength, gx, gy, gz, Permittivity
+  REAL(KIND=dp) :: u, v, w, s, detJ
+  REAL(KIND=dp) :: Residual, ResidualNorm
+  TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     INTEGER :: i,j,k,n,l,t,dim,Pn,En
-     LOGICAL :: stat, Found
-
-     REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
-     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-     REAL(KIND=dp) :: Grad(3,3), Normal(3), EdgeLength
-     REAL(KIND=dp) :: u, v, w, s, detJ
-     REAL(KIND=dp) :: Residual, ResidualNorm, Permittivity
-
-     REAL(KIND=dp), ALLOCATABLE :: EdgeBasis(:), Basis(:)
-     REAL(KIND=dp), ALLOCATABLE :: Flux(:)
-     REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:), dBasisdx(:,:)
-     REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), Potential(:)
-
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
-     LOGICAL :: Dirichlet
-
+  LOGICAL :: First = .TRUE., Dirichlet
+  SAVE Hwrk, First
 !------------------------------------------------------------------------------
 
 !    Initialize:
 !    -----------
-     NULLIFY( Hwrk )
+  IF (First) THEN
+    First = .FALSE.
+    NULLIFY (Hwrk)
+  END IF
 
-     Gnorm     = 0.0_dp
+  Indicator = 0.0d0
+  Gnorm = 0.0d0
 
-     Metric = 0.0_dp
-     DO i=1,3
-        Metric(i,i) = 1.0_dp
-     END DO
+  Metric = 0.0d0
+  DO i = 1, 3
+    Metric(i, i) = 1.0d0
+  END DO
 
-     SELECT CASE( CurrentCoordinateSystem() )
-        CASE( AxisSymmetric, CylindricSymmetric )
-           dim = 3
-        CASE DEFAULT
-           dim = CoordinateSystemDimension()
-     END SELECT
-!    
+  SELECT CASE (CurrentCoordinateSystem())
+  CASE (AxisSymmetric, CylindricSymmetric)
+    dim = 3
+  CASE DEFAULT
+    dim = CoordinateSystemDimension()
+  END SELECT
+!
 !    ---------------------------------------------
 
-     Element => Edge % BoundaryInfo % Left
+  Element => Edge % BoundaryInfo % Left
 
-     IF ( .NOT. ASSOCIATED( Element ) ) THEN
+  IF (.NOT. ASSOCIATED(Element)) THEN
+    Element => Edge % BoundaryInfo % Right
+  ELSE IF (ANY(Perm(Element % NodeIndexes) <= 0)) THEN
+    Element => Edge % BoundaryInfo % Right
+  END IF
 
-        Element => Edge % BoundaryInfo % Right
+  IF (.NOT. ASSOCIATED(Element)) RETURN
+  IF (ANY(Perm(Element % NodeIndexes) <= 0)) RETURN
 
-     ELSE IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) THEN
+  en = Edge % TYPE % NumberOfNodes
+  pn = Element % TYPE % NumberOfNodes
 
-        Element => Edge % BoundaryInfo % Right
+  ALLOCATE (EdgeNodes % x(en), EdgeNodes % y(en), EdgeNodes % z(en))
 
-     END IF
+  EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
+  EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
+  EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     IF ( .NOT. ASSOCIATED( Element ) ) RETURN
-     IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) RETURN
+  nd = GetElementNOFDOFs(Element)
+  ALLOCATE (Potential(nd), Basis(nd), &
+            x(en), y(en), z(en), EdgeBasis(nd), &
+            dBasisdx(nd, 3), NodalPermittivity(nd), Flux(nd), &
+            Indexes(nd))
 
-     En = Edge % TYPE % NumberOfNodes
-     Pn = Element % TYPE % NumberOfNodes
+  nd = GetElementDOFs(Indexes, Element)
 
-     ALLOCATE( EdgeNodes % x(En), EdgeNodes % y(En), EdgeNodes % z(En) )
+  ALLOCATE (Nodes % x(nd), Nodes % y(nd), Nodes % z(nd))
+  Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+  Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+  Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
 
-     EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
-     EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
-     EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
-
-     ALLOCATE( Nodes % x(Pn), Nodes % y(Pn), Nodes % z(Pn) )
-
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
-
-     ALLOCATE( EdgeBasis(En), Basis(Pn), dBasisdx(Pn,3), Flux(En), &
-      x(En), y(En), z(En), NodalPermittivity(En), Potential(Pn) )
-
-     DO l = 1,En
-       DO k = 1,Pn
-          IF ( Edge % NodeIndexes(l) == Element % NodeIndexes(k) ) THEN
-             x(l) = Element % TYPE % NodeU(k)
-             y(l) = Element % TYPE % NodeV(k)
-             z(l) = Element % TYPE % NodeW(k)
-             EXIT
-          END IF
-       END DO
-     END DO
+  DO l = 1, en
+    DO k = 1, pn
+      IF (Edge % NodeIndexes(l) == Element % NodeIndexes(k)) THEN
+        x(l) = Element % TYPE % NodeU(k)
+        y(l) = Element % TYPE % NodeV(k)
+        z(l) = Element % TYPE % NodeW(k)
+        EXIT
+      END IF
+    END DO
+  END DO
 !
 !    Integrate square of residual over boundary element:
 !    ---------------------------------------------------
 
-     Indicator    = 0.0_dp
-     EdgeLength   = 0.0_dp
-     ResidualNorm = 0.0_dp
+  Indicator = 0.0d0
+  EdgeLength = 0.0d0
+  ResidualNorm = 0.0d0
 
-     DO j=1,Model % NumberOfBCs
-        IF ( Edge % BoundaryInfo % Constraint /= Model % BCs(j) % Tag ) CYCLE
+  DO j = 1, Model % NumberOfBCs
+    IF (Edge % BoundaryInfo % Constraint /= Model % BCs(j) % Tag) CYCLE
 
 !
 !       Check if dirichlet BC given:
 !       ----------------------------
-        Dirichlet = ListCheckPresent( Model % BCs(j) % Values, &
-            ComponentName(Model % Solver % Variable) )
-        IF(.NOT. Dirichlet ) THEN
-          Dirichlet = ListCheckPrefix( Model % BCs(j) % Values, &
-              'Constraint Mode')
-        END IF
+    Dirichlet = ListCheckPresent(Model % BCs(j) % Values, &
+                                 ComponentName(Model % Solver % Variable))
+    IF (.NOT. Dirichlet) THEN
+      Dirichlet = ListCheckPrefix(Model % BCs(j) % Values, &
+                                  'Constraint Mode')
+    END IF
+    ! TODO s = ListGetConstReal( Model % BCs(j) % Values,'Potential',Dirichlet )
 
 !       Get various flux bc options:
 !       ----------------------------
 
 !       ...given flux:
 !       --------------
-        Flux(1:En) = ListGetReal( Model % BCs(j) % Values, &
-          'Electric Flux', En, Edge % NodeIndexes, Found )
-
+    Flux(1:en) = ListGetReal(Model % BCs(j) % Values, &
+                             'Electric Flux', en, Edge % NodeIndexes, Found)
 
 !       get material parameters:
 !       ------------------------
-        k = ListGetInteger(Model % Bodies(Element % BodyId) % Values,'Material', &
-                    minv=1, maxv=Model % NumberOFMaterials)
+    k = ListGetInteger(Model % Bodies(Element % BodyId) % Values, 'Material', &
+                       minv=1, maxv=Model % NumberOFMaterials)
 
-        CALL ListGetRealArray( Model % Materials(k) % Values, &
-               'Relative Permittivity', Hwrk, En, Edge % NodeIndexes,stat )
-        IF ( .NOT. stat )  &
-             CALL ListGetRealArray( Model % Materials(k) % Values, &
-             'Permittivity', Hwrk, En, Edge % NodeIndexes )
-
-        NodalPermittivity( 1:En ) = Hwrk( 1,1,1:En )
+    CALL ListGetRealArray(Model % Materials(k) % Values, &
+                          'Relative Permittivity', Hwrk, en, Edge % NodeIndexes, stat)
+    IF (.NOT. stat) &
+      CALL ListGetRealArray(Model % Materials(k) % Values, &
+                            'Permittivity', Hwrk, En, Edge % NodeIndexes)
+    NodalPermittivity(1:en) = Hwrk(1, 1, 1:en)
 
 !       elementwise nodal solution:
 !       ---------------------------
-        Potential(1:Pn) = Quant( Perm(Element % NodeIndexes) )
+    nd = GetElementDOFs(Indexes, Element)
+    Potential(1:nd) = Quant(Perm(Indexes(1:nd)))
 
 !       do the integration:
 !       -------------------
-        EdgeLength   = 0.0_dp
-        ResidualNorm = 0.0_dp
+    EdgeLength = 0.0d0
+    ResidualNorm = 0.0d0
 
-        IntegStuff = GaussPoints( Edge )
+    IntegStuff = GaussPoints(Edge)
 
-        DO t=1,IntegStuff % n
-           u = IntegStuff % u(t)
-           v = IntegStuff % v(t)
-           w = IntegStuff % w(t)
+    DO t = 1, IntegStuff % n
+      u = IntegStuff % u(t)
+      v = IntegStuff % v(t)
+      w = IntegStuff % w(t)
 
-           stat = ElementInfo( Edge, EdgeNodes, u, v, w, detJ, &
-               EdgeBasis, dBasisdx )
+      stat = ElementInfo(Edge, EdgeNodes, u, v, w, detJ, &
+                         EdgeBasis, dBasisdx)
+      Normal = NormalVector(Edge, EdgeNodes, u, v, .TRUE.)
 
-           Normal = NormalVector( Edge, EdgeNodes, u, v, .TRUE. )
-
-           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-              s = IntegStuff % s(t) * detJ
-           ELSE
-              u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
-              v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
-              w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
-      
-              CALL CoordinateSystemInfo( Metric, SqrtMetric, &
-                         Symb, dSymb, u, v, w )
-
-              s = IntegStuff % s(t) * detJ * SqrtMetric
-           END IF
+      IF (CurrentCoordinateSystem() == Cartesian) THEN
+        s = IntegStuff % s(t) * detJ
+      ELSE
+        gx = SUM(EdgeBasis(1:en) * EdgeNodes % x(1:en))
+        gy = SUM(EdgeBasis(1:en) * EdgeNodes % y(1:en))
+        gz = SUM(EdgeBasis(1:en) * EdgeNodes % z(1:en))
+        CALL CoordinateSystemInfo(Metric, SqrtMetric, &
+                                  Symb, dSymb, gx, gy, gz)
+        s = IntegStuff % s(t) * detJ * SqrtMetric
+      END IF
 
 !
 !          Integration point in parent element local
 !          coordinates:
 !          -----------------------------------------
-           u = SUM( EdgeBasis(1:En) * x(1:En) )
-           v = SUM( EdgeBasis(1:En) * y(1:En) )
-           w = SUM( EdgeBasis(1:En) * z(1:En) )
+      u = SUM(EdgeBasis(1:en) * x(1:en))
+      v = SUM(EdgeBasis(1:en) * y(1:en))
+      w = SUM(EdgeBasis(1:en) * z(1:en))
+      stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
 
-           stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
-                 Basis, dBasisdx )
 !
-!          Heat conductivity at the integration point:
+!          Electric permittivity at the integration point:
 !          --------------------------------------------
-           Permittivity = SUM( NodalPermittivity(1:En) * EdgeBasis(1:En) )
+      Permittivity = SUM(NodalPermittivity(1:en) * EdgeBasis(1:en))
 !
 !          given flux at integration point:
 !          --------------------------------
-           Residual = -SUM( Flux(1:En) * EdgeBasis(1:En) )
+      Residual = -SUM(Flux(1:en) * EdgeBasis(1:en))
 
-
-!          flux given by the computed solution, and 
+!          flux given by the computed solution, and
 !          force norm for scaling the residual:
 !          -----------------------------------------
-           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-              DO k=1,dim
-                 Residual = Residual + Permittivity  * &
-                    SUM( dBasisdx(1:Pn,k) * Potential(1:Pn) ) * Normal(k)
+      IF (CurrentCoordinateSystem() == Cartesian) THEN
+        DO k = 1, dim
+          Residual = Residual + Permittivity * &
+                     SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(k)
 
-                 Gnorm = Gnorm + s * (Permittivity * &
-                       SUM(dBasisdx(1:Pn,k) * Potential(1:Pn)) * Normal(k))**2
-              END DO
-           ELSE
-              DO k=1,dim
-                 DO l=1,dim
-                    Residual = Residual + Metric(k,l) * Permittivity  * &
-                       SUM( dBasisdx(1:Pn,k) * Potential(1:Pn) ) * Normal(l)
-
-                    Gnorm = Gnorm + s * (Metric(k,l) * Permittivity * &
-                      SUM(dBasisdx(1:Pn,k) * Potential(1:Pn) ) * Normal(l))**2
-                 END DO
-              END DO
-           END IF
-
-           EdgeLength   = EdgeLength + s
-           IF ( .NOT. Dirichlet ) THEN
-              ResidualNorm = ResidualNorm + s * Residual ** 2
-           END IF
+          Gnorm = Gnorm + s * (Permittivity * &
+                               SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(k))**2
         END DO
-        EXIT
-     END DO
+      ELSE
+        DO k = 1, dim
+          DO l = 1, dim
+            Residual = Residual + Metric(k, l) * Permittivity * &
+                       SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(l)
 
-     IF ( CoordinateSystemDimension() == 3 ) THEN
-        EdgeLength = SQRT(EdgeLength)
-     END IF
+            Gnorm = Gnorm + s * (Metric(k, l) * Permittivity * &
+                                 SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(l))**2
+          END DO
+        END DO
+      END IF
+
+      EdgeLength = EdgeLength + s
+      IF (.NOT. Dirichlet) THEN
+        ResidualNorm = ResidualNorm + s * Residual**2
+      END IF
+    END DO
+    EXIT
+  END DO
+
+  IF (CoordinateSystemDimension() == 3) EdgeLength = SQRT(EdgeLength)
 
 !    Gnorm = EdgeLength * Gnorm
-     Indicator = EdgeLength * ResidualNorm
-
-     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z)
-     DEALLOCATE( EdgeNodes % x, EdgeNodes % y, EdgeNodes % z)
-
-     DEALLOCATE( EdgeBasis, Basis, dBasisdx, Flux, x, y, z, &
-             NodalPermittivity, Potential )
-     IF ( ASSOCIATED(Hwrk) ) DEALLOCATE( Hwrk )
+  Indicator = EdgeLength * ResidualNorm
 !------------------------------------------------------------------------------
-   END SUBROUTINE StatElecSolver_Boundary_Residual
+END SUBROUTINE StatElecSolver_boundary_residual
 !------------------------------------------------------------------------------
 
-
-
 !------------------------------------------------------------------------------
-  SUBROUTINE StatElecSolver_Edge_Residual( Model, Edge, Mesh, Quant, Perm, Indicator )
+SUBROUTINE StatElecSolver_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator)
 !------------------------------------------------------------------------------
-     USE DefUtils
-     IMPLICIT NONE
+  USE DefUtils
+  IMPLICIT NONE
 
-     TYPE(Model_t) :: Model
-     INTEGER :: Perm(:)
-     REAL(KIND=dp) :: Quant(:), Indicator(2)
-     TYPE( Mesh_t )    :: Mesh
-     TYPE( Element_t ) :: Edge
+  TYPE(Model_t) :: Model
+  INTEGER :: Perm(:)
+  REAL(KIND=dp) :: Quant(:), Indicator(2)
+  TYPE(Mesh_t) :: Mesh
+  TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
+  TYPE(Nodes_t) :: Nodes, EdgeNodes
+  TYPE(Element_t), POINTER :: Element
+  INTEGER :: i, j, k, l, n, t, dim, En, Pn, nd
+  INTEGER, ALLOCATABLE :: Indexes(:)
+  LOGICAL :: stat
+  REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
+  REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
+  REAL(KIND=dp) :: Permittivity
+  REAL(KIND=dp) :: u, v, w, s, detJ
+  REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, Jump
+  REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), x(:), y(:), z(:), EdgeBasis(:), &
+      Basis(:), dBasisdx(:, :), Potential(:)
+  REAL(KIND=dp) :: ResidualNorm
+  TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+  TYPE(ValueList_t), POINTER :: Material
 
-     TYPE(Nodes_t) :: Nodes, EdgeNodes
-     TYPE(Element_t), POINTER :: Element
-
-     INTEGER :: i,j,k,l,n,t,dim,En,Pn
-     LOGICAL :: stat, Found
-
-     REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
-     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-     REAL(KIND=dp) :: Permittivity
-     REAL(KIND=dp) :: u, v, w, s, detJ
-     REAL(KIND=dp) :: Grad(3,3), Normal(3), EdgeLength, Jump
-
-     REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:)
-     REAL(KIND=dp), ALLOCATABLE :: x(:),y(:),z(:)
-     REAL(KIND=dp), ALLOCATABLE :: EdgeBasis(:)
-     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), Potential(:)
-
-     REAL(KIND=dp) :: Residual, ResidualNorm
-
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
+  LOGICAL :: First = .TRUE.
+  SAVE Hwrk, First
 !------------------------------------------------------------------------------
 
-!    Initialize:
-!    -----------
-     NULLIFY( Hwrk )
+  !    Initialize:
+  !    -----------
+  IF (First) THEN
+    First = .FALSE.
+    NULLIFY (Hwrk)
+  END IF
 
-     SELECT CASE( CurrentCoordinateSystem() )
-        CASE( AxisSymmetric, CylindricSymmetric )
-           dim = 3
-        CASE DEFAULT
-           dim = CoordinateSystemDimension()
-     END SELECT
+  SELECT CASE (CurrentCoordinateSystem())
+  CASE (AxisSymmetric, CylindricSymmetric)
+    dim = 3
+  CASE DEFAULT
+    dim = CoordinateSystemDimension()
+  END SELECT
 
-     Metric = 0.0_dp
-     DO i = 1,3
-        Metric(i,i) = 1.0_dp
-     END DO
-
-     Grad = 0.0_dp
+  Metric = 0.0d0
+  DO i = 1, 3
+    Metric(i, i) = 1.0d0
+  END DO
+  Grad = 0.0d0
 !
 !    ---------------------------------------------
 
-     Element => Edge % BoundaryInfo % Left
-     n = Element % TYPE % NumberOfNodes
+  n = Mesh % MaxElementDOFs
+  ALLOCATE (Nodes % x(n), Nodes % y(n), Nodes % z(n))
 
-     Element => Edge % BoundaryInfo % Right
-     n = MAX( n, Element % TYPE % NumberOfNodes )
+  en = Edge % TYPE % NumberOfNodes
+  ALLOCATE (EdgeNodes % x(en), EdgeNodes % y(en), EdgeNodes % z(en))
 
-     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+  EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
+  EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
+  EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     En = Edge % TYPE % NumberOfNodes
-     ALLOCATE( EdgeNodes % x(En), EdgeNodes % y(En), EdgeNodes % z(En) )
-
-     EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
-     EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
-     EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
-
-     ALLOCATE( x(En), y(En), z(En), NodalPermittivity(En), EdgeBasis(En), &
-             Basis(n), dBasisdx(n,3), Potential(n) )
+  ALLOCATE (NodalPermittivity(en), EdgeBasis(en), Basis(n), &
+            dBasisdx(n, 3), x(en), y(en), z(en), Potential(n), Indexes(n))
 
 !    Integrate square of jump over edge:
 !    -----------------------------------
-     ResidualNorm = 0.0_dp
-     EdgeLength   = 0.0_dp
-     Indicator    = 0.0_dp
+  ResidualNorm = 0.0d0
+  EdgeLength = 0.0d0
+  Indicator = 0.0d0
 
-     IntegStuff = GaussPoints( Edge )
+  IntegStuff = GaussPoints(Edge)
 
-     DO t=1,IntegStuff % n
+  DO t = 1, IntegStuff % n
 
-        u = IntegStuff % u(t)
-        v = IntegStuff % v(t)
-        w = IntegStuff % w(t)
+    u = IntegStuff % u(t)
+    v = IntegStuff % v(t)
+    w = IntegStuff % w(t)
 
-        stat = ElementInfo( Edge, EdgeNodes, u, v, w, detJ, &
-             EdgeBasis, dBasisdx )
+    stat = ElementInfo(Edge, EdgeNodes, u, v, w, detJ, &
+                       EdgeBasis, dBasisdx)
 
-        Normal = NormalVector( Edge, EdgeNodes, u, v, .FALSE. )
+    Normal = NormalVector(Edge, EdgeNodes, u, v, .FALSE.)
 
-        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-           s = IntegStuff % s(t) * detJ
-        ELSE
-           u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
-           v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
-           w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
+    IF (CurrentCoordinateSystem() == Cartesian) THEN
+      s = IntegStuff % s(t) * detJ
+    ELSE
+      u = SUM(EdgeBasis(1:en) * EdgeNodes % x(1:en))
+      v = SUM(EdgeBasis(1:en) * EdgeNodes % y(1:en))
+      w = SUM(EdgeBasis(1:en) * EdgeNodes % z(1:en))
 
-           CALL CoordinateSystemInfo( Metric, SqrtMetric, &
-                      Symb, dSymb, u, v, w )
-           s = IntegStuff % s(t) * detJ * SqrtMetric
-        END IF
+      CALL CoordinateSystemInfo(Metric, SqrtMetric, &
+                                Symb, dSymb, u, v, w)
+      s = IntegStuff % s(t) * detJ * SqrtMetric
+    END IF
 
-        ! 
-        ! Compute flux over the edge as seen by elements
-        ! on both sides of the edge:
-        ! ----------------------------------------------
-        DO i = 1,2
-           SELECT CASE(i)
-              CASE(1)
-                 Element => Edge % BoundaryInfo % Left
-              CASE(2)
-                 Element => Edge % BoundaryInfo % Right
-           END SELECT
+    !
+    ! Compute flux over the edge as seen by elements
+    ! on both sides of the edge:
+    ! ----------------------------------------------
+    DO i = 1, 2
+      SELECT CASE (i)
+      CASE (1)
+        Element => Edge % BoundaryInfo % Left
+      CASE (2)
+        Element => Edge % BoundaryInfo % Right
+      END SELECT
 !
-!          Can this really happen (maybe it can...)  ?      
+!          Can this really happen (maybe it can...)  ?
 !          -------------------------------------------
-           IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) CYCLE
+      IF (ANY(Perm(Element % NodeIndexes) <= 0)) CYCLE
 !
 !          Next, get the integration point in parent
 !          local coordinates:
 !          -----------------------------------------
-           Pn = Element % TYPE % NumberOfNodes
+      pn = Element % TYPE % NumberOfNodes
 
-           DO j = 1,En
-              DO k = 1,Pn
-                 IF ( Edge % NodeIndexes(j) == Element % NodeIndexes(k) ) THEN
-                    x(j) = Element % TYPE % NodeU(k)
-                    y(j) = Element % TYPE % NodeV(k)
-                    z(j) = Element % TYPE % NodeW(k)
-                    EXIT
-                 END IF
-              END DO
-           END DO
+      DO j = 1, en
+        DO k = 1, pn
+          IF (Edge % NodeIndexes(j) == Element % NodeIndexes(k)) THEN
+            x(j) = Element % TYPE % NodeU(k)
+            y(j) = Element % TYPE % NodeV(k)
+            z(j) = Element % TYPE % NodeW(k)
+            EXIT
+          END IF
+        END DO
+      END DO
 
-           u = SUM( EdgeBasis(1:En) * x(1:En) )
-           v = SUM( EdgeBasis(1:En) * y(1:En) )
-           w = SUM( EdgeBasis(1:En) * z(1:En) )
+      u = SUM(EdgeBasis(1:en) * x(1:en))
+      v = SUM(EdgeBasis(1:en) * y(1:en))
+      w = SUM(EdgeBasis(1:en) * z(1:en))
 !
 !          Get parent element basis & derivatives at the integration point:
 !          -----------------------------------------------------------------
-           Nodes % x(1:Pn) = Mesh % Nodes % x(Element % NodeIndexes)
-           Nodes % y(1:Pn) = Mesh % Nodes % y(Element % NodeIndexes)
-           Nodes % z(1:Pn) = Mesh % Nodes % z(Element % NodeIndexes)
+      nd = GetElementDOFs(Indexes, Element)
+      Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+      Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+      Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
 
-           stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
-             Basis, dBasisdx )
+      stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
 !
 !          Material parameters:
 !          --------------------
-           k = ListGetInteger( Model % Bodies( &
-                    Element % BodyId) % Values, 'Material', &
-                     minv=1, maxv=Model % NumberOFMaterials )
+      k = ListGetInteger(Model % Bodies( &
+                         Element % BodyId) % Values, 'Material', &
+                         minv=1, maxv=Model % NumberOFMaterials)
 
-           CALL ListGetRealArray( Model % Materials(k) % Values, &
-                'Relative Permittivity', Hwrk, En, Edge % NodeIndexes,stat )
-           IF ( .NOT. stat )  &
-                CALL ListGetRealArray( Model % Materials(k) % Values, &
-                'Permittivity', Hwrk, En, Edge % NodeIndexes )
+      Material => Model % Materials(k) % Values
+      CALL ListGetRealArray(Material, &
+                            'Relative Permittivity', Hwrk, en, Edge % NodeIndexes, stat)  ! Should we have stat here?
+      IF (.NOT. stat) &
+        CALL ListGetRealArray(Material, &
+                              'Permittivity', Hwrk, En, Edge % NodeIndexes)
 
-           NodalPermittivity( 1:En ) = Hwrk( 1,1,1:En )
-           Permittivity = SUM( NodalPermittivity(1:En) * EdgeBasis(1:En) )
+      NodalPermittivity(1:en) = Hwrk(1, 1, 1:en)
+      Permittivity = SUM(NodalPermittivity(1:en) * EdgeBasis(1:en))
 !
 !          Potential at element nodal points:
 !          ------------------------------------
-           Potential(1:Pn) = Quant( Perm(Element % NodeIndexes) )
+      Potential(1:nd) = Quant(Perm(Indexes(1:nd)))
 !
 !          Finally, the flux:
 !          ------------------
-           DO j=1,dim
-              Grad(j,i) = Permittivity * SUM( dBasisdx(1:Pn,j) * Potential(1:Pn) )
-           END DO
-        END DO
+      DO j = 1, dim
+        Grad(j, i) = Permittivity * SUM(dBasisdx(1:nd, j) * Potential(1:nd))
+      END DO
+    END DO
 
 !       Compute square of the flux jump:
-!       -------------------------------   
-        EdgeLength  = EdgeLength + s
-        Jump = 0.0_dp
-        DO k=1,dim
-           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-              Jump = Jump + (Grad(k,1) - Grad(k,2)) * Normal(k)
-           ELSE
-              DO l=1,dim
-                 Jump = Jump + &
-                       Metric(k,l) * (Grad(k,1) - Grad(k,2)) * Normal(l)
-              END DO
-           END IF
+!       -------------------------------
+    EdgeLength = EdgeLength + s
+    Jump = 0.0d0
+    DO k = 1, dim
+      IF (CurrentCoordinateSystem() == Cartesian) THEN
+        Jump = Jump + (Grad(k, 1) - Grad(k, 2)) * Normal(k)
+      ELSE
+        DO l = 1, dim
+          Jump = Jump + &
+                 Metric(k, l) * (Grad(k, 1) - Grad(k, 2)) * Normal(l)
         END DO
-        ResidualNorm = ResidualNorm + s * Jump ** 2
-     END DO
+      END IF
+    END DO
+    ResidualNorm = ResidualNorm + s * Jump**2
+  END DO
 
-     IF ( CoordinateSystemDimension() == 3 ) THEN
-        EdgeLength = SQRT(EdgeLength)
-     END IF
-     Indicator = EdgeLength * ResidualNorm
+  IF (dim == 3) EdgeLength = SQRT(EdgeLength)
+  Indicator = EdgeLength * ResidualNorm
 
-     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z)
-     DEALLOCATE( EdgeNodes % x, EdgeNodes % y, EdgeNodes % z)
+  DEALLOCATE (Nodes % x, Nodes % y, Nodes % z)
 
-     DEALLOCATE( x, y, z, NodalPermittivity, EdgeBasis, Basis, &
-                dBasisdx, Potential )
-     IF ( ASSOCIATED(Hwrk) ) DEALLOCATE( Hwrk )
+  DEALLOCATE (EdgeNodes % x, EdgeNodes % y, EdgeNodes % z)
+  DEALLOCATE (x, y, z, NodalPermittivity, EdgeBasis, &
+              Basis, dBasisdx, Potential)
 !------------------------------------------------------------------------------
-   END SUBROUTINE StatElecSolver_Edge_Residual
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-   SUBROUTINE StatElecSolver_Inside_Residual( Model, Element, Mesh, &
-        Quant, Perm, Fnorm, Indicator )
-!------------------------------------------------------------------------------
-     USE DefUtils
-!------------------------------------------------------------------------------
-     IMPLICIT NONE
-!------------------------------------------------------------------------------
-     TYPE(Model_t) :: Model
-     INTEGER :: Perm(:)
-     REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-     TYPE( Mesh_t )    :: Mesh
-     TYPE( Element_t ) :: Element
+END SUBROUTINE StatElecSolver_Edge_Residual
 !------------------------------------------------------------------------------
 
-     TYPE(Nodes_t) :: Nodes
+!------------------------------------------------------------------------------
+SUBROUTINE StatElecSolver_Inside_residual(Model, Element, Mesh, &
+                                Quant, Perm, Fnorm,Indicator)
+!------------------------------------------------------------------------------
+  USE DefUtils
+!------------------------------------------------------------------------------
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  INTEGER :: Perm(:)
+  REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+  TYPE(Mesh_t) :: Mesh
+  TYPE(Element_t) :: Element
+!------------------------------------------------------------------------------
+  TYPE(Nodes_t) :: Nodes
+  INTEGER :: i, j, k, l, n, t, dim, nd
+  INTEGER, ALLOCATABLE :: Indexes(:)
+  LOGICAL :: stat, Found
+  TYPE(Variable_t), POINTER :: Var
+  REAL(KIND=dp), POINTER :: Hwrk(:, :, :)
+  REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
+  REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:)
+  REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Potential(:), PrevPot(:)
+  REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:, :), ddBasisddx(:, :, :)
+  REAL(KIND=dp) :: u, v, w, s, detJ
+  REAL(KIND=dp) :: Permittivity, dt 
+  REAL(KIND=dp) :: Residual, ResidualNorm, Area
+  TYPE(ValueList_t), POINTER :: Material
+  TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     LOGICAL :: stat, Found
-     INTEGER :: i,j,k,l,n,t,dim
-
-     REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
-     REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-     REAL(KIND=dp) :: Permittivity
-     REAL(KIND=dp) :: u, v, w, s, detJ
-     REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area
-
-     REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:)
-     REAL(KIND=dp), ALLOCATABLE :: PrevPot(:)
-     REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Potential(:)
-     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
-     REAL(KIND=dp), ALLOCATABLE :: dBasisdx(:,:), ddBasisddx(:,:,:)
-
-     TYPE( ValueList_t ), POINTER :: Material
-
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
+  LOGICAL :: First = .TRUE.
+  SAVE Hwrk, First
 !------------------------------------------------------------------------------
 
 !    Initialize:
 !    -----------
-     Indicator = 0.0_dp
-     Fnorm     = 0.0_dp
+  Indicator = 0.0d0
+  Fnorm = 0.0d0
 !
 !    Check if this eq. computed in this element:
 !    -------------------------------------------
-     IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) RETURN
+  IF (ANY(Perm(Element % NodeIndexes) <= 0)) RETURN
 
-     NULLIFY( Hwrk )
+  IF (First) THEN
+    First = .FALSE.
+    NULLIFY (Hwrk)
+  END IF
 
-     Metric = 0.0_dp
-     DO i=1,3
-        Metric(i,i) = 1.0_dp
-     END DO
+  Metric = 0.0d0
+  DO i = 1, 3
+    Metric(i, i) = 1.0d0
+  END DO
 
-     SELECT CASE( CurrentCoordinateSystem() )
-        CASE( AxisSymmetric, CylindricSymmetric )
-           dim = 3
-        CASE DEFAULT
-           dim = CoordinateSystemDimension()
-     END SELECT
+  SELECT CASE (CurrentCoordinateSystem())
+  CASE (AxisSymmetric, CylindricSymmetric)
+    dim = 3
+  CASE DEFAULT
+    dim = CoordinateSystemDimension()
+  END SELECT
+
+!    Alllocate local arrays
+!    ----------------------
+  nd = GetElementNOFDOFs(Element)
+  n = GetElementNOFNodes(Element)
+  ALLOCATE (NodalPermittivity(nd), &
+            PrevPot(nd), NodalSource(nd), Potential(nd), &
+            Basis(nd), dBasisdx(nd, 3), ddBasisddx(nd, 3, 3), Indexes(nd))
 !
 !    Element nodal points:
 !    ---------------------
-     n = Element % TYPE % NumberOfNodes
+  ALLOCATE (Nodes % x(nd), Nodes % y(nd), Nodes % z(nd))
 
-     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
-       NodalPermittivity(n), Basis(n), dBasisdx(n,3),    &
-       ddBasisddx(n,3,3), PrevPot(n), NodalSource(n), Potential(n) )
-
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+  nd = GetElementDOFs(Indexes, Element)
+  Nodes % x = Mesh % Nodes % x(Indexes(1:nd))
+  Nodes % y = Mesh % Nodes % y(Indexes(1:nd))
+  Nodes % z = Mesh % Nodes % z(Indexes(1:nd))
 !
 !    Elementwise nodal solution:
 !    ---------------------------
-     Potential(1:n) = Quant( Perm(Element % NodeIndexes) )
+  Potential(1:nd) = Quant(Perm(Indexes(1:nd)))
+!
+!    Check for time dep.
+!    -------------------
+  PrevPot(1:nd) = Potential(1:nd)
+  dt = Model % Solver % dt
+  IF (ListGetString(Model % Simulation, 'Simulation Type') == 'transient') THEN
+    Var => VariableGet(Model % Variables, 'Potential', .TRUE.)
+    PrevPot(1:nd) = Var % PrevValues(Var % Perm(Indexes(1:nd)), 1)
+  END IF
 !
 !    Material parameters: relative permittivity
 !    ------------------------------------------
-     k = ListGetInteger( Model % Bodies(Element % BodyId) % Values, 'Material', &
-                     minv=1, maxv=Model % NumberOfMaterials )
+  k = ListGetInteger(Model % Bodies(Element % BodyId) % Values, 'Material', &
+                     minv=1, maxv=Model % NumberOfMaterials)
 
-     Material => Model % Materials(k) % Values
+  Material => Model % Materials(k) % Values
 
-     CALL ListGetRealArray( Model % Materials(k) % Values, &
-          'Relative Permittivity', Hwrk, n, Element % NodeIndexes,stat )
-     IF ( .NOT. stat )  &
-          CALL ListGetRealArray( Model % Materials(k) % Values, &
-          'Permittivity', Hwrk, n, Element % NodeIndexes )
-
-     NodalPermittivity( 1:n ) = Hwrk( 1,1,1:n )
+  CALL ListGetRealArray(Material, 'Relative Permittivity', Hwrk, n, Element % NodeIndexes, stat)
+  IF (.NOT. stat) &
+    CALL ListGetRealArray(Material, 'Permittivity', Hwrk, n, Element % NodeIndexes)
+  NodalPermittivity(1:n) = Hwrk(1, 1, 1:n)
 
 !
 !    Charge density (source):
 !    ------------------------
 !
-     k = ListGetInteger( &
-         Model % Bodies(Element % BodyId) % Values,'Body Force',Found, &
-                 1, Model % NumberOFBodyForces)
+  k = ListGetInteger( &
+      Model % Bodies(Element % BodyId) % Values, 'Body Force', Found, &
+      1, Model % NumberOFBodyForces)
 
-     NodalSource = 0.0_dp
-     IF ( Found .AND. k > 0  ) THEN
-        NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
-             'Charge Density', n, Element % NodeIndexes, stat )
-        IF ( .NOT. stat )  &
-             NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
-             'Source', n, Element % NodeIndexes )
-     END IF
+  NodalSource = 0.0d0
+  IF (Found .AND. k > 0) THEN
+    NodalSource(1:n) = ListGetReal(Model % BodyForces(k) % Values, &
+                                   'Charge Density', n, Element % NodeIndexes, stat)
+    IF (.NOT. stat) &
+      NodalSource(1:n) = ListGetReal(Model % BodyForces(k) % Values, &
+                                     'Source', n, Element % NodeIndexes)
+  END IF
+
 !
 !    Integrate square of residual over element:
 !    ------------------------------------------
 
-     ResidualNorm = 0.0_dp
-     Area = 0.0_dp
+  ResidualNorm = 0.0d0
+  Area = 0.0d0
 
-     IntegStuff = GaussPointsAdapt( Element )
+  IntegStuff = GaussPoints(Element)
+  ddBasisddx = 0
 
-     DO t=1,IntegStuff % n
-        u = IntegStuff % u(t)
-        v = IntegStuff % v(t)
-        w = IntegStuff % w(t)
+  DO t = 1, IntegStuff % n
+    u = IntegStuff % u(t)
+    v = IntegStuff % v(t)
+    w = IntegStuff % w(t)
 
-        stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
-            Basis, dBasisdx, ddBasisddx, .TRUE., .FALSE. )
+    stat = ElementInfo(Element, Nodes, u, v, w, detJ, &
+                       Basis, dBasisdx, ddBasisddx, .TRUE., .FALSE.)
 
-        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-           s = IntegStuff % s(t) * detJ
-        ELSE
-           u = SUM( Basis(1:n) * Nodes % x(1:n) )
-           v = SUM( Basis(1:n) * Nodes % y(1:n) )
-           w = SUM( Basis(1:n) * Nodes % z(1:n) )
+    IF (CurrentCoordinateSystem() == Cartesian) THEN
+      s = IntegStuff % s(t) * detJ
+    ELSE
+      u = SUM(Basis(1:nd) * Nodes % x(1:nd))
+      v = SUM(Basis(1:nd) * Nodes % y(1:nd))
+      w = SUM(Basis(1:nd) * Nodes % z(1:nd))
 
-           CALL CoordinateSystemInfo( Metric, SqrtMetric, &
-                       Symb, dSymb, u, v, w )
-           s = IntegStuff % s(t) * detJ * SqrtMetric
-        END IF
+      CALL CoordinateSystemInfo(Metric, SqrtMetric, &
+                                Symb, dSymb, u, v, w)
+      s = IntegStuff % s(t) * detJ * SqrtMetric
+    END IF
 
-        Permittivity = SUM( NodalPermittivity(1:n) * Basis(1:n) )
+    Permittivity = SUM(NodalPermittivity(1:n) * Basis(1:n))
 !
 !       Residual of the electrostatic equation:
 !
@@ -2114,71 +2165,65 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !        R = -g^{jk} (C T_{,j}}_{,k} - s
 !       ---------------------------------------------------
 !
-        Residual = -SUM( NodalSource(1:n) * Basis(1:n) )
+    Residual = -SUM(NodalSource(1:n) * Basis(1:n))
 
-        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-           DO j=1,dim
+    IF (CurrentCoordinateSystem() == Cartesian) THEN
+      DO j = 1, dim
 !
 !             - grad(e).grad(T):
 !             --------------------
 !
-              Residual = Residual - &
-                 SUM( Potential(1:n) * dBasisdx(1:n,j) ) * &
-                 SUM( NodalPermittivity(1:n) * dBasisdx(1:n,j) )
+        Residual = Residual - &
+                   SUM(Potential(1:nd) * dBasisdx(1:nd, j)) * &
+                   SUM(NodalPermittivity(1:n) * dBasisdx(1:n, j))
 
 !
 !             - e div(grad(u)):
 !             -------------------
 !
-              Residual = Residual - Permittivity * &
-                 SUM( Potential(1:n) * ddBasisddx(1:n,j,j) )
-           END DO
-        ELSE
-           DO j=1,dim
-              DO k=1,dim
+        Residual = Residual - Permittivity * &
+                   SUM(Potential(1:nd) * ddBasisddx(1:nd, j, j))
+      END DO
+    ELSE
+      DO j = 1, dim
+        DO k = 1, dim
 !
 !                - g^{jk} C_{,k}T_{j}:
 !                ---------------------
 !
-                 Residual = Residual - Metric(j,k) * &
-                    SUM( Potential(1:n) * dBasisdx(1:n,j) ) * &
-                    SUM( NodalPermittivity(1:n) * dBasisdx(1:n,k) )
+          Residual = Residual - Metric(j, k) * &
+                     SUM(Potential(1:nd) * dBasisdx(1:nd, j)) * &
+                     SUM(NodalPermittivity(1:n) * dBasisdx(1:n, k))
 
 !
 !                - g^{jk} C T_{,jk}:
 !                -------------------
 !
-                 Residual = Residual - Metric(j,k) * Permittivity * &
-                    SUM( Potential(1:n) * ddBasisddx(1:n,j,k) )
+          Residual = Residual - Metric(j, k) * Permittivity * &
+                     SUM(Potential(1:nd) * ddBasisddx(1:nd, j, k))
 !
 !                + g^{jk} C {_jk^l} T_{,l}:
 !                ---------------------------
-                 DO l=1,dim
-                    Residual = Residual + Metric(j,k) * Permittivity * &
-                      Symb(j,k,l) * SUM( Potential(1:n) * dBasisdx(1:n,l) )
-                 END DO
-              END DO
-           END DO
-        END IF
+          DO l = 1, dim
+            Residual = Residual + Metric(j, k) * Permittivity * &
+                       Symb(j, k, l) * SUM(Potential(1:nd) * dBasisdx(1:nd, l))
+          END DO
+        END DO
+      END DO
+    END IF
 
 !
 !       Compute also force norm for scaling the residual:
 !       -------------------------------------------------
-        DO i=1,dim
-           Fnorm = Fnorm + s * ( SUM( NodalSource(1:n) * Basis(1:n) ) ) ** 2
-        END DO
-
-        Area = Area + s
-        ResidualNorm = ResidualNorm + s *  Residual ** 2
-     END DO
+    DO i = 1, dim
+      Fnorm = Fnorm + s * (SUM(NodalSource(1:n) * Basis(1:n)))**2
+    END DO
+    Area = Area + s
+    ResidualNorm = ResidualNorm + s * Residual**2
+  END DO
 
 !    Fnorm = Element % hk**2 * Fnorm
-     Indicator = Element % hK**2 * ResidualNorm
-
-     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, NodalPermittivity, &
-        Basis, dBasisdx, ddBasisddx, PrevPot, NodalSource, Potential )
-     IF ( ASSOCIATED(Hwrk) ) DEALLOCATE( Hwrk )
+  Indicator = Element % hK**2 * ResidualNorm
 !------------------------------------------------------------------------------
-   END SUBROUTINE StatElecSolver_Inside_Residual
+END SUBROUTINE StatElecSolver_inside_residual
 !------------------------------------------------------------------------------
-

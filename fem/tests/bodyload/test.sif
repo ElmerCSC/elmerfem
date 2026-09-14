@@ -43,6 +43,11 @@ Solver 1
   Variable = Potential
   Variable DOFs = 1
   Procedure = "StatElecSolve" "StatElecSolver"
+  ! "Potential Load" is a generic library feature (SetNodalLoads) with no
+  ! Eps0 handling of its own; it only lines up with the left-side-unscaled
+  ! stiffness the Legacy path builds. Routed there until the units question
+  ! (StatElecSolve vs StatElecSolveLegacy conventions) is settled.
+  Legacy Assembly = Logical True
   Calculate Electric Field = True
   Calculate Electric Flux = False
   Linear System Solver = Direct
