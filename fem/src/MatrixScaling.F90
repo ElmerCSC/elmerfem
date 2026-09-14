@@ -594,7 +594,10 @@ CONTAINS
     END IF
 
     IF( PRESENT( ApplyScaling ) ) THEN
-      IF(.NOT. ApplyScaling) RETURN
+      IF(.NOT. ApplyScaling) THEN
+        CALL Info('RowEquilibration', 'Application of scaling skipped!', Level=20)
+        RETURN
+      END IF
     END IF
     
     DO i=1,n    

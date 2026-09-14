@@ -181,8 +181,10 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   CALL Info(Caller, 'Setting default sorting and normalization for eigenmodes!', Level=7)
   CALL ListAddNewString( Params,'Eigen System Sorting','smallest real part')
   CALL ListAddNewLogical( Params,'Eigenvector Normalization by Power',.TRUE.)
-  CALL ListAddNewLogical( Params,'Eigen System Shift Automatic',.TRUE.)
-  
+  IF (.NOT. ListCheckPresent(Params, 'Eigen System Shift')) &
+      CALL ListAddNewLogical( Params,'Eigen System Shift Automatic',.TRUE.)
+
+  CALL ListAddNewLogical(Params, 'Linear System Nullify Guess', .TRUE.)
 !-----------------------------------------------------------------------------
 END SUBROUTINE EMPortSolver_Init0
 !-----------------------------------------------------------------------------
@@ -503,7 +505,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
           udotu = SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * Solver % Variable % EigenVectors(j,1:m))
         END IF
 
-        PRINT *, 'Parallel component = ', udotv/udotu
+!        PRINT *, 'Parallel component = ', udotv/udotu
         
         Solver % Variable % EigenVectors(j,1:m) = cValues(1:m) - &
             udotv/udotu * Solver % Variable % EigenVectors(j,1:m)

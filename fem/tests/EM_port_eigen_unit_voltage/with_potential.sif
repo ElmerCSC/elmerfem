@@ -67,7 +67,7 @@ Solver 1
   Steady State Convergence Tolerance = 1e-09
 
   Linear System Solver = "Direct"
-  Linear System Direct Method = mumps
+  Linear System Direct Method = umfpack
 
 !  Linear System Solver = Iterative
   Linear System Convergence Tolerance = 1e-6
@@ -78,7 +78,6 @@ Solver 1
   Linear System Preconditioning = ILU0
   Linear System ILUT Tolerance = 1.0e-3
   Linear System GCR Restart = 200
-  Linear System Nullify Guess = True
 
   Eigen Analysis = True
   Eigen System Values = 10
