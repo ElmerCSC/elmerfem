@@ -117,7 +117,7 @@ End
 
 Solver 3
   Equation = "NS-Vec"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
 
   Element = "p:1 b:3"
 

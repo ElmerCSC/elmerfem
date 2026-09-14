@@ -88,7 +88,7 @@ End
 
 Solver 3
   Equation = "NS-Vec"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
 
   Pressure Stabilization = True
 

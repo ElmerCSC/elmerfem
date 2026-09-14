@@ -64,7 +64,7 @@ End
 
 Solver 1
   Equation = "NS-Vec"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
   Stokes Flow = Logical True
 
 ! The point of the case. No "Element" with a bubble: _Init0 hands back "n:1"
