@@ -1017,6 +1017,11 @@ CONTAINS
     ! STIFF=STIFF+(C*grad(u),v)
     IF( ConvConst .OR. ConvComp ) THEN
       IF( ConvConst ) THEN
+        ! A component with no "Convection Velocity i" keyword of its own
+        ! (e.g. only "Convection Velocity 3" given) must default to zero,
+        ! not the uninitialized contents of this element's freshly
+        ! allocated ConvVelo work array.
+        ConvVelo(1:ngp,1:dim) = 0._dp
         DO i=1,dim
           ConvVelo_i => ListGetElementRealVec( ConvVelo_h(i), ngp, Basis, Element, Found )
           IF( Found ) ConvVelo(1:ngp,i) = ConvVelo_i(1:ngp)
