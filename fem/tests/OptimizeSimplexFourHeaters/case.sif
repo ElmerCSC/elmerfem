@@ -110,6 +110,11 @@ End
 
 Solver 2
   Equation = Heat Equation
+! Stays on legacy HeatSolve: FindOptimum's simplex search re-invokes this
+! solver repeatedly within one timestep as "Heat Source" tracks its "Param"
+! variable. With HeatSolveVec the result is wildly wrong (~92% off), most
+! likely stale VariableHandle_t/ValueHandle_t caching across those repeated
+! calls rather than a formulation difference -- not yet root-caused.
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
 

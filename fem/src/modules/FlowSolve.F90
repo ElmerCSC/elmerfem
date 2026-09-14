@@ -467,10 +467,16 @@
      ! indexes bx/bxprev by Element % ElementIndex. The stride covers both
      ! p-bubbles (MaxBDOFs) and legacy "Bubbles = True" bubbles, one per node
      ! (MaxElementNodes) -- whichever is larger.
+     !
+     ! Sized over NumberOfBulkElements + NumberOfBoundaryElements, not just
+     ! the former: a boundary element promoted to this equation via a BC's
+     ! "Body Id" keeps its ElementIndex in the boundary-element range while
+     ! being assembled here as a bulk element, so indexing bx/bxprev by
+     ! Element % ElementIndex can otherwise run past a bulk-only allocation.
      IF ( Transient .AND. .NOT. ALLOCATED(bx) ) THEN
        bxStride = (NSDOFs-1) * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
-       ALLOCATE( bx( bxStride * Solver % Mesh % NumberOfBulkElements ), &
-                 bxprev( bxStride * Solver % Mesh % NumberOfBulkElements ) )
+       ALLOCATE( bx( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ), &
+                 bxprev( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ) )
        bx = 0.0_dp
        bxprev = 0.0_dp
      END IF

@@ -127,9 +127,7 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('body force','Smart Heater Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','Integral Heat Source',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','Friction Heat',FatalFound=.TRUE.)
-  CALL ListWarnUnsupportedKeyword('material','Compressibility Model',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('material','Phase Change Model',FatalFound=.TRUE.)
-  CALL ListWarnUnsupportedKeyword('material','Heat Transfer Multiplier',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('equation','Phase Change Model',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
 
@@ -239,10 +237,24 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       Source_h(:), Cond_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
       VecConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
       PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:), &
-      LM_ConvVelo_h(:), PlateSpeed_h(:), &
+      LM_ConvVelo_h(:), PlateSpeed_h(:), HTMult_h(:), &
       HeatFlux_h(:), HeatTrans_h(:), ExtTemp_h(:), Farfield_h(:), &
-      RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:)
-  TYPE(VariableHandle_t), ALLOCATABLE, SAVE :: ConvField_h(:)
+      RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:), &
+      InfBCFlag_h(:), InfBCText_h(:), &
+      CompressModel_h(:), SpecHeatRatio_h(:), RefTemp_h(:), HeatExpCoeff_h(:), &
+      RefPressure_h(:)
+  ! PressureField_h is a SEPARATE handle from ConvField_h even though both are
+  ! bound to the same "Flow Solution" variable: ListGetElementVectorSolutionVec
+  ! and ListGetElementScalarSolutionVec each cache their own result under
+  ! Handle % Element (the last element the HANDLE was queried for), keyed only
+  ! by element identity, not by which of the two functions asked. Calling
+  ! both on one shared handle for the same element would make the second call
+  ! see "already cached for this element" and return the FIRST call's (wrong
+  ! kind of) storage instead of recomputing its own -- so velocity (vector)
+  ! and pressure (scalar) need their own handle each, even though they read
+  ! the same underlying variable.
+  TYPE(VariableHandle_t), ALLOCATABLE, SAVE :: ConvField_h(:), TempField_h(:), PrevFlowField_h(:), &
+      PressureField_h(:), MeshVeloField_h(:)
 
   ! Per-element bubble history (current and previous timestep), needed to
   ! form a consistent BDF(1) time derivative for a condensed p-bubble: see
@@ -337,24 +349,32 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
         PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
         VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
-        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), &
+        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), HTMult_h(nthr), &
         HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
         RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
-        TorBC_h(nthr) )
+        TorBC_h(nthr), InfBCFlag_h(nthr), InfBCText_h(nthr), &
+        CompressModel_h(nthr), SpecHeatRatio_h(nthr), RefTemp_h(nthr), &
+        HeatExpCoeff_h(nthr), RefPressure_h(nthr), TempField_h(nthr), &
+        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr) )
   ELSE IF( SIZE( Source_h ) /= nthr ) THEN
     DEALLOCATE( Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, VecConvVelo_h, &
         PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, &
-        OrigMesh_h, ConvField_h, LM_ConvVelo_h, PlateSpeed_h, HeatFlux_h, &
-        HeatTrans_h, ExtTemp_h, Farfield_h, RadFlag_h, RadExtTemp_h, &
-        EmisBC_h, EmisMat_h, TorBC_h )
+        OrigMesh_h, ConvField_h, LM_ConvVelo_h, PlateSpeed_h, HTMult_h, &
+        HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, RadFlag_h, RadExtTemp_h, &
+        EmisBC_h, EmisMat_h, TorBC_h, InfBCFlag_h, InfBCText_h, &
+        CompressModel_h, SpecHeatRatio_h, RefTemp_h, HeatExpCoeff_h, &
+        RefPressure_h, TempField_h, PrevFlowField_h, PressureField_h, MeshVeloField_h )
     ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
         ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
         PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
         VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
-        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), &
+        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), HTMult_h(nthr), &
         HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
         RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
-        TorBC_h(nthr) )
+        TorBC_h(nthr), InfBCFlag_h(nthr), InfBCText_h(nthr), &
+        CompressModel_h(nthr), SpecHeatRatio_h(nthr), RefTemp_h(nthr), &
+        HeatExpCoeff_h(nthr), RefPressure_h(nthr), TempField_h(nthr), &
+        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr) )
   END IF
 
   ! Per-element bubble history for the transient condensed-bubble case:
@@ -366,10 +386,18 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! GlobalBubbles check here -- see the matching block and its rationale
   ! there; a global p-bubble already surfaces as nb == 0 to this solver (see
   ! GetElementNOFBDOFs), so it never touches this history at all.
+  !
+  ! Sized over NumberOfBulkElements + NumberOfBoundaryElements, not just the
+  ! former: a boundary element promoted to this equation via a BC's "Body Id"
+  ! (e.g. a lower-dimensional pipe embedded in a 3D mesh, see the "Heat
+  ! Transfer Multiplier" comment below) keeps its ElementIndex in the
+  ! boundary-element range while being assembled here as a bulk element, so
+  ! boff = (Element % ElementIndex - 1) * bxStride can otherwise run past the
+  ! bulk-only allocation.
   IF( Transient .AND. .NOT. ALLOCATED( bx ) ) THEN
     bxStride = MAX( Mesh % MaxBDOFs, Mesh % MaxElementNodes )
-    ALLOCATE( bx( bxStride * Mesh % NumberOfBulkElements ), &
-        bxprev( bxStride * Mesh % NumberOfBulkElements ) )
+    ALLOCATE( bx( bxStride * (Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements) ), &
+        bxprev( bxStride * (Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements) ) )
     bx = 0.0_dp
     bxprev = 0.0_dp
   END IF
@@ -760,6 +788,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE LinearForms
     USE Differentials, ONLY: JouleHeat
+    USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
@@ -772,7 +801,9 @@ CONTAINS
     ! These are aliases into storage owned by the value handles, so they must
     ! stay pointers.
     REAL(KIND=dp), POINTER  :: CondAtIpVec(:), CpAtIpVec(:), &
-        SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo_i(:)
+        SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo_i(:), &
+        TemperatureAtIpVec(:), RefTempAtIpVec(:), HeatExpAtIpVec(:), &
+        PressAtIpVec(:), PrevPressAtIpVec(:), MeshVeloAtIpVec(:,:)
     ! These two are work arrays that this routine allocates itself. As locals
     ! without SAVE they used to be pointers, and nothing released them on return:
     ! a leak of (1+3)*ngp reals per element per assembly. Allocatables are freed
@@ -780,6 +811,22 @@ CONTAINS
     ! assigned to it below.
     REAL(KIND=dp), ALLOCATABLE :: TmpVec(:), TmpVec2(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: ConvVelo(:,:)
+
+    ! Compressibility Model work arrays: CompRhoAtIpVec is the overridden
+    ! density (ideal gas / linearized thermal expansion) that RhoAtIpVec gets
+    ! pointed to instead of the plain "Density" handle's storage; PcoeffVec
+    ! and GradPVec support the reversible pressure-work source term
+    ! Pcoeff*(dp/dt + u.grad p) -- see HeatSolve.F90's CompressibilityModel
+    ! handling and DiffuseConvectiveCompose's "Compressible" branch, which
+    ! this mirrors. NodalPressure is the flow solution's own pressure DOF
+    ! (last component) at this element's n corner nodes, needed to form
+    ! grad(p) via dBasisdx (a solved field, not a keyword, so it isn't
+    ! available through the ValueHandle_t machinery like the other nodal
+    ! arrays here).
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: CompRhoAtIpVec(:), PcoeffVec(:), GradPVec(:,:)
+    REAL(KIND=dp) :: NodalPressure(n)
+    INTEGER :: CompressModel
+    REAL(KIND=dp) :: SpecHeatRatio, ReferencePressure
 
     ! SUPG (equal-order) stabilization work arrays: StreamVec(gp,p) is the
     ! streamline-weighted test/trial "basis", rho*cp*(velo.grad basis_p), at
@@ -790,11 +837,11 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: StreamVec(:,:), TauVec(:)
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
-    INTEGER :: i,p,j,t,ngp,allocstat,tid,boff
+    INTEGER :: i,p,j,t,k,ngp,allocstat,tid,boff
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd), hK, mK, VNorm, JouleH
+    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd), hK, mK, VNorm, JouleH, HTMultAtIp
     ! Handles now live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
@@ -810,7 +857,12 @@ CONTAINS
         PerfRate_h    => PerfRate_h(tid),   PerfDens_h    => PerfDens_h(tid),   &
         PerfCp_h      => PerfCp_h(tid),     PerfRefTemp_h => PerfRefTemp_h(tid),&
         VolSource_h   => VolSource_h(tid),  OrigMesh_h    => OrigMesh_h(tid),   &
-        ConvField_h   => ConvField_h(tid) )
+        ConvField_h   => ConvField_h(tid),  HTMult_h      => HTMult_h(tid),     &
+        CompressModel_h => CompressModel_h(tid), SpecHeatRatio_h => SpecHeatRatio_h(tid), &
+        RefTemp_h     => RefTemp_h(tid),    HeatExpCoeff_h => HeatExpCoeff_h(tid), &
+        RefPressure_h => RefPressure_h(tid), TempField_h  => TempField_h(tid),  &
+        PrevFlowField_h => PrevFlowField_h(tid), PressureField_h => PressureField_h(tid), &
+        MeshVeloField_h => MeshVeloField_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -819,12 +871,18 @@ CONTAINS
       CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
       CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
       CALL ListInitElementKeyword( Rho_h,'Material','Density')
+      CALL ListInitElementKeyword( HTMult_h,'Material','Heat Transfer Multiplier')
+      CALL ListInitElementKeyword( CompressModel_h,'Material','Compressibility Model')
+      CALL ListInitElementKeyword( SpecHeatRatio_h,'Material','Specific Heat Ratio')
+      CALL ListInitElementKeyword( RefTemp_h,'Material','Reference Temperature')
+      CALL ListInitElementKeyword( HeatExpCoeff_h,'Material','Heat Expansion Coefficient')
+      CALL ListInitElementKeyword( RefPressure_h,'Material','Reference Pressure')
 
       IF( ListCheckPresentAnyMaterial( Model,'Draw Velocity' ) ) THEN
         CALL Fatal(Caller,'Vectorized assembly not implemented for "Draw Velocity"')
       END IF
 
-      CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')      
+      CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')
       DO i=1,3
         CALL ListInitElementKeyword( ConvVelo_h(i),'Material','Convection Velocity '//I2S(i))
       END DO
@@ -832,33 +890,45 @@ CONTAINS
       str = GetString( Params, 'Temperature Convection Field', Found )
       IF(.NOT. Found ) str = 'Flow Solution'
       CALL ListInitElementVariable( ConvField_h, str )
-      
+      CALL ListInitElementVariable( PrevFlowField_h, str, tStep=-1 )
+      CALL ListInitElementVariable( PressureField_h, str )
+      CALL ListInitElementVariable( TempField_h, UVariable=Solver % Variable )
+
+      ! ALE: the convective transport (and the pressure-work term below) is
+      ! relative to the moving mesh, not the lab frame -- HeatSolve.F90
+      ! subtracts "Mesh Velocity" from the convection velocity for exactly
+      ! this reason (AddHeatFluxBC/bulk assembly both use Velo = U - MeshVelo,
+      ! see DiffuseConvectiveCompose). May legitimately not exist (no mesh
+      ! motion in this case), in which case the subtraction below is skipped.
+      CALL ListInitElementVariable( MeshVeloField_h, 'Mesh Velocity' )
+
       CALL ListInitElementKeyword( PerfRate_h,'Body Force','Perfusion Rate')
       CALL ListInitElementKeyword( PerfDens_h,'Body Force','Perfusion Density')
       CALL ListInitElementKeyword( PerfRefTemp_h,'Body Force','Perfusion Reference Temperature')
       CALL ListInitElementKeyword( PerfCp_h,'Body Force','Perfusion Heat Capacity')
 
       CALL ListInitElementKeyword( OrigMesh_h,'Equation','Convection Original Mesh')
-      
+
       InitHandles = .FALSE.
     END IF
 
     IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
-    
+
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
 
     !-----------------------------------------------------------------------------
     ! Output the number of integration points as information.
     ! This in not fully informative if several element types are present.
-    !-----------------------------------------------------------------------------    
+    !-----------------------------------------------------------------------------
     IF( Element % ElementIndex == 1 ) THEN
       CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
     END IF
-        
+
     ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
         MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
         TmpVec(ngp), TmpVec2(ngp), StreamVec(ngp,nd), TauVec(ngp), &
+        CompRhoAtIpVec(ngp), PcoeffVec(ngp), GradPVec(ngp,3), &
         STAT=allocstat)
     IF (allocstat /= 0) THEN
       CALL Fatal(Caller,'Local storage allocation failed')
@@ -903,6 +973,46 @@ CONTAINS
       TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
     END IF
 
+    ! Compressibility Model: override density from an ideal-gas law or a
+    ! linearized thermal expansion coefficient -- mirrors HeatSolve.F90's
+    ! CompressibilityModel handling. "Perfect Gas" needs the coupled flow
+    ! solution's pressure and so, as in legacy, only applies with computed
+    ! convection; "Thermal" only needs temperature and applies regardless.
+    ! "User Defined" (density from its own solved field) is not implemented.
+    CompressModel = Incompressible
+    IF( ListCompareElementString( CompressModel_h,'perfect gas',Element,Found ) .OR. &
+        ListCompareElementString( CompressModel_h,'perfect gas equation 1',Element,Found ) ) THEN
+      CompressModel = PerfectGas1
+    ELSE IF( ListCompareElementString( CompressModel_h,'thermal',Element,Found ) ) THEN
+      CompressModel = Thermal
+    ELSE IF( ListCompareElementString( CompressModel_h,'user defined',Element,Found ) ) THEN
+      CALL Fatal(Caller,'Compressibility Model "User Defined" is not implemented in HeatSolveVec')
+    END IF
+
+    IF( CompressModel == Thermal ) THEN
+      TemperatureAtIpVec => ListGetElementScalarSolutionVec( TempField_h, ngp, Basis, Element, Found )
+      RefTempAtIpVec => ListGetElementRealVec( RefTemp_h, ngp, Basis, Element, Found )
+      HeatExpAtIpVec => ListGetElementRealVec( HeatExpCoeff_h, ngp, Basis, Element, Found )
+      CompRhoAtIpVec(1:ngp) = RhoAtIpVec(1:ngp) * ( 1._dp - HeatExpAtIpVec(1:ngp) * &
+          ( TemperatureAtIpVec(1:ngp) - RefTempAtIpVec(1:ngp) ) )
+      RhoAtIpVec => CompRhoAtIpVec
+      IF( ConvConst .OR. ConvComp .OR. Transient ) TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
+    ELSE IF( CompressModel == PerfectGas1 ) THEN
+      IF( .NOT. ConvComp ) THEN
+        CALL Fatal(Caller,'Compressibility Model "Perfect Gas" requires computed convection')
+      END IF
+      SpecHeatRatio = ListGetElementReal( SpecHeatRatio_h, Basis(1,1:n), Element, Found )
+      IF(.NOT. Found ) SpecHeatRatio = 5._dp/3._dp
+      ReferencePressure = ListGetElementReal( RefPressure_h, Basis(1,1:n), Element, Found )
+      IF(.NOT. Found ) ReferencePressure = 0._dp
+      TemperatureAtIpVec => ListGetElementScalarSolutionVec( TempField_h, ngp, Basis, Element, Found )
+      PressAtIpVec => ListGetElementScalarSolutionVec( PressureField_h, ngp, Basis, Element, Found, dof=dim+1 )
+      CompRhoAtIpVec(1:ngp) = ( PressAtIpVec(1:ngp) + ReferencePressure ) / &
+          ( (SpecHeatRatio-1._dp)/SpecHeatRatio * CpAtIpVec(1:ngp) * TemperatureAtIpVec(1:ngp) )
+      RhoAtIpVec => CompRhoAtIpVec
+      TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
+    END IF
+
     ! convection, either constant or computed
     ! STIFF=STIFF+(C*grad(u),v)
     IF( ConvConst .OR. ConvComp ) THEN
@@ -915,8 +1025,66 @@ CONTAINS
       ELSE
         VeloAtIpVec => ListGetElementVectorSolutionVec( ConvField_h, ngp, dim, Basis, Element )
       END IF
+
+      ! ALE: convection is relative to the moving mesh -- see the matching
+      ! comment by MeshVeloField_h's initialization.
+      MeshVeloAtIpVec => ListGetElementVectorSolutionVec( MeshVeloField_h, ngp, dim, Basis, Element, Found )
+      IF( Found ) THEN
+        VeloAtIpVec(1:ngp,1:dim) = VeloAtIpVec(1:ngp,1:dim) - MeshVeloAtIpVec(1:ngp,1:dim)
+      END IF
+
       CALL LinearForms_GradUdotU(ngp, nd, dim, dBasisdx, Basis, DetJVec, STIFF, &
           TmpVec, VeloAtIpVec )
+
+      ! Compressibility Model, continued: the reversible pressure-work
+      ! source term Force += Pcoeff*(dp/dt + u.grad p), only meaningful
+      ! with computed convection (Pressure/PrevPressure come from the
+      ! coupled flow solution) -- matches DiffuseConvectiveCompose's
+      ! "Compressible" branch (DiffuseConvectiveAnisotropic.F90).
+      IF( ConvComp .AND. CompressModel /= Incompressible ) THEN
+        IF( CompressModel == PerfectGas1 ) THEN
+          PcoeffVec(1:ngp) = 1._dp
+        ELSE
+          PcoeffVec(1:ngp) = TemperatureAtIpVec(1:ngp) * HeatExpAtIpVec(1:ngp) / &
+              ( 1._dp - HeatExpAtIpVec(1:ngp) * &
+              ( TemperatureAtIpVec(1:ngp) - RefTempAtIpVec(1:ngp) ) )
+        END IF
+
+        PressAtIpVec => ListGetElementScalarSolutionVec( PressureField_h, ngp, Basis, Element, Found, dof=dim+1 )
+
+        IF( Transient ) THEN
+          PrevPressAtIpVec => ListGetElementScalarSolutionVec( PrevFlowField_h, ngp, Basis, Element, Found, dof=dim+1 )
+          TmpVec2(1:ngp) = PcoeffVec(1:ngp) * ( PressAtIpVec(1:ngp) - PrevPressAtIpVec(1:ngp) ) / dt
+          CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec2, FORCE )
+        END IF
+
+        ! grad(p): the flow solution's pressure is a solved field, not a
+        ! keyword, so its gradient is formed directly from its own nodal
+        ! (n corner nodes, not the bubble-augmented nd) values and dBasisdx,
+        ! same idiom as the SUPG StreamVec construction below.
+        DO p=1,n
+          k = ConvField_h % Variable % Perm( Element % NodeIndexes(p) )
+          IF( k > 0 ) THEN
+            NodalPressure(p) = ConvField_h % Variable % Values( ConvField_h % Variable % Dofs*(k-1) + dim + 1 )
+          ELSE
+            NodalPressure(p) = 0._dp
+          END IF
+        END DO
+
+        GradPVec(1:ngp,1:dim) = 0._dp
+        DO i=1,dim
+          DO p=1,n
+            GradPVec(1:ngp,i) = GradPVec(1:ngp,i) + NodalPressure(p) * dBasisdx(1:ngp,p,i)
+          END DO
+        END DO
+
+        TmpVec2(1:ngp) = 0._dp
+        DO i=1,dim
+          TmpVec2(1:ngp) = TmpVec2(1:ngp) + VeloAtIpVec(1:ngp,i) * GradPVec(1:ngp,i)
+        END DO
+        TmpVec2(1:ngp) = PcoeffVec(1:ngp) * TmpVec2(1:ngp)
+        CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec2, FORCE )
+      END IF
 
       ! SUPG (equal-order) stabilization: adds tau*(rho*cp*v.grad u, rho*cp*v.grad v)
       ! to the standard Galerkin convection term above, and the matching
@@ -1008,6 +1176,18 @@ CONTAINS
         FORCE(1:nd) = FORCE(1:nd) + DetJVec(t) * JouleH * Basis(t,1:nd)
       END IF
     END DO
+
+    ! The heat equation may have lower dimensional elements active also.
+    ! For example, heat transfer through a pipe could be expressed by 1d
+    ! elements. Then the multiplier should be the area of the pipe when
+    ! included in a 3D mesh. Applied to the whole local system, as in
+    ! HeatSolve.F90.
+    HTMultAtIp = ListGetElementReal( HTMult_h, Basis(1,1:nd), Element, Found )
+    IF( Found ) THEN
+      MASS  = HTMultAtIp * MASS
+      STIFF = HTMultAtIp * STIFF
+      FORCE = HTMultAtIp * FORCE
+    END IF
 
     ! A condensed bubble's own value from the previous timestep is not in the
     ! global solution vector (it was eliminated from it), so Default1stOrderTime
@@ -1102,6 +1282,7 @@ CONTAINS
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
     USE Differentials, ONLY: JouleHeat
+    USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
@@ -1109,12 +1290,20 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,nd)
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd)
-    REAL(KIND=dp) :: weight, SourceAtIp, CpAtIp, RhoAtIp, CondAtIp, DetJ, A, VeloAtIp(3)
+    REAL(KIND=dp) :: weight, SourceAtIp, CpAtIp, RhoAtIp, CondAtIp, DetJ, A, VeloAtIp(3), MeshVeloAtIp(3)
     REAL(KIND=dp) :: PerfRateAtIp, PerfDensAtIp, PerfCpAtIp, PerfRefTempAtIp, PerfCoeff
     REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,j,t,p,q,CondRank,tid,boff
+    INTEGER :: i,j,t,p,q,k,CondRank,tid,boff
+    ! Compressibility Model work: see the matching comment in LocalMatrixVec.
+    ! NodalPressure/GradP support the reversible pressure-work source term;
+    ! the flow solution's pressure is a solved field, not a keyword, so its
+    ! nodal values come straight from the variable rather than a handle.
+    INTEGER :: CompressModel
+    REAL(KIND=dp) :: SpecHeatRatio, ReferencePressure, TemperatureAtIp, &
+        RefTempAtIp, HeatExpAtIp, PressAtIp, PrevPressAtIp, Pcoeff, &
+        NodalPressure(n), GradP(3)
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -1124,7 +1313,8 @@ CONTAINS
     ! integration point -- see the matching comment in LocalMatrixVec, whose
     ! ConvVec/StreamVec split this mirrors. Tau is the Franca et al.
     ! stabilization parameter.
-    REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar, JouleH
+    REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar, JouleH, HTMultAtIp
+    LOGICAL :: HTMultFound
     ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
 
@@ -1138,7 +1328,12 @@ CONTAINS
         PlateSpeed_h  => PlateSpeed_h(tid),   PerfRate_h    => PerfRate_h(tid),       &
         PerfDens_h    => PerfDens_h(tid),     PerfCp_h      => PerfCp_h(tid),         &
         PerfRefTemp_h => PerfRefTemp_h(tid),  VolSource_h   => VolSource_h(tid),      &
-        OrigMesh_h    => OrigMesh_h(tid),     ConvField_h   => ConvField_h(tid) )
+        OrigMesh_h    => OrigMesh_h(tid),     ConvField_h   => ConvField_h(tid),      &
+        HTMult_h      => HTMult_h(tid),       CompressModel_h => CompressModel_h(tid), &
+        SpecHeatRatio_h => SpecHeatRatio_h(tid), RefTemp_h   => RefTemp_h(tid),       &
+        HeatExpCoeff_h => HeatExpCoeff_h(tid), RefPressure_h => RefPressure_h(tid),   &
+        TempField_h   => TempField_h(tid),    PrevFlowField_h => PrevFlowField_h(tid), &
+        PressureField_h => PressureField_h(tid), MeshVeloField_h => MeshVeloField_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -1147,16 +1342,28 @@ CONTAINS
       CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
       CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
       CALL ListInitElementKeyword( Rho_h,'Material','Density')
+      CALL ListInitElementKeyword( HTMult_h,'Material','Heat Transfer Multiplier')
+      CALL ListInitElementKeyword( CompressModel_h,'Material','Compressibility Model')
+      CALL ListInitElementKeyword( SpecHeatRatio_h,'Material','Specific Heat Ratio')
+      CALL ListInitElementKeyword( RefTemp_h,'Material','Reference Temperature')
+      CALL ListInitElementKeyword( HeatExpCoeff_h,'Material','Heat Expansion Coefficient')
+      CALL ListInitElementKeyword( RefPressure_h,'Material','Reference Pressure')
 
       CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')
-      
+
       CALL ListInitElementKeyword( ConvVelo_h,'Material','Convection Velocity',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( PlateSpeed_h,'Material','Draw Velocity')
 
       str = GetString( Params, 'Temperature Convection Field', Found )
       IF(.NOT. Found ) str = 'Flow Solution'
       CALL ListInitElementVariable( ConvField_h, str )
-      
+      CALL ListInitElementVariable( PrevFlowField_h, str, tStep=-1 )
+      CALL ListInitElementVariable( PressureField_h, str )
+      CALL ListInitElementVariable( TempField_h, UVariable=Solver % Variable )
+
+      ! ALE: see the matching comment in LocalMatrixVec.
+      CALL ListInitElementVariable( MeshVeloField_h, 'Mesh Velocity' )
+
       CALL ListInitElementKeyword( PerfRate_h,'Body Force','Perfusion Rate')
       CALL ListInitElementKeyword( PerfDens_h,'Body Force','Perfusion Density')
       CALL ListInitElementKeyword( PerfRefTemp_h,'Body Force','Perfusion Reference Temperature')
@@ -1185,9 +1392,11 @@ CONTAINS
     STIFF = 0._dp
     FORCE = 0._dp
 
-    ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )    
+    ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )
     ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
-    
+
+    HTMultFound = .FALSE.
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -1195,12 +1404,51 @@ CONTAINS
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
 
+      ! Evaluated once per element (at the 1st integration point), since
+      ! this multiplier scales the whole local system after the loop --
+      ! see the matching comment and application in LocalMatrixVec.
+      IF( t == 1 ) THEN
+        HTMultAtIp = ListGetElementReal( HTMult_h, Basis, Element, HTMultFound )
+      END IF
+
       IF ( AxiSymmetric ) THEN
         Weight = Weight * SUM( Nodes % x(1:n)*Basis(1:n) )
       END IF
 
       RhoAtIp = ListGetElementReal( Rho_h, Basis, Element, Found )
-      
+
+      ! Compressibility Model: override density -- see the matching
+      ! comment in LocalMatrixVec.
+      CompressModel = Incompressible
+      IF( ListCompareElementString( CompressModel_h,'perfect gas',Element,Found ) .OR. &
+          ListCompareElementString( CompressModel_h,'perfect gas equation 1',Element,Found ) ) THEN
+        CompressModel = PerfectGas1
+      ELSE IF( ListCompareElementString( CompressModel_h,'thermal',Element,Found ) ) THEN
+        CompressModel = Thermal
+      ELSE IF( ListCompareElementString( CompressModel_h,'user defined',Element,Found ) ) THEN
+        CALL Fatal(Caller,'Compressibility Model "User Defined" is not implemented in HeatSolveVec')
+      END IF
+
+      IF( CompressModel == Thermal ) THEN
+        TemperatureAtIp = ListGetElementScalarSolution( TempField_h, Basis, Element )
+        RefTempAtIp = ListGetElementReal( RefTemp_h, Basis, Element, Found )
+        HeatExpAtIp = ListGetElementReal( HeatExpCoeff_h, Basis, Element, Found )
+        RhoAtIp = RhoAtIp * ( 1._dp - HeatExpAtIp * ( TemperatureAtIp - RefTempAtIp ) )
+      ELSE IF( CompressModel == PerfectGas1 ) THEN
+        IF( .NOT. ConvComp ) THEN
+          CALL Fatal(Caller,'Compressibility Model "Perfect Gas" requires computed convection')
+        END IF
+        SpecHeatRatio = ListGetElementReal( SpecHeatRatio_h, Basis, Element, Found )
+        IF(.NOT. Found ) SpecHeatRatio = 5._dp/3._dp
+        ReferencePressure = ListGetElementReal( RefPressure_h, Basis, Element, Found )
+        IF(.NOT. Found ) ReferencePressure = 0._dp
+        TemperatureAtIp = ListGetElementScalarSolution( TempField_h, Basis, Element )
+        PressAtIp = ListGetElementScalarSolution( PressureField_h, Basis, Element, dof=dim+1 )
+        CpAtIp = ListGetElementReal( Cp_h, Basis, Element, Found )
+        RhoAtIp = ( PressAtIp + ReferencePressure ) / &
+            ( (SpecHeatRatio-1._dp)/SpecHeatRatio * CpAtIp * TemperatureAtIp )
+      END IF
+
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
       CondAtIp = ListGetElementReal( Cond_h, Basis, Element, Found, &
@@ -1247,8 +1495,12 @@ CONTAINS
           END IF
         ELSE
           VeloAtIp = ListGetElementVectorSolution( ConvField_h, Basis, Element, dofs = dim )
-        END IF        
-        
+        END IF
+
+        ! ALE: see the matching comment in LocalMatrixVec.
+        MeshVeloAtIp = ListGetElementVectorSolution( MeshVeloField_h, Basis, Element, Found = Found, dofs = dim )
+        IF( Found ) VeloAtIp(1:dim) = VeloAtIp(1:dim) - MeshVeloAtIp(1:dim)
+
         ! advection term (C*grad(u),v)
         ! -----------------------------------
         DO p=1,nd
@@ -1257,6 +1509,43 @@ CONTAINS
                 CpAtIp * RhoAtIp * SUM(VeloAtIp(1:dim)*dBasisdx(q,1:dim)) * Basis(p)
           END DO
         END DO
+
+        ! Compressibility Model, continued: the reversible pressure-work
+        ! source term Force += Pcoeff*(dp/dt + u.grad p) -- see the
+        ! matching comment in LocalMatrixVec.
+        IF( ConvComp .AND. CompressModel /= Incompressible ) THEN
+          IF( CompressModel == PerfectGas1 ) THEN
+            Pcoeff = 1._dp
+          ELSE
+            Pcoeff = TemperatureAtIp * HeatExpAtIp / &
+                ( 1._dp - HeatExpAtIp * ( TemperatureAtIp - RefTempAtIp ) )
+          END IF
+
+          PressAtIp = ListGetElementScalarSolution( ConvField_h, Basis, Element, dof=dim+1 )
+
+          IF( Transient ) THEN
+            PrevPressAtIp = ListGetElementScalarSolution( PrevFlowField_h, Basis, Element, dof=dim+1 )
+            FORCE(1:nd) = FORCE(1:nd) + Weight * Pcoeff * ( PressAtIp - PrevPressAtIp ) / dt * Basis(1:nd)
+          END IF
+
+          ! grad(p): the flow solution's pressure is a solved field, not a
+          ! keyword, so its nodal values come straight from the variable.
+          DO p=1,n
+            k = ConvField_h % Variable % Perm( Element % NodeIndexes(p) )
+            IF( k > 0 ) THEN
+              NodalPressure(p) = ConvField_h % Variable % Values( ConvField_h % Variable % Dofs*(k-1) + dim + 1 )
+            ELSE
+              NodalPressure(p) = 0._dp
+            END IF
+          END DO
+
+          GradP = 0._dp
+          DO i=1,dim
+            GradP(i) = SUM( NodalPressure(1:n) * dBasisdx(1:n,i) )
+          END DO
+
+          FORCE(1:nd) = FORCE(1:nd) + Weight * Pcoeff * SUM( VeloAtIp(1:dim) * GradP(1:dim) ) * Basis(1:nd)
+        END IF
 
         ! SUPG (equal-order) stabilization: adds tau*(rho*cp*v.grad u,
         ! rho*cp*v.grad v) to the standard Galerkin convection term above, and
@@ -1356,7 +1645,18 @@ CONTAINS
         FORCE(1:nd) = FORCE(1:nd) + Weight * JouleH * Basis(1:nd)
       END IF
     END DO
-    
+
+    ! The heat equation may have lower dimensional elements active also.
+    ! For example, heat transfer through a pipe could be expressed by 1d
+    ! elements. Then the multiplier should be the area of the pipe when
+    ! included in a 3D mesh. Applied to the whole local system, as in
+    ! HeatSolve.F90.
+    IF( HTMultFound ) THEN
+      MASS  = HTMultAtIp * MASS
+      STIFF = HTMultAtIp * STIFF
+      FORCE = HTMultAtIp * FORCE
+    END IF
+
     ! See the matching comment in LocalMatrixVec: a condensed bubble's own
     ! value from the previous timestep is not in the global solution vector,
     ! so CondensatePTransient must form the time derivative over the full
@@ -1432,7 +1732,7 @@ CONTAINS
         RadC, RadF, RadText, Text, Emis, AssFrac
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), ElemWeight(nd)
-    LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse,TorBC
+    LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse,TorBC,InfBC
     INTEGER :: t,p,q,Indexes(n)
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
@@ -1452,7 +1752,8 @@ CONTAINS
         ExtTemp_h    => ExtTemp_h(tid),     Farfield_h   => Farfield_h(tid),   &
         RadFlag_h    => RadFlag_h(tid),     RadExtTemp_h => RadExtTemp_h(tid),  &
         EmisBC_h     => EmisBC_h(tid),      EmisMat_h    => EmisMat_h(tid),    &
-        TorBC_h      => TorBC_h(tid) )
+        TorBC_h      => TorBC_h(tid),       Cond_h       => Cond_h(tid),      &
+        InfBCFlag_h  => InfBCFlag_h(tid),   InfBCText_h  => InfBCText_h(tid) )
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( HeatFlux_h,'Boundary Condition','Heat Flux')
@@ -1464,7 +1765,18 @@ CONTAINS
       CALL ListInitElementKeyword( EmisBC_h,'Boundary Condition','Emissivity')
       CALL ListInitElementKeyword( EmisMat_h,'Material','Emissivity')
       CALL ListInitElementKeyword( TorBC_h,'Boundary Condition','Radiator BC')
-      
+
+      ! "Infinity BC <variable>[ Offset]", e.g. "Infinity BC Temperature": a
+      ! far-field Robin condition whose conductance is derived from the
+      ! parent element's own conductivity and the boundary's distance from
+      ! the coordinate origin -- see HeatSolve.F90's AddHeatFluxBC and
+      ! DiffuseConvectiveBoundary (DiffuseConvectiveAnisotropic.F90).
+      CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
+      CALL ListInitElementKeyword( InfBCFlag_h,'Boundary Condition', &
+          'Infinity BC '//TRIM(GetVarName(Solver % Variable)))
+      CALL ListInitElementKeyword( InfBCText_h,'Boundary Condition', &
+          'Infinity BC '//TRIM(GetVarName(Solver % Variable))//' Offset')
+
       InitHandles = .FALSE.
     END IF
 
@@ -1493,12 +1805,17 @@ CONTAINS
     !-----------------------
     IP = GaussPoints( Element )
 
-    ! Is this a radiator BC? 
-    TorBC = ListGetElementLogical( TorBC_h, Element, Found = Found ) 
+    ! Is this a radiator BC?
+    TorBC = ListGetElementLogical( TorBC_h, Element, Found = Found )
     TorBC = TorBC .AND. .NOT. DiffuseGray
     TorBC = TorBC .AND. Element % PartIndex == ParEnv % myPE
 
-        
+    ! Is this an "Infinity BC" (far-field Robin condition, Cartesian only)?
+    InfBC = ListGetElementLogical( InfBCFlag_h, Element, Found = Found )
+    IF( InfBC .AND. CurrentCoordinateSystem() /= Cartesian ) THEN
+      CALL Fatal(Caller,'Infinity BC only implemented for the Cartesian case!')
+    END IF
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -1532,16 +1849,30 @@ CONTAINS
 
       ! Robin condition (c*(T-T_0)):
       ! ---------------------------
-      Text = ListGetElementReal( Farfield_h, Basis, Element, RobinBC )      
-      IF( RobinBC ) THEN
+      IF( InfBC ) THEN
+        ! Far-field conductance Alpha = k_parent*(Coord.Normal)/(Coord.Coord),
+        ! Force = Alpha*Text -- matches DiffuseConvectiveBoundary's OpenBC
+        ! branch exactly (legacy HeatSolve.F90's "Infinity BC" condition).
+        Text = ListGetElementReal( InfBCText_h, Basis, Element, Found )
         Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
         Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
         Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
         Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
-        C = SUM( Coord * Normal ) / SUM( Coord * Coord )         
+        C = ListGetElementRealParent( Cond_h, Basis, Element = Element, Found = Found ) * &
+            SUM( Coord * Normal ) / SUM( Coord * Coord )
+        RobinBC = .TRUE.
       ELSE
-        C = ListGetElementReal( HeatTrans_h, Basis, Element, RobinBC )
-        IF(RobinBC) Text = ListGetElementReal( ExtTemp_h, Basis, Element, Found )
+        Text = ListGetElementReal( Farfield_h, Basis, Element, RobinBC )
+        IF( RobinBC ) THEN
+          Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
+          Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
+          Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
+          Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
+          C = SUM( Coord * Normal ) / SUM( Coord * Coord )
+        ELSE
+          C = ListGetElementReal( HeatTrans_h, Basis, Element, RobinBC )
+          IF(RobinBC) Text = ListGetElementReal( ExtTemp_h, Basis, Element, Found )
+        END IF
       END IF
 
       IF( RadIdeal ) THEN

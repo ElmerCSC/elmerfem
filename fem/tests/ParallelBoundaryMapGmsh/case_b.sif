@@ -59,7 +59,7 @@ End
 Solver 1
   Equation = HeatSolver
   Variable = TemperatureB
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = True

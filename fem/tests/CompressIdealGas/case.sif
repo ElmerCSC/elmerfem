@@ -98,7 +98,7 @@ Solver 2
 !  Exec Solver = never
 
   Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
 
   Stabilize = True

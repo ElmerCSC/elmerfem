@@ -90,7 +90,7 @@ End
 
 Solver 3
   Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
   Stabilize = False
   Bubbles = False

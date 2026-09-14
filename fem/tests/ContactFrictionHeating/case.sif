@@ -93,7 +93,7 @@ End
 
 Solver 2
   Equation = HeatEq
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
 
   Stabilize = Logical True

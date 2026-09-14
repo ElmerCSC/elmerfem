@@ -60,7 +60,7 @@ Solver 1
   Exec Solver = "Always"
   Equation = "Heat"
 
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = "Temperature"
 
   Linear System Solver = "Iterative"

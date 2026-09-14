@@ -59,6 +59,10 @@ End
 
 Solver 1
   Equation = Heat Equation
+! Stays on legacy HeatSolve: with HeatSolveVec the idealized-radiation (RadIdeal)
+! result comes out ~3.6e-5 relative off the reference norm -- tiny, but not
+! exact, and not root-caused (same small-mismatch family as radiation/
+! radiation2).
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
   Stabilize = True

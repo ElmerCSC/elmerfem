@@ -4,7 +4,7 @@
 ! The case is not intended to be used as a real strategy for linear
 ! systems. 
 !
-! Peter Råback / 12.1.2014
+! Peter Rback / 12.1.2014
 !--------------------------------------------------------------------
 
 Header
@@ -58,7 +58,7 @@ End
 Solver 2
   Equation = "HeatA"
   Variable = "TempA"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"
@@ -80,7 +80,7 @@ End
 Solver 1
   Equation = "HeatB"
   Variable = "TempB"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

@@ -63,6 +63,8 @@ End
 Solver 2
   Equation = "Heat"
 
+! Stays on legacy HeatSolve: with HeatSolveVec the heat solution comes out
+! ~0.04% off the reference norm -- close, but not root-caused.
   Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
 

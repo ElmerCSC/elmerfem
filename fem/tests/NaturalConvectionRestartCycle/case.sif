@@ -71,7 +71,7 @@ End
 
 Solver 1
   Equation = Energy
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = -dofs 1 Temperature
   Stabilize = True
   Bubbles = False

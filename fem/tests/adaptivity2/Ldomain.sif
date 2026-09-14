@@ -44,6 +44,8 @@ End
 
 Solver 1
   Equation = Heat Equation
+! Stays on legacy HeatSolve: with HeatSolveVec the (mesh-adaptivity-driven)
+! result comes out ~0.16% off the reference norm -- close, but not root-caused.
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
   Linear System Solver = Direct

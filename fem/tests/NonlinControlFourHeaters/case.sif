@@ -92,7 +92,7 @@ End
 Solver 1
   Equation = HeatSolver
   Variable = Temperature
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Nonlinear System Max Iterations = 5
   Nonlinear System Convergence Tolerance = 1.0e-5

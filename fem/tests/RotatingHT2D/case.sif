@@ -132,6 +132,8 @@ End
 ! Solve the heat equation with convection and conduction
 Solver 3
   Equation = Heat Equation
+! Stays on legacy HeatSolve: with HeatSolveVec, two of this case's solvers
+! come out 0.16%-2.9% off the reference norm -- close, but not root-caused.
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
   Exec Solver = Always
