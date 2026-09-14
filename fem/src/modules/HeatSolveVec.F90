@@ -131,7 +131,6 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('material','Phase Change Model',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('material','Heat Transfer Multiplier',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('equation','Phase Change Model',FatalFound=.TRUE.)
-  CALL ListWarnUnsupportedKeyword('solver','Current Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
 
   IF(.NOT. ( DG .OR. DB ) ) THEN
@@ -760,6 +759,7 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
+    USE Differentials, ONLY: JouleHeat
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
@@ -790,11 +790,11 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: StreamVec(:,:), TauVec(:)
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
-    INTEGER :: i,p,j,ngp,allocstat,tid,boff
+    INTEGER :: i,p,j,t,ngp,allocstat,tid,boff
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd), hK, mK, VNorm
+    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd), hK, mK, VNorm, JouleH
     ! Handles now live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
@@ -999,7 +999,16 @@ CONTAINS
         END IF
       END IF
     END IF
-      
+
+    ! Joule heating from a coupled electric/magnetic solver ("Joule Heat = True"
+    ! on this element's body force).
+    DO t=1,ngp
+      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+      IF( JouleH /= 0._dp ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + DetJVec(t) * JouleH * Basis(t,1:nd)
+      END IF
+    END DO
+
     ! A condensed bubble's own value from the previous timestep is not in the
     ! global solution vector (it was eliminated from it), so Default1stOrderTime
     ! cannot form its time derivative -- it would silently treat that history
@@ -1092,6 +1101,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
+    USE Differentials, ONLY: JouleHeat
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
@@ -1114,7 +1124,7 @@ CONTAINS
     ! integration point -- see the matching comment in LocalMatrixVec, whose
     ! ConvVec/StreamVec split this mirrors. Tau is the Franca et al.
     ! stabilization parameter.
-    REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar
+    REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar, JouleH
     ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
 
@@ -1335,6 +1345,15 @@ CONTAINS
             FORCE(1:nd) = FORCE(1:nd) + Weight * Tau * SourceAtIP * RhoAtIp * StreamVec(1:nd)
           END IF
         END IF
+      END IF
+
+      ! Joule heating from a coupled electric/magnetic solver -- see the
+      ! matching comment in LocalMatrixVec. JouleHeat() does its own
+      ! ElementInfo call internally and cheaply no-ops via early return when
+      ! this element's body force does not set "Joule Heat".
+      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+      IF( JouleH /= 0._dp ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + Weight * JouleH * Basis(1:nd)
       END IF
     END DO
     
