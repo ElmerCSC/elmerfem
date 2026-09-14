@@ -710,12 +710,10 @@ IF(Hypre_FOUND)
       # Hypre's own CUDA-enabled build needs these linked in directly
       SET(HYPRE_CUDA_LIBRARIES CUDA::cudart CUDA::cublas CUDA::cusparse CUDA::cusolver CUDA::curand)
       MARK_AS_ADVANCED(HYPRE_CUDA_LIBRARIES)
-      MESSAGE(STATUS "Hypre was configured --with-cuda (HYPRE_USING_CUDA); "
-                     "binding elmersolver to CUDA for per-rank GPU selection")
+      MESSAGE(STATUS "Hypre was configured --with-cuda (HYPRE_USING_CUDA) and CMake found CUDA")
     ELSE()
       MESSAGE(WARNING "Hypre reports HYPRE_USING_CUDA but CMake could not "
-                      "find CUDA; Hypre GPU device binding will be disabled "
-                      "and all MPI ranks on a node will default to GPU 0")
+                      "find CUDA. Some GPU features of Hypre may not work.")
     ENDIF()
   ENDIF()
 ENDIF()
