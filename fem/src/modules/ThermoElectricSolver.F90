@@ -350,18 +350,15 @@ CONTAINS
 
             ! Peltier coefficient implicitly
             ! -------------------------------
-            A(1,1) = A(1,1) - &
-                     s*Basis(q)*SUM(MATMUL(alpha,CD)*dBasisdx(p,:))
+            A(1,1) = A(1,1) - s*Basis(q)*SUM(MATMUL(alpha,CD)*dBasisdx(p,:))
 
             ! temperature gradient part of div(pelt_0*J)
             ! ------------------------------------------
-            A(1,1) = A(1,1) - &
-                  s*SUM(MATMUL(PeltSB,dBasisdx(q,:))*dBasisdx(p,:))
+            A(1,1) = A(1,1) - s*SUM(MATMUL(PeltSB,dBasisdx(q,:))*dBasisdx(p,:))
 
             ! electric field part of div(pelt_0*J)
             ! ------------------------------------
-            A(1,2) = A(1,2) - &
-                  s*SUM(MATMUL(PeltSi,dBasisdx(q,:))*dBasisdx(p,:))
+            A(1,2) = A(1,2) - s*SUM(MATMUL(PeltSi,dBasisdx(q,:))*dBasisdx(p,:))
 
             ! Newton linarization of Joule heating=-(J,E) ~
             ! -(J_0,E) + (J,E_0) - (J_0,E_0) (<-- to rhs)
@@ -372,13 +369,11 @@ CONTAINS
 
             ! temperature gradient part of (J,E_0)
             ! ------------------------------------
-            A(1,1) = A(1,1) - &
-                   s*SUM(MATMUL(SB,dBasisdx(q,:))*EF)*Basis(p)
+            A(1,1) = A(1,1) - s*SUM(MATMUL(SB,dBasisdx(q,:))*EF)*Basis(p)
 
             ! electric field part part of (J,E_0)
             ! ------------------------------------
-            A(1,2) = A(1,2) - &
-                s*SUM(MATMUL(sigma,dBasisdx(q,:))*EF)*Basis(p)
+            A(1,2) = A(1,2) - s*SUM(MATMUL(sigma,dBasisdx(q,:))*EF)*Basis(p)
           END IF
 
 

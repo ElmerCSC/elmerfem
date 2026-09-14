@@ -1,7 +1,6 @@
 ! A test case for the new StatCurrentSolveVec module.
 !
-! Includes anisotropic conduction. 
-! Non-vectorized assembly.
+! Includes anisotropic conduction, using vectorized assembly.
 !
 ! P.R. 13.11.2018
 
@@ -36,7 +35,7 @@ Solver 1
   Equation = StaticCurrent
   Variable = Potential
   Variable DOFs = 1
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
 
   Linear System Solver = Direct
   Linear System Direct Method = UMFPack
@@ -51,7 +50,7 @@ Solver 1
   Nonlinear System Relaxation Factor = 1.0
   Steady State Convergence Tolerance = 1.0e-4
 
-  Vector Assembly = False
+  Vector Assembly = True
 
   Calculate Volume Current = True
   Calculate Electric Field = True
