@@ -44,6 +44,7 @@
 MODULE BoundaryConditionUtils
 
     USE SolverBasics
+    USE MatrixScaling, ONLY : ScaleLinearSystem
     IMPLICIT NONE
 
 CONTAINS

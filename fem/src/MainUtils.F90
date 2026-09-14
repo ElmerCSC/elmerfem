@@ -61,10 +61,11 @@ MODULE MainUtils
       ElmerGraphColour, ElmerMeshToDualGraph, Graph_Deallocate
   USE MeshLoad, ONLY : LoadMesh2
   USE MeshSplit, ONLY : SplitMeshEqual
-  
+
+  USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
   USE SolverBasics, ONLY : CalculateEntityWeights, &
       CalculateNodalWeights, CheckStepSize, ComputeChange, &
-      ComputeNorm, CreateIpPerm, ScaleLinearSystem, BackScaleLinearSystem, &
+      ComputeNorm, CreateIpPerm, &
       InitializeTimestep, InitializeToZero, InvalidateVariable, &
       AuditIntegrationRules, MatrixVectorMultiply, UpdateDependentObjects, &
       UpdateExportedVariables

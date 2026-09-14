@@ -46,6 +46,7 @@ MODULE SolveCore
 
     USE SolverBasics
     USE BoundaryConditionUtils
+    USE MatrixScaling, ONLY : BackScaleLinearSystem
     USE IterSolve, ONLY : NumericalError
     IMPLICIT NONE
 

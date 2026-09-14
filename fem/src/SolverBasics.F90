@@ -65,7 +65,7 @@ MODULE SolverBasics
    USE ParallelUtils
    USE ParallelEigenSolve
    USE MatrixAssembly
-   USE MatrixScaling
+   USE MatrixScaling, ONLY : ScaleLinearSystemVectors
    
    IMPLICIT NONE
    ! Not re-exported: the external procedure itself USEs modules that would
