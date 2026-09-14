@@ -71,7 +71,7 @@ End
 
 Solver 1
   Equation = "NS-Vec"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
 
   ! No "Stokes Flow" here on purpose: the convection term and the mass matrix
   ! are switched by that one flag together, and this case wants both.

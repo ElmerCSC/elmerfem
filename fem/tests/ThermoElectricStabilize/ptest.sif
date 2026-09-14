@@ -1,0 +1,83 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  Post File = "test.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1 :: Active Solvers(1) = 1
+Body Force 1 :: Current Source = Real 100
+
+Material 1
+  Electric Conductivity = 1
+  Density = 1
+  Heat Capacity = 1
+  Heat Conductivity = 1
+
+  Seebeck Coefficient = Real -0.005
+End
+
+
+Solver 1
+  Equation = "ThermoElectric"
+
+  Variable = POT[Temperature:1 Potential:1]
+  Procedure = "ThermoElectricSolver" "ThermoElectricSolver"
+
+  ! SUPG stabilization of the Peltier-driven "drift" term in the temperature
+  ! equation (GetStabilizeFlag / effective velocity alpha*J).
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance=1e-6
+  Nonlinear System Max Iterations=100
+  Nonlinear System Newton After Iterations=1
+  Nonlinear System Newton After Tolerance=1e-9
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = BicgstabL
+  Bicgstabl Polynomial Degree = 2
+  Linear System Max Iterations = 200
+  Linear System Residual Output = 40
+  Linear System Preconditioning = Ilu
+  Linear System Convergence Tolerance = 1e-8
+
+  Steady State Convergence Tolerance = 1e-6
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential   = 0
+  Temperature = 300
+End
+
+Boundary Condition 2
+  Target Boundaries(2) = 2 4
+  Electric Transfer Coefficient(2,2) = Real 2.0 0.5 \
+                                             0.5 1.0
+  External Potential = Real 5.0
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Electric Flux Vector 1 = Real 30.0
+  Electric Flux Vector 2 = Real 50.0
+End
+
+
+Solver 1 :: Reference Norm = Real 1140.48290
+RUN

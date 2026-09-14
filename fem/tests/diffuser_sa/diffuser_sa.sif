@@ -10,8 +10,13 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations  = 500
 
-  Restart File = "channel.result"
+  Coordinate Scaling(3) = 1.5 1 1
+
+  Post File = diffuser.vtu
+  Output Intervals = 100
+
   Restart Position = 0
+  Restart File = "channel.result"
 End
 
 
@@ -136,6 +141,6 @@ Boundary Condition 3
   Noslip Wall BC = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 10.1619
+Solver 3 :: Reference Norm = Real 10.0526233
 Solver 3 :: Reference Norm Tolerance = Real 1e-3
 RUN

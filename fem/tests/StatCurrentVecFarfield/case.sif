@@ -36,7 +36,7 @@ Solver 1
   Equation = StaticCurrent
   Variable = Potential
   Variable DOFs = 1
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
 
   Linear System Solver = Direct
   Linear System Direct Method = UMFPack

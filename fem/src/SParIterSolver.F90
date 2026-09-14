@@ -1934,8 +1934,8 @@ END SUBROUTINE ZeroSplittedMatrix
 !--------------------------------------------------------------------
 !> Call the parallel iterative solver
 !--------------------------------------------------------------------
-SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
-            RHSVec, Solver, SParMatrixDesc )
+RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
+    RHSVec, Solver, SParMatrixDesc )
 
   USE, INTRINSIC :: iso_c_binding                
 
@@ -2508,7 +2508,7 @@ END SUBROUTINE SolveHypre
 !-------------------------------------------------------------------------
 !
 !-------------------------------------------------------------------------
-SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
+RECURSIVE SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
     RHSVec, XVec, Solver, ErrInfo )
 
   USE IterSolve
@@ -2557,23 +2557,10 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
   DEALLOCATE(r)
 
   !----------------------------------------------------------------------
-  !
   ! Initialize temporary xvec for iterator. The original XVec contains
   ! also the items on interfaces. Initialize also global pointer.
-  !
   !----------------------------------------------------------------------
 
-!  EdgeBasis = .NOT.ListGetLogicalAnyBC( CurrentModel, 'Stride Projector' )
-!  EdgeBasis = EdgeBasis.AND.ListGetLogical( Solver % Values, 'Edge Basis', stat )
-!  IF ( EdgeBasis ) THEN
-!    IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
-!      DEALLOCATE( SplittedMatrix % InsideMatrix % EPerm )
-!
-!    ALLOCATE( SplittedMatrix % InsideMatrix % EPerm(SplittedMatrix % InsideMatrix % NumberOfRows) )
-!    SplittedMatrix % InsideMatrix % EPerm = 0
-!  END IF
- 
- 
   ALLOCATE( TmpXVec(SplittedMatrix % InsideMatrix % NumberOfRows) )
   j = 0
   SplittedMatrix % InsideMatrix % ExtraDOFs=0
@@ -2606,18 +2593,16 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
  !----------------------------------------------------------------------
  ! Set up the preconditioner
  !----------------------------------------------------------------------
- IF (SplittedMatrix % InsideMatrix % NumberOFRows>0) THEN
-!  IF (SplittedMatrix % InsideMatrix % Diag(1)==0) THEN
-     DO i = 1, SplittedMatrix % InsideMatrix % NumberOfRows
-       DO j = SplittedMatrix % InsideMatrix % Rows(i), &
-            SplittedMatrix % InsideMatrix % Rows(i+1) - 1
-          IF ( SplittedMatrix % InsideMatrix % Cols(j) == i ) THEN
-             SplittedMatrix % InsideMatrix % Diag(i) = j
-             EXIT
-          END IF
-        END DO
+  IF (SplittedMatrix % InsideMatrix % NumberOFRows>0) THEN
+    DO i = 1, SplittedMatrix % InsideMatrix % NumberOfRows
+      DO j = SplittedMatrix % InsideMatrix % Rows(i), &
+          SplittedMatrix % InsideMatrix % Rows(i+1) - 1
+        IF ( SplittedMatrix % InsideMatrix % Cols(j) == i ) THEN
+          SplittedMatrix % InsideMatrix % Diag(i) = j
+          EXIT
+        END IF
       END DO
-!   END IF
+    END DO
   END IF
 
 #if 0
@@ -2662,9 +2647,15 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
   END IF
 
   IF ( .NOT. SourceMatrix % COMPLEX ) THEN
-     CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
-        TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
+    IF( ListGetLogical( Solver % Values,'Linear System Skip Mask', GotIt ) ) THEN
+      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
+          TmpRHSVec, Solver, DotF=AddrFunc(MaskedSParDotProd), NormF=AddrFunc(MaskedSParNorm), &
+          matVecF=AddrFunc(SParMatrixVector) )      
+    ELSE
+      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
+          TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
           matVecF=AddrFunc(SParMatrixVector) )
+    END IF
   ELSE
      ! Same keyword as the local block view built inside IterSolver, so the two
      ! halves of the product are always in the same form.
@@ -2682,9 +2673,9 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
      ! complex CG running the Hermitian product on a complex symmetric operator,
      ! which diverges.
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
-       TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
+         TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
          MatVecF=AddrFunc(SParCMatrixVector), MatvecReadsNoValues = .TRUE., &
-           DotFU=AddrFunc(SParCDotProdU) )
+         DotFU=AddrFunc(SParCDotProdU) )
   END IF
 
   IF (ASSOCIATED(CM)) THEN

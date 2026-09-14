@@ -29,15 +29,15 @@
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
-! *  Original Date: 10 Nov 1997
+! *  Original Date: 16 Nov 1997
 ! *
 ! ****************************************************************************/
 
 !------------------------------------------------------------------------------
-!> Solver for the (RC)SST K-omega-turbulence model.
+!> Solver for the Spalart-Allmaras-turbulence model.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-   SUBROUTINE SSTKOmega( Model,Solver,dt,TransientSimulation )
+   SUBROUTINE SpalartAllmaras( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
 
@@ -52,33 +52,34 @@
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER  :: StiffMatrix
      INTEGER :: i,j,k,n,nd,nb,iter,t,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
-
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
-
-     REAL(KIND=dp) :: RelativeChange,Norm,PrevNorm
-     LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
-
+     REAL(KIND=dp) :: RelativeChange,Norm
+     LOGICAL :: Stabilize = .TRUE.,gotIt
      LOGICAL :: AllocationsDone = .FALSE.
      LOGICAL :: Bubbles, BubblesDefault
-
      TYPE(Variable_t), POINTER :: FlowSol, KE
-
      INTEGER, POINTER :: KinPerm(:)
-
-     INTEGER :: NewtonIter,NonlinearIter
-     REAL(KIND=dp) :: NewtonTol
-
+     INTEGER :: NonlinearIter
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
-       STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:)
-
+       STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:), &
+       LocalTV(:), PrevTV(:)
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
-
-     SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce
-
      REAL(KIND=dp) :: at,at0, KMax, EMax, KVal, EVal
-!------------------------------------------------------------------------------
 
+     SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce, &
+       LocalTV, PrevTV
+
+     ! Per-element bubble history (current and previous timestep), needed to
+     ! form a consistent BDF(1) time derivative for a condensed bubble: see
+     ! CondensatePTransient in MatrixAssembly.F90 and IncompressibleNSVec's
+     ! LCondensate, which this mirrors (also mirrored in KESolver.F90,
+     ! V2FSolver.F90 and SSTKomega.F90). Indexed by Element % ElementIndex
+     ! with stride bxStride = DOFs*Mesh % MaxBDOFs (not DOFs*nb of any one
+     ! element, so blocks stay aligned on a mesh with mixed bubble counts).
+     REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+     INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
+     INTEGER :: boff
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -103,24 +104,45 @@
 
        ALLOCATE( MASS( 2*DOFs*N,2*DOFs*N ), &
                  STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
-                 FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), STAT=istat )
+                 FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), &
+                 LocalTV(N), PrevTV(N), STAT=istat )
 
        IF ( istat /= 0 ) THEN
-         CALL Fatal( 'SSTKOmega', 'Memory allocation error.' )
+         CALL Fatal( 'SpalartAllmaras', 'Memory allocation error.' )
        END IF
 
        AllocationsDone = .TRUE.
      END IF
 
+     ! Per-element bubble history for the transient condensed-bubble case:
+     ! allocate once, sized by the mesh's own worst-case bubble count (not
+     ! this solver's nb, which can vary element to element) times the number
+     ! of BULK elements. The stride covers both p-bubbles (MaxBDOFs) and
+     ! legacy "Bubbles = True" bubbles, one per node (MaxElementNodes) --
+     ! whichever is larger. No Solver % GlobalBubbles check here -- see the
+     ! matching block and its rationale in KESolver.F90.
+     IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
+       bxStride = DOFs * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
+       ALLOCATE( bx( bxStride * Solver % Mesh % NumberOfBulkElements ), &
+                 bxprev( bxStride * Solver % Mesh % NumberOfBulkElements ) )
+       bx = 0.0_dp
+       bxprev = 0.0_dp
+     END IF
+
+     ! A new timestep started: the bubble part left over from the last solve
+     ! of the previous timestep becomes "previous" for this one. Must happen
+     ! only once per timestep, not once per call -- this solver may be called
+     ! several times per timestep by the outer (Steady State) coupled
+     ! iteration, and only the first such call should shift the history.
+     IF ( TransientSimulation .AND. ALLOCATED(bx) .AND. &
+          GetTimestep() /= BubbleTimestep ) THEN
+       bxprev = bx
+       BubbleTimestep = GetTimestep()
+     END IF
+
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
-
-     NewtonTol = ListGetConstReal( Solver % Values, &
-        'Nonlinear System Newton After Tolerance',gotIt )
-
-     NewtonIter = ListGetInteger( Solver % Values, &
-        'Nonlinear System Newton After Iterations',gotIt )
 
      NonlinearIter = ListGetInteger( Solver % Values, &
          'Nonlinear System Max Iterations',GotIt )
@@ -134,7 +156,7 @@
       DO i=1,Model % NumberOFBCs
         BC => Model % BCs(i) % Values
         IF ( GetLogical( BC, 'Noslip wall BC', gotit ) ) THEN
-          CALL ListAddConstReal( BC, 'Kinetic Energy', 0.0_dp )
+          CALL ListAddConstReal( BC, 'Turbulent Viscosity', 0.0_dp )
         END IF
       END DO
 !------------------------------------------------------------------------------
@@ -144,16 +166,16 @@
        at  = CPUTime()
        at0 = RealTime()
 
-       CALL Info( 'SSTKOmega', ' ', Level=4 )
-       CALL Info( 'SSTKOmega', ' ', Level=4 )
-       CALL Info( 'SSTKOmega', &
+       CALL Info( 'SpalartAllmaras', ' ', Level=4 )
+       CALL Info( 'SpalartAllmaras', ' ', Level=4 )
+       CALL Info( 'SpalartAllmaras', &
           '-------------------------------------', Level=4 )
-       WRITE( Message, * ) 'SSTKomega iteration: ', iter
-       CALL Info( 'SSTKOmega', Message, Level=4 )
-       CALL Info( 'SSTKOmega', &
+       WRITE( Message, * ) 'Spalart-Allmaras iteration: ', iter
+       CALL Info( 'SpalartAllmaras', Message, Level=4 )
+       CALL Info( 'SpalartAllmaras', &
           '-------------------------------------', Level=4 )
-       CALL Info( 'SSTKOmega', ' ', Level=4 )
-       CALL Info( 'SSTKOmega', 'Starting Assembly...', Level=4 )
+       CALL Info( 'SpalartAllmaras', ' ', Level=4 )
+       CALL Info( 'SpalartAllmaras', 'Starting Assembly...', Level=4 )
 
        CALL DefaultInitialize()
 
@@ -168,7 +190,7 @@
             (Solver % NumberOfActiveElements-t) / &
                (1.0*Solver % NumberOfActiveElements)), ' % done'
 
-           CALL Info( 'SSTKOmega', Message, Level=5 )
+           CALL Info( 'SpalartAllmaras', Message, Level=5 )
            at0 =RealTime()
          END IF
 !------------------------------------------------------------------------------
@@ -184,18 +206,65 @@
          IF ( Bubbles ) nd = 2*n
          nb = GetElementNOFBDOFs()
          CALL GetElementNodes( ElementNodes )
+
+         ! Legacy bubbles always need this (never gated on Solver %
+         ! GlobalBubbles, see the legacy branch below); a p-bubble needs it
+         ! only when actually condensed locally.
+         IF ( TransientSimulation .AND. &
+             ( Bubbles .OR. ( nb > 0 .AND. .NOT. Solver % GlobalBubbles ) ) ) THEN
+           CALL GetScalarLocalSolution( LocalTV )
+           CALL GetScalarLocalSolution( PrevTV, tStep=-1 )
+         END IF
 !------------------------------------------------------------------------------
 !        Get element local matrices, and RHS vectors
 !------------------------------------------------------------------------------
          CALL LocalMatrix( MASS,STIFF,FORCE,LOAD,Element,n,nd+nb,ElementNodes )
          TimeForce = 0.0_dp
-         IF ( TransientSimulation ) THEN
-            CALL Default1stOrderTime( MASS, STIFF, FORCE )
-         END IF
          IF ( Bubbles ) THEN
-           CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+           IF ( TransientSimulation ) THEN
+             ! Same reasoning as the nb > 0 branch below, just with the legacy
+             ! "as many bubbles as nodes" convention (Nb = n rather than nb).
+             ! DOFs=1 here, so no interleaving is needed.
+             ! No Solver % GlobalBubbles check here: unlike a p-element bubble,
+             ! a legacy bubble is never given a real global dof to begin with
+             ! -- it is always locally condensed -- and Solver % GlobalBubbles
+             ! can be TRUE for reasons that have nothing to do with THIS
+             ! solver's own bubbles (SetGlobalBubblesFlag also inherits it
+             ! from another solver's p-bubble "Element" on the same Equation
+             ! or Body). Gating on it here would wrongly fall back to plain
+             ! Condensate + Default1stOrderTime -- the very combination this
+             ! whole fix replaces -- whenever such an unrelated solver happens
+             ! to be active alongside this one.
+             boff = (Element % ElementIndex - 1) * bxStride
+             CALL CondensatePTransient( n, n, DOFs, dt, MASS, STIFF, FORCE, &
+                 PrevTV(1:n), LocalTV(1:n), &
+                 bxprev(boff+1:boff+n), bx(boff+1:boff+n) )
+           ELSE
+             IF ( TransientSimulation ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
+             CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
+           END IF
          ELSE IF ( nb > 0 ) THEN
-           CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
+           IF ( TransientSimulation .AND. .NOT. Solver % GlobalBubbles ) THEN
+             ! A condensed bubble's own value from the previous timestep is not
+             ! in the global solution vector (it was eliminated from it), so
+             ! Default1stOrderTime cannot form its time derivative -- it would
+             ! silently treat that history as zero. CondensatePTransient forms
+             ! M/dt and M*xprev/dt over the FULL bubble-augmented block instead,
+             ! using this element's own recorded bubble history, before
+             ! eliminating the bubble rows/columns. Calling Default1stOrderTime
+             ! as well would add M/dt to the retained block a second time. See
+             ! the matching comment in KESolver.F90. DOFs=1 here, so no
+             ! interleaving is needed -- LocalTV/PrevTV can be passed directly.
+             boff = (Element % ElementIndex - 1) * bxStride
+             CALL CondensatePTransient( nd, nb, DOFs, dt, MASS, STIFF, FORCE, &
+                 PrevTV(1:nd), LocalTV(1:nd), &
+                 bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+           ELSE
+             IF ( TransientSimulation ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
+             CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
+           END IF
+         ELSE
+           IF ( TransientSimulation ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
          END IF
 !------------------------------------------------------------------------------
 !        Update global matrices from local matrices
@@ -204,60 +273,29 @@
 
 !------------------------------------------------------------------------------
       END DO     !  Bulk elements
-      CALL Info( 'SSTKOmega', 'Assembly done', Level=4 )
+      CALL Info( 'SpalartAllmaras', 'Assembly done', Level=4 )
 
 !------------------------------------------------------------------------------
       CALL DefaultFinishAssembly()
-
-!------------------------------------------------------------------------------
-!     Dirichlet boundary conditions
-!------------------------------------------------------------------------------
-      DO t=1,Solver % Mesh % NumberOfBoundaryElements
-        Element => GetBoundaryElement(t) 
-        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-        n = GetElementNOFNodes()
-        BC => GetBC()
-        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
-
-        IF (GetLogical(BC, 'Omega Wall BC', gotIt ) .OR. &
-            GetLogical(BC, 'Noslip Wall BC',  gotIt)) CALL OmegaWall(Element,n)
-
-        IF ( GetLogical( BC, 'Wall Law',gotIt ) ) THEN
-          CALL KomegaWallLaw(n)
-        END IF
-      END DO
-
       CALL DefaultDirichletBCs()
 !------------------------------------------------------------------------------
-      CALL Info( 'SSTKOmega', 'Set boundaries done', Level=4 )
+      CALL Info( 'SpalartAllmaras', 'Set boundaries done', Level=4 )
 !------------------------------------------------------------------------------
 !     Solve the system and check for convergence
 !------------------------------------------------------------------------------
-      PrevNorm = Norm
       Norm = DefaultSolve()
 !------------------------------------------------------------------------------
-!      Kinetic Energy Solution should be positive
+!     Kinetic Energy Solution should be positive
 !------------------------------------------------------------------------------
       n = SIZE( Solver % Variable % Values)
-      Kmax = MAXVAL( Solver % Variable % Values(1:n:2) )
-      Emax = MAXVAL( Solver % Variable % Values(2:n:2) )
       DO i=1,SIZE(Solver % Variable % Perm)
          k = Solver % Variable % Perm(i)
          IF ( k <= 0 ) CYCLE
-         Kval = Solver % Variable % Values(2*k-1)
-         Eval = Solver % Variable % Values(2*k-0)
-         Solver % Variable % Values(2*k-1) = MAX( KVal, 1.0d-12 )
-         Solver % Variable % Values(2*k-0) = MAX( EVal, 1.0d-12 )
+         Kval = Solver % Variable % Values(k)
+         Solver % Variable % Values(k) = MAX( KVal, 1.0d-12 )
       END DO
 
 !------------------------------------------------------------------------------
-
-      WRITE( Message,* ) 'Result Norm   : ',Norm
-      CALL Info( 'SSTKOmega', Message, Level = 4 )
-
-      RelativeChange = Solver % Variable % NonlinChange
-      WRITE( Message,* ) 'Relative Change : ',RelativeChange
-      CALL Info( 'SSTKOmega', Message, Level = 4 )
 
       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
 !------------------------------------------------------------------------------
@@ -265,47 +303,6 @@
 !------------------------------------------------------------------------------
 
 CONTAINS
-
-!------------------------------------------------------------------------------
-   SUBROUTINE KomegaWallLaw(n)
-!------------------------------------------------------------------------------
-     INTEGER :: n
-     LOGICAL :: GotIt
-     INTEGER :: i,j,k,DOF
-     REAL(KIND=dp) :: Density(n),Viscosity(n),SurfaceRoughness(n),LayerThickness(n), &
-             U(n), V(n), W(n), Kin, Eps, Omega
-
-     Density(1:n)   = GetParentMatProp( 'Density' )
-     Viscosity(1:n) = GetParentMatProp( 'Viscosity' )
-
-     SurfaceRoughness(1:n) = GetReal( BC, 'Surface Roughness', gotIt )
-     LayerThickness(1:n)   = GetReal( BC, 'Boundary Layer Thickness' )
-
-     CALL GetScalarLocalSolution(U, 'Velocity 1')
-     CALL GetScalarLocalSolution(V, 'Velocity 2')
-     CALL GetScalarLocalSolution(W, 'Velocity 3')
-
-     DOFs = Solver % Variable % DOFs
-     DO j=1,n
-      CALL KEWall( Kin, Eps, Omega, SQRT(U(j)**2+V(j)**2+W(j)**2), &
-       LayerThickness(j), SurfaceRoughness(j), Viscosity(j), &
-         Density(j) )
-
-       k = DOFs*(Solver % Variable % Perm(Element % NodeIndexes(j))-1)
-       !Solver % Matrix % RHS(k+1) = Kin
-       !CALL ZeroRow( Solver % Matrix,k+1 )
-       !CALL SetMatrixElement( Solver % Matrix,k+1,k+1,1.0d0 )
-
-       CALL UpdateDirichletDof( Solver % Matrix, k+1, Kin )
-       CALL UpdateDirichletDof( Solver % Matrix, k+2, Omega )
-       
-       !Solver % Matrix % RHS(k+2) = Omega
-       !CALL ZeroRow( Solver % Matrix,k+2 )
-       !CALL SetMatrixElement( Solver % Matrix,k+2,k+2,1.0d0 )
-     END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE KomegaWallLaw
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
    SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, LOAD, Element,n,nd,Nodes )
@@ -333,7 +330,7 @@ CONTAINS
 !  TYPE(Nodes_t) :: Nodes
 !       INPUT: Element node coordinates
 !
-!------------------------------------------------------------------------------
+!******************************************************************************
      USE MaterialModels
 
      IMPLICIT NONE
@@ -354,22 +351,17 @@ CONTAINS
      REAL(KIND=dp) :: Basis(nd)
      REAL(KIND=dp) :: dBasisdx(nd,3),detJ
 
-     REAL(KIND=dp) :: UX(n), UY(n), UZ(n), Velo(3), dVelodx(3,3), Energy(n), &
-                      Dissipation(n), Distance(n), Density(n), Viscosity(n)
+     REAL(KIND=dp) :: UX(n), UY(n), UZ(n), Velo(3), dVelodx(3,3),Tviscosity(n), &
+                      Distance(n), Density(n), Viscosity(n)
 
-     REAL(KIND=dp) :: A(2,2),M(2,2),Prod,div,ProdK,ProdO,ProdTensor(3,3),Ident(3,3)
+     REAL(KIND=dp) :: A,M,Prod,div
      INTEGER :: i,j,c,p,q,t,dim,NBasis
-     REAL(KIND=dp) :: LoadatIp(2),Cmu,Rho,mu,Tmu,Effmu(2)
+     REAL(KIND=dp) :: LoadatIp,Cmu,Rho,mu,Tmu,Effmu
 
-     REAL(KIND=dp) :: s,u,v,w, K,Omega,Strain(3,3), Vorticity(3,3), dist, &
-            Mach_number_sq, Sound_speed_sq
+     REAL(KIND=dp) :: s,u,v,w,Strain(3,3), Vorticity(3,3), dist
 
-     REAL(KIND=dp) :: StrainMeasure,VorticityMeasure,X,Y,Z,SigmaK,  &
-             SigmaO,Beta,CD,F1,F2,F3,F4,rGamma, GradK(3), GradO(3), &
-             Gravity(3), rho_g, Pr_rho(n), Pr, c3_omega(n), c3, Pressure(n), &
-             ReferencePressure, SpecificHeatRatio
-
-     REAL(KIND=dp), POINTER :: gWork(:,:)
+     REAL(KIND=dp) :: StrainMeasure,VorticityMeasure,X,Y,Z,Sigma, &
+        GradTmu(3), Cw1,Cw2,Cw3,fw,fw1,fw2,Cb1,Cb2,Cb3,St,Xi,Cv1,g,r
 
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
@@ -380,45 +372,22 @@ CONTAINS
 
      dim = CoordinateSystemDimension()
 
-     gWork => ListGetConstRealArray( Model % Constants,'Gravity',GotIt)
-     IF ( GotIt ) THEN
-       Gravity = gWork(1:3,1)*gWork(4,1)
-     ELSE
-       Gravity    =  0.00_dp
-       Gravity(2) = -9.81_dp
-     END IF
-
      Viscosity(1:n) = GetReal( Material, 'Viscosity' )
-     CALL ElementDensity( Density, n )
-
-     Pr_rho(1:n) = GetReal( Material, 'Turbulent Prandtl Number', stat )
-     IF ( .NOT. stat ) Pr_rho(1:n) = 0.85_dp
-
-     c3_omega(1:n) = GetReal( Material, 'Dissipation buoyancy coefficient', stat )
-     IF ( .NOT. stat ) c3_omega(1:n) = 0.0_dp
-
-     SpecificheatRatio = GetCReal( Material, 'Specific Heat Ratio', stat )
-     CALL getScalarLocalSolution( Pressure, 'Pressure' )
-     ReferencePressure = GetCReal( Material, 'Reference Pressure', stat )
+     Density(1:n) = GetReal( Material, 'Density' )
 
      CALL GetScalarLocalSolution( UX, 'Velocity 1' )
      CALL GetScalarLocalSolution( UY, 'Velocity 2' )
      CALL GetScalarLocalSolution( UZ, 'Velocity 3' )
 
-     CALL GetScalarLocalSolution( Energy, 'Kinetic energy' )
+     CALL GetScalarLocalSolution( TViscosity )
      CALL GetScalarLocalSolution( Distance, 'Wall Distance' )
-     CALL GetScalarLocalSolution( Dissipation, 'Kinetic Dissipation' )
 
-     FORCE = 0.0D0
-     STIFF = 0.0D0
-     MASS  = 0.0D0
+     FORCE = 0.0_dp
+     STIFF = 0.0_dp
+     MASS  = 0.0_dp
 
      NBasis = nd
 
-     Ident = 0._dp
-     DO i=1,3
-       Ident(i,i) = 1._dp
-     END DO
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
@@ -445,11 +414,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        s = detJ * IntegStuff % s(t)
        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-         X = SUM( Nodes % x(1:n)*Basis(1:n) )
-         Y = SUM( Nodes % y(1:n)*Basis(1:n) )
-         Z = SUM( nodes % z(1:n)*Basis(1:n) )
+         x = SUM( Nodes % x(1:n)*Basis(1:n) )
+         y = SUM( Nodes % y(1:n)*Basis(1:n) )
+         z = SUM( nodes % z(1:n)*Basis(1:n) )
          CALL CoordinateSystemInfo(Metric,SqrtMetric,Symb,dSymb,X,Y,Z)
-
          s = s * SqrtMetric
        END IF
 
@@ -469,76 +437,52 @@ CONTAINS
 
        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
          Strain  = 0.5_dp * (dVelodx + TRANSPOSE(dVelodx))
-         StrainMeasure = MAX( SQRT(2*SUM(Strain*Strain)), 1.0d-10 )
+         StrainMeasure = SQRT(2 * SUM(Strain * Strain))
 
          Vorticity = 0.5_dp * (dVelodx - TRANSPOSE(dVelodx))
-         VorticityMeasure = SQRT(2*SUM(Vorticity*Vorticity))
+         VorticityMeasure = SQRT(2 * SUM(Vorticity * Vorticity))
        ELSE
          StrainMeasure = SQRT(SecondInvariant( Velo,dVelodx,Metric,Symb )/2)
        END IF
 
 !------------------------------------------------------------------------------
 
-       K = SUM( Energy(1:n) * Basis(1:n) )
-       Omega = SUM( Dissipation(1:n) * Basis(1:n) )
-
+       Tmu = SUM( Tviscosity(1:n) * Basis(1:n) )
        DO i=1,dim
-         GradK(i) = SUM( dBasisdx(1:n,i) * Energy(1:n) )
-         GradO(i) = SUM( dBasisdx(1:n,i) * Dissipation(1:n) )
+         GradTmu(i) = SUM( Tviscosity(1:n) * dBasisdx(1:n,i) )
        END DO
 
        mu   = SUM( Viscosity(1:n) * Basis(1:n) )
        rho  = SUM( Density(1:n) * Basis(1:n) )
-       rho_g = 0._dp
-       DO i=1,dim
-         rho_g = rho_g + SUM(Density(1:n) * dBasisdx(1:n,i)) * Gravity(i)
-       END DO
        dist = MAX( SUM( Distance(1:n) * Basis(1:n) ), 1.0d-10 )
 
-       Sound_speed_sq = (SUM(Basis(1:n)*Pressure(1:n))+ReferencePressure) * &
-                     SpecificHeatRatio / rho
+       Cb1 = 0.1355_dp
+       Cb2 = 0.6220_dp
+       Cv1 = 7.1_dp
+       Sigma = 2._dp/3._dp
 
-       Mach_number_sq = 0._dp
-       IF ( Sound_speed_sq > 0._dp ) Mach_number_sq = K / Sound_speed_sq
+       ! Rotation and curvature correction of Schweighofer & Helsten; NOT IN USE
+       ! -----------------------------------------------------------------------
+!      r = VorticityMeasure/StrainMeasure*(VorticityMeasure/StrainMeasure-1)
+!      r = 1._dp / (1+3.6_dp*r)
+       r = 1._dp
+       Cw1 = r*(Cb1/0.41_dp**2 + (1+Cb2)/Sigma)
 
-       Pr = SUM( Basis(1:n) * Pr_rho(1:n) )
-       c3 = SUM( Basis(1:n) * c3_omega(1:n) )
+       Cw2 = 0.3_dp
+       Cw3 = 2.0_dp
 
-       CD = MAX(2*rho/1.168_dp/Omega*SUM(GradK(1:dim)*GradO(1:dim)),1.d-10)
+       Xi  = Tmu/(mu/rho)
+       fw1 = Xi**3 / (Xi**3 + Cv1**3)
+       fw2 = 1 - Xi / ( 1+Xi*fw1 )
 
-       F1 = SQRT(K) / 0.09_dp / Omega / dist
-       F1 = MAX( F1, 500 * mu / rho / Omega / dist**2 )
-       F1 = MIN( F1, 4 * rho / 1.168_dp* K / CD / dist**2 )
-       F1 = TANH( F1**4 )
+       St = VorticityMeasure + 2 * MIN(0.0_dp, StrainMeasure-VorticityMeasure)
+       St = St + Tmu / dist**2 / 0.41_dp**2 * fw2
 
-       F2 = MAX( 2*SQRT(K)/0.09_dp/Omega/dist,500*mu/rho/omega/dist**2 )
-       F2 = TANH(F2**2)
+       r  = Tmu / MAX( St, 1.0d-10 ) / 0.41_dp**2 / dist**2
+       g  = r + Cw2 * (r**6-r)
+       fw = g*((1+Cw3**6)/(g**6+Cw3**6))**(1._dp/6._dp)
 
-       ! don't use SST near rough walls; NOT IN USE
-!      F3 = 1-TANH((150*mu/rho/omega/dist**2)**4)
-       F3 = 1
-
-       ! Rotation and curvature correction of Schweighofer & Hellsten; NOT IN USE
-!      F4 = VorticityMeasure/StrainMeasure*(VorticityMeasure/StrainMeasure-1)
-!      F4 = 1._dp / (1+3.6_dp*F4)
-       F4 = 1
-
-       Beta   = 0.075_dp*F1 + 0.0828_dp*(1-F1) 
-       SigmaK = 1.176_dp*F1 + 1.0000_dp*(1-F1)
-       SigmaO = 2.000_dp*F1 + 1.1680_dp*(1-F1)
-
-!      rGamma = Beta/0.09_dp - 0.41_dp**2/SigmaO/SQRT(0.09_dp)
-       rGamma = 5._dp/9._dp * F1 + 0.44_dp * (1-F1)
-
-       Tmu = 0.31_dp*rho*K/MAX(0.31_dp*Omega,VorticityMeasure*F2*F3)
-       Effmu(1) = mu + Tmu / SigmaK
-       Effmu(2) = mu + Tmu / SigmaO
-
-       ProdK = SUM((2*Tmu*Strain-2/3._dp*rho*Ident*K)*dVelodx) - &
-             Tmu * rho_g / (rho * Pr) - 2*rho*0.09_dp*K*Omega*Mach_number_sq
-
-       ProdO = SUM((2*rho*Strain-2/3._dp*rho*Ident*Omega)*dVelodx) - &
-             c3 * rho_g / Pr
+       Effmu = (mu + rho*Tmu)/Sigma
 !------------------------------------------------------------------------------
 !      Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -547,31 +491,20 @@ CONTAINS
           M = 0.0d0
           A = 0.0d0
 
-          M(1,1) = rho * Basis(q) * Basis(p)
-          M(2,2) = rho * Basis(q) * Basis(p)
-
-          A(1,1) = A(1,1) + rho * 0.09_dp * Omega * Basis(q) * Basis(p)
-          A(2,2) = A(2,2) + rho * F4 * Beta * Omega * Basis(q) * Basis(p)
+          M = rho * Basis(q) * Basis(p)
+          A = A - rho * Cb1 * St * Basis(q) * Basis(p)/4
+          A = A + rho * Cw1 * fw * Tmu / dist**2 * Basis(q) * Basis(p)
 !------------------------------------------------------------------------------
 !         The diffusion term
 !------------------------------------------------------------------------------
           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
              DO i=1,dim
-               A(1,1) = A(1,1) + Effmu(1) * dBasisdx(q,i) * dBasisdx(p,i)
-               A(2,2) = A(2,2) + Effmu(2) * dBasisdx(q,i) * dBasisdx(p,i)
-               A(2,2) = A(2,2) - 2*rho*(1-F1)/1.168_dp/Omega*GradK(i)*dBasisdx(q,i)*Basis(p)
+               A = A + Effmu * dBasisdx(q,i) * dBasisdx(p,i) 
              END DO
           ELSE
              DO i=1,dim
                DO j=1,dim
-                  A(1,1) = A(1,1) + Metric(i,j) * Effmu(1) * &
-                       dBasisdx(q,i) * dBasisdx(p,j)
-
-                  A(2,2) = A(2,2) + Metric(i,j) * Effmu(2) * &
-                       dBasisdx(q,i) * dBasisdx(p,j)
-
-                  A(2,2) = A(2,2) - 2*rho*(1-F1)/1.168_dp/Omega*Metric(i,j)* &
-                       GradK(i)*dBasisdx(q,i)*Basis(p)
+                  A = A + Metric(i,j) * Effmu * dBasisdx(q,i) * dBasisdx(p,j)
                END DO
              END DO
           END IF
@@ -580,89 +513,100 @@ CONTAINS
 !           The convection term
 !------------------------------------------------------------------------------
           DO i=1,dim
-            A(1,1) = A(1,1) + rho * Velo(i) * dBasisdx(q,i) * Basis(p)
-            A(2,2) = A(2,2) + rho * Velo(i) * dBasisdx(q,i) * Basis(p)
+            A = A + rho * (Velo(i)-Cb2*GradTmu(i)/Sigma) * dBasisdx(q,i) * Basis(p)
           END DO
 
-          DO i=1,2
-             DO j=1,2
-               STIFF(2*(p-1)+i,2*(q-1)+j) = STIFF(2*(p-1)+i,2*(q-1)+j)+s*A(i,j)
-               MASS(2*(p-1)+i,2*(q-1)+j)  = MASS(2*(p-1)+i,2*(q-1)+j) +s*M(i,j)
-             END DO
-          END DO
+          MASS(p,q)  = MASS(p,q)  + s*M
+          STIFF(p,q) = STIFF(p,q) + s*A
         END DO
         END DO
 
         ! Load at the integration point:
         !-------------------------------
-        LoadAtIP(1) = ProdK
-        LoadAtIP(2) = rGamma*ProdO
+        LoadAtIp = 3._dp*rho * Cb1 * St * Tmu/4
 
 !------------------------------------------------------------------------------
         DO p=1,NBasis
-          FORCE(2*(p-1)+1) = FORCE(2*(p-1)+1)+s*LoadAtIp(1)*Basis(p)
-          FORCE(2*(p-1)+2) = FORCE(2*(p-1)+2)+s*LoadAtIp(2)*Basis(p)
+          FORCE(p) = FORCE(p)+s*LoadAtIp*Basis(p)
         END DO
       END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  END SUBROUTINE SpalartAllmaras
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE OmegaWall( Element,n )
+!> Initialization for the primary solver: SpalartAllmaras
+!> \ingroup Solvers
 !------------------------------------------------------------------------------
-     TYPE(Element_t), TARGET :: Element
-     INTEGER :: n
+   SUBROUTINE SpalartAllmaras_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Distance(32), omega_wall, dist, mu(32), rho(32)
-     INTEGER :: i,j,np
-     TYPE(Element_t), POINTER :: Parent
+     USE DefUtils
+
+     IMPLICIT NONE
 !------------------------------------------------------------------------------
-     Parent => Element % BoundaryInfo % Left
-     IF ( .NOT. ASSOCIATED(Parent) ) THEN
-       Parent => Element % BoundaryInfo % Right
-     ELSE
-       IF ( .NOT. ALL(Solver % Variable % Perm(Parent % NodeIndexes)>0) ) &
-         Parent => Element % BoundaryInfo % Right
+     TYPE(Model_t)  :: Model
+     TYPE(Solver_t) :: Solver
+
+     REAL(KIND=dp) :: dt
+     LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: SolverParams
+     LOGICAL :: Found, PBubble, LegacyBubbles
+     CHARACTER(LEN=MAX_NAME_LEN) :: str
+!------------------------------------------------------------------------------
+     SolverParams => GetSolverParams()
+
+     ! Everything below is specific to a p-element bubble ("Element =
+     ! p:.. b:.."); the legacy "Stabilization Method = Bubbles" path (no
+     ! "Element" override) doesn't go through GetElementNOFBDOFs'
+     ! Solver % GlobalBubbles branch at all, so touching the list there would
+     ! be a no-op at best and, via bandwidth optimization/mesh-level bubble
+     ! DOF bookkeeping that DOES consult Solver % GlobalBubbles regardless of
+     ! which bubble path a solver actually uses, a real (if tiny) unintended
+     ! perturbation at worst -- see the matching comment and diffuser_v2f
+     ! regression in KESolver_Init, which caught this the same way.
+     str = ListGetString( SolverParams,'Element', Found )
+     PBubble = .FALSE.
+     IF ( Found ) PBubble = INDEX( str, 'b:' ) > 0
+
+     IF ( PBubble ) THEN
+       ! Left in the global system a bubble mode is a free per-element
+       ! unknown driven by strongly nonlinear reaction terms, with no
+       ! neighboring element to diffuse against and no floor. Condense it
+       ! out locally by default instead, like KESolver_Init and
+       ! IncompressibleNSVec already do for their own bubbles;
+       ! CondensatePTransient below makes that choice work for transient
+       ! runs too. ListAddNew, so an explicit sif setting still wins.
+       CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)
+
+       ! The recovery of a transient condensed bubble (see bx/bxprev and
+       ! CondensatePTransient in SpalartAllmaras, mirroring
+       ! IncompressibleNSVec's own bx/bxprev, and the identical logic in
+       ! KESolver_Init) needs at least TWO solves within one timestep.
+       ! Only relevant where a bubble is actually condensed out.
+       IF ( TransientSimulation .AND. &
+            .NOT. ListGetLogical(SolverParams,'Bubbles in Global System',Found) ) THEN
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Min Iterations', 2)
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Max Iterations', 2)
+       END IF
+     ELSE IF ( TransientSimulation ) THEN
+       ! No p-element bubble configured. The legacy "Bubbles = True" path
+       ! condenses out one bubble per node unconditionally, and needs the
+       ! very same two-solve minimum as the p-bubble case above, for the
+       ! same reason. Mirrors the "BubblesDefault" resolution used in
+       ! SpalartAllmaras itself.
+       LegacyBubbles = ListGetLogical( SolverParams, 'Bubbles', Found )
+       IF ( .NOT. Found ) LegacyBubbles = .TRUE.
+
+       IF ( LegacyBubbles ) THEN
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Min Iterations', 2)
+         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Max Iterations', 2)
+       END IF
      END IF
-     IF(.NOT.ASSOCIATED(Parent))RETURN
-
-     np = GetElementNOFNodes(Parent)
-
-     rho(1:np)= GetReal( GetMaterial(Parent), 'Density', UElement=Parent )
-     mu(1:np) = GetReal( GetMaterial(Parent), 'Viscosity', UElement=Parent )
-
-     CALL GetScalarLocalSolution( Distance, 'Wall distance', Parent )
-
-     omega_wall = 1.d10
-     DO i=1,np
-       j = Parent % NodeIndexes(i)
-       IF ( Distance(i) < AEPS ) CYCLE
-       IF ( ANY( j==Element % NodeIndexes(1:n) ) ) CYCLE
-
-!      omega_wall = 2*mu(i)/0.09_dp/rho(i)/Distance(i)**2
-       omega_wall = 6*mu(i)/rho(i)/0.075_dp/Distance(i)**2
-
-       j = 2*Solver % Variable % Perm(j)
-       !Solver % Matrix % RHS(j) = omega_wall
-       !CALL ZeroRow( Solver % Matrix, j )
-       !CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
-
-       CALL UpdateDirichletDof( Solver % Matrix, j, omega_wall )
-     END DO
-
-!    DO i=1,n
-!      j = 2*Solver % Variable % Perm(Element % NodeIndexes(i))
-!      Solver % Matrix % RHS(j) = 10*omega_wall
-!      CALL ZeroRow( Solver % Matrix, j )
-!      CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
-!    END DO
-
 !------------------------------------------------------------------------------
-   END SUBROUTINE OmegaWall
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE SSTKOmega
+   END SUBROUTINE SpalartAllmaras_Init
 !------------------------------------------------------------------------------

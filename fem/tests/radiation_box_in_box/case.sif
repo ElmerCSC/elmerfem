@@ -75,7 +75,7 @@ Solver 1
 
   Nonlinear System Newton After Tolerance = 0.0
   Nonlinear System Newton After Iterations = 5
-  Nonlinear System Max Iterations = 50
+  Nonlinear System Max Iterations = 150
   Nonlinear System Convergence Tolerance = 1.0e-6
 
   Steady State Convergence Tolerance = 1.0e-8
@@ -239,4 +239,5 @@ Solver 2 :: Reference Norm = 3.43931061E+02
 Solver 2 :: Reference Norm Tolerance = 1.0e-4
 ! This should be 1000 exact, if fully converged.
 Solver 3 :: Reference Norm = 9.99957133E+02
+Solver 3 :: Reference Norm Tolerance = 1.0e-4
 

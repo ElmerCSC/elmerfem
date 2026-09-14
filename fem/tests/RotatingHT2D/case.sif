@@ -316,6 +316,6 @@ Boundary Condition 8
 !  Rotational Normals = Logical True
 End 
 
-Solver 2 :: Reference Norm = 0.47008150E-01
+Solver 2 :: Reference Norm = 0.46948487E-01
 Solver 3 :: Reference Norm = 3.40688620E-01
 Solver 6 :: Reference Norm = 0.7831444436
