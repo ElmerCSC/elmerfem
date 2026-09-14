@@ -2432,12 +2432,15 @@ CONTAINS
         DO p=1,nd
           DO q=1,nd
             IF(ElectroDynamics) THEN
+              ! ElectroDynamics requires:
+              !
+              ! (P d_t**2 a, u)
+              ! ------------------------
               STIFF(p,q) = STIFF(p,q) - &
                   IP % s(t) * detJ * omega**2 * P_ip * Basis(q)*Basis(p)
-            ELSE
-              STIFF(p,q) = STIFF(p,q) + &
-                  IP % s(t) * detJ * im * omega * C_ip * Basis(q)*Basis(p)
             END IF
+            STIFF(p,q) = STIFF(p,q) + &
+                IP % s(t) * detJ * im * omega * C_ip * Basis(q)*Basis(p)
           END DO
         END DO
       END IF
