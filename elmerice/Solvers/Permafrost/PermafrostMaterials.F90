@@ -3162,8 +3162,10 @@ CONTAINS
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: SolverParams
 
+    ! Solute and groundwater solvers may use different triangle basis
+    ! enrichments but must evaluate their shared IP variables at the same points.
     CALL ListAddNewString( SolverParams, 'Element Integration Points', &
-        '-quad 25 -brick 125 -prism 125' )
+        '-tri 12 -quad 25 -brick 125 -prism 125' )
 !------------------------------------------------------------------------------
   END SUBROUTINE SetPermafrostIntegrationRule
 !------------------------------------------------------------------------------

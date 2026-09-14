@@ -37,6 +37,25 @@
 !-----------------------------------------------------------------------------
 !> solute (salt ions) transport equation for enhanced permafrost model
 !> \ingroup Solvers
+SUBROUTINE PermafrostSoluteTransport_Init( Model,Solver,dt,TransientSimulation )
+  USE DefUtils
+  USE PermaFrostMaterials
+
+  IMPLICIT NONE
+
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+
+  TYPE(ValueList_t), POINTER :: SolverParams
+
+  SolverParams => GetSolverParams()
+
+  ! Match every Permafrost solver that accesses shared integration-point fields.
+  CALL SetPermafrostIntegrationRule( SolverParams )
+END SUBROUTINE PermafrostSoluteTransport_Init
+!------------------------------------------------------------------------------
 SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   USE DefUtils
