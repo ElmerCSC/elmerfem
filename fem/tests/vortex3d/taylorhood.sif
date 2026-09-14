@@ -62,7 +62,7 @@ End
 
 Solver 1
   Equation = "Navier-Stokes"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
   Element = p:2
 
 ! Ns convect is already False in Equation 1; this is the same statement in the

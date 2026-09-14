@@ -12,10 +12,11 @@ Simulation
   Simulation Type = Steady
 
   Steady State Max Iterations  = 200
-  Output Intervals = 1
 
 ! Output File = "Step_small.result"
-!  Post File = "Step_small.vtu"
+
+  Post File = "Step.vtu"
+  Output Intervals = 100
 End
 
 
@@ -171,6 +172,6 @@ Boundary Condition 3
 End
 
 
-Solver 3 :: Reference Norm = Real 1.503297
+Solver 3 :: Reference Norm = Real 1.50289468
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-3
 RUN

@@ -902,7 +902,11 @@ CONTAINS
           DO p = 1,n
             DO q = 1,n
               IF(.NOT. LowFrequencyModel ) THEN
-                aw = -Omega**2 * Eps * Basis(q) * Basis(p) 
+                aw = -Omega**2 * Eps * Basis(q) * Basis(p)                 
+
+                IF (HasPrecDampCoeff .AND. MassProportional ) THEN
+                  aw = aw * (1 - PrecDampCoeff)
+                END IF
               END IF
               IF(ConductorBody) THEN
                 ac = -im * Omega * Cond * Basis(p) * Basis(q) 
@@ -927,10 +931,18 @@ CONTAINS
 
                   ! Multiply after creating the curl-curl because of so many terms...
                   atot = weight * muinv * atot                
+
+                  IF (HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
+                    atot = atot * (1.0 + PrecDampCoeff)
+                  END IF
                 ELSE
                   ! grad-div operator
                   am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
                   atot = 0.0_dp
+
+                  IF(HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
+                    am = am * (1.0 + PrecDampCoeff)
+                  END IF
                 END IF
 
                 IF( AmsMonolithic ) THEN
@@ -950,6 +962,9 @@ CONTAINS
                 
               IF( ASSOCIATED( AmsScalMat ) ) THEN
                 am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
+                IF(HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
+                  am = am * (1.0 + PrecDampCoeff)
+                END IF
                 AmsSTIFF2(p,q) = weight * ( am + aw + ac )
               END IF
             END DO
@@ -1032,12 +1047,12 @@ CONTAINS
     COMPLEX(KIND=dp) :: ElSurfCurr(3), B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, &
         PortBeta, jn, Cond, SurfImp, epsr, mur, ep
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    REAL(KIND=dp) :: th, DetJ, weight
+    REAL(KIND=dp) :: th, DetJ, weight, TestVec(3), TrialVec(3), Normal(3)
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, GoodConductor, Absorb
     LOGICAL :: LineElement, DegenerateElement, Regularize, Consistent
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, m, np, p, q, ndofs
+    INTEGER :: t, i, j, m, np, p, q, ndofs, dim
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: ElSurfCurr_h, MagLoad_h, ElRobin_h, MuCoeff_h, EpsCoeff_h, Absorb_h, TemRe_h, TemIm_h, ExtPot_h
@@ -1237,17 +1252,37 @@ CONTAINS
       IF(AmsAny) THEN
         BLOCK
           COMPLEX(KIND=dp) :: ar, atot
+
+          IF( AmsCurlCurlForm ) THEN
+            Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
+          END IF
           
-          DO p = 1,n
+          DO p = 1,n              
             DO q = 1,n
               ar = -muinv * B * Basis(q) * Basis(p)
               atot = ar * weight 
               
               IF( ASSOCIATED( AmsMat ) ) THEN
-                IF( AmsMonolithic ) THEN
-                  AmsSTIFF(3*p-2,3*q-2) = AmsSTIFF(3*p-2,3*q-2) + atot
-                  AmsSTIFF(3*p-1,3*q-1) = AmsSTIFF(3*p-1,3*q-1) + atot
-                  AmsSTIFF(3*p-0,3*q-0) = AmsSTIFF(3*p-0,3*q-0) + atot
+                IF( AmsMonolithic ) THEN                  
+                  IF( AmsCurlCurlForm ) THEN
+                    dim = 3
+                    DO j=1,dim
+                      TestVec = 0.0d0
+                      TestVec(j) = Basis(p)
+                      TestVec = CrossProduct(TestVec, Normal)
+                      DO i=1,dim                        
+                        TrialVec = 0.0d0
+                        TrialVec(i) = Basis(q)
+                        TrialVec = CrossProduct(TrialVec, Normal)                        
+                        AmsSTIFF(dim*(p-1)+j, dim*(q-1)+i) = AmsSTIFF(dim*(p-1)+j, dim*(q-1)+i)  &
+                            - muinv * B * SUM(TestVec(:) * TrialVec(:)) * Weight 
+                      END DO
+                    END DO
+                  ELSE
+                    AmsSTIFF(3*p-2,3*q-2) = AmsSTIFF(3*p-2,3*q-2) + atot
+                    AmsSTIFF(3*p-1,3*q-1) = AmsSTIFF(3*p-1,3*q-1) + atot
+                    AmsSTIFF(3*p-0,3*q-0) = AmsSTIFF(3*p-0,3*q-0) + atot
+                  END  IF                                      
                 ELSE
                   AmsSTIFF(p,q) = AmsSTIFF(p,q) + atot
                 END IF

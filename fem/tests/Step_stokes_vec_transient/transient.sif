@@ -84,7 +84,7 @@ End
 
 Solver 1
   Equation = "NS-Vec"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
   Element = "p:2 b:1"
 
 ! Direct, so that a failure here is the assembly and not the iteration: the

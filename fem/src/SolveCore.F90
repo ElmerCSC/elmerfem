@@ -1043,6 +1043,137 @@ CONTAINS
 
 
 
+  !------------------------------------------------------------------------------
+  !> Create mask for skipping edges on a given boundary. 
+  !------------------------------------------------------------------------------
+  SUBROUTINE CreateEdgeSkipMask(SkipMask)
+
+    LOGICAL, POINTER :: SkipMask(:)
+    INTEGER :: t,n0,e0,t0,bc_id,i,j
+    LOGICAL :: Found, Piola
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: pVar    
+
+    Mesh => CurrentModel % Mesh
+
+    NULLIFY(pVar)
+    DO t=1,CurrentModel % NumberOfSolvers
+      IF(ListGetLogical(CurrentModel % Solvers(t) % Values,'Edge Basis',Found ) ) THEN
+        pVar => CurrentModel % Solvers(t) % Variable
+        EXIT
+      END IF
+    END DO
+    IF(.NOT. ASSOCIATED(pVar)) THEN
+      CALL Fatal('CreateEdgeSkipMask','Could not find "Edge Basis" defined in any Solver!')
+    END IF
+
+    n0 = Mesh % NumberOfNodes
+    t0 = Mesh % NumberOfBulkElements
+    e0 = Mesh % NumberOfEdges
+
+
+    Piola = ListGetLogicalAnySolver( CurrentModel,'Use Piola Transform' ) 
+
+    SkipMask = .FALSE.
+
+    
+    DO t=t0+1,t0+Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+
+      IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+      DO bc_id=1,CurrentModel % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+      BC => CurrentModel % BCs(bc_id) % Values
+
+      IF(ListGetLogical(BC,'Edge Skip Mask',Found ) ) THEN
+        DO i=1,Element % Type % NumberOfEdges
+          j = pVar % Perm(n0 + Element % EdgeIndexes(i))
+          IF(j>0 .AND. j<= SIZE(SkipMask) ) SkipMask(j) = .TRUE.
+        END DO
+      END IF
+    END DO
+
+    i = COUNT(SkipMask)
+    CALL Info('CreateEdgeSkipMask','Mask includes edges on BC: '//I2S(i)//' (out of '//I2S(e0)//')',Level=7)   
+
+    
+    ! It is not self-evident that we should include the additional Piola nodes
+    ! in the set of nodes to be skipped in smoothing / krylov iteration.
+    ! Numerical evidence seems to suggest that this is a good idea. 
+    IF(Piola) THEN
+      IF(SIZE(pVar % Perm) < n0+e0+2*Mesh % NumberOfFaces) THEN
+        CALL Fatal('CreateEdgeSkipMask','Size of Perm too small for Piola!')
+      END IF
+      
+      DO t=1, Mesh % NumberOfFaces
+        Element => Mesh % Faces(t)
+
+        ! Only for quads do we have the extra dofs related to Piola transformed edge elements.
+        IF(Element % TYPE % ElementCode / 100 == 4 ) THEN
+          IF(ALL(SkipMask(pVar % Perm(n0+Element % EdgeIndexes)))) THEN
+            DO i=0,1
+              j = pVar % Perm(n0+e0+2*t-i)
+              IF(j>0 .AND. j<= SIZE(SkipMask) ) SkipMask(j) = .TRUE.
+            END DO
+          END IF
+        END IF
+      END DO
+      
+      i = COUNT(SkipMask)
+      CALL Info('CreateEdgeSkipMask','Mask includes total dofs on BC: '//I2S(i), Level=7)
+    END IF
+    
+  END SUBROUTINE CreateEdgeSkipMask
+
+  
+  !------------------------------------------------------------------------------
+  !> Create mask for skipping nodes on a given boundary. 
+  !------------------------------------------------------------------------------
+  SUBROUTINE CreateNodeSkipMask(SkipMask, pVar )
+
+    LOGICAL, POINTER :: SkipMask(:)
+    TYPE(Variable_t), POINTER :: pVar    
+
+    INTEGER :: t,n0,e0,t0,bc_id
+    LOGICAL :: Found
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    IF(.NOT. ListGetLogicalAnyBC(CurrentModel,'Edge Skip Mask' ) ) RETURN
+    
+    Mesh => CurrentModel % Mesh      
+    t0 = Mesh % NumberOfBulkElements
+    SkipMask = .FALSE.
+    
+    DO t=t0+1,t0+Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+
+      IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+      DO bc_id=1,CurrentModel % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+      BC => CurrentModel % BCs(bc_id) % Values
+
+      IF(ListGetLogical(BC,'Edge Skip Mask',Found ) ) THEN
+        WHERE(pVar % Perm(Element % NodeIndexes) > 0) 
+          SkipMask(pVar % Perm(Element % NodeIndexes)) = .TRUE.
+        END WHERE
+      END IF
+    END DO
+
+    n0 = COUNT(SkipMask)
+    CALL Info('CreateNodeSkipMask','Created mask for skipping nodes: '//I2S(n0),Level=7)
+    
+  END SUBROUTINE CreateNodeSkipMask
+
+
+  
 
 !------------------------------------------------------------------------------
 !> Solves a linear system and also calls the necessary preconditioning routines.
@@ -1429,6 +1560,14 @@ CONTAINS
     Method = ListGetString(Params,'Linear System Solver',GotIt)
     IF(.NOT. GotIt) THEN
       CALL Fatal(Caller,'Give "Linear System Solver", e.g. "iterative" or "direct"')
+    END IF
+
+    IF( ListGetLogical( Params,'Linear System Skip Mask',Found ) ) THEN
+      IF(.NOT. ASSOCIATED(A % SkipMask)) THEN
+        CALL Info('IterSolver','Creating edge skip mask for linear system solver!')
+        ALLOCATE(A % SkipMask(A % NumberOfRows))
+        CALL CreateEdgeSkipMask(A % SkipMask)
+      END IF
     END IF
     
     IF (Method=='multigrid' .OR. Method=='iterative' ) THEN

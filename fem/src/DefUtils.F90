@@ -1426,6 +1426,38 @@ CONTAINS
   END FUNCTION GetLogical
 
 
+!> Resolves whether SUPG/equal-order stabilization (as opposed to a
+!> residual-free bubble) has been requested, from the two keywords a solver
+!> would otherwise resolve by hand: "Stabilize" (a plain boolean) and
+!> "Stabilization Method" (one of "none", "bubbles" or "stabilized", which
+!> overrides "Stabilize" when given). Mirrors the resolution legacy solvers
+!> such as HeatSolve/FlowSolve already do inline. A solver that instead spells
+!> this "Pressure Stabilization" (IncompressibleNSVec, ElasticSolve) can OR
+!> this in as a synonym, since neither keyword collides with anything those
+!> solvers already read.
+  FUNCTION GetStabilizeFlag( List, Found ) RESULT(Stabilize)
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL, OPTIONAL :: Found
+
+     LOGICAL :: Stabilize, GotIt
+     CHARACTER(:), ALLOCATABLE :: StabilizeFlag
+
+     Stabilize = ListGetLogical( List,'Stabilize', GotIt )
+     IF( PRESENT(Found) ) Found = GotIt
+
+     StabilizeFlag = ListGetString( List,'Stabilization Method', GotIt )
+     IF( GotIt ) THEN
+       IF( PRESENT(Found) ) Found = .TRUE.
+       SELECT CASE( StabilizeFlag )
+       CASE('stabilized')
+         Stabilize = .TRUE.
+       CASE('bubbles','none')
+         Stabilize = .FALSE.
+       END SELECT
+     END IF
+  END FUNCTION GetStabilizeFlag
+
+
 !> Returns a constant real by its name if found in the list structure
   RECURSIVE FUNCTION GetConstReal( List, Name, Found,x,y,z ) RESULT(r)
      TYPE(ValueList_t), POINTER :: List

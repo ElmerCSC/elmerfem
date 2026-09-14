@@ -66,7 +66,7 @@ End
 
 Solver 1
   Equation = "NS-Vec"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
   Stokes Flow = Logical True
   Pressure Stabilization = Logical True
   Element = "n:1"

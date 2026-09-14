@@ -51,7 +51,7 @@ End
 
 Solver 1
   Equation = "Navier-Stokes"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
 
 ! Ns convect is already False in Equation 1; this is the same statement in the
 ! form the vectorized solver reads, and it is what lets the stabilised residual
