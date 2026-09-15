@@ -123,8 +123,13 @@
      ! matching block and its rationale in KESolver.F90.
      IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
        bxStride = DOFs * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
-       ALLOCATE( bx( bxStride * Solver % Mesh % NumberOfBulkElements ), &
-                 bxprev( bxStride * Solver % Mesh % NumberOfBulkElements ) )
+       ! Also over NumberOfBoundaryElements: a boundary element promoted to
+       ! this equation via a BC's "Body Id" keeps its ElementIndex in the
+       ! boundary-element range while being assembled here as a bulk element,
+       ! so indexing bx/bxprev by Element % ElementIndex can otherwise run
+       ! past a bulk-only allocation.
+       ALLOCATE( bx( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ), &
+                 bxprev( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ) )
        bx = 0.0_dp
        bxprev = 0.0_dp
      END IF

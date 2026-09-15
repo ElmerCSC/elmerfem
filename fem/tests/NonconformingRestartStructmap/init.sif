@@ -42,7 +42,7 @@ End
 Solver 1
   Exec Solver = "Always"
   Equation = "HeatA"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = "TempA"
   Linear System Solver = "Iterative"
   Linear System Iterative Method = "BiCGStab"
@@ -60,7 +60,7 @@ End
 Solver 2
   Exec Solver = "Always"
   Equation = "HeatB"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = "TempB"
   Linear System Solver = "Iterative"
   Linear System Iterative Method = "BiCGStab"

@@ -106,7 +106,7 @@ Solver 2
   Equation = heat equation
 
   Variable = Temperature
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Radiation Solver = Logical True
   Steady State Convergence Tolerance = 1.0e-5

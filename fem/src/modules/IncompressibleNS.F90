@@ -2286,9 +2286,14 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! the last active element's position in the mesh, which exceeds the count of
     ! active elements as soon as the solver is active on only some of the bodies.
     !
+    ! Also includes NumberOfBoundaryElements: a boundary element promoted to
+    ! this equation via a BC's "Body Id" keeps its ElementIndex in the
+    ! boundary-element range while being assembled here as a bulk element, so
+    ! a bulk-only allocation can otherwise be indexed past its end.
+    !
     bxStride = Mesh % MaxBDOFs*dim
-    nbdofs = bxStride*Mesh % NumberOfBulkElements
-    ALLOCATE(bx(nbdofs), bxprev(nbdofs)); 
+    nbdofs = bxStride*(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)
+    ALLOCATE(bx(nbdofs), bxprev(nbdofs));
     bx=0.0_dp; bxprev=0.0_dp
 
     AllocationsDone = .TRUE.

@@ -46,7 +46,7 @@ End
 
 Solver 1
   Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
 
   Multithreaded Startup = Logical True

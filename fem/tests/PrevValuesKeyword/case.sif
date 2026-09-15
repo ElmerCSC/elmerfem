@@ -47,6 +47,10 @@ End
 Solver 1
   Equation = "heat"
   Variable = "Temperature"
+! Stays on legacy HeatSolve: uses the "Variable = Prev Temperature" history
+! convention. Same class of gap as MatDepMat -- HeatSolveVec's handle-based
+! keyword evaluation doesn't resolve this ("Can't find independent
+! variable:[prev temperature]"); legacy's nodal GetReal path does.
   Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"

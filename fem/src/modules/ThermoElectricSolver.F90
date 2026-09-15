@@ -122,8 +122,13 @@ SUBROUTINE ThermoElectricSolver( Model,Solver,dt,Transient)
 
   IF( .NOT. BubbleHistoryAllocated .AND. Transient .AND. Mesh % MaxBDOFs > 0 ) THEN
     bxStride = 2*Mesh % MaxBDOFs
-    ALLOCATE( bx(bxStride*Mesh % NumberOfBulkElements), &
-              bxprev(bxStride*Mesh % NumberOfBulkElements) )
+    ! Includes NumberOfBoundaryElements: a boundary element promoted to this
+    ! equation via a BC's "Body Id" keeps its ElementIndex in the
+    ! boundary-element range while being assembled here as a bulk element, so
+    ! indexing bx/bxprev by Element % ElementIndex below can otherwise run
+    ! past a bulk-only allocation.
+    ALLOCATE( bx(bxStride*(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)), &
+              bxprev(bxStride*(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)) )
     bx = 0.0_dp; bxprev = 0.0_dp
     BubbleHistoryAllocated = .TRUE.
   END IF

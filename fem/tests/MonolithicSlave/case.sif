@@ -5,7 +5,7 @@
 ! Study the test case 'DirichletNeumannSlave' to compare the strategy
 ! to a loosely coupled iteration.
 !
-! Peter Råback / 14.11.2023
+! Peter Rback / 14.11.2023
 !--------------------------------------------------------------------
 
 Header
@@ -62,7 +62,7 @@ Solver 1
 
   Equation = "HeatB"
   Variable = "TempB"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"
@@ -81,7 +81,7 @@ End
 Solver 2
   Equation = "HeatA"
   Variable = "TempA"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Linear System Solver = "iterative"
   Linear System Direct Method = "umfpack"

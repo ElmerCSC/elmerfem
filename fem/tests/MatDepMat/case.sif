@@ -56,6 +56,11 @@ End
 
 Solver 1
   Equation = "Heat Equation"
+! Stays on legacy HeatSolve: "Heat Conductivity" here depends on "linx"/"liny",
+! themselves other material keywords (not real solved Variables). HeatSolveVec's
+! handle-based keyword evaluation (ListParseStrToVars/ListCheckGlobal) doesn't
+! resolve keyword-defined pseudo-variables like this ("Can't find independent
+! variable:[linx]"); legacy's nodal GetReal path does.
   Procedure = "HeatSolve" "HeatSolver"
 
   Variable = "Temperature"
