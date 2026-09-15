@@ -58,7 +58,7 @@ MODULE DiffuseConvective
       LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,PhaseChange,NodalTemperature, &
       Enthalpy,Ux,Uy,Uz,MUx,MUy,MUz,Nodalmu,Nodalrho,NodalPressure, &
       NodaldPressureDt, NodalPressureCoeff, Compressible, Stabilize, &
-      UseBubbles, Element,n,nd,Nodes )
+      UseBubbles, Element,n,Nodes )
 !------------------------------------------------------------------------------
 !
 !  REAL(KIND=dp) :: MassMatrix(:,:)
@@ -108,10 +108,6 @@ MODULE DiffuseConvective
 !  INTEGER :: n
 !       INPUT: Number of element nodes
 !
-!  INTEGER :: nd
-!       INPUT: Number of element degrees of freedom (>= n for an active
-!              p-element with edge/face/bubble DOFs; equals n otherwise)
-!
 !  TYPE(Nodes_t) :: Nodes
 !       INPUT: Element node coordinates
 !
@@ -125,7 +121,7 @@ MODULE DiffuseConvective
 
      LOGICAL :: UseBubbles,PhaseChange,Compressible,Stabilize, VectH
 
-     INTEGER :: n, nd
+     INTEGER :: n
 
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
@@ -135,11 +131,13 @@ MODULE DiffuseConvective
 !------------------------------------------------------------------------------
 
      CHARACTER(:), ALLOCATABLE :: StabilizeFlag
+     REAL(KIND=dp) :: detJ
      ! Sized to fit whichever of the two augmentation schemes below is larger:
      ! the legacy 2*n condensed-bubble scheme, or a genuine p-element's own
-     ! (uncondensed, already-global) edge/face/bubble DOFs.
-     REAL(KIND=dp) :: dBasisdx(MAX(2*n,nd),3),detJ
-     REAL(KIND=dp) :: Basis(MAX(2*n,nd))
+     ! (uncondensed, already-global) edge/face/bubble DOFs -- nd (the latter's
+     ! dof count) is computed internally below, not taken as an argument, so
+     ! this stays allocatable rather than an automatic array.
+     REAL(KIND=dp), ALLOCATABLE :: dBasisdx(:,:), Basis(:)
      REAL(KIND=dp) :: ddBasisddx(n,3,3),dNodalBasisdx(n,n,3)
 
      REAL(KIND=dp) :: Velo(3),Grad(3,3),Force
@@ -156,7 +154,7 @@ MODULE DiffuseConvective
 
      REAL(KIND=dp), POINTER :: gWrk(:,:)
 
-     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ,NBasis,Order
+     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ,NBasis,Order,nd
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      REAL(KIND=dp) :: s,u,v,w,dEnth,dTemp,mu,DivVelo,Pressure,rho,&
@@ -196,6 +194,10 @@ MODULE DiffuseConvective
      Convection =  ANY( NodalC1 /= 0.0d0 )
      NBasis = n
      Bubbles = .FALSE.
+
+     nd = n
+     IF ( isActivePElement(Element) ) nd = GetElementNOFDOFs(Element)
+
      IF ( isActivePElement(Element) .AND. nd > n .AND. .NOT. (Vms .OR. Stabilize) ) THEN
        ! A genuinely declared p-element (Element = p:N, or HeatSolver_Init0's
        ! own internal 'p:1 b:N'): its edge/face/bubble DOFs already live
@@ -216,6 +218,8 @@ MODULE DiffuseConvective
        NBasis = 2*n
        Bubbles = .TRUE.
      END IF
+
+     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3) )
 
 !------------------------------------------------------------------------------
 !    Integration stuff

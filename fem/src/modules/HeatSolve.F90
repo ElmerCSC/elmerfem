@@ -1030,7 +1030,7 @@ END SUBROUTINE HeatSolver_Init
                PhaseSpatial, LocalTemperature, Enthalpy, U, V, W, &
                MU(1,1:n),MU(2,1:n),MU(3,1:n), Viscosity, Density, Pressure, &
                dPressureDt, PressureCoeff, CompressibilityModel /= Incompressible, &
-               Stabilize, UseBubbles, Element, n, nd, ElementNodes )
+               Stabilize, UseBubbles, Element, n, ElementNodes )
 
 !------------------------------------------------------------------------------
          ELSE
@@ -1041,7 +1041,7 @@ END SUBROUTINE HeatSolver_Init
                PhaseSpatial, LocalTemperature, Enthalpy, U, V, W, &
                MU(1,1:n),MU(2,1:n),MU(3,1:n), Viscosity, Density, Pressure, &
                dPressureDt, PressureCoeff, CompressibilityModel /= Incompressible, &
-               Stabilize, Element, n, nd, ElementNodes )
+               Stabilize, Element, n, ElementNodes )
 !------------------------------------------------------------------------------
          END IF
 !------------------------------------------------------------------------------
