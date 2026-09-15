@@ -4082,9 +4082,10 @@ END SUBROUTINE HeatSolver
 !
 !       Compute also force norm for scaling the residual:
 !       -------------------------------------------------
-!       DO i=1,dim
-!          Fnorm = Fnorm + s * (Density *SUM(NodalSource(1:n)*Basis(1:n)))**2
-!       END DO
+        DO i=1,dim
+           Fnorm = Fnorm + s * (Density *SUM(NodalSource(1:n)*Basis(1:n)))**2
+        END DO
+
         Area = Area + s
         ResidualNorm = ResidualNorm + s *  Residual ** 2
      END DO
