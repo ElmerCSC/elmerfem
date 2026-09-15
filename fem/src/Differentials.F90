@@ -318,23 +318,34 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF( JouleMode == 0 ) THEN
-      Jvar => VariableGet( CurrentModel % Variables, 'Joule Heating e' )
-      IF ( ASSOCIATED( Jvar ) ) JouleMode = 1 
-
+      ! JouleMode and Jvar are SAVEd across calls, and this function is now
+      ! also reached from HeatSolveVec's threaded bulk assembly (LocalMatrixVec),
+      ! so the lazy first-call determination below must not run concurrently
+      ! on more than one thread. Unnamed CRITICAL on purpose -- see the
+      ! identical note in GaussPointsInit (Integration.F90) and
+      ! GetStringThreadSafe (DefUtils.F90): a named critical section
+      ! deterministically SIGSEGVs on some gomp runtimes.
+      !$OMP CRITICAL
       IF( JouleMode == 0 ) THEN
-        Jvar => VariableGet( CurrentModel % Variables, 'Joule Field' )
-        IF ( ASSOCIATED( Jvar ) ) JouleMode = 2
-      END IF
+        Jvar => VariableGet( CurrentModel % Variables, 'Joule Heating e' )
+        IF ( ASSOCIATED( Jvar ) ) JouleMode = 1
 
-      IF( JouleMode == 0 ) THEN
-        Jvar => VariableGet( CurrentModel % Variables, 'Potential' )
-        IF ( ASSOCIATED( Jvar ) ) JouleMode = 3
-      END IF
+        IF( JouleMode == 0 ) THEN
+          Jvar => VariableGet( CurrentModel % Variables, 'Joule Field' )
+          IF ( ASSOCIATED( Jvar ) ) JouleMode = 2
+        END IF
 
-      IF( JouleMode == 0 ) THEN
-        Jvar => VariableGet( CurrentModel % Variables, 'Magnetic Field 1' )
-        IF ( ASSOCIATED( Jvar ) ) JouleMode = 4 
+        IF( JouleMode == 0 ) THEN
+          Jvar => VariableGet( CurrentModel % Variables, 'Potential' )
+          IF ( ASSOCIATED( Jvar ) ) JouleMode = 3
+        END IF
+
+        IF( JouleMode == 0 ) THEN
+          Jvar => VariableGet( CurrentModel % Variables, 'Magnetic Field 1' )
+          IF ( ASSOCIATED( Jvar ) ) JouleMode = 4
+        END IF
       END IF
+      !$OMP END CRITICAL
 
       IF( JouleMode == 0 ) THEN
         CALL Warn('JouleHeat','Joule heating requested but no field to compute it!')

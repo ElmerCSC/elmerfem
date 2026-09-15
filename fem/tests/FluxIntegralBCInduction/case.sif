@@ -168,7 +168,14 @@ Boundary Condition 2
   Save Scalars = True
 End
 
+! The reference norm below is UMFPACK's. Mumps and the Lapack banded solver
+! both give 1.85154375E-04 instead, agreeing with each other to every digit,
+! so it is UMFPACK that is the odd one out -- most likely its two default
+! steps of iterative refinement, which neither of the others does. The gap is
+! 7.8e-05, so the default 1e-05 comparison would fail this case in any build
+! where the direct solver is not UMFPACK.
 Solver 1 :: Reference Norm = 1.85168787E-04
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
 
 ! This should by construction be zero. 
 Solver 4 :: Reference Norm = 0.0

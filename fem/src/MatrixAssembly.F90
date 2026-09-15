@@ -822,6 +822,94 @@ END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Transient counterpart of NSCondensate: eliminates velocity bubble degrees
+!> of freedom from a local Navier-Stokes system while giving the bubble part
+!> a BDF(1) time derivative, using the caller's own record of the bubble's
+!> previous-timestep value (there is no pressure bubble, so only the velocity
+!> block of the retained+bubble system is bubble-augmented). Mirrors
+!> IncompressibleNSVec's LCondensate; see CondensatePTransient above for the
+!> general reasoning on why a condensed bubble needs this at all.
+!>
+!> The caller owns the per-element bubble history: this routine only reads
+!> the slice handed to it as BubblePrev and writes the newly recovered bubble
+!> part into BubbleCur.
+!>
+!> xprev/x carry the retained block's velocity AND pressure (shape (dim+1,N)),
+!> matching the (dim+1)-per-node convention NSCondensate already uses; the
+!> previous-pressure row is never read against a nonzero mass entry
+!> (incompressible continuity has no dp/dt), so callers may pass anything
+!> (e.g. zero) there.
+!------------------------------------------------------------------------------
+SUBROUTINE NSCondensateTransient( N, Nb, dim, dt, M, K, F, xprev, x, BubblePrev, BubbleCur )
+!------------------------------------------------------------------------------
+    USE LinearAlgebra, ONLY : InvertMatrix
+    INTEGER :: N, Nb, dim
+    REAL(KIND=dp) :: dt
+    REAL(KIND=dp) :: M(:,:)        !< Local mass matrix.
+    REAL(KIND=dp) :: K(:,:)        !< Local stiffness matrix. Modified in place.
+    REAL(KIND=dp) :: F(:)          !< Local force vector. Modified in place.
+    REAL(KIND=dp) :: xprev(:,:)    !< Retained velocity+pressure, previous timestep. Shape (dim+1,N).
+    REAL(KIND=dp) :: x(:,:)        !< Retained velocity+pressure, current iterate. Shape (dim+1,N).
+    REAL(KIND=dp) :: BubblePrev(:) !< Bubble velocity dofs, previous timestep. Size dim*Nb.
+    REAL(KIND=dp) :: BubbleCur(:)  !< OUTPUT: recovered bubble velocity dofs. Size dim*Nb.
+
+    REAL(KIND=dp) :: Kbb(nb*dim,nb*dim)
+    REAL(KIND=dp) :: Kbl(nb*dim,n*(dim+1)), Klb(n*(dim+1),nb*dim), Fb(nb*dim)
+    REAL(KIND=dp) :: xl(n*(dim+1)), xlfull((n+nb)*(dim+1))
+
+    INTEGER :: i, p, q, nt, Cdofs((dim+1)*n), Bdofs(dim*nb)
+
+    IF ( nb <= 0 ) RETURN
+
+    ! Total width of the retained+bubble block actually assembled -- (n+nb)
+    ! node-like entities at dim+1 dofs each, even though a bubble "node"'s
+    ! own dim+1'th (pressure) slot is never touched (no pressure bubble).
+    ! M, K and F may be handed in oversized (a caller reusing one fixed-size
+    ! buffer across elements of varying size, as FlowSolve does) with
+    ! everything beyond this block zero, so operate only within it -- a bare
+    ! whole-array "K = K + M/dt" would size-mismatch MATMUL(M,xlfull) against
+    ! such a buffer, and would otherwise just be adding zero to zero anyway.
+    nt = (n+nb)*(dim+1)
+    xlfull = 0._dp
+
+    q = 0
+    DO p = 1,n
+      DO i = 1,dim+1
+        q = q + 1
+        Cdofs(q) = (dim+1)*(p-1) + i
+        xl(q) = x(i,p)
+        xlfull(Cdofs(q)) = xprev(i,p)
+      END DO
+    END DO
+
+    q = 0
+    DO p = 1,nb
+      DO i = 1,dim
+        q = q + 1
+        Bdofs(q) = (dim+1)*(p-1) + i + n*(dim+1)
+        xlfull(Bdofs(q)) = BubblePrev(q)
+      END DO
+    END DO
+
+    K(1:nt,1:nt) = K(1:nt,1:nt) + M(1:nt,1:nt)/dt
+    F(1:nt) = F(1:nt) + MATMUL(M(1:nt,1:nt),xlfull)/dt
+
+    Kbb = K(Bdofs,Bdofs)
+    Kbl = K(Bdofs,Cdofs)
+    Klb = K(Cdofs,Bdofs)
+    Fb  = F(Bdofs)
+
+    CALL InvertMatrix( Kbb,nb*dim )
+
+    F(Cdofs) = F(Cdofs) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    K(Cdofs,Cdofs) = K(Cdofs,Cdofs) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
+
+    BubbleCur(1:dim*nb) = MATMUL( Kbb, Fb - MATMUL(Kbl,xl) )
+!------------------------------------------------------------------------------
+END SUBROUTINE NSCondensateTransient
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Subroutine for the static condensation of element bubbles when there are
 !> as many bubbles as DOFs left in the matrix (historically this convention
 !> was used; now the count of elementwise bubble functions can be chosen
@@ -918,6 +1006,90 @@ SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
     K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
 !------------------------------------------------------------------------------
   END SUBROUTINE CondensatePC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Subroutine for condensation of p element bubbles from a TRANSIENT linear
+!> problem, generalizing IncompressibleNSVec's LCondensate (see that module's
+!> "IncompressibleLocalForms") to an arbitrary number of interleaved scalar
+!> fields ("Dofs"), all of which are bubble-augmented -- unlike the
+!> Navier-Stokes saddle point case, where the pressure field carries no bubble.
+!>
+!> Condensing a bubble out of a transient system loses more than an ordinary
+!> static condensation: the bubble's own value from the previous timestep is
+!> needed to form its BDF(1) time derivative, but that value is nowhere in the
+!> global solution vector once the bubble has been eliminated from it. Calling
+!> the generic Default1stOrderTime on the retained block alone would silently
+!> treat the previous bubble part as zero -- a wrong answer that only shows up
+!> as a slow, wrong drift, not a crash. This routine instead forms M/dt and the
+!> M*xprev/dt load over the FULL (retained+bubble) block, using the caller's own
+!> record of the bubble's previous value, and only then eliminates the bubble
+!> rows/columns.
+!>
+!> The caller owns the per-element bubble history: this routine only reads the
+!> slice handed to it as BubblePrev and writes the newly recovered bubble part
+!> into BubbleCur. It is the caller's responsibility to store BubbleCur (keyed
+!> by the element, e.g. Element % ElementIndex) into its own history array and
+!> to copy that array into "previous" once per timestep -- exactly as
+!> IncompressibleNSVec's bx/bxprev pair does; see the comments there.
+!>
+!> This assumes the local numbering used to build M, K and F has the N
+!> retained basis functions first and the Nb bubble ones after, with the Dofs
+!> fields interleaved per basis function (index 2*(p-1)+i for field i of basis
+!> p) -- the same convention CondensateP already relies on.
+!------------------------------------------------------------------------------
+SUBROUTINE CondensatePTransient( N, Nb, Dofs, dt, M, K, F, xprev, x, BubblePrev, BubbleCur )
+!------------------------------------------------------------------------------
+    USE LinearAlgebra, ONLY : InvertMatrix
+    INTEGER :: N      !< The count of retained (e.g. nodal) basis functions.
+    INTEGER :: Nb     !< The count of bubble basis functions.
+    INTEGER :: Dofs   !< The count of interleaved scalar fields per basis function.
+    REAL(KIND=dp) :: dt        !< Timestep size.
+    REAL(KIND=dp) :: M(:,:)    !< Local mass matrix.
+    REAL(KIND=dp) :: K(:,:)    !< Local stiffness matrix. Modified in place.
+    REAL(KIND=dp) :: F(:)      !< Local force vector. Modified in place.
+    REAL(KIND=dp) :: xprev(:)  !< Retained dofs, previous timestep. Size Dofs*N.
+    REAL(KIND=dp) :: x(:)      !< Retained dofs, current iterate. Size Dofs*N.
+    REAL(KIND=dp) :: BubblePrev(:) !< Bubble dofs, previous timestep. Size Dofs*Nb.
+    REAL(KIND=dp) :: BubbleCur(:)  !< OUTPUT: recovered bubble dofs. Size Dofs*Nb.
+!------------------------------------------------------------------------------
+    INTEGER :: DN, DNb, nt
+    REAL(KIND=dp) :: Kbb(Dofs*Nb,Dofs*Nb), Kbl(Dofs*Nb,Dofs*N), &
+        Klb(Dofs*N,Dofs*Nb), Fb(Dofs*Nb)
+    REAL(KIND=dp) :: xlfull(Dofs*(N+Nb))
+!------------------------------------------------------------------------------
+    IF ( Nb <= 0 ) RETURN
+
+    DN  = Dofs*N
+    DNb = Dofs*Nb
+    nt  = DN + DNb
+
+    xlfull(1:DN)       = xprev(1:DN)
+    xlfull(DN+1:DN+DNb) = BubblePrev(1:DNb)
+
+    ! M, K and F may be handed in oversized (a caller reusing one fixed-size
+    ! buffer across elements of varying size, as every solver using this
+    ! routine does) with everything beyond this element's own nt = DN+DNb
+    ! zero, so operate only within it -- a bare whole-array "K = K + M/dt"
+    ! would size-mismatch MATMUL(M,xlfull) against such a buffer whenever
+    ! this element's own retained+bubble count is smaller than the mesh-wide
+    ! maximum the buffer was sized for.
+    K(1:nt,1:nt) = K(1:nt,1:nt) + M(1:nt,1:nt)/dt
+    F(1:nt) = F(1:nt) + MATMUL(M(1:nt,1:nt),xlfull)/dt
+
+    Kbb = K(DN+1:DN+DNb, DN+1:DN+DNb)
+    Kbl = K(DN+1:DN+DNb, 1:DN)
+    Klb = K(1:DN, DN+1:DN+DNb)
+    Fb  = F(DN+1:DN+DNb)
+
+    CALL InvertMatrix( Kbb, DNb )
+
+    F(1:DN)     = F(1:DN)     - MATMUL( Klb, MATMUL(Kbb,Fb) )
+    K(1:DN,1:DN) = K(1:DN,1:DN) - MATMUL( Klb, MATMUL(Kbb,Kbl) )
+
+    BubbleCur(1:DNb) = MATMUL( Kbb, Fb - MATMUL(Kbl, x(1:DN)) )
+!------------------------------------------------------------------------------
+END SUBROUTINE CondensatePTransient
 !------------------------------------------------------------------------------
 
 

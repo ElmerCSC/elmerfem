@@ -33,6 +33,50 @@
 ! *
 ! *****************************************************************************/
 
+!------------------------------------------------------------------------------
+SUBROUTINE ThermoElectricSolver_Init( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => GetSolverParams()
+
+  BLOCK
+    CHARACTER(:), ALLOCATABLE :: ElementStr
+    LOGICAL :: PBubble, Found, GotIt
+
+    ! A transient condensed p-bubble (see bx/bxprev and CondensatePTransient
+    ! below, mirroring HeatSolveVec/IncompressibleNSVec/KESolver's own
+    ! condensed-bubble history) needs at least TWO solves within one timestep:
+    ! the bubble value recovered on the first solve of a new timestep is still
+    ! consistent with the previous timestep's nodal solution, not this one's.
+    ! Only relevant where the bubble is actually condensed out locally --
+    ! never gated on it if left in the global system.
+    !
+    ! ListAddNew, so an explicit sif setting still wins -- and one that pins
+    ! "Nonlinear System Max Iterations" below 2 silently reintroduces the
+    ! one-timestep bubble lag this exists to prevent.
+    ElementStr = ListGetString( Params,'Element', Found )
+    PBubble = Found .AND. INDEX( ElementStr, 'b:' ) > 0
+
+    IF( PBubble .AND. Transient .AND. &
+        .NOT. ListGetLogical( Params,'Bubbles in Global System', GotIt ) ) THEN
+      CALL ListAddNewInteger( Params,'Nonlinear System Min Iterations', 2 )
+      CALL ListAddNewInteger( Params,'Nonlinear System Max Iterations', 2 )
+    END IF
+  END BLOCK
+!------------------------------------------------------------------------------
+END SUBROUTINE ThermoElectricSolver_Init
+!------------------------------------------------------------------------------
+
+
 !-----------------------------------------------------------------------------
 !>  Solve the Thermoelectric equations as a strongly coupled system.
 !-----------------------------------------------------------------------------
@@ -56,11 +100,45 @@ SUBROUTINE ThermoElectricSolver( Model,Solver,dt,Transient)
   LOGICAL :: Found, NewtonLinearization=.FALSE.
 
   TYPE(ValueList_t), POINTER :: Params
+  TYPE(Mesh_t), POINTER :: Mesh
 
   INTEGER :: NewtonIter,  NonlinIter
   REAL(KIND=dp):: NewtonTol, NonlinTol, RelativeChange
+
+  ! Per-element history of condensed p-bubble dofs, needed because a transient
+  ! run's BDF(1) time derivative of a condensed bubble requires its previous
+  ! timestep value, which is not available as a service like for the usual DOFs.
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+  INTEGER, SAVE :: bxStride = 0, stimestep = -1
+  LOGICAL, SAVE :: BubbleHistoryAllocated = .FALSE.
+
+  ! SUPG-style stabilization of the temperature equation's current-driven
+  ! Peltier "drift", div(T*alpha*J) ~ (alpha*J).grad(T): see GetStabilizeFlag.
+  LOGICAL :: Stabilize
 !------------------------------------------------------------------------------
   Params => GetSolverParams()
+  Mesh => Solver % Mesh
+  Stabilize = GetStabilizeFlag(Params)
+
+  IF( .NOT. BubbleHistoryAllocated .AND. Transient .AND. Mesh % MaxBDOFs > 0 ) THEN
+    bxStride = 2*Mesh % MaxBDOFs
+    ! Includes NumberOfBoundaryElements: a boundary element promoted to this
+    ! equation via a BC's "Body Id" keeps its ElementIndex in the
+    ! boundary-element range while being assembled here as a bulk element, so
+    ! indexing bx/bxprev by Element % ElementIndex below can otherwise run
+    ! past a bulk-only allocation.
+    ALLOCATE( bx(bxStride*(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)), &
+              bxprev(bxStride*(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)) )
+    bx = 0.0_dp; bxprev = 0.0_dp
+    BubbleHistoryAllocated = .TRUE.
+  END IF
+
+  IF( Transient .AND. Mesh % MaxBDOFs > 0 ) THEN
+    IF( GetTimestep() /= stimestep ) THEN
+      bxprev = bx
+      stimestep = GetTimestep()
+    END IF
+  END IF
 
   NewtonIter = GetInteger(Params,'Nonlinear System Newton After Iterations',Found)
   NewtonTol  = GetConstReal(Params,'Nonlinear System Newton After Tolerance',Found)
@@ -97,14 +175,15 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-    INTEGER :: t,n,nd
+    INTEGER :: t,n,nd,nb
 
-!$omp parallel do private(Element,n,nd)
+!$omp parallel do private(Element,n,nd,nb)
     DO t=1,GetNOFActive()
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes(Element)
-      nd = GetElementNOFDOFs(Element)
-      CALL LocalMatrix( Element, n, nd )
+      nb = GetElementNOFBDOFs(Element)
+      nd = GetElementNOFDOFs(Element) + nb
+      CALL LocalMatrix( Element, n, nd, nb )
      END DO
 !$omp end parallel do
 !------------------------------------------------------------------------------
@@ -113,9 +192,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( Element, n, nd )
+  SUBROUTINE LocalMatrix( Element, n, nd, nb )
 !------------------------------------------------------------------------------
-    INTEGER :: n, nd
+    INTEGER :: n, nd, nb
     TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: MASS(2*nd,2*nd), STIFF(2*nd,2*nd), FORCE(2*nd), LOAD(2,nd)
@@ -128,6 +207,8 @@ CONTAINS
 
     REAL(KIND=dp) :: EF(3),TG(3),CD(3),JH,HS,IC,SB(3,3),s, PeltSB(3,3), PeltSi(3,3), &
        sigma(3,3),alpha(3,3), pelt(3,3), hcond(3,3), epsil(3,3),rho,c_p,Temp
+
+    REAL(KIND=dp) :: v_eff(3), StreamVec(nd), hK, mK, VNorm, Tau, kappa_eff
 
     REAL(KIND=dp) :: sigma_n(3,3,n),alpha_n(3,3,n), pelt_n(3,3,n), &
             hcond_n(3,3,n), epsil_n(3,3,n),rho_n(n),c_p_n(n),epsil0
@@ -211,6 +292,40 @@ CONTAINS
       PeltSB = MATMUL(Pelt,SB)
       PeltSi = MATMUL(Pelt,Sigma)
 
+      ! SUPG stabilization of the temperature equation: the Peltier term
+      ! div(T*alpha*J) linearizes into an advective "drift" alpha*J acting on
+      ! grad(T), which can dominate over thermal diffusion at high current
+      ! density -- treated exactly as an externally given (lagged, Picard)
+      ! convection field here, the same way HeatSolveVec treats its velocity.
+      ! ---------------------------------------------------------------------
+      IF( Stabilize ) THEN
+        v_eff = MATMUL(alpha,CD)
+        VNorm = SQRT(SUM(v_eff**2))
+
+        IF( VNorm > 0.0_dp ) THEN
+          kappa_eff = SUM(v_eff*MATMUL(hcond,v_eff)) / VNorm**2
+        ELSE
+          kappa_eff = 0.0_dp
+        END IF
+
+        hK = Element % hK
+        mK = Element % StabilizationMK
+
+        IF( VNorm > 0.0_dp .AND. kappa_eff /= 0.0_dp ) THEN
+          Tau = MIN( 1.0_dp, mK*hK*VNorm / (2.0_dp*ABS(kappa_eff)) )
+          Tau = hK * Tau / ( 2.0_dp * VNorm )
+        ELSE
+          Tau = 0.0_dp
+        END IF
+
+        DO p=1,nd
+          StreamVec(p) = SUM( v_eff*dBasisdx(p,:) )
+        END DO
+      ELSE
+        Tau = 0.0_dp
+        StreamVec = 0.0_dp
+      END IF
+
       s = IP % s(t) * DetJ
 
       DO p=1,nd
@@ -223,10 +338,15 @@ CONTAINS
           ! thermal damping
           ! ---------------
           M(1,1) = M(1,1) + s*rho*c_p*Basis(q)*Basis(p)
+          M(1,1) = M(1,1) + s*Tau*rho*c_p*Basis(q)*StreamVec(p)  ! SUPG
 
           ! thermal diffusion
           ! -----------------
           A(1,1) = A(1,1) + s*SUM(MATMUL(hcond,dBasisdx(q,:))*dBasisdx(p,:))
+
+          ! SUPG streamline-diffusion consistency term for the Peltier drift
+          ! ------------------------------------------------------------------
+          A(1,1) = A(1,1) + s*Tau*StreamVec(q)*StreamVec(p)
 
           IF (NewtonLinearization) THEN
 
@@ -235,18 +355,15 @@ CONTAINS
 
             ! Peltier coefficient implicitly
             ! -------------------------------
-            A(1,1) = A(1,1) - &
-                     s*Basis(q)*SUM(MATMUL(alpha,CD)*dBasisdx(p,:))
+            A(1,1) = A(1,1) - s*Basis(q)*SUM(MATMUL(alpha,CD)*dBasisdx(p,:))
 
             ! temperature gradient part of div(pelt_0*J)
             ! ------------------------------------------
-            A(1,1) = A(1,1) - &
-                  s*SUM(MATMUL(PeltSB,dBasisdx(q,:))*dBasisdx(p,:))
+            A(1,1) = A(1,1) - s*SUM(MATMUL(PeltSB,dBasisdx(q,:))*dBasisdx(p,:))
 
             ! electric field part of div(pelt_0*J)
             ! ------------------------------------
-            A(1,2) = A(1,2) - &
-                  s*SUM(MATMUL(PeltSi,dBasisdx(q,:))*dBasisdx(p,:))
+            A(1,2) = A(1,2) - s*SUM(MATMUL(PeltSi,dBasisdx(q,:))*dBasisdx(p,:))
 
             ! Newton linarization of Joule heating=-(J,E) ~
             ! -(J_0,E) + (J,E_0) - (J_0,E_0) (<-- to rhs)
@@ -257,13 +374,11 @@ CONTAINS
 
             ! temperature gradient part of (J,E_0)
             ! ------------------------------------
-            A(1,1) = A(1,1) - &
-                   s*SUM(MATMUL(SB,dBasisdx(q,:))*EF)*Basis(p)
+            A(1,1) = A(1,1) - s*SUM(MATMUL(SB,dBasisdx(q,:))*EF)*Basis(p)
 
             ! electric field part part of (J,E_0)
             ! ------------------------------------
-            A(1,2) = A(1,2) - &
-                s*SUM(MATMUL(sigma,dBasisdx(q,:))*EF)*Basis(p)
+            A(1,2) = A(1,2) - s*SUM(MATMUL(sigma,dBasisdx(q,:))*EF)*Basis(p)
           END IF
 
 
@@ -286,6 +401,7 @@ CONTAINS
         ! heat load
         ! ---------
         FORCE(i+1) = FORCE(i+1) + s * (HS+JH)*Basis(p)
+        FORCE(i+1) = FORCE(i+1) + s*Tau*(HS+JH)*StreamVec(p)  ! SUPG
 
         ! div(pelt_0*J_0)
         ! ---------------
@@ -299,9 +415,35 @@ CONTAINS
       END DO
     END DO
 
-    IF(Transient) THEN
-      CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    ! Static condensation of p-bubble dofs (both interleaved fields at once):
+    ! a no-op when nb=0, whether that is because no bubbles were requested,
+    ! or because they are kept in the global system (Solver % GlobalBubbles),
+    ! in which case GetElementNOFBDOFs already returned nb=0 and they were
+    ! simply assembled as ordinary global dofs above.
+    IF( Transient .AND. nb > 0 .AND. .NOT. Solver % GlobalBubbles ) THEN
+      BLOCK
+        INTEGER :: Ncond, boff, pp
+        REAL(KIND=dp) :: SOLprev(2,nd), xvec(2*(nd-nb)), xprevvec(2*(nd-nb))
+
+        Ncond = nd-nb
+        CALL GetVectorLocalSolution( SOLprev, UElement=Element, tStep=-1 )
+
+        DO pp=1,Ncond
+          xvec(2*(pp-1)+1)     = SOL(1,pp)
+          xvec(2*(pp-1)+2)     = SOL(2,pp)
+          xprevvec(2*(pp-1)+1) = SOLprev(1,pp)
+          xprevvec(2*(pp-1)+2) = SOLprev(2,pp)
+        END DO
+
+        boff = bxStride*(Element % ElementIndex - 1)
+        CALL CondensatePTransient( Ncond, nb, 2, dt, MASS, STIFF, FORCE, &
+            xprevvec, xvec, bxprev(boff+1:boff+2*nb), bx(boff+1:boff+2*nb) )
+      END BLOCK
+    ELSE
+      IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+      CALL CondensateP( 2*(nd-nb), 2*nb, STIFF, FORCE )
     END IF
+
     CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element )
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -337,11 +479,14 @@ CONTAINS
     REAL(KIND=dp), POINTER :: A(:,:),M(:,:)
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3), s, DetJ
-    LOGICAL :: Stat,Found
+    LOGICAL :: Stat,Found,IsScalar,EFVFound,AnisoElecBC
     INTEGER :: i,j,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: HF_n(n), ET_n(n), HT_n(n), EF_n(n), HF, ET, HT, EF
+
+    REAL(KIND=dp) :: EFV_n(3,n), EFV(3), Normal(3), &
+        EP_n(n), EP, ETC_n(3,3,n), ETC(3,3), HTe
 
     TYPE(ValueList_t), POINTER :: BC
 
@@ -358,6 +503,20 @@ CONTAINS
     HT_n = GetReal(BC, 'Heat Transfer Coefficient', Found, Element)
 
     EF_n = GetReal(BC, 'Electric Flux', Found, Element)
+
+    ! Anisotropic current density vector, projected onto the boundary normal
+    ! ------------------------------------------------------------------------
+    CALL GetRealVector(BC, EFV_n, 'Electric Flux Vector', EFVFound, Element)
+
+    ! Anisotropic Robin BC: surface conductance tensor + external potential
+    ! ------------------------------------------------------------------------
+    EP_n = GetReal(BC, 'External Potential', Found, Element)
+    AnisoElecBC = ListCheckPresent(BC, 'Electric Transfer Coefficient')
+    IF( AnisoElecBC ) THEN
+      CALL InputTensor(BC, ETC_n, IsScalar, 'Electric Transfer Coefficient', Element)
+    ELSE
+      ETC_n = 0.0_dp
+    END IF
 
     MASS  = 0.0_dp
     STIFF = 0.0_dp
@@ -377,6 +536,28 @@ CONTAINS
       HT = SUM(HT_n*Basis(1:n)) ! heat transfer coefficient
 
       EF = SUM(EF_n*Basis(1:n)) ! electric flux
+      EP = SUM(EP_n*Basis(1:n)) ! external potential
+
+      HTe = 0.0_dp
+      IF( EFVFound .OR. AnisoElecBC ) THEN
+        Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE. )
+      END IF
+
+      IF( EFVFound ) THEN
+        DO i=1,3
+          EFV(i) = SUM(EFV_n(i,1:n)*Basis(1:n))
+        END DO
+        EF = EF + SUM(EFV*Normal) ! current density vector dotted with the normal
+      END IF
+
+      IF( AnisoElecBC ) THEN
+        DO i=1,3
+          DO j=1,3
+            ETC(i,j) = SUM(ETC_n(i,j,:)*Basis(1:n))
+          END DO
+        END DO
+        HTe = SUM(Normal*MATMUL(ETC,Normal)) ! normal-normal component of the conductance tensor
+      END IF
 
       DO p=1,nd
         i=2*(p-1)
@@ -384,9 +565,10 @@ CONTAINS
           j=2*(q-1)
           A => STIFF(i+1:i+2,j+1:j+2)
           A(1,1) = A(1,1) + s*HT*Basis(q)*Basis(p)
+          A(2,2) = A(2,2) + s*HTe*Basis(q)*Basis(p)
         END DO
         FORCE(i+1) = FORCE(i+1) + s*(HF+HT*ET)*Basis(p)
-        FORCE(i+2) = FORCE(i+2) + s*EF*Basis(p)
+        FORCE(i+2) = FORCE(i+2) + s*(EF+HTe*EP)*Basis(p)
       END DO
     END DO
 

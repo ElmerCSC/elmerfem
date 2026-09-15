@@ -2467,6 +2467,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
 
+     IF(PRESENT(Found)) Found = .FALSE.
      ptr => NULL()
      IF(.NOT.ASSOCIATED(List)) RETURN
 
@@ -2534,6 +2535,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
 
+     IF(PRESENT(Found)) Found = .FALSE.
      ptr => Null()
      IF(.NOT.ASSOCIATED(List)) RETURN
      
@@ -2679,6 +2681,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
 
+     IF(PRESENT(Found)) Found = .FALSE.
      ptr => NULL()
      IF(.NOT.ASSOCIATED(List)) RETURN
 

@@ -47,7 +47,7 @@ Solver 1
   Equation = "HeatEq"
 
   Variable = "Temperature"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = none

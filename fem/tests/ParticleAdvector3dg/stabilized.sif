@@ -82,7 +82,7 @@ Solver 1
   Exec Solver = before all
 
   Equation = Navier-Stokes
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
   Pressure Stabilization = Logical True
   Element = "n:1"
   Solver Timing = Logical True

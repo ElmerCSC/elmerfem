@@ -1,0 +1,8 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( Step_ke_vec.sif Step_ke_vec.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO Step_ke.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(Step_ke_vec)

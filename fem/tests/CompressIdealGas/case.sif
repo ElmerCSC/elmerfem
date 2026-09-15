@@ -98,7 +98,7 @@ Solver 2
 !  Exec Solver = never
 
   Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
 
   Stabilize = True
@@ -213,5 +213,5 @@ Boundary Condition 4
 End
 
 
-Solver 3 :: Reference Norm = Real 0.206857940
+Solver 3 :: Reference Norm = Real 0.206659793
 RUN

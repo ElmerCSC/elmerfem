@@ -37,7 +37,7 @@ End
 
 Solver 1
   Equation = heat equation
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
   
   Linear System Solver = Iterative

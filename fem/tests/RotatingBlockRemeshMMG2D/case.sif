@@ -115,7 +115,7 @@ End
 ! Solve the heat equation in the deformed mesh.
 Solver 2
   Equation = Heat
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = Temperature
 
   Nonlinear System Max Iterations = 1

@@ -385,6 +385,9 @@ MODULE Types
     REAL(KIND=dp), POINTER :: FCT_D(:) => NULL()
     REAL(KIND=dp), POINTER :: MassValuesLumped(:) => NULL()
 
+    ! For modified krylov methods where parts of dofs are not included
+    LOGICAL, POINTER :: SkipMask(:) => NULL()
+    
     TYPE(ParallelInfo_t), POINTER :: ParallelInfo=>NULL()
     TYPE(SParIterSolverGlobalD_t), POINTER :: ParMatrix=>NULL()
   END TYPE Matrix_t

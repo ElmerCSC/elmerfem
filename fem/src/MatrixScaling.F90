@@ -330,7 +330,15 @@ CONTAINS
         IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
         IF (DoRHS) THEN
           IF( Parallel ) THEN
-            bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
+            BLOCK 
+              REAL(KIND=dp), ALLOCATABLE :: s(:), r(:)
+              ALLOCATE(s(n), r(n))
+              s = 0
+              r = b(1:n)
+              CALL ParallelSUMVector(A, r)
+              CALL ParallelVector(A, s, r)
+              bnorm = SQRT(ParallelReduction(SUM(s**2)))
+            END BLOCK
           ELSE
             bnorm = SQRT(SUM(b(1:n)**2))
           END IF

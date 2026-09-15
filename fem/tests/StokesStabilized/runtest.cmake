@@ -38,6 +38,30 @@ CHECK_FAMILY(tri.sif "triangles")
 EXECUTE_ELMER_SOLVER(tet.sif)
 CHECK_FAMILY(tet.sif "tetrahedra")
 
+# The Taylor-Hood legs, same three families. Their message names the scheme so a
+# failure says which of the two pairs broke, not merely which family.
+MACRO(CHECK_TAYLORHOOD SIF WHAT)
+  FILE(READ "TEST.PASSED" _res)
+  IF(NOT _res EQUAL "1")
+    SET(_cmp "")
+    IF(EXISTS "${SIF}-stdout.log")
+      FILE(STRINGS "${SIF}-stdout.log" _lines REGEX "CompareToReferenceSolution")
+      STRING(REPLACE ";" "\n  " _cmp "${_lines}")
+    ENDIF()
+    MESSAGE(FATAL_ERROR
+      "Taylor-Hood P2/P1 on ${WHAT} failed its reference norm\n  ${_cmp}")
+  ENDIF()
+ENDMACRO()
+
+EXECUTE_ELMER_SOLVER(tri_taylorhood.sif)
+CHECK_TAYLORHOOD(tri_taylorhood.sif "triangles")
+
+EXECUTE_ELMER_SOLVER(quad_taylorhood.sif)
+CHECK_TAYLORHOOD(quad_taylorhood.sif "quadrilaterals")
+
+EXECUTE_ELMER_SOLVER(tet_taylorhood.sif)
+CHECK_TAYLORHOOD(tet_taylorhood.sif "tetrahedra")
+
 # The quadrilateral goes through RUN_ELMER_TEST(), which reads the sif named in
 # ELMERSOLVER_STARTINFO and reports the timing the harness expects.
 RUN_ELMER_TEST()

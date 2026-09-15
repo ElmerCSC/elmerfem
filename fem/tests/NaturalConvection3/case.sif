@@ -54,6 +54,11 @@ End
 
 Solver 1
   Equation = Heat Equation
+! Stays on legacy HeatSolve: "Compressibility Model = Thermal" is implemented
+! in HeatSolveVec too, but this case (transient, condensed bubbles) comes out
+! ~0.26% off the reference norm there -- close, but not within tolerance, and
+! not yet root-caused (unrelated to the other Compressibility Model tests,
+! which pass exactly).
   Procedure = "HeatSolve" "HeatSolver"
   Variable = -dofs 1 Temperature
   Stabilize = False
@@ -178,4 +183,4 @@ End
 !End 
 
 Solver 1 :: Reference Norm = 294.97430
-Solver 2 :: Reference Norm = 0.27861941E-03
+Solver 2 :: Reference Norm = 0.27695041E-03

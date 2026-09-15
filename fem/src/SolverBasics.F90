@@ -3163,7 +3163,7 @@ END FUNCTION SearchNodeL
     
     INTEGER :: NormDim, NormDofs, Dofs,i,j,k,n,nn,totn,PermStart
     INTEGER, POINTER :: NormComponents(:)
-    INTEGER, ALLOCATABLE :: iPerm(:)
+    INTEGER, ALLOCATABLE :: iPerm(:), RowOf(:)
     REAL(KIND=dp) :: Norm, nscale, val
     LOGICAL :: Stat, ComponentsAllocated, ConsistentNorm
     REAL(KIND=dp), POINTER :: x(:)
@@ -3243,7 +3243,10 @@ END FUNCTION SearchNodeL
       ALLOCATE(y(n))
       y = x(iPerm(1:n))
       x => y
-      DEALLOCATE(iPerm)
+      ! iPerm is kept (not deallocated here): it is the only map from the
+      ! compacted index used below back to the original matrix/mesh row, and
+      ! ConsistentNorm's ownership check needs that original row, not the
+      ! compacted one.
     END IF
 
     IF( ListGetLogical( Solver % Values,'Nonlinear System Nodal Norm', Stat ) ) THEN
@@ -3267,7 +3270,7 @@ END FUNCTION SearchNodeL
       Norm = 0.0_dp
 
       IF( ASSOCIATED(Solver % Matrix) ) THEN
-        ! Usually the neighbours are available in the parallel matrix. 
+        ! Usually the neighbours are available in the parallel matrix.
         NeighbourList => Solver % Matrix % ParallelInfo % NeighbourList
       ELSE
         ! There are some exceptions when no matrix, and hence no associated
@@ -3275,13 +3278,28 @@ END FUNCTION SearchNodeL
         ! of the mesh. Note that this is currently limited to scalar fields!
         NeighbourList => Solver % Mesh % ParallelInfo % NeighbourList
       END IF
-      
+
+      ! When "Norm Permutation" compacted x above, j below indexes that
+      ! compacted array, but NeighbourList is still indexed by the original
+      ! matrix/mesh row -- translate back through iPerm, or ownership gets
+      ! checked against an unrelated row (a real bug for any solver using
+      ! "Norm Permutation", e.g. edge-basis solvers with a nodal offset to
+      ! skip; plain nodal solvers never hit this since they don't set it).
+      ALLOCATE(RowOf(n))
+      IF( ALLOCATED(iPerm) ) THEN
+        RowOf(1:n) = iPerm(1:n)
+      ELSE
+        DO j=1,n
+          RowOf(j) = j
+        END DO
+      END IF
+
       SELECT CASE(NormDim)
 
-      CASE(0) 
+      CASE(0)
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = MAX( Norm, ABS( val ) )
           totn = totn + 1
@@ -3290,16 +3308,16 @@ END FUNCTION SearchNodeL
       CASE(1)
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = Norm + ABS(val)
           totn = totn + 1
         END DO
 
-      CASE(2)          
+      CASE(2)
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
           Norm = Norm + val**2
           totn = totn + 1
@@ -3308,12 +3326,13 @@ END FUNCTION SearchNodeL
       CASE DEFAULT
         DO j=1,n
           IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
-          IF( NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( NeighbourList(RowOf(j)) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           val = x(j)
-          Norm = Norm + val**NormDim 
+          Norm = Norm + val**NormDim
           totn = totn + 1
         END DO
       END SELECT
+      DEALLOCATE(RowOf)
       
       totn = ParallelReduction(totn) 
       IF(totn == 0) GOTO 10
@@ -4424,30 +4443,36 @@ END FUNCTION SearchNodeL
 !> The point count an explicit "Element Integration Points" rule asks for on
 !> THIS element, or zero to leave the element its own rule.
 !>
-!> Zero for a p-element of degree above one. The keyword names one count per
-!> family and knows nothing about the basis actually carried: the counts anyone
-!> writes are measured on the linear element, with or without a bubble, and a
-!> p-refined element needs more, not the same. Clamping p:3 down to the count
-!> that suffices for p:1 would silently under-integrate it -- the one direction
-!> in which this keyword must not be allowed to act. A bubble augmentation is
-!> not excluded: "p:1 b:4" is still degree one in PDefs % P, and reducing its
-!> rule is the whole point of stating the keyword.
+!> Honoured verbatim, at any p, family being the only thing it is indexed by.
+!> This used to zero itself above degree one, on the reasoning that a count
+!> measured on a linear (or bubble-augmented linear) element would silently
+!> under-integrate a p-refined one sharing the same family. That protected a
+!> scenario nothing in the test suite exercises -- one solver spanning elements
+!> of different p within a family -- at the cost of a worse one: a sif naming a
+!> count for an ordinary uniform-p element (a Taylor-Hood "p:2" leg, say) had it
+!> silently discarded with no warning, which is how the ElasticStabilized and
+!> *_taylorhood tests' own stated prism/tetra/triangle counts went dead on
+!> arrival. A stated count now wins unconditionally, as it does for every other
+!> element rule keyword -- getting the count right for the p actually present is
+!> on the sif, the same way it already is for "Relative Integration Order".
+!>
+!> SIF-WRITER WARNING, not a runtime check: "Element Integration Points" names
+!> one absolute count per family and does not know what degree it is being
+!> asked to integrate. Stating it is only safe when every element of that
+!> family in this solver's mesh carries the same p -- the ordinary case. Over
+!> a mesh with mixed p in one family (h-p adaptivity, a shared mesh where
+!> another solver p-refines elements this one also touches), an absolute count
+!> sized for one p will silently under- or over-integrate the others; use
+!> "Element Relative Integration Order" there instead, since an offset stays
+!> correct as the element's own degree changes under it.
 !------------------------------------------------------------------------------
   FUNCTION ElementalGaussNp( Element, ElementalNp ) RESULT( np )
 !------------------------------------------------------------------------------
-    USE PElementMaps, ONLY : isActivePElement
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: ElementalNp(8)
     INTEGER :: np
 !------------------------------------------------------------------------------
     np = ElementalNp( Element % TYPE % ElementCode / 100 )
-    IF( np <= 0 ) RETURN
-
-    IF( isActivePElement( Element ) ) THEN
-      IF( ASSOCIATED( Element % PDefs ) ) THEN
-        IF( Element % PDefs % P > 1 ) np = 0
-      END IF
-    END IF
 !------------------------------------------------------------------------------
   END FUNCTION ElementalGaussNp
 !------------------------------------------------------------------------------
@@ -4457,11 +4482,11 @@ END FUNCTION SearchNodeL
 !> The relative integration order a per family rule asks for on THIS element,
 !> and .TRUE. when its family was named at all.
 !>
-!> The relative twin of ElementalGaussNp. Unlike that one it carries no
-!> p-element clamp, and deliberately: an offset shifts from whatever rule the
-!> element chose for the basis it is actually carrying, so it keeps its meaning
-!> under p-refinement. An absolute count does not, which is the whole reason
-!> ElementalGaussNp has to switch itself off above degree one.
+!> The relative twin of ElementalGaussNp. Both are now honoured verbatim at
+!> any p; the difference is only what each keyword means under p-refinement --
+!> an offset shifts from whatever rule the element chose for the basis it is
+!> actually carrying, so a sif written once keeps meaning what it said as the
+!> element degree changes, where an absolute count does not.
 !------------------------------------------------------------------------------
   FUNCTION ElementalGaussRelOrder( Element, ElementalRelOrder, RelStated, RelOrder ) &
       RESULT( Stated )
@@ -5200,8 +5225,25 @@ END FUNCTION SearchNodeL
     ! dispatch and nothing may be added to it speculatively. A
     ! GaussPointsValidNp query beside the tables would retire it, and would let
     ! every family be offered absolute counts too.
-    INTEGER, PARAMETER :: PrismNp(22) = &
-        [ 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,28,44,48,85,100 ]
+    !
+    ! 10, 14 and 24 are deliberately withheld from the economical family, even
+    ! though Integration.F90 does dispatch an explicit "-prism 10/14/24" to a
+    ! real rule (GaussPointsWedgeEconomic, the Kubatko et al. 2013 tables).
+    ! Those three have quadrature points OUTSIDE the reference wedge -- n=10
+    ! and n=14 marginally (v as far as -1.11), n=24 badly (u,v to -1.83/+2.66,
+    ! w to +-1.25, well outside even the enclosing [-1,1]^3 box). Verified by
+    ! moment test against the exact integral that all three are still correctly
+    ! transcribed and genuinely exact to their stated degree -- this is not a
+    ! typo, it is a real property of these minimal-point-count rules -- so it
+    ! is harmless for the affine polynomial elasticity this probe is measured
+    ! against, but a probe recommendation is meant to be pasted into ANY sif,
+    ! including ones with a curved/p-refined prism or a spatially varying
+    ! material law, where sampling outside the element is silently wrong. Not
+    ! offering them here is a probe-side judgement call, not a claim that
+    ! GaussPointsWedgeEconomic itself is broken -- the tables and the explicit
+    ! keyword path are untouched.
+    INTEGER, PARAMETER :: PrismNp(19) = &
+        [ 1,2,3,4,5,6,7,8,11,12,15,16,18,21,28,44,48,85,100 ]
     INTEGER :: fam, r, rlo, rhi, i, j, PrevNp
     TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
@@ -5602,12 +5644,21 @@ END FUNCTION SearchNodeL
       IF( Probe % Np(fam) > Probe % DefNp(fam) ) AnyUp = .TRUE.
       IF( Probe % Np(fam) == Probe % DefNp(fam) ) CYCLE
 
-      ! Name the keyword that can actually ASK for the rule that was measured.
-      ! Since a tabulated simplex rule became reachable by an explicit count both
-      ! forms usually can, but the relative one is still preferred where the
-      ! ladder found it: an absolute count disables itself above degree one, so it
-      ! is the p-refinement-safe form.
-      IF( Probe % IsRel(fam) ) THEN
+      ! Report the absolute count everywhere: Probe % Np(fam) is already the
+      ! literal point count measured sufficient, whichever keyword's search
+      ! path found it, and an absolute number is what a sif author reads and
+      ! pastes without translating. The one exception is the prism: naming a
+      ! count outside the enumerated triangle x segment / economical list
+      ! (Integration.F90 CASE(7)) falls through to GaussPointsPWedge, which
+      ! reinterprets it as a SIZING TARGET rather than a literal count -- the
+      ! same bug class SimplexRulesByName fixed for tetra/tri, not here. The
+      ! relative sweep can only ever reach that same collapsed path for the
+      ! prism (an explicit np is required to reach the enumerated tables), so
+      ! a prism rule found ONLY via the relative ladder has no absolute count
+      ! that is safe to print -- naming it verbatim would hand back a
+      ! different rule than the one measured. Report it as a relative order
+      ! there instead, which is guaranteed to reproduce it.
+      IF( fam == 7 .AND. Probe % IsRel(fam) ) THEN
         RelLine = TRIM(RelLine)//' '//TRIM(FamName(fam))//' '//I2S(Probe % RelOff(fam))
       ELSE
         Line = TRIM(Line)//' '//TRIM(FamName(fam))//' '//I2S(Probe % Np(fam))
@@ -5616,11 +5667,11 @@ END FUNCTION SearchNodeL
 
     IF( LEN_TRIM(Line) > 0 .OR. LEN_TRIM(RelLine) > 0 ) THEN
       CALL Info( Caller,'To adopt it, state in the Solver section:',Level=3)
-      IF( LEN_TRIM(RelLine) > 0 ) CALL Info( Caller, &
-          '  Element Relative Integration Order = String "'// &
-          TRIM(ADJUSTL(RelLine))//'"',Level=3)
       IF( LEN_TRIM(Line) > 0 ) CALL Info( Caller, &
-          '  Element Integration Points = String "'//TRIM(ADJUSTL(Line))//'"',Level=3)
+          '  Element Integration Points = "'//TRIM(ADJUSTL(Line))//'"',Level=3)
+      IF( LEN_TRIM(RelLine) > 0 ) CALL Info( Caller, &
+          '  Element Relative Integration Order = "'// &
+          TRIM(ADJUSTL(RelLine))//'"',Level=3)
     END IF
 
     ! Three outcomes, and they must not be confused for one another. A family

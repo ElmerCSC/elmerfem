@@ -51,7 +51,7 @@ Solver 1
   Equation = "HeatEq"
 
   Variable = "Temp"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Steady State Convergence Tolerance = 1.0e-05
   Nonlinear System Relaxation Factor = Real 1.0

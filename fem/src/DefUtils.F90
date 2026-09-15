@@ -1426,6 +1426,38 @@ CONTAINS
   END FUNCTION GetLogical
 
 
+!> Resolves whether SUPG/equal-order stabilization (as opposed to a
+!> residual-free bubble) has been requested, from the two keywords a solver
+!> would otherwise resolve by hand: "Stabilize" (a plain boolean) and
+!> "Stabilization Method" (one of "none", "bubbles" or "stabilized", which
+!> overrides "Stabilize" when given). Mirrors the resolution legacy solvers
+!> such as HeatSolve/FlowSolve already do inline. A solver that instead spells
+!> this "Pressure Stabilization" (IncompressibleNSVec, ElasticSolve) can OR
+!> this in as a synonym, since neither keyword collides with anything those
+!> solvers already read.
+  FUNCTION GetStabilizeFlag( List, Found ) RESULT(Stabilize)
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL, OPTIONAL :: Found
+
+     LOGICAL :: Stabilize, GotIt
+     CHARACTER(:), ALLOCATABLE :: StabilizeFlag
+
+     Stabilize = ListGetLogical( List,'Stabilize', GotIt )
+     IF( PRESENT(Found) ) Found = GotIt
+
+     StabilizeFlag = ListGetString( List,'Stabilization Method', GotIt )
+     IF( GotIt ) THEN
+       IF( PRESENT(Found) ) Found = .TRUE.
+       SELECT CASE( StabilizeFlag )
+       CASE('stabilized')
+         Stabilize = .TRUE.
+       CASE('bubbles','none')
+         Stabilize = .FALSE.
+       END SELECT
+     END IF
+  END FUNCTION GetStabilizeFlag
+
+
 !> Returns a constant real by its name if found in the list structure
   RECURSIVE FUNCTION GetConstReal( List, Name, Found,x,y,z ) RESULT(r)
      TYPE(ValueList_t), POINTER :: List
@@ -2132,12 +2164,25 @@ CONTAINS
        INTEGER :: face_id
        TYPE(Element_t), POINTER :: Parent, Edge
   
+       ! NOTE: this edge/face block mirrors mGetElementDOFs (ElemInfo.F90); the
+       ! two routines must return the same count, so keep them in step. The
+       ! "Done" flags are optimistic and cleared whenever an iteration cycles,
+       ! since a cycled loop has counted nothing and the parent-based branches
+       ! below are the ones that then have to do the work.
        EdgesDone = .FALSE.; FacesDone = .FALSE.
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
+         EdgesDone = .TRUE.
          DO j=1,Element % Type % NumberOFEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF (Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF (.NOT. Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
+             ! The "edge" is the element itself. That only carries dofs of its
+             ! own when the element is a lower-dimensional body (BodyId>0 while
+             ! sitting on a boundary) and bubbles live in the global system.
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                   Element % BodyId>0 .AND. ASSOCIATED(Element % BoundaryInfo)) ) THEN
+               EdgesDone = .FALSE.
+               CYCLE
+             END IF
            END IF
 
            EDOFs = 0 
@@ -2149,15 +2194,19 @@ CONTAINS
            END IF
            n = n + EDOFs
          END DO
-         EdgesDone = .TRUE.
        END IF
 
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+         FacesDone = .TRUE.
          DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
 
            IF (Face % Type % ElementCode==Element % Type % ElementCode) THEN
-             IF ( .NOT.Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                   Element % BodyId>0 .AND. ASSOCIATED(Element % BoundaryInfo)) ) THEN
+               FacesDone = .FALSE.
+               CYCLE
+             END IF
            END IF
 
            k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
@@ -2172,22 +2221,26 @@ CONTAINS
                face_id  = Face % BoundaryInfo % Left % BodyId
                k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
              END IF
-             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-               face_id = Face % BoundaryInfo % Right % BodyId
-               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             IF (k == 0) THEN
+               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                 face_id = Face % BoundaryInfo % Right % BodyId
+                 k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+               END IF
              END IF
+           END IF
 
-             FDOFs = 0
-             IF (k > 0) THEN
-               FDOFs = k
-             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+           ! Outside the k==0 branch: with face dofs given explicitly (k>0 from
+           ! Def_Dofs(...,3)) this is the only assignment FDOFs gets, and n was
+           ! being incremented by a stale value without it.
+           FDOFs = 0
+           IF (k > 0) THEN
+             FDOFs = k
+           ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
 ! TO DO: This is not yet perfect; cf. what is done in InitialPermutation
-               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
-             END IF
+             FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
            END IF
            n = n + FDOFs
          END DO
-         FacesDone = .TRUE.
        END IF
 
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN

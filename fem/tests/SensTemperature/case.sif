@@ -5,7 +5,7 @@
 ! are used. The user should himself take care that the differential
 ! is divided by the correct value. Here the $mesheps.  
 ! 
-! Created 7.11.2013 / Peter Råback
+! Created 7.11.2013 / Peter Rback
 
 $mesheps = 1.0e-3
 
@@ -82,7 +82,7 @@ End
 Solver 2
   Equation = HeatSolver
   Variable = Temp
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
 
   Steady State Convergence Tolerance = 1.0e-5
 
