@@ -127,9 +127,19 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('body force','Smart Heater Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','Integral Heat Source',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','Friction Heat',FatalFound=.TRUE.)
-  CALL ListWarnUnsupportedKeyword('material','Phase Change Model',FatalFound=.TRUE.)
-  CALL ListWarnUnsupportedKeyword('equation','Phase Change Model',FatalFound=.TRUE.)
+  ! "Phase Change Model" itself ("Spatial 2", "Spatial 1", "Temporal") along
+  ! with "Effective Heat Capacity" and "Enthalpy Fraction" are now supported
+  ! -- see LocalMatrixVec/LocalMatrix, which Fatal-guard any other model
+  ! value themselves. The latent-heat interface BC is a separate, still-
+  ! unported feature.
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
+  ! Adaptive substepping on a crossed "Phase Change Intervals" boundary --
+  ! porting this exposed a Default*-framework nonlinear-convergence-
+  ! bookkeeping interaction (order of ComputeChange/relaxation-history
+  ! updates vs. this check's revert) that isn't understood well enough yet
+  ! to trust; see project_heatsolve_heatsolvevec_migration memory. Like
+  ! Smart Heater Control, an outer control loop kept out of scope for now.
+  CALL ListWarnUnsupportedKeyword('equation','Check Latent Heat Release',FatalFound=.TRUE.)
 
   IF(.NOT. ( DG .OR. DB ) ) THEN
     CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found)
@@ -242,7 +252,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:), &
       InfBCFlag_h(:), InfBCText_h(:), &
       CompressModel_h(:), SpecHeatRatio_h(:), RefTemp_h(:), HeatExpCoeff_h(:), &
-      RefPressure_h(:)
+      RefPressure_h(:), PhaseModelEq_h(:), PhaseModelMat_h(:), Enthalpy_h(:), &
+      SpecEnthalpy_h(:), EnthRho_h(:)
   ! PressureField_h is a SEPARATE handle from ConvField_h even though both are
   ! bound to the same "Flow Solution" variable: ListGetElementVectorSolutionVec
   ! and ListGetElementScalarSolutionVec each cache their own result under
@@ -255,6 +266,19 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! the same underlying variable.
   TYPE(VariableHandle_t), ALLOCATABLE, SAVE :: ConvField_h(:), TempField_h(:), PrevFlowField_h(:), &
       PressureField_h(:), MeshVeloField_h(:)
+
+  ! EnthalpyPrev_h/SpecEnthalpyPrev_h are the SAME gotcha as PressureField_h
+  ! above, but for ListGetElementReal's own "same element as last time, reuse
+  ! ParValues" cache (Lists.F90, "IF (Handle % EvaluateAtIp)" branch): it is
+  ! keyed only on Handle % Element, blind to a call-to-call change in the
+  ! optional "tstep" argument. Phase Change Model "Temporal" needs BOTH the
+  ! current AND previous-timestep Enthalpy at the same node in quick
+  ! succession (tstep absent, then tstep=-1) -- on one shared handle the
+  ! second call would silently reuse the first's (current-timestep) cached
+  ! values instead of re-evaluating at tstep=-1, making the previous value
+  ! equal the current one and the secant's numerator zero. Separate handles,
+  ! each only ever called with one fixed tstep, avoid this entirely.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: EnthalpyPrev_h(:), SpecEnthalpyPrev_h(:)
 
   ! Per-element bubble history (current and previous timestep), needed to
   ! form a consistent BDF(1) time derivative for a condensed p-bubble: see
@@ -333,7 +357,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   Temperature => Solver % Variable % Values
   TempPerm => Solver % Variable % Perm
 
-  DB = GetLogical( Params,'DG Reduced Basis',Found ) 
+  DB = GetLogical( Params,'DG Reduced Basis',Found )
   DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
 
   maxiter = ListGetInteger( Params, &
@@ -355,7 +379,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         TorBC_h(nthr), InfBCFlag_h(nthr), InfBCText_h(nthr), &
         CompressModel_h(nthr), SpecHeatRatio_h(nthr), RefTemp_h(nthr), &
         HeatExpCoeff_h(nthr), RefPressure_h(nthr), TempField_h(nthr), &
-        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr) )
+        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr), &
+        PhaseModelEq_h(nthr), PhaseModelMat_h(nthr), Enthalpy_h(nthr), &
+        SpecEnthalpy_h(nthr), EnthRho_h(nthr), EnthalpyPrev_h(nthr), SpecEnthalpyPrev_h(nthr) )
   ELSE IF( SIZE( Source_h ) /= nthr ) THEN
     DEALLOCATE( Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, VecConvVelo_h, &
         PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, &
@@ -363,7 +389,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, RadFlag_h, RadExtTemp_h, &
         EmisBC_h, EmisMat_h, TorBC_h, InfBCFlag_h, InfBCText_h, &
         CompressModel_h, SpecHeatRatio_h, RefTemp_h, HeatExpCoeff_h, &
-        RefPressure_h, TempField_h, PrevFlowField_h, PressureField_h, MeshVeloField_h )
+        RefPressure_h, TempField_h, PrevFlowField_h, PressureField_h, MeshVeloField_h, &
+        PhaseModelEq_h, PhaseModelMat_h, Enthalpy_h, SpecEnthalpy_h, EnthRho_h, &
+        EnthalpyPrev_h, SpecEnthalpyPrev_h )
     ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
         ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
         PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
@@ -374,7 +402,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         TorBC_h(nthr), InfBCFlag_h(nthr), InfBCText_h(nthr), &
         CompressModel_h(nthr), SpecHeatRatio_h(nthr), RefTemp_h(nthr), &
         HeatExpCoeff_h(nthr), RefPressure_h(nthr), TempField_h(nthr), &
-        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr) )
+        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr), &
+        PhaseModelEq_h(nthr), PhaseModelMat_h(nthr), Enthalpy_h(nthr), &
+        SpecEnthalpy_h(nthr), EnthRho_h(nthr), EnthalpyPrev_h(nthr), SpecEnthalpyPrev_h(nthr) )
   END IF
 
   ! Per-element bubble history for the transient condensed-bubble case:
@@ -432,7 +462,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   
   CALL DefaultStart()
 
-  
+
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
@@ -630,7 +660,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
     IF( DefaultConverged(Solver) ) EXIT
   END DO
-  
+
   CALL DefaultFinish()
   CALL CalculateRadiosityFields(Pre=.FALSE.)
 
@@ -836,6 +866,16 @@ CONTAINS
     ! is the per-point Franca stabilization parameter.
     REAL(KIND=dp), ALLOCATABLE :: StreamVec(:,:), TauVec(:)
 
+    ! Phase Change Model ("Spatial 2" / "Spatial 1" / "Temporal"): resolving
+    ! which model is active and this element's nodal Enthalpy/Temperature/
+    ! FallbackCp is shared with LocalMatrix via PhaseChangeElementSetup;
+    ! turning those into a per-Gauss-point-vector TmpVec contribution (either
+    ! Spatial 2's own |grad Enthalpy|/|grad Temperature| ratio, or an
+    ! interpolated FallbackCp) is PhaseChangeAddVec's (LocalMatrix's scalar
+    ! equivalent is PhaseChangeCL). See those subroutines for the derivation.
+    REAL(KIND=dp) :: NodalEnthalpy(n), NodalTemp(n), FallbackCp(n)
+    LOGICAL :: DoPhaseChange, UseGradient
+
     LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
     INTEGER :: i,p,j,t,k,ngp,allocstat,tid,boff
     CHARACTER(LEN=MAX_NAME_LEN) :: str
@@ -862,7 +902,11 @@ CONTAINS
         RefTemp_h     => RefTemp_h(tid),    HeatExpCoeff_h => HeatExpCoeff_h(tid), &
         RefPressure_h => RefPressure_h(tid), TempField_h  => TempField_h(tid),  &
         PrevFlowField_h => PrevFlowField_h(tid), PressureField_h => PressureField_h(tid), &
-        MeshVeloField_h => MeshVeloField_h(tid) )
+        MeshVeloField_h => MeshVeloField_h(tid), &
+        PhaseModelEq_h => PhaseModelEq_h(tid), PhaseModelMat_h => PhaseModelMat_h(tid), &
+        Enthalpy_h => Enthalpy_h(tid), SpecEnthalpy_h => SpecEnthalpy_h(tid), &
+        EnthRho_h => EnthRho_h(tid), EnthalpyPrev_h => EnthalpyPrev_h(tid), &
+        SpecEnthalpyPrev_h => SpecEnthalpyPrev_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -908,6 +952,27 @@ CONTAINS
       CALL ListInitElementKeyword( PerfCp_h,'Body Force','Perfusion Heat Capacity')
 
       CALL ListInitElementKeyword( OrigMesh_h,'Equation','Convection Original Mesh')
+
+      ! Phase Change Model "Spatial 2" (DiffuseConvectiveAnisotropic.F90's
+      ! PhaseChange branch): checked at Equation level first, then Material,
+      ! matching HeatSolve.F90's own two-tier lookup. Enthalpy_h/SpecEnthalpy_h
+      ! are evaluated at element NODES (not Gauss points, unlike every other
+      ! handle here) via a one-hot Basis trick below, since the model needs a
+      ! piecewise-linear nodal Enthalpy field to form its gradient the same
+      ! way Temperature's own gradient is formed -- an IP-interpolated value
+      ! would not support that. EnthRho_h is a dedicated Density handle for
+      ! that same nodal use: sharing Rho_h (already used at Gauss-point
+      ! resolution elsewhere in this routine) would hit the same handle-
+      ! caching hazard as the ConvField_h/PressureField_h split above, since
+      ! it is keyed only by element identity, blind to the point count/Basis
+      ! shape a given call asks for.
+      CALL ListInitElementKeyword( PhaseModelEq_h,'Equation','Phase Change Model')
+      CALL ListInitElementKeyword( PhaseModelMat_h,'Material','Phase Change Model')
+      CALL ListInitElementKeyword( Enthalpy_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpy_h,'Material','Specific Enthalpy')
+      CALL ListInitElementKeyword( EnthRho_h,'Material','Density')
+      CALL ListInitElementKeyword( EnthalpyPrev_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpyPrev_h,'Material','Specific Enthalpy')
 
       InitHandles = .FALSE.
     END IF
@@ -1011,6 +1076,35 @@ CONTAINS
           ( (SpecHeatRatio-1._dp)/SpecHeatRatio * CpAtIpVec(1:ngp) * TemperatureAtIpVec(1:ngp) )
       RhoAtIpVec => CompRhoAtIpVec
       TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
+    END IF
+
+    ! Phase Change Model: "Spatial 2" (DiffuseConvectiveAnisotropic.F90's
+    ! PhaseChange branch -- a per-Gauss-point CL = sqrt(|grad Enthalpy|^2/
+    ! |grad Temperature|^2) latent-heat capacitance), "Spatial 1" (a nodal,
+    ! numerically-differentiated -- or "Effective Heat Capacity"-overridden,
+    ! optionally "Enthalpy Fraction"-weighted -- effective heat capacity;
+    ! also what Spatial 2 itself falls back to on a near-isothermal element,
+    ! where its own gradient ratio would be ill-conditioned), and "Temporal"
+    ! (the same shape as Spatial 1, but a secant slope from the actual
+    ! previous-timestep Enthalpy/Temperature instead of a small numerical
+    ! perturbation -- itself falling back to Spatial 1's formula wherever a
+    ! node's temperature hasn't moved since the last timestep). This adds
+    ! into TmpVec, which plays BOTH legacy's CT (mass/time-derivative
+    ! coefficient, always incremented when active) and C1 (convection
+    ! coefficient, only ever consumed below when convection is on) roles, so
+    ! incrementing it once here -- before either consumer runs -- reproduces
+    ! both without a separate CT/C1 split. PhaseChangeElementSetup (which
+    ! model, this element's nodal Enthalpy/Temperature/FallbackCp) and
+    ! PhaseChangeAddVec (turning those into the TmpVec contribution) are
+    ! shared with LocalMatrix's scalar equivalent -- see those subroutines
+    ! for the full derivation.
+    IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
+      CALL PhaseChangeElementSetup( Element, n, nd, tid, DoPhaseChange, UseGradient, &
+          NodalTemp, NodalEnthalpy, FallbackCp )
+      IF( DoPhaseChange ) THEN
+        CALL PhaseChangeAddVec( ngp, n, dim, Basis, dBasisdx, UseGradient, &
+            NodalTemp, NodalEnthalpy, FallbackCp, TmpVec )
+      END IF
     END IF
 
     ! convection, either constant or computed
@@ -1226,6 +1320,293 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  ! Phase Change Model: resolves which of "Spatial 2" (DiffuseConvective-
+  ! Anisotropic.F90's PhaseChange branch), "Spatial 1" (a nodal, numerically-
+  ! differentiated -- or "Effective Heat Capacity"-overridden, optionally
+  ! "Enthalpy Fraction"-weighted -- effective heat capacity; also what
+  ! Spatial 2 itself falls back to on a near-isothermal element, where its
+  ! own gradient ratio would be ill-conditioned), or "Temporal" (the same
+  ! shape as Spatial 1, but a secant slope from the actual previous-timestep
+  ! Enthalpy/Temperature instead of a small numerical perturbation -- itself
+  ! falling back to Spatial 1's formula wherever a node's temperature hasn't
+  ! moved since the last timestep) is active on this element, at Equation
+  ! level first, then Material, matching HeatSolve.F90's own two-tier
+  ! lookup, and computes this element's nodal inputs to it: either
+  ! NodalEnthalpy/NodalTemp (Spatial 2 away from a near-isothermal element,
+  ! for the caller to form a gradient ratio from) or FallbackCp (every other
+  ! case, including Spatial 2's own near-isothermal fallback -- an
+  ! interpolable per-node effective heat capacity). UseGradient tells the
+  ! caller which of the two applies. Shared between LocalMatrixVec
+  ! (PhaseChangeAddVec turns these into a TmpVec contribution) and
+  ! LocalMatrix (PhaseChangeCL turns them into a per-Gauss-point CL) since
+  ! the two are otherwise identical. PhaseMaterial needs the element's own
+  ! Material list directly, legacy-style, since ListGetDerivValue/ListGetReal
+  ! predate and bypass the ValueHandle_t system. OneHot is the one-node-at-
+  ! a-time Basis vector used to fetch a truly nodal (not element-interpolated)
+  ! value out of the ValueHandle_t machinery; sized nd (not n) since that is
+  ! what ListGetElementReal expects as a Basis argument.
+  !------------------------------------------------------------------------------
+  SUBROUTINE PhaseChangeElementSetup( Element, n, nd, tid, DoPhaseChange, UseGradient, &
+      NodalTemp, NodalEnthalpy, FallbackCp )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, INTENT(IN) :: n, nd, tid
+    LOGICAL, INTENT(OUT) :: DoPhaseChange, UseGradient
+    REAL(KIND=dp), INTENT(OUT) :: NodalTemp(n), NodalEnthalpy(n), FallbackCp(n)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: PhaseMaterial
+    LOGICAL :: PhaseSpatial2, PhaseSpatial1, PhaseTemporal, GotPhaseEq, GotPhaseMat, &
+        FoundSpec, NeedSpatialOneFallback, FoundOverride, GotFraction, Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: PhaseModelStr
+    REAL(KIND=dp) :: dT0, OneHot(nd)
+    REAL(KIND=dp) :: NodalPrevTemp(n), NodalEnthalpyPrev(n), NodalRho(n), EnthFracNodal(n)
+    INTEGER :: p, k
+!------------------------------------------------------------------------------
+    ASSOCIATE( &
+        PhaseModelEq_h => PhaseModelEq_h(tid), PhaseModelMat_h => PhaseModelMat_h(tid), &
+        Enthalpy_h => Enthalpy_h(tid), SpecEnthalpy_h => SpecEnthalpy_h(tid), &
+        EnthRho_h => EnthRho_h(tid), EnthalpyPrev_h => EnthalpyPrev_h(tid), &
+        SpecEnthalpyPrev_h => SpecEnthalpyPrev_h(tid), TempField_h => TempField_h(tid) )
+
+    DoPhaseChange = .FALSE.
+    UseGradient = .FALSE.
+
+    PhaseSpatial2 = ListCompareElementString( PhaseModelEq_h,'spatial 2',Element,GotPhaseEq )
+    IF( GotPhaseEq ) THEN
+      PhaseModelStr = PhaseModelEq_h % CValue(1:PhaseModelEq_h % CValueLen)
+    ELSE
+      PhaseSpatial2 = ListCompareElementString( PhaseModelMat_h,'spatial 2',Element,GotPhaseMat )
+      IF( GotPhaseMat ) PhaseModelStr = PhaseModelMat_h % CValue(1:PhaseModelMat_h % CValueLen)
+    END IF
+
+    PhaseSpatial1 = .FALSE.
+    PhaseTemporal = .FALSE.
+    IF( (GotPhaseEq .OR. GotPhaseMat) .AND. .NOT. PhaseSpatial2 ) THEN
+      IF( PhaseModelStr == 'spatial 1' ) THEN
+        PhaseSpatial1 = .TRUE.
+      ELSE IF( PhaseModelStr == 'temporal' ) THEN
+        PhaseTemporal = .TRUE.
+      ELSE IF( PhaseModelStr /= 'none' ) THEN
+        CALL Fatal(Caller,'Phase Change Model "'//TRIM(PhaseModelStr)// &
+            '" is not recognized (valid values: "Spatial 2", "Spatial 1", '// &
+            '"Temporal", "None")')
+      END IF
+    END IF
+
+    IF( .NOT. ( PhaseSpatial2 .OR. PhaseSpatial1 .OR. PhaseTemporal ) ) RETURN
+    DoPhaseChange = .TRUE.
+
+    PhaseMaterial => GetMaterial( Element )
+
+    ! Nodal temperature straight from the solved field, not a keyword.
+    DO p=1,n
+      k = TempField_h % Variable % Perm( Element % NodeIndexes(p) )
+      IF( k > 0 ) THEN
+        NodalTemp(p) = TempField_h % Variable % Values( TempField_h % Variable % Dofs*(k-1) + 1 )
+      ELSE
+        NodalTemp(p) = 0._dp
+      END IF
+    END DO
+
+    IF( PhaseSpatial2 ) THEN
+      IF( ListCheckPresent( PhaseMaterial,'Enthalpy Fraction' ) ) THEN
+        CALL Warn(Caller,'"Enthalpy Fraction" is not treated by Phase Change Model "Spatial 2"')
+      END IF
+
+      ! Guard against an ill-conditioned (tiny-over-tiny) gradient ratio on a
+      ! near-isothermal element (legacy's EffectiveHeatCapacity element-level
+      ! MAXVAL-MINVAL check). Legacy falls back to the Spatial 1 formula
+      ! there -- not an optional accuracy nicety: with no Initial Condition
+      ! (Temperature = 0 everywhere), every element is exactly isothermal on
+      ! the first nonlinear iteration, so this branch is what supplies the
+      ! phase change contribution through the whole domain at startup.
+      ! Matches legacy's own gap here: no "Effective Heat Capacity" override,
+      ! no "Enthalpy Fraction" weighting (legacy's own Spatial 2 case doesn't
+      ! check for either).
+      UseGradient = ( MAXVAL(NodalTemp(1:n)) - MINVAL(NodalTemp(1:n)) > AEPS )
+
+      IF( UseGradient ) THEN
+        DO p=1,n
+          OneHot = 0._dp
+          OneHot(p) = 1._dp
+          NodalEnthalpy(p) = ListGetElementReal( SpecEnthalpy_h, OneHot, Element, FoundSpec )
+          IF( FoundSpec ) THEN
+            NodalEnthalpy(p) = NodalEnthalpy(p) * ListGetElementReal( EnthRho_h, OneHot, Element, Found )
+          ELSE
+            NodalEnthalpy(p) = ListGetElementReal( Enthalpy_h, OneHot, Element, Found )
+          END IF
+        END DO
+      ELSE
+        dT0 = ListGetCReal( PhaseMaterial,'Enthalpy Temperature Differential',Found )
+        IF(.NOT. Found ) dT0 = 1.0d-3
+
+        IF( ListCheckPresent( PhaseMaterial,'Specific Enthalpy' ) ) THEN
+          FallbackCp(1:n) = ListGetReal( PhaseMaterial,'Density',n,Element % NodeIndexes ) * &
+              ListGetDerivValue( PhaseMaterial,'Specific Enthalpy',n,Element % NodeIndexes,dT0 )
+        ELSE
+          FallbackCp(1:n) = ListGetDerivValue( PhaseMaterial,'Enthalpy',n,Element % NodeIndexes,dT0 )
+        END IF
+      END IF
+
+    ELSE
+      ! PhaseSpatial1 .OR. PhaseTemporal
+      NeedSpatialOneFallback = PhaseSpatial1
+
+      IF( PhaseTemporal ) THEN
+        ! Previous-timestep temperature, straight from the solved field's
+        ! own history -- same field TempField_h already wraps.
+        DO p=1,n
+          k = TempField_h % Variable % Perm( Element % NodeIndexes(p) )
+          IF( k > 0 .AND. ASSOCIATED( TempField_h % Variable % PrevValues ) ) THEN
+            NodalPrevTemp(p) = TempField_h % Variable % PrevValues( &
+                TempField_h % Variable % Dofs*(k-1) + 1, 1 )
+          ELSE
+            NodalPrevTemp(p) = NodalTemp(p)
+          END IF
+        END DO
+
+        ! Legacy falls back to the Spatial 1 formula wherever a node's
+        ! temperature hasn't moved since the last timestep (the secant below
+        ! would divide by ~zero there).
+        NeedSpatialOneFallback = ANY( ABS(NodalTemp(1:n)-NodalPrevTemp(1:n)) < AEPS )
+      END IF
+
+      IF( NeedSpatialOneFallback ) THEN
+        dT0 = ListGetCReal( PhaseMaterial,'Enthalpy Temperature Differential',Found )
+        IF(.NOT. Found ) dT0 = 1.0d-3
+
+        FallbackCp(1:n) = ListGetReal( PhaseMaterial,'Effective Heat Capacity', &
+            n,Element % NodeIndexes,FoundOverride )
+        IF(.NOT. FoundOverride ) THEN
+          IF( ListCheckPresent( PhaseMaterial,'Specific Enthalpy' ) ) THEN
+            FallbackCp(1:n) = ListGetReal( PhaseMaterial,'Density',n,Element % NodeIndexes ) * &
+                ListGetDerivValue( PhaseMaterial,'Specific Enthalpy',n,Element % NodeIndexes,dT0 )
+          ELSE
+            FallbackCp(1:n) = ListGetDerivValue( PhaseMaterial,'Enthalpy',n,Element % NodeIndexes,dT0 )
+          END IF
+        END IF
+      ELSE
+        ! Temporal proper: a secant slope using the actual previous-timestep
+        ! Enthalpy/Temperature (tstep=-1 threads through ListGetElementReal/
+        ! VarsToValuesOnNodes in Lists.F90 to the driving Temperature
+        ! variable's own PrevValues) instead of a small numerical
+        ! perturbation. Density is this element's current-timestep nodal
+        ! density -- matches legacy: fetched once and multiplying the
+        ! finished difference, not each term separately (legacy fetches it
+        ! before ever swapping to the previous temperature).
+        DO p=1,n
+          OneHot = 0._dp
+          OneHot(p) = 1._dp
+          NodalEnthalpy(p) = ListGetElementReal( SpecEnthalpy_h, OneHot, Element, FoundSpec )
+          IF( FoundSpec ) THEN
+            NodalEnthalpyPrev(p) = ListGetElementReal( SpecEnthalpyPrev_h, OneHot, Element, Found, tstep=-1 )
+            NodalRho(p) = ListGetElementReal( EnthRho_h, OneHot, Element, Found )
+          ELSE
+            NodalEnthalpy(p) = ListGetElementReal( Enthalpy_h, OneHot, Element, Found )
+            NodalEnthalpyPrev(p) = ListGetElementReal( EnthalpyPrev_h, OneHot, Element, Found, tstep=-1 )
+          END IF
+        END DO
+
+        FallbackCp(1:n) = ( NodalEnthalpy(1:n) - NodalEnthalpyPrev(1:n) ) / &
+            ( NodalTemp(1:n) - NodalPrevTemp(1:n) )
+        IF( FoundSpec ) FallbackCp(1:n) = FallbackCp(1:n) * NodalRho(1:n)
+      END IF
+
+      EnthFracNodal(1:n) = ListGetReal( PhaseMaterial,'Enthalpy Fraction',n,Element % NodeIndexes,GotFraction )
+      IF( GotFraction ) FallbackCp(1:n) = FallbackCp(1:n) * EnthFracNodal(1:n)
+    END IF
+
+    END ASSOCIATE
+!------------------------------------------------------------------------------
+  END SUBROUTINE PhaseChangeElementSetup
+!------------------------------------------------------------------------------
+
+
+  ! Turns PhaseChangeElementSetup's per-element output into a per-Gauss-
+  ! point-vector contribution, added into TmpVec: either Spatial 2's own
+  ! CL = sqrt(|grad Enthalpy|^2/|grad Temperature|^2) latent-heat
+  ! capacitance (UseGradient), or an interpolated FallbackCp (every other
+  ! case). EnthGradSq/TempGradSq accumulate |grad Enthalpy|^2 and
+  ! |grad Temperature|^2 per Gauss point (GradAccum is scratch for one
+  ! dimension's gradient component at a time). LocalMatrix's scalar
+  ! equivalent is PhaseChangeCL.
+  !------------------------------------------------------------------------------
+  SUBROUTINE PhaseChangeAddVec( ngp, n, dim, Basis, dBasisdx, UseGradient, &
+      NodalTemp, NodalEnthalpy, FallbackCp, TmpVec )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: ngp, n, dim
+    REAL(KIND=dp), INTENT(IN) :: Basis(:,:), dBasisdx(:,:,:)
+    LOGICAL, INTENT(IN) :: UseGradient
+    REAL(KIND=dp), INTENT(IN) :: NodalTemp(n), NodalEnthalpy(n), FallbackCp(n)
+    REAL(KIND=dp), INTENT(INOUT) :: TmpVec(:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: EnthGradSq(ngp), TempGradSq(ngp), GradAccum(ngp)
+    INTEGER :: i, p
+!------------------------------------------------------------------------------
+    IF( UseGradient ) THEN
+      EnthGradSq(1:ngp) = 0._dp
+      TempGradSq(1:ngp) = 0._dp
+      DO i=1,dim
+        GradAccum(1:ngp) = 0._dp
+        DO p=1,n
+          GradAccum(1:ngp) = GradAccum(1:ngp) + NodalEnthalpy(p) * dBasisdx(1:ngp,p,i)
+        END DO
+        EnthGradSq(1:ngp) = EnthGradSq(1:ngp) + GradAccum(1:ngp)**2
+
+        GradAccum(1:ngp) = 0._dp
+        DO p=1,n
+          GradAccum(1:ngp) = GradAccum(1:ngp) + NodalTemp(p) * dBasisdx(1:ngp,p,i)
+        END DO
+        TempGradSq(1:ngp) = TempGradSq(1:ngp) + GradAccum(1:ngp)**2
+      END DO
+
+      WHERE( TempGradSq(1:ngp) > TINY(1._dp) )
+        TmpVec(1:ngp) = TmpVec(1:ngp) + SQRT( EnthGradSq(1:ngp) / TempGradSq(1:ngp) )
+      END WHERE
+    ELSE
+      TmpVec(1:ngp) = TmpVec(1:ngp) + MATMUL( Basis(1:ngp,1:n), FallbackCp(1:n) )
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE PhaseChangeAddVec
+!------------------------------------------------------------------------------
+
+
+  ! LocalMatrix's scalar equivalent of PhaseChangeAddVec: turns
+  ! PhaseChangeElementSetup's per-element output into a single Gauss point's
+  ! latent heat capacitance CL, to be added into that point's EffCp.
+  !------------------------------------------------------------------------------
+  FUNCTION PhaseChangeCL( n, dim, Basis, dBasisdx, UseGradient, NodalTemp, NodalEnthalpy, FallbackCp ) &
+      RESULT( PhaseCL )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, dim
+    REAL(KIND=dp), INTENT(IN) :: Basis(:), dBasisdx(:,:)
+    LOGICAL, INTENT(IN) :: UseGradient
+    REAL(KIND=dp), INTENT(IN) :: NodalTemp(n), NodalEnthalpy(n), FallbackCp(n)
+    REAL(KIND=dp) :: PhaseCL
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: dEnth, dTemp
+    INTEGER :: i
+!------------------------------------------------------------------------------
+    PhaseCL = 0._dp
+    IF( UseGradient ) THEN
+      dEnth = 0._dp
+      dTemp = 0._dp
+      DO i=1,dim
+        dEnth = dEnth + SUM( NodalEnthalpy(1:n) * dBasisdx(1:n,i) )**2
+        dTemp = dTemp + SUM( NodalTemp(1:n) * dBasisdx(1:n,i) )**2
+      END DO
+      IF( dTemp > TINY(dTemp) ) PhaseCL = SQRT( dEnth/dTemp )
+    ELSE
+      PhaseCL = SUM( FallbackCp(1:n) * Basis(1:n) )
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION PhaseChangeCL
+!------------------------------------------------------------------------------
+
+
   ! We have a special type of velocity implemented that follows thin regions
   ! assuming that convection is aligned with the elements, and the elements
   ! are structural ones. Either 404 or 808 type of elements are ok as for now.
@@ -1320,6 +1701,16 @@ CONTAINS
     ! stabilization parameter.
     REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar, JouleH, HTMultAtIp
     LOGICAL :: HTMultFound
+    ! Phase Change Model: PhaseChangeElementSetup (shared with LocalMatrixVec)
+    ! resolves which model is active and this element's nodal Enthalpy/
+    ! Temperature/FallbackCp once, before the Gauss loop; PhaseChangeCL turns
+    ! those into a per-Gauss-point latent heat capacitance CL. EffCp replaces
+    ! the CpAtIp*RhoAtIp product everywhere it previously appeared, so that
+    ! CL (added to EffCp once, right after CpAtIp is fetched) reaches the
+    ! convection, SUPG and mass terms alike -- the scalar-path equivalent of
+    ! TmpVec's dual CT/C1 role in LocalMatrixVec.
+    REAL(KIND=dp) :: EffCp, PhaseCL, NodalEnthalpy(n), NodalTemp(n), FallbackCp(n)
+    LOGICAL :: DoPhaseChange, UseGradient
     ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
 
@@ -1338,7 +1729,11 @@ CONTAINS
         SpecHeatRatio_h => SpecHeatRatio_h(tid), RefTemp_h   => RefTemp_h(tid),       &
         HeatExpCoeff_h => HeatExpCoeff_h(tid), RefPressure_h => RefPressure_h(tid),   &
         TempField_h   => TempField_h(tid),    PrevFlowField_h => PrevFlowField_h(tid), &
-        PressureField_h => PressureField_h(tid), MeshVeloField_h => MeshVeloField_h(tid) )
+        PressureField_h => PressureField_h(tid), MeshVeloField_h => MeshVeloField_h(tid), &
+        PhaseModelEq_h => PhaseModelEq_h(tid), PhaseModelMat_h => PhaseModelMat_h(tid), &
+        Enthalpy_h => Enthalpy_h(tid), SpecEnthalpy_h => SpecEnthalpy_h(tid), &
+        EnthRho_h => EnthRho_h(tid), EnthalpyPrev_h => EnthalpyPrev_h(tid), &
+        SpecEnthalpyPrev_h => SpecEnthalpyPrev_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -1375,7 +1770,17 @@ CONTAINS
       CALL ListInitElementKeyword( PerfCp_h,'Body Force','Perfusion Heat Capacity')
 
       CALL ListInitElementKeyword( OrigMesh_h,'Equation','Convection Original Mesh')
-      
+
+      ! Phase Change Model "Spatial 2" -- see the matching comment in
+      ! LocalMatrixVec.
+      CALL ListInitElementKeyword( PhaseModelEq_h,'Equation','Phase Change Model')
+      CALL ListInitElementKeyword( PhaseModelMat_h,'Material','Phase Change Model')
+      CALL ListInitElementKeyword( Enthalpy_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpy_h,'Material','Specific Enthalpy')
+      CALL ListInitElementKeyword( EnthRho_h,'Material','Density')
+      CALL ListInitElementKeyword( EnthalpyPrev_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpyPrev_h,'Material','Specific Enthalpy')
+
       InitHandles = .FALSE.
     END IF
 
@@ -1401,6 +1806,20 @@ CONTAINS
     ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
 
     HTMultFound = .FALSE.
+
+    ! Phase Change Model: determined once per element, not per Gauss point --
+    ! see PhaseChangeElementSetup (shared with LocalMatrixVec) for the full
+    ! derivation. UseGradient selects Spatial 2's own per-Gauss-point
+    ! gradient-ratio formula in PhaseChangeCL below; whenever it is false
+    ! (Spatial 1 or Temporal, or Spatial 2 on a near-isothermal element),
+    ! FallbackCp (precomputed here, interpolated per Gauss point below) is
+    ! used instead.
+    DoPhaseChange = .FALSE.
+    UseGradient = .FALSE.
+    IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
+      CALL PhaseChangeElementSetup( Element, n, nd, tid, DoPhaseChange, UseGradient, &
+          NodalTemp, NodalEnthalpy, FallbackCp )
+    END IF
 
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
@@ -1487,8 +1906,22 @@ CONTAINS
 
       IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
         CpAtIp = ListGetElementReal( Cp_h, Basis, Element, Found )
+
+        ! Phase Change: PhaseChangeCL turns the setup above the Gauss loop
+        ! into this point's latent heat capacitance CL -- see that function
+        ! for the derivation. Kept as its own PhaseCL (rather than folded
+        ! silently into EffCp) because the Time derivative term below
+        ! re-fetches CpAtIp/RhoAtIp independently (its own local product,
+        ! not this EffCp) -- PhaseCL is added to both separately so this
+        ! addition does not depend on, or change, that block's own density.
+        PhaseCL = 0._dp
+        IF( DoPhaseChange ) THEN
+          PhaseCL = PhaseChangeCL( n, dim, Basis, dBasisdx, UseGradient, NodalTemp, NodalEnthalpy, FallbackCp )
+        END IF
+
+        EffCp = CpAtIp * RhoAtIp + PhaseCL
       END IF
-              
+
       IF( ConvConst .OR. ConvComp ) THEN
         IF( ConvConst ) THEN                    
           PlateSpeed = ListGetElementReal( PlateSpeed_h, Basis, Element, Found )
@@ -1511,7 +1944,7 @@ CONTAINS
         DO p=1,nd
           DO q=1,nd
             STIFF (p,q) = STIFF(p,q) + Weight * &
-                CpAtIp * RhoAtIp * SUM(VeloAtIp(1:dim)*dBasisdx(q,1:dim)) * Basis(p)
+                EffCp * SUM(VeloAtIp(1:dim)*dBasisdx(q,1:dim)) * Basis(p)
           END DO
         END DO
 
@@ -1573,14 +2006,14 @@ CONTAINS
           VNorm = SQRT( SUM( VeloAtIp(1:dim)**2 ) )
 
           IF( VNorm > 0._dp .AND. CondScalar /= 0._dp ) THEN
-            Tau = MIN( 1._dp, mK*hK*CpAtIp*RhoAtIp*VNorm / (2._dp*ABS(CondScalar)) )
-            Tau = hK * Tau / ( 2._dp * CpAtIp * RhoAtIp * VNorm )
+            Tau = MIN( 1._dp, mK*hK*EffCp*VNorm / (2._dp*ABS(CondScalar)) )
+            Tau = hK * Tau / ( 2._dp * EffCp * VNorm )
           ELSE
             Tau = 0._dp
           END IF
 
           DO p=1,nd
-            StreamVec(p) = CpAtIp * RhoAtIp * SUM( VeloAtIp(1:dim) * dBasisdx(p,1:dim) )
+            StreamVec(p) = EffCp * SUM( VeloAtIp(1:dim) * dBasisdx(p,1:dim) )
           END DO
 
           DO p=1,nd
@@ -1614,13 +2047,13 @@ CONTAINS
         RhoAtIp = ListGetElementReal( Rho_h, Basis, Element, Found )
         DO p=1,nd
           MASS(p,1:nd) = MASS(p,1:nd) + Weight * &
-                CpAtIp * RhoAtIp * Basis(p) * Basis(1:nd)
+                (CpAtIp * RhoAtIp + PhaseCL) * Basis(p) * Basis(1:nd)
         END DO
 
         IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
           DO p=1,nd
             MASS(p,1:nd) = MASS(p,1:nd) + Weight * Tau * &
-                  CpAtIp * RhoAtIp * Basis(1:nd) * StreamVec(p)
+                  (CpAtIp * RhoAtIp + PhaseCL) * Basis(1:nd) * StreamVec(p)
           END DO
         END IF
       END IF
