@@ -64,7 +64,9 @@ MODULE ParallelEigenSolve
    USE CRSMatrix
    USE IterSolve
    USE Multigrid
-   USE ParallelUtils
+   USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve, ParallelIter, &
+                             ParallelReduction, ParallelMatrixVector, ParallelNorm, &
+                             ParallelDot, ParallelMatrix, PartitionVector
 
    IMPLICIT NONE
 
