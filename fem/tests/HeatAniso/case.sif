@@ -45,6 +45,13 @@ End
 
 Solver 1
   Equation = "Heat Equation"
+! Stays on legacy HeatSolve: this test's anisotropic conductivity is given as
+! the vector-form "Heat Conductivity(3) = 1 10 0" keyword. HeatSolveVec's
+! ListGetElementRealVec Gauss-point evaluation path aborts on this keyword
+! shape with "ERROR:: ListGetElementRealVec: Impossible entry type for
+! "Heat Conductivity": 9" (repeated per element, then STOP 1); legacy's
+! nodal GetReal path handles it fine.
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

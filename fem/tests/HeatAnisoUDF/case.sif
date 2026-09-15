@@ -46,6 +46,14 @@ End
 
 Solver 1
   Equation = "Heat Equation"
+! Stays on legacy HeatSolve: this test's Material 1 defines an anisotropic
+! (2,2) tensor "Heat Conductivity" through a "Real Procedure" UDF
+! (HeatCondAniso). HeatSolveVec's vectorized keyword path
+! (ListGetElementRealVec) does not support this entry type and aborts with
+! "ERROR:: ListGetElementRealVec: Impossible entry type for
+! "Heat Conductivity": 10" / "This one implemented ONLY for
+! ListGetElementReal" -- legacy's nodal GetReal-based path handles it fine.
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

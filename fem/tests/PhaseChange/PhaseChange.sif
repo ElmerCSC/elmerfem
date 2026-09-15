@@ -43,6 +43,12 @@ End
 Solver 1
   Exec Solver = "Always"
   Equation = "Heat Equation"
+! Stays on legacy HeatSolve: the Equation section sets "Check Latent Heat
+! Release = True", which HeatSolveVec does not implement -- it aborts with
+! "ListWarnUnsupportedKeyword: Keyword in section 'equation' not supported:
+! Check Latent Heat Release". This matches a known, still-open porting gap
+! for the phase-change adaptive-timestepping path (see 7d5f0ae42).
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

@@ -58,7 +58,7 @@ MODULE DiffuseConvective
       LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,PhaseChange,NodalTemperature, &
       Enthalpy,Ux,Uy,Uz,MUx,MUy,MUz,Nodalmu,Nodalrho,NodalPressure, &
       NodaldPressureDt, NodalPressureCoeff, Compressible, Stabilize, &
-      UseBubbles, Element,n,Nodes )
+      UseBubbles, Element,n,nd,Nodes )
 !------------------------------------------------------------------------------
 !
 !  REAL(KIND=dp) :: MassMatrix(:,:)
@@ -108,6 +108,10 @@ MODULE DiffuseConvective
 !  INTEGER :: n
 !       INPUT: Number of element nodes
 !
+!  INTEGER :: nd
+!       INPUT: Number of element degrees of freedom (>= n for an active
+!              p-element with edge/face/bubble DOFs; equals n otherwise)
+!
 !  TYPE(Nodes_t) :: Nodes
 !       INPUT: Element node coordinates
 !
@@ -121,7 +125,7 @@ MODULE DiffuseConvective
 
      LOGICAL :: UseBubbles,PhaseChange,Compressible,Stabilize, VectH
 
-     INTEGER :: n
+     INTEGER :: n, nd
 
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
@@ -131,8 +135,11 @@ MODULE DiffuseConvective
 !------------------------------------------------------------------------------
 
      CHARACTER(:), ALLOCATABLE :: StabilizeFlag
-     REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
-     REAL(KIND=dp) :: Basis(2*n)
+     ! Sized to fit whichever of the two augmentation schemes below is larger:
+     ! the legacy 2*n condensed-bubble scheme, or a genuine p-element's own
+     ! (uncondensed, already-global) edge/face/bubble DOFs.
+     REAL(KIND=dp) :: dBasisdx(MAX(2*n,nd),3),detJ
+     REAL(KIND=dp) :: Basis(MAX(2*n,nd))
      REAL(KIND=dp) :: ddBasisddx(n,3,3),dNodalBasisdx(n,n,3)
 
      REAL(KIND=dp) :: Velo(3),Grad(3,3),Force
@@ -160,7 +167,7 @@ MODULE DiffuseConvective
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      LOGICAL :: Vms, Found, Transient, stat,Convection,ConvectAndStabilize,Bubbles, &
-          FrictionHeat, PBubbles
+          FrictionHeat
      TYPE(ValueList_t), POINTER :: BodyForce, Material
      LOGICAL :: GotCondModel
      
@@ -189,14 +196,25 @@ MODULE DiffuseConvective
      Convection =  ANY( NodalC1 /= 0.0d0 )
      NBasis = n
      Bubbles = .FALSE.
-     IF ( Convection .AND. .NOT. (Vms .OR. Stabilize) .AND. UseBubbles ) THEN
-       PBubbles  = isActivePElement(Element) .AND. Element % BDOFs > 0
-       IF ( PBubbles ) THEN
-          NBasis = n + Element % BDOFs
-       ELSE
-        NBasis = 2*n
-        Bubbles = .TRUE.
-       END IF
+     IF ( isActivePElement(Element) .AND. nd > n .AND. .NOT. (Vms .OR. Stabilize) ) THEN
+       ! A genuinely declared p-element (Element = p:N, or HeatSolver_Init0's
+       ! own internal 'p:1 b:N'): its edge/face/bubble DOFs already live
+       ! directly in the global system -- unlike the 2*n legacy bubble
+       ! augmentation below, which is locally condensed -- so they must be
+       ! assembled in full regardless of whether a convection term is
+       ! present. Previously this only happened when Convection was also
+       ! true (the old "PBubbles" branch, keyed off Element % BDOFs alone,
+       ! which undercounts a real p-element's edge DOFs besides): a pure
+       ! diffusion problem on a declared p:2+ element left its extra DOFs'
+       ! matrix rows identically zero -- singular (confirmed as a Direct
+       ! solver NaN on the structmap_p2 test before this fix), papered over
+       ! by an iterative solver quietly leaving those DOFs at their zero
+       ! initial guess and returning what looked like a plausible, but not
+       ! actually p-refined, answer.
+       NBasis = nd
+     ELSE IF ( Convection .AND. .NOT. (Vms .OR. Stabilize) .AND. UseBubbles ) THEN
+       NBasis = 2*n
+       Bubbles = .TRUE.
      END IF
 
 !------------------------------------------------------------------------------

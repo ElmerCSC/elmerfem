@@ -86,6 +86,13 @@ End
 
 Solver 2
   Equation = "Heat Equation"
+! Stays on legacy HeatSolve: Boundary Condition 1 ("melt_crystal") sets
+! "Phase Change = Logical True" to couple this Heat Equation solve with the
+! Solver 3 "SteadyPhaseChange" melting-front solver. HeatSolveVec aborts on
+! this at startup with "ERROR:: ListWarnUnsupportedKeyword: Keyword in
+! section "boundary condition" not supported: Phase Change" -- the BC-level
+! phase-change coupling isn't implemented in HeatSolveVec's keyword path.
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

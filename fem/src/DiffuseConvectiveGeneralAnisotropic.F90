@@ -58,8 +58,9 @@ MODULE DiffuseConvectiveGeneral
    SUBROUTINE DiffuseConvectiveGenCompose( MassMatrix,StiffMatrix,ForceVector,  &
     LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,PhaseChange,Temperature,Enthalpy,&
        Ux,Uy,Uz,MUx,MUy, MUz, NodalViscosity,NodalDensity,NodalPressure,        &
-         NodaldPressureDt,NodalPressureCoeff,Compressible, Stabilize,Element,n,Nodes )
+         NodaldPressureDt,NodalPressureCoeff,Compressible, Stabilize,Element,n,nd,Nodes )
 !------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
 !
 !  REAL(KIND=dp) :: MassMatrix(:,:)
 !     OUTPUT: time derivative coefficient matrix
@@ -106,6 +107,10 @@ MODULE DiffuseConvectiveGeneral
 !       INPUT: Structure describing the element (dimension,nof nodes,
 !               interpolation degree, etc...)
 !
+!  INTEGER :: nd
+!       INPUT: Number of element degrees of freedom (>= n for an active
+!              p-element with edge/face/bubble DOFs; equals n otherwise)
+!
 !  TYPE(Nodes_t) :: Nodes
 !       INPUT: Element node coordinates
 !
@@ -119,19 +124,23 @@ MODULE DiffuseConvectiveGeneral
 
      LOGICAL :: Stabilize,PhaseChange,Compressible
 
-     INTEGER :: n
+     INTEGER :: n, nd
 
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
 
-     
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
 !
      REAL(KIND=dp) :: ddBasisddx(n,3,3),dNodalBasisdx(n,n,3)
-     REAL(KIND=dp) :: Basis(2*n)
-     REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
+     ! Sized to fit whichever of the two augmentation schemes below is larger:
+     ! the legacy 2*n condensed-bubble scheme, or a genuine p-element's own
+     ! (uncondensed, already-global) edge/face/bubble DOFs -- see the matching
+     ! comment in DiffuseConvectiveAnisotropic.F90's DiffuseConvectiveCompose.
+     REAL(KIND=dp) :: Basis(MAX(2*n,nd))
+     REAL(KIND=dp) :: dBasisdx(MAX(2*n,nd),3),detJ
 
      REAL(KIND=dp) :: Velo(3),Force
 
@@ -180,7 +189,14 @@ MODULE DiffuseConvectiveGeneral
      Convection =  ANY( NodalC1 /= 0.0d0 )
      NBasis = n
      Bubbles = .FALSE.
-     IF ( Convection .AND. .NOT. Stabilize ) THEN
+     ! See the matching, more-fully-commented logic in
+     ! DiffuseConvectiveAnisotropic.F90's DiffuseConvectiveCompose: a
+     ! genuinely declared p-element's edge/face/bubble DOFs already live in
+     ! the global system and must be assembled regardless of convection, or
+     ! their matrix rows are left identically zero (singular).
+     IF ( isActivePElement(Element) .AND. nd > n .AND. .NOT. Stabilize ) THEN
+       NBasis = nd
+     ELSE IF ( Convection .AND. .NOT. Stabilize ) THEN
         NBasis = 2*n
         Bubbles = .TRUE.
      END IF

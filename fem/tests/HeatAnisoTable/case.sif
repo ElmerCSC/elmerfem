@@ -46,6 +46,12 @@ End
 
 Solver 1
   Equation = "Heat Equation"
+! Stays on legacy HeatSolve: "Heat Conductivity(2,2)" is an anisotropic
+! conductivity tensor given as a table (Variable Coordinate 1). HeatSolveVec's
+! ListGetElementRealVec fails on this with "Impossible entry type for
+! 'Heat Conductivity': 10" -- it doesn't support tabulated tensor-valued
+! material entries, which legacy's nodal evaluation path does.
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"
