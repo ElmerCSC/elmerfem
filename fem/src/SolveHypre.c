@@ -51,6 +51,10 @@
 #include "HYPRE.h"
 #include "HYPRE_parcsr_ls.h"
 
+#if defined(HAVE_HYPRE_CUDA)
+#include "cuda_runtime.h"
+#endif
+
 #define realtime_ FC_FUNC_(realtime,REALTIME)
 typedef struct {
 
@@ -83,6 +87,26 @@ static void CheckHypreError(const char *Caller, int myid)
     HYPRE_ClearAllErrors();
   }
 }
+
+#if defined(HAVE_HYPRE_CUDA)
+/* Without this, every MPI rank that touches Hypre defaults to CUDA device 0,
+   so a multi-GPU node is not fully utilized.
+   Must run before the first CUDA-touching Hypre call (HYPRE_Init included),
+   since that is when Hypre attaches to "the current device". */
+static void ElmerHypreBindDevice(MPI_Comm comm)
+{
+  static int done = 0;
+  int rank, gpu_count;
+
+  if (done) return;
+  done = 1;
+
+  MPI_Comm_rank(comm, &rank);
+  if (cudaGetDeviceCount(&gpu_count) != cudaSuccess || gpu_count < 1) return;
+
+  cudaSetDevice(rank % gpu_count);
+}
+#endif
 
 
 /* The interface calls Hypre step-wise separating phases for 
@@ -144,6 +168,9 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    
    int verbosity = *verbosityPtr, myverb;
 
+#if defined(HAVE_HYPRE_CUDA)
+   ElmerHypreBindDevice(comm);
+#endif
    HYPRE_Init();
 
    /* which process number am I? */
@@ -1235,6 +1262,9 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
 
    AssembleRowByRow = hypre_intpara[19];
 
+#if defined(HAVE_HYPRE_CUDA)
+   ElmerHypreBindDevice(comm);
+#endif
    HYPRE_Init();
 
    Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));
@@ -1515,8 +1545,15 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    HYPRE_AMSSetCycleType(precond, hypre_intpara[1]); // 1-14
    HYPRE_AMSSetSmoothingOptions(precond, hypre_intpara[2], hypre_intpara[3],
            hypre_dppara[1], hypre_dppara[2]);
+#if defined(HAVE_HYPRE_CUDA)
+  // Interpolation type 0 is not supported on GPU, use 6 instead.
+  // see Hypre BoomerAMG docs for more info
+   HYPRE_AMSSetAlphaAMGOptions(precond, 10, 1, 3, hypre_dppara[3], 6, 0);
+   HYPRE_AMSSetBetaAMGOptions(precond, 10, 1, 3, hypre_dppara[4], 6, 0);
+#else
    HYPRE_AMSSetAlphaAMGOptions(precond, 10, 1, 3, hypre_dppara[3], 0, 0);
    HYPRE_AMSSetBetaAMGOptions(precond, 10, 1, 3, hypre_dppara[4], 0, 0);
+#endif
 
    if(hypre_intpara[4])
      HYPRE_AMSSetBetaPoissonMatrix(precond,NULL);

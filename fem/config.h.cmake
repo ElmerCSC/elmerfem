@@ -70,6 +70,9 @@
 /* define HAVE_HYPRE */
 #cmakedefine HAVE_HYPRE
 
+/* Define if the linked HYPRE library was configured --with-cuda. */
+#cmakedefine HAVE_HYPRE_CUDA
+
 /* Define if you have a MKL library */
 #cmakedefine HAVE_MKL
 

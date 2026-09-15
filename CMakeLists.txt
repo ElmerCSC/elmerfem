@@ -690,6 +690,32 @@ IF(Hypre_FOUND)
   MARK_AS_ADVANCED(HAVE_HYPRE)
   INCLUDE_DIRECTORIES(${Hypre_INCLUDE_DIR})
   # LINK_DIRECTORIES(${Hypre_LIBRARIES})
+
+  # Check if Hypre was built with --with-cuda flag
+  SET(_hypre_using_cuda FALSE)
+  FOREACH(_d ${Hypre_INCLUDE_DIR})
+    IF(EXISTS "${_d}/HYPRE_config.h")
+      FILE(STRINGS "${_d}/HYPRE_config.h" _hypre_cuda_hit REGEX "define HYPRE_USING_CUDA")
+      IF(_hypre_cuda_hit)
+        SET(_hypre_using_cuda TRUE)
+      ENDIF()
+    ENDIF()
+  ENDFOREACH()
+
+  IF(_hypre_using_cuda)
+    FIND_PACKAGE(CUDAToolkit)
+    IF(CUDAToolkit_FOUND)
+      SET(HAVE_HYPRE_CUDA TRUE)
+      MARK_AS_ADVANCED(HAVE_HYPRE_CUDA)
+      # Hypre's own CUDA-enabled build needs these linked in directly
+      SET(HYPRE_CUDA_LIBRARIES CUDA::cudart CUDA::cublas CUDA::cusparse CUDA::cusolver CUDA::curand)
+      MARK_AS_ADVANCED(HYPRE_CUDA_LIBRARIES)
+      MESSAGE(STATUS "Hypre was configured --with-cuda (HYPRE_USING_CUDA) and CMake found CUDA")
+    ELSE()
+      MESSAGE(WARNING "Hypre reports HYPRE_USING_CUDA but CMake could not "
+                      "find CUDA. Some GPU features of Hypre may not work.")
+    ENDIF()
+  ENDIF()
 ENDIF()
 
 IF(FETI4I_FOUND)
