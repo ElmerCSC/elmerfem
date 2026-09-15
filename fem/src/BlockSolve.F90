@@ -38,8 +38,8 @@ MODULE BlockSolve
  USE IterativeMethods, ONLY : PseudoZDotProd
  USE IterSolve, ONLY : IterSolver
  USE ElementDescription, ONLY : ElementInfo, EdgeElementInfo
- USE SolverBasics, ONLY : LagrangeMultiplierName, ScaleLinearSystem, &
-     BackScaleLinearSystem, DiagonalMatrixSumming, &
+ USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
+ USE SolverBasics, ONLY : LagrangeMultiplierName,  DiagonalMatrixSumming, &
      StructureCouplingAssembly, FSICouplingAssembly, &
      MassMatrixAssembly, VectorValuesRange, LaplaceMatrixAssembly
  USE SolveCore, ONLY : SolveLinearSystem, AMGXMatrixVectorMultiply, &
