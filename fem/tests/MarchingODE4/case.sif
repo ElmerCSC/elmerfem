@@ -84,7 +84,7 @@ End
 Solver 1
   Equation = "Heat"
   Variable = "Temperature"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

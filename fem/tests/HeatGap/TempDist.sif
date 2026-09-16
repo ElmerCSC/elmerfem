@@ -44,11 +44,13 @@ End
 Solver 1
   Exec Solver = "Always"
   Equation = "Heat Equation"
-! Stays on legacy HeatSolve: this test uses a "Heat Gap" boundary condition
-! without Discontinuous Galerkin active. HeatSolveVec's init rejects that
-! combination with "HeatSolver_init: Keyword supported only with DG active:
-! 'Heat Gap'" -- legacy HeatSolve supports it without DG.
+! Stays on the legacy assembly: this test uses a "Heat Gap" boundary
+! condition without Discontinuous Galerkin active. The default vectorized
+! HeatSolve's init rejects that combination with "HeatSolver_init: Keyword
+! supported only with DG active: 'Heat Gap'" -- the legacy assembly supports
+! it without DG.
   Procedure = "HeatSolve" "HeatSolver"
+  Legacy Assembly = Logical True
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

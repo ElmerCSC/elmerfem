@@ -35,7 +35,7 @@ Equation 1 :: Active Solvers(2) = 1 2
 
 Solver 1
   Equation = Heat Equation
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
   Linear System Solver = Direct
   Optimize Bandwidth = True

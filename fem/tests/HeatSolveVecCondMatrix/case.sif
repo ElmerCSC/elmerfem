@@ -37,7 +37,7 @@ Solver 1
   Variable = Temperature
 
 ! Both legacy and vectorized solver are ok:
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 !  Procedure = "HeatSolveVec" "HeatSolver"
 
   Calculate Conductance Matrix = Logical True

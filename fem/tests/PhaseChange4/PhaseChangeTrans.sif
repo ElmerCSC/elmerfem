@@ -121,7 +121,7 @@ Solver 2
 ! never-actually-converged snapshot; converging properly made the
 ! legacy-vs-HeatSolveVec discrepancy ~10x SMALLER (Solver 3: 2.2e-4 -> 2.3e-5),
 ! not larger, which is what confirms it's noise rather than a real bug.
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

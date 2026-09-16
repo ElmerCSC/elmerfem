@@ -44,7 +44,7 @@ Solver 1
 ! mechanism wasn't pinned down further; judged an acceptable discretization
 ! difference given the small magnitude, propagating equally into the
 ! downstream max-Temperature SaveScalars norm (Solver 3).
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

@@ -132,7 +132,7 @@ End
 ! Solve the heat equation with convection and conduction
 Solver 3
   Equation = Heat Equation
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
   Exec Solver = Always
   Stabilize = True

@@ -42,7 +42,7 @@ End
 Solver 1
   Equation = HeatSolver
   Variable = Temperature
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Steady State Convergence Tolerance = 1.0e-5
 

@@ -50,7 +50,7 @@ Solver 1
 ! for character) and the same final Reference Norm to within legacy's own
 ! run-to-run roundoff level (~5e-10 relative).
   Equation = "Heat Equation"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

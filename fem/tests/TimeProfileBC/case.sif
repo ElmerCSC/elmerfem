@@ -47,7 +47,7 @@ Solver 1
   Exec Solver = "Always"
   Equation = "Heat Equation"
 ! Stays on legacy HeatSolve: Boundary Condition 3 ("Top")'s "External
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
 
   Linear System Solver = direct

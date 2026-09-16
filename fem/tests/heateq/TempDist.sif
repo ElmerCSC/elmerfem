@@ -50,7 +50,7 @@ Solver 1
 
   Equation = "he1"
   Variable = "T1"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
 
@@ -72,7 +72,7 @@ Solver 2
 
   Equation = "he2"
   Variable = "T2"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
 

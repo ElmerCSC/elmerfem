@@ -47,7 +47,7 @@ End
 
 Solver 1
   Equation = Heat Equation
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 ! Spell out how the view factors are resolved, so this test keeps exercising
 ! the path it was blessed against even if the defaults change.
 !   Viewfactor Closed Form Integration : the inner ("to area") integral,

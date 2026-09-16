@@ -52,7 +52,7 @@ Solver 1
 ! HeatSolveVec's norm to ~1e-9 relative error, so the observed ~5.8e-4 gap
 ! is entirely this one dropped term, not a scheme-level difference -- hence
 ! the relaxed Reference Norm Tolerance.
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Direct"

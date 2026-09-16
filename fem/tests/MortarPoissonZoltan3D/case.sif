@@ -82,7 +82,7 @@ Solver 2
 !  Exec Solver = never !Always
 
   Equation = Heat Equation
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = -dofs 1 Temperature
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1.0e-5

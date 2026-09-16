@@ -46,7 +46,7 @@ End
 Solver 1
   Equation = "heat"
   Variable = "Temp"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
 ! This condition enforces steady state
 ! 1st time it's 0.5 i.e. true, after that always negative i.e. false

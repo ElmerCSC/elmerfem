@@ -60,7 +60,7 @@ Solver 1
 ! coefficient -- a genuine discretization difference for a T^3/T^4 term, not
 ! a bug. It shows up here as a ~6.1e-4 relative norm shift (same family as
 ! radiation/radiation_bin), hence the relaxed Reference Norm Tolerance.
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
   Stabilize = True
   Linear System Solver = Iterative

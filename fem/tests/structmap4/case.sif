@@ -71,7 +71,7 @@ End
 Solver 2
   Equation = "HeatA"
   Variable = "TempA"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"
@@ -90,7 +90,7 @@ End
 Solver 3
   Equation = "HeatB"
   Variable = "TempB"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

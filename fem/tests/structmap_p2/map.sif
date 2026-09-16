@@ -60,7 +60,7 @@ Solver 1
 ! p-element with nd > n, independent of convection. Verified: legacy now
 ! matches HeatSolveVec's norm here to ~1e-9 relative, under both the
 ! iterative solver this test uses and a Direct solver (no longer NaNs).
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

@@ -42,7 +42,7 @@ End
 Solver 1
   Exec Solver = "Always"
   Equation = "Heat Equation"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

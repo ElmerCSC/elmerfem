@@ -61,7 +61,7 @@ Solver 1
 ! Solver 2's (very tight-tolerance) norm. Switching to "Stabilize = True"
 ! (SUPG, no bubble at all) matches legacy HeatSolve to ~1e-9 on both solvers,
 ! Newmark timestepping included, so the port to HeatSolveVec is now exact.
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = -dofs 1 Temperature
   Stabilize = True
   Bubbles = False

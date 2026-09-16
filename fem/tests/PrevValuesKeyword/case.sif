@@ -47,11 +47,13 @@ End
 Solver 1
   Equation = "heat"
   Variable = "Temperature"
-! Stays on legacy HeatSolve: uses the "Variable = Prev Temperature" history
-! convention. Same class of gap as MatDepMat -- HeatSolveVec's handle-based
-! keyword evaluation doesn't resolve this ("Can't find independent
-! variable:[prev temperature]"); legacy's nodal GetReal path does.
+! Stays on the legacy assembly: uses the "Variable = Prev Temperature"
+! history convention. Same class of gap as MatDepMat -- the default
+! vectorized HeatSolve's handle-based keyword evaluation doesn't resolve
+! this ("Can't find independent variable:[prev temperature]"); the legacy
+! assembly's nodal GetReal path does.
   Procedure = "HeatSolve" "HeatSolver"
+  Legacy Assembly = Logical True
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

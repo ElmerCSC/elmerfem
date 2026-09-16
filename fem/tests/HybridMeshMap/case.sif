@@ -93,7 +93,7 @@ End
 
 Solver 3
   Equation = "Heat Equation"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

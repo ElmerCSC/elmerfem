@@ -47,7 +47,7 @@ Solver 1
 !  Exec Solver = Before Timestep
   Equation = "refHeat"
   Variable = "refT"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"
@@ -68,7 +68,7 @@ Solver 2
 
   Equation = "globalHeat"
   Variable = "globalT"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"
@@ -89,7 +89,7 @@ Solver 3
 
   Equation = "localHeat"
   Variable = "localT"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
  
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

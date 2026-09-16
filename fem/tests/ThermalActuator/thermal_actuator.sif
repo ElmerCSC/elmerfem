@@ -60,7 +60,7 @@ End
 $ trelax = 0.5
 Solver 2
   Equation = HeatEq
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
 
   Linear System Solver = Iterative

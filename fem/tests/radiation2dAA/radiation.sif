@@ -76,7 +76,7 @@ Solver 1
 !     temperatures first and linearizes T^4 once at that single average,
 !     applied uniformly over the whole element.
 
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Stabilize = True
   Linear System Solver = Iterative

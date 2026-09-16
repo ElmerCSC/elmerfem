@@ -47,7 +47,7 @@ Solver 1
 ! via CheckLatentHeatVec -- verified against legacy HeatSolve: identical
 ! dt-halving schedule (all 7 events, character for character) and the same
 ! final Reference Norm to within roundoff (~3e-11 relative).
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"
