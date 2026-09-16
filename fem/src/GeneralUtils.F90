@@ -420,7 +420,12 @@ CONTAINS
     ! Join with whatever separator the directory itself came back with, so a
     ! Windows path stays all backslashes and cmd.exe recognizes it as a path.
     Sep = '/'
+#ifdef __NVCOMPILER
+    IF ( INDEX(ExeDir,'\\') > 0 ) Sep = '\\'
+#else
     IF ( INDEX(ExeDir,'\') > 0 ) Sep = '\'
+#endif
+
     
     Cmd = '"' // TRIM(ExeDir) // Sep // TRIM(Name) // '"'
 !------------------------------------------------------------------------------

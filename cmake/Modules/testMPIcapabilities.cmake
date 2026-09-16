@@ -9,7 +9,7 @@ if(CMAKE_CROSSCOMPILING)
   message(STATUS "Checking whether MPI_IN_PLACE is supported with ${MPI_Fortran_COMPILER} -- assuming yes")
   set(CHECK_MPI_IN_PLACE_RUN_ERROR OFF)
   set(CHECK_MPI_IN_PLACE_COMPILE ON)
-else()
+elseif(NOT(CHECK_MPI_IN_PLACE_COMPILE))
 
   message(STATUS "Checking whether MPI_IN_PLACE is supported with ${MPI_Fortran_COMPILER}")
 

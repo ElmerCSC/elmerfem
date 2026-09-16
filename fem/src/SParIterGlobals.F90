@@ -66,7 +66,11 @@ real(kind=dp):: xxx, yyy
   ! Following is in correct place
 
   TYPE (ParEnv_t), SAVE, TARGET :: ParEnv_Common
+#ifdef __NVCOMPILER
+  TYPE (ParEnv_t), POINTER, SAVE :: ParEnv => NULL()
+#else
   TYPE (ParEnv_t), POINTER, SAVE :: ParEnv => ParEnv_Common
+#endif
   TYPE (SParIterSolverGlobalD_t), POINTER :: PIGpntr
   TYPE (SParIterSolverGlobalD_t), POINTER :: GlobalData
 
