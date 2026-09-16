@@ -64,7 +64,7 @@ Boundary Condition 2
 !  Potential = 1.0
 End
 
-Solver 1 :: Reference Norm = Real 118.960628510
+Solver 1 :: Reference Norm = Real 1.34355027569E13
 RUN
 
 !End Of File

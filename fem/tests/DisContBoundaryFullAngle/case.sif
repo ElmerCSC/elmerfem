@@ -101,5 +101,5 @@ Boundary Condition 4
   Surface Charge Density = -1.0
 End
 
-Solver 1 :: Reference Norm = 5.5098531746478108E-002
+Solver 1 :: Reference Norm = 6.2228781324E9
 !End Of File

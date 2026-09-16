@@ -32,6 +32,16 @@ Simulation
   Post File = case.vtu
 End
 
+Constants
+  ! Pinned to the old natural-units default (StatElecSolve.F90 now defaults
+  ! to the real physical value): with the physical value, the mortar-coupled
+  ! potential field (Solver 2) comes out ~16% different, and not by a simple
+  ! Eps0 scaling like the electric energy (Solver 3) does -- suggests the
+  ! "Apply Mortar BCs" coupling here is not exactly Eps0-invariant. Flagged
+  ! to the test author; pinned here rather than assuming it's fine.
+  Permittivity Of Vacuum = 1.0
+End
+
 Body 1
   Name = "UpAir"
   Equation = 1
