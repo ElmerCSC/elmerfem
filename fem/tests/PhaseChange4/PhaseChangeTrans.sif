@@ -26,7 +26,14 @@ Simulation
 
   Simulation Type = Transient
   Steady State Min Iterations = 1
-  Steady State Max Iterations = 1
+! Raised from 1: the original reference norms were a single-iteration (never
+! actually converged) snapshot, which made the HeatSolve/HeatSolveVec
+! comparison noisier than it needed to be. Converging properly (paired with
+! Solver 1's tightened "Steady State Convergence Tolerance" below) shrinks
+! the legacy-vs-HeatSolveVec discrepancy by ~10x (see the Procedure comment
+! on Solver 2 below) rather than growing it, confirming it's floating-point/
+! assembly-order noise, not a correctness bug.
+  Steady State Max Iterations = 20
 
   Timestepping Method = Implicit Euler
   Timestep Sizes = 3.0e-2
@@ -93,18 +100,27 @@ Solver 1
   Equation = "Mesh Update"
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"
-  Steady State Convergence Tolerance = 1.0e-4
+! Tightened from 1.0e-4 alongside "Steady State Max Iterations" above -- see
+! that comment.
+  Steady State Convergence Tolerance = 1.0e-6
 End
 
 
 Solver 2
   Equation = "Heat Equation"
 ! Switching to HeatSolveVec leaves this solver's own norm essentially
-! unchanged (rel. diff ~3.5e-7), but the coupled moving-boundary solvers
-! that consume its temperature field (Solver 1 Mesh Update, Solver 3 Phase
-! Surface) pick up a small amplified drift (~2.6e-5 and ~2.2e-4
-! respectively) through the melt-front tracking. Judged an acceptable
-! discretization difference for this transient phase-change test.
+! unchanged (rel. diff ~1.4e-7, floating-point-roundoff level), but the
+! coupled moving-boundary solvers that consume its temperature field
+! (Solver 1 Mesh Update, Solver 3 Phase Surface) pick up a small amplified
+! drift (~2.2e-5 each) through the melt-front tracking -- same "tiny
+! upstream perturbation amplified by a sensitive nonlinear coupled solver"
+! mechanism as NaturalConvection3's Bubbles=True case, not a HeatSolveVec
+! correctness bug. Reference norms below were regenerated after raising
+! "Steady State Max Iterations" (Simulation section) to 20 and Solver 1's
+! own tolerance to 1.0e-6 -- the ORIGINAL norms were a single-iteration,
+! never-actually-converged snapshot; converging properly made the
+! legacy-vs-HeatSolveVec discrepancy ~10x SMALLER (Solver 3: 2.2e-4 -> 2.3e-5),
+! not larger, which is what confirms it's noise rather than a real bug.
   Procedure = "HeatSolveVec" "HeatSolver"
 
   Linear System Solver = "Direct"
@@ -278,8 +294,8 @@ Boundary Condition 6
   Target Boundaries = 6
 End
 
-Solver 1 :: Reference Norm = 5.31136281E-02
+Solver 1 :: Reference Norm = 6.44772009E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
-Solver 2 :: Reference Norm = 5.83595961E-01
-Solver 3 :: Reference Norm = 3.48790238E-01
+Solver 2 :: Reference Norm = 5.84365916E-01
+Solver 3 :: Reference Norm = 1.33770756E-01
 Solver 3 :: Reference Norm Tolerance = Real 5.0e-4

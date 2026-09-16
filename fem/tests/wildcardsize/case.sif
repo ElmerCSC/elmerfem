@@ -43,13 +43,7 @@ End
 Solver 1
   Exec Solver = "Always"
   Equation = "Heat Equation"
-! Stays on legacy HeatSolve: "Heat Conductivity(*) = 1 2" (implicit wildcard
-! size) is parsed as a constant tensor (LIST_TYPE_CONSTANT_TENSOR). HeatSolveVec's
-! element-wise keyword evaluator (ListGetElementRealVec) only supports scalar
-! list entry types and aborts with "Impossible entry type for 'Heat
-! Conductivity': 9" / "This one implemented ONLY for 'ListGetElementReal'".
-! Legacy HeatSolve's nodal GetReal path handles tensor-valued keywords fine.
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = "Temperature"
 
   Linear System Solver = "Iterative"

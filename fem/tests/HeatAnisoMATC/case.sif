@@ -46,13 +46,7 @@ End
 
 Solver 1
   Equation = "Heat Equation"
-! Stays on legacy HeatSolve: "Heat Conductivity" here is a 2x2 tensor given as
-! "Variable Coordinate 1 / Real MATC ..." (a tensor-valued MATC dependency).
-! HeatSolveVec's element-wise keyword evaluator (ListGetElementRealVec) aborts
-! with "Impossible entry type for 'Heat Conductivity': 12" and the run STOPs --
-! this tensor/MATC combination is not yet supported there. Legacy HeatSolve
-! handles it fine via its nodal GetReal path.
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

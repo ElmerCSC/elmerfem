@@ -47,15 +47,7 @@ Solver 1
   Exec Solver = "Always"
   Equation = "Heat Equation"
 ! Stays on legacy HeatSolve: Boundary Condition 3 ("Top")'s "External
-! Temperature" is evaluated through the stateful "TimeProfile" UDF, which
-! caches/mutates a shared ValueListEntry_t's Fvalues array in place (SAVE
-! tn0, ptr) once per new timestep. Under HeatSolveVec this BC is evidently
-! evaluated from multiple threads concurrently: the log shows "Updated
-! temperature profile" printed twice for several timesteps instead of once,
-! i.e. a race on the tn/=tn0 check/write. This produced a genuinely wrong
-! result (23.8% relative norm error), not a small discretization drift, so
-! this test is kept on legacy's presumably non-threaded/serial BC evaluation.
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = "Temperature"
 
   Linear System Solver = direct

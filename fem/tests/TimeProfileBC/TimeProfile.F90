@@ -18,6 +18,15 @@ FUNCTION TimeProfile( Model, n, tx ) RESULT( f )
 
   SAVE tn0, ptr, Name
 
+  ! tn0/ptr/Name are SAVEd (shared, not thread-private), and the block below
+  ! is an unguarded check-then-write of ptr % Fvalues -- legacy HeatSolve
+  ! never threads boundary assembly, so this was harmless there, but
+  ! HeatSolveVec's boundary loop is OpenMP-threaded and can call this
+  ! function concurrently from several elements at once. Serialize the whole
+  ! function (cheap: one profile lookup per BC node) rather than just the
+  ! write, since the read of ptr % Fvalues below must also not race against
+  ! another thread's in-progress rebuild.
+  !$OMP CRITICAL (TimeProfileUpdate)
   BC => GetBC()
   tn = GetTimestep()
 
@@ -25,20 +34,20 @@ FUNCTION TimeProfile( Model, n, tx ) RESULT( f )
     tn0 = tn
 
     Name = "Timeprofile"
-    
+
     ptr => ListFind(BC,Name,Found)
     IF(.NOT. Found ) CALL Fatal('TimeProfile','Could not find item: '//TRIM(Name))
 
     IF( ptr % TYPE /= LIST_TYPE_VARIABLE_SCALAR ) THEN
-      CALL Fatal('TimeProfile','Item should be variable scalar: '//TRIM(Name))        
+      CALL Fatal('TimeProfile','Item should be variable scalar: '//TRIM(Name))
     END IF
-    
+
     IF ( C_ASSOCIATED(ptr % PROCEDURE) ) THEN
-      CALL Fatal('TimeProfile','Item should not be a function: '//TRIM(Name))             
+      CALL Fatal('TimeProfile','Item should not be a function: '//TRIM(Name))
     END IF
-      
+
     m = SIZE( ptr % Fvalues(1,1,:) )
-    
+
     DO i=1,m
       f = ListGetCReal(BC,TRIM(Name)//' point '//I2S(i),UnfoundFatal=.TRUE.)
       ptr % Fvalues(1,1,i) = f
@@ -46,9 +55,10 @@ FUNCTION TimeProfile( Model, n, tx ) RESULT( f )
 
     PRINT *,'Updated temperature profile: ',ptr % Fvalues(1,1,:)
   END IF
-    
+
   f = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
       tx, ptr % CubicCoeff )
+  !$OMP END CRITICAL (TimeProfileUpdate)
 
 END FUNCTION TimeProfile
   

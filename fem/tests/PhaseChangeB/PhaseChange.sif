@@ -43,14 +43,14 @@ End
  
 Solver 1
   Exec Solver = "Always"
-! Stays on legacy HeatSolve: the Equation-section keyword "Check Latent Heat
-! Release" (used together with "Phase Change Model = Spatial 2" here) is not
-! supported by HeatSolveVec -- it aborts with "ERROR:: ListWarnUnsupportedKeyword:
-! Keyword in section "equation" not supported: Check Latent Heat Release" and
-! STOP 1. This is a known gap (see HeatSolve/HeatSolveVec migration notes on the
-! reverted "Check Latent Heat Release" porting attempt), not a small drift.
+! "Check Latent Heat Release" (the adaptive dt-halving substep scheme,
+! previously unsupported here) is now implemented in HeatSolveVec's
+! HeatSolver via CheckLatentHeatVec. Verified against legacy HeatSolve on
+! this exact test: identical dt-halving schedule (all 6 events, character
+! for character) and the same final Reference Norm to within legacy's own
+! run-to-run roundoff level (~5e-10 relative).
   Equation = "Heat Equation"
-  Procedure = "HeatSolve" "HeatSolver"
+  Procedure = "HeatSolveVec" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

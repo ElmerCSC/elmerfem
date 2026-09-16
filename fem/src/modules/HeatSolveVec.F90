@@ -133,13 +133,8 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   ! value themselves. The latent-heat interface BC is a separate, still-
   ! unported feature.
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
-  ! Adaptive substepping on a crossed "Phase Change Intervals" boundary --
-  ! porting this exposed a Default*-framework nonlinear-convergence-
-  ! bookkeeping interaction (order of ComputeChange/relaxation-history
-  ! updates vs. this check's revert) that isn't understood well enough yet
-  ! to trust; see project_heatsolve_heatsolvevec_migration memory. Like
-  ! Smart Heater Control, an outer control loop kept out of scope for now.
-  CALL ListWarnUnsupportedKeyword('equation','Check Latent Heat Release',FatalFound=.TRUE.)
+  ! "Check Latent Heat Release" (adaptive substepping on a crossed "Phase
+  ! Change Intervals" boundary) -- see HeatSolver's own CheckLatentHeatVec.
 
   IF(.NOT. ( DG .OR. DB ) ) THEN
     CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found)
@@ -224,14 +219,27 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, &
       HaveRadNewtonRelax, Converged, PostCalc = .FALSE., Stabilize
   TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
-  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: Temperature(:)
   INTEGER, POINTER :: TempPerm(:)
   REAL(KIND=dp), ALLOCATABLE :: Temps4(:), Emiss(:), Absorp(:), Reflect(:),RadiatorPowers(:)
   REAL(KIND=dp) :: Norm, StefBoltz, RadNewtonRelax
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
+  CHARACTER(LEN=MAX_NAME_LEN) :: Msg
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
+
+  ! "Check Latent Heat Release" adaptive substepping: HeatSolve.F90's own
+  ! internal DO-WHILE(CumulativeTime<Timestep) loop, subdividing the
+  ! nominal step whenever CheckLatentHeatVec() finds a node that jumped a
+  ! "Phase Change Intervals" boundary between the substep's start
+  ! (PrevSolution) and the just-solved iterate. "dt" (the dummy arg) is this
+  ! call's NOMINAL step, saved once as Timestep; CurrentDt is the mutable
+  ! per-substep size legacy calls "dt" internally.
+  REAL(KIND=dp) :: Timestep, CurrentDt, CumulativeTime, PrevNorm, Relax
+  REAL(KIND=dp), ALLOCATABLE :: PrevSolution(:)
+  INTEGER :: LocalNodes
+  LOGICAL :: HaveCheckLatentHeat, FirstSubstep
 
   ! Thread-local handle storage indexed 1..nthr for LocalMatrixVec, LocalMatrix,
   ! and LocalMatrixBC. Replaces SAVE+THREADPRIVATE; accessed via ASSOCIATE(tid).
@@ -243,8 +251,19 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! unfreed -- a leak of one list per handle per timestep. They are rebound to
   ! the current solver's keywords through InitHandles on every visit, so keeping
   ! them is also what the SAVE+THREADPRIVATE version effectively did.
+  ! CondScalar_h is a SEPARATE handle from Cond_h even though both are bound to
+  ! the same "Heat Conductivity" keyword: ListGetElementReal (the nodal Rdim/
+  ! Rtensor rank probe used in LocalMatrixVec for the anisotropic case) and
+  ! ListGetElementRealVec (the batched isotropic fast path) each cache their
+  ! own result keyed only by Handle % Element -- calling both on one shared
+  ! handle for the same element makes the second call see "already cached for
+  ! this element" and return the FIRST call's (wrong-shaped) storage instead
+  ! of recomputing its own. Same class of bug as ConvField_h/PressureField_h
+  ! above, just between these two ListGetElementReal* accessors instead of two
+  ! ListGetElementVectorSolutionVec/ScalarSolutionVec ones. See
+  ! StatCurrentSolve.F90's CondScalarCoeff_h/CondCoeff_h split for precedent.
   TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: &
-      Source_h(:), Cond_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
+      Source_h(:), Cond_h(:), CondScalar_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
       VecConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
       PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:), &
       LM_ConvVelo_h(:), PlateSpeed_h(:), HTMult_h(:), &
@@ -349,6 +368,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
   HaveFactors = ListCheckPresentAnyBC( Model,'Radiation')
 
+  HaveCheckLatentHeat = ListCheckPresentAnyEquation( Model,'Check Latent Heat Release')
+
   IF( HaveFactors ) THEN
     StefBoltz = ListGetConstReal( Model % Constants,&
         'Stefan Boltzmann',UnfoundFatal=HaveFactors)
@@ -369,7 +390,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
   ! Allocated once, or again only if the thread count ever changes.
   IF( .NOT. ALLOCATED( Source_h ) ) THEN
-    ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+    ALLOCATE( Source_h(nthr), Cond_h(nthr), CondScalar_h(nthr), Cp_h(nthr), Rho_h(nthr), &
         ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
         PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
         VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
@@ -383,7 +404,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         PhaseModelEq_h(nthr), PhaseModelMat_h(nthr), Enthalpy_h(nthr), &
         SpecEnthalpy_h(nthr), EnthRho_h(nthr), EnthalpyPrev_h(nthr), SpecEnthalpyPrev_h(nthr) )
   ELSE IF( SIZE( Source_h ) /= nthr ) THEN
-    DEALLOCATE( Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, VecConvVelo_h, &
+    DEALLOCATE( Source_h, Cond_h, CondScalar_h, Cp_h, Rho_h, ConvFlag_h, VecConvVelo_h, &
         PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, &
         OrigMesh_h, ConvField_h, LM_ConvVelo_h, PlateSpeed_h, HTMult_h, &
         HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, RadFlag_h, RadExtTemp_h, &
@@ -392,7 +413,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         RefPressure_h, TempField_h, PrevFlowField_h, PressureField_h, MeshVeloField_h, &
         PhaseModelEq_h, PhaseModelMat_h, Enthalpy_h, SpecEnthalpy_h, EnthRho_h, &
         EnthalpyPrev_h, SpecEnthalpyPrev_h )
-    ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+    ALLOCATE( Source_h(nthr), Cond_h(nthr), CondScalar_h(nthr), Cp_h(nthr), Rho_h(nthr), &
         ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
         PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
         VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
@@ -460,6 +481,27 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)      
   END IF
   
+  ! See the CheckLatentHeatVec declaration comment above: this outer loop is
+  ! legacy HeatSolve.F90's own substep wrapper, always present there (a
+  ! single pass when "Check Latent Heat Release" is inactive, exactly as
+  ! this loop is too -- CurrentDt is never halved, so CumulativeTime jumps
+  ! straight to Timestep after one pass).
+  Timestep = dt
+  CurrentDt = dt
+  CumulativeTime = 0._dp
+  FirstSubstep = .TRUE.
+  Relax = GetCReal( Params,'Nonlinear System Relaxation Factor',Found )
+  IF(.NOT. Found ) Relax = 1._dp
+  LocalNodes = COUNT( TempPerm > 0 )
+  IF( SIZE(Temperature) < LocalNodes ) LocalNodes = SIZE(Temperature)
+  ALLOCATE( PrevSolution(LocalNodes) )
+
+  DO WHILE( CumulativeTime < Timestep - 1.0d-12 .OR. .NOT. Transient )
+    IF( Transient .AND. .NOT. FirstSubstep ) CALL InitializeTimestep(Solver)
+    FirstSubstep = .FALSE.
+
+    PrevSolution = Temperature(1:LocalNodes)
+
   CALL DefaultStart()
 
 
@@ -545,10 +587,23 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       END IF
     END BLOCK
 
+    ! Serialize this boundary loop whenever the model has any "Radiation" BC.
+    ! Intermittent norm mismatches (radiation_viewfactor_methods, radiation2dAA,
+    ! radiation2d_spectral -- a different one each time, only under heavy batch
+    ! CPU contention, same symptom class as the deferred-length-allocatable-
+    ! CHARACTER bug fixed once before in this same loop, commit 0dc87ee3d) went
+    ! away completely across a clean 1131-test sweep once this IF clause was
+    ! added. The actual race (if any -- LocalMatrixDiffuseGray's own scatter is
+    ! already carefully ATOMIC/CRITICAL-guarded, see the comments there) was
+    ! never pinned down: Helgrind --history-level=full couldn't even reach this
+    ! assembly phase within a feasible run time to catch it. Accepted as a
+    ! deliberate trade-off (lose threading only for radiation BCs, keep
+    ! everything else parallel) rather than keep chasing it -- see
+    ! project_heatsolvevec_diffusegray_threading memory if this needs revisiting.
     !$OMP PARALLEL &
-    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers, HaveFactors ) &
     !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE) IF(.NOT. HaveFactors)
     InitHandles = .TRUE.
     DO col=1,nColours
       !$OMP SINGLE
@@ -656,10 +711,45 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         
     ! And finally, solve:
     !--------------------
+    PrevNorm = Norm
     Norm = DefaultSolve()
+
+    ! If modelling phase change (and if requested by the user), check if any
+    ! node has jumped over the phase change interval, and if so, reduce
+    ! timestep and/or relaxation and recompute -- mirrors legacy HeatSolve's
+    ! own check at exactly this point (after DefaultSolve, before its own
+    ! convergence check), CYCLE-ing this SAME nonlinear iteration loop (not
+    ! restarting the substep) so DefaultStart/the mesh-level "nonlin iter"
+    ! counter continue exactly as they would for any other retried iteration.
+    IF( HaveCheckLatentHeat ) THEN
+      IF( CheckLatentHeatVec() ) THEN
+        Temperature(1:LocalNodes) = PrevSolution
+        Norm = PrevNorm
+
+        IF( Transient ) THEN
+          CurrentDt = CurrentDt / 2
+          Solver % dt = CurrentDt
+          WRITE( Msg,* ) 'Latent heat release check: reducing timestep to: ',CurrentDt
+          CALL Info(Caller,Msg,Level=4)
+        ELSE
+          Relax = Relax / 2
+          CALL ListAddConstReal( Params,'Nonlinear System Relaxation Factor', Relax )
+          WRITE( Msg,* ) 'Latent heat release check: reducing relaxation to: ',Relax
+          CALL Info(Caller,Msg,Level=4)
+        END IF
+
+        CYCLE
+      END IF
+    END IF
 
     IF( DefaultConverged(Solver) ) EXIT
   END DO
+
+    IF( .NOT. Transient ) EXIT
+    CumulativeTime = CumulativeTime + CurrentDt
+    CurrentDt = Timestep - CumulativeTime
+  END DO
+  Solver % dt = Timestep
 
   CALL DefaultFinish()
   CALL CalculateRadiosityFields(Pre=.FALSE.)
@@ -673,6 +763,73 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
  END IF
    
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> "Check Latent Heat Release": has any node crossed a "Phase Change
+!> Intervals" boundary between this substep's start (PrevSolution) and the
+!> just-solved Temperature? Mirrors legacy HeatSolve.F90's CheckLatentHeat()
+!> function verbatim (same per-element Equation/Material keyword lookups,
+!> same interval-crossing test), just renamed to avoid clashing with the
+!> unrelated "PhaseChange"-prefixed identifiers already used elsewhere in
+!> this file (DoPhaseChange etc., a different, unrelated per-element flag in
+!> LocalMatrixVec/LocalMatrix).
+!------------------------------------------------------------------------------
+  FUNCTION CheckLatentHeatVec() RESULT(Failure)
+!------------------------------------------------------------------------------
+    LOGICAL :: Failure, PhaseChange, CheckLatentHeatRelease, Found
+    INTEGER :: elem, i, j, k, eq_id, body_id, nn
+    CHARACTER(LEN=MAX_NAME_LEN) :: PhaseModel
+    TYPE(Element_t), POINTER :: PCElement
+    INTEGER, POINTER :: PCNodeIndexes(:)
+    REAL(KIND=dp), POINTER :: PhaseChangeIntervals(:,:)
+!------------------------------------------------------------------------------
+    Failure = .FALSE.
+
+    DO elem=1,Solver % Mesh % NumberOfBulkElements
+      PCElement => Solver % Mesh % Elements(elem)
+      PCNodeIndexes => PCElement % NodeIndexes
+
+      IF ( ANY( TempPerm( PCNodeIndexes ) <= 0 ) ) CYCLE
+
+      body_id = PCElement % BodyId
+      eq_id = ListGetInteger( Model % Bodies(body_id) % Values, &
+          'Equation', minv=1, maxv=Model % NumberOfEquations )
+
+      PhaseModel = ListGetString( Model % Equations(eq_id) % Values, &
+          'Phase Change Model',Found )
+      PhaseChange = Found .AND. (PhaseModel(1:4) /= 'none')
+
+      IF ( PhaseChange ) THEN
+        CheckLatentHeatRelease = ListGetLogical( Model % Equations(eq_id) % &
+            Values, 'Check Latent Heat Release',Found )
+      END IF
+      IF ( .NOT. ( PhaseChange .AND. CheckLatentHeatRelease ) ) CYCLE
+
+      nn = PCElement % TYPE % NumberOfNodes
+
+      k = ListGetInteger( Model % Bodies(body_id) % Values,'Material', &
+          minv=1, maxv=Model % NumberOfMaterials )
+      PhaseChangeIntervals => ListGetConstRealArray( Model % Materials(k) % Values, &
+          'Phase Change Intervals' )
+
+      DO k=1,nn
+        i = TempPerm( PCNodeIndexes(k) )
+        DO j=1,SIZE(PhaseChangeIntervals,2)
+          IF ( ( Temperature(i)  < PhaseChangeIntervals(1,j) .AND. &
+                 PrevSolution(i) > PhaseChangeIntervals(2,j) ) .OR. &
+               ( Temperature(i)  > PhaseChangeIntervals(2,j) .AND. &
+                 PrevSolution(i) < PhaseChangeIntervals(1,j) )  ) THEN
+            Failure = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF ( Failure ) EXIT
+      END DO
+      IF ( Failure ) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION CheckLatentHeatVec
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Diagnostic-only: dump an element's bubble-condensation submatrix to a log
@@ -866,6 +1023,18 @@ CONTAINS
     ! is the per-point Franca stabilization parameter.
     REAL(KIND=dp), ALLOCATABLE :: StreamVec(:,:), TauVec(:)
 
+    ! Anisotropic "Heat Conductivity": ListGetElementRealVec (the batched SIMD
+    ! fetch used below) only ever returns a scalar per Gauss point, so a
+    ! tensor-valued conductivity needs the nodal ListGetElementReal accessor's
+    ! Rdim/Rtensor probe instead, one Gauss point at a time -- same pattern as
+    ! StatCurrentSolve.F90's "Electric Conductivity" handling. CondTauVec feeds
+    ! the SUPG tau below: CondAtIpVec itself when isotropic, or the tensor's
+    ! own (1,1) component (mirroring LocalMatrix's CondScalar) when not.
+    REAL(KIND=dp), POINTER :: CondTensor(:,:), CondTauVec(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: CondScalarVec(:)
+    REAL(KIND=dp) :: CondScalarDummy, A
+    INTEGER :: CondRank
+
     ! Phase Change Model ("Spatial 2" / "Spatial 1" / "Temporal"): resolving
     ! which model is active and this element's nodal Enthalpy/Temperature/
     ! FallbackCp is shared with LocalMatrix via PhaseChangeElementSetup;
@@ -877,7 +1046,7 @@ CONTAINS
     LOGICAL :: DoPhaseChange, UseGradient
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
-    INTEGER :: i,p,j,t,k,ngp,allocstat,tid,boff
+    INTEGER :: i,p,q,j,t,k,ngp,allocstat,tid,boff
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -892,6 +1061,7 @@ CONTAINS
 
     ASSOCIATE( &
         Source_h      => Source_h(tid),     Cond_h        => Cond_h(tid),      &
+        CondScalar_h  => CondScalar_h(tid), &
         Cp_h          => Cp_h(tid),         Rho_h         => Rho_h(tid),       &
         ConvFlag_h    => ConvFlag_h(tid),   ConvVelo_h    => VecConvVelo_h(:,tid), &
         PerfRate_h    => PerfRate_h(tid),   PerfDens_h    => PerfDens_h(tid),   &
@@ -913,6 +1083,7 @@ CONTAINS
       CALL ListInitElementKeyword( Source_h,'Body Force','Heat Source')
       CALL ListInitElementKeyword( VolSource_h,'Body Force','Volumetric Heat Source')
       CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
+      CALL ListInitElementKeyword( CondScalar_h,'Material','Heat Conductivity')
       CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
       CALL ListInitElementKeyword( Rho_h,'Material','Density')
       CALL ListInitElementKeyword( HTMult_h,'Material','Heat Transfer Multiplier')
@@ -994,6 +1165,7 @@ CONTAINS
         MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
         TmpVec(ngp), TmpVec2(ngp), StreamVec(ngp,nd), TauVec(ngp), &
         CompRhoAtIpVec(ngp), PcoeffVec(ngp), GradPVec(ngp,3), &
+        CondScalarVec(ngp), &
         STAT=allocstat)
     IF (allocstat /= 0) THEN
       CALL Fatal(Caller,'Local storage allocation failed')
@@ -1026,10 +1198,49 @@ CONTAINS
     RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found ) 
 
     ! thermal conductivity term: STIFF=STIFF+(kappa*grad(u),grad(v))
-    CondAtIpVec => ListGetElementRealVec( Cond_h, ngp, Basis, Element, Found )
+    ! Probe the rank at the 1st Gauss point: it is a structural property of how
+    ! the "Heat Conductivity" keyword was given (scalar vs. tensor) and cannot
+    ! change from one integration point to the next within the same
+    ! element/material. Uses the dedicated CondScalar_h handle, NOT Cond_h --
+    ! see its declaration comment for why the two accessor styles need
+    ! separate handles on the same keyword.
+    CondScalarDummy = ListGetElementReal( CondScalar_h, Basis(1,:), Element, Found, &
+        GaussPoint=1, Rdim=CondRank, Rtensor=CondTensor )
     HaveCond = Found
     IF( Found ) THEN
-      CALL LinearForms_GradUdotGradU(ngp, nd, dim, dBasisdx, DetJVec, STIFF, CondAtIpVec )
+      IF( CondRank == 0 ) THEN
+        CondAtIpVec => ListGetElementRealVec( Cond_h, ngp, Basis, Element, Found )
+        CALL LinearForms_GradUdotGradU(ngp, nd, dim, dBasisdx, DetJVec, STIFF, CondAtIpVec )
+        CondTauVec => CondAtIpVec
+      ELSE
+        ! Anisotropic conductivity: the SIMD form above only takes a scalar
+        ! coefficient, so fall back to an explicit per-Gauss-point tensor
+        ! contraction, reusing the basis/derivative/Jacobian data already
+        ! computed by ElementInfoVec.
+        DO t=1,ngp
+          CondScalarDummy = ListGetElementReal( CondScalar_h, Basis(t,:), Element, Found, &
+              GaussPoint=t, Rdim=CondRank, Rtensor=CondTensor )
+          CondScalarVec(t) = CondTensor(1,1)
+          DO q=1,nd
+            DO p=1,nd
+              A = 0._dp
+              IF( CondRank == 1 ) THEN
+                DO i=1,dim
+                  A = A + CondTensor(i,1) * dBasisdx(t,p,i) * dBasisdx(t,q,i)
+                END DO
+              ELSE
+                DO i=1,dim
+                  DO j=1,dim
+                    A = A + CondTensor(i,j) * dBasisdx(t,p,i) * dBasisdx(t,q,j)
+                  END DO
+                END DO
+              END IF
+              STIFF(p,q) = STIFF(p,q) + DetJVec(t) * A
+            END DO
+          END DO
+        END DO
+        CondTauVec => CondScalarVec
+      END IF
     END IF
 
     ! We need heat capacity only if the case is transient or we have convection
@@ -1224,8 +1435,8 @@ CONTAINS
 
         DO j=1,ngp
           VNorm = SQRT( SUM( VeloAtIpVec(j,1:dim)**2 ) )
-          IF( VNorm > 0._dp .AND. CondAtIpVec(j) /= 0._dp ) THEN
-            TauVec(j) = MIN( 1._dp, mK*hK*TmpVec(j)*VNorm / (2._dp*ABS(CondAtIpVec(j))) )
+          IF( VNorm > 0._dp .AND. CondTauVec(j) /= 0._dp ) THEN
+            TauVec(j) = MIN( 1._dp, mK*hK*TmpVec(j)*VNorm / (2._dp*ABS(CondTauVec(j))) )
             TauVec(j) = hK * TauVec(j) / ( 2._dp * TmpVec(j) * VNorm )
           ELSE
             TauVec(j) = 0._dp
