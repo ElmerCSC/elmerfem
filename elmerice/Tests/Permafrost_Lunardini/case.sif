@@ -1,0 +1,205 @@
+!echo on
+!Check Keywords "Warn"
+
+#p0=100132.0
+#grav=0.0
+#yc0=0.0
+#rhogw = 999.9 + yc0*(1740.0 - 999.9)
+#Tm=4.0
+#y2s=3600.0*24.0*365.25
+#T0=273.15
+#Tleft = -6.0
+#Tzero= 4.0
+
+
+#dt=60.0      
+#nt=3
+#tout=1
+
+$elmntstrng="p:1 b:1"
+
+$name="pf14_post_lunardini_threezone_linear"
+
+
+Header :: Mesh DB "." "box"
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  TimeStepping Method = BDF  
+  BDF Order = 1
+  Timestep Sizes(1) = #dt
+  TimeStep Intervals(1) =  #nt + 1
+  Output Intervals(1) = #tout !only applies to result output, if there is
+  Steady State Max Iterations = 10
+  Output File = $name".result"
+  Post File = $name".vtu"
+  Initialize Dirichlet Conditions = Logical False
+  !Restart File = $restart".result"
+  !Restart Time = $3600*24
+  !Restart Position = 0
+  !Restart Variable 1 = pftemp
+  !Restart Variable 2 = xi
+  !Restart Before Initial Conditions = True
+End
+
+Solver 2 :: Reference Norm = Real 2.26222328e+02
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+
+Constants
+  Gas Constant = Real 8.3145	
+  Gravity(4) = 0 -1 0 #grav
+  Reference Temperature = Real #T0
+  Reference Pressure = Real #p0
+  Permafrost DeltaT = Real #Tm
+  Permafrost eps = Real 0.99
+  Gas Constant = Real 8.3145
+  Avogadro Number = Real 6.022140857E23
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Material 1
+   Density = 1.0 ! Just a dummy
+   Rock Material File = File "lunardini_material.db"
+   Rock Material ID = Integer 1
+   Conductivity Arithmetic Mean Weight = Real 1.0 ! Not used for Lunardini
+   Temperature Variable = Equals "PFTemp"
+   Pressure Variable = Equals "GWPressure"
+   Salinity Variable = Equals "Salinity"
+   Porosity Variable = Equals "Porosity"
+   ! needed to avoid computing the polynomials introduced by Hartikainen
+   Constant Permafrost Properties = Logical True
+   ! needed to set the latent heat (hi0)
+   Solvent Material File = File "lunardini_solvent.db"
+   ! Lunardini (1988) three-zone model with linear unfrozen-water mass ratio
+   Permafrost Phase Change Model = String "lunardini1988_threezone_linear"
+   Lunardini DeltaT = Real #Tm
+   Lunardini k1 = Real 3.464352
+   Lunardini k2 = Real 2.941352
+   Lunardini k3 = Real 2.418352
+   Lunardini c1 = Real 690360.0
+   Lunardini c2 = Real 690360.0
+   Lunardini c3 = Real 690360.0
+   Lunardini xi_f = Real 0.0782  ! Unfrozen-water mass ratio at T_m
+   Lunardini xi_o = Real 0.2000  ! Unfrozen-water mass ratio at T_f
+   Lunardini dry density = Real 1680
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+!==============================================================================
+! /// Initialize ///
+!==============================================================================
+
+Solver 1
+  Equation = "Element Material"
+  Exec Solver = "Before Simulation"
+  Procedure = File "ElmerIceSolvers" "PermafrostElmntOutput"  
+  Export all = Logical True
+End
+
+Solver 2
+  Equation = "Permafrost"
+  Element = $elmntstrng
+  !Exec Solver = Never
+  Variable = "PFTemp"
+  Procedure = "ElmerIceSolvers" "PermaFrostHeatTransfer"
+  Output Xi = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method  = BiCGStab
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-09
+  Nonlinear System Convergence Tolerance = 1.0e-06
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1e-05
+  Computed Groundwater Flux = Logical False
+  Exported Variable 1 = -ip "Groundwater Flux 1"
+  Exported Variable 2 = -ip "Groundwater Flux 2"
+  Exported Variable 3 = "GWPressure"
+  Exported Variable 4 = "Salinity"
+  Exported Variable 5 = "Porosity"
+  !Exported Variable 5 = "Xi"
+  
+End
+
+Solver 3
+  Exec Solver = "After Timestep"
+  !Exec Solver = "Never"
+  Exec Interval = #tout
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  !Filename = "line-"$tag$".dat"
+  Filename = $name".dat"
+  File Append = True
+  !Parallel Reduce = Logical True
+  !Save Isocurves = Logical True
+  !Isocurve Variable 1 = String "Coordinate 2"
+  !Isocurve Value 1 = Real 0.0
+  Polyline Coordinates(2,2) = 0.0 0.5 1.2 0.5
+  Optimize Node Ordering = Logical True
+  Variable 1 = "PFTemp"
+  Variable 2 = "Porosity"
+  Variable 3 = "Nodal Xi"
+End
+
+!Solver 5
+!  Equation = "ResultOutput"
+!  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+!  Exec Solver = "After Timestep"
+!  Exec Interval = #tout
+!  VTU Format = True
+!  Output File Name = $name
+!  Scalar Field 1 = File "PFTemp"
+!  Scalar Field 2 = File "GWPressure"
+!  Scalar Field 3 = File "rhogw"
+!  Scalar Field 4 = File "mugw"
+!  Scalar Field 5 = File "Xi"
+!  Vector Field 1 = File "Groundwater Flux"
+!  Save Geometry Ids = Logical True
+!  !Discontinuous Galerkin = Logical True
+!  !Discontinuous Bodies = Logical True
+!  Save Elemental Fields = Logical True
+!  Save Bulk Only = Logical True
+!End
+
+
+Initial Condition 1
+  Porosity = Real 0.05
+  PFTemp = Real #T0 + Tzero
+  GWPressure = Real #p0
+  Salinity = Real #yc0
+  Groundwater Flux 1 = Real 0.0
+  Groundwater Flux 2 = Real 0.0
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+  PFTemp = Real #T0 + Tleft 
+  !GWPressure = Variable Coordinate 2
+  !   Real Lua "p0 + gauge + 10.0*(1.0 - 0.1*tx[0])*rhogw*grav"
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  !GWPressure = Variable Coordinate 2
+  !   Real Lua "p0 + 10.0*(1.0 - 0.1*tx[0])*rhogw*grav"
+End
+
+Boundary Condition 3
+  Name = "adiabatic walls"
+  Target Boundaries(2) = 3 4
+  ! natural BC's (no flux, adiabatic)
+End

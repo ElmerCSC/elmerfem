@@ -9,5 +9,5 @@ RUN_ELMERICE_TEST()
 FILE(STRINGS "test-stdout.log" _nonconvergence
   REGEX "Coupled system did not converge")
 IF(_nonconvergence)
-  MESSAGE(FATAL_ERROR "Permafrost_Frozenwall had a coupled nonconvergence warning")
+  MESSAGE(FATAL_ERROR "Permafrost_Lunardini had a coupled nonconvergence warning")
 ENDIF()

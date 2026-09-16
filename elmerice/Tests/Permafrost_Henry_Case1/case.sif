@@ -1,0 +1,194 @@
+!echo on
+!Check Keywords "Warn"
+
+! Fahs et al. (2016), Henry test case 1, refined triangular mesh.
+! Fahs normalized concentration c maps to Elmer xc=yc=0.0338*c.
+$p0 = 101325.0
+$gravity = 9.81
+$rho_fresh = 1000.0
+$rho_sea = 1025.0
+$height = 1.0
+$temperature = 283.15
+$xc_sea = 0.0338
+$freshwater_flux = 6.63e-5
+
+$elmntstrng = "p:1 b:1"
+$name = "henry_fahs_case1_u015"
+
+Header :: Mesh DB "." "mesh"
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  TimeStepping Method = BDF
+  BDF Order = 1
+
+  ! First four 10 s steps of the validated Case 1 schedule.
+  Timestep Sizes(1) = 10.0
+  TimeStep Intervals(1) = 4
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 50
+
+  Output File = $name".result"
+  Initialize Dirichlet Conditions = Logical False
+End
+
+Constants
+  Gas Constant = Real 8.3145
+  Gravity(4) = 0 -1 0 $gravity
+  Reference Temperature = Real 273.15
+  Reference Pressure = Real $p0
+  Permafrost DeltaT = Real 1.0
+  Permafrost eps = Real 0.99
+  Avogadro Number = Real 6.022140857e23
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Material 1
+  Density = Real 1.0
+  Rock Material File = File "material_case1.db"
+  Rock Material ID = Integer 1
+  Solvent Material File = File "solvent.db"
+  Solute Material File = File "solute.db"
+
+  ! The Henry problem is isothermal; no heat equation is solved.
+  Temperature Variable = Real $temperature
+  Pressure Variable = Equals "GWPressure"
+  Salinity Variable = Equals "Salinity"
+  Porosity Variable = Equals "eta0"
+
+  No Salinity = Logical False
+  Constant Permafrost Properties = Logical True
+  Compute Solute Phase Forces = Logical False
+  Compute Cryogenic Suction = Logical False
+  ThermalDispersion = Logical False
+
+  ! Default-off compatibility modes required by the Fahs equations.
+  Boussinesq Groundwater Flow = Logical True
+  Direct Fickian Solute Transport = Logical True
+
+  ! The temperature is above freezing, giving Xi=1 exactly.
+  Permafrost Phase Change Model = String "exponential"
+  Exponential Swres = Real 0.0
+  Exponential deltaT = Real 1.0
+  Exponential Impedance = Real 10.0
+  Exponential Beta = Real 0.0
+
+  Molecular Diffusion Coefficient = Real 18.863e-6
+End
+
+Equation 1
+  Active Solvers(5) = 1 2 3 4 5
+End
+
+Solver 1
+  Equation = "Element Material"
+  Exec Solver = "Before Simulation"
+  Procedure = File "ElmerIceSolvers" "PermafrostElmntOutput"
+  Export all = Logical True
+End
+
+Solver 2
+  Equation = "Darcy"
+  Element = $elmntstrng
+  Variable = -dofs 1 "GWPressure"
+  Procedure = "ElmerIceSolvers" "PermafrostGroundwaterFlow"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-10
+  ! With fixed salinity, the Boussinesq pressure equation is linear.
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Steady State Convergence Tolerance = 1.0e-7
+  Exported Variable 1 = -IP -dofs 2 "Groundwater Flux"
+  ! Darcy and solute both evaluate the phase law and share this IP field.
+  Exported Variable 2 = -IP -dofs 1 "Xi"
+  Compute BC Flux = Logical True
+  Compute Time Derivatives = Logical False
+  Nonlinear Calculate Velocity = Logical False
+End
+
+Solver 3
+  Equation = "Solute"
+  Variable = "Salinity"
+  Calculate Velocity = Logical True
+  Compute Time Derivatives = Logical False
+  Procedure = "ElmerIceSolvers" "PermafrostSoluteTransport"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-11
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Solver 4
+  Equation = "Output IP parameter"
+  Procedure = "ElmerIceSolvers" "PermafrostIPOutput"
+  Element = $elmntstrng
+  Export rhogw = Logical True
+  Export Kgw = Logical True
+End
+
+Solver 5
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Exec Solver = "After Timestep"
+  Exec Intervals(1) = 1
+  VTU Format = Logical True
+  Output File Name = $name"_out"
+  Scalar Field 1 = File "GWPressure"
+  Scalar Field 2 = File "Xi"
+  Scalar Field 3 = File "Salinity"
+  Scalar Field 4 = File "rhogw"
+  Vector Field 1 = File "Groundwater Flux"
+  Save Geometry Ids = Logical True
+  Save Elemental Fields = Logical True
+  Save Bulk Only = Logical True
+End
+
+Solver 2 :: Reference Norm = Real 6.18327350e+04
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+Solver 3 :: Reference Norm = Real 3.05125869e-03
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-5
+
+Initial Condition 1
+  Porosity = Real 0.35
+  ! The aquifer is initially freshwater; seawater subsequently intrudes.
+  Salinity = Real 0.0
+  GWPressure = Variable Coordinate 2
+    Real MATC "p0 + rho_fresh*gravity*(height-tx)"
+End
+
+Boundary Condition 1
+  Name = "inland freshwater inflow"
+  Target Boundaries = 1
+  Groundwater Flux = Real $freshwater_flux
+  Advective Inflow Salinity = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "sea"
+  Target Boundaries = 2
+  Salinity = Real $xc_sea
+  GWPressure = Variable Coordinate 2
+    Real MATC "p0 + rho_sea*gravity*(height-tx)"
+End
+
+Boundary Condition 3
+  Name = "impermeable bottom"
+  Target Boundaries = 3
+End
+
+Boundary Condition 4
+  Name = "impermeable top"
+  Target Boundaries = 4
+End

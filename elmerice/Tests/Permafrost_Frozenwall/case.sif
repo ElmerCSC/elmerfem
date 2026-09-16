@@ -1,0 +1,211 @@
+!echo on
+!Check Keywords "Warn"
+
+#p0=100132.0
+#gauge=500.0
+#grav=0.0
+#Toffset=0.0
+#deltaT = 1.0
+#yc0=0.0
+
+$elmntstrng="p:1 b:1"
+$name="mckenzie2007_frozenwall_exponential"
+
+! Current Permafrost default: 12-point tabulated triangle integration.
+! For the older 16-point rule, use the separate tri16_historical case.
+
+Header :: Mesh DB "." "mesh"
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  TimeStepping Method = BDF
+  BDF Order = 1
+  ! First four steps of the validated 12-point benchmark schedule.
+  Timestep Sizes(2) = 2160.0 4320.0
+  TimeStep Intervals(2) = 2 2
+  Output Intervals(2) = 1 1
+
+  Steady State Max Iterations = 10
+  Output File = $name".result"
+  Initialize Dirichlet Conditions = Logical False
+End
+
+Constants
+  Gas Constant = Real 8.3145
+  Gravity(4) = 0 -1 0 #grav
+  Reference Temperature = Real 273.15
+  Reference Pressure = Real #p0
+  Permafrost DeltaT = Real #deltaT
+  Permafrost eps = Real 0.99
+  Avogadro Number = Real 6.022140857E23
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 2
+End
+
+Material 1
+  Density = 1.0 ! Required dummy material density
+  Rock Material File = File "material.db"
+  Rock Material ID = Integer 1
+  Solvent Material File = File "solvent.db"
+  Conductivity Arithmetic Mean Weight = Real 1.0
+  Temperature Variable = Equals "PFTemp"
+  Pressure Variable = Equals "GWPressure"
+  Salinity Variable = Equals "Salinity"
+  Porosity Variable = Equals "eta0"
+  Temperature Velocity Variable = Equals "PFTemp Velocity"
+  Salinity Velocity Variable = Equals "Salinity Velocity"
+  No Salinity = Logical True
+  Constant Permafrost Properties = Logical True
+  ThermalDispersion = Logical True
+
+  ! McKenzie et al. (2007), Fig. 7 caption parameters
+  Permafrost Phase Change Model = String "exponential"
+  Exponential Swres = Real 0.025
+  Exponential deltaT = Real 0.025
+  Exponential Impedance = Real 10
+  ! Zero compressibility gives Sop = porosity * beta = 0.
+  Exponential Beta = Real 0.0
+End
+
+Equation 1
+  Active Solvers(5) = 1 2 3 4 5
+End
+
+Solver 1
+  Equation = "Element Material"
+  Exec Solver = "Before Simulation"
+  Procedure = File "ElmerIceSolvers" "PermafrostElmntOutput"
+  Export all = Logical True
+End
+
+Solver 2
+  Equation = "Darcy"
+  Element = $elmntstrng
+  Variable = -dofs 1 "GWPressure"
+  Procedure = "ElmerIceSolvers" "PermafrostGroundwaterFlow"
+  Linear System Solver = Iterative
+  Linear System Iterative Method  = "GCR"
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1e-07
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance = 1e-05
+  Steady State Convergence Tolerance = 1e-03
+  Exported Variable 1 = -IP -dofs 2 "Groundwater Flux"
+  Linear System Nullify Guess = Logical True
+  Compute Time Derivatives = Logical True
+  Salinity Calculate Velocity = Logical True
+  Nonlinear Calculate Velocity = Logical True
+  Exported Variable 2 = -dofs 1 Salinity
+End
+
+Solver 3
+  Equation = "Permafrost"
+  Element = $elmntstrng
+  Variable = "PFTemp"
+  Procedure = "ElmerIceSolvers" "PermaFrostHeatTransfer"
+  Output Xi = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method  = BiCGStab
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-09
+  Nonlinear System Convergence Tolerance = 1.0e-06
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Relaxation Factor = 0.99
+  Steady State Convergence Tolerance = 1e-05
+  Nonlinear Calculate Velocity = Logical True
+End
+
+Solver 4
+  Equation = "Output IP parameter"
+  Procedure = "ElmerIceSolvers" "PermafrostIPOutput"
+  Element = $elmntstrng
+  Export rhogw = Logical True
+  Export mugw = Logical True
+  Export CgwTT = Logical True
+  Export KGTT = Logical True
+End
+
+Solver 5
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Exec Solver = "After Timestep"
+  Exec Intervals(2) = 1 1
+  VTU Format = True
+  Output File Name = $name"_out"
+  Scalar Field 1 = File "PFTemp"
+  Scalar Field 2 = File "GWPressure"
+  Scalar Field 3 = File "rhogw"
+  Scalar Field 4 = File "mugw"
+  Scalar Field 5 = File "Xi"
+  Scalar Field 6 = File "PFTemp Velocity"
+  Scalar Field 7 = File "Salinity Velocity"
+  Scalar Field 8 = File "CgwTT"
+  Scalar Field 9 = File "KGTT"
+  Vector Field 1 = File "Groundwater Flux"
+  Save Geometry Ids = Logical True
+  Save Elemental Fields = Logical True
+  Save Bulk Only = Logical True
+End
+
+Solver 2 :: Reference Norm = Real 5.90882938e+04
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+Solver 3 :: Reference Norm = Real 1.63666532e+02
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-5
+
+Initial Condition 1
+  Porosity = Real 0.1
+  PFTemp = Real #273.15 + 5.0 + Toffset
+  GWPressure = Real #p0
+  Salinity = Real #yc0
+End
+
+Initial Condition 2
+  Porosity = Real 0.1
+  PFTemp = Real #273.15 - 5.0 + Toffset
+  GWPressure = Real #p0
+  Salinity = Real #yc0
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+  PFTemp = Real #273.15 + 5.0 + Toffset
+  GWPressure = Real #p0 + gauge
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  GWPressure = Real #p0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+  PFTemp = Real #273.15 - 5.0 + Toffset
+End
+
+Boundary Condition 4
+  Name = "bottom"
+  Target Boundaries = 4
+  ! natural BC's (no flux, adiabatic)
+End
+
+Boundary Condition 5
+  Name = "top"
+  Target Boundaries = 5
+  ! natural BC's (no flux, adiabatic)
+End
