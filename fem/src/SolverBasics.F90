@@ -51,6 +51,7 @@ MODULE SolverBasics
 
    USE LoadMod
    USE Multigrid
+
    USE ElementUtils
    USE IpFieldInterface
    USE PElementVisual
@@ -58,12 +59,12 @@ MODULE SolverBasics
        UpdateDependentComponents, ComponentNodalForceReduction
    USE TimeIntegrate
    USE ModelDescription
+!   USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
+!                             ParallelMatrixVector, ParallelMatrix, ParallelOwnedPerm
    USE MeshBasics, ONLY : CommunicateParallelSystemTag, CylinderFit, &
        DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
        IntegralProjector, MakePermUsingMask
    USE MortarUtils, ONLY : PeriodicProjector, SaveProjector
-   USE ParallelUtils
-   USE ParallelEigenSolve
    USE MatrixAssembly
    USE MatrixScaling, ONLY : ScaleLinearSystemVectors
    

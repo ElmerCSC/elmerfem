@@ -45,9 +45,12 @@
 MODULE SolveCore
 
     USE SolverBasics
+!    USE ParallelUtils, ONLY : ParallelDot
+!    USE Multigrid, ONLY : MultigridSolve
     USE BoundaryConditionUtils
     USE MatrixScaling, ONLY : BackScaleLinearSystem
     USE IterSolve, ONLY : NumericalError
+    USE ParallelEigenSolve, ONLY : ParallelArpackEigenSolve, ParallelArpackEigenSolveComplex
     IMPLICIT NONE
 
 CONTAINS

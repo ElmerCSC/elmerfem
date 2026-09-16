@@ -61,12 +61,18 @@
 
 MODULE ParallelEigenSolve
 
-   USE CRSMatrix
-   USE IterSolve
-   USE Multigrid
+   USE Messages
+   USE Lists, ONLY : ListAddLogical, ListGetConstReal, ListGetInteger, &
+                     ListGetLogical, ListGetString, ListRemove
+   USE GeneralUtils, ONLY : seql, sortc
+   USE SParIterGlobals
+   USE CRSMatrix, ONLY : CRS_ComplexILUT, CRS_ComplexIncompleteLU, CRS_ILUT, &
+                         CRS_IncompleteLU, CRS_LUSolve
+   USE DirectSolve, ONLY : DirectSolver 
+   USE Multigrid, ONLY : MultiGridSolve
    USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve, ParallelIter, &
                              ParallelReduction, ParallelMatrixVector, ParallelNorm, &
-                             ParallelDot, ParallelMatrix, PartitionVector
+                             ParallelDot, ParallelMatrix, PartitionVector, ParallelUpdateResult
 
    IMPLICIT NONE
 
@@ -144,6 +150,15 @@ CONTAINS
       REAL(KIND=dp), POINTER :: SaveValues(:)
       CHARACTER(:), ALLOCATABLE :: str, Method
 
+      INTERFACE
+        SUBROUTINE BlockSolveExt(A,x,b,Solver)
+          USE Types
+          TYPE(Matrix_t), POINTER :: A
+          TYPE(Solver_t) :: Solver
+          REAL(KIND=dp) :: x(:), b(:)
+        END SUBROUTINE BlockSolveExt
+      END INTERFACE
+      
 !     %-----------------------%
 !     | Executable Statements |
 !     %-----------------------%
