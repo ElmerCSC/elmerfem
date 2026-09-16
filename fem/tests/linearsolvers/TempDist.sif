@@ -28,6 +28,7 @@ Equation 1 :: Active Solvers = 1
 
 Solver 1
   Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Abort Not Converged = True

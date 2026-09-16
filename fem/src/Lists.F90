@@ -6273,6 +6273,7 @@ CONTAINS
      INTEGER, POINTER :: NodeIndexes(:)
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: GotIt, FoundSomewhere1, FoundSomewhere2
+     INTEGER :: RefId
      !------------------------------------------------------------------------------
 
      ! Number of internal variables that should be present on all function calls
@@ -6385,13 +6386,39 @@ CONTAINS
      
      
      Handle % Initialized = .TRUE.
-     
+
+     ! Body Force / Initial Condition / Component are referenced by a body
+     ! optionally, unlike Material/Equation which every body must have (and
+     ! unlike the Body section itself). Agreement of the keyword's value
+     ! across every *defined* list of the section is therefore not enough to
+     ! call it constant everywhere: a body that references none of these
+     ! lists at all falls back to the handle's default value (typically
+     ! zero) instead of any of the scanned lists, and that default generally
+     ! differs from the scanned constant. Any such body forces the same
+     ! conservative treatment Boundary Conditions already get below.
+     IF( ANY( [SECTION_TYPE_BF, SECTION_TYPE_IC, SECTION_TYPE_COMPONENT] == Handle % SectionType ) ) THEN
+       DO i=1,Model % NumberOfBodies
+         SELECT CASE( Handle % SectionType )
+         CASE( SECTION_TYPE_BF )
+           RefId = ListGetInteger( Model % Bodies(i) % Values, 'Body Force', Found )
+         CASE( SECTION_TYPE_IC )
+           RefId = ListGetInteger( Model % Bodies(i) % Values, 'Initial Condition', Found )
+         CASE( SECTION_TYPE_COMPONENT )
+           RefId = ListGetInteger( Model % Bodies(i) % Values, 'Component', Found )
+         END SELECT
+         IF( .NOT. Found ) THEN
+           Handle % ConstantEverywhere = .FALSE.
+           EXIT
+         END IF
+       END DO
+     END IF
+
      FirstList = .TRUE.
      maxn = 0
      maxm = 0
-     
+
      i = 0
-     DO WHILE(.TRUE.) 
+     DO WHILE(.TRUE.)
        i = i + 1
 
        SELECT CASE ( Handle % SectionType ) 

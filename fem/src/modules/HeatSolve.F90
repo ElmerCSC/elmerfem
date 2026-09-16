@@ -22,25 +22,126 @@
 ! *****************************************************************************/
 !/******************************************************************************
 ! *
-! *  Module containing a solver for heat equation
+! *  Module for solving heating equation.
+! *  Partly vectorized version with handles. 
 ! *
-! ******************************************************************************
-! *
-! *  Authors: Juha Ruokolainen
-! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Authors: Peter Råback & Juha Ruokolainen
+! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
-! *  Original Date: 08 Jun 1997
-! *
+! *  Created: 20.01.2020
+! * 
 ! *****************************************************************************/
+
+
+!------------------------------------------------------------------------------
+!> Whether this solver should run the original scalar-element assembly
+!> (HeatSolveLegacy.F90) instead of this file's own implementation. Shared by
+!> HeatSolve's and HeatSolveVec's entry points, both of which front for
+!> HeatSolveLegacy through this same keyword.
+!------------------------------------------------------------------------------
+MODULE HeatSolveFront
+  USE DefUtils
+  USE LoadMod, ONLY: ExecSolver
+  IMPLICIT NONE
+
+CONTAINS
+
+  FUNCTION LegacyAssembly( Solver ) RESULT( Legacy )
+    TYPE(Solver_t) :: Solver
+    LOGICAL :: Legacy, Found
+
+    Legacy = ListGetLogical( Solver % Values, 'Legacy Assembly', Found )
+  END FUNCTION LegacyAssembly
+
+!------------------------------------------------------------------------------
+!> Call one of HeatSolveLegacy's entry points with this solver. The name is
+!> resolved at run time, as the core resolves any solver, so this file and
+!> HeatSolveLegacy.so stay independent of one another.
+!------------------------------------------------------------------------------
+  SUBROUTINE DelegateToHeatLegacy( Entry, Model, Solver, dt, Transient )
+    CHARACTER(LEN=*) :: Entry
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t) :: Solver
+    REAL(KIND=dp) :: dt
+    LOGICAL :: Transient
+
+    TYPE(C_FUNPTR) :: Proc
+
+    Proc = GetProcAddr( 'HeatSolveLegacy '//TRIM(Entry), abort = .FALSE. )
+    IF ( .NOT. C_ASSOCIATED( Proc ) ) CALL Fatal( 'HeatSolver', &
+        '"Legacy Assembly" was requested but "'//TRIM(Entry)//'" could not be found. '// &
+        'Is HeatSolveLegacy.so installed beside this solver?' )
+
+    CALL ExecSolver( Proc, Model, Solver, dt, Transient )
+  END SUBROUTINE DelegateToHeatLegacy
+
+END MODULE HeatSolveFront
+
+
+!------------------------------------------------------------------------------
+!> Initialization of the primary solver, i.e. HeatSolver. Skipped under
+!> "Legacy Assembly", since that mode never uses the p-bubble/SUPG element
+!> string this sets up.
+!> \ingroup Solvers
+!------------------------------------------------------------------------------
+SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE HeatSolveFront
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Found, Serendipity, Stabilize
+
+  IF ( LegacyAssembly( Solver ) ) RETURN
+
+  Params => GetSolverParams()
+
+  ! Resolve whether convection, if present, will be stabilized by SUPG
+  ! (equal-order, no bubble) or by a residual-free bubble (the default).
+  Stabilize = GetStabilizeFlag( Params )
+
+  IF( ListCheckPresentAnyEquation( Model,'Convection' ) .OR. &
+      ListCheckPresentAnyEquation( Model,'Draw Velocity') .OR. &
+      ListGetLogical( Params,'Bubbles',Found) ) THEN
+    IF( .NOT. ListCheckPresent( Params,'Element') ) THEN
+      IF( Stabilize ) THEN
+        ! SUPG is the equal-order alternative to the bubble (the same role
+        ! "Pressure Stabilization" plays in IncompressibleNSVec): a plain
+        ! linear nodal element on every family, no bubble to condense at all.
+        CALL ListAddNewString(Params,'Element','n:1')
+      ELSE
+        Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+        IF(.NOT.Found) Serendipity = .TRUE.
+        IF(Serendipity) THEN
+          CALL ListAddString(Params,'Element', &
+              'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+        ELSE
+          CALL ListAddString(Params,'Element', &
+              'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+        END IF
+        CALL ListAddNewLogical(Params,'Bubbles in Global System',.FALSE.)
+      END IF
+    END IF
+  END IF
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE HeatSolver_Init0
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
-  USE DefUtils
+  USE HeatSolveFront
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -51,11 +152,49 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver_init'
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found
-  
+  INTEGER :: dim
+  LOGICAL :: DB, DG
+
+  IF ( LegacyAssembly( Solver ) ) THEN
+    CALL DelegateToHeatLegacy( 'HeatSolverLegacy_Init', Model, Solver, dt, Transient )
+    RETURN
+  END IF
+
   Params => GetSolverParams()
+  dim = CoordinateSystemDimension()
 
   ! Default variable name
   CALL ListAddNewString( Params,'Variable','Temperature')
+
+  ! Tell the matrix structure creation about the need of view factor coupling
+  CALL ListAddNewLogical( Params,'Radiation Solver',.TRUE.)
+  
+  DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
+  DB = GetLogical( Params,'DG Reduced Basis',Found ) 
+  
+  IF( DG .OR. DB ) THEN
+    ! Enforcing indirect nodal connections in parallel for DG just to be sure
+    ! The special BCs may require this. 
+    CALL ListAddLogical( Params,'DG Indirect Connections',.TRUE.)
+  END IF
+  
+  CALL ListWarnUnsupportedKeyword('body force','Smart Heater Control',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('body force','Integral Heat Source',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('body force','Friction Heat',FatalFound=.TRUE.)
+  ! "Phase Change Model" itself ("Spatial 2", "Spatial 1", "Temporal") along
+  ! with "Effective Heat Capacity" and "Enthalpy Fraction" are now supported
+  ! -- see LocalMatrixVec/LocalMatrix, which Fatal-guard any other model
+  ! value themselves. The BC-level "Phase Change" latent-heat interface flux
+  ! is now supported too -- see LocalMatrixBC.
+  ! "Check Latent Heat Release" (adaptive substepping on a crossed "Phase
+  ! Change Intervals" boundary) -- see HeatSolver's own CheckLatentHeatVec.
+
+  IF(.NOT. ( DG .OR. DB ) ) THEN
+    CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found)
+    IF( Found ) THEN
+      CALL Fatal(Caller,'Keyword supported only with DG active: "Heat Gap"')
+    END IF
+  END IF
 
   ! These use one flag to call library features to compute automatically
   ! a conductivity matrix.
@@ -73,1330 +212,2493 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
 #ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
-  
+
+  BLOCK
+    CHARACTER(:), ALLOCATABLE :: ElementStr
+    LOGICAL :: PBubble, GotIt
+
+    ! Everything below is specific to a p-element bubble ("Element = p:.. b:..")
+    ! that HeatSolver_Init0 adds whenever Convection/Draw Velocity/Bubbles asks
+    ! for one. The recovery of such a transient condensed bubble (see bx/bxprev
+    ! and CondensatePTransient in HeatSolver, mirroring IncompressibleNSVec's
+    ! own bx/bxprev, and the identical logic in KESolver_Init and
+    ! SpalartAllmaras_Init) needs at least TWO solves within one timestep: the
+    ! bubble value recovered on the first solve of a new timestep is still
+    ! consistent with the previous timestep's nodal solution, not this one's.
+    ! Only relevant where the bubble is actually condensed out locally --
+    ! never gated on it if left in the global system.
+    !
+    ! ListAddNew, so an explicit sif setting still wins -- and one that pins
+    ! "Nonlinear System Max Iterations" below 2 silently reintroduces the
+    ! one-timestep bubble lag this exists to prevent (confirmed: a scratch
+    ! case pinned to 1 iteration showed a spurious factor-of-3 transient
+    ! overshoot on a bounded [0,1] problem that vanished once left at 2).
+    ElementStr = ListGetString( Params,'Element', Found )
+    PBubble = Found .AND. INDEX( ElementStr, 'b:' ) > 0
+
+    IF( PBubble .AND. Transient .AND. &
+        .NOT. ListGetLogical( Params,'Bubbles in Global System', GotIt ) ) THEN
+      CALL ListAddNewInteger( Params,'Nonlinear System Min Iterations', 2 )
+      CALL ListAddNewInteger( Params,'Nonlinear System Max Iterations', 2 )
+    END IF
+  END BLOCK
+
 END SUBROUTINE HeatSolver_Init
 
 
+!-----------------------------------------------------------------------------
+!> A modern version for the heat equation supporting multi-threading and
+!> SIMD friendly ElmerSolver kernels. This tries to be backward compatible
+!> with the legacy HeatSolver but some rarely used features are missing. 
 !------------------------------------------------------------------------------
-!> Subroutine for solving the energy a.k.a. heat equation in various coordinate systems.
-!> \ingroup Solvers
+SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
-   RECURSIVE SUBROUTINE HeatSolver( Model,Solver,Timestep,TransientSimulation )
+  USE DefUtils
+  USE Radiation
+  USE Adaptive
+  USE HeatSolveFront
+  IMPLICIT NONE
 !------------------------------------------------------------------------------
-     USE DiffuseConvective
-     USE DiffuseConvectiveGeneral
-     USE Differentials
-     USE Radiation
-     USE MaterialModels
-     USE Adaptive
-     USE DefUtils
-
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+! Local variables
 !------------------------------------------------------------------------------
-     INTEGER, PARAMETER :: PHASE_SPATIAL_1 = 1
-     INTEGER, PARAMETER :: PHASE_SPATIAL_2 = 2
-     INTEGER, PARAMETER :: PHASE_TEMPORAL  = 3
-    
-     TYPE(Model_t)  :: Model
-     TYPE(Solver_t), TARGET :: Solver
+  TYPE(Element_t),POINTER :: Element
+  INTEGER :: n, nb, nd, t, active, dim
+  INTEGER :: iter, maxiter, nColours, col, totelem, nthr
+  LOGICAL :: Found, VecAsm, InitHandles, InitDiscontHandles, AxiSymmetric, &
+      DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, &
+      HaveRadNewtonRelax, Converged, PostCalc = .FALSE., Stabilize
+  TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
+  TYPE(ValueList_t), POINTER :: Params
+  TYPE(Mesh_t), POINTER :: Mesh
+  REAL(KIND=dp), POINTER :: Temperature(:)
+  INTEGER, POINTER :: TempPerm(:)
+  REAL(KIND=dp), ALLOCATABLE :: Temps4(:), Emiss(:), Absorp(:), Reflect(:),RadiatorPowers(:)
+  REAL(KIND=dp) :: Norm, StefBoltz, RadNewtonRelax
+  CHARACTER(LEN=MAX_NAME_LEN) :: EqName
+  CHARACTER(LEN=MAX_NAME_LEN) :: Msg
+  CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
-     LOGICAL :: TransientSimulation
-     REAL(KIND=dp) :: Timestep
-!------------------------------------------------------------------------------
-!    Local variables
-!------------------------------------------------------------------------------
-     TYPE(Matrix_t), POINTER :: StiffMatrix
+  ! "Check Latent Heat Release" adaptive substepping: HeatSolve.F90's own
+  ! internal DO-WHILE(CumulativeTime<Timestep) loop, subdividing the
+  ! nominal step whenever CheckLatentHeatVec() finds a node that jumped a
+  ! "Phase Change Intervals" boundary between the substep's start
+  ! (PrevSolution) and the just-solved iterate. "dt" (the dummy arg) is this
+  ! call's NOMINAL step, saved once as Timestep; CurrentDt is the mutable
+  ! per-substep size legacy calls "dt" internally.
+  REAL(KIND=dp) :: Timestep, CurrentDt, CumulativeTime, PrevNorm, Relax
+  REAL(KIND=dp), ALLOCATABLE :: PrevSolution(:)
+  INTEGER :: LocalNodes
+  LOGICAL :: HaveCheckLatentHeat, FirstSubstep
 
-     INTEGER :: i,j,k,l,m,n,nd,t,tt,iter,k1,k2,body_id,eq_id,istat,LocalNodes,bf_id
+  ! Thread-local handle storage indexed 1..nthr for LocalMatrixVec, LocalMatrix,
+  ! and LocalMatrixBC. Replaces SAVE+THREADPRIVATE; accessed via ASSOCIATE(tid).
+  ! VecConvVelo_h: 3-component per thread for LocalMatrixVec (Vec path).
+  ! LM_ConvVelo_h: scalar per thread for LocalMatrix (non-Vec path).
+  ! SAVEd on purpose: each ValueHandle_t owns a scratch ValueList_t that
+  ! ListInitElementKeyword allocates on first use and reuses afterwards. If the
+  ! arrays are re-created on every visit to this solver, that list is dropped
+  ! unfreed -- a leak of one list per handle per timestep. They are rebound to
+  ! the current solver's keywords through InitHandles on every visit, so keeping
+  ! them is also what the SAVE+THREADPRIVATE version effectively did.
+  ! CondScalar_h is a SEPARATE handle from Cond_h even though both are bound to
+  ! the same "Heat Conductivity" keyword: ListGetElementReal (the nodal Rdim/
+  ! Rtensor rank probe used in LocalMatrixVec for the anisotropic case) and
+  ! ListGetElementRealVec (the batched isotropic fast path) each cache their
+  ! own result keyed only by Handle % Element -- calling both on one shared
+  ! handle for the same element makes the second call see "already cached for
+  ! this element" and return the FIRST call's (wrong-shaped) storage instead
+  ! of recomputing its own. Same class of bug as ConvField_h/PressureField_h
+  ! above, just between these two ListGetElementReal* accessors instead of two
+  ! ListGetElementVectorSolutionVec/ScalarSolutionVec ones. See
+  ! StatCurrentSolve.F90's CondScalarCoeff_h/CondCoeff_h split for precedent.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: &
+      Source_h(:), Cond_h(:), CondScalar_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
+      VecConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
+      PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:), &
+      LM_ConvVelo_h(:), PlateSpeed_h(:), HTMult_h(:), &
+      HeatFlux_h(:), HeatTrans_h(:), ExtTemp_h(:), Farfield_h(:), &
+      RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:), &
+      InfBCFlag_h(:), InfBCText_h(:), &
+      CompressModel_h(:), SpecHeatRatio_h(:), RefTemp_h(:), HeatExpCoeff_h(:), &
+      RefPressure_h(:), PhaseModelEq_h(:), PhaseModelMat_h(:), Enthalpy_h(:), &
+      SpecEnthalpy_h(:), EnthRho_h(:), PhaseChangeFlag_h(:), PhaseVel1_h(:), &
+      PhaseVel2_h(:), PhaseVel3_h(:), PhaseLatentHeat_h(:), PhaseDensity_h(:)
+  ! PressureField_h is a SEPARATE handle from ConvField_h even though both are
+  ! bound to the same "Flow Solution" variable: ListGetElementVectorSolutionVec
+  ! and ListGetElementScalarSolutionVec each cache their own result under
+  ! Handle % Element (the last element the HANDLE was queried for), keyed only
+  ! by element identity, not by which of the two functions asked. Calling
+  ! both on one shared handle for the same element would make the second call
+  ! see "already cached for this element" and return the FIRST call's (wrong
+  ! kind of) storage instead of recomputing its own -- so velocity (vector)
+  ! and pressure (scalar) need their own handle each, even though they read
+  ! the same underlying variable.
+  TYPE(VariableHandle_t), ALLOCATABLE, SAVE :: ConvField_h(:), TempField_h(:), PrevFlowField_h(:), &
+      PressureField_h(:), MeshVeloField_h(:)
 
-     TYPE(Nodes_t)   :: ElementNodes
-     TYPE(Element_t),POINTER :: Element,Parent,RadiationElement
+  ! EnthalpyPrev_h/SpecEnthalpyPrev_h are the SAME gotcha as PressureField_h
+  ! above, but for ListGetElementReal's own "same element as last time, reuse
+  ! ParValues" cache (Lists.F90, "IF (Handle % EvaluateAtIp)" branch): it is
+  ! keyed only on Handle % Element, blind to a call-to-call change in the
+  ! optional "tstep" argument. Phase Change Model "Temporal" needs BOTH the
+  ! current AND previous-timestep Enthalpy at the same node in quick
+  ! succession (tstep absent, then tstep=-1) -- on one shared handle the
+  ! second call would silently reuse the first's (current-timestep) cached
+  ! values instead of re-evaluating at tstep=-1, making the previous value
+  ! equal the current one and the secant's numerator zero. Separate handles,
+  ! each only ever called with one fixed tstep, avoid this entirely.
+  TYPE(ValueHandle_t), ALLOCATABLE, SAVE :: EnthalpyPrev_h(:), SpecEnthalpyPrev_h(:)
 
-     REAL(KIND=dp) :: RelativeChange, &
-           Norm,PrevNorm,Text,S,C,C1,Emissivity,StefanBoltzmann, &
-           ReferencePressure=0.0d0, SpecificHeatRatio
+  ! Per-element bubble history (current and previous timestep), needed to
+  ! form a consistent BDF(1) time derivative for a condensed p-bubble: see
+  ! CondensatePTransient in MatrixAssembly.F90 and IncompressibleNSVec's
+  ! LCondensate, which this mirrors (also mirrored in KESolver.F90,
+  ! Komega.F90, SSTKomega.F90, V2FSolver.F90 and Spalart-Allmaras.F90).
+  ! Indexed by Element % ElementIndex with stride
+  ! bxStride = MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes) (Dofs=1 for a
+  ! scalar temperature, so no interleaving factor is needed), not nb of any
+  ! one element, so blocks stay aligned on a mesh with mixed bubble counts.
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+  INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag,ConvectionFlag
+  INTERFACE
+    SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
+      USE Types
+      TYPE(Element_t) :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t) :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
+      INTEGER :: Perm(:)
+    END SUBROUTINE HeatSolver_Boundary_Residual
 
-     INTEGER :: PhaseChangeModel
-     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseModel, StabilizeFlag, VarName
+    SUBROUTINE HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
+      USE Types
+      TYPE(Element_t) :: Edge
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t) :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2)
+      INTEGER :: Perm(:)
+    END SUBROUTINE HeatSolver_Edge_Residual
 
-     INTEGER, POINTER :: NodeIndexes(:)
-     LOGICAL :: Stabilize = .TRUE., Bubbles = .TRUE., UseBubbles,NewtonLinearization = .FALSE., &
-         Found, GotIt, HeatFluxBC, HeatGapBC, GotMeltPoint, IsRadiation, IsRadiosity, InfBC
-! Which compressibility model is used
-     CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, ConvectionField
-     INTEGER :: CompressibilityModel
+    SUBROUTINE HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
+      USE Types
+      TYPE(Element_t) :: Element
+      TYPE(Model_t) :: Model
+      TYPE(Mesh_t) :: Mesh
+      REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
+      INTEGER :: Perm(:)
+    END SUBROUTINE HeatSolver_Inside_Residual
+  END INTERFACE
 
-     LOGICAL :: AllocationsDone = .FALSE.,PhaseSpatial=.FALSE., &
-        PhaseChange=.FALSE., CheckLatentHeatRelease=.FALSE., FirstTime, &
-        SmartHeaterControl, IntegralHeaterControl, HeaterControlLocal, SmartTolReached=.FALSE., &
-        TransientHeaterControl, SmartHeaterAverage, ConstantBulk, SaveBulk, &
-	TransientAssembly, Converged, AnyMultiply, NeedFlowSol
-     LOGICAL, POINTER :: SmartHeaters(:), IntegralHeaters(:)
+  IF ( LegacyAssembly( Solver ) ) THEN
+    CALL DelegateToHeatLegacy( 'HeatSolverLegacy', Model, Solver, dt, Transient )
+    RETURN
+  END IF
 
-     TYPE(Variable_t), POINTER :: TempSol,FlowSol,HeatSol,CurrentSol, MeshSol, DensitySol
-     TYPE(ValueList_t), POINTER :: Equation,Material,SolverParams,BodyForce,BC,Constants
+  IF (.NOT. ASSOCIATED(Solver % Matrix)) RETURN
 
-     INTEGER, POINTER :: TempPerm(:),FlowPerm(:),CurrentPerm(:),MeshPerm(:)
+  CALL Info(Caller,'------------------------------------------------')
+  CALL Info(Caller,'Solving energy equation for temperature')
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter,MDOFs, &
-         SmartHeaterBC, SmartHeaterNode, DoneTime=0, bc_elem, nb, NOFactive
-     REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
-            SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
-            PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
-	    dist, mindist, ControlPoint(3), HeatTransferMultiplier
+  ! The View and Gebhart factors may change if the shape and/or emissivities
+  ! have changed. The routine may also affect matrix topology.
+  !---------------------------------------------------------------------------
+  Mesh => GetMesh()
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
+  dim = CoordinateSystemDimension() 
+  Params => GetSolverParams()
+  EqName = ListGetString( Params,'Equation', Found )
 
-     REAL(KIND=dp), POINTER :: Temperature(:),PrevTemperature(:),FlowSolution(:), &
-       ElectricCurrent(:), PhaseChangeIntervals(:,:),ForceVector(:), &
-       PrevSolution(:), HC(:), Hwrk(:,:,:),MeshVelocity(:), XX(:), YY(:),ForceHeater(:),&
-       RealWork(:,:)
+  ! Same resolution as HeatSolver_Init0: whether a convected element is to be
+  ! SUPG-stabilized (equal-order, no bubble) rather than bubble-stabilized.
+  Stabilize = GetStabilizeFlag( Params )
 
-     REAL(KIND=dp), ALLOCATABLE :: vals(:)
-     REAL(KIND=dp) :: Jx,Jy,Jz,JAbs, Power, MeltPoint, IntHeatSource
-
-     INTEGER, ALLOCATABLE, SAVE :: Indexes(:), SaveIndexes(:)
-
-     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
-       STIFF(:,:), LOAD(:), HeatConductivity(:,:,:), &
-       FORCE(:), U(:), V(:), W(:), MU(:,:),TimeForce(:), &
-       Density(:), LatentHeat(:), HeatTransferCoeff(:), &
-       HeatCapacity(:), Enthalpy(:), EnthalpyFraction(:), Viscosity(:), LocalTemperature(:), &
-       NodalVal(:), ElectricConductivity(:), Permeability(:), Work(:), C0(:), &
-       Pressure(:), dPressuredt(:), GasConstant(:),AText(:), HeaterArea(:), &
-       HeaterTarget(:), HeaterScaling(:), HeaterDensity(:), HeaterSource(:), &
-       HeatExpansionCoeff(:), ReferenceTemperature(:), PressureCoeff(:), &
-       PhaseVelocity(:,:), HeatConductivityIso(:), &
-       PerfusionRate(:), PerfusionDensity(:), PerfusionHeatCapacity(:), PerfusionRefTemperature(:)
-
-     REAL(KIND=dp), ALLOCATABLE :: Areas(:), Emiss(:), Reflect(:)
-     LOGICAL :: Spectral, Radiosity
-     
-     SAVE U, V, W, MU, MASS, STIFF, LOAD, PressureCoeff, &
-       FORCE, ElementNodes, HeatConductivity, HeatCapacity, HeatTransferCoeff, &
-       Enthalpy, EnthalpyFraction, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
-       LocalNodes, LocalTemperature, Work, ElectricConductivity, &
-       NodalVal, Permeability, C0, dPressuredt, Pressure, &
-       GasConstant,AText,Hwrk, XX, YY, ForceHeater, Power, HeaterArea, HeaterTarget, &
-       HeaterScaling, HeaterDensity, HeaterSource, SmartHeaters, IntegralHeaters, SmartTolReached,    &
-       ReferenceTemperature, HeatExpansionCoeff, PrevPowerScaling, PowerScaling, &
-       MeltPoint, DoneTime, SmartHeaterNode, SmartHeaterBC, SmartHeaterAverage, &
-       HeatConductivityIso, &
-       PerfusionRate, PerfusionDensity, PerfusionHeatCapacity, PerfusionRefTemperature
-
-
-     INTERFACE
-        SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
-          USE Types
-          TYPE(Element_t) :: Edge
-          TYPE(Model_t) :: Model
-          TYPE(Mesh_t) :: Mesh
-          REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
-          INTEGER :: Perm(:)
-        END SUBROUTINE HeatSolver_Boundary_Residual
-
-        SUBROUTINE HeatSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
-          USE Types
-          TYPE(Element_t) :: Edge
-          TYPE(Model_t) :: Model
-          TYPE(Mesh_t) :: Mesh
-          REAL(KIND=dp) :: Quant(:), Indicator(2)
-          INTEGER :: Perm(:)
-        END SUBROUTINE HeatSolver_Edge_Residual
-
-        SUBROUTINE HeatSolver_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
-          USE Types
-          TYPE(Element_t) :: Element
-          TYPE(Model_t) :: Model
-          TYPE(Mesh_t) :: Mesh
-          REAL(KIND=dp) :: Quant(:), Indicator(2), Fnorm
-          INTEGER :: Perm(:)
-        END SUBROUTINE HeatSolver_Inside_Residual
-     END INTERFACE
-
-     REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-
-
-     CALL Info('HeatSolver','-------------------------------------------',Level=6)
-     CALL Info('HeatSolver','Solving the energy equation for temperature',Level=5)
-
-     IF( ListCheckPresentAnyBC( Model,'Heat Gap') ) THEN
-       CALL Warn('HeatSolver','The old way of dealing with HeatGap is obsolite!!')
-     END IF
-
-     
-!------------------------------------------------------------------------------
-!    Get variables needed for solution
-!------------------------------------------------------------------------------
-
-     IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-
-     SolverParams => GetSolverParams()
-
-     Radiosity = GetLogical( SolverParams,'Radiosity Model',Found ) 
-     Spectral = GetLogical( SolverParams,'Spectral Model',Found )
-     IF( Spectral ) Radiosity = .TRUE.
-
-     IF(.NOT. Radiosity ) THEN
-       IF( ListCheckPresent( SolverParams,'Radiator Coordinates' ) .OR. &
-           ListCheckPresentAnyBodyForce(Model,'Radiator Coordinates') ) THEN
-         CALL Fatal('HeatSolve','For radiative point sources use HeatSolveVec instead!')
-       END IF
-     END IF
-
-!------------------------------------------------------------------------------
-!    The View and Gebhart factors may change. If this is necessary, this is 
-!    done within this subroutine. The routine is called in the
-!    start as it may affect the matrix topology.
-!    Newton lineariarization option is needed only when there is radiation.
-!------------------------------------------------------------------------------
-     IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
-     
-     IF( IsRadiation .AND. .NOT. Radiosity ) THEN
-       CALL RadiationFactors( Solver, .FALSE., .FALSE.)       
-     END IF
-
-     ! The solver matrix, permutation etc. may change because radiation factors are recomputed
-     StiffMatrix => GetMatrix()
-     ForceVector => Solver % Matrix % RHS
-     TempSol => Solver % Variable
-     TempPerm    => TempSol % Perm
-     Temperature => TempSol % Values
-     VarName = GetVarName( TempSol ) 
+  Radiosity = GetLogical( Params, 'Radiosity Model', Found )
+  Spectral = GetLogical( Params,'Spectral Model',Found )
+  IF( Spectral ) Radiosity = .TRUE. 
+  RadNewtonRelax = ListGetCReal( Params,&
+      'Radiosity Newton Relaxation Factor',HaveRadNewtonRelax)
   
-     LocalNodes = COUNT( TempPerm > 0 )
-     IF ( LocalNodes <= 0 ) RETURN
-     IF(SIZE(Temperature) < LocalNodes) LocalNodes = SIZE(Temperature)
-     
-     
-     NeedFlowSol = .FALSE.
-     DO i=1,Model % NumberOfEquations
-       ConvectionFlag = GetString( Model % Equations(i) % Values, 'Convection', Found )
-       IF ( ConvectionFlag == 'computed' ) THEN
-         NeedFlowSol = .TRUE.
-         EXIT
-       END IF
-     END DO
+  IF(.NOT.Radiosity) CALL RadiationFactors( Solver, .FALSE.,.FALSE.) 
 
-     FlowSol => NULL()
-     IF( NeedFlowSol ) THEN
-       ConvectionField = GetString( SolverParams, 'Temperature Convection Field', Found )     
-       IF ( Found ) THEN       
-         FlowSol => VariableGet( Solver % Mesh % Variables, ConvectionField )
-       ELSE
-         FlowSol => VariableGet( Solver % Mesh % Variables, 'Flow Solution' )
-       END IF
+  HaveFactors = ListCheckPresentAnyBC( Model,'Radiation')
+
+  HaveCheckLatentHeat = ListCheckPresentAnyEquation( Model,'Check Latent Heat Release')
+
+  IF( HaveFactors ) THEN
+    StefBoltz = ListGetConstReal( Model % Constants,&
+        'Stefan Boltzmann',UnfoundFatal=HaveFactors)
+  END IF
+
+  Temperature => Solver % Variable % Values
+  TempPerm => Solver % Variable % Perm
+
+  DB = GetLogical( Params,'DG Reduced Basis',Found )
+  DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
+
+  maxiter = ListGetInteger( Params, &
+      'Nonlinear System Max Iterations',Found,minv=1)
+  IF(.NOT. Found ) maxiter = 1
+  
+  nthr = 1
+  !$ nthr = omp_get_max_threads()
+
+  ! Allocated once, or again only if the thread count ever changes.
+  IF( .NOT. ALLOCATED( Source_h ) ) THEN
+    ALLOCATE( Source_h(nthr), Cond_h(nthr), CondScalar_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+        ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
+        PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
+        VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
+        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), HTMult_h(nthr), &
+        HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
+        RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
+        TorBC_h(nthr), InfBCFlag_h(nthr), InfBCText_h(nthr), &
+        CompressModel_h(nthr), SpecHeatRatio_h(nthr), RefTemp_h(nthr), &
+        HeatExpCoeff_h(nthr), RefPressure_h(nthr), TempField_h(nthr), &
+        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr), &
+        PhaseModelEq_h(nthr), PhaseModelMat_h(nthr), Enthalpy_h(nthr), &
+        SpecEnthalpy_h(nthr), EnthRho_h(nthr), EnthalpyPrev_h(nthr), SpecEnthalpyPrev_h(nthr), &
+        PhaseChangeFlag_h(nthr), PhaseVel1_h(nthr), PhaseVel2_h(nthr), PhaseVel3_h(nthr), &
+        PhaseLatentHeat_h(nthr), PhaseDensity_h(nthr) )
+  ELSE IF( SIZE( Source_h ) /= nthr ) THEN
+    DEALLOCATE( Source_h, Cond_h, CondScalar_h, Cp_h, Rho_h, ConvFlag_h, VecConvVelo_h, &
+        PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, &
+        OrigMesh_h, ConvField_h, LM_ConvVelo_h, PlateSpeed_h, HTMult_h, &
+        HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, RadFlag_h, RadExtTemp_h, &
+        EmisBC_h, EmisMat_h, TorBC_h, InfBCFlag_h, InfBCText_h, &
+        CompressModel_h, SpecHeatRatio_h, RefTemp_h, HeatExpCoeff_h, &
+        RefPressure_h, TempField_h, PrevFlowField_h, PressureField_h, MeshVeloField_h, &
+        PhaseModelEq_h, PhaseModelMat_h, Enthalpy_h, SpecEnthalpy_h, EnthRho_h, &
+        EnthalpyPrev_h, SpecEnthalpyPrev_h, &
+        PhaseChangeFlag_h, PhaseVel1_h, PhaseVel2_h, PhaseVel3_h, &
+        PhaseLatentHeat_h, PhaseDensity_h )
+    ALLOCATE( Source_h(nthr), Cond_h(nthr), CondScalar_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+        ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
+        PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
+        VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
+        LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), HTMult_h(nthr), &
+        HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
+        RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
+        TorBC_h(nthr), InfBCFlag_h(nthr), InfBCText_h(nthr), &
+        CompressModel_h(nthr), SpecHeatRatio_h(nthr), RefTemp_h(nthr), &
+        HeatExpCoeff_h(nthr), RefPressure_h(nthr), TempField_h(nthr), &
+        PrevFlowField_h(nthr), PressureField_h(nthr), MeshVeloField_h(nthr), &
+        PhaseModelEq_h(nthr), PhaseModelMat_h(nthr), Enthalpy_h(nthr), &
+        SpecEnthalpy_h(nthr), EnthRho_h(nthr), EnthalpyPrev_h(nthr), SpecEnthalpyPrev_h(nthr), &
+        PhaseChangeFlag_h(nthr), PhaseVel1_h(nthr), PhaseVel2_h(nthr), PhaseVel3_h(nthr), &
+        PhaseLatentHeat_h(nthr), PhaseDensity_h(nthr) )
+  END IF
+
+  ! Per-element bubble history for the transient condensed-bubble case:
+  ! allocate once, sized by the mesh's own worst-case bubble count (not this
+  ! element's own nb, which can vary element to element) times the number of
+  ! BULK elements. The stride covers both a p-bubble (MaxBDOFs) and a
+  ! "Bubbles = True"-style one bubble per node (MaxElementNodes), whichever
+  ! is larger -- mirrors KESolver.F90/Spalart-Allmaras.F90. No Solver %
+  ! GlobalBubbles check here -- see the matching block and its rationale
+  ! there; a global p-bubble already surfaces as nb == 0 to this solver (see
+  ! GetElementNOFBDOFs), so it never touches this history at all.
+  !
+  ! Sized over NumberOfBulkElements + NumberOfBoundaryElements, not just the
+  ! former: a boundary element promoted to this equation via a BC's "Body Id"
+  ! (e.g. a lower-dimensional pipe embedded in a 3D mesh, see the "Heat
+  ! Transfer Multiplier" comment below) keeps its ElementIndex in the
+  ! boundary-element range while being assembled here as a bulk element, so
+  ! boff = (Element % ElementIndex - 1) * bxStride can otherwise run past the
+  ! bulk-only allocation.
+  IF( Transient .AND. .NOT. ALLOCATED( bx ) ) THEN
+    bxStride = MAX( Mesh % MaxBDOFs, Mesh % MaxElementNodes )
+    ALLOCATE( bx( bxStride * (Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements) ), &
+        bxprev( bxStride * (Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements) ) )
+    bx = 0.0_dp
+    bxprev = 0.0_dp
+  END IF
+
+  ! A new timestep started: the bubble part left over from the last solve of
+  ! the previous timestep becomes "previous" for this one. Must happen only
+  ! once per timestep, not once per call -- this solver may be called several
+  ! times per timestep by an outer (Steady State) coupled iteration, and only
+  ! the first such call should shift the history.
+  IF( Transient .AND. ALLOCATED( bx ) .AND. GetTimestep() /= BubbleTimestep ) THEN
+    bxprev = bx
+    BubbleTimestep = GetTimestep()
+  END IF
+
+  nColours = GetNOFColours(Solver)
+
+  VecAsm = ListGetLogical( Params,'Vector Assembly',Found )
+  IF(.NOT. Found ) THEN
+    VecAsm = (nColours > 1) .OR. (nthr > 1)
+  END IF
+
+  IF( VecAsm .AND. AxiSymmetric ) THEN
+    CALL Info(Caller,'Vectorized assembly not yet available in axisymmetric case',Level=7)    
+    VecAsm = .FALSE.
+  END IF
+  
+  IF( VecAsm ) THEN
+    CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
+  ELSE
+    CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)      
+  END IF
+  
+  ! See the CheckLatentHeatVec declaration comment above: this outer loop is
+  ! legacy HeatSolve.F90's own substep wrapper, always present there (a
+  ! single pass when "Check Latent Heat Release" is inactive, exactly as
+  ! this loop is too -- CurrentDt is never halved, so CumulativeTime jumps
+  ! straight to Timestep after one pass).
+  Timestep = dt
+  CurrentDt = dt
+  CumulativeTime = 0._dp
+  FirstSubstep = .TRUE.
+  Relax = GetCReal( Params,'Nonlinear System Relaxation Factor',Found )
+  IF(.NOT. Found ) Relax = 1._dp
+  LocalNodes = COUNT( TempPerm > 0 )
+  IF( SIZE(Temperature) < LocalNodes ) LocalNodes = SIZE(Temperature)
+  ALLOCATE( PrevSolution(LocalNodes) )
+
+  DO WHILE( CumulativeTime < Timestep - 1.0d-12 .OR. .NOT. Transient )
+    IF( Transient .AND. .NOT. FirstSubstep ) CALL InitializeTimestep(Solver)
+    FirstSubstep = .FALSE.
+
+    PrevSolution = Temperature(1:LocalNodes)
+
+  CALL DefaultStart()
+
+
+  ! Nonlinear iteration loop:
+  !--------------------------
+  DO iter=1,maxiter
+    CALL Info(Caller,'Heat solver iteration: '//I2S(iter))
+
+    Newton = GetNewtonActive()
+
+100 CONTINUE
+    IF(Radiosity) CALL RadiationFactors( Solver, .FALSE., Newton) 
+    
+    ! Initialize the matrix equation to zero.
+    !---------------------------------------
+    CALL DefaultInitialize()
+    CALL CalculateRadiosityFields(Pre=.TRUE.)
+    
+    ! For speed compute averaged emissivity and temperature over boundary elements
+    ! for diffuse gray radiation.
+    !-----------------------------------------------------------------------------
+    IF( HaveFactors ) THEN
+      CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect) 
+    END IF
+    
+    totelem = 0
+    
+    !$OMP PARALLEL &
+    !$OMP SHARED(Solver, Active, nColours, VecAsm) &
+    !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    InitHandles = .TRUE.
+    
+    DO col=1,nColours
       
-       IF ( ASSOCIATED( FlowSol ) ) THEN
-         FlowPerm     => FlowSol % Perm
-         NSDOFs       =  FlowSol % DOFs
-         FlowSolution => FlowSol % Values
-       ELSE
-         CALL Fatal('HeatSolver','Flow is "computed" but not flow field available!')
-       END IF
-     END IF
-       
-     DensitySol => VariableGet( Solver % Mesh % Variables, 'Density' )
+      !$OMP SINGLE
+      CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
+      Active = GetNOFActive(Solver)
+      !$OMP END SINGLE
+      
+      !$OMP DO
+      DO t=1,Active
+        Element => GetActiveElement(t)
+        totelem = totelem + 1                
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        IF( VecAsm ) THEN
+          CALL LocalMatrixVec(  Element, n, nd+nb, nb, VecAsm, InitHandles )
+        ELSE
+          CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
+        END IF
+      END DO
+      !$OMP END DO
+    END DO
+    !$OMP END PARALLEL 
 
-     ! Check whether we have some heater controls. This will affect initialization stuff. 
-     SmartHeaterControl = ListCheckPresentAnyBodyForce( Model,'Smart Heater Control')
-     IntegralHeaterControl = ListCheckPresentAnyBodyForce( Model,'Integral Heat Source')
-   
-!------------------------------------------------------------------------------
-!    Allocate some permanent storage, this is done first time only
-!------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
-        N = Solver % Mesh % MaxElementDOFs
+    totelem = 0
+    
+    CALL DefaultFinishBulkAssembly()
+    
+    nColours = GetNOFBoundaryColours(Solver)
 
-        IF ( AllocationsDone ) THEN
-          DEALLOCATE(  &
-                 U, V, W, MU,           &
-                 Pressure,              &
-                 dPressureDt,           &
-                 PressureCoeff,        &
-                 Density,Work,          &
-                 LatentHeat,            &
-                 PhaseVelocity,         &
-                 ElectricConductivity,  &
-                 Permeability,          &
-                 Viscosity,C0,          &
-                 HeatTransferCoeff,     &
-                 HeatExpansionCoeff,    &
-                 ReferenceTemperature,  &
-                 MASS,       &
-                 LocalTemperature,      &
-                 HeatCapacity,Enthalpy, &
-                 EnthalpyFraction,      &
-                 NodalVal,       &
-                 GasConstant, AText,    &
-                 HeatConductivity,      &
-                 STIFF,LOAD,            &
-                 Indexes, SaveIndexes,  &
-                 FORCE, TimeForce,      &
-                 HeatConductivityIso,   &
-                 PerfusionRate,         &
-                 PerfusionDensity,      &
-                 PerfusionHeatCapacity, &
-                 PerfusionRefTemperature )
-          IF (ALLOCATED(ElementNodes % xyz)) THEN
-            DEALLOCATE(ElementNodes % xyz)
-            NULLIFY(ElementNodes % x, ElementNodes % y, ElementNodes % z)
+    CALL Info(Caller,'Performing boundary element assembly',Level=12)
+
+    BLOCK
+      REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
+      TYPE(ValueList_t), POINTER :: RadList
+
+      ! If radiator is in body force section then use it:
+      ! This will make it easier to make GUIs etc.
+      IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+          RadList => Params
+
+      CALL GetConstRealArray( RadList, RadiatorCoords, 'Radiator Coordinates', Found)
+
+      IF(Found) THEN
+        n = SIZE(RadiatorCoords,1)
+        ALLOCATE( RadiatorPowers(n))
+        DO t=1,n
+          RadiatorPowers(t)=GetCReal(RadList, 'Radiator Power '//I2S(t), Found)
+        END DO
+      END IF
+    END BLOCK
+
+    ! Serialize this boundary loop whenever the model has any "Radiation" BC.
+    ! Intermittent norm mismatches (radiation_viewfactor_methods, radiation2dAA,
+    ! radiation2d_spectral -- a different one each time, only under heavy batch
+    ! CPU contention.
+    ! project_heatsolvevec_diffusegray_threading memory if this needs revisiting.
+    !$OMP PARALLEL &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers, HaveFactors ) &
+    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE) IF(.NOT. HaveFactors)
+    InitHandles = .TRUE.
+    DO col=1,nColours
+      !$OMP SINGLE
+      CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
+      Active = GetNOFBoundaryActive(Solver)
+      !$OMP END SINGLE
+      !$OMP DO
+      DO t=1,Active
+        Element => GetBoundaryElement(t)
+        totelem = totelem + 1
+        IF(ActiveBoundaryElement(Element)) THEN
+          n  = GetElementNOFNodes(Element)
+          nd = GetElementNOFDOFs(Element)
+          nb = GetElementNOFBDOFs(Element)
+
+          CALL LocalMatrixBC(  Element, n, nd+nb, nb, VecAsm, DiffuseGray, InitHandles )
+          IF( DiffuseGray ) THEN
+            CALL LocalMatrixDiffuseGray(  Element, n, nd+nb, nb )
           END IF
-       END IF
+        END IF
+      END DO
+      !$OMP END DO
+    END DO
+    !$OMP END PARALLEL
+    
+    IF( DG ) THEN
+      BLOCK
+        INTEGER :: ElemCount, n1, n2
+        TYPE(Element_t), POINTER :: ElemList(:), Parent1, Parent2
+        LOGICAL :: BcDone
+                
+        IF( dim == 2 ) THEN
+          ElemCount = Mesh % NumberOfEdges
+          ElemList => Mesh % Edges
+        ELSE
+          ElemCount = Mesh % NumberOfFaces
+          ElemList => Mesh % Faces
+        END IF
 
-       ALLOCATE( &
-                 Indexes(N), SaveIndexes(N),           &
-                 U( N ),   V( N ),  W( N ),            &
-                 MU( 3,N ),                            &
-                 Pressure( N ),                        &
-                 dPressureDt( N ),                     &
-                 PressureCoeff( N ),                   &
-                 Density( N ),Work( N ),               &
-                 LatentHeat( N ),                      &
-                 PhaseVelocity(3, N),                  &
-                 ElectricConductivity(N),              &
-                 Permeability(N),                      &
-                 Viscosity(N),C0(N),                   &
-                 HeatTransferCoeff( N ),               &
-                 HeatExpansionCoeff( N ),              &
-                 ReferenceTemperature( N ),            &
-                 MASS(  2*N,2*N ),                     &
-                 LocalTemperature( N ),                &
-                 HeatCapacity( N ),Enthalpy( N ),      &
-                 EnthalpyFraction( N ),                &
-                 NodalVal( N ),                 &
-                 GasConstant( N ),AText( N ),          &
-                 HeatConductivity( 3,3,N ),            &
-                 HeatConductivityIso( N ),             &
-                 STIFF( 2*N,2*N ),LOAD( N ), &
-                 FORCE( 2*N ), TimeForce(2*N), &
-                 PerfusionRate( N ),     &
-                 PerfusionDensity( N ),      &
-                 PerfusionHeatCapacity( N ), &
-                 PerfusionRefTemperature( N ), &
-                 STAT=istat )
+        InitDiscontHandles = .TRUE.      
+        DO t = 1, ElemCount
+          Element => ElemList(t)
+          IF ( .NOT. ActiveBoundaryElement(Element, DGBoundary=.TRUE.) ) CYCLE
 
-       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'HeatSolve', 'Memory allocation error' )
-       END IF
+          n = GetElementNOFnodes(Element)
 
+          Parent1  => Element % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED( Parent1 ) ) CYCLE
 
-       IF ( SmartHeaterControl .OR. IntegralHeaterControl) THEN          
-          n = Model % NumberOfBodyForces
-          IF ( AllocationsDone ) DEALLOCATE( HeaterArea, HeaterDensity, HeaterSource, &
-               HeaterScaling, HeaterTarget, SmartHeaters, IntegralHeaters )
-          ALLOCATE( HeaterArea(n), HeaterDensity(n), HeaterSource(n), &
-               HeaterScaling(n), HeaterTarget(n), SmartHeaters(n), &
-               IntegralHeaters(n) )
-          IF ( istat /= 0 ) THEN
-             CALL Fatal( 'HeatSolve', 'Memory allocation error' )
+          Parent2 => Element  % BoundaryInfo % Right
+          IF(.NOT. ASSOCIATED( Parent2 ) ) CYCLE
+
+          n1 = GetElementNOFDOFs(Parent1)
+          n2 = GetElementNOFDOFs(Parent2)
+
+          BCDone = .FALSE.
+          CALL LocalJumpsDiscontBC( Element, n, Parent1, &
+              n1, Parent2, n2, InitDiscontHandles, BCDone )
+
+          IF( .NOT. ( BCDone .OR. DB ) ) THEN          
+            CALL LocalJumps( Element, n, Parent1, n1, Parent2, n2 )
           END IF
-          SmartHeaters = .FALSE.
-          IntegralHeaters = .FALSE.
-       END IF
-       
-       IF( SmartHeaterControl ) THEN
-          IF ( AllocationsDone ) DEALLOCATE( XX, YY, ForceHeater  )
-          n = SIZE( Temperature )
-          ALLOCATE( XX( n ), YY(n), ForceHeater( n ), STAT=istat )
-          IF ( istat /= 0 ) THEN
-             CALL Fatal( 'HeatSolve', 'Memory allocation error' )
-          END IF
-          XX = 0.0d0 
-          YY = 0.0d0
-          ForceHeater = 0.0d0
-       END IF
-       
-       NULLIFY( Hwrk )
-       AllocationsDone = .TRUE.
+        END DO
+      END BLOCK
+    END IF
+    
+    IF (ALLOCATED(RadiatorPowers)) DEALLOCATE( RadiatorPowers)
+
+
+    BLOCK 
+      CHARACTER(:), ALLOCATABLE :: str
+      TYPE(ValueList_t), POINTER :: BC
+      
+      str = GetVarName(Solver % Variable)//' Nitsche'
+      
+      IF( ListCheckPresentAnyBC(Model, str) ) THEN
+        CALL Info(Caller,"Setting BC's weakly using the Nitshce method!",Level=6)
+        
+        Active = GetNOFBoundaryElements()
+        DO t=1,Active
+          Element => GetBoundaryElement(t)
+          n  = GetElementNOFNodes()
+          nd = GetElementNOFDOFs()
+          
+          BC => GetBC(Element)
+          IF (.NOT.ASSOCIATED(BC)) CYCLE
+          
+          CALL LocalNitscheBC( Element, n, BC, str )
+        END DO
+      END IF
+    END BLOCK
+      
+
+    
+    CALL DefaultFinishBoundaryAssembly()
+        
+    CALL DefaultFinishAssembly()
+
+    CALL DefaultDirichletBCs()
+    
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
+        
+    ! And finally, solve:
+    !--------------------
+    PrevNorm = Norm
+    Norm = DefaultSolve()
+
+    ! If modelling phase change (and if requested by the user), check if any
+    ! node has jumped over the phase change interval, and if so, reduce
+    ! timestep and/or relaxation and recompute -- mirrors legacy HeatSolve's
+    ! own check at exactly this point (after DefaultSolve, before its own
+    ! convergence check), CYCLE-ing this SAME nonlinear iteration loop (not
+    ! restarting the substep) so DefaultStart/the mesh-level "nonlin iter"
+    ! counter continue exactly as they would for any other retried iteration.
+    IF( HaveCheckLatentHeat ) THEN
+      IF( CheckLatentHeatVec() ) THEN
+        Temperature(1:LocalNodes) = PrevSolution
+        Norm = PrevNorm
+
+        IF( Transient ) THEN
+          CurrentDt = CurrentDt / 2
+          Solver % dt = CurrentDt
+          WRITE( Msg,* ) 'Latent heat release check: reducing timestep to: ',CurrentDt
+          CALL Info(Caller,Msg,Level=4)
+        ELSE
+          Relax = Relax / 2
+          CALL ListAddConstReal( Params,'Nonlinear System Relaxation Factor', Relax )
+          WRITE( Msg,* ) 'Latent heat release check: reducing relaxation to: ',Relax
+          CALL Info(Caller,Msg,Level=4)
+        END IF
+
+        CYCLE
+      END IF
     END IF
 
-!------------------------------------------------------------------------------
-!    Do some additional initialization, and go for it
-!------------------------------------------------------------------------------
-     dt = Timestep
-     Constants => GetConstants()
-     IF( IsRadiation ) THEN
-       StefanBoltzmann = ListGetConstReal( Model % Constants, &
-                     'Stefan Boltzmann',UnfoundFatal=.TRUE.)
-     END IF
+    IF( DefaultConverged(Solver) ) EXIT
+  END DO
+
+    IF( .NOT. Transient ) EXIT
+    CumulativeTime = CumulativeTime + CurrentDt
+    CurrentDt = Timestep - CumulativeTime
+  END DO
+  Solver % dt = Timestep
+
+  CALL DefaultFinish()
+  CALL CalculateRadiosityFields(Pre=.FALSE.)
+
+ IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', Found ) ) THEN
+   IF( .NOT. ListGetLogical(Params,'Library Adaptivity',Found) ) THEN
+     CALL RefineMesh( Model,Solver,Temperature,TempPerm, &
+         HeatSolver_Inside_Residual, HeatSolver_Edge_Residual, &
+         HeatSolver_Boundary_Residual )
+   END IF
+ END IF
+   
+CONTAINS
 
 !------------------------------------------------------------------------------
-     Stabilize = GetLogical( SolverParams,'Stabilize',Found )
-
-     UseBubbles = GetLogical( SolverParams,'Bubbles',Found )
-     IF ( .NOT.Found ) UseBubbles = .TRUE.
-
-     StabilizeFlag = GetString( SolverParams, &
-          'Stabilization Method',Found )
-
-     SELECT CASE(StabilizeFlag)
-     CASE('vms')
-       Stabilize = .FALSE.
-       UseBubbles= .FALSE.
-     CASE('stabilized')
-       Stabilize = .TRUE.
-       UseBubbles = .FALSE.
-     CASE('bubbles')
-       Stabilize = .FALSE.
-       UseBubbles = .TRUE.
-     END SELECT
-
-     NonlinearIter = GetInteger(   SolverParams, &
-                     'Nonlinear System Max Iterations', Found )
-     IF ( .NOT.Found ) NonlinearIter = 1
-
-     NonlinearTol  = GetConstReal( SolverParams, &
-                     'Nonlinear System Convergence Tolerance',    Found )
-
-     IF( IsRadiation ) THEN
-       NewtonTol     = GetConstReal( SolverParams, &
-                      'Nonlinear System Newton After Tolerance',  Found )
-       NewtonIter    = GetInteger(   SolverParams, &
-                      'Nonlinear System Newton After Iterations', Found )
-     ELSE
-       NewtonTol = 1.0_dp
-       NewtonIter =  0
-     END IF
-     IF ( NewtonIter == 0) NewtonLinearization = .TRUE.
-
-     Relax = GetCReal( SolverParams,'Nonlinear System Relaxation Factor',Found )
-     IF ( .NOT.Found ) Relax = 1
-
-     TransientAssembly = TransientSimulation
-     dt0 = ListGetConstReal(SolverParams,'Steady State Transition Timestep',Found)
-     IF(.NOT. Found) dt0 = ListGetConstReal(SolverParams,'Smart Heater Time Scale',Found)
-
-     IF(Found .AND. dt > dt0) TransientAssembly = .FALSE.
-
-     
-     AnyMultiply = ListCheckPresentAnyMaterial( Model, 'Heat Transfer Multiplier' ) 
-
+!> "Check Latent Heat Release": has any node crossed a "Phase Change
+!> Intervals" boundary between this substep's start (PrevSolution) and the
+!> just-solved Temperature? Mirrors legacy HeatSolve.F90's CheckLatentHeat()
+!> function verbatim (same per-element Equation/Material keyword lookups,
+!> same interval-crossing test), just renamed to avoid clashing with the
+!> unrelated "PhaseChange"-prefixed identifiers already used elsewhere in
+!> this file (DoPhaseChange etc., a different, unrelated per-element flag in
+!> LocalMatrixVec/LocalMatrix).
 !------------------------------------------------------------------------------
+  FUNCTION CheckLatentHeatVec() RESULT(Failure)
+!------------------------------------------------------------------------------
+    LOGICAL :: Failure, PhaseChange, CheckLatentHeatRelease, Found
+    INTEGER :: elem, i, j, k, eq_id, body_id, nn
+    CHARACTER(LEN=MAX_NAME_LEN) :: PhaseModel
+    TYPE(Element_t), POINTER :: PCElement
+    INTEGER, POINTER :: PCNodeIndexes(:)
+    REAL(KIND=dp), POINTER :: PhaseChangeIntervals(:,:)
+!------------------------------------------------------------------------------
+    Failure = .FALSE.
 
-     TransientHeaterControl = .FALSE.
-     IF(SmartHeaterControl) THEN
+    DO elem=1,Solver % Mesh % NumberOfBulkElements
+      PCElement => Solver % Mesh % Elements(elem)
+      PCNodeIndexes => PCElement % NodeIndexes
 
-       ! Mark the smart heaters 
-       SmartHeaters = .FALSE.
-       bf_id = 0
-       DO i = 1,Model % NumberOfBodyForces
-         IF( ListGetLogical( Model % BodyForces(i) % Values, &
-             'Smart Heater Control', Found ) ) THEN
-           SmartHeaters(i) = .TRUE.	     
-           bf_id = i
-         END IF
-       END DO
+      IF ( ANY( TempPerm( PCNodeIndexes ) <= 0 ) ) CYCLE
 
-       ! Find the BC that controls the heater 
-       ! If not found assume that smart heater is related to phase change 
-       MeltPoint = GetCReal( Model % BodyForces(bf_id) % Values,&
-           'Smart Heater Temperature',GotMeltPoint)           
-              
-       SmartHeaterAverage = .FALSE.
-       SmartHeaterNode = ListGetInteger( Model % BodyForces(bf_id) % Values,&
-           'Smart Heater Control Node',GotIt) 
-       IF(.NOT. GotIt) THEN
-         RealWork => ListGetConstRealArray( Model % BodyForces(bf_id) % Values,&
-             'Smart Heater Control Point',GotIt) 
-         IF( GotIt ) THEN
-           ControlPoint(1:3) = RealWork(1:3,1)
-           
-           mindist = HUGE( mindist )
-           DO l=1,Model % NumberOfNodes
-             IF( TempPerm(l) == 0 ) CYCLE
-             
-             jx = Model % Mesh % Nodes % x(l)
-             jy = Model % Mesh % Nodes % y(l)
-             jz = Model % Mesh % Nodes % z(l)
-             
-             dist = (ControlPoint(1)-jx)**2 + (ControlPoint(2)-jy)**2 + (ControlPoint(3)-jz)**2
-             IF( dist < mindist ) THEN
-               mindist = dist
-               SmartHeaterNode = l
-             END IF
-           END DO
-         END IF
+      body_id = PCElement % BodyId
+      eq_id = ListGetInteger( Model % Bodies(body_id) % Values, &
+          'Equation', minv=1, maxv=Model % NumberOfEquations )
 
-         WRITE(Message,*) 'Found Control Point at distance:',SQRT(mindist)
-         CALL Info('HeatSolve',Message)
-         WRITE(Message,*) 'Control Point Index:',SmartHeaterNode
-         CALL Info('HeatSolve',Message)        
-       END IF
-       
-       IF( .NOT. GotMeltPoint .OR. SmartHeaterNode == 0) THEN
-         GotIt = .FALSE.
-         Found = .FALSE.
-         SmartHeaterBC = 0
-         
-         DO i=1,Model % NumberOfBCs
-           GotIt = ListGetLogical( Model % BCs(i) % Values,'Smart Heater Boundary', Found ) 
-           IF(GotIt) THEN
-             SmartHeaterBC = i
-             EXIT
-           END IF
-         END DO
-         IF(.NOT. GotIt) THEN
-           DO i=1,Model % NumberOfBCs
-             GotIt = ListGetLogical( Model % BCs(i) % Values,'Phase Change', Found ) 
-             IF(GotIt) THEN
-               SmartHeaterBC = i
-               EXIT
-             END IF
-           END DO
-         END IF
-         IF(SmartHeaterBC == 0) THEN
-           CALL Fatal('HeatSolve','Smart Heater Boundary / Phase Change is undefined')
-         END IF
-         
-         MeltPoint = GetCReal( Model % BCs(SmartHeaterBC) % Values,&
-             'Smart Heater Temperature',Found)
-         IF(.NOT. Found) THEN
-           DO k=1, Model % NumberOfMaterials
-             MeltPoint = GetCReal( Model % Materials(k) % Values, &
-                 'Melting Point', Found )
-             IF(Found) EXIT
-           END DO
-           IF(.NOT. Found) THEN
-             CALL Fatal('HeatSolver','Smart Heater Temperature / Melting Point is undefined')
-           END IF
-         END IF
-         
-         ! Find the node related to temperature control 
-         SmartHeaterAverage = ListGetLogical(Solver % Values,'Smart Heater Average', Found)
-         IF(.NOT. SmartHeaterAverage) THEN
-           jx = -HUGE(jx)
-           DO k = Model % Mesh % NumberOfBulkElements + 1, &
-               Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements
-             
-             Element => Model % Mesh % Elements(k)
-             
-             IF ( Element % BoundaryInfo % Constraint == SmartHeaterBC ) THEN
-               DO l=1,Element % TYPE % NumberOfNodes
-                 IF ( Model % Mesh % Nodes % x(Element % NodeIndexes(l)) >= jx ) THEN
-                   j = Element % NodeIndexes(l) 
-                   jx = Model % Mesh % Nodes % x(Element % NodeIndexes(l))
-                 END IF
-               END DO
-             END IF
-           END DO
-           SmartHeaterNode = j
-         END IF
-       END IF
+      PhaseModel = ListGetString( Model % Equations(eq_id) % Values, &
+          'Phase Change Model',Found )
+      PhaseChange = Found .AND. (PhaseModel(1:4) /= 'none')
 
-        SmartTol  = GetConstReal( SolverParams, &
-             'Smart Heater Control After Tolerance',  Found )
-        IF(.NOT. Found) THEN
-          SmartTolReached = .TRUE.
-          SmartTol = 1.0
-        END IF   
-     
-        PowerTimeScale = ListGetConstReal(Solver % Values, &
-             'Smart Heater Time Scale',Found)
+      IF ( PhaseChange ) THEN
+        CheckLatentHeatRelease = ListGetLogical( Model % Equations(eq_id) % &
+            Values, 'Check Latent Heat Release',Found )
+      END IF
+      IF ( .NOT. ( PhaseChange .AND. CheckLatentHeatRelease ) ) CYCLE
 
-        IF(TransientSimulation .AND. dt < PowerTimeScale) THEN
-           TransientHeaterControl = .TRUE.
-           CALL Info( 'HeatSolve', 'Using Transient Heater Control')
-        ELSE
-           TransientHeaterControl = .FALSE.
-           CALL Info( 'HeatSolve', 'Using Steady-state Heater Control')
-        END IF
-        
-        IF(Solver % DoneTime /= DoneTime) THEN
-           PrevPowerScaling = PowerScaling
-           DoneTime = Solver % DoneTime
-        END IF
-     END IF
+      nn = PCElement % TYPE % NumberOfNodes
 
-     IF( IntegralHeaterControl) THEN
-        CALL Info( 'HeatSolve', 'Using Integral Heater Control')       
-        IntegralHeaters = .FALSE.
-        DO i = 1,Model % NumberOfBodyForces
-           IntegralHeaters(i) = ListCheckPresent( Model % BodyForces(i) % Values, &
-                'Integral Heat Source')
+      k = ListGetInteger( Model % Bodies(body_id) % Values,'Material', &
+          minv=1, maxv=Model % NumberOfMaterials )
+      PhaseChangeIntervals => ListGetConstRealArray( Model % Materials(k) % Values, &
+          'Phase Change Intervals' )
+
+      DO k=1,nn
+        i = TempPerm( PCNodeIndexes(k) )
+        DO j=1,SIZE(PhaseChangeIntervals,2)
+          IF ( ( Temperature(i)  < PhaseChangeIntervals(1,j) .AND. &
+                 PrevSolution(i) > PhaseChangeIntervals(2,j) ) .OR. &
+               ( Temperature(i)  > PhaseChangeIntervals(2,j) .AND. &
+                 PrevSolution(i) < PhaseChangeIntervals(1,j) )  ) THEN
+            Failure = .TRUE.
+            EXIT
+          END IF
         END DO
-     END IF
-
+        IF ( Failure ) EXIT
+      END DO
+      IF ( Failure ) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION CheckLatentHeatVec
 !------------------------------------------------------------------------------
 
-     ConstantBulk = GetLogical( SolverParams, 'Constant Bulk System', Found )
-     SaveBulk = ConstantBulk .OR. GetLogical( SolverParams, 'Save Bulk System', Found )
-     SaveBulk = ConstantBulk .OR. GetLogical( SolverParams, 'Calculate Loads', Found )
+!------------------------------------------------------------------------------
+!> Diagnostic-only: dump an element's bubble-condensation submatrix to a log
+!> file when ELMER_DEBUG_CONDENSATE=1 is set in the environment. Used to
+!> compare a passing vs. a failing run's bubble matrix bit-for-bit and confirm
+!> whether the intermittent Windows InvertMatrix failure in Step_stokes_heat_vec
+!> stems from floating-point summation-order noise rather than a data race.
+!>
+!> Every call overwrites 'condensate_last_element.log' with the element index
+!> about to be condensed, so that after a run crashes (InvertMatrix aborts the
+!> process on a singular matrix) the culprit element can still be identified
+!> from disk. A second, targeted pass can then set
+!> ELMER_DEBUG_CONDENSATE_ELEMENT=<that index> to record only that one
+!> element's matrix (tiny log) and wait for a run where it succeeds.
+!>
+!> Remove once that investigation is closed out.
+!------------------------------------------------------------------------------
+  SUBROUTINE DebugDumpCondensate( Tag, Element, nd, nb, K, F )
+!------------------------------------------------------------------------------
+    CHARACTER(*), INTENT(IN) :: Tag
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, INTENT(IN) :: nd, nb
+    REAL(KIND=dp), INTENT(IN) :: K(:,:), F(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, dbgunit, EnvLen, EnvStat, TargetElem, TargetLen, TargetStat
+    CHARACTER(LEN=8) :: EnvVal
+    CHARACTER(LEN=16) :: TargetVal
+!------------------------------------------------------------------------------
+    IF ( nb <= 0 ) RETURN
+    CALL GET_ENVIRONMENT_VARIABLE( 'ELMER_DEBUG_CONDENSATE', EnvVal, EnvLen, EnvStat )
+    IF ( EnvStat /= 0 .OR. TRIM(EnvVal) /= '1' ) RETURN
 
+    TargetElem = 0
+    CALL GET_ENVIRONMENT_VARIABLE( 'ELMER_DEBUG_CONDENSATE_ELEMENT', TargetVal, TargetLen, TargetStat )
+    IF ( TargetStat == 0 .AND. TargetLen > 0 ) READ( TargetVal, * ) TargetElem
+    IF ( TargetElem > 0 .AND. Element % ElementIndex /= TargetElem ) RETURN
+
+    !$OMP CRITICAL (DebugDumpCondensateWrite)
+    OPEN( NEWUNIT=dbgunit, FILE='condensate_last_element.log', ACCESS='SEQUENTIAL', &
+        FORM='FORMATTED', STATUS='REPLACE' )
+    WRITE(dbgunit,'(I0)') Element % ElementIndex
+    CLOSE(dbgunit)
+
+    OPEN( NEWUNIT=dbgunit, FILE='condensate_debug.log', ACCESS='SEQUENTIAL', &
+        FORM='FORMATTED', POSITION='APPEND', STATUS='UNKNOWN' )
+    WRITE(dbgunit,'(A,1X,A,1X,I0,1X,A,1X,I0,1X,A,1X,I0)') 'ELEM', TRIM(Tag), &
+        Element % ElementIndex, 'ND', nd, 'NB', nb
+    DO i = nd-nb+1, nd
+      WRITE(dbgunit,'(100ES25.16)') ( K(i,j), j=nd-nb+1,nd )
+    END DO
+    WRITE(dbgunit,'(100ES25.16)') ( F(i), i=nd-nb+1,nd )
+    FLUSH(dbgunit)
+    CLOSE(dbgunit)
+    !$OMP END CRITICAL (DebugDumpCondensateWrite)
+!------------------------------------------------------------------------------
+  END SUBROUTINE DebugDumpCondensate
 !------------------------------------------------------------------------------
 
-     SaveRelax = Relax
-     CumulativeTime = 0.0d0
-     HeaterControlLocal = .FALSE.
 
-     IF(isRadiation) THEN
-       nb = Solver % Mesh % NumberOfBoundaryElements
-       ALLOCATE(Areas(nb), Emiss(nb), Reflect(nb) )
-       Areas=0; Emiss=0; Reflect=0
-     END IF
-!------------------------------------------------------------------------------
-     FirstTime = .TRUE.
+  SUBROUTINE LocalNitscheBC(Element,n,BC,str)
+    TYPE(Element_t), TARGET :: Element
+    INTEGER :: n
+    TYPE(ValueList_t), POINTER :: BC
+    CHARACTER(:), ALLOCATABLE :: str
 
-     ALLOCATE(PrevSolution(LocalNodes))
-     
-     DO WHILE( CumulativeTime < Timestep-1.0d-12 .OR. .NOT. TransientSimulation )
-!------------------------------------------------------------------------------
-!    The first time around this has been done by the caller...
-!------------------------------------------------------------------------------
-     IF ( TransientSimulation .AND. .NOT.FirstTime ) &
-       CALL InitializeTimestep(Solver)
-     FirstTime = .FALSE.
-!------------------------------------------------------------------------------
-!    Save current solution
-!------------------------------------------------------------------------------
-     PrevSolution = Temperature(1:LocalNodes)
-     IF ( TransientSimulation ) THEN
-       PrevTemperature => Solver % Variable % PrevValues(:,1)
-     END IF
-!------------------------------------------------------------------------------
-     
-     totat = 0.0d0
-     totst = 0.0d0
+    TYPE(Element_t), POINTER :: Parent
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), Basis(:), pBasis(:), pdBasisdx(:,:), Dnodal(:)
+    REAL(KIND=dp) :: DetJ, D, Esize, Gamma, nrm(3), weight, u, v, w
+    LOGICAL :: Stat
+    INTEGER, ALLOCATABLE :: Indexes(:), pIndexes(:), Ind(:)
+    INTEGER :: i,j,t,m,nd,pnd,ii
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes, PNodes
 
-     Norm = Solver % Variable % Norm
+    m = Mesh % MaxElementDofs
+    ALLOCATE(STIFF(m,m),FORCE(m),Basis(m),pBasis(m),pdBasisdx(m,3),Dnodal(m),Indexes(m),pIndexes(m),Ind(m))
 
-     CALL DefaultStart()
-     
-     
-     DO iter=1,NonlinearIter
-       at  = CPUTime()
-       at0 = RealTime()
+    Dnodal(1:n) = GetReal(BC,str,Found)
+    IF (.NOT. Found) RETURN
 
-       CALL Info( 'HeatSolve', ' ', Level=4 )
-       CALL Info( 'HeatSolve', ' ', Level=4 )
-       CALL Info( 'HeatSolve', '-------------------------------------',Level=4 )
-       WRITE( Message,* ) 'TEMPERATURE ITERATION', iter
-       CALL Info( 'HeatSolve', Message, Level=4 )
-       CALL Info( 'HeatSolve', '-------------------------------------',Level=4 )
-       CALL Info( 'HeatSolve', ' ', Level=4 )
-       CALL Info( 'HeatSolve', 'Starting Assembly...', Level=4 )
+    Gamma = ListGetCReal(BC,'Nitsche Penalty')
 
-500    IF ( ConstantBulk .AND. ASSOCIATED(Solver % Matrix % BulkValues) ) THEN
-         Solver % Matrix % Values = Solver % Matrix % BulkValues
-         Solver % Matrix % RHS = Solver % Matrix % BulkRHS
-         GOTO 1000
-       END IF
-            
-       IF(Radiosity) THEN
-         CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)         
-         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss, Reflect)         
-       ELSE
-         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss) 
-       END IF
-         
-!------------------------------------------------------------------------------
-       CALL DefaultInitialize()
-!------------------------------------------------------------------------------
- 
-       IF ( SmartHeaterControl .OR. IntegralHeaterControl ) THEN
-          IF( SmartHeaterControl) ForceHeater = 0.0d0
-          HeaterArea = 0.0d0
-          HeaterSource = 0.0d0
-          HeaterScaling = 1.0d0
-          HeaterDensity = 0.0d0
-          HeaterTarget = 0.0d0
-          HeaterControlLocal = .FALSE.
+    CALL GetElementNodes( Nodes, Element )
+    Esize = ElementDiameter(Element, Nodes)
+    
+    Parent => Element % BoundaryInfo % Left
+    CALL GetElementNodes( PNodes, Parent )
 
-          DO t=1,Solver % NumberOfActiveElements             
-             Element => GetActiveElement(t)             
-             BodyForce => GetBodyForce()
-             
-             IF ( .NOT. ASSOCIATED( BodyForce ) ) CYCLE
-             bf_id = GetBodyForceId()
-             
-             IF( .NOT. (SmartHeaters(bf_id) .OR. IntegralHeaters(bf_id) ) ) CYCLE
+    nd  = GetElementDOFs(Indexes, Element)
+    pnd = GetElementDOFs(pIndexes, Parent )
 
-             n = GetElementNOFNodes()
+    DO i=1,nd
+      DO ii=1,pnd
+        IF ( Indexes(i) == pIndexes(ii) ) THEN
+           Ind(i) = ii; EXIT
+        END IF
+      END DO
+    END DO
+    
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    
+    ! Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                 IP % W(t), detJ, Basis )
+      weight = DetJ * IP % s(t)
+      
+      ! Normal vector of the surface
+      CALL GetParentUVW( Element, nd, Parent, pnd, U, V, W, Basis )
+      stat = ElementInfo(Parent,PNodes,U,V,W,detJ,pBasis,pdBasisdx)
 
-             Material => GetMaterial()
+      Nrm = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
 
-             Density(1:n) = GetReal( Material, 'Density' )
-             Load(1:n) = GetReal( BodyForce, 'Heat Source' )
+      ! Target value at integration point
+      D = SUM(Dnodal(1:n) * Basis(1:n))
+      
+      DO i=1,nd
+        DO j=1,nd
+          STIFF(i,j) = STIFF(i,j) + weight * SUM(pdBasisdx(Ind(j),:)*Nrm) * Basis(i)
+          STIFF(i,j) = STIFF(i,j) + weight * SUM(pdBasisdx(Ind(i),:)*Nrm) * Basis(j)
+          STIFF(i,j) = STIFF(i,j) + weight * Basis(i) * Basis(j) / Esize / Gamma
+        END DO
+        FORCE(i) = FORCE(i) + weight * d * SUM(pdBasisdx(Ind(i),:)*Nrm)
+        FORCE(i) = FORCE(i) + weight * d * Basis(i) / Esize / Gamma
+      END DO
+    END DO    
 
-             s = ElementArea( Solver % Mesh, Element, n )
-
-             IF( CurrentCoordinateSystem() == AxisSymmetric .OR. &
-                  CurrentCoordinateSystem() == CylindricSymmetric ) s = 2 * PI * s
-
-             HeaterSource(bf_id) = HeaterSource(bf_id) + s * SUM(Density(1:n) * Load(1:n)) / n
-             HeaterArea(bf_id) = HeaterArea(bf_id) + s
-             HeaterDensity(bf_id) = HeaterDensity(bf_id) + s * SUM( Density(1:n) ) / n
-          END DO
-
-          DO i = 1,Model % NumberOfBodyForces
-             IF( IntegralHeaters(i) .OR. SmartHeaters(i) ) THEN
-                HeaterDensity(i) = HeaterDensity(i) / HeaterArea(i)
-             END IF
-             IF(IntegralHeaters(i)) THEN
-                HeaterTarget(i) = GetCReal(  Model % BodyForces(i) % Values, &
-                     'Integral Heat Source', Found )
-                HeaterScaling(i) = HeaterTarget(i) / HeaterSource(i)
-             END IF
-          END DO
-       END IF
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
+    
+  END SUBROUTINE LocalNitscheBC
+    
+  
 
 !------------------------------------------------------------------------------
-       body_id = -1
-       NULLIFY(Material)
+! Assembly of the matrix entries arising from the bulk elements. SIMD version.
 !------------------------------------------------------------------------------
-!      Bulk elements
+  SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
-       CALL StartAdvanceOutput( 'HeatSolve', 'Assembly:' )
-       NofActive = GetNOFActive()
-
-       DO t=1,NofActive
-         
-         CALL AdvanceOutput(t,NofActive)
+    USE LinearForms
+    USE Differentials, ONLY: JouleHeat
+    USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(IN) :: VecAsm
+    LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-!        Check if this element belongs to a body where temperature 
-!        should be calculated
-!------------------------------------------------------------------------------
-         Element => GetActiveElement(t)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
 
-!------------------------------------------------------------------------------
-         IF ( Element % BodyId /= body_id ) THEN
-!------------------------------------------------------------------------------
-           Equation => GetEquation()
-           ConvectionFlag = GetString( Equation, 'Convection', Found )
+    ! These are aliases into storage owned by the value handles, so they must
+    ! stay pointers.
+    REAL(KIND=dp), POINTER  :: CondAtIpVec(:), CpAtIpVec(:), &
+        SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo_i(:), &
+        TemperatureAtIpVec(:), RefTempAtIpVec(:), HeatExpAtIpVec(:), &
+        PressAtIpVec(:), PrevPressAtIpVec(:), MeshVeloAtIpVec(:,:)
+    ! These two are work arrays that this routine allocates itself. As locals
+    ! without SAVE they used to be pointers, and nothing released them on return:
+    ! a leak of (1+3)*ngp reals per element per assembly. Allocatables are freed
+    ! automatically. ConvVelo needs TARGET because VeloAtIpVec is pointer
+    ! assigned to it below.
+    REAL(KIND=dp), ALLOCATABLE :: TmpVec(:), TmpVec2(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: ConvVelo(:,:)
 
-           Material => GetMaterial()
-!------------------------------------------------------------------------------
-           CompressibilityFlag = GetString( Material, &
-                 'Compressibility Model', Found)
-           IF ( .NOT.Found ) CompressibilityModel = Incompressible
+    ! Compressibility Model work arrays: CompRhoAtIpVec is the overridden
+    ! density (ideal gas / linearized thermal expansion) that RhoAtIpVec gets
+    ! pointed to instead of the plain "Density" handle's storage; PcoeffVec
+    ! and GradPVec support the reversible pressure-work source term
+    ! Pcoeff*(dp/dt + u.grad p) -- see HeatSolve.F90's CompressibilityModel
+    ! handling and DiffuseConvectiveCompose's "Compressible" branch, which
+    ! this mirrors. NodalPressure is the flow solution's own pressure DOF
+    ! (last component) at this element's n corner nodes, needed to form
+    ! grad(p) via dBasisdx (a solved field, not a keyword, so it isn't
+    ! available through the ValueHandle_t machinery like the other nodal
+    ! arrays here).
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: CompRhoAtIpVec(:), PcoeffVec(:), GradPVec(:,:)
+    REAL(KIND=dp) :: NodalPressure(n)
+    INTEGER :: CompressModel
+    REAL(KIND=dp) :: SpecHeatRatio, ReferencePressure
 
-           SELECT CASE( CompressibilityFlag )
+    ! SUPG (equal-order) stabilization work arrays: StreamVec(gp,p) is the
+    ! streamline-weighted test/trial "basis", rho*cp*(velo.grad basis_p), at
+    ! each integration point -- both the convective part of the residual and,
+    ! tested against itself, the SUPG weight, exactly as IncompressibleNSVec's
+    ! ConvVec is used four ways for its own (PSPG/SUPG) stabilization. TauVec
+    ! is the per-point Franca stabilization parameter.
+    REAL(KIND=dp), ALLOCATABLE :: StreamVec(:,:), TauVec(:)
 
-             CASE( 'incompressible' )
-               CompressibilityModel = Incompressible
+    ! Anisotropic "Heat Conductivity": ListGetElementRealVec (the batched SIMD
+    ! fetch used below) only ever returns a scalar per Gauss point, so a
+    ! tensor-valued conductivity needs the nodal ListGetElementReal accessor's
+    ! Rdim/Rtensor probe instead, one Gauss point at a time -- same pattern as
+    ! StatCurrentSolve.F90's "Electric Conductivity" handling. CondTauVec feeds
+    ! the SUPG tau below: CondAtIpVec itself when isotropic, or the tensor's
+    ! own (1,1) component (mirroring LocalMatrix's CondScalar) when not.
+    REAL(KIND=dp), POINTER :: CondTensor(:,:), CondTauVec(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: CondScalarVec(:)
+    REAL(KIND=dp) :: CondScalarDummy, A
+    INTEGER :: CondRank
 
-             CASE( 'user defined' )
-               CompressibilityModel = UserDefined1
+    ! Phase Change Model ("Spatial 2" / "Spatial 1" / "Temporal"): resolving
+    ! which model is active and this element's nodal Enthalpy/Temperature/
+    ! FallbackCp is shared with LocalMatrix via PhaseChangeElementSetup;
+    ! turning those into a per-Gauss-point-vector TmpVec contribution (either
+    ! Spatial 2's own |grad Enthalpy|/|grad Temperature| ratio, or an
+    ! interpolated FallbackCp) is PhaseChangeAddVec's (LocalMatrix's scalar
+    ! equivalent is PhaseChangeCL). See those subroutines for the derivation.
+    REAL(KIND=dp) :: NodalEnthalpy(n), NodalTemp(n), FallbackCp(n)
+    LOGICAL :: DoPhaseChange, UseGradient
 
-             CASE( 'perfect gas', 'perfect gas equation 1' )
-               CompressibilityModel = PerfectGas1
-
-             CASE( 'thermal' )
-               CompressibilityModel = Thermal
-
-             CASE DEFAULT
-               CompressibilityModel = Incompressible
-           END SELECT
-!------------------------------------------------------------------------------
-
-           PhaseModel = GetString( Equation, 'Phase Change Model',Found )
-           IF(.NOT. Found) PhaseModel = GetString( Material, 'Phase Change Model',Found )
-
-           PhaseChange = Found .AND. (PhaseModel(1:4) /= 'none')
-           IF ( PhaseChange ) THEN
-              CheckLatentHeatRelease = GetLogical( Equation, &
-                   'Check Latent Heat Release',Found )
-           END IF
-         END IF
-!------------------------------------------------------------------------------
-
-         n = GetElementNOFNodes()
-         CALL GetElementNodes( ElementNodes )
-
-         CALL GetScalarLocalSolution( LocalTemperature )
-!------------------------------------------------------------------------------
-!        Get element material parameters
-!------------------------------------------------------------------------------
-         HeatCapacity(1:n) = GetReal( Material, 'Heat Capacity', Found )
-
-         CALL ListGetRealArray( Material,'Heat Conductivity',Hwrk,n, &
-                      Element % NodeIndexes )
-         HeatConductivity = 0.0d0
-         IF ( SIZE(Hwrk,1) == 1 ) THEN
-           DO i=1,3
-             HeatConductivity( i,i,1:n ) = Hwrk( 1,1,1:n )
-           END DO
-         ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
-           DO i=1,MIN(3,SIZE(Hwrk,1))
-             HeatConductivity(i,i,1:n) = Hwrk(i,1,1:n)
-           END DO
-         ELSE
-           DO i=1,MIN(3,SIZE(Hwrk,1))
-             DO j=1,MIN(3,SIZE(Hwrk,2))
-               HeatConductivity( i,j,1:n ) = Hwrk(i,j,1:n)
-             END DO
-           END DO
-         END IF
-!------------------------------------------------------------------------------
-
-         IF ( CompressibilityModel == PerfectGas1 ) THEN
-
-           ! Read Specific Heat Ratio:
-           !--------------------------
-           SpecificHeatRatio = GetConstReal( Material, &
-               'Specific Heat Ratio', Found )
-           IF ( .NOT.Found ) SpecificHeatRatio = 5.d0/3.d0
-
-           ! For an ideal gas, \gamma, c_p and R are really a constant
-           ! GasConstant is an array only since HeatCapacity formally is:
-           !-------------------------------------------------------------
-           GasConstant(1:n) = ( SpecificHeatRatio - 1.d0 ) * &
-               HeatCapacity(1:n) / SpecificHeatRatio
-
-           PressureCoeff(1:n) = GetReal( Material, 'Pressure Coefficient', Found )
-           IF ( .NOT. Found ) PressureCoeff(1:n) = 1.0_dp
-         ELSE IF ( CompressibilityModel == Thermal ) THEN
-           ReferenceTemperature(1:n) = GetReal( Material, 'Reference Temperature' )
-           HeatExpansionCoeff(1:n) = GetReal( Material, 'Heat Expansion Coefficient' )
-
-           Density(1:n) = GetReal( Material,'Density' )
-           Density(1:n) = Density(1:n) * ( 1 - HeatExpansionCoeff(1:n)  * &
-                ( LocalTemperature(1:n) - ReferenceTemperature(1:n) ) )
-
-           PressureCoeff(1:n) = GetReal( Material, 'Pressure Coefficient', Found )
-           IF ( .NOT. Found ) &
-             PressureCoeff(1:n) = LocalTemperature(1:n) * HeatExpansionCoeff(1:n) / &
-                   ( 1-HeatExpansionCoeff(1:n)*( &
-                               LocalTemperature(1:n)-ReferenceTemperature(1:n)) )
-         ELSE IF ( CompressibilityModel == UserDefined1 ) THEN
-           IF ( ASSOCIATED( DensitySol ) ) THEN
-             CALL GetScalarLocalSolution( Density, 'Density' ) 
-           ELSE
-             Density(1:n) = GetReal( Material,'Density' )
-           END IF
-           PressureCoeff(1:n) = GetReal( Material, 'Pressure Coefficient', Found )
-           IF ( .NOT. Found ) PressureCoeff(1:n) = 0.0_dp
-         ELSE
-           PressureCoeff(1:n) = GetReal( Material, 'Pressure Coefficient', Found )
-           IF ( .NOT. Found ) PressureCoeff(1:n) = 0.0_dp
-           Density(1:n) = GetReal( Material, 'Density' )
-         END IF
-
-!------------------------------------------------------------------------------
-! Take pressure deviation p_d as the dependent variable, p = p_0 + p_d
-! for PerfectGas, read p_0
-!------------------------------------------------------------------------------
-         IF ( CompressibilityModel /= Incompressible ) THEN
-           ReferencePressure = ListGetConstReal( Material, &
-               'Reference Pressure', Found)
-           IF ( .NOT.Found ) ReferencePressure = 0.0d0
-         END IF
+    LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
+    INTEGER :: i,p,q,j,t,k,ngp,allocstat,tid,boff
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd), hK, mK, VNorm, JouleH, HTMultAtIp
+    ! Handles now live in parent scope as thread-indexed arrays; see ASSOCIATE below.
+    !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
+    !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
 
-         HeaterControlLocal = .FALSE.
-         Load = 0.0D0
-         Pressure = 0.0d0
-         dPressuredt = 0.0d0
-!------------------------------------------------------------------------------
-!        Check for convection model
-!------------------------------------------------------------------------------
-         C1 = 1.0D0
-         U = 0._dp
-         V = 0._dp
-         W = 0._dp
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
 
-         MU = 0.0d0
-         CALL GetVectorLocalSolution( MU, 'Mesh Velocity' )
+    ASSOCIATE( &
+        Source_h      => Source_h(tid),     Cond_h        => Cond_h(tid),      &
+        CondScalar_h  => CondScalar_h(tid), &
+        Cp_h          => Cp_h(tid),         Rho_h         => Rho_h(tid),       &
+        ConvFlag_h    => ConvFlag_h(tid),   ConvVelo_h    => VecConvVelo_h(:,tid), &
+        PerfRate_h    => PerfRate_h(tid),   PerfDens_h    => PerfDens_h(tid),   &
+        PerfCp_h      => PerfCp_h(tid),     PerfRefTemp_h => PerfRefTemp_h(tid),&
+        VolSource_h   => VolSource_h(tid),  OrigMesh_h    => OrigMesh_h(tid),   &
+        ConvField_h   => ConvField_h(tid),  HTMult_h      => HTMult_h(tid),     &
+        CompressModel_h => CompressModel_h(tid), SpecHeatRatio_h => SpecHeatRatio_h(tid), &
+        RefTemp_h     => RefTemp_h(tid),    HeatExpCoeff_h => HeatExpCoeff_h(tid), &
+        RefPressure_h => RefPressure_h(tid), TempField_h  => TempField_h(tid),  &
+        PrevFlowField_h => PrevFlowField_h(tid), PressureField_h => PressureField_h(tid), &
+        MeshVeloField_h => MeshVeloField_h(tid), &
+        PhaseModelEq_h => PhaseModelEq_h(tid), PhaseModelMat_h => PhaseModelMat_h(tid), &
+        Enthalpy_h => Enthalpy_h(tid), SpecEnthalpy_h => SpecEnthalpy_h(tid), &
+        EnthRho_h => EnthRho_h(tid), EnthalpyPrev_h => EnthalpyPrev_h(tid), &
+        SpecEnthalpyPrev_h => SpecEnthalpyPrev_h(tid) )
 
-         IF ( ConvectionFlag == 'constant' ) THEN
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( Source_h,'Body Force','Heat Source')
+      CALL ListInitElementKeyword( VolSource_h,'Body Force','Volumetric Heat Source')
+      CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
+      CALL ListInitElementKeyword( CondScalar_h,'Material','Heat Conductivity')
+      CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
+      CALL ListInitElementKeyword( Rho_h,'Material','Density')
+      CALL ListInitElementKeyword( HTMult_h,'Material','Heat Transfer Multiplier')
+      CALL ListInitElementKeyword( CompressModel_h,'Material','Compressibility Model')
+      CALL ListInitElementKeyword( SpecHeatRatio_h,'Material','Specific Heat Ratio')
+      CALL ListInitElementKeyword( RefTemp_h,'Material','Reference Temperature')
+      CALL ListInitElementKeyword( HeatExpCoeff_h,'Material','Heat Expansion Coefficient')
+      CALL ListInitElementKeyword( RefPressure_h,'Material','Reference Pressure')
 
-           U(1:n) = GetReal( Material, 'Convection Velocity 1', Found )
-           IF ( .NOT. Found ) &
-              U(1:n) = GetReal( Equation, 'Convection Velocity 1', Found )
-           V(1:n) = GetReal( Material, 'Convection Velocity 2', Found )
-           IF ( .NOT. Found ) &
-             V(1:n) = GetReal( Equation, 'Convection Velocity 2', Found )
-           W(1:n) = GetReal( Material, 'Convection Velocity 3', Found )
-           IF ( .NOT. Found ) &
-             W(1:n) = GetReal( Equation, 'Convection Velocity 3', Found )
+      IF( ListCheckPresentAnyMaterial( Model,'Draw Velocity' ) ) THEN
+        CALL Fatal(Caller,'Vectorized assembly not implemented for "Draw Velocity"')
+      END IF
 
-         ELSE IF ( ConvectionFlag == 'computed' ) THEN
-           DO i=1,n
-             k = FlowPerm(Element % NodeIndexes(i))
-             IF ( k > 0 ) THEN
-!------------------------------------------------------------------------------
-               Pressure(i) = FlowSolution(NSDOFs*k) + ReferencePressure
-               SELECT CASE( CompressibilityModel )
-                 CASE( PerfectGas1 )
-                   Density(i)  = Pressure(i) / &
-                       ( GasConstant(i) * LocalTemperature(i) )
-               END SELECT
-               IF ( TransientSimulation ) THEN
-                 dPressureDt(i) = ( FlowSolution(NSDOFs*k) - &
-                     FlowSol % PrevValues(NSDOFs*k,1) ) / dt
-               END IF
-!------------------------------------------------------------------------------
+      CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')
+      DO i=1,3
+        CALL ListInitElementKeyword( ConvVelo_h(i),'Material','Convection Velocity '//I2S(i))
+      END DO
 
-               SELECT CASE( NSDOFs )
-               CASE(3)
-                 U(i) = FlowSolution( NSDOFs*k-2 )
-                 V(i) = FlowSolution( NSDOFs*k-1 )
-                 W(i) = 0.0D0
+      str = GetString( Params, 'Temperature Convection Field', Found )
+      IF(.NOT. Found ) str = 'Flow Solution'
+      CALL ListInitElementVariable( ConvField_h, str )
+      CALL ListInitElementVariable( PrevFlowField_h, str, tStep=-1 )
+      CALL ListInitElementVariable( PressureField_h, str )
+      CALL ListInitElementVariable( TempField_h, UVariable=Solver % Variable )
 
-               CASE(4)
-                 U(i) = FlowSolution( NSDOFs*k-3 )
-                 V(i) = FlowSolution( NSDOFs*k-2 )
-                 W(i) = FlowSolution( NSDOFs*k-1 )
-               END SELECT
-             ELSE
-               U(i) = 0.0d0
-               V(i) = 0.0d0
-               W(i) = 0.0d0
-             END IF
-           END DO
-         ELSE
-           IF ( ALL(MU==0) ) C1 = 0.0D0 
-         END IF
+      ! ALE: the convective transport (and the pressure-work term below) is
+      ! relative to the moving mesh, not the lab frame -- HeatSolve.F90
+      ! subtracts "Mesh Velocity" from the convection velocity for exactly
+      ! this reason (AddHeatFluxBC/bulk assembly both use Velo = U - MeshVelo,
+      ! see DiffuseConvectiveCompose). May legitimately not exist (no mesh
+      ! motion in this case), in which case the subtraction below is skipped.
+      CALL ListInitElementVariable( MeshVeloField_h, 'Mesh Velocity' )
 
-         HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
- 
-!------------------------------------------------------------------------------
-!        Check if modelling Phase Change with Eulerian approach 
-!------------------------------------------------------------------------------
-         PhaseSpatial = .FALSE.
-         IF (  PhaseChange ) THEN
-           CALL EffectiveHeatCapacity()
-         END IF
+      CALL ListInitElementKeyword( PerfRate_h,'Body Force','Perfusion Rate')
+      CALL ListInitElementKeyword( PerfDens_h,'Body Force','Perfusion Density')
+      CALL ListInitElementKeyword( PerfRefTemp_h,'Body Force','Perfusion Reference Temperature')
+      CALL ListInitElementKeyword( PerfCp_h,'Body Force','Perfusion Heat Capacity')
 
-         Viscosity = 0.0d0
-!------------------------------------------------------------------------------
-!        Add body forces, if any
-!------------------------------------------------------------------------------
-         BodyForce => GetBodyForce()
-         IF ( ASSOCIATED( BodyForce ) ) THEN
-           bf_id = GetBodyForceId()
-!------------------------------------------------------------------------------
-!          Frictional viscous heating
-!------------------------------------------------------------------------------
-           IF ( GetLogical( BodyForce, 'Friction Heat',Found) ) THEN
-              Viscosity(1:n) = GetReal( Material,'Viscosity' )
-           END IF
-!------------------------------------------------------------------------------
-!          Given heat source
-!------------------------------------------------------------------------------
-           Load(1:n) = GetReal( BodyForce, 'Volumetric Heat Source', Found )
-           IF(.NOT. Found ) THEN
-             Load(1:n) = Density(1:n) *  GetReal( BodyForce, 'Heat Source', Found )
-           END IF
-             
-           IF ( SmartHeaterControl .AND. NewtonLinearization .AND. SmartTolReached) THEN
-              IF(  SmartHeaters(bf_id) ) THEN
-               HeaterControlLocal = .TRUE.
-               IF( TransientHeaterControl ) THEN
-                 Load(1:n) = PrevPowerScaling * Load(1:n)
-                 HeaterScaling(bf_id) = PrevPowerScaling
-               END IF
-             END IF
-           END IF
+      CALL ListInitElementKeyword( OrigMesh_h,'Equation','Convection Original Mesh')
 
-           IF ( IntegralHeaterControl ) THEN
-              IF( IntegralHeaters(bf_id) ) THEN
-                 Load(1:n) = Load(1:n) * HeaterScaling(bf_id) 
+      ! Phase Change Model "Spatial 2" (DiffuseConvectiveAnisotropic.F90's
+      ! PhaseChange branch): checked at Equation level first, then Material,
+      ! matching HeatSolve.F90's own two-tier lookup. Enthalpy_h/SpecEnthalpy_h
+      ! are evaluated at element NODES (not Gauss points, unlike every other
+      ! handle here) via a one-hot Basis trick below, since the model needs a
+      ! piecewise-linear nodal Enthalpy field to form its gradient the same
+      ! way Temperature's own gradient is formed -- an IP-interpolated value
+      ! would not support that. EnthRho_h is a dedicated Density handle for
+      ! that same nodal use: sharing Rho_h (already used at Gauss-point
+      ! resolution elsewhere in this routine) would hit the same handle-
+      ! caching hazard as the ConvField_h/PressureField_h split above, since
+      ! it is keyed only by element identity, blind to the point count/Basis
+      ! shape a given call asks for.
+      CALL ListInitElementKeyword( PhaseModelEq_h,'Equation','Phase Change Model')
+      CALL ListInitElementKeyword( PhaseModelMat_h,'Material','Phase Change Model')
+      CALL ListInitElementKeyword( Enthalpy_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpy_h,'Material','Specific Enthalpy')
+      CALL ListInitElementKeyword( EnthRho_h,'Material','Density')
+      CALL ListInitElementKeyword( EnthalpyPrev_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpyPrev_h,'Material','Specific Enthalpy')
+
+      InitHandles = .FALSE.
+    END IF
+
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
+
+    IP = GaussPointsAdapt(Element)
+    ngp = IP % n
+
+    !-----------------------------------------------------------------------------
+    ! Output the number of integration points as information.
+    ! This in not fully informative if several element types are present.
+    !-----------------------------------------------------------------------------
+    IF( Element % ElementIndex == 1 ) THEN
+      CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
+    END IF
+
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
+        TmpVec(ngp), TmpVec2(ngp), StreamVec(ngp,nd), TauVec(ngp), &
+        CompRhoAtIpVec(ngp), PcoeffVec(ngp), GradPVec(ngp,3), &
+        CondScalarVec(ngp), &
+        STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
+    END IF
+
+    IF( ListGetElementLogical( OrigMesh_h ) ) THEN      
+      CALL GetElementNodesOrigVec( Nodes, UElement=Element )
+    ELSE
+      CALL GetElementNodesVec( Nodes, UElement=Element )
+    END IF
+      
+    ! Initialize
+    MASS  = 0._dp
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )    
+    ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
+    
+    ! Numerical integration:
+    ! Compute basis function values and derivatives at integration points
+    !--------------------------------------------------------------
+    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, detJvec, &
+        SIZE(Basis,2), Basis, dBasisdx )
+    
+    ! Compute actual integration weights (recycle the memory space of DetJVec)
+    DetJVec(1:ngp) = IP % s(1:ngp) * DetJVec(1:ngp)
+
+    ! Get pointer to vector including density on all integration points
+    RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found ) 
+
+    ! thermal conductivity term: STIFF=STIFF+(kappa*grad(u),grad(v))
+    ! Probe the rank at the 1st Gauss point: it is a structural property of how
+    ! the "Heat Conductivity" keyword was given (scalar vs. tensor) and cannot
+    ! change from one integration point to the next within the same
+    ! element/material. Uses the dedicated CondScalar_h handle, NOT Cond_h --
+    ! see its declaration comment for why the two accessor styles need
+    ! separate handles on the same keyword.
+    CondScalarDummy = ListGetElementReal( CondScalar_h, Basis(1,:), Element, Found, &
+        GaussPoint=1, Rdim=CondRank, Rtensor=CondTensor )
+    HaveCond = Found
+    IF( Found ) THEN
+      IF( CondRank == 0 ) THEN
+        CondAtIpVec => ListGetElementRealVec( Cond_h, ngp, Basis, Element, Found )
+        CALL LinearForms_GradUdotGradU(ngp, nd, dim, dBasisdx, DetJVec, STIFF, CondAtIpVec )
+        CondTauVec => CondAtIpVec
+      ELSE
+        ! Anisotropic conductivity: the SIMD form above only takes a scalar
+        ! coefficient, so fall back to an explicit per-Gauss-point tensor
+        ! contraction, reusing the basis/derivative/Jacobian data already
+        ! computed by ElementInfoVec.
+        DO t=1,ngp
+          CondScalarDummy = ListGetElementReal( CondScalar_h, Basis(t,:), Element, Found, &
+              GaussPoint=t, Rdim=CondRank, Rtensor=CondTensor )
+          CondScalarVec(t) = CondTensor(1,1)
+          DO q=1,nd
+            DO p=1,nd
+              A = 0._dp
+              IF( CondRank == 1 ) THEN
+                DO i=1,dim
+                  A = A + CondTensor(i,1) * dBasisdx(t,p,i) * dBasisdx(t,q,i)
+                END DO
+              ELSE
+                DO i=1,dim
+                  DO j=1,dim
+                    A = A + CondTensor(i,j) * dBasisdx(t,p,i) * dBasisdx(t,q,j)
+                  END DO
+                END DO
               END IF
-           END IF
-         END IF
-	
-         C0 = 0.0_dp
-!------------------------------------------------------------------------------
-! Note at this point HeatCapacity = \rho * c_p OR \rho * (c_p - R)
-! and C1 = 0 (diffusion) or 1 (convection)
-!------------------------------------------------------------------------------
-	 
-!------------------------------------------------------------------------------
-!          Perfusion (added as suggested by Matthias Zenker)
-!------------------------------------------------------------------------------
-         IF( ASSOCIATED(BodyForce) ) THEN
-           PerfusionRate(1:n) = GetReal( BodyForce, 'Perfusion Rate', Found )
-         
-           IF ( Found ) THEN
-             PerfusionRefTemperature(1:n) = GetReal( BodyForce, 'Perfusion Reference Temperature' )
-             PerfusionDensity(1:n) = GetReal( BodyForce, 'Perfusion Density' )
-             PerfusionHeatCapacity(1:n) = GetReal( BodyForce, 'Perfusion Heat Capacity' )
-             C0(1:n) = PerfusionHeatCapacity(1:n) * PerfusionRate(1:n) * PerfusionDensity(1:n) 
-             Load(1:n) = Load(1:n) + C0(1:n) * PerfusionRefTemperature(1:n)           
-           END IF
-         END IF
-
-!------------------------------------------------------------------------------
-!        Get element local matrices, and RHS vectors
-!------------------------------------------------------------------------------
-         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-!------------------------------------------------------------------------------
-           CALL DiffuseConvectiveCompose( &
-               MASS, STIFF, FORCE, LOAD, &
-               HeatCapacity, C0, C1*HeatCapacity(1:n), HeatConductivity, &
-               PhaseSpatial, LocalTemperature, Enthalpy, U, V, W, &
-               MU(1,1:n),MU(2,1:n),MU(3,1:n), Viscosity, Density, Pressure, &
-               dPressureDt, PressureCoeff, CompressibilityModel /= Incompressible, &
-               Stabilize, UseBubbles, Element, n, ElementNodes )
-
-!------------------------------------------------------------------------------
-         ELSE
-!------------------------------------------------------------------------------
-           CALL DiffuseConvectiveGenCompose( &
-               MASS, STIFF, FORCE, LOAD, &
-               HeatCapacity, C0, C1*HeatCapacity(1:n), HeatConductivity, &
-               PhaseSpatial, LocalTemperature, Enthalpy, U, V, W, &
-               MU(1,1:n),MU(2,1:n),MU(3,1:n), Viscosity, Density, Pressure, &
-               dPressureDt, PressureCoeff, CompressibilityModel /= Incompressible, &
-               Stabilize, Element, n, ElementNodes )
-!------------------------------------------------------------------------------
-         END IF
-!------------------------------------------------------------------------------
-
-         ! The heat equation may have lower dimensional elements active also.
-         ! For example, heat transfer through a pipe could be expressed by 1d elements.
-         ! Then the multiplier should be the area of the pipe when included in 3D mesh.
-         IF( AnyMultiply ) THEN
-           HeatTransferMultiplier = GetCReal( Material, 'Heat Transfer Multiplier', Found )
-           IF( Found ) THEN
-             MASS = HeatTransferMultiplier * MASS
-             STIFF = HeatTransferMultiplier * STIFF
-             FORCE = HeatTransferMultiplier * FORCE
-           END IF
-         END IF
-
-
-         IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
-
-           IF ( TransientAssembly .AND. .NOT. ConstantBulk ) THEN
-             CALL Default1stOrderTime( MASS, STIFF, FORCE )
-           END IF
-
-           CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
-               ForceHeater, FORCE, n, 1, TempPerm(Element % NodeIndexes) )
-         ELSE
-            Bubbles = UseBubbles .AND. .NOT.Stabilize .AND. &
-            ( ConvectionFlag == 'computed' .OR. ConvectionFlag == 'constant' )
-            
-!------------------------------------------------------------------------------
-!           If time dependent simulation add mass matrix to stiff matrix
-!------------------------------------------------------------------------------
-            TimeForce  = 0.0_dp
-            IF ( TransientAssembly ) THEN
-               IF ( ConstantBulk ) THEN
-                 CALL DefaultUpdateMass( MASS )
-               ELSE
-                 CALL Default1stOrderTime( MASS,STIFF,FORCE )
-               END IF
-            ELSE IF ( Solver % NOFEigenValues>0 ) THEN
-              CALL DefaultUpdateDamp(MASS)
-            END IF
-!------------------------------------------------------------------------------
-!           Update global matrices from local matrices
-!------------------------------------------------------------------------------
-            IF (  Bubbles ) THEN
-               CALL Condensate( N, STIFF, FORCE, TimeForce )
-            END IF
-
-            CALL DefaultUpdateEquations( STIFF, FORCE )
-         END IF
-!------------------------------------------------------------------------------
-      END DO     !  Bulk elements
-!------------------------------------------------------------------------------
-      
-      CALL DefaultFinishBulkAssembly()
-
-
-1000  CONTINUE
-
-     
-
-!------------------------------------------------------------------------------
-!     Neumann & Newton boundary conditions
-!------------------------------------------------------------------------------
-      DO bc_elem = 1, Solver % Mesh % NumberOfBoundaryElements
-        
-        Element => GetBoundaryElement(bc_elem)
-        BC => GetBC()
-        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
-        
-        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-        n = GetElementNOFNodes()
-
-
-        ! This checks whether there are any Dirichlet conditions on the 
-        ! smart heater boundary. If there are the r.h.s. must be zero as 
-        ! there can possibly not be any effect on temperature.
-        !-----------------------------------------------------------------
-	IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
-          IF( ListCheckPresent(BC, Varname) ) THEN
-             nd = GetElementDOFs(Indexes)
-             ForceHeater(TempPerm(Indexes(1:nd))) = 0.0_dp
-          END IF
-        END IF
-
-        HeatFluxBC = GetLogical( BC, 'Heat Flux BC', Found )
-        IF ( Found .AND. .NOT. HeatFluxBC ) CYCLE
-
-        HeatGapBC = ListGetLogical( BC, 'Heat Gap', Found )
-        CALL AddHeatFluxBC()
-
-        IF ( HeatGapBC ) THEN
-          CALL FindGapIndexes( Element, Indexes, n )
-          SaveIndexes(1:n) = Element % NodeIndexes
-          Element % NodeIndexes = Indexes(1:n)
-          CALL AddHeatFluxBC()
-          Element % NodeIndexes = SaveIndexes(1:n)
-        END IF
-
-      END DO   ! Neumann & Newton BCs
-!------------------------------------------------------------------------------
-
-
-      IF ( TransientSimulation .AND. ConstantBulk ) CALL AddGlobalTime()
-
-      CALL DefaultFinishBoundaryAssembly()
-      CALL DefaultFinishAssembly()
-      CALL Info( 'HeatSolve', 'Assembly done', Level=4 )
-
-      CALL DefaultDirichletBCs()
-
-!------------------------------------------------------------------------------
-!     Solve the system and check for convergence
-!------------------------------------------------------------------------------
-      at = CPUTime() - at
-      st = CPUTime()
-
-      PrevNorm = Norm
-
-      IF(SmartHeaterControl .AND. NewtonLinearization .AND. SmartTolReached) THEN
-      
-        IF(.NOT. TransientHeaterControl) THEN
-          ! These are control loops. Do use them to check convergence or advance the
-          ! nonlinear iteration flag.
-          CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
-          CALL ListAddLogical(SolverParams,'Skip Advance Nonlinear Iter',.TRUE.)
-
-          Relax = GetCReal( SolverParams,'Nonlinear System Relaxation Factor', Found )
-          
-          IF ( Found .AND. Relax /= 1.0d0 ) THEN
-            CALL ListAddConstReal( Solver % Values,&
-                'Nonlinear System Relaxation Factor', 1.0d0 )
-          ELSE
-            Relax = 1.0d0
-          END IF          
-
-          CALL SolveSystem( Solver % Matrix, ParMatrix, &
-              ForceHeater, XX, Norm, 1, Solver )         
-          CALL SolveSystem( Solver % Matrix, ParMatrix, &
-              Solver % Matrix % RHS, YY, Norm, 1, Solver )
-
-          CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.FALSE.)
-          CALL ListAddLogical(SolverParams,'Skip Advance Nonlinear Iter',.FALSE.)
-        ELSE                    
-          CALL SolveSystem( Solver % Matrix, ParMatrix, &
-              Solver % Matrix % RHS, Temperature, Norm, 1, Solver )
-          YY = Temperature
-        END IF
-
-        IF(.NOT. SmartHeaterAverage) THEN
-          xave = XX(TempPerm(SmartHeaterNode))
-          yave = YY(TempPerm(SmartHeaterNode))
-        ELSE          
-          xave = 0.0d0
-          yave = 0.0d0
-          j = 0
-          
-          DO k = Model % Mesh % NumberOfBulkElements + 1, &
-              Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements            
-
-            Element => Model % Mesh % Elements(k)            
-            IF ( Element % BoundaryInfo % Constraint == SmartHeaterBC ) THEN
-              l = Element % TYPE % NumberOfNodes
-              j = j + l
-              xave = xave + SUM( XX(TempPerm(Element % NodeIndexes)) )
-              yave = yave + SUM( YY(TempPerm(Element % NodeIndexes)) )
-            END IF
+              STIFF(p,q) = STIFF(p,q) + DetJVec(t) * A
+            END DO
           END DO
-          xave = xave / j
-          yave = yave / j 
-          CALL ListAddConstReal(Model % Simulation,'res: Smart Heater Temperature',yave)
+        END DO
+        CondTauVec => CondScalarVec
+      END IF
+    END IF
+
+    ! We need heat capacity only if the case is transient or we have convection
+    IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
+      CpAtIpVec => ListGetElementRealVec( Cp_h, ngp, Basis, Element, Found )
+      TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
+    END IF
+
+    ! Compressibility Model: override density from an ideal-gas law or a
+    ! linearized thermal expansion coefficient -- mirrors HeatSolve.F90's
+    ! CompressibilityModel handling. "Perfect Gas" needs the coupled flow
+    ! solution's pressure and so, as in legacy, only applies with computed
+    ! convection; "Thermal" only needs temperature and applies regardless.
+    ! "User Defined" (density from its own solved field) is not implemented.
+    CompressModel = Incompressible
+    IF( ListCompareElementString( CompressModel_h,'perfect gas',Element,Found ) .OR. &
+        ListCompareElementString( CompressModel_h,'perfect gas equation 1',Element,Found ) ) THEN
+      CompressModel = PerfectGas1
+    ELSE IF( ListCompareElementString( CompressModel_h,'thermal',Element,Found ) ) THEN
+      CompressModel = Thermal
+    ELSE IF( ListCompareElementString( CompressModel_h,'user defined',Element,Found ) ) THEN
+      CALL Fatal(Caller,'Compressibility Model "User Defined" is not implemented in HeatSolveVec')
+    END IF
+
+    IF( CompressModel == Thermal ) THEN
+      TemperatureAtIpVec => ListGetElementScalarSolutionVec( TempField_h, ngp, Basis, Element, Found )
+      RefTempAtIpVec => ListGetElementRealVec( RefTemp_h, ngp, Basis, Element, Found )
+      HeatExpAtIpVec => ListGetElementRealVec( HeatExpCoeff_h, ngp, Basis, Element, Found )
+      CompRhoAtIpVec(1:ngp) = RhoAtIpVec(1:ngp) * ( 1._dp - HeatExpAtIpVec(1:ngp) * &
+          ( TemperatureAtIpVec(1:ngp) - RefTempAtIpVec(1:ngp) ) )
+      RhoAtIpVec => CompRhoAtIpVec
+      IF( ConvConst .OR. ConvComp .OR. Transient ) TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
+    ELSE IF( CompressModel == PerfectGas1 ) THEN
+      IF( .NOT. ConvComp ) THEN
+        CALL Fatal(Caller,'Compressibility Model "Perfect Gas" requires computed convection')
+      END IF
+      SpecHeatRatio = ListGetElementReal( SpecHeatRatio_h, Basis(1,1:n), Element, Found )
+      IF(.NOT. Found ) SpecHeatRatio = 5._dp/3._dp
+      ReferencePressure = ListGetElementReal( RefPressure_h, Basis(1,1:n), Element, Found )
+      IF(.NOT. Found ) ReferencePressure = 0._dp
+      TemperatureAtIpVec => ListGetElementScalarSolutionVec( TempField_h, ngp, Basis, Element, Found )
+      PressAtIpVec => ListGetElementScalarSolutionVec( PressureField_h, ngp, Basis, Element, Found, dof=dim+1 )
+      CompRhoAtIpVec(1:ngp) = ( PressAtIpVec(1:ngp) + ReferencePressure ) / &
+          ( (SpecHeatRatio-1._dp)/SpecHeatRatio * CpAtIpVec(1:ngp) * TemperatureAtIpVec(1:ngp) )
+      RhoAtIpVec => CompRhoAtIpVec
+      TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
+    END IF
+
+    ! Phase Change Model: "Spatial 2" (DiffuseConvectiveAnisotropic.F90's
+    ! PhaseChange branch -- a per-Gauss-point CL = sqrt(|grad Enthalpy|^2/
+    ! |grad Temperature|^2) latent-heat capacitance), "Spatial 1" (a nodal,
+    ! numerically-differentiated -- or "Effective Heat Capacity"-overridden,
+    ! optionally "Enthalpy Fraction"-weighted -- effective heat capacity;
+    ! also what Spatial 2 itself falls back to on a near-isothermal element,
+    ! where its own gradient ratio would be ill-conditioned), and "Temporal"
+    ! (the same shape as Spatial 1, but a secant slope from the actual
+    ! previous-timestep Enthalpy/Temperature instead of a small numerical
+    ! perturbation -- itself falling back to Spatial 1's formula wherever a
+    ! node's temperature hasn't moved since the last timestep). This adds
+    ! into TmpVec, which plays BOTH legacy's CT (mass/time-derivative
+    ! coefficient, always incremented when active) and C1 (convection
+    ! coefficient, only ever consumed below when convection is on) roles, so
+    ! incrementing it once here -- before either consumer runs -- reproduces
+    ! both without a separate CT/C1 split. PhaseChangeElementSetup (which
+    ! model, this element's nodal Enthalpy/Temperature/FallbackCp) and
+    ! PhaseChangeAddVec (turning those into the TmpVec contribution) are
+    ! shared with LocalMatrix's scalar equivalent -- see those subroutines
+    ! for the full derivation.
+    IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
+      CALL PhaseChangeElementSetup( Element, n, nd, tid, DoPhaseChange, UseGradient, &
+          NodalTemp, NodalEnthalpy, FallbackCp )
+      IF( DoPhaseChange ) THEN
+        CALL PhaseChangeAddVec( ngp, n, dim, Basis, dBasisdx, UseGradient, &
+            NodalTemp, NodalEnthalpy, FallbackCp, TmpVec )
+      END IF
+    END IF
+
+    ! convection, either constant or computed
+    ! STIFF=STIFF+(C*grad(u),v)
+    IF( ConvConst .OR. ConvComp ) THEN
+      IF( ConvConst ) THEN
+        ! A component with no "Convection Velocity i" keyword of its own
+        ! (e.g. only "Convection Velocity 3" given) must default to zero,
+        ! not the uninitialized contents of this element's freshly
+        ! allocated ConvVelo work array.
+        ConvVelo(1:ngp,1:dim) = 0._dp
+        DO i=1,dim
+          ConvVelo_i => ListGetElementRealVec( ConvVelo_h(i), ngp, Basis, Element, Found )
+          IF( Found ) ConvVelo(1:ngp,i) = ConvVelo_i(1:ngp)
+        END DO
+        VeloAtIpVec => ConvVelo
+      ELSE
+        VeloAtIpVec => ListGetElementVectorSolutionVec( ConvField_h, ngp, dim, Basis, Element )
+      END IF
+
+      ! ALE: convection is relative to the moving mesh -- see the matching
+      ! comment by MeshVeloField_h's initialization.
+      MeshVeloAtIpVec => ListGetElementVectorSolutionVec( MeshVeloField_h, ngp, dim, Basis, Element, Found )
+      IF( Found ) THEN
+        VeloAtIpVec(1:ngp,1:dim) = VeloAtIpVec(1:ngp,1:dim) - MeshVeloAtIpVec(1:ngp,1:dim)
+      END IF
+
+      CALL LinearForms_GradUdotU(ngp, nd, dim, dBasisdx, Basis, DetJVec, STIFF, &
+          TmpVec, VeloAtIpVec )
+
+      ! Compressibility Model, continued: the reversible pressure-work
+      ! source term Force += Pcoeff*(dp/dt + u.grad p), only meaningful
+      ! with computed convection (Pressure/PrevPressure come from the
+      ! coupled flow solution) -- matches DiffuseConvectiveCompose's
+      ! "Compressible" branch (DiffuseConvectiveAnisotropic.F90).
+      IF( ConvComp .AND. CompressModel /= Incompressible ) THEN
+        IF( CompressModel == PerfectGas1 ) THEN
+          PcoeffVec(1:ngp) = 1._dp
+        ELSE
+          PcoeffVec(1:ngp) = TemperatureAtIpVec(1:ngp) * HeatExpAtIpVec(1:ngp) / &
+              ( 1._dp - HeatExpAtIpVec(1:ngp) * &
+              ( TemperatureAtIpVec(1:ngp) - RefTempAtIpVec(1:ngp) ) )
         END IF
 
-        IF(.NOT. TransientHeaterControl) THEN
-          IF ( ASSOCIATED(Solver % Variable % NonlinValues) ) THEN
-            Solver % Variable % NonlinValues = Temperature
+        PressAtIpVec => ListGetElementScalarSolutionVec( PressureField_h, ngp, Basis, Element, Found, dof=dim+1 )
+
+        IF( Transient ) THEN
+          PrevPressAtIpVec => ListGetElementScalarSolutionVec( PrevFlowField_h, ngp, Basis, Element, Found, dof=dim+1 )
+          TmpVec2(1:ngp) = PcoeffVec(1:ngp) * ( PressAtIpVec(1:ngp) - PrevPressAtIpVec(1:ngp) ) / dt
+          CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec2, FORCE )
+        END IF
+
+        ! grad(p): the flow solution's pressure is a solved field, not a
+        ! keyword, so its gradient is formed directly from its own nodal
+        ! (n corner nodes, not the bubble-augmented nd) values and dBasisdx,
+        ! same idiom as the SUPG StreamVec construction below.
+        DO p=1,n
+          k = ConvField_h % Variable % Perm( Element % NodeIndexes(p) )
+          IF( k > 0 ) THEN
+            NodalPressure(p) = ConvField_h % Variable % Values( ConvField_h % Variable % Dofs*(k-1) + dim + 1 )
+          ELSE
+            NodalPressure(p) = 0._dp
           END IF
+        END DO
 
-          PowerScaling = (MeltPoint - yave) / xave 
-          Temperature = YY + PowerScaling * XX
+        GradPVec(1:ngp,1:dim) = 0._dp
+        DO i=1,dim
+          DO p=1,n
+            GradPVec(1:ngp,i) = GradPVec(1:ngp,i) + NodalPressure(p) * dBasisdx(1:ngp,p,i)
+          END DO
+        END DO
 
-          ! The change is computed separately for the controlled temperature field
-          !-----------------------------------------------------------------------
-          CALL ComputeChange(Solver,.FALSE.,LocalNodes,Temperature)
-          Norm = Solver % Variable % Norm
+        TmpVec2(1:ngp) = 0._dp
+        DO i=1,dim
+          TmpVec2(1:ngp) = TmpVec2(1:ngp) + VeloAtIpVec(1:ngp,i) * GradPVec(1:ngp,i)
+        END DO
+        TmpVec2(1:ngp) = PcoeffVec(1:ngp) * TmpVec2(1:ngp)
+        CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec2, FORCE )
+      END IF
 
+      ! SUPG (equal-order) stabilization: adds tau*(rho*cp*v.grad u, rho*cp*v.grad v)
+      ! to the standard Galerkin convection term above, and the matching
+      ! streamline-weighted mass term below. This is the same Franca et al. tau
+      ! legacy HeatSolve's "Stabilize" uses (DiffuseConvectiveAnisotropic.F90),
+      ! less its C0 (reaction/perfusion, not supported in this Vec path) and
+      ! second-derivative-of-basis diffusion residual pieces -- both are zero
+      ! on the plain linear no-bubble element. Same simplification 
+      ! IncompressibleNSVec's own equal-order stabilization makes for its dropped
+      ! viscous residual.
+      IF( Stabilize .AND. HaveCond ) THEN
+        hK = Element % hK
+        mK = Element % StabilizationMK
+
+        StreamVec(1:ngp,1:nd) = 0._dp
+        DO i=1,dim
+          DO p=1,nd
+            StreamVec(1:ngp,p) = StreamVec(1:ngp,p) + &
+                TmpVec(1:ngp) * VeloAtIpVec(1:ngp,i) * dBasisdx(1:ngp,p,i)
+          END DO
+        END DO
+
+        DO j=1,ngp
+          VNorm = SQRT( SUM( VeloAtIpVec(j,1:dim)**2 ) )
+          IF( VNorm > 0._dp .AND. CondTauVec(j) /= 0._dp ) THEN
+            TauVec(j) = MIN( 1._dp, mK*hK*TmpVec(j)*VNorm / (2._dp*ABS(CondTauVec(j))) )
+            TauVec(j) = hK * TauVec(j) / ( 2._dp * TmpVec(j) * VNorm )
+          ELSE
+            TauVec(j) = 0._dp
+          END IF
+        END DO
+
+        TmpVec2(1:ngp) = TauVec(1:ngp) * DetJVec(1:ngp)
+        CALL LinearForms_UdotV( ngp, nd, dim, StreamVec, StreamVec, TmpVec2, STIFF )
+
+        IF( Transient ) THEN
+          TmpVec2(1:ngp) = TauVec(1:ngp) * TmpVec(1:ngp) * DetJVec(1:ngp)
+          CALL LinearForms_UdotV( ngp, nd, dim, StreamVec, Basis, TmpVec2, MASS )
         END IF
+      END IF
+    END IF
 
-        IF(dt > PowerTimeScale) THEN
-          IF ( Relax /= 1.0d0 ) THEN
-            CALL ListAddConstReal( Solver % Values,  &
-                'Nonlinear System Relaxation Factor', Relax )
+    ! time derivative term: MASS=MASS+(rho*cp*dT/dt,v)
+    IF( Transient ) THEN
+      CALL LinearForms_UdotU(ngp, nd, dim, Basis, DetJVec, MASS, TmpVec )
+    END IF
+      
+    ! source term: FORCE=FORCE+(u,f)
+    SourceAtIpVec => ListGetElementRealVec( VolSource_h, ngp, Basis, Element, Found )
+    IF( Found ) THEN
+      CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)
+      IF( Stabilize .AND. HaveCond .AND. ( ConvConst .OR. ConvComp ) ) THEN
+        TmpVec2(1:ngp) = TauVec(1:ngp) * DetJVec(1:ngp)
+        CALL LinearForms_UdotF(ngp, nd, StreamVec, TmpVec2, SourceAtIpVec, FORCE)
+      END IF
+    ELSE
+      SourceAtIpVec => ListGetElementRealVec( Source_h, ngp, Basis, Element, Found )
+      IF( Found ) THEN
+        TmpVec(1:ngp) = SourceAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)
+        CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec, FORCE)
+        IF( Stabilize .AND. HaveCond .AND. ( ConvConst .OR. ConvComp ) ) THEN
+          TmpVec2(1:ngp) = TauVec(1:ngp) * DetJVec(1:ngp)
+          CALL LinearForms_UdotF(ngp, nd, StreamVec, TmpVec2, TmpVec, FORCE)
+        END IF
+      END IF
+    END IF
+
+    ! Joule heating from a coupled electric/magnetic solver ("Joule Heat = True"
+    ! on this element's body force).
+    DO t=1,ngp
+      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+      IF( JouleH /= 0._dp ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + DetJVec(t) * JouleH * Basis(t,1:nd)
+      END IF
+    END DO
+
+    ! The heat equation may have lower dimensional elements active also.
+    ! For example, heat transfer through a pipe could be expressed by 1d
+    ! elements. Then the multiplier should be the area of the pipe when
+    ! included in a 3D mesh. Applied to the whole local system, as in
+    ! HeatSolve.F90.
+    HTMultAtIp = ListGetElementReal( HTMult_h, Basis(1,1:nd), Element, Found )
+    IF( Found ) THEN
+      MASS  = HTMultAtIp * MASS
+      STIFF = HTMultAtIp * STIFF
+      FORCE = HTMultAtIp * FORCE
+    END IF
+
+    ! A condensed bubble's own value from the previous timestep is not in the
+    ! global solution vector (it was eliminated from it), so Default1stOrderTime
+    ! cannot form its time derivative -- it would silently treat that history
+    ! as zero. CondensatePTransient forms M/dt and M*xprev/dt over the FULL
+    ! bubble-augmented block instead, using this element's own recorded bubble
+    ! history, before eliminating the bubble rows/columns. Calling
+    ! Default1stOrderTime as well would add M/dt to the retained block a
+    ! second time. nb == 0 whenever the bubble is left in the global system
+    ! (Solver % GlobalBubbles), so the ".NOT. Solver % GlobalBubbles" guard is
+    ! belt-and-braces, matching KESolver.F90/Spalart-Allmaras.F90.
+    IF( Transient .AND. nb > 0 .AND. .NOT. Solver % GlobalBubbles ) THEN
+      CALL GetScalarLocalSolution( LocalTemp(1:nd-nb), UElement=Element )
+      CALL GetScalarLocalSolution( PrevTemp(1:nd-nb), UElement=Element, tStep=-1 )
+      CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
+      boff = (Element % ElementIndex - 1) * bxStride
+      CALL CondensatePTransient( nd-nb, nb, 1, dt, MASS, STIFF, FORCE, &
+          PrevTemp(1:nd-nb), LocalTemp(1:nd-nb), &
+          bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+    ELSE
+      IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+      CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
+      CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    END IF
+
+10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    END ASSOCIATE
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixVec
+!------------------------------------------------------------------------------
+
+
+  ! Phase Change Model: resolves which of "Spatial 2" (DiffuseConvective-
+  ! Anisotropic.F90's PhaseChange branch), "Spatial 1" (a nodal, numerically-
+  ! differentiated -- or "Effective Heat Capacity"-overridden, optionally
+  ! "Enthalpy Fraction"-weighted -- effective heat capacity; also what
+  ! Spatial 2 itself falls back to on a near-isothermal element, where its
+  ! own gradient ratio would be ill-conditioned), or "Temporal" (the same
+  ! shape as Spatial 1, but a secant slope from the actual previous-timestep
+  ! Enthalpy/Temperature instead of a small numerical perturbation -- itself
+  ! falling back to Spatial 1's formula wherever a node's temperature hasn't
+  ! moved since the last timestep) is active on this element, at Equation
+  ! level first, then Material, matching HeatSolve.F90's own two-tier
+  ! lookup, and computes this element's nodal inputs to it: either
+  ! NodalEnthalpy/NodalTemp (Spatial 2 away from a near-isothermal element,
+  ! for the caller to form a gradient ratio from) or FallbackCp (every other
+  ! case, including Spatial 2's own near-isothermal fallback -- an
+  ! interpolable per-node effective heat capacity). UseGradient tells the
+  ! caller which of the two applies. Shared between LocalMatrixVec
+  ! (PhaseChangeAddVec turns these into a TmpVec contribution) and
+  ! LocalMatrix (PhaseChangeCL turns them into a per-Gauss-point CL) since
+  ! the two are otherwise identical. PhaseMaterial needs the element's own
+  ! Material list directly, legacy-style, since ListGetDerivValue/ListGetReal
+  ! predate and bypass the ValueHandle_t system. OneHot is the one-node-at-
+  ! a-time Basis vector used to fetch a truly nodal (not element-interpolated)
+  ! value out of the ValueHandle_t machinery; sized nd (not n) since that is
+  ! what ListGetElementReal expects as a Basis argument.
+  !------------------------------------------------------------------------------
+  SUBROUTINE PhaseChangeElementSetup( Element, n, nd, tid, DoPhaseChange, UseGradient, &
+      NodalTemp, NodalEnthalpy, FallbackCp )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, INTENT(IN) :: n, nd, tid
+    LOGICAL, INTENT(OUT) :: DoPhaseChange, UseGradient
+    REAL(KIND=dp), INTENT(OUT) :: NodalTemp(n), NodalEnthalpy(n), FallbackCp(n)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: PhaseMaterial
+    LOGICAL :: PhaseSpatial2, PhaseSpatial1, PhaseTemporal, GotPhaseEq, GotPhaseMat, &
+        FoundSpec, NeedSpatialOneFallback, FoundOverride, GotFraction, Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: PhaseModelStr
+    REAL(KIND=dp) :: dT0, OneHot(nd)
+    REAL(KIND=dp) :: NodalPrevTemp(n), NodalEnthalpyPrev(n), NodalRho(n), EnthFracNodal(n)
+    INTEGER :: p, k
+!------------------------------------------------------------------------------
+    ASSOCIATE( &
+        PhaseModelEq_h => PhaseModelEq_h(tid), PhaseModelMat_h => PhaseModelMat_h(tid), &
+        Enthalpy_h => Enthalpy_h(tid), SpecEnthalpy_h => SpecEnthalpy_h(tid), &
+        EnthRho_h => EnthRho_h(tid), EnthalpyPrev_h => EnthalpyPrev_h(tid), &
+        SpecEnthalpyPrev_h => SpecEnthalpyPrev_h(tid), TempField_h => TempField_h(tid) )
+
+    DoPhaseChange = .FALSE.
+    UseGradient = .FALSE.
+
+    PhaseSpatial2 = ListCompareElementString( PhaseModelEq_h,'spatial 2',Element,GotPhaseEq )
+    IF( GotPhaseEq ) THEN
+      PhaseModelStr = PhaseModelEq_h % CValue(1:PhaseModelEq_h % CValueLen)
+    ELSE
+      PhaseSpatial2 = ListCompareElementString( PhaseModelMat_h,'spatial 2',Element,GotPhaseMat )
+      IF( GotPhaseMat ) PhaseModelStr = PhaseModelMat_h % CValue(1:PhaseModelMat_h % CValueLen)
+    END IF
+
+    PhaseSpatial1 = .FALSE.
+    PhaseTemporal = .FALSE.
+    IF( (GotPhaseEq .OR. GotPhaseMat) .AND. .NOT. PhaseSpatial2 ) THEN
+      IF( PhaseModelStr == 'spatial 1' ) THEN
+        PhaseSpatial1 = .TRUE.
+      ELSE IF( PhaseModelStr == 'temporal' ) THEN
+        PhaseTemporal = .TRUE.
+      ELSE IF( PhaseModelStr /= 'none' ) THEN
+        CALL Fatal(Caller,'Phase Change Model "'//TRIM(PhaseModelStr)// &
+            '" is not recognized (valid values: "Spatial 2", "Spatial 1", '// &
+            '"Temporal", "None")')
+      END IF
+    END IF
+
+    IF( .NOT. ( PhaseSpatial2 .OR. PhaseSpatial1 .OR. PhaseTemporal ) ) RETURN
+    DoPhaseChange = .TRUE.
+
+    PhaseMaterial => GetMaterial( Element )
+
+    ! Nodal temperature straight from the solved field, not a keyword.
+    DO p=1,n
+      k = TempField_h % Variable % Perm( Element % NodeIndexes(p) )
+      IF( k > 0 ) THEN
+        NodalTemp(p) = TempField_h % Variable % Values( TempField_h % Variable % Dofs*(k-1) + 1 )
+      ELSE
+        NodalTemp(p) = 0._dp
+      END IF
+    END DO
+
+    IF( PhaseSpatial2 ) THEN
+      IF( ListCheckPresent( PhaseMaterial,'Enthalpy Fraction' ) ) THEN
+        CALL Warn(Caller,'"Enthalpy Fraction" is not treated by Phase Change Model "Spatial 2"')
+      END IF
+
+      ! Guard against an ill-conditioned (tiny-over-tiny) gradient ratio on a
+      ! near-isothermal element (legacy's EffectiveHeatCapacity element-level
+      ! MAXVAL-MINVAL check). Legacy falls back to the Spatial 1 formula
+      ! there -- not an optional accuracy nicety: with no Initial Condition
+      ! (Temperature = 0 everywhere), every element is exactly isothermal on
+      ! the first nonlinear iteration, so this branch is what supplies the
+      ! phase change contribution through the whole domain at startup.
+      ! Matches legacy's own gap here: no "Effective Heat Capacity" override,
+      ! no "Enthalpy Fraction" weighting (legacy's own Spatial 2 case doesn't
+      ! check for either).
+      UseGradient = ( MAXVAL(NodalTemp(1:n)) - MINVAL(NodalTemp(1:n)) > AEPS )
+
+      IF( UseGradient ) THEN
+        DO p=1,n
+          OneHot = 0._dp
+          OneHot(p) = 1._dp
+          NodalEnthalpy(p) = ListGetElementReal( SpecEnthalpy_h, OneHot, Element, FoundSpec )
+          IF( FoundSpec ) THEN
+            NodalEnthalpy(p) = NodalEnthalpy(p) * ListGetElementReal( EnthRho_h, OneHot, Element, Found )
+          ELSE
+            NodalEnthalpy(p) = ListGetElementReal( Enthalpy_h, OneHot, Element, Found )
+          END IF
+        END DO
+      ELSE
+        dT0 = ListGetCReal( PhaseMaterial,'Enthalpy Temperature Differential',Found )
+        IF(.NOT. Found ) dT0 = 1.0d-3
+
+        IF( ListCheckPresent( PhaseMaterial,'Specific Enthalpy' ) ) THEN
+          FallbackCp(1:n) = ListGetReal( PhaseMaterial,'Density',n,Element % NodeIndexes ) * &
+              ListGetDerivValue( PhaseMaterial,'Specific Enthalpy',n,Element % NodeIndexes,dT0 )
+        ELSE
+          FallbackCp(1:n) = ListGetDerivValue( PhaseMaterial,'Enthalpy',n,Element % NodeIndexes,dT0 )
+        END IF
+      END IF
+
+    ELSE
+      ! PhaseSpatial1 .OR. PhaseTemporal
+      NeedSpatialOneFallback = PhaseSpatial1
+
+      IF( PhaseTemporal ) THEN
+        ! Previous-timestep temperature, straight from the solved field's
+        ! own history -- same field TempField_h already wraps.
+        DO p=1,n
+          k = TempField_h % Variable % Perm( Element % NodeIndexes(p) )
+          IF( k > 0 .AND. ASSOCIATED( TempField_h % Variable % PrevValues ) ) THEN
+            NodalPrevTemp(p) = TempField_h % Variable % PrevValues( &
+                TempField_h % Variable % Dofs*(k-1) + 1, 1 )
+          ELSE
+            NodalPrevTemp(p) = NodalTemp(p)
+          END IF
+        END DO
+
+        ! Legacy falls back to the Spatial 1 formula wherever a node's
+        ! temperature hasn't moved since the last timestep (the secant below
+        ! would divide by ~zero there).
+        NeedSpatialOneFallback = ANY( ABS(NodalTemp(1:n)-NodalPrevTemp(1:n)) < AEPS )
+      END IF
+
+      IF( NeedSpatialOneFallback ) THEN
+        dT0 = ListGetCReal( PhaseMaterial,'Enthalpy Temperature Differential',Found )
+        IF(.NOT. Found ) dT0 = 1.0d-3
+
+        FallbackCp(1:n) = ListGetReal( PhaseMaterial,'Effective Heat Capacity', &
+            n,Element % NodeIndexes,FoundOverride )
+        IF(.NOT. FoundOverride ) THEN
+          IF( ListCheckPresent( PhaseMaterial,'Specific Enthalpy' ) ) THEN
+            FallbackCp(1:n) = ListGetReal( PhaseMaterial,'Density',n,Element % NodeIndexes ) * &
+                ListGetDerivValue( PhaseMaterial,'Specific Enthalpy',n,Element % NodeIndexes,dT0 )
+          ELSE
+            FallbackCp(1:n) = ListGetDerivValue( PhaseMaterial,'Enthalpy',n,Element % NodeIndexes,dT0 )
           END IF
         END IF
       ELSE
-!------------------------------------------------------------------------------
-!     Check stepsize for nonlinear iteration
-!------------------------------------------------------------------------------
-        IF( DefaultLinesearch( Converged ) ) GOTO 500
-        IF( Converged ) EXIT
-
-        Norm = DefaultSolve()
-      END IF
-
-
-      IF( SmartHeaterControl .OR. IntegralHeaterControl) THEN
-         CALL Info( 'HeatSolve', 'Heater Control Information', Level=4 )
-         DO i=1,Model % NumberOfBodyForces
-            IF( .NOT. (SmartHeaters(i) .OR. IntegralHeaters(i))) CYCLE
-            IF( SmartHeaters(i) )  HeaterScaling(i) = PowerScaling
-
-            WRITE( Message, '(A,T35,I15)' ) 'Heater for body: ', i
-            CALL Info( 'HeatSolve', Message, Level=4 )
-            IF(SmartHeaters(i)) WRITE( Message, '(A,T35,A)' ) 'Heater type:','Smart heater'
-            IF(IntegralHeaters(i)) WRITE( Message, '(A,T35,A)' ) 'Heater type:','Integral heater'
-            CALL Info( 'HeatSolve', Message, Level=4 )
-
-            WRITE( Message,'(A,T35,ES15.4)' ) 'Heater Volume (m^3): ', HeaterArea(i)
-            CALL Info( 'HeatSolve', Message, Level=4 )
-            s = HeaterSource(i) * HeaterScaling(i)
-            WRITE( Message,'(A,T35,ES15.4)' ) 'Heater Power (W): ', s
-            CALL Info( 'HeatSolve', Message, Level=4 )
-
-            WRITE( Message,'(A,T35,ES15.4)' ) 'Heater scaling: ', HeaterScaling(i)
-            CALL Info( 'HeatSolve', Message, Level=4 )
-            WRITE( Message, '(A,T35,ES15.4)' ) 'Heater Power Density (W/kg): ', s/(HeaterDensity(i) * HeaterArea(i))
-            CALL Info( 'HeatSolve', Message, Level=4 )
-
-            CALL ListAddConstReal(Model % Simulation,'res: Heater Power Scaling '//I2S(i),HeaterScaling(i))
-            CALL ListAddConstReal(Model % Simulation,'res: Heater Power Density '//I2S(i),&
-                 s/(HeaterDensity(i) * HeaterArea(i)))
-         END DO
-      END IF
-
-
-      st = CPUTIme()-st
-      totat = totat + at
-      totst = totst + st
-      WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Assembly: (s)', at, totat
-      CALL Info( 'HeatSolve', Message, Level=4 )
-      WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
-      CALL Info( 'HeatSolve', Message, Level=4 )
-!------------------------------------------------------------------------------
-!     If modelling phase change (and if requested by the user), check if any
-!     node has jumped over the phase change interval, and if so, reduce
-!     timestep and or relaxation and recompute.
-!------------------------------------------------------------------------------
-      IF (PhaseChange .AND. CheckLatentHeatRelease ) THEN
-!------------------------------------------------------------------------------
-        IF ( CheckLatentHeat() ) THEN
-          Temperature(1:LocalNodes) = PrevSolution
-          Norm = PrevNorm
-
-          IF ( TransientSimulation ) THEN
-            dt = dt / 2
-            Solver % dt = dt
-            WRITE( Message, * ) &
-                  'Latent heat release check: reducing timestep to: ',dt
-            CALL Info( 'HeatSolve', Message, Level=4 )
+        ! Temporal proper: a secant slope using the actual previous-timestep
+        ! Enthalpy/Temperature (tstep=-1 threads through ListGetElementReal/
+        ! VarsToValuesOnNodes in Lists.F90 to the driving Temperature
+        ! variable's own PrevValues) instead of a small numerical
+        ! perturbation. Density is this element's current-timestep nodal
+        ! density -- matches legacy: fetched once and multiplying the
+        ! finished difference, not each term separately (legacy fetches it
+        ! before ever swapping to the previous temperature).
+        DO p=1,n
+          OneHot = 0._dp
+          OneHot(p) = 1._dp
+          NodalEnthalpy(p) = ListGetElementReal( SpecEnthalpy_h, OneHot, Element, FoundSpec )
+          IF( FoundSpec ) THEN
+            NodalEnthalpyPrev(p) = ListGetElementReal( SpecEnthalpyPrev_h, OneHot, Element, Found, tstep=-1 )
+            NodalRho(p) = ListGetElementReal( EnthRho_h, OneHot, Element, Found )
           ELSE
-            Relax = Relax / 2
-            CALL  ListAddConstReal( Solver % Values,  &
-                 'Nonlinear System Relaxation Factor', Relax )
-            WRITE( Message, * ) &
-                 'Latent heat release check: reducing relaxation to: ',Relax
-            CALL Info( 'HeatSolve', Message, Level=4 )
+            NodalEnthalpy(p) = ListGetElementReal( Enthalpy_h, OneHot, Element, Found )
+            NodalEnthalpyPrev(p) = ListGetElementReal( EnthalpyPrev_h, OneHot, Element, Found, tstep=-1 )
+          END IF
+        END DO
+
+        FallbackCp(1:n) = ( NodalEnthalpy(1:n) - NodalEnthalpyPrev(1:n) ) / &
+            ( NodalTemp(1:n) - NodalPrevTemp(1:n) )
+        IF( FoundSpec ) FallbackCp(1:n) = FallbackCp(1:n) * NodalRho(1:n)
+      END IF
+
+      EnthFracNodal(1:n) = ListGetReal( PhaseMaterial,'Enthalpy Fraction',n,Element % NodeIndexes,GotFraction )
+      IF( GotFraction ) FallbackCp(1:n) = FallbackCp(1:n) * EnthFracNodal(1:n)
+    END IF
+
+    END ASSOCIATE
+!------------------------------------------------------------------------------
+  END SUBROUTINE PhaseChangeElementSetup
+!------------------------------------------------------------------------------
+
+
+  ! Turns PhaseChangeElementSetup's per-element output into a per-Gauss-
+  ! point-vector contribution, added into TmpVec: either Spatial 2's own
+  ! CL = sqrt(|grad Enthalpy|^2/|grad Temperature|^2) latent-heat
+  ! capacitance (UseGradient), or an interpolated FallbackCp (every other
+  ! case). EnthGradSq/TempGradSq accumulate |grad Enthalpy|^2 and
+  ! |grad Temperature|^2 per Gauss point (GradAccum is scratch for one
+  ! dimension's gradient component at a time). LocalMatrix's scalar
+  ! equivalent is PhaseChangeCL.
+  !------------------------------------------------------------------------------
+  SUBROUTINE PhaseChangeAddVec( ngp, n, dim, Basis, dBasisdx, UseGradient, &
+      NodalTemp, NodalEnthalpy, FallbackCp, TmpVec )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: ngp, n, dim
+    REAL(KIND=dp), INTENT(IN) :: Basis(:,:), dBasisdx(:,:,:)
+    LOGICAL, INTENT(IN) :: UseGradient
+    REAL(KIND=dp), INTENT(IN) :: NodalTemp(n), NodalEnthalpy(n), FallbackCp(n)
+    REAL(KIND=dp), INTENT(INOUT) :: TmpVec(:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: EnthGradSq(ngp), TempGradSq(ngp), GradAccum(ngp)
+    INTEGER :: i, p
+!------------------------------------------------------------------------------
+    IF( UseGradient ) THEN
+      EnthGradSq(1:ngp) = 0._dp
+      TempGradSq(1:ngp) = 0._dp
+      DO i=1,dim
+        GradAccum(1:ngp) = 0._dp
+        DO p=1,n
+          GradAccum(1:ngp) = GradAccum(1:ngp) + NodalEnthalpy(p) * dBasisdx(1:ngp,p,i)
+        END DO
+        EnthGradSq(1:ngp) = EnthGradSq(1:ngp) + GradAccum(1:ngp)**2
+
+        GradAccum(1:ngp) = 0._dp
+        DO p=1,n
+          GradAccum(1:ngp) = GradAccum(1:ngp) + NodalTemp(p) * dBasisdx(1:ngp,p,i)
+        END DO
+        TempGradSq(1:ngp) = TempGradSq(1:ngp) + GradAccum(1:ngp)**2
+      END DO
+
+      WHERE( TempGradSq(1:ngp) > TINY(1._dp) )
+        TmpVec(1:ngp) = TmpVec(1:ngp) + SQRT( EnthGradSq(1:ngp) / TempGradSq(1:ngp) )
+      END WHERE
+    ELSE
+      TmpVec(1:ngp) = TmpVec(1:ngp) + MATMUL( Basis(1:ngp,1:n), FallbackCp(1:n) )
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE PhaseChangeAddVec
+!------------------------------------------------------------------------------
+
+
+  ! LocalMatrix's scalar equivalent of PhaseChangeAddVec: turns
+  ! PhaseChangeElementSetup's per-element output into a single Gauss point's
+  ! latent heat capacitance CL, to be added into that point's EffCp.
+  !------------------------------------------------------------------------------
+  FUNCTION PhaseChangeCL( n, dim, Basis, dBasisdx, UseGradient, NodalTemp, NodalEnthalpy, FallbackCp ) &
+      RESULT( PhaseCL )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, dim
+    REAL(KIND=dp), INTENT(IN) :: Basis(:), dBasisdx(:,:)
+    LOGICAL, INTENT(IN) :: UseGradient
+    REAL(KIND=dp), INTENT(IN) :: NodalTemp(n), NodalEnthalpy(n), FallbackCp(n)
+    REAL(KIND=dp) :: PhaseCL
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: dEnth, dTemp
+    INTEGER :: i
+!------------------------------------------------------------------------------
+    PhaseCL = 0._dp
+    IF( UseGradient ) THEN
+      dEnth = 0._dp
+      dTemp = 0._dp
+      DO i=1,dim
+        dEnth = dEnth + SUM( NodalEnthalpy(1:n) * dBasisdx(1:n,i) )**2
+        dTemp = dTemp + SUM( NodalTemp(1:n) * dBasisdx(1:n,i) )**2
+      END DO
+      IF( dTemp > TINY(dTemp) ) PhaseCL = SQRT( dEnth/dTemp )
+    ELSE
+      PhaseCL = SUM( FallbackCp(1:n) * Basis(1:n) )
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION PhaseChangeCL
+!------------------------------------------------------------------------------
+
+
+  ! We have a special type of velocity implemented that follows thin regions
+  ! assuming that convection is aligned with the elements, and the elements
+  ! are structural ones. Either 404 or 808 type of elements are ok as for now.
+  !------------------------------------------------------------------------------
+  FUNCTION CalculatePlateTangent(n,Nodes) RESULT ( PlateTan )
+    INTEGER :: n    
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: PlateTan(3)
+
+    INTEGER, SAVE :: ActiveCoord = -1
+    INTEGER :: i, sgn
+    REAL(KIND=dp), POINTER :: x(:)
+    REAL(KIND=dp) :: xmean
+    
+    IF( ActiveCoord < 1 ) THEN
+      ActiveCoord = ListGetInteger( Params,'Active Coordinate',Found )
+      IF(.NOT. Found ) THEN
+        CALL Fatal('CalculatePlateTangent','Keyword "Draw Velocity" requires "Active Coordinate" to be given!')
+      END IF
+    END IF
+      
+    IF(ActiveCoord==1) THEN
+      x => Nodes % x
+    ELSE IF(ActiveCoord==2) THEN
+      x => Nodes % y
+    ELSE IF(ActiveCoord==3) THEN
+      x => Nodes % z
+    ELSE
+      CALL Fatal('CalculatePlateTangent','"Active Coordinate" must be either 1, 2 or 3!')
+    END IF
+
+    IF( n /= 4 .AND. n /= 8 ) THEN
+      CALL Warn('CalculatePlateTangent',&
+          'Heuristics is well suited only for structural meshes: '//I2S(n))
+    END IF
+    
+    xmean = SUM(x(1:n)) / n
+
+    PlateTan = 0.0_dp
+    DO i=1,n
+      IF(x(i) > xmean ) THEN
+        sgn = 1
+      ELSE
+        sgn = -1
+      END IF
+      PlateTan(1) = PlateTan(1) + sgn * Nodes % x(i)
+      PlateTan(2) = PlateTan(2) + sgn * Nodes % y(i)
+      PlateTan(3) = PlateTan(3) + sgn * Nodes % z(i)
+    END DO
+
+    PlateTan = PlateTan / SQRT( SUM( PlateTan**2 ) )
+    
+  END FUNCTION CalculatePlateTangent
+
+
+!------------------------------------------------------------------------------
+! Assembly of the matrix entries arising from the bulk elements. Not vectorized.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
+!------------------------------------------------------------------------------
+    USE Differentials, ONLY: JouleHeat
+    USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, INTENT(INOUT) :: InitHandles
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,nd)
+    REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd)
+    REAL(KIND=dp) :: weight, SourceAtIp, CpAtIp, RhoAtIp, CondAtIp, DetJ, A, VeloAtIp(3), MeshVeloAtIp(3)
+    REAL(KIND=dp) :: PerfRateAtIp, PerfDensAtIp, PerfCpAtIp, PerfRefTempAtIp, PerfCoeff
+    REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
+    REAL(KIND=dp), POINTER :: CondTensor(:,:)
+    LOGICAL :: Stat,Found,ConvComp,ConvConst
+    INTEGER :: i,j,t,p,q,k,CondRank,tid,boff
+    ! Compressibility Model work: see the matching comment in LocalMatrixVec.
+    ! NodalPressure/GradP support the reversible pressure-work source term;
+    ! the flow solution's pressure is a solved field, not a keyword, so its
+    ! nodal values come straight from the variable rather than a handle.
+    INTEGER :: CompressModel
+    REAL(KIND=dp) :: SpecHeatRatio, ReferencePressure, TemperatureAtIp, &
+        RefTempAtIp, HeatExpAtIp, PressAtIp, PrevPressAtIp, Pcoeff, &
+        NodalPressure(n), GradP(3)
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd)
+    ! SUPG (equal-order) stabilization work: StreamVec(p), the streamline
+    ! weighted test/trial "basis" rho*cp*(velo.grad basis_p) at this
+    ! integration point -- see the matching comment in LocalMatrixVec, whose
+    ! ConvVec/StreamVec split this mirrors. Tau is the Franca et al.
+    ! stabilization parameter.
+    REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar, JouleH, HTMultAtIp
+    LOGICAL :: HTMultFound
+    ! Phase Change Model: PhaseChangeElementSetup (shared with LocalMatrixVec)
+    ! resolves which model is active and this element's nodal Enthalpy/
+    ! Temperature/FallbackCp once, before the Gauss loop; PhaseChangeCL turns
+    ! those into a per-Gauss-point latent heat capacitance CL. EffCp replaces
+    ! the CpAtIp*RhoAtIp product everywhere it previously appeared, so that
+    ! CL (added to EffCp once, right after CpAtIp is fetched) reaches the
+    ! convection, SUPG and mass terms alike -- the scalar-path equivalent of
+    ! TmpVec's dual CT/C1 role in LocalMatrixVec.
+    REAL(KIND=dp) :: EffCp, PhaseCL, NodalEnthalpy(n), NodalTemp(n), FallbackCp(n)
+    LOGICAL :: DoPhaseChange, UseGradient
+    ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
+!------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        Source_h      => Source_h(tid),       Cond_h        => Cond_h(tid),          &
+        Cp_h          => Cp_h(tid),           Rho_h         => Rho_h(tid),           &
+        ConvFlag_h    => ConvFlag_h(tid),     ConvVelo_h    => LM_ConvVelo_h(tid),   &
+        PlateSpeed_h  => PlateSpeed_h(tid),   PerfRate_h    => PerfRate_h(tid),       &
+        PerfDens_h    => PerfDens_h(tid),     PerfCp_h      => PerfCp_h(tid),         &
+        PerfRefTemp_h => PerfRefTemp_h(tid),  VolSource_h   => VolSource_h(tid),      &
+        OrigMesh_h    => OrigMesh_h(tid),     ConvField_h   => ConvField_h(tid),      &
+        HTMult_h      => HTMult_h(tid),       CompressModel_h => CompressModel_h(tid), &
+        SpecHeatRatio_h => SpecHeatRatio_h(tid), RefTemp_h   => RefTemp_h(tid),       &
+        HeatExpCoeff_h => HeatExpCoeff_h(tid), RefPressure_h => RefPressure_h(tid),   &
+        TempField_h   => TempField_h(tid),    PrevFlowField_h => PrevFlowField_h(tid), &
+        PressureField_h => PressureField_h(tid), MeshVeloField_h => MeshVeloField_h(tid), &
+        PhaseModelEq_h => PhaseModelEq_h(tid), PhaseModelMat_h => PhaseModelMat_h(tid), &
+        Enthalpy_h => Enthalpy_h(tid), SpecEnthalpy_h => SpecEnthalpy_h(tid), &
+        EnthRho_h => EnthRho_h(tid), EnthalpyPrev_h => EnthalpyPrev_h(tid), &
+        SpecEnthalpyPrev_h => SpecEnthalpyPrev_h(tid) )
+
+    ! This InitHandles flag might be false on threaded 1st call
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( Source_h,'Body Force','Heat Source')
+      CALL ListInitElementKeyword( VolSource_h,'Body Force','Volumetric Heat Source')
+      CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
+      CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
+      CALL ListInitElementKeyword( Rho_h,'Material','Density')
+      CALL ListInitElementKeyword( HTMult_h,'Material','Heat Transfer Multiplier')
+      CALL ListInitElementKeyword( CompressModel_h,'Material','Compressibility Model')
+      CALL ListInitElementKeyword( SpecHeatRatio_h,'Material','Specific Heat Ratio')
+      CALL ListInitElementKeyword( RefTemp_h,'Material','Reference Temperature')
+      CALL ListInitElementKeyword( HeatExpCoeff_h,'Material','Heat Expansion Coefficient')
+      CALL ListInitElementKeyword( RefPressure_h,'Material','Reference Pressure')
+
+      CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')
+
+      CALL ListInitElementKeyword( ConvVelo_h,'Material','Convection Velocity',InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( PlateSpeed_h,'Material','Draw Velocity')
+
+      str = GetString( Params, 'Temperature Convection Field', Found )
+      IF(.NOT. Found ) str = 'Flow Solution'
+      CALL ListInitElementVariable( ConvField_h, str )
+      CALL ListInitElementVariable( PrevFlowField_h, str, tStep=-1 )
+      CALL ListInitElementVariable( PressureField_h, str )
+      CALL ListInitElementVariable( TempField_h, UVariable=Solver % Variable )
+
+      ! ALE: see the matching comment in LocalMatrixVec.
+      CALL ListInitElementVariable( MeshVeloField_h, 'Mesh Velocity' )
+
+      CALL ListInitElementKeyword( PerfRate_h,'Body Force','Perfusion Rate')
+      CALL ListInitElementKeyword( PerfDens_h,'Body Force','Perfusion Density')
+      CALL ListInitElementKeyword( PerfRefTemp_h,'Body Force','Perfusion Reference Temperature')
+      CALL ListInitElementKeyword( PerfCp_h,'Body Force','Perfusion Heat Capacity')
+
+      CALL ListInitElementKeyword( OrigMesh_h,'Equation','Convection Original Mesh')
+
+      ! Phase Change Model "Spatial 2" -- see the matching comment in
+      ! LocalMatrixVec.
+      CALL ListInitElementKeyword( PhaseModelEq_h,'Equation','Phase Change Model')
+      CALL ListInitElementKeyword( PhaseModelMat_h,'Material','Phase Change Model')
+      CALL ListInitElementKeyword( Enthalpy_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpy_h,'Material','Specific Enthalpy')
+      CALL ListInitElementKeyword( EnthRho_h,'Material','Density')
+      CALL ListInitElementKeyword( EnthalpyPrev_h,'Material','Enthalpy')
+      CALL ListInitElementKeyword( SpecEnthalpyPrev_h,'Material','Specific Enthalpy')
+
+      InitHandles = .FALSE.
+    END IF
+
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
+    
+    IP = GaussPointsAdapt( Element )
+    IF( Element % ElementIndex == 1 ) THEN
+      CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
+    END IF
+      
+    IF( ListGetElementLogical( OrigMesh_h ) ) THEN
+      CALL GetElementNodesOrig( Nodes, UElement=Element )
+    ELSE
+      CALL GetElementNodes( Nodes, UElement=Element )
+    END IF
+      
+    ! Initialize
+    MASS  = 0._dp
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )
+    ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
+
+    HTMultFound = .FALSE.
+
+    ! Phase Change Model: determined once per element, not per Gauss point --
+    ! see PhaseChangeElementSetup (shared with LocalMatrixVec) for the full
+    ! derivation. UseGradient selects Spatial 2's own per-Gauss-point
+    ! gradient-ratio formula in PhaseChangeCL below; whenever it is false
+    ! (Spatial 1 or Temporal, or Spatial 2 on a near-isothermal element),
+    ! FallbackCp (precomputed here, interpolated per Gauss point below) is
+    ! used instead.
+    DoPhaseChange = .FALSE.
+    UseGradient = .FALSE.
+    IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
+      CALL PhaseChangeElementSetup( Element, n, nd, tid, DoPhaseChange, UseGradient, &
+          NodalTemp, NodalEnthalpy, FallbackCp )
+    END IF
+
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )
+      Weight = IP % s(t) * DetJ
+
+      ! Evaluated once per element (at the 1st integration point), since
+      ! this multiplier scales the whole local system after the loop --
+      ! see the matching comment and application in LocalMatrixVec.
+      IF( t == 1 ) THEN
+        HTMultAtIp = ListGetElementReal( HTMult_h, Basis, Element, HTMultFound )
+      END IF
+
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+
+      RhoAtIp = ListGetElementReal( Rho_h, Basis, Element, Found )
+
+      ! Compressibility Model: override density -- see the matching
+      ! comment in LocalMatrixVec.
+      CompressModel = Incompressible
+      IF( ListCompareElementString( CompressModel_h,'perfect gas',Element,Found ) .OR. &
+          ListCompareElementString( CompressModel_h,'perfect gas equation 1',Element,Found ) ) THEN
+        CompressModel = PerfectGas1
+      ELSE IF( ListCompareElementString( CompressModel_h,'thermal',Element,Found ) ) THEN
+        CompressModel = Thermal
+      ELSE IF( ListCompareElementString( CompressModel_h,'user defined',Element,Found ) ) THEN
+        CALL Fatal(Caller,'Compressibility Model "User Defined" is not implemented in HeatSolveVec')
+      END IF
+
+      IF( CompressModel == Thermal ) THEN
+        TemperatureAtIp = ListGetElementScalarSolution( TempField_h, Basis, Element )
+        RefTempAtIp = ListGetElementReal( RefTemp_h, Basis, Element, Found )
+        HeatExpAtIp = ListGetElementReal( HeatExpCoeff_h, Basis, Element, Found )
+        RhoAtIp = RhoAtIp * ( 1._dp - HeatExpAtIp * ( TemperatureAtIp - RefTempAtIp ) )
+      ELSE IF( CompressModel == PerfectGas1 ) THEN
+        IF( .NOT. ConvComp ) THEN
+          CALL Fatal(Caller,'Compressibility Model "Perfect Gas" requires computed convection')
+        END IF
+        SpecHeatRatio = ListGetElementReal( SpecHeatRatio_h, Basis, Element, Found )
+        IF(.NOT. Found ) SpecHeatRatio = 5._dp/3._dp
+        ReferencePressure = ListGetElementReal( RefPressure_h, Basis, Element, Found )
+        IF(.NOT. Found ) ReferencePressure = 0._dp
+        TemperatureAtIp = ListGetElementScalarSolution( TempField_h, Basis, Element )
+        PressAtIp = ListGetElementScalarSolution( PressureField_h, Basis, Element, dof=dim+1 )
+        CpAtIp = ListGetElementReal( Cp_h, Basis, Element, Found )
+        RhoAtIp = ( PressAtIp + ReferencePressure ) / &
+            ( (SpecHeatRatio-1._dp)/SpecHeatRatio * CpAtIp * TemperatureAtIp )
+      END IF
+
+      ! diffusion term (D*grad(u),grad(v)):
+      ! -----------------------------------
+      CondAtIp = ListGetElementReal( Cond_h, Basis, Element, Found, &
+         GaussPoint = t, Rdim = CondRank, Rtensor = CondTensor ) 
+      IF(.NOT. Found ) THEN
+        CALL Fatal(Caller,'Required keyword: '//TRIM(Cond_h % Name))
+      END IF
+
+      IF( CondRank == 0 ) THEN
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
+            CondAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
+      ELSE 
+        DO p=1,nd
+          DO q=1,nd
+            A = 0.0_dp
+            IF( CondRank == 1 ) THEN
+              DO i=1,dim
+                A = A + CondTensor(i,1) * dBasisdx(p,i) * dBasisdx(q,i)
+              END DO
+            ELSE
+              DO i=1,dim
+                DO j=1,dim
+                  A = A + CondTensor(i,j) * dBasisdx(p,i) * dBasisdx(q,j)
+                END DO
+              END DO
+            END IF
+            STIFF(p,q) = STIFF(p,q) + Weight * A
+          END DO
+        END DO
+      END IF
+
+      IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
+        CpAtIp = ListGetElementReal( Cp_h, Basis, Element, Found )
+
+        ! Phase Change: PhaseChangeCL turns the setup above the Gauss loop
+        ! into this point's latent heat capacitance CL -- see that function
+        ! for the derivation. Kept as its own PhaseCL (rather than folded
+        ! silently into EffCp) because the Time derivative term below
+        ! re-fetches CpAtIp/RhoAtIp independently (its own local product,
+        ! not this EffCp) -- PhaseCL is added to both separately so this
+        ! addition does not depend on, or change, that block's own density.
+        PhaseCL = 0._dp
+        IF( DoPhaseChange ) THEN
+          PhaseCL = PhaseChangeCL( n, dim, Basis, dBasisdx, UseGradient, NodalTemp, NodalEnthalpy, FallbackCp )
+        END IF
+
+        EffCp = CpAtIp * RhoAtIp + PhaseCL
+      END IF
+
+      IF( ConvConst .OR. ConvComp ) THEN
+        IF( ConvConst ) THEN                    
+          PlateSpeed = ListGetElementReal( PlateSpeed_h, Basis, Element, Found )
+          IF( Found ) THEN
+            IF(t==1) PlateTangent = CalculatePlateTangent(n,Nodes)
+            VeloAtIp = PlateTangent * PlateSpeed
+          ELSE
+            VeloAtIp = ListGetElementReal3D( ConvVelo_h, Basis, Element )
+          END IF
+        ELSE
+          VeloAtIp = ListGetElementVectorSolution( ConvField_h, Basis, Element, dofs = dim )
+        END IF
+
+        ! ALE: see the matching comment in LocalMatrixVec.
+        MeshVeloAtIp = ListGetElementVectorSolution( MeshVeloField_h, Basis, Element, Found = Found, dofs = dim )
+        IF( Found ) VeloAtIp(1:dim) = VeloAtIp(1:dim) - MeshVeloAtIp(1:dim)
+
+        ! advection term (C*grad(u),v)
+        ! -----------------------------------
+        DO p=1,nd
+          DO q=1,nd
+            STIFF (p,q) = STIFF(p,q) + Weight * &
+                EffCp * SUM(VeloAtIp(1:dim)*dBasisdx(q,1:dim)) * Basis(p)
+          END DO
+        END DO
+
+        ! Compressibility Model, continued: the reversible pressure-work
+        ! source term Force += Pcoeff*(dp/dt + u.grad p) -- see the
+        ! matching comment in LocalMatrixVec.
+        IF( ConvComp .AND. CompressModel /= Incompressible ) THEN
+          IF( CompressModel == PerfectGas1 ) THEN
+            Pcoeff = 1._dp
+          ELSE
+            Pcoeff = TemperatureAtIp * HeatExpAtIp / &
+                ( 1._dp - HeatExpAtIp * ( TemperatureAtIp - RefTempAtIp ) )
           END IF
 
-          CYCLE
+          PressAtIp = ListGetElementScalarSolution( ConvField_h, Basis, Element, dof=dim+1 )
+
+          IF( Transient ) THEN
+            PrevPressAtIp = ListGetElementScalarSolution( PrevFlowField_h, Basis, Element, dof=dim+1 )
+            FORCE(1:nd) = FORCE(1:nd) + Weight * Pcoeff * ( PressAtIp - PrevPressAtIp ) / dt * Basis(1:nd)
+          END IF
+
+          ! grad(p): the flow solution's pressure is a solved field, not a
+          ! keyword, so its nodal values come straight from the variable.
+          DO p=1,n
+            k = ConvField_h % Variable % Perm( Element % NodeIndexes(p) )
+            IF( k > 0 ) THEN
+              NodalPressure(p) = ConvField_h % Variable % Values( ConvField_h % Variable % Dofs*(k-1) + dim + 1 )
+            ELSE
+              NodalPressure(p) = 0._dp
+            END IF
+          END DO
+
+          GradP = 0._dp
+          DO i=1,dim
+            GradP(i) = SUM( NodalPressure(1:n) * dBasisdx(1:n,i) )
+          END DO
+
+          FORCE(1:nd) = FORCE(1:nd) + Weight * Pcoeff * SUM( VeloAtIp(1:dim) * GradP(1:dim) ) * Basis(1:nd)
         END IF
-        IF ( .NOT.TransientSimulation ) PrevSolution=Temperature(1:LocalNodes)
-      END IF
-!------------------------------------------------------------------------------
-     
-      RelativeChange = Solver % Variable % NonlinChange
 
-      WRITE( Message, * ) 'Result Norm   : ',Norm
-      CALL Info( 'HeatSolve', Message, Level=4 )
-      WRITE( Message, * ) 'Relative Change : ',RelativeChange
-      CALL Info( 'HeatSolve', Message, Level=4 )
+        ! SUPG (equal-order) stabilization: adds tau*(rho*cp*v.grad u,
+        ! rho*cp*v.grad v) to the standard Galerkin convection term above, and
+        ! the matching streamline-weighted mass/load terms further below. Same
+        ! Franca et al. tau legacy HeatSolve's "Stabilize" uses
+        ! (DiffuseConvectiveAnisotropic.F90).
+        ! CondScalar mirrors that routine's own C2(1,1): the
+        ! isotropic component even when the conductivity is a full tensor.
+        IF( Stabilize ) THEN
+          IF( CondRank == 0 ) THEN
+            CondScalar = CondAtIp
+          ELSE
+            CondScalar = CondTensor(1,1)
+          END IF
 
-      IF ( RelativeChange < NewtonTol .OR. iter >= NewtonIter ) &
-               NewtonLinearization = .TRUE.
-      Converged =  ( Solver % Variable % NonlinConverged > 0 ) .AND. &
-          ( .NOT. SmartHeaterControl .OR. SmartTolReached )
-      IF( Converged ) EXIT
+          hK = Element % hK
+          mK = Element % StabilizationMK
+          VNorm = SQRT( SUM( VeloAtIp(1:dim)**2 ) )
 
-      IF(SmartHeaterControl) THEN
-        IF ( RelativeChange < SmartTol ) THEN
-          SmartTolReached = .TRUE.
-          YY = Temperature
+          IF( VNorm > 0._dp .AND. CondScalar /= 0._dp ) THEN
+            Tau = MIN( 1._dp, mK*hK*EffCp*VNorm / (2._dp*ABS(CondScalar)) )
+            Tau = hK * Tau / ( 2._dp * EffCp * VNorm )
+          ELSE
+            Tau = 0._dp
+          END IF
+
+          DO p=1,nd
+            StreamVec(p) = EffCp * SUM( VeloAtIp(1:dim) * dBasisdx(p,1:dim) )
+          END DO
+
+          DO p=1,nd
+            DO q=1,nd
+              STIFF(p,q) = STIFF(p,q) + Weight * Tau * StreamVec(q) * StreamVec(p)
+            END DO
+          END DO
         END IF
       END IF
       
-!------------------------------------------------------------------------------
-    END DO ! of the nonlinear iteration
-!------------------------------------------------------------------------------
-    IF(TransientHeaterControl) THEN
-      PowerRelax = GetCReal(Solver % Values,'Smart Heater Relaxation Factor', GotIt)
-      IF(.NOT. GotIt) PowerRelax = 1.0_dp
-      PowerSensitivity = ListGetConstReal(Solver % Values,'Smart Heater Power Sensivity',GotIt)
-      IF(.NOT. GotIt) PowerSensitivity = 4.0_dp
-      PowerScaling = PowerScaling * (1 + PowerSensitivity * PowerRelax * (MeltPoint/yave - 1.0d0) ) 
-
-      IF( ListGetLogical( Solver % Values,'Smart Heater Transient Speedup',GotIt ) ) THEN
-        Temperature = Temperature * (1 + PowerRelax * (MeltPoint/yave - 1.0d0)   )     
+      ! reaction term (R*u,v) - perfusion      
+      ! -----------------------------------
+      PerfRateAtIp = ListGetElementReal( PerfRate_h, Basis, Element, Found )
+      IF( Found ) THEN
+        PerfDensAtIp = ListGetElementReal( PerfDens_h, Basis, Element, Found )
+        PerfCpAtIp = ListGetElementReal( PerfCp_h, Basis, Element, Found )
+        PerfRefTempAtIp = ListGetElementReal( PerfRefTemp_h, Basis, Element, Found )
+        PerfCoeff = PerfRateAtIp * PerfDensAtIp * PerfCpAtIp
+        DO p=1,nd
+          DO q=1,nd        
+            STIFF(p,q) = STIFF(p,q) + Weight * PerfCoeff
+          END DO
+        END DO        
+        FORCE(1:nd) = FORCE(1:nd) + Weight * PerfCoeff * PerfRefTempAtIp * Basis(1:nd)
       END IF
-      YY = Temperature
+                      
+      ! Time derivative term
+      ! -----------------------------------
+      IF( Transient ) THEN
+        CpAtIp = ListGetElementReal( Cp_h, Basis, Element, Found )
+        RhoAtIp = ListGetElementReal( Rho_h, Basis, Element, Found )
+        DO p=1,nd
+          MASS(p,1:nd) = MASS(p,1:nd) + Weight * &
+                (CpAtIp * RhoAtIp + PhaseCL) * Basis(p) * Basis(1:nd)
+        END DO
+
+        IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
+          DO p=1,nd
+            MASS(p,1:nd) = MASS(p,1:nd) + Weight * Tau * &
+                  (CpAtIp * RhoAtIp + PhaseCL) * Basis(1:nd) * StreamVec(p)
+          END DO
+        END IF
+      END IF
+
+      SourceAtIP = ListGetElementReal( VolSource_h, Basis, Element, Found )
+      IF( Found ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+        IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + Weight * Tau * SourceAtIP * StreamVec(1:nd)
+        END IF
+      ELSE
+        SourceAtIP = ListGetElementReal( Source_h, Basis, Element, Found )
+        IF( Found ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * RhoAtIp * Basis(1:nd)
+          IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
+            FORCE(1:nd) = FORCE(1:nd) + Weight * Tau * SourceAtIP * RhoAtIp * StreamVec(1:nd)
+          END IF
+        END IF
+      END IF
+
+      ! Joule heating from a coupled electric/magnetic solver -- see the
+      ! matching comment in LocalMatrixVec. JouleHeat() does its own
+      ! ElementInfo call internally and cheaply no-ops via early return when
+      ! this element's body force does not set "Joule Heat".
+      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+      IF( JouleH /= 0._dp ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + Weight * JouleH * Basis(1:nd)
+      END IF
+    END DO
+
+    ! The heat equation may have lower dimensional elements active also.
+    ! For example, heat transfer through a pipe could be expressed by 1d
+    ! elements. Then the multiplier should be the area of the pipe when
+    ! included in a 3D mesh. Applied to the whole local system, as in
+    ! HeatSolve.F90.
+    IF( HTMultFound ) THEN
+      MASS  = HTMultAtIp * MASS
+      STIFF = HTMultAtIp * STIFF
+      FORCE = HTMultAtIp * FORCE
     END IF
 
-!------------------------------------------------------------------------------
-!   Compute cumulative time done by now and time remaining
-!------------------------------------------------------------------------------
-    IF ( .NOT. TransientSimulation ) EXIT
-    CumulativeTime = CumulativeTime + dt
-    dt = Timestep - CumulativeTime
+    ! See the matching comment in LocalMatrixVec: a condensed bubble's own
+    ! value from the previous timestep is not in the global solution vector,
+    ! so CondensatePTransient must form the time derivative over the full
+    ! bubble-augmented block instead of Default1stOrderTime.
+    IF( Transient .AND. nb > 0 .AND. .NOT. Solver % GlobalBubbles ) THEN
+      CALL GetScalarLocalSolution( LocalTemp(1:nd-nb), UElement=Element )
+      CALL GetScalarLocalSolution( PrevTemp(1:nd-nb), UElement=Element, tStep=-1 )
+      CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
+      boff = (Element % ElementIndex - 1) * bxStride
+      CALL CondensatePTransient( nd-nb, nb, 1, dt, MASS, STIFF, FORCE, &
+          PrevTemp(1:nd-nb), LocalTemp(1:nd-nb), &
+          bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+    ELSE
+      IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+      CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
+      CALL CondensateP( nd-nb, nb, STIFF, FORCE )
+    END IF
 
-   END DO ! time interval
-   Solver % dt = Timestep
+20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 
-   CALL DefaultFinish()
-   
+    END ASSOCIATE
 !------------------------------------------------------------------------------
-   CALL  ListAddConstReal( Solver % Values,  &
-        'Nonlinear System Relaxation Factor', SaveRelax )
+  END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
-
-   DEALLOCATE( PrevSolution )
-
-   IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', Found ) ) THEN
-     IF(.NOT. ListGetLogical( Solver % Values,'Library Adaptivity',Found )) THEN
-       CALL RefineMesh( Model,Solver,Temperature,TempPerm, &
-           HeatSolver_Inside_Residual, HeatSolver_Edge_Residual, &
-           HeatSolver_Boundary_Residual )
-     END IF
-   END IF
-     
-CONTAINS
 
 
 !------------------------------------------------------------------------------
-! To save some time tabulate data needed for the diffuse gray radiation. 
+! Compute the fraction to be assembled. In serial case it is always one,
+! in parallel case only true parents result to assembly, mixed parents gives
+! assembly fraction of 1/2. 
 !------------------------------------------------------------------------------
-  SUBROUTINE TabulateBoundaryAverages( Mesh, Emiss, Reflect )
+  FUNCTION BCAssemblyFraction( Element ) RESULT ( AssFrac )
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), TARGET :: Mesh
-    REAL(KIND=dp), ALLOCATABLE :: Emiss(:)
-    REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: Reflect(:)
+    TYPE(Element_t), TARGET :: Element
+    REAL(KIND=dp) :: AssFrac
+
+    INTEGER :: NoParents, NoOwners
+    
+    IF( ParEnv % PEs > 1 ) THEN    
+      NoParents = 0; NoOwners = 0
+      IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+        IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN   
+          NoParents = NoParents + 1
+          IF ( Element % BoundaryInfo % Left % PartIndex == ParEnv % myPE ) NoOwners = NoOwners + 1
+        END IF
+        IF(  ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+          NoParents = NoParents + 1
+          IF ( Element % BoundaryInfo % Right % PartIndex == ParEnv % myPE ) NoOwners = NoOwners + 1
+        END IF
+      END IF
+      AssFrac = 1.0_dp * NoOwners / NoParents
+    ELSE
+      AssFrac = 1.0_dp
+    END IF
+    
+  END FUNCTION BCAssemblyFraction
+ !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+! Assembly of the matrix entries arising from the Neumann and Robin conditions.
+! Also farfield condition and idealized radiation are treated here. 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixBC( Element, n, nd, nb, VecAsm, DiffuseGray, InitHandles )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: VecAsm, DiffuseGray
+    LOGICAL, INTENT(INOUT) :: InitHandles
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: F,C,Weight, T0, &
+        RadC, RadF, RadText, Text, Emis, AssFrac
+    REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), ElemWeight(nd)
+    REAL(KIND=dp) :: PhaseVel(3), PhaseLatentHeatAtIp, PhaseDensityAtIp
+    LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse,TorBC,InfBC,PhaseChangeBC
+    INTEGER :: t,p,q,Indexes(n)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueList_t), POINTER :: BC       
+
+    INTEGER :: tid
+    TYPE(Nodes_t) :: Nodes
+    ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
+!------------------------------------------------------------------------------
+    BC => GetBC(Element)
+    IF (.NOT.ASSOCIATED(BC) ) RETURN
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        HeatFlux_h   => HeatFlux_h(tid),   HeatTrans_h  => HeatTrans_h(tid),  &
+        ExtTemp_h    => ExtTemp_h(tid),     Farfield_h   => Farfield_h(tid),   &
+        RadFlag_h    => RadFlag_h(tid),     RadExtTemp_h => RadExtTemp_h(tid),  &
+        EmisBC_h     => EmisBC_h(tid),      EmisMat_h    => EmisMat_h(tid),    &
+        TorBC_h      => TorBC_h(tid),       Cond_h       => Cond_h(tid),      &
+        InfBCFlag_h  => InfBCFlag_h(tid),   InfBCText_h  => InfBCText_h(tid), &
+        PhaseChangeFlag_h => PhaseChangeFlag_h(tid), PhaseVel1_h => PhaseVel1_h(tid), &
+        PhaseVel2_h  => PhaseVel2_h(tid),   PhaseVel3_h  => PhaseVel3_h(tid), &
+        PhaseLatentHeat_h => PhaseLatentHeat_h(tid), PhaseDensity_h => PhaseDensity_h(tid) )
+
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( HeatFlux_h,'Boundary Condition','Heat Flux')
+      CALL ListInitElementKeyword( HeatTrans_h,'Boundary Condition','Heat Transfer Coefficient')
+      CALL ListInitElementKeyword( ExtTemp_h,'Boundary Condition','External Temperature')
+      CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Temperature')
+      CALL ListInitElementKeyword( RadFlag_h,'Boundary Condition','Radiation')
+      CALL ListInitElementKeyword( RadExtTemp_h,'Boundary Condition','Radiation External Temperature')
+      CALL ListInitElementKeyword( EmisBC_h,'Boundary Condition','Emissivity')
+      CALL ListInitElementKeyword( EmisMat_h,'Material','Emissivity')
+      CALL ListInitElementKeyword( TorBC_h,'Boundary Condition','Radiator BC')
+
+      ! "Infinity BC <variable>[ Offset]", e.g. "Infinity BC Temperature": a
+      ! far-field Robin condition whose conductance is derived from the
+      ! parent element's own conductivity and the boundary's distance from
+      ! the coordinate origin -- see HeatSolve.F90's AddHeatFluxBC and
+      ! DiffuseConvectiveBoundary (DiffuseConvectiveAnisotropic.F90).
+      CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
+      CALL ListInitElementKeyword( InfBCFlag_h,'Boundary Condition', &
+          'Infinity BC '//TRIM(GetVarName(Solver % Variable)))
+      CALL ListInitElementKeyword( InfBCText_h,'Boundary Condition', &
+          'Infinity BC '//TRIM(GetVarName(Solver % Variable))//' Offset')
+
+      ! "Phase Change" BC: the boundary between a pulled solid/liquid marks a
+      ! moving Stefan interface, and this adds the latent-heat flux carried
+      ! across it, -k dT/dn = rho*L*(v.n) -- matching HeatSolveLegacy's own
+      ! "Phase Change" AddHeatFluxBC branch. "Phase Velocity 1/2/3" default to
+      ! zero when absent, so a sif that only sets "Phase Change" to mark the
+      ! interface for another solver (e.g. SteadyPhaseChange, which supplies
+      ! its own "Heat Flux" via a real MeltingHeat procedure instead) adds no
+      ! extra term here.
+      CALL ListInitElementKeyword( PhaseChangeFlag_h,'Boundary Condition','Phase Change')
+      CALL ListInitElementKeyword( PhaseVel1_h,'Boundary Condition','Phase Velocity 1')
+      CALL ListInitElementKeyword( PhaseVel2_h,'Boundary Condition','Phase Velocity 2')
+      CALL ListInitElementKeyword( PhaseVel3_h,'Boundary Condition','Phase Velocity 3')
+      ! Density and Latent Heat should come from the same (solid or liquid)
+      ! parent side; ListGetElementRealParent's left/right search order is
+      ! only a heuristic (it remembers which side last succeeded), same as
+      ! Cond_h/EmisMat_h above, not an exact same-side guarantee.
+      CALL ListInitElementKeyword( PhaseLatentHeat_h,'Material','Latent Heat')
+      CALL ListInitElementKeyword( PhaseDensity_h,'Material','Density')
+
+      InitHandles = .FALSE.
+    END IF
+
+    ! In parallel if we have halo the same BC element may occur several times.
+    ! Fetch here the fraction of the assembly to be accounted in this occurrence.
+    AssFrac = BCAssemblyFraction(Element)
+    IF( AssFrac < TINY( AssFrac ) ) RETURN
+
+    CALL GetElementNodes( Nodes, UElement=Element )
+    STIFF = 0._dp
+    FORCE = 0._dp
+    ElemWeight = 0._dp
+    
+    RadIdeal = ListCompareElementString( RadFlag_h,'idealized',Element, Found )    
+    RadDiffuse = ListCompareElementString( RadFlag_h,'diffuse gray',Element, Found )
+
+    IF( DG ) THEN
+      CALL DgRadiationIndexes(Element,n,Indexes,.FALSE.)
+    END IF
+    
+    ! This routine does not do diffuse gray radiation.
+    ! Pass on the information to the routine that does. 
+    DiffuseGray = RadDiffuse
+    
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints( Element )
+
+    ! Is this a radiator BC?
+    TorBC = ListGetElementLogical( TorBC_h, Element, Found = Found )
+    TorBC = TorBC .AND. .NOT. DiffuseGray
+    TorBC = TorBC .AND. Element % PartIndex == ParEnv % myPE
+
+    ! Is this an "Infinity BC" (far-field Robin condition, Cartesian only)?
+    InfBC = ListGetElementLogical( InfBCFlag_h, Element, Found = Found )
+    IF( InfBC .AND. CurrentCoordinateSystem() /= Cartesian ) THEN
+      CALL Fatal(Caller,'Infinity BC only implemented for the Cartesian case!')
+    END IF
+
+    ! Is this a moving solid/liquid (Stefan) interface?
+    PhaseChangeBC = ListGetElementLogical( PhaseChangeFlag_h, Element, Found = Found )
+
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis )
+
+      Weight = IP % s(t) * DetJ
+      
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+      ElemWeight(1:nd) = ElemWeight(1:nd) + Weight * Basis(1:nd) 
+      
+      ! Evaluate terms at the integration point:
+      !------------------------------------------
+
+      ! Given flux:
+      ! -----------
+
+      F = ListGetElementReal( HeatFlux_h, Basis, Element, Found )
+      IF( TorBC ) THEN
+        IF(ALLOCATED(Element % Boundaryinfo % Radiators)) THEN
+          Found = .TRUE.
+          F = F + SUM(RadiatorPowers*Element % BoundaryInfo % Radiators)
+        END IF
+      END IF
+
+      ! Phase Change flux at a moving solid/liquid interface:
+      ! -k dT/dn = rho*L*(v.n), matching HeatSolveLegacy's own "Phase Change"
+      ! branch. Zero when "Phase Velocity 1/2/3" are absent (e.g. a sif that
+      ! only sets "Phase Change" to mark the interface for another solver,
+      ! such as SteadyPhaseChange, to read).
+      IF( PhaseChangeBC ) THEN
+        PhaseVel(1) = ListGetElementReal( PhaseVel1_h, Basis, Element, Found )
+        PhaseVel(2) = ListGetElementReal( PhaseVel2_h, Basis, Element, Found )
+        PhaseVel(3) = ListGetElementReal( PhaseVel3_h, Basis, Element, Found )
+        PhaseLatentHeatAtIp = ListGetElementRealParent( PhaseLatentHeat_h, Basis, Element = Element, Found = Found )
+        PhaseDensityAtIp = ListGetElementRealParent( PhaseDensity_h, Basis, Element = Element, Found = Found )
+        Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
+        F = F + PhaseLatentHeatAtIp * PhaseDensityAtIp * SUM( Normal * PhaseVel )
+        Found = .TRUE.
+      END IF
+
+      IF( Found ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + Weight * F * Basis(1:nd)
+      END IF
+
+      ! Robin condition (c*(T-T_0)):
+      ! ---------------------------
+      IF( InfBC ) THEN
+        ! Far-field conductance Alpha = k_parent*(Coord.Normal)/(Coord.Coord),
+        ! Force = Alpha*Text -- matches DiffuseConvectiveBoundary's OpenBC
+        ! branch exactly (legacy HeatSolve.F90's "Infinity BC" condition).
+        Text = ListGetElementReal( InfBCText_h, Basis, Element, Found )
+        Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
+        Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
+        Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
+        Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
+        C = ListGetElementRealParent( Cond_h, Basis, Element = Element, Found = Found ) * &
+            SUM( Coord * Normal ) / SUM( Coord * Coord )
+        RobinBC = .TRUE.
+      ELSE
+        Text = ListGetElementReal( Farfield_h, Basis, Element, RobinBC )
+        IF( RobinBC ) THEN
+          Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
+          Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
+          Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
+          Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
+          C = SUM( Coord * Normal ) / SUM( Coord * Coord )
+        ELSE
+          C = ListGetElementReal( HeatTrans_h, Basis, Element, RobinBC )
+          IF(RobinBC) Text = ListGetElementReal( ExtTemp_h, Basis, Element, Found )
+        END IF
+      END IF
+
+      IF( RadIdeal ) THEN
+        RadText = ListGetElementReal( RadExtTemp_h, Basis, Element, Found )
+        IF(.NOT. Found ) THEN
+          RadText = ListGetElementReal( ExtTemp_h, Basis, Element, Found )
+        END IF
+
+        Emis = ListGetElementRealParent( EmisMat_h, Basis, Element = Element, Found = Found )
+        IF( .NOT. Found ) THEN
+          Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
+        END IF
+        IF(.NOT. Found ) THEN
+          CALL Warn(Caller,'Emissivity should be available for radiating BC: '&
+              //TRIM(ListGetString(BC,'name')))
+          CYCLE
+        END IF
+        
+        IF( DG ) THEN
+          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Indexes(1:n))))
+        ELSE
+          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes)))
+        END IF
+          
+        IF( Newton ) THEN
+          RadC = StefBoltz * Emis * 4*T0**3
+          RadF = StefBoltz * Emis * (3*T0**4+RadText**4) 
+        ELSE
+          RadC = Emis * StefBoltz * (T0**3 + &
+              T0**2*RadText+T0*RadText**2 + RadText**3)
+          RadF = RadC * RadText
+        END IF
+      ELSE
+        RadC = 0; RadF=0;
+      END IF
+        
+      IF( RobinBC .OR. RadIdeal) THEN
+        DO p=1,nd
+          DO q=1,nd
+            STIFF(p,q) = STIFF(p,q) + Weight * ( C + RadC ) * Basis(q) * Basis(p)
+          END DO
+        END DO
+        FORCE(1:nd) = FORCE(1:nd) + Weight * ( C * Text + RadF ) * Basis(1:nd) 
+      END IF
+
+    END DO
+
+    ! Calculate fluxes on-the-fly
+#if 0
+    IF( PostCalc ) THEN
+      BLOCK
+        INTEGER :: ElemPerm(27)
+        ElemPerm(1:n) = PostFlux % Perm(Element % NodeIndexes)
+        IF(ALL(ElemPerm(1:n) > 0 )) THEN
+          PostWeight % Values(ElemPerm(1:n)) = PostWeight % Values(ElemPerm(1:n)) + ElemWeight(1:n)
+          PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + FORCE(1:n)
+        END IF
+      END BLOCK
+    END IF
+#endif
+    
+    IF( ABS(AssFrac-1.0_dp) > TINY( AssFrac ) ) THEN
+      FORCE(1:nd) = AssFrac * FORCE(1:nd)
+      STIFF(1:nd,1:nd) = AssFrac * STIFF(1:nd,1:nd)
+    END IF
+
+    IF( DG ) THEN
+      CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
+          Solver % Matrix % Rhs, FORCE, n, 1, TempPerm(Indexes(1:n)), UElement=Element)      
+    ELSE    
+      CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+    END IF
+
+    END ASSOCIATE
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixBC
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+! To save some time tabulate the data needed for the diffuse gray radiation. 
+! Temps4 is the ^4 averaged temperature over elements.
+!------------------------------------------------------------------------------
+  SUBROUTINE TabulateBoundaryAverages( Mesh, Temps4, Emiss, Absorp, Reflect )
+!------------------------------------------------------------------------------
+     TYPE(Mesh_t) :: Mesh
+     REAL(KIND=dp), ALLOCATABLE :: Temps4(:)
+     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: Emiss(:), Absorp(:), Reflect(:)
  !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
-    INTEGER :: bindex, nb, n, j, noactive
-    INTEGER :: ElemInds(12)
-    REAL(KIND=dp) :: NodalVal(12), Absorp
-    
+     INTEGER :: bindex, nb, n, j, noactive
+     INTEGER :: ElemInds(12)
+     REAL(KIND=dp) :: NodalVal(12), NodalTemp(12)
+     
      nb = Mesh % NumberOfBoundaryElements
      NoActive = 0
      
@@ -1407,890 +2709,872 @@ CONTAINS
 
        BC => GetBC(Element)
        IF(.NOT. ASSOCIATED( BC ) ) CYCLE
+       
+       IF( ListGetString( BC,'Radiation',Found) /= 'diffuse gray' ) CYCLE
+       NoActive = NoActive + 1
 
-       IF( .NOT. ListCheckPresent( BC,'Radiation' ) ) CYCLE
-
-       IF(.NOT. ALLOCATED( Emiss ) ) THEN
-         ALLOCATE( Emiss(nb) )
+       IF(.NOT. ALLOCATED( Temps4 ) ) THEN
+         ALLOCATE( Temps4(nb), Emiss(nb), Absorp(nb), Reflect(nb) )
+         Temps4 = 0.0_dp
          Emiss = 0.0_dp
-         IF( PRESENT( Reflect ) ) THEN
-           ALLOCATE( Reflect(nb) )
-           Reflect = 0.0_dp
-         END IF
+         Absorp = 0.0_dp
+         Reflect = 0.0_dp
        END IF
-
+         
        n = GetElementNOFNodes(Element)
 
-       NodalVal(1:n) = GetReal(BC,'Emissivity',Found)
-       IF (Found) THEN
-         Emiss(j) = SUM(NodalVal(1:n)) / n
-         IF( PRESENT(Reflect)) THEN
+       IF( DG ) THEN
+         CALL DgRadiationIndexes(Element,n,ElemInds,.TRUE.)
+         NodalTemp(1:n) = Temperature(TempPerm(ElemInds(1:n)))
+       ELSE
+         NodalTemp(1:n) = Temperature(TempPerm(Element % NodeIndexes))
+       END IF
+       Temps4(j) = SUM( NodalTemp(1:n)**4 ) / n
+
+       IF( PRESENT( Emiss ) ) THEN
+         NodalVal(1:n) = GetReal(BC,'Emissivity',Found)
+         IF (Found) THEN
+           Emiss(j) = SUM(NodalVal(1:n)) / n
            NodalVal(1:n) = GetReal(BC,'Absorptivity',Found)
            IF(Found) THEN
-             Absorp = SUM(NodalVal(1:n)) / n
+             Absorp(j) = SUM(NodalVal(1:n)) / n
            ELSE
-             Absorp = Emiss(j)
+             Absorp(j) = Emiss(j)
            END IF
            NodalVal(1:n) = GetReal(BC,'Reflectivity',Found)
            IF(Found) THEN
              Reflect(j) = SUM(NodalVal(1:n)) / n
            ELSE
-             Reflect(j) = 1-Absorp
+             Reflect(j) = 1-Absorp(j)
            END IF
-         END IF
-       ELSE
-         NodalVal(1:n) = GetParentMatProp('Emissivity',Element)
-         Emiss(j) = SUM(NodalVal(1:n)) / n
-         IF( PRESENT( Reflect ) ) THEN
+         ELSE
+           NodalVal(1:n) = GetParentMatProp('Emissivity',Element)
+           Emiss(j) = SUM(NodalVal(1:n)) / n
            NodalVal(1:n) = GetParentMatProp('Absorptivity',Element, Found)
            IF(Found) THEN
-             Absorp = SUM(NodalVal(1:n)) / n
+             Absorp(j) = SUM(NodalVal(1:n)) / n
            ELSE
-             Absorp = Emiss(j)
+             Absorp(j) = Emiss(j)
            END IF
            NodalVal(1:n) = GetParentMatProp('Reflectivity',Element, Found)
            IF(Found) THEN
              Reflect(j) = SUM(NodalVal(1:n)) / n
            ELSE
-             Reflect(j) = 1-Absorp
+             Reflect(j) = 1-Absorp(j)
            END IF
          END IF
        END IF
      END DO
-
+     
    END SUBROUTINE TabulateBoundaryAverages
 !------------------------------------------------------------------------------
 
-
+   
 !------------------------------------------------------------------------------
-   SUBROUTINE AddHeatFluxBC()
+! Assembly of the matrix entries arising diffuse gray radiation. All the terms
+! are treated here. This is a special routine since the view factors create
+! additional connections to the matrix. 
 !------------------------------------------------------------------------------
-      LOGICAL :: ElementForThisPartition
-      CALL GetElementNodes( ElementNodes )
-
-      HeatTransferCoeff = 0.0_dp
-      LOAD  = 0.0_dp
-      AText = 0.0_dp
+  SUBROUTINE LocalMatrixDiffuseGray( Element, n, nd, nb )
 !------------------------------------------------------------------------------
-!     BC: -k@T/@n = \epsilon\sigma(T^4 - Text^4)
+    IMPLICIT NONE
+    INTEGER :: n, nd, nb
+    TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
-      RadiationFlag = GetString( BC, 'Radiation', Found )
-
-      IF ( Found .AND. RadiationFlag /= 'none' ) THEN
-        Emissivity = Emiss(bc_elem)
-
-!------------------------------------------------------------------------------
-        IsRadiosity = .FALSE.
-
-        ElementForThisPartition = Element % PartIndex == ParEnv % myPE
-
-        IF (  RadiationFlag == 'idealized' ) THEN
-          AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
-          IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
-        ELSE IF (ElementForThisPartition) THEN
-          IF( Radiosity ) THEN
-            CALL RadiosityRadiation( Model, Solver, Element, & 
-                n, Temperature, TempPerm, ForceVector )
-            IsRadiosity = .TRUE.
-          ELSE          
-            CALL DiffuseGrayRadiation( Model, Solver, Element, & 
-                Temperature, TempPerm, ForceVector, VisibleFraction, Text)
-            
-            IF( GetLogical( BC, 'Radiation Boundary Open', Found) ) THEN
-              AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
-              IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
-              IF( VisibleFraction >= 1.0_dp ) THEN
-                Atext(1:n) = Text
-              ELSE
-                Atext(1:n) = ( (1 - VisibleFraction) * Atext(1:n)**4 + &
-                    VisibleFraction * Text**4 ) ** 0.25_dp
-              END IF
-            ELSE
-              AText(1:n) = Text
-            END IF
-          END IF
-        END IF
-!------------------------------------------------------------------------------
-!       Add our own contribution to surface temperature (and external
-!       if using linear type iteration or idealized radiation)
-!------------------------------------------------------------------------------
-        IF(.NOT.IsRadiosity.AND.(RadiationFlag=='idealized'.OR.ElementForThisPartition)) THEN
-          DO j=1,n
-            k = TempPerm(Element % NodeIndexes(j))
-            Text = AText(j)
-            IF ( .NOT. HeatGapBC .AND. NewtonLinearization ) THEN
-              HeatTransferCoeff(j) = Emissivity * 4*Temperature(k)**3 * &
-                  StefanBoltzmann
-              LOAD(j) = Emissivity*(3*Temperature(k)**4+Text**4) * &
-                  StefanBoltzmann
-            ELSE
-              HeatTransferCoeff(j) = Emissivity * (Temperature(k)**3 +   &
-                  Temperature(k)**2*Text+Temperature(k)*Text**2 + Text**3) * &
-                  StefanBoltzmann 
-              LOAD(j) = HeatTransferCoeff(j) * Text
-            END IF
-          END DO
-        END IF
-      END IF  ! of radition
-!------------------------------------------------------------------------------
-
-      Work(1:n)  = GetReal( BC, 'Heat Transfer Coefficient',Found )
-      IF ( Found ) THEN
-       AText(1:n) = GetReal( BC, 'External Temperature',Found )
-       DO j=1,n
-!------------------------------------------------------------------------------
-!         BC: -k@T/@n = \alpha(T - Text)
-!------------------------------------------------------------------------------
-          k = TempPerm(Element % NodeIndexes(j))
-          LOAD(j) = LOAD(j) + Work(j) * AText(j)
-          HeatTransferCoeff(j) = HeatTransferCoeff(j) + Work(j)
-        END DO
-      END IF
-
-!------------------------------------------------------------------------------
-!     BC: -k@T/@n = (rho*L)*v.n 
-!     Heating related to pulling is possible only in ss cases where pull velocity
-!     is desrcibed.
-!------------------------------------------------------------------------------
-
-      IF( GetLogical( BC, 'Phase Change',Found ) ) THEN
-         PhaseVelocity(1,1:n) = GetReal( BC,'Phase Velocity 1', Found  )
-         PhaseVelocity(2,1:n) = GetReal( BC,'Phase Velocity 2', Found  )
-         PhaseVelocity(3,1:n) = GetReal( BC,'Phase Velocity 3', Found  )
-  
-         ! Ensure that the latent heat and density come from the same side
-         LatentHeat(1:n) = GetParentMatProp( 'Latent Heat', &
-              UElement = Element, UParent = Parent )
-         IF(.NOT. ASSOCIATED(Parent) ) THEN
-           CALL Warn('HeatSolve','Parent not associated')
-         ELSE
-           k = GetInteger(Model % Bodies(Parent % BodyId) % Values,'Material')
-           Density(1:n) = GetReal( Model % Materials(k) % Values, 'Density' )
-         END IF
-
-         ! This could be rather put as a new type of BC into the assembly routine and 
-         ! then the Normal could be taken at the proper Gaussian integration points. 
-         Normal = NormalVector( Element, ElementNodes, 0.0_dp, 0.0_dp, .TRUE. )
-
-         DO i=1,n
-            LOAD(i) = LOAD(i) + &
-                 LatentHeat(i) * Density(i) * SUM( Normal(1:3) * PhaseVelocity(1:3,i))
-         END DO
-      END IF
-
-!------------------------------------------------------------------------------
-!     BC: -k@T/@n = g
-!------------------------------------------------------------------------------
-      LOAD(1:n) = LOAD(1:n) +  GetReal( BC, 'Heat Flux', Found )
-
-      InfBC = ListGetLogical( BC,'Infinity BC '//TRIM(VarName),GotIt)
-      IF( InfBC ) THEN
-        AText(1:n) = GetReal( BC,'Infinity BC '//TRIM(VarName)//' Offset',GotIt)
-        ! currently only isotropic heat conductivity supported
-        HeatConductivityIso(1:n) = GetParentMatProp('Heat Conductivity',Element,GotIt)
-        IF(.NOT. GotIt) THEN
-          CALL Fatal( 'HeatSolver','Could not find > Heat Conductivity < for parent!' )           
-        END IF
-      END IF
-
-
-!------------------------------------------------------------------------------
-!     Get element matrix and rhs due to boundary conditions ...
-!------------------------------------------------------------------------------
-      IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-        CALL DiffuseConvectiveBoundary( STIFF,FORCE, &
-            LOAD,HeatTransferCoeff,InfBC,HeatConductivityIso,AText(1:n),&
-            Element,n,ElementNodes )
-      ELSE
-        IF( InfBC ) THEN
-          CALL Fatal('HeatSolver','Infinity BC not implemented only for cartersian case!')
-        END IF
-        CALL DiffuseConvectiveGenBoundary(STIFF,FORCE,&
-            LOAD,HeatTransferCoeff,Element,n,ElementNodes ) 
-      END IF
-
-!------------------------------------------------------------------------------
-!     Update global matrices from local matrices
-!------------------------------------------------------------------------------
-      IF ( TransientAssembly .AND. .NOT. ConstantBulk ) THEN
-        MASS = 0.d0
-        CALL Default1stOrderTime( MASS, STIFF, FORCE )
-      END IF
-
-      IF ( HeatGapBC ) &
-        CALL AddHeatGap( Solver, Element, STIFF, TempPerm)
-
-      CALL DefaultUpdateEquations( STIFF, FORCE )
-!------------------------------------------------------------------------------
-    END SUBROUTINE AddHeatFluxBC
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE AddGlobalTime()
-!------------------------------------------------------------------------------
-      INTEGER :: i,j,k,l,n
-      REAL(KIND=dp) :: FORCE(1)
-      REAL(KIND=dp), POINTER :: SaveValues(:) => NULL()
-      SAVE STIFF, MASS, X
-      REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),MASS(:,:), X(:,:)
-
-      IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
-         IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF,MASS,X )
-         n = 0
-         DO i=1,Solver % Matrix % NumberOfRows
-           n = MAX( n,Solver % Matrix % Rows(i+1)-Solver % Matrix % Rows(i) )
-         END DO
-         k = SIZE(Solver % Variable % PrevValues,2)
-         ALLOCATE( STIFF(1,n),MASS(1,n),X(n,k) )
- 
-         SaveValues => Solver % Variable % Values
-      END IF
-
-      DO i=1,Solver % Matrix % NumberOFRows
-        n = 0
-        DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
-          n=n+1
-          STIFF(1,n) = Solver % Matrix % Values(j)
-          MASS(1,n)  = Solver % Matrix % MassValues(j)
-          X(n,:) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),:)
-        END DO
-        FORCE(1) = Solver % Matrix % RHS(i)
-        Solver % Matrix % Force(i,1) = FORCE(1)
-        k = MIN( Solver % DoneTime, Solver % Order )
-        CALL BDFLocal( n, dt, MASS, STIFF, FORCE, X, k )
-
-        n = 0
-        DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
-           n=n+1
-          Solver % Matrix % Values(j) = STIFF(1,n)
-        END DO
-        Solver % Matrix % RHS(i) = FORCE(1)
-      END DO
-!------------------------------------------------------------------------------
-    END SUBROUTINE AddGlobalTime
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE DiffuseGrayRadiation( Model, Solver, Element,  &
-      Temperature, TempPerm, ForceVector,AngleFraction, Text)
-!------------------------------------------------------------------------------
-      TYPE(Model_t)  :: Model
-      TYPE(Solver_t) :: Solver
-      TYPE(Element_t), POINTER :: Element
-      INTEGER :: TempPerm(:)
-      REAL(KIND=dp) :: Temperature(:), ForceVector(:)
-      REAL(KIND=dp) :: AngleFraction, Text
-!------------------------------------------------------------------------------
-      REAL(KIND=dp) :: Area, Asum, gEmissivity, Base(12), Load, TransCoeff
-      REAL(KIND=dp), POINTER :: Fact(:)
-      INTEGER :: i,j,k,l,m,ImplicitFactors, nf,nr, bindex, nb
-      INTEGER, POINTER :: ElementList(:)
-!------------------------------------------------------------------------------
-!     If linear iteration compute radiation load
-!------------------------------------------------------------------------------
-
-      Asum = 0.0_dp
-      IF ( .NOT. NewtonLinearization ) THEN
-        Text = ComputeRadiationLoad( Model, Solver % Mesh, Element, &
-           Temperature, TempPerm, Emissivity, AngleFraction, Areas, Emiss )
-
-      ELSE   !  Full Newton-Raphson solver
-!------------------------------------------------------------------------------
-!       Go through surfaces (j) this surface (i) is getting
-!       radiated from.
-!------------------------------------------------------------------------------
-
-        ElementList => Element % BoundaryInfo % RadiationFactors % Elements
-
-        nf = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
-
-        bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
-        Area  = Areas(bindex)
-        CALL GetBase( Base, Element, n, ElementNodes )
-
-        Fact => Element % BoundaryInfo % RadiationFactors % Factors
-
-        DO j=1,nf
-          RadiationElement => Solver % Mesh % Elements(ElementList(j))
-          Text = Fact(j)
-          Asum = Asum + Text
-
-!------------------------------------------------------------------------------
-!         Gebhart factors are given elementwise at the center
-!         of the element, so take average of nodal temperatures
-!         (or integrate over surface j)
-!------------------------------------------------------------------------------
-
-          k = RadiationElement % TYPE % NumberOfNodes
-          ImplicitFactors = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors
-          IF(ImplicitFactors == 0) &
-              ImplicitFactors = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
-
-          IF(j <= ImplicitFactors) THEN
-            
-            S = (SUM( Temperature( TempPerm( RadiationElement % &
-                NodeIndexes))**4 )/k )**(1._dp/4._dp)
-!------------------------------------------------------------------------------
-!          Linearization of the G_jiT^4_j term
-!------------------------------------------------------------------------------
-           LOAD = -3 * Text * S**4 * StefanBoltzmann
-           TransCoeff = -4 * Text * S**3 * StefanBoltzmann
-!------------------------------------------------------------------------------
-!          Integrate the contribution of surface j over surface i
-!          and add to global matrix
-!------------------------------------------------------------------------------
-            DO m=1,n
-              k1 = TempPerm( Element % NodeIndexes(m) )
-              DO l=1,k
-                k2 = TempPerm( RadiationElement % NodeIndexes(l) )
-                CALL AddToMatrixElement( StiffMatrix,k1,k2,TransCoeff*Base(m)/k )
-              END DO
-              ForceVector(k1) = ForceVector(k1) + Load*Base(m)
-            END DO
-
-          ELSE
-            S = (SUM( Temperature( TempPerm( RadiationElement % &
-                NodeIndexes))**4 )/k )
-            
-            LOAD = Text * S * StefanBoltzmann
-            
-            DO m=1,n
-              k1 = TempPerm( Element % NodeIndexes(m) )
-              ForceVector(k1) = ForceVector(k1) + LOAD*Base(m)
-            END DO            
-          END IF 
-
-        END DO
-
-!------------------------------------------------------------------------------
-!       We have already added all external temperature contributions
-!       to the matrix for the Newton type iteration
-!------------------------------------------------------------------------------
-        AngleFraction = Asum / Emissivity
-        Text = 0.0
-
-      END IF  !  of newton-raphson
-
-    END SUBROUTINE DiffuseGrayRadiation
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE RadiosityRadiation( Model, Solver, Element,  &
-      n, Temperature, TempPerm, ForceVector)
-!------------------------------------------------------------------------------
-      TYPE(Model_t)  :: Model
-      TYPE(Solver_t) :: Solver
-      TYPE(Element_t), POINTER :: Element
-      INTEGER :: n
-      INTEGER :: TempPerm(:)
-      REAL(KIND=dp) :: Temperature(:), ForceVector(:)      
-!------------------------------------------------------------------------------
-      REAL(KIND=dp) :: Emis1, Refl1, RadCoeffAtIp, RadLoadAtIp, TempAtIp, s, x, y, z, DetJ
-      REAL(KIND=dp) :: Basis(27)
-      REAL(KIND=dp), POINTER :: Fact(:)
-      INTEGER :: t,p,q,k1,k2
-      INTEGER, POINTER :: pIndexes(:)
-      TYPE(GaussIntegrationPoints_t), TARGET :: IP
-      LOGICAL :: stat
-!------------------------------------------------------------------------------
-!     If linear iteration compute radiation load
-!------------------------------------------------------------------------------
-      
-      pIndexes => Element % NodeIndexes     
-      
-      Emis1 = Emissivity            
-      IF(.NOT.Spectral ) THEN
-        Refl1 = Reflect(bc_elem)
-        Emis1 = Emis1 / Refl1
-      END IF
-      Fact => Element % BoundaryInfo % RadiationFactors % Factors
-      
-      TempAtIp = SUM(Temperature(TempPerm(pIndexes(1:n))))/n
-
-      IF(NewtonLinearization) THEN
-        RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefanBoltzmann + &
-             (Fact(1) - Fact(2)*TempAtIp)
-        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefanBoltzmann - Fact(2)
-      ELSE
-        RadCoeffAtIp = Emis1 * StefanBoltzmann * TempAtIp**3
-        RadLoadAtIp = Fact(1)
-      END IF
-
-      IP = GaussPoints( Element )
-      
-      DO t=1,IP % n
-        stat = ElementInfo( Element,ElementNodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
-        s = detJ * IP % s(t)
-        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-          x = SUM( ElementNodes % x(1:n)*Basis )
-          y = SUM( ElementNodes % y(1:n)*Basis )
-          z = SUM( ElementNodes % z(1:n)*Basis )
-          s = s * CoordinateSqrtMetric( x,y,z )
-        END IF
-        DO p=1,n
-          k1 = TempPerm( pIndexes(p) )
-          DO q=1,n
-            k2 = TempPerm( pIndexes(q) )
-            CALL AddToMatrixElement( Solver % Matrix,k1,k2,s*Basis(p)*Basis(q)*RadCoeffAtIP)
-          END DO
-          ForceVector(k1) = ForceVector(k1) + s *Basis(p) * RadLoadAtIp
-        END DO
-      END DO
-      
-    END SUBROUTINE RadiosityRadiation
-!------------------------------------------------------------------------------
-
-
+    REAL(KIND=dp) :: T0,Text, Fj, &
+        RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac, cNewton
+    REAL(KIND=dp) :: Basis(nd),DetJ,Atext(12),Base(12),S,RadCoeffAtIP
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp
+    REAL(KIND=dp), POINTER :: Fact(:) 
+    TYPE(Element_t), POINTER :: RadElement
+    LOGICAL :: Stat,Found,BCOpen,Radiators
+    INTEGER :: j,t,p,q,bindex,k,k1,k2,nf,nf_imp
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(Nodes_t) :: Nodes
+    INTEGER, POINTER :: ElementList(:),pIndexes(:)
+    REAL(KIND=dp), POINTER :: ForceVector(:)   
+    REAL(KIND=dp) :: NodalTemp(12)
+    INTEGER, TARGET :: ElemInds(12),ElemInds2(12)
     
 !------------------------------------------------------------------------------
-    SUBROUTINE EffectiveHeatCapacity()
-      LOGICAL :: Found, Specific, GotFraction
-      REAL(KIND=dp), ALLOCATABLE :: dT(:)
-      REAL(KIND=dp) :: dT0
+    IF(Element % PartIndex /= ParEnv % myPE ) RETURN
+    
+    BC => GetBC(Element)
+    IF (.NOT.ASSOCIATED(BC) ) RETURN
+    
+    ! The caller (LocalMatrixBC) only invokes this subroutine when it has
+    ! already established RadDiffuse == .TRUE. for this same Element, via
+    ! the thread-safe RadFlag_h handle + ListCompareElementString. Re-checking
+    ! the same condition here via the raw ListGetString(BC,'Radiation',Found)
+    ! was both redundant and, per the note above, the actual source of the
+    ! threaded non-determinism — removed rather than replaced.
 
-!------------------------------------------------------------------------------
-!     See if temperature gradient indside the element is large enough 
-!     to use  the c_p = SQRT( (dH/dx)^2 / (dT/dx)^2 ), otherwise
-!     use c_p = dH/dT, or if in time dependent simulation, use
-!     c_p = (dH/dt) / (dT/dt), if requested. 
-!------------------------------------------------------------------------------
+    AssFrac = BCAssemblyFraction(Element)
+    IF( AssFrac < TINY( AssFrac ) ) RETURN
 
-      SELECT CASE(PhaseModel)
-!------------------------------------------------------------------------------
-        CASE( 'spatial 1' )
-          PhaseChangeModel = PHASE_SPATIAL_1
-!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, UElement=Element) 
+    n = Element % TYPE % NumberOfNodes
+    
+    IF( .NOT. ASSOCIATED( Element % BoundaryInfo % RadiationFactors ) ) THEN
+      CALL Fatal(Caller,'Radiation factors not calculated for boundary!')
+    END IF
+    
+    Fact => Element % BoundaryInfo % RadiationFactors % Factors
+    ElementList => Element % BoundaryInfo % RadiationFactors % Elements
 
-        CASE( 'spatial 2' )
-!------------------------------------------------------------------------------
-! Check if local variation of temperature is large enough to actually use the
-! Spatial 2 model. Should perhaps be scaled to element size (or actually
-! compute the gradient, but this will do for now...).
-!------------------------------------------------------------------------------
-          s = MAXVAL(LocalTemperature(1:n))-MINVAL(LocalTemperature(1:n))
-          IF ( s < AEPS ) THEN
-            PhaseChangeModel = PHASE_SPATIAL_1
-          ELSE
-            PhaseChangeModel = PHASE_SPATIAL_2
+    bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
+    nf = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
+      
+    nf_imp = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors      
+    IF( nf_imp == 0 ) nf_imp = nf
+
+    ! Temperature/TempPerm are shared, host-associated pointers already set
+    ! once (serially) at the top of HeatSolver — reassigning them here again
+    ! on every call, from every thread, is a race on the shared pointer
+    ! descriptor itself (not just its target). ForceVector is a local
+    ! variable in this subroutine, so assigning it is thread-safe.
+    ForceVector => Solver % Matrix % rhs
+
+    Emis1 = Emiss(bindex)
+    Refl1 = Reflect(bindex)
+    Abso1 = Absorp(bindex)
+    
+    IP = GaussPoints( Element )
+
+    BCOpen = GetLogical( BC, 'Radiation Boundary Open', Found)
+    IF( BCOpen ) THEN
+      AngleFraction = SUM( Fact(1:nf) ) / Emis1
+    ELSE
+      AngleFraction = 1.0_dp
+    END IF
+
+    STIFF(1:n,1:n) = 0.0_dp
+    FORCE(1:n) = 0.0_dp      
+
+    IF( DG ) THEN
+      CALL DgRadiationIndexes(Element,n,ElemInds,.TRUE.)
+      NodalTemp(1:n) = Temperature( TempPerm( ElemInds(1:n) ) )
+    ELSE
+      NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
+    END IF
+    
+    Text  = 0.0_dp
+
+    Radiators = ALLOCATED(Element % BoundaryInfo % Radiators) .AND. &
+             ALLOCATED(RadiatorPowers)
+
+    IF(Radiosity) THEN
+      IF( BCOpen ) THEN
+        CALL Fatal(Caller,'Radiosity model not yet working with open boundaries!')
+      END IF
+
+      IF(Refl1 < EPSILON(Refl1) ) THEN
+        CALL Fatal(Caller,'Radiosity Model does not work for zero reflectivity (emissivity one)!')
+      END IF
+
+      Base = 0.0_dp
+      IF(.NOT. Spectral) Emis1 = Emis1 / Refl1     
+      TempAtIp = SUM(NodalTemp(1:n))/n
+
+      IF(Newton) THEN
+        RadLoadAtIp =  (3 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)) * TempAtIp &
+             + Fact(1) 
+        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)
+        
+        IF( HaveRadNewtonRelax ) THEN
+          RadLoadAtIp = RadNewtonRelax * RadLoadAtIp + (1-RadNewtonRelax) * Fact(1)
+          RadCoeffAtIp = RadNewtonRelax * RadCoeffAtIp + (1-RadNewtonRelax) * Emis1 * StefBoltz * TempAtIp**3          
+        END IF
+      ELSE
+        RadLoadAtIp = Fact(1)
+        RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
+      END IF
+      
+      DO t=1,IP % n
+        stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
+        s = detJ * IP % s(t)        
+        IF ( AxiSymmetric ) THEN
+          s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
+        END IF
+
+        DO p=1,n
+          DO q=1,n
+            STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q) * RadCoeffAtIp 
+          END DO
+          FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
+        END DO
+        Base(1:n) = Base(1:n) + s * Basis(1:n) 
+      END DO
+        
+    ELSE ! .NOT. Radiosity ) 
+      ! Go through surfaces (j) this surface (i) is getting radiated from.
+      !------------------------------------------------------------------------------        
+      IF ( Newton ) THEN                
+        ! Linearization of T^4_i term
+        !----------------------------------------------------------------------------
+        Base = 0.0_dp
+
+        DO t=1,IP % n
+          stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
+          s = detJ * IP % s(t)        
+          IF ( AxiSymmetric ) THEN
+            s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
           END IF
 
-!------------------------------------------------------------------------------
-! Note that here HeatCapacity is miused for saving dT.
-!------------------------------------------------------------------------------
-        CASE('temporal')
-          IF ( TransientSimulation )  THEN
-            ALLOCATE( dT(n) )
-            dT(1:n) = Temperature(TempPerm(Element % NodeIndexes)) - &
-                     PrevTemperature(TempPerm(Element % NodeIndexes))
+          TempAtIp = SUM(NodalTemp(1:n))/n
+          RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz
+          RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefBoltz
 
-            IF ( ANY(ABS(dT(1:n)) < AEPS) ) THEN
-              PhaseChangeModel = PHASE_SPATIAL_1
+          DO p=1,n
+            DO q=1,n
+              STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q)*RadCoeffAtIp 
+            END DO
+            FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp
+          END DO            
+          Base(1:n) = Base(1:n) + s * Basis(1:n) 
+        END DO
+
+        ! Linearization of the G_jiT^4_j term
+        !------------------------------------------------------------------------------
+        DO j=1,nf
+          RadElement => Mesh % Elements(ElementList(j))
+          k = RadElement % TYPE % NumberOfNodes
+          Fj = Fact(j)
+
+          ! Gebhart factors are given elementwise at the center
+          ! of the element, so take average of nodal temperatures
+          !-------------------------------------------------------------
+          bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
+          Text = Temps4(bindex)**(0.25_dp)
+
+          IF( j <= nf_imp ) THEN        
+            ! Linearization of the G_jiT^4_j term
+            !------------------------------------------------------------------------------
+            RadCoeffAtIp = -4 * Fj * Text**3 * StefBoltz
+            RadLoadAtIp  = -3 * Fj * Text**4 * StefBoltz
+
+            IF(Radiators) THEN
+              IF(ALLOCATED(RadElement % BoundaryInfo % Radiators)) THEN
+                RadLoadAtIp = RadLoadAtIp + &
+                    Fj * SUM(RadElement % BoundaryInfo % Radiators * RadiatorPowers) * &
+                    (1-Emiss(bindex)) / Emiss(bindex)
+              END IF
+            END IF
+
+            ! Integrate the contribution of surface j over surface j and add to global matrix
+            !------------------------------------------------------------------------------                    
+            ! ForceVector is shared across boundary elements/threads (no
+            ! coloring guarantees disjoint nodes here — RadElement can be
+            ! anywhere in the mesh), and unlike DefaultUpdateEquations this
+            ! manual scatter has no built-in atomic protection, so add it
+            ! explicitly. AddToMatrixElement is already atomic internally
+            ! (CRS_AddToMatrixElement uses !$OMP ATOMIC).
+            IF( Dg ) THEN
+              CALL DgRadiationIndexes(RadElement,k,ElemInds2,.TRUE.)
+
+              DO p=1,n
+                k1 = TempPerm( ElemInds(p))
+                DO q=1,k
+                  k2 = TempPerm( ElemInds2(q) )
+                  CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
+                END DO
+                !$OMP ATOMIC UPDATE
+                ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
+              END DO
             ELSE
-              PhaseChangeModel = PHASE_TEMPORAL
+              DO p=1,n
+                k1 = TempPerm( Element % NodeIndexes(p) )
+                DO q=1,k
+                  k2 = TempPerm( RadElement % NodeIndexes(q) )
+                  CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
+                END DO
+                !$OMP ATOMIC UPDATE
+                ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
+              END DO
             END IF
           ELSE
-             PhaseChangeModel = PHASE_SPATIAL_1
+            ! Explicit part, no linearization
+            !------------------------------------------------------------------------
+            RadLoadAtIp = Fj * Text**4 * StefBoltz
+            DO p=1,n
+              FORCE(p) = FORCE(p) + RadLoadAtIp * Base(p)
+            END DO
           END IF
+        END DO
 
-!------------------------------------------------------------------------------
-        CASE DEFAULT
-          PhaseChangeModel = PHASE_SPATIAL_1
-
-      END SELECT
-!------------------------------------------------------------------------------
-
-      PhaseSpatial = ( PhaseChangeModel == PHASE_SPATIAL_2 )
-      Specific = ListCheckPresent( Material,'Specific Enthalpy')
-
-      EnthalpyFraction(1:n) = ListGetReal(Material,'Enthalpy Fraction',&
-          n,Element % NodeIndexes,GotFraction)          
- 
-
-!-----------------------------------------------------------------------------
-      SELECT CASE( PhaseChangeModel )
-
-!------------------------------------------------------------------------------
-! This phase change model is available only for some type of real entries 
-! that have an implemented analytical derivation rule.
-!-----------------------------------------------------------------------------
-      CASE( PHASE_SPATIAL_1 )
-
-        Work(1:n) = ListGetReal( Material, &
-            'Effective Heat Capacity', n,Element % NodeIndexes, Found )
-        IF ( .NOT. Found ) THEN
-          dT0 = ListGetCReal( Material,'Enthalpy Temperature Differential',Found )
-          IF(.NOT. Found) dT0 = 1.0d-3
-          IF( Specific ) THEN
-            Work(1:n) = ListGetDerivValue( Material, &
-                'Specific Enthalpy', n,Element % NodeIndexes, dT0 )
-            Work(1:n) = Density(1:n) * Work(1:n)
-          ELSE
-            Work(1:n) = ListGetDerivValue( Material, &
-                'Enthalpy', n,Element % NodeIndexes, dT0 )
-          END IF
-        END IF
-
-        IF( GotFraction ) THEN
-          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
-        ELSE
-          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
-        END IF
-          
-!---------------------------------------------------------------------------------------
-! Note that for the 'spatial 2' model the evaluation of c_p is done in each integration
-! point and thus Enthalphy and PhaseSpatial flag are used instead of HeatCapacity directly.
-!-----------------------------------------------------------------------------------------
-      CASE( PHASE_SPATIAL_2 )
-        IF( Specific ) THEN
-          Enthalpy(1:n) = ListGetReal(Material,'Specific Enthalpy',n,Element % NodeIndexes)
-          Enthalpy(1:n) = Density(1:n) * Enthalpy(1:n)
-        ELSE
-          Enthalpy(1:n) = ListGetReal(Material,'Enthalpy',n,Element % NodeIndexes)          
+        ! Add radiators in case the radiosity model is not used
+        !----------------------------------------------------------------------------
+        IF( Radiators ) THEN
+          DO p=1,n
+            FORCE(p) = FORCE(p) + Base(p) * Emis1 * SUM(Element % BoundaryInfo % &
+                Radiators * RadiatorPowers ) 
+          END DO
         END IF
         
-        IF( GotFraction ) THEN
-          CALL Warn('EffectiveHeatCapacity',&
-              '> Enthalpy Fraction < not treated yet by spatial 2 phase change')
-        END IF
+      ELSE ! .NOT. Newton 
+        ! Compute the weighted sum of T^4
+        
+        Text = 0._dp
+        DO j=1,nf
+          Fj = Fact(j)
 
-          
-!------------------------------------------------------------------------------
-      CASE( PHASE_TEMPORAL )
-        ! When retrieving the value of enthalphy on the previous timestep 
-        ! the relevant entries of the Temperature solution in the global vector
-        ! are tampered in order to make the ListGetReal command work as wanted. 
-        ! 1) Values at current temperature     
-        !------------------------------------------------------------------------
-        IF( Specific ) THEN
-          Work(1:n) = ListGetReal( Material,'Specific Enthalpy',n,Element % NodeIndexes )
-        ELSE
-          Work(1:n) = ListGetReal( Material,'Enthalpy',n,Element % NodeIndexes )
-        END IF
+          RadElement => Mesh % Elements(ElementList(j))
+          bindex = RadElement % ElementIndex - Solver % Mesh % NumberOfBulkElements
+          Text = Text + Fj*Temps4(bindex) / Emis1
 
-        ! 2) Values at previous temperature
-        Temperature(TempPerm(Element % NodeIndexes)) = & 
-            PrevTemperature(TempPerm(Element % NodeIndexes)) 
-
-        IF( Specific ) THEN
-          Work(1:n) = Work(1:n) - ListGetReal( Material,'Specific Enthalpy', &
-              n,Element % NodeIndexes )          
-          Work(1:n) = Density(1:n) * Work(1:n) / dT(1:n)
-        ELSE
-          Work(1:n) = Work(1:n) - ListGetReal( Material,'Enthalpy', &
-              n,Element % NodeIndexes )
-          Work(1:n) = Work(1:n) / dT(1:n)
-        END IF
-
-        IF( GotFraction ) THEN
-          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
-        ELSE
-          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
-        END IF
-
-
-        ! Revert to current temperature
-        Temperature(TempPerm(Element % NodeIndexes)) = & 
-            PrevTemperature(TempPerm(Element % NodeIndexes)) + dT(1:n)        
-
-!------------------------------------------------------------------------------
-      END SELECT
-
-!------------------------------------------------------------------------------
-    END SUBROUTINE EffectiveHeatCapacity
-!------------------------------------------------------------------------------
-
-
-
-!------------------------------------------------------------------------------
-    FUNCTION CheckLatentHeat() RESULT(Failure)
-!------------------------------------------------------------------------------
-      LOGICAL :: Failure, PhaseChange, CheckLatentHeatRelease
-      INTEGER :: t, eq_id, body_id
-      CHARACTER(LEN=MAX_NAME_LEN) :: PhaseModel
-!------------------------------------------------------------------------------
-
-      Failure = .FALSE.
-!------------------------------------------------------------------------------
-      DO t=1,Solver % Mesh % NumberOfBulkElements
-!------------------------------------------------------------------------------
-!       Check if this element belongs to a body where temperature 
-!       has been calculated
-!------------------------------------------------------------------------------
-        Element => Solver % Mesh % Elements(t)
-
-        NodeIndexes => Element % NodeIndexes
-        IF ( ANY( TempPerm( NodeIndexes ) <= 0 ) ) CYCLE
-
-        body_id = Element % Bodyid
-        eq_id = ListGetInteger( Model % Bodies(body_id) % Values, &
-            'Equation', minv=1, maxv=Model % NumberOfEquations )
-
-        PhaseModel = ListGetString( Model % Equations(eq_id) % Values, &
-                          'Phase Change Model',Found )
-
-        PhaseChange = Found .AND. (PhaseModel(1:4) /= 'none')
-
-        IF ( PhaseChange ) THEN
-          CheckLatentHeatRelease = ListGetLogical(Model % Equations(eq_id) % &
-                    Values, 'Check Latent Heat Release',Found )
-        END IF
-        IF ( .NOT. ( PhaseChange .AND. CheckLatentHeatRelease ) ) CYCLE
-
-        n = Element % TYPE % NumberOfNodes
-!------------------------------------------------------------------------------
-!       Set the current element pointer in the model structure to
-!       reflect the element being processed
-!------------------------------------------------------------------------------
-        Model % CurrentElement => Element
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-!       Get element material parameters
-!------------------------------------------------------------------------------
-        k = ListGetInteger( Model % Bodies(body_id) % Values,'Material', &
-                minv=1, maxv=Model % NumberOfMaterials )
-        Material => Model % Materials(k) % Values
-
-        PhaseChangeIntervals => ListGetConstRealArray( Material, &
-                        'Phase Change Intervals' )
-
-        DO k=1,n
-          i = TempPerm( NodeIndexes(k) )
-          DO j=1,SIZE(PhaseChangeIntervals,2)
-            IF ( ( Temperature(i)  < PhaseChangeIntervals(1,j) .AND. &
-                   PrevSolution(i) > PhaseChangeIntervals(2,j) ).OR. &
-                 ( Temperature(i)  > PhaseChangeIntervals(2,j) .AND. &
-                   PrevSolution(i) < PhaseChangeIntervals(1,j) )  ) THEN
-              Failure = .TRUE.
-              EXIT
+          IF(Radiators) THEN
+            IF(ALLOCATED(RadElement % BoundaryInfo % Radiators)) THEN
+              Text = Text + Fj * &
+                  SUM(RadElement % BoundaryInfo % Radiators * RadiatorPowers) * &
+                  (1-Emiss(bindex)) / Emiss(bindex) / Emis1 / StefBoltz
             END IF
-          END DO
-          IF ( Failure ) EXIT
-        END DO
-        IF ( Failure ) EXIT
-      END DO
-!------------------------------------------------------------------------------
-    END FUNCTION CheckLatentHeat
-!------------------------------------------------------------------------------
-
-
-
-
-!------------------------------------------------------------------------------
-   SUBROUTINE GetBase( Base, Element, n, Nodes )
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Base(:)
-
-     TYPE(Nodes_t)   :: Nodes
-     TYPE(Element_t) :: Element
-
-     INTEGER :: n,  m
-
-     REAL(KIND=dp) :: Basis(n), DetJ
-
-     REAL(KIND=dp) :: u,v,w,s,x,y,z
-     REAL(KIND=dp) :: Force,Alpha
-     REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
-
-     INTEGER :: i,t,q,p,N_Integ
-
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
-     LOGICAL :: stat
-!------------------------------------------------------------------------------
-
-     Base = 0._dp
-!------------------------------------------------------------------------------
-!    Integration stuff
-!------------------------------------------------------------------------------
-     IntegStuff = GaussPoints( Element )
-     U_Integ => IntegStuff % u
-     V_Integ => IntegStuff % v
-     W_Integ => IntegStuff % w
-     S_Integ => IntegStuff % s
-     N_Integ =  IntegStuff % n
-
-!------------------------------------------------------------------------------
-!   Now we start integrating
-!------------------------------------------------------------------------------
-
-     DO t=1,N_Integ
-       u = U_Integ(t)
-       v = V_Integ(t)
-       w = W_Integ(t)
-!------------------------------------------------------------------------------
-!     Basis function values & derivatives at the integration point
-!------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis )
-
-       s = detJ * S_Integ(t)
-!------------------------------------------------------------------------------
-!      Coordinatesystem dependent info
-!------------------------------------------------------------------------------
-       IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-         x = SUM( Nodes % x(1:n)*Basis )
-         y = SUM( Nodes % y(1:n)*Basis )
-         z = SUM( Nodes % z(1:n)*Basis )
-         s = s * CoordinateSqrtMetric( x,y,z )
-       END IF
-!------------------------------------------------------------------------------
-       DO p=1,N
-         Base(p) = Base(p) + s * Basis(p)
-       END DO
-     END DO
-   END SUBROUTINE GetBase
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-   SUBROUTINE IntegOverA( BoundaryMatrix, BoundaryVector, &
-     LOAD, NodalAlpha, Element, n, m, Nodes )
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:), LOAD,NodalAlpha
-
-     TYPE(Nodes_t)   :: Nodes
-     TYPE(Element_t) :: Element
-
-     INTEGER :: n,  m
-
-     REAL(KIND=dp) :: Basis(n), DetJ
-
-     REAL(KIND=dp) :: u,v,w,s,x,y,z
-     REAL(KIND=dp) :: Force,Alpha
-     REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
-
-     INTEGER :: i,t,q,p,N_Integ
-
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
-     LOGICAL :: stat
-!------------------------------------------------------------------------------
-
-     BoundaryVector = 0.0_dp
-     BoundaryMatrix = 0.0_dp
-!------------------------------------------------------------------------------
-!    Integration stuff
-!------------------------------------------------------------------------------
-     IntegStuff = GaussPoints( Element )
-     U_Integ => IntegStuff % u
-     V_Integ => IntegStuff % v
-     W_Integ => IntegStuff % w
-     S_Integ => IntegStuff % s
-     N_Integ =  IntegStuff % n
-
-!------------------------------------------------------------------------------
-!   Now we start integrating
-!------------------------------------------------------------------------------
-     Force = LOAD
-     Alpha = NodalAlpha / m
-
-     DO t=1,N_Integ
-       u = U_Integ(t)
-       v = V_Integ(t)
-       w = W_Integ(t)
-!------------------------------------------------------------------------------
-!     Basis function values & derivatives at the integration point
-!------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis )
-
-       s = detJ * S_Integ(t)
-!------------------------------------------------------------------------------
-!      Coordinatesystem dependent info
-!------------------------------------------------------------------------------
-       IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-         x = SUM( Nodes % x(1:n)*Basis )
-         y = SUM( Nodes % y(1:n)*Basis )
-         z = SUM( Nodes % z(1:n)*Basis )
-         s = s * CoordinateSqrtMetric( x,y,z )
-       END IF
-!------------------------------------------------------------------------------
-!      Force = SUM( LOAD(1:n) * Basis )
-!      Alpha = SUM( NodalAlpha(1:n) * Basis )
-
-       DO p=1,N
-         DO q=1,M
-           BoundaryMatrix(p,q) = BoundaryMatrix(p,q) + s * Alpha * Basis(p)
-         END DO
-       END DO
-
-       DO p=1,N
-         BoundaryVector(p) = BoundaryVector(p) + s * Force * Basis(p)
-       END DO
-     END DO
-   END SUBROUTINE IntegOverA
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE FindGapIndexes( Element, Indexes, n )
-!------------------------------------------------------------------------------
-      TYPE(Element_t) :: Element
-      INTEGER :: n,Indexes(:)
-!------------------------------------------------------------------------------
-      TYPE(Element_t), POINTER :: Parent,Left,Right
-      INTEGER :: i,j,k,l
-      REAL(KIND=dp) :: x0,y0,z0,x,y,z
-!------------------------------------------------------------------------------
-      Left  => Element % BoundaryInfo % Left
-      Right => Element % BoundaryInfo % Right
-
-      IF ( .NOT.ASSOCIATED(Left) .OR. .NOT.ASSOCIATED(Right) ) RETURN
-
-      l = 0
-      DO i=1,n
-        Parent => Left
-        k = Element % NodeIndexes(i)
-
-        IF ( ANY( Parent % NodeIndexes == k ) ) &
-          Parent => Right
-
-        x0 = ElementNodes % x(i)
-        y0 = ElementNodes % y(i)
-        z0 = ElementNodes % z(i)
-        DO j=1,Parent % TYPE % NumberOfNodes
-          k = Parent % NodeIndexes(j)
-          x = Solver % Mesh % Nodes % x(k) - x0
-          y = Solver % Mesh % Nodes % y(k) - y0
-          z = Solver % Mesh % Nodes % z(k) - z0
-          IF ( x**2 + y**2 + z**2 < AEPS ) EXIT
-        END DO
-        Indexes(i) = k
-      END DO
-!------------------------------------------------------------------------------
-    END SUBROUTINE FindGapIndexes
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE AddHeatGap( Solver, Element, STIFF, TempPerm )
-!------------------------------------------------------------------------------
-      TYPE(Solver_t) :: Solver
-      REAL(KIND=dp) :: STIFF(:,:)
-      INTEGER :: TempPerm(:)
-      TYPE(Element_t) :: Element
-!------------------------------------------------------------------------------
-      TYPE(Element_t), POINTER :: Parent,Left,Right
-      INTEGER :: i,j,k,l, Ind(n)
-      REAL(KIND=dp) :: x0,y0,z0,x,y,z
-!------------------------------------------------------------------------------
-      CALL FindGapIndexes( Element, Ind, n )
-      DO i=1,n
-        DO j=1,n
-          k = TempPerm( Element % NodeIndexes(i) )
-          l = TempPerm( Ind(j) )
-          IF ( k > 0 .AND. l > 0 ) THEN
-            CALL AddToMatrixElement( Solver % Matrix,k,l,-STIFF(i,j) )
           END IF
         END DO
+      END IF
+   
+
+      ! Add the missing part of the incoming radiation in case the boundary is open
+      !----------------------------------------------------------------------------
+      IF( BCOpen ) THEN
+        AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
+        IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
+
+        IF( AngleFraction < 1.0_dp ) THEN
+          Topen = (SUM( Atext(1:n)**4 ) )**0.25_dp
+          IF( Newton ) THEN        
+            RadLoadAtIp = (1.0_dp-AngleFraction) * Emis1 * Topen**4 * StefBoltz
+            DO p=1,n
+              FORCE(p) = FORCE(p) + Base(p) * RadLoadAtIp 
+            END DO
+          ELSE
+            Text = Text + (1.0_dp-AngleFraction) * Topen**4
+          END IF
+        END IF
+      END IF
+        
+      ! Because we split the product in T^4-T_ext^4 we cannot linearize it before
+      ! having computed the complete T_ext^4. So this is done in the end.
+      !----------------------------------------------------------------------------
+      IF( .NOT. Newton ) THEN      
+        Base = 0.0_dp
+        Text = Text**0.25_dp
+        DO t=1,IP % n
+          stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
+          s = detJ * IP % s(t)        
+          IF ( AxiSymmetric ) THEN
+            s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
+          END IF
+
+          T0 = SUM( Basis(1:n) * NodalTemp(1:n) )
+          RadCoeffAtIp = Emis1 * StefBoltz*(T0**3 + T0**2*Text + T0*Text**2 + Text**3)
+
+          DO p=1,n
+            DO q=1,n
+              STIFF(p,q) = STIFF(p,q) + s * Basis(p) * Basis(q) * RadCoeffAtIp
+            END DO
+            FORCE(p) = FORCE(p) + s * Basis(p) * RadCoeffAtIp * Text
+          END DO
+          Base(1:n) = Base(1:n) + s * Basis(1:n) 
+        END DO
+      END IF
+    END IF ! .NOT. Radiosity
+      
+    ! Calculate fluxes on-the-fly
+    IF( PostCalc ) THEN
+      BLOCK
+        INTEGER :: ElemPerm(27)
+        ElemPerm(1:n) = PostFlux % Perm(Element % NodeIndexes)
+        IF(ALL(ElemPerm(1:n) > 0 )) THEN
+          ! Nodes are shared between adjacent boundary elements/threads; these
+          ! are array-section updates so ATOMIC doesn't apply — use CRITICAL.
+          !$OMP CRITICAL (HeatSolveDiffuseGrayPostFields)
+          PostWeight % Values(ElemPerm(1:n)) = PostWeight % Values(ElemPerm(1:n)) + Base(1:n)
+          PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + Fact(1) * Base(1:n)
+          IF( Spectral ) THEN
+            PostEmis % Values(ElemPerm(1:n)) = PostEmis % Values(ElemPerm(1:n)) + Emiss(bindex) * Base(1:n)
+            PostAbs % Values(ElemPerm(1:n)) = PostAbs % Values(ElemPerm(1:n)) + Fact(3) * Base(1:n)
+            PostTemp % Values(ElemPerm(1:n)) = PostTemp % Values(ElemPerm(1:n)) + Fact(4) * Base(1:n)
+          END IF
+          !$OMP END CRITICAL (HeatSolveDiffuseGrayPostFields)
+        END IF
+      END BLOCK
+    END IF
+    
+    ! Glue standard local matrix equation to the global matrix
+    ! The view factor part has already been glued.
+    !-----------------------------------------------------------------
+    
+    IF( DG ) THEN
+      pIndexes => ElemInds
+    ELSE
+      pIndexes => Element % NodeIndexes
+    END IF
+
+    DO p=1,n
+      k1 = TempPerm( pIndexes(p) )
+      DO q=1,n
+        k2 = TempPerm( pIndexes(q) )
+        CALL AddToMatrixElement( Solver % Matrix,k1,k2,STIFF(p,q))
       END DO
+      ! Own element's nodes, but boundary colouring is not guaranteed to be
+      ! active (nColours defaults to 1), so neighboring elements can still
+      ! share nodes — atomic protection needed, same as UpdateGlobalForce.
+      !$OMP ATOMIC UPDATE
+      ForceVector(k1) = ForceVector(k1) + FORCE(p)
+    END DO
+
+  END SUBROUTINE LocalMatrixDiffuseGray
 !------------------------------------------------------------------------------
-    END SUBROUTINE AddHeatGap
+
+  
+!------------------------------------------------------------------------------
+! This assembles the local jumps related to standard DG formulation.
+! For fully reduced basis this is possibly never needed. 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalJumps( Element,n,LeftParent,nl,RightParent,nr)
+!------------------------------------------------------------------------------
+    INTEGER :: n,nl,nr
+    TYPE(Element_t) :: Element, LeftParent, RightParent
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),FORCE(:)   
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
+    REAL(KIND=dp) :: LeftBasis(nl), LeftdBasisdx(nl,3)
+    REAL(KIND=dp) :: RightBasis(nr), RightdBasisdx(nr,3)
+    REAL(KIND=dp) :: LeftdBasisdn(nl), RightdBasisdn(nr)
+    REAL(KIND=dp) :: Jump(nl+nr), AverageFlux(nl+nr)
+    REAL(KIND=dp) :: detJ, U, V, W, S
+    LOGICAL :: Stat
+    INTEGER :: i, k, p, q, m, allocstat
+    TYPE(GaussIntegrationPoints_t) :: IP
+    REAL(KIND=dp) :: hE, Normal(3), LeftOut(3), Gamma
+    TYPE(Nodes_t) ::Nodes, LeftParentNodes, RightParentNodes
+    LOGICAL :: AllocationsDone = .FALSE.
+
+    SAVE Nodes, LeftParentNodes, RightParentNodes, STIFF, FORCE, &
+        Basis, dBasisdx, Gamma, AllocationsDone
+
+    !------------------------------------------------------------------------------
+    IF(.NOT. AllocationsDone ) THEN
+      m = Mesh % MaxElementDofs
+      ALLOCATE(Basis(m), dBasisdx(m,3),STIFF(2*m,2*m), FORCE(2*m), STAT=allocstat)      
+      IF (allocstat /= 0) THEN
+        CALL Fatal(Caller,'Local storage allocation failed in LocalJumps')
+      END IF
+
+      gamma = ListGetCReal( Params,'Dg Continuity Penalty',Found )
+      IF(.NOT. Found ) gamma = 0.001_dp
+
+      AllocationsDone = .TRUE.
+    END IF
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    
+    CALL GetElementNodes( Nodes, Element )
+    CALL GetElementNodes( LeftParentNodes, LeftParent )
+    CALL GetElementNodes( RightParentNodes, RightParent )
+
+    hE = ElementDiameter( Element, Nodes )
+
+    LeftOut(1) = SUM(LeftParentNodes % x(1:nl)) / nl
+    LeftOut(2) = SUM(LeftParentNodes % y(1:nl)) / nl
+    LeftOut(3) = SUM(LeftParentNodes % z(1:nl)) / nl
+
+    LeftOut(1) = SUM(Nodes % x(1:n)) / n - LeftOut(1)
+    LeftOut(2) = SUM(Nodes % y(1:n)) / n - LeftOut(2)
+    LeftOut(3) = SUM(Nodes % z(1:n)) / n - LeftOut(3)
+
+    !------------------------------------------------------------------------------
+    !      Numerical integration over the edge
+    !------------------------------------------------------------------------------
+    IP = GaussPoints(Element)
+    
+    DO k=1,IP % n
+      U = IP % u(k)
+      V = IP % v(k)
+      W = IP % w(k)
+      S = IP % s(k)
+
+      !------------------------------------------------------------------------------
+      !        Basis function values & derivatives at the integration point
+      !------------------------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, U, V, W, detJ, Basis, dBasisdx )
+
+      S = S * detJ
+      
+      Normal = NormalVector( Element, Nodes, U, V, .FALSE. )
+      IF ( SUM( LeftOut*Normal ) < 0 ) Normal = -Normal
+
+      ! Find basis functions for the parent elements:
+      !----------------------------------------------
+      CALL GetParentUVW( Element, n, LeftParent, nl, U, V, W, Basis )
+
+      stat = ElementInfo( LeftParent, LeftParentNodes, &
+          U, V, W, detJ, LeftBasis, LeftdBasisdx )
+      
+      CALL GetParentUVW( Element, n, RightParent, nr, U, V, W, Basis )
+
+      stat = ElementInfo( RightParent, RightParentNodes, &
+          U, V, W, detJ, RightBasis, RightdBasisdx )
+      
+      ! Integrate jump terms:
+      !-------------------------
+      Jump(1:nl) = LeftBasis(1:nl)
+      Jump(nl+1:nl+nr) = -RightBasis(1:nr)
+      
+      DO i = 1,nl
+        LeftdBasisdn(i)  = SUM( LeftdBasisdx(i,:)  * Normal(:) )
+      END DO
+      
+      DO i = 1,nr
+        RightdBasisdn(i) = SUM( RightdBasisdx(i,:) * Normal(:) )
+      END DO
+      
+      AverageFlux(1:nl) = LeftdBasisdn(1:nl) / 2.0d0
+      AverageFlux(nl+1:nl+nr) = RightdBasisdn(1:nr) / 2.0d0
+      
+      DO p = 1,nl+nr
+        DO q = 1,nl+nr
+          STIFF(p,q) = STIFF(p,q) + (gamma/hE)*Jump(p)*Jump(q) * s
+          STIFF(p,q) = STIFF(p,q) + AverageFlux(p) * Jump(q)   * s
+          STIFF(p,q) = STIFF(p,q) - Jump(p) * AverageFlux(q)   * s
+        END DO
+      END DO
+    END DO
+    
+    CALL DefaultUpdateEquations( STIFF, FORCE, Element )
+    
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
 
 
+!-------------------------------------------------------------------------
+! Swap parent elements of a boundary element such that always the Parent1
+! belongs to the desired body.
+!-------------------------------------------------------------------------
+  FUNCTION SwapParentsOnFlag(Parent1, Parent2,FoundJump) RESULT ( Swapped ) 
+!-------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Parent1, Parent2
+    TYPE(Element_t), POINTER :: pElem
+    LOGICAL :: FoundJump, Swapped    
+    TYPE(ValueList_t), POINTER :: Mat
+    LOGICAL :: LeftActive, RightActive, HaveJump
+        
+    SAVE LeftActive, HaveJump
+
+    HaveJump = .FALSE.
+    Swapped = .FALSE.
+    
+    ! If we visit subroutine again with same body combination then use also the previous analysis.   
+    Mat => GetMaterial( Parent1 )
+    LeftActive = ListGetLogical( Mat,'Heat Gap Parent',Found )        
+    Mat =>  GetMaterial( Parent2 ) 
+    RightActive = ListGetLogical( Mat,'Heat Gap Parent',Found )
+      
+    IF( LeftActive .AND. RightActive ) THEN
+      HaveJump = .FALSE.
+    ELSE IF( LeftActive ) THEN
+      HaveJump = .TRUE.
+    ELSE IF( RightActive ) THEN
+      HaveJump = .TRUE.
+    ELSE
+      HaveJump = .FALSE.
+      LeftActive = .TRUE.
+    END IF
+    
+    FoundJump = HaveJump
+    IF( .NOT. FoundJump ) RETURN
+    
+    ! Switch the reference body always to Parent1
+    IF(.NOT. LeftActive ) THEN
+      pElem => Parent1
+      Parent1 => Parent2
+      Parent2 => pElem
+      Swapped = .TRUE.
+    END IF
+    
+  END FUNCTION SwapParentsOnFlag
 !------------------------------------------------------------------------------
-  END SUBROUTINE HeatSolver
+
+  
+
+!------------------------------------------------------------------------------
+! Add jump boundary conditions. These may only occur in conjunction with
+! discontinuous Galerkin method. 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalJumpsDiscontBC( Element,n,&
+      Parent1,n1,Parent2,n2,InitHandles,BCDone)
+!------------------------------------------------------------------------------
+    INTEGER :: n, n1, n2
+    TYPE(Element_t), TARGET :: Element
+    TYPE(Element_t), POINTER :: Parent1, Parent2
+    LOGICAL :: InitHandles, BCDone 
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: Basis(n), detJ, S, alpha, beta, AssFrac
+    LOGICAL :: Stat
+    INTEGER :: i, j, p, q, t, i1, i2, JumpOrder, ntmp
+    INTEGER :: DgIndexes(2*n)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    TYPE(ValueHandle_t) :: Beta_h, Cond_h, BetaParent_h, CondParent_h
+    TYPE(ValueList_t), POINTER :: Mat
+    TYPE(Element_t), POINTER :: pElem
+    LOGICAL :: DiagJump, Swapped, FoundBodyJump, FoundBCJump
+    REAL(KIND=dp) :: Alpha0, Beta0
+    LOGICAL :: AllocationsDone = .FALSE.
+    INTEGER :: allocstat, m
+    
+    SAVE Beta_h, Cond_h, BetaParent_h, CondParent_h, Nodes, JumpOrder, DiagJump, &
+        Alpha0, Beta0, AllocationsDone, STIFF, FORCE
+    
+    !------------------------------------------------------------------------------
+
+    BCDone = .FALSE.
+    
+    ! Both sides need to be active parent elements for a jump condition
+    IF( .NOT. CheckElementEquation( Model, Parent1, EqName ) ) RETURN
+    IF( .NOT. CheckElementEquation( Model, Parent2, EqName ) ) RETURN
+
+    IF(.NOT. AllocationsDone ) THEN
+      m = Mesh % MaxElementDofs
+      ALLOCATE(STIFF(2*m,2*m), FORCE(2*m), STAT=allocstat)      
+      IF (allocstat /= 0) THEN
+        CALL Fatal(Caller,'Local storage allocation failed in LocalJumps')
+      END IF
+      AllocationsDone = .TRUE.
+    END IF
+    
+    
+    IF( InitHandles ) THEN
+      JumpOrder = ListGetInteger( Params,'Jump Integration Order',Found )     
+      
+      DiagJump = ListGetLogical( Params,'Diagonal Jump Glue',Found )
+      IF( DiagJump ) THEN
+        CALL Info( Caller,'Setting gluing projector to be diagonal',Level=7)
+      ELSE
+        CALL Info( Caller,'Setting gluing projector to standard Galerkin',Level=7)
+      END IF
+      
+      CALL ListInitElementKeyword( Cond_h,'Boundary Condition','Heat Gap Coefficient')
+      CALL ListInitElementKeyword( Beta_h,'Boundary Condition','Heat Gap Flux')      
+      CALL ListInitElementKeyword( CondParent_h,'Material','Heat Gap Coefficient')
+      CALL ListInitElementKeyword( BetaParent_h,'Material','Heat Gap Flux')      
+      
+      Alpha0 = ListGetCReal( Params,'Heat Gap Coefficient',Found)
+      Beta0 = ListGetCReal( Params,'Heat Gap Flux',Found)
+      
+      InitHandles = .FALSE.      
+    END IF
+    
+    ! Get the material parameters from the BC 
+    FoundBCJump = .FALSE.
+    Mat => GetBC( Element ) 
+    IF( ASSOCIATED(Mat) ) THEN      
+      FoundBCJump =  GetLogical( Mat,'Heat Gap', Found )
+    END IF
+
+    ! Or find body jump between two parents
+    Swapped = SwapParentsOnFlag( Parent1, Parent2, FoundBodyJump )
+    
+    IF( .NOT. ( FoundBCJump .OR. FoundBodyJump ) ) RETURN
+
+    AssFrac = BCAssemblyFraction(Element)
+    IF( AssFrac < TINY( AssFrac ) ) RETURN    
+    
+    IF( FoundBCJump ) THEN
+      pElem => Element
+    ELSE
+      pElem => Parent1
+    END IF
+    
+    IF( Swapped ) THEN
+      ntmp = n1
+      n1 = n2
+      n2 = ntmp
+    END IF
+    
+    ! Find the DG indexes for the local assembly 
+    !---------------------------------------------
+    DgIndexes(1:2*n) = 0
+    DO i=1,n
+      j = Element % NodeIndexes(i)
+      DO i1 = 1, n1
+        IF( Parent1 % NodeIndexes( i1 ) == j ) THEN
+          DgIndexes(i) = Parent1 % DGIndexes( i1 )
+          EXIT
+        END IF
+      END DO
+      DO i2 = 1, n2
+        IF( Parent2 % NodeIndexes( i2 ) == j ) THEN
+          DgIndexes(n+i) = Parent2 % DGIndexes( i2 )
+          EXIT
+        END IF
+      END DO
+    END DO
+
+    IF( ANY( DgIndexes(1:2*n) == 0 ) ) THEN
+      CALL Fatal(Caller,'There should not be zero DG indexes!')
+    END IF
+    
+    DgIndexes(1:2*n) = TempPerm( DgIndexes(1:2*n) )
+        
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    
+    CALL GetElementNodes( Nodes, Element )
+   
+    !------------------------------------------------------------------------------
+    !      Numerical integration over the edge
+    !------------------------------------------------------------------------------
+    IP = GaussPoints(Element,RelOrder=JumpOrder)
+
+    DO t=1,IP % n
+      !------------------------------------------------------------------------------
+      !        Basis function values & derivatives at the integration point
+      !------------------------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
+
+      S = IP % s(t) * detJ
+      IF ( AxiSymmetric ) THEN
+        S = S * SUM( Nodes % x(1:n)*Basis(1:n) )
+      END IF
+
+      IF( FoundBCJump ) THEN
+        alpha = ListGetElementReal( Cond_h, Basis, pElem, Found )
+      ELSE
+        alpha = ListGetElementReal( CondParent_h, Basis, pElem, Found )
+      END IF
+      IF(.NOT. Found ) alpha = alpha0
+
+      IF( FoundBCJump ) THEN
+        beta = ListGetElementReal( Beta_h, Basis, pElem, Found ) 
+      ELSE
+        beta = ListGetElementReal( BetaParent_h, Basis, pElem, Found ) 
+      END IF
+      IF(.NOT. Found ) beta = beta0
+
+      DO p = 1,n                  
+        IF( DiagJump ) THEN          
+          ! 1st side
+          STIFF(p,p) = STIFF(p,p) + alpha * Basis(p) * s 
+          STIFF(p,n+p) = STIFF(p,n+p) - alpha * Basis(p) * s 
+          ! 2nd side
+          STIFF(p+n,p) = STIFF(p+n,p) - alpha * Basis(p) * s 
+          STIFF(p+n,n+p) = STIFF(p+n,n+p) + alpha * Basis(p) * s 
+        ELSE
+          DO q = 1,n
+            STIFF(p,q) = STIFF(p,q) + alpha * Basis(p) * Basis(q) * s 
+            STIFF(p,n+q) = STIFF(p,n+q) - alpha * Basis(p) * Basis(q) * s 
+            STIFF(p+n,q) = STIFF(p+n,q) - alpha * Basis(p) * Basis(q) * s 
+            STIFF(p+n,n+q) = STIFF(p+n,n+q) + alpha * Basis(p) * Basis(q) * s 
+          END DO
+        END IF          
+        FORCE(p) = FORCE(p) + beta/2 * Basis(p) * s 
+        FORCE(p+n) = FORCE(p+n) + beta/2 * Basis(p) * s 
+      END DO
+    END DO
+
+    ! In parallel case the contribution will come from both sides.
+    ! Hence scale it by half and neglect pure halo contributions. 
+    IF( ABS(AssFrac-1.0_dp) > TINY( AssFrac ) ) THEN     
+      FORCE(1:2*n) = AssFrac * FORCE(1:2*n) 
+      STIFF(1:2*n,1:2*n) = AssFrac * STIFF(1:2*n,1:2*n) 
+    END IF
+        
+    ! We need our own caller since we may have switched order of parents
+    ! This results to the need to have our own scaling in parallel.
+    CALL UpdateGlobalEquations( Solver % Matrix, STIFF, Solver % Matrix % rhs, FORCE, &
+        2*n, 1, DgIndexes(1:2*n), UElement=Element )
+
+    BCDone = .TRUE.
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalJumpsDisContBC
+!------------------------------------------------------------------------------
+
+  SUBROUTINE CalculateRadiosityFields(Pre) 
+    LOGICAL :: Pre    
+    LOGICAL :: Visited = .FALSE., CalcRadiosityFields = .TRUE.
+    INTEGER, POINTER :: Perm(:)
+    INTEGER :: i,t,nsize = 0
+    TYPE(ValueList_t), POINTER :: BC
+    REAL(KIND=dp) :: c
+    
+    SAVE Perm, nsize, CalcRadiosityFields, Visited
+
+    IF(.NOT. CalcRadiosityFields ) RETURN
+    
+    IF(.NOT. Visited ) THEN    
+      Visited = .TRUE.
+      CalcRadiosityFields = ListGetLogical( Params,'Calculate Radiosity Fields',Found ) 
+      IF( CalcRadiosityFields ) THEN
+        IF(.NOT. Radiosity ) THEN
+          CALL Warn('CalculateRadiosityFields','Radiosity Model is not active, fields omitted!')
+          CalcRadiosityFields = .FALSE.
+          RETURN
+        END IF
+        
+        ALLOCATE(Perm(Solver % Mesh % NumberOfNodes))
+        Perm = 0
+        
+        CALL Info(Caller,'Creating permutation for radiosity fields',Level=8)
+        DO t=Mesh % NumberOfBulkElements+1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
+          BC => GetBC(Element)
+          IF(.NOT. ASSOCIATED( BC ) ) CYCLE       
+          IF( ListCheckPresent( BC,'Radiation') .OR. &
+              ListCheckPresent( BC,'Radiator') ) THEN
+            Perm(Element % NodeIndexes) = 1
+          END IF
+        END DO
+        
+        nsize = 0
+        DO i=1,Mesh % NumberOfNodes
+          IF(Perm(i) > 0) THEN
+            nsize = nsize+1
+            Perm(i) = nsize
+          END IF
+        END DO
+        CALL Info(Caller,'Number of active nodes for boundary fields: '//I2S(nsize),Level=10)
+        
+        CALL DefaultVariableAdd('Radiation Weight',Perm=Perm,Var=PostWeight,Output=.FALSE.)
+        CALL DefaultVariableAdd('Radiation Flux',Perm=Perm,Var=PostFlux,Secondary=.TRUE.)
+        IF( Radiosity ) THEN
+          CALL DefaultVariableAdd('Absorptivity',Perm=Perm,Var=PostAbs,Secondary=.TRUE.)
+          CALL DefaultVariableAdd('Emissivity',Perm=Perm,Var=PostEmis,Secondary=.TRUE.)
+          CALL DefaultVariableAdd('Radiation Temperature',Perm=Perm,Var=PostTemp,Secondary=.TRUE.)
+        END IF
+        IF(nsize == 0) CalcRadiosityFields = .FALSE.
+      END IF
+      PostCalc = CalcRadiosityFields 
+    ELSE IF(Pre) THEN
+      PostWeight % Values = 0.0_dp
+      PostFlux % Values = 0.0_dp
+      IF(Spectral) THEN
+        PostAbs % Values = 0.0_dp
+        PostEmis % Values = 0.0_dp
+        PostTemp % Values = 0.0_dp
+      END IF
+    ELSE
+      WHERE( PostWeight % Values > EPSILON(c) )
+        PostFlux % Values = PostFlux % Values / PostWeight % Values
+      END WHERE
+      IF( Spectral ) THEN
+        WHERE( PostWeight % Values > EPSILON(c) )
+          PostAbs % Values = PostAbs % Values / PostWeight % Values
+          PostEmis % Values = PostEmis % Values / PostWeight % Values
+          PostTemp % Values = PostTemp % Values / PostWeight % Values
+        END WHERE
+      END IF      
+    END IF
+         
+  END SUBROUTINE CalculateRadiosityFields
+
+!------------------------------------------------------------------------------
+END SUBROUTINE HeatSolver
 !------------------------------------------------------------------------------
 
 
@@ -2308,32 +3592,21 @@ CONTAINS
      TYPE(Mesh_t) :: Mesh
      TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
-
      TYPE(Nodes_t) :: Nodes, EdgeNodes
-     TYPE(Element_t), POINTER :: Element, Bndry
-
-     INTEGER :: i,j,k,n,l,t,dim,Pn,En,nd
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: i,j,k,l,t,dim,Pn,En,nd
      LOGICAL :: stat, Found
      INTEGER, ALLOCATABLE :: Indexes(:)
-
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
      REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-
      REAL(KIND=dp), ALLOCATABLE :: NodalConductivity(:), ExtTemperature(:), &
-       TransferCoeff(:), EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
-       dBasisdx(:,:), Temperature(:), Flux(:), NodalEmissivity(:)
-
+         TransferCoeff(:), EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
+         dBasisdx(:,:), Temperature(:), Flux(:), NodalEmissivity(:)
      REAL(KIND=dp) :: Conductivity, Emissivity, StefanBoltzmann
-
-     REAL(KIND=dp) :: Grad(3,3), Normal(3), EdgeLength, gx, gy, gz
-
+     REAL(KIND=dp) :: Normal(3), EdgeLength, gx, gy, gz
      REAL(KIND=dp) :: u, v, w, s, detJ
-
-     REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area
-
+     REAL(KIND=dp) :: Residual, ResidualNorm
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
      LOGICAL :: First = .TRUE., Dirichlet
      SAVE Hwrk, First
 !------------------------------------------------------------------------------
@@ -2423,8 +3696,9 @@ CONTAINS
 !
 !       Check if dirichlet BC given:
 !       ----------------------------
-        Dirichlet = ListCheckPresent( Model % BCs(j) % Values,'Temperature')       
-        
+        s = ListGetConstReal( Model % BCs(j) % Values,'Temperature',Dirichlet )
+
+
 !       Get various flux bc options:
 !       ----------------------------
 
@@ -2438,7 +3712,7 @@ CONTAINS
         TransferCoeff(1:en) =  ListGetReal( Model % BCs(j) % Values, &
           'Heat Transfer Coefficient', en, Edge % NodeIndexes, Found )
 
-        ExtTemperature(1:en) = ListGetReal( Model % BCs(j) % Values, &
+        ExtTemperature(1:En) = ListGetReal( Model % BCs(j) % Values, &
           'External Temperature', en, Edge % NodeIndexes, Found )
 
 !       ...black body radiation:
@@ -2517,7 +3791,6 @@ CONTAINS
               gz = SUM( EdgeBasis(1:en) * EdgeNodes % z(1:en) )
               CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                          Symb, dSymb, gx, gy, gz )
-
               s = IntegStuff % s(t) * detJ * SqrtMetric
            END IF
 
@@ -2530,8 +3803,6 @@ CONTAINS
            w = SUM( EdgeBasis(1:en) * z(1:en) )
            stat = ElementInfo(Element,Nodes, u, v, w, detJ,Basis,dBasisdx )
 
-           stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
-                 Basis, dBasisdx )
 !
 !          Heat conductivity at the integration point:
 !          --------------------------------------------
@@ -2593,8 +3864,10 @@ CONTAINS
    END SUBROUTINE HeatSolver_Boundary_Residual
 !------------------------------------------------------------------------------
 
+
+
 !------------------------------------------------------------------------------
-  SUBROUTINE HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm,Indicator )
+  SUBROUTINE HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
      IMPLICIT NONE
@@ -2605,26 +3878,18 @@ CONTAINS
      TYPE(Mesh_t) :: Mesh
      TYPE(Element_t) :: Edge
 !------------------------------------------------------------------------------
-
      TYPE(Nodes_t) :: Nodes, EdgeNodes
-     TYPE(Element_t), POINTER :: Element, Bndry
-
+     TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,l,n,t,dim,En,Pn,nd
      INTEGER, ALLOCATABLE :: Indexes(:)
-     LOGICAL :: stat, Found
+     LOGICAL :: stat
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
      REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
-
      REAL(KIND=dp), ALLOCATABLE :: NodalConductivity(:), x(:), y(:), z(:), &
             EdgeBasis(:), Basis(:), dBasisdx(:,:), Temperature(:)
-
      REAL(KIND=dp) :: Grad(3,3), Normal(3), EdgeLength, Jump, Conductivity
-
      REAL(KIND=dp) :: u, v, w, s, detJ
-
-     REAL(KIND=dp) :: Residual, ResidualNorm, Area
-
+     REAL(KIND=dp) :: ResidualNorm
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
      LOGICAL :: First = .TRUE.
@@ -2649,7 +3914,6 @@ CONTAINS
      DO i = 1,3
         Metric(i,i) = 1.0d0
      END DO
-
      Grad = 0.0d0
 !
 !    ---------------------------------------------
@@ -2785,7 +4049,6 @@ CONTAINS
 
      IF (dim==3) EdgeLength = SQRT(EdgeLength)
      Indicator = EdgeLength * ResidualNorm
-
 !------------------------------------------------------------------------------
    END SUBROUTINE HeatSolver_Edge_Residual
 !------------------------------------------------------------------------------
@@ -2820,7 +4083,6 @@ CONTAINS
 
      REAL(KIND=dp), ALLOCATABLE :: NodalDensity(:)
      REAL(KIND=dp), ALLOCATABLE :: NodalCapacity(:)
-     REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:)
      REAL(KIND=dp), ALLOCATABLE :: NodalConductivity(:)
      REAL(KIND=dp), ALLOCATABLE :: Velo(:,:), Pressure(:)
      REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Temperature(:), PrevTemp(:)
@@ -2829,7 +4091,7 @@ CONTAINS
      REAL(KIND=dp) :: u, v, w, s, detJ, Density, Capacity
 
      REAL(KIND=dp) :: SpecificHeatRatio, ReferencePressure, dt
-     REAL(KIND=dp) :: Source, Residual, ResidualNorm, Area, Conductivity
+     REAL(KIND=dp) :: Residual, ResidualNorm, Area, Conductivity
 
      TYPE( ValueList_t ), POINTER :: Material
 
@@ -2961,7 +4223,6 @@ CONTAINS
                     Velo(3,1:n) = Var % Values(Var % Perm(Indexes(1:n)))
               END IF
            END IF
-
      END SELECT
 
 !

@@ -46,7 +46,7 @@ End
 Solver 1
   Equation = "heat"
   Variable = "Temp"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
 !  Use Global Mass Matrix = True  
 

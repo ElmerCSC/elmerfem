@@ -131,8 +131,13 @@ MODULE DiffuseConvective
 !------------------------------------------------------------------------------
 
      CHARACTER(:), ALLOCATABLE :: StabilizeFlag
-     REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
-     REAL(KIND=dp) :: Basis(2*n)
+     REAL(KIND=dp) :: detJ
+     ! Sized to fit whichever of the two augmentation schemes below is larger:
+     ! the legacy 2*n condensed-bubble scheme, or a genuine p-element's own
+     ! (uncondensed, already-global) edge/face/bubble DOFs -- nd (the latter's
+     ! dof count) is computed internally below, not taken as an argument, so
+     ! this stays allocatable rather than an automatic array.
+     REAL(KIND=dp), ALLOCATABLE :: dBasisdx(:,:), Basis(:)
      REAL(KIND=dp) :: ddBasisddx(n,3,3),dNodalBasisdx(n,n,3)
 
      REAL(KIND=dp) :: Velo(3),Grad(3,3),Force
@@ -149,7 +154,7 @@ MODULE DiffuseConvective
 
      REAL(KIND=dp), POINTER :: gWrk(:,:)
 
-     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ,NBasis,Order
+     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ,NBasis,Order,nd
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      REAL(KIND=dp) :: s,u,v,w,dEnth,dTemp,mu,DivVelo,Pressure,rho,&
@@ -160,7 +165,7 @@ MODULE DiffuseConvective
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      LOGICAL :: Vms, Found, Transient, stat,Convection,ConvectAndStabilize,Bubbles, &
-          FrictionHeat, PBubbles
+          FrictionHeat
      TYPE(ValueList_t), POINTER :: BodyForce, Material
      LOGICAL :: GotCondModel
      
@@ -189,15 +194,32 @@ MODULE DiffuseConvective
      Convection =  ANY( NodalC1 /= 0.0d0 )
      NBasis = n
      Bubbles = .FALSE.
-     IF ( Convection .AND. .NOT. (Vms .OR. Stabilize) .AND. UseBubbles ) THEN
-       PBubbles  = isActivePElement(Element) .AND. Element % BDOFs > 0
-       IF ( PBubbles ) THEN
-          NBasis = n + Element % BDOFs
-       ELSE
-        NBasis = 2*n
-        Bubbles = .TRUE.
-       END IF
+
+     nd = n
+     IF ( isActivePElement(Element) ) nd = GetElementNOFDOFs(Element)
+
+     IF ( isActivePElement(Element) .AND. nd > n .AND. .NOT. (Vms .OR. Stabilize) ) THEN
+       ! A genuinely declared p-element (Element = p:N, or HeatSolver_Init0's
+       ! own internal 'p:1 b:N'): its edge/face/bubble DOFs already live
+       ! directly in the global system -- unlike the 2*n legacy bubble
+       ! augmentation below, which is locally condensed -- so they must be
+       ! assembled in full regardless of whether a convection term is
+       ! present. Previously this only happened when Convection was also
+       ! true (the old "PBubbles" branch, keyed off Element % BDOFs alone,
+       ! which undercounts a real p-element's edge DOFs besides): a pure
+       ! diffusion problem on a declared p:2+ element left its extra DOFs'
+       ! matrix rows identically zero -- singular (confirmed as a Direct
+       ! solver NaN on the structmap_p2 test before this fix), papered over
+       ! by an iterative solver quietly leaving those DOFs at their zero
+       ! initial guess and returning what looked like a plausible, but not
+       ! actually p-refined, answer.
+       NBasis = nd
+     ELSE IF ( Convection .AND. .NOT. (Vms .OR. Stabilize) .AND. UseBubbles ) THEN
+       NBasis = 2*n
+       Bubbles = .TRUE.
      END IF
+
+     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3) )
 
 !------------------------------------------------------------------------------
 !    Integration stuff

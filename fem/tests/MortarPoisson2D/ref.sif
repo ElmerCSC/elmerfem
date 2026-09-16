@@ -40,7 +40,7 @@ End
 
 Solver 1
   Equation = Heat Equation
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = -dofs 1 Temperature
   Exec Solver = Always
   Stabilize = True

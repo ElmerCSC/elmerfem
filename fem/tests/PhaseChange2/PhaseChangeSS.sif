@@ -86,6 +86,7 @@ End
 
 Solver 2
   Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = "umfpack"

@@ -60,6 +60,7 @@ MODULE DiffuseConvectiveGeneral
        Ux,Uy,Uz,MUx,MUy, MUz, NodalViscosity,NodalDensity,NodalPressure,        &
          NodaldPressureDt,NodalPressureCoeff,Compressible, Stabilize,Element,n,Nodes )
 !------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
 !
 !  REAL(KIND=dp) :: MassMatrix(:,:)
 !     OUTPUT: time derivative coefficient matrix
@@ -124,14 +125,20 @@ MODULE DiffuseConvectiveGeneral
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
 
-     
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
 !
      REAL(KIND=dp) :: ddBasisddx(n,3,3),dNodalBasisdx(n,n,3)
-     REAL(KIND=dp) :: Basis(2*n)
-     REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
+     ! Sized to fit whichever of the two augmentation schemes below is larger:
+     ! the legacy 2*n condensed-bubble scheme, or a genuine p-element's own
+     ! (uncondensed, already-global) edge/face/bubble DOFs -- see the matching
+     ! comment in DiffuseConvectiveAnisotropic.F90's DiffuseConvectiveCompose.
+     ! nd (the latter's dof count) is computed internally below, not taken as
+     ! an argument, so this stays allocatable rather than an automatic array.
+     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
+     REAL(KIND=dp) :: detJ
 
      REAL(KIND=dp) :: Velo(3),Force
 
@@ -141,7 +148,7 @@ MODULE DiffuseConvectiveGeneral
      REAL(KIND=dp) :: VNorm,hK,mK
      REAL(KIND=dp) :: Lambda=1.0,Pe,Pe1,Pe2,C00,Tau,Delta,x,y,z
 
-     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ,NBasis
+     INTEGER :: i,j,k,c,p,q,t,dim,N_Integ,NBasis,nd
 
      REAL(KIND=dp) :: s,u,v,w,dEnth,dTemp,Viscosity,Pressure,pCoeff,DivVelo,dVelodx(3,3)
 
@@ -180,11 +187,24 @@ MODULE DiffuseConvectiveGeneral
      Convection =  ANY( NodalC1 /= 0.0d0 )
      NBasis = n
      Bubbles = .FALSE.
-     IF ( Convection .AND. .NOT. Stabilize ) THEN
+
+     nd = n
+     IF ( isActivePElement(Element) ) nd = GetElementNOFDOFs(Element)
+
+     ! See the matching, more-fully-commented logic in
+     ! DiffuseConvectiveAnisotropic.F90's DiffuseConvectiveCompose: a
+     ! genuinely declared p-element's edge/face/bubble DOFs already live in
+     ! the global system and must be assembled regardless of convection, or
+     ! their matrix rows are left identically zero (singular).
+     IF ( isActivePElement(Element) .AND. nd > n .AND. .NOT. Stabilize ) THEN
+       NBasis = nd
+     ELSE IF ( Convection .AND. .NOT. Stabilize ) THEN
         NBasis = 2*n
         Bubbles = .TRUE.
      END IF
-     
+
+     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3) )
+
      Material => GetMaterial()
      GotCondModel = ListCheckPresent( Material,'Heat Conductivity Model')
      

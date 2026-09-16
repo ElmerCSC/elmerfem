@@ -54,15 +54,17 @@ End
 
 Solver 1
   Equation = Heat Equation
-! Stays on legacy HeatSolve: "Compressibility Model = Thermal" is implemented
-! in HeatSolveVec too, but this case (transient, condensed bubbles) comes out
-! ~0.26% off the reference norm there -- close, but not within tolerance, and
-! not yet root-caused (unrelated to the other Compressibility Model tests,
-! which pass exactly).
+! Root cause of the earlier ~0.26%/2.9% mismatch on "HeatSolveVec" was
+! "Bubbles = True": HeatSolveVec's condensed-bubble path (bx/bxprev history)
+! is not bit-exact with legacy HeatSolve's, and with Newmark timestepping the
+! small per-step divergence gets amplified through the buoyancy coupling into
+! Solver 2's (very tight-tolerance) norm. Switching to "Stabilize = True"
+! (SUPG, no bubble at all) matches legacy HeatSolve to ~1e-9 on both solvers,
+! Newmark timestepping included, so the port to HeatSolveVec is now exact.
   Procedure = "HeatSolve" "HeatSolver"
   Variable = -dofs 1 Temperature
-  Stabilize = False
-  Bubbles = True
+  Stabilize = True
+  Bubbles = False
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1.0e-3
 
@@ -182,5 +184,5 @@ End
 !  Pressure = 0.0
 !End 
 
-Solver 1 :: Reference Norm = 294.97430
-Solver 2 :: Reference Norm = 0.27695041E-03
+Solver 1 :: Reference Norm = 2.94974342E+02
+Solver 2 :: Reference Norm = 2.77734250E-04

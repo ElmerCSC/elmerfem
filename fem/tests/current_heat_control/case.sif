@@ -62,7 +62,7 @@ Solver 2
 
   Equation = "Heat"
   Variable = "Temperature"
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Stabilize = True
 
   Linear System Solver = "Direct"

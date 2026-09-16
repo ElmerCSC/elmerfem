@@ -959,6 +959,7 @@ END SUBROUTINE BoxMoveMesh
   USE Lists
   USE SolverBasics
   USE ElementDescription
+  USE DefUtils
   IMPLICIT NONE
 !-------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
@@ -966,27 +967,60 @@ END SUBROUTINE BoxMoveMesh
   REAL (KIND=dp):: Flux,t
 !-------------------------------------------------------------------------------
   TYPE(Variable_t), POINTER :: NormalSol
-  INTEGER:: k,n,i
+  INTEGER:: k,n,i,j,tid,nthr
   INTEGER, POINTER :: NodeIndexes(:)
   REAL (KIND=dp):: NodeLatentHeat, Density, NormalPull, u, v
-  REAL (KIND=dp):: UPull(3) = (/ 0,0,0 /), Normal(3), ElemLatentHeat(4)
-  LOGICAL:: stat, Found, NormalExist = .FALSE., Visited = .FALSE.
-  TYPE(Nodes_t) :: Nodes
+  ! No initializer on UPull: one would make it implicitly SAVE (a Fortran
+  ! declaration-initializer forces SAVE), silently sharing this array across
+  ! every thread despite the "UPull = 0.0" reset below being per-call --
+  ! concurrent threads would then race reading/writing the same storage.
+  REAL (KIND=dp):: UPull(3), Normal(3), ElemLatentHeat(4)
+  LOGICAL:: stat, Found, NormalExist = .FALSE.
+  ! This is a boundary "Heat Flux" real procedure, called from HeatSolve's
+  ! LocalMatrixBC while it is running inside an active OMP parallel region --
+  ! so "Nodes" (mutated on every call, not just the first) is indexed by
+  ! thread, guarded like HeatSolve.F90's own per-thread handle arrays, rather
+  ! than made THREADPRIVATE (see that file's note on the Windows/GCC emutls
+  ! bug for POINTER/ALLOCATABLE THREADPRIVATE data). All nthr slots are
+  ! allocated together, inside one critical section, gated by a single flag
+  ! set only once everything is ready -- two arrays gated by each other's
+  ! ALLOCATED() status raced (one could look allocated to another thread
+  ! before the other's own allocation had actually run).
+  LOGICAL, SAVE :: Initialized = .FALSE.
+  TYPE(Nodes_t), ALLOCATABLE, SAVE :: Nodes(:)
   TYPE(Element_t), POINTER :: CurrentElement, Parent
-  
+
 !------------------------------------------------------------------------------
 
-  SAVE NormalExist, Nodes, NormalSol
+  SAVE NormalExist, NormalSol
 
-  IF(.NOT. Visited) THEN
-    NormalSol  => VariableGet( Model % Variables, 'Normals',ThisOnly=.TRUE. )
-    NormalExist = ASSOCIATED(NormalSol)
-    n = Model % Mesh % MaxElementNodes  
-    ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-    Visited = .TRUE.
+  tid = 1
+  !$ tid = omp_get_thread_num() + 1
+
+  IF( .NOT. Initialized ) THEN
+    !$OMP CRITICAL (MeltingHeatInit)
+    IF( .NOT. Initialized ) THEN
+      NormalSol  => VariableGet( Model % Variables, 'Normals',ThisOnly=.TRUE. )
+      NormalExist = ASSOCIATED(NormalSol)
+      nthr = 1
+      !$ nthr = omp_get_max_threads()
+      n = Model % Mesh % MaxElementNodes
+      ALLOCATE( Nodes(nthr) )
+      DO j=1,nthr
+        ALLOCATE( Nodes(j) % x(n), Nodes(j) % y(n), Nodes(j) % z(n) )
+      END DO
+      Initialized = .TRUE.
+    END IF
+    !$OMP END CRITICAL (MeltingHeatInit)
   END IF
 
-  CurrentElement => Model % CurrentElement
+  ! Model % CurrentElement is only updated by SetCurrentElement for the
+  ! serial case; inside an active OMP region it instead updates a
+  ! threadprivate copy (see DefUtils' GetCurrentElement/SetCurrentElement,
+  ! and Lists.F90's own comment on this same hazard) -- reading the ambient
+  ! global here would silently pick up a stale element from whatever last
+  ! set it serially, one and the same for every thread.
+  CurrentElement => GetCurrentElement()
   NodeIndexes => CurrentElement % NodeIndexes
   n = CurrentElement % TYPE % NumberOfNodes
   
@@ -1025,18 +1059,18 @@ END SUBROUTINE BoxMoveMesh
   END IF
 
   IF(.NOT. Found ) THEN
-    Nodes % x(1:n) = Model % Nodes % x(NodeIndexes)
-    Nodes % y(1:n) = Model % Nodes % y(NodeIndexes)
-    Nodes % z(1:n) = Model % Nodes % z(NodeIndexes)
-    
+    Nodes(tid) % x(1:n) = Model % Nodes % x(NodeIndexes)
+    Nodes(tid) % y(1:n) = Model % Nodes % y(NodeIndexes)
+    Nodes(tid) % z(1:n) = Model % Nodes % z(NodeIndexes)
+
     ! For line segments the normal in the center is usually sufficient
     u = 0.0d0
     v = 0.0d0
-    
-    ! If inner boundary, Normal Target Body should be defined for the boundary 
-    ! (if not, material density will be used to determine then normal direction 
+
+    ! If inner boundary, Normal Target Body should be defined for the boundary
+    ! (if not, material density will be used to determine then normal direction
     ! and should be defined for bodies on both sides):
-    Normal = NormalVector( CurrentElement, Nodes, u, v, .TRUE. )
+    Normal = NormalVector( CurrentElement, Nodes(tid), u, v, .TRUE. )
   END IF
 
   NormalPull = SUM( Normal * UPull )

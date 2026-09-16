@@ -63,8 +63,6 @@ End
 Solver 2
   Equation = "Heat"
 
-! Stays on legacy HeatSolve: with HeatSolveVec the heat solution comes out
-! ~0.04% off the reference norm -- close, but not root-caused.
   Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
 
@@ -72,7 +70,7 @@ Solver 2
   Linear System Iterative Method = BiCGStab
   Linear System Max Iterations = 500
 
-  Bubbles = Logical True
+  Stabilize = True
 
   Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = ILU1
@@ -121,5 +119,5 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = 0.30861526
-Solver 2 :: Reference Norm = 6.32597086E-01
+Solver 2 :: Reference Norm = 6.31421476E-01
 

@@ -44,7 +44,7 @@ End
 Solver 1
   Equation = "HeatEquation"
   Variable = "Temperature"
-  Procedure = File "HeatSolveVec" "HeatSolver"
+  Procedure = File "HeatSolve" "HeatSolver"
 
   Linear System Solver = "Iterative"
   Linear System Iterative Method = "bicgstab"
