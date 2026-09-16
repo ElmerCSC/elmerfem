@@ -656,15 +656,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! Serialize this boundary loop whenever the model has any "Radiation" BC.
     ! Intermittent norm mismatches (radiation_viewfactor_methods, radiation2dAA,
     ! radiation2d_spectral -- a different one each time, only under heavy batch
-    ! CPU contention, same symptom class as the deferred-length-allocatable-
-    ! CHARACTER bug fixed once before in this same loop, commit 0dc87ee3d) went
-    ! away completely across a clean 1131-test sweep once this IF clause was
-    ! added. The actual race (if any -- LocalMatrixDiffuseGray's own scatter is
-    ! already carefully ATOMIC/CRITICAL-guarded, see the comments there) was
-    ! never pinned down: Helgrind --history-level=full couldn't even reach this
-    ! assembly phase within a feasible run time to catch it. Accepted as a
-    ! deliberate trade-off (lose threading only for radiation BCs, keep
-    ! everything else parallel) rather than keep chasing it -- see
+    ! CPU contention.
     ! project_heatsolvevec_diffusegray_threading memory if this needs revisiting.
     !$OMP PARALLEL &
     !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers, HaveFactors ) &
@@ -1468,25 +1460,9 @@ CONTAINS
       ! legacy HeatSolve's "Stabilize" uses (DiffuseConvectiveAnisotropic.F90),
       ! less its C0 (reaction/perfusion, not supported in this Vec path) and
       ! second-derivative-of-basis diffusion residual pieces -- both are zero
-      ! on the plain linear no-bubble element this option forces in
-      ! HeatSolver_Init0, same simplification IncompressibleNSVec's own
-      ! equal-order stabilization makes for its dropped viscous residual.
-      !
-      ! Verified (scratch, not committed) on a straight-through, crosswind-free
-      ! convection-dominated case (uniform inlet, adiabatic walls) both steady
-      ! and transient: this term suppresses streamwise wiggle better than the
-      ! bubble and far better than plain equal-order Galerkin (steady min/max
-      ! outside [0,1]: 4e-7/1.5e-7 stabilized vs 7e-9/2e-9 bubble vs 4e-7/1e-7
-      ! plain -- comparable to the bubble there, and transient: 1e-3/4e-4
-      ! stabilized vs 1e-2/3e-5 bubble vs 0.14/5e-4 plain -- clearly ahead of
-      ! both). On a case WITH crosswind shear (a parabolic inlet profile, see
-      ! Step_heat_transient/stabilized.sif), this SUPG term still only damps
-      ! oscillation ALONG the streamline; it does nothing for the crosswind
-      ! direction, so a shear layer can still show a larger under/overshoot
-      ! than the bubble there (observed: -0.05 vs -0.009, both against a
-      ! physical [0,1] bound) -- an accepted, textbook limitation of plain
-      ! SUPG (no crosswind/shock-capturing term added), not a sign of this
-      ! term being mis-derived.
+      ! on the plain linear no-bubble element. Same simplification 
+      ! IncompressibleNSVec's own equal-order stabilization makes for its dropped
+      ! viscous residual.
       IF( Stabilize .AND. HaveCond ) THEN
         hK = Element % hK
         mK = Element % StabilizationMK
@@ -2266,10 +2242,8 @@ CONTAINS
         ! rho*cp*v.grad v) to the standard Galerkin convection term above, and
         ! the matching streamline-weighted mass/load terms further below. Same
         ! Franca et al. tau legacy HeatSolve's "Stabilize" uses
-        ! (DiffuseConvectiveAnisotropic.F90), less its C0 (reaction/perfusion)
-        ! and second-derivative-of-basis diffusion residual pieces -- both are
-        ! zero on the plain linear no-bubble element this option forces in
-        ! HeatSolver_Init0. CondScalar mirrors that routine's own C2(1,1): the
+        ! (DiffuseConvectiveAnisotropic.F90).
+        ! CondScalar mirrors that routine's own C2(1,1): the
         ! isotropic component even when the conductivity is a full tensor.
         IF( Stabilize ) THEN
           IF( CondRank == 0 ) THEN
