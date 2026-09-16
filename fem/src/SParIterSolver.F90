@@ -51,6 +51,7 @@ MODULE SParIterSolve
   USE SParIterComm
   USE SParIterPrecond
   USE IterSolve, ONLY : NumericalError
+  USE Types, ONLY: ParEnv_t
 
   IMPLICIT NONE
 
@@ -83,33 +84,41 @@ CONTAINS
   ! Initialize the Matrix structures for parallel environment
   !
   FUNCTION ParInitMatrix(SourceMatrix, ParallelInfo, SkipActiveCheck) RESULT (SParMatrixDesc)
+    IMPLICIT NONE
     TYPE (Matrix_t),TARGET :: SourceMatrix
     TYPE (ParallelInfo_t), TARGET :: ParallelInfo
     TYPE (SParIterSolverGlobalD_t), POINTER :: SParMatrixDesc
     LOGICAL, OPTIONAL :: SkipActiveCheck
+    LOGICAL, POINTER, DIMENSION(:) :: act
 
     TYPE (ParEnv_t), POINTER :: ParallelEnv
-    INTEGER :: pes
+    INTEGER :: pes, k
     LOGICAL :: assoc
     !******************************************************************
 
-
-    pes = ParEnv % PEs
+    PEs = ParEnv % PEs
     ALLOCATE( SParMatrixDesc )
 
     IF ( .NOT. ASSOCIATED(ParEnv % active) ) THEN
-      ALLOCATE(ParEnv % Active(Parenv % PEs))
-      ParEnv % Active = .TRUE.
+        
+       ALLOCATE(ParEnv % Active(PEs))
+       ParEnv % Active(1:PEs) = .true.
     END IF
 
     ! The environment is built for this matrix and owned by it. Aim > ParEnv <
     ! at it while ParEnvInit determines the active partitions and the
     ! neighbours, see SetMatrixParEnv().
-    SParMatrixDesc % ParEnv = ParEnv
-    ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
-    SParMatrixDesc % ParEnv % Active = ParEnv % Active
-    SParMatrixDesc % ParEnv % IsNeighbour => Null()
-    ParEnv => SParMatrixDesc % ParEnv
+
+     SParMatrixDesc % ParEnv = ParEnv
+
+     ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
+     !SParMatrixDesc % ParEnv % Active = ParEnv % Active(1:pes)
+     associate(act => SParMatrixDesc % ParEnv % Active)
+             act = ParEnv % Active(1:pes)
+     end associate
+
+     SParMatrixDesc % ParEnv % IsNeighbour => Null()
+     ParEnv => SParMatrixDesc % ParEnv
 
     IF( ParEnv % PEs /= pes ) THEN
       WRITE(Message,'(A,I0,A,I0)') '#np changed during simulation from ',pes,' to ',ParEnv % PEs
@@ -130,7 +139,8 @@ CONTAINS
 
     SParMatrixDesc % SplittedMatrix => SplitMatrix( SourceMatrix, ParallelInfo )
 
-    
+      #if 0
+    #endif 
   END FUNCTION ParInitMatrix
 
 
@@ -144,7 +154,6 @@ CONTAINS
        RESULT ( SplittedMatrix )
 
     IMPLICIT NONE
-
     TYPE (Matrix_t) :: SourceMatrix       ! Original matrix in this partition
     TYPE (ParallelInfo_t) :: ParallelInfo
     TYPE (SplittedMatrixT), POINTER :: SplittedMatrix
@@ -3354,8 +3363,10 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
      ALLOCATE( DMat % RowOwner( SMat2 % NumberOfRows ) )
      ALLOCATE( DMat % Cols( SMat2 % Rows(SMat2 % NumberOfRows + 1)-1 ) )
 
+
      DMat % NumberOfRows = SMat2 % NumberOfRows
-     DMat % Rows = SMat2 % Rows(1:SMat2 % NumberOfRows+1)
+     
+     DMat % Rows = SMat2 % Rows(1:SMat2 % NumberofRows + 1)
      DMat % GRows = SMat2 % GRows(1:SMat2 % NumberOfRows)
      DMat % Cols = SMat2 % Cols(1:SIZE(DMat % Cols))
      DMat % RowOwner = SMat2 % RowOwner(1:SMat2 % NumberOfRows)
@@ -3412,7 +3423,6 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 
   DO WHILE ( i1 <= SMat1 % NumberOfRows .OR. &
              i2 <= SMat2 % NumberOfRows )
-
      ind = -1
      IF ( i1 <= SMat1 % NumberOfRows ) THEN
         ind = SearchIAItem( SMat2 % NumberOfRows, &
@@ -3517,6 +3527,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
         i2 = i2 + 1
      END IF
   END DO
+
   DMat % Rows(Row) = Col
 
   ALLOCATE(Cols(col-1))
