@@ -112,7 +112,7 @@ CONTAINS
      SParMatrixDesc % ParEnv = ParEnv
 
      ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
-     !SParMatrixDesc % ParEnv % Active = ParEnv % Active(1:pes)
+     !SParMatrixDesc % ParEnv % Active = ParEnv % Active
      associate(act => SParMatrixDesc % ParEnv % Active)
              act = ParEnv % Active(1:pes)
      end associate
@@ -3365,11 +3365,14 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 
 
      DMat % NumberOfRows = SMat2 % NumberOfRows
-     
-     DMat % Rows = SMat2 % Rows(1:SMat2 % NumberofRows + 1)
-     DMat % GRows = SMat2 % GRows(1:SMat2 % NumberOfRows)
-     DMat % Cols = SMat2 % Cols(1:SIZE(DMat % Cols))
-     DMat % RowOwner = SMat2 % RowOwner(1:SMat2 % NumberOfRows)
+
+     ! Explicit bounds on both sides work around an nvfortran (>=26.3) internal
+     ! "Lowering Error: array numelm is not a symbol" triggered by whole-array
+     ! assignment of deferred-shape POINTER derived-type components.
+     DMat % Rows(1:SMat2 % NumberOfRows + 1) = SMat2 % Rows(1:SMat2 % NumberOfRows + 1)
+     DMat % GRows(1:SMat2 % NumberOfRows)    = SMat2 % GRows(1:SMat2 % NumberOfRows)
+     DMat % Cols(1:SIZE(DMat % Cols))        = SMat2 % Cols(1:SIZE(DMat % Cols))
+     DMat % RowOwner(1:SMat2 % NumberOfRows) = SMat2 % RowOwner(1:SMat2 % NumberOfRows)
 
      RETURN
 
@@ -3381,10 +3384,10 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
      ALLOCATE( DMat % Cols( SMat1 % Rows(SMat1 % NumberOfRows + 1)-1 ) )
 
      DMat % NumberOfRows = SMat1 % NumberOfRows
-     DMat % Rows = SMat1 % Rows(1:SMat1 % NumberOfRows+1)
-     DMat % GRows = SMat1 % GRows(1:SMat1 % NumberOfRows)
-     DMat % Cols = SMat1 % Cols(1:SIZE(DMat % Cols))
-     DMat % RowOwner = SMat1 % RowOwner(1:SMat1 % NumberOfRows)
+     DMat % Rows(1:SMat1 % NumberOfRows + 1) = SMat1 % Rows(1:SMat1 % NumberOfRows + 1)
+     DMat % GRows(1:SMat1 % NumberOfRows)    = SMat1 % GRows(1:SMat1 % NumberOfRows)
+     DMat % Cols(1:SIZE(DMat % Cols))        = SMat1 % Cols(1:SIZE(DMat % Cols))
+     DMat % RowOwner(1:SMat1 % NumberOfRows) = SMat1 % RowOwner(1:SMat1 % NumberOfRows)
      RETURN
 
   END IF
@@ -3534,7 +3537,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
   Cols(1:col-1) = DMat % Cols(1:col-1)
   DEALLOCATE(DMAT % Cols)
   ALLOCATE(DMAT % Cols(col-1))
-  DMAT % Cols = Cols
+  DMAT % Cols(1:col-1) = Cols(1:col-1)
   DEALLOCATE( Done, Cols )
 !*********************************************************************
 END SUBROUTINE CombineCRSMatIndices
