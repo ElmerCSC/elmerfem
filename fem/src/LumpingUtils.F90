@@ -52,7 +52,7 @@ MODULE LumpingUtils
   USE ElementUtils
   USE Integration, ONLY : GaussIntegrationPoints_t, GaussPoints
   USE ElementDescription, ONLY : mGetElementDOFs, EdgeElementStyle
-  USE ParallelUtils
+  USE ParallelUtils, ONLY : ParallelReduction
   USE VectorHelmholtzUtils, ONLY : ElectricPortModel
   IMPLICIT NONE
   

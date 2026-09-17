@@ -265,8 +265,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
-  USE SolverBasics
-  USE ElementUtils
+  USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem, RowEquilibration
   USE MaterialModels
   USE AnisotropicMaterialModels
   USE ElementDescription, ONLY: GetEdgeMap

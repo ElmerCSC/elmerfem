@@ -45,7 +45,7 @@
 
 MODULE MeshPartition
 
-  USE ParallelUtils
+  USE SparIterComm
   USE CoordinateSystems
   USE ElementDescription, ONLY : GetElementType
   USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, &

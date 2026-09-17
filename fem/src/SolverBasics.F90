@@ -50,7 +50,8 @@ MODULE SolverBasics
 #include "../config.h"
 
    USE LoadMod
-   USE Multigrid
+   USE IterSolve
+
    USE ElementUtils
    USE IpFieldInterface
    USE PElementVisual
@@ -58,14 +59,14 @@ MODULE SolverBasics
        UpdateDependentComponents, ComponentNodalForceReduction
    USE TimeIntegrate
    USE ModelDescription
+   USE ParallelUtils !, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
+!                             ParallelMatrixVector, ParallelMatrix, ParallelOwnedPerm
    USE MeshBasics, ONLY : CommunicateParallelSystemTag, CylinderFit, &
        DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
        IntegralProjector, MakePermUsingMask
    USE MortarUtils, ONLY : PeriodicProjector, SaveProjector
-   USE ParallelUtils
-   USE ParallelEigenSolve
    USE MatrixAssembly
-   USE MatrixScaling
+   USE MatrixScaling, ONLY : ScaleLinearSystemVectors
    
    IMPLICIT NONE
    ! Not re-exported: the external procedure itself USEs modules that would

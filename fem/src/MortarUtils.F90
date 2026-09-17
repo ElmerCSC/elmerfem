@@ -48,7 +48,7 @@ MODULE MortarUtils
   USE ElementDescription
   USE BandwidthOptimize
   USE Interpolation, ONLY : PointInElement
-  USE ParallelUtils
+  USE SParIterComm
   USE Lists
   USE ListMatrix
   USE MeshAllocations
