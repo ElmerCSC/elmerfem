@@ -8584,8 +8584,8 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      LOGICAL :: SameString
 !------------------------------------------------------------------------------     
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue     
      TYPE(ValueList_t), POINTER :: List
+     TYPE(ValueListEntry_t), POINTER :: ptr
      TYPE(Element_t), POINTER :: PElement
      LOGICAL :: ListSame, ListFound, IntFound
      INTEGER :: id, BodyId
@@ -8627,16 +8627,32 @@ CONTAINS
          SameString = ( Handle % CValue(1:Handle % CValueLen) == CValue2 )
        END IF
      ELSE IF( ListFound ) THEN
-       CValue = ListGetString( List, Handle % Name, IntFound, &
-           UnfoundFatal = Handle % UnfoundFatal )
+       ! Deliberately NOT routed through ListGetString here: gfortran 15.2
+       ! miscompiles a CHARACTER(:), ALLOCATABLE function result under
+       ! -fopenmp when it is consumed by an intermediate (non-elemental)
+       ! wrapper function like this one, rather than used directly at the
+       ! call site -- confirmed with a minimal, 100%-reproducible standalone
+       ! repro (many OpenMP threads issuing this exact two-level call shape
+       ! concurrently intermittently get back a garbled/empty string even
+       ! though the underlying list entry is never mutated during assembly).
+       ! Reading the ValueListEntry_t's own CHARACTER(:), ALLOCATABLE
+       ! component directly -- no intervening function-result hand-off --
+       ! reproducibly does NOT trigger it. See ListCompareElementString's
+       ! DiffuseGray/HeatSolve.F90 threading investigation for the repro.
+       ptr => ListFind( List, Handle % Name, IntFound )
        Handle % Found = IntFound
        IF( IntFound ) THEN
-         Handle % CValueLen = len_trim(CValue)
-         Handle % CValue = CValue(1:Handle % CValueLen )
+         IF( ptr % Type /= LIST_TYPE_STRING ) THEN
+           CALL Fatal('ListCompareElementString','Invalid list type: '//TRIM(Handle % Name))
+         END IF
+         Handle % CValueLen = LEN_TRIM(ptr % Cvalue)
+         Handle % CValue = ptr % Cvalue(1:Handle % CValueLen )
          SameString = (Handle % CValue(1:Handle % CValueLen) == CValue2 )
+       ELSE IF( Handle % UnfoundFatal ) THEN
+         CALL Fatal('ListCompareElementString','Failed to find string: '//TRIM(Handle % Name))
        END IF
-       IF(PRESENT(Found)) Found = IntFound 
-     ELSE     
+       IF(PRESENT(Found)) Found = IntFound
+     ELSE
        Handle % Cvalue = ' '
        Handle % CValueLen = 0
        Handle % Found = .FALSE.

@@ -625,8 +625,6 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     END DO
     !$OMP END PARALLEL 
 
-    totelem = 0
-    
     CALL DefaultFinishBulkAssembly()
     
     nColours = GetNOFBoundaryColours(Solver)
@@ -653,15 +651,21 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       END IF
     END BLOCK
 
-    ! Serialize this boundary loop whenever the model has any "Radiation" BC.
-    ! Intermittent norm mismatches (radiation_viewfactor_methods, radiation2dAA,
+    ! Was serialized (or fully disabled) pending investigation of intermittent
+    ! norm mismatches (radiation_viewfactor_methods, radiation2dAA,
     ! radiation2d_spectral -- a different one each time, only under heavy batch
-    ! CPU contention.
-    ! project_heatsolvevec_diffusegray_threading memory if this needs revisiting.
+    ! CPU contention). Root cause found and fixed 2026-09-17: it was not a
+    ! genuine data race in this loop, but ListCompareElementString (Lists.F90)
+    ! still calling ListGetString internally on a cache miss -- the gfortran
+    ! <=15.2 -fopenmp bug where a CHARACTER(:), ALLOCATABLE function result's
+    ! hidden length is emitted as file-scope static storage shared across
+    ! threads (see GetStringThreadSafe's comment in DefUtils.F90 for the full
+    ! mechanism). Fixed at the source in ListCompareElementString itself, so no
+    ! serialization is needed here.
     !$OMP PARALLEL &
-    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers, HaveFactors ) &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
     !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE) IF(.NOT. HaveFactors)
+    !$OMP DEFAULT(NONE)
     InitHandles = .TRUE.
     DO col=1,nColours
       !$OMP SINGLE
@@ -671,7 +675,6 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       !$OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
-        totelem = totelem + 1
         IF(ActiveBoundaryElement(Element)) THEN
           n  = GetElementNOFNodes(Element)
           nd = GetElementNOFDOFs(Element)
@@ -1160,7 +1163,12 @@ CONTAINS
         CALL ListInitElementKeyword( ConvVelo_h(i),'Material','Convection Velocity '//I2S(i))
       END DO
 
-      str = GetString( Params, 'Temperature Convection Field', Found )
+      ! GetStringThreadSafe, not GetString: this InitHandles block runs once
+      ! per thread, concurrently, near the start of the parallel region (see
+      ! the note on GetStringThreadSafe in DefUtils.F90 -- GetString's
+      ! ALLOCATABLE deferred-length result races on gfortran's file-scope
+      ! static hidden length under concurrent calls).
+      CALL GetStringThreadSafe( Params, 'Temperature Convection Field', str, Found )
       IF(.NOT. Found ) str = 'Flow Solution'
       CALL ListInitElementVariable( ConvField_h, str )
       CALL ListInitElementVariable( PrevFlowField_h, str, tStep=-1 )
@@ -2007,7 +2015,9 @@ CONTAINS
       CALL ListInitElementKeyword( ConvVelo_h,'Material','Convection Velocity',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( PlateSpeed_h,'Material','Draw Velocity')
 
-      str = GetString( Params, 'Temperature Convection Field', Found )
+      ! GetStringThreadSafe, not GetString: see the matching comment in
+      ! LocalMatrixVec.
+      CALL GetStringThreadSafe( Params, 'Temperature Convection Field', str, Found )
       IF(.NOT. Found ) str = 'Flow Solution'
       CALL ListInitElementVariable( ConvField_h, str )
       CALL ListInitElementVariable( PrevFlowField_h, str, tStep=-1 )
@@ -2424,8 +2434,9 @@ CONTAINS
     REAL(KIND=dp) :: PhaseVel(3), PhaseLatentHeatAtIp, PhaseDensityAtIp
     LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse,TorBC,InfBC,PhaseChangeBC
     INTEGER :: t,p,q,Indexes(n)
+    CHARACTER(LEN=MAX_NAME_LEN) :: NameStr
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(ValueList_t), POINTER :: BC
 
     INTEGER :: tid
     TYPE(Nodes_t) :: Nodes
@@ -2617,8 +2628,11 @@ CONTAINS
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
         IF(.NOT. Found ) THEN
+          ! GetStringThreadSafe, not ListGetString directly: this runs inside
+          ! LocalMatrixBC, called per-element from the threaded boundary loop.
+          CALL GetStringThreadSafe(BC,'name', NameStr, Found)
           CALL Warn(Caller,'Emissivity should be available for radiating BC: '&
-              //TRIM(ListGetString(BC,'name')))
+              //TRIM(NameStr))
           CYCLE
         END IF
         
