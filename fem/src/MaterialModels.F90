@@ -557,7 +557,7 @@ this ise not in USE
      REAL(KIND=dp) :: KVec(ngp), EVec(ngp), V2Vec(ngp), DistVec(ngp), TVec(ngp), &
          XiVec(ngp), F2Vec(ngp)
      REAL(KIND=dp) :: Cmu, CT
-     CHARACTER(:), ALLOCATABLE :: KEModel
+     CHARACTER(LEN=MAX_NAME_LEN) :: KEModel
      LOGICAL :: GotIt
 !------------------------------------------------------------------------------
      Found = .TRUE.
@@ -572,7 +572,11 @@ this ise not in USE
        KVec = InterpVar('Kinetic Energy')
        EVec = MAX( InterpVar('Kinetic Dissipation'), 1.0d-10 )
 
-       KEModel = ListGetString( Material, 'KE Model', GotIt )
+       ! GetStringThreadSafe, not ListGetString: this runs per-element from
+       ! IncompressibleNS.F90's threaded bulk assembly loop -- see the
+       ! comment on GetStringThreadSafe in DefUtils.F90 for why a direct
+       ! ListGetString call here is not thread-safe under gfortran.
+       CALL GetStringThreadSafe( Material, 'KE Model', KEModel, GotIt )
        IF( GotIt .AND. KEModel == 'v2-f' ) THEN
          V2Vec = InterpVar('V2')
          CT = ListGetConstReal( Material, 'V2-F CT', GotIt )
