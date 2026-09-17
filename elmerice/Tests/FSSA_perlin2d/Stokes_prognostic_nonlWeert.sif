@@ -120,14 +120,15 @@ End
 
 Solver 2
 !  Exec Solver = "Never" # uncommenting would switch this off
-  !Element = "p:2"
+  !Element = p:2
+  Element = "p:1 b:1"
+  !Stabilization Method = "Stabilized"
   Equation = "Stokes-Vec"
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
   Div-Curl Discretization = Logical False
 
   Optimize Bandwidth = Logical True
   Stokes Flow = Logical True
-  Stabilization Method = "Stabilized"
   !Stabilization Method = String "P1/P2"
 
   Linear System Abort Not Converged = Logical False
@@ -349,5 +350,5 @@ Boundary Condition 3
   FSSA Theta = Real #theta
   FSSA Flag = String $fssaflag
 End
-Solver 2 :: Reference Norm = Real 3.6129786
+Solver 2 :: Reference Norm = Real 3.61297898
 Solver 2 :: Reference Norm Tolerance = Real 1E-06
