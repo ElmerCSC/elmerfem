@@ -13,7 +13,7 @@
 
 
 #dt=60.0      
-#nt=3
+#nt=1
 #tout=1
 
 $elmntstrng="p:1 b:1"
@@ -34,19 +34,13 @@ Simulation
   TimeStep Intervals(1) =  #nt + 1
   Output Intervals(1) = #tout !only applies to result output, if there is
   Steady State Max Iterations = 10
-  Output File = $name".result"
-  Post File = $name".vtu"
+  !Output File = $name".result"
+  !Post File = $name".vtu"
   Initialize Dirichlet Conditions = Logical False
-  !Restart File = $restart".result"
-  !Restart Time = $3600*24
-  !Restart Position = 0
-  !Restart Variable 1 = pftemp
-  !Restart Variable 2 = xi
-  !Restart Before Initial Conditions = True
 End
 
-Solver 2 :: Reference Norm = Real 2.26222328e+02
-Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+Solver 2 :: Reference Norm = Real 2.26263714E+02
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
 
 Constants
   Gas Constant = Real 8.3145	

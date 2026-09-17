@@ -1,12 +1,12 @@
 1         NumberOfRockRecords
 bedrock   1
 0.1       Xi0
-0.35      eta0
+0.4       eta0
 0.1       etak
 3.5       ks0th
 0.006     ew
 0.0       bs
-2600.0    rhos0
+2650.0    rhos0
 840.0     cs0
 0.0       hs0
 1.0e-08   kgwh0_11

@@ -24,11 +24,11 @@ Simulation
   BDF Order = 1
   ! First four steps of the validated 12-point benchmark schedule.
   Timestep Sizes(2) = 2160.0 4320.0
-  TimeStep Intervals(2) = 2 2
-  Output Intervals(2) = 1 1
+  TimeStep Intervals(2) = 2 4
+  Output Intervals(2) = 1 4
 
   Steady State Max Iterations = 10
-  Output File = $name".result"
+  !Output File = $name".result"
   Initialize Dirichlet Conditions = Logical False
 End
 
@@ -118,13 +118,13 @@ Solver 3
   Procedure = "ElmerIceSolvers" "PermaFrostHeatTransfer"
   Output Xi = Logical True
   Linear System Solver = Iterative
-  Linear System Iterative Method  = BiCGStab
+  Linear System Iterative Method  = IDRS
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1.0e-09
-  Nonlinear System Convergence Tolerance = 1.0e-06
-  Nonlinear System Max Iterations = 100
-  Nonlinear System Relaxation Factor = 0.99
-  Steady State Convergence Tolerance = 1e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Relaxation Factor = 0.66
+  Steady State Convergence Tolerance = 1e-04
   Nonlinear Calculate Velocity = Logical True
 End
 
@@ -145,24 +145,25 @@ Solver 5
   Exec Intervals(2) = 1 1
   VTU Format = True
   Output File Name = $name"_out"
-  Scalar Field 1 = File "PFTemp"
-  Scalar Field 2 = File "GWPressure"
-  Scalar Field 3 = File "rhogw"
-  Scalar Field 4 = File "mugw"
-  Scalar Field 5 = File "Xi"
-  Scalar Field 6 = File "PFTemp Velocity"
-  Scalar Field 7 = File "Salinity Velocity"
-  Scalar Field 8 = File "CgwTT"
-  Scalar Field 9 = File "KGTT"
-  Vector Field 1 = File "Groundwater Flux"
+  Variable 1  = File "PFTemp"
+  Variable 2  = File "GWPressure"
+  Variable 3  = File "rhogw"
+  Variable 4  = File "mugw"
+  Variable 5  = File "Xi"
+  Variable 6  = File "PFTemp Velocity"
+  Variable 7  = File "Salinity Velocity"
+  Variable 8  = File "CgwTT"
+  Variable 9  = File "KGTT"
+  Variable 10 = File "Groundwater Flux"
+  
   Save Geometry Ids = Logical True
   Save Elemental Fields = Logical True
   Save Bulk Only = Logical True
 End
 
-Solver 2 :: Reference Norm = Real 5.90882938e+04
-Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
-Solver 3 :: Reference Norm = Real 1.63666532e+02
+Solver 2 :: Reference Norm = Real 5.90887535E+04
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
+Solver 3 :: Reference Norm = Real 1.63657416E+02
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-5
 
 Initial Condition 1

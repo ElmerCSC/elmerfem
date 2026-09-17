@@ -1,11 +1,15 @@
 !echo on
 !Check Keywords "Warn"
-$p0=0.0  ! 101032.0 
+$p0= 101032.0
 $gauge=0.0
-$grav=0.0 ! 9.81 switch off, as else own weight would deform more than anything else
+$grav=0 ! 9.81 switch off, as else own weight would deform more than anything else
 $T0 = 273.15
 $deltaT = 20.0
-$filename="biot_nograv_dI"
+$dt = 3600*24
+$outputinterv= 3600*24/dt
+$daysinsimulation=4 ! increase to 60 for full case
+$dtint=daysinsimulation*24*3600/dt !
+$filename="gibson_consolitation"
 $elmnttype="p:1 b:1"
 $directsolver="UMFPACK"
 
@@ -16,12 +20,12 @@ Simulation
   Max Output Level = 5
   Coordinate System = Cartesian 2D
   Simulation Type = Transient
-  TimeStepping Method = BDF  
-  BDF Order = 1         
-  Timestep Sizes(1) = $	 1.0 * 3600.0
-  TimeStep Intervals(1) = 30
-  Output Intervals(1) = 30 
-  Steady State Max Iterations = 1 ! this needs to be reduced to max 2 if running Lagrangian mesh scheme
+  TimeStepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes(1) = $dt
+  TimeStep Intervals(1) = $dtint
+  !Output Intervals(1) = $outputinterv ! not needed, as ReultOutputSolver
+  Steady State Max Iterations = 10 ! this needs to be reduced to max 2 if running Lagrangian mesh scheme
   Steady State Min Iterations = 1
   !Output File = $filename".result"
   Initialize Dirichlet Conditions = Logical False
@@ -51,21 +55,20 @@ Body Force  1
   Stress Bodyforce 2 = Variable PFTemp, GWPressure, Porosity, Salinity, Xi
     Real Procedure "ElmerIceSolvers" "GetElasticityForce"
   Stress Bodyforce 1 = 0.0
-  Stress Pressure = Equals GWPressure  
+  Stress Pressure = Equals GWPressure
 End
 
 Material 1
-   Density = 1.0 ! Just a dummy
-   Rock Material File = File "./biot.dat"
-   Rock Material ID = Integer 1
-   Conductivity Arithmetic Mean Weight = Real 0.5
-   Radiogenic Reference Depth = Real 10000.0
-  Youngs Modulus = Variable Porosity, Xi
-     Real Procedure "ElmerIceSolvers" "GetEG"
-  Poisson Ratio =   Variable Porosity, Xi
-     Real  Procedure "ElmerIceSolvers" "GetNuG"
-  Youngs Modulus at IP = Logical True
-  Poisson Ratio at IP = Logical True
+  Density = 1.0 ! Just a dummy
+  Rock Material File = File "./gibson.dat"
+  Rock Material ID = Integer 1
+  Conductivity Arithmetic Mean Weight = Real 0.5
+  Radiogenic Reference Depth = Real 10000.0
+  Permafrost Phase Change Model = String "Hartikainen"
+  ! Constant elastic properties the Gibson benchmark (Table B: E_s,0 = 5e6 Pa, nu_s = 0.4).
+  ! Decoupled from porosity so the material stays at reference properties;
+  Youngs Modulus = Real 5.0e6
+  Poisson Ratio  = Real 0.4
   Temperature Variable = Equals "PFTemp"
   Porosity Variable = Equals "Porosity"
   Salinity Variable = Equals "Salinity"
@@ -91,14 +94,14 @@ Solver 1
   Linear System Direct Method = $directsolver
   Gradient = Real -1.0E00
 
-  Calc Free Surface = Logical FALSE
+  Calc Free Surface = Logical False
 End
 
 
 ! dummy (pre-processing) solver setting temperature
 Solver 2
   Equation = "Permafrost"
-  Element = $elmnttype 
+  Element = $elmnttype
   Exec Solver = "Never"
   Output Xi = Logical True
    Variable = "PFTemp"
@@ -108,15 +111,15 @@ Solver 2
   Output Xi = Logical True
   Steady State Convergence Tolerance = 1e-03
   Exported Variable 1 = -dofs 1 "Salinity"
-  Initialize Steady State = Logical True
+  Initialize Steady State = Logical False
 End
 
 ! groundwater flow (Darcy) yielding pressure as solution
 Solver 3
   Equation = "Darcy"
-  Element = $elmnttype 
+  Element = $elmnttype
   Variable = -dofs 1 "GWPressure"
-  Procedure = "ElmerIceSolvers" "PermafrostGroundwaterFlow"  
+  Procedure = "ElmerIceSolvers" "PermafrostGroundwaterFlow"
   !Linear System Solver = Direct
   !Linear System Direct Method = "umfpack"
   Linear System Solver = Iterative
@@ -128,11 +131,11 @@ Solver 3
   Nonlinear System Convergence Tolerance = 1e-06
   Steady State Convergence Tolerance = 1e-03
   Linear System Nullify Guess = Logical True
-  Initialize Steady State = Logical True
+  Initialize Steady State = Logical False
   Compute Deformation = Logical True
   ! needed to get gorundwater flux in output
   Exported Variable 1 = -IP "Groundwater Flux 1"
-  Exported Variable 2 = -IP "Groundwater Flux 2"        
+  Exported Variable 2 = -IP "Groundwater Flux 2"
 End
 
 
@@ -144,9 +147,9 @@ Solver 4
   Variable DOFs = Integer 2
   Calculate Stresses = True
   Calculate Strains = True
-  Displace Mesh = Logical False ! switch to True for Lagrangian scheme 
+  Displace Mesh = Logical False ! switch to True for Lagrangian scheme
   Quasi Stationary = Logical True ! no mass-matrix, despite finite densities
-  
+
   Linear System Solver = Direct
   Linear System Scaling = Logical False
   Linear System Direct Method = $directsolver
@@ -174,6 +177,8 @@ Solver 5
 End
 
 !computes change in porosity based on strain from lin. elasiticyt solver
+!  Switched off for the constant-property Gibson run: porosity is held at the
+!  initial reference value eta0 = 0.4 so the material stays decoupled from it.
 Solver 6
    Equation = "Compute Porosity"
    !Exec Solver = "Never"
@@ -183,32 +188,52 @@ Solver 6
    Variable = -dofs 1 Porosity
    Strain Variable = String "strain"
    Temperature Variable = String "PFTemp"
-   Salinity Variable = String "Salinity" 
+   Salinity Variable = String "Salinity"
    Pressure Variable = String "GWPressure"
 End
 
 
 Solver 7
   Equation = "ResultOutput"
-  Element = $elmnttype	
+  !Element = $elmnttype
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Exec Solver = "After Timestep"
-  Exec Interval = 10
+  Exec Interval = $outputinterv
   VTU Format = True
   Output File Name = $filename
-  Scalar Field 1 = "PFTemp"
-  Scalar Field 2 = "GWPressure"
-  Scalar Field 3 = "Porosity"
-  Scalar Field 4 = "Stress Invariant"
-  Scalar Field 5 = "Stress Invariant Velocity"
-  Scalar Field 6 = "Groundwater Flux 1"
-  Scalar Field 7 = "Groundwater Flux 2"
-  Vector Field 1 = "Bedrock Deformation"
-  Vector Field 2 = "Stress"
-  Vector Field 3 = "Strain"
+  Variable 1 = "PFTemp"
+  Variable 2 = "GWPressure"
+  Variable 3 = "Porosity"
+  Variable 4 = "Stress Invariant"
+  Variable 5 = "Stress Invariant Velocity"
+  Variable 6 = "Groundwater Flux"
+!  Variable 7 = "Groundwater Flux 2"
+  Variable 7 = "Bedrock Deformation"
+  Variable 8 = "Stress"
+  Variable 9 = "Strain"
   Save Geometry Ids = True
   Discontinuous Galerkin = Logical True
   Discontinuous Bodies = Logical True
+End
+Solver 8
+  Exec Solver = "After Timestep"
+  !Exec Solver = "Never"
+  Exec Interval = 1 !$outputinterv
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = $filename"-uppersurface.dat"
+  File Append = True
+  !Parallel Reduce = Logical True
+  Polyline Coordinates(2,2) = 0.0 5.0 5.0 5.0
+  Optimize Node Ordering = Logical True
+  Variable 1 = "PFTemp"
+  Variable 2 = "GWPressure"
+  Variable 3 = "Porosity"
+  Variable 4 = "Stress Invariant"
+  Variable 5 = "Stress Invariant Velocity"
+  Variable 6 = "Bedrock Deformation"
+  Variable 7 = "Stress"
+  Variable 8 = "Strain"
 End
 
 
@@ -224,6 +249,8 @@ Boundary Condition 1
   Name = "sides"
   Target Boundaries(1) = 4
   Bedrock Deformation 1 = Real 0.0
+  GWPressure = Variable Coordinate 2
+    Real MATC "p0 + grav*1000*(5.0 - tx(0))"
   PFTemp = Real $T0 + deltaT
 End
 
@@ -232,7 +259,7 @@ Boundary Condition 2
   Target Boundaries = 3
   PFTemp = Real $T0 + deltaT
   Bedrock Deformation 2 = Real 0.0
-  Bedrock Deformation 1 = Real 0.0  
+  Bedrock Deformation 1 = Real 0.0
 End
 
 Boundary Condition 3
@@ -250,15 +277,15 @@ Boundary Condition 4
   GWPressure = Real $p0
   Save Line = Logical True
   Depth = Real 0.0
+  !Normal Force = $(1.0e05 + p0)
   Normal Force = Variable Time
-      Real MATC "(tx > 2 * 3600 )*(tx < 20* 3600)*(-1.0e05) - p0"
+    Real MATC "-((1.0e05)*(tx[0] >  dt)+ p0)"
+
 End
 
-!Solver 3 :: Reference Norm = 40.361370
-!Solver 4 :: Reference Norm = 0.16666636E-03
+! The norms seems close enough to save the test.
+Solver 3 :: Reference Norm = 60039.130
+Solver 3 :: Reference Norm Tolerance = 1E-05
+Solver 4 :: Reference Norm = 0.46321654E-02
+Solver 4 :: Reference Norm Tolerance = 1E-04
 
-! The norms seems close enough to save the test. 
-Solver 3 :: Reference Norm = 4.07823523E+01
-Solver 3 :: Reference Norm Tolerance = 1E-04
-Solver 4 :: Reference Norm = 1.71631789E-04
-Solver 4 :: Reference Norm Tolerance = 1E-05

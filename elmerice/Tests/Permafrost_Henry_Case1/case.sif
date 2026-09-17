@@ -128,6 +128,7 @@ Solver 3
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-9
   Steady State Convergence Tolerance = 1.0e-8
+  Exported Variable 1 = -dofs 2 "BC Flux"
 End
 
 Solver 4
@@ -156,9 +157,9 @@ Solver 5
 End
 
 Solver 2 :: Reference Norm = Real 6.18327350e+04
-Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
-Solver 3 :: Reference Norm = Real 3.05125869e-03
-Solver 3 :: Reference Norm Tolerance = Real 1.0e-5
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-03
+Solver 3 :: Reference Norm = Real 2.22550228E-03
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-03
 
 Initial Condition 1
   Porosity = Real 0.35

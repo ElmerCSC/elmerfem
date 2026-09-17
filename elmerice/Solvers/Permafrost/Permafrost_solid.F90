@@ -210,21 +210,24 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
        NodalStrain(:), NodalTemperature(:), NodalPressure(:),&
        PrevNodalTemperature(:), PrevNodalPressure(:),&
        PrevTemperature(:), PrevPressure(:)
-  REAL(KIND=dp), ALLOCATABLE :: PrevStrainInvariant(:)
-  REAL(KIND=dp) :: aux, Nodalrhos, PrevNodalrhos, StrainInvariant,&
-            GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3)
+  REAL(KIND=dp), ALLOCATABLE :: PrevStrainInvariant(:), ThisStrainInvariant(:)
+  REAL(KIND=dp) :: aux, Nodalrhos, PrevNodalrhos, StrainInvariant, PrevStrainInvariantAtNode,&
+            GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3), SimTime, SavedTime = -1.0_dp,&
+            StrainFacMin, StrainFacMax
   INTEGER :: DIM, i, j, k, N, NumberOfRockRecords,RockMaterialID,CurrentNode,Active,&
        StrainDOFs,TemperatureDOFS,PressureDOFs,totalunset,totalset,istat
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName="PermafrostPorosityEvolution"
   CHARACTER(LEN=MAX_NAME_LEN) :: PorosityName,PressureName,TemperatureName,StrainVarName,ElementRockMaterialName
   LOGICAL :: FirstTime=.TRUE.,FirstVisit=.TRUE.,Found,GotIt,ElementWiseRockMaterial,&
-       StrainVarExists, TemperatureVarExists, PressureVarExists,ConstVal,ConstantTemp
+       StrainVarExists, TemperatureVarExists, PressureVarExists,ConstVal,ConstantTemp,&
+       StrainHistoryInitialized=.FALSE., NewTimeLevel
   !------------------------------
   SAVE FirstTime,FirstVisit,ElementWiseRockMaterial,&
        NodalStrain, NodalTemperature, NodalPressure,&
        PrevNodalTemperature, PrevNodalPressure,&
        StrainVar, TemperatureVar, PressureVar,&
-       Strain, PrevStrainInvariant, Temperature, Pressure,&
+       Strain, PrevStrainInvariant, ThisStrainInvariant,&
+       StrainHistoryInitialized, SavedTime, Temperature, Pressure,&
        StrainDOFs,TemperatureDOFs,PressureDOFs,&
        PrevTemperature, PrevPressure, &
        StrainPerm, TemperaturePerm, PressurePerm,&
@@ -252,8 +255,10 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
   IF (.NOT.ASSOCIATED( PorosityVariable % PrevValues )) THEN
     ALLOCATE(PorosityVariable % PrevValues(SIZE(PorosityValues), 1))
   END IF
-  PorosityVariable % PrevValues(1:SIZE(PorosityValues),1) =&
-       PorosityVariable % Values(1:SIZE(PorosityValues))
+  ! NB: PrevValues (the previous-time-level porosity used in the recursion below) is
+  ! rotated once per real time advance by the GetTime() guard further down -- NOT
+  ! unconditionally here, which would corrupt it whenever this solver is called more
+  ! than once at the same time level (steady-state / coupled iteration loop).
   
   IF(FirstTime) THEN
     IF(.NOT.(&
@@ -277,8 +282,12 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
     CALL AssignSingleVar(Solver,Model,NodalStrain,StrainVar,StrainPerm, Strain, &
          StrainVarName,StrainDOFs,StrainVarExists)
     IF (ASSOCIATED(StrainVar)) THEN
-      IF (.NOT.FirstTime) DEALLOCATE(PrevStrainInvariant)
-      ALLOCATE(PrevStrainInvariant(SIZE(StrainPerm)),stat=istat)
+      IF (.NOT.FirstTime) DEALLOCATE(PrevStrainInvariant, ThisStrainInvariant)
+      ALLOCATE(PrevStrainInvariant(SIZE(StrainPerm)), ThisStrainInvariant(SIZE(StrainPerm)),stat=istat)
+      PrevStrainInvariant = 0.0_dp
+      ThisStrainInvariant = 0.0_dp
+      StrainHistoryInitialized = .FALSE. ! (re)built history: seed on the next time level
+      SavedTime = -1.0_dp                ! sentinel: force time-advance detection to re-seed
     ELSE
       CALL FATAL(SolverName,'No "Strain Variable" associated')
     END IF
@@ -331,8 +340,41 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
        CALL FATAL(SolverName,'Values of pressure variable not found')
   IF (.NOT.ASSOCIATED(PrevPressure))&
        CALL FATAL(SolverName,'Previous values of pressure variable not found')
+
+  ! Advance the previous-time-level history exactly once per real time advance.
+  ! GetTime() (the 'time' variable) rises once per advance -- an ordinary timestep OR
+  ! an accepted adaptive sub-step -- but is bit-identical across repeated calls at the
+  ! SAME time level (a steady-state / coupled iteration loop). We deliberately do NOT
+  ! gate on GetTimeStep(): under "Adaptive Timestepping" Elmer overwrites the 'timestep'
+  ! variable with the half-step size ddt/2 during the After-Timestep call
+  ! (ElmerSolver.F90), so GetTimeStep() stops being a monotonic counter and the history
+  ! would never rotate -- freezing tr(eps)_prev = tr(eps)_cur and silently disabling the
+  ! strain term (that behaviour is preserved for reference as
+  ! GMD-paper/Permafrost_solid_nostraincompression.F90).
+  SimTime = GetTime()
+  IF (SavedTime < 0.0_dp) THEN
+    ! first visit after (re)initialisation: seed the previous-value stores, do not rotate
+    PorosityVariable % PrevValues(1:SIZE(PorosityValues),1) = PorosityValues(1:SIZE(PorosityValues))
+    NewTimeLevel = .FALSE.
+  ELSE
+    NewTimeLevel = (SimTime /= SavedTime)
+    IF (NewTimeLevel) THEN
+      ! a real time advance occurred: promote the previous time level's converged
+      ! porosity and strain-invariant trace (both frozen across same-time iterations)
+      PorosityVariable % PrevValues(1:SIZE(PorosityValues),1) = PorosityValues(1:SIZE(PorosityValues))
+      PrevStrainInvariant = ThisStrainInvariant
+      StrainHistoryInitialized = .TRUE.
+    END IF
+  END IF
+  SavedTime = SimTime
+
   ! Loop over elements
   Active = Solver % NumberOFActiveElements
+
+  ! --- TEMPORARY DIAGNOSTIC (remove once the strain coupling is confirmed live) ---
+  ! Range of the volume factor (1+treps_prev)/(1+treps_cur) over the mesh this call.
+  StrainFacMin =  HUGE(1.0_dp)
+  StrainFacMax = -HUGE(1.0_dp)
 
   DO i = 1, Active
     CurrentElement => GetActiveElement(i)
@@ -418,15 +460,31 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
            CurrentElement % NodeIndexes(k)
         CALL FATAL(SolverName,'Exiting')
       END IF
-      StrainInvariant = 0.0
-      ! first 1..DIM elements of StrainRate variable are th ediagonal entries
+      ! The first DIM components of the Strain variable are the diagonal entries,
+      ! so their sum is tr(eps). The porosity update needs tr(eps) at the CURRENT and
+      ! the PREVIOUS timestep; (1+tr eps^{n-1})/(1+tr eps^n) is the per-step volume
+      ! increment factor. The previous-time-level trace is kept in the SAVEd array
+      ! PrevStrainInvariant, which is rotated once per real time advance by the GetTime()
+      ! guard before this element loop (NOT on every call), so repeated visits at the same
+      ! time level (steady-state loop) all read the same, frozen previous-time-level value.
+      ! (The former code overwrote PrevStrainInvariant on every visit with the
+      ! *current* strain, so the factor re-injected essentially the whole
+      ! accumulated strain every step and porosity ran away.)
+      StrainInvariant = 0.0_dp
       DO J=1,DIM
-        PrevStrainInvariant(StrainPerm(CurrentNode)) = StrainInvariant
         StrainInvariant = StrainInvariant &
              + Strain((StrainPerm(CurrentNode)-1)*StrainDOFs + J)
       END DO
+      IF (StrainHistoryInitialized) THEN
+        PrevStrainInvariantAtNode = PrevStrainInvariant(StrainPerm(CurrentNode))
+      ELSE
+        PrevStrainInvariantAtNode = StrainInvariant ! first timestep: zero increment
+      END IF
+      ThisStrainInvariant(StrainPerm(CurrentNode)) = StrainInvariant
       aux = 1.0_dp - (PrevNodalrhos/Nodalrhos)*&
-           (1.0_dp + PrevStrainInvariant(StrainPerm(CurrentNode)))/(1.0_dp + StrainInvariant)
+           (1.0_dp + PrevStrainInvariantAtNode)/(1.0_dp + StrainInvariant)
+      StrainFacMin = MIN(StrainFacMin, (1.0_dp+PrevStrainInvariantAtNode)/(1.0_dp+StrainInvariant)) ! DIAG
+      StrainFacMax = MAX(StrainFacMax, (1.0_dp+PrevStrainInvariantAtNode)/(1.0_dp+StrainInvariant)) ! DIAG
       PorosityValues(PorosityPerm(CurrentNode)) = &
            PorosityVariable % PrevValues(PorosityPerm(CurrentNode),1)*(1.0_dp - aux) + aux
       IF (PorosityValues(PorosityPerm(CurrentNode)) <= 0.0) THEN
@@ -448,6 +506,14 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
       END IF
     END DO
   END DO
+  ! --- TEMPORARY DIAGNOSTIC: is the strain->porosity factor ever /= 1, and is time advancing? ---
+  WRITE(Message,*) 'DIAG SimTime=',SimTime,' NewTimeLevel=',NewTimeLevel,&
+       ' HistInit=',StrainHistoryInitialized,' factor(min,max)=',StrainFacMin,StrainFacMax
+  CALL INFO(SolverName,Message,Level=10)
+  ! NB: the history is advanced by the GetTime() guard before the element loop, NOT here.
+  ! ThisStrainInvariant now holds this time level's latest trace and is only promoted to
+  ! PrevStrainInvariant when simulation time next advances, so calling this solver
+  ! repeatedly at the same time level does not corrupt the previous-time-level history.
   IF (ConstantTemp) &
        DEALLOCATE(PrevNodalTemperature)
   FirstVisit = .FALSE.
@@ -472,12 +538,12 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., NoPressure, UpdatePrev=.FALSE.,SteadyState=.FALSE.
   TYPE(Variable_t), POINTER :: InvariantVar, InvariantVeloVar, StressVariableVar, PressureVar
   INTEGER, POINTER :: InvariantPerm(:), InvariantVeloPerm(:), StressVariablePerm(:), PressurePerm(:)
-  INTEGER :: I, DIM, StressVariableDOFs, CurrentTime, activenodes
+  INTEGER :: I, DIM, StressVariableDOFs, activenodes
   REAL (KIND=dp), POINTER :: Invariant(:), InvariantVelo(:), StressVariable(:),&
        InvariantPrev(:,:), Pressure(:), PrevPressure(:)
-  REAL (KIND=dp) :: AverageInvariant
+  REAL (KIND=dp) :: AverageInvariant, SimTime, SavedTime = -1.0_dp
   !------------------------------------------------------------------------------
-  SAVE FirstTime, CurrentTime, DIM, NoPressure,&
+  SAVE FirstTime, SavedTime, DIM, NoPressure,&
        PressureVar, Pressure, PressurePerm, PressureName,&
        StressVariableVar, StressVariable, StressVariablePerm, StressVariableDOFs, &
        StressVariableName, InvariantVeloVar, InvariantVeloPerm, InvariantVelo,SteadyState
@@ -490,18 +556,22 @@ SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
   SolverParams => GetSolverParams()
 
 
+  ! Rotate InvariantPrev (the previous-time-level stress invariant, used for the time
+  ! derivative "<var> Velocity") exactly once per real time advance. GetTime() (the 'time'
+  ! variable) changes once per timestep / accepted adaptive sub-step but is bit-identical
+  ! across repeated calls at the same time level (steady-state / coupled iteration loop).
+  ! We deliberately do NOT gate on GetTimeStep(): under "Adaptive Timestepping" Elmer
+  ! overwrites the 'timestep' variable with the half-step size ddt/2 during the
+  ! After-Timestep call (ElmerSolver.F90), so it stops being a monotonic counter and this
+  ! rotation would misfire (same fix as PermafrostPorosityEvolution above).
+  SimTime = GetTime()
   IF (FirstTime) THEN
-    CurrentTime=GetTimeStep()
     UpdatePrev = .FALSE.
     DIM=CoordinateSystemDimension()
   ELSE
-    IF (CurrentTime .NE. GetTimeStep()) THEN
-      UpdatePrev = .TRUE.
-      CurrentTime=GetTimeStep()
-    ELSE
-      UpdatePrev = .FALSE.
-    END IF
+    UpdatePrev = (SimTime /= SavedTime)
   END IF
+  SavedTime = SimTime
 
   IF (FirstTime .OR. Model % Mesh % Changed) THEN
     CALL INFO( SolverName, 'Initialization step:',Level=9 )
