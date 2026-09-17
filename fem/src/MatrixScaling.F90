@@ -47,7 +47,7 @@ MODULE MatrixScaling
     USE Lists,         ONLY : ListGetLogical, ListGetString
     USE GeneralUtils,  ONLY : I2S
     USE ParallelUtils, ONLY : ParallelReduction, ParallelSumVector, &
-                              ParallelInitSolve, ParallelMatrixVector
+                              ParallelInitSolve, ParallelMatrixVector, ParallelVector
     IMPLICIT NONE
 
 CONTAINS

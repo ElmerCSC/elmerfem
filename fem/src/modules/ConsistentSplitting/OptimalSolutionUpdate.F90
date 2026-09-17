@@ -44,8 +44,6 @@
 SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE SolverBasics
-  USE ElementUtils
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------
