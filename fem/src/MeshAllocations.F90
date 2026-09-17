@@ -48,7 +48,6 @@ MODULE MeshAllocations
   USE ElementDescription
 !  USE BandwidthOptimize
 !  USE Interpolation, ONLY : PointInElement
-!  USE ParallelUtils
   USE Lists
 !  USe ListMatrix
   USE ElementUtils, ONLY : FreeMatrix !Find_Face, Find_Edge, AllocateMesh, FreeMatrix, TangentDirections !mGetBoundaryIndexesFromParent, &

@@ -52,7 +52,8 @@ MODULE CutFemUtils
   USE ModelDescription, ONLY : FreeMesh
   USE SolverBasics, ONLY : GaussPointsAdapt, VectorValuesRange
   USE SolveCore, ONLY : SolveLinearSystem
-  USE ParallelUtils
+  USE SparIterComm
+  USE ParallelUtils, ONLY : ParallelReduction
   USE MeshBasics, ONLY : PointInMesh
   
   IMPLICIT NONE

@@ -49,7 +49,8 @@ MODULE GeometryFitting
   USE ElementUtils, ONLY : TangentDirections
   USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE Lists
-  USE ParallelUtils
+  USE ParallelUtils , ONLY : ParallelReduction
+  USE SParIterComm
   IMPLICIT NONE
 
 CONTAINS

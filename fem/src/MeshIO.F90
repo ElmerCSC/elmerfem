@@ -43,7 +43,8 @@
 MODULE MeshIO
 
     USE ElementDescription
-    USE ParallelUtils
+    USE ParallelUtils, ONLY : ParallelReduction, ParallelGlobalNumbering
+    USE SparIterComm
     USE Lists
     USE ListMatrix
     USE MeshAllocations
