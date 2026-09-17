@@ -567,11 +567,7 @@ void RenderArea::readSlot(QString fileName)
 	points.clear();
 	splines.clear();
 	bodies.clear();
-#if WITH_QT5 || WITH_QT6
-	cout << message.toLatin1().data() << endl;
-#else
-	cout << message.toAscii().data() << endl;
-#endif
+	cout << message.toLocal8Bit().data() << endl;
 	emit(statusMessage(message));
 	return;
       }
