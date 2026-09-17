@@ -50,7 +50,7 @@ MODULE SolverBasics
 #include "../config.h"
 
    USE LoadMod
-   USE Multigrid
+   USE IterSolve
 
    USE ElementUtils
    USE IpFieldInterface
@@ -59,7 +59,7 @@ MODULE SolverBasics
        UpdateDependentComponents, ComponentNodalForceReduction
    USE TimeIntegrate
    USE ModelDescription
-!   USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
+   USE ParallelUtils !, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
 !                             ParallelMatrixVector, ParallelMatrix, ParallelOwnedPerm
    USE MeshBasics, ONLY : CommunicateParallelSystemTag, CylinderFit, &
        DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
