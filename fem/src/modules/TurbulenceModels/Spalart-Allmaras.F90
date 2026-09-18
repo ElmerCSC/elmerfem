@@ -164,11 +164,11 @@ CONTAINS
         StrainMeasureVec(:), VorticityMeasureVec(:), XiVec(:), fw1Vec(:), &
         fw2Vec(:), StVec(:), rVec(:), gVec(:), fwVec(:), EffmuVec(:), &
         ReactCoeffVec(:), LoadVec(:), EffVeloVec(:,:), StreamVec(:,:), &
-        TauVec(:), TmpVec(:)
+        TauVec(:), TmpVec(:), RadiusVec(:)
 
     REAL(KIND=dp) :: Cb1,Cb2,Cv1,Sigma,Cw1,Cw2,Cw3,hK,mK,VNorm
     INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -206,7 +206,7 @@ CONTAINS
         fw1Vec(ngp), fw2Vec(ngp), StVec(ngp), rVec(ngp), gVec(ngp), &
         fwVec(ngp), EffmuVec(ngp), ReactCoeffVec(ngp), LoadVec(ngp), &
         EffVeloVec(ngp,3), StreamVec(ngp,ntot), TauVec(ngp), TmpVec(ngp), &
-        STAT=allocstat )
+        RadiusVec(ngp), STAT=allocstat )
     IF( allocstat /= 0 ) CALL Fatal('SpalartAllmaras','Local storage allocation failed')
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -216,6 +216,28 @@ CONTAINS
     stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJVec, &
         SIZE(BasisVec,2), BasisVec, dBasisdxVec )
     DetJVec(1:ngp) = DetJVec(1:ngp) * IP % s(1:ngp)
+
+    ! Axisymmetric (no swirl): the integration measure is r dr dz instead of
+    ! dr dz -- the diffusion/reaction operator itself needs no further metric
+    ! correction, since CoordinateSystemInfo's Cylindrical Metric stays
+    ! diagonal-identity in the r,z block (Metric(3,3)=1/r^2 only matters for a
+    ! genuine theta/swirl derivative, which a 2D mesh's dBasisdx never has).
+    ! This much mirrors HeatSolve.F90's own "Weight = Weight * r" exactly, and
+    ! genuine swirl ("Cylindric Symmetric") still goes through
+    ! LocalMatrixScalar.
+    !
+    ! The strain-rate measure below is a SEPARATE story: unlike an ordinary
+    ! partial derivative, the covariant strain e_theta_theta = u_r/r is
+    ! nonzero even with no swirl and no theta-dependence -- see
+    ! SecondInvariant's own dedicated AxisSymmetric branch
+    ! (MaterialModels.F90), whose last term "(2*Velo(1)*symb(1,3,3))**2" is
+    ! exactly this, since symb(1,3,3) = 1/r. RadiusVec is kept around to add
+    ! that same term to StrainMeasureVec further down.
+    IsAxiSymmetric = ( CurrentCoordinateSystem() == AxisSymmetric )
+    IF( IsAxiSymmetric ) THEN
+      RadiusVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), Nodes % x(1:n) )
+      DetJVec(1:ngp) = DetJVec(1:ngp) * RadiusVec(1:ngp)
+    END IF
 
     ! Nodal input fields, at the n element corner nodes -- exactly the arrays
     ! the legacy LocalMatrix samples (UX/UY/UZ/Tviscosity/Distance are all
@@ -270,6 +292,17 @@ CONTAINS
         VorticityMeasureVec(1:ngp) = VorticityMeasureVec(1:ngp) + VorticityVec(1:ngp,i,k)**2
       END DO
     END DO
+
+    ! Axisymmetric (no swirl) hoop strain e_theta_theta = u_r/r: a genuine
+    ! extra diagonal strain component (see the comment on RadiusVec above),
+    ! entering StrainMeasureVec's sum of squares exactly like any other
+    ! diagonal Strain(i,i)**2 term above. Vorticity needs no such addition --
+    ! its diagonal is zero by antisymmetry, and there is no swirl velocity to
+    ! give it an off-diagonal r-theta/z-theta component either.
+    IF( IsAxiSymmetric ) THEN
+      StrainMeasureVec(1:ngp) = StrainMeasureVec(1:ngp) + ( VeloVec(1:ngp,1) / RadiusVec(1:ngp) )**2
+    END IF
+
     StrainMeasureVec(1:ngp)    = SQRT( 2._dp*StrainMeasureVec(1:ngp) )
     VorticityMeasureVec(1:ngp) = SQRT( 2._dp*VorticityMeasureVec(1:ngp) )
 
@@ -705,10 +738,15 @@ SUBROUTINE SpalartAllmaras( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. ASSOCIATED(KE) ) RETURN
   IF ( COUNT( KE % Perm > 0 ) <= 0 ) RETURN
 
-  ! LocalMatrixVec has no metric tensor; axisymmetric/cylindrical cases go
-  ! through the scalar LocalMatrixScalar fallback instead, serially -- same
-  ! branch HeatSolve.F90 makes between its own LocalMatrixVec/LocalMatrix.
-  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
+  ! LocalMatrixVec now carries the plain "Axi Symmetric" (no swirl) case
+  ! itself (r-weighted measure plus the hoop strain term -- see its own
+  ! comments); genuine swirl ("Cylindric Symmetric") and general "Cylindric"
+  ! still need the full metric/Christoffel treatment only LocalMatrixScalar
+  ! has, so those still go through it, serially -- same branch HeatSolve.F90
+  ! makes between its own LocalMatrixVec/LocalMatrix, just with one more
+  ! coordinate system (AxisSymmetric) now on the fast side of it.
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian .AND. &
+                   CurrentCoordinateSystem() /= AxisSymmetric )
 
   IF (.NOT. ALLOCATED(SAHandles)) THEN
     nthr = 1

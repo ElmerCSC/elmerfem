@@ -49,9 +49,9 @@
 !> rho, the same "C0(1) = Rho" legacy uses) and interleaved into
 !> STIFF(1:2*ntot-1:2, 2:2*ntot:2) instead of a diagonal slot.
 !>
-!> Axisymmetric/cylindrical coordinates, any non-default "Compressibility
-!> Model", and "KE Model = RNG" (whose alpha root-solve isn't worth
-!> vectorizing for a variant none of this codebase's tests exercise) go
+!> Genuine swirl ("Cylindric Symmetric"), general "Cylindric", any non-default
+!> "Compressibility Model", and "KE Model = RNG" (whose alpha root-solve isn't
+!> worth vectorizing for a variant none of this codebase's tests exercise) go
 !> through LocalMatrixScalar instead -- a scalar, per-Gauss-point fallback
 !> carrying the same math as KESolverLegacy.F90's own LocalMatrix (already
 !> interleaved directly via STIFF(2*(p-1)+i,2*(q-1)+j)), called serially --
@@ -177,13 +177,13 @@ CONTAINS
         V2Vec(:), PressureVec(:), StrainVec(:,:,:), SecInvVec(:), &
         TmuVec(:), TimeScaleVec(:), Effmu1Vec(:), Effmu2Vec(:), SoundSpeedSqVec(:), &
         MachSqVec(:), ProdKVec(:), ProdEVec(:), ReactO(:), &
-        LoadK(:), LoadO(:), StreamVec(:,:), TauVec(:), TmpVec(:)
+        LoadK(:), LoadO(:), StreamVec(:,:), TauVec(:), TmpVec(:), RadiusVec(:)
 
     CHARACTER(LEN=MAX_NAME_LEN) :: KEModelStr
     LOGICAL :: UseV2F
     REAL(KIND=dp) :: hK, mK, VNorm, SpecificHeatRatio, ReferencePressure, V2FCp
     INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -222,7 +222,7 @@ CONTAINS
         TmuVec(ngp), TimeScaleVec(ngp), Effmu1Vec(ngp), Effmu2Vec(ngp), SoundSpeedSqVec(ngp), &
         MachSqVec(ngp), ProdKVec(ngp), ProdEVec(ngp), ReactO(ngp), &
         LoadK(ngp), LoadO(ngp), StreamVec(ngp,ntot), TauVec(ngp), TmpVec(ngp), &
-        STAT=allocstat )
+        RadiusVec(ngp), STAT=allocstat )
     IF( allocstat /= 0 ) CALL Fatal('KESolver','Local storage allocation failed')
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -233,6 +233,16 @@ CONTAINS
     stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJVec, &
         SIZE(BasisVec,2), BasisVec, dBasisdxVec )
     DetJVec(1:ngp) = DetJVec(1:ngp) * IP % s(1:ngp)
+
+    ! Axisymmetric (no swirl): r-weighted measure, plus a hoop strain
+    ! correction further down -- see the matching (more detailed) comments in
+    ! Spalart-Allmaras.F90's own LocalMatrixVec. Genuine swirl ("Cylindric
+    ! Symmetric") still goes through LocalMatrixScalar.
+    IsAxiSymmetric = ( CurrentCoordinateSystem() == AxisSymmetric )
+    IF( IsAxiSymmetric ) THEN
+      RadiusVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), Nodes % x(1:n) )
+      DetJVec(1:ngp) = DetJVec(1:ngp) * RadiusVec(1:ngp)
+    END IF
 
     VeloNodal = 0._dp
     CALL GetScalarLocalSolution( VeloNodal(1,1:n), 'Velocity 1', UElement=Element )
@@ -335,6 +345,15 @@ CONTAINS
         SecInvVec(1:ngp) = SecInvVec(1:ngp) + StrainVec(1:ngp,i,j)**2
       END DO
     END DO
+
+    ! Axisymmetric (no swirl) hoop strain e_theta_theta = u_r/r: a genuine
+    ! extra diagonal strain component (covariant, not an ordinary partial
+    ! derivative -- see SecondInvariant's own dedicated AxisSymmetric branch
+    ! in MaterialModels.F90, and the matching comment in Spalart-Allmaras.F90).
+    IF( IsAxiSymmetric ) THEN
+      SecInvVec(1:ngp) = SecInvVec(1:ngp) + ( VeloVec(1:ngp,1) / RadiusVec(1:ngp) )**2
+    END IF
+
     SecInvVec(1:ngp) = 2._dp*SecInvVec(1:ngp)
 
     IF( UseV2F ) THEN
@@ -1142,7 +1161,8 @@ SUBROUTINE KESolver( Model,Solver,dt,TransientSimulation )
   ! Material can't distinguish which model string a material has, only
   ! whether the keyword is present at all, so check every material's own
   ! value here).
-  UseScalarFallback = ( CurrentCoordinateSystem() /= Cartesian ) .OR. &
+  UseScalarFallback = ( CurrentCoordinateSystem() /= Cartesian .AND. &
+      CurrentCoordinateSystem() /= AxisSymmetric ) .OR. &
       ListCheckPresentAnyMaterial( Model, 'Compressibility Model' )
   IF( .NOT. UseScalarFallback ) THEN
     DO i=1,Model % NumberOfMaterials

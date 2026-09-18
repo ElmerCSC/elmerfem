@@ -184,11 +184,11 @@ CONTAINS
         rGammaVec(:), TmuVec(:), Effmu1Vec(:), Effmu2Vec(:), SoundSpeedSqVec(:), &
         MachSqVec(:), ProdKVec(:), ProdOVec(:), ReactK(:), ReactO(:), &
         LoadK(:), LoadO(:), EffVeloO(:,:), &
-        StreamVecK(:,:), StreamVecO(:,:), TauK(:), TauO(:), TmpVec(:)
+        StreamVecK(:,:), StreamVecO(:,:), TauK(:), TauO(:), TmpVec(:), RadiusVec(:)
 
     REAL(KIND=dp) :: hK, mK, VNorm, SpecificHeatRatio, ReferencePressure
     INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -225,7 +225,7 @@ CONTAINS
         MachSqVec(ngp), ProdKVec(ngp), ProdOVec(ngp), ReactK(ngp), ReactO(ngp), &
         LoadK(ngp), LoadO(ngp), EffVeloO(ngp,3), &
         StreamVecK(ngp,ntot), StreamVecO(ngp,ntot), TauK(ngp), TauO(ngp), TmpVec(ngp), &
-        STAT=allocstat )
+        RadiusVec(ngp), STAT=allocstat )
     IF( allocstat /= 0 ) CALL Fatal('SSTKomega','Local storage allocation failed')
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -236,6 +236,16 @@ CONTAINS
     stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJVec, &
         SIZE(BasisVec,2), BasisVec, dBasisdxVec )
     DetJVec(1:ngp) = DetJVec(1:ngp) * IP % s(1:ngp)
+
+    ! Axisymmetric (no swirl): r-weighted measure, plus the hoop strain and
+    ! hoop divergence corrections further down -- see the matching (more
+    ! detailed) comments in Spalart-Allmaras.F90's own LocalMatrixVec. Genuine
+    ! swirl ("Cylindric Symmetric") still goes through LocalMatrixScalar.
+    IsAxiSymmetric = ( CurrentCoordinateSystem() == AxisSymmetric )
+    IF( IsAxiSymmetric ) THEN
+      RadiusVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), Nodes % x(1:n) )
+      DetJVec(1:ngp) = DetJVec(1:ngp) * RadiusVec(1:ngp)
+    END IF
 
     VeloNodal = 0._dp
     CALL GetScalarLocalSolution( VeloNodal(1,1:n), 'Velocity 1', UElement=Element )
@@ -305,6 +315,16 @@ CONTAINS
         VorticityMeasureVec(1:ngp) = VorticityMeasureVec(1:ngp) + VorticityVec(1:ngp,i,k)**2
       END DO
     END DO
+
+    ! Axisymmetric (no swirl) hoop strain e_theta_theta = u_r/r: a genuine
+    ! extra diagonal strain component (covariant, not an ordinary partial
+    ! derivative -- see SecondInvariant's own dedicated AxisSymmetric branch
+    ! in MaterialModels.F90, and the matching comment in Spalart-Allmaras.F90).
+    ! Vorticity needs no such addition (zero diagonal by antisymmetry).
+    IF( IsAxiSymmetric ) THEN
+      StrainMeasureVec(1:ngp) = StrainMeasureVec(1:ngp) + ( VeloVec(1:ngp,1) / RadiusVec(1:ngp) )**2
+    END IF
+
     StrainMeasureVec(1:ngp)    = MAX( SQRT( 2._dp*StrainMeasureVec(1:ngp) ), 1.0d-10 )
     VorticityMeasureVec(1:ngp) = SQRT( 2._dp*VorticityMeasureVec(1:ngp) )
 
@@ -315,10 +335,20 @@ CONTAINS
         StrainDotGradUVec(1:ngp) = StrainDotGradUVec(1:ngp) + StrainVec(1:ngp,i,j)*dVelodxVec(1:ngp,i,j)
       END DO
     END DO
+    IF( IsAxiSymmetric ) THEN
+      StrainDotGradUVec(1:ngp) = StrainDotGradUVec(1:ngp) + ( VeloVec(1:ngp,1) / RadiusVec(1:ngp) )**2
+    END IF
+
     DivVelVec = 0._dp
     DO i=1,dim
       DivVelVec(1:ngp) = DivVelVec(1:ngp) + dVelodxVec(1:ngp,i,i)
     END DO
+    ! The true divergence in axisymmetric (no swirl) coordinates is
+    ! du_r/dr + u_r/r + du_z/dz -- trace(dVelodx) above is only the first and
+    ! third terms.
+    IF( IsAxiSymmetric ) THEN
+      DivVelVec(1:ngp) = DivVelVec(1:ngp) + VeloVec(1:ngp,1) / RadiusVec(1:ngp)
+    END IF
 
     ! Cross-diffusion CD and the F1/F2 blending functions.
     CDVec = 0._dp
@@ -972,13 +1002,15 @@ SUBROUTINE SSTKOmega( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. ASSOCIATED(KE) ) RETURN
   IF ( COUNT( KE % Perm > 0 ) <= 0 ) RETURN
 
-  ! LocalMatrixVec has no metric tensor and only supports a spatially
-  ! uniform Density (its buoyancy term is exactly zero, see the file
-  ! header); axisymmetric/cylindrical coordinates and any non-default
-  ! "Compressibility Model" go through the scalar LocalMatrixScalar
-  ! fallback instead, serially -- same branch HeatSolve.F90 makes, and the
-  ! same treatment Spalart-Allmaras.F90/Komega.F90 now have.
-  UseScalarFallback = ( CurrentCoordinateSystem() /= Cartesian ) .OR. &
+  ! LocalMatrixVec now carries the plain "Axi Symmetric" (no swirl) case
+  ! itself; it still only supports a spatially uniform Density (its buoyancy
+  ! term is exactly zero, see the file header), so genuine swirl ("Cylindric
+  ! Symmetric"), general "Cylindric", and any non-default "Compressibility
+  ! Model" still go through the scalar LocalMatrixScalar fallback, serially
+  ! -- same branch HeatSolve.F90 makes, and the same treatment
+  ! Spalart-Allmaras.F90/Komega.F90 now have.
+  UseScalarFallback = ( CurrentCoordinateSystem() /= Cartesian .AND. &
+      CurrentCoordinateSystem() /= AxisSymmetric ) .OR. &
       ListCheckPresentAnyMaterial( Model, 'Compressibility Model' )
 
   IF (.NOT. ALLOCATED(SSTHandles)) THEN

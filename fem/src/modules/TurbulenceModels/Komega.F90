@@ -168,11 +168,11 @@ CONTAINS
         StrainVec(:,:,:), VorticityVec(:,:,:), StrainMeasureVec(:), &
         VorticityMeasureVec(:), TmuVec(:), Effmu1Vec(:), Effmu2Vec(:), &
         ProdVec(:), ReactK(:), ReactO(:), LoadK(:), LoadO(:), &
-        StreamVec(:,:), TauK(:), TauO(:), TmpVec(:)
+        StreamVec(:,:), TauK(:), TauO(:), TmpVec(:), RadiusVec(:)
 
     REAL(KIND=dp) :: Beta,SigmaK,SigmaO,rGamma,hK,mK,VNorm
     INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -205,7 +205,7 @@ CONTAINS
         VorticityMeasureVec(ngp), TmuVec(ngp), Effmu1Vec(ngp), Effmu2Vec(ngp), &
         ProdVec(ngp), ReactK(ngp), ReactO(ngp), LoadK(ngp), LoadO(ngp), &
         StreamVec(ngp,ntot), TauK(ngp), TauO(ngp), TmpVec(ngp), &
-        STAT=allocstat )
+        RadiusVec(ngp), STAT=allocstat )
     IF( allocstat /= 0 ) CALL Fatal('KOmega','Local storage allocation failed')
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -216,6 +216,16 @@ CONTAINS
     stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJVec, &
         SIZE(BasisVec,2), BasisVec, dBasisdxVec )
     DetJVec(1:ngp) = DetJVec(1:ngp) * IP % s(1:ngp)
+
+    ! Axisymmetric (no swirl): r-weighted measure, plus a hoop strain
+    ! correction further down -- see the matching (more detailed) comments in
+    ! Spalart-Allmaras.F90's own LocalMatrixVec. Genuine swirl ("Cylindric
+    ! Symmetric") still goes through LocalMatrixScalar.
+    IsAxiSymmetric = ( CurrentCoordinateSystem() == AxisSymmetric )
+    IF( IsAxiSymmetric ) THEN
+      RadiusVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), Nodes % x(1:n) )
+      DetJVec(1:ngp) = DetJVec(1:ngp) * RadiusVec(1:ngp)
+    END IF
 
     ! Nodal input fields, at the n element corner nodes -- as in
     ! Spalart-Allmaras.F90's own LocalMatrixVec, a p-bubble mode never
@@ -265,6 +275,18 @@ CONTAINS
         VorticityMeasureVec(1:ngp) = VorticityMeasureVec(1:ngp) + VorticityVec(1:ngp,i,k)**2
       END DO
     END DO
+
+    ! Axisymmetric (no swirl) hoop strain e_theta_theta = u_r/r: a genuine
+    ! extra diagonal strain component (covariant, not an ordinary partial
+    ! derivative -- see SecondInvariant's own dedicated AxisSymmetric branch
+    ! in MaterialModels.F90), entering both the strain measure and the
+    ! production term below exactly like any other diagonal Strain(i,i)**2
+    ! term. Vorticity needs no such addition (zero diagonal by antisymmetry,
+    ! no swirl velocity to give it an off-diagonal r/z-theta component).
+    IF( IsAxiSymmetric ) THEN
+      StrainMeasureVec(1:ngp) = StrainMeasureVec(1:ngp) + ( VeloVec(1:ngp,1) / RadiusVec(1:ngp) )**2
+    END IF
+
     StrainMeasureVec(1:ngp)    = MAX( SQRT( 2._dp*StrainMeasureVec(1:ngp) ), 1.0d-10 )
     VorticityMeasureVec(1:ngp) = SQRT( 2._dp*VorticityMeasureVec(1:ngp) )
 
@@ -284,6 +306,9 @@ CONTAINS
         ProdVec(1:ngp) = ProdVec(1:ngp) + StrainVec(1:ngp,i,j)*dVelodxVec(1:ngp,i,j)
       END DO
     END DO
+    IF( IsAxiSymmetric ) THEN
+      ProdVec(1:ngp) = ProdVec(1:ngp) + ( VeloVec(1:ngp,1) / RadiusVec(1:ngp) )**2
+    END IF
     ProdVec(1:ngp) = 2._dp*TmuVec(1:ngp)*ProdVec(1:ngp)
 
     ! K-equation: destruction rho*0.09*Omega, diffusion Effmu1, production Prod.
@@ -777,11 +802,13 @@ SUBROUTINE KOmega( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. ASSOCIATED(KE) ) RETURN
   IF ( COUNT( KE % Perm > 0 ) <= 0 ) RETURN
 
-  ! LocalMatrixVec has no metric tensor; axisymmetric/cylindrical cases go
-  ! through the scalar LocalMatrixScalar fallback instead, serially -- same
-  ! branch HeatSolve.F90 makes, and the same treatment Spalart-Allmaras.F90
-  ! now has.
-  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
+  ! LocalMatrixVec now carries the plain "Axi Symmetric" (no swirl) case
+  ! itself; genuine swirl ("Cylindric Symmetric") and general "Cylindric"
+  ! still need LocalMatrixScalar's full metric/Christoffel treatment, so
+  ! those still go through it, serially -- same branch HeatSolve.F90 makes,
+  ! and the same treatment Spalart-Allmaras.F90 now has.
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian .AND. &
+                   CurrentCoordinateSystem() /= AxisSymmetric )
 
   IF (.NOT. ALLOCATED(KOHandles)) THEN
     nthr = 1

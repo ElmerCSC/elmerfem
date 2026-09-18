@@ -181,11 +181,11 @@ CONTAINS
         V2Vec(:), FVec(:), StrainVec(:,:,:), SecInvVec(:), TimeScaleVec(:), &
         LengthScale2Vec(:), TmuVec(:), EffViscVec(:), ProdVec(:), &
         ReactV2(:), CrossV2F(:), CrossFV2(:), LoadF(:), &
-        StreamVec(:,:), TauVec(:), TmpVec(:)
+        StreamVec(:,:), TauVec(:), TmpVec(:), RadiusVec(:)
 
     REAL(KIND=dp) :: hK, mK, VNorm
     INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -226,7 +226,7 @@ CONTAINS
         LengthScale2Vec(ngp), TmuVec(ngp), EffViscVec(ngp), ProdVec(ngp), &
         ReactV2(ngp), CrossV2F(ngp), CrossFV2(ngp), LoadF(ngp), &
         StreamVec(ngp,ntot), TauVec(ngp), TmpVec(ngp), &
-        STAT=allocstat )
+        RadiusVec(ngp), STAT=allocstat )
     IF( allocstat /= 0 ) CALL Fatal('V2FSolver','Local storage allocation failed')
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -237,6 +237,16 @@ CONTAINS
     stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJVec, &
         SIZE(BasisVec,2), BasisVec, dBasisdxVec )
     DetJVec(1:ngp) = DetJVec(1:ngp) * IP % s(1:ngp)
+
+    ! Axisymmetric (no swirl): r-weighted measure, plus a hoop strain
+    ! correction further down -- see the matching (more detailed) comments in
+    ! Spalart-Allmaras.F90's own LocalMatrixVec. Genuine swirl ("Cylindric
+    ! Symmetric") still goes through LocalMatrixScalar.
+    IsAxiSymmetric = ( CurrentCoordinateSystem() == AxisSymmetric )
+    IF( IsAxiSymmetric ) THEN
+      RadiusVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), Nodes % x(1:n) )
+      DetJVec(1:ngp) = DetJVec(1:ngp) * RadiusVec(1:ngp)
+    END IF
 
     VeloNodal = 0._dp
     CALL GetScalarLocalSolution( VeloNodal(1,1:n), 'Velocity 1', UElement=Element )
@@ -303,6 +313,15 @@ CONTAINS
         SecInvVec(1:ngp) = SecInvVec(1:ngp) + StrainVec(1:ngp,i,j)**2
       END DO
     END DO
+
+    ! Axisymmetric (no swirl) hoop strain e_theta_theta = u_r/r: a genuine
+    ! extra diagonal strain component (covariant, not an ordinary partial
+    ! derivative -- see SecondInvariant's own dedicated AxisSymmetric branch
+    ! in MaterialModels.F90, and the matching comment in Spalart-Allmaras.F90).
+    IF( IsAxiSymmetric ) THEN
+      SecInvVec(1:ngp) = SecInvVec(1:ngp) + ( VeloVec(1:ngp,1) / RadiusVec(1:ngp) )**2
+    END IF
+
     SecInvVec(1:ngp) = 2._dp*SecInvVec(1:ngp)
 
     TimeScaleVec(1:ngp) = MAX( KVec(1:ngp)/OVec(1:ngp), &
@@ -784,14 +803,16 @@ SUBROUTINE V2F_LDM( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN
 
-  ! LocalMatrixVec has no metric tensor; axisymmetric/cylindrical cases go
-  ! through the scalar LocalMatrixScalar fallback instead, serially -- same
-  ! branch HeatSolve.F90 makes, and the same treatment the other turbulence
-  ! solvers in this directory now have. There is no "Compressibility Model"
-  ! or alternate "V2-F Model" to route here -- Density is a plain material
-  ! property and there is only the LDM formulation, in both the legacy
-  ! LocalMatrix and here.
-  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
+  ! LocalMatrixVec now carries the plain "Axi Symmetric" (no swirl) case
+  ! itself; genuine swirl ("Cylindric Symmetric") and general "Cylindric"
+  ! still need LocalMatrixScalar's full metric/Christoffel treatment, so
+  ! those still go through it, serially -- same branch HeatSolve.F90 makes,
+  ! and the same treatment the other turbulence solvers in this directory
+  ! now have. There is no "Compressibility Model" or alternate "V2-F Model"
+  ! to route here -- Density is a plain material property and there is only
+  ! the LDM formulation, in both the legacy LocalMatrix and here.
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian .AND. &
+                   CurrentCoordinateSystem() /= AxisSymmetric )
 
   IF (.NOT. ALLOCATED(V2FHandles)) THEN
     nthr = 1

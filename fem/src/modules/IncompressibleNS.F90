@@ -127,6 +127,12 @@ CONTAINS
 
     LOGICAL :: Stat, Found
 
+    ! Axisymmetric (no swirl): CurrentCoordinateSystem() reads a plain
+    ! immutable module integer (see CoordinateSystems.F90), so calling it
+    ! straight from every thread's copy of this routine, rather than caching
+    ! it once outside the parallel loop as e.g. HeatSolve.F90 does, is safe.
+    LOGICAL :: IsAxiSymmetric
+
     REAL(KIND=dp), TARGET :: MASS(ntot*(dim+1),ntot*(dim+1)), &
         STIFF(ntot*(dim+1),ntot*(dim+1)), FORCE(ntot*(dim+1))
     REAL(KIND=dp) :: NodalSol(dim+1,ntot)
@@ -136,6 +142,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
         rhoVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
         PressureMass(:,:), ForcePart(:), &
+        PlainWeightVec(:), RadiusVec(:), HoopWeightVec(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
         VeloVec(:,:), PresVec(:), GradVec(:,:,:), ConvVec(:,:), MassPart(:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
@@ -200,7 +207,8 @@ CONTAINS
         rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), LoadAtIpVec(ngp,dim+1), &
         weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
         PrevPressureVec(ngp), GradVec(ngp,dim,dim), ConvVec(ngp,ntot), &
-        MassPart(ntot,ntot), STAT=allocstat)
+        MassPart(ntot,ntot), PlainWeightVec(ngp), RadiusVec(ngp), HoopWeightVec(ngp), &
+        STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
 
     ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), ForcePart(ntot))
@@ -241,6 +249,21 @@ CONTAINS
     DO t = 1, ngp
       DetJVec(t) = DetJVec(t) * IP % s(t)
     END DO
+
+    ! Axisymmetric (no swirl): the integration measure is r dr dz instead of
+    ! dr dz. PlainWeightVec keeps the measure WITHOUT that factor -- the extra
+    ! "hoop stress" terms below (e_theta_theta = u_r/r, present purely from the
+    ! geometry even without a swirl velocity component) come out with one
+    ! fewer power of r than the rest of the operator, down to none for the
+    ! continuity/pressure coupling term and down to -1 for the viscous one, so
+    ! they are built from PlainWeightVec/RadiusVec rather than from the
+    ! r-scaled DetJVec.
+    IsAxiSymmetric = ( CurrentCoordinateSystem() == AxisSymmetric )
+    IF( IsAxiSymmetric ) THEN
+      PlainWeightVec(1:ngp) = DetJVec(1:ngp)
+      RadiusVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), Nodes % x(1:n) )
+      DetJVec(1:ngp) = DetJVec(1:ngp) * RadiusVec(1:ngp)
+    END IF
 
     ! Velocity and pressure from previous iteration at integration points
     IF(.NOT. LinearAssembly) THEN
@@ -348,6 +371,18 @@ CONTAINS
               dBasisdxVec(:,:,j), dBasisdxVec(:,:,i), weight_a, stifford(:,:,i,j))
         END DO
       END DO
+
+      ! Axisymmetric (no swirl) hoop stress: e_theta_theta(u) = u_r/r,
+      ! e_theta_theta(v) = v_r/r, and 2*mu*e_theta_theta(u)*e_theta_theta(v)*r
+      ! dr dz = 2*mu*u_r*v_r/r dr dz -- a genuine (integrable) 1/r term, added
+      ! only to the radial (component 1) diagonal block, component 1 being
+      ! "Coordinate 1" == r by the same convention every other axisymmetric
+      ! solver in Elmer uses.
+      IF( IsAxiSymmetric ) THEN
+        HoopWeightVec(1:ngp) = 2._dp * muVec(1:ngp) * PlainWeightVec(1:ngp) / RadiusVec(1:ngp)
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            BasisVec, BasisVec, HoopWeightVec, stifford(:,:,1,1))
+      END IF
     END IF
 
     IF (GradPVersion) THEN
@@ -361,6 +396,19 @@ CONTAINS
        DO i = 1, dim
          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             dBasisdxVec(:, :, i), BasisVec, -detJVec, StiffOrd(:,:,i,dofs))
+
+        ! Axisymmetric (no swirl): div(v)*r = r*dv_r/dr + v_r + r*dv_z/dz, so
+        ! the radial component's contribution to the pressure/velocity
+        ! coupling picks up an extra "-p*v_r" term alongside the "-p*dv_r/dr"
+        ! one just assembled -- with NO r factor of its own, since the one
+        ! power in the measure exactly cancels the 1/r in div(v)'s own u_r/r
+        ! term. Added before the transpose below so the continuity row
+        ! (dofs,i) -- the "-q*u_r" companion term -- picks it up too.
+        IF( IsAxiSymmetric .AND. i == 1 ) THEN
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              BasisVec, BasisVec, -PlainWeightVec, StiffOrd(:,:,i,dofs))
+        END IF
+
         StiffOrd(:,:,dofs,i) = transpose(stifford(:,:,i,dofs))
       END DO
     END IF
@@ -1607,6 +1655,13 @@ CONTAINS
 
       s = detJ * IP % s(t)
 
+      ! Axisymmetric (no swirl): the integration measure is r ds instead of
+      ! ds -- boundary integrals need only this, no extra "hoop" term (that is
+      ! purely a bulk viscous-stress-divergence artefact; see LocalBulkMatrix).
+      IF( CurrentCoordinateSystem() == AxisSymmetric ) THEN
+        s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
+      END IF
+
       ! Given force on a boundary componentwise
       !----------------------------------------
       SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )
@@ -2335,19 +2390,35 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
   SpecificLoad = GetLogical(Params,'Specific Load',Found)
 
-  ! This solver assembles the Cartesian equations and only those. There is no
-  ! metric anywhere in LocalBulkMatrix, no r weighting of the integration and no
-  ! hoop term, so an axisymmetric or cylindrical case would not be approximated
-  ! here, it would be answered with the equations of a different problem. FlowSolve
-  ! handles those by dispatching to NavierStokesCylindricalCompose instead, a
-  ! separate assembly with the metric in it, and this solver has no counterpart.
+  ! This solver assembles the Cartesian equations, and now also the plain
+  ! "Axi Symmetric" case (no swirl velocity component): LocalBulkMatrix scales
+  ! the integration measure by r and adds the extra "hoop stress" terms that
+  ! come with it (e_theta_theta = u_r/r contributing to the viscous stress and
+  ! to the velocity/pressure coupling), which together are exactly equivalent
+  ! to the full metric/Christoffel-symbol treatment when there is no swirl and
+  ! no theta-dependence -- see the comments there.
   !
-  ! Nothing about the sif makes that visible -- the run simply produces a number --
-  ! so it is refused here rather than discovered later.
-  IF( CurrentCoordinateSystem() /= Cartesian ) CALL Fatal(Caller, &
-      'This solver assembles the Cartesian equations only. Axisymmetric and '// &
-      'cylindrical coordinates need the metric terms, which are not here: use '// &
-      'FlowSolve, which dispatches to NavierStokesCylindrical for them')
+  ! "Cylindric Symmetric" (a genuine swirl velocity component, still 2D mesh)
+  ! and general "Cylindric" (full 3D, theta-dependent) are NOT attempted: both
+  ! need the full metric/Christoffel-symbol machinery FlowSolve's
+  ! NavierStokesCylindricalCompose has and this solver does not. Nothing about
+  ! the sif makes that visible -- the run simply produces a number -- so it is
+  ! refused here rather than discovered later.
+  IF( CurrentCoordinateSystem() /= Cartesian .AND. &
+      CurrentCoordinateSystem() /= AxisSymmetric ) CALL Fatal(Caller, &
+      'This solver assembles the Cartesian and Axi Symmetric equations only. '// &
+      'Cylindric/Cylindric Symmetric coordinates need a genuine swirl velocity '// &
+      'component and the full metric terms, which are not here: use FlowSolve, '// &
+      'which dispatches to NavierStokesCylindrical for them')
+
+  IF( CurrentCoordinateSystem() == AxisSymmetric ) THEN
+    IF( GradPVersion ) CALL Fatal(Caller, &
+        '"Axi Symmetric" is not implemented together with "GradP Discretization": '// &
+        'the extra hoop term is only derived for the default (divergence) pressure form')
+    IF( DivCurlForm ) CALL Fatal(Caller, &
+        '"Axi Symmetric" is not implemented together with "Div-Curl Discretization": '// &
+        'the extra hoop term is only derived for the default (Grad-U) viscous form')
+  END IF
 
   !-----------------------------------------------------------------------------
   ! Equal-order velocity/pressure held by a stabilised pressure block instead of
