@@ -74,10 +74,19 @@ MODULE IncompressibleLocalForms
         ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
         ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
         ViscTemp_h
+    ! "Compressibility Model" = "Thermal": Boussinesq-type rho(T), see LocalBulkMatrix.
+    TYPE(ValueHandle_t) :: CompressModel_h, HeatExpansionCoeff_h, CompressRefTemp_h
+    ! Body Force "Boussinesq": the plain buoyancy-only approximation, exactly as
+    ! in FlowSolve.F90 -- rho stays constant everywhere except this one load term.
+    TYPE(ValueHandle_t) :: Boussinesq_h
+    ! "Compressibility Model" = "Perfect Gas": rho(p,T) = (p+p0)/(R*T), same
+    ! keywords and formula as HeatSolve.F90's own Perfect Gas branch.
+    TYPE(ValueHandle_t) :: SpecHeatRatio_h, HeatCapacity_h, RefPressure_h
     REAL(KIND=dp) :: R = 8.314_dp, NewtonRelax = 0.0_dp
     LOGICAL :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
     LOGICAL :: SaveShear = .FALSE., SaveVisc = .FALSE., SaveWeight = .FALSE.
     TYPE(Variable_t), POINTER :: ShearVar => NULL(), ViscVar => NULL(), WeightVar => NULL()
+    TYPE(Variable_t), POINTER :: CompressTempVar => NULL()
   END TYPE NSHandles_t
   TYPE(NSHandles_t), ALLOCATABLE :: NSHandles(:)
 
@@ -139,6 +148,23 @@ CONTAINS
     REAL(KIND=dp) :: PrevNodalSol(dim+1,ntot)
     REAL(KIND=dp) :: s, rho
 
+    ! "Compressibility Model" = "Thermal": rho = rho0*(1-beta*(T-Tref)), see the
+    ! rho(T) block below and the extra (dofs,i) stiffness term after the
+    ! continuity/pressure coupling. NodalTemp/NodalTempPrev are sized "n", the
+    ! same node count "Density" itself is read on -- Temperature is assumed P1.
+    ! "Perfect Gas" shares that same (dofs,i) term -- see drhodx below -- but
+    ! its own rho(p,T) additionally depends on the solver's own pressure DOF,
+    ! frozen at the previous (Picard) iterate via VeloPresVec(:,dofs); no
+    ! transient support yet, see the Fatal guard next to "PerfectGasCompressible".
+    LOGICAL :: ThermalCompressible, BoussinesqOn, PerfectGasCompressible
+    CHARACTER(LEN=MAX_NAME_LEN) :: CompressModelStr
+    REAL(KIND=dp) :: HeatExpansionCoeffVal, CompressRefTempVal, GravityVec(3)
+    REAL(KIND=dp) :: SpecHeatRatioVal, HeatCapacityVal, RefPressureVal, GasConstantVal
+    REAL(KIND=dp) :: NodalTemp(n), NodalTempPrev(n)
+    REAL(KIND=dp), ALLOCATABLE :: drhodx(:,:), rhoPrevVec(:), TempAtIp(:), TempPrevAtIp(:), &
+        dTempdx(:,:), dPressuredx(:,:), CompressWeight(:)
+    REAL(KIND=dp), POINTER :: GravityWork(:,:)
+
     REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
         rhoVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
         PressureMass(:,:), ForcePart(:), &
@@ -158,6 +184,7 @@ CONTAINS
     ! Set by LCondensate when the candidate rule the probe is walking cannot
     ! integrate the bubble block; see there.
     LOGICAL :: ProbeReject
+    CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver::LocalBulkMatrix'
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
@@ -168,7 +195,14 @@ CONTAINS
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
 
-    ASSOCIATE( Dens_h => NSHandles(tid) % Dens_h, Load_h => NSHandles(tid) % Load_h )
+    ASSOCIATE( Dens_h => NSHandles(tid) % Dens_h, Load_h => NSHandles(tid) % Load_h, &
+        CompressModel_h => NSHandles(tid) % CompressModel_h, &
+        HeatExpansionCoeff_h => NSHandles(tid) % HeatExpansionCoeff_h, &
+        CompressRefTemp_h => NSHandles(tid) % CompressRefTemp_h, &
+        Boussinesq_h => NSHandles(tid) % Boussinesq_h, &
+        SpecHeatRatio_h => NSHandles(tid) % SpecHeatRatio_h, &
+        HeatCapacity_h => NSHandles(tid) % HeatCapacity_h, &
+        RefPressure_h => NSHandles(tid) % RefPressure_h )
 
     CALL GetElementNodesVec( Nodes )
     STIFF = 0._dp
@@ -208,26 +242,82 @@ CONTAINS
         weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
         PrevPressureVec(ngp), GradVec(ngp,dim,dim), ConvVec(ngp,ntot), &
         MassPart(ntot,ntot), PlainWeightVec(ngp), RadiusVec(ngp), HoopWeightVec(ngp), &
+        drhodx(ngp,dim), rhoPrevVec(ngp), TempAtIp(ngp), TempPrevAtIp(ngp), CompressWeight(ngp), &
+        dTempdx(ngp,dim), dPressuredx(ngp,dim), &
         STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
 
     ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), ForcePart(ntot))
-           
+
     IF (Newton) THEN
       ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
       muDerVec0 = 0._dp
     END IF
 
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( Dens_h,'Material','Density')      
-      CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')      
-      CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')      
-      CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3')      
+      CALL ListInitElementKeyword( Dens_h,'Material','Density')
+      CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')
+      CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')
+      CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3')
+      CALL ListInitElementKeyword( CompressModel_h,'Material','Compressibility Model')
+      CALL ListInitElementKeyword( HeatExpansionCoeff_h,'Material','Heat Expansion Coefficient')
+      CALL ListInitElementKeyword( CompressRefTemp_h,'Material','Reference Temperature')
+      CALL ListInitElementKeyword( Boussinesq_h,'Body Force','Boussinesq',DefLValue=.FALSE.)
+      CALL ListInitElementKeyword( SpecHeatRatio_h,'Material','Specific Heat Ratio',DefRValue=5._dp/3._dp)
+      CALL ListInitElementKeyword( HeatCapacity_h,'Material','Heat Capacity')
+      CALL ListInitElementKeyword( RefPressure_h,'Material','Reference Pressure',DefRValue=0._dp)
+      NSHandles(tid) % CompressTempVar => &
+          VariableGet( CurrentModel % Mesh % Variables,'Temperature',ThisOnly=.TRUE.)
     END IF
 
     ! We assume constant density so far:
     !-----------------------------------
-    rho = ListGetElementReal( Dens_h, Element = Element ) 
+    rho = ListGetElementReal( Dens_h, Element = Element )
+
+    ! "Compressibility Model": opt-in only, so every sif that never sets the
+    ! keyword keeps the constant-density path above byte-for-byte. "Thermal"
+    ! and "Perfect Gas" are the only models implemented -- see the rho(T) /
+    ! rho(p,T) blocks below and the shared continuity source term after the
+    ! pressure/velocity coupling. Anything else named is a promise this solver
+    ! cannot keep yet (legacy FlowSolve.F90 and HeatSolve.F90 both support
+    ! more), so it is Fatal rather than silently falling back to incompressible.
+    CompressModelStr = ListGetElementString( CompressModel_h, Element, Found )
+    ThermalCompressible = Found .AND. ( TRIM(CompressModelStr) == 'thermal' )
+    PerfectGasCompressible = Found .AND. ( TRIM(CompressModelStr) == 'perfect gas' .OR. &
+        TRIM(CompressModelStr) == 'perfect gas equation 1' )
+    IF( Found .AND. .NOT. ( ThermalCompressible .OR. PerfectGasCompressible ) .AND. &
+        TRIM(CompressModelStr) /= 'incompressible' ) THEN
+      CALL Fatal(Caller,'Compressibility Model "'//TRIM(CompressModelStr)// &
+          '" is not implemented in IncompressibleNS')
+    END IF
+
+    ! Kept off the PStab (equal-order PSPG/SUPG) path deliberately: that scheme's
+    ! residual is built assuming div(u)=0 (see the PRESSURE STABILISATION note
+    ! below), and folding the compressibility source into it as well is future
+    ! work, not this one. Use velocity bubbles (or an inf-sup stable pair)
+    ! together with either compressibility model instead.
+    IF( ( ThermalCompressible .OR. PerfectGasCompressible ) .AND. PStab ) THEN
+      CALL Fatal(Caller,'"Compressibility Model = '//TRIM(CompressModelStr)//'" cannot '// &
+          'currently be combined with "Pressure Stabilization" -- use velocity bubbles instead')
+    END IF
+
+    ! Unlike "Thermal", rho(p,T) here depends on the solver's OWN pressure DOF,
+    ! not just the externally-coupled temperature. Its time derivative would
+    ! need a genuine (dofs,dofs) MASS term (the "acoustic" compressibility of
+    ! the gas) rather than the two-time-level load FlowSolve.F90/"Thermal" use,
+    ! which is future work, not this one.
+    IF( PerfectGasCompressible .AND. Transient ) THEN
+      CALL Fatal(Caller,'"Compressibility Model = Perfect Gas" does not yet support '// &
+          '"Simulation Type = Transient" in IncompressibleNS')
+    END IF
+
+    ! Body Force "Boussinesq", exactly as in FlowSolve.F90: the plain buoyancy
+    ! approximation, where rho stays the constant read above EVERYWHERE and the
+    ! only change is one extra load term below. Independent of "Compressibility
+    ! Model" -- and of PStab, since it never touches the continuity row -- so it
+    ! is the cheap default for buoyancy-driven flow; "Thermal" above is for when
+    ! the density variation itself needs to be seen by the continuity equation.
+    BoussinesqOn = ListGetElementLogical( Boussinesq_h, Element, Found )
 
     ! Get the previous elementwise velocity-pressure iterate:
     !--------------------------------------------------------
@@ -280,21 +370,143 @@ CONTAINS
     ! cleared here and not next to the ListInitElementKeyword calls.
     InitHandles = .FALSE.
 
-    ! Rho 
+    ! Rho
     rhovec(1:ngp) = rho
+
+    ! "Compressibility Model" = "Thermal": rho0 (= "Density", read as "rho" just
+    ! above) times a linear Boussinesq-type factor in the LOCAL temperature, so
+    ! rho genuinely varies across the element instead of the one broadcast value
+    ! above. Everything downstream (mass matrix, convection, PStab's own tau
+    ! estimate) already reads only rhoVec, never the scalar "rho" again, so
+    ! overriding it here is the only hook this needs.
+    ! "Compressibility Model = Thermal"/"Perfect Gas" and Body Force
+    ! "Boussinesq" all need the local temperature, so that part is shared;
+    ! what each does with it (and, for Perfect Gas, with dTempdx too) differs
+    ! below.
+    IF( ThermalCompressible .OR. BoussinesqOn .OR. PerfectGasCompressible ) THEN
+      IF( .NOT. ASSOCIATED( NSHandles(tid) % CompressTempVar ) ) THEN
+        CALL Fatal(Caller,'"Compressibility Model = Thermal"/"Perfect Gas" and Body Force '// &
+            '"Boussinesq" require a solved "Temperature" field')
+      END IF
+
+      HeatExpansionCoeffVal = ListGetElementReal( HeatExpansionCoeff_h, Element = Element )
+      CompressRefTempVal = ListGetElementReal( CompressRefTemp_h, Element = Element )
+
+      ASSOCIATE( TempVar => NSHandles(tid) % CompressTempVar )
+        DO i = 1, n
+          k = TempVar % Perm( Element % NodeIndexes(i) )
+          IF( k > 0 ) THEN
+            NodalTemp(i) = TempVar % Values(k)
+          ELSE
+            NodalTemp(i) = CompressRefTempVal
+          END IF
+        END DO
+
+        TempAtIp(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), NodalTemp(1:n) )
+        IF( ThermalCompressible .OR. PerfectGasCompressible ) THEN
+          DO i = 1, dim
+            dTempdx(1:ngp,i) = MATMUL( dBasisdxVec(1:ngp,1:n,i), NodalTemp(1:n) )
+          END DO
+
+          IF( ThermalCompressible .AND. Transient ) THEN
+            DO i = 1, n
+              k = TempVar % Perm( Element % NodeIndexes(i) )
+              IF( k > 0 ) THEN
+                NodalTempPrev(i) = TempVar % PrevValues(k,1)
+              ELSE
+                NodalTempPrev(i) = CompressRefTempVal
+              END IF
+            END DO
+            TempPrevAtIp(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), NodalTempPrev(1:n) )
+          END IF
+        END IF
+      END ASSOCIATE
+    END IF
+
+    IF( ThermalCompressible ) THEN
+      rhoVec(1:ngp) = rho * ( 1._dp - HeatExpansionCoeffVal * ( TempAtIp(1:ngp) - CompressRefTempVal ) )
+      ! d(rho)/dx_i = rho0 * d/dx_i[ 1 - beta*(T-Tref) ] = -rho0*beta*dT/dx_i
+      drhodx(1:ngp,1:dim) = -rho * HeatExpansionCoeffVal * dTempdx(1:ngp,1:dim)
+
+      IF( Transient ) THEN
+        rhoPrevVec(1:ngp) = rho * ( 1._dp - HeatExpansionCoeffVal * ( TempPrevAtIp(1:ngp) - CompressRefTempVal ) )
+      END IF
+    END IF
+
+    ! "Compressibility Model = Perfect Gas": rho(p,T) = (p+p0)/(R*T), same
+    ! formula and keywords as HeatSolve.F90's own Perfect Gas branch. Unlike
+    ! "Thermal", rho depends on the solver's OWN pressure DOF -- frozen at the
+    ! previous (Picard) iterate, same as the convective term's own velocity is
+    ! (see ConvVec below), rather than linearised any further. VeloPresVec(:,dofs)
+    ! is that previous-iterate pressure already interpolated to the Gauss
+    ! points; its gradient needs a MATMUL of its own, same as any nodal field's.
+    IF( PerfectGasCompressible ) THEN
+      IF( LinearAssembly ) THEN
+        CALL Fatal(Caller,'"Compressibility Model = Perfect Gas" needs the previous '// &
+            'iterate''s pressure, so it cannot be used with "Linear Equation = True"')
+      END IF
+
+      SpecHeatRatioVal = ListGetElementReal( SpecHeatRatio_h, Element = Element )
+      HeatCapacityVal = ListGetElementReal( HeatCapacity_h, Element = Element )
+      RefPressureVal = ListGetElementReal( RefPressure_h, Element = Element )
+      GasConstantVal = ( SpecHeatRatioVal - 1._dp ) / SpecHeatRatioVal * HeatCapacityVal
+
+      DO i = 1, dim
+        dPressuredx(1:ngp,i) = MATMUL( dBasisdxVec(1:ngp,1:ntot,i), NodalSol(dofs,1:ntot) )
+      END DO
+
+      rhoVec(1:ngp) = ( VeloPresVec(1:ngp,dofs) + RefPressureVal ) / &
+          ( GasConstantVal * TempAtIp(1:ngp) )
+
+      ! d(rho)/dx_i = rho/(p+p0) * dp/dx_i - rho/T * dT/dx_i
+      DO i = 1, dim
+        drhodx(1:ngp,i) = rhoVec(1:ngp) / ( VeloPresVec(1:ngp,dofs) + RefPressureVal ) * &
+            dPressuredx(1:ngp,i) - rhoVec(1:ngp) / TempAtIp(1:ngp) * dTempdx(1:ngp,i)
+      END DO
+    END IF
 
     ! Flow bodyforce if present
     LoadAtIpVec = 0._dp
     DO i=1,dim
-      LoadVec => ListGetElementRealVec( Load_h(i), ngp, BasisVec, Element, Found ) 
+      LoadVec => ListGetElementRealVec( Load_h(i), ngp, BasisVec, Element, Found )
       IF( Found ) THEN
         IF (SpecificLoad) THEN
           LoadAtIpVec(1:ngp,i) = LoadVec(1:ngp)
         ELSE
-          LoadAtIpVec(1:ngp,i) = rho * LoadVec(1:ngp)
+          LoadAtIpVec(1:ngp,i) = rhoVec(1:ngp) * LoadVec(1:ngp)
         END IF
       END IF
     END DO
+
+    ! Body Force "Boussinesq" (FlowSolve.F90 style): rho stays "rho" (constant)
+    ! everywhere else, and only this load term sees the density perturbation --
+    ! that substitution, not any change to the continuity equation, is what
+    ! makes it "the Boussinesq approximation" rather than a real compressible
+    ! model. Gravity is Constants' "Gravity", a 4-vector (direction, magnitude),
+    ! same convention and same default as FlowSolve.F90.
+    IF( BoussinesqOn ) THEN
+      GravityWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',Found )
+      IF( Found ) THEN
+        GravityVec(1:3) = GravityWork(1:3,1) * GravityWork(4,1)
+      ELSE
+        GravityVec = 0._dp
+        GravityVec(2) = -9.81_dp
+      END IF
+
+      DO i = 1, dim
+        LoadAtIpVec(1:ngp,i) = LoadAtIpVec(1:ngp,i) - rho * GravityVec(i) * &
+            HeatExpansionCoeffVal * ( TempAtIp(1:ngp) - CompressRefTempVal )
+      END DO
+    END IF
+
+    ! The continuity equation's own source term, div(rho u) = 0 divided through
+    ! by rho: -div(u) - (1/rho)(d rho/dt + u.grad(rho)) = 0. The u.grad(rho) half
+    ! is a genuine (dofs,i) STIFFNESS coupling -- see below, next to the other
+    ! continuity/pressure terms -- because it multiplies the unknown velocity;
+    ! this half is the d(rho)/dt half, which does not, so it is a load instead.
+    IF( ThermalCompressible .AND. Transient ) THEN
+      LoadAtIpVec(1:ngp,dofs) = ( rhoVec(1:ngp) - rhoPrevVec(1:ngp) ) / ( rhoVec(1:ngp) * dt )
+    END IF
 
     IF ( Newton ) THEN
 
@@ -410,6 +622,22 @@ CONTAINS
         END IF
 
         StiffOrd(:,:,dofs,i) = transpose(stifford(:,:,i,dofs))
+      END DO
+    END IF
+
+    ! "Compressibility Model = Thermal"/"Perfect Gas": the u.grad(rho) half of
+    ! the continuity equation's own source term (the d(rho)/dt half, where
+    ! implemented, is a load, added with the body forces above). Unlike the
+    ! -(div u, q) term just assembled, this one multiplies the unknown velocity
+    ! by a coefficient frozen at the current Picard iterate's density field, so
+    ! it is a genuine (dofs,i) stiffness coupling and not a load:
+    ! (-(1/rho) d(rho)/dx_i * u_i, q). Both models feed it the same way --
+    ! only how drhodx(i) itself was built above differs.
+    IF( ThermalCompressible .OR. PerfectGasCompressible ) THEN
+      DO i = 1, dim
+        CompressWeight(1:ngp) = -detJVec(1:ngp) * drhodx(1:ngp,i) / rhoVec(1:ngp)
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            BasisVec, BasisVec, CompressWeight, StiffOrd(:,:,dofs,i))
       END DO
     END IF
 
