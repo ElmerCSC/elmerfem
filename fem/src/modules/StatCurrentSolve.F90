@@ -320,10 +320,6 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     VecAsm = (nColours > 1) .OR. (nthr > 1)
   END IF
   
-  IF( VecAsm .AND. AxiSymmetric ) THEN
-    CALL Info(Caller,'Vectorized loop not yet available in axisymmetric case',Level=7)    
-    VecAsm = .FALSE.
-  END IF
 
   IF( VecAsm ) THEN
     CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
@@ -522,6 +518,13 @@ CONTAINS
     DO i=1,ngp
       DetJVec(i) = IP % s(i) * DetJVec(i)
     END DO
+
+    ! Axisymmetric/cylindric-symmetric: the integration measure is r dr dz
+    ! instead of dr dz -- mirrors the scalar LocalMatrix's own
+    ! "Weight = Weight * r", batched over all Gauss points at once.
+    IF( AxiSymmetric ) THEN
+      DetJVec(1:ngp) = DetJVec(1:ngp) * MATMUL( Basis(1:ngp,1:n), Nodes % x(1:n) )
+    END IF
 
     ! electric conductivity term: STIFF=STIFF+(rho*grad(u),grad(v))
     ! Probe the rank at the 1st Gauss point: it is a structural property of how the

@@ -536,11 +536,6 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     VecAsm = (nColours > 1) .OR. (nthr > 1)
   END IF
 
-  IF( VecAsm .AND. AxiSymmetric ) THEN
-    CALL Info(Caller,'Vectorized assembly not yet available in axisymmetric case',Level=7)    
-    VecAsm = .FALSE.
-  END IF
-  
   IF( VecAsm ) THEN
     CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
   ELSE
@@ -1259,6 +1254,17 @@ CONTAINS
     
     ! Compute actual integration weights (recycle the memory space of DetJVec)
     DetJVec(1:ngp) = IP % s(1:ngp) * DetJVec(1:ngp)
+
+    ! Axisymmetric/cylindric-symmetric: the integration measure is r dr dz
+    ! instead of dr dz -- mirrors LocalMatrix's own "Weight = Weight * r"
+    ! (the scalar path, e.g. line ~2101), just batched over all Gauss points
+    ! at once. No other term needs a metric correction: for an isotropic (or
+    ! diagonal) material the axisymmetric weak form of the diffusion/
+    ! convection/mass terms is identical to the plane Cartesian one once the
+    ! measure is scaled this way.
+    IF( AxiSymmetric ) THEN
+      DetJVec(1:ngp) = DetJVec(1:ngp) * MATMUL( Basis(1:ngp,1:n), Nodes % x(1:n) )
+    END IF
 
     ! Get pointer to vector including density on all integration points
     RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found ) 
