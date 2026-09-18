@@ -468,9 +468,9 @@ CONTAINS
 
     CALL RANDOM_NUMBER(c)
 
-    xxp(1:n) = Mesh % Nodes % x
-    yyp(1:n) = Mesh % Nodes % y
-    zzp(1:n) = Mesh % Nodes % z
+    xxp(1:n) = Mesh % Nodes % x(1:n)
+    yyp(1:n) = Mesh % Nodes % y(1:n)
+    zzp(1:n) = Mesh % Nodes % z(1:n)
     bbd(1:n) = bdist(1:n)
 
     xxp(n+1:nnb) = xp
