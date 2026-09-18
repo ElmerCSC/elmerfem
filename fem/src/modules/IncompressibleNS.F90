@@ -154,8 +154,10 @@ CONTAINS
     ! same node count "Density" itself is read on -- Temperature is assumed P1.
     ! "Perfect Gas" shares that same (dofs,i) term -- see drhodx below -- but
     ! its own rho(p,T) additionally depends on the solver's own pressure DOF,
-    ! frozen at the previous (Picard) iterate via VeloPresVec(:,dofs); no
-    ! transient support yet, see the Fatal guard next to "PerfectGasCompressible".
+    ! frozen at the previous (Picard) iterate via VeloPresVec(:,dofs). Its
+    ! transient d(rho)/dt splits into a genuine MASS(dofs,dofs) term (the
+    ! pressure half) and a two-time-level load (the temperature half) -- see
+    ! both next to "PerfectGasCompressible" below.
     LOGICAL :: ThermalCompressible, BoussinesqOn, PerfectGasCompressible
     CHARACTER(LEN=MAX_NAME_LEN) :: CompressModelStr
     REAL(KIND=dp) :: HeatExpansionCoeffVal, CompressRefTempVal, GravityVec(3)
@@ -302,14 +304,12 @@ CONTAINS
     END IF
 
     ! Unlike "Thermal", rho(p,T) here depends on the solver's OWN pressure DOF,
-    ! not just the externally-coupled temperature. Its time derivative would
-    ! need a genuine (dofs,dofs) MASS term (the "acoustic" compressibility of
-    ! the gas) rather than the two-time-level load FlowSolve.F90/"Thermal" use,
-    ! which is future work, not this one.
-    IF( PerfectGasCompressible .AND. Transient ) THEN
-      CALL Fatal(Caller,'"Compressibility Model = Perfect Gas" does not yet support '// &
-          '"Simulation Type = Transient" in IncompressibleNS')
-    END IF
+    ! not just the externally-coupled temperature, so its time derivative needs
+    ! a genuine (dofs,dofs) MASS term (the "acoustic" compressibility of the gas,
+    ! d(rho)/dp at fixed T) rather than the two-time-level load
+    ! FlowSolve.F90/"Thermal" use for the whole of d(rho)/dt -- see the MASS(dofs,
+    ! dofs) block below (mirroring NavierStokes.F90's own MassMatrixTrabsp(c,c)
+    ! for CASE(PerfectGas1)) and the temperature-only load next to "Thermal"'s.
 
     ! Body Force "Boussinesq", exactly as in FlowSolve.F90: the plain buoyancy
     ! approximation, where rho stays the constant read above EVERYWHERE and the
@@ -325,7 +325,12 @@ CONTAINS
       VeloPresVec = 0._dp
     ELSE
       CALL GetLocalSolution( NodalSol )
-      IF (nb > 0 .AND. Transient .AND. .NOT. StokesFlow) & 
+      ! Also needed, regardless of StokesFlow, whenever LCondensate below is
+      ! about to see a genuine pressure-row MASS entry -- currently only
+      ! "Compressibility Model = Perfect Gas" puts one there (its dp/dt term) --
+      ! since LCondensate forms M*xlprev/dt over the WHOLE retained+bubble
+      ! block from this xlprev, not just its own (StokesFlow-gated) velocity rows.
+      IF (nb > 0 .AND. Transient .AND. ( .NOT. StokesFlow .OR. PerfectGasCompressible )) &
          CALL GetLocalSolution(PrevNodalSol, tStep=-1)
     END IF
 
@@ -408,7 +413,7 @@ CONTAINS
             dTempdx(1:ngp,i) = MATMUL( dBasisdxVec(1:ngp,1:n,i), NodalTemp(1:n) )
           END DO
 
-          IF( ThermalCompressible .AND. Transient ) THEN
+          IF( ( ThermalCompressible .OR. PerfectGasCompressible ) .AND. Transient ) THEN
             DO i = 1, n
               k = TempVar % Perm( Element % NodeIndexes(i) )
               IF( k > 0 ) THEN
@@ -506,6 +511,27 @@ CONTAINS
     ! this half is the d(rho)/dt half, which does not, so it is a load instead.
     IF( ThermalCompressible .AND. Transient ) THEN
       LoadAtIpVec(1:ngp,dofs) = ( rhoVec(1:ngp) - rhoPrevVec(1:ngp) ) / ( rhoVec(1:ngp) * dt )
+    END IF
+
+    ! "Compressibility Model = Perfect Gas", Transient: (1/rho)(d rho/dt) =
+    ! (1/(p+p0))(dp/dt) - (1/T)(dT/dt), from rho=(p+p0)/(R T). The dp/dt half
+    ! multiplies the solver's OWN unknown (pressure), so -- unlike "Thermal",
+    ! where the whole of d(rho)/dt is external and hence a load -- it cannot be
+    ! turned into a two-time-level load; it has to stay a genuine (dofs,dofs)
+    ! MASS entry, differenced by whichever of Default1stOrderTime/LCondensate
+    ! forms the time derivative for this element (see near the end of this
+    ! routine), exactly as NavierStokes.F90's own CASE(PerfectGas1) does with
+    ! MassMatrixTrabsp(c,c). The dT/dt half IS fully external (Temperature is
+    ! solved by a separate equation, at both time levels already), so that part
+    ! is a load, same treatment as "Thermal"'s own -- with the opposite sign,
+    ! since rho falls with rising T where it rises with rising p.
+    IF( PerfectGasCompressible .AND. Transient ) THEN
+      LoadAtIpVec(1:ngp,dofs) = -( TempAtIp(1:ngp) - TempPrevAtIp(1:ngp) ) / ( TempAtIp(1:ngp) * dt )
+
+      weight_a(1:ngp) = -detJVec(1:ngp) / ( VeloPresVec(1:ngp,dofs) + RefPressureVal )
+      MassPart = 0._dp
+      CALL LinearForms_UdotV(ngp, ntot, elemdim, BasisVec, BasisVec, weight_a, MassPart)
+      MASS(dofs::dofs,dofs::dofs) = MASS(dofs::dofs,dofs::dofs) + MassPart(1:ntot,1:ntot)
     END IF
 
     IF ( Newton ) THEN

@@ -1,0 +1,139 @@
+! Transient counterpart of ../PerfectGasCompress_vec: same fixed mesh/cavity
+! and "Compressibility Model = Perfect Gas" on IncompressibleNS, but the wall
+! temperature now ramps linearly in time (both spatially uniform and the
+! Coordinate 1 gradient BC use "Variable ..., Time" MATC expressions), so the
+! ideal gas continuity source, d(rho)/dt = (1/(p+p0))(dp/dt) - (1/T)(dT/dt),
+! is genuinely exercised: the dp/dt half through the new MASS(dofs,dofs) term
+! and the dT/dt half through the load next to it (see LocalBulkMatrix's
+! "PerfectGasCompressible .AND. Transient" block in IncompressibleNS.F90).
+!
+! Cross-checked against the same problem on the legacy FlowSolve (same mesh,
+! "Stabilize = True", which forces FlowSolve's own bubble fallback for a
+! compressible model -- see NavierStokes.F90's CASE(PerfectGas1)): every
+! timestep's norm here is 0.3-0.4% away from FlowSolve's own, the same size
+! discretisation difference ../PerfectGasCompress_vec's own steady-state
+! legacy comparison sees (0.90%) -- not a sign error in either the new MASS
+! term or the new load.
+Header
+  Mesh DB "." "PerfectGasCompress_vec_transient"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.25
+  Timestep Intervals = 8
+  Steady State Max Iterations  = 1
+  Output Intervals = 0
+! Post File =  "PerfectGasCompress_vec_transient.vtu"
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force  = 1
+  Initial Condition = 1
+End
+
+$ RefT=293
+
+Initial Condition 1
+  Temperature = $RefT
+  Pressure = 0
+End
+
+Body Force 1
+  Flow BodyForce 2 = -10
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Stabilize = True
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Linear System Solver = Direct
+  Linear System Iterative Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+
+Solver 2
+  Equation = Navier-Stokes
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Relaxation Factor = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+
+Equation 1
+  Navier-Stokes = True
+  Heat Equation = True
+  Convection = Computed
+End
+
+Material 1
+  Density = 1
+  Viscosity = 1
+  Heat Capacity = 1000
+  Heat Conductivity  = 1.36986
+  Reference Temperature = $RefT
+  Compressibility Model = Perfect Gas
+  Specific Heat Ratio = $ 5.0/3.0
+  Reference Pressure = 1.0e5
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  pressure  = 0
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = Variable Time
+    Real MATC "RefT+0.5*tx"
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = Variable Coordinate 1, Time
+    Real MATC "RefT-tx(0)+0.5*tx(1)"
+End
+
+
+Boundary Condition 4
+  Target Boundaries = 4
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = Variable Time
+    Real MATC "RefT-0.5*tx"
+End
+
+Solver 2 :: Reference Norm = Real 8.99186809E-05
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
+RUN
