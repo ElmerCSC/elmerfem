@@ -42,8 +42,12 @@
 
 MODULE MatrixScaling
 
-    USE ModelDescription
-    USE ParallelUtils
+    USE Types,         ONLY : dp, Solver_t, Matrix_t
+    USE Messages,      ONLY : Info, Warn, Fatal, Message
+    USE Lists,         ONLY : ListGetLogical, ListGetString
+    USE GeneralUtils,  ONLY : I2S
+    USE ParallelUtils, ONLY : ParallelReduction, ParallelSumVector, &
+                              ParallelInitSolve, ParallelMatrixVector, ParallelVector
     IMPLICIT NONE
 
 CONTAINS
@@ -598,7 +602,10 @@ CONTAINS
     END IF
 
     IF( PRESENT( ApplyScaling ) ) THEN
-      IF(.NOT. ApplyScaling) RETURN
+      IF(.NOT. ApplyScaling) THEN
+        CALL Info('RowEquilibration', 'Application of scaling skipped!', Level=20)
+        RETURN
+      END IF
     END IF
     
     DO i=1,n    

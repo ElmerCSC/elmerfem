@@ -137,9 +137,9 @@ void MaterialLibrary::okButtonClicked()
       QString propertyValue = property.text().trimmed();
 
 #if 0
-      cout << string(materialName.toLatin1()) << ": " 
-	   << string(propertyName.toLatin1()) << ": " 
-	   << string(propertyValue.toLatin1()) << endl;
+      std::cout << materialName.toLocal8Bit().data() << ": " 
+        << propertyName.toLocal8Bit().data() << ": " 
+        << propertyValue.toLocal8Bit().data() << std::endl;
 #endif
 
       // Copy the parameter value into material editor:
@@ -156,9 +156,9 @@ void MaterialLibrary::okButtonClicked()
 	  if(propertyName == widgetName) {
 	    match = true;
 	    lineEdit->setText(propertyValue);
-#if 0 	    
-	    cout << "Material loader: found match for parameter: "
-	     << string(propertyName.toLatin1()) << endl;
+#if 0
+	    std::cout << "Material loader: found match for parameter: "
+	      << propertyName.toLocal8Bit().data() << std::endl;
 #endif
 	  }
 	}
@@ -181,8 +181,8 @@ void MaterialLibrary::okButtonClicked()
       
 #if 0
       if(!match) 
-	cout << "Material loader: no match for parameter: "
-	     << string(propertyName.toLatin1()) << endl;
+        std::cout << "Material loader: no match for parameter: "
+          << propertyName.toLocal8Bit().data() << std::endl;
 #endif
     }
   }

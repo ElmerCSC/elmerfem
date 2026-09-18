@@ -46,7 +46,7 @@ MODULE MeshBasics
     USE ElementDescription
     USE BandwidthOptimize
     USE Interpolation
-    USE ParallelUtils
+    USE ParallelUtils, ONLY : ParallelReduction
     USE Lists
     USe ListMatrix
     USE MeshAllocations

@@ -3009,7 +3009,6 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       }
     }
 
-
     /* And finally number the conflicting joined bodies and BCs */
     for(i=1;i<=data2->noelements;i++) {
       mat = data2->material[i];
@@ -3020,12 +3019,14 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	  if(info) printf("Renumbering body %d to %d\n",mat,k);
 	  bodynameis[mat] = k;	  
 	  bodyused[k] = TRUE;
-	  if(!data1->bodyname[k]) data1->bodyname[k] = Cvector(0,MAXNAMESIZE);
-  	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	  if(data2->bodyname[mat]) {
+	    if(!data1->bodyname[k]) data1->bodyname[k] = Cvector(0,MAXNAMESIZE);
+	    strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	  }
 	}
       }
     }
-
+    
     for(j=0;j < MAXBOUNDARIES;j++) {
       if(!bound2[j].created) continue;     
       for(i=1; i <= bound2[j].nosides; i++) {
@@ -3038,8 +3039,10 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	    if(info) printf("Renumbering boundary %d to %d\n",mat,k);
 	    boundarynameis[mat] = k;
 	    boundaryused[k] = TRUE;
-	    if(!data1->boundaryname[k]) data1->boundaryname[k] = Cvector(0,MAXNAMESIZE);
-	    strcpy(data1->boundaryname[k],data2->boundaryname[mat]);
+	    if(data2->boundaryname[mat]) {
+	      if(!data1->boundaryname[k]) data1->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+	      strcpy(data1->boundaryname[k],data2->boundaryname[mat]);
+	    }
 	  }
 	}
       }
@@ -3086,7 +3089,6 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       printf("Max(body1) is %d and Min(body2) is %d, using body offset %d for mesh 2!\n",bodymax1,bodymin2,bodyoffset);
     }
   }
-  
 
 
   for(j=0;j < MAXBOUNDARIES;j++) {
@@ -3123,6 +3125,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
     }
   }
 
+  
   data1->maxnodes = maxnodes;
   newtopo = Imatrix(1,noelements,0,maxnodes-1);
   newmaterial = Ivector(1,noelements);

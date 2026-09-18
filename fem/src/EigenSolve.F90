@@ -57,8 +57,9 @@
 
 MODULE EigenSolve
 
-   USE Messages
-   IMPLICIT NONE
+  USE Messages
+  USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
+  IMPLICIT NONE
 
 CONTAINS
 
@@ -1181,7 +1182,7 @@ END SUBROUTINE CheckResiduals
       CHARACTER ::     BMAT*1, Which*2
       INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, IERR, iter, &
                        NCONV, maxitr, ishfts, mode, istat, dofs
-      LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize,&
+      LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize, ScaleSystem, &
                        Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize
 
       CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
@@ -1273,7 +1274,12 @@ END SUBROUTINE CheckResiduals
 !
       ishfts = 1
       BMAT  = 'G'
-      CALL ArpackSetWhich( Params, Matrix % Lumped, Mode, Which )
+      IF (Matrix % Lumped) THEN
+        CALL Warn(Caller, 'No implementation for a lumped matrix in Mode 2')
+        CALL Info(Caller, 'The routine znaupd will be called in Mode 3', Level=12)
+      END IF
+        
+      CALL ArpackSetWhich( Params, .FALSE., Mode, Which )
 
       Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
@@ -1299,7 +1305,22 @@ END SUBROUTINE CheckResiduals
       CALL ListAddLogical( Params,  &
                      'Linear System Free Factorization',.FALSE. )
 
-      IF ( .NOT. Matrix % Lumped ) THEN
+      IF (ListGetLogical(Params, 'Linear System Skip Scaling', stat)) THEN     
+        CALL Info(Caller, 'This time skipping scaling', Level=20)
+        ScaleSystem = .FALSE.
+      ELSE
+        ScaleSystem = ListGetLogical(Params, 'Linear System Scaling', stat, DefValue = .TRUE.)
+        ! Row equilibration wouldn't lead to a Hermitian matrix
+        IF (ListGetLogical(Params, 'Linear System Row Equilibration', stat)) THEN
+          CALL Fatal(Caller, 'Set Linear System Row Equilibration = False for the eigen solution')
+        END IF
+      END IF
+      
+      IF ( Matrix % Lumped ) THEN
+        ! No implementation to call znaupd in Mode 2
+        CONTINUE
+      ELSE
+        ! Mode 3:
         SigmaR = ListGetConstReal( Params,'Eigen System Shift', stat )
         SigmaI = ListGetConstReal( Params,'Eigen System Shift Im', stat )
         Sigma = CMPLX(SigmaR,SigmaI, KIND=dp)
@@ -1308,6 +1329,8 @@ END SUBROUTINE CheckResiduals
           Matrix % Values = Matrix % Values - Sigma * Matrix % MassValues
         END IF
 
+        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix)
+        
         Method = ListGetString( Params,'Linear System Solver', stat )         
         IF ( Method == 'direct' ) THEN
           DirectMethod = ListGetString( Params, &
@@ -1360,9 +1383,10 @@ END SUBROUTINE CheckResiduals
             END IF
             Iter = Iter + 1
 !---------------------------------------------------------------------
-!           Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
-!                    ido =-1 inv(A-sigmaR*M)*M*x 
-!                    ido = 1 inv(A-sigmaR*M)*z
+!           Perform  y = OP*x, with
+!                    OP*x = inv(A-sigmaR*M)*M*x for mode 3 and ido =-1  
+!                    OP*x = inv(A-sigmaR*M)*z, with z returned by znauupd, for mode 3 and ido = 1:              
+!                    OP*x = inv[M]*A*x for mode 2 (lumped mass), no impelementation yet    
 !---------------------------------------------------------------------
 
             ! Some strategies (such as 'block') may depend on that these are set properly 
@@ -1388,10 +1412,14 @@ END SUBROUTINE CheckResiduals
               END DO
             END IF
 
-            DO i=0,n-1
-               x(2*i+1) = REAL(  WORKD( IPNTR(2)+i ) )
-               x(2*i+2) = AIMAG( WORKD( IPNTR(2)+i ) )
-            END DO
+            IF (ListGetLogical(Params, 'Linear System Nullify Guess', Stat)) THEN
+              x = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+            ELSE
+              DO i=0,n-1
+                x(2*i+1) = REAL(  WORKD( IPNTR(2)+i ) )
+                x(2*i+2) = AIMAG( WORKD( IPNTR(2)+i ) )
+              END DO
+            END IF
 
             SELECT CASE( Method ) 
             CASE('multigrid')
@@ -1448,21 +1476,27 @@ END SUBROUTINE CheckResiduals
 !     | an error.                               |
 !     %-----------------------------------------%
 !
-      IF ( kinfo /= 0 ) THEN
+      IF ( kinfo /= 0 .AND. kinfo /= 2 ) THEN
 !
 !        %--------------------------%
 !        | Error message, check the |
-!        | documentation in DNAUPD  |
+!        | documentation in ZNAUPD  |
 !        %--------------------------%
-!
-         WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( Caller, Message )
-!
+        SELECT CASE(kinfo)
+        CASE(1)
+          CALL Fatal( Caller, 'Maximum number of iterations reached.' )
+        CASE(3)
+          CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
+        CASE DEFAULT
+          WRITE( Message, * ) 'Error with ZNAUPD, info = ',kinfo
+          CALL Fatal( Caller, Message )
+        END SELECT
+
       ELSE 
 !
 !        %-------------------------------------------%
 !        | No fatal errors occurred.                 |
-!        | Post-Process using DSEUPD.                |
+!        | Post-Process using ZNEUPD.                |
 !        |                                           |
 !        | Computed eigenvalues may be extracted.    |  
 !        |                                           |
@@ -1489,22 +1523,13 @@ END SUBROUTINE CheckResiduals
 !
 !           %------------------------------------%
 !           | Error condition:                   |
-!           | Check the documentation of DNEUPD. |
+!           | Check the documentation of ZNEUPD. |
 !           %------------------------------------%
 ! 
-            WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
+            WRITE( Message, * ) ' Error with ZNEUPD, info = ', IERR
             CALL Fatal( Caller, Message )
          END IF
-!
-!        %------------------------------------------%
-!        | Print additional convergence information |
-!        %------------------------------------------%
-!
-         IF ( kinfo == 1 ) THEN
-            CALL Fatal( Caller, 'Maximum number of iterations reached.' )
-         ELSE IF ( kinfo == 3 ) THEN
-            CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
-         END IF      
+
 !
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
@@ -1528,12 +1553,6 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
 
-         ! Restore matrix values, if modified when using shift:
-         ! ---------------------------------------------------
-         IF ( Sigma /= 0._dp ) THEN
-           Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
-         END IF
-
          EigVectors = -1.0_dp
 
          k = 1
@@ -1547,6 +1566,15 @@ END SUBROUTINE CheckResiduals
             END DO
          END DO
 
+
+         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenScaling = .TRUE. )
+         
+         ! Restore matrix values, if modified when using shift:
+         ! ---------------------------------------------------
+         IF ( Sigma /= 0._dp ) THEN
+           Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
+         END IF
+         
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
            CALL Info(Caller,'Computing eigen system residuals',Level=8)
            CALL CheckResidualsComplex( Matrix, Neig, EigValues, EigVectors )

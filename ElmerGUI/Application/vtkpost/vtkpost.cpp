@@ -1239,7 +1239,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 
   QString postFilePath = dir.filePath(readEpFile->vtuFileNameList.at(start));
 	vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
-	reader->SetFileName(postFilePath.toLatin1().data());
+	reader->SetFileName(postFilePath.toLocal8Bit().data());
 	reader->Update();
 
 	nodes = reader->GetNumberOfPoints();
@@ -1259,14 +1259,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   for(int i = 0; i < scalarFields; i++ ) {
      ScalarField *sf = &scalarField[i];
 #ifdef EG_MATC
-
-#if WITH_QT5 || WITH_QT6
-     QByteArray nm = sf->name.trimmed().toLatin1();
-#else
-     QByteArray nm = sf->name.trimmed().toAscii();
-#endif
-
-     var_delete( nm.data() );
+     var_delete( sf->name.trimmed().toLocal8Bit().data() );
 #else
      if(sf->value) free(sf->value);
 #endif
@@ -1295,13 +1288,8 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 		if( pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents() > 1) fieldType = "vector";
 		else fieldType = "scalar";
 
-#if WITH_QT5 || WITH_QT6
-    cout << fieldType.toLatin1().data() << ": ";
-    cout << fieldName.toLatin1().data() << endl;
-#else
-    cout << fieldType.toAscii().data() << ": ";
-    cout << fieldName.toAscii().data() << endl;
-#endif
+    std::cout << fieldType.toLocal8Bit().data() << ": "
+              << fieldName.toLocal8Bit().data() << std::endl;
 
 		if(fieldType == "scalar")
 			addScalarField(fieldName, nodes*timesteps, NULL);
@@ -1387,12 +1375,12 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 		reader->Delete();
 		reader =  vtkXMLUnstructuredGridReader::New();
 		postFilePath = dir.filePath(readEpFile->vtuFileNameList.at(l));
-		reader->SetFileName(postFilePath.toLatin1().data());
+		reader->SetFileName(postFilePath.toLocal8Bit().data());
 		reader->Update();
 		output = reader->GetOutput();
 		pointData = output->GetPointData();
 		cellData = output->GetCellData();
-		//cout << "<VTU> "<<  postFilePath.toLatin1().data() << endl;
+		//std::cout << "<VTU> "<<  postFilePath.toLocal8Bit().data() << std::endl;
 	}
 	int sfcount = 1; // 1 to skip node field
 	for(int j=0; j < reader->GetNumberOfPointArrays(); j++){
@@ -1665,14 +1653,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   for(int i = 0; i < scalarFields; i++ ) {
      ScalarField *sf = &scalarField[i];
 #ifdef EG_MATC
-
-#if WITH_QT5 || WITH_QT6
-     QByteArray nm = sf->name.trimmed().toLatin1();
-#else
-     QByteArray nm = sf->name.trimmed().toAscii();
-#endif
-
-     var_delete( nm.data() );
+     var_delete( sf->name.trimmed().toLocal8Bit().data() );
 #else
      if(sf->value) free(sf->value);
 #endif
@@ -1697,13 +1678,8 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
     fieldType = fieldType.trimmed();
     fieldName = fieldName.trimmed();
 
-#if WITH_QT5 || WITH_QT6
-    cout << fieldType.toLatin1().data() << ": ";
-    cout << fieldName.toLatin1().data() << endl;
-#else
-    cout << fieldType.toAscii().data() << ": ";
-    cout << fieldName.toAscii().data() << endl;
-#endif
+    std::cout << fieldType.toLocal8Bit().data() << ": "
+              << fieldName.toLocal8Bit().data() << endl;
 
     if(fieldType == "scalar")
       addScalarField(fieldName, nodes*timesteps, NULL);
@@ -3581,11 +3557,8 @@ bool VtkPost::SavePngFile(QString fileName)
 
   writer->SetInputConnection(image->GetOutputPort());
 
-#if WITH_QT5 || WITH_QT6
-  writer->SetFileName(fileName.toLatin1().data());
-#else
-  writer->SetFileName(fileName.toAscii().data());
-#endif
+  writer->SetFileName(fileName.toLocal8Bit().data());
+
 #if VTK_MAJOR_VERSION >= 9
   qvtkWidget->renderWindow()->Render();
 #else

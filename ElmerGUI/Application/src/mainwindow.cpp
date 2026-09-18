@@ -1477,16 +1477,11 @@ void MainWindow::newProjectSlot() {
     for (int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++) {
       message = "Load " + extraDirPath + "/" +
                 dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
-#if WITH_QT5 || WITH_QT6
-      cout << string(message.toLatin1());
-      cout.flush();
-#else
-      cout << string(message.toAscii());
-      cout.flush();
-#endif
+      std::cout << message.toLocal8Bit().data();
+      std::cout.flush();
       edfEditor->appendFrom(extraDirPath + "/" +
                             dlg.ui.listWidget_selectedSolvers->item(i)->text());
-      cout << " done" << endl;
+      std::cout << " done" << std::endl;
     }
 
     if (bStartMeshing)
@@ -1508,23 +1503,15 @@ void MainWindow::parseCmdLine() {
     QFileInfo fileInfo(fileName);
 
     if (!fileInfo.exists()) {
-#if WITH_QT5 || WITH_QT6
-      cout << "Input file \"" << fileName.toLatin1().data()
-           << "\" does not exist" << endl;
-#else
-      cout << "Input file \"" << fileName.toAscii().data()
-           << "\" does not exist" << endl;
-#endif
+      std::cout << "Input file \"" << fileName.toLocal8Bit().data()
+                << "\" does not exist" << std::endl;
       QApplication::closeAllWindows();
       exit(0);
     }
 
     if (fileName.left(1) != "-") {
-#if WITH_QT5 || WITH_QT6
-      cout << "Reading input file " << fileName.toLatin1().data() << endl;
-#else
-      cout << "Reading input file " << fileName.toAscii().data() << endl;
-#endif
+      std::cout << "Reading input file " << fileName.toLocal8Bit().data()
+                << std::endl;
       readInputFile(fileName);
       remeshSlot();
     }
@@ -1590,11 +1577,7 @@ void MainWindow::readInputFile(QString fileName) {
   QString baseName = fi.baseName();
   QString fileSuffix = fi.suffix();
   QString baseFileName = absolutePath + "/" + baseName;
-#if WITH_QT5 || WITH_QT6
-  sprintf(cs, "%s", baseFileName.toLatin1().data());
-#else
-  sprintf(cs, "%s", baseFileName.toAscii().data());
-#endif
+  sprintf(cs, "%s", baseFileName.toLocal8Bit().data());
 
   fileSuffix = fileSuffix.toLower();
   activeGenerator = GEN_UNKNOWN;
@@ -1710,13 +1693,8 @@ void MainWindow::readInputFile(QString fileName) {
     activeGenerator = GEN_ELMERGRID;
     cout << "Selected elmergrid" << endl;
 
-#if WITH_QT5 || WITH_QT6
     int errstat = elmergridAPI->loadElmerMeshStructure(
-        (const char *)(fileName.toLatin1()));
-#else
-    int errstat = elmergridAPI->loadElmerMeshStructure(
-        (const char *)(fileName.toAscii()));
-#endif
+        fileName.toLocal8Bit().data());
 
     if (errstat)
       logMessage("loadElmerMeshStructure failed!");
@@ -1835,11 +1813,7 @@ void MainWindow::loadElmerMesh(QString dirName) {
 
   glWidget->newMesh();
 
-#if WITH_QT5 || WITH_QT6
-  bool success = glWidget->getMesh()->load(dirName.toLatin1().data());
-#else
-  bool success = glWidget->getMesh()->load(dirName.toAscii().data());
-#endif
+  bool success = glWidget->getMesh()->load(dirName.toLocal8Bit().data());
 
   if (!success) {
     glWidget->getMesh()->clear();
@@ -1981,7 +1955,7 @@ bool MainWindow::saveProject(QString projectDirName) {
   // System copy command:
   QString cmd("cp -f " + pathName + "/" + baseName + ".* " + projectDirName);
 
-  if (system(cmd.toLatin1().data()))
+  if (system(cmd.toLocal8Bit().data()))
     logMessage("Geometry input file(s) not copied");
 
   QDomElement geomInput(projectDoc.createElement("geometryinputfile"));
@@ -2798,11 +2772,7 @@ void MainWindow::saveElmerMesh(QString dirName) {
 
   // Save mesh files:
   //------------------
-#if WITH_QT5 || WITH_QT6
-  glWidget->getMesh()->save(dirName.toLatin1().data());
-#else
-  glWidget->getMesh()->save(dirName.toAscii().data());
-#endif
+  glWidget->getMesh()->save(dirName.toLocal8Bit().data());
 
   // Save solver input file:
   //-------------------------
@@ -2824,12 +2794,10 @@ void MainWindow::saveElmerMesh(QString dirName) {
   file.open(QIODevice::WriteOnly);
   QTextStream startinfo(&file);
 
-#if WITH_QT6
-  startinfo << sifName.toLatin1() << Qt::endl << "1" << Qt::endl;
-#elif WITH_QT5
-  startinfo << sifName.toLatin1() << endl << "1" << endl;
+#if QT_VERSION >= QT_VERSION_CHECK(5,14,0)
+  startinfo << sifName.toLocal8Bit() << Qt::endl << "1" << Qt::endl;
 #else
-  startinfo << sifName.toAscii() << endl << "1" << endl;
+  startinfo << sifName.toLocal8Bit() << std::endl << "1" << std::endl;
 #endif
 
   file.close();
@@ -2903,11 +2871,7 @@ void MainWindow::grabFrameSlot() {
   QImage image(glWidget->grabFrameBuffer(withAlpha));
 #endif
 
-#if WITH_QT5 || WITH_QT6
-  bool success(image.save(pictureFileName, suffix.toLatin1(), imageQuality));
-#else
-  bool success(image.save(pictureFileName, suffix.toAscii(), imageQuality));
-#endif
+  bool success(image.save(pictureFileName, suffix.toLocal8Bit(), imageQuality));
 
   if (!success)
     logMessage("Failed writing picture file");
@@ -5347,13 +5311,8 @@ void MainWindow::remeshSlot() {
     glWidget->newMesh();
     mesh_t *mesh = glWidget->getMesh();
 
-#if WITH_QT5 || WITH_QT6
     elmergridAPI->createElmerMeshStructure(
-        mesh, meshControl->elmerGridControlString.toLatin1());
-#else
-    elmergridAPI->createElmerMeshStructure(
-        mesh, meshControl->elmerGridControlString.toAscii());
-#endif
+        mesh, meshControl->elmerGridControlString.toLocal8Bit());
 
     if (mesh->getSurfaces() == 0)
       meshutils->findSurfaceElements(mesh);
@@ -5416,13 +5375,8 @@ void MainWindow::remeshSlot() {
     nglib::Ng_Init();
 
     char backgroundmesh[1024];
-#if WITH_QT5 || WITH_QT6
     sprintf(backgroundmesh, "%s",
-            meshControl->nglibBackgroundmesh.toLatin1().data());
-#else
-    sprintf(backgroundmesh, "%s",
-            meshControl->nglibBackgroundmesh.toAscii().data());
-#endif
+            meshControl->nglibBackgroundmesh.toLocal8Bit().data());
 
     mp.maxh = meshControl->nglibMaxH.toDouble();
     mp.fineness = meshControl->nglibFineness.toDouble();
@@ -5444,17 +5398,9 @@ void MainWindow::remeshSlot() {
         // STL: regenerate structures for nglib:
         //--------------------------------------
         // check if input file is in ascii or binary format
-#if WITH_QT5 || WITH_QT6
-        int stlbinary = checkStlForAscii(stlFileName.toLatin1().data());
-#else
-        int stlbinary = checkStlForAscii(stlFileName.toAscii().data());
-#endif
+        int stlbinary = checkStlForAscii(stlFileName.toLocal8Bit().data());
 
-#if WITH_QT5 || WITH_QT6
-        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), stlbinary);
-#else
-        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), stlbinary);
-#endif
+        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLocal8Bit().data(), stlbinary);
 
         if (!nggeom) {
           logMessage("Ng_STL_LoadGeometry failed");
@@ -5501,11 +5447,7 @@ void MainWindow::remeshSlot() {
 
         ngmesh = nglib::Ng_NewMesh();
 
-#if WITH_QT5 || WITH_QT6
-        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLatin1().data());
-#else
-        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toAscii().data());
-#endif
+        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLocal8Bit().data());
 
         if (!nggeom2d) {
           logMessage("Ng_LoadGeometry_2D failed");
@@ -7482,13 +7424,9 @@ void MainWindow::getStartedSlot() {
 // Log message...
 //-----------------------------------------------------------------------------
 void MainWindow::logMessage(QString message) {
-#if WITH_QT5 || WITH_QT6
-  cout << string(message.toLatin1()) << endl;
-#else
-  cout << string(message.toAscii()) << endl;
-#endif
+  std::cout << message.toLocal8Bit().data() << std::endl;
   statusBar()->showMessage(message, 0);
-  cout.flush();
+  std::cout.flush();
 }
 
 // Synchronize menu to GL glwidget state variables:
@@ -7612,12 +7550,8 @@ void MainWindow::loadDefinitions() {
 
   // Load general definitions file:
   //--------------------------------
-#if WITH_QT5 || WITH_QT6
-  cout << "Load " << string(generalDefs.toLatin1()) << "... ";
-#else
-  cout << "Load " << string(generalDefs.toAscii()) << "... ";
-#endif
-  cout.flush();
+  std::cout << "Load " << generalDefs.toLocal8Bit().data() << "... ";
+  std::cout.flush();
   updateSplash("Loading general definitions...");
 
   QFile file(generalDefs);
@@ -7695,12 +7629,8 @@ void MainWindow::loadDefinitions() {
 
     if ((fileSuffix == "xml") && (fileName != generalDefs)) {
 
-#if WITH_QT5 || WITH_QT6
-      cout << "Load " << string(fileName.toLatin1()) << "... ";
-#else
-      cout << "Load " << string(fileName.toAscii()) << "... ";
-#endif
-      cout.flush();
+      std::cout << "Load " << fileName.toLocal8Bit().data() << "... ";
+      std::cout.flush();
 
       updateSplash("Loading " + fileName + "...");
 
@@ -8146,17 +8076,12 @@ bool MainWindow::loadExtraSolver(QString solverName) {
 
                 message =
                     "Load " + extraDirPath + "/" + fileNameList.at(i) + "... ";
-#if WITH_QT5 || WITH_QT6
-                cout << string(message.toLatin1());
-                cout.flush();
-#else
-                cout << string(message.toAscii());
-                cout.flush();
-#endif
+                std::cout << message.toLocal8Bit().data();
+                std::cout.flush();
 
                 edfEditor->appendFrom(extraDirPath + "/" + fileNameList.at(i));
 
-                cout << "done" << endl;
+                std::cout << "done" << std::endl;
 
                 return true;
               }

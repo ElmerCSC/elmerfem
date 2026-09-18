@@ -55,6 +55,7 @@ MODULE Adaptive
       WriteMeshToDisk2
   USE MeshLoad, ONLY : LoadMesh2, PrepareMesh
   USE MeshRemeshing
+  USE ParallelUtils, ONLY : ParallelSumVector, ParallelSumVectorInt
   USE SaveUtils, ONLY : SaveGmshOutput
   USE DefUtils, ONLY: GetMaterial, GetReal, GetBodyForce, GetSolverParams, GetLogical, &
       GetNofActive, GetActiveElement, GetElementNofBDOFs, GetBoundaryElement, &

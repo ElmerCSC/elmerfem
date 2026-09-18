@@ -4,7 +4,9 @@
 void IPoints1d( int N_Integ )
 {
   double *T,  *S;
-
+  int i;
+  double du;
+  
   U_Integ1d = (double *)malloc(N_Integ*sizeof(double));
   S_Integ1d = (double *)malloc(N_Integ*sizeof(double));
   N_Integ1d = N_Integ;
@@ -214,8 +216,16 @@ void IPoints1d( int N_Integ )
  break;
 
  default:
-   fprintf( stderr, "Viewfactors: Invalid number of 1d i-points requested: %d\n", N_Integ );
-   exit(0);
+   /* If more than 12 IP points are requested use evenly distributed 
+      integration points. */
+   du = 1.0/N_Integ;
+   for( i=0; i<N_Integ; i++ ) {
+     U_Integ1d[i]=du/2+i*du;
+     S_Integ1d[i]=du;
+   }
+     
+   /* fprintf( stderr, "Viewfactors: Invalid number of 1d i-points requested: %d\n", N_Integ );
+      exit(0); */
   break;
  }
 }

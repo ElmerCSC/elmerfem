@@ -32,9 +32,10 @@
 
 PROGRAM Solver
    USE Types
-   USE GeneralUtils
-   USE ParallelUtils
-
+   USE GeneralUtils, ONLY : FormatDate
+   USE LoadMod, ONLY : CPUTime, RealTime, envir
+   USE SParIterGlobals, ONLY : ParEnv
+   
    IMPLICIT NONE
 
    REAL(KIND=dp) :: CT, RT

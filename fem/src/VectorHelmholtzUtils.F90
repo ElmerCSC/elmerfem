@@ -29,7 +29,8 @@
    USE Lists
    USE ElementUtils, ONLY : SetParentBasis
    USE ElementDescription
-   USE ParallelUtils
+   USE SParIterComm
+   
    IMPLICIT NONE
 
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
