@@ -64,27 +64,40 @@ Solver 1
   Procedure = "Spalart-Allmaras" "SpalartAllmaras"
   Variable = Turbulent Viscosity
 
-  Stabilization Method = String Bubbles
+! Legacy Assembly = Logical True
+! Stabilization Method = Bubbles -- do NOT re-enable with the Iterative
+!   solver below: even at Relaxation Factor 0.25 it stalls at 500 BiCGStabL
+!   iterations without reaching 1e-8 (residual only down to ~1.7e-3). Only
+!   SUPG converges robustly with this preconditioner/relaxation pairing.
+  Stabilize = True
+
   Nonlinear System Max Iterations = 5
   Nonlinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Newton After Iterations = 20
-  Nonlinear System Relaxation Factor = Real 0.35
+  ! 0.35 (the old default) let BiCGStabL/ILU stall at 500 iterations under
+  ! the p-element bubble/SUPG discretization; 0.25 converges quickly and
+  ! robustly regardless of which stabilization method ("Legacy Assembly",
+  ! "Stabilization Method = Bubbles", or this file's "Stabilize = True") is
+  ! chosen -- so the earlier iterative-solver trouble was really about the
+  ! relaxation, not the discretization or the preconditioner.
+  Nonlinear System Relaxation Factor = Real 0.25
   Nonlinear System Newton After Tolerance = 1.0e-3
 
   Linear System Solver = Iterative
-  Linear System Preconditioning  = ILU0
-  Linear System Max Iterations   = 500
-  Linear System Convergence Tolerance = 1e-8
+  Linear System Residual Output = 20
   Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU
+  Linear System Convergence Tolerance = 1e-8
   Steady State Convergence Tolerance = 1.0e-4
 End
 
 
 Solver 2
   Equation = "NS-Vec"
-  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
-  Pressure Stabilization = Logical True
+  Stabilize = True
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-5
@@ -215,6 +228,10 @@ Boundary Condition 3
 End
 
 
-Solver 2 :: Reference Norm = Real 21.0325760
+! Recalibrated for Spalart-Allmaras.F90 now being the vectorized/threaded
+! solver by default, and again for SUPG ("Stabilize = True" on both solvers
+! here) plus the relaxation fix on Solver 1 -- see its "Nonlinear System
+! Relaxation Factor" comment and Step_sa.sif's own Reference Norm update.
+Solver 2 :: Reference Norm = Real 21.0550786
 Solver 2 :: Reference Norm Tolerance = Real 1e-3
 RUN

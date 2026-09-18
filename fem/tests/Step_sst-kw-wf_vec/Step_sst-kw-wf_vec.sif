@@ -175,6 +175,12 @@ Boundary Condition 3
 End
 
 
-Solver 3 :: Reference Norm = Real 1.51159546
+! Recalibrated for SSTKomega.F90 now being the vectorized/threaded solver by
+! default: no "Element" line here, so SSTKOmega_Init0 defaults to an
+! equivalent p-element bubble instead of the old per-node one -- a different
+! discretization from the same physics, not a regression (see "Legacy
+! Assembly" in SSTKomega.F90 for the old exact numbers, and the matching note
+! on Step_sa.sif's own Reference Norm update).
+Solver 3 :: Reference Norm = Real 1.50994625
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-3
 RUN

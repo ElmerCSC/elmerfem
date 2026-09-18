@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,591 +27,909 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16 Nov 1997
 ! *
 ! ****************************************************************************/
 
 !------------------------------------------------------------------------------
-!> Solver for the Spalart-Allmaras-turbulence model.
+!> Solver for the Spalart-Allmaras turbulence model.
+!> This is the vectorized/threaded implementation: Basis/dBasisdx are computed
+!> for all Gauss points of an element at once via ElementInfoVec, the
+!> nonlinear closure coefficients become per-Gauss-point arrays via plain
+!> array syntax, and each bilinear/linear form maps onto one LinearForms_*
+!> call (same approach as HeatSolve.F90 and IncompressibleNS.F90). Bulk
+!> assembly is threaded over elements, each thread resolving its own material
+!> ValueHandle_t slot (mirroring IncompressibleNS's NSHandles_t).
+!>
+!> Axisymmetric/cylindrical coordinates go through LocalMatrixScalar instead
+!> of LocalMatrixVec -- a scalar, per-Gauss-point fallback carrying the same
+!> metric-tensor math as Spalart-AllmarasLegacy.F90's own LocalMatrix (no
+!> LinearForms equivalent for that), called serially -- same role as
+!> HeatSolve.F90's own AxiSymmetric branch between its LocalMatrixVec and
+!> LocalMatrix. LocalMatrixScalar also carries the legacy "Bubbles = True"
+!> per-node scheme (doubling nd to 2*n), for the rare sif that sets a plain
+!> nodal "Element" explicitly instead of letting SpalartAllmaras_Init0 default
+!> it to a p-element bubble.
+!>
+!> The original scalar-element solver lives on in Spalart-AllmarasLegacy.F90
+!> (subroutine SpalartAllmarasLegacy), reachable either directly by that name
+!> or via "Legacy Assembly = Logical True" here (see SpalartAllmarasFront
+!> below). With axisymmetric and the per-node scheme both covered above, that
+!> path is now only needed by a sif that must reproduce the legacy solver's
+!> exact historical numbers.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-   SUBROUTINE SpalartAllmaras( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-     USE DefUtils
 
-     IMPLICIT NONE
-!------------------------------------------------------------------------------
-     TYPE(Model_t)  :: Model
-     TYPE(Solver_t) :: Solver
-     REAL(KIND=dp) :: dt
-     LOGICAL :: TransientSimulation
-!------------------------------------------------------------------------------
-!    Local variables
-!------------------------------------------------------------------------------
-     TYPE(Matrix_t),POINTER  :: StiffMatrix
-     INTEGER :: i,j,k,n,nd,nb,iter,t,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
-     TYPE(Nodes_t)   :: ElementNodes
-     TYPE(Element_t),POINTER :: Element
-     REAL(KIND=dp) :: RelativeChange,Norm
-     LOGICAL :: Stabilize = .TRUE.,gotIt
-     LOGICAL :: AllocationsDone = .FALSE.
-     LOGICAL :: Bubbles, BubblesDefault
-     TYPE(Variable_t), POINTER :: FlowSol, KE
-     INTEGER, POINTER :: KinPerm(:)
-     INTEGER :: NonlinearIter
-     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
-       STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:), &
-       LocalTV(:), PrevTV(:)
-     TYPE(ValueList_t), POINTER :: BC, Equation, Material
-     REAL(KIND=dp) :: at,at0, KMax, EMax, KVal, EVal
-
-     SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce, &
-       LocalTV, PrevTV
-
-     ! Per-element bubble history (current and previous timestep), needed to
-     ! form a consistent BDF(1) time derivative for a condensed bubble: see
-     ! CondensatePTransient in MatrixAssembly.F90 and IncompressibleNSVec's
-     ! LCondensate, which this mirrors (also mirrored in KESolver.F90,
-     ! V2FSolver.F90 and SSTKomega.F90). Indexed by Element % ElementIndex
-     ! with stride bxStride = DOFs*Mesh % MaxBDOFs (not DOFs*nb of any one
-     ! element, so blocks stay aligned on a mesh with mixed bubble counts).
-     REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-     INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
-     INTEGER :: boff
 
 !------------------------------------------------------------------------------
-!    Get variables needed for solution
+!> Whether this solver should run the original scalar-element assembly
+!> (Spalart-AllmarasLegacy.F90) instead of this file's own implementation.
 !------------------------------------------------------------------------------
-     IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
+MODULE SpalartAllmarasFront
+  USE DefUtils
+  USE LoadMod, ONLY: ExecSolver
+  IMPLICIT NONE
 
-     KE => Solver % Variable
-     IF ( ASSOCIATED( KE ) ) THEN
-       DOFs     =  KE % DOFs
-       KinPerm  => KE % Perm
-     END IF
+CONTAINS
 
-     LocalNodes = COUNT( KinPerm > 0 )
-     IF ( LocalNodes <= 0 ) RETURN
+  FUNCTION LegacyAssembly( Solver ) RESULT( Legacy )
+    TYPE(Solver_t) :: Solver
+    LOGICAL :: Legacy, Found
 
-     Norm = KE % Norm
-!------------------------------------------------------------------------------
-!    Allocate some permanent storage, this is done first time only
-!------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone ) THEN
-       N = Solver % Mesh % MaxElementDOFs
-
-       ALLOCATE( MASS( 2*DOFs*N,2*DOFs*N ), &
-                 STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
-                 FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), &
-                 LocalTV(N), PrevTV(N), STAT=istat )
-
-       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'SpalartAllmaras', 'Memory allocation error.' )
-       END IF
-
-       AllocationsDone = .TRUE.
-     END IF
-
-     ! Per-element bubble history for the transient condensed-bubble case:
-     ! allocate once, sized by the mesh's own worst-case bubble count (not
-     ! this solver's nb, which can vary element to element) times the number
-     ! of BULK elements. The stride covers both p-bubbles (MaxBDOFs) and
-     ! legacy "Bubbles = True" bubbles, one per node (MaxElementNodes) --
-     ! whichever is larger. No Solver % GlobalBubbles check here -- see the
-     ! matching block and its rationale in KESolver.F90.
-     IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
-       bxStride = DOFs * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
-       ! Also over NumberOfBoundaryElements: a boundary element promoted to
-       ! this equation via a BC's "Body Id" keeps its ElementIndex in the
-       ! boundary-element range while being assembled here as a bulk element,
-       ! so indexing bx/bxprev by Element % ElementIndex can otherwise run
-       ! past a bulk-only allocation.
-       ALLOCATE( bx( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ), &
-                 bxprev( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ) )
-       bx = 0.0_dp
-       bxprev = 0.0_dp
-     END IF
-
-     ! A new timestep started: the bubble part left over from the last solve
-     ! of the previous timestep becomes "previous" for this one. Must happen
-     ! only once per timestep, not once per call -- this solver may be called
-     ! several times per timestep by the outer (Steady State) coupled
-     ! iteration, and only the first such call should shift the history.
-     IF ( TransientSimulation .AND. ALLOCATED(bx) .AND. &
-          GetTimestep() /= BubbleTimestep ) THEN
-       bxprev = bx
-       BubbleTimestep = GetTimestep()
-     END IF
+    Legacy = ListGetLogical( Solver % Values, 'Legacy Assembly', Found )
+  END FUNCTION LegacyAssembly
 
 !------------------------------------------------------------------------------
-!    Do some additional initialization, and go for it
+!> Call one of SpalartAllmarasLegacy's entry points with this solver. The
+!> name is resolved at run time, as the core resolves any solver, so this
+!> file and Spalart-AllmarasLegacy.so stay independent of one another.
 !------------------------------------------------------------------------------
+  SUBROUTINE DelegateToSpalartAllmarasLegacy( Entry, Model, Solver, dt, Transient )
+    CHARACTER(LEN=*) :: Entry
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t) :: Solver
+    REAL(KIND=dp) :: dt
+    LOGICAL :: Transient
 
-     NonlinearIter = ListGetInteger( Solver % Values, &
-         'Nonlinear System Max Iterations',GotIt )
+    TYPE(C_FUNPTR) :: Proc
 
-     IF ( .NOT.GotIt ) NonlinearIter = 1
+    Proc = GetProcAddr( 'Spalart-AllmarasLegacy '//TRIM(Entry), abort = .FALSE. )
+    IF ( .NOT. C_ASSOCIATED( Proc ) ) CALL Fatal( 'SpalartAllmaras', &
+        '"Legacy Assembly" was requested but "'//TRIM(Entry)//'" could not be found. '// &
+        'Is Spalart-AllmarasLegacy.so installed beside this solver?' )
 
-     BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
-     IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
+    CALL ExecSolver( Proc, Model, Solver, dt, Transient )
+  END SUBROUTINE DelegateToSpalartAllmarasLegacy
 
-!------------------------------------------------------------------------------
-      DO i=1,Model % NumberOFBCs
-        BC => Model % BCs(i) % Values
-        IF ( GetLogical( BC, 'Noslip wall BC', gotit ) ) THEN
-          CALL ListAddConstReal( BC, 'Turbulent Viscosity', 0.0_dp )
-        END IF
-      END DO
-!------------------------------------------------------------------------------
+END MODULE SpalartAllmarasFront
 
-     DO iter=1,NonlinearIter
-
-       at  = CPUTime()
-       at0 = RealTime()
-
-       CALL Info( 'SpalartAllmaras', ' ', Level=4 )
-       CALL Info( 'SpalartAllmaras', ' ', Level=4 )
-       CALL Info( 'SpalartAllmaras', &
-          '-------------------------------------', Level=4 )
-       WRITE( Message, * ) 'Spalart-Allmaras iteration: ', iter
-       CALL Info( 'SpalartAllmaras', Message, Level=4 )
-       CALL Info( 'SpalartAllmaras', &
-          '-------------------------------------', Level=4 )
-       CALL Info( 'SpalartAllmaras', ' ', Level=4 )
-       CALL Info( 'SpalartAllmaras', 'Starting Assembly...', Level=4 )
-
-       CALL DefaultInitialize()
 
 !------------------------------------------------------------------------------
-!      Bulk elements
-!------------------------------------------------------------------------------
-       body_id = -1
-       DO t=1,Solver % NumberOfActiveElements
+MODULE SpalartAllmarasLocalForms
 
-         IF ( RealTime() - at0 > 1.0 ) THEN
-           WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
-            (Solver % NumberOfActiveElements-t) / &
-               (1.0*Solver % NumberOfActiveElements)), ' % done'
+  USE DefUtils
+  USE LinearForms
 
-           CALL Info( 'SpalartAllmaras', Message, Level=5 )
-           at0 =RealTime()
-         END IF
-!------------------------------------------------------------------------------
-!        Check if this element belongs to a body where kinetic energy
-!        should be calculated
-!------------------------------------------------------------------------------
-         Element => GetActiveElement(t)
-         Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
-         Material => GetMaterial()
+  IMPLICIT NONE
 
-         n = GetElementNOFNodes()
-         nd = GetElementNOFDOFs()
-         IF ( Bubbles ) nd = 2*n
-         nb = GetElementNOFBDOFs()
-         CALL GetElementNodes( ElementNodes )
+  ! Per-element bubble history (current and previous timestep), needed to form
+  ! a consistent BDF(1) time derivative for a condensed p-bubble -- see the
+  ! matching bx/bxprev comment and CondensatePTransient call in
+  ! Spalart-AllmarasLegacy.F90, which this mirrors. Indexed by Element %
+  ! ElementIndex with stride bxStride = Mesh % MaxBDOFs (DOFs=1 for this
+  ! scalar solver).
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
+  INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
 
-         ! Legacy bubbles always need this (never gated on Solver %
-         ! GlobalBubbles, see the legacy branch below); a p-bubble needs it
-         ! only when actually condensed locally.
-         IF ( TransientSimulation .AND. &
-             ( Bubbles .OR. ( nb > 0 .AND. .NOT. Solver % GlobalBubbles ) ) ) THEN
-           CALL GetScalarLocalSolution( LocalTV )
-           CALL GetScalarLocalSolution( PrevTV, tStep=-1 )
-         END IF
-!------------------------------------------------------------------------------
-!        Get element local matrices, and RHS vectors
-!------------------------------------------------------------------------------
-         CALL LocalMatrix( MASS,STIFF,FORCE,LOAD,Element,n,nd+nb,ElementNodes )
-         TimeForce = 0.0_dp
-         IF ( Bubbles ) THEN
-           IF ( TransientSimulation ) THEN
-             ! Same reasoning as the nb > 0 branch below, just with the legacy
-             ! "as many bubbles as nodes" convention (Nb = n rather than nb).
-             ! DOFs=1 here, so no interleaving is needed.
-             ! No Solver % GlobalBubbles check here: unlike a p-element bubble,
-             ! a legacy bubble is never given a real global dof to begin with
-             ! -- it is always locally condensed -- and Solver % GlobalBubbles
-             ! can be TRUE for reasons that have nothing to do with THIS
-             ! solver's own bubbles (SetGlobalBubblesFlag also inherits it
-             ! from another solver's p-bubble "Element" on the same Equation
-             ! or Body). Gating on it here would wrongly fall back to plain
-             ! Condensate + Default1stOrderTime -- the very combination this
-             ! whole fix replaces -- whenever such an unrelated solver happens
-             ! to be active alongside this one.
-             boff = (Element % ElementIndex - 1) * bxStride
-             CALL CondensatePTransient( n, n, DOFs, dt, MASS, STIFF, FORCE, &
-                 PrevTV(1:n), LocalTV(1:n), &
-                 bxprev(boff+1:boff+n), bx(boff+1:boff+n) )
-           ELSE
-             IF ( TransientSimulation ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
-             CALL Condensate( DOFs*N, STIFF, FORCE, TimeForce )
-           END IF
-         ELSE IF ( nb > 0 ) THEN
-           IF ( TransientSimulation .AND. .NOT. Solver % GlobalBubbles ) THEN
-             ! A condensed bubble's own value from the previous timestep is not
-             ! in the global solution vector (it was eliminated from it), so
-             ! Default1stOrderTime cannot form its time derivative -- it would
-             ! silently treat that history as zero. CondensatePTransient forms
-             ! M/dt and M*xprev/dt over the FULL bubble-augmented block instead,
-             ! using this element's own recorded bubble history, before
-             ! eliminating the bubble rows/columns. Calling Default1stOrderTime
-             ! as well would add M/dt to the retained block a second time. See
-             ! the matching comment in KESolver.F90. DOFs=1 here, so no
-             ! interleaving is needed -- LocalTV/PrevTV can be passed directly.
-             boff = (Element % ElementIndex - 1) * bxStride
-             CALL CondensatePTransient( nd, nb, DOFs, dt, MASS, STIFF, FORCE, &
-                 PrevTV(1:nd), LocalTV(1:nd), &
-                 bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
-           ELSE
-             IF ( TransientSimulation ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
-             CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
-           END IF
-         ELSE
-           IF ( TransientSimulation ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
-         END IF
-!------------------------------------------------------------------------------
-!        Update global matrices from local matrices
-!------------------------------------------------------------------------------
-         CALL DefaultUpdateEquations( STIFF, FORCE )
-
-!------------------------------------------------------------------------------
-      END DO     !  Bulk elements
-      CALL Info( 'SpalartAllmaras', 'Assembly done', Level=4 )
-
-!------------------------------------------------------------------------------
-      CALL DefaultFinishAssembly()
-      CALL DefaultDirichletBCs()
-!------------------------------------------------------------------------------
-      CALL Info( 'SpalartAllmaras', 'Set boundaries done', Level=4 )
-!------------------------------------------------------------------------------
-!     Solve the system and check for convergence
-!------------------------------------------------------------------------------
-      Norm = DefaultSolve()
-!------------------------------------------------------------------------------
-!     Kinetic Energy Solution should be positive
-!------------------------------------------------------------------------------
-      n = SIZE( Solver % Variable % Values)
-      DO i=1,SIZE(Solver % Variable % Perm)
-         k = Solver % Variable % Perm(i)
-         IF ( k <= 0 ) CYCLE
-         Kval = Solver % Variable % Values(k)
-         Solver % Variable % Values(k) = MAX( KVal, 1.0d-12 )
-      END DO
-
-!------------------------------------------------------------------------------
-
-      IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
-!------------------------------------------------------------------------------
-    END DO
-!------------------------------------------------------------------------------
+  ! Per-thread ValueHandle_t storage for LocalMatrixVec's material lookups.
+  ! NOT THREADPRIVATE -- see the matching comment on IncompressibleNS.F90's
+  ! NSHandles_t for the Windows/GCC emutls hazard that rules that out. Instead
+  ! a plain module-level array indexed by omp_get_thread_num()+1; each thread
+  ! only ever touches its own slot.
+  TYPE :: SAHandles_t
+    TYPE(ValueHandle_t) :: Visc_h, Dens_h
+  END TYPE SAHandles_t
+  TYPE(SAHandles_t), ALLOCATABLE, SAVE :: SAHandles(:)
 
 CONTAINS
 
 !------------------------------------------------------------------------------
-   SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, LOAD, Element,n,nd,Nodes )
+!> Assemble and glue local matrix/RHS for one bulk element. Vectorized over
+!> Gauss points, safe to call concurrently from multiple threads (each thread
+!> passes its own InitHandles and only touches SAHandles(tid)).
 !------------------------------------------------------------------------------
-!
-!  REAL(KIND=dp) :: MASS(:,:)
-!     OUTPUT: time derivative coefficient matrix
-!
-!  REAL(KIND=dp) :: STIFF(:,:)
-!     OUTPUT: rest of the equation coefficients
-!
-!  REAL(KIND=dp) :: FORCE(:)
-!     OUTPUT: RHS vector
-!
-!  REAL(KIND=dp) :: LOAD(:)
-!     INPUT:
-!
-!  TYPE(Element_t) :: Element
-!       INPUT: Structure describing the element (dimension,nof nodes,
-!               interpolation degree, etc...)
-!
-!  INTEGER :: n
-!       INPUT: Number of element nodes
-!
-!  TYPE(Nodes_t) :: Nodes
-!       INPUT: Element node coordinates
-!
-!******************************************************************************
-     USE MaterialModels
-
-     IMPLICIT NONE
-
-     REAL(KIND=dp), DIMENSION(:)   :: FORCE
-     REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
-
-     INTEGER :: n, nd
-
-     TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t) :: Element
-
+  SUBROUTINE LocalMatrixVec( Element, n, nd, nb, dt, Transient, GlobalBubbles, Stabilize, InitHandles )
 !------------------------------------------------------------------------------
-!    Local variables
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, INTENT(IN) :: n, nd, nb
+    REAL(KIND=dp), INTENT(IN) :: dt
+    LOGICAL, INTENT(IN) :: Transient, GlobalBubbles, Stabilize
+    LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-!
-     REAL(KIND=dp) :: ddBasisddx(nd,3,3)
-     REAL(KIND=dp) :: Basis(nd)
-     REAL(KIND=dp) :: dBasisdx(nd,3),detJ
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
 
-     REAL(KIND=dp) :: UX(n), UY(n), UZ(n), Velo(3), dVelodx(3,3),Tviscosity(n), &
-                      Distance(n), Density(n), Viscosity(n)
+    REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), TimeForce(:)
+    REAL(KIND=dp), ALLOCATABLE :: LocalTV(:), PrevTV(:)
 
-     REAL(KIND=dp) :: A,M,Prod,div
-     INTEGER :: i,j,c,p,q,t,dim,NBasis
-     REAL(KIND=dp) :: LoadatIp,Cmu,Rho,mu,Tmu,Effmu
+    REAL(KIND=dp), POINTER :: RhoVec(:), MuVec(:)
 
-     REAL(KIND=dp) :: s,u,v,w,Strain(3,3), Vorticity(3,3), dist
+    REAL(KIND=dp), ALLOCATABLE :: VeloNodal(:,:), TmuNodal(:), DistNodal(:)
+    REAL(KIND=dp), ALLOCATABLE :: VeloVec(:,:), dVelodxVec(:,:,:), TmuVec(:), &
+        GradTmuVec(:,:), DistVec(:), StrainVec(:,:,:), VorticityVec(:,:,:), &
+        StrainMeasureVec(:), VorticityMeasureVec(:), XiVec(:), fw1Vec(:), &
+        fw2Vec(:), StVec(:), rVec(:), gVec(:), fwVec(:), EffmuVec(:), &
+        ReactCoeffVec(:), LoadVec(:), EffVeloVec(:,:), StreamVec(:,:), &
+        TauVec(:), TmpVec(:)
 
-     REAL(KIND=dp) :: StrainMeasure,VorticityMeasure,X,Y,Z,Sigma, &
-        GradTmu(3), Cw1,Cw2,Cw3,fw,fw1,fw2,Cb1,Cb2,Cb3,St,Xi,Cv1,g,r
-
-     REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
-
-     LOGICAL :: stat
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
+    REAL(KIND=dp) :: Cb1,Cb2,Cv1,Sigma,Cw1,Cw2,Cw3,hK,mK,VNorm
+    INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
+    LOGICAL :: Stat, Found
 !------------------------------------------------------------------------------
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
 
-     dim = CoordinateSystemDimension()
+    ASSOCIATE( Visc_h => SAHandles(tid) % Visc_h, Dens_h => SAHandles(tid) % Dens_h )
 
-     Viscosity(1:n) = GetReal( Material, 'Viscosity' )
-     Density(1:n) = GetReal( Material, 'Density' )
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( Visc_h,'Material','Viscosity' )
+      CALL ListInitElementKeyword( Dens_h,'Material','Density' )
+      InitHandles = .FALSE.
+    END IF
 
-     CALL GetScalarLocalSolution( UX, 'Velocity 1' )
-     CALL GetScalarLocalSolution( UY, 'Velocity 2' )
-     CALL GetScalarLocalSolution( UZ, 'Velocity 3' )
+    dim = CoordinateSystemDimension()
 
-     CALL GetScalarLocalSolution( TViscosity )
-     CALL GetScalarLocalSolution( Distance, 'Wall Distance' )
+    ! nd is the RETAINED (nodal/edge/face) dof count, exactly
+    ! GetElementNOFDOFs()'s own meaning -- nb (p-bubble) dofs are separate.
+    ! The test/trial basis actually used in the local matrix spans both, so
+    ! everything below sized off the bubble-augmented total uses ntot, while
+    ! CondensateP/CondensatePTransient (which need to know where the retained
+    ! block ends) still get nd and nb apart. Mirrors the legacy driver's own
+    ! "nd+nb" passed into LocalMatrix's "nd" parameter
+    ! (Spalart-AllmarasLegacy.F90) and IncompressibleNS's ntot=nd+nb passed
+    ! alongside its own plain nd.
+    ntot = nd + nb
 
-     FORCE = 0.0_dp
-     STIFF = 0.0_dp
-     MASS  = 0.0_dp
+    IP = GaussPointsAdapt( Element )
+    ngp = IP % n
 
-     NBasis = nd
+    ALLOCATE( BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
+        MASS(ntot,ntot), STIFF(ntot,ntot), FORCE(ntot), TimeForce(ntot), &
+        VeloNodal(3,n), TmuNodal(n), DistNodal(n), &
+        VeloVec(ngp,3), dVelodxVec(ngp,3,3), TmuVec(ngp), GradTmuVec(ngp,3), &
+        DistVec(ngp), StrainVec(ngp,3,3), VorticityVec(ngp,3,3), &
+        StrainMeasureVec(ngp), VorticityMeasureVec(ngp), XiVec(ngp), &
+        fw1Vec(ngp), fw2Vec(ngp), StVec(ngp), rVec(ngp), gVec(ngp), &
+        fwVec(ngp), EffmuVec(ngp), ReactCoeffVec(ngp), LoadVec(ngp), &
+        EffVeloVec(ngp,3), StreamVec(ngp,ntot), TauVec(ngp), TmpVec(ngp), &
+        STAT=allocstat )
+    IF( allocstat /= 0 ) CALL Fatal('SpalartAllmaras','Local storage allocation failed')
 
-!------------------------------------------------------------------------------
-!    Integration stuff
-!------------------------------------------------------------------------------
-     IF ( Bubbles ) THEN
-        IntegStuff = GaussPoints( element, element % Type % GaussPoints2 )
-     ELSE
-        IntegStuff = GaussPoints( element )
-     END IF
+    CALL GetElementNodesVec( Nodes, UElement=Element )
 
-!------------------------------------------------------------------------------
-!    Now we start integrating
-!------------------------------------------------------------------------------
-     DO t=1,IntegStuff % n
-       u = IntegStuff % u(t)
-       v = IntegStuff % v(t)
-       w = IntegStuff % w(t)
-!------------------------------------------------------------------------------
-!      Basis function values & derivatives at the integration point
-!------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,detJ, &
-             Basis,dBasisdx,Bubbles=Bubbles )
-!------------------------------------------------------------------------------
-!      Coordinatesystem dependent info
-!------------------------------------------------------------------------------
-       s = detJ * IntegStuff % s(t)
-       IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-         x = SUM( Nodes % x(1:n)*Basis(1:n) )
-         y = SUM( Nodes % y(1:n)*Basis(1:n) )
-         z = SUM( nodes % z(1:n)*Basis(1:n) )
-         CALL CoordinateSystemInfo(Metric,SqrtMetric,Symb,dSymb,X,Y,Z)
-         s = s * SqrtMetric
-       END IF
+    MASS = 0._dp; STIFF = 0._dp; FORCE = 0._dp
 
-!      Velocity from previous iteration at the integration point
-!------------------------------------------------------------------------------
-       Velo = 0.0_dp
-       Velo(1) = SUM( UX(1:n)*Basis(1:n) )
-       Velo(2) = SUM( UY(1:n)*Basis(1:n) )
-       Velo(3) = SUM( UZ(1:n)*Basis(1:n) )
+    stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, DetJVec, &
+        SIZE(BasisVec,2), BasisVec, dBasisdxVec )
+    DetJVec(1:ngp) = DetJVec(1:ngp) * IP % s(1:ngp)
 
-       dVelodx = 0.0_dp
-       DO i=1,dim
-         dVelodx(1,i) = SUM( UX(1:n)*dBasisdx(1:n,i) )
-         dVelodx(2,i) = SUM( UY(1:n)*dBasisdx(1:n,i) )
-         dVelodx(3,i) = SUM( UZ(1:n)*dBasisdx(1:n,i) )
-       END DO
+    ! Nodal input fields, at the n element corner nodes -- exactly the arrays
+    ! the legacy LocalMatrix samples (UX/UY/UZ/Tviscosity/Distance are all
+    ! declared (n), not (nd), there too): a p-bubble mode never participates
+    ! in the closure-law evaluation, only in the test/trial basis.
+    VeloNodal = 0._dp
+    CALL GetScalarLocalSolution( VeloNodal(1,1:n), 'Velocity 1', UElement=Element )
+    CALL GetScalarLocalSolution( VeloNodal(2,1:n), 'Velocity 2', UElement=Element )
+    IF( dim == 3 ) CALL GetScalarLocalSolution( VeloNodal(3,1:n), 'Velocity 3', UElement=Element )
 
-       IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-         Strain  = 0.5_dp * (dVelodx + TRANSPOSE(dVelodx))
-         StrainMeasure = SQRT(2 * SUM(Strain * Strain))
+    CALL GetScalarLocalSolution( TmuNodal, UElement=Element )
+    CALL GetScalarLocalSolution( DistNodal, 'Wall Distance', UElement=Element )
 
-         Vorticity = 0.5_dp * (dVelodx - TRANSPOSE(dVelodx))
-         VorticityMeasure = SQRT(2 * SUM(Vorticity * Vorticity))
-       ELSE
-         StrainMeasure = SQRT(SecondInvariant( Velo,dVelodx,Metric,Symb )/2)
-       END IF
+    RhoVec => ListGetElementRealVec( Dens_h, ngp, BasisVec, Element, Found )
+    MuVec  => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element, Found )
 
-!------------------------------------------------------------------------------
+    VeloVec = 0._dp
+    DO i=1,dim
+      VeloVec(1:ngp,i) = MATMUL( BasisVec(1:ngp,1:n), VeloNodal(i,1:n) )
+    END DO
 
-       Tmu = SUM( Tviscosity(1:n) * Basis(1:n) )
-       DO i=1,dim
-         GradTmu(i) = SUM( Tviscosity(1:n) * dBasisdx(1:n,i) )
-       END DO
+    dVelodxVec = 0._dp
+    DO i=1,dim
+      DO k=1,dim
+        dVelodxVec(1:ngp,i,k) = MATMUL( dBasisdxVec(1:ngp,1:n,k), VeloNodal(i,1:n) )
+      END DO
+    END DO
 
-       mu   = SUM( Viscosity(1:n) * Basis(1:n) )
-       rho  = SUM( Density(1:n) * Basis(1:n) )
-       dist = MAX( SUM( Distance(1:n) * Basis(1:n) ), 1.0d-10 )
+    TmuVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), TmuNodal(1:n) )
 
-       Cb1 = 0.1355_dp
-       Cb2 = 0.6220_dp
-       Cv1 = 7.1_dp
-       Sigma = 2._dp/3._dp
+    GradTmuVec = 0._dp
+    DO k=1,dim
+      GradTmuVec(1:ngp,k) = MATMUL( dBasisdxVec(1:ngp,1:n,k), TmuNodal(1:n) )
+    END DO
 
-       ! Rotation and curvature correction of Schweighofer & Helsten; NOT IN USE
-       ! -----------------------------------------------------------------------
-!      r = VorticityMeasure/StrainMeasure*(VorticityMeasure/StrainMeasure-1)
-!      r = 1._dp / (1+3.6_dp*r)
-       r = 1._dp
-       Cw1 = r*(Cb1/0.41_dp**2 + (1+Cb2)/Sigma)
+    DistVec(1:ngp) = MAX( MATMUL( BasisVec(1:ngp,1:n), DistNodal(1:n) ), 1.0d-10 )
 
-       Cw2 = 0.3_dp
-       Cw3 = 2.0_dp
+    ! Strain-rate / vorticity tensors and their (Frobenius) measures, Cartesian
+    ! only -- mirrors the legacy CurrentCoordinateSystem()==Cartesian branch.
+    StrainVec = 0._dp; VorticityVec = 0._dp
+    DO i=1,dim
+      DO k=1,dim
+        StrainVec(1:ngp,i,k)    = 0.5_dp*( dVelodxVec(1:ngp,i,k) + dVelodxVec(1:ngp,k,i) )
+        VorticityVec(1:ngp,i,k) = 0.5_dp*( dVelodxVec(1:ngp,i,k) - dVelodxVec(1:ngp,k,i) )
+      END DO
+    END DO
 
-       Xi  = Tmu/(mu/rho)
-       fw1 = Xi**3 / (Xi**3 + Cv1**3)
-       fw2 = 1 - Xi / ( 1+Xi*fw1 )
+    StrainMeasureVec = 0._dp; VorticityMeasureVec = 0._dp
+    DO i=1,dim
+      DO k=1,dim
+        StrainMeasureVec(1:ngp)    = StrainMeasureVec(1:ngp)    + StrainVec(1:ngp,i,k)**2
+        VorticityMeasureVec(1:ngp) = VorticityMeasureVec(1:ngp) + VorticityVec(1:ngp,i,k)**2
+      END DO
+    END DO
+    StrainMeasureVec(1:ngp)    = SQRT( 2._dp*StrainMeasureVec(1:ngp) )
+    VorticityMeasureVec(1:ngp) = SQRT( 2._dp*VorticityMeasureVec(1:ngp) )
 
-       St = VorticityMeasure + 2 * MIN(0.0_dp, StrainMeasure-VorticityMeasure)
-       St = St + Tmu / dist**2 / 0.41_dp**2 * fw2
+    ! Spalart-Allmaras closure coefficients -- same constants and formulas as
+    ! Spalart-AllmarasLegacy.F90's LocalMatrix, just evaluated for all ngp
+    ! points at once via array syntax instead of one point at a time. The
+    ! rotation and curvature correction is left out here exactly as it is
+    ! there (r=1, "NOT IN USE").
+    Cb1 = 0.1355_dp; Cb2 = 0.6220_dp; Cv1 = 7.1_dp; Sigma = 2._dp/3._dp
+    Cw1 = Cb1/0.41_dp**2 + (1._dp+Cb2)/Sigma
+    Cw2 = 0.3_dp; Cw3 = 2.0_dp
 
-       r  = Tmu / MAX( St, 1.0d-10 ) / 0.41_dp**2 / dist**2
-       g  = r + Cw2 * (r**6-r)
-       fw = g*((1+Cw3**6)/(g**6+Cw3**6))**(1._dp/6._dp)
+    XiVec(1:ngp)  = TmuVec(1:ngp) / ( MuVec(1:ngp)/RhoVec(1:ngp) )
+    fw1Vec(1:ngp) = XiVec(1:ngp)**3 / ( XiVec(1:ngp)**3 + Cv1**3 )
+    fw2Vec(1:ngp) = 1._dp - XiVec(1:ngp) / ( 1._dp + XiVec(1:ngp)*fw1Vec(1:ngp) )
 
-       Effmu = (mu + rho*Tmu)/Sigma
-!------------------------------------------------------------------------------
-!      Loop over basis functions of both unknowns and weights
-!------------------------------------------------------------------------------
-       DO p=1,NBasis
-       DO q=1,NBasis
-          M = 0.0d0
-          A = 0.0d0
+    StVec(1:ngp) = VorticityMeasureVec(1:ngp) + &
+        2._dp*MIN( 0._dp, StrainMeasureVec(1:ngp) - VorticityMeasureVec(1:ngp) )
+    StVec(1:ngp) = StVec(1:ngp) + TmuVec(1:ngp)/DistVec(1:ngp)**2/0.41_dp**2*fw2Vec(1:ngp)
 
-          M = rho * Basis(q) * Basis(p)
-          A = A - rho * Cb1 * St * Basis(q) * Basis(p)/4
-          A = A + rho * Cw1 * fw * Tmu / dist**2 * Basis(q) * Basis(p)
-!------------------------------------------------------------------------------
-!         The diffusion term
-!------------------------------------------------------------------------------
-          IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-             DO i=1,dim
-               A = A + Effmu * dBasisdx(q,i) * dBasisdx(p,i) 
-             END DO
-          ELSE
-             DO i=1,dim
-               DO j=1,dim
-                  A = A + Metric(i,j) * Effmu * dBasisdx(q,i) * dBasisdx(p,j)
-               END DO
-             END DO
-          END IF
+    rVec(1:ngp) = TmuVec(1:ngp) / MAX(StVec(1:ngp),1.0d-10) / 0.41_dp**2 / DistVec(1:ngp)**2
+    gVec(1:ngp) = rVec(1:ngp) + Cw2*( rVec(1:ngp)**6 - rVec(1:ngp) )
+    fwVec(1:ngp) = gVec(1:ngp) * ( (1._dp+Cw3**6) / (gVec(1:ngp)**6+Cw3**6) )**(1._dp/6._dp)
 
-!------------------------------------------------------------------------------
-!           The convection term
-!------------------------------------------------------------------------------
-          DO i=1,dim
-            A = A + rho * (Velo(i)-Cb2*GradTmu(i)/Sigma) * dBasisdx(q,i) * Basis(p)
-          END DO
+    EffmuVec(1:ngp) = ( MuVec(1:ngp) + RhoVec(1:ngp)*TmuVec(1:ngp) ) / Sigma
 
-          MASS(p,q)  = MASS(p,q)  + s*M
-          STIFF(p,q) = STIFF(p,q) + s*A
-        END DO
-        END DO
+    ! Reaction term (production - destruction, linearized about the previous
+    ! iterate) and the RHS load, exactly as the legacy A/LoadAtIp terms.
+    ReactCoeffVec(1:ngp) = RhoVec(1:ngp) * ( -Cb1*StVec(1:ngp)/4._dp + &
+        Cw1*fwVec(1:ngp)*TmuVec(1:ngp)/DistVec(1:ngp)**2 )
 
-        ! Load at the integration point:
-        !-------------------------------
-        LoadAtIp = 3._dp*rho * Cb1 * St * Tmu/4
+    LoadVec(1:ngp) = 3._dp*RhoVec(1:ngp)*Cb1*StVec(1:ngp)*TmuVec(1:ngp)/4._dp
 
-!------------------------------------------------------------------------------
-        DO p=1,NBasis
-          FORCE(p) = FORCE(p)+s*LoadAtIp*Basis(p)
+    ! Effective convection velocity: Velo - (Cb2/Sigma)*grad(Tmu).
+    EffVeloVec = 0._dp
+    DO i=1,dim
+      EffVeloVec(1:ngp,i) = VeloVec(1:ngp,i) - (Cb2/Sigma)*GradTmuVec(1:ngp,i)
+    END DO
+
+    ! MASS(p,q) = (rho*Basis(q), Basis(p))
+    CALL LinearForms_UdotU( ngp, ntot, dim, BasisVec, DetJVec, MASS, RhoVec )
+
+    ! STIFF(p,q) += (reaction coefficient * Basis(q), Basis(p))
+    CALL LinearForms_UdotU( ngp, ntot, dim, BasisVec, DetJVec, STIFF, ReactCoeffVec )
+
+    ! STIFF(p,q) += (Effmu * grad Basis(q), grad Basis(p))  -- diffusion
+    CALL LinearForms_GradUdotGradU( ngp, ntot, dim, dBasisdxVec, DetJVec, STIFF, EffmuVec )
+
+    ! STIFF(p,q) += (rho*EffVelo . grad Basis(q), Basis(p))  -- convection
+    CALL LinearForms_GradUdotU( ngp, ntot, dim, dBasisdxVec, BasisVec, DetJVec, STIFF, &
+        RhoVec, EffVeloVec )
+
+    ! FORCE(p) += (LoadAtIp, Basis(p))
+    CALL LinearForms_UdotF( ngp, ntot, BasisVec, DetJVec, LoadVec, FORCE )
+
+    !------------------------------------------------------------------------
+    ! SUPG (equal-order) stabilization, opt-in via "Stabilize"/"Stabilization
+    ! Method" (see GetStabilizeFlag). Same Franca et al. tau construction and
+    ! streamline-weighted test function as HeatSolve.F90's own Vec SUPG
+    ! block, adapted to this equation's coefficients: rho multiplies both the
+    ! time derivative and the convection term here (rho*cp does in Heat), and
+    ! Effmu is the diffusion coefficient (Heat Conductivity there). Like
+    ! HeatSolve's version, the reaction term (ReactCoeffVec) is left out of
+    ! the streamline residual -- it is not needed for the pure convection-
+    ! diffusion stability mechanism SUPG targets, and keeping it out matches
+    ! the precedent (HeatSolve drops its own C0/reaction piece for the same
+    ! reason).
+    !------------------------------------------------------------------------
+    IF( Stabilize ) THEN
+      hK = Element % hK
+      mK = Element % StabilizationMK
+
+      ! Streamline-weighted trial/test "basis": rho*(EffVelo . grad Basis(p))
+      StreamVec(1:ngp,1:ntot) = 0._dp
+      DO i=1,dim
+        DO p=1,ntot
+          StreamVec(1:ngp,p) = StreamVec(1:ngp,p) + &
+              RhoVec(1:ngp) * EffVeloVec(1:ngp,i) * dBasisdxVec(1:ngp,p,i)
         END DO
       END DO
+
+      DO j=1,ngp
+        VNorm = SQRT( SUM( EffVeloVec(j,1:dim)**2 ) )
+        IF( VNorm > 0._dp .AND. EffmuVec(j) /= 0._dp ) THEN
+          TauVec(j) = MIN( 1._dp, mK*hK*RhoVec(j)*VNorm / (2._dp*ABS(EffmuVec(j))) )
+          TauVec(j) = hK * TauVec(j) / ( 2._dp * RhoVec(j) * VNorm )
+        ELSE
+          TauVec(j) = 0._dp
+        END IF
+      END DO
+
+      ! STIFF(p,q) += tau*(StreamVec(q), StreamVec(p))
+      TmpVec(1:ngp) = TauVec(1:ngp) * DetJVec(1:ngp)
+      CALL LinearForms_UdotV( ngp, ntot, dim, StreamVec, StreamVec, TmpVec, STIFF )
+
+      ! FORCE(p) += tau*(LoadAtIp, StreamVec(p))
+      CALL LinearForms_UdotF( ngp, ntot, StreamVec, TmpVec, LoadVec, FORCE )
+
+      IF( Transient ) THEN
+        ! MASS(p,q) += tau*rho*(Basis(q), StreamVec(p))
+        TmpVec(1:ngp) = TauVec(1:ngp) * RhoVec(1:ngp) * DetJVec(1:ngp)
+        CALL LinearForms_UdotV( ngp, ntot, dim, StreamVec, BasisVec, TmpVec, MASS )
+      END IF
+    END IF
+
+    !------------------------------------------------------------------------
+    ! Time discretization and p-bubble condensation -- mirrors the nb>0
+    ! branch of Spalart-AllmarasLegacy.F90's driver exactly (no legacy
+    ! "Bubbles" per-node scheme here, see the file header).
+    !------------------------------------------------------------------------
+    TimeForce = 0._dp
+    IF( nb > 0 ) THEN
+      IF( Transient .AND. .NOT. GlobalBubbles ) THEN
+        ALLOCATE( LocalTV(nd), PrevTV(nd) )
+        CALL GetScalarLocalSolution( LocalTV, UElement=Element )
+        CALL GetScalarLocalSolution( PrevTV, UElement=Element, tStep=-1 )
+        boff = (Element % ElementIndex - 1) * bxStride
+        CALL CondensatePTransient( nd, nb, 1, dt, MASS, STIFF, FORCE, &
+            PrevTV(1:nd), LocalTV(1:nd), &
+            bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+      ELSE
+        IF( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
+        CALL CondensateP( nd, nb, STIFF, FORCE, TimeForce )
+      END IF
+    ELSE
+      IF( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
+    END IF
+
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE. )
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
-   END SUBROUTINE LocalMatrix
+  END SUBROUTINE LocalMatrixVec
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-  END SUBROUTINE SpalartAllmaras
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Initialization for the primary solver: SpalartAllmaras
+!> Scalar, coordinate-system-aware fallback for what LocalMatrixVec cannot
+!> do: axisymmetric/cylindrical coordinates (the ElementKernel below carries
+!> the same metric-tensor branch as Spalart-AllmarasLegacy.F90's own
+!> LocalMatrix -- verbatim, no new math), and the legacy "Bubbles = True"
+!> per-node scheme for a plain nodal "Element" set explicitly. Always called
+!> serially (see the AxiSymmetric branch in SpalartAllmaras below), so it
+!> uses the classic GetMaterial()/GetReal()/argument-less GetElementNOF*()
+!> accessors exactly as the legacy driver does, relying on the same-thread
+!> "current element" state its own preceding GetActiveElement() call set --
+!> not safe to call from inside an OMP parallel region, unlike LocalMatrixVec.
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixScalar( Element, dt, Transient, GlobalBubbles, BubblesDefault )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), INTENT(IN) :: dt
+    LOGICAL, INTENT(IN) :: Transient, GlobalBubbles, BubblesDefault
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(ValueList_t), POINTER :: Material
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), LOAD(:,:), &
+        TimeForce(:), LocalTV(:), PrevTV(:)
+    LOGICAL :: Bubbles
+    INTEGER :: n, nd, nb, allocstat, boff
+!------------------------------------------------------------------------------
+    Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
+    Material => GetMaterial()
+
+    n  = GetElementNOFNodes()
+    nd = GetElementNOFDOFs()
+    IF ( Bubbles ) nd = 2*n
+    nb = GetElementNOFBDOFs()
+    CALL GetElementNodes( ElementNodes )
+
+    ALLOCATE( MASS(nd+nb,nd+nb), STIFF(nd+nb,nd+nb), FORCE(nd+nb), LOAD(1,n), &
+        TimeForce(nd+nb), LocalTV(nd+nb), PrevTV(nd+nb), STAT=allocstat )
+    IF( allocstat /= 0 ) CALL Fatal('SpalartAllmaras','Local storage allocation failed')
+
+    ! Legacy bubbles always need this (never gated on Solver % GlobalBubbles,
+    ! see below); a p-bubble needs it only when actually condensed locally --
+    ! same reasoning as Spalart-AllmarasLegacy.F90's driver.
+    IF ( Transient .AND. &
+        ( Bubbles .OR. ( nb > 0 .AND. .NOT. GlobalBubbles ) ) ) THEN
+      CALL GetScalarLocalSolution( LocalTV )
+      CALL GetScalarLocalSolution( PrevTV, tStep=-1 )
+    END IF
+
+    CALL ElementKernel( MASS, STIFF, FORCE, LOAD, Element, n, nd+nb, ElementNodes )
+
+    TimeForce = 0.0_dp
+    IF ( Bubbles ) THEN
+      IF ( Transient ) THEN
+        ! Same convention as the nb>0 branch below, just with "as many
+        ! bubbles as nodes" (Nb=n). DOFs=1 here, so no interleaving is needed.
+        boff = (Element % ElementIndex - 1) * bxStride
+        CALL CondensatePTransient( n, n, 1, dt, MASS, STIFF, FORCE, &
+            PrevTV(1:n), LocalTV(1:n), &
+            bxprev(boff+1:boff+n), bx(boff+1:boff+n) )
+      ELSE
+        IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
+        CALL Condensate( n, STIFF, FORCE, TimeForce )
+      END IF
+    ELSE IF ( nb > 0 ) THEN
+      IF ( Transient .AND. .NOT. GlobalBubbles ) THEN
+        boff = (Element % ElementIndex - 1) * bxStride
+        CALL CondensatePTransient( nd, nb, 1, dt, MASS, STIFF, FORCE, &
+            PrevTV(1:nd), LocalTV(1:nd), &
+            bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+      ELSE
+        IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
+        CALL CondensateP( nd, nb, STIFF, FORCE, TimeForce )
+      END IF
+    ELSE
+      IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
+    END IF
+
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+
+  CONTAINS
+
+!------------------------------------------------------------------------------
+!> Verbatim port of Spalart-AllmarasLegacy.F90's nested LocalMatrix: same
+!> per-Gauss-point scalar math, same metric-tensor (axisymmetric/cylindrical)
+!> branch, same closure-law formulas. "Bubbles" and "Material" come from the
+!> host (LocalMatrixScalar above), exactly as they did from the legacy
+!> driver's own host scope.
+!------------------------------------------------------------------------------
+    SUBROUTINE ElementKernel( MASS,STIFF,FORCE, LOAD, Element,n,nd,Nodes )
+!------------------------------------------------------------------------------
+      USE MaterialModels
+
+      IMPLICIT NONE
+
+      REAL(KIND=dp), DIMENSION(:)   :: FORCE
+      REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
+
+      INTEGER :: n, nd
+
+      TYPE(Nodes_t) :: Nodes
+      TYPE(Element_t) :: Element
+!------------------------------------------------------------------------------
+      REAL(KIND=dp) :: ddBasisddx(nd,3,3)
+      REAL(KIND=dp) :: Basis(nd)
+      REAL(KIND=dp) :: dBasisdx(nd,3),detJ
+
+      REAL(KIND=dp) :: UX(n), UY(n), UZ(n), Velo(3), dVelodx(3,3),Tviscosity(n), &
+                       Distance(n), Density(n), Viscosity(n)
+
+      REAL(KIND=dp) :: A,M,Prod,div
+      INTEGER :: i,j,c,p,q,t,dim,NBasis
+      REAL(KIND=dp) :: LoadatIp,Cmu,Rho,mu,Tmu,Effmu
+
+      REAL(KIND=dp) :: s,u,v,w,Strain(3,3), Vorticity(3,3), dist
+
+      REAL(KIND=dp) :: StrainMeasure,VorticityMeasure,X,Y,Z,Sigma, &
+         GradTmu(3), Cw1,Cw2,Cw3,fw,fw1,fw2,Cb1,Cb2,Cb3,St,Xi,Cv1,g,r
+
+      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
+
+      LOGICAL :: stat
+      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+!------------------------------------------------------------------------------
+      dim = CoordinateSystemDimension()
+
+      Viscosity(1:n) = GetReal( Material, 'Viscosity' )
+      Density(1:n) = GetReal( Material, 'Density' )
+
+      CALL GetScalarLocalSolution( UX, 'Velocity 1' )
+      CALL GetScalarLocalSolution( UY, 'Velocity 2' )
+      CALL GetScalarLocalSolution( UZ, 'Velocity 3' )
+
+      CALL GetScalarLocalSolution( TViscosity )
+      CALL GetScalarLocalSolution( Distance, 'Wall Distance' )
+
+      FORCE = 0.0_dp
+      STIFF = 0.0_dp
+      MASS  = 0.0_dp
+
+      NBasis = nd
+
+      IF ( Bubbles ) THEN
+         IntegStuff = GaussPoints( element, element % Type % GaussPoints2 )
+      ELSE
+         IntegStuff = GaussPoints( element )
+      END IF
+
+      DO t=1,IntegStuff % n
+        u = IntegStuff % u(t)
+        v = IntegStuff % v(t)
+        w = IntegStuff % w(t)
+        stat = ElementInfo( Element,Nodes,u,v,w,detJ, &
+              Basis,dBasisdx,Bubbles=Bubbles )
+
+        s = detJ * IntegStuff % s(t)
+        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+          x = SUM( Nodes % x(1:n)*Basis(1:n) )
+          y = SUM( Nodes % y(1:n)*Basis(1:n) )
+          z = SUM( nodes % z(1:n)*Basis(1:n) )
+          CALL CoordinateSystemInfo(Metric,SqrtMetric,Symb,dSymb,X,Y,Z)
+          s = s * SqrtMetric
+        END IF
+
+        Velo = 0.0_dp
+        Velo(1) = SUM( UX(1:n)*Basis(1:n) )
+        Velo(2) = SUM( UY(1:n)*Basis(1:n) )
+        Velo(3) = SUM( UZ(1:n)*Basis(1:n) )
+
+        dVelodx = 0.0_dp
+        DO i=1,dim
+          dVelodx(1,i) = SUM( UX(1:n)*dBasisdx(1:n,i) )
+          dVelodx(2,i) = SUM( UY(1:n)*dBasisdx(1:n,i) )
+          dVelodx(3,i) = SUM( UZ(1:n)*dBasisdx(1:n,i) )
+        END DO
+
+        IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+          Strain  = 0.5_dp * (dVelodx + TRANSPOSE(dVelodx))
+          StrainMeasure = SQRT(2 * SUM(Strain * Strain))
+
+          Vorticity = 0.5_dp * (dVelodx - TRANSPOSE(dVelodx))
+          VorticityMeasure = SQRT(2 * SUM(Vorticity * Vorticity))
+        ELSE
+          StrainMeasure = SQRT(SecondInvariant( Velo,dVelodx,Metric,Symb )/2)
+        END IF
+
+        Tmu = SUM( Tviscosity(1:n) * Basis(1:n) )
+        DO i=1,dim
+          GradTmu(i) = SUM( Tviscosity(1:n) * dBasisdx(1:n,i) )
+        END DO
+
+        mu   = SUM( Viscosity(1:n) * Basis(1:n) )
+        rho  = SUM( Density(1:n) * Basis(1:n) )
+        dist = MAX( SUM( Distance(1:n) * Basis(1:n) ), 1.0d-10 )
+
+        Cb1 = 0.1355_dp
+        Cb2 = 0.6220_dp
+        Cv1 = 7.1_dp
+        Sigma = 2._dp/3._dp
+
+        ! Rotation and curvature correction of Schweighofer & Helsten; NOT IN USE
+        r = 1._dp
+        Cw1 = r*(Cb1/0.41_dp**2 + (1+Cb2)/Sigma)
+
+        Cw2 = 0.3_dp
+        Cw3 = 2.0_dp
+
+        Xi  = Tmu/(mu/rho)
+        fw1 = Xi**3 / (Xi**3 + Cv1**3)
+        fw2 = 1 - Xi / ( 1+Xi*fw1 )
+
+        St = VorticityMeasure + 2 * MIN(0.0_dp, StrainMeasure-VorticityMeasure)
+        St = St + Tmu / dist**2 / 0.41_dp**2 * fw2
+
+        r  = Tmu / MAX( St, 1.0d-10 ) / 0.41_dp**2 / dist**2
+        g  = r + Cw2 * (r**6-r)
+        fw = g*((1+Cw3**6)/(g**6+Cw3**6))**(1._dp/6._dp)
+
+        Effmu = (mu + rho*Tmu)/Sigma
+
+        DO p=1,NBasis
+        DO q=1,NBasis
+           M = 0.0d0
+           A = 0.0d0
+
+           M = rho * Basis(q) * Basis(p)
+           A = A - rho * Cb1 * St * Basis(q) * Basis(p)/4
+           A = A + rho * Cw1 * fw * Tmu / dist**2 * Basis(q) * Basis(p)
+
+           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+              DO i=1,dim
+                A = A + Effmu * dBasisdx(q,i) * dBasisdx(p,i)
+              END DO
+           ELSE
+              DO i=1,dim
+                DO j=1,dim
+                   A = A + Metric(i,j) * Effmu * dBasisdx(q,i) * dBasisdx(p,j)
+                END DO
+              END DO
+           END IF
+
+           DO i=1,dim
+             A = A + rho * (Velo(i)-Cb2*GradTmu(i)/Sigma) * dBasisdx(q,i) * Basis(p)
+           END DO
+
+           MASS(p,q)  = MASS(p,q)  + s*M
+           STIFF(p,q) = STIFF(p,q) + s*A
+         END DO
+         END DO
+
+         LoadAtIp = 3._dp*rho * Cb1 * St * Tmu/4
+
+         DO p=1,NBasis
+           FORCE(p) = FORCE(p)+s*LoadAtIp*Basis(p)
+         END DO
+       END DO
+!------------------------------------------------------------------------------
+    END SUBROUTINE ElementKernel
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixScalar
+!------------------------------------------------------------------------------
+
+END MODULE SpalartAllmarasLocalForms
+
+
+!------------------------------------------------------------------------------
+!> Vectorized/threaded Spalart-Allmaras driver. See the file header above for
+!> what this does and does not support, and "Legacy Assembly" for the fallback.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-   SUBROUTINE SpalartAllmaras_Init( Model,Solver,dt,TransientSimulation )
+SUBROUTINE SpalartAllmaras( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-     USE DefUtils
-
-     IMPLICIT NONE
+  USE SpalartAllmarasLocalForms
+  USE SpalartAllmarasFront
+  IMPLICIT NONE
 !------------------------------------------------------------------------------
-     TYPE(Model_t)  :: Model
-     TYPE(Solver_t) :: Solver
-
-     REAL(KIND=dp) :: dt
-     LOGICAL :: TransientSimulation
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: SolverParams
-     LOGICAL :: Found, PBubble, LegacyBubbles
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
+  TYPE(Variable_t), POINTER :: KE
+  TYPE(Element_t), POINTER :: Element
+  TYPE(ValueList_t), POINTER :: BC
+  INTEGER :: i,k,n,nb,nd,Active,iter,NonlinearIter,nthr
+  LOGICAL :: GotIt, InitHandles, GlobalBubbles, Stabilize, AxiSymmetric, BubblesDefault
+  REAL(KIND=dp) :: Norm, KVal
+  CHARACTER(*), PARAMETER :: Caller = 'SpalartAllmaras'
 !------------------------------------------------------------------------------
-     SolverParams => GetSolverParams()
+  IF ( LegacyAssembly( Solver ) ) THEN
+    CALL DelegateToSpalartAllmarasLegacy( 'SpalartAllmarasLegacy', Model, Solver, dt, TransientSimulation )
+    RETURN
+  END IF
 
-     ! Everything below is specific to a p-element bubble ("Element =
-     ! p:.. b:.."); the legacy "Stabilization Method = Bubbles" path (no
-     ! "Element" override) doesn't go through GetElementNOFBDOFs'
-     ! Solver % GlobalBubbles branch at all, so touching the list there would
-     ! be a no-op at best and, via bandwidth optimization/mesh-level bubble
-     ! DOF bookkeeping that DOES consult Solver % GlobalBubbles regardless of
-     ! which bubble path a solver actually uses, a real (if tiny) unintended
-     ! perturbation at worst -- see the matching comment and diffuser_v2f
-     ! regression in KESolver_Init, which caught this the same way.
-     str = ListGetString( SolverParams,'Element', Found )
-     PBubble = .FALSE.
-     IF ( Found ) PBubble = INDEX( str, 'b:' ) > 0
+  IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
-     IF ( PBubble ) THEN
-       ! Left in the global system a bubble mode is a free per-element
-       ! unknown driven by strongly nonlinear reaction terms, with no
-       ! neighboring element to diffuse against and no floor. Condense it
-       ! out locally by default instead, like KESolver_Init and
-       ! IncompressibleNSVec already do for their own bubbles;
-       ! CondensatePTransient below makes that choice work for transient
-       ! runs too. ListAddNew, so an explicit sif setting still wins.
-       CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)
+  KE => Solver % Variable
+  IF ( .NOT. ASSOCIATED(KE) ) RETURN
+  IF ( COUNT( KE % Perm > 0 ) <= 0 ) RETURN
 
-       ! The recovery of a transient condensed bubble (see bx/bxprev and
-       ! CondensatePTransient in SpalartAllmaras, mirroring
-       ! IncompressibleNSVec's own bx/bxprev, and the identical logic in
-       ! KESolver_Init) needs at least TWO solves within one timestep.
-       ! Only relevant where a bubble is actually condensed out.
-       IF ( TransientSimulation .AND. &
-            .NOT. ListGetLogical(SolverParams,'Bubbles in Global System',Found) ) THEN
-         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Min Iterations', 2)
-         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Max Iterations', 2)
-       END IF
-     ELSE IF ( TransientSimulation ) THEN
-       ! No p-element bubble configured. The legacy "Bubbles = True" path
-       ! condenses out one bubble per node unconditionally, and needs the
-       ! very same two-solve minimum as the p-bubble case above, for the
-       ! same reason. Mirrors the "BubblesDefault" resolution used in
-       ! SpalartAllmaras itself.
-       LegacyBubbles = ListGetLogical( SolverParams, 'Bubbles', Found )
-       IF ( .NOT. Found ) LegacyBubbles = .TRUE.
+  ! LocalMatrixVec has no metric tensor; axisymmetric/cylindrical cases go
+  ! through the scalar LocalMatrixScalar fallback instead, serially -- same
+  ! branch HeatSolve.F90 makes between its own LocalMatrixVec/LocalMatrix.
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
 
-       IF ( LegacyBubbles ) THEN
-         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Min Iterations', 2)
-         CALL ListAddNewInteger(SolverParams, 'Nonlinear System Max Iterations', 2)
-       END IF
-     END IF
+  IF (.NOT. ALLOCATED(SAHandles)) THEN
+    nthr = 1
+    !$ nthr = OMP_GET_MAX_THREADS()
+    ALLOCATE(SAHandles(nthr))
+  END IF
+
+  GlobalBubbles = Solver % GlobalBubbles
+  Stabilize = GetStabilizeFlag( Solver % Values, GotIt )
+
+  ! Only LocalMatrixScalar's legacy per-node branch uses this -- see the
+  ! matching BubblesDefault resolution in Spalart-AllmarasLegacy.F90.
+  BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
+  IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
+
+  IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
+    ! Stride covers both p-bubbles (MaxBDOFs, LocalMatrixVec/LocalMatrixScalar)
+    ! and LocalMatrixScalar's own legacy per-node bubbles (one per node,
+    ! MaxElementNodes) -- whichever is larger, exactly as
+    ! Spalart-AllmarasLegacy.F90 sizes its own bx/bxprev.
+    bxStride = MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
+    ALLOCATE( bx(bxStride*(Solver % Mesh % NumberOfBulkElements + &
+        Solver % Mesh % NumberOfBoundaryElements)), &
+        bxprev(bxStride*(Solver % Mesh % NumberOfBulkElements + &
+        Solver % Mesh % NumberOfBoundaryElements)) )
+    bx = 0._dp; bxprev = 0._dp
+  END IF
+
+  IF ( TransientSimulation .AND. ALLOCATED(bx) .AND. GetTimestep() /= BubbleTimestep ) THEN
+    bxprev = bx
+    BubbleTimestep = GetTimestep()
+  END IF
+
+  NonlinearIter = ListGetInteger( Solver % Values, 'Nonlinear System Max Iterations', GotIt )
+  IF ( .NOT.GotIt ) NonlinearIter = 1
+
+  DO i=1,Model % NumberOfBCs
+    BC => Model % BCs(i) % Values
+    IF ( ListGetLogical( BC, 'Noslip wall BC', gotit ) ) THEN
+      CALL ListAddConstReal( BC, 'Turbulent Viscosity', 0.0_dp )
+    END IF
+  END DO
+
+  DO iter=1,NonlinearIter
+    CALL Info(Caller,' ', Level=4)
+    CALL Info(Caller,' ', Level=4)
+    CALL Info(Caller,'-------------------------------------', Level=4)
+    CALL Info(Caller,'Spalart-Allmaras iteration: '//I2S(iter), Level=4)
+    CALL Info(Caller,'-------------------------------------', Level=4)
+
+    CALL DefaultInitialize()
+
+    Active = GetNOFActive()
+
+    IF ( AxiSymmetric ) THEN
+      ! Serial only: LocalMatrixScalar relies on the classic argument-less
+      ! Get*() "current element" accessors, exactly as
+      ! Spalart-AllmarasLegacy.F90's own driver does.
+      DO i=1,Active
+        Element => GetActiveElement(i)
+        CALL LocalMatrixScalar( Element, dt, TransientSimulation, GlobalBubbles, BubblesDefault )
+      END DO
+    ELSE
+      ! Element 1 serially, so a Fatal/Warn triggered while resolving handles
+      ! for the first time surfaces cleanly before any thread starts -- same
+      ! reasoning as IncompressibleNS's own element-1 pass.
+      InitHandles = .TRUE.
+      Element => GetActiveElement(1)
+      n  = GetElementNOFNodes(Element)
+      nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+      nd = GetElementNOFDOFs(Element)
+      CALL LocalMatrixVec( Element, n, nd, nb, dt, TransientSimulation, GlobalBubbles, Stabilize, InitHandles )
+
+      ! Each thread resolves its own handles rather than inheriting slot 1's --
+      ! see the matching comment in IncompressibleNS.F90 on why a shallow copy
+      ! of a ValueHandle_t (whose buffers are POINTERs) across threads is unsafe.
+      InitHandles = .TRUE.
+      !$OMP PARALLEL SHARED(Active, dt, TransientSimulation, GlobalBubbles, Stabilize) &
+      !$OMP          PRIVATE(Element, i, n, nd, nb) FIRSTPRIVATE(InitHandles) DEFAULT(NONE)
+      !$OMP DO
+      DO i=2,Active
+        Element => GetActiveElement(i)
+        n  = GetElementNOFNodes(Element)
+        nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+        nd = GetElementNOFDOFs(Element)
+        CALL LocalMatrixVec( Element, n, nd, nb, dt, TransientSimulation, GlobalBubbles, Stabilize, InitHandles )
+      END DO
+      !$OMP END DO
+      !$OMP END PARALLEL
+    END IF
+
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
+
+    Norm = DefaultSolve()
+
+    ! Turbulent viscosity should stay positive.
+    DO i=1,SIZE(Solver % Variable % Perm)
+      k = Solver % Variable % Perm(i)
+      IF ( k <= 0 ) CYCLE
+      KVal = Solver % Variable % Values(k)
+      Solver % Variable % Values(k) = MAX( KVal, 1.0d-12 )
+    END DO
+
+    IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
+  END DO
 !------------------------------------------------------------------------------
-   END SUBROUTINE SpalartAllmaras_Init
+END SUBROUTINE SpalartAllmaras
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Element-type resolution, called before the mesh/basis functions are
+!> finalized -- same role and timing as HeatSolver_Init0. Legacy's default
+!> ("Bubbles = True" whenever "Bubbles"/"Element" is left unset) stabilizes
+!> with a per-node bubble that needs no p-element setup at all; this file's
+!> only stabilization mechanisms (the p-element bubble, or SUPG) both DO need
+!> the mesh built with the right "Element" string, so that default has to be
+!> picked here, this early, rather than in SpalartAllmaras_Init below. Skipped
+!> under "Legacy Assembly", since that mode never uses either.
+!> \ingroup Solvers
+!------------------------------------------------------------------------------
+SUBROUTINE SpalartAllmaras_Init0( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE SpalartAllmarasFront
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Found, Serendipity, Stabilize
+!------------------------------------------------------------------------------
+  IF ( LegacyAssembly( Solver ) ) RETURN
+
+  Params => GetSolverParams()
+
+  ! Resolve whether the transport equation will be stabilized by SUPG
+  ! (equal-order, no bubble) or by a residual-free bubble (the default) --
+  ! same choice and same keyword as HeatSolver_Init0's.
+  Stabilize = GetStabilizeFlag( Params )
+
+  IF( .NOT. ListCheckPresent( Params,'Element' ) ) THEN
+    IF( Stabilize ) THEN
+      ! SUPG is the equal-order alternative to the bubble: a plain linear
+      ! nodal element on every family, no bubble to condense at all.
+      CALL ListAddNewString( Params,'Element','n:1' )
+    ELSE
+      Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found )
+      IF(.NOT.Found) Serendipity = .TRUE.
+      IF( Serendipity ) THEN
+        CALL ListAddString( Params,'Element', &
+            'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4' )
+      ELSE
+        CALL ListAddString( Params,'Element', &
+            'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4' )
+      END IF
+      CALL ListAddNewLogical( Params,'Bubbles in Global System',.FALSE. )
+    END IF
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE SpalartAllmaras_Init0
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Initialization for the primary solver: SpalartAllmaras. Under "Legacy
+!> Assembly", delegates to SpalartAllmarasLegacy_Init and returns -- the
+!> p-bubble setup below is specific to this file's own implementation.
+!> \ingroup Solvers
+!------------------------------------------------------------------------------
+SUBROUTINE SpalartAllmaras_Init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE SpalartAllmarasFront
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+  LOGICAL :: Found, PBubble
+  CHARACTER(LEN=MAX_NAME_LEN) :: str
+!------------------------------------------------------------------------------
+  IF ( LegacyAssembly( Solver ) ) THEN
+    CALL DelegateToSpalartAllmarasLegacy( 'SpalartAllmarasLegacy_Init', Model, Solver, dt, TransientSimulation )
+    RETURN
+  END IF
+
+  SolverParams => GetSolverParams()
+
+  IF ( ListGetLogical( SolverParams, 'Bubbles', Found ) ) THEN
+    CALL Warn('SpalartAllmaras_Init', &
+        '"Bubbles = True" (the legacy per-node scheme) is not used here -- '// &
+        'SpalartAllmaras_Init0 already defaulted "Element" to an equivalent '// &
+        'p-element bubble unless SUPG ("Stabilize"/"Stabilization Method") was '// &
+        'requested instead. Use "Legacy Assembly = Logical True" for the original '// &
+        'per-node scheme.')
+  END IF
+
+  ! Same reasoning as Spalart-AllmarasLegacy.F90's own Init: condense a
+  ! p-bubble out locally by default (ListAddNew, so an explicit sif setting
+  ! still wins), and a transient condensed bubble needs at least two solves
+  ! per timestep to recover its history -- see bx/bxprev and
+  ! CondensatePTransient above.
+  str = ListGetString( SolverParams,'Element', Found )
+  PBubble = .FALSE.
+  IF ( Found ) PBubble = INDEX( str, 'b:' ) > 0
+
+  IF ( PBubble ) THEN
+    CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)
+
+    IF ( TransientSimulation .AND. &
+         .NOT. ListGetLogical(SolverParams,'Bubbles in Global System',Found) ) THEN
+      CALL ListAddNewInteger(SolverParams, 'Nonlinear System Min Iterations', 2)
+      CALL ListAddNewInteger(SolverParams, 'Nonlinear System Max Iterations', 2)
+    END IF
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE SpalartAllmaras_Init
 !------------------------------------------------------------------------------

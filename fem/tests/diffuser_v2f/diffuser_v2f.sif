@@ -168,9 +168,18 @@ Boundary Condition 3
   Noslip Wall BC = Logical True
 End
 
-Solver 1 :: Reference Norm = 6.99222479E+01
+! Recalibrated for KESolver.F90 AND V2FSolver.F90 now both being the
+! vectorized/threaded solver by default: no "Element" line on either
+! solver, so their own _Init0 defaults each to an equivalent p-element
+! bubble instead of the old per-node one -- a different discretization
+! from the same physics, not a regression (see "Legacy Assembly" in either
+! file for the old exact numbers, and the matching note on Step_sa.sif's
+! own Reference Norm update). This value reflects both solvers migrated
+! together (recalibrated once already for KESolver alone, then shifted
+! again once V2FSolver's own default changed to match it).
+Solver 1 :: Reference Norm = 6.99200832E+01
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
-Solver 2 :: Reference Norm = 1.46283888E+03
+Solver 2 :: Reference Norm = 1.46282906E+03
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
-Solver 3 :: Reference Norm = 1.00883179E+01
+Solver 3 :: Reference Norm = 1.00889183E+01
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-4

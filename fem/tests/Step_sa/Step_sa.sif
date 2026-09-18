@@ -198,6 +198,11 @@ Boundary Condition 3
 End
 
 
-Solver 2 :: Reference Norm = Real 21.0436527
+! Recalibrated for Spalart-Allmaras.F90 now being the vectorized/threaded
+! solver by default: no "Element" line here, so SpalartAllmaras_Init0 defaults
+! to an equivalent p-element bubble instead of the old per-node one -- a
+! different discretization from the same physics, not a regression (see
+! "Legacy Assembly" in Spalart-Allmaras.F90 for the old exact numbers).
+Solver 2 :: Reference Norm = Real 21.0384522
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
 RUN
