@@ -43,11 +43,6 @@
  
 MODULE Smoothers
 
-  USE CRSMatrix
-  USE Lists
-  USE ParallelUtils
-  USE GeneralUtils, ONLY : ComplexValues
-
   IMPLICIT NONE
 
 CONTAINS
@@ -56,6 +51,16 @@ CONTAINS
     FUNCTION MGSmooth( Solver, A, Mesh, x, b, r, Level, DOFs, &
         PreSmooth, LowestSmooth, CF, SkipMask ) RESULT(RNorm)
 !------------------------------------------------------------------------------
+      USE CRSMatrix
+      USE Lists
+      USE SParIterGlobals, ONLY : ParEnv
+      USE SParIterComm, ONLY : SParIterActiveBarrier
+      USE ParallelUtils, ONLY : ParallelReduction, ParallelVector, &
+          ParallelNorm, ParallelMatrixVector, ParallelMatrixVectorC, &
+          ParallelMatrix, ParallelSumVector, ParallelDot, ParallelCNorm, &
+          ParallelCDotu, ParallelUpdateResult, ParallelUpdateSolve
+      !  USE GeneralUtils, ONLY : ComplexValues, GetVarName
+
       IMPLICIT NONE
 
       TYPE(Solver_t) :: Solver

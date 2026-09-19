@@ -195,6 +195,7 @@ END SUBROUTINE EMPortSolver_Init0
 SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE ParallelUtils, ONLY : ParallelCdot
   USE GeneralUtils, ONLY : ComplexVariableValues
   IMPLICIT NONE
 !------------------------------------------------------------------------------

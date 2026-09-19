@@ -46,6 +46,7 @@
 MODULE FetiSolve
 
   USE MeshBasics, ONLY : FindRigidBodyFixingNodes
+  USE ParallelUtils, ONLY : ParallelActiveBarrier, ParallelFinalize
   USE DefUtils
   IMPLICIT NONE
 

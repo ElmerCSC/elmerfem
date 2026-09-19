@@ -59,8 +59,9 @@ MODULE SolverBasics
        UpdateDependentComponents, ComponentNodalForceReduction
    USE TimeIntegrate
    USE ModelDescription
-   USE ParallelUtils !, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
-!                             ParallelMatrixVector, ParallelMatrix, ParallelOwnedPerm
+   USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
+       ParallelMatrixVector, ParallelMatrix, ParallelOwnedPerm, &
+       ParallelSumVector
    USE MeshBasics, ONLY : CommunicateParallelSystemTag, CylinderFit, &
        DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
        IntegralProjector, MakePermUsingMask

@@ -59,6 +59,7 @@
    
      USE ViewUtils
      USE DefUtils
+     USE ParallelUtils, ONLY : ParallelInit, ParallelFinalize
      USE ViewFactorGlobals
      USE MeshTransform, ONLY : RigidMeshMapping
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, SingleSolver

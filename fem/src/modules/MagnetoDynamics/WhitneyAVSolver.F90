@@ -1492,6 +1492,8 @@ END BLOCK
 !------------------------------------------------------------------------------
  SUBROUTINE CalculateLumpedParameters(Torque)
 !------------------------------------------------------------------------------
+   USE ParallelUtils, ONLY : ParallelSlicesComm
+   
    REAL(KIND=dp), OPTIONAL :: Torque
 
    REAL(KIND=dp) :: torq,TorqArea,IMoment,IA, &

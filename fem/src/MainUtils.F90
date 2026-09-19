@@ -45,6 +45,8 @@ MODULE MainUtils
 !------------------------------------------------------------------------------
   USE Messages
   USE BlockSolve
+  USE SParIterGlobals, ONLY : ParEnv, ParEnv_Common, SetMatrixParEnv
+
   USE IterSolve, ONLY : NumericalError
   USE LoadMod, ONLY : ExecLocalAssembly, ExecSolver
   USE ModelDescription, ONLY : GetProcAddr
@@ -5232,6 +5234,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE SingleSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
+#if defined(ELMER_HAVE_MPI_MODULE)
+     USE mpi
+#endif
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver
      LOGICAL :: TransientSimulation
@@ -5253,7 +5258,9 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      LOGICAL :: DoBC, DoBulk
      CHARACTER(*), PARAMETER :: Caller="SingleSolver"   
-     
+#if defined(ELMER_HAVE_MPIF_HEADER)
+     INCLUDE "mpif.h"
+#endif     
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
