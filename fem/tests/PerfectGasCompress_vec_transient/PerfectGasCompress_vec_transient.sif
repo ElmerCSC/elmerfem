@@ -27,7 +27,7 @@ Simulation
   BDF Order = 1
   Timestep Sizes = 0.25
   Timestep Intervals = 8
-  Steady State Max Iterations  = 1
+  Steady State Max Iterations  = 10
   Output Intervals = 0
 ! Post File =  "PerfectGasCompress_vec_transient.vtu"
 End
@@ -61,7 +61,7 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1.0e-6
   Linear System Solver = Direct
   Linear System Iterative Method = UMFPack
-  Steady State Convergence Tolerance = 1.0e-8
+  Steady State Convergence Tolerance = 1.0e-5
 End
 
 
@@ -69,7 +69,6 @@ Solver 2
   Equation = Navier-Stokes
   Procedure = "IncompressibleNS" "IncompressibleNSSolver"
 
-  Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-6
   Nonlinear System Relaxation Factor = 1
   Linear System Solver = Direct
@@ -134,6 +133,6 @@ Boundary Condition 4
     Real MATC "RefT-0.5*tx"
 End
 
-Solver 2 :: Reference Norm = Real 8.99186809E-05
+Solver 2 :: Reference Norm = Real 8.96050230E-05
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
 RUN
