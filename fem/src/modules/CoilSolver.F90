@@ -1085,6 +1085,8 @@ CONTAINS
   ! is affected. 
   !----------------------------------------------------------------------------  
   SUBROUTINE ChooseFixedBulkNodesNarrow( Set, SetNo, SelectNodes )
+
+    USE ParallelUtils, ONLY: ParallelSumVectorInt
     
     INTEGER :: SetNo
     INTEGER :: Set(:)
@@ -1206,6 +1208,9 @@ CONTAINS
   ! has multiple circles. 
   !---------------------------------------------------------------------------------
   SUBROUTINE ChooseCoilCut(Set, SelectNodes )
+
+    USE ParallelUtils, ONLY: ParallelSumVectorInt
+    
     INTEGER :: Set(:)
     LOGICAL :: SelectNodes
 

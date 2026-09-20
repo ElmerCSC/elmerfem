@@ -154,6 +154,7 @@ END SUBROUTINE FilmFlowSolver_Init
 SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE ParallelUtils, ONLY : ParallelSumNodalVector
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
