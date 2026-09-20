@@ -42,7 +42,6 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Types
   USE CRSMatrix
-  USE ParallelUtils  
   USE Lists
   USE SparIterSolve
 

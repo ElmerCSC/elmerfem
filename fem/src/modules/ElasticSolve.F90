@@ -388,6 +388,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   USE Constitutive
   USE ModelLumping
   USE MainUtils, ONLY : SetGlobalBubblesFlag
+  USE ParallelUtils, ONLY : ParallelUpdateRHS
   
   IMPLICIT NONE
 

@@ -57,8 +57,15 @@
 
 MODULE EigenSolve
 
+  USE Types
   USE Messages
+  USE Lists
+  USE CRSMatrix
+  USE IterSolve, ONLY : IterSolver
+  USE DirectSolve, ONLY : DirectSolver
+  USE Multigrid, ONLY : MultigridSolve
   USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
+  USE ParallelUtils, ONLY : ParallelReduction
   IMPLICIT NONE
 
 CONTAINS
@@ -66,9 +73,8 @@ CONTAINS
 
   SUBROUTINE EigenSystemSorting( Params, Neig, Perm, EigValues )
 
-    USE Types
-    USE GeneralUtils, ONLY : SortR 
-    USE Lists, ONLY : ListGetString
+!    USE GeneralUtils, ONLY : SortR 
+!    USE Lists, ONLY : ListGetString
     
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: Neig
@@ -133,7 +139,6 @@ CONTAINS
 !------------------------------------------------------------------------------
      SUBROUTINE ArpackEigenSolve( Solver,Matrix,N,NEIG,EigValues,EigVectors )
 !------------------------------------------------------------------------------
-      USE Multigrid
 
       IMPLICIT NONE
 
@@ -616,8 +621,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE ScaleEigenVectors( Matrix, EigVectors, NoEigen, NormalizeToUnity)
 
-      USE Multigrid
-
       IMPLICIT NONE
 
       TYPE(Matrix_t), TARGET :: Matrix
@@ -728,8 +731,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE ExpandEigenVectors( Matrix, EigVectors, NoEigen, dofs )
 
-      USE Types
-
       IMPLICIT NONE
 
       TYPE(Matrix_t), TARGET :: Matrix
@@ -773,7 +774,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE CheckResiduals( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
       TYPE(Matrix_t), POINTER :: Matrix
       INTEGER :: i,n,sz
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
@@ -803,8 +803,7 @@ END SUBROUTINE CheckResiduals
      SUBROUTINE ArpackStabEigenSolve( Solver, &
           Matrix, N, NEIG, EigValues, EigVectors )
 !------------------------------------------------------------------------------
-      USE Multigrid
-
+       
       IMPLICIT NONE
 
       TYPE(Matrix_t), POINTER :: Matrix
@@ -1153,7 +1152,6 @@ END SUBROUTINE CheckResiduals
 !------------------------------------------------------------------------------
 !> Solution of Eigen value problems using ARPACK library, complex valued version. 
 !------------------------------------------------------------------------------
-      USE Multigrid
 
       IMPLICIT NONE
 
@@ -1599,7 +1597,6 @@ END SUBROUTINE CheckResiduals
 !------------------------------------------------------------------------------
     SUBROUTINE CheckResidualsComplex( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
       TYPE(Matrix_t), POINTER :: Matrix
       INTEGER :: i,j,k,n,sz
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
@@ -1643,9 +1640,7 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
 !> Solution of Eigen value problems using ARPACK library, damped version. 
 !------------------------------------------------------------------------------
-      USE Multigrid
-      USE ElementUtils
-
+      USE ElementUtils, ONLY : FreeMatrix
       IMPLICIT NONE
 
       TYPE(Matrix_t), POINTER :: KMatrix
@@ -2126,7 +2121,6 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     SUBROUTINE EigenBiCG( n, KMatrix, MMatrix, BMatrix, x, b, Rounds, TOL, UseI, IScale )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
 
       TYPE(Matrix_t), POINTER :: KMatrix, MMatrix, BMatrix
       INTEGER :: Rounds
@@ -2232,7 +2226,6 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     FUNCTION EigenMGdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
-      USE Types
       INTEGER :: n
       REAL(KIND=dp) :: s, x(:), y(:)
       
@@ -2246,7 +2239,6 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     SUBROUTINE EigenMGmv1( n, KMatrix, MMatrix, BMatrix, x, b, UseI, IScale )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
 
       INTEGER :: n
       TYPE(Matrix_t), POINTER :: KMatrix, MMatrix, BMatrix
@@ -2280,7 +2272,6 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     SUBROUTINE EigenMGmv2( n, MMatrix, x, b, UseI, IScale )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
 
       INTEGER :: n
       REAL(KIND=dp) CONTIG :: x(:), b(:)
@@ -2303,8 +2294,7 @@ END SUBROUTINE CheckResidualsComplex
 !> Lumped (mode 2): natural ordering; shift-invert (mode 3): ordering inverts.
 !------------------------------------------------------------------------------
   SUBROUTINE ArpackSetWhich( Params, Lumped, Mode, Which )
-    USE Types
-    USE Lists, ONLY : ListGetString
+
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL,          INTENT(IN)  :: Lumped
     INTEGER,          INTENT(OUT) :: Mode

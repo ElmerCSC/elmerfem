@@ -30,7 +30,12 @@
 
 MODULE BlockSolve
 
- USE ParallelUtils 
+ USE SParIterGlobals, ONLY : ParEnv, SetMatrixParEnv
+ USE SParIterComm, ONLY: SParNorm, SParDotProd
+ USE ParallelUtils, ONLY : ParallelReduction, ParallelAllReduceAnd, &
+     ParallelInitMatrix, ParallelBarrier, ParallelActive, &
+     ParallelInitSolve, ParallelSumVector,  ParallelMatrixVector, &
+     ParallelUpdateResult, ParallelMergeMatrix
  USE Integration
  USE ListMatrix
  USE ElementUtils, ONLY : FreeMatrix

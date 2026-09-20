@@ -156,7 +156,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   USE DefUtils
   USE ElementDescription
   USE SolidMechanicsUtils
-
+  USE ParallelUtils, ONLY : ParallelUpdateRHS
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver

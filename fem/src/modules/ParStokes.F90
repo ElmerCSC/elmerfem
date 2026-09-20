@@ -265,6 +265,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
+  USE ParallelUtils, ONLY : ParallelUpdateResult, ParallelUpdateSolve
   USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem, RowEquilibration
   USE MaterialModels
   USE AnisotropicMaterialModels

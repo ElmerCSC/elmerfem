@@ -1199,7 +1199,7 @@ CONTAINS
 
   
   SUBROUTINE PopulateDerivedFields()
-
+    USE ParallelUtils, ONLY : ParallelSumNodalVector
     IMPLICIT NONE
 
     TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP, VarVx, VarVy, VarXYAve
