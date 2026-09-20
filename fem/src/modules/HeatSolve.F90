@@ -532,9 +532,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   nColours = GetNOFColours(Solver)
 
   VecAsm = ListGetLogical( Params,'Vector Assembly',Found )
-  IF(.NOT. Found ) THEN
-    VecAsm = (nColours > 1) .OR. (nthr > 1)
-  END IF
+  IF(.NOT. Found ) VecAsm = .TRUE. ! nColours > 1
 
   IF( VecAsm ) THEN
     CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
@@ -2309,18 +2307,22 @@ CONTAINS
                       
       ! Time derivative term
       ! -----------------------------------
+      ! EffCp (Cp*Rho, with Rho already carrying any Compressibility Model
+      ! override, plus PhaseCL) is the same quantity the convection/
+      ! stabilization terms above use -- re-fetching plain Cp_h/Rho_h here
+      ! would silently drop that override for the mass matrix (and for the
+      ! "Heat Source" FORCE term below, which also relies on RhoAtIp still
+      ! holding the overridden value), diverging from LocalMatrixVec's TmpVec,
+      ! which is never un-overridden this way.
       IF( Transient ) THEN
-        CpAtIp = ListGetElementReal( Cp_h, Basis, Element, Found )
-        RhoAtIp = ListGetElementReal( Rho_h, Basis, Element, Found )
         DO p=1,nd
-          MASS(p,1:nd) = MASS(p,1:nd) + Weight * &
-                (CpAtIp * RhoAtIp + PhaseCL) * Basis(p) * Basis(1:nd)
+          MASS(p,1:nd) = MASS(p,1:nd) + Weight * EffCp * Basis(p) * Basis(1:nd)
         END DO
 
         IF( Stabilize .AND. ( ConvConst .OR. ConvComp ) ) THEN
           DO p=1,nd
             MASS(p,1:nd) = MASS(p,1:nd) + Weight * Tau * &
-                  (CpAtIp * RhoAtIp + PhaseCL) * Basis(1:nd) * StreamVec(p)
+                  EffCp * Basis(1:nd) * StreamVec(p)
           END DO
         END IF
       END IF
