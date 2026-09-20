@@ -2450,6 +2450,11 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
+    ! Set before any early RETURN below: on those paths this element does no
+    ! diffuse gray assembly, and the caller's OMP-private DiffuseGray must not
+    ! be read uninitialised.
+    DiffuseGray = .FALSE.
+
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
 
