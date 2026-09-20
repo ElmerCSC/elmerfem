@@ -46,7 +46,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   USE CoordinateSystems
   USE ElementUtils
   USE ElementDescription
-  USE ParallelUtils
   USE Types
   USE Lists
   USE MeshExtrusion, ONLY: SetMeshSkew

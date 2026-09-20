@@ -45,16 +45,18 @@
 MODULE Multigrid
 
    USE CRSMatrix
-   USE IterSolve
-   USE DirectSolve
+   USE IterSolve, ONLY : IterSolver
+   USE DirectSolve, ONLY : DirectSolver
    USE Smoothers, ONLY : MGSmooth
-   USE ParallelUtils, ONLY : parallelinitmatrix, parallelactive, &
-       parallelinitsolve, parallelsumvectorint, paralleliter, &
+   USE SParIterGlobals, ONLY : ParEnv
+   USE SParIterSolve, ONLY : ParInitMatrix, SolveHypre
+   USE ParallelUtils, ONLY : ParallelInitMatrix, ParallelActive, &
+       ParallelInitSolve, ParallelSumVectorInt, ParallelIter, &
        ParallelReduction, ParallelMatrixVector, ParallelNorm, &
        ParallelMatrix, ParallelMatrixVector, ParallelUpdateResult
-   USE ClusteringMethods
    USE ElementUtils, ONLY : FreeMatrix
-   USE ElementDescription, ONLY : ElementBasisDegree, mGetElementDofs
+   USE ElementBasis, ONLY : ElementBasisDegree
+   USE ElemInfo, ONLY : mGetElementDofs
    USE MeshBasics, ONLY : UpdateSolverMesh, SetCurrentmesh
    USE MeshLoad, ONLY : LoadMesh2
    
@@ -5032,6 +5034,7 @@ CONTAINS
   RECURSIVE SUBROUTINE CMGSolve( Matrix1, Solution, &
     ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
+    USE ClusteringMethods, ONLY : ChooseClusterNodes
     IMPLICIT NONE
     
     TYPE(Matrix_t), POINTER :: Matrix1
