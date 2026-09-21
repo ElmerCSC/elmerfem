@@ -66,7 +66,9 @@ MODULE SolverBasics
        DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
        IntegralProjector, MakePermUsingMask
    USE MortarUtils, ONLY : PeriodicProjector, SaveProjector
-   USE MatrixAssembly
+   USE MatrixAssembly, ONLY : AddToMatrixElement
+   ! Additional subroutines made visible but not used here:
+   USE MatrixAssembly, ONLY: ZeroRow, MoveRow, SetMatrixElement
    USE MatrixScaling, ONLY : ScaleLinearSystemVectors
    
    IMPLICIT NONE
@@ -118,6 +120,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE InitializeToZero( A, ForceVector )
 !------------------------------------------------------------------------------
+     USE BandMatrix, ONLY : Band_ZeroMatrix
      TYPE(Matrix_t), POINTER :: A  !< Matrix to be initialized
      REAL(KIND=dp) :: ForceVector(:)         !< vector to be initialized
 !------------------------------------------------------------------------------
@@ -163,6 +166,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE MatrixVectorMultiply( A,u,v )
 !------------------------------------------------------------------------------
+     USE BandMatrix, ONLY : Band_MatrixVectorMultiply
      TYPE(Matrix_t) :: A
      INTEGER :: n
      REAL(KIND=dp), DIMENSION(:) CONTIG :: u,v
@@ -664,6 +668,7 @@ CONTAINS
       ForceVector, LocalForce, n, NDOFs, DofIndexes, RotateNT, UElement, &
               GlobalValues )
 !------------------------------------------------------------------------------
+     USE BandMatrix, ONLY : Band_GlueLocalMatrix
      TYPE(Matrix_t), POINTER :: StiffMatrix  !< The global matrix
      REAL(KIND=dp) :: LocalStiffMatrix(:,:)  !< Local matrix to be added to the global matrix.
      REAL(KIND=dp) :: LocalForce(:)          !< Element local force vector.

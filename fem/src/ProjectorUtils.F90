@@ -42,8 +42,15 @@
 
 MODULE ProjectorUtils
 
-    USE SolverBasics
-    IMPLICIT NONE
+  USE SolverBasics, ONLY : LagrangeMultiplierName, VectorValuesRange
+  USE MeshBasics, ONLY : IntegralProjector
+  USE MortarUtils, ONLY : PeriodicProjector
+  USE ElementUtils, ONLY : FreeMatrix, RotateMatrix
+  USE MatrixAssembly, ONLY : AddToMatrixElement
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
+  USE Lists
+  USE ListMatrix
+  IMPLICIT NONE
 
 CONTAINS
 
