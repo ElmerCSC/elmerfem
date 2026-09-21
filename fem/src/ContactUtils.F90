@@ -42,9 +42,19 @@
 
 MODULE ContactUtils
 
-    USE SolverBasics
-    USE SolveCore, ONLY : CalculateLoads
-    IMPLICIT NONE
+  USE CoordinateSystems, ONLY : CurrentCoordinateSystem, Cartesian
+  USE Lists
+  USE CRSMatrix
+  USE Integration
+  USE ElementGeometry, ONLY : NormalVector
+  USE ElementUtils, ONLY : FreeMatrix
+  USE ElemInfo, ONLY : ElementInfo, mGetElementDOFs
+  USE PElementMaps, ONLY : IsActivePelement
+  USE SolverBasics, ONLY : GetSolutionRotation, LagrangeMultiplierName, &
+      MatrixVectorMultiply, RotateNTSystem, VariableValuesRange, &
+      VectorValuesRange
+  USE SolveCore, ONLY : CalculateLoads
+  IMPLICIT NONE
 
 CONTAINS
 

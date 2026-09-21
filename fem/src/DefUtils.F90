@@ -55,9 +55,10 @@ MODULE DefUtils
    USE SolverBasics
    USE SolveCore
    USE ParallelUtils, ONLY : ParallelActive
-   USE ContactUtils
+   USE ContactUtils, ONLY : DetermineContact, MergeSlaveSolvers
    USE BoundaryConditionUtils
-   USE ProjectorUtils
+   USE ProjectorUtils, ONLY : GenerateAddMatrix, GenerateConstraintMatrix, &
+       GenerateProjectors, GenerateRobinProjectors
    USE CutFEMUtils
 
    IMPLICIT NONE
