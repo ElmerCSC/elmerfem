@@ -1,5 +1,10 @@
+! Same problem as ../ThermalCompress, with Solver 2 switched from the legacy
+! FlowSolve to IncompressibleNS, exercising its new "Compressibility Model =
+! Thermal" (see IncompressibleNS.F90, LocalBulkMatrix). No "Stabilize"/
+! "Pressure Stabilization" is set on Solver 2, so it takes the default velocity
+! bubble element -- the only stabilisation path this model currently accepts.
 Header
-  Mesh DB "." "ThermalCompress"
+  Mesh DB "." "ThermalCompress_vec"
 End
 
 
@@ -9,8 +14,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations  = 50
   Output Intervals = 1
-! Post File =  "ThermalCompress.vtu"
-! Output File = "ThermalCompress.result"
+! Post File =  "ThermalCompress_vec.vtu"
 End
 
 
@@ -36,11 +40,11 @@ Solver 1
   Equation = Heat Equation
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
+  Stabilize = True
 
   Exec Solver = Never
 
-  Stabilize = True
-  Nonlinear System Max Iterations = 1
+  Nonlinear System Max Iterations = 2
   Nonlinear System Convergence Tolerance = 1.0e-6
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Newton After Tolerance = 1.0e-3
@@ -53,7 +57,7 @@ End
 
 Solver 2
   Equation = Navier-Stokes
-  Stabilize = True
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
 
   Nonlinear Pre Solvers = 1
 
@@ -88,7 +92,7 @@ End
 Boundary Condition 1
   Target Boundaries = 1
 
-pressure  = 0
+  pressure  = 0
   Velocity 1 = 0
   Velocity 2 = 0
 End
@@ -122,6 +126,11 @@ Boundary Condition 4
   Temperature = $RefT-0.5
 End
 
-Solver 2 :: Reference Norm = Real 0.00331988
-Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
+! ../ThermalCompress runs this same problem (same mesh, same Compressibility
+! Model = Thermal) on the legacy FlowSolve, which converges to 3.31988E-03 --
+! 0.58% away from the norm below, consistent with the discretisation
+! difference between FlowSolve's PSPG-forced bubble scheme and this solver's
+! own MINI-element one, not a sign either is wrong.
+Solver 2 :: Reference Norm = Real 3.30048782E-03
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
 RUN

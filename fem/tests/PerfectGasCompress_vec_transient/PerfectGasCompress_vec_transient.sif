@@ -56,6 +56,9 @@ Solver 1
   Equation = Heat Equation
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
+
+  Exec Solver = Never
+
   Nonlinear System Convergence Tolerance = 1.0e-6
   Linear System Solver = Direct
   Linear System Iterative Method = UMFPack
@@ -66,8 +69,12 @@ End
 Solver 2
   Equation = Navier-Stokes
   Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+
+  Nonlinear Pre Solvers = 1
+
   Nonlinear System Convergence Tolerance = 1.0e-6
   Nonlinear System Relaxation Factor = 1
+  Nonlinear System Max Iterations  = 20
   Linear System Solver = Direct
   Linear System Direct Method = UMFPack
   Steady State Convergence Tolerance = 1.0e-5
@@ -75,9 +82,8 @@ End
 
 
 Equation 1
-  Navier-Stokes = True
-  Heat Equation = True
   Convection = Computed
+  Active Solvers(2) = 1 2
 End
 
 Material 1
@@ -95,7 +101,7 @@ End
 Boundary Condition 1
   Target Boundaries = 1
 
-  pressure  = 0
+  Pressure  = 0
   Velocity 1 = 0
   Velocity 2 = 0
 End
