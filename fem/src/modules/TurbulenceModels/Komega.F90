@@ -117,14 +117,10 @@ MODULE KOmegaLocalForms
 
   IMPLICIT NONE
 
-  ! Per-element bubble history (current and previous timestep), needed to form
-  ! a consistent BDF(1) time derivative for a condensed bubble -- see the
-  ! matching bx/bxprev comment and CondensatePTransient call in
-  ! KomegaLegacy.F90, which this mirrors. Indexed by Element % ElementIndex
-  ! with stride bxStride = DOFs*MAX(MaxBDOFs,MaxElementNodes) (DOFs=2: K and
-  ! omega interleaved).
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-  INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
+  ! Per-element bubble history, used by Default1stOrderTime's Nb path
+  ! (DefUtils.F90) -- lives on Solver % Variable's own BubbleValues/
+  ! BubblePrevValues (Types.F90), not a separate type; see the matching
+  ! bx/bxprev comment in KomegaLegacy.F90, which this mirrors.
 
   ! Per-thread ValueHandle_t storage for LocalMatrixVec's material lookups.
   ! NOT THREADPRIVATE -- see the matching comment on IncompressibleNS.F90's
@@ -157,9 +153,6 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), TimeForce(:)
     REAL(KIND=dp), ALLOCATABLE :: MassK(:,:), StiffK(:,:), ForceK(:), &
         MassO(:,:), StiffO(:,:), ForceO(:)
-    REAL(KIND=dp), ALLOCATABLE :: xl(:), xlprev(:)
-    REAL(KIND=dp), ALLOCATABLE :: LocalKinEnergy(:), LocalDissipation(:), &
-        PrevKinEnergy(:), PrevDissipation(:)
 
     REAL(KIND=dp), POINTER :: RhoVec(:), MuVec(:)
 
@@ -171,7 +164,7 @@ CONTAINS
         StreamVec(:,:), TauK(:), TauO(:), TmpVec(:), RadiusVec(:)
 
     REAL(KIND=dp) :: Beta,SigmaK,SigmaO,rGamma,hK,mK,VNorm
-    INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
+    INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,ntot
     LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
@@ -408,22 +401,8 @@ CONTAINS
     TimeForce = 0._dp
     IF( nb > 0 ) THEN
       IF( Transient .AND. .NOT. GlobalBubbles ) THEN
-        ALLOCATE( LocalKinEnergy(nd), LocalDissipation(nd), &
-            PrevKinEnergy(nd), PrevDissipation(nd), xl(2*nd), xlprev(2*nd) )
-        CALL GetScalarLocalSolution( LocalKinEnergy, 'Kinetic energy', UElement=Element )
-        CALL GetScalarLocalSolution( LocalDissipation, 'Kinetic Dissipation', UElement=Element )
-        CALL GetScalarLocalSolution( PrevKinEnergy, 'Kinetic energy', UElement=Element, tStep=-1 )
-        CALL GetScalarLocalSolution( PrevDissipation, 'Kinetic Dissipation', UElement=Element, tStep=-1 )
-
-        xl(1:2*nd-1:2)     = LocalKinEnergy(1:nd)
-        xl(2:2*nd:2)       = LocalDissipation(1:nd)
-        xlprev(1:2*nd-1:2) = PrevKinEnergy(1:nd)
-        xlprev(2:2*nd:2)   = PrevDissipation(1:nd)
-
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( nd, nb, 2, dt, MASS, STIFF, FORCE, &
-            xlprev(1:2*nd), xl(1:2*nd), &
-            bxprev(boff+1:boff+2*nb), bx(boff+1:boff+2*nb) )
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=nb )
       ELSE
         IF( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL CondensateP( 2*nd, 2*nb, STIFF, FORCE, TimeForce )
@@ -462,10 +441,9 @@ CONTAINS
     TYPE(Nodes_t) :: ElementNodes
     TYPE(ValueList_t), POINTER :: Material
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), LOAD(:,:), &
-        TimeForce(:), LocalKinEnergy(:), LocalDissipation(:), &
-        PrevKinEnergy(:), PrevDissipation(:), xl(:), xlprev(:)
+        TimeForce(:)
     LOGICAL :: Bubbles
-    INTEGER :: n, nd, nb, allocstat, boff
+    INTEGER :: n, nd, nb, allocstat
 !------------------------------------------------------------------------------
     Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
     Material => GetMaterial()
@@ -478,48 +456,26 @@ CONTAINS
 
     ALLOCATE( MASS(2*(nd+nb),2*(nd+nb)), STIFF(2*(nd+nb),2*(nd+nb)), &
         FORCE(2*(nd+nb)), LOAD(2,n), TimeForce(2*(nd+nb)), &
-        LocalKinEnergy(nd+nb), LocalDissipation(nd+nb), &
-        PrevKinEnergy(nd+nb), PrevDissipation(nd+nb), &
-        xl(2*(nd+nb)), xlprev(2*(nd+nb)), STAT=allocstat )
+        STAT=allocstat )
     IF( allocstat /= 0 ) CALL Fatal('KOmega','Local storage allocation failed')
-
-    IF ( Transient .AND. &
-        ( Bubbles .OR. ( nb > 0 .AND. .NOT. GlobalBubbles ) ) ) THEN
-      CALL GetScalarLocalSolution( LocalKinEnergy, 'Kinetic energy' )
-      CALL GetScalarLocalSolution( LocalDissipation, 'Kinetic Dissipation' )
-      CALL GetScalarLocalSolution( PrevKinEnergy, 'Kinetic energy', tStep=-1 )
-      CALL GetScalarLocalSolution( PrevDissipation, 'Kinetic Dissipation', tStep=-1 )
-    END IF
 
     CALL ElementKernel( MASS, STIFF, FORCE, LOAD, Element, n, nd+nb, ElementNodes )
 
     TimeForce = 0.0_dp
     IF ( Bubbles ) THEN
       IF ( Transient ) THEN
-        xl(1:2*n-1:2)     = LocalKinEnergy(1:n)
-        xl(2:2*n:2)       = LocalDissipation(1:n)
-        xlprev(1:2*n-1:2) = PrevKinEnergy(1:n)
-        xlprev(2:2*n:2)   = PrevDissipation(1:n)
-
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( n, n, 2, dt, MASS, STIFF, FORCE, &
-            xlprev(1:2*n), xl(1:2*n), &
-            bxprev(boff+1:boff+2*n), bx(boff+1:boff+2*n) )
+        ! Nb=n: "as many bubbles as nodes", same convention as the nb>0
+        ! branch below. Never gated on Solver % GlobalBubbles -- legacy
+        ! bubbles are always locally condensed.
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=n )
       ELSE
-        IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL Condensate( 2*n, STIFF, FORCE, TimeForce )
       END IF
     ELSE IF ( nb > 0 ) THEN
       IF ( Transient .AND. .NOT. GlobalBubbles ) THEN
-        xl(1:2*nd-1:2)     = LocalKinEnergy(1:nd)
-        xl(2:2*nd:2)       = LocalDissipation(1:nd)
-        xlprev(1:2*nd-1:2) = PrevKinEnergy(1:nd)
-        xlprev(2:2*nd:2)   = PrevDissipation(1:nd)
-
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( nd, nb, 2, dt, MASS, STIFF, FORCE, &
-            xlprev(1:2*nd), xl(1:2*nd), &
-            bxprev(boff+1:boff+2*nb), bx(boff+1:boff+2*nb) )
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=nb )
       ELSE
         IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL CondensateP( 2*nd, 2*nb, STIFF, FORCE, TimeForce )
@@ -824,22 +780,9 @@ SUBROUTINE KOmega( Model,Solver,dt,TransientSimulation )
   BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
   IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
 
-  IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
-    ! Stride covers both p-bubbles (MaxBDOFs) and LocalMatrixScalar's own
-    ! legacy per-node bubbles (MaxElementNodes), times DOFs=2 -- exactly as
-    ! KomegaLegacy.F90 sizes its own bx/bxprev.
-    bxStride = 2 * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
-    ALLOCATE( bx(bxStride*(Solver % Mesh % NumberOfBulkElements + &
-        Solver % Mesh % NumberOfBoundaryElements)), &
-        bxprev(bxStride*(Solver % Mesh % NumberOfBulkElements + &
-        Solver % Mesh % NumberOfBoundaryElements)) )
-    bx = 0._dp; bxprev = 0._dp
-  END IF
-
-  IF ( TransientSimulation .AND. ALLOCATED(bx) .AND. GetTimestep() /= BubbleTimestep ) THEN
-    bxprev = bx
-    BubbleTimestep = GetTimestep()
-  END IF
+  ! K and Omega are interleaved, Dofs=2 -- exactly as KomegaLegacy.F90 sizes
+  ! its own bx/bxprev.
+  IF ( TransientSimulation ) CALL DefaultBubbleHistoryUpdate( Dofs=2 )
 
   NonlinearIter = ListGetInteger( Solver % Values, 'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT.GotIt ) NonlinearIter = 1

@@ -1262,9 +1262,15 @@ CONTAINS
            DEALLOCATE( Var % CValues ) 
 
        IF( ASSOCIATED( Var % PValues ) ) &
-           DEALLOCATE( Var % PValues ) 
-       
-     END SUBROUTINE DeallocateVariableEntries       
+           DEALLOCATE( Var % PValues )
+
+       IF( ASSOCIATED( Var % BubbleValues ) ) &
+           DEALLOCATE( Var % BubbleValues )
+
+       IF( ASSOCIATED( Var % BubblePrevValues ) ) &
+           DEALLOCATE( Var % BubblePrevValues )
+
+     END SUBROUTINE DeallocateVariableEntries
      
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseVariableList

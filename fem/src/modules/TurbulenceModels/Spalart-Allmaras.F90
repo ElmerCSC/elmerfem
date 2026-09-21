@@ -114,14 +114,12 @@ MODULE SpalartAllmarasLocalForms
 
   IMPLICIT NONE
 
-  ! Per-element bubble history (current and previous timestep), needed to form
-  ! a consistent BDF(1) time derivative for a condensed p-bubble -- see the
-  ! matching bx/bxprev comment and CondensatePTransient call in
-  ! Spalart-AllmarasLegacy.F90, which this mirrors. Indexed by Element %
-  ! ElementIndex with stride bxStride = Mesh % MaxBDOFs (DOFs=1 for this
-  ! scalar solver).
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-  INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
+  ! Per-element bubble history, needed by Default1stOrderTime's Nb path
+  ! (DefUtils.F90) to form a consistent BDF(1) time derivative for a
+  ! condensed p-bubble (or, here, LocalMatrixScalar's legacy per-node
+  ! "Bubbles" scheme, Nb=n) -- lives on Solver % Variable's own BubbleValues/
+  ! BubblePrevValues (Types.F90), not a separate type; see the matching
+  ! bx/bxprev comment in Spalart-AllmarasLegacy.F90, which this mirrors.
 
   ! Per-thread ValueHandle_t storage for LocalMatrixVec's material lookups.
   ! NOT THREADPRIVATE -- see the matching comment on IncompressibleNS.F90's
@@ -154,7 +152,6 @@ CONTAINS
 
     REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), TimeForce(:)
-    REAL(KIND=dp), ALLOCATABLE :: LocalTV(:), PrevTV(:)
 
     REAL(KIND=dp), POINTER :: RhoVec(:), MuVec(:)
 
@@ -167,7 +164,7 @@ CONTAINS
         TauVec(:), TmpVec(:), RadiusVec(:)
 
     REAL(KIND=dp) :: Cb1,Cb2,Cv1,Sigma,Cw1,Cw2,Cw3,hK,mK,VNorm
-    INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
+    INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,ntot
     LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
@@ -416,13 +413,8 @@ CONTAINS
     TimeForce = 0._dp
     IF( nb > 0 ) THEN
       IF( Transient .AND. .NOT. GlobalBubbles ) THEN
-        ALLOCATE( LocalTV(nd), PrevTV(nd) )
-        CALL GetScalarLocalSolution( LocalTV, UElement=Element )
-        CALL GetScalarLocalSolution( PrevTV, UElement=Element, tStep=-1 )
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( nd, nb, 1, dt, MASS, STIFF, FORCE, &
-            PrevTV(1:nd), LocalTV(1:nd), &
-            bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=nb )
       ELSE
         IF( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL CondensateP( nd, nb, STIFF, FORCE, TimeForce )
@@ -461,9 +453,9 @@ CONTAINS
     TYPE(Nodes_t) :: ElementNodes
     TYPE(ValueList_t), POINTER :: Material
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), LOAD(:,:), &
-        TimeForce(:), LocalTV(:), PrevTV(:)
+        TimeForce(:)
     LOGICAL :: Bubbles
-    INTEGER :: n, nd, nb, allocstat, boff
+    INTEGER :: n, nd, nb, allocstat
 !------------------------------------------------------------------------------
     Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
     Material => GetMaterial()
@@ -475,17 +467,8 @@ CONTAINS
     CALL GetElementNodes( ElementNodes )
 
     ALLOCATE( MASS(nd+nb,nd+nb), STIFF(nd+nb,nd+nb), FORCE(nd+nb), LOAD(1,n), &
-        TimeForce(nd+nb), LocalTV(nd+nb), PrevTV(nd+nb), STAT=allocstat )
+        TimeForce(nd+nb), STAT=allocstat )
     IF( allocstat /= 0 ) CALL Fatal('SpalartAllmaras','Local storage allocation failed')
-
-    ! Legacy bubbles always need this (never gated on Solver % GlobalBubbles,
-    ! see below); a p-bubble needs it only when actually condensed locally --
-    ! same reasoning as Spalart-AllmarasLegacy.F90's driver.
-    IF ( Transient .AND. &
-        ( Bubbles .OR. ( nb > 0 .AND. .NOT. GlobalBubbles ) ) ) THEN
-      CALL GetScalarLocalSolution( LocalTV )
-      CALL GetScalarLocalSolution( PrevTV, tStep=-1 )
-    END IF
 
     CALL ElementKernel( MASS, STIFF, FORCE, LOAD, Element, n, nd+nb, ElementNodes )
 
@@ -494,20 +477,18 @@ CONTAINS
       IF ( Transient ) THEN
         ! Same convention as the nb>0 branch below, just with "as many
         ! bubbles as nodes" (Nb=n). DOFs=1 here, so no interleaving is needed.
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( n, n, 1, dt, MASS, STIFF, FORCE, &
-            PrevTV(1:n), LocalTV(1:n), &
-            bxprev(boff+1:boff+n), bx(boff+1:boff+n) )
+        ! Never gated on Solver % GlobalBubbles -- legacy bubbles are always
+        ! locally condensed, same reasoning as Spalart-AllmarasLegacy.F90's
+        ! driver.
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=n )
       ELSE
-        IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL Condensate( n, STIFF, FORCE, TimeForce )
       END IF
     ELSE IF ( nb > 0 ) THEN
       IF ( Transient .AND. .NOT. GlobalBubbles ) THEN
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( nd, nb, 1, dt, MASS, STIFF, FORCE, &
-            PrevTV(1:nd), LocalTV(1:nd), &
-            bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=nb )
       ELSE
         IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL CondensateP( nd, nb, STIFF, FORCE, TimeForce )
@@ -762,23 +743,9 @@ SUBROUTINE SpalartAllmaras( Model,Solver,dt,TransientSimulation )
   BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
   IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
 
-  IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
-    ! Stride covers both p-bubbles (MaxBDOFs, LocalMatrixVec/LocalMatrixScalar)
-    ! and LocalMatrixScalar's own legacy per-node bubbles (one per node,
-    ! MaxElementNodes) -- whichever is larger, exactly as
-    ! Spalart-AllmarasLegacy.F90 sizes its own bx/bxprev.
-    bxStride = MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
-    ALLOCATE( bx(bxStride*(Solver % Mesh % NumberOfBulkElements + &
-        Solver % Mesh % NumberOfBoundaryElements)), &
-        bxprev(bxStride*(Solver % Mesh % NumberOfBulkElements + &
-        Solver % Mesh % NumberOfBoundaryElements)) )
-    bx = 0._dp; bxprev = 0._dp
-  END IF
-
-  IF ( TransientSimulation .AND. ALLOCATED(bx) .AND. GetTimestep() /= BubbleTimestep ) THEN
-    bxprev = bx
-    BubbleTimestep = GetTimestep()
-  END IF
+  ! A single scalar field, Dofs=1 -- exactly as Spalart-AllmarasLegacy.F90
+  ! sizes its own bx/bxprev.
+  IF ( TransientSimulation ) CALL DefaultBubbleHistoryUpdate( Dofs=1 )
 
   NonlinearIter = ListGetInteger( Solver % Values, 'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT.GotIt ) NonlinearIter = 1
@@ -953,8 +920,7 @@ SUBROUTINE SpalartAllmaras_Init( Model,Solver,dt,TransientSimulation )
   ! Same reasoning as Spalart-AllmarasLegacy.F90's own Init: condense a
   ! p-bubble out locally by default (ListAddNew, so an explicit sif setting
   ! still wins), and a transient condensed bubble needs at least two solves
-  ! per timestep to recover its history -- see bx/bxprev and
-  ! CondensatePTransient above.
+  ! per timestep to recover its history -- see the bubble history comment above.
   str = ListGetString( SolverParams,'Element', Found )
   PBubble = .FALSE.
   IF ( Found ) PBubble = INDEX( str, 'b:' ) > 0

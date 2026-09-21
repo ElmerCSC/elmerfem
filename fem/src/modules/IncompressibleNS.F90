@@ -47,18 +47,22 @@ MODULE IncompressibleLocalForms
   USE MaterialModels, ONLY : TurbulentViscosityVec
 
   ! The condensed velocity bubble coefficients, current and previous timestep,
-  ! for every BULK element of the mesh -- LCondensate addresses them by
-  ! Element % ElementIndex, which is a mesh index and not a running count of the
-  ! elements this solver happens to be active on.
+  ! for every BULK element of the mesh -- LCondensate addresses them (via
+  ! BubbleHistoryGetPrev/BubbleHistorySetCur, MatrixAssembly.F90) by
+  ! Element % ElementIndex, which is a mesh index and not a running count of
+  ! the elements this solver happens to be active on. They live on
+  ! Solver % Variable's own BubbleValues/BubblePrevValues/BubbleStride
+  ! (Types.F90), not a separate array here, since a condensed bubble's value
+  ! is conceptually part of this same Flow Solution field.
   !
-  ! bxStride is the distance between two elements' blocks, and it is
-  ! dim*MaxBDOFs and NOT dim*nb. Keying the stride on the element's own nb
-  ! misplaces every block after the first element whose nb differs from the
-  ! mesh maximum: on a mixed tri/quad mesh ("-tri b:1 -quad b:3") the blocks
-  ! then overlap and elements read each other's bubbles. Only nb of the
-  ! MaxBDOFs slots in a block are written; the rest stay zero.
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-  INTEGER, SAVE :: bxStride = 0
+  ! BubbleStride (set via DefaultBubbleHistoryUpdate, in IncompressibleNSSolver)
+  ! is the distance between two elements' blocks, and it is
+  ! dim*MAX(MaxBDOFs,MaxElementNodes) and NOT dim*nb. Keying the stride on
+  ! the element's own nb misplaces every block
+  ! after the first element whose nb differs from the mesh maximum: on a
+  ! mixed tri/quad mesh ("-tri b:1 -quad b:3") the blocks then overlap and
+  ! elements read each other's bubbles. Only nb of the MaxBDOFs slots in a
+  ! block are written; the rest stay zero.
 
   ! Per-thread handle/cache storage for LocalBulkMatrix and EffectiveViscosityVec.
   ! NOT THREADPRIVATE (Windows/GCC emutls bug inherits master's ALLOCATABLE/POINTER
@@ -103,7 +107,8 @@ MODULE IncompressibleLocalForms
   ! assembly needs locking. The bookkeeping half is IntegRuleProbe_t in
   ! SolverBasics; what is here is the assembly, and the state the assembly must
   ! not disturb while NSProbe % Override is set -- the glue to the global matrix,
-  ! the bubble coefficients bx, and the saved shearrate/viscosity fields.
+  ! the bubble coefficients (Solver % Variable's BubbleValues/BubblePrevValues),
+  ! and the saved shearrate/viscosity fields.
   TYPE(IntegRuleProbe_t), SAVE :: NSProbe
 
 CONTAINS
@@ -1626,12 +1631,15 @@ CONTAINS
       ! without bubbles
       INTEGER, INTENT(IN), OPTIONAL :: Element_id       ! The element identifier
 
-      ! This subroutine accesses also the real-valued arrays bx(:) and bxprev(:)
-      ! that contain coefficients of the bubble basis functions
+      ! This subroutine accesses the current solution's bubble history --
+      ! CurrentModel % Solver % Variable % BubbleValues/BubblePrevValues
+      ! (Types.F90) -- through BubbleHistoryGetPrev/BubbleHistorySetCur
+      ! (MatrixAssembly.F90), keyed by Element_id.
 
   !------------------------------------------------------------------------------
       LOGICAL :: ComputeBubblePart
       REAL(KIND=dp) :: Kbb(nb*dim,nb*dim), Fb(nb*dim)
+      REAL(KIND=dp) :: BubblePrevSlice(nb*dim), BubbleCurSlice(nb*dim)
       REAL(KIND=dp) :: Kbl(nb*dim,n*(dim+1)), Klb(n*(dim+1), nb*dim)
 
       REAL(KIND=dp) :: xl(n*(dim+1)), xlprev((n+nb)*(dim+1))
@@ -1675,11 +1683,12 @@ CONTAINS
           END DO
         END DO
 
+        CALL BubbleHistoryGetPrev( CurrentModel % Solver % Variable, Element_id, dim*nb, BubblePrevSlice )
         q = 0
         DO p = 1,nb
           DO i = 1,dim
             q = q + 1
-            xlprev(bdofs(q)) = bxprev((Element_id-1)*bxStride+q)
+            xlprev(bdofs(q)) = BubblePrevSlice(q)
           END DO
         END DO
 
@@ -1718,12 +1727,14 @@ CONTAINS
           K(cdofs,cdofs) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
 
       ! The bubble part evaluated for the current solution candidate. Not while
-      ! probing: bx is state kept per element -- the same class of thing as an
-      ! integration point history -- and a re-assembly at another rule would
-      ! leave the wrong one behind for the next timestep to read.
-      IF (ComputeBubblePart .AND. .NOT. NSProbe % Override) &
-          bx((Element_id-1)*bxStride+1:(Element_id-1)*bxStride+dim*nb) = &
-          MATMUL(Kbb,Fb-MATMUL(Kbl,xl))
+      ! probing: the bubble history is state kept per element -- the same
+      ! class of thing as an integration point history -- and a re-assembly
+      ! at another rule would leave the wrong one behind for the next
+      ! timestep to read.
+      IF (ComputeBubblePart .AND. .NOT. NSProbe % Override) THEN
+        BubbleCurSlice = MATMUL(Kbb,Fb-MATMUL(Kbl,xl))
+        CALL BubbleHistorySetCur( CurrentModel % Solver % Variable, Element_id, dim*nb, BubbleCurSlice )
+      END IF
       !------------------------------------------------------------------------------
     END SUBROUTINE LCondensate
     !------------------------------------------------------------------------------
@@ -2448,19 +2459,21 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
           '-tetra 24 -prism 85' )
 
       ! The recovery of the transient bubble DOFs needs at least TWO solves
-      ! within one timestep. LCondensate writes bx for the nodal iterate it was
-      ! handed, which on the first iteration is still the solution of the
-      ! PREVIOUS timestep, and bxprev -- the bubble part the BDF(1) time
-      ! derivative of the next step is formed from -- is that same bx. One
-      ! iteration per step therefore feeds the next step a bubble belonging to
-      ! the step before, and the error accumulates as a slow drift rather than
-      ! showing up as a wrong answer anywhere.
+      ! within one timestep. LCondensate writes the current bubble history
+      ! for the nodal iterate it was handed, which on the first iteration is
+      ! still the solution of the PREVIOUS timestep, and the previous bubble
+      ! history -- from which the BDF(1) time derivative of the next step is
+      ! formed -- is that same current one. One iteration per step therefore
+      ! feeds the next step a bubble belonging to the step before, and the
+      ! error accumulates as a slow drift rather than showing up as a wrong
+      ! answer anywhere.
       !
-      ! Only where a bubble is actually condensed out: with bubbles left in the
-      ! global system they are solved for like any other DOF, the equal-order
-      ! stabilised element has none, and a steady iteration has no bxprev to be
-      ! consistent with. The Stokes branch of LocalBulkMatrix condenses without
-      ! recovering, so it needs nothing either.
+      ! Only where a bubble is actually condensed out: with bubbles left in
+      ! the global system they are solved for like any other DOF, the
+      ! equal-order stabilised element has none, and a steady iteration has
+      ! no previous bubble history to be consistent with. The Stokes branch
+      ! of LocalBulkMatrix condenses without recovering, so it needs nothing
+      ! either.
       !
       ! Max Iterations as well: its default here is ONE, so a floor of two on
       ! its own would be a floor the loop bound cannot reach. Both ListAddNew,
@@ -2515,12 +2528,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   INTEGER :: Element_id
-  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, miniter, iter, nthr
-  INTEGER :: stimestep = -1
- 
+  INTEGER :: i, n, nb, nd, dim, Active, maxiter, miniter, iter, nthr
+
   REAL(KIND=dp) :: Norm
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
+  LOGICAL :: Found, StokesFlow, BlockPrec, Converged
   LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles, InitHandles
   LOGICAL :: PStab
   REAL(KIND=dp) :: PStabCoeff
@@ -2528,10 +2540,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: PStabStr
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
-  
-  CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
-  SAVE AllocationsDone, stimestep
+  CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
 !------------------------------------------------------------------------------
 ! Local variables to be accessed by the contained subroutines:
@@ -2581,39 +2591,15 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   END IF
 
   !-----------------------------------------------------------------------------
-  ! Allocate some permanent storage, this is done first time only:
+  ! Allocate the velocity bubble history (current and previous timestep, on
+  ! Solver % Variable % BubbleValues/BubblePrevValues, Types.F90) the first
+  ! time only, and shift the previous solve's recovered bubble part into
+  ! "previous" once per timestep -- DefaultBubbleHistoryUpdate itself guards
+  ! on both; Mesh % MaxBDOFs > 0 additionally rules out even trying on a
+  ! mesh with no p-bubble at all. Dofs=dim, since there is no pressure
+  ! bubble, so only the velocity components are bubble-augmented.
   !-----------------------------------------------------------------------------
-  IF (.NOT. AllocationsDone .AND. Transient .AND. &
-      Mesh % MaxBDOFs > 0) THEN
-    !
-    ! Allocate arrays having a sufficient size for listing all bubble entries of
-    ! the velocity solution (current and previous). These are needed in order to
-    ! evaluate the time derivative of the bubble part.
-    !
-    ! Sized by the number of BULK elements and not by GetNOFActive(): the index
-    ! LCondensate uses is Element % ElementIndex, so the highest index reached is
-    ! the last active element's position in the mesh, which exceeds the count of
-    ! active elements as soon as the solver is active on only some of the bodies.
-    !
-    ! Also includes NumberOfBoundaryElements: a boundary element promoted to
-    ! this equation via a BC's "Body Id" keeps its ElementIndex in the
-    ! boundary-element range while being assembled here as a bulk element, so
-    ! a bulk-only allocation can otherwise be indexed past its end.
-    !
-    bxStride = Mesh % MaxBDOFs*dim
-    nbdofs = bxStride*(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)
-    ALLOCATE(bx(nbdofs), bxprev(nbdofs));
-    bx=0.0_dp; bxprev=0.0_dp
-
-    AllocationsDone = .TRUE.
-  END IF
-
-  ! Check if the previous bubble part (bxprev) needs to be updated:
-  IF (Transient .AND. GetTimestep() /= stimestep .AND. &
-      Mesh % MaxBDOFs > 0) THEN
-    bxprev = bx
-    stimestep = GetTimestep()
-  END IF
+  IF (Transient .AND. Mesh % MaxBDOFs > 0) CALL DefaultBubbleHistoryUpdate( Dofs=dim )
 
   Params => GetSolverParams() 
 

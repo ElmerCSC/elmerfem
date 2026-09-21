@@ -96,9 +96,9 @@
        END IF
      END IF
 
-     ! The recovery of a transient condensed bubble (see bx/bxprev and
-     ! NSCondensateTransient in FlowSolve, mirroring IncompressibleNSVec's own
-     ! bx/bxprev, and the identical logic in KESolver_Init and friends) needs
+     ! The recovery of a transient condensed bubble (see NSCondensateTransientH
+     ! in FlowSolve, mirroring IncompressibleNS's own LCondensate, and the
+     ! identical logic in KESolver_Init and friends) needs
      ! at least TWO solves within one timestep: the bubble value recovered on
      ! the first solve of a new timestep is still consistent with the
      ! previous timestep's nodal solution, not this one's. ListAddNew, so an
@@ -135,7 +135,7 @@
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER :: StiffMatrix
      
-     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m,boff
+     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m
 
      TYPE(ValueList_t),POINTER :: Material, BC, BodyForce, Equation
      TYPE(Nodes_t) :: ElementNodes
@@ -209,16 +209,18 @@
      ! form a consistent BDF(1) time derivative for a condensed velocity
      ! bubble (of either flavor -- a p-element "Element = p:.. b:.." bubble,
      ! or the legacy "Bubbles = True"/"Stabilization Method = Bubbles" one
-     ! bubble-per-node convention): see NSCondensateTransient in
-     ! MatrixAssembly.F90, and IncompressibleNSVec's LCondensate, which it
-     ! mirrors. Indexed by Element % ElementIndex with stride
-     ! bxStride = (NSDOFs-1)*MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes),
-     ! not (NSDOFs-1)*nb of any one element, so blocks stay aligned on a mesh
-     ! with mixed bubble counts. FlowSolve never leaves a bubble in the
-     ! global system (no "Bubbles in Global System" support here), so unlike
-     ! the turbulence solvers this needs no Solver % GlobalBubbles check.
-     REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-     INTEGER, SAVE :: bxStride = 0
+     ! bubble-per-node convention): see NSCondensateTransientH in
+     ! MatrixAssembly.F90, which mirrors CondensatePTransientH (used by
+     ! HeatSolve.F90/the turbulence solvers). It lives on Solver % Variable's
+     ! own BubbleValues/BubblePrevValues (Types.F90), not a separate array
+     ! here, since a condensed bubble's value is conceptually part of this
+     ! same Flow Solution field. Indexed by Element % ElementIndex with
+     ! stride (NSDOFs-1)*MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes) --
+     ! (NSDOFs-1) since there is no pressure bubble -- not (NSDOFs-1)*nb of
+     ! any one element, so blocks stay aligned on a mesh with mixed bubble
+     ! counts. FlowSolve never leaves a bubble in the global system (no
+     ! "Bubbles in Global System" support here), so unlike the turbulence
+     ! solvers this needs no Solver % GlobalBubbles check.
 
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
 !------------------------------------------------------------------------------
@@ -460,34 +462,19 @@
      END IF
 !------------------------------------------------------------------------------
 
-     ! Per-element bubble history for the transient condensed-bubble case:
-     ! allocate once, sized by the mesh's own worst-case bubble count (not
-     ! this solver's nb, which can vary element to element) times the number
-     ! of BULK elements, since NSCondensateTransient-based recovery below
-     ! indexes bx/bxprev by Element % ElementIndex. The stride covers both
-     ! p-bubbles (MaxBDOFs) and legacy "Bubbles = True" bubbles, one per node
-     ! (MaxElementNodes) -- whichever is larger.
-     !
-     ! Sized over NumberOfBulkElements + NumberOfBoundaryElements, not just
-     ! the former: a boundary element promoted to this equation via a BC's
-     ! "Body Id" keeps its ElementIndex in the boundary-element range while
-     ! being assembled here as a bulk element, so indexing bx/bxprev by
-     ! Element % ElementIndex can otherwise run past a bulk-only allocation.
-     IF ( Transient .AND. .NOT. ALLOCATED(bx) ) THEN
-       bxStride = (NSDOFs-1) * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
-       ALLOCATE( bx( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ), &
-                 bxprev( bxStride * (Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements) ) )
-       bx = 0.0_dp
-       bxprev = 0.0_dp
-     END IF
-
      TimeVar => VariableGet( Solver % Mesh % Variables, 'Timestep')
      Timestep = NINT(Timevar % Values(1))
      IF ( SaveTimestep /= Timestep ) THEN
        IF ( ALLOCATED(pDensity0) ) pDensity0 = pDensity1
-       IF ( ALLOCATED(bx) ) bxprev = bx
        SaveTimestep=Timestep
      END IF
+
+     ! Per-element bubble history for the transient condensed-bubble case:
+     ! allocate once (a no-op on every later call), sized by the mesh's own
+     ! worst-case bubble count (not this solver's nb, which can vary element
+     ! to element) -- Dofs=(NSDOFs-1) since there is no pressure bubble, so
+     ! only the velocity components are bubble-augmented.
+     IF ( Transient ) CALL DefaultBubbleHistoryUpdate( Dofs=NSDOFs-1 )
 
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
@@ -1219,10 +1206,9 @@
            xprevloc(NSDOFs,1:nd) = Solver % Variable % PrevValues( &
                NSDOFs*FlowPerm(Indexes(1:nd)),1 )
 
-           boff = (Element % ElementIndex - 1) * bxStride
-           CALL NSCondensateTransient( nd, nb, NSDOFs-1, dt, MASS, STIFF, FORCE, &
-               xprevloc(:,1:nd), xloc(:,1:nd), &
-               bxprev(boff+1:boff+(NSDOFs-1)*nb), bx(boff+1:boff+(NSDOFs-1)*nb) )
+           CALL NSCondensateTransientH( Solver % Variable, Element % ElementIndex, &
+               nd, nb, NSDOFs-1, dt, MASS, STIFF, FORCE, &
+               xprevloc(:,1:nd), xloc(:,1:nd) )
          ELSE
            IF ( Transient ) THEN
 !------------------------------------------------------------------------------

@@ -3158,11 +3158,12 @@ CONTAINS
 
 !> Add the local matrix entries to for real valued equations that are of first order in time
 !------------------------------------------------------------------------------
-  SUBROUTINE Default1stOrderTimeR( M, A, F, UElement, USolver )
+  SUBROUTINE Default1stOrderTimeR( M, A, F, UElement, USolver, Nb )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: M(:,:),A(:,:), F(:)
     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    INTEGER, OPTIONAL :: Nb                       !< Trailing locally condensed p-bubble basis functions in M/A/F, if any.
 
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Params
@@ -3195,13 +3196,131 @@ CONTAINS
 
     dt = Solver % dt
     Indexes => GetIndexStore()
+    ! GetElementDOFs already excludes a locally condensed bubble from n and
+    ! Indexes (it only counts Element % BubbleIndexes when Solver %
+    ! GlobalBubbles is True -- see mGetElementDOFs), so n here is already the
+    ! retained-only count even when Nb (below) is present.
     n = GetElementDOFs( Indexes,Element,Solver )
-          
+
+    IF( PRESENT(Nb) ) THEN
+      IF( Nb > 0 ) THEN
+        CALL Default1stOrderTimeBubble( Solver, Params, Element, x, dt, n, Nb, &
+            Indexes, M, A, F )
+        RETURN
+      END IF
+    END IF
+
     CALL Add1stOrderTime( M, A, F, dt, n, x % DOFs, &
         x % Perm(Indexes(1:n)), Solver, UElement=Element )
-      
+
 !------------------------------------------------------------------------------
   END SUBROUTINE Default1stOrderTimeR
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The Nb > 0 branch of Default1stOrderTimeR: M, A and F cover N retained
+!> basis functions (N = the n GetElementDOFs already returned) followed by Nb
+!> locally condensed p-bubble ones. A condensed bubble's own value from the
+!> previous timestep is nowhere in the global solution vector -- Add1stOrderTime
+!> reads Solver % Variable via Perm, which such a bubble was never assigned a
+!> row in -- so x's own BubbleValues/BubblePrevValues (Types.F90) stand in
+!> for it instead, and CondensatePTransientH both forms the time derivative
+!> over the FULL retained+bubble block and eliminates the bubble rows/columns
+!> in one step, taking the place of Add1stOrderTime AND a following
+!> CondensateP call.
+!>
+!> Only the default (Implicit Euler / BDF order 1) scheme is supported so
+!> far -- CondensatePTransient hardcodes M/dt, unlike Add1stOrderTime's own
+!> dispatch on "Timestepping Method". Generalizing that (e.g. a higher BDF
+!> order needs more than one stored previous bubble value) is future work;
+!> for now a mismatched request is a Fatal, not a silently wrong answer.
+!> Having this live in one shared place, rather than duplicated per solver,
+!> is what will make that generalization tractable later.
+!------------------------------------------------------------------------------
+  SUBROUTINE Default1stOrderTimeBubble( Solver, Params, Element, x, dt, n, Nb, &
+      Indexes, M, A, F )
+!------------------------------------------------------------------------------
+    TYPE(Solver_t) :: Solver
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Element_t) :: Element
+    TYPE(Variable_t), POINTER :: x
+    REAL(KIND=dp) :: dt
+    INTEGER :: n, Nb
+    INTEGER :: Indexes(:)
+    REAL(KIND=dp) :: M(:,:), A(:,:), F(:)
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: Method
+    LOGICAL :: Found
+    INTEGER :: i, j, K, L, DOFs
+    REAL(KIND=dp), ALLOCATABLE :: PrevSol(:), CurSol(:)
+
+    IF( .NOT. ASSOCIATED( x % BubbleValues ) ) CALL Fatal( 'Default1stOrderTime', &
+        'A locally condensed bubble (Nb > 0) needs Solver % Variable''s bubble '// &
+        'history (x % BubbleValues) allocated first -- see BubbleHistoryUpdate.' )
+
+    ! Called from per-element threaded assembly (e.g. SSTKomega/V2FSolver's
+    ! LocalMatrixVec) -- ListGetString's CHARACTER(:) ALLOCATABLE result is
+    ! NOT thread-safe under gfortran (see GetStringThreadSafe's own callers /
+    ! the ListCompareElementString fix), so go through the thread-safe
+    ! fixed-length wrapper instead of assigning its result directly.
+    CALL GetStringThreadSafe( Params, 'Timestepping Method', Method, Found )
+    IF( Solver % Order /= 1 .OR. &
+        ( Found .AND. Method /= 'implicit euler' .AND. Method /= 'bdf' ) ) THEN
+      WRITE( Message, * ) 'A locally condensed bubble (Nb > 0) only supports the ' // &
+          'default Implicit Euler / BDF order 1 time integration -- got ' // &
+          'Timestepping Method = "'//TRIM(Method)//'", Order = ', Solver % Order
+      CALL Fatal( 'Default1stOrderTime', Message )
+    END IF
+
+    DOFs = x % DOFs
+    ALLOCATE( PrevSol(DOFs*n), CurSol(DOFs*n) )
+    DO i=1,n
+      DO j=1,DOFs
+        K = DOFs*(i-1)+j
+        L = DOFs*(x % Perm(Indexes(i))-1)+j
+        PrevSol(K) = x % PrevValues(L,1)
+        CurSol(K) = x % Values(L)
+      END DO
+    END DO
+
+    CALL CondensatePTransientH( x, Element % ElementIndex, n, Nb, DOFs, dt, &
+        M, A, F, PrevSol, CurSol )
+!------------------------------------------------------------------------------
+  END SUBROUTINE Default1stOrderTimeBubble
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Convenience wrapper over BubbleHistoryUpdate (MatrixAssembly.F90) for a
+!> solver's own top-level call, once per solve, before its element loop: the
+!> caller only ever needs to say Dofs, the number of interleaved dofs a
+!> bubble augments (usually the field's own Solver % Variable % DOFs, but
+!> e.g. IncompressibleNS/FlowSolve's velocity bubble excludes the pressure
+!> dof and so passes "dim" instead -- that is genuinely solver-specific and
+!> cannot be defaulted safely). Which Variable, how many mesh elements to
+!> size the history for, and which timestep to shift the recovered bubble
+!> part into "previous" for are all derived from USolver (or, absent that,
+!> CurrentModel % Solver, mirroring DefaultStart) rather than left for the
+!> caller to recompute at every call site.
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultBubbleHistoryUpdate( Dofs, USolver )
+!------------------------------------------------------------------------------
+    INTEGER :: Dofs                             !< Interleaved dofs per bubble.
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+
+    TYPE(Solver_t), POINTER :: Solver
+!------------------------------------------------------------------------------
+    IF( PRESENT(USolver) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver
+    END IF
+
+    CALL BubbleHistoryUpdate( Solver % Variable, &
+        Dofs * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes ), &
+        Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements, &
+        GetTimestep() )
+!------------------------------------------------------------------------------
+  END SUBROUTINE DefaultBubbleHistoryUpdate
 !------------------------------------------------------------------------------
 
 !> Add the local matrix entries to for complex valued equations that are of first order in time

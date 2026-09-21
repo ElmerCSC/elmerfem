@@ -782,6 +782,18 @@ MODULE Types
      REAL(KIND=dp), POINTER :: UpperLimit(:) => NULL(), LowerLimit(:) => NULL()
      COMPLEX(KIND=dp), POINTER :: CValues(:) => NULL()
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
+
+     ! History of a locally condensed bubble dof's value (current and
+     ! previous timestep), needed to form a consistent BDF(1) time
+     ! derivative for a bubble that is eliminated from Values/PrevValues
+     ! above and so never gets a Perm row of its own -- see
+     ! BubbleHistoryUpdate/CondensatePTransientH/NSCondensateTransientH in
+     ! MatrixAssembly.F90. Indexed by (Element % ElementIndex - 1) *
+     ! BubbleStride + a per-solver local offset, NOT through Perm.
+     ! BubbleStride is Dofs * MAX(mesh MaxBDOFs, MaxElementNodes), covering
+     ! both a p-bubble and the legacy one-bubble-per-node convention.
+     REAL(KIND=dp), POINTER :: BubbleValues(:) => NULL(), BubblePrevValues(:) => NULL()
+     INTEGER :: BubbleStride = 0, BubbleTimestep = -1
    END TYPE Variable_t
 
 !------------------------------------------------------------------------------

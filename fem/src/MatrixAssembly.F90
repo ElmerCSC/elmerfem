@@ -1092,5 +1092,134 @@ SUBROUTINE CondensatePTransient( N, Nb, Dofs, dt, M, K, F, xprev, x, BubblePrev,
 END SUBROUTINE CondensatePTransient
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Ensures Var % BubbleValues/BubblePrevValues are allocated to hold
+!> Stride*NumElements reals each (a one-time allocation: a no-op on every
+!> later call, same as the ".NOT. ALLOCATED(bx)" guard it replaces -- if the
+!> mesh changes, e.g. adaptive remeshing, the caller must instead free Var's
+!> bubble history first (see DeallocateVariableEntries, Lists.F90), since
+!> there is no way to tell that case apart from an ordinary repeat call from
+!> here), and once per NewTimestep, shifts the recovered bubble values into
+!> "previous" -- mirroring the caller-side "GetTimestep() /= BubbleTimestep"
+!> guard this replaces, so it must likewise only be called once per solver
+!> invocation (not once per element), with NewTimestep = the caller's own
+!> GetTimestep().
+!>
+!> The history lives on Var (normally the caller's own Solver % Variable)
+!> rather than in a separate free-standing type: a locally condensed
+!> bubble's value is conceptually part of that same field's solution, it
+!> just never gets a row in Var % Values/PrevValues (via Var % Perm) because
+!> it is eliminated before the global system is assembled. See
+!> CondensatePTransientH/NSCondensateTransientH below and the BubbleValues/
+!> BubblePrevValues/BubbleStride/BubbleTimestep fields on Variable_t
+!> (Types.F90).
+!------------------------------------------------------------------------------
+SUBROUTINE BubbleHistoryUpdate( Var, Stride, NumElements, NewTimestep )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: Stride         !< Reals reserved per element (Dofs*max bubble dofs).
+    INTEGER :: NumElements    !< Bulk + boundary element count to cover.
+    INTEGER :: NewTimestep    !< The caller's own GetTimestep().
+!------------------------------------------------------------------------------
+    IF( .NOT. ASSOCIATED( Var % BubbleValues ) ) THEN
+      Var % BubbleStride = Stride
+      ALLOCATE( Var % BubbleValues(Stride*NumElements), Var % BubblePrevValues(Stride*NumElements) )
+      Var % BubbleValues = 0.0_dp
+      Var % BubblePrevValues = 0.0_dp
+    END IF
+
+    IF( NewTimestep /= Var % BubbleTimestep ) THEN
+      Var % BubblePrevValues = Var % BubbleValues
+      Var % BubbleTimestep = NewTimestep
+    END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE BubbleHistoryUpdate
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> CondensatePTransient, taking the per-element BubblePrev/BubbleCur slices
+!> out of Var's bubble history (keyed by ElementIndex, e.g.
+!> Element % ElementIndex) instead of requiring the caller to slice its own
+!> bx/bxprev arrays by hand.
+!------------------------------------------------------------------------------
+SUBROUTINE CondensatePTransientH( Var, ElementIndex, N, Nb, Dofs, dt, M, K, F, xprev, x )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex
+    INTEGER :: N, Nb, Dofs
+    REAL(KIND=dp) :: dt, M(:,:), K(:,:), F(:), xprev(:), x(:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+
+    CALL CondensatePTransient( N, Nb, Dofs, dt, M, K, F, xprev, x, &
+        Var % BubblePrevValues(boff+1:boff+Dofs*Nb), Var % BubbleValues(boff+1:boff+Dofs*Nb) )
+!------------------------------------------------------------------------------
+END SUBROUTINE CondensatePTransientH
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> NSCondensateTransient, taking the per-element BubblePrev/BubbleCur velocity
+!> slices out of Var's bubble history instead of requiring the caller to
+!> slice its own bx/bxprev arrays by hand. Mirrors CondensatePTransientH,
+!> but keyed by "dim" (velocity components only -- there is no pressure
+!> bubble) rather than by Var's own DOFs (velocity+pressure).
+!------------------------------------------------------------------------------
+SUBROUTINE NSCondensateTransientH( Var, ElementIndex, N, Nb, dim, dt, M, K, F, xprev, x )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex
+    INTEGER :: N, Nb, dim
+    REAL(KIND=dp) :: dt, M(:,:), K(:,:), F(:), xprev(:,:), x(:,:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+
+    CALL NSCondensateTransient( N, Nb, dim, dt, M, K, F, xprev, x, &
+        Var % BubblePrevValues(boff+1:boff+dim*Nb), Var % BubbleValues(boff+1:boff+dim*Nb) )
+!------------------------------------------------------------------------------
+END SUBROUTINE NSCondensateTransientH
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Fetches this element's Width-wide slice of Var's PREVIOUS-timestep bubble
+!> history. For callers like IncompressibleNS.F90's LCondensate that build
+!> the bubble-augmented time derivative and eliminate the bubble by hand
+!> (rather than through CondensatePTransientH/NSCondensateTransientH), so
+!> they still need direct read/write access to the slice.
+!------------------------------------------------------------------------------
+SUBROUTINE BubbleHistoryGetPrev( Var, ElementIndex, Width, Prev )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex, Width
+    REAL(KIND=dp) :: Prev(:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+    Prev(1:Width) = Var % BubblePrevValues(boff+1:boff+Width)
+!------------------------------------------------------------------------------
+END SUBROUTINE BubbleHistoryGetPrev
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Writes this element's Width-wide slice of Var's CURRENT bubble history,
+!> i.e. the just-recovered bubble value. See BubbleHistoryGetPrev.
+!------------------------------------------------------------------------------
+SUBROUTINE BubbleHistorySetCur( Var, ElementIndex, Width, Cur )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex, Width
+    REAL(KIND=dp) :: Cur(:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+    Var % BubbleValues(boff+1:boff+Width) = Cur(1:Width)
+!------------------------------------------------------------------------------
+END SUBROUTINE BubbleHistorySetCur
+!------------------------------------------------------------------------------
 
 END MODULE MatrixAssembly

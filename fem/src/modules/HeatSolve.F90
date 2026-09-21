@@ -356,15 +356,13 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
   ! Per-element bubble history (current and previous timestep), needed to
   ! form a consistent BDF(1) time derivative for a condensed p-bubble: see
-  ! CondensatePTransient in MatrixAssembly.F90 and IncompressibleNSVec's
-  ! LCondensate, which this mirrors (also mirrored in KESolver.F90,
-  ! Komega.F90, SSTKomega.F90, V2FSolver.F90 and Spalart-Allmaras.F90).
-  ! Indexed by Element % ElementIndex with stride
-  ! bxStride = MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes) (Dofs=1 for a
-  ! scalar temperature, so no interleaving factor is needed), not nb of any
-  ! one element, so blocks stay aligned on a mesh with mixed bubble counts.
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-  INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
+  ! CondensatePTransientH in MatrixAssembly.F90 and the BubbleValues/
+  ! BubblePrevValues/BubbleStride fields on Variable_t (Types.F90) -- it
+  ! lives on Solver % Variable itself, not a separate module-level type,
+  ! since a condensed bubble's value is conceptually part of this same
+  ! field's solution. Dofs=1 for a scalar temperature, so its Stride =
+  ! MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes), not nb of any one element,
+  ! so blocks stay aligned on a mesh with mixed bubble counts.
 
   INTERFACE
     SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
@@ -495,39 +493,19 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   END IF
 
   ! Per-element bubble history for the transient condensed-bubble case:
-  ! allocate once, sized by the mesh's own worst-case bubble count (not this
-  ! element's own nb, which can vary element to element) times the number of
-  ! BULK elements. The stride covers both a p-bubble (MaxBDOFs) and a
-  ! "Bubbles = True"-style one bubble per node (MaxElementNodes), whichever
-  ! is larger -- mirrors KESolver.F90/Spalart-Allmaras.F90. No Solver %
-  ! GlobalBubbles check here -- see the matching block and its rationale
-  ! there; a global p-bubble already surfaces as nb == 0 to this solver (see
-  ! GetElementNOFBDOFs), so it never touches this history at all.
+  ! allocate once (a no-op on every later call, done via DefaultBubbleHistoryUpdate
+  ! -- Dofs=1, a scalar temperature -- which also covers the mesh-sizing and
+  ! once-per-timestep "shift into previous" bookkeeping below). No
+  ! Solver % GlobalBubbles check here -- see the matching block and its
+  ! rationale there; a global p-bubble already surfaces as nb == 0 to this
+  ! solver (see GetElementNOFBDOFs), so it never touches this history at all.
   !
-  ! Sized over NumberOfBulkElements + NumberOfBoundaryElements, not just the
-  ! former: a boundary element promoted to this equation via a BC's "Body Id"
-  ! (e.g. a lower-dimensional pipe embedded in a 3D mesh, see the "Heat
-  ! Transfer Multiplier" comment below) keeps its ElementIndex in the
-  ! boundary-element range while being assembled here as a bulk element, so
-  ! boff = (Element % ElementIndex - 1) * bxStride can otherwise run past the
-  ! bulk-only allocation.
-  IF( Transient .AND. .NOT. ALLOCATED( bx ) ) THEN
-    bxStride = MAX( Mesh % MaxBDOFs, Mesh % MaxElementNodes )
-    ALLOCATE( bx( bxStride * (Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements) ), &
-        bxprev( bxStride * (Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements) ) )
-    bx = 0.0_dp
-    bxprev = 0.0_dp
-  END IF
-
-  ! A new timestep started: the bubble part left over from the last solve of
-  ! the previous timestep becomes "previous" for this one. Must happen only
-  ! once per timestep, not once per call -- this solver may be called several
-  ! times per timestep by an outer (Steady State) coupled iteration, and only
-  ! the first such call should shift the history.
-  IF( Transient .AND. ALLOCATED( bx ) .AND. GetTimestep() /= BubbleTimestep ) THEN
-    bxprev = bx
-    BubbleTimestep = GetTimestep()
-  END IF
+  ! Shifting the previous solve's recovered bubble part into "previous" must
+  ! happen only once per timestep, not once per call -- this solver may be
+  ! called several times per timestep by an outer (Steady State) coupled
+  ! iteration, and only the first such call should shift the history;
+  ! DefaultBubbleHistoryUpdate itself guards on GetTimestep() for this.
+  IF( Transient ) CALL DefaultBubbleHistoryUpdate( Dofs=1 )
 
   nColours = GetNOFColours(Solver)
 
@@ -1100,11 +1078,11 @@ CONTAINS
     LOGICAL :: DoPhaseChange, UseGradient
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
-    INTEGER :: i,p,q,j,t,k,ngp,allocstat,tid,boff
+    INTEGER :: i,p,q,j,t,k,ngp,allocstat,tid
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd), hK, mK, VNorm, JouleH, HTMultAtIp
+    REAL(KIND=dp) :: hK, mK, VNorm, JouleH, HTMultAtIp
     ! Handles now live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
@@ -1554,23 +1532,19 @@ CONTAINS
     END IF
 
     ! A condensed bubble's own value from the previous timestep is not in the
-    ! global solution vector (it was eliminated from it), so Default1stOrderTime
-    ! cannot form its time derivative -- it would silently treat that history
-    ! as zero. CondensatePTransient forms M/dt and M*xprev/dt over the FULL
-    ! bubble-augmented block instead, using this element's own recorded bubble
-    ! history, before eliminating the bubble rows/columns. Calling
-    ! Default1stOrderTime as well would add M/dt to the retained block a
-    ! second time. nb == 0 whenever the bubble is left in the global system
-    ! (Solver % GlobalBubbles), so the ".NOT. Solver % GlobalBubbles" guard is
-    ! belt-and-braces, matching KESolver.F90/Spalart-Allmaras.F90.
+    ! global solution vector (it was eliminated from it), so Default1stOrderTime's
+    ! ordinary path cannot form its time derivative -- it would silently treat
+    ! that history as zero. Passing it Nb switches it to the path that forms
+    ! M/dt and M*xprev/dt over the FULL bubble-augmented block instead, using
+    ! Solver % Variable's own recorded bubble history, and eliminates the
+    ! bubble rows/columns itself -- so, unlike the ELSE branch, no separate
+    ! CondensateP call follows here. nb == 0 whenever the bubble is left in
+    ! the global system (Solver % GlobalBubbles), so the
+    ! ".NOT. Solver % GlobalBubbles" guard is belt-and-braces, matching
+    ! KESolver.F90/Spalart-Allmaras.F90.
     IF( Transient .AND. nb > 0 .AND. .NOT. Solver % GlobalBubbles ) THEN
-      CALL GetScalarLocalSolution( LocalTemp(1:nd-nb), UElement=Element )
-      CALL GetScalarLocalSolution( PrevTemp(1:nd-nb), UElement=Element, tStep=-1 )
       CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
-      boff = (Element % ElementIndex - 1) * bxStride
-      CALL CondensatePTransient( nd-nb, nb, 1, dt, MASS, STIFF, FORCE, &
-          PrevTemp(1:nd-nb), LocalTemp(1:nd-nb), &
-          bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+      CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, Nb=nb )
     ELSE
       IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
       CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
@@ -1946,7 +1920,7 @@ CONTAINS
     REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,j,t,p,q,k,CondRank,tid,boff
+    INTEGER :: i,j,t,p,q,k,CondRank,tid
     ! Compressibility Model work: see the matching comment in LocalMatrixVec.
     ! NodalPressure/GradP support the reversible pressure-work source term;
     ! the flow solution's pressure is a solved field, not a keyword, so its
@@ -1958,7 +1932,6 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    REAL(KIND=dp) :: LocalTemp(nd), PrevTemp(nd)
     ! SUPG (equal-order) stabilization work: StreamVec(p), the streamline
     ! weighted test/trial "basis" rho*cp*(velo.grad basis_p) at this
     ! integration point -- see the matching comment in LocalMatrixVec, whose
@@ -2366,16 +2339,12 @@ CONTAINS
 
     ! See the matching comment in LocalMatrixVec: a condensed bubble's own
     ! value from the previous timestep is not in the global solution vector,
-    ! so CondensatePTransient must form the time derivative over the full
-    ! bubble-augmented block instead of Default1stOrderTime.
+    ! so Nb switches Default1stOrderTime to the path that forms the time
+    ! derivative over the full bubble-augmented block and eliminates the
+    ! bubble rows/columns itself -- no separate CondensateP call follows here.
     IF( Transient .AND. nb > 0 .AND. .NOT. Solver % GlobalBubbles ) THEN
-      CALL GetScalarLocalSolution( LocalTemp(1:nd-nb), UElement=Element )
-      CALL GetScalarLocalSolution( PrevTemp(1:nd-nb), UElement=Element, tStep=-1 )
       CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
-      boff = (Element % ElementIndex - 1) * bxStride
-      CALL CondensatePTransient( nd-nb, nb, 1, dt, MASS, STIFF, FORCE, &
-          PrevTemp(1:nd-nb), LocalTemp(1:nd-nb), &
-          bxprev(boff+1:boff+nb), bx(boff+1:boff+nb) )
+      CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, Nb=nb )
     ELSE
       IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
       CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )

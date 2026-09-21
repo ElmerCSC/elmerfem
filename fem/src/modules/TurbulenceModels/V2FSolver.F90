@@ -131,13 +131,10 @@ MODULE V2FSolverLocalForms
 
   IMPLICIT NONE
 
-  ! Per-element bubble history (current and previous timestep) -- see the
-  ! matching bx/bxprev comment and CondensatePTransient call in
-  ! V2FSolverLegacy.F90, which this mirrors. Indexed by Element %
-  ! ElementIndex with stride bxStride = DOFs*MAX(MaxBDOFs,MaxElementNodes)
-  ! (DOFs=2: V2 and F interleaved).
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
-  INTEGER, SAVE :: bxStride = 0, BubbleTimestep = -1
+  ! Per-element bubble history, used by Default1stOrderTime's Nb path
+  ! (DefUtils.F90) -- lives on Solver % Variable's own BubbleValues/
+  ! BubblePrevValues (Types.F90), not a separate type; see the matching
+  ! bx/bxprev comment in V2FSolverLegacy.F90, which this mirrors.
 
   ! Per-thread ValueHandle_t storage for LocalMatrixVec's material lookups.
   ! NOT THREADPRIVATE -- see the matching comment on IncompressibleNS.F90's
@@ -170,8 +167,6 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), TimeForce(:)
     REAL(KIND=dp), ALLOCATABLE :: MassV2(:,:), StiffV2(:,:), StiffV2F(:,:), &
         StiffFV2(:,:), StiffFF(:,:), ForceF(:)
-    REAL(KIND=dp), ALLOCATABLE :: xl(:), xlprev(:)
-    REAL(KIND=dp), ALLOCATABLE :: LocalV2(:), LocalF(:), PrevV2(:), PrevF(:)
 
     REAL(KIND=dp), POINTER :: RhoVec(:), MuVec(:), SigmaVec(:), CmuVec(:), &
         C1Vec(:), C2Vec(:), CTVec(:), CLVec(:), CnuVec(:)
@@ -184,7 +179,7 @@ CONTAINS
         StreamVec(:,:), TauVec(:), TmpVec(:), RadiusVec(:)
 
     REAL(KIND=dp) :: hK, mK, VNorm
-    INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,boff,ntot
+    INTEGER :: i,j,k,p,ngp,dim,allocstat,tid,ntot
     LOGICAL :: Stat, Found, IsAxiSymmetric
 !------------------------------------------------------------------------------
     tid = 1
@@ -426,21 +421,8 @@ CONTAINS
     TimeForce = 0._dp
     IF( nb > 0 ) THEN
       IF( Transient .AND. .NOT. GlobalBubbles ) THEN
-        ALLOCATE( LocalV2(nd), LocalF(nd), PrevV2(nd), PrevF(nd), xl(2*nd), xlprev(2*nd) )
-        CALL GetScalarLocalSolution( LocalV2, 'V2', UElement=Element )
-        CALL GetScalarLocalSolution( LocalF, 'F', UElement=Element )
-        CALL GetScalarLocalSolution( PrevV2, 'V2', UElement=Element, tStep=-1 )
-        CALL GetScalarLocalSolution( PrevF, 'F', UElement=Element, tStep=-1 )
-
-        xl(1:2*nd-1:2)     = LocalV2(1:nd)
-        xl(2:2*nd:2)       = LocalF(1:nd)
-        xlprev(1:2*nd-1:2) = PrevV2(1:nd)
-        xlprev(2:2*nd:2)   = PrevF(1:nd)
-
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( nd, nb, 2, dt, MASS, STIFF, FORCE, &
-            xlprev(1:2*nd), xl(1:2*nd), &
-            bxprev(boff+1:boff+2*nb), bx(boff+1:boff+2*nb) )
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=nb )
       ELSE
         IF( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL CondensateP( 2*nd, 2*nb, STIFF, FORCE, TimeForce )
@@ -481,11 +463,11 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: V2FModel
     REAL(KIND=dp) :: Clip
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), LOAD(:,:), &
-        TimeForce(:), LocalV2(:), LocalF(:), PrevV2(:), PrevF(:), xl(:), xlprev(:), &
+        TimeForce(:), LocalV2(:), LocalF(:), &
         U(:), V(:), W(:), Density(:), Viscosity(:), &
         KECmu(:), V2FC1(:), V2FC2(:), V2FCL(:), V2FCT(:), V2FCnu(:), V2FSigma(:)
     LOGICAL :: Bubbles, GotIt
-    INTEGER :: n, nd, nb, allocstat, boff
+    INTEGER :: n, nd, nb, allocstat
 !------------------------------------------------------------------------------
     Bubbles = BubblesDefault .AND. .NOT. ASSOCIATED( Element % PDefs )
     Material => GetMaterial()
@@ -502,8 +484,7 @@ CONTAINS
 
     ALLOCATE( MASS(2*(nd+nb),2*(nd+nb)), STIFF(2*(nd+nb),2*(nd+nb)), &
         FORCE(2*(nd+nb)), LOAD(2,n), TimeForce(2*(nd+nb)), &
-        LocalV2(nd+nb), LocalF(nd+nb), PrevV2(nd+nb), PrevF(nd+nb), &
-        xl(2*(nd+nb)), xlprev(2*(nd+nb)), &
+        LocalV2(nd+nb), LocalF(nd+nb), &
         U(n), V(n), W(n), Density(n), Viscosity(n), &
         KECmu(n), V2FC1(n), V2FC2(n), V2FCL(n), V2FCT(n), V2FCnu(n), V2FSigma(n), &
         STAT=allocstat )
@@ -539,12 +520,6 @@ CONTAINS
     CALL GetScalarLocalSolution( LocalV2, 'V2' )
     CALL GetScalarLocalSolution( LocalF, 'F' )
 
-    IF ( Transient .AND. &
-        ( Bubbles .OR. ( nb > 0 .AND. .NOT. GlobalBubbles ) ) ) THEN
-      CALL GetScalarLocalSolution( PrevV2, 'V2', tStep=-1 )
-      CALL GetScalarLocalSolution( PrevF, 'F', tStep=-1 )
-    END IF
-
     CALL GetScalarLocalSolution( U, 'Velocity 1' )
     CALL GetScalarLocalSolution( V, 'Velocity 2' )
     CALL GetScalarLocalSolution( W, 'Velocity 3' )
@@ -554,30 +529,18 @@ CONTAINS
     TimeForce = 0.0_dp
     IF ( Bubbles ) THEN
       IF ( Transient ) THEN
-        xl(1:2*n-1:2)     = LocalV2(1:n)
-        xl(2:2*n:2)       = LocalF(1:n)
-        xlprev(1:2*n-1:2) = PrevV2(1:n)
-        xlprev(2:2*n:2)   = PrevF(1:n)
-
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( n, n, 2, dt, MASS, STIFF, FORCE, &
-            xlprev(1:2*n), xl(1:2*n), &
-            bxprev(boff+1:boff+2*n), bx(boff+1:boff+2*n) )
+        ! Nb=n: "as many bubbles as nodes", same convention as the nb>0
+        ! branch below. Never gated on Solver % GlobalBubbles -- legacy
+        ! bubbles are always locally condensed.
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=n )
       ELSE
-        IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL Condensate( 2*n, STIFF, FORCE, TimeForce )
       END IF
     ELSE IF ( nb > 0 ) THEN
       IF ( Transient .AND. .NOT. GlobalBubbles ) THEN
-        xl(1:2*nd-1:2)     = LocalV2(1:nd)
-        xl(2:2*nd:2)       = LocalF(1:nd)
-        xlprev(1:2*nd-1:2) = PrevV2(1:nd)
-        xlprev(2:2*nd:2)   = PrevF(1:nd)
-
-        boff = (Element % ElementIndex - 1) * bxStride
-        CALL CondensatePTransient( nd, nb, 2, dt, MASS, STIFF, FORCE, &
-            xlprev(1:2*nd), xl(1:2*nd), &
-            bxprev(boff+1:boff+2*nb), bx(boff+1:boff+2*nb) )
+        CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element, &
+            Nb=nb )
       ELSE
         IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
         CALL CondensateP( 2*nd, 2*nb, STIFF, FORCE, TimeForce )
@@ -828,22 +791,9 @@ SUBROUTINE V2F_LDM( Model,Solver,dt,TransientSimulation )
   BubblesDefault = ListGetLogical( Solver % Values, 'Bubbles', GotIt )
   IF ( .NOT.GotIt ) BubblesDefault = .TRUE.
 
-  IF ( TransientSimulation .AND. .NOT. ALLOCATED(bx) ) THEN
-    ! Stride covers both p-bubbles (MaxBDOFs) and LocalMatrixScalar's own
-    ! legacy per-node bubbles (MaxElementNodes), times DOFs=2 -- exactly as
-    ! V2FSolverLegacy.F90 sizes its own bx/bxprev.
-    bxStride = 2 * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes )
-    ALLOCATE( bx(bxStride*(Solver % Mesh % NumberOfBulkElements + &
-        Solver % Mesh % NumberOfBoundaryElements)), &
-        bxprev(bxStride*(Solver % Mesh % NumberOfBulkElements + &
-        Solver % Mesh % NumberOfBoundaryElements)) )
-    bx = 0._dp; bxprev = 0._dp
-  END IF
-
-  IF ( TransientSimulation .AND. ALLOCATED(bx) .AND. GetTimestep() /= BubbleTimestep ) THEN
-    bxprev = bx
-    BubbleTimestep = GetTimestep()
-  END IF
+  ! K and Epsilon are interleaved, Dofs=2 -- exactly as V2FSolverLegacy.F90
+  ! sizes its own bx/bxprev.
+  IF ( TransientSimulation ) CALL DefaultBubbleHistoryUpdate( Dofs=2 )
 
   NonlinearIter = ListGetInteger( Solver % Values, 'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT.GotIt ) NonlinearIter = 1
