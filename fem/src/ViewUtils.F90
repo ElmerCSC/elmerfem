@@ -250,7 +250,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      LOGICAL :: handled
      INTEGER :: i2, j, k, l, m, mm, Usedn2, Setn2, np2, pn2
-     INTEGER :: ind(128,2), ind2(128,2)
+     INTEGER :: ind(256,2), ind2(256,2)
      REAL(KIND=dp) :: c(3), d(3), e(3)
 
      TYPE(Element_t), POINTER :: el, ed
