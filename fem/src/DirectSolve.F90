@@ -49,7 +49,6 @@
 MODULE DirectSolve
 
    USE CRSMatrix
-   USE BandMatrix
    USE SParIterSolve
    USE ParallelUtils, ONLY : ParallelSumVector
 

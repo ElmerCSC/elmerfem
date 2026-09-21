@@ -1965,6 +1965,7 @@ CONTAINS
           NodalDofsOnly, ProjectorDofs, ThreadedStartup, &
           UseGivenPerm, BCMode ) RESULT(Matrix)
 !------------------------------------------------------------------------------
+     USE BandMatrix, ONLY : Band_CreateMatrix
      IMPLICIT NONE
      TYPE(Model_t) :: Model
      TYPE(Mesh_t) :: Mesh

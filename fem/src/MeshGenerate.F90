@@ -43,7 +43,7 @@
 MODULE MeshGenerate
 
   USE GeneralUtils
-  USE SolverBasics
+  USE SolverBasics, ONLY : ComputeNorm
   USE ModelDescription
   USE LoadMod
   USE MeshBasics, ONLY : MeshStabParams, ReleaseMesh, ReleaseMeshEdgeTables, &

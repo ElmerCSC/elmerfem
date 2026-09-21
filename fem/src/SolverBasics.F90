@@ -66,7 +66,10 @@ MODULE SolverBasics
        DisplaceMesh, FindExtremumNodes, FindMeshEdges, GetLagrangeIndexes, &
        IntegralProjector, MakePermUsingMask
    USE MortarUtils, ONLY : PeriodicProjector, SaveProjector
-   USE MatrixAssembly
+   USE BandMatrix
+   USE MatrixAssembly, ONLY : AddToMatrixElement
+   ! Additional subroutines made visible but not used here:
+   USE MatrixAssembly, ONLY: ZeroRow, MoveRow, SetMatrixElement
    USE MatrixScaling, ONLY : ScaleLinearSystemVectors
    
    IMPLICIT NONE

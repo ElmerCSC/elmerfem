@@ -51,7 +51,6 @@ MODULE IterSolve
 !$ USE omp_lib ! conditionally, for the thread ids in the dot products below
 
    USE Lists
-   USE BandMatrix
    USE IterativeMethods
    USE huti_sfe
 
