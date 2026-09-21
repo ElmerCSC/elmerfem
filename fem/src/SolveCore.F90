@@ -49,7 +49,7 @@ MODULE SolveCore
     USE Multigrid, ONLY : MultigridSolve
     USE BoundaryConditionUtils
     USE MatrixScaling, ONLY : BackScaleLinearSystem
-    USE MatrixAssembly
+    USE MatrixAssembly, ONLY : CreateChildMatrix
     USE IterSolve, ONLY : NumericalError
     USE ParallelEigenSolve, ONLY : ParallelArpackEigenSolve, ParallelArpackEigenSolveComplex
     IMPLICIT NONE

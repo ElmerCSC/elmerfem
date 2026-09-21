@@ -49,11 +49,15 @@ MODULE DefUtils
 
 #include "../config.h"
 
+   USE BandMatrix   ! Some routines from modules need this
    USE MeshGenerate
    USE MeshBasics, ONLY : AllocateElement, SaveParallelInfo
    USE ElementUtils
    USE SolverBasics
    USE SolveCore
+   USE MatrixAssembly, ONLY : CopyBulkMatrix, UseLocalMatrixStorage, &
+       restorebulkmatrix, flipperiodiclocalforce, flipperiodiclocalmatrix, &
+       uselocalmatrixcopy, GetLocalMatrixStorage
    USE ParallelUtils, ONLY : ParallelActive
    USE ContactUtils, ONLY : DetermineContact, MergeSlaveSolvers
    USE BoundaryConditionUtils
