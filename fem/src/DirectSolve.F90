@@ -1409,6 +1409,8 @@ CONTAINS
     icntlft = ListGetInteger(Solver % Values, &
           'mumps percentage increase working space', stat)
     IF (stat) A % SMumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % SMumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       ! Centralized matrix and solution
@@ -1684,6 +1686,8 @@ CONTAINS
     icntlft = ListGetInteger(Solver % Values, &
           'mumps percentage increase working space', stat)
     IF (stat) A % CMumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % CMumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       A % CMumpsID % icntl(18) = 0
@@ -1967,6 +1971,8 @@ CONTAINS
     icntlft = ListGetInteger(Solver % Values, &
           'mumps percentage increase working space', stat)
     IF (stat) A % MumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % MumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       A % MumpsID % icntl(18) = 0 ! centralized matrix
@@ -2293,6 +2299,8 @@ CONTAINS
 
     icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
     IF (stat) A % ZMumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % ZMumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       A % ZMumpsID % icntl(18) = 0 ! centralized matrix
