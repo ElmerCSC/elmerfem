@@ -1099,7 +1099,7 @@
   SUBROUTINE SlavePrec(u,v,ipar)
 !-------------------------------------------------------------------------------
     USE DefUtils
-    USE Smoothers
+    USE Smoothers, ONLY : MGSmooth
     IMPLICIT NONE
     REAL(KIND=dp) u(*)  !< the correction returned to create a new solution
     REAL(KIND=dp) v(*)  !< right-hand side (the current residual)
@@ -1327,7 +1327,7 @@
   SUBROUTINE SlavePrecComplex(u,v,ipar)
 !-------------------------------------------------------------------------------
     USE DefUtils
-    USE Smoothers
+    USE Smoothers, ONLY : MGSmooth
     USE GeneralUtils, ONLY : ComplexVariableValues
     IMPLICIT NONE
     COMPLEX(KIND=dp) u(*)  !< the correction returned to create a new solution

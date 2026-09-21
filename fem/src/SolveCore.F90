@@ -45,7 +45,7 @@
 MODULE SolveCore
 
     USE SolverBasics
-!    USE ParallelUtils, ONLY : ParallelDot
+    USE ParallelUtils, ONLY : ParallelDot, PartitionVector
     USE Multigrid, ONLY : MultigridSolve
     USE BoundaryConditionUtils
     USE MatrixScaling, ONLY : BackScaleLinearSystem
@@ -1185,8 +1185,8 @@ CONTAINS
   RECURSIVE SUBROUTINE SolveLinearSystem( A, b, &
        x, Norm, DOFs, Solver, BulkMatrix )
 !------------------------------------------------------------------------------
-    USE EigenSolve
-
+    USE EigenSolve, ONLY : ScaleEigenVectors, ExpandEigenVectors
+    
     REAL(KIND=dp) CONTIG :: b(:), x(:)
     REAL(KIND=dp) :: Norm
     TYPE(Matrix_t), POINTER :: A
@@ -3370,7 +3370,8 @@ END SUBROUTINE SolveSystem
 SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     EigenValues, EigenVectors,Solver )
 !------------------------------------------------------------------------------
-    USE EigenSolve
+    USE EigenSolve, ONLY : ArpackEigenSolve, ArpackEigenSolveComplex
+    USE ParallelEigenSolve, ONLY : ParallelArpackEigenSolve, ParallelArpackEigenSolveComplex
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), TARGET :: EigenValues(:),EigenVectors(:,:)
     REAL(KIND=dp) :: Norm

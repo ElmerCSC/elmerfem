@@ -124,6 +124,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE MeshBasics, ONLY : ClosestElementInMesh, ClosestNodeInMesh, NodeToDGIndex
   USE SaveUtils
+  USE ParallelUtils, ONLY : ParallelSlicesComm, ParallelTimesComm, &
+      ParallelPieceRank, ParallelPieceSize
   
   IMPLICIT NONE
 !------------------------------------------------------------------------------

@@ -54,6 +54,7 @@ MODULE DefUtils
    USE ElementUtils
    USE SolverBasics
    USE SolveCore
+   USE ParallelUtils, ONLY : ParallelActive
    USE ContactUtils
    USE BoundaryConditionUtils
    USE ProjectorUtils

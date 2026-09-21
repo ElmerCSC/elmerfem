@@ -27,7 +27,13 @@
 !------------------------------------------------------------------------------
   SUBROUTINE MultigridPrec( u,v,ipar )
 !------------------------------------------------------------------------------
-    USE Multigrid
+    USE Types
+    USE Messages
+    USE SParIterGlobals, ONLY : ParEnv
+    USE Multigrid, ONLY : MultiGridSolve
+    USE IterSolve, ONLY : FirstCall, stack_pos
+
+    IMPLICIT NONE
 
     INTEGER, DIMENSION(*) :: ipar  !< structure holding info from (HUTIter-iterative solver package)
     REAL(KIND=dp), TARGET :: u(*)

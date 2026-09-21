@@ -455,8 +455,10 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE CalculateLumpedTransient(Torque)
 !------------------------------------------------------------------------------
+   USE ParallelUtils, ONLY : ParallelSlicesComm
+   
    REAL(KIND=dp), OPTIONAL :: Torque
-
+   
    REAL(KIND=dp) :: torq,TorqArea,IMoment,IA, &
        rinner,router,rmean,rdiff,ctorq,detJ,Weight,&
        Bp,Br,Bx,By,x,y,r,rho,wtorq,Bp0,Br0,Bx0,By0
@@ -1903,6 +1905,8 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE CalculateLumpedHarmonic()
 !------------------------------------------------------------------------------
+   USE ParallelUtils, ONLY : ParallelSlicesComm
+   
    REAL(KIND=dp) :: torq,TorqArea,IMoment,IA,Omega, &
        rinner,router,rmean,rdiff,ctorq,detJ,Weight,x,y,r,rho
    REAL(KIND=dp), ALLOCATABLE :: a(:),POT(:,:),Density(:)
