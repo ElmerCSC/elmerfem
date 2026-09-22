@@ -71,9 +71,6 @@ CONTAINS
 
     CALL FindMeshEdges2D(Mesh)
 
-    PRINT *,'Flatten:',FlattenBody, FlattenDir
-
-    
     ! Elements may carry their original global ElementIndex (e.g. BulkElements+i).
     ! Traverse uses ElementIndex as an index into Used(n)/Set(n)/Normals(3*n), so
     ! it must equal the local position 1..n here.
