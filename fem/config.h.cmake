@@ -173,11 +173,10 @@
 /* Shared lib filename extension */
 #cmakedefine SHL_EXTENSION "@SHL_EXTENSION@"
 
-/* MMG */
-#if 1
-#cmakedefine HAVE_MMG 
-#cmakedefine HAVE_PARMMG
-#endif
+/* MMG: HAVE_MMG/HAVE_PARMMG come from ADD_DEFINITIONS() in the top-level
+   CMakeLists.txt (needed project-wide, e.g. by elmerice/Solvers, which
+   doesn't use this config.h), not redefined here to avoid duplicate
+   macro-definition warnings. */
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1

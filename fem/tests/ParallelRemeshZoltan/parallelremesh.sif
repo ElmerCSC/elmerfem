@@ -101,7 +101,8 @@ Solver 4
   Procedure = "SaveData" "SaveScalars"
 
   Operator 1 = partitions
-  Operator 2 = partition checksum
+  Operator 2 = volume
+  Variable 2 = "Remesh Levelset"
   Operator 3 = partition neighbours checksum
 
   Filename = f.dat
@@ -148,5 +149,5 @@ End
 Body Force 1
 End
 
-Solver 4 :: Reference Norm = 2.24269610E+07
+Solver 4 :: Reference Norm = 2.53055933E-01
 Solver 4 :: Reference Norm Tolerance = 1.0e-2
