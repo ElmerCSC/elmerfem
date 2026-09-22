@@ -486,7 +486,7 @@
            ! Hoisted out of the two branches further down: nested BLOCKs are
            ! miscompiled by some compilers (Intel 20.0), and neither branch
            ! needed a scope of its own.
-           INTEGER :: base_n, rem_n, n2
+           INTEGER :: base_n, rem_n, n2, FlattenBody, FlattenDir
            INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
            REAL(KIND=dp), ALLOCATABLE :: dummy_recv(:)
            !------------------------------------------------------
@@ -498,7 +498,13 @@
            IF (Combine3D) THEN
              ! All ranks have the full mesh (LoadModel uses 1,0), so PlanarReduce
              ! is available in MPI mode — every rank produces the same result.
-             RT_Mesh => PlanarReduce(n, Normals, Coord, Mesh)
+             FlattenBody = ListGetInteger( Params,'Viewfactor Flatten Body', GotIt )             
+             FlattenDir = ListGetInteger( Params,'Viewfactor Flatten Direction', GotIt ) 
+             IF(FlattenBody > 0 .AND. .NOT. GotIt ) THEN
+               CALL Fatal(Caller,'Give "Viewfactor Flatten Direction" too!')
+             END IF
+               
+             RT_Mesh => PlanarReduce(n, Normals, Coord, Mesh, FlattenBody, FlattenDir )
            ELSE
              ! Given surface OR volume shadow mesh from disk
              ! ---------------------------------------------

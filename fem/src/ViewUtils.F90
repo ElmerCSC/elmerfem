@@ -43,26 +43,27 @@
 !------------------------------------------------------------------------------
 MODULE ViewUtils
 
-     USE MeshBasics
+  USE MeshBasics
+  IMPLICIT NONE
 
 CONTAINS
 
 !------------------------------------------------------------------------------
   ! Find planar ares and reduce those, if found, to fewer elements
 !------------------------------------------------------------------------------
-  FUNCTION PlanarReduce( n, Normals, Coord, Mesh ) RESULT(MeshOut)
+  FUNCTION PlanarReduce( n, Normals, Coord, Mesh, FlattenBody, FlattenDir ) RESULT(MeshOut)
 !------------------------------------------------------------------------------
     TYPE(Mesh_t) :: Mesh
     TYPE(Mesh_t), POINTER :: MeshOut
     INTEGER :: n
     REAL(KIND=dp) :: Normals(:), Coord(:)
+    INTEGER :: FlattenBody, FlattenDir
 !------------------------------------------------------------------------------
-    INTEGER :: i, j, k, Usedn, Setn,  pn,nn
+    INTEGER :: i, j, k, Usedn, Setn,  pn,nn, mloc(1)
     LOGICAL, ALLOCATABLE :: Used(:)
     INTEGER, ALLOCATABLE :: Set(:), Ref(:)
-
-    LOGICAL  :: problems
-
+    LOGICAL  :: SkipElements, TestIt
+    TYPE(Element_t), POINTER :: Parent
     REAL(KIND=dp) :: t0,t1,t2
     TYPE(Mesh_t), POINTER :: Mesh2
 !------------------------------------------------------------------------------
@@ -70,6 +71,9 @@ CONTAINS
 
     CALL FindMeshEdges2D(Mesh)
 
+    PRINT *,'Flatten:',FlattenBody, FlattenDir
+
+    
     ! Elements may carry their original global ElementIndex (e.g. BulkElements+i).
     ! Traverse uses ElementIndex as an index into Used(n)/Set(n)/Normals(3*n), so
     ! it must equal the local position 1..n here.
@@ -97,12 +101,37 @@ CONTAINS
       Used(i) = .TRUE.
       Usedn = Usedn+1
 
+      ! Check if the 1st element may be skipped because we do a planar reduction.
+      ! If it can be, the whole set can be skipped. 
+      SkipElements = .FALSE.
+      IF( FlattenBody > 0 ) THEN        
+        TestIt = .FALSE.
+        Parent => Mesh % Elements(i) % BoundaryInfo % Left
+        IF(ASSOCIATED(Parent)) THEN
+          IF(Parent % BodyId == FlattenBody) TestIt = .TRUE.
+        END IF
+        Parent => Mesh % Elements(i) % BoundaryInfo % Right
+        IF(ASSOCIATED(Parent)) THEN
+          IF(Parent % BodyId == FlattenBody) TestIt = .TRUE.
+        END IF
+        IF( TestIt ) THEN
+          mloc = MAXLOC(ABS(Normals(3*i-2:3*i)))
+
+          IF(mloc(1)/=ABS(FlattenDir) .OR. Normals(3*(i-1)+mloc(1))*FlattenDir < 0 ) THEN
+            SkipElements = .TRUE.
+          END IF
+        END IF
+      END IF
+      
       Setn = 1
       Set(1) = i
       CALL Traverse( N, i, Normals, Set, Setn, Used, Usedn, Mesh )
       pn = pn + 1
 
-      IF ( Setn<=2 ) THEN
+      IF( SkipElements ) THEN
+        CYCLE
+
+      ELSE IF ( Setn<=2 ) THEN
          DO j=1,Setn
            nn = nn + 1
 
@@ -437,7 +466,10 @@ CONTAINS
        END DO
      END DO
 
-     IF ( ind2(m,2) /= ind2(1,1) ) THEN
+     IF( SkipElements ) THEN
+       CALL Info('PlanarReduce','Skipping '//I2S(Setn)//' element when using planar plate approximation',Level=10)
+     
+     ELSE IF ( ind2(m,2) /= ind2(1,1) ) THEN
        ! Open chain = truly broken topology, cannot repair
        CALL Info('PlanarReduce','Could not construct superelement? Using original elements.',Level=10)
        DO j=1,Setn
@@ -911,7 +943,7 @@ CONTAINS
    CHARACTER(LEN=*) :: Name
    TYPE(Mesh_t), POINTER :: ShadowMesh
 
-   INTEGER :: i, j, ncnt, id, body, code, node(8), iostat
+   INTEGER :: i, j, ncnt, id, body, code, node(8), iostat, nofElements, nofNodes
    REAL(KIND=dp)  :: x,y,z
    CHARACTER(LEN=256) :: Line
 
