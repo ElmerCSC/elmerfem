@@ -251,6 +251,7 @@ CONTAINS
      LOGICAL :: handled
      INTEGER :: i2, j, k, l, m, mm, Usedn2, Setn2, np2, pn2
      INTEGER :: ind(256,2), ind2(256,2)
+     INTEGER :: nn_hole_start
      REAL(KIND=dp) :: c(3), d(3), e(3)
 
      TYPE(Element_t), POINTER :: el, ed
@@ -442,7 +443,7 @@ CONTAINS
        DO j=1,Setn
          nn = nn + 1
 
-         MeshOut % Elements(nn) = Mesh % Elements(Set(j)) 
+         MeshOut % Elements(nn) = Mesh % Elements(Set(j))
          k = Mesh % Elements(Set(j)) % TYPE % NumberOfNodes
          MeshOut % Elements(nn) % TYPE => Mesh % Elements(Set(j)) % Type
 
@@ -454,6 +455,7 @@ CONTAINS
      ELSE
        ! Multiple closed loops: outer boundary + hole(s)
        handled = .FALSE.
+       nn_hole_start = nn
        IF ( m < pn2 ) THEN
          ALLOCATE(tris_h(3, pn2+32))
          eplnorm = Normals(3*(Set(1)-1)+1:3*(Set(1)-1)+3)
@@ -558,6 +560,28 @@ CONTAINS
            END IF
          END IF
        END IF  ! handled
+
+       ! Safety net: BridgeHolesAndTriangulate/EarClipTriangulate can fail to
+       ! triangulate a valid loop (e.g. degenerate/zero-width bridge edges
+       ! confusing the ear test) and return zero triangles without any error.
+       ! Silently swallowing the whole planar group in that case would drop
+       ! real boundary area from the shadow mesh, so fall back to emitting
+       ! the original, unreduced elements exactly like the open-chain case.
+       IF ( nn == nn_hole_start ) THEN
+         CALL Info('PlanarReduce', &
+             'Triangulation of planar area with hole(s) failed! Using original elements.',Level=5)
+         DO j=1,Setn
+           nn = nn + 1
+
+           MeshOut % Elements(nn) = Mesh % Elements(Set(j))
+           k = Mesh % Elements(Set(j)) % TYPE % NumberOfNodes
+           MeshOut % Elements(nn) % TYPE => Mesh % Elements(Set(j)) % Type
+
+           ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(k))
+           MeshOut % Elements(nn) % NodeIndexes = &
+               Mesh % Elements(Set(j)) % NodeIndexes
+         END DO
+       END IF
      END IF
 
      ! ----
