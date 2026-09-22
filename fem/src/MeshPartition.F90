@@ -627,7 +627,7 @@ CONTAINS
     INTEGER :: DIM
     !-------------------------------------
     TYPE(Element_t), POINTER :: MFacePtr(:), Element
-    INTEGER :: i,j,k,m,n,max_elfaces,el1,el2,gface_id, gpar_id,gpar_lid,ierr,counter,&
+    INTEGER :: i,j,k,m,n,max_elsides,el1,el2,gface_id, gpar_id,gpar_lid,ierr,counter,&
          NBulk,NFaces,Sweep,NIFFaces,work_size
     INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), FaceIFIDX(:),status(:),&
          work_int(:)
@@ -668,15 +668,19 @@ CONTAINS
       CALL Fatal(FuncName,"Not implemented in 1D")
     END IF
 
-    max_elfaces = 0
+    max_elsides = 0
     DO i=1,NBulk
       Element => Mesh % Elements(i)
-      max_elfaces = MAX(Element % TYPE % NumberOfFaces, max_elfaces)
+      IF( DIM == 3 ) THEN
+        max_elsides = MAX(Element % TYPE % NumberOfFaces, max_elsides)
+      ELSE
+        max_elsides = MAX(Element % TYPE % NumberOfEdges, max_elsides)
+      END IF
     END DO
 
     ALLOCATE(FaceIFIDX(COUNT(MFaceIF)), &
-         ElemConn(max_elfaces,NBulk), &
-         ElemConnPart(max_elfaces,NBulk), &
+         ElemConn(max_elsides,NBulk), &
+         ElemConnPart(max_elsides,NBulk), &
          NElConn(NBulk))
     ElemConn = 0
     NElConn = 0
@@ -858,7 +862,7 @@ CONTAINS
     INTEGER, OPTIONAL, ALLOCATABLE :: PartitionPerm(:)
     !-------------------------------------
     TYPE(Element_t), POINTER :: MFacePtr(:), Element, Left, Right
-    INTEGER :: i,j,k,m,n,max_elfaces,el1,el2,gface_id, gpar_id,gpar_lid,ierr,&
+    INTEGER :: i,j,k,m,n,max_elsides,el1,el2,gface_id, gpar_id,gpar_lid,ierr,&
          NBulk,Ngraph,NtotCon,NFaces,Sweep,NIFFaces,condim
     INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), status(:)
     INTEGER, POINTER :: ElFaceIdx(:)
@@ -913,20 +917,20 @@ CONTAINS
       NFaces = Mesh % NumberOfEdges
     END IF
     
-    max_elfaces = 0
+    max_elsides = 0
     DO i=1,NBulk
       Element => Mesh % Elements(i)
       IF( PRESENT( PartitionPerm) ) THEN
         IF( PartitionPerm(i) == 0 ) CYCLE
       END IF
       IF( condim == 3 ) THEN
-        max_elfaces = MAX(Element % TYPE % NumberOfFaces, max_elfaces)
+        max_elsides = MAX(Element % TYPE % NumberOfFaces, max_elsides)
       ELSE        
-        max_elfaces = MAX(Element % TYPE % NumberOfEdges, max_elfaces)
+        max_elsides = MAX(Element % TYPE % NumberOfEdges, max_elsides)
       END IF
     END DO
     CALL Info(FuncName,'Maximum connectivity count in graph: '&
-        //I2S(max_elfaces),Level=12)
+        //I2S(max_elsides),Level=12)
 
     ! Graph will be smaller if not bulk elements will be included in partitioning
     IF( PRESENT( PartitionPerm ) ) THEN
@@ -938,8 +942,8 @@ CONTAINS
     CALL Info(FuncName,'Total number of rows in graph: '&
         //I2S(Ngraph),Level=12)
     
-    ALLOCATE(ElemConn(max_elfaces,Ngraph), &
-        ElemConnPart(max_elfaces,Ngraph), &
+    ALLOCATE(ElemConn(max_elsides,Ngraph), &
+        ElemConnPart(max_elsides,Ngraph), &
         NElConn(Ngraph))
     ElemConn = 0
     ElemConnPart = 0
