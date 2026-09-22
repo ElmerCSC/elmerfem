@@ -1410,8 +1410,7 @@ CONTAINS
      !-----------------
      REAL(KIND=dp) :: Normal_in, Nrm2(3), r1(3), r2(3)
      LOGICAL :: Lrad, Rrad
-     INTEGER :: Lnode,Rnode,Lbody,Rbody,RadBody,Inode
-
+     INTEGER :: Lnode,Rnode,Lbody,Rbody,RadBody,Inode,BCId,Lid,Rid
      LOGICAL :: GotIt
 
      TYPE(ValueList_t), POINTER :: BC
@@ -1419,7 +1418,7 @@ CONTAINS
      CALL GetParentInfo(Element % BoundaryInfo % Left,  Element, Lbody, Lnode, Lrad)
      CALL GetParentInfo(Element % BoundaryInfo % Right, Element, Rbody, Rnode, Rrad)
 
-     BC => GetBC()
+     BC => GetBC( Element )
 
      RadBody = GetInteger( BC, 'Radiation Target Body',GotIt )
      IF ( .NOT. GotIt ) RadBody = GetInteger( BC, 'Normal Target Body',GotIt )
@@ -1443,10 +1442,19 @@ CONTAINS
 
      IF ( RadBody < 0 ) RadBody = 0
      IF ( RadBody>0 .AND. (RadBody /= Rbody .AND. RadBody /= Lbody) ) THEN
-       CALL Error( Caller, 'Inconsistent direction information (Radiation Target Body)' )
-       Message = 'Radiation Target: '//I2S(RadBody)//' Left, Right: '//&
-                    I2S(Lbody)//I2S(Rbody)
-       CALL Fatal( Caller, Message )
+       BcId = GetBCId( Element ) 
+       Message = 'BC: '//I2S(BCId)//', Target: '//I2S(RadBody)//', Left: '//I2S(Lbody)//', Right: '//I2S(Rbody)
+       CALL Error( Caller, Message )
+       Lid = 0; Rid = 0
+       IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+         Lid = Element % BoundaryInfo % Left % ElementIndex
+       END IF
+       IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+         Rid = Element % BoundaryInfo % Right % ElementIndex
+       END IF
+       CALL Error( Caller, 'Element: '//I2S(Element % ElementIndex)//&
+           ', Parent Elements: '//I2S(Lid)//', '//I2S(Rid) )
+       CALL Fatal( Caller, 'Inconsistent direction information (Radiation Target Body)' )
      END IF
 
      IF ( Lnode<=0 .OR. (RadBody>0 .AND. RadBody==Rbody) ) THEN

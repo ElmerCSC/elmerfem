@@ -44,10 +44,12 @@
 MODULE CutFemUtils
   USE Types
   USE Lists
+  USE ListMatrix, ONLY : List_ToCRSMatrix, List_AddToMatrixElement
+  USE CRSMatrix, ONLY : CRS_SortMatrix
   USE ElementUtils, ONLY : FreeMatrix
   USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE ElementDescription
-  USE MatrixAssembly
+  USE MatrixAssembly, ONLY : SetMatrixElement, ZeroRow
   USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
   USE ModelDescription, ONLY : FreeMesh
   USE SolverBasics, ONLY : GaussPointsAdapt, VectorValuesRange

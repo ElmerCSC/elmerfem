@@ -43,7 +43,6 @@ MODULE SaveUtils
 
   USE Types
   USE SParIterGlobals
-  USE MatrixAssembly
   USE Lists
   USE Messages
   USE MeshBasics, ONLY: GetLagrangeIndexes

@@ -54,10 +54,15 @@ MODULE DefUtils
    USE ElementUtils
    USE SolverBasics
    USE SolveCore
+   USE MatrixAssembly !, ONLY : CopyBulkMatrix, UseLocalMatrixStorage, &
+       ! restorebulkmatrix, flipperiodiclocalforce, flipperiodiclocalmatrix, &
+       ! uselocalmatrixcopy, GetLocalMatrixStorage
+   !   USE BandMatrix   ! Some routines from modules need this
    USE ParallelUtils, ONLY : ParallelActive
-   USE ContactUtils
+   USE ContactUtils, ONLY : DetermineContact, MergeSlaveSolvers
    USE BoundaryConditionUtils
-   USE ProjectorUtils
+   USE ProjectorUtils, ONLY : GenerateAddMatrix, GenerateConstraintMatrix, &
+       GenerateProjectors, GenerateRobinProjectors
    USE CutFEMUtils
 
    IMPLICIT NONE
