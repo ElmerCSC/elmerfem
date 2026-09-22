@@ -993,24 +993,25 @@ CONTAINS
 
        IF(L(imemb(ParEnv % MyPE))) THEN
 
-         ! Pick the DOF to donate to a partition that ended up owning none.
-         !
-         ! The loop below used to select the most shared DOF, but its result was
-         ! always overwritten by the midpoint choice that follows, so it has been
-         ! inactive for a long time. There has apparently been trouble with it in
-         ! the past, so it is left commented out rather than restored: the
-         ! midpoint choice is the behaviour that has actually been in use. Note
-         ! that n/2 need not be a shared DOF at all, so this deserves a proper
-         ! revisit if this rare Hypre path ever misbehaves.
-         !
-         ! j = 0; k=0
-         ! DO i=1,n
-         !   p => ParallelInfo % NeighbourList(i) % Neighbours
-         !   IF (SIZE(p)>j) THEN
-         !      j=SIZE(p); k=i
-         !   END IF
-         ! END DO
-         k = n/2
+         ! Pick the DOF to donate to a partition that ended up owning none:
+         ! the local DOF shared with the largest number of other partitions.
+         j = 0; k = 0
+         DO i=1,n
+           p => ParallelInfo % NeighbourList(i) % Neighbours
+           IF (SIZE(p)>j) THEN
+              j=SIZE(p); k=i
+           END IF
+         END DO
+
+         ! A DOF is only usable for donation if it is actually shared (j>1);
+         ! k=0 or j<=1 means this partition has no such DOF to offer, which
+         ! should not happen for a partition that owns nothing yet still has
+         ! matrix contributions (the precondition for landing in this branch).
+         IF ( k==0 .OR. j<=1 ) THEN
+           CALL Fatal('AssignAtLeastOneDOFToPartition','Partition '//I2S(ParEnv % MyPE)//&
+               ' owns no DOFs and has no shared DOF to donate through')
+         END IF
+
          p => ParallelInfo % NeighbourList(k) % Neighbours
 
          DO i=1,SIZE(p)
