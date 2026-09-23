@@ -99,6 +99,8 @@
 
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath
 
+   INTEGER :: ioProb
+
    SAVE :: FirstTime, SolverName, Params, Parallel, Boss, dim, Debug, &
         DistVarName, PC_EqName, Iso_EqName, LeftConstraint, &
         RightConstraint, FrontConstraint,TopMaskName, BotMaskName, &
@@ -191,15 +193,15 @@
 
         ! write to file
         IF(FileCreated) THEN
-          OPEN( 47, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+          OPEN( NEWUNIT=ioProb, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
         ELSE
-          OPEN( 47, FILE=filename, STATUS='UNKNOWN')
-          WRITE(47, '(A)') "Calving Probability Output File"
-          WRITE(47, '(A)') "TimeStep, Time, RandomNumber, Probability, Mu, DCrev"
+          OPEN( NEWUNIT=ioProb, FILE=filename, STATUS='UNKNOWN')
+          WRITE(ioProb, '(A)') "Calving Probability Output File"
+          WRITE(ioProb, '(A)') "TimeStep, Time, RandomNumber, Probability, Mu, DCrev"
         END IF
 
-        WRITE(47, *) GetTimestep(), GetTime(), RandomNumber, Prob, Mu, CrevPenetration
-        CLOSE(47)
+        WRITE(ioProb, *) GetTimestep(), GetTime(), RandomNumber, Prob, Mu, CrevPenetration
+        CLOSE(ioProb)
         FileCreated = .TRUE.
       END IF
     ELSE
