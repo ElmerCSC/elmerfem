@@ -2188,7 +2188,7 @@ CONTAINS
     
     DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
-      IF(t == Mesh % NumberOfBulkElements + 1 .AND. hits > 0) GOTO 10
+      IF(t == Mesh % NumberOfBulkElements + 1 .AND. hits > 0) EXIT
 
       Element => Mesh % Elements(t)
       Model % CurrentElement => Mesh % Elements(t)
@@ -2381,9 +2381,8 @@ CONTAINS
       END DO
 
     END DO
-    
-10  CONTINUE 
-    
+
+
     operx = 0.0d0
     IF(ParallelReduce) THEN
       IF( OperName == 'int mean' .OR. OperName == 'int square mean' .OR. &
@@ -2486,9 +2485,10 @@ CONTAINS
       EnergyTensor(i,i,:) = 1.0d0
     END DO
 
+    boundary_integrals: BLOCK
     SELECT CASE(OperName)
-      
-      CASE('diffusive flux') 
+
+      CASE('diffusive flux')
       IF(NoDofs /= 1) THEN
         CALL Fatal(Caller,'diffusive flux & NoDofs /= 1?')
       END IF
@@ -2502,7 +2502,7 @@ CONTAINS
           END IF
         ELSE
           CALL Warn(Caller,'convective flux & NoDofs < DIM?')
-          GOTO 100
+          EXIT boundary_integrals
         END IF
       END IF
       
@@ -2848,7 +2848,7 @@ CONTAINS
 
     END DO
 
-100 CONTINUE
+    END BLOCK boundary_integrals
 
     DEALLOCATE(PermIndexes)
 

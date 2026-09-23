@@ -38,6 +38,8 @@
    TYPE(Variable_t), POINTER :: EVar, PotVar
    TYPE(Element_t), POINTER :: Element
    INTEGER :: i, j, t, k, vdofs, soln, Active, iMode, jMode=0
+   INTEGER :: PoyntReUnit, PoyntImUnit, ElReUnit, ElImUnit, CurrReUnit, CurrImUnit, &
+       PotReUnit, PotImUnit, VoltReUnit, VoltImUnit
    TYPE(Solver_t), POINTER :: pSolver
    REAL(KIND=dp) :: mu0inv, eps0, Omega
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
@@ -228,57 +230,57 @@
    IF( jMode == NoModes .AND. ParEnv % MyPe == 0 ) THEN
      CALL Info(Caller,'Writing results on final visit!')
 
-     OPEN (10, FILE="Poynt_re.dat")
+     OPEN (NEWUNIT=PoyntReUnit, FILE="Poynt_re.dat")
      DO i=1,NoModes
-       WRITE(10,*) REAL(IntPoynt(i,:))
+       WRITE(PoyntReUnit,*) REAL(IntPoynt(i,:))
      END DO
-     CLOSE(10) 
-     OPEN (10, FILE="Poynt_im.dat")
+     CLOSE(PoyntReUnit)
+     OPEN (NEWUNIT=PoyntImUnit, FILE="Poynt_im.dat")
      DO i=1,NoModes
-       WRITE(10,*) AIMAG(IntPoynt(i,:))
+       WRITE(PoyntImUnit,*) AIMAG(IntPoynt(i,:))
      END DO
-     CLOSE(10)
-     OPEN (10, FILE="El_re.dat")
+     CLOSE(PoyntImUnit)
+     OPEN (NEWUNIT=ElReUnit, FILE="El_re.dat")
      DO i=1,NoModes
-       WRITE(10,*) REAL(IntEl(i,:))
+       WRITE(ElReUnit,*) REAL(IntEl(i,:))
      END DO
-     CLOSE(10) 
-     OPEN (10, FILE="El_im.dat")
+     CLOSE(ElReUnit)
+     OPEN (NEWUNIT=ElImUnit, FILE="El_im.dat")
      DO i=1,NoModes
-       WRITE(10,*) AIMAG(IntEl(i,:))
+       WRITE(ElImUnit,*) AIMAG(IntEl(i,:))
      END DO
-     CLOSE(10)
-     OPEN (10, FILE="Curr_re.dat")
+     CLOSE(ElImUnit)
+     OPEN (NEWUNIT=CurrReUnit, FILE="Curr_re.dat")
      DO i=1,NoModes
-       WRITE(10,*) REAL(IntCurr(i,:))
+       WRITE(CurrReUnit,*) REAL(IntCurr(i,:))
      END DO
-     CLOSE(10) 
-     OPEN (10, FILE="Curr_im.dat")
+     CLOSE(CurrReUnit)
+     OPEN (NEWUNIT=CurrImUnit, FILE="Curr_im.dat")
      DO i=1,NoModes
-       WRITE(10,*) AIMAG(IntCurr(i,:))
+       WRITE(CurrImUnit,*) AIMAG(IntCurr(i,:))
      END DO
-     CLOSE(10) 
+     CLOSE(CurrImUnit)
      IF( ASSOCIATED( PotVar ) ) THEN
-       OPEN (10, FILE="dPot_re.dat")
+       OPEN (NEWUNIT=PotReUnit, FILE="dPot_re.dat")
        DO i=1,NoModes
-         WRITE(10,*) REAL(IntPot(i,:))
+         WRITE(PotReUnit,*) REAL(IntPot(i,:))
        END DO
-       CLOSE(10) 
-       OPEN (10, FILE="dPot_im.dat")
+       CLOSE(PotReUnit)
+       OPEN (NEWUNIT=PotImUnit, FILE="dPot_im.dat")
        DO i=1,NoModes
-         WRITE(10,*) AIMAG(IntPot(i,:))
+         WRITE(PotImUnit,*) AIMAG(IntPot(i,:))
        END DO
-       CLOSE(10)
-       OPEN (10, FILE="Volt_re.dat")
+       CLOSE(PotImUnit)
+       OPEN (NEWUNIT=VoltReUnit, FILE="Volt_re.dat")
        DO i=1,NoModes
-         WRITE(10,*) REAL(IntVolt(i,:))
+         WRITE(VoltReUnit,*) REAL(IntVolt(i,:))
        END DO
-       CLOSE(10) 
-       OPEN (10, FILE="Volt_im.dat")
+       CLOSE(VoltReUnit)
+       OPEN (NEWUNIT=VoltImUnit, FILE="Volt_im.dat")
        DO i=1,NoModes
-         WRITE(10,*) AIMAG(IntVolt(i,:))
+         WRITE(VoltImUnit,*) AIMAG(IntVolt(i,:))
        END DO
-       CLOSE(10)
+       CLOSE(VoltImUnit)
      END IF
    END IF
         
