@@ -122,8 +122,9 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     LocalElementCount = 0
     ElementCount = 0
     
-100 DO t=FirstElem, LastElem
-      
+    cohort_retry: DO
+    DO t=FirstElem, LastElem
+
       Element => Mesh % Elements(t0+t)
       Model % CurrentElement => Element
       
@@ -198,8 +199,10 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     ! If we study cohorst we need a second sweep over the elements
     IF( DoCohorts .AND. .NOT. DoingCohorts ) THEN
       DoingCohorts = .TRUE.
-      GOTO 100
+      CYCLE cohort_retry
     END IF
+    EXIT cohort_retry
+    END DO cohort_retry
 
     IF( LastElem > FirstElem ) THEN
       AveF = AveF / ElmntCnt

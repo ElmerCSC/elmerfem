@@ -845,7 +845,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    END IF
 
    iEigen = 1
-10 CONTINUE
+   eigen_loop: DO
 
    IF(EigenAnalysis) THEN
      CALL Info('EMwaveCalcFields','Computing fields for eigen vector: '//I2S(iEigen),Level=10)
@@ -915,9 +915,11 @@ END SUBROUTINE EMWaveCalcFields_Init
    IF(iEigen < NOFEigen ) THEN
      iEigen = iEigen + 1
      ConstantBulkInUse = ASSOCIATED(Solver % Matrix % BulkValues)
-     GOTO 10
+     CYCLE eigen_loop
    END IF
-    
+   EXIT eigen_loop
+   END DO eigen_loop
+
    CALL Info('EMCalcFields','Done computing postprocessed fields!',Level=10)
 
    

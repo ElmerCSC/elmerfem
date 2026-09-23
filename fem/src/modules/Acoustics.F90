@@ -168,6 +168,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL ::  PotentialFlowBC, DDPreconditioning, Found
   TYPE(GaussIntegrationPoints_t) :: IP
+  INTEGER :: CompaStatusUnit, ElmerStatusUnit1, ElmerStatusUnit2, BemDataUnit, MeshNodesUnit, &
+      MeshBoundaryUnit, BemParamUnit
 
 
   !------------------------------------------------------------------------------
@@ -248,23 +250,23 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     IF ( .NOT. GotIt ) CompaMeshPrefix = 'mesh'
 
     IF (.NOT. FirstVisit) THEN
-      OPEN( 10, FILE = CompaStatusFile, status='OLD', IOSTAT = istat )
+      OPEN( NEWUNIT = CompaStatusUnit, FILE = CompaStatusFile, status='OLD', IOSTAT = istat )
       IF ( istat /= 0) &
-          CALL Fatal( 'AcousticsSolver', 'Cannot open Compa Status File' )           
-      READ(10,'(A)') str2
-      CLOSE(10)
+          CALL Fatal( 'AcousticsSolver', 'Cannot open Compa Status File' )
+      READ(CompaStatusUnit,'(A)') str2
+      CLOSE(CompaStatusUnit)
       i = INDEX(str2,'$') + 1    
       IF ( str2(i:i+3) == 'STOP' .OR. str2(i:i+4) == 'PANIC' ) &
           CALL Fatal( 'AcousticsSolver', 'CompaSolver is not willing to continue' )           
     END IF
 
-    OPEN( 10, FILE = ElmerStatusFile, status='REPLACE', IOSTAT = istat )
+    OPEN( NEWUNIT = ElmerStatusUnit1, FILE = ElmerStatusFile, status='REPLACE', IOSTAT = istat )
     IF ( istat /= 0) THEN
-      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )    
+      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )
     ELSE
-      WRITE( 10, '(A)', ADVANCE='NO') '$WAIT'
+      WRITE( ElmerStatusUnit1, '(A)', ADVANCE='NO') '$WAIT'
     END IF
-    CLOSE(10)
+    CLOSE(ElmerStatusUnit1)
 
   ELSE
 
@@ -326,15 +328,15 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   IF ( BEMCoupling .AND.  (.NOT. FirstVisit) ) THEN
 
     WRITE(DataFile,'(A,A)') TRIM(CompaMeshPrefix), '.P'
-    OPEN( 10, FILE = DataFile, status='OLD', IOSTAT = istat )
+    OPEN( NEWUNIT = BemDataUnit, FILE = DataFile, status='OLD', IOSTAT = istat )
     IF ( istat /= 0) THEN
-      WRITE( Message, * ) 'Cannot open file ', DataFile     
+      WRITE( Message, * ) 'Cannot open file ', DataFile
       CALL Fatal( 'AcousticsSolver', Message )
     END IF
 
     j = 0
     DO
-      READ( 10, *, IOSTAT = istat) i
+      READ( BemDataUnit, *, IOSTAT = istat) i
       IF (istat == 0) THEN
         j = j + 1
       ELSE
@@ -348,38 +350,38 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       AcousticInterfaceNodes(1:j) = 0
     END IF
     !------------------------------------------------------------------------------
-    !PRINT *, j,' nodes were found' 
-    REWIND 10
-    
-    OPEN( 20, FILE = 'mesh.nodes', status='OLD', IOSTAT = istat )
+    !PRINT *, j,' nodes were found'
+    REWIND BemDataUnit
+
+    OPEN( NEWUNIT = MeshNodesUnit, FILE = 'mesh.nodes', status='OLD', IOSTAT = istat )
     IF ( istat /= 0) &
-        CALL Fatal( 'AcousticsSolver', 'Cannot open file mesh.nodes' )    
+        CALL Fatal( 'AcousticsSolver', 'Cannot open file mesh.nodes' )
     DO i = 1, j
-      READ( 10, *) t, ReP, Imp
+      READ( BemDataUnit, *) t, ReP, Imp
       !-----------------------------------------
       ! Find the row where this node is defined
       !-----------------------------------------
       k = 0
       DO
-        READ( 20, *, IOSTAT = istat) m 
+        READ( MeshNodesUnit, *, IOSTAT = istat) m
         IF (istat == 0) THEN
           k = k + 1
           IF ( m==t ) THEN
             AcousticInterfaceNodes(i) = k
             AcousticInterfaceResults(i,1) = ReP
-            AcousticInterfaceResults(i,2) = -1.0d0*ImP            
+            AcousticInterfaceResults(i,2) = -1.0d0*ImP
             EXIT
           END IF
         ELSE
           WRITE( Message, * ) 'Inconsistent node numbering in the file ', DataFile
-          CALL Fatal( 'AcousticsSolver', Message )          
+          CALL Fatal( 'AcousticsSolver', Message )
         END IF
       END DO
-      REWIND 20
+      REWIND MeshNodesUnit
     END DO
     !----------------------------------
-    CLOSE(20)
-    CLOSE(10)     
+    CLOSE(MeshNodesUnit)
+    CLOSE(BemDataUnit)
     BEMNodesCreated = .TRUE.
   END IF
 
@@ -1590,16 +1592,16 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           STAT=istat )
       IF ( istat /= 0 ) CALL Fatal( 'AcousticsSolver', 'Memory allocation error.' )
  
-      OPEN( 10, FILE = 'mesh.boundary', status='OLD')
-      DO t = 1, Solver % Mesh % NumberOfBoundaryElements    
-        READ( 10, *) j
+      OPEN( NEWUNIT = MeshBoundaryUnit, FILE = 'mesh.boundary', status='OLD')
+      DO t = 1, Solver % Mesh % NumberOfBoundaryElements
+        READ( MeshBoundaryUnit, *) j
         BemElementIndeces(t) = j
       END DO
-      CLOSE(10)
+      CLOSE(MeshBoundaryUnit)
     END IF
 
     WRITE(DataFile,'(A,A,A)') TRIM(CompaMeshPrefix), '.', 'param'
-    OPEN( 10, FILE = DataFile, status='REPLACE')
+    OPEN( NEWUNIT = BemParamUnit, FILE = DataFile, status='REPLACE')
   
     DO t = Solver % Mesh % NumberOfBulkElements + 1,  &
         Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements
@@ -1668,10 +1670,10 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               AverVel = AverVel * CMPLX(0.0d0, -1.0d0 * AngularFrequency * Density(1), kind=dp )
               AverVel = CONJG(AverVel)
 
-              WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
+              WRITE( BemParamUnit, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
                   Solver % Mesh % NumberOfBulkElements ), 0.0d+0, 0.0d+0, 1.0d+0, 0.0d+0, &
                   REAL(AverVel), AIMAG(AverVel)
-              WRITE( 10,* ) ''             
+              WRITE( BemParamUnit,* ) ''
 
             ELSE
               !---------------------------------------------------------  
@@ -1690,18 +1692,18 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               Load(6,1:n) = ListGetReal( Model % BCs(i) % Values, &
                   'Im c', n, NodeIndexes, GotIt )             
               
-              WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
-                  Solver % Mesh % NumberOfBulkElements ), Load(1,1), Load(2,1), Load(3,1), Load(4,1), & 
+              WRITE( BemParamUnit, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
+                  Solver % Mesh % NumberOfBulkElements ), Load(1,1), Load(2,1), Load(3,1), Load(4,1), &
                   Load(5,1), Load(6,1)
-              WRITE( 10,* ) ''   
-              
+              WRITE( BemParamUnit,* ) ''
+
             END IF
           END IF
         END IF
       END DO
     END DO
 
-    CLOSE(10)
+    CLOSE(BemParamUnit)
 
   END IF
 
@@ -2008,22 +2010,22 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
 
   IF ( BEMCoupling ) THEN
-    OPEN( 10, FILE = ElmerStatusFile, status='REPLACE', IOSTAT = istat )
+    OPEN( NEWUNIT = ElmerStatusUnit2, FILE = ElmerStatusFile, status='REPLACE', IOSTAT = istat )
     IF ( istat /= 0) THEN
-      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )    
+      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )
     ELSE
       CoupledTolerance = ListGetConstReal( Solver % Values, &
           'Steady State Convergence Tolerance' )
       MaxCoupledIterations =  ListGetInteger( Model % Simulation, &
           'Steady State Max Iterations' )
       IF ( (RelativeChange < CoupledTolerance) .OR. (SolverCalls >= MaxCoupledIterations) ) THEN
-        WRITE( 10, '(A)', ADVANCE='NO') '$STOP'  
-      ELSE  
+        WRITE( ElmerStatusUnit2, '(A)', ADVANCE='NO') '$STOP'
+      ELSE
         WRITE(str(1:3),'(I3)') SolverCalls
-        WRITE( 10, '(A)', ADVANCE='NO') '$CONTINUE #' // ADJUSTL(str(1:3))
+        WRITE( ElmerStatusUnit2, '(A)', ADVANCE='NO') '$CONTINUE #' // ADJUSTL(str(1:3))
       END IF
     END IF
-    CLOSE(10)
+    CLOSE(ElmerStatusUnit2)
   END IF
 
   FirstVisit = .FALSE.
