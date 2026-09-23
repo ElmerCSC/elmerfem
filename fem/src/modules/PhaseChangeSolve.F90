@@ -576,7 +576,8 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       xmin = HUGE(xmin)
       xmax = -HUGE(xmax)
 
-100   NElems = 0
+      DO
+      NElems = 0
       
       DO t=1,Solver % Mesh % NumberOfBulkElements 
         
@@ -662,8 +663,10 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         IsoSurfAllocated = .TRUE.
         WRITE(Message,*) 'Isotherm created with number of segments',Nelems
         CALL Info('PhaseChangeSolve',Message)
-        GOTO 100
+        CYCLE
       END IF      
+      EXIT
+      END DO
     END IF
 
     area = 0.0
