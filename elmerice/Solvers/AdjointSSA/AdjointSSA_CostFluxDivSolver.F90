@@ -136,7 +136,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: ComputeDJDZb,ComputeDJDZs,ResetCost
   Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit
   LOGICAL :: BoundarySolver
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
   save Firsttime,Parallel 
   save SolverName,CostSolName,CostFile
