@@ -219,11 +219,13 @@ CONTAINS
 
 
    ! ...  find "edges" of the 1d line elements (used to traverse connected elements)
-   SUBROUTINE FindEdges0(Mesh)
+   SUBROUTINE FindEdges0(Mesh, Pinched)
      TYPE(Mesh_t) :: Mesh
+     LOGICAL :: Pinched  ! out: some node has more than two line elements
      INTEGER :: i, j, maxi, n2
      TYPE(Element_t), POINTER :: el
 
+     Pinched = .FALSE.
      maxi = 0
      DO i=1,Mesh % NumberOfBulkElements
        Mesh % Elements(i) % Type => GetElementType(202)
@@ -259,7 +261,9 @@ CONTAINS
            CYCLE
          END IF
 
-         STOP 'k'
+         ! Boundary loops touching at a single node (a "pinch"): the loops
+         ! cannot be traced unambiguously, let the caller fall back.
+         Pinched = .TRUE.
        END DO
      END DO
      Mesh % NumberOfEdges = maxi
@@ -277,9 +281,9 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE ReducePlanarSet()
 !------------------------------------------------------------------------------
-     LOGICAL :: handled
+     LOGICAL :: handled, Pinched
      INTEGER :: i2, j, k, l, m, mm, Usedn2, Setn2, np2, pn2
-     INTEGER :: ind(256,2), ind2(256,2)
+     INTEGER, ALLOCATABLE :: ind(:,:), ind2(:,:)
      INTEGER :: nn_hole_start
      REAL(KIND=dp) :: c(3), d(3), e(3)
 
@@ -305,9 +309,12 @@ CONTAINS
      REAL(KIND=dp) :: r
 #endif
 !------------------------------------------------------------------------------
+     ! A planar set of Setn elements has at most 4*Setn outer edges, each of
+     ! which becomes a line element in Mesh2 below.
      ALLOCATE(Set2(4*Setn), Used2(4*Setn), DirVec2(4*3*Setn))
+     ALLOCATE(ind(4*Setn,2), ind2(4*Setn,2))
 
-     ALLOCATE( Mesh2 % Elements(n) )
+     ALLOCATE( Mesh2 % Elements(MAX(n,4*Setn)) )
      DO j=1,Setn
        Mesh2 % Elements(j) = Mesh % Elements(Set(j))
        Mesh2 % Elements(j) % ElementIndex = j
@@ -399,10 +406,12 @@ CONTAINS
      Mesh2 % Edges => NULL()
      ! ----
 
-     CALL FindEdges0(Mesh2)
+     CALL FindEdges0(Mesh2, Pinched)
 
      ! ... edge lines ...
      pn2 = 0
+     m = 0
+     IF ( .NOT. Pinched ) THEN
      i2 = 1
      Usedn2 = 0;
      Used2  = .FALSE.
@@ -465,12 +474,17 @@ CONTAINS
          END IF
        END DO
      END DO
+     END IF  ! .NOT. Pinched
+
+     IF ( .NOT. Pinched ) THEN
+       IF ( ind2(m,2) /= ind2(1,1) ) Pinched = .TRUE.   ! open chain
+     END IF
 
      IF( SkipElements ) THEN
        CALL Info('PlanarReduce','Skipping '//I2S(Setn)//' element when using planar plate approximation',Level=10)
      
-     ELSE IF ( ind2(m,2) /= ind2(1,1) ) THEN
-       ! Open chain = truly broken topology, cannot repair
+     ELSE IF ( Pinched ) THEN
+       ! Open chain or loops touching at a node, cannot repair
        CALL Info('PlanarReduce','Could not construct superelement? Using original elements.',Level=10)
        DO j=1,Setn
          nn = nn + 1
@@ -684,21 +698,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Collect hole loops from the non-zero entries of holeSegs, bridge each hole
 !   to the outer polygon via a rightward-ray visibility cut, then ear-clip.
+!   outerV is just the loop traced first; the loop with the largest area is
+!   taken as the outer boundary. Returns ntri=0 on failure.
 !------------------------------------------------------------------------------
     REAL(KIND=dp), INTENT(IN)  :: Coord(:), planeNorm(3)
     INTEGER,       INTENT(IN)  :: nOuter, outerV(nOuter)
     INTEGER,       INTENT(IN)  :: nSegs, holeSegs(nSegs,2)
     INTEGER,       INTENT(OUT) :: ntri, tris(3,*)
 !------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: MAXV = 64, MAXH = 16
+    INTEGER, PARAMETER :: MAXV = 256, MAXH = 16, MAXM = MAXV+2*MAXH
 
-    INTEGER       :: holePoly(MAXV, MAXH), holeLen(MAXH), nHoles
-    INTEGER       :: merged(MAXV*2), nMerged
-    INTEGER       :: curOuter(MAXV*2), nCurOuter
-    REAL(KIND=dp) :: opx(MAXV*2), opy(MAXV*2)
+    INTEGER       :: holePoly(MAXV, MAXH+1), holeLen(MAXH+1), nHoles
+    INTEGER       :: merged(MAXM), nMerged
+    INTEGER       :: curOuter(MAXM), nCurOuter
+    REAL(KIND=dp) :: opx(MAXM), opy(MAXM)
     REAL(KIND=dp) :: hpxA(MAXV), hpyA(MAXV)
     REAL(KIND=dp) :: uu(3), vv(3), ref(3), tmp3(3)
-    INTEGER       :: ii, s, t, hh, hMax, bIdx, hlen, cur
+    REAL(KIND=dp) :: lArea(MAXH+1), lMaxX(MAXH+1)
+    INTEGER       :: ii, s, t, hh, k, hMax, bIdx, hlen, cur, iOut, nLoops, order(MAXH+1)
     LOGICAL       :: segUsed(nSegs), found, reverseHole
     REAL(KIND=dp) :: hpxMax, hpyRay, xi, minXi, tpar, denom
     REAL(KIND=dp) :: x1, y1, x2, y2, oArea, hArea
@@ -710,12 +727,15 @@ CONTAINS
     uu = uu / SQRT(SUM(uu**2))
     vv = CrossProduct(planeNorm, uu)
 
+    ntri = 0
+    IF (nOuter > MAXV) RETURN
+
     ! Collect hole loops from non-zero (unused) segments
     segUsed(1:nSegs) = (holeSegs(1:nSegs,1) == 0)
     nHoles = 0
     DO s = 1, nSegs
       IF (segUsed(s)) CYCLE
-      IF (nHoles >= MAXH) EXIT
+      IF (nHoles >= MAXH) RETURN
       nHoles = nHoles + 1
       segUsed(s) = .TRUE.
       holePoly(1, nHoles) = holeSegs(s,1)
@@ -738,14 +758,52 @@ CONTAINS
         END DO
         IF (.NOT. found) EXIT
       END DO
+      IF (cur /= holePoly(1,nHoles)) RETURN   ! open or too long loop
       holeLen(nHoles) = hlen - 1   ! last vertex == first; don't repeat
     END DO
 
-    ! Bridge each hole into the growing outer polygon
-    curOuter(1:nOuter) = outerV(1:nOuter)
-    nCurOuter = nOuter
+    ! Add the first traced loop to the set, and pick the one with the largest
+    ! area as the outer boundary.
+    nLoops = nHoles + 1
+    holePoly(1:nOuter, nLoops) = outerV(1:nOuter)
+    holeLen(nLoops) = nOuter
+    DO hh = 1, nLoops
+      lArea(hh) = 0.0_dp
+      lMaxX(hh) = -HUGE(1.0_dp)
+      DO ii = 1, holeLen(hh)
+        t = MOD(ii, holeLen(hh)) + 1
+        s = 3*(holePoly(ii,hh)-1)+1
+        x1 = SUM(Coord(s:s+2)*uu); y1 = SUM(Coord(s:s+2)*vv)
+        s = 3*(holePoly(t,hh)-1)+1
+        x2 = SUM(Coord(s:s+2)*uu); y2 = SUM(Coord(s:s+2)*vv)
+        lArea(hh) = lArea(hh) + x1*y2 - x2*y1
+        lMaxX(hh) = MAX(lMaxX(hh), x1)
+      END DO
+    END DO
+    iOut = MAXLOC(ABS(lArea(1:nLoops)), 1)
 
-    DO hh = 1, nHoles
+    curOuter(1:holeLen(iOut)) = holePoly(1:holeLen(iOut), iOut)
+    nCurOuter = holeLen(iOut)
+
+    ! Bridge holes in order of decreasing max x: the rightward ray from a
+    ! hole then cannot hit a hole that has not yet been merged.
+    nHoles = 0
+    DO hh = 1, nLoops
+      IF (hh == iOut) CYCLE
+      nHoles = nHoles + 1
+      order(nHoles) = hh
+    END DO
+    DO ii = 2, nHoles
+      k = order(ii); t = ii - 1
+      DO WHILE (t >= 1)
+        IF (lMaxX(order(t)) >= lMaxX(k)) EXIT
+        order(t+1) = order(t); t = t - 1
+      END DO
+      order(t+1) = k
+    END DO
+
+    DO k = 1, nHoles
+      hh = order(k)
       ! Project current outer polygon to 2D
       DO ii = 1, nCurOuter
         s = 3*(curOuter(ii)-1)+1
@@ -828,6 +886,8 @@ CONTAINS
       curOuter(1:nMerged) = merged(1:nMerged)
       nCurOuter = nMerged
     END DO
+    IF (nHoles == 0) merged(1:nCurOuter) = curOuter(1:nCurOuter)
+    nMerged = nCurOuter
 
     ! Ear-clip the fully merged polygon
     CALL EarClipTriangulate(Coord, merged(1:nMerged), nMerged, planeNorm, tris, ntri)
@@ -897,6 +957,11 @@ CONTAINS
         isEar = .TRUE.
         m = nxt(c)
         DO WHILE (m /= a)
+          ! Hole bridges duplicate vertices: a copy of a corner of the
+          ! candidate triangle is not "inside" it.
+          IF (iv(m)==iv(a) .OR. iv(m)==iv(b) .OR. iv(m)==iv(c)) THEN
+            m = nxt(m); CYCLE
+          END IF
           mx=px(m); my=py(m)
           ! Sign of each edge vs. query point
           d1 = (bx-ax)*(my-ay) - (by-ay)*(mx-ax)
@@ -931,6 +996,10 @@ CONTAINS
     IF (cnt == 3) THEN
       ntri = ntri + 1
       tris(1,ntri) = iv(prv(ii)); tris(2,ntri) = iv(ii); tris(3,ntri) = iv(nxt(ii))
+    ELSE
+      ! Gave up: a partial triangulation would silently drop area, so
+      ! report failure and let the caller fall back to the original elements.
+      ntri = 0
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE EarClipTriangulate
