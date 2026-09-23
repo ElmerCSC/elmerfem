@@ -667,10 +667,11 @@ enddo
        CALL Info( Solvername, ' ', Level=4 )
        CALL Info( Solvername, 'Starting Assembly...', Level=4 )
 
+       AssembleBulk: BLOCK
        IF ( ConstantBulk .AND. ASSOCIATED(Solver % Matrix % BulkValues) ) THEN
          Solver % Matrix % Values = Solver % Matrix % BulkValues
          Solver % Matrix % RHS = Solver % Matrix % BulkRHS
-         GOTO 1000
+         EXIT AssembleBulk
        END IF
 
 !------------------------------------------------------------------------------
@@ -1096,8 +1097,7 @@ ENDIF
 
       CALL DefaultFinishBulkAssembly()
 
-
-1000  CONTINUE
+      END BLOCK AssembleBulk
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
