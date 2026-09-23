@@ -97,3 +97,11 @@ jobs:
           files: |
             dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.tar.gz
             dist/elmerfem-${{ github.event.inputs.ref || github.event.release.tag_name }}.zip
+
+      - name: Trigger building Windows installers
+        if: github.event_name == 'release' || github.event.inputs.publish_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run create-release-windows-installer.yaml \
+            -f ref=${{ github.event.inputs.ref || github.event.release.tag_name }}
