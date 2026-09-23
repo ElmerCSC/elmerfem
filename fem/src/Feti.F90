@@ -2277,6 +2277,7 @@ END SUBROUTINE FetiProject
     TYPE(Matrix_t) :: A
 
     INTEGER :: me, abeg,i,j
+    INTEGER :: funit, kunit
     INTEGER, ALLOCATABLE :: snd(:), asize(:), bsize(:)
 
     me = Parenv % MyPE
@@ -2287,23 +2288,23 @@ END SUBROUTINE FetiProject
                               ELMER_COMM_WORLD,ierr)
     abeg = SUM(asize(0:me-1))
 
-    OPEN(1,file='f' // i2s(Parenv % MyPE))
-    OPEN(2,file='k' // i2s(Parenv % MyPE))
+    OPEN(NEWUNIT=funit,file='f' // i2s(Parenv % MyPE))
+    OPEN(NEWUNIT=kunit,file='k' // i2s(Parenv % MyPE))
 
-    WRITE(1,'(a)') '% domain: '//i2s(me)//' nrows:'//i2s(A % NumberOFRows)
+    WRITE(funit,'(a)') '% domain: '//i2s(me)//' nrows:'//i2s(A % NumberOFRows)
 
-    WRITE(2,'(a)') '% domain:' // i2s(me)//' nnz:' // &
+    WRITE(kunit,'(a)') '% domain:' // i2s(me)//' nnz:' // &
        i2s(A % Rows(A % NumberOfRows+1)-1) // ' nrows:' // &
           i2s(A % NumberOFRows) // ' gcols:'//i2s(SUM(asize))
 
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i),A % Rows(i+1)-1
-        WRITE(2,*) abeg+i, abeg+A % Cols(j), A % Values(j)
+        WRITE(kunit,*) abeg+i, abeg+A % Cols(j), A % Values(j)
       END DO
-      WRITE(1,*) abeg+i, a % RHS(i)
+      WRITE(funit,*) abeg+i, a % RHS(i)
     END DO
-    CLOSE(2)
-    CLOSE(1)
+    CLOSE(kunit)
+    CLOSE(funit)
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveKandF
 !------------------------------------------------------------------------------
@@ -2313,13 +2314,14 @@ END SUBROUTINE FetiProject
   SUBROUTINE SaveR
 !------------------------------------------------------------------------------
     INTEGER :: i
-    OPEN(2,File='r'//i2s(Parenv % MyPE))
-    WRITE(2,'(a)') '% domain: '//i2s(ParEnv % MyPE)//' nz:'// &
+    INTEGER :: runit
+    OPEN(NEWUNIT=runit,File='r'//i2s(Parenv % MyPE))
+    WRITE(runit,'(a)') '% domain: '//i2s(ParEnv % MyPE)//' nz:'// &
               i2s(SIZE(z,1))//' nrows:'// i2s(SIZE(z,2))
     DO i=1,SIZE(z,2)
-      WRITE(2,*) z(1:nz,i)
+      WRITE(runit,*) z(1:nz,i)
     END DO
-    CLOSE(2)
+    CLOSE(runit)
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveR
 !------------------------------------------------------------------------------
@@ -2333,6 +2335,7 @@ END SUBROUTINE FetiProject
     INTEGER, ALLOCATABLE :: snd(:), asize(:), bsize(:), cnt(:),ibuf(:,:),gbuf(:,:)
 
     INTEGER :: bbeg, i,j,k,l,proc,n,m,me
+    INTEGER :: bunit, brhsunit
 
     INTEGER, POINTER :: gtags(:)
     LOGICAL, POINTER :: ig(:)
@@ -2342,16 +2345,16 @@ END SUBROUTINE FetiProject
     ig => A % ParallelInfo % GInterface
     nb => A % ParallelInfo % NeighbourList
 
-    OPEN(4,FILE='b'//I2S(Parenv % MyPE))
-    OPEN(5,FILE='brhs'//I2S(Parenv % MyPE))
+    OPEN(NEWUNIT=bunit,FILE='b'//I2S(Parenv % MyPE))
+    OPEN(NEWUNIT=brhsunit,FILE='brhs'//I2S(Parenv % MyPE))
 
     me = ParEnv % MyPE
 
-    WRITE(4,'(a)') '% domain: '//i2s(me)//' nnz: '// &
+    WRITE(bunit,'(a)') '% domain: '//i2s(me)//' nnz: '// &
          i2s(bMat % Rows(Bmat % NumberOfRows+1)-1) // &
                ' nrows: ' // i2s(Bmat % NumberOfRows)
 
-    WRITE(5,'(a)') '% domain: '//i2s(ParEnv % MyPE)//' nrows:'// &
+    WRITE(brhsunit,'(a)') '% domain: '//i2s(ParEnv % MyPE)//' nrows:'// &
                i2s(Bmat % NumberOfRows)
 
     ALLOCATE(snd(0:Parenv%PEs-1),asize(0:Parenv%PEs-1),bsize(0:parenv%pes-1))
@@ -2422,24 +2425,24 @@ END SUBROUTINE FetiProject
         m = -l      ! ...for a Dirichlet DOF
       END IF
 
-      WRITE(5,*) bbeg+i,Bmat% InvPerm(i), Bmat % RHS(i)
+      WRITE(brhsunit,*) bbeg+i,Bmat% InvPerm(i), Bmat % RHS(i)
 
       DO j=Bmat % Rows(i),Bmat % Rows(i+1)-1
         proc=Bmat % Cols(j)
         IF(proc==me) THEN
-          WRITE(4,*) bbeg+i,m+abeg,bmat % values(j)
+          WRITE(bunit,*) bbeg+i,m+abeg,bmat % values(j)
         ELSE
           DO k=1,cnt(proc)
             IF(gtags(m)==gbuf(k,proc)) EXIT
           END DO
           IF(k>cnt(proc)) stop 'aah'
-          WRITE(4,*) bbeg+i,ibuf(k,proc)+sum(asize(0:proc-1)),Bmat % values(j)
+          WRITE(bunit,*) bbeg+i,ibuf(k,proc)+sum(asize(0:proc-1)),Bmat % values(j)
         END IF
       END DO
     END DO
 
-     CLOSE(4)
-     CLOSE(5)
+     CLOSE(bunit)
+     CLOSE(brhsunit)
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveB
 !------------------------------------------------------------------------------
