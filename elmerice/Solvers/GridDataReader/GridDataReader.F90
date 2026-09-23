@@ -878,9 +878,9 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
 
   maxfdofs = 1
   idof = 1
-  ! If we read in vectors we jump here to continue
-100 CONTINUE
-  
+  ! If we read in vectors we loop here to continue
+  ReadDofsLoop: DO
+
   !--------------------------------------------------------------------------------------
   ! Get the timestep at which interpolation is desired
   ! If the time does not coincide with a timestep in the file, two timesteps are needed.
@@ -1217,8 +1217,10 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   IF( maxfdofs > idof ) THEN
     idof = idof + 1
     CALL Info(Caller,'Continuing to read timestep: '//I2S(idof))
-    GOTO 100
+  ELSE
+    EXIT ReadDofsLoop
   END IF
+  END DO ReadDofsLoop
 
   CALL Info(Caller,'Closing NetCDF file',Level=20)
   CALL NetCDFClose()
