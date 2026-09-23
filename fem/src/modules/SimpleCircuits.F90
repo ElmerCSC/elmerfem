@@ -119,7 +119,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   TYPE(Circuit_tt), ALLOCATABLE, SAVE :: Circuits(:)
 
   INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
-  LOGICAL*1, ALLOCATABLE :: Done(:)
+  LOGICAL(KIND=1), ALLOCATABLE :: Done(:)
   REAL(KIND=dp), POINTER :: Values(:)
   
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
@@ -780,7 +780,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   TYPE(Circuit_tt), ALLOCATABLE, SAVE :: Circuits(:)
 
   INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
-  LOGICAL*1, ALLOCATABLE :: Done(:)
+  LOGICAL(KIND=1), ALLOCATABLE :: Done(:)
   REAL(KIND=dp), POINTER :: Values(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
