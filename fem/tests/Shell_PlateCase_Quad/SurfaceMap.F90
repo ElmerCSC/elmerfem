@@ -14,7 +14,8 @@ PROGRAM SurfaceMap
 
   INTEGER, ALLOCATABLE :: Node(:)
   INTEGER :: n, i, j, MappingMode
-  
+  INTEGER :: HeaderUnit, NodesUnit, DirectorUnit
+
   REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:)
   REAL(KIND=dp) :: R, xi, yi, zi, t, d1, d2, d3
 !-------------------------------------------------
@@ -27,18 +28,18 @@ PROGRAM SurfaceMap
   IF (MappingMode == 3 .OR. MappingMode == 4 .OR. MappingMode == 5) CreateDirector = .TRUE.
   R = 1.0d0
 
-  OPEN(11,file="mesh.header")
-  READ(11,*) N
-  CLOSE(11)
+  OPEN(NEWUNIT=HeaderUnit,file="mesh.header")
+  READ(HeaderUnit,*) N
+  CLOSE(HeaderUnit)
   ALLOCATE (Node(N), x(N), y(N), z(N))
 
-  OPEN(12,file="mesh.nodes")
+  OPEN(NEWUNIT=NodesUnit,file="mesh.nodes")
   DO i=1,N
-    READ(12,*) Node(i),j,x(i),y(i),z(i)
+    READ(NodesUnit,*) Node(i),j,x(i),y(i),z(i)
   END DO
-  REWIND(12)
+  REWIND(NodesUnit)
 
-  IF (CreateDirector) OPEN(13,file="mesh.director")
+  IF (CreateDirector) OPEN(NEWUNIT=DirectorUnit,file="mesh.director")
 
   SELECT CASE(MappingMode)
   CASE(1)
@@ -46,7 +47,7 @@ PROGRAM SurfaceMap
         xi = R * SIN(x(i)/R)
         yi = y(i)
         zi = R*(1.0d0-COS(x(i)/R))
-        WRITE(12,1200) Node(i),j,xi,yi,zi
+        WRITE(NodesUnit,1200) Node(i),j,xi,yi,zi
      END DO
   CASE(2)
      DO i=1,N
@@ -57,7 +58,7 @@ PROGRAM SurfaceMap
         y(i) = yi
         z(i) = zi
         
-        WRITE(12,1200) Node(i),j,R*SIN(x(i)/R), y(i), R*(1.0d0-COS(x(i)/R))
+        WRITE(NodesUnit,1200) Node(i),j,R*SIN(x(i)/R), y(i), R*(1.0d0-COS(x(i)/R))
      END DO
   CASE(3)
      DO i=1,N
@@ -65,11 +66,11 @@ PROGRAM SurfaceMap
         xi = R * SIN(t)
         yi = y(i)
         zi = R*(1.0d0-COS(t))
-        WRITE(12,1200) Node(i),j,xi,yi,zi
+        WRITE(NodesUnit,1200) Node(i),j,xi,yi,zi
         d1 = R * SIN(t)
         d2 = 0.0d0
         d3 = -R * cos(t)
-        WRITE(13,1300) Node(i),d1,d2,d3 
+        WRITE(DirectorUnit,1300) Node(i),d1,d2,d3 
      END DO
   CASE(4)
      DO i=1,N
@@ -81,20 +82,20 @@ PROGRAM SurfaceMap
         z(i) = zi
 
         t = x(i)/R
-        WRITE(12,1200) Node(i),j,R*SIN(t), y(i), R*(1.0d0-COS(t))
+        WRITE(NodesUnit,1200) Node(i),j,R*SIN(t), y(i), R*(1.0d0-COS(t))
         d1 = R * SIN(t)
         d2 = 0.0d0
         d3 = -R * cos(t)
-        WRITE(13,1300) Node(i),d1,d2,d3 
+        WRITE(DirectorUnit,1300) Node(i),d1,d2,d3 
      END DO
    CASE(5)
      DO i=1,N
-       WRITE(12,1200) Node(i),j,x(i),y(i),z(i)
-       WRITE(13,1300) Node(i),0.0d0,0.0d0,1.0d0
+       WRITE(NodesUnit,1200) Node(i),j,x(i),y(i),z(i)
+       WRITE(DirectorUnit,1300) Node(i),0.0d0,0.0d0,1.0d0
      END DO
   END SELECT
-  CLOSE(12)
-  IF (CreateDirector) CLOSE(13)
+  CLOSE(NodesUnit)
+  IF (CreateDirector) CLOSE(DirectorUnit)
 
   DEALLOCATE (Node, x, y, z)
   
