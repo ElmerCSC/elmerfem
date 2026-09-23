@@ -1377,6 +1377,9 @@ CONTAINS
        LOGICAL, OPTIONAL :: ReturnType,FreeNames
 
        INTEGER :: i,j, k,n, istat
+#ifdef DEVEL_KEYWORDMISSES
+       INTEGER :: ByNameUnit, BySectionUnit
+#endif
        TYPE(HashTable_t), POINTER, SAVE :: Hash =>NULL()
        TYPE(HashValue_t), POINTER :: Val
        LOGICAL :: FirstTime = .TRUE.,lstat, fexist, ReTry
@@ -1444,7 +1447,7 @@ CONTAINS
              END IF
           END IF
 
-5         CONTINUE
+       CheckKWRetry: DO
 
 !
 !         Read the keywords file row by row and add to the hash table:
@@ -1489,9 +1492,11 @@ CONTAINS
              OPEN( 1, FILE='SOLVER.KEYWORDS', STATUS='OLD', ERR=6 )
              CALL Info( 'CheckKeyword', 'Found local SOLVER.KEYWORDS file, ' // &
                         'adding keywords to runtime database.' )
-             GOTO 5
+             CYCLE CheckKWRetry
 6            CONTINUE
           END IF
+          EXIT CheckKWRetry
+       END DO CheckKWRetry
        END IF
 
 !------------------------------------------------------------------------------
@@ -1586,16 +1591,16 @@ CONTAINS
             ! Generally it can be set false
             !---------------------------------------------------------------
 #ifdef DEVEL_KEYWORDMISSES
-            OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
+            OPEN( NEWUNIT=ByNameUnit,File='../SOLVER.KEYWORDS.byname',&
                 STATUS='UNKNOWN',POSITION='APPEND' )
-            WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
-            CLOSE(10)
+            WRITE( ByNameUnit,'(A,T40,A)') TRIM(Name),TRIM(str)
+            CLOSE(ByNameUnit)
 
             i = INDEX( str,':' )
-            OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
+            OPEN( NEWUNIT=BySectionUnit,File='../SOLVER.KEYWORDS.bysection',&
                 STATUS='UNKNOWN',POSITION='APPEND' )
-            WRITE( 10,'(A,T22,A)') str(1:i)//TRIM(TYPE)//':',"'"//TRIM(Name)//"'"
-            CLOSE(10 )
+            WRITE( BySectionUnit,'(A,T22,A)') str(1:i)//TRIM(TYPE)//':',"'"//TRIM(Name)//"'"
+            CLOSE(BySectionUnit )
 #endif
           END IF
        ELSE IF ( ASSOCIATED( Val ) ) THEN
@@ -2042,7 +2047,7 @@ CONTAINS
                  END IF
 
                  n = 0
-                 DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
+                 ReadDepVals: DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
                    IF ( str == '' .OR. str==' '  ) CYCLE
                    IF ( SEQL(str,'end') ) EXIT
@@ -2076,7 +2081,7 @@ CONTAINS
                        IF ( k > slen ) THEN
                          IF( SizeUnknown ) THEN
                            N1 = i-1
-                           GOTO 12
+                           EXIT ReadDepVals
                          END IF
 
                          Stat = ReadAndTrim( InFileUnit,str,Echo) 
@@ -2122,10 +2127,10 @@ CONTAINS
                      END IF
                    END IF
                    
-                 END DO
+                 END DO ReadDepVals
 
 
-12               IF( .NOT. ScanOnly ) THEN
+                 IF( .NOT. ScanOnly ) THEN
                    IF( n == 0 ) THEN
                      CALL Fatal(Caller,'Table dependence has zero size: '//TRIM(Name))
                    END IF
@@ -2487,6 +2492,7 @@ CONTAINS
 
     INTEGER, ALLOCATABLE :: Mapping(:)
     INTEGER :: i,j,k,l,n,m,p
+    INTEGER :: GebhartUnit
     REAL(KIND=dp) :: s
     CHARACTER(:), ALLOCATABLE :: FName
     TYPE(Element_t), POINTER :: elm,celm
@@ -2498,20 +2504,20 @@ CONTAINS
     ELSE
       FName = TRIM(FileName)
     END IF
-    OPEN( 1,file = TRIM(FName),err=10 )
+    OPEN( NEWUNIT=GebhartUnit,file = TRIM(FName),err=10 )
 
     CALL Info( 'LoadGebhartFactors', 'Start', Level=5 )
 
-    READ(1,*) n
+    READ(GebhartUnit,*) n
     ALLOCATE( mapping(n) )
     DO i=1,n
-      READ(1,*) j,mapping(i)
+      READ(GebhartUnit,*) j,mapping(i)
     END DO
 
     DO i=1,n
-      READ(1,*) m
+      READ(GebhartUnit,*) m
       DO j=1,m
-        READ(1,*) k,l,s
+        READ(GebhartUnit,*) k,l,s
         k = mapping(k)
         l = mapping(l)
         IF ( .NOT.ASSOCIATED( &
@@ -2535,18 +2541,18 @@ CONTAINS
       END DO
     END DO
 
-    REWIND(1)
+    REWIND(GebhartUnit)
 
-    READ(1,*) n
+    READ(GebhartUnit,*) n
 
     DO i=1,n
-      READ(1,*) j,mapping(i)
+      READ(GebhartUnit,*) j,mapping(i)
     END DO
 
     DO i=1,n
-      READ(1,*) m
+      READ(GebhartUnit,*) m
       DO j=1,m
-        READ(1,*) k,l,s
+        READ(GebhartUnit,*) k,l,s
         k = mapping(k)
         l = mapping(l)
         mesh % elements(k) % boundaryinfo % RadiationFactors % elements(j) = l
@@ -2555,7 +2561,7 @@ CONTAINS
     END DO
 
     DEALLOCATE(mapping)
-    CLOSE(1)
+    CLOSE(GebhartUnit)
 
     CALL Info( 'LoadGebhartFactors', '...Done', Level=5 )
 

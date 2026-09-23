@@ -141,12 +141,13 @@ CONTAINS
       CALL FindMeshEdges( Mesh ) 
     END IF
 
+    IntersectionBody: BLOCK
     IF( Mesh % MeshDim == 3 ) THEN
       ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )       
       CALL CreateIntersection3D(.TRUE.,NewCnt)
       IF(NewCnt==0) THEN
         CALL Info('CreateIntersectionBCs','Could not find any additional interface elements!')        
-        GOTO 1
+        EXIT IntersectionBody
       END IF
       CALL CreateIntersection3D(.FALSE.,NewCnt)
     ELSE
@@ -156,7 +157,7 @@ CONTAINS
       CALL CreateIntersection2D(.TRUE.,NewCnt)
       IF(NewCnt==0) THEN
         CALL Info('CreateIntersectionBCs','Could not find any additional interface elements!')
-        GOTO 1
+        EXIT IntersectionBody
       END IF
       CALL CreateIntersection2D(.FALSE.,NewCnt)
     END IF
@@ -167,8 +168,9 @@ CONTAINS
             ' with '//I2S(IntersectionBCs(i,5))//' elements')
       END DO
     END IF
+    END BLOCK IntersectionBody
 
-1   IF(NeedEdges .AND. .NOT. EdgesPresent ) THEN
+    IF(NeedEdges .AND. .NOT. EdgesPresent ) THEN
       CALL ReleaseMeshEdgeTables( Mesh )
       CALL ReleaseMeshFaceTables( Mesh )
     END IF

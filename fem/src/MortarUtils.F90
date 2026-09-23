@@ -1236,7 +1236,8 @@ CONTAINS
       InitPhase = .FALSE.
     END IF    
         
-1   area = 0._dp
+    retry: DO
+    area = 0._dp
 
     ! Integration over the temporal element using integration points of that element
     DO nip=1, IPT % n
@@ -1371,8 +1372,10 @@ CONTAINS
         END DO
       END DO
       InitPhase = .FALSE.
-      GOTO 1
+      CYCLE retry
     END IF  ! Biortogonal initialization 
+    EXIT retry
+    END DO retry
 
     sumarea = sumarea + area
 
@@ -1457,7 +1460,8 @@ CONTAINS
     BasisM = 0.0_dp
 
     
-1   DO nip=1, IPT % n 
+    retry: DO
+    DO nip=1, IPT % n
       stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
           IPT % v(nip),IPT % w(nip),detJ,BasisT)
       
@@ -1573,8 +1577,10 @@ CONTAINS
         END DO
       END DO
       InitPhase = .FALSE.
-      GOTO 1
+      CYCLE retry
     END IF
+    EXIT retry
+    END DO retry
     
   END SUBROUTINE TemporalSegmentMortarAssembly
     
@@ -2057,6 +2063,7 @@ CONTAINS
       INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, iMesh
       LOGICAL :: SaveElem, DebugElem, SaveErr
       CHARACTER(LEN=20) :: FileName
+      INTEGER :: SaveErrUnit, AUnit, BUnit, CUnit, EUnit, SUnit
 
       CHARACTER(*), PARAMETER :: Caller='NormalProjectorWeak'
 
@@ -2073,7 +2080,7 @@ CONTAINS
 
       IF( SaveErr ) THEN
         FileName = 'frac_'//I2S(TimeStep)//'.dat'
-        OPEN( 11,FILE=Filename)
+        OPEN( NEWUNIT=SaveErrUnit,FILE=Filename)
       END IF
      
       n = Mesh % MaxElementNodes
@@ -2250,11 +2257,11 @@ CONTAINS
 
         IF( SaveElem ) THEN
           FileName = 't'//I2S(TimeStep)//'_a.dat'
-          OPEN( 10,FILE=Filename)
+          OPEN( NEWUNIT=AUnit,FILE=Filename)
           DO i=1,ne
-            WRITE( 10, * ) Nodes % x(i), Nodes % y(i), Nodes % z(i)
+            WRITE( AUnit, * ) Nodes % x(i), Nodes % y(i), Nodes % z(i)
           END DO
-          CLOSE( 10 )
+          CLOSE( AUnit )
         END IF
         
         ! Nullify z since we don't need it anymore after registering (zmin,zmax)
@@ -2543,23 +2550,23 @@ CONTAINS
 
           IF( SaveElem ) THEN
             FileName = 't'//I2S(TimeStep)//'_b'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=BUnit,FILE=FileName)
             DO i=1,nM
-              WRITE( 10, * ) NodesM % x(i), NodesM % y(i)
+              WRITE( BUnit, * ) NodesM % x(i), NodesM % y(i)
             END DO
-            CLOSE( 10 )
+            CLOSE( BUnit )
 
             FileName = 't'//I2S(TimeStep)//'_c'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
-            WRITE( 10, * ) xt, yt
-            CLOSE( 10 )
+            OPEN( NEWUNIT=CUnit,FILE=FileName)
+            WRITE( CUnit, * ) xt, yt
+            CLOSE( CUnit )
 
             FileName = 't'//I2S(TimeStep)//'_e'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=EUnit,FILE=FileName)
             DO i=1,kmax
-              WRITE( 10, * ) x(i), y(i)
+              WRITE( EUnit, * ) x(i), y(i)
             END DO
-            CLOSE( 10 )           
+            CLOSE( EUnit )
           END IF
 
           Depth = zave - SUM( NodesM % z(1:neM) )/neM 
@@ -2596,11 +2603,11 @@ CONTAINS
             IF( SaveElem ) THEN
               SubTri = SubTri + 1
               FileName = 't'//I2S(TimeStep)//'_s'//I2S(SubTri)//'.dat'
-              OPEN( 10,FILE=FileName)
+              OPEN( NEWUNIT=SUnit,FILE=FileName)
               DO i=1,3
-                WRITE( 10, * ) NodesT % x(i), NodesT % y(i)
+                WRITE( SUnit, * ) NodesT % x(i), NodesT % y(i)
               END DO
-              CLOSE( 10 )
+              CLOSE( SUnit )
             END IF
             
             CALL TemporalTriangleMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
@@ -2639,12 +2646,12 @@ CONTAINS
         END IF
 
         IF( SaveErr ) THEN
-          WRITE( 11, * ) ind,SUM( Nodes % x(1:ne))/ne, SUM( Nodes % y(1:ne))/ne, Err
+          WRITE( SaveErrUnit, * ) ind,SUM( Nodes % x(1:ne))/ne, SUM( Nodes % y(1:ne))/ne, Err
         END IF
 
       END DO
 
-      IF( SaveErr ) CLOSE(11)
+      IF( SaveErr ) CLOSE(SaveErrUnit)
       
         
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
@@ -2732,6 +2739,7 @@ CONTAINS
       CHARACTER(LEN=20) :: FileName
       INTEGER :: allocstat
       CHARACTER(*), PARAMETER :: Caller = "NormalProjectorWeak1D"
+      INTEGER :: AUnit, BUnit, EUnit, NUnit
 
            
       CALL Info(Caller,'Creating weak constraints using a 1D normal integrator',Level=8)      
@@ -2912,11 +2920,11 @@ CONTAINS
 
         IF( SaveElem ) THEN
           FileName = 't'//I2S(TimeStep)//'_a.dat'
-          OPEN( 10,FILE=Filename)
+          OPEN( NEWUNIT=AUnit,FILE=Filename)
           DO i=1,n
-            WRITE( 10, * ) Nodes % x(i), Nodes % z(i)
+            WRITE( AUnit, * ) Nodes % x(i), Nodes % z(i)
           END DO
-          CLOSE( 10 )
+          CLOSE( AUnit )
         END IF
         
         ! Nullify y since we don't need it anymore after registering (ymin,ymax)
@@ -3042,18 +3050,18 @@ CONTAINS
 
           IF( SaveElem ) THEN
             FileName = 't'//I2S(TimeStep)//'_b'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=BUnit,FILE=FileName)
             DO i=1,nM
-              WRITE( 10, * ) NodesM % x(i)
+              WRITE( BUnit, * ) NodesM % x(i)
             END DO
-            CLOSE( 10 )
+            CLOSE( BUnit )
 
             FileName = 't'//I2S(TimeStep)//'_e'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=EUnit,FILE=FileName)
             DO i=1,2
-              WRITE( 10, * ) NodesT % x(i)
+              WRITE( EUnit, * ) NodesT % x(i)
             END DO
-            CLOSE( 10 )           
+            CLOSE( EUnit )
           END IF
 
           ! Nullify y since we don't need it anymore
@@ -3075,9 +3083,9 @@ CONTAINS
         
         IF( SaveElem ) THEN
           FileName = 't'//I2S(TimeStep)//'_n.dat'
-          OPEN( 10,FILE=Filename)
-          WRITE( 10, * ) ElemHits 
-          CLOSE( 10 )
+          OPEN( NEWUNIT=NUnit,FILE=Filename)
+          WRITE( NUnit, * ) ElemHits
+          CLOSE( NUnit )
         END IF
 
         TotHits = TotHits + ElemHits
@@ -4385,6 +4393,7 @@ CONTAINS
       CHARACTER(LEN=20) :: FileName
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
       CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeakGeneric"
+      INTEGER :: SaveErrUnit, AUnit, BUnit, DUnit, EUnit
 
       
       CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
@@ -4411,7 +4420,7 @@ CONTAINS
 
       IF( SaveErr ) THEN
         FileName = 'frac_'//I2S(TimeStep)//'.dat'
-        OPEN( 11,FILE=Filename)
+        OPEN( NEWUNIT=SaveErrUnit,FILE=Filename)
       END IF
      
       n = Mesh % MaxElementDOFs
@@ -4661,11 +4670,11 @@ CONTAINS
 
         IF( SaveElem ) THEN
           FileName = 't'//I2S(TimeStep)//'_a.dat'
-          OPEN( 10,FILE=Filename)
+          OPEN( NEWUNIT=AUnit,FILE=Filename)
           DO i=1,ne
-            WRITE( 10, * ) Nodes % x(i), Nodes % y(i)
+            WRITE( AUnit, * ) Nodes % x(i), Nodes % y(i)
           END DO
-          CLOSE( 10 )
+          CLOSE( AUnit )
         END IF
         
         IF( DebugElem ) THEN
@@ -5072,25 +5081,25 @@ CONTAINS
 
           IF( SaveElem ) THEN
             FileName = 't'//I2S(TimeStep)//'_b'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=BUnit,FILE=FileName)
             DO i=1,nM
-              WRITE( 10, * ) NodesM % x(i), NodesM % y(i)
+              WRITE( BUnit, * ) NodesM % x(i), NodesM % y(i)
             END DO
-            CLOSE( 10 )
+            CLOSE( BUnit )
 
             FileName = 't'//I2S(TimeStep)//'_d'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=DUnit,FILE=FileName)
             DO i=1,nM
-              WRITE( 10, * ) xt, yt
+              WRITE( DUnit, * ) xt, yt
             END DO
-            CLOSE( 10 )
+            CLOSE( DUnit )
 
             FileName = 't'//I2S(TimeStep)//'_e'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=EUnit,FILE=FileName)
             DO i=1,kmax
-              WRITE( 10, * ) x(i), y(i)
+              WRITE( EUnit, * ) x(i), y(i)
             END DO
-            CLOSE( 10 )           
+            CLOSE( EUnit )
           END IF
 
           
@@ -5473,7 +5482,7 @@ CONTAINS
         END IF
 
         IF( SaveErr ) THEN
-          WRITE( 11, * ) ind,SUM( Nodes % x(1:ne))/ne, SUM( Nodes % y(1:ne))/ne, Err
+          WRITE( SaveErrUnit, * ) ind,SUM( Nodes % x(1:ne))/ne, SUM( Nodes % y(1:ne))/ne, Err
         END IF
 
         IF( DebugEdge ) THEN        
@@ -5486,7 +5495,7 @@ CONTAINS
         
       END DO ! ind
 
-      IF( SaveErr ) CLOSE(11)
+      IF( SaveErr ) CLOSE(SaveErrUnit)
 
            
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
@@ -6364,6 +6373,7 @@ CONTAINS
       CHARACTER(LEN=20) :: FileName
       INTEGER :: allocstat
       CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeak1D"
+      INTEGER :: AUnit, BUnit, EUnit, NUnit
 
            
       CALL Info(Caller,'Creating weak constraints using a 1D integrator',Level=8)      
@@ -6451,11 +6461,11 @@ CONTAINS
         
         IF( SaveElem ) THEN
           FileName = 't'//I2S(TimeStep)//'_a.dat'
-          OPEN( 10,FILE=Filename)
+          OPEN( NEWUNIT=AUnit,FILE=Filename)
           DO i=1,n
-            WRITE( 10, * ) Nodes % x(i)
+            WRITE( AUnit, * ) Nodes % x(i)
           END DO
-          CLOSE( 10 )
+          CLOSE( AUnit )
         END IF
 
         ! Set the values to maintain the size of the matrix.
@@ -6557,18 +6567,18 @@ CONTAINS
 
           IF( SaveElem ) THEN
             FileName = 't'//I2S(TimeStep)//'_b'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=BUnit,FILE=FileName)
             DO i=1,nM
-              WRITE( 10, * ) NodesM % x(i)
+              WRITE( BUnit, * ) NodesM % x(i)
             END DO
-            CLOSE( 10 )
+            CLOSE( BUnit )
 
             FileName = 't'//I2S(TimeStep)//'_e'//I2S(ElemHits)//'.dat'
-            OPEN( 10,FILE=FileName)
+            OPEN( NEWUNIT=EUnit,FILE=FileName)
             DO i=1,2
-              WRITE( 10, * ) NodesT % x(i)
+              WRITE( EUnit, * ) NodesT % x(i)
             END DO
-            CLOSE( 10 )           
+            CLOSE( EUnit )
           END IF
 
           ! In order to reuse the innermost assembly loop it has been
@@ -6599,9 +6609,9 @@ CONTAINS
         
         IF( SaveElem ) THEN
           FileName = 't'//I2S(TimeStep)//'_n.dat'
-          OPEN( 10,FILE=Filename)
-          WRITE( 10, * ) ElemHits 
-          CLOSE( 10 )
+          OPEN( NEWUNIT=NUnit,FILE=Filename)
+          WRITE( NUnit, * ) ElemHits
+          CLOSE( NUnit )
         END IF
         
         TotHits = TotHits + ElemHits
@@ -8945,6 +8955,7 @@ CONTAINS
     INTEGER, POINTER :: GlobalDofs(:)
     CHARACTER(:), ALLOCATABLE :: Filename
     CHARACTER(*), PARAMETER :: Caller = "SaveProjector"
+    INTEGER :: ProjUnit, RSumUnit, RhsUnit
     
     IF(.NOT.ASSOCIATED(Projector)) RETURN
     
@@ -8981,7 +8992,7 @@ CONTAINS
     
     zerocnt = 0
     nonzerocnt = 0
-    OPEN(1,FILE=FileName,STATUS='Unknown')    
+    OPEN(NEWUNIT=ProjUnit,FILE=FileName,STATUS='Unknown')
     DO i=1,projector % numberofrows
       IF( ASSOCIATED( IntInvPerm ) ) THEN
         ii = intinvperm(i)        
@@ -9025,13 +9036,13 @@ CONTAINS
             PRINT *,'Projector global col is zero:',ParEnv % MyPe, i, ii, j, jj
             CYCLE
           END IF
-          WRITE(1,*) ii,jj,ParEnv % MyPe, val
+          WRITE(ProjUnit,*) ii,jj,ParEnv % MyPe, val
         ELSE
-          WRITE(1,*) ii,jj,val
+          WRITE(ProjUnit,*) ii,jj,val
         END IF
       END DO
     END DO
-    CLOSE(1)     
+    CLOSE(ProjUnit)
 
     IF( ASSOCIATED(IntInvPerm) .AND. zerocnt > 0 ) THEN      
       CALL Warn('SaveProjector','Invperm zero count is '&
@@ -9046,7 +9057,7 @@ CONTAINS
             I2S(ParEnv % MyPe)//'.dat'
       END IF
       
-      OPEN(1,FILE=FileName,STATUS='Unknown')
+      OPEN(NEWUNIT=RSumUnit,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
         IF( ASSOCIATED( IntInvPerm ) ) THEN
           ii = intinvperm(i)
@@ -9068,15 +9079,15 @@ CONTAINS
 
         IF( GlobalInds ) THEN
           ii = GlobalDofs(ii)
-          WRITE(1,*) ii, i, &
+          WRITE(RSumUnit,*) ii, i, &
               projector % rows(i+1)-projector % rows(i), ParEnv % MyPe, dia, rowsum
         ELSE
-          WRITE(1,*) ii, i, &
+          WRITE(RSumUnit,*) ii, i, &
               projector % rows(i+1)-projector % rows(i),dia, rowsum
         END IF
 
       END DO
-      CLOSE(1)     
+      CLOSE(RSumUnit)
     END IF
 
     IF( ASSOCIATED(projector % rhs) ) THEN
@@ -9087,7 +9098,7 @@ CONTAINS
             I2S(ParEnv % MyPe)//'.dat'
       END IF
       
-      OPEN(1,FILE=FileName,STATUS='Unknown')
+      OPEN(NEWUNIT=RhsUnit,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
         IF( ASSOCIATED( IntInvPerm ) ) THEN
           ii = intinvperm(i)
@@ -9098,12 +9109,12 @@ CONTAINS
 
         IF( GlobalInds ) THEN
           ii = GlobalDofs(ii)
-          WRITE(1,*) ii, i, ParEnv % MyPe, projector % rhs(i)
+          WRITE(RhsUnit,*) ii, i, ParEnv % MyPe, projector % rhs(i)
         ELSE
-          WRITE(1,*) ii, i, projector % rhs(i)
+          WRITE(RhsUnit,*) ii, i, projector % rhs(i)
         END IF
       END DO
-      CLOSE(1)     
+      CLOSE(RhsUnit)
     END IF
 
   END SUBROUTINE SaveProjector
@@ -9676,7 +9687,8 @@ CONTAINS
       ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
       AllocationsDone = .FALSE.
       
-100   noedges = 0
+      retry: DO
+      noedges = 0
       EdgeDone = .FALSE.
 
       DO ind=1,EdgeMesh % NumberOfBulkElements
@@ -9741,8 +9753,10 @@ CONTAINS
         ALLOCATE( EdgeInds(noedges), EdgeX(3,noedges), EdgeY(3,noedges) )
         IF(dim==3) ALLOCATE(EdgeZ(3,noedges) )
         AllocationsDone = .TRUE.
-        GOTO 100
+        CYCLE retry
       END IF
+      EXIT retry
+      END DO retry
 
       DEALLOCATE( EdgeDone ) 
 

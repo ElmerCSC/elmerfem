@@ -678,7 +678,8 @@ CONTAINS
      NeglectedRows = 0
 
 
-100  sumrow = 0
+     AllocPass: DO
+     sumrow = 0
      k2 = 0
      rowoffset = 0
      Priority = -1
@@ -906,8 +907,11 @@ CONTAINS
 
        AllocationsDone = .TRUE.
 
-       GOTO 100
+       CYCLE AllocPass
      END IF
+
+     EXIT AllocPass
+     END DO AllocPass
      
      CALL Info(Caller,'Used '//I2S(sumrow)//&
          ' rows and '//I2S(k2)//' nonzeros',Level=7)
