@@ -616,12 +616,11 @@
                  n = n2
                  ni = n2
                ELSE
-                 ALLOCATE( Factors(n_global * n_global), STAT=istat )
-                 IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
-                 Factors = Factors_local
+                 ! Take over the storage, a copy would double the O(N^2) peak memory.
+                 CALL MOVE_ALLOC( Factors_local, Factors )
                END IF
              END IF
-             DEALLOCATE( Factors_local )
+             IF ( ALLOCATED(Factors_local) ) DEALLOCATE( Factors_local )
              ! IterSolv uses ipar=0/dProc=0 → sequential BLAS dot products,
              ! no MPI.  Non-root ranks skip the IF(myRank==0) normalisation
              ! block below and loop back; the next body's MPI_Gatherv acts as
@@ -2159,7 +2158,9 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        OutputName = TRIM(ViewFactorsFile)
      END IF
        
-     ALLOCATE( SaveMask(SIZE(Factors)), STAT=istat)
+     ! Only the first Ni rows of length n are saved; Factors may still have its
+     ! pre-symmetry-reduction size.
+     ALLOCATE( SaveMask(Ni*n), STAT=istat)
      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for SaveMask.')
          
      ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
@@ -2168,7 +2169,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
      SinglePrec = getLogical( Params,'Viewfactor single precision',GotIt)
      
-     SaveMask = ( Factors > MinFactor )
+     SaveMask = ( Factors(1:Ni*n) > MinFactor )
      
      IF( BinaryMode ) THEN
        CALL Info(Caller,'Saving view factors in binary mode',Level=5)
