@@ -25,6 +25,7 @@
 SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
   USE Types
   USE MainUtils, ONLY : SolverActivate
+  IMPLICIT NONE
   TYPE(Model_t)::Model
   TYPE(Solver_t),POINTER::Solver
   REAL(KIND=dp)::dt

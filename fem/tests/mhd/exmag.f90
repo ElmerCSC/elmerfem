@@ -3,6 +3,7 @@
 
 FUNCTION appliedB( model,n,t ) RESULT(c1)
    USE types
+   IMPLICIT NONE
 
    TYPE(model_t) :: model
    INTEGER :: n
@@ -16,6 +17,7 @@ FUNCTION appliedB( model,n,t ) RESULT(c1)
 
 FUNCTION applieddBdt( model,n,t ) RESULT(c2)
    USE types
+   IMPLICIT NONE
 
    TYPE(model_t) :: model
    INTEGER :: n

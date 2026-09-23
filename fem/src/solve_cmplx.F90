@@ -24,6 +24,7 @@
        SUBROUTINE SolveLapack_cmplx( N,A,x )
 
         USE Types
+        IMPLICIT NONE
 
        INTEGER  N, IPIV(N), iinfo
        COMPLEX(KIND=dp) A(n*n), x(n)
