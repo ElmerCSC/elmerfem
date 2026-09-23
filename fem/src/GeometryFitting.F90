@@ -187,7 +187,8 @@ CONTAINS
       END DO
     END DO
       
-    IF(GotNormal) GOTO 100 
+    AxisFromNormals: BLOCK
+    IF(GotNormal) EXIT AxisFromNormals
 
     ! Only in BC mode we do currently parallel reduction.
     ! This could be altered too.
@@ -232,8 +233,9 @@ CONTAINS
     IF( 1.0_dp - MAXVAL( ABS( AxisNormal ) ) > 1.0d-5 ) THEN
       CALL Warn('CylinderFit','The cylinder axis is not aligned with any axis!')
     END IF
+    END BLOCK AxisFromNormals
 
-100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
+    CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
 
     IF( InfoActive(25) .AND. ParEnv % MyPe == 0 ) THEN
       PRINT *,'Axis Normal:',AxisNormal
