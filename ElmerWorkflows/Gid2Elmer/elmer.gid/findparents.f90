@@ -25,18 +25,19 @@ PROGRAM FindParents
   INTEGER :: NumberOfParents, Element, CheckCount, NumberOfNodes, Node
   INTEGER :: Nnodes, Nbulk, Nboundary, BoundaryCode, ElementDim, BoundaryDim
   INTEGER, ALLOCATABLE :: ElementCode(:)
+  INTEGER :: HeaderUnit, ElementsUnit, BoundaryUnit, CorrectedUnit
 
 !---------------------------------------------------------------------------
 
 ! Read header:
 ! ------------
-  OPEN(10, FILE='mesh.header')
-  READ(10,*) Nnodes, Nbulk, Nboundary
-  CLOSE(10)
+  OPEN(NEWUNIT=HeaderUnit, FILE='mesh.header')
+  READ(HeaderUnit,*) Nnodes, Nbulk, Nboundary
+  CLOSE(HeaderUnit)
 
 ! Prepare the element hash table for nodes (inverse connectivity):
 ! ----------------------------------------------------------------
-  OPEN(10, FILE='mesh.elements')
+  OPEN(NEWUNIT=ElementsUnit, FILE='mesh.elements')
 
   ISTAT = 0
   ALLOCATE( HashTable( Nnodes ), ElementCode( Nbulk ), STAT = Istat )
@@ -50,7 +51,7 @@ PROGRAM FindParents
   ENDDO
 
   DO i = 1, Nbulk
-     READ(10,*) A(1:3), A(4:3+MOD(A(3),100))
+     READ(ElementsUnit,*) A(1:3), A(4:3+MOD(A(3),100))
 
 !    A(1) = element number
 !    A(2) = tag
@@ -83,16 +84,16 @@ PROGRAM FindParents
 
      END DO
   END DO
-  CLOSE(10)
+  CLOSE(ElementsUnit)
 
 
 ! Make the mesh.boundary -file with parents:
 ! ------------------------------------------
-  OPEN(10, FILE='mesh.boundary')
-  OPEN(11, FILE='mesh.boundary.corrected' )
+  OPEN(NEWUNIT=BoundaryUnit, FILE='mesh.boundary')
+  OPEN(NEWUNIT=CorrectedUnit, FILE='mesh.boundary.corrected' )
   
   DO i = 1, Nboundary
-     READ(10,*) A(1:5), A(6:5+MOD(A(5),100))
+     READ(BoundaryUnit,*) A(1:5), A(6:5+MOD(A(5),100))
      
 !    A(1) = boundaryelement number
 !    A(2) = tag
@@ -171,14 +172,14 @@ PROGRAM FindParents
         HashPtr1 => HashPtr1 % Next
      END DO
 
-     WRITE(11,'(100I8)') A(1:2), Parent(1:2), A(5), A(6:5+MOD(A(5),100))
+     WRITE(CorrectedUnit,'(100I8)') A(1:2), Parent(1:2), A(5), A(6:5+MOD(A(5),100))
 
   END DO
 
 ! Close, deallocate, and destroy hash tables:
 ! -------------------------------------------
-  CLOSE(10)
-  CLOSE(11)
+  CLOSE(BoundaryUnit)
+  CLOSE(CorrectedUnit)
 
   DEALLOCATE( ElementCode )
 
