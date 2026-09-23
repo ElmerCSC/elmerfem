@@ -373,12 +373,13 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
     
   CALL ObjectiveGradients(xPhys,ce,dc,dv0,obj)
 
+  mult_update: BLOCK
   IF( cMode == 1 .OR. cMode == 2 ) THEN
     CALL Info(Caller,'Mid of cycle, finishing early!')
-    GOTO 1
+    EXIT mult_update
   END IF
-      
-  obj = ParallelReduction( obj ) 
+
+  obj = ParallelReduction( obj )
 
   
   IF(InfoActive(20)) THEN
@@ -458,7 +459,7 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
   END IF
   
   ! Multiplier for local stiffness matrix of the external solver.
-1 CONTINUE
+  END BLOCK mult_update
 
   xMult = emin + efrac * xPhys**penal
 

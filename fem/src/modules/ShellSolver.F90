@@ -950,6 +950,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
     INTEGER :: n, iostat, i, j, k, i0, NumberOfLines, Family
+    INTEGER :: DirectorReadUnit, DirectorWriteUnit
     INTEGER, POINTER :: InvPerm(:)
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
@@ -977,18 +978,18 @@ CONTAINS
       INQUIRE(FILE = DirectorFile(1:n+15), EXIST = ReadNodalDirectors)
 
       IF (ReadNodalDirectors) THEN
-        OPEN(10, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
+        OPEN(NEWUNIT=DirectorReadUnit, FILE = DirectorFile(1:n+15), status='OLD', IOSTAT = iostat)
         IF ( iostat /= 0 ) CALL Fatal('ReadSurfaceDirector', &
             'Opening mesh.director file failed.')
 
-        ! Director data may not have been defined in all mesh nodes.  
+        ! Director data may not have been defined in all mesh nodes.
         ! Find out how many director values can be read:
         NumberOfLines = 0
         DO WHILE (.TRUE.)
-          READ(10,*, IOSTAT=iostat, END=100) k, d
+          READ(DirectorReadUnit,*, IOSTAT=iostat, END=100) k, d
           NumberOfLines = NumberOfLines + 1
         END DO
-100     REWIND(10)
+100     REWIND(DirectorReadUnit)
       END IF
     END IF
 
@@ -1000,14 +1001,14 @@ CONTAINS
             'InvPerm array could not be allocated')
       
         DO i=1,NumberOfLines
-          READ(10,*,IOSTAT=iostat) k, d
-          InvPerm(k) = i 
+          READ(DirectorReadUnit,*,IOSTAT=iostat) k, d
+          InvPerm(k) = i
           Norm = SQRT(SUM(d(1:3)**2))
           NodalDirector(i,1) = d(1)/Norm
           NodalDirector(i,2) = d(2)/Norm
           NodalDirector(i,3) = d(3)/Norm
         END DO
-        CLOSE(10)
+        CLOSE(DirectorReadUnit)
       END IF
       ! ---------------------------------------------------------------------
       ! Create director data as elementwise property
@@ -1064,7 +1065,7 @@ CONTAINS
         CALL Info('ReadSurfaceDirector', &
             'a file for director output exists: write rejected', Level=5)
       ELSE
-        OPEN(10, FILE = DirectorFile(1:n), status='NEW', IOSTAT = iostat)        
+        OPEN(NEWUNIT=DirectorWriteUnit, FILE = DirectorFile(1:n), status='NEW', IOSTAT = iostat)
         IF ( iostat /= 0 ) CALL Fatal( 'ReadSurfaceDirector', &
             'Opening a file for elementwise director output failed.')
 
@@ -1096,13 +1097,13 @@ CONTAINS
             !WRITE(10,'(A3)') 'end'
 
             WRITE(FormatString,'(A)') '(A,I0,A,'//I2S(3*n)//'E22.15,A)'
-            WRITE(10,FormatString) 'element: ',ActiveElements(k),' director: ', &
-                DirectorValues(1:3*n),' end'            
+            WRITE(DirectorWriteUnit,FormatString) 'element: ',ActiveElements(k),' director: ', &
+                DirectorValues(1:3*n),' end'
           ELSE
             CALL Fatal('ReadSurfaceDirector', 'Elemental director data is not associated')
           END IF
         END DO
-        CLOSE(10)
+        CLOSE(DirectorWriteUnit)
       END IF
     END IF
 
@@ -1273,6 +1274,7 @@ CONTAINS
     LOGICAL :: QuadraticGeometryData, Subtriangulation
     INTEGER :: Active, k, e, i, j, l, v1, v2, v3, i0, j0, k0
     INTEGER :: Family, EdgesParametrized, CurveDataSize
+    INTEGER :: EdgeCsysUnit
     REAL(KIND=dp), POINTER :: A(:,:), cpars(:)
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp), TARGET :: FrameData(3,4)
@@ -1287,7 +1289,7 @@ CONTAINS
 
     ! Write edge curve parameters to a file:
     ! ------------------------------------------------------------------
-    IF (FileOutput) OPEN(10, FILE = 'edgecsys.dat', status='REPLACE')
+    IF (FileOutput) OPEN(NEWUNIT=EdgeCsysUnit, FILE = 'edgecsys.dat', status='REPLACE')
 
     Active = GetNOFActive()
     DO k=1,Active
@@ -1468,7 +1470,7 @@ CONTAINS
       END IF
     END DO
 
-    IF (FileOutput) CLOSE(10)
+    IF (FileOutput) CLOSE(EdgeCsysUnit)
 !------------------------------------------------------------------------------
   END SUBROUTINE CreateCurvedEdges
 !------------------------------------------------------------------------------
@@ -1704,9 +1706,10 @@ CONTAINS
     END IF
 
     n = Element % TYPE % NumberOfNodes
-    Basis = 0.0d0      
+    Basis = 0.0d0
     dBasis = 0.0d0
 
+    fundamental_forms: BLOCK
     IF (ComputeFromMesh) THEN
       !
       ! Compute the fundamental forms simply by using the mesh data and return
@@ -1743,9 +1746,9 @@ CONTAINS
 
       d1a1(1:3) = ddr(1:3,1,1)
       d2a2(1:3) = ddr(1:3,2,2)
-      d2a1(1:3) = ddr(1:3,1,2)      
+      d2a1(1:3) = ddr(1:3,1,2)
 
-      GOTO 101
+      EXIT fundamental_forms
     END IF
 
     EdgesParametrized = Family
@@ -2281,7 +2284,7 @@ CONTAINS
       END SELECT
     END DO
 
-    101 CONTINUE
+    END BLOCK fundamental_forms
     !--------------------------------------------------------------------
     ! The metric surface tensor and its determinant
     !--------------------------------------------------------------------

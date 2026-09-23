@@ -171,7 +171,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:), CapBodyIndex(:), Ivals(:)
   INTEGER, POINTER :: PotentialPerm(:), EnergyPerm(:), SurfPerm(:)
   INTEGER, POINTER :: FieldPerm(:), FluxPerm(:)
-  INTEGER :: CapBodies, CapBody, Permi, Permj, iter, MaxIterations
+  INTEGER :: CapBodies, CapBody, Permi, Permj, iter, MaxIterations, CapUnit
   INTEGER :: i, j, k, l, m, istat, bf_id, LocalNodes, dim, NonlinearIter, &
       nsize, N, ntot, t, TID
 
@@ -497,14 +497,14 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
       
        CapMatrixFile = ListGetString(Params,'Capacitance Matrix Filename',GotIt )
        IF( GotIt ) THEN
-         OPEN (10, FILE=CapMatrixFile)
+         OPEN (NEWUNIT=CapUnit, FILE=CapMatrixFile)
          DO i=1,CapBodies
            DO j=1,CapBodies
-             WRITE (10,'(ES17.9)',advance='no') CapMatrix(i,j)
+             WRITE (CapUnit,'(ES17.9)',advance='no') CapMatrix(i,j)
            END DO
-           WRITE(10,'(A)') ' '
+           WRITE(CapUnit,'(A)') ' '
          END DO
-         CLOSE(10)     
+         CLOSE(CapUnit)
          WRITE(Message,'(A,A)') 'Capacitance matrix was saved to file ',CapMatrixFile
          CALL Info(Caller,Message)
        END IF

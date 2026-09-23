@@ -1186,8 +1186,9 @@ CONTAINS
        Element => GetActiveElement(t)
 
        ! If elements are similar skip the other similar elements.
-       IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
-       
+       local_matrix_copy: BLOCK
+       IF( UseLocalMatrixCopy( Solver, activeind = t) ) EXIT local_matrix_copy
+
        n = GetElementNOFNOdes()
        IF( STDOFs > dim ) THEN
          ntot = GetElementNOFDOFs() + GetElementNOFBDOFs()
@@ -1483,9 +1484,10 @@ CONTAINS
        END IF
 
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
-100    IF ( ConstantBulkMatrixInUse ) THEN
+       END BLOCK local_matrix_copy
+       IF ( ConstantBulkMatrixInUse ) THEN
          CALL DefaultUpdateForce( FORCE )
          IF ( HarmonicAnalysis ) THEN
            SaveRHS => Solver % Matrix % RHS
