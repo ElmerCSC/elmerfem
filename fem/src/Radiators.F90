@@ -74,7 +74,7 @@
      t = t(1:i)//' -radiators '//s(1:j)
      print*,t
 
-     CALL system(t)
+     CALL EXECUTE_COMMAND_LINE(t)
   END PROGRAM RadiatorFactors
 
   
