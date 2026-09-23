@@ -860,8 +860,9 @@ CONTAINS
     ! the element the long way is always a valid answer, just slower.
     SerialAsm = .TRUE.
     !$ SerialAsm = .NOT. omp_in_parallel()
+    LocalAsm: BLOCK
     IF( SerialAsm ) THEN
-      IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
+      IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) EXIT LocalAsm
     END IF
 
     CALL GetElementNodes( Nodes,Element )
@@ -1120,7 +1121,9 @@ CONTAINS
         CALL Default1stOrderTime( MASS, STIFF, FORCE,UElement=Element, USolver=Solver )
       END IF
     END IF
-10  CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element, USolver=Solver)
+    END BLOCK LocalAsm
+
+    CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element, USolver=Solver)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -1205,8 +1208,9 @@ CONTAINS
       ALLOCATE(Basis(m), dBasisdx(m,3))
     END IF
     
-    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
-    
+    LocalAsm: BLOCK
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) EXIT LocalAsm
+
     Material => GetMaterial(Element)
     IF( .NOT. ASSOCIATED( Material, HandlesState(tid) % PrevMaterial ) ) THEN
       HandlesState(tid) % PrevMaterial => Material
@@ -1403,8 +1407,9 @@ CONTAINS
       END IF
     END IF 
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
-    
-20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element) !, VecAssembly=VecAsm)
+    END BLOCK LocalAsm
+
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element) !, VecAssembly=VecAsm)
     IF( .NOT. BasisFunctionsInUse .AND. ASSOCIATED(Basis) ) DEALLOCATE(Basis, dBasisdx)
 
     END ASSOCIATE
