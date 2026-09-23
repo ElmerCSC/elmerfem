@@ -116,14 +116,16 @@ PROGRAM ResultToResult
      TYPE(Quadrant_t), POINTER :: RootQuadrant
      LOGICAL :: QuadrantTreeExists=.FALSE.
 
+     INTEGER :: StartInfoUnit
+
 !------------------------------------------------------------------------------
 !    Read input file name (the old model .sif file)
 !------------------------------------------------------------------------------
 
-     OPEN( 1,file='ELMERSOLVER_STARTINFO')
-       READ(1,'(a)') OldModelName
-       READ(1,*) nproc
-     CLOSE(1)
+     OPEN( NEWUNIT=StartInfoUnit,file='ELMERSOLVER_STARTINFO')
+       READ(StartInfoUnit,'(a)') OldModelName
+       READ(StartInfoUnit,*) nproc
+     CLOSE(StartInfoUnit)
 
      NewModelName = 'Interpolation.sif'
 

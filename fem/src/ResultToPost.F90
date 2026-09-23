@@ -86,13 +86,15 @@
      TYPE(Variable_t), POINTER :: Var
      TYPE(Solver_t), POINTER :: Solver
 
+     INTEGER :: StartInfoUnit
+
 !------------------------------------------------------------------------------
 !    Read input file name and whether parallel execution is requested
 !------------------------------------------------------------------------------
 
-     OPEN( 1,file='ELMERSOLVER_STARTINFO')
-       READ(1,'(a)') ModelName
-     CLOSE(1)
+     OPEN( NEWUNIT=StartInfoUnit,file='ELMERSOLVER_STARTINFO')
+       READ(StartInfoUnit,'(a)') ModelName
+     CLOSE(StartInfoUnit)
 
 !------------------------------------------------------------------------------
 !    If parallel execution requested, initialize parallel environment
