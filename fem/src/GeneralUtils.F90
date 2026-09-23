@@ -1060,11 +1060,17 @@ CONTAINS
               CLOSE(IncludeUnit)
               IncludeUnit = IncludeUnit+1
               READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
-              IF ( ios /= 0 ) GO TO 10
+              IF ( ios /= 0 ) THEN
+                l = .FALSE.
+                RETURN
+              END IF
             END IF
           ELSE
             READ( Unit,'(A)',IOSTAT=ios ) readstr
-            IF ( ios /= 0 ) GO TO 10
+            IF ( ios /= 0 ) THEN
+              l = .FALSE.
+              RETURN
+            END IF
           END IF
 
           readstr = ADJUSTL(readstr)
@@ -1119,7 +1125,10 @@ CONTAINS
             CLOSE(IncludeUnit)
             IncludeUnit = IncludeUnit+1
             READ( Unit,'(A)',IOSTAT=ios ) readstr
-            IF ( ios /= 0 ) GO TO 10
+            IF ( ios /= 0 ) THEN
+              l = .FALSE.
+              RETURN
+            END IF
           END IF
         END IF
         ninlen = LEN_TRIM(readstr)

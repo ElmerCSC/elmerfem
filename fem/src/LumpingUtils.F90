@@ -1044,7 +1044,7 @@ MODULE LumpingUtils
     !------------------------------------------------------------------------------------------------------    
     SUBROUTINE ComputeLineIntegral()
 
-      INTEGER :: WhoActive, PrevWhoActive, NoStat, kprev(3)
+      INTEGER :: WhoActive, PrevWhoActive, NoStat, kprev(3), iounit
       LOGICAL :: FileOpen
       REAL(KIND=dp) :: r2min_par
       CHARACTER(:), ALLOCATABLE :: str
@@ -1155,13 +1155,13 @@ MODULE LumpingUtils
         ! Only open the file once!
         IF(.NOT. FileOpen ) THEN
           IF( ParEnv % PEs > 1 ) THEN            
-            OPEN (10, FILE=TRIM(str)//'_'//I2S(ParEnv % MyPe) )
+            OPEN (NEWUNIT=iounit, FILE=TRIM(str)//'_'//I2S(ParEnv % MyPe) )
           ELSE
-            OPEN (10, FILE=str )
+            OPEN (NEWUNIT=iounit, FILE=str )
           END IF
           FileOpen = .TRUE.
         END IF
-        WRITE(10,*) nsteps, Coord1, phi1, phisum, ssum, ReCirc
+        WRITE(iounit,*) nsteps, Coord1, phi1, phisum, ssum, ReCirc
       END IF
 
       kprev = 0
@@ -1320,7 +1320,7 @@ MODULE LumpingUtils
           CALL Fatal(Caller,'We circled twice around!?')
         END IF
 
-        IF(SaveLoop) WRITE(10,*) nsteps, Coord1, phi1, phisum, ssum, ReCirc
+        IF(SaveLoop) WRITE(iounit,*) nsteps, Coord1, phi1, phisum, ssum, ReCirc
 
         ! We have come home to roost!
         IF(i1 == r2ind) THEN
@@ -1394,7 +1394,7 @@ MODULE LumpingUtils
       END IF
       
       CALL FreeMatrix(NodeGraph)
-      IF(FileOpen) CLOSE(10)
+      IF(FileOpen) CLOSE(iounit)
                    
     END SUBROUTINE ComputeLineIntegral           
 

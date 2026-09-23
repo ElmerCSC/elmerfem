@@ -4056,7 +4056,8 @@ CONTAINS
       CALL Info('CoupledSolver','Starting constraint assembly',Level=8)
       
       BulkMode = .TRUE.
-200   IF(BulkMode) THEN
+      DO
+      IF(BulkMode) THEN
         ! CALL Info('CoupledSolver','Starting constraint bulk assembly',Level=5)
         ElementsFirst = 1
         ElementsLast = Mesh % NumberOfBulkElements 
@@ -4300,10 +4301,11 @@ CONTAINS
       IF(BulkMode) THEN
         ! CALL Info( 'CoupledSolver', 'Bulk assembly done for constraints', Level=4 )
         BulkMode = .FALSE.
-        GOTO 200
       ELSE 
         ! CALL Info( 'CoupledSolver', 'Boundary assembly done for constraints', Level=4 )
+        EXIT
       END IF
+      END DO
 
     END SUBROUTINE CoupledConstraintAssembly
 
@@ -5424,7 +5426,8 @@ BLOCK
 END BLOCK
      END IF
 
-     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) GOTO 1
+     ParallelSetup: BLOCK
+     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) EXIT ParallelSetup
 
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        IF ( Parallel .AND. MeActive ) THEN
@@ -5459,11 +5462,12 @@ END BLOCK
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
+     END BLOCK ParallelSetup
 
 
      ! This is more featured version than the original one with just one flag.
      ! This way different solvers can detect when their mesh has been updated. 
-1    Solver % MeshChanged = Solver % Mesh % Changed
+     Solver % MeshChanged = Solver % Mesh % Changed
      IF( Solver % MeshTag /= Solver % Mesh % MeshTag ) THEN
        Solver % MeshChanged = .TRUE.
        Solver % MeshTag = Solver % Mesh % MeshTag
@@ -5964,7 +5968,7 @@ END BLOCK
 !------------------------------------------------------------------------------
       TYPE(Solver_t), POINTER :: Solver
       TYPE(ValueList_t), POINTER :: SolverParams
-      INTEGER :: PredCorrOrder, i, predcorrIndex = 0
+      INTEGER :: PredCorrOrder, i, predcorrIndex = 0, iounit
       REAL(KIND=dp) :: epsilon, beta1, beta2
       LOGICAL :: Found, OutputFlag = .FALSE.
 
@@ -6032,9 +6036,9 @@ END BLOCK
           !> Save the time errors!     
           OutputFlag = ListGetLogical(SolverParams, 'Predictor-Corrector Save Error', Found)   
           IF ( OutputFlag ) THEN                 
-            OPEN (unit=135, file="ErrorPredictorCorrector.dat", POSITION='APPEND')
-            WRITE(135, *) dtOld, eta, timeError                                                
-            CLOSE(135)
+            OPEN (NEWUNIT=iounit, file="ErrorPredictorCorrector.dat", POSITION='APPEND')
+            WRITE(iounit, *) dtOld, eta, timeError                                                
+            CLOSE(iounit)
           END IF
 
           !> Output

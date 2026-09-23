@@ -819,7 +819,7 @@ CONTAINS
       sigma = one
       rho0 = one
 
-      DO Round=1,MaxRounds
+      RoundLoop: DO Round=1,MaxRounds
         !-------------------------
         ! --- The BiCG part ---
         !-------------------------
@@ -831,7 +831,7 @@ CONTAINS
           IF (rho0 == zero) THEN
             CALL Warn( 'RealBiCGStab(l)', 'Iteration halted: rho0 == zero.' )
             Halted = .TRUE.
-            GOTO 100
+            EXIT RoundLoop
           ENDIF
           IF (rho1 /= rho1) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: rho1 == NaN.' )
@@ -859,7 +859,7 @@ CONTAINS
           IF (sigma == zero) THEN
             CALL Warn( 'RealBiCGStab(l)', 'Iteration halted: sigma == zero.' )
             Halted = .TRUE.
-            GOTO 100
+            EXIT RoundLoop
           ENDIF
           IF (sigma /= sigma) THEN
             CALL Fatal( 'RealBiCGStab(l)', 'Breakdown error: sigma == NaN.' )
@@ -989,7 +989,7 @@ CONTAINS
         IF( .NOT. (kappa0 > 0.0) ) THEN
           CALL Warn('RealBiCGStab(l)','kappa0^2 is non-positive, iteration halted')
           Halted = .TRUE.
-          GOTO 100
+          EXIT RoundLoop
         END IF
         kappa0 = SQRT( kappa0 )
 
@@ -1001,7 +1001,7 @@ CONTAINS
         IF( .NOT. (kappal > 0.0) ) THEN
           CALL Warn('RealBiCGStab(l)','kappal^2 is non-positive, iteration halted')
           Halted = .TRUE.
-          GOTO 100
+          EXIT RoundLoop
         END IF
         kappal = SQRT( kappal )
 
@@ -1047,7 +1047,7 @@ CONTAINS
         IF( rnrm < 0.0 ) THEN
           CALL Warn('RealBiCGStab(l)','rnrm^2 is negative, iteration halted')
           Halted = .TRUE.
-          GOTO 100 
+          EXIT RoundLoop
         END IF        
         rnrm = SQRT( rnrm ) 
         
@@ -1136,9 +1136,9 @@ CONTAINS
         Converged = (errorind < Tol) 
         Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
         IF( Converged .OR. Diverged) EXIT    
-      END DO
+      END DO RoundLoop
 
-100   IF( Robust ) THEN
+      IF( Robust ) THEN
         IF( BestNorm < RobustTol ) THEN
           Converged = .TRUE.
         END IF
