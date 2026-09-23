@@ -12,6 +12,7 @@
 
         integer :: nx,ny
         integer :: i,j
+        integer :: iounit
 
         character(len=MAX_NAME_LEN) :: filin='Data/UDEM.xy'
 
@@ -24,17 +25,17 @@
                 Firsttime=.False.
 
         ! open file
-                open(10,file=trim(filin))
-                Read(10,*) nx
-                Read(10,*) ny
+                open(NEWUNIT=iounit,file=trim(filin))
+                Read(iounit,*) nx
+                Read(iounit,*) ny
                 allocate(xx(nx),yy(ny))
                 Allocate(dem(nx,ny))
                 Do i=1,nx
                    Do j=1,ny
-                      read(10,*) xx(i),yy(j),dem(i,j)
+                      read(iounit,*) xx(i),yy(j),dem(i,j)
                    End Do
                 End do
-                close(10)
+                close(iounit)
         End if
 
         ! position current point
@@ -60,6 +61,7 @@
 
         integer :: nx,ny
         integer :: i,j
+        integer :: iounit
 
         character(len=MAX_NAME_LEN) :: filin='Data/VDEM.xy'
 
@@ -72,17 +74,17 @@
                 Firsttime=.False.
 
         ! open file
-                open(10,file=trim(filin))
-                Read(10,*) nx
-                Read(10,*) ny
+                open(NEWUNIT=iounit,file=trim(filin))
+                Read(iounit,*) nx
+                Read(iounit,*) ny
                 allocate(xx(nx),yy(ny))
                 Allocate(dem(nx,ny))
                 Do i=1,nx
                    Do j=1,ny
-                      read(10,*) xx(i),yy(j),dem(i,j)
+                      read(iounit,*) xx(i),yy(j),dem(i,j)
                    End Do
                 End do
-                close(10)
+                close(iounit)
         End if
 
         ! position current point
@@ -108,6 +110,7 @@
 
         integer :: nx,ny
         integer :: i,j
+        integer :: iounit
 
         character(len=MAX_NAME_LEN) :: filin='Data/zsDEM.xy'
 
@@ -120,17 +123,17 @@
                 Firsttime=.False.
 
         ! open file
-                open(10,file=trim(filin))
-                Read(10,*) nx
-                Read(10,*) ny
+                open(NEWUNIT=iounit,file=trim(filin))
+                Read(iounit,*) nx
+                Read(iounit,*) ny
                 allocate(xx(nx),yy(ny))
                 Allocate(dem(nx,ny))
                 Do i=1,nx
                    Do j=1,ny
-                      read(10,*) xx(i),yy(j),dem(i,j)
+                      read(iounit,*) xx(i),yy(j),dem(i,j)
                    End Do
                 End do
-                close(10)
+                close(iounit)
         End if
 
         ! position current point
@@ -156,6 +159,7 @@
 
         integer :: nx,ny
         integer :: i,j
+        integer :: iounit
 
         character(len=MAX_NAME_LEN) :: filin='Data/zbDEM.xy'
 
@@ -168,17 +172,17 @@
                 Firsttime=.False.
 
         ! open file
-                open(10,file=trim(filin))
-                Read(10,*) nx
-                Read(10,*) ny
+                open(NEWUNIT=iounit,file=trim(filin))
+                Read(iounit,*) nx
+                Read(iounit,*) ny
                 allocate(xx(nx),yy(ny))
                 Allocate(dem(nx,ny))
                 Do i=1,nx
                    Do j=1,ny
-                      read(10,*) xx(i),yy(j),dem(i,j)
+                      read(iounit,*) xx(i),yy(j),dem(i,j)
                    End Do
                 End do
-                close(10)
+                close(iounit)
         End if
 
         ! position current point
