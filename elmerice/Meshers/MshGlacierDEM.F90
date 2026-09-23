@@ -51,35 +51,36 @@ REAL(KIND=dp)  :: xs0, ys0, xb0, yb0, zbed, zsurf, znew, Rmin, R
 REAL(KIND=dp)  :: lsx, lsy, lbx, lby, hmin 
 INTEGER :: NtN, i, j, Ns, Nsx, Nsy, Nb, Nbx, Nby, n, Npt, ix, iy, imin, is, ib
 Integer k, Np
+INTEGER :: ioInput, ioSurf, ioBed, ioHeader, ioNodes
 Logical :: Serial = .False.
 
 !
 !  Read data input from mesh_input.dat
 !
-OPEN(10,file="mesh_input.dat")
-READ(10,*)Rien
-READ(10,*)NameMsh
-READ(10,*)Rien
-READ(10,*)NameSurf
-READ(10,*)Rien
-READ(10,*)Nsx, Nsy
-READ(10,*)Rien
-READ(10,*)xs0, ys0
-READ(10,*)Rien
-READ(10,*)lsx, lsy
-READ(10,*)Rien
-READ(10,*)NameBed
-READ(10,*)Rien
-READ(10,*)Nbx, Nby
-READ(10,*)Rien
-READ(10,*)xb0, yb0
-READ(10,*)Rien
-READ(10,*)lbx, lby
-READ(10,*)Rien
-READ(10,*)hmin
-READ(10,*)Rien
-READ(10,*)Np   
-CLOSE(10)
+OPEN(NEWUNIT=ioInput,file="mesh_input.dat")
+READ(ioInput,*)Rien
+READ(ioInput,*)NameMsh
+READ(ioInput,*)Rien
+READ(ioInput,*)NameSurf
+READ(ioInput,*)Rien
+READ(ioInput,*)Nsx, Nsy
+READ(ioInput,*)Rien
+READ(ioInput,*)xs0, ys0
+READ(ioInput,*)Rien
+READ(ioInput,*)lsx, lsy
+READ(ioInput,*)Rien
+READ(ioInput,*)NameBed
+READ(ioInput,*)Rien
+READ(ioInput,*)Nbx, Nby
+READ(ioInput,*)Rien
+READ(ioInput,*)xb0, yb0
+READ(ioInput,*)Rien
+READ(ioInput,*)lbx, lby
+READ(ioInput,*)Rien
+READ(ioInput,*)hmin
+READ(ioInput,*)Rien
+READ(ioInput,*)Np
+CLOSE(ioInput)
 
 Ns = Nsx*Nsy
 Nb = Nbx*Nby
@@ -115,13 +116,13 @@ WRITE(*,*)'dx, dy',dsx,dsy,dbx,dby
 !-------------------------------------------------------------
 ! Load Bedrock and Surface DEMs and make some verifications
 !-------------------------------------------------------------
-OPEN(10,file=TRIM(NameSurf))
-READ(10,*)(xs(i), ys(i), zs(i), i=1,Ns)
-CLOSE(10)
+OPEN(NEWUNIT=ioSurf,file=TRIM(NameSurf))
+READ(ioSurf,*)(xs(i), ys(i), zs(i), i=1,Ns)
+CLOSE(ioSurf)
 
-OPEN(10,file=TRIM(NameBed))
-READ(10,*)(xb(i), yb(i), zb(i), i=1,Nb)
-CLOSE(10)
+OPEN(NEWUNIT=ioBed,file=TRIM(NameBed))
+READ(ioBed,*)(xb(i), yb(i), zb(i), i=1,Nb)
+CLOSE(ioBed)
 
 k = 0 
 DO j = 1, Nsy
@@ -167,24 +168,24 @@ DO k = 1, Np
       END IF
       iNN = ADJUSTL(iNN)
  
-      OPEN(11,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".header")
+      OPEN(NEWUNIT=ioHeader,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".header")
    ELSE
-      OPEN(11,file=TRIM(NameMsh)//"/mesh.header")
-   END IF 
+      OPEN(NEWUNIT=ioHeader,file=TRIM(NameMsh)//"/mesh.header")
+   END IF
 
-   READ(11,*)NtN
-   CLOSE(11)
+   READ(ioHeader,*)NtN
+   CLOSE(ioHeader)
 
    ALLOCATE (Node(NtN), xnode(NtN), ynode(NtN), znode(NtN))
    WRITE(*,*)'Part ', k, ' NtN = ', NtN
         
    IF (.NOT.Serial) THEN
-      OPEN(12,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".nodes")
+      OPEN(NEWUNIT=ioNodes,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".nodes")
    ELSE
-      OPEN(12,file=TRIM(NameMsh)//"/mesh.nodes")
+      OPEN(NEWUNIT=ioNodes,file=TRIM(NameMsh)//"/mesh.nodes")
    END IF
-   READ(12,*)(Node(i), j, xnode(i), ynode(i), znode(i), i=1,NtN)
-   REWIND(12)
+   READ(ioNodes,*)(Node(i), j, xnode(i), ynode(i), znode(i), i=1,NtN)
+   REWIND(ioNodes)
 
 ! Make some verifications that all nodes are included in the DEMs
    IF (((MINVAL(xnode)<MINVAL(xs)).OR.(MAXVAL(xnode)>MAXVAL(xs))).OR. &
@@ -318,9 +319,9 @@ DO k = 1, Np
         
       znew = zbed + z * MAX((zsurf - zbed),hmin) 
         
-      WRITE(12,1200)Node(n),j,x,y,znew
+      WRITE(ioNodes,1200)Node(n),j,x,y,znew
    END DO ! NtN
-   CLOSE(12)
+   CLOSE(ioNodes)
    DEALLOCATE (Node, xnode, ynode, znode)
 
 END DO ! Np
