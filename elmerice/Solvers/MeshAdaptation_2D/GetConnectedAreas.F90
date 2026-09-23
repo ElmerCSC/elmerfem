@@ -66,6 +66,7 @@
       INTEGER :: t,i,n,p
       INTEGER :: nfaces
       INTEGER :: NOFActive
+      INTEGER :: iounit
 
       LOGICAL :: stat,Found
       LOGICAL :: SAVE_REGIONS
@@ -212,11 +213,11 @@
       SAVE_REGIONS=ListGetLogical(SolverParams,'Save regions labels',Found)
       IF (.NOT.Found) SAVE_REGIONS=.FALSE.
       IF (SAVE_REGIONS) THEN
-        Open(12,file='regions.txt')
+        Open(NEWUNIT=iounit,file='regions.txt')
         DO i=1,label
-          write(12,*) i,RegionArea(i)
+          write(iounit,*) i,RegionArea(i)
         END DO
-        close(12)
+        close(iounit)
       END IF
 
       DEALLOCATE(ElementLabel)

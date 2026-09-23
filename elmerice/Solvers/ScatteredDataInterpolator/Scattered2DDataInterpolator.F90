@@ -66,6 +66,7 @@
         REAL(KIND=DP),allocatable :: xx(:),yy(:),DEM(:,:)
 
         INTEGER,parameter :: io=20
+        INTEGER :: iounit_mesh,iounit_data
         INTEGER :: ok,nNaN
         INTEGER :: i,j,k,t,kmin,NoVar
         INTEGER :: nppcin,csakin
@@ -121,15 +122,15 @@
        nout=Model % Mesh % NumberOfNodes
        allocate(pout(nout))
    
-       IF (DEBUG) open(10,file='MeshNodes.dat') !tmp
+       IF (DEBUG) open(NEWUNIT=iounit_mesh,file='MeshNodes.dat') !tmp
 
         Do i=1,Model % Mesh % NumberOfNodes
            pout(i)%x = Model % Mesh % Nodes % x(i)
            pout(i)%y = Model % Mesh % Nodes % y(i)
-           IF (DEBUG) write(10,*) pout(i)%x,pout(i)%y
+           IF (DEBUG) write(iounit_mesh,*) pout(i)%x,pout(i)%y
         End Do
 
-        IF (DEBUG) close(10) !tmp
+        IF (DEBUG) close(iounit_mesh) !tmp
 
        ! Read variable to initialize and Data
         NoVar=0
@@ -390,7 +391,7 @@
                 
                IF (DEBUG) write(tmpName,'(A,A)') &
                           TRIM(VariableName),'Data.dat'
-               IF (DEBUG) open(10,file=trim(tmpName)) !tmp
+               IF (DEBUG) open(NEWUNIT=iounit_data,file=trim(tmpName)) !tmp
 
                compt=0
                Do i=1,nx
@@ -410,11 +411,11 @@
                          pin(compt)%z=Max(MinMaxVals(1),pin(compt)%z)
                        IF (HAVEMax) &
                          pin(compt)%z=Min(MinMaxVals(2),pin(compt)%z)
-                       IF (DEBUG) write(10,*) pin(compt)%x,pin(compt)%y,pin(compt)%z
-                     endif         
+                       IF (DEBUG) write(iounit_data,*) pin(compt)%x,pin(compt)%y,pin(compt)%z
+                     endif
                   End do
                End do
-               IF (DEBUG) close(10) !tmp
+               IF (DEBUG) close(iounit_data) !tmp
                IF (compt /= nin) CALL Fatal(SolverName,&
                        'sorry I didn t found the good number of values')
                deallocate(xx,yy,DEM,mask)
