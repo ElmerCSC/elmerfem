@@ -1185,7 +1185,8 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
+    LocalAsm: BLOCK
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) EXIT LocalAsm
 
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
@@ -1550,8 +1551,9 @@ CONTAINS
       CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
       CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     END IF
+    END BLOCK LocalAsm
 
-10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 
     END ASSOCIATE
 !------------------------------------------------------------------------------
@@ -2024,8 +2026,9 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
-    
+    LocalAsm: BLOCK
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) EXIT LocalAsm
+
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
@@ -2350,8 +2353,9 @@ CONTAINS
       CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
       CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     END IF
+    END BLOCK LocalAsm
 
-20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+    CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 
     END ASSOCIATE
 !------------------------------------------------------------------------------

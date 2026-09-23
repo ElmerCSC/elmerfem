@@ -690,9 +690,8 @@ END SUBROUTINE HeatSolverLegacy_Init
 500    IF ( ConstantBulk .AND. ASSOCIATED(Solver % Matrix % BulkValues) ) THEN
          Solver % Matrix % Values = Solver % Matrix % BulkValues
          Solver % Matrix % RHS = Solver % Matrix % BulkRHS
-         GOTO 1000
-       END IF
-            
+       ELSE
+
        IF(Radiosity) THEN
          CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)         
          CALL TabulateBoundaryAverages(Solver % Mesh, Emiss, Reflect)         
@@ -1109,10 +1108,9 @@ END SUBROUTINE HeatSolverLegacy_Init
       
       CALL DefaultFinishBulkAssembly()
 
+       END IF
 
-1000  CONTINUE
 
-     
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
