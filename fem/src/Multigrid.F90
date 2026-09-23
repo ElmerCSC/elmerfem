@@ -2160,7 +2160,8 @@ CONTAINS
     END IF
 
 
-100 CALL AMGCoarse(Amat, CandList, Bonds, CF, CompMat)     
+    coarse_retry: DO
+    CALL AMGCoarse(Amat, CandList, Bonds, CF, CompMat)
 
     IF(.NOT. (CompMat .OR. UseCR ) ) THEN
       IF( ListGetLogical(Params,'MG Positive Connection Eliminate',GotIt)) THEN
@@ -2174,8 +2175,10 @@ CONTAINS
       CRIter = CRiter + 1
       CandList = 0
       CALL CompatibleRelaxation(Amat, Solver, CF, CandList, nods, newcands)
-      IF(newcands > 0) GOTO 100
+      IF(newcands > 0) CYCLE coarse_retry
     END IF
+    EXIT coarse_retry
+    END DO coarse_retry
 
     ! Set the CF vector to be zero for fine nodes and an order number for coarse nodes
     cnods = 0
@@ -3441,7 +3444,8 @@ CONTAINS
 
        ! Go through the fine dofs and make a projection based on the strongly coupled nodes
        ! The first time only compute the structure of matrix to be allocated
-10     inds = 0
+       f2c_retry: DO
+       inds = 0
        coeffs = 0.0d0      
        posinds = 0
        neginds = 0
@@ -3854,8 +3858,10 @@ CONTAINS
          Projector % Cols   => PCols 
          Projector % Values => PValues
          
-         GOTO 10
+         CYCLE f2c_retry
        END IF
+       EXIT f2c_retry
+       END DO f2c_retry
 
        IF(Debug) THEN
          no = MAXVAL(Pcols) 
@@ -3952,7 +3958,8 @@ CONTAINS
 
        ! Go through the fine dofs and make a projection based on the strongly coupled nodes
        ! The first time only compute the structure of matrix to be allocated
-10     inds = 0
+       f2cdist_retry: DO
+       inds = 0
        coeffs = 0.0d0      
        posinds = 0
        poscoeffs = 0.0
@@ -4113,8 +4120,10 @@ CONTAINS
          Projector % Cols   => PCols 
          Projector % Values => PValues
          
-         GOTO 10
+         CYCLE f2cdist_retry
        END IF
+       EXIT f2cdist_retry
+       END DO f2cdist_retry
 
        DEALLOCATE(CoeffsInds)
        
@@ -4197,7 +4206,8 @@ CONTAINS
 
        ! Go through the fine dofs and make a projection based on the strongly coupled nodes
        ! The first time only compute the structure of matrix to be allocated
-10     inds = 0
+       cf2c_retry: DO
+       inds = 0
        coeffs = 0.0
        posinds = 0
        poscoeffs = 0.0
@@ -4415,8 +4425,10 @@ CONTAINS
          Projector % Cols   => PCols 
          Projector % Values => PValues
          
-         GOTO 10
+         CYCLE cf2c_retry
        END IF
+       EXIT cf2c_retry
+       END DO cf2c_retry
 
        DEALLOCATE(CoeffsInds)
 
@@ -4447,6 +4459,7 @@ CONTAINS
       CHARACTER(:), ALLOCATABLE :: Filename
       REAL(KIND=dp) :: RNorm
       REAL(KIND=dp), POINTER :: Ina(:), Inb(:), Outa(:), Outb(:)
+      INTEGER :: MappingUnit1, MappingUnit2
 
       nods1 = Matrix1 % NumberOfRows
       nods2 = Matrix2 % NumberOfRows
@@ -4503,12 +4516,12 @@ CONTAINS
         CALL CRS_ProjectVector( ProjPN, Ina, Outa, 1, Trans = .FALSE. )
         CALL CRS_ProjectVector( ProjPN, Inb, Outb, 1, Trans = .FALSE. )        
 
-        OPEN (10,FILE=Filename)        
+        OPEN (NEWUNIT=MappingUnit1,FILE=Filename)
         DO i=1,nods2
-          WRITE (10,'(4ES17.8E3)') Mesh % Nodes % X(AMG(Level) % InvCF(i) ), &
+          WRITE (MappingUnit1,'(4ES17.8E3)') Mesh % Nodes % X(AMG(Level) % InvCF(i) ), &
               Mesh % Nodes % Y(AMG(Level) % InvCF(i) ) , Outa(i), Outb(i)
         END DO
-        CLOSE(10)
+        CLOSE(MappingUnit1)
       END IF
       
 !      Project the coarse dofs to the fine dofs
@@ -4541,19 +4554,19 @@ CONTAINS
         PRINT *,'Final Interval y',MINVAL(Outb),MAXVAL(Outb),SUM(Outb)/SIZE(Outb)
         PRINT *,'Final Mean Values',SUM(Outa)/SIZE(Outa),SUM(Outb)/SIZE(Outb)
         
-        OPEN (10,FILE=Filename)        
+        OPEN (NEWUNIT=MappingUnit2,FILE=Filename)
  
         IF ( Level == Solver % MultiGridLevel ) THEN
           DO i=1,nods1
-            WRITE (10,'(4ES17.8E3)') Mesh % Nodes % X(i), Mesh % Nodes % Y(i) , Outa(i), Outb(i)
+            WRITE (MappingUnit2,'(4ES17.8E3)') Mesh % Nodes % X(i), Mesh % Nodes % Y(i) , Outa(i), Outb(i)
           END DO
         ELSE
           DO i=1,nods1
-            WRITE (10,'(4ES17.8E3)') Mesh % Nodes % X(AMG(Level+1) % InvCF(i) ), &
+            WRITE (MappingUnit2,'(4ES17.8E3)') Mesh % Nodes % X(AMG(Level+1) % InvCF(i) ), &
                 Mesh % Nodes % Y(AMG(Level+1) % InvCF(i) ) , Outa(i), Outb(i)
           END DO
         END IF
-        CLOSE(10)        
+        CLOSE(MappingUnit2)
 
       END IF
 
@@ -4874,7 +4887,8 @@ CONTAINS
 
       Row = 0
       Ind = 0
-10    TotalNonzeros = 0
+      projmat_retry: DO
+      TotalNonzeros = 0
 
       IF(DOFs == 1) THEN
         DO i=1,P % NumberOfRows
@@ -4976,8 +4990,10 @@ CONTAINS
         B % Cols = 0
         B % Values = 0.0d0
         AllocationsDone = .TRUE.
-        GOTO 10 
+        CYCLE projmat_retry
       END IF
+      EXIT projmat_retry
+      END DO projmat_retry
 
       DEALLOCATE( Row, Ind )
 
@@ -4999,18 +5015,19 @@ CONTAINS
     CHARACTER(LEN=*) :: FileName
 
     INTEGER :: i,j,k
+    INTEGER :: MatrixUnit
 
     PRINT *,'Saving matrix ',TRIM(FileName),' of size ',A % NumberOfRows
 
-    OPEN (10, FILE=FileName) 
+    OPEN (NEWUNIT=MatrixUnit, FILE=FileName)
 
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i),A % Rows(i+1)-1
-        WRITE(10,*) i,A % Cols(j),A % Values(j)
+        WRITE(MatrixUnit,*) i,A % Cols(j),A % Values(j)
       END DO
     END DO
 
-    CLOSE(10)
+    CLOSE(MatrixUnit)
 
   END SUBROUTINE SaveMatrix
 !------------------------------------------------------------------------------
@@ -5770,7 +5787,8 @@ CONTAINS
         END DO
       END IF
 
-10    TotalNonzeros = 0
+      clustmat_retry: DO
+      TotalNonzeros = 0
       NoRow = 0
       Row = 0
       Ind = 0
@@ -5886,8 +5904,10 @@ CONTAINS
         B % Cols = 0
         B % Values = 0.0d0
         AllocationsDone = .TRUE.
-        GOTO 10 
+        CYCLE clustmat_retry
       END IF
+      EXIT clustmat_retry
+      END DO clustmat_retry
 
 
       IF( ParEnv % PEs > 1 .AND. ASSOCIATED(A % ParallelInfo) ) THEN
@@ -5999,6 +6019,7 @@ CONTAINS
       REAL(KIND=dp), POINTER :: Clustering(:)
       INTEGER, POINTER :: Perm(:)
       INTEGER :: i,j,k,m,istat
+      INTEGER :: ClusterUnit
 
       SAVE Visited
 
@@ -6042,18 +6063,18 @@ CONTAINS
 
       ! Save in simple dat file (Matlab) 
       IF(.FALSE.) THEN
-        OPEN (10,FILE='clusters.dat')        
+        OPEN (NEWUNIT=ClusterUnit,FILE='clusters.dat')
         DO i=1,OrigSize
-          WRITE (10,'(3ES17.8E3)',ADVANCE='NO') &
+          WRITE (ClusterUnit,'(3ES17.8E3)',ADVANCE='NO') &
               Mesh % Nodes % X(i), Mesh % Nodes % Y(i), Mesh % Nodes % Z(i)
           TmpMatrix => Matrix1
           DO j=Solver % MultiGridTotal, MinLevel+1,-1
             TmpMatrix => TmpMatrix % Parent
-            WRITE (10,'(I6)',ADVANCE='NO') TmpMatrix % Grows(i)
+            WRITE (ClusterUnit,'(I6)',ADVANCE='NO') TmpMatrix % Grows(i)
           END DO
-          WRITE (10,'(A)') ' ' 
+          WRITE (ClusterUnit,'(A)') ' '
         END DO
-        CLOSE(10)
+        CLOSE(ClusterUnit)
       END IF
 
     END SUBROUTINE SaveClusters

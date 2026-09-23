@@ -2396,7 +2396,8 @@ RETURN
     ALLOCATE( Basis(n) )
 
 
-100 SELECT CASE ( family )
+    RetryLoop: DO
+    SELECT CASE ( family )
        
     CASE ( 2 )
       u = 2*EvenRandom() - 1.0
@@ -2404,7 +2405,7 @@ RETURN
     CASE ( 3 )
       u = EvenRandom()
       v = EvenRandom()
-      IF( u + v > 1.0_dp ) GOTO 100
+      IF( u + v > 1.0_dp ) CYCLE RetryLoop
       
     CASE ( 4 )
       u = 2*EvenRandom() - 1.0
@@ -2414,7 +2415,7 @@ RETURN
       u = EvenRandom()
       v = EvenRandom()
       w = EvenRandom()
-      IF( u + v + w > 1.0_dp ) GOTO 100
+      IF( u + v + w > 1.0_dp ) CYCLE RetryLoop
 
     CASE ( 8 ) 
       u = 2*EvenRandom() - 1.0
@@ -2425,6 +2426,8 @@ RETURN
       CALL Fatal('RandomPointInElement','Not implemented for elementtype')
       
     END SELECT
+    EXIT RetryLoop
+    END DO RetryLoop
 
     Stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
 
@@ -4378,7 +4381,8 @@ RETURN
     MaxIter = 10
     Iter = 0
 
-100 NoParticles = Particles % NumberOfParticles
+    RetryLoop: DO
+    NoParticles = Particles % NumberOfParticles
     Iter = Iter + 1
 
     CALL Info(Caller,'Locating particles iteration: '//I2S(Iter),Level=12)
@@ -4509,8 +4513,10 @@ RETURN
       CALL Info(Caller,'Parallel locate loop '//I2S(iter)//' with '&
           //I2S(PartitionChanges)//' particles!',Level=7)
       PartitionChangesOnly = .TRUE.
-      GOTO 100
+      CYCLE RetryLoop
     END IF
+    EXIT RetryLoop
+    END DO RetryLoop
     
   END SUBROUTINE LocateParticles
   
@@ -5983,6 +5989,7 @@ RETURN
     INTEGER :: Operations, No, NoParticles, Status, NoCount(6), NoStep
     INTEGER, POINTER :: TmpInteger(:)
     CHARACTER(:), ALLOCATABLE :: Filename
+    INTEGER :: PeriodicUnit
     
     SAVE Visited, Reflect, PeriodicDir, NoPeriodic, MinCoord, MaxCoord, dim, &
         SaveCount, NoCount, Filename, NoStep
@@ -6057,13 +6064,13 @@ RETURN
     
     IF( SaveCount ) THEN      
       IF( NoStep == 0 ) THEN
-        OPEN (10, FILE=FileName )
+        OPEN (NEWUNIT=PeriodicUnit, FILE=FileName )
       ELSE
-        OPEN (10, FILE=FileName, POSITION='append')
+        OPEN (NEWUNIT=PeriodicUnit, FILE=FileName, POSITION='append')
       END IF
       NoStep = NoStep + 1
-      WRITE( 10, * ) NoStep, NoCount(1:2*NoPeriodic)
-      CLOSE( 10 )
+      WRITE( PeriodicUnit, * ) NoStep, NoCount(1:2*NoPeriodic)
+      CLOSE( PeriodicUnit )
     END IF
 
   END SUBROUTINE ParticleBoxPeriodic
@@ -7121,6 +7128,7 @@ RETURN
     INTEGER, POINTER :: TimeSteps(:)
     LOGICAL :: GotTimeVar, GotDistVar
     TYPE(Variable_t), POINTER :: PartTimeVar, PartDistVar    
+    INTEGER :: GmshHeaderUnit, GmshUnit
 
     SAVE :: VisitedTimes, Params, FilePrefix, TimeVar, FileNameGmsh, CoordInit
 
@@ -7141,14 +7149,14 @@ RETURN
     VisitedTimes = VisitedTimes + 1
     IF (VisitedTimes==1) THEN
 
-       OPEN (10, FILE=FileNameGmsh )
-       WRITE( 10, '(A)') 'View[0].VectorType=5; //for displacement type'
-       WRITE( 10, '(A)') 'View[0].PointType=1; // for spheres'
-       WRITE( 10, '(A)') 'View[0].PointSize=5; // for spheres'
-       WRITE( 10, '(A)') 'View[0].IntervalsType = 1; //for iso-values interval'
-       WRITE( 10, '(A)') 'View[0].NbIso = 1; //for one color'
-       WRITE( 10, '(A)') 'View[0].ShowScale = 0; ' 
-       CLOSE( 10 )
+       OPEN (NEWUNIT=GmshHeaderUnit, FILE=FileNameGmsh )
+       WRITE( GmshHeaderUnit, '(A)') 'View[0].VectorType=5; //for displacement type'
+       WRITE( GmshHeaderUnit, '(A)') 'View[0].PointType=1; // for spheres'
+       WRITE( GmshHeaderUnit, '(A)') 'View[0].PointSize=5; // for spheres'
+       WRITE( GmshHeaderUnit, '(A)') 'View[0].IntervalsType = 1; //for iso-values interval'
+       WRITE( GmshHeaderUnit, '(A)') 'View[0].NbIso = 1; //for one color'
+       WRITE( GmshHeaderUnit, '(A)') 'View[0].ShowScale = 0; '
+       CLOSE( GmshHeaderUnit )
 
        ALLOCATE( CoordInit(NoParticles,dim) )
        CoordInit = Particles % Coordinate
@@ -7159,28 +7167,28 @@ RETURN
     time = TimeVar % Values(1)
     CALL Info( 'ParticleTracker', 'Saving particle paths to file: '//TRIM(FileNameGmsh), Level=4 )
     
-    OPEN (10, FILE=FileNameGmsh, POSITION='APPEND' )   
-    WRITE( 10, '(A)') 'View "particles" {'
-    WRITE( 10, '(A)', ADVANCE='NO') 'TIME{'
-    WRITE( 10, '(ES16.7E3)', ADVANCE='NO') time
-    WRITE( 10, '(A)') '};'
+    OPEN (NEWUNIT=GmshUnit, FILE=FileNameGmsh, POSITION='APPEND' )
+    WRITE( GmshUnit, '(A)') 'View "particles" {'
+    WRITE( GmshUnit, '(A)', ADVANCE='NO') 'TIME{'
+    WRITE( GmshUnit, '(ES16.7E3)', ADVANCE='NO') time
+    WRITE( GmshUnit, '(A)') '};'
 
     DO i = 1, NoParticles
-        WRITE( 10, '(A)', ADVANCE='NO') 'VP('
+        WRITE( GmshUnit, '(A)', ADVANCE='NO') 'VP('
         DO k=1,dim
-           WRITE( 10, '(ES16.7E3)', ADVANCE='NO') CoordInit(i,k)
-           IF(k < dim) WRITE( 10, '(A)', ADVANCE='NO') ','
+           WRITE( GmshUnit, '(ES16.7E3)', ADVANCE='NO') CoordInit(i,k)
+           IF(k < dim) WRITE( GmshUnit, '(A)', ADVANCE='NO') ','
         END DO
-        IF (dim ==2)  WRITE( 10, '(A)', ADVANCE='NO') ', 0.0'
-        WRITE( 10, '(A)', ADVANCE='NO') '){'
+        IF (dim ==2)  WRITE( GmshUnit, '(A)', ADVANCE='NO') ', 0.0'
+        WRITE( GmshUnit, '(A)', ADVANCE='NO') '){'
         DO k=1,dim
-           WRITE( 10, '(ES16.7E3)', ADVANCE='NO') Coord(i,k)-CoordInit(i,k)
-           IF(k < dim) WRITE( 10, '(A)', ADVANCE='NO') ','
+           WRITE( GmshUnit, '(ES16.7E3)', ADVANCE='NO') Coord(i,k)-CoordInit(i,k)
+           IF(k < dim) WRITE( GmshUnit, '(A)', ADVANCE='NO') ','
         END DO
-        IF (dim ==2)  WRITE( 10, '(A)', ADVANCE='NO') ', 0.0'
-        WRITE( 10, '(A)') '};'
+        IF (dim ==2)  WRITE( GmshUnit, '(A)', ADVANCE='NO') ', 0.0'
+        WRITE( GmshUnit, '(A)') '};'
     END DO
-    WRITE( 10, '(A)') '};'
+    WRITE( GmshUnit, '(A)') '};'
 
 
     ! Save for last timestep, this is a conservative estimate assuming 
@@ -7192,19 +7200,19 @@ RETURN
 
     IF (VisitedTimes == nStep) THEN 
        WRITE( FileNameOut,'(A,A)') TRIM(FilePrefix),'_combined.pos";'
-       WRITE( 10, '(A)') 'Combine TimeStepsByViewName;'
-       WRITE( 10, '(A)', ADVANCE='NO') 'Save View [0] "'
-       WRITE( 10, '(A)') FileNameOut
-       WRITE( 10, '(A)') 'Printf("View[0].VectorType=5;'
-       WRITE( 10, '(A)') 'View[0].PointType=1; // for spheres'
-       WRITE( 10, '(A)') 'View[0].PointSize=5; // for spheres'
-       WRITE( 10, '(A)') 'View[0].IntervalsType = 1; //for iso-values interval'
-       WRITE( 10, '(A)') 'View[0].NbIso = 1; //for one color'
-       WRITE( 10, '(A)', ADVANCE='NO') 'View[0].ShowScale = 0; ") >> "'
-       WRITE( 10, '(A)') FileNameOut
+       WRITE( GmshUnit, '(A)') 'Combine TimeStepsByViewName;'
+       WRITE( GmshUnit, '(A)', ADVANCE='NO') 'Save View [0] "'
+       WRITE( GmshUnit, '(A)') FileNameOut
+       WRITE( GmshUnit, '(A)') 'Printf("View[0].VectorType=5;'
+       WRITE( GmshUnit, '(A)') 'View[0].PointType=1; // for spheres'
+       WRITE( GmshUnit, '(A)') 'View[0].PointSize=5; // for spheres'
+       WRITE( GmshUnit, '(A)') 'View[0].IntervalsType = 1; //for iso-values interval'
+       WRITE( GmshUnit, '(A)') 'View[0].NbIso = 1; //for one color'
+       WRITE( GmshUnit, '(A)', ADVANCE='NO') 'View[0].ShowScale = 0; ") >> "'
+       WRITE( GmshUnit, '(A)') FileNameOut
     END IF
 
-    CLOSE( 10 )
+    CLOSE( GmshUnit )
 
 
   END SUBROUTINE ParticleOutputGmsh
@@ -7451,7 +7459,8 @@ RETURN
       !---------------------------------------------------------------------
       ! do the scalars & vectors
       !--------------------------------- -----------------------------------
-100   Offset = 0
+      AppendLoop: DO
+      Offset = 0
       IsInteger = .FALSE.
 
       IF( SaveFields ) THEN
@@ -7942,12 +7951,14 @@ RETURN
           
           WriteXML = .FALSE.
           WriteData = .TRUE.
-          GOTO 100
+          CYCLE AppendLoop
         ELSE
           WRITE( OutStr,'(A)') lf//'</AppendedData>'//lf
           CALL AscBinStrWrite( OutStr ) 
         END IF
       END IF
+      EXIT AppendLoop
+      END DO AppendLoop
       
       WRITE( OutStr,'(A)') '</VTKFile>'//lf
       CALL AscBinStrWrite( OutStr ) 
@@ -8315,7 +8326,8 @@ RETURN
 
       
   
-100   DO IsVector = 0, 1        
+      AppendLoop: DO
+        DO IsVector = 0, 1
 
         DO Vari = 1, 99
 
@@ -8571,12 +8583,14 @@ RETURN
           
           WriteXML = .FALSE.
           WriteData = .TRUE.
-          GOTO 100
+          CYCLE AppendLoop
         ELSE
           WRITE( OutStr,'(A)') lf//'</AppendedData>'//lf
           CALL AscBinStrWrite( OutStr ) 
         END IF
       END IF
+      EXIT AppendLoop
+      END DO AppendLoop
 
 
       WRITE( OutStr,'(A)') '</VTKFile>'//lf
