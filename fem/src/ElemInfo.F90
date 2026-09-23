@@ -9905,10 +9905,12 @@ BLOCK
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin,eps=0
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
-     INTEGER :: GeomId     
+     INTEGER :: GeomId
      INTEGER :: cdim,dim,i,j,k,n,imin,jmin
 !------------------------------------------------------------------------------
      success = .TRUE.
+
+     MetricBlock: BLOCK
 
      x => Nodes % x
      y => Nodes % y
@@ -9921,7 +9923,7 @@ BLOCK
 #ifdef HAVE_QP
      IF(Elm % Status == 2) THEN
        IF (ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap)) RETURN
-       GOTO 100
+       EXIT MetricBlock
      END IF
 #endif
 
@@ -9957,7 +9959,7 @@ BLOCK
      CASE (1)
        DetG  = G(1,1)
 
-       IF ( DetG <= eps ) GOTO 100
+       IF ( DetG <= eps ) EXIT MetricBlock
 
        Metric(1,1) = 1.0d0 / DetG
        DetG  = SQRT( DetG )
@@ -9968,7 +9970,7 @@ BLOCK
      CASE (2)
        DetG = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
 
-       IF ( DetG <= eps ) GOTO 100
+       IF ( DetG <= eps ) EXIT MetricBlock
 
        Metric(1,1) =  G(2,2) / DetG
        Metric(1,2) = -G(1,2) / DetG
@@ -9984,7 +9986,7 @@ BLOCK
               G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
               G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
 
-       IF ( DetG <= eps ) GOTO 100
+       IF ( DetG <= eps ) EXIT MetricBlock
 
        CALL InvertMatrix3x3(G,GI,detG)
        Metric = GI
@@ -10012,7 +10014,7 @@ BLOCK
      ! Return here also implies success = .TRUE.
      RETURN
 
-100  CONTINUE
+     END BLOCK MetricBlock
 
 #ifdef HAVE_QP
      ! Try recursively with quadratic precision.

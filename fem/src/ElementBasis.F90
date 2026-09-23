@@ -434,6 +434,7 @@ CONTAINS
       CHARACTER(LEN=:), ALLOCATABLE :: tstr, str,elmer_home
 
       INTEGER :: k, n
+      INTEGER :: iounit
       INTEGER, DIMENSION(MaxDeg3) :: BasisTerms
 
       TYPE(ElementType_t) :: element
@@ -492,17 +493,17 @@ CONTAINS
         CALL Fatal('InitializeElementDescriptions','elements.def not found')
      END IF
 
-      OPEN( 1,FILE=TRIM(tstr), STATUS='OLD' )
+      OPEN( NEWUNIT=iounit,FILE=TRIM(tstr), STATUS='OLD' )
 
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-      DO WHILE( ReadAndTrim(1,str) )
+      DO WHILE( ReadAndTrim(iounit,str) )
 
         IF ( SEQL(str, 'element') ) THEN
 
           BasisTerms = 0
 
           gotit = .FALSE.
-          DO WHILE( ReadAndTrim(1,str) )
+          DO WHILE( ReadAndTrim(iounit,str) )
 
             IF ( SEQL(str, 'dimension') ) THEN
               READ( str(10:), * ) element % DIMENSION
@@ -575,7 +576,7 @@ CONTAINS
         END IF
       END DO
 
-      CLOSE(1)
+      CLOSE(iounit)
 !------------------------------------------------------------------------------
    END SUBROUTINE InitializeElementDescriptions
 !------------------------------------------------------------------------------

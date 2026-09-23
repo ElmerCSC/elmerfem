@@ -2264,11 +2264,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        END DO
 
        ! Fast way to check whether the entry has been created.
-       ALLOCATE(ColUsed(j)) 
+       ALLOCATE(ColUsed(j))
        ColUsed = 0
      END IF
-       
-100  kb = 0
+
+MergeMatrixBlock: DO
+     kb = 0
      iC = 0
      IF( UsePerm ) THEN         
        DO iC=1,SIZE(InvPermA)
@@ -2406,9 +2407,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        
        Set = .TRUE.
        CALL Info('CRS_MergeMatrix','Done Allocating and going now really',Level=9)
-       GOTO 100
+       CYCLE MergeMatrixBlock
      END IF
-     
+     EXIT MergeMatrixBlock
+     END DO MergeMatrixBlock
+
      IF( PRESENT(C) ) THEN
        C % Rows => Rows
        C % Cols => Cols
@@ -3741,7 +3744,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       B % NumberOfRows = Mrow *  Nsub    
     END IF
 
-100 kb = 1      
+BlockPickRetry: DO
+    kb = 1
     DO isub=1,Nsub
 
       DO mr=1,Mrow
@@ -3817,8 +3821,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END IF
       
       Allocated = .TRUE.
-      GOTO 100
+      CYCLE BlockPickRetry
     END IF
+    EXIT BlockPickRetry
+    END DO BlockPickRetry
 
 
 !------------------------------------------------------------------------------
@@ -4170,8 +4176,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
       Scl = 1._dp
 
-1     CONTINUE
-
+     CholeskyRetry: DO
      T =  0._dp
      !
      ! The factorization row by row:
@@ -4226,7 +4231,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
            WRITE(Message, *) Scl
            CALL Warn( 'Cholesky factorization:', &
                   'Retry using diagonal scaling:'//TRIM(Message) )
-           GOTO 1
+           CYCLE CholeskyRetry
          END IF
        ELSE
          S(i) = 1._dp / SQRT(S(i))
@@ -4246,6 +4251,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          C(j) = .FALSE.
        END DO
      END DO
+     EXIT CholeskyRetry
+     END DO CholeskyRetry
 
     ELSE
       CALL Info('CRS_IncompleteLU','Performing incomplete LU',Level=12)
