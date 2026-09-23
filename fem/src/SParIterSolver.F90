@@ -733,7 +733,7 @@ CONTAINS
 
   ! Check whether we need to create List matrix and add new column entries. 
   GotNewCol = .FALSE.
-  DO i=1,Parenv % PEs
+  col_scan: DO i=1,Parenv % PEs
     CurrIF => SplittedMatrix % IfMatrix(i)
     DO j = 1, CurrIf % NumberOfRows
       IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
@@ -744,13 +744,13 @@ CONTAINS
         IF ( colind<=0 ) CYCLE
         IF( .NOT. CRS_CheckMatrixElement(A,RowInd,ColInd) ) THEN
           GotNewCol = .TRUE.
-          GOTO 1
-        END IF        
-      END DO      
+          EXIT col_scan
+        END IF
+      END DO
     END DO
-  END DO
+  END DO col_scan
 
-1 IF(GotNewCol) THEN
+  IF(GotNewCol) THEN
     IF( .NOT. ASSOCIATED(A % Values) ) THEN
       ALLOCATE(A % Values(A % Rows(A % NumberOfRows+1)-1))
       A % Values = 0._dp

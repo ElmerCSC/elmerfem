@@ -1022,26 +1022,27 @@ CONTAINS
     InvFieldPerm => InvNodePerm
 
     dim = CoordinateSystemDimension()
+    gmsh_write: BLOCK
     IF( VisitedTimes > 1 ) THEN
       IF( AlterTopology ) THEN
         IF( Numbering ) THEN
           OutputFile = NextFreeFilename( OutputFile )
-        END IF        
+        END IF
         CALL Info(Caller,'Writing mesh and data to a new file: '//TRIM(OutputFile))
-      ELSE IF( FileAppend ) THEN      
+      ELSE IF( FileAppend ) THEN
         CALL Info(Caller,'Appending data to the same file: '//TRIM(OutputFile))
-        OPEN(NEWUNIT=GmshUnit, FILE=OutputFile, POSITION='APPEND' )      
-        GOTO 10
+        OPEN(NEWUNIT=GmshUnit, FILE=OutputFile, POSITION='APPEND' )
+        EXIT gmsh_write
       ELSE
         IF( Numbering ) THEN
           OutputFile = NextFreeFilename( OutputFile )
-        END IF        
+        END IF
         CALL Info(Caller,'Writing data to a new file: '//TRIM(OutputFile))
         OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
         WRITE(GmshUnit,'(A)') '$MeshFormat'
         WRITE(GmshUnit,'(A)') '2.0 0 8'
-        WRITE(GmshUnit,'(A)') '$EndMeshFormat'          
-        GOTO 10    
+        WRITE(GmshUnit,'(A)') '$EndMeshFormat'
+        EXIT gmsh_write
       END IF
     END IF
 
@@ -1069,12 +1070,11 @@ CONTAINS
     ! With a mask the list of physical entities should be checked
     !-------------------------------------------------------------
     IF(.NOT. MaskExists ) THEN
-      !    CALL WritePhysicalNames() 
+      !    CALL WritePhysicalNames()
     END IF
+    END BLOCK gmsh_write
 
-10  CONTINUE
-
-    IF(.NOT. ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) THEN    
+    IF(.NOT. ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) THEN
       CALL Info(Caller,'Writing the nodal data')
       CALL WriteGmshData()
 

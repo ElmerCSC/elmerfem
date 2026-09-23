@@ -3229,9 +3229,9 @@ CONTAINS
         IF(.NOT. Found ) LFact = .TRUE.
       END IF
 
-20    CONTINUE
- 
-      CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )  
+      DO
+
+      CALL ConstraintModesDriver( A, x, b, Solver, .TRUE., Nmode, LinModes, FirstLoop = FirstLoop )
 
       IF ( LinModes > 0 .AND. ConstraintMatrixConstant ) THEN
         FreeFact = ListGetLogical( Solver % Values, 'Linear System Free Factorization', Found )
@@ -3290,14 +3290,16 @@ CONTAINS
         END IF
 
         FirstLoop = .FALSE.
-        IF( Nmode < LinModes ) GOTO 20
+        IF( Nmode < LinModes ) CYCLE
 
         IF ( ConstraintMatrixConstant ) THEN
           CALL ListAddLogical( Solver % Values, 'Linear System Constant Matrix', .FALSE.)
           CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', LFact )
           CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', FreeFact )
         END IF
-      END IF         
+      END IF
+      EXIT
+      END DO
     END BLOCK
     
     ! Even in the residual mode the system is reverted back to complete vectors 
@@ -3623,6 +3625,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
   COMPLEX(KIND=dp) :: cx, cb
   REAL(KIND=dp), ALLOCATABLE :: Checksum(:)
   TYPE(LumpedModel_t), POINTER :: Lumped
+  INTEGER :: MatrixUnit, ImUnit, AbsUnit, AngleUnit, ZUnit
 
   CALL Info(Caller,'Finalizing lumped matrix',Level=8)
   
@@ -3763,39 +3766,39 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     ! Find the lowest active partition working here.
     k = ParallelReduction(ParEnv % MyPe,1)     
     IF( k == ParEnv % MyPe ) THEN
-      OPEN(10, FILE=MatrixFile)
+      OPEN(NEWUNIT=MatrixUnit, FILE=MatrixFile)
       DO i=1,NoModes
-        WRITE (10,*) FluxesMatrix(i,:)
+        WRITE (MatrixUnit,*) FluxesMatrix(i,:)
       END DO
-      CLOSE(10)
+      CLOSE(MatrixUnit)
 
       IF( IsComplex ) THEN
-        OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
+        OPEN( NEWUNIT=ImUnit, FILE=TRIM(MatrixFile)//'_im')
         DO i=1,NoModes
-          WRITE (11,*) FluxesMatrixIm(i,:) 
+          WRITE (ImUnit,*) FluxesMatrixIm(i,:)
         END DO
-        CLOSE(11)
-        
-        ALLOCATE(CheckSum(NoModes))
-        OPEN( 11, FILE=TRIM(MatrixFile)//'_abs')
-        DO i=1,NoModes
-          WRITE (11,*) SQRT(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2)           
-          CheckSum(i) = SUM(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2) 
-        END DO
-        CLOSE(11)
+        CLOSE(ImUnit)
 
-        OPEN( 11, FILE=TRIM(MatrixFile)//'_angle')
+        ALLOCATE(CheckSum(NoModes))
+        OPEN( NEWUNIT=AbsUnit, FILE=TRIM(MatrixFile)//'_abs')
         DO i=1,NoModes
-          WRITE (11,*) ( 180.0_dp / PI ) * ATAN2(FluxesMatrixIm(i,:),FluxesMatrix(i,:))           
+          WRITE (AbsUnit,*) SQRT(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2)
+          CheckSum(i) = SUM(FluxesMatrix(i,:)**2+FluxesMatrixIm(i,:)**2)
         END DO
-        CLOSE(11)
+        CLOSE(AbsUnit)
+
+        OPEN( NEWUNIT=AngleUnit, FILE=TRIM(MatrixFile)//'_angle')
+        DO i=1,NoModes
+          WRITE (AngleUnit,*) ( 180.0_dp / PI ) * ATAN2(FluxesMatrixIm(i,:),FluxesMatrix(i,:))
+        END DO
+        CLOSE(AngleUnit)
 
         IF( ASSOCIATED( Lumped % ImpRe ) ) THEN
-          OPEN( 11, FILE=TRIM(MatrixFile)//'_Z')
+          OPEN( NEWUNIT=ZUnit, FILE=TRIM(MatrixFile)//'_Z')
           DO i=1,NoModes
-            WRITE (11,*) Lumped % ImpRe(i), Lumped % ImpIm(i) 
+            WRITE (ZUnit,*) Lumped % ImpRe(i), Lumped % ImpIm(i)
           END DO
-          CLOSE(11)
+          CLOSE(ZUnit)
         END IF
 
         WRITE(Message,*) 'Normalization checksum: ',CheckSum
@@ -6948,6 +6951,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
+    INTEGER :: PermUnit, SolUnit, SizesUnit, ParSizesUnit
     LOGICAL :: SaveMass, SaveDamp, SavePerm, SaveSol, Found , Parallel, CNumbering, SkipZeros, SaveSum, &
         SaveAdios2, SaveStiff
     CHARACTER(*), PARAMETER :: Caller = 'SaveLinearSystem'
@@ -7031,11 +7035,11 @@ CONTAINS
         dumpfile = TRIM(dumpprefix)//'_perm.dat'
         IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
         CALL Info(Caller,'Saving permutation to: '//TRIM(dumpfile),Level=5)
-        OPEN(1,FILE=dumpfile, STATUS='Unknown')
+        OPEN(NEWUNIT=PermUnit,FILE=dumpfile, STATUS='Unknown')
         DO i=1,SIZE(Perm)
-          WRITE(1,'(I0,A,I0)') i,' ',Perm(i)
+          WRITE(PermUnit,'(I0,A,I0)') i,' ',Perm(i)
         END DO
-        CLOSE( 1 ) 
+        CLOSE( PermUnit )
       END IF
     END IF
 
@@ -7044,37 +7048,37 @@ CONTAINS
       dumpfile = TRIM(dumpprefix)//'_sol.dat'
       IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
       CALL Info(Caller,'Saving solution to: '//TRIM(dumpfile),Level=5)
-      OPEN(1,FILE=dumpfile, STATUS='Unknown')
+      OPEN(NEWUNIT=SolUnit,FILE=dumpfile, STATUS='Unknown')
       DO i=1,SIZE(Sol)
-        WRITE(1,'(I0,ES15.6)') i,Sol(i)
+        WRITE(SolUnit,'(I0,ES15.6)') i,Sol(i)
       END DO
-      CLOSE( 1 )
+      CLOSE( SolUnit )
     END IF
     
     
     dumpfile = TRIM(dumpprefix)//'_sizes.dat'
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)
     CALL Info(Caller,'Saving matrix sizes to: '//TRIM(dumpfile),Level=5)
-    OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    WRITE(1,*) A % NumberOfRows
-    WRITE(1,*) SIZE(A % Values)
+    OPEN(NEWUNIT=SizesUnit,FILE=dumpfile, STATUS='Unknown')
+    WRITE(SizesUnit,*) A % NumberOfRows
+    WRITE(SizesUnit,*) SIZE(A % Values)
     i = 0
-    IF( SavePerm ) i = SIZE( Perm ) 
-    WRITE(1,*) i        
-    WRITE(1,*) MINVAL(A % Cols)
-    WRITE(1,*) MAXVAL(A % Cols)
-    IF(PRESENT(OffsetInd)) WRITE(1,*) OffsetInd
-    CLOSE(1)
+    IF( SavePerm ) i = SIZE( Perm )
+    WRITE(SizesUnit,*) i
+    WRITE(SizesUnit,*) MINVAL(A % Cols)
+    WRITE(SizesUnit,*) MAXVAL(A % Cols)
+    IF(PRESENT(OffsetInd)) WRITE(SizesUnit,*) OffsetInd
+    CLOSE(SizesUnit)
 
     IF(Parallel) THEN
       dumpfile = TRIM(dumpprefix)//'_sizes.dat'
       CALL Info(Caller,'Saving matrix sizes to: '//TRIM(dumpfile),Level=6)
-      OPEN(1,FILE=dumpfile, STATUS='Unknown')
-      WRITE(1,*) ParallelReduction(A % ParMatrix % &
+      OPEN(NEWUNIT=ParSizesUnit,FILE=dumpfile, STATUS='Unknown')
+      WRITE(ParSizesUnit,*) ParallelReduction(A % ParMatrix % &
                            SplittedMatrix % InsideMatrix % NumberOfRows)
-      WRITE(1,*) ParallelReduction(SIZE(A % Values))
-      IF( SavePerm ) WRITE(1,*) ParallelReduction(SIZE( Perm ))
-      CLOSE(1)
+      WRITE(ParSizesUnit,*) ParallelReduction(SIZE(A % Values))
+      IF( SavePerm ) WRITE(ParSizesUnit,*) ParallelReduction(SIZE( Perm ))
+      CLOSE(ParSizesUnit)
     END IF
 
     ELSE

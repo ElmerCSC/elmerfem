@@ -2590,7 +2590,7 @@ FUNCTION SearchNodeL( ParallelInfo, QueriedNode,n ) RESULT(Indx)
 
   IF ( Upper == 0 ) RETURN
 
-10 CONTINUE
+  DO
   IF ( ParallelInfo % GlobalDOFs(Lower) == QueriedNode ) THEN
      Indx = Lower
      RETURN
@@ -2603,14 +2603,15 @@ FUNCTION SearchNodeL( ParallelInfo, QueriedNode,n ) RESULT(Indx)
      Lou = ISHFT((Upper + Lower), -1)
      IF ( ParallelInfo % GlobalDOFs(Lou) < QueriedNode ) THEN
         Lower = Lou
-        GOTO 10
+        CYCLE
      ELSE
         Upper = Lou
-        GOTO 10
+        CYCLE
      END IF
   END IF
 
   RETURN
+  END DO
 !------------------------------------------------------------------------------
 END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
@@ -3271,9 +3272,10 @@ END FUNCTION SearchNodeL
     END IF
     
 
+    norm_compute: BLOCK
     IF( ConsistentNorm ) THEN
       ! In consistent norm we have to skip the dofs not owned by the partition in order
-      ! to count each dof only once. 
+      ! to count each dof only once.
       Norm = 0.0_dp
 
       IF( ASSOCIATED(Solver % Matrix) ) THEN
@@ -3340,9 +3342,9 @@ END FUNCTION SearchNodeL
         END DO
       END SELECT
       DEALLOCATE(RowOf)
-      
-      totn = ParallelReduction(totn) 
-      IF(totn == 0) GOTO 10
+
+      totn = ParallelReduction(totn)
+      IF(totn == 0) EXIT norm_compute
 
       nscale = 1.0_dp * totn
       
@@ -3359,8 +3361,8 @@ END FUNCTION SearchNodeL
     
     ELSE IF( NormDofs < Dofs ) THEN
       Norm = 0.0_dp
-      totn = ParallelReduction(n) 
-      IF(totn == 0) GOTO 10
+      totn = ParallelReduction(n)
+      IF(totn == 0) EXIT norm_compute
 
       nscale = NormDOFs*totn/(1._dp*DOFs)
 
@@ -3431,8 +3433,8 @@ END FUNCTION SearchNodeL
 
     ELSE
       Norm = 0.0_dp
-      IF(n==0) GOTO 10 
-      
+      IF(n==0) EXIT norm_compute
+
       SELECT CASE(NormDim)
       CASE(0)
         Norm = MAXVAL(ABS(x(1:n)))
@@ -3444,8 +3446,9 @@ END FUNCTION SearchNodeL
         Norm = (SUM((x(1:n)**NormDim)/n))**(1.0_dp/NormDim)
       END SELECT
     END IF
-    
-10  IF( ComponentsAllocated ) THEN
+    END BLOCK norm_compute
+
+    IF( ComponentsAllocated ) THEN
       DEALLOCATE( NormComponents ) 
     END IF
 !------------------------------------------------------------------------------
@@ -5721,6 +5724,7 @@ END FUNCTION SearchNodeL
     INTEGER :: MaxTests=0,tests,MaxNonlinIter,NonlinIter, Dofs
     REAL(KIND=dp) :: Residual0, Residual1, Residual
     INTEGER :: i,n,m,ForceDof, SearchMode, CostMode, iter = 0
+    INTEGER :: StepInitUnit, StepAppendUnit
     TYPE(Matrix_t), POINTER :: A, MP
     TYPE(Variable_t), POINTER :: IterVar, Var
     REAL(KIND=dp), POINTER :: b(:), x(:), x0(:), r(:), x1(:), x2(:), mr(:), mx(:), mb(:)
@@ -5928,10 +5932,10 @@ END FUNCTION SearchNodeL
       IF( SaveToFile ) THEN
         CALL Info('CheckStepSize','Saving step information into file: '&
             //TRIM(FileName),Level=10)
-        OPEN( 10, FILE = FileName, STATUS='UNKNOWN' )
+        OPEN( NEWUNIT=StepInitUnit, FILE = FileName, STATUS='UNKNOWN' )
         i = 0
-        WRITE (10,'(2I6,5ES15.7)') Tests,i,Alpha,Cost
-        CLOSE( 10 )
+        WRITE (StepInitUnit,'(2I6,5ES15.7)') Tests,i,Alpha,Cost
+        CLOSE( StepInitUnit )
       END IF
 
 
@@ -5940,6 +5944,7 @@ END FUNCTION SearchNodeL
 
     Tests = Tests + 1
 
+    step_check: BLOCK
     IF( Tests == 1 ) THEN
       ! Started with no relaxation
       !---------------------------
@@ -5990,7 +5995,7 @@ END FUNCTION SearchNodeL
         x1norm = ComputeNorm(Solver, n, x1)
         IF( x1norm < LinTol * x0norm ) THEN
           ReduceStep = .FALSE.
-          GOTO 100
+          EXIT step_check
         END IF
       END IF
 
@@ -6015,20 +6020,21 @@ END FUNCTION SearchNodeL
     IF( SaveToFile ) THEN
       CALL Info('CheckStepSize','Saving step information into file: '&
           //TRIM(FileName),Level=10)
-      OPEN( 10, FILE = FileName, POSITION='APPEND',STATUS='OLD' )
+      OPEN( NEWUNIT=StepAppendUnit, FILE = FileName, POSITION='APPEND',STATUS='OLD' )
       IF( ReduceStep ) THEN
         i = 0
       ELSE
         i = 1
       END IF
 
-      WRITE (10,'(2I6,5ES13.6)') Tests,i,Alpha,Cost
-      CLOSE( 10 )
+      WRITE (StepAppendUnit,'(2I6,5ES13.6)') Tests,i,Alpha,Cost
+      CLOSE( StepAppendUnit )
     END IF
+    END BLOCK step_check
 
 
 
-100 IF( ReduceStep ) THEN
+    IF( ReduceStep ) THEN
       IF( Tests >= MaxTests .AND. ReduceStep ) THEN
         CALL Fatal('CheckStepSize','Maximum number of linesearch steps taken without success!')
         ReduceStep = .FALSE.
