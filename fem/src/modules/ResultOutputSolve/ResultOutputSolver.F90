@@ -187,7 +187,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   ! First iteration just count the meshes. 
   !----------------------------------------------------------------------------------  
   NowSave = .FALSE.
-1 NoMeshes = 0
+  DO
+  NoMeshes = 0
   m = 1
   iMesh => Model % Meshes
   DO WHILE( ASSOCIATED(iMesh) )
@@ -336,8 +337,10 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     CALL ListAddInteger( Params,'Number of Output Meshes',NoMeshes)
     CALL Info(Caller,'Number of output meshes: '//I2S(NoMeshes),Level=12)
     NowSave = .TRUE.
-    GOTO 1
+    CYCLE
   END IF
+  EXIT
+  END DO
     
   IF( .NOT. SomeMeshSaved ) THEN
     OutputCount = OutputCount - 1
