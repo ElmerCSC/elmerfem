@@ -90,7 +90,7 @@
 
      ! misc variables
      ! --------------
-     CHARACTER(:), ALLOCATABLE :: str    
+     CHARACTER(:), ALLOCATABLE :: str, MeshDirName, FactorsSuffix
      CHARACTER(LEN=MAX_NAME_LEN) :: ModelName
      LOGICAL :: CylindricSymmetry, GotIt, Found, Radiation
 
@@ -819,6 +819,43 @@ CONTAINS
      IF ( .NOT. ASSOCIATED(Mesh) ) THEN
        CALL Fatal(Caller,'No heat equation definition. Cannot compute factors.')
      END IF
+
+     ! Factor files go to the directory of the mesh on disk, i.e. that of the finest level.
+     MeshDirName = Mesh % Name
+
+     ! Radiation may be resolved on a coarser mesh of the "Mesh Levels" hierarchy
+     ! than the heat equation. Then the factors are computed for that mesh.
+     BLOCK
+       INTEGER :: RadLevel, j
+       RadLevel = ListGetInteger( RadSolver % Values,'Radiation Relative Mesh Level',Found )
+       FactorsSuffix = ''
+       IF( Found .AND. RadLevel < 0 ) THEN
+         ! Radiator factors are resolved on the finer mesh anyways.
+         IF( .NOT. DoRadiators ) THEN
+           DO j=-1,RadLevel,-1
+             IF(.NOT. ASSOCIATED(Mesh % Parent)) THEN
+               CALL Fatal(Caller,'Could not find radiation relative mesh level: '//I2S(RadLevel))
+             END IF
+             Mesh => Mesh % Parent
+           END DO
+           CALL Info(Caller,'Computing factors for relative mesh level '//I2S(RadLevel)//&
+               ' with '//I2S(Mesh % NumberOfBoundaryElements)//' boundary elements',Level=5)
+           RadSolver % Mesh => Mesh
+         END IF
+
+         ! Files are named by the mesh level, the mesh on disk being level 1.
+         BLOCK
+           TYPE(Mesh_t), POINTER :: pMesh
+           j = 1
+           pMesh => Mesh
+           DO WHILE( ASSOCIATED(pMesh % Parent) )
+             j = j + 1
+             pMesh => pMesh % Parent
+           END DO
+           FactorsSuffix = 'L'//I2S(j)
+         END BLOCK
+       END IF
+     END BLOCK
 
 !------------------------------------------------------------------------------
    END SUBROUTINE InitModel
@@ -2147,13 +2184,22 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
      END IF
      
+     IF( LEN(FactorsSuffix) > 0 ) THEN
+       i = INDEX(ViewFactorsFile,'.',BACK=.TRUE.)
+       IF( i > 0 ) THEN
+         ViewFactorsFile = ViewFactorsFile(1:i-1)//FactorsSuffix//ViewFactorsFile(i:)
+       ELSE
+         ViewFactorsFile = ViewFactorsFile//FactorsSuffix
+       END IF
+     END IF
+
      IF(RadiationBody > 1) THEN
        TempString = ViewFactorsFile
        ViewFactorsFile = TRIM(TempString)//I2S(RadiationBody)
      END IF
        
-     IF (LEN_TRIM(Model % Mesh % Name) > 0) THEN
-       OutputName = TRIM(OutputPath)//'/'//TRIM(Model % Mesh % Name)//'/'//TRIM(ViewFactorsFile)
+     IF (LEN_TRIM(MeshDirName) > 0) THEN
+       OutputName = TRIM(OutputPath)//'/'//TRIM(MeshDirName)//'/'//TRIM(ViewFactorsFile)
      ELSE
        OutputName = TRIM(ViewFactorsFile)
      END IF

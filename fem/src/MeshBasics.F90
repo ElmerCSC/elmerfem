@@ -1692,6 +1692,7 @@ CONTAINS
    END DO
 
    Mesh % NumberOFnodes = n_Coord
+   Mesh % Nodes % NumberOfNodes = n_Coord
 
    ! Try reset the owner of a node (first entry in the node's Neighbours-array)
    ! to some commonly knowable task

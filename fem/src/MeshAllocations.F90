@@ -363,6 +363,7 @@ CONTAINS
     Mesh % Projector => NULL()
 
     IF(ASSOCIATED(Mesh % InvPerm)) DEALLOCATE(Mesh % InvPerm)
+    IF(ASSOCIATED(Mesh % BoundaryParent)) DEALLOCATE(Mesh % BoundaryParent)
 
 !    Deallocate quadrant tree (used in mesh to mesh interpolation):
 !    --------------------------------------------------------------

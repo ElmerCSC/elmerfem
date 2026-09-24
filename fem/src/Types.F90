@@ -999,6 +999,11 @@ MODULE Types
      
      INTEGER, POINTER :: InvPerm(:) => NULL()
 
+     ! For a mesh created by splitting (SplitMeshEqual): index of the parent
+     ! mesh boundary element (1..Parent % NumberOfBoundaryElements) for each
+     ! boundary element of this mesh, zero if none.
+     INTEGER, POINTER :: BoundaryParent(:) => NULL()
+
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
      INTEGER :: MinEdgeDOFs, MinFaceDOFs
