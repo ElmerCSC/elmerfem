@@ -44,11 +44,152 @@ USE ADIOS2Utils
 
 IMPLICIT NONE
 
+!> Per-field renumbering of the saved region. 
+!> The permutations mirror those used by VtuOutputSolver and
+!> are produced by GenerateSaveMask / GenerateSavePermutation.
+TYPE FieldCache_t
+  CHARACTER(len=:), ALLOCATABLE :: name    ! scalar field name / vector base name
+  INTEGER, ALLOCATABLE :: NodePerm(:)      ! mesh node -> output point (0 if not saved)
+  INTEGER, ALLOCATABLE :: InvNodePerm(:)   ! output point -> mesh node (coordinates)
+  INTEGER, ALLOCATABLE :: DgPerm(:)        ! DG index -> output point (unused for nodal)
+  INTEGER, ALLOCATABLE :: InvDgPerm(:)     ! output point -> DG index (unused for nodal)
+  INTEGER, ALLOCATABLE :: GatherIdx(:)     ! output point -> index into var % values (0 => 0)
+  LOGICAL, ALLOCATABLE :: ActiveElem(:)    ! per element in mesh (bulk+boundary)
+  INTEGER :: NumberOfDofNodes = 0          ! number of output points
+  INTEGER :: NumberOfElements = 0          ! number of active elements
+  INTEGER :: ElemFirst = 0, ElemLast = 0
+  LOGICAL :: NoPermutation = .FALSE.       ! .true. => output points are all mesh nodes
+END TYPE
+
 TYPE AdiosOutput_t
   TYPE(AdiosWriter_t) :: writer
+  TYPE(FieldCache_t), ALLOCATABLE :: caches(:)
 END TYPE
 
 CONTAINS
+
+!-------------------------------------------------------------------------------
+!> Return the cache for a given field, building it once on first use.
+!-------------------------------------------------------------------------------
+FUNCTION GetFieldCache(holder, name, var, params) RESULT(c)
+  USE DefUtils
+  TYPE(AdiosOutput_t), POINTER :: holder
+  CHARACTER(*), INTENT(IN) :: name
+  TYPE(Variable_t), POINTER :: var
+  TYPE(ValueList_t), POINTER :: params
+  TYPE(FieldCache_t), POINTER :: c
+
+  TYPE(FieldCache_t), ALLOCATABLE :: tmp(:)
+  INTEGER :: i, nold
+
+  c => NULL()
+  IF (ALLOCATED(holder % caches)) THEN
+    DO i = 1, SIZE(holder % caches)
+      IF (holder % caches(i) % name == name) THEN
+        c => holder % caches(i)
+        RETURN
+      END IF
+    END DO
+    nold = SIZE(holder % caches)
+    CALL MOVE_ALLOC(holder % caches, tmp)
+    ALLOCATE(holder % caches(nold+1))
+    holder % caches(1:nold) = tmp(1:nold)
+    DEALLOCATE(tmp)
+  ELSE
+    nold = 0
+    ALLOCATE(holder % caches(1))
+  END IF
+
+  c => holder % caches(nold+1)
+  c % name = name
+  CALL BuildFieldCache(c, var, params)
+END FUNCTION GetFieldCache
+
+!-------------------------------------------------------------------------------
+!> Populate a cache using the SaveUtils machinery. The saved region is
+!> taken from an explicit mask on the solver (Mask Name / Mask Condition / Mask
+!> Variable); if none is given it defaults to where this field is defined, i.e.
+!> the variable's own perm. The resulting node/element permutations are identical
+!> to those VtuOutputSolver builds.
+!-------------------------------------------------------------------------------
+SUBROUTINE BuildFieldCache(c, var, params)
+  USE DefUtils
+  USE SaveUtils
+  TYPE(FieldCache_t) :: c
+  TYPE(Variable_t), POINTER :: var
+  TYPE(ValueList_t), POINTER :: params
+
+  TYPE(Mesh_t), POINTER :: msh
+  INTEGER :: NumberOfGeomNodes, ii, i, j
+  LOGICAL :: parallel, injected, has_mask
+
+  msh => var % primarymesh
+  parallel = ( ParEnv % PEs > 1 )
+
+  ! Default the saved region to where this field is defined (its perm) unless the
+  ! user configured an explicit mask on the solver.
+  has_mask = ListCheckPresent(params,'Mask Variable') .OR. &
+             ListCheckPresent(params,'Mask Name') .OR. &
+             ListCheckPresent(params,'2D Mask Name') .OR. &
+             ListCheckPresent(params,'3D Mask Name') .OR. &
+             ListCheckPresent(params,'Mask Condition')
+  injected = .FALSE.
+  IF (.NOT. has_mask .AND. ASSOCIATED(var % perm)) THEN
+    CALL ListAddString(params,'Mask Variable', TRIM(var % Name))
+    injected = .TRUE.
+  END IF
+
+  CALL GenerateSaveMask(msh, params, parallel, 0, .FALSE., &
+      c % NodePerm, c % ActiveElem, NumberOfGeomNodes, c % NumberOfElements, &
+      c % ElemFirst, c % ElemLast)
+
+  ! Nodal only for now (DG=.false., DN=.false., LagN=0, SaveLinear=.false.); the
+  ! DgPerm/InvDgPerm outputs are left unallocated until DG support is wired in.
+  CALL GenerateSavePermutation(msh, .FALSE., .FALSE., 0, .FALSE., c % ActiveElem, &
+      NumberOfGeomNodes, c % NoPermutation, c % NumberOfDofNodes, &
+      c % DgPerm, c % InvDgPerm, c % NodePerm, c % InvNodePerm)
+
+  IF (injected) CALL ListRemove(params,'Mask Variable')
+
+  ! Precompute the per-point gather index into var % values (0 => write value 0,
+  ! mirroring VtuOutputSolver for points inside the saved region but outside the
+  ! field's own support).
+  ALLOCATE(c % GatherIdx(c % NumberOfDofNodes))
+  DO ii = 1, c % NumberOfDofNodes
+    IF (c % NoPermutation) THEN
+      i = ii
+    ELSE
+      i = c % InvNodePerm(ii)
+    END IF
+    IF (ASSOCIATED(var % perm)) THEN
+      j = 0
+      IF (i >= 1 .AND. i <= SIZE(var % perm)) j = var % perm(i)
+    ELSE
+      j = i
+    END IF
+    c % GatherIdx(ii) = j
+  END DO
+END SUBROUTINE BuildFieldCache
+
+!-------------------------------------------------------------------------------
+!> Gather a scalar (or vector component) over the cached output points.
+!-------------------------------------------------------------------------------
+FUNCTION GatherField(var, c) RESULT(vals)
+  USE DefUtils
+  TYPE(Variable_t), POINTER :: var
+  TYPE(FieldCache_t) :: c
+  REAL(KIND=dp) :: vals(c % NumberOfDofNodes)
+  INTEGER :: ii, j
+
+  DO ii = 1, c % NumberOfDofNodes
+    j = c % GatherIdx(ii)
+    IF (j > 0) THEN
+      vals(ii) = var % values(j)
+    ELSE
+      vals(ii) = 0.0_dp
+    END IF
+  END DO
+END FUNCTION GatherField
 
 SUBROUTINE GetAdiosHolder(Solver, holder, found)
   USE DefUtils
@@ -278,11 +419,13 @@ SUBROUTINE ADIOS2OutputSolver(Model, Solver, dt, TransientSimulation)
 
   integer :: nnodes, file_size, e_ind, n_ind, state, round, var_ind
   type(element_t), pointer :: elem
-  integer(kind=4), allocatable :: elem_types(:), offsets(:), num_elem_nodes(:)
+  integer(kind=4), allocatable :: elem_types(:), num_elem_nodes(:)
   integer(kind=4), allocatable :: connectivity(:)
   real(kind=dp), ALLOCATABLE :: debug_arr(:,:)
-  integer :: lcon 
+  integer :: lcon
   CHARACTER(:), ALLOCATABLE :: field_name
+
+  TYPE(FieldCache_t), POINTER :: cache
 
   Writer => Null()
 
@@ -312,19 +455,21 @@ SUBROUTINE ADIOS2OutputSolver(Model, Solver, dt, TransientSimulation)
 
     var_ind = var_ind + 1
 
-    variable => VariableGet(model % variables, trim(field_name), DoInterp=.false., UnfoundFatal = .false.)
+    variable => VariableGet(model % variables, trim(field_name), DoInterp=.false., UnfoundFatal = .true.)
 
-    if (associated(variable%perm)) then
-      call writer % write_data(trim(field_name), variable % values(variable%perm))
-    else
-      call writer % write_data(trim(field_name), variable % values(:))
-    end if
+    if (variable % TYPE /= Variable_on_nodes) &
+        call Fatal('ADIOS2OutputSolver', 'Only nodal fields are supported; scalar field "'// &
+            trim(field_name)//'" has non-nodal TYPE '//i2s(variable % TYPE))
+
+    cache => GetFieldCache(output_holder, field_name, variable, params)
+
+    call writer % write_data(trim(field_name), GatherField(variable, cache))
 
     save_mesh = ListGetLogical(params, field_name // ' save mesh', found_save_mesh, defvalue = save_mesh)
     if(.not. found_save_mesh) call ListAddLogical(params, field_name // ' save mesh', .false.)
-    
+
     if(save_mesh) then
-      call LocalSaveMesh()
+      call LocalSaveMesh(cache)
       save_mesh = .false.
     end if
   end do var_ind_do
@@ -343,15 +488,29 @@ SUBROUTINE ADIOS2OutputSolver(Model, Solver, dt, TransientSimulation)
       Vx => VariableGet(model % variables, trim(field_name) //" 1", DoInterp=.false., UnfoundFatal=.true.)
       Vy => VariableGet(model % variables, trim(field_name) //" 2", DoInterp=.false., UnfoundFatal=.true.)
       Vz => VariableGet(model % variables, trim(field_name) //" 3", DoInterp=.false., UnfoundFatal=.false.)
+
+      if (Vx % TYPE /= Variable_on_nodes .or. Vy % TYPE /= Variable_on_nodes) &
+          call Fatal('ADIOS2OutputSolver', 'Only nodal fields are supported; vector field "'// &
+              trim(field_name)//'" is non-nodal')
       if (associated(Vz)) then
-        allocate(V(3,size(Vx % values)))
-        call CopyPermMaybe(V(1,:), Vx%values, Vx%perm)
-        call CopyPermMaybe(V(2,:), Vy%values, Vy%perm)
-        call CopyPermMaybe(V(3,:), Vz%values, Vz%perm)
+        if (Vz % TYPE /= Variable_on_nodes) &
+            call Fatal('ADIOS2OutputSolver', 'Only nodal fields are supported; vector field "'// &
+                trim(field_name)//'" is non-nodal')
+      end if
+
+      variable => Vx
+      cache => GetFieldCache(output_holder, field_name, variable, params)
+
+      if(allocated(V)) deallocate(V)
+      if (associated(Vz)) then
+        allocate(V(3,cache % NumberOfDofNodes))
+        V(1,:) = GatherField(Vx, cache)
+        V(2,:) = GatherField(Vy, cache)
+        V(3,:) = GatherField(Vz, cache)
       else
-        allocate(V(2,size(Vx%values)))
-        call CopyPermMaybe(V(1,:), Vx%values, Vx%perm)
-        call CopyPermMaybe(V(2,:), Vy%values, Vy%perm)
+        allocate(V(2,cache % NumberOfDofNodes))
+        V(1,:) = GatherField(Vx, cache)
+        V(2,:) = GatherField(Vy, cache)
       end if
 
       call writer % write_data(trim(field_name), V(:,:))
@@ -360,7 +519,7 @@ SUBROUTINE ADIOS2OutputSolver(Model, Solver, dt, TransientSimulation)
       if(.not. found_save_mesh) call ListAddLogical(params, field_name // ' save mesh', .false.)
 
       if(save_mesh) then
-        call LocalSaveMesh()
+        call LocalSaveMesh(cache)
         save_mesh = .false.
       end if
 
@@ -370,55 +529,69 @@ SUBROUTINE ADIOS2OutputSolver(Model, Solver, dt, TransientSimulation)
   call writer % end_step()
 contains
 
-subroutine CopyPermMaybe(Y,X,perm)
-  real(kind=dp), intent(out) :: Y(:)
-  real(kind=dp), intent(in) :: X(:)
-  integer, pointer :: perm(:)
-
-  if(associated(perm)) then
-    Y(:) = X(perm)
-  else
-    Y(:) = X(:)
-  end if
-end subroutine
-
-  subroutine LocalSaveMesh()
+  subroutine LocalSaveMesh(cache)
     implicit none
+    type(FieldCache_t) :: cache
+    type(mesh_t), pointer :: msh
+    type(element_t), pointer :: elem
+    integer :: ii, i, jj, ncon, ea
+    integer, allocatable :: TmpIndexes(:)
+    real(kind=dp), allocatable :: px(:), py(:), pz(:)
 
-        associate (meshelems => variable%primarymesh%elements)
-          do state = 1,2
-            lcon = 0
-            do e_ind = 1,size(meshelems)
-              nnodes = size(meshelems(e_ind)%nodeindexes)
-              if (state == 2) then
-                do n_ind = 1, nnodes
-                  connectivity(lcon+n_ind) = meshelems(e_ind)%nodeindexes(n_ind)-1
-                end do
-                elem_types(e_ind) = Elmer2VTKElement(meshelems(e_ind)%type%elementcode, .false.)
-                offsets(e_ind) = lcon
-                num_elem_nodes(e_ind) = nnodes
-              end if
-              lcon = lcon + nnodes
-            end do
+    msh => variable % primarymesh
 
-            if (state == 2) offsets(size(meshelems)+1) = lcon
+    ! Coordinates: one point per output dof node, mirroring VtuOutputSolver.
+    allocate(px(cache % NumberOfDofNodes), py(cache % NumberOfDofNodes), pz(cache % NumberOfDofNodes))
+    do ii = 1, cache % NumberOfDofNodes
+      if (cache % NoPermutation) then
+        i = ii
+      else
+        i = cache % InvNodePerm(ii)
+      end if
+      px(ii) = msh % nodes % x(i)
+      py(ii) = msh % nodes % y(i)
+      pz(ii) = msh % nodes % z(i)
+    end do
 
-            if (state == 1) then
-              allocate(connectivity(lcon))
-              allocate(elem_types(size(meshelems)))
-              allocate(num_elem_nodes(size(meshelems)))
-              allocate(offsets(size(meshelems)+1))
-            end if
-          end do
-        end associate
-        call writer % write_data('num_verts', num_elem_nodes)
-        call writer % write_data('cell_types', elem_types)
-        call writer % write_data('connectivity', connectivity)
-        associate(nnodes => variable % primarymesh % NumberOfNodes)
-          call writer % write_data('points_x', variable % primarymesh % nodes % x(1:nnodes))
-          call writer % write_data('points_y', variable % primarymesh % nodes % y(1:nnodes))
-          call writer % write_data('points_z', variable % primarymesh % nodes % z(1:nnodes))
-        end associate
+    ! Connectivity: VTK-ordered node indexes remapped to output points.
+    allocate(TmpIndexes(msh % MaxElementDOFs))
+    ncon = 0
+    do i = cache % ElemFirst, cache % ElemLast
+      if (.not. cache % ActiveElem(i)) cycle
+      ncon = ncon + msh % elements(i) % type % NumberOfNodes
+    end do
+
+    allocate(connectivity(ncon))
+    allocate(elem_types(cache % NumberOfElements))
+    allocate(num_elem_nodes(cache % NumberOfElements))
+
+    lcon = 0
+    ea = 0
+    do i = cache % ElemFirst, cache % ElemLast
+      if (.not. cache % ActiveElem(i)) cycle
+      ea = ea + 1
+      elem => msh % elements(i)
+      call Elmer2VtkIndexes(elem, .false., .false., TmpIndexes)
+      nnodes = elem % type % NumberOfNodes
+      do n_ind = 1, nnodes
+        if (cache % NoPermutation) then
+          jj = TmpIndexes(n_ind)
+        else
+          jj = cache % NodePerm(TmpIndexes(n_ind))
+        end if
+        connectivity(lcon + n_ind) = jj - 1
+      end do
+      lcon = lcon + nnodes
+      elem_types(ea) = Elmer2VtkElement(elem % type % elementcode, .false.)
+      num_elem_nodes(ea) = nnodes
+    end do
+
+    call writer % write_data('num_verts', num_elem_nodes)
+    call writer % write_data('cell_types', elem_types)
+    call writer % write_data('connectivity', connectivity)
+    call writer % write_data('points_x', px)
+    call writer % write_data('points_y', py)
+    call writer % write_data('points_z', pz)
   end subroutine
 END SUBROUTINE
 
