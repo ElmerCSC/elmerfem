@@ -845,7 +845,7 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
      END IF
      IF((PenIter.EQ.NonlinearIter).AND.(RelativeChange.GT.NonlinearTol))THEN
         Write(*,*)'NOT CONVERGED'
-        STOP
+        ERROR STOP
      END IF
   END DO
 

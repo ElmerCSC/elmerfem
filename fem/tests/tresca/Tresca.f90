@@ -26,13 +26,13 @@ SUBROUTINE TrescaSolver( Model,Solver,dt,TransientSimulation )
      StressDOFs = Stress % DOFs
      StressValues => Stress % Values
   ELSE
-     STOP 'Error: Stress was not found'
+     ERROR STOP 'Error: Stress was not found'
   END IF
 
   ! 6 components in three dimensions, 4 in two, where the 23 and 13 shears are
   ! identically zero and are not stored. The out-of-plane 33 is stored in both.
   IF( StressDOFs /= 6 .AND. StressDOFs /= 4 ) THEN
-     STOP 'Error: Unexpected number of DOFs for stress'
+     ERROR STOP 'Error: Unexpected number of DOFs for stress'
   END IF
 
   nodes = SIZE( StressValues ) / StressDOFs
@@ -69,7 +69,7 @@ SUBROUTINE TrescaSolver( Model,Solver,dt,TransientSimulation )
      CALL DSYEV('N', 'U',  3, Matrix, 3, Eigs, Work, 8, ok)
 
      IF( ok /= 0 ) THEN
-        STOP 'Error: DSYEV failed'
+        ERROR STOP 'Error: DSYEV failed'
      END IF
 
      SigmaMax = MAXVAL( Eigs )

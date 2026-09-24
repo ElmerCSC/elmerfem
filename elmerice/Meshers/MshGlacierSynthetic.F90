@@ -79,7 +79,7 @@ IF (.NOT.Serial) THEN
       WRITE(iNp,'(i4.4)')Np
    ELSE
       WRITE(*,*)'Work for a number of partitions < 1000'
-      STOP
+      ERROR STOP
    END IF
    iNp = ADJUSTL(iNp)
 END IF
@@ -125,14 +125,14 @@ DO k = 1, Np
       IF (ANY(ABS(z)>AEPS)) THEN ! 3D Case
          IF (ANY(z > 1.0_dp).OR.ANY(z<0.0_dp)) THEN
             WRITE(*,*)'For 3D geometry, the initial mesh must fulfil 0 < z < 1'
-            STOP
+            ERROR STOP
          END IF
          dim = 3
          WRITE(*,*)'Initial mesh verified, found to be a 3D geometry'
       ELSE ! 2D Case
          IF (ANY(y > 1.0_dp).OR.ANY(y<0.0_dp)) THEN
             WRITE(*,*)'For 2D geometry, the initial mesh must fulfil 0 < y < 1'
-            STOP
+            ERROR STOP
          END IF
          dim = 2
          WRITE(*,*)'Initial mesh verified, found to be a 2D geometry'
@@ -151,7 +151,7 @@ DO k = 1, Np
       END IF 
       IF ((zs-zb).LE.0.0) THEN 
          WRITE(*,*)'NEGATIVE OR NULL THICKNESS!!!'
-         STOP
+         ERROR STOP
       END IF 
 
       IF (dim==2) THEN
