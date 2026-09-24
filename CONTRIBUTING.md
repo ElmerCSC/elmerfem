@@ -145,6 +145,14 @@ for formatting we use the following rules
 * Reference issues and pull requests liberally after the first line
 * When only changing documentation, include `[ci skip]` in the commit title
 
+### What not to commit
+
+Build products and files written by running the tests (object files,
+Fortran modules, shared libraries, CMake caches, `TEST.PASSED`, solver
+output) do not belong to the repository. Executable bit set on anything
+that is not actually executed shall be avoided: data files, meshes,
+`.sif` cases and CMake scripts, etc.
+
 ### Documentation Styleguide
 
 ElmerFEM model and solver documentation is written in LaTeX and maintained by CSC outside this repository. Part of the documentation is publicly
