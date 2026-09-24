@@ -74,7 +74,7 @@ MODULE ParallelEigenSolve
                              ParallelReduction, ParallelMatrixVector, ParallelNorm, &
                              ParallelDot, ParallelMatrix, PartitionVector, ParallelUpdateResult
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -107,7 +107,7 @@ CONTAINS
 #  endif
 #endif
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       EXTERNAL :: PDSAUPD, PDNAUPD, PDSEUPD, PDNEUPD
 
@@ -624,7 +624,7 @@ CONTAINS
 #  endif
 #endif
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       EXTERNAL :: PZNAUPD, PZNEUPD
 

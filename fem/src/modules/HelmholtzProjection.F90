@@ -41,7 +41,7 @@
 SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -69,7 +69,7 @@ END SUBROUTINE HelmholtzProjector_Init
 SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -288,7 +288,7 @@ END SUBROUTINE HelmholtzProjector
 SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -331,7 +331,7 @@ END SUBROUTINE RemoveKernelComponent_Init0
 SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver

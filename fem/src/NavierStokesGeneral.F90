@@ -49,7 +49,7 @@ MODULE NavierStokesGeneral
   USE Differentials
   USE Materialmodels
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   CONTAINS
 
@@ -675,7 +675,7 @@ MODULE NavierStokesGeneral
 !
 !------------------------------------------------------------------------------
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LoadVector(:,:), &
        NodalAlpha(:),NodalBeta(:),NodalSlipCoeff(:,:), NodalExtPressure(:)

@@ -46,7 +46,7 @@ MODULE DiffuseConvective
   USE Differentials
   USE MaterialModels
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   CONTAINS
 

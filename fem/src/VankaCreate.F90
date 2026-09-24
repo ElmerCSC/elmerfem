@@ -43,7 +43,7 @@
     SUBROUTINE VankaPrec(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
@@ -110,7 +110,7 @@
 !------------------------------------------------------------------------------
   SUBROUTINE VankaCreate(A,Solver)
     USE DefUtils
-    IMPLICIT NONE 
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      TYPE(Solver_t), TARGET :: Solver
@@ -690,7 +690,7 @@
 !-------------------------------------------------------------------------------
       USE DefUtils
       !USE DirectSolve, ONLY: MumpsLocal_SolveSystem, Umfpack_SolveSystem
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
@@ -758,7 +758,7 @@
     SUBROUTINE CircuitPrecComplex(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER :: ipar(*)
       COMPLEX(KIND=dp) u(*), v(*)
@@ -844,7 +844,7 @@
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitPrecCreate(A,Solver)
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), TARGET :: A
      TYPE(Solver_t) :: Solver
@@ -1100,7 +1100,7 @@
 !-------------------------------------------------------------------------------
     USE DefUtils
     USE Smoothers, ONLY : MGSmooth
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) u(*)  !< the correction returned to create a new solution
     REAL(KIND=dp) v(*)  !< right-hand side (the current residual)
     INTEGER :: ipar(*)  !< parameters for HutIter
@@ -1329,7 +1329,7 @@
     USE DefUtils
     USE Smoothers, ONLY : MGSmooth
     USE GeneralUtils, ONLY : ComplexVariableValues
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     COMPLEX(KIND=dp) u(*)  !< the correction returned to create a new solution
     COMPLEX(KIND=dp) v(*)  !< right-hand side (the current residual)
     INTEGER :: ipar(*)  !< parameters for HutIter

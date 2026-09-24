@@ -31,7 +31,7 @@ FUNCTION EnhancementFactor ( Model, nodenumber, D) RESULT(E)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    TYPE(ValueList_t), POINTER :: Material
    TYPE(Solver_t), TARGET :: Solver
@@ -79,7 +79,7 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    USE ElementDescription
    USE DefUtils
    USE GeneralUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    EXTERNAL :: DGEEV
    TYPE(Model_t) :: Model
    REAL (KIND=dp) :: D, Source          

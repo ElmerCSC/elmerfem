@@ -40,7 +40,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -161,7 +161,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -599,7 +599,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    USE ZirkaUtils
    USE GeneralUtils, ONLY : ComplexValues
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
    TYPE(Solver_t), TARGET :: Solver
    TYPE(Model_t) :: Model
@@ -3217,7 +3217,7 @@ CONTAINS
 !-------------------------------------------------------------------
   SUBROUTINE SumElementalVariable(Var, Values, BodyId, uAdditive)
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Variable_t), POINTER :: Var
     REAL(KIND=dp), OPTIONAL, TARGET :: Values(:)
     INTEGER, OPTIONAL :: BodyId
@@ -3294,7 +3294,7 @@ CONTAINS
 !-------------------------------------------------------------------
   SUBROUTINE CalcBoundaryModels( )
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !-------------------------------------------------------------------
     REAL(KIND=dp) :: GapLength(27), AirGapMu(27)
 
@@ -3508,7 +3508,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE NodalTorque(T, TorqueGroups)
 !------------------------------------------------------------------------------
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    INTEGER, ALLOCATABLE, INTENT(OUT) :: TorqueGroups(:)
    REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: T(:)
 !------------------------------------------------------------------------------
@@ -3661,7 +3661,7 @@ CONTAINS
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
    USE MeshBasics, ONLY : CalculateBodyAverage
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
@@ -3720,7 +3720,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE LocalSol(Var, m, n, nd, A, b, pivot, dofs )
 !------------------------------------------------------------------------------
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: Var
    REAL(KIND=dp) :: b(:,:), A(:,:)
    INTEGER :: pivot(:), m,n,nd,dofs
@@ -3769,7 +3769,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE LocalCopy(Var, m, n, b, bias, UElement, Values, uAdditive)
 !------------------------------------------------------------------------------
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: Var
    INTEGER, INTENT(IN) :: m,n,bias
    INTEGER :: dofs
@@ -3832,7 +3832,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
 
      TYPE(Element_t),POINTER :: P1,P2,Face,Faces(:)
@@ -3873,7 +3873,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: STIFF(:,:)
       INTEGER :: n,n1,n2
       TYPE(Element_t), POINTER :: Face, P1, P2
@@ -3935,7 +3935,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE calcAverageFlux (Flux, Area, Element, n, nd, np, SOL, vDOFs)
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        INTEGER :: n, nd
        TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------

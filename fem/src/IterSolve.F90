@@ -54,7 +54,7 @@ MODULE IterSolve
    USE IterativeMethods
    USE huti_sfe
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    !/*
    ! * Iterative method selection
@@ -165,7 +165,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE fm_DiagPrec( u,v,ipar )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: u(*),v(*)
     INTEGER :: ipar(*)
@@ -182,7 +182,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE fm_MatVec( u,v,ipar )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER :: ipar(*)
     REAL(KIND=dp) :: u(*),v(*), ct, rsum, cumt=0, s
@@ -243,7 +243,7 @@ CONTAINS
 !----------------------------------------------------------------------
 FUNCTION MaskedDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 !----------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
   INTEGER :: ndim, xind, yind
@@ -308,7 +308,7 @@ FUNCTION MaskedDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 !----------------------------------------------------------------------
 FUNCTION MaskedNorm( ndim, x, xind ) RESULT(dres)
 !----------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -371,7 +371,7 @@ END FUNCTION MaskedNorm
 !----------------------------------------------------------------------
   FUNCTION Otmp_ddot( ndim, x, xind, y, yind ) RESULT(dres)
 !----------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER :: ndim, xind, yind
@@ -428,7 +428,7 @@ END FUNCTION MaskedNorm
 !----------------------------------------------------------------------
   FUNCTION Otmp_zdotc( ndim, x, xind, y, yind ) RESULT(zres)
 !----------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER :: ndim, xind, yind
@@ -494,7 +494,7 @@ END FUNCTION MaskedNorm
 !----------------------------------------------------------------------
   FUNCTION Otmp_zdotu( ndim, x, xind, y, yind ) RESULT(zres)
 !----------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER :: ndim, xind, yind
@@ -624,7 +624,7 @@ END FUNCTION MaskedNorm
     USE ListMatrix
     USE SParIterGlobals
     USE GeneralUtils, ONLY : ComplexValues
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver

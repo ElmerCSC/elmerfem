@@ -46,7 +46,7 @@ SUBROUTINE PressurePrecond_Init0(Model, Solver, dt, Transient)
   USE SolverBasics
   USE ElementUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -84,7 +84,7 @@ SUBROUTINE PressurePrecond( Model,Solver,dt,TransientSimulation )
   USE SolverBasics
   USE ElementUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

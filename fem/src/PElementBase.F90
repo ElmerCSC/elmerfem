@@ -48,7 +48,7 @@ MODULE PElementBase
   USE Messages
   USE PElementMaps
   USE Types, ONLY : dp, Element_t, Mesh_t
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   CONTAINS
 
@@ -74,7 +74,7 @@ MODULE PElementBase
 !       value = N_i(u)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node
       REAL (KIND=dp), INTENT(IN) :: u
@@ -95,7 +95,7 @@ MODULE PElementBase
     ! As previous except obtain all values at once.
     SUBROUTINE LineNodalPBasisAll(u, phi) 
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL (KIND=dp), INTENT(IN) :: u
       REAL (KIND=dp) :: phi(:)
@@ -126,7 +126,7 @@ MODULE PElementBase
 !       value = dN_i(u)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node
       REAL (KIND=dp), INTENT(IN) :: u
@@ -147,7 +147,7 @@ MODULE PElementBase
     ! As previous except obtain all values at once.
     SUBROUTINE dLineNodalPBasisAll(u, gradphi) 
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL (KIND=dp), INTENT(IN) :: u
       REAL (KIND=dp) :: gradphi(:,:)
@@ -177,7 +177,7 @@ MODULE PElementBase
 !       value = dN_i(u)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node
       REAL (KIND=dp), INTENT(IN) :: u
@@ -212,7 +212,7 @@ MODULE PElementBase
 !       value = N_i^(0)(u)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: u
@@ -257,7 +257,7 @@ MODULE PElementBase
 !       value = dN_i^(0)(u)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: u
@@ -301,7 +301,7 @@ MODULE PElementBase
 !       value of 2nd derivative of lines bubble function i at point u
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: u
@@ -341,7 +341,7 @@ MODULE PElementBase
 !       value = N_i(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -367,7 +367,7 @@ MODULE PElementBase
     ! As previous except obtain all values at once.
     SUBROUTINE QuadNodalPBasisAll(u, v, phi) 
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL (KIND=dp), INTENT(IN) :: u,v
       REAL (KIND=dp) :: phi(:)
@@ -400,7 +400,7 @@ MODULE PElementBase
 !       i.e. value = dN_i(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -447,7 +447,7 @@ MODULE PElementBase
 !       i.e. value = dN_i(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -471,7 +471,7 @@ MODULE PElementBase
 
     ! As previous except obtain all values at once 
     SUBROUTINE dQuadNodalPBasisAll(u, v, gradphi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL (KIND=dp), INTENT(IN) :: u,v
       REAL (KIND=dp) :: gradphi(:,:)
@@ -517,7 +517,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: edge, i
       LOGICAL, OPTIONAL :: invertEdge
@@ -588,7 +588,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: edge, i
       LOGICAL, OPTIONAL :: invertEdge
@@ -679,7 +679,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: edge, i
       LOGICAL, OPTIONAL :: invertEdge
@@ -756,7 +756,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i,j
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -804,7 +804,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i,j
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -857,7 +857,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i,j
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -937,7 +937,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: edge, i
       LOGICAL, OPTIONAL :: invertEdge
@@ -1003,7 +1003,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -1085,7 +1085,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -1186,7 +1186,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i,j
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -1237,7 +1237,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i,j
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -1303,7 +1303,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i,j
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -1420,7 +1420,7 @@ MODULE PElementBase
 !       i.e. value = N_i^l(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: which
       REAL(Kind=dp), INTENT(IN) :: u, v
@@ -1464,7 +1464,7 @@ MODULE PElementBase
 !       i.e. value = dN_i^l(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: which
       REAL(Kind=dp), INTENT(IN) :: u, v
@@ -1507,7 +1507,7 @@ MODULE PElementBase
 !       value = N_i(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: node
       REAL (KIND=dp), INTENT(IN) :: u,v
@@ -1529,7 +1529,7 @@ MODULE PElementBase
 
 
     SUBROUTINE TriangleNodalPBasisAll(u, v, phi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL (KIND=dp), INTENT(IN) :: u,v
       REAL (KIND=dp) :: phi(:)
       REAL(KIND=dp), PARAMETER :: half=1.0_dp/2, c3=1.0_dp/SQRT(3.0_dp)
@@ -1541,7 +1541,7 @@ MODULE PElementBase
 
 
     SUBROUTINE TriangleNodalLBasisAll(u, v, phi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL (KIND=dp), INTENT(IN) :: u,v
       REAL (KIND=dp) :: phi(:)
       
@@ -1570,7 +1570,7 @@ MODULE PElementBase
 !       grad = dN_i(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: node
@@ -1614,7 +1614,7 @@ MODULE PElementBase
 !       grad = dN_i(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: node
@@ -1627,7 +1627,7 @@ MODULE PElementBase
 
 
     SUBROUTINE dTriangleNodalPBasisAll(u, v, gradphi)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL (KIND=dp), INTENT(IN) :: u,v
       REAL (KIND=dp) :: gradphi(:,:)
       REAL(KIND=dp), PARAMETER :: half=1.0_dp/2, c6=SQRT(3.0_dp)/6.0_dp
@@ -1641,7 +1641,7 @@ MODULE PElementBase
     END SUBROUTINE dTriangleNodalPBasisAll
 
     SUBROUTINE dTriangleNodalLBasisAll(u, v, gradphi)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL (KIND=dp), INTENT(IN) :: u,v
       REAL (KIND=dp) :: gradphi(:,:)
 
@@ -1682,7 +1682,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -1762,7 +1762,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -1863,7 +1863,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -1966,7 +1966,7 @@ MODULE PElementBase
 !       i.e. value = dN_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: j, n
@@ -1992,7 +1992,7 @@ MODULE PElementBase
 
 
     FUNCTION TriangleEBubblePBasis(i,j,u,v,localNumbers) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: i,j
@@ -2041,7 +2041,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: j, n
@@ -2101,7 +2101,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j)}^{0}(u,v)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL(KIND=dp) :: grad(2,2)
 
@@ -2174,7 +2174,7 @@ MODULE PElementBase
 
 
     FUNCTION dTriangleEBubblePBasis(i,j,u,v,localNumbers) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i, j
@@ -2211,7 +2211,7 @@ MODULE PElementBase
 
 
     FUNCTION ddTriangleEBubblePBasis(i,j,u,v,localNumbers) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i, j
@@ -2300,7 +2300,7 @@ MODULE PElementBase
     ! 3D ELEMENTS
 
     FUNCTION BrickNodalPBasis(node, u, v, w) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: node
@@ -2334,7 +2334,7 @@ MODULE PElementBase
 
     ! As previous except obtain all nodal lvalues at once. 
     SUBROUTINE BrickNodalPBasisAll(u, v, w, phi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       REAL(Kind=dp), INTENT(IN) :: u,v,w
@@ -2351,7 +2351,7 @@ MODULE PElementBase
 
     
     FUNCTION dBrickNodalPBasis(node, u, v, w) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: node
@@ -2401,7 +2401,7 @@ MODULE PElementBase
 
 
     FUNCTION ddBrickNodalPBasis(node, u, v, w) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: node
@@ -2457,7 +2457,7 @@ MODULE PElementBase
 
     ! As previous except obtain all nodal values at once. 
     SUBROUTINE dBrickNodalPBasisAll(u, v, w, gradphi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       REAL(Kind=dp), INTENT(IN) :: u,v,w
@@ -2505,7 +2505,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -2597,7 +2597,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -2741,7 +2741,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -2887,7 +2887,7 @@ MODULE PElementBase
 !       value = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -2958,7 +2958,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -3045,7 +3045,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -3184,7 +3184,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -3215,7 +3215,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -3252,7 +3252,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -3311,7 +3311,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -3379,7 +3379,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -3461,7 +3461,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -3597,7 +3597,7 @@ MODULE PElementBase
 !       value = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -3653,7 +3653,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -3727,7 +3727,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -3826,7 +3826,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -3857,7 +3857,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -3890,7 +3890,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -3913,7 +3913,7 @@ MODULE PElementBase
 
 
     PURE FUNCTION BrickL(which, u, v, w) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -3947,7 +3947,7 @@ MODULE PElementBase
     END FUNCTION BrickL
 
     PURE FUNCTION dBrickL(which, u, v, w) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -4017,7 +4017,7 @@ MODULE PElementBase
 !       value = N_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: node
@@ -4042,7 +4042,7 @@ MODULE PElementBase
 
     
     SUBROUTINE TetraNodalPBasisAll(u, v, w, phi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL (KIND=dp), INTENT(IN) :: u,v,w
       REAL (KIND=dp) :: phi(:)
       REAL(KIND=dp), PARAMETER :: half = 1.0_dp/2.0_dp, &
@@ -4055,7 +4055,7 @@ MODULE PElementBase
     END SUBROUTINE TetraNodalPBasisAll
 
     SUBROUTINE TetraNodalLBasisAll(u, v, w, phi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL (KIND=dp), INTENT(IN) :: u,v,w
       REAL (KIND=dp) :: phi(:)
       phi(1) = 1.0_dp-u-v-w
@@ -4086,7 +4086,7 @@ MODULE PElementBase
 !       grad = dN_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: node
@@ -4119,7 +4119,7 @@ MODULE PElementBase
 
 
     SUBROUTINE dTetraNodalPBasisAll(u, v, w, gradphi )
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp), INTENT(IN) :: u,v,w
       REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
       REAL(KIND=dp), PARAMETER :: half = 1.0_dp/2.0_dp, &
@@ -4140,7 +4140,7 @@ MODULE PElementBase
     END SUBROUTINE dTetraNodalPBasisAll
 
     SUBROUTINE dTetraNodalLBasisAll(u, v, w, gradphi )
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp), INTENT(IN) :: u,v,w
       REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
       
@@ -4179,7 +4179,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -4262,7 +4262,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -4368,7 +4368,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters 
       INTEGER, INTENT(IN) :: edge, i
@@ -4514,7 +4514,7 @@ MODULE PElementBase
 !       value = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -4600,7 +4600,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -4717,7 +4717,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, i, j
@@ -4949,7 +4949,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -4984,7 +4984,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -5037,7 +5037,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i, j, k
@@ -5162,7 +5162,7 @@ MODULE PElementBase
 !       value = N_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: node
@@ -5192,7 +5192,7 @@ MODULE PElementBase
 
 
     SUBROUTINE WedgeNodalPBasisAll(u, v, w, phi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp), INTENT(IN) :: u,v,w
       REAL(KIND=dp), INTENT(OUT) :: phi(:)
       REAL(KIND=dp) :: tri(3),line(2)
@@ -5210,7 +5210,7 @@ MODULE PElementBase
     END SUBROUTINE WedgeNodalPBasisAll
 
     SUBROUTINE WedgeNodalLBasisAll(u, v, w, phi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp), INTENT(IN) :: u,v,w
       REAL(KIND=dp), INTENT(OUT) :: phi(:)
       REAL(KIND=dp) :: tri(3),line(2)
@@ -5249,7 +5249,7 @@ MODULE PElementBase
 !       grad = dN_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: node
@@ -5296,7 +5296,7 @@ MODULE PElementBase
 !       grad = dN_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: node
@@ -5329,7 +5329,7 @@ MODULE PElementBase
 
 
     SUBROUTINE dWedgeNodalPBasisAll(u, v, w, gradphi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp), INTENT(IN) :: u,v,w
       REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
       REAL(KIND=dp) :: tri(3),line(2),gradtri(3,2),gradline(2)
@@ -5362,7 +5362,7 @@ MODULE PElementBase
     END SUBROUTINE dWedgeNodalPBasisAll
 
     SUBROUTINE dWedgeNodalLBasisAll(u, v, w, gradphi) 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp), INTENT(IN) :: u,v,w
       REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
       REAL(KIND=dp) :: tri(3),line(2),gradtri(3,2),gradline(2)
@@ -5424,7 +5424,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -5511,7 +5511,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -5621,7 +5621,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -5765,7 +5765,7 @@ MODULE PElementBase
 !       value = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -5840,7 +5840,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -5945,7 +5945,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -6086,7 +6086,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i,j,k
@@ -6122,7 +6122,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i,j,k
@@ -6171,7 +6171,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i,j,k
@@ -6261,7 +6261,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -6335,7 +6335,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -6425,7 +6425,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -6546,7 +6546,7 @@ MODULE PElementBase
 !       value = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -6627,7 +6627,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -6747,7 +6747,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -6909,7 +6909,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i,j,k
@@ -6948,7 +6948,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i,j,k
@@ -7006,7 +7006,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: i,j,k
@@ -7078,7 +7078,7 @@ MODULE PElementBase
 
 
     PURE FUNCTION WedgeL(which, u, v) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -7102,7 +7102,7 @@ MODULE PElementBase
     END FUNCTION WedgeL
 
     PURE FUNCTION WedgeH(which, w) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -7124,7 +7124,7 @@ MODULE PElementBase
     END FUNCTION WedgeH
 
     PURE FUNCTION dWedgeL(which, u, v) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -7150,7 +7150,7 @@ MODULE PElementBase
     END FUNCTION dWedgeL
 
     PURE FUNCTION dWedgeH(which, w) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -7192,7 +7192,7 @@ MODULE PElementBase
 !       value = N_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: node
@@ -7238,7 +7238,7 @@ MODULE PElementBase
 !       grad = dN_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       ! Parameters
       INTEGER, INTENT(IN) :: node
       REAL(KIND=dp), INTENT(IN) :: u,v,w
@@ -7296,7 +7296,7 @@ MODULE PElementBase
 !       grad = dN_i(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       ! Parameters
       INTEGER, INTENT(IN) :: node
       REAL(KIND=dp), INTENT(IN) :: u,v,w
@@ -7393,7 +7393,7 @@ MODULE PElementBase
 !       value = N_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -7460,7 +7460,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -7538,7 +7538,7 @@ MODULE PElementBase
 !       grad = dN_i^{edge}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: edge, i
@@ -7672,7 +7672,7 @@ MODULE PElementBase
 !       value = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -7742,7 +7742,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -7843,7 +7843,7 @@ MODULE PElementBase
 !       grad = N_{m(i,j)}^{face}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: face, i, j
@@ -8058,7 +8058,7 @@ MODULE PElementBase
 !       i.e. value = N_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: i, j, k 
@@ -8096,7 +8096,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       ! Parameters
       INTEGER, INTENT(IN) :: i, j, k 
       REAL(KIND=dp), INTENT(IN) :: u,v,w
@@ -8149,7 +8149,7 @@ MODULE PElementBase
 !       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       ! Parameters
       INTEGER, INTENT(IN) :: i, j, k 
       REAL(KIND=dp), INTENT(IN) :: u,v,w
@@ -8203,7 +8203,7 @@ MODULE PElementBase
 
     ! Define affine coordinates for pyramid square face
     PURE FUNCTION PyramidL(which, u, v) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -8228,7 +8228,7 @@ MODULE PElementBase
     END FUNCTION PyramidL
 
     PURE FUNCTION dPyramidL(which, u, v) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -8254,7 +8254,7 @@ MODULE PElementBase
 
 
     PURE FUNCTION PyramidTL(which, u, v, w) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -8283,7 +8283,7 @@ MODULE PElementBase
     END FUNCTION PyramidTL
 
     PURE FUNCTION dPyramidTL(which, u, v, w) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -8348,7 +8348,7 @@ MODULE PElementBase
 !       value = Phi(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i
@@ -8393,7 +8393,7 @@ MODULE PElementBase
 !       value = Phi,(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i
@@ -8503,7 +8503,7 @@ MODULE PElementBase
 !       value = Phi,(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters 
       INTEGER, INTENT(IN) :: i
@@ -8613,7 +8613,7 @@ MODULE PElementBase
 !       value = varPhi(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
@@ -8722,7 +8722,7 @@ MODULE PElementBase
 !       value = dVarPhi(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
@@ -8842,7 +8842,7 @@ MODULE PElementBase
 !       value = dVarPhi(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
@@ -8968,7 +8968,7 @@ MODULE PElementBase
 !       value = P(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: l
@@ -9121,7 +9121,7 @@ MODULE PElementBase
 !       value = P,(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: l
@@ -9269,7 +9269,7 @@ MODULE PElementBase
 !       value = P,(i,x)
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: l
@@ -9393,7 +9393,7 @@ MODULE PElementBase
 
     ! Function value = x^n
     PURE FUNCTION toExp(x,n) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       REAL(KIND=dp), INTENT(IN) :: x
       INTEGER, INTENT(IN) :: n
@@ -9412,7 +9412,7 @@ MODULE PElementBase
 
 
     RECURSIVE FUNCTION Product2ndDerivatives(n,g,dg,ddg,dim,level) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER :: n,dim,level
       REAL(KIND=dp) :: g(:), dg(:,:), ddg(:,:,:), grad(dim,dim)

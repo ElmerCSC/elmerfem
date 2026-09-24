@@ -41,7 +41,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE Adaptive
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -725,7 +725,7 @@ END SUBROUTINE DCRComplexSolver
   SUBROUTINE DCRComplexSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm,Gnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -1056,7 +1056,7 @@ END SUBROUTINE DCRComplexSolver
   SUBROUTINE DCRComplexSolver_Edge_Residual( Model, Edge, Mesh, Quant, Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -1395,7 +1395,7 @@ END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)

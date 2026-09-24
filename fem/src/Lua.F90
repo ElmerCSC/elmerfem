@@ -42,7 +42,7 @@
 module Lua ! {{{
 !-------------------------------------------------------------------------------
 use ISO_C_BINDING
-implicit none
+IMPLICIT NONE IMPLICIT_EXTERNAL
 private
 
 !-Type declarations-------------------------------------------------------------

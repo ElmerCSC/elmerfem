@@ -6,7 +6,7 @@
 !#############################################################################
       FUNCTION Init(Model,nodenumber,xy) RESULT(r)
        USE DefUtils
-       implicit none
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        !-----------------
        TYPE(Model_t) :: Model
        INTEGER :: nodenumber

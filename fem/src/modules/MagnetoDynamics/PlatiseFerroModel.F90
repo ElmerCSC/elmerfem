@@ -41,7 +41,7 @@
 
 FUNCTION PlatiseFerroModel( model, n, B ) RESULT( H )
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)   :: model
   INTEGER         :: n, k
   REAL(KIND=dp)   :: B, H

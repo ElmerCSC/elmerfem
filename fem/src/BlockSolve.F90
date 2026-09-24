@@ -52,7 +52,7 @@ MODULE BlockSolve
  USE MortarUtils, ONLY : SaveProjector   
  USE DefUtils, ONLY : DefaultSolve, GetElementDOFs, GetElementNodes, GetLogical
  
- IMPLICIT NONE
+ IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(BlockMatrix_t), POINTER, SAVE :: TotMatrix
 
@@ -289,7 +289,7 @@ CONTAINS
   !------------------------------------------------------------------
   SUBROUTINE BlockInitMatrix( Solver, BlockMatrix, BlockDofs, FieldDofs, SkipVar )
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Solver_t), TARGET :: Solver
     INTEGER :: BlockDofs
@@ -527,7 +527,7 @@ CONTAINS
   !------------------------------------------------------------------
   SUBROUTINE BlockInitVar( Solver, BlockMatrix, BlockIndex )
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Solver_t), TARGET :: Solver
     TYPE(BlockMatrix_t) :: BlockMatrix
@@ -645,7 +645,7 @@ CONTAINS
   !------------------------------------------------------------------
   SUBROUTINE BlockBackCopyVar( Solver, BlockMatrix )
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Solver_t), TARGET :: Solver
     TYPE(BlockMatrix_t), TARGET :: BlockMatrix
@@ -3354,7 +3354,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CreateBlockMatrixScaling( )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER :: i,j,k,l,n,m,NoVar,istat
     REAL(KIND=dp) :: nrm, tmp, blocknrm
@@ -3518,7 +3518,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BlockMatrixInfo()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: i,j,k,l,n,m,NoVar
     INTEGER(KIND=8) :: ll
     REAL(KIND=dp) :: nrm, tmp, blocknrm
@@ -3645,7 +3645,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DoBlockMatrixScaling( reverse, blockrow, blockcol, bext, SkipMatrixScale  )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     LOGICAL, OPTIONAL :: reverse
     INTEGER, OPTIONAL :: blockrow, blockcol
     REAL(KIND=dp), POINTER, OPTIONAL :: bext(:)
@@ -3777,7 +3777,7 @@ CONTAINS
 !> Has to be called outside the module by Krylov methods.
 !------------------------------------------------------------------------------
   SUBROUTINE BlockMatrixPrec( u,v,ipar )    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), TARGET, INTENT(out) :: u(*)
     REAL(KIND=dp), TARGET, INTENT(in) :: v(*)
     INTEGER :: ipar(*)
@@ -5401,7 +5401,7 @@ SUBROUTINE BlockSolveExt(A,x,b,Solver)
     USE Types
     USE BlockSolve, ONLY: BlockSolveInt 
     USE Lists, ONLY : ListGetLogical, ListAddLogical
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Matrix_t), POINTER :: A
     TYPE(Solver_t) :: Solver

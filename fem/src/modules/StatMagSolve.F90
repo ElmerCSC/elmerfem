@@ -49,7 +49,7 @@
     USE DefUtils
     USE Differentials
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Model_t) :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -550,7 +550,7 @@ CONTAINS
       USE Integration
       USE ElementDescription
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
      
       REAL (KIND=DP),TARGET :: MassMatrix(:,:),StiffMatrix(:,:),&
           ForceVector(:)
@@ -676,7 +676,7 @@ CONTAINS
      USE Integration
      USE ElementDescription
      
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      
      REAL (KIND=DP),TARGET :: StiffMatrix(:,:), ForceVector(:)
      REAL (KIND=DP) :: NodalReluctivity(:), NodalAngle(:), Reluctivity, &
@@ -808,7 +808,7 @@ CONTAINS
      USE Integration
      USE ElementDescription
      
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      
      REAL (KIND=DP) :: NodalConductivity(:), NodalField(:)
      REAL (KIND=DP) :: TotalHeating, TotalVolume, Conductivity, Field
@@ -920,7 +920,7 @@ CONTAINS
       USE Integration
       USE ElementDescription
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
      
       REAL (KIND=DP),TARGET :: StiffMatrix(:,:), ForceVector(:)
       REAL (KIND=DP) :: NodalReluctivity(:)

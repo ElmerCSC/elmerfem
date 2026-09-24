@@ -2,7 +2,7 @@
 SUBROUTINE FilmCompressibility_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model  
@@ -32,7 +32,7 @@ END SUBROUTINE FilmCompressibility_Init
 SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver   !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model     !< All model information (mesh, materials, BCs, etc...)

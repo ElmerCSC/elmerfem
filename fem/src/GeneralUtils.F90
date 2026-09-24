@@ -51,7 +51,7 @@ USE LoadMod
 USE, INTRINSIC :: ISO_C_BINDING
 #endif
 
-IMPLICIT NONE
+IMPLICIT NONE IMPLICIT_EXTERNAL
 
 INTERFACE AllocateVector
   MODULE PROCEDURE AllocateRealVector, AllocateIntegerVector, &
@@ -90,7 +90,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AdvanceOutput(t,n,dot_t,percent_t)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      INTEGER :: t,n
      REAL(KIND=dp), OPTIONAL :: dot_t,percent_t
 !------------------------------------------------------------------------------
@@ -2521,7 +2521,7 @@ END FUNCTION ComponentNameVar
 
   ! Pad given integer value to be the next largest multiple of nbyte
   FUNCTION IntegerNBytePad(val, nbyte) RESULT(padval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: val, nbyte
     INTEGER :: padval
@@ -2537,7 +2537,7 @@ END FUNCTION ComponentNameVar
 
   ! Pad given value to be the next largest multiple of nbyte
   FUNCTION NBytePad(val, bytesinelem, nbyte) RESULT(padval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: val, bytesinelem, nbyte
     INTEGER :: padval
@@ -2812,7 +2812,7 @@ MODULE AscBinOutputUtils
   
   USE Types
   USE Messages
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   LOGICAL, PRIVATE :: AsciiOutput, SinglePrec, CalcSum = .FALSE.
   INTEGER, PRIVATE :: VtuUnit = 0, BufferSize = 0

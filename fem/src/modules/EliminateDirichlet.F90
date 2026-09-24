@@ -49,7 +49,7 @@
   USE CRSmatrix
   USE GeneralUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(model_t)  :: Model        !> All model information (mesh,materials,BCs,etc...)
   TYPE(solver_t) :: Solver       !> Linear equation solver options

@@ -43,7 +43,7 @@
  
 MODULE Smoothers
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -61,7 +61,7 @@ CONTAINS
           ParallelCDotu, ParallelUpdateResult, ParallelUpdateSolve
       !  USE GeneralUtils, ONLY : ComplexValues, GetVarName
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Solver_t) :: Solver
       TYPE(Matrix_t), POINTER :: A
@@ -444,7 +444,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       FUNCTION MGnorm( n, x ) RESULT(s)
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         INTEGER :: n
         REAL(KIND=dp)  :: s
         REAL(KIND=dp) CONTIG :: x(:)
@@ -461,7 +461,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       FUNCTION MGCnorm( n, x ) RESULT(s)
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         INTEGER :: n
         REAL(KIND=dp)  :: s
         COMPLEX(KIND=dp) CONTIG :: x(:)
@@ -479,7 +479,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       FUNCTION MGdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         INTEGER :: n
         REAL(KIND=dp)  :: s
         REAL(KIND=dp) CONTIG :: x(:),y(:)
@@ -504,7 +504,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     FUNCTION MGCdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        INTEGER :: n
        COMPLEX(KIND=dp)  :: s
        COMPLEX(KIND=dp) CONTIG :: x(:),y(:)
@@ -522,7 +522,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE MGmv( A, x, b, Update )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         REAL(KIND=dp) CONTIG :: x(:), b(:)
         TYPE(Matrix_t), POINTER :: A
         LOGICAL, OPTIONAL :: Update
@@ -547,7 +547,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE MGCmv( A, x, b, Update )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         COMPLEX(KIND=dp) CONTIG :: x(:), b(:)
         TYPE(Matrix_t), POINTER :: A
         LOGICAL, OPTIONAL :: Update
@@ -573,7 +573,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Jacobi( n, A, M, x, b, r, Rounds )
 !-------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A
         TYPE(Matrix_t) :: M
         INTEGER :: Rounds
@@ -596,7 +596,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SmoothedJacobi( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A
         TYPE(Matrix_t) :: M
         INTEGER :: Rounds
@@ -620,7 +620,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE L1Jacobi( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A
         TYPE(Matrix_t) :: M
         INTEGER :: Rounds
@@ -646,7 +646,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE ExternalL1Jacobi( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A
         TYPE(Matrix_t) :: M
         INTEGER :: Rounds
@@ -679,7 +679,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE ComplexJacobi( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER, INTENT(IN) :: A
         TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: n, Rounds
@@ -723,7 +723,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE GS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG  :: x(:),b(:),r(:)
@@ -759,7 +759,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Richards( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG  :: x(:),b(:),r(:)
@@ -797,7 +797,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE BGS( n, A, M, x, b, r, DOFs, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: DOFs, Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -837,7 +837,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SmoothedGS( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
@@ -872,7 +872,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SGS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -914,7 +914,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE InternalComplexSGS( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
 
         TYPE(Matrix_t) :: A, M
         INTEGER :: n,Rounds
@@ -994,7 +994,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE InternalSGS( n, A, M, x, b, r, Rounds, SkipMask )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1053,7 +1053,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE BSGS( n, A, M, x, b, r, DOFs, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: DOFs, Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1104,7 +1104,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE SmoothedSGS( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) :: w
@@ -1144,7 +1144,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE ComplexSGS( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER, INTENT(IN) :: A
         TYPE(Matrix_t), INTENT(IN) :: M
         INTEGER, INTENT(IN) :: Rounds
@@ -1205,7 +1205,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE PostSGS( n, A, M, x, b, r, f, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A, M
         INTEGER :: Rounds
         INTEGER :: f(:)
@@ -1276,7 +1276,7 @@ CONTAINS
 !------------------------------------------------------------------------------
         USE DirectSolve, ONLY : DirectSolver
         USE MeshTransform, ONLY : DetectExtrudedStructure
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
         TYPE(Matrix_t), POINTER :: A
         TYPE(Matrix_t) :: M
@@ -1545,7 +1545,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CG( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1588,7 +1588,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE CCG( n, A, M, rx, rb, rr, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         INTEGER :: i,n, Rounds
         TYPE(Matrix_t), POINTER :: A,M
         REAL(KIND=dp), TARGET :: rx(:),rb(:),rr(:)
@@ -1636,7 +1636,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE Uzawa( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds, n
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1737,7 +1737,7 @@ END DO
 !------------------------------------------------------------------------------
      SUBROUTINE UzawaMv( A, x, b )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t) :: A
         INTEGER :: i,j,k,n,q,dofs=3
         REAL(KIND=dp) CONTIG :: x(:),b(:)
@@ -1808,7 +1808,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE BiCGUzawa( n, A, M, x, b, r, Rounds, reps )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1918,7 +1918,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE Vanka( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A,M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
@@ -1994,7 +1994,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE SolveLinSysInt( N,LDa,A,x )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         INTEGER  N,IPIV(N),LDa,info
         DOUBLE PRECISION  A(LDa,*),x(n)
 
@@ -2013,7 +2013,7 @@ END DO
 !------------------------------------------------------------------------------
       SUBROUTINE TestGS( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)

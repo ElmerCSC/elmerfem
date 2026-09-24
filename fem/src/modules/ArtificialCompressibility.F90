@@ -48,7 +48,7 @@
 SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver   !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model     !< All model information (mesh, materials, BCs, etc...)
@@ -453,7 +453,7 @@ END SUBROUTINE CompressibilityScale
 SUBROUTINE CompressibilityScale_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver   
   TYPE(Model_t) :: Model     
@@ -482,7 +482,7 @@ END SUBROUTINE CompressibilityScale_Init
 SUBROUTINE CompressibilitySolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver   !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model     !< All model information (mesh, materials, BCs, etc...)

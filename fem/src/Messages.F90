@@ -55,7 +55,7 @@ MODULE Messages
   USE XIOS
 #endif
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i

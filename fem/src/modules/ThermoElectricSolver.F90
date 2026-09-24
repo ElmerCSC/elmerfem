@@ -37,7 +37,7 @@
 SUBROUTINE ThermoElectricSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -84,7 +84,7 @@ SUBROUTINE ThermoElectricSolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

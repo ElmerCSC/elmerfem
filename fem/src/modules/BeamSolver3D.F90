@@ -61,7 +61,7 @@
 SUBROUTINE TimoshenkoSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -101,7 +101,7 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
   USE DefUtils
   USE SolidMechanicsUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver

@@ -47,7 +47,7 @@
     USE Differentials
 !------------------------------------------------------------------------------
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver
@@ -513,7 +513,7 @@
 
     SUBROUTINE ComputeNodalField( Field1, Field2, Field3, B1,B2,B3, Ji1, Ji2, Ji3, Reorder )
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL(KIND=dp) :: B1(:), B2(:), B3(:)
       REAL(KIND=dp) :: Ji1(:), Ji2(:), Ji3(:)
@@ -714,7 +714,7 @@
 
    SUBROUTINE LorentzForceNodal( LrF1,LrF2,LrF3,B1,B2,B3,Reorder )
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      REAL(KIND=dp) :: B1(:),B2(:),B3(:)
      REAL(KIND=dp) :: LrF1(:),LrF2(:),LrF3(:), Lorentz(3)
      REAL(KIND=dp), POINTER :: Density(:)

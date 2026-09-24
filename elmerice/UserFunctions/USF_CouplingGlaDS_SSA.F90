@@ -40,7 +40,7 @@ FUNCTION HorizontalVelo (Model, nodenumber, x) RESULT(ub)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    REAL (KIND=dp) :: x, ub          
    INTEGER :: nodenumber
@@ -84,7 +84,7 @@ FUNCTION HorizontalVelo (Model, nodenumber, x) RESULT(ub)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    REAL (KIND=dp) :: x, IcePress          
    INTEGER :: nodenumber

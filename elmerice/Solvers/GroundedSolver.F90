@@ -104,7 +104,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   !******************************************************************************
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -442,7 +442,7 @@ CONTAINS
     USE ElementDescription
     USE CalvingGeometry
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN)                                  :: BoundaryLabel
     

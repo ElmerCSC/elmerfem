@@ -52,7 +52,7 @@
 SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -172,7 +172,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   USE MeshBasics, ONLY : FollowCurvedBoundary
   USE CRSMatrix, ONLY : CRS_TransposeMatrixVectorMultiply
   USE VectorHelmholtzUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -429,7 +429,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
@@ -606,7 +606,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles

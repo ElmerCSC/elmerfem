@@ -48,7 +48,7 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
   USE CRSmatrix
   USE GeneralUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(model_t)  :: Model        !> All model information (mesh,materials,BCs,etc...)
   TYPE(solver_t) :: Solver       !> Linear equation solver options
@@ -478,7 +478,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE CRSMatrix
     USE GeneralUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: A
 
@@ -522,7 +522,7 @@ CONTAINS
   FUNCTION CRS_TransposeLocal( A, MVal ) RESULT(B)
 !------------------------------------------------------------------------------
     USE CRSMatrix
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: A, B
     LOGICAL :: MVal
@@ -603,7 +603,7 @@ CONTAINS
   SUBROUTINE CRS_MatrixMatrixMultiply( C, A, B, MVal )
 !------------------------------------------------------------------------------
     USE CRSMatrix
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t), POINTER :: A, B, C
     LOGICAL :: Mval
 !------------------------------------------------------------------------------

@@ -44,7 +44,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 !******************************************************************************
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -183,7 +183,7 @@ CONTAINS
 !----------------------------------------------------------------
   SUBROUTINE BoundaryCondition(LOAD, FORCE, Element, n)
 !----------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), DIMENSION(:) :: FORCE, LOAD
     INTEGER :: n
     TYPE(Element_t), TARGET :: Element

@@ -55,7 +55,7 @@
 !------------------------------------------------------------------------------
      USE DefUtils
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t) :: Solver
@@ -472,7 +472,7 @@ CONTAINS
 !
 !------------------------------------------------------------------------------
      USE MaterialModels
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      REAL(KIND=dp), DIMENSION(:)   :: FORCE,UX,UY,UZ
      REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
@@ -694,7 +694,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE DefUtils
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t) :: Solver

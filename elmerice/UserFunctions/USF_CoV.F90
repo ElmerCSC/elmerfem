@@ -41,7 +41,7 @@
 !# Compute VarOut=10^VarIn
 FUNCTION TenPowerA(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -54,7 +54,7 @@ End FUNCTION TenPowerA
 !# VarIn=A
 FUNCTION TenPowerA_d(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -68,7 +68,7 @@ End FUNCTION TenPowerA_d
 !# A=VarIn(2)
 FUNCTION Derivative_TenPowerA(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -80,7 +80,7 @@ End FUNCTION Derivative_TenPowerA
 !# Compute VarOut=Log10(VarIn)
 FUNCTION Log10A(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -92,7 +92,7 @@ End FUNCTION Log10A
 !# Compute VarOut=VarIn*VarIn
 FUNCTION Asquare(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -104,7 +104,7 @@ END FUNCTION Asquare
 !# VarIn=A
 FUNCTION Asquare_d(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -117,7 +117,7 @@ END FUNCTION Asquare_d
 !# A=VarIn(2)
 FUNCTION Derivative_Asquare(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -129,7 +129,7 @@ End FUNCTION Derivative_Asquare
 !# Compute VarOut=sqrt(VarIn)
 FUNCTION SQRTA(Model,nodenumber,VarIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -144,7 +144,7 @@ END FUNCTION SQRTA
 !  ArgIn(2)  mask, a mask variable, typically GroundedMask
 FUNCTION TenPowerA_masked(Model,nodenumber,ArgIn) RESULT(VarOut)
   USE DefUtils
-  IMPLICIT none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -171,7 +171,7 @@ END FUNCTION TenPowerA_Masked
 !  ArgIn(2)  mask, a mask variable, typically GroundedMask
 FUNCTION TenPowerA_d_Masked(Model,nodenumber,ArgIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -195,7 +195,7 @@ END FUNCTION TenPowerA_d_Masked
 !# initial guess.
 FUNCTION Asquare_Scaled(Model,nodenumber,ArgIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
@@ -216,7 +216,7 @@ END FUNCTION Asquare_Scaled
 !# function of enhancement factor and an initial guess.
 FUNCTION Asquare_d_Scaled(Model,nodenumber,ArgIn) RESULT(VarOut)
   USE DefUtils
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber

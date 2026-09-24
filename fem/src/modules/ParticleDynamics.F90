@@ -53,7 +53,7 @@ MODULE ParticleDynamicsStuff
   USE ElementUtils
   USE ParticleUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
 CONTAINS
 
@@ -64,7 +64,7 @@ CONTAINS
   SUBROUTINE ParticleParticleContact(dt,Coord,Coord2,Velo,Velo2, &
       Force,Force2, Contact ) 
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp):: dt,Coord(3),Coord2(3),Velo(3),Velo2(3),Force(3),Force2(3)
     LOGICAL :: Contact 
@@ -164,7 +164,7 @@ CONTAINS
   SUBROUTINE ParticleParticleCollision(dt,Coord,Coord2,Velo,Velo2,&
       Force,Force2, Collision ) 
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp):: dt,Coord(3),Coord2(3),Velo(3),Velo2(3),Force(3),Force2(3)
     LOGICAL :: Collision 
@@ -449,7 +449,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   USE ParticleUtils
   USE ParticleDynamicsStuff
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -1543,7 +1543,7 @@ CONTAINS
    !---------------------------------------------------------------    
    SUBROUTINE ParticleWallContact(Particles, dt )
      
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      
      TYPE(Particle_t) :: Particles
      REAL(KIND=dp) :: dt
@@ -1937,7 +1937,7 @@ SUBROUTINE ParticleDynamics_Init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Lists
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model

@@ -81,7 +81,7 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   USE CoordinateSystems
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver

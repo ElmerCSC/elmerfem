@@ -54,7 +54,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE NavierStokes
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

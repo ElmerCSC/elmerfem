@@ -45,7 +45,7 @@
 SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -124,7 +124,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   USE DefUtils
   USE CircuitUtils
   USE ZirkaUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -1132,7 +1132,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixHandles( Element, n, nd, nb )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -1587,7 +1587,7 @@ END SUBROUTINE ! }}}
 ! magn. 29(2), p. 1737 - 1740, Mar 1993
 ! -ettaka- 
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t), POINTER :: A
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), POINTER :: b(:)
@@ -1676,7 +1676,7 @@ END SUBROUTINE MagnetoDynamics2D
 SUBROUTINE MagnetoDynamics2DHarmonic_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -1693,7 +1693,7 @@ END SUBROUTINE MagnetoDynamics2DHarmonic_Init0
 SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -1724,7 +1724,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE CircuitUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -2737,7 +2737,7 @@ CONTAINS
 ! magn. 29(2), p. 1737 - 1740, Mar 1993
 ! -ettaka- 
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t), POINTER :: A
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), POINTER :: b(:)
@@ -2835,7 +2835,7 @@ SUBROUTINE Bsolver_init( Model,Solver,dt,Transient )
 
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  
   TYPE(Model_t) :: Model    
@@ -2889,7 +2889,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   USE DefUtils
   USE CircuitUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model    !< All model information (mesh, materials, BCs, etc...)
@@ -3964,7 +3964,7 @@ CONTAINS
  SUBROUTINE ComputeHomogenizationParams(Current, AvBre, AvBim, Volume, ComplexPower, Omega, &
                                         SkinCond, ProxNu)
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: Current(2), AvBre(2), AvBim(2), Volume
     COMPLEX(KIND=dp) :: imag_value, imag_value2, Bav(2), I
     REAL(KIND=dp) :: SkinCond(2), ProxNu(2), ComplexPower(2)
@@ -4050,7 +4050,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: STIFF(:,:)
       INTEGER :: n,n1,n2
       TYPE(Element_t), TARGET :: Face, P1, P2

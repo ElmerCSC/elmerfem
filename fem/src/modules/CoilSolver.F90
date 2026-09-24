@@ -55,7 +55,7 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -171,7 +171,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   EXTERNAL :: DSYEV
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -2267,7 +2267,7 @@ FUNCTION CoilPotential( Model, n, t ) RESULT(f)
 
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: n
@@ -2315,7 +2315,7 @@ FUNCTION CoilPotentialNormalized( Model, n, t ) RESULT(f)
 
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: n

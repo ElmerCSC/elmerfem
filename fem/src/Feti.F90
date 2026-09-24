@@ -48,7 +48,7 @@ MODULE FetiSolve
   USE MeshBasics, ONLY : FindRigidBodyFixingNodes
   USE ParallelUtils, ONLY : ParallelActiveBarrier, ParallelFinalize
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(ValueList_t), PRIVATE, POINTER :: Params => Null()
 
@@ -385,7 +385,7 @@ CONTAINS
     ! ---------------------------------------------------------------
  SUBROUTINE FetiSendRecvLC(A,f,b)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t) :: A
     REAL(KIND=dp) :: f(:),b(:)
 !------------------------------------------------------------------------------
@@ -688,7 +688,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   FUNCTION FetiSendRecvIf(A,f,b,g,l_i) RESULT(nLC)
   ! ----------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t) :: A
     INTEGER :: nLC
     REAL(KIND=dp) :: f(:),b(:)

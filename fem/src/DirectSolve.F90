@@ -52,7 +52,7 @@ MODULE DirectSolve
    USE SParIterSolve
    USE ParallelUtils, ONLY : ParallelSumVector
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    ! How hard MumpsLocal_Factorize tries to grow ICNTL(14), the percentage of
    ! extra working space, when Mumps reports the analysis estimate was too
@@ -2515,7 +2515,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_SolveSystem( Solver, A, x, b, Free_Fact )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Matrix_t) :: A
      TYPE(Solver_t) :: Solver
@@ -2577,7 +2577,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ZMumpsLocal_SolveSystem( Solver, A, x, b, Free_Fact )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Matrix_t) :: A
      TYPE(Solver_t) :: Solver
@@ -2646,7 +2646,7 @@ CONTAINS
     USE mpi
 #  endif
 #endif
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -2862,7 +2862,7 @@ CONTAINS
     USE mpi
 #  endif
 #endif
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -3068,7 +3068,7 @@ CONTAINS
       USE mpi
 #  endif
 #endif
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Solver_t) :: Solver
       TYPE(Matrix_t) :: A
@@ -3169,7 +3169,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_Free(A)
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
 
         TYPE(Matrix_t) :: A
 
@@ -3431,7 +3431,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Pardiso_SolveSystem( Solver,A,x,b,Free_fact )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -3444,7 +3444,7 @@ CONTAINS
       SUBROUTINE pardiso(pt, maxfct, mnum, mtype, phase, n, &
                            values, rows, cols, perm, nrhs, iparm, msglvl, b, x, ierror)
         USE Types
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         REAL(KIND=dp) :: values(*), b(*), x(*)
         INTEGER(KIND=AddrInt) :: pt(*)
         INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
@@ -3453,7 +3453,7 @@ CONTAINS
 
       SUBROUTINE pardisoinit(pt, mtype, iparm)
         USE Types
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         INTEGER(KIND=AddrInt) :: pt(*)
         INTEGER :: mtype
         INTEGER :: iparm(*)
@@ -3855,7 +3855,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CPardiso_SolveSystem( Solver,A,x,b,Free_fact )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -3955,7 +3955,7 @@ CONTAINS
 
 #if defined(HAVE_MKL) && defined(HAVE_CPARDISO)
   SUBROUTINE CPardiso_Factorize(Solver, A)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
 
@@ -4234,7 +4234,7 @@ CONTAINS
 
 
   SUBROUTINE CPardiso_Free(A)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t) :: A
     INTERFACE

@@ -32,7 +32,7 @@
 SUBROUTINE AdjointSSA_GradientSolver_init0(Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -110,7 +110,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 !******************************************************************************
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

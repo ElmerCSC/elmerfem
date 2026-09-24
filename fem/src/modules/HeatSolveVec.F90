@@ -44,7 +44,7 @@
 MODULE HeatSolveVecFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -113,7 +113,7 @@ END MODULE HeatSolveVecFront
 !------------------------------------------------------------------------------
 SUBROUTINE HeatSolver_Init0( Model,Solver,dt,Transient )
   USE HeatSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -127,7 +127,7 @@ END SUBROUTINE HeatSolver_Init0
 !------------------------------------------------------------------------------
 SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   USE HeatSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -140,7 +140,7 @@ END SUBROUTINE HeatSolver_init
 !------------------------------------------------------------------------------
 SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   USE HeatSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt

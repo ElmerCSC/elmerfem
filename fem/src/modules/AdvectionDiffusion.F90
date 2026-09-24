@@ -43,7 +43,7 @@
    SUBROUTINE AdvectionDiffusionSolver_init( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options
      TYPE(Model_t), TARGET :: Model    !< All model information (mesh, materials, BCs, etc...)
@@ -76,7 +76,7 @@
 ! Need these for mass conservation check
      USE Integration
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
  
      TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options

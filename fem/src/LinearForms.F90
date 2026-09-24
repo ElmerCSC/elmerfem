@@ -46,7 +46,7 @@
 MODULE LinearForms
   USE Types, ONLY: dp, VECTOR_BLOCK_LENGTH, VECTOR_SMALL_THRESH
   USE Messages
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   PRIVATE
 
   INTERFACE LinearForms_ProjectToU
@@ -61,7 +61,7 @@ CONTAINS
 
   ! Compute bilinear form G=G+(alpha grad u, grad u) = grad u .dot. (alpha grad u) 
   SUBROUTINE LinearForms_GradUdotGradU(m, n, dim, GradU, weight, G, alpha)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: m, n, dim
     REAL(KIND=dp) CONTIG, INTENT(IN) :: GradU(:,:,:), weight(:)
@@ -141,7 +141,7 @@ CONTAINS
 
   ! Compute bilinear form G=G+(alpha grad u, u) = u .dot. (alpha grad u) 
   SUBROUTINE LinearForms_GradUdotU(m, n, dim, GradU, U, weight, G, alpha, beta)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: m, n, dim
     REAL(KIND=dp) CONTIG, INTENT(IN) :: GradU(:,:,:), U(:,:), weight(:)
@@ -264,7 +264,7 @@ CONTAINS
 
   ! Compute bilinear form G=G+(alpha u, v), where u and v can be different basis functions
   SUBROUTINE LinearForms_UdotV(m, n, dim, U, V, weight, G, alpha)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: m, n, dim
     REAL(KIND=dp) CONTIG, INTENT(IN) :: U(:,:), V(:,:), weight(:)
@@ -336,7 +336,7 @@ CONTAINS
 
   ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
   SUBROUTINE LinearForms_UdotU(m, n, dim, U, weight, G, alpha)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: m, n, dim
     REAL(KIND=dp) CONTIG, INTENT(IN) :: U(:,:), weight(:)
@@ -407,7 +407,7 @@ CONTAINS
   END SUBROUTINE LinearForms_UdotU
 
   SUBROUTINE LinearForms_ProjectToU_rank1(m, n, U, F, ProjectToU)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: m, n
     REAL(KIND=dp) CONTIG, INTENT(IN) :: U(:,:), F(:)
@@ -417,7 +417,7 @@ CONTAINS
   END SUBROUTINE LinearForms_ProjectToU_rank1
 
   SUBROUTINE LinearForms_ProjectToU_rankn(m, n, U, F, ProjectToU)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: m, n
     REAL(KIND=dp) CONTIG, INTENT(IN) :: U(:,:), F(:,:)
@@ -429,7 +429,7 @@ CONTAINS
 
   ! Compute linear form UdotF=UdotF+(u,f) 
   SUBROUTINE LinearForms_UdotF(m, n, U, weight, F, UdotF, alpha)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: m, n
     REAL(KIND=dp) CONTIG, INTENT(IN) :: U(:,:), F(:), weight(:)

@@ -46,7 +46,7 @@
  SUBROUTINE Find_Calving_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
       TYPE(Solver_t) :: Solver
       TYPE(Model_t) :: Model
@@ -69,7 +69,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
    USE ElementDescription
    USE DefUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    EXTERNAL :: DGEEV
 
    TYPE CrevasseGroups_t
@@ -1213,7 +1213,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
 
    SUBROUTINE CheckCIndexOverlap(SurfaceNode, BasalNode, OverlapCoord, OverlapOccurs)
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      REAL(KIND=dp) :: CSurfSurf, CSurfBasal, CBasalSurf, &
           CBasalBasal, XSurf, YSurf, XBasal, YBasal, dx, dy,dxdy, dCSurf, &
           dCBasal, xzerobasal, yzerobasal, xzerosurf, yzerosurf, &

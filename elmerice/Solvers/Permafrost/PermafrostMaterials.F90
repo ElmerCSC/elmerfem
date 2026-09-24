@@ -40,7 +40,7 @@ MODULE PermafrostMaterials
   USE Types
   USE DefUtils
   USE SolverUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !---------------------------------
   ! type for solvent (water and ice)
   !---------------------------------
@@ -100,7 +100,7 @@ CONTAINS
   !-------------------------------------------------
 
   SUBROUTINE ReadPermafrostSolventMaterial( Params, CurrentSolventMaterial)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Params
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     ! ----------- local
@@ -300,7 +300,7 @@ CONTAINS
   
   !---------------------------------------------------------------------------------------------
   SUBROUTINE ReadPermafrostSoluteMaterial( Params,Constants,CurrentSoluteMaterial )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Params, Constants
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     ! ----------- local
@@ -459,7 +459,7 @@ CONTAINS
 
   !---------------------------------------------------------------------------------------------
   FUNCTION ReadPermafrostRockMaterial( Params ) RESULT(NumberOfRockRecords)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NumberOfRockRecords
     !--------------
@@ -676,7 +676,7 @@ CONTAINS
   
   !---------------------------------------------------------------------------------------------  
   FUNCTION ReadPermafrostElementRockMaterial(MaterialFileName,Solver,DIM,SkipInit) RESULT(NumberOfRockRecords)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MaterialFileName
     TYPE(Solver_t) :: Solver
     INTEGER :: NumberOfRockRecords,DIM
@@ -962,7 +962,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   SUBROUTINE AssignSingleVar(Solver,Model,NodalVariable,VariableVar,VariablePerm,Variable,&
        VariableName,VariableDOFS,VariableExists,PrevNodalVariable, PrevVariable)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Solver_t) :: Solver
     TYPE(Model_t) :: Model
@@ -1022,7 +1022,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   SUBROUTINE AssignSingleVarTimeDer(Solver,Model,Element,NodalVariableTimeDer,&
        VariableVar,VariableTimeDerExists,dt)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Solver_t) :: Solver
     TYPE(Model_t) :: Model
@@ -1089,7 +1089,7 @@ CONTAINS
 
   ! compute element-wise single nodal variable
   SUBROUTINE ReadSingleVar(N,Element,VariablePerm,NodalVariable,Variable,VariableDOFs)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: N,VariableDOFs
     INTEGER, POINTER :: VariablePerm(:)
@@ -1119,7 +1119,7 @@ CONTAINS
   ! general functions 
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION GeneralPolynomial(Variable,ReferenceValue,Normation,coeff,pdeg)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !-------
     REAL(KIND=dp), INTENT(IN) :: Variable,ReferenceValue,Normation,coeff(0:5)
     INTEGER, INTENT(IN) :: pdeg
@@ -1138,7 +1138,7 @@ CONTAINS
   END FUNCTION GeneralPolynomial
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION GeneralIntegral(Variable,ReferenceValue,Normation,coeff0,coeff,pdeg)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !-------
     REAL(KIND=dp), INTENT(IN) :: Variable,ReferenceValue,Normation,coeff0,coeff(0:5)
     INTEGER, INTENT(IN) :: pdeg
@@ -1250,7 +1250,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION delta(CurrentSolventMaterial,&
        eps,DeltaT,T0,GasConstant)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: eps,DeltaT,T0,GasConstant
     REAL(KIND=dp) :: aux,Mw,hi0,cw0,ci0
@@ -1271,7 +1271,7 @@ CONTAINS
   END FUNCTION delta
   !---------------------------------------------------------------------------------------------
   FUNCTION GetAcAlphatilde(CurrentSolventMaterial,ComputeIce) RESULT(acAlphatilde)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     LOGICAL, INTENT(IN) :: ComputeIce
     !---------------------------------
@@ -1299,7 +1299,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION gwa(CurrentSolventMaterial,&
        p0,T0,rhow,Temperature,Pressure)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: p0,T0,rhow,Temperature,Pressure
     REAL(KIND=dp) :: cw0,kw0,bcw(0:5)
@@ -1331,7 +1331,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION gia(CurrentSolventMaterial,&
        p0,T0,rhoi,Temperature,Pressure)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: p0,T0,rhoi,Temperature,Pressure
     !---------------------------------
@@ -1353,7 +1353,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION gwaT(CurrentSolventMaterial,&
        p0,T0,rhow,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: p0,T0,rhow,Temperature
     !----------------------------
@@ -1392,7 +1392,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION giaT(CurrentSolventMaterial,&
        p0,T0,rhoi,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: p0,T0,rhoi,Temperature
     INTEGER :: I
@@ -1423,7 +1423,7 @@ CONTAINS
   END FUNCTION giaT
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION deltaG(gwa,gia)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: gwa,gia
     deltaG = gwa - gia
   END FUNCTION deltaG
@@ -1470,7 +1470,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   FUNCTION GetB(RockMaterialID,CurrentSolventMaterial,&
        Xi0tilde,delta,deltaG,GasConstant,bi,Temperature) RESULT(B)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: Xi0tilde,delta,deltaG,GasConstant,bi(4),Temperature
     INTEGER, INTENT(IN) :: RockMaterialID
@@ -1488,7 +1488,7 @@ CONTAINS
   END FUNCTION GetB
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION D(RockMaterialID,delta,bi)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: delta,bi(4)
     ! local
@@ -1524,7 +1524,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION fw(RockMaterialID,CurrentSolventMaterial,&
        Xi0tilde,rhow,Xi,GasConstant,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi0tilde,rhow,Xi,GasConstant,Temperature
@@ -1549,7 +1549,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION XiT(CurrentSolventMaterial,&
        B,D,Xi,bi,p0,delta,deltaG,T0,gwa,gia,gwaT,giaT,GasConstant,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: B,D,Xi,bi(4),p0,delta,deltaG,&
          T0,gwa,gia,gwaT,giaT,GasConstant,Temperature
@@ -1577,7 +1577,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION XiP(CurrentSolventMaterial,&
        B,D,bi,Xi,gwap,giap,delta,GasConstant,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: B,D,bi(4),Xi,gwap,giap,delta,GasConstant,Temperature
     !local
@@ -1598,7 +1598,7 @@ CONTAINS
   END FUNCTION XiP
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION XiYc(B,D,bi,biYc,Xi,delta)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: B,D,bi(4),biYc(2),Xi,delta
     !local
@@ -1619,7 +1619,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION XiEta(RockMaterialID,&
        B,D,bi,biYc,Xi,delta,Porosity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: RockMaterialID    
     REAL(KIND=dp), INTENT(IN) :: B,D,bi(4),biYc(2),Xi,delta,Porosity
     !local
@@ -1650,7 +1650,7 @@ CONTAINS
        XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
        ComputeXi,ComputeXiT, ComputeXiYc, ComputeXiP, ComputeXiEta)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
@@ -1733,7 +1733,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhos(RockMaterialID,&
        T0,p0,Temperature,Pressure,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: T0,p0,Temperature,Pressure
     LOGICAL :: ConstVal
@@ -1757,7 +1757,7 @@ CONTAINS
   END FUNCTION rhos
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhosT(RockMaterialID,rhos,T0,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhos,T0,Temperature
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: alphaS
@@ -1770,7 +1770,7 @@ CONTAINS
   END FUNCTION rhosT
 !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhosp(RockMaterialID,rhos,p0,Pressure)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: rhos,p0,Pressure
     !--------------------
@@ -1781,7 +1781,7 @@ CONTAINS
   END FUNCTION rhosp
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhow(CurrentSolventMaterial,T0,p0,Temperature,Pressure,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,p0,Temperature,Pressure
     LOGICAL :: ConstVal
@@ -1813,7 +1813,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhowupdate(CurrentSolventMaterial,&
        previousrhow,Xi,Salinity,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: previousrhow,Xi,Salinity
     LOGICAL :: ConstVal
@@ -1844,7 +1844,7 @@ CONTAINS
   END FUNCTION rhowupdate
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhowT(CurrentSolventMaterial,rhow,T0,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: rhow,T0,Temperature
     !--------------------
@@ -1858,7 +1858,7 @@ CONTAINS
   END FUNCTION rhowT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhowP(CurrentSolventMaterial,rhow,p0,Pressure)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: rhow,p0,Pressure
     !--------------------
@@ -1874,7 +1874,7 @@ CONTAINS
   END FUNCTION rhowP
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhowYc(CurrentSolventMaterial,rhow,Xi,Salinity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: rhow,Xi,Salinity
     !--------------------
@@ -1889,7 +1889,7 @@ CONTAINS
   END FUNCTION rhowYc
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhoi(CurrentSolventMaterial,T0,p0,Temperature,Pressure,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,p0,Temperature,Pressure
     LOGICAL :: ConstVal
@@ -1913,7 +1913,7 @@ CONTAINS
   END FUNCTION rhoi
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhoiT(CurrentSolventMaterial,rhoi,T0,Temperature)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: rhoi,T0,Temperature
     !------------------------
@@ -1927,7 +1927,7 @@ CONTAINS
   END FUNCTION rhoiT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhoiP(CurrentSolventMaterial,rhoi,p0,Pressure)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: rhoi,p0,Pressure
     !------------------------
@@ -1943,7 +1943,7 @@ CONTAINS
   END FUNCTION rhoiP
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhoc(CurrentSoluteMaterial,T0,p0,Xi,Temperature,Pressure,Salinity,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,p0,Xi,Temperature,Pressure,Salinity
     LOGICAL :: ConstVal
@@ -1970,7 +1970,7 @@ CONTAINS
   END FUNCTION rhoc
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhocT(CurrentSoluteMaterial,rhoc,T0,Temperature,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: rhoc,T0,Temperature
     LOGICAL :: ConstVal
@@ -1989,7 +1989,7 @@ CONTAINS
   END FUNCTION rhocT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhocP(CurrentSoluteMaterial,rhoc,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: rhoc
     LOGICAL :: ConstVal
@@ -2002,7 +2002,7 @@ CONTAINS
   END FUNCTION rhocP
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION rhocYc(CurrentSoluteMaterial,rhoc,Xi,Salinity,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: rhoc, Xi, Salinity
     LOGICAL :: ConstVal
@@ -2022,7 +2022,7 @@ CONTAINS
   END FUNCTION rhocYc
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogw(rhow,rhoc,Xi,Salinity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhow,rhoc,Xi,Salinity
     !------------
     REAL(KIND=dp) :: xc
@@ -2032,7 +2032,7 @@ CONTAINS
   END FUNCTION rhogw
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogw_driesner(rhow,dummyrhoc,Xi,Salinity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhow,dummyrhoc,Xi,Salinity
     !------------
     REAL(KIND=dp) :: xc   
@@ -2042,7 +2042,7 @@ CONTAINS
   END FUNCTION rhogw_driesner
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogwP(rhowp,rhocp,Xi,Salinity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhowp,rhocp,Xi,Salinity
     !------------
     REAL(KIND=dp) :: xc   
@@ -2052,7 +2052,7 @@ CONTAINS
   END FUNCTION rhogwP
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogwT(rhowT,rhocT,Xi,Salinity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhowT,rhocT,Xi,Salinity
     !------------
     REAL(KIND=dp) :: xc   
@@ -2062,7 +2062,7 @@ CONTAINS
   END FUNCTION rhogwT
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogwYc(rhow, rhoc, rhowYc,rhocYc,Xi,Salinity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhow, rhoc, rhowYc,rhocYc,Xi,Salinity
     !------------
     REAL(KIND=dp) :: xc   
@@ -2072,7 +2072,7 @@ CONTAINS
   END FUNCTION rhogwYc
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION cs(RockMaterialID,T0,Temperature,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: T0,Temperature
     LOGICAL :: ConstVal
@@ -2089,7 +2089,7 @@ CONTAINS
   END FUNCTION cs
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION cw(CurrentSolventMaterial,T0,Xi,Temperature,Salinity,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,Xi,Temperature,Salinity
     LOGICAL :: ConstVal
@@ -2111,7 +2111,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION ci(CurrentSolventMaterial,&
        T0,Temperature,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,Temperature
     REAL(KIND=dp) :: ci0
@@ -2131,7 +2131,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION cc(CurrentSoluteMaterial,&
        T0,Temperature,Salinity,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,Temperature,Salinity
     LOGICAL :: ConstVal
@@ -2153,7 +2153,7 @@ CONTAINS
   ! latent heat of water  
   REAL (KIND=dp) FUNCTION hw(CurrentSolventMaterial,&
        T0,Xi,Temperature,Salinity,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,Xi,Temperature,Salinity
     LOGICAL :: ConstVal
@@ -2177,7 +2177,7 @@ CONTAINS
   ! latent heat of ice  
   REAL (KIND=dp) FUNCTION hi(CurrentSolventMaterial,&
        T0,Temperature,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: T0,Temperature
     LOGICAL :: ConstVal
@@ -2204,7 +2204,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   ! General constituent thermal conductivity: kalpha0th and balpha have to be directly transferred
   FUNCTION GetKAlphaTh(kalpha0th,balpha,T0,Temperature)RESULT(kalphath)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: kalpha0th,balpha,T0,Temperature
     REAL(KIND=dp) :: kalphath
     !-------------------------
@@ -2214,7 +2214,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTT(Xi,XiT,rhos,rhow,rhoi,rhoc,cw,ci,cs,cc,hi,hw,&
        Porosity,Salinity)RESULT(CGTT)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Xi,XiT,rhos,rhow,rhoi,rhoc,cw,ci,cs,cc,&
          hi,hw,Porosity,Salinity
     REAL(KIND=dp) :: CGTT
@@ -2230,7 +2230,7 @@ CONTAINS
   END FUNCTION GetCGTT
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTp(rhoi,hi,hw,XiP,Porosity)RESULT(CGTp)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhoi,hi,hw,XiP,Porosity
     REAL(KIND=dp) :: CGTp
     !-------------------------
@@ -2238,7 +2238,7 @@ CONTAINS
   END FUNCTION GetCGTp
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCGTyc(rhoi,hi,hw,XiYc,Porosity)RESULT(CGTyc)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhoi,hi,hw,XiYc,Porosity
     REAL(KIND=dp) :: CGTyc
     !-------------------------
@@ -2248,7 +2248,7 @@ CONTAINS
   ! functions specific to groundwater flow
   !---------------------------------------------------------------------------------------------
   FUNCTION GetJgwD(Kgwpp,KgwpT,Kgw,gradp,gradT,Gravity,rhogw,DIM,CryogenicSuction) RESULT(JgwD)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL (KIND=dp), INTENT(IN) :: Kgwpp(3,3),KgwpT(3,3),Kgw(3,3),gradp(3),gradT(3),Gravity(3),&
          rhogw
     REAL (KIND=dp)  :: JgwD(3)
@@ -2271,7 +2271,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   FUNCTION GetKGTT(ksth,kwth,kith,kcth,Xi,&
        Salinity,Porosity,meanfactor)RESULT(KGTT) ! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: ksth,kwth,kith,kcth,Xi,&
          Salinity,Porosity,meanfactor
     REAL(KIND=dp) :: KGTT(3,3)
@@ -2288,7 +2288,7 @@ CONTAINS
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
   FUNCTION  GetDtd(RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity,JgwD(3)
     REAL(KIND=dp) :: Dtd(3,3)
     INTEGER, INTENT(IN) :: RockMaterialID
@@ -2312,7 +2312,7 @@ CONTAINS
   END FUNCTION GetDtd
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCgwTT(rhow,rhoc,cw,cc,Xi,Salinity)RESULT(CgwTT)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhow,rhoc,cw,cc,Xi,Salinity
     REAL(KIND=dp) :: CgwTT
     !-------------------------
@@ -2325,7 +2325,7 @@ CONTAINS
   FUNCTION GetCgwpp(rhogw,rhoi,rhos,rhogwp,rhoip,rhosp,&
        kappaG,Xi,Xip,&
        RockMaterialID,Porosity)RESULT(Cgwpp)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhos,rhogwp,rhoip,rhosp,kappaG,Xi,Xip,Porosity
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: Cgwpp
@@ -2335,7 +2335,7 @@ CONTAINS
   END FUNCTION GetCgwpp
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCgwpT(rhogw,rhoi,rhos,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity)RESULT(CgwpT)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhos,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity
     REAL(KIND=dp) :: CgwpT
     !-------------------------
@@ -2344,7 +2344,7 @@ CONTAINS
   END FUNCTION GetCgwpT
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCgwpYc(rhogw,rhoi,rhogwYc,Xi,XiYc,Porosity)RESULT(CgwpYc)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhogwYc,Xi,XiYc,Porosity
     REAL(KIND=dp) :: CgwpYc
     !-------------------------
@@ -2352,7 +2352,7 @@ CONTAINS
   END FUNCTION GetCgwpYc
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCgwpI1(rhogw,rhoi,Xi,kappaG,RockMaterialID)RESULT(CgwpI1)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,Xi,kappaG
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: CgwpI1
@@ -2365,7 +2365,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
        Xi,T0,Salinity,Temperature,ConstVal)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     REAL(KIND=dp), INTENT(IN) :: Xi,T0,Salinity,Temperature
@@ -2403,7 +2403,7 @@ CONTAINS
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
   FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi)RESULT(KGpe)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: Xi
@@ -2430,7 +2430,7 @@ CONTAINS
   END FUNCTION GetKGpe
   !---------------------------------------------------------------------------------------------
   FUNCTION GetXikG0hy(RockMaterialID,Xi)RESULT(XikG0hy)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: Xi
@@ -2445,7 +2445,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw) RESULT(Kgw)
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi,MinKgw,mugw
@@ -2480,7 +2480,7 @@ CONTAINS
   END FUNCTION GetKgw
   !---------------------------------------------------------------------------------------------
   FUNCTION GetKgwpT(fw,XiT,Kgw)RESULT(KgwpT) ! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: fw,XiT,Kgw(3,3)
     REAL(KIND=dp) :: KgwpT(3,3)
     !-------------------------
@@ -2488,7 +2488,7 @@ CONTAINS
   END FUNCTION GetKgwpT
   !---------------------------------------------------------------------------------------------
   FUNCTION GetKgwpp(fw,XiP,Kgw)RESULT(Kgwpp)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: fw,XiP,Kgw(3,3)
     REAL(KIND=dp) :: Kgwpp(3,3)
     !-------------------------
@@ -2498,7 +2498,7 @@ CONTAINS
   ! functions specific to solute transport
   !---------------------------------------------------------------------------------------------
   FUNCTION GetKc(RockMaterialID,Dm,Xi,JgwD,Porosity)RESULT(Kc) 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Dm,Xi,JgwD(3),Porosity
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: alphaL,alphaT,Kc(3,3), unittensor(3,3), aux, eL(3),absJgwD
@@ -2526,7 +2526,7 @@ CONTAINS
   END FUNCTION GetKc
   !---------------------------------------------------------------------------------------------
   FUNCTION GetConstKc(DispersionCoefficient)RESULT(Kc)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: DispersionCoefficient
     REAL(KIND=dp) :: Kc(3,3)   
     !-------------------------
@@ -2565,7 +2565,7 @@ CONTAINS
   END FUNCTION GetR
   !---------------------------------------------------------------------------------------------
   FUNCTION  GetKcYcYc(Kc,r12) RESULT(KcYcYc)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Kc(3,3),r12(2)
     REAL(KIND=dp) :: KcYcYc(3,3)
     !-------------------------
@@ -2573,7 +2573,7 @@ CONTAINS
   END FUNCTION GetKcYcYc
   !---------------------------------------------------------------------------------------------
   FUNCTION GetFc(rhoc,rhow,Gravity,r12,XiT,XiP,Xi,gradP,gradT) RESULT(fc)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhoc,rhow,Gravity(3),r12(2),XiT,XiP,Xi,gradP(3),gradT(3)
     REAL(KIND=dp) :: fc(3)
     !-------------------------
@@ -2581,7 +2581,7 @@ CONTAINS
   END FUNCTION GetFc
   !---------------------------------------------------------------------------------------------
   FUNCTION GetJcF(KcYcYc,Kc,fc,GradSalinity,Salinity) RESULT(JcF)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: KcYcYc(3,3),Kc(3,3),fc(3), GradSalinity(3),Salinity
     REAL(KIND=dp) :: JcF(3)
     !-----------
@@ -2596,27 +2596,27 @@ CONTAINS
   END FUNCTION GetJcF
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION CcYcT(rhocT,Porosity,Salinity)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhocT,Porosity, Salinity
     CcYcT = Porosity*Salinity*rhocT
   END FUNCTION CcYcT
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION CcYcP(rhocP,Porosity, Salinity)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhocP,Porosity, Salinity
     !-------------------------
     CcYcP = Porosity*Salinity*rhocp
   END FUNCTION CcYcP
   !---------------------------------------------------------------------------------------------
   REAL(KIND=dp) FUNCTION CcYcYc(rhoc,rhocYc,Porosity, Salinity)! All state variables or derived values
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhoc,rhocYc,Porosity, Salinity
     !-------------------------
     CcYcYc = Porosity*(rhoc + Salinity*rhocYc)
   END FUNCTION CcYcYc
   !---------------------------------------------------------------------------------------------
   REAL(Kind=dp) FUNCTION RadiogenicHeatProduction(RockMaterialID,Depth,RefDepth)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Depth,RefDepth
       INTEGER, INTENT(IN) :: RockMaterialID
     !---------
@@ -2627,7 +2627,7 @@ CONTAINS
   ! functions specific to ground deformation
   !---------------------------------------------------------------------------------------------
   REAL(Kind=dp) FUNCTION EG(CurrentSolventMaterial,RockMaterialID,Xi,Porosity)    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
      TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
@@ -2638,7 +2638,7 @@ CONTAINS
   END FUNCTION EG
   !---------------------------------------------------------------------------------------------
   REAL(Kind=dp) FUNCTION nuG(CurrentSolventMaterial,RockMaterialID,Xi,Porosity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
@@ -2648,7 +2648,7 @@ CONTAINS
   END FUNCTION nuG
   !---------------------------------------------------------------------------------------------
   REAL(Kind=dp) FUNCTION betaG(CurrentSolventMaterial,RockMaterialID,Xi,Porosity)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
      TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
@@ -2658,7 +2658,7 @@ CONTAINS
   END FUNCTION BetaG
   !---------------------------------------------------------------------------------------------
   REAL(Kind=dp) FUNCTION rhoG(rhos,rhogw,rhoi,Porosity,Salinity,Xi)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: rhos,rhogw,rhoi,Porosity,Salinity,Xi
     !---------
     rhoG = (1.0_dp - Porosity)*rhos + Porosity*Xi*(1.0_dp - Salinity)*rhogw &
@@ -2684,7 +2684,7 @@ CONTAINS
   END FUNCTION KGuu
   !---------------------------------------------------------------------------------------------
   REAL(Kind=dp) FUNCTION kappaG(EG,nuG) ! needed directly in Darcy Model
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: EG,nuG
     !---------
     kappaG = (3.0_dp*(1.0_dp - 2.0_dp * nuG))/EG
@@ -2722,7 +2722,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetPermafrostIntegrationRule( SolverParams )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: SolverParams
 
     CALL ListAddNewString( SolverParams, 'Element Integration Points', &
@@ -2751,7 +2751,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CheckIPVarSize( Var, ElementID, nIP, Caller )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Variable_t), POINTER :: Var          !< the integration point variable
     INTEGER, INTENT(IN) :: ElementID          !< index the slice is keyed by
     INTEGER, INTENT(IN) :: nIP                !< points this element integrates over

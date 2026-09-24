@@ -92,7 +92,7 @@
          GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
 
 #ifdef HAVE_MKL
@@ -1413,7 +1413,7 @@
      !> upon success return its index. 
      !------------------------------------------------------------------------
      FUNCTION FindSolverByProcName(Model,ProcName) RESULT (solver_id)
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        TYPE(Model_t), POINTER :: Model
        CHARACTER(*) :: ProcName
@@ -2707,7 +2707,7 @@
        CoupledMaxIter, OutputIntervals, Transient, Scanning)
 !------------------------------------------------------------------------------     
      USE Integration, ONLY : GaussPointsInitialized, GaussPointsInit
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      INTEGER :: TimeIntervals,CoupledMinIter, CoupledMaxIter,OutputIntervals(:)
      LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------

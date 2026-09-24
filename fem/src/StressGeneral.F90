@@ -47,7 +47,7 @@ MODULE StressGeneral
   USE Integration
   USE ElementDescription, ONLY : ElementInfo, NormalVector
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !------------------------------------------------------------------------------
   CONTAINS

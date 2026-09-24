@@ -46,7 +46,7 @@ MODULE BoundaryConditionUtils
     USE SolverBasics
     USE MatrixScaling, ONLY : ScaleLinearSystem
     USE MatrixAssembly, ONLY : GetMatrixElement
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -3139,7 +3139,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetDirichletPoint( A, b,DOF, NDOFs, Perm, NodeIndex, NodeValue) 
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t), TARGET :: A
     REAL(KIND=dp) :: b(:)
     REAL(KIND=dp) :: NodeValue
@@ -3268,7 +3268,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
   SUBROUTINE EnforceDirichletConditions( Solver, A, b, OffDiagonal ) 
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t), TARGET :: A
     REAL(KIND=dp) :: b(:)

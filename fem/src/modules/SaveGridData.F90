@@ -44,7 +44,7 @@ SUBROUTINE ParticleOutputSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE ParticleUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -74,7 +74,7 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
   USE ParticleUtils
   USE Types
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model    !< All model information (mesh, materials, BCs, etc...)
@@ -659,7 +659,7 @@ END SUBROUTINE SaveGridData
     USE Types
     USE ParticleUtils    
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Particle_t), POINTER :: Particles  
     INTEGER :: GridExtent(6)
     REAL(KIND=dp) :: GridOrigin(3), GridDx(3)

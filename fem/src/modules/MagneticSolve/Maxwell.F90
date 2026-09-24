@@ -46,7 +46,7 @@ MODULE Maxwell
   USE Integration
   USE ElementDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -311,7 +311,7 @@ CONTAINS
 !
 !------------------------------------------------------------------------------
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LoadVector(:,:), &
                              NodalAlpha(:),NodalBeta(:)

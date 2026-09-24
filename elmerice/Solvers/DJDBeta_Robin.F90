@@ -46,7 +46,7 @@ SUBROUTINE DJDBeta_Robin( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -235,7 +235,7 @@ SUBROUTINE DJDBeta_Robin( Model,Solver,dt,TransientSimulation )
    CONTAINS
 
            function calcNorm(v) result(v2)
-             implicit none
+             IMPLICIT NONE IMPLICIT_EXTERNAL
              real(kind=dp) :: v(3),v2
 
              v2=v(1)*v(1)+v(2)*v(2)+v(3)*v(3)

@@ -38,7 +38,7 @@
 SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -265,7 +265,7 @@ END SUBROUTINE WhitneyAVSolver_Init0
 SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -335,7 +335,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   USE MagnetoDynamicsUtils
   USE CircuitUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   EXTERNAL :: JFIXPOTENTIALSOLVER
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
@@ -784,7 +784,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   LOGICAL FUNCTION DoSolve(IterNo) RESULT(Converged)
 !------------------------------------------------------------------------------
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    EXTERNAL :: JFIXPOTENTIALSOLVER
    CHARACTER(LEN=MAX_NAME_LEN) :: potname
    INTEGER :: i,j,k,t,n,nd,nb,IterNo
@@ -1421,7 +1421,7 @@ END BLOCK
 !------------------------------------------------------------------------------
  SUBROUTINE ConstrainUnused(A)
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Matrix_t) :: A
 !------------------------------------------------------------------------------
   INTEGER :: i,j,n
@@ -1458,7 +1458,7 @@ END BLOCK
 !------------------------------------------------------------------------------
  SUBROUTINE CalculateLumpedSurface()
 !------------------------------------------------------------------------------
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: zzforce
    INTEGER :: i,n,nd,EdgeBasisDegree
@@ -1899,7 +1899,7 @@ END BLOCK
 !------------------------------------------------------------------------------
   SUBROUTINE AxialForceSurf(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
@@ -1959,7 +1959,7 @@ END BLOCK
 !------------------------------------------------------------------------------
 SUBROUTINE LocalConstraintMatrix( Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Element_t), POINTER :: Element
   INTEGER :: n, nd
@@ -2072,7 +2072,7 @@ END SUBROUTINE LocalConstraintMatrix
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
             Element, n, nd, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2 )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
@@ -2575,7 +2575,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE ConstraintMatrix( MASS, DAMP, STIFF, FORCE, &
          Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd
@@ -2633,7 +2633,7 @@ END SUBROUTINE LocalConstraintMatrix
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalFixMatrix( FORCE, Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2692,7 +2692,7 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  MASS, STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: LOAD(:,:), Bcoef(:)
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     INTEGER :: n, nd
@@ -2794,7 +2794,7 @@ END SUBROUTINE LocalConstraintMatrix
 !-----------------------------------------------------------------------------
   FUNCTION LocalFluxBC( LOAD, Element, n, nd ) RESULT(Bn)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: LOAD(:,:), Bn
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Edge, Parent
@@ -2829,7 +2829,7 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: LOAD(:,:), GapLength(:), AirGapMu(:)
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
@@ -2887,7 +2887,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE LocalMatrixThinLine( MASS,STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, &
       n, nd, SecondOrder)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: LOAD(:,:), CrossectArea(:), Conductivity(:)
     REAL(KIND=dp) :: MASS(:,:),STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
@@ -2981,7 +2981,7 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
     USE ElementDescription, ONLY: GetEdgeMap
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: s,p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp
     TYPE(Matrix_t), POINTER :: Smat
@@ -3308,7 +3308,7 @@ END SUBROUTINE LocalConstraintMatrix
   RECURSIVE FUNCTION FloodFill(Element,CycleEdges, &
           FaceMap,UsedFaces,Bn,CycleSum, level) RESULT(Found)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: e, Element
     REAL(KIND=dp) :: CycleSum, Bn(:)
     INTEGER :: i,j,n, FaceMap(:), level
@@ -3346,7 +3346,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE AddLocalBNorm( Element, n, nd, PiolaVersion, SecondOrder, &
       BInteg, vinteg, BMin, BMax )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, SecondOrder
@@ -3424,7 +3424,7 @@ END SUBROUTINE LocalConstraintMatrix
 SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -3466,7 +3466,7 @@ END SUBROUTINE HelmholtzProjectorT_Init0
 SUBROUTINE HelmholtzProjectorT_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -3516,7 +3516,7 @@ END SUBROUTINE HelmholtzProjectorT_Init
 SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -3730,7 +3730,7 @@ END SUBROUTINE HelmholtzProjectorT
 SUBROUTINE RemoveKernelComponentT_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -3818,7 +3818,7 @@ END SUBROUTINE RemoveKernelComponentT_Init0
 SUBROUTINE RemoveKernelComponentT(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver

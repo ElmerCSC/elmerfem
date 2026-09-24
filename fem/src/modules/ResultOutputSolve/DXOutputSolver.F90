@@ -28,7 +28,7 @@
       USE MeshBasics
       USE ElementDescription
       
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       !    PRIVATE
       SAVE
       
@@ -594,7 +594,7 @@
         USE DefUtils 
         USE DXFile
         
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(Solver_t) :: Solver
         TYPE(Model_t) :: Model
         REAL(dp) :: dt

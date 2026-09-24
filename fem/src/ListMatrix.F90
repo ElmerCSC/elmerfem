@@ -30,7 +30,7 @@ MODULE ListMatrix
     USE CRSMatrix
     USE GeneralUtils
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, PARAMETER :: LISTMATRIX_GROWTH = 1000
 
@@ -452,7 +452,7 @@ CONTAINS
    ! Add an array of sorted indeces to a row in ListMatrix_t. "ind" may
    ! contain duplicate entries.
 !-------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER, INTENT(IN) :: k1, nk2
@@ -551,7 +551,7 @@ CONTAINS
    ! Add an array of sorted indeces to a row in ListMatrix_t. "ind" may
    ! contain duplicate entries.
 !-------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(ListMatrix_t), INTENT(INOUT), POINTER :: List(:)
      INTEGER, INTENT(IN) :: k1, nk2
@@ -688,7 +688,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
    FUNCTION List_GetMatrixEntry(ind, next) RESULT(ListEntry)
 !-------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      INTEGER, INTENT(IN) :: ind
      TYPE(ListMatrixEntry_t), POINTER, INTENT(IN) :: next

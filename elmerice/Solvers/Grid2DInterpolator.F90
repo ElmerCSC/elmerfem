@@ -54,7 +54,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
 
    USE DefUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    EXTERNAL :: INTERPOLATEDEM
    TYPE(Solver_t), TARGET :: Solver
    TYPE(Model_t) :: Model
@@ -308,7 +308,7 @@ END SUBROUTINE Grid2DInterpolator
 !!------------------------------------------------------------------------------!!
 SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin, zbed, noDataVal, noDataTol)
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   REAL(KIND=dp),INTENT(IN) :: noDataVal, noDataTol
   INTEGER :: imin, Npt, t
   INTEGER :: NMAX, i, j, Nb, Nbx, Nby, ib, ix, iy
@@ -423,7 +423,7 @@ CONTAINS
 
   LOGICAL FUNCTION isNoData(val)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp),INTENT(IN) :: val
 
     IF ((val .GT. noDataVal-noDataTol) .AND. (val .LT. noDataVal+noDataTol)) THEN

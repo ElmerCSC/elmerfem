@@ -46,7 +46,7 @@
 ! *****************************************************************************     
       SUBROUTINE Scalar_OUTPUT( Model,Solver,dt,TransientSimulation )
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Model_t) :: Model
       TYPE(Solver_t):: Solver
@@ -210,7 +210,7 @@
 
       SUBROUTINE INIT_OUTPUT_FILE(OUTPUT_FName)
         USE GeneralUtils
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         CHARACTER(LEN=MAX_NAME_LEN),INTENT(OUT) :: OUTPUT_FName
 
         CHARACTER(LEN=MAX_NAME_LEN) ::NamesFile,&
@@ -278,7 +278,7 @@
       END SUBROUTINE GET_VARIABLES
 
       SUBROUTINE COMPUTE_NodeArea(NodeArea)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp),INTENT(OUT) :: NodeArea(:)
 
       TYPE(Element_t), POINTER :: Element
@@ -322,7 +322,7 @@
 
       SUBROUTINE BODY_INTEGRATION(Volume,TotalArea,AblaARea,AccuArea,TotalSMB, &
                AblaSMB,AccuSMB,Hfront,Xfront,Yfront,Dist,ZsLoadsFlux,Vchange)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp),INTENT(OUT) :: Volume,TotalArea,&
                        AblaArea,AccuArea,TotalSMB,AblaSMB,AccuSMB,&
                        Hfront,Xfront,Yfront,Dist,ZsLoadsFlux,Vchange

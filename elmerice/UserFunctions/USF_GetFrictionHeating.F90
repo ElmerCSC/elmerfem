@@ -52,7 +52,7 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
@@ -153,7 +153,7 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
   
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model

@@ -48,7 +48,7 @@ MODULE PorousMaterials
   USE Types
   USE DefUtils
   USE SolverBasics
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER, PARAMETER :: POROSITY_DEFAULT=0, &
       POROSITY_VAN_GENUCHTEN = 1, &
@@ -246,7 +246,7 @@ END MODULE PorousMaterials
     USE DefUtils
     USE Types
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -286,7 +286,7 @@ END MODULE PorousMaterials
     USE PorousMaterials
     USE Types
    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -794,7 +794,7 @@ SUBROUTINE RichardsPostprocess( Model,Solver,dt,Transient )
   USE DefUtils
   USE PorousMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver

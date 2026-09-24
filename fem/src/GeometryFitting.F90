@@ -51,7 +51,7 @@ MODULE GeometryFitting
   USE Lists
   USE ParallelUtils , ONLY : ParallelReduction
   USE SParIterComm
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

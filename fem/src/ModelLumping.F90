@@ -48,7 +48,7 @@ MODULE ModelLumping
   USE DefUtils
   USE LinearAlgebra
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   PRIVATE
   PUBLIC :: ModelLumping_t, ModelLumpingInit, ModelLumpingLoads, &
