@@ -569,6 +569,7 @@ CONTAINS
 
          ! extract vectors:
          ! ----------------
+         CALL Info(Caller,'Copying Eigenvectors to solution',Level=12)
          k = 1
          DO i=1,NEIG
            p = Perm(i)
@@ -583,8 +584,6 @@ CONTAINS
                  k = k + 2
               END IF
            END DO
-
-           CALL Info(Caller,'Copying Eigenvectors to solution',Level=12)
 
            DO j=1,N
               IF ( D(p,2) /= 0.0d0 ) THEN
@@ -788,7 +787,8 @@ CONTAINS
         CALL CRS_MatrixVectorMultiply( Matrix, x, y )
         Matrix % Values = Matrix % Values + REAL(Eigs(i)) * Matrix % MassValues
 
-        WRITE( Message, * ) 'L^2 Norm of the residual: ', i, SQRT(SUM(y**2))
+        WRITE( Message, * ) 'L^2 Norm of the relative residual: ', i, &
+            SQRT(SUM(y**2)) / SQRT(SUM(x**2))
         CALL Info( 'CheckResiduals', Message, Level = 3 )
       END DO
       DEALLOCATE( x,y )
@@ -1551,19 +1551,18 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
 
-         EigVectors = -1.0_dp
+         EigVectors = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
 
          k = 1
          DO i=1,NEIG
             p = Perm(i)
-            WRITE( Message, * ) i,EigValues(i)
+            WRITE( Message,'(I0,A,2ES15.6)') i,': ',EigValues(i)
             CALL Info( Caller, Message, Level=4 )
 
             DO j=1,N
               EigVectors(i,j) = V(j,p)
             END DO
          END DO
-
 
          IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenScaling = .TRUE. )
          
@@ -1598,37 +1597,36 @@ END SUBROUTINE CheckResiduals
     SUBROUTINE CheckResidualsComplex( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: Matrix
-      INTEGER :: i,j,k,n,sz
+      INTEGER :: n
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
 
-      REAL(KIND=dp), ALLOCATABLE, TARGET :: vals(:)
       REAL(KIND=dp), POINTER CONTIG :: svals(:)
-      COMPLEX(KIND=dp) :: c,m
-      COMPLEX(KIND=dp), ALLOCATABLE :: x(:), y(:)
-
+      COMPLEX(KIND=dp), ALLOCATABLE :: x(:), y(:), r(:)
+      INTEGER :: i, sz
+      
       sz = Matrix % NumberOfRows/2
-      ALLOCATE( x(sz), y(sz), vals(size(matrix % values)) ); vals=0
+
+      ALLOCATE( x(sz), y(sz), r(sz) )
+      
       DO i=1,n
-        DO j=1,sz
-          DO k=Matrix % Rows(2*j-1), Matrix % Rows(2*j)-1,2
-            c = CMPLX(Matrix % Values(k), -Matrix % Values(k+1),KIND=dp)
-            m = CMPLX(Matrix % MassValues(k), -Matrix% MassValues(k+1),KIND=dp)
-            c = c - eigs(i) * m
-            vals(k) = REAL(c)
-            vals(k+1) = -AIMAG(c)
-          END DO
-        END DO
-
         x = EigVectors(i,:)
-        svals => Matrix % Values
-        Matrix % Values => vals
-        CALL CRS_ComplexMatrixVectorMultiply( Matrix, x, y )
-        Matrix % Values => svals
+        y = eigs(i)*x
 
-        WRITE( Message, * ) 'L^2 Norm of the residual: ', i, SQRT(SUM(ABS(y)**2))
+        svals => Matrix % Values
+        Matrix % Values => Matrix % MassValues
+        CALL CRS_ComplexMatrixVectorMultiply(Matrix, y, r )
+
+        Matrix % Values => svals
+        CALL CRS_ComplexMatrixVectorMultiply(Matrix, x, y )
+
+        y(1:sz) = y(1:sz) - r(1:sz)
+
+        WRITE( Message, * ) 'L^2 Norm of the relative residual: ', i,&
+            sqrt(real(sum(conjg(y)*y))) / sqrt(real(sum(conjg(x)*x)))
         CALL Info( 'CheckResidualsComplex', Message, Level = 3 )
       END DO
-      DEALLOCATE( x,y )
+
+      DEALLOCATE(x,y,r)
 !------------------------------------------------------------------------------
 END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
