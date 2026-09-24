@@ -76,12 +76,31 @@
      ! hierarchy (Hybrid). Then the temperatures and emissivities are
      ! aggregated from the finer (heat equation) mesh boundary elements
      ! and the irradiation is returned to them.
-     LOGICAL :: Hybrid
+     ! The radiation mesh may also be an independent mesh (GeneralMesh), given by
+     ! "Radiation Mesh". Then the mapping between the meshes is computed geometrically.
+     LOGICAL :: Hybrid, GeneralMesh
      INTEGER :: RadLevel, nFine
-     INTEGER, ALLOCATABLE :: FineParent(:), FineElem(:), FineRad(:)
-     CHARACTER(:), ALLOCATABLE :: MeshDirName, VFSuffix, RadSuffix
+     TYPE(Mesh_t), POINTER :: GeneralRadMesh => NULL()
+     CHARACTER(:), ALLOCATABLE :: RadMeshName
+
+     ! The independent radiation mesh follows the motion of the heat equation mesh:
+     ! reference (undeformed) coordinates of both meshes, and the fine element with
+     ! local coordinates where each coarse node lies in the reference geometry.
+     REAL(KIND=dp), ALLOCATABLE :: FineRef(:,:), CoarseRef(:,:), AnchorUV(:,:)
+     INTEGER, ALLOCATABLE :: AnchorElem(:)
+     LOGICAL :: MotionReported = .FALSE.
+     INTEGER, ALLOCATABLE :: FineParent(:), FineElem(:)
+     CHARACTER(:), ALLOCATABLE :: MeshDirName, RadDirName, VFSuffix, RadSuffix
      REAL(KIND=dp), ALLOCATABLE :: FineEmis(:), FineAbs(:), FineT(:), CoarseT(:)
      REAL(KIND=dp), ALLOCATABLE :: FineArea(:), FineGrad(:), CoarseA(:), CoarseS(:), FineW(:)
+
+     ! Mapping between the fine and coarse boundary elements (the matrix W): fine element
+     ! MapFine(p) covers the coarse element MapCoarse(p) by fraction MapW(p) of its area.
+     ! For the current radiation body the same is given in terms of the fine data index
+     ! (PcFine) and coarse radiation surface index (PcRad).
+     INTEGER :: nMap = 0, nPc
+     INTEGER, ALLOCATABLE :: MapFine(:), MapCoarse(:), PcFine(:), PcRad(:)
+     REAL(KIND=dp), ALLOCATABLE :: MapW(:), PcW(:), CoarseScale(:)
 
      TYPE(Factors_t), POINTER :: ViewFactors(:)
      TYPE(Matrix_t),  POINTER :: G => Null()
@@ -119,7 +138,8 @@
      EXTERNAL AddrFunc
      CHARACTER(*), PARAMETER :: Caller = 'RadiationFactors'
      
-     SAVE TimesVisited, FirstTime     
+     SAVE TimesVisited, FirstTime, nMap, MapFine, MapCoarse, MapW, &
+         FineRef, CoarseRef, AnchorUV, AnchorElem
 
 !-------------------------------------------------------------------------------------------
      
@@ -154,9 +174,16 @@
      FineMesh => Mesh
      RadLevel = ListGetInteger( Params,'Radiation Relative Mesh Level',Hybrid )
      Hybrid = Hybrid .AND. RadLevel < 0
+     RadMeshName = ListGetString( Params,'Radiation Mesh',GeneralMesh )
+     IF( GeneralMesh ) THEN
+       IF( Hybrid ) CALL Fatal(Caller,&
+           'Give either "Radiation Mesh" or "Radiation Relative Mesh Level", not both!')
+       Hybrid = .TRUE.
+     END IF
      ! Factor files are in the directory of the mesh on disk. In the hybrid case the
      ! parent meshes of the hierarchy are renamed, while the finest keeps the name.
      MeshDirName = Mesh % Name
+     RadDirName = Mesh % Name
      VFSuffix = ''
      RadSuffix = ''
      IF( Hybrid ) CALL SetHybridRadiationMesh()
@@ -425,7 +452,12 @@
        INTEGER :: i,j,k,n
 
        IF(.NOT. Radiosity) CALL Fatal(Caller,&
-           '"Radiation Relative Mesh Level" requires "Radiosity Model"!')
+           '"Radiation Relative Mesh Level" and "Radiation Mesh" require "Radiosity Model"!')
+
+       IF( GeneralMesh ) THEN
+         CALL SetGeneralRadiationMesh()
+         RETURN
+       END IF
 
        DO j=-1,RadLevel,-1
          IF(.NOT. ASSOCIATED(Mesh % Parent) ) THEN
@@ -450,6 +482,19 @@
          FineParent(k) = i
        END DO
 
+       ! Each fine element lies within one coarse element
+       IF( ALLOCATED(MapFine) ) DEALLOCATE( MapFine, MapCoarse, MapW )
+       nMap = COUNT( FineParent > 0 )
+       ALLOCATE( MapFine(nMap), MapCoarse(nMap), MapW(nMap) )
+       nMap = 0
+       DO k=1,n
+         IF( FineParent(k) <= 0 ) CYCLE
+         nMap = nMap + 1
+         MapFine(nMap) = k
+         MapCoarse(nMap) = FineParent(k)
+         MapW(nMap) = 1.0_dp
+       END DO
+
        ! The nodes of the parent mesh are the first nodes of the split mesh.
        ! Hence the coarse mesh may follow the finer one, if that has moved.
        n = Mesh % NumberOfNodes
@@ -469,6 +514,589 @@
 
        CALL SetCurrentMesh( Model, Mesh )
      END SUBROUTINE SetHybridRadiationMesh
+
+
+     ! Radiation on an independent mesh: load it (in full to each partition) and
+     ! compute the mapping from the boundary elements of the heat equation mesh.
+     !---------------------------------------------------------------------------
+     SUBROUTINE SetGeneralRadiationMesh()
+       IF( .NOT. ASSOCIATED( GeneralRadMesh ) ) THEN
+         CALL Info(Caller,'Loading radiation mesh: '//RadMeshName,Level=5)
+         GeneralRadMesh => LoadMesh2( Model, OutputPath, TRIM(OutputPath)//'/'//RadMeshName, &
+             .FALSE., 1, 0 )
+         IF(.NOT. ASSOCIATED(GeneralRadMesh)) CALL Fatal(Caller,'Could not load radiation mesh: '//RadMeshName)
+         GeneralRadMesh % Name = RadMeshName
+         GeneralRadMesh % OutputActive = .FALSE.
+       END IF
+       Mesh => GeneralRadMesh
+
+       ! View factors are in the directory of the radiation mesh, radiator factors
+       ! in that of the heat equation mesh.
+       MeshDirName = RadMeshName
+       RadDirName = FineMesh % Name
+
+       IF( nMap == 0 ) THEN
+         CALL SetReferenceCoordinates()
+         CALL BuildGeneralMapping()
+         CALL BuildNodeAnchors()
+       END IF
+       CALL FollowHeatMeshMotion()
+
+       CALL SetCurrentMesh( Model, Mesh )
+     END SUBROUTINE SetGeneralRadiationMesh
+
+
+     ! The mapping between the meshes is created in the reference geometry. For the
+     ! heat equation mesh these are the original coordinates if stored, otherwise the
+     ! current ones. The radiation mesh is as loaded.
+     !---------------------------------------------------------------------------
+     SUBROUTINE SetReferenceCoordinates()
+       INTEGER :: n
+       LOGICAL :: HaveOrig, Found
+
+       n = FineMesh % NumberOfNodes
+       HaveOrig = ASSOCIATED( FineMesh % NodesOrig )
+       IF( HaveOrig ) HaveOrig = .NOT. ASSOCIATED( FineMesh % NodesOrig, FineMesh % Nodes )
+       IF( HaveOrig ) HaveOrig = SIZE( FineMesh % NodesOrig % x ) >= n
+
+       ALLOCATE( FineRef(3,n) )
+       IF( HaveOrig ) THEN
+         CALL Info(Caller,'Using original coordinates of heat equation mesh as reference',Level=6)
+         FineRef(1,:) = FineMesh % NodesOrig % x(1:n)
+         FineRef(2,:) = FineMesh % NodesOrig % y(1:n)
+         FineRef(3,:) = FineMesh % NodesOrig % z(1:n)
+       ELSE
+         ! The mesh may have been mapped already when the solvers were created
+         IF( ListGetLogicalAnySolver( Model,'Viewfactor Mapping Solver' ) .OR. &
+             ListGetLogical( Params,'Viewfactor Rigid Mesh Mapping',Found ) ) THEN
+           CALL Fatal(Caller,'With a moving geometry and "Radiation Mesh" give '//&
+               '"Store Original Coordinates = True" for the mesh mapping solver!')
+         END IF
+         FineRef(1,:) = FineMesh % Nodes % x(1:n)
+         FineRef(2,:) = FineMesh % Nodes % y(1:n)
+         FineRef(3,:) = FineMesh % Nodes % z(1:n)
+       END IF
+
+       n = Mesh % NumberOfNodes
+       ALLOCATE( CoarseRef(3,n) )
+       CoarseRef(1,:) = Mesh % Nodes % x(1:n)
+       CoarseRef(2,:) = Mesh % Nodes % y(1:n)
+       CoarseRef(3,:) = Mesh % Nodes % z(1:n)
+     END SUBROUTINE SetReferenceCoordinates
+
+
+     ! Locate the nodes of the coarse radiation elements on the fine radiation elements
+     ! in the reference geometry.
+     !---------------------------------------------------------------------------
+     SUBROUTINE BuildNodeAnchors()
+       TYPE(Element_t), POINTER :: Element, CElement
+       TYPE(Nodes_t) :: FNodes
+       INTEGER, ALLOCATABLE :: Felem(:), BinPtr(:), BinList(:)
+       REAL(KIND=dp), ALLOCATABLE :: FBox(:,:), FSize(:)
+       LOGICAL, ALLOCATABLE :: NodeUsed(:)
+       REAL(KIND=dp) :: Basis(MAX_ELEMENT_NODES), BoxMin(3), hb, x(3), xc(3), u, v, w, ld, d, best, &
+           detJ, RelTol
+       INTEGER :: i, j, k, l, n, p, nfe, nbin(3), ib(3), bin, ebest, nn, NoFound
+       LOGICAL :: stat, Found
+
+       RelTol = ListGetCReal( Params,'Radiation Mesh Mapping Tolerance',Found )
+       IF(.NOT. Found) RelTol = 0.5_dp
+
+       nn = Mesh % NumberOfNodes
+       ALLOCATE( AnchorElem(nn), AnchorUV(2,nn), NodeUsed(nn) )
+       AnchorElem = 0
+       AnchorUV = 0.0_dp
+       NodeUsed = .FALSE.
+       DO i=1,Mesh % NumberOfBoundaryElements
+         CElement => Mesh % Elements(Mesh % NumberOfBulkElements+i)
+         IF( IsRadiationBC(CElement) ) NodeUsed(CElement % NodeIndexes) = .TRUE.
+       END DO
+
+       ! Local fine radiation elements in the reference geometry
+       ALLOCATE( FNodes % x(MAX_ELEMENT_NODES), FNodes % y(MAX_ELEMENT_NODES), FNodes % z(MAX_ELEMENT_NODES) )
+       n = FineMesh % NumberOfBoundaryElements
+       ALLOCATE( Felem(n), FBox(6,n), FSize(n) )
+       nfe = 0
+       DO k=1,n
+         Element => FineMesh % Elements(FineMesh % NumberOfBulkElements+k)
+         IF( .NOT. IsRadiationBC(Element) ) CYCLE
+         IF( .NOT. ( ASSOCIATED(Element % BoundaryInfo % Left) .OR. &
+             ASSOCIATED(Element % BoundaryInfo % Right) ) ) CYCLE
+         nfe = nfe + 1
+         Felem(nfe) = k
+         CALL RefNodes( Element, FNodes )
+         j = Element % TYPE % NumberOfNodes
+         FSize(nfe) = MAXVAL( [ MAXVAL(FNodes % x(1:j))-MINVAL(FNodes % x(1:j)), &
+             MAXVAL(FNodes % y(1:j))-MINVAL(FNodes % y(1:j)), MAXVAL(FNodes % z(1:j))-MINVAL(FNodes % z(1:j)) ] )
+         d = RelTol * FSize(nfe)
+         FBox(1:3,nfe) = [ MINVAL(FNodes % x(1:j)), MINVAL(FNodes % y(1:j)), MINVAL(FNodes % z(1:j)) ] - d
+         FBox(4:6,nfe) = [ MAXVAL(FNodes % x(1:j)), MAXVAL(FNodes % y(1:j)), MAXVAL(FNodes % z(1:j)) ] + d
+       END DO
+       IF( nfe == 0 ) RETURN
+
+       CALL BuildBins( nfe, FBox, FSize, BoxMin, hb, nbin, BinPtr, BinList )
+
+       NoFound = 0
+       DO p=1,nn
+         IF( .NOT. NodeUsed(p) ) CYCLE
+         x = CoarseRef(:,p)
+         ib = MAX(1, MIN(nbin, 1 + FLOOR( (x-BoxMin) / hb )))
+         bin = 1 + (ib(1)-1) + nbin(1)*((ib(2)-1) + nbin(2)*(ib(3)-1))
+         ebest = 0
+         best = HUGE(best)
+         DO l=BinPtr(bin),BinPtr(bin+1)-1
+           j = BinList(l)
+           IF( ANY( x < FBox(1:3,j) ) .OR. ANY( x > FBox(4:6,j) ) ) CYCLE
+           Element => FineMesh % Elements(FineMesh % NumberOfBulkElements+Felem(j))
+           CALL RefNodes( Element, FNodes )
+           CALL GlobalToLocal( u, v, w, x(1), x(2), x(3), Element, FNodes )
+           CALL ClampLocal( Element, u, v, ld )
+           stat = ElementInfo( Element, FNodes, u, v, 0.0_dp, detJ, Basis )
+           n = Element % TYPE % NumberOfNodes
+           xc = [ SUM(Basis(1:n)*FNodes % x(1:n)), SUM(Basis(1:n)*FNodes % y(1:n)), &
+               SUM(Basis(1:n)*FNodes % z(1:n)) ]
+           d = SQRT( SUM( (x-xc)**2 ) )
+           IF( d > RelTol * FSize(j) ) CYCLE
+           IF( d < best ) THEN
+             best = d
+             ebest = Felem(j)
+             AnchorUV(:,p) = [u,v]
+           END IF
+         END DO
+         AnchorElem(p) = ebest
+         IF( ebest == 0 ) NoFound = NoFound + 1
+       END DO
+       CALL Info(Caller,'Radiation mesh nodes located on heat equation mesh: '//&
+           I2S(COUNT(AnchorElem>0))//' out of '//I2S(COUNT(NodeUsed)),Level=6)
+     END SUBROUTINE BuildNodeAnchors
+
+
+     ! Move the radiation mesh with the displacement of the heat equation mesh
+     ! relative to the reference geometry.
+     !---------------------------------------------------------------------------
+     SUBROUTINE FollowHeatMeshMotion()
+       TYPE(Element_t), POINTER :: Element
+       TYPE(Nodes_t) :: FNodes
+       REAL(KIND=dp), ALLOCATABLE :: Disp(:)
+       REAL(KIND=dp) :: Basis(MAX_ELEMENT_NODES), detJ, dmax
+       INTEGER :: p, n, nn, i
+       INTEGER, POINTER :: Ind(:)
+       LOGICAL :: stat
+
+       IF( .NOT. ALLOCATED(AnchorElem) ) RETURN
+       nn = Mesh % NumberOfNodes
+       ALLOCATE( Disp(4*nn), FNodes % x(MAX_ELEMENT_NODES), FNodes % y(MAX_ELEMENT_NODES), &
+           FNodes % z(MAX_ELEMENT_NODES) )
+       Disp = 0.0_dp
+       DO p=1,nn
+         IF( AnchorElem(p) == 0 ) CYCLE
+         Element => FineMesh % Elements(FineMesh % NumberOfBulkElements+AnchorElem(p))
+         CALL RefNodes( Element, FNodes )
+         stat = ElementInfo( Element, FNodes, AnchorUV(1,p), AnchorUV(2,p), 0.0_dp, detJ, Basis )
+         n = Element % TYPE % NumberOfNodes
+         Ind => Element % NodeIndexes
+         Disp(4*p-3) = SUM( Basis(1:n) * ( FineMesh % Nodes % x(Ind) - FineRef(1,Ind) ) )
+         Disp(4*p-2) = SUM( Basis(1:n) * ( FineMesh % Nodes % y(Ind) - FineRef(2,Ind) ) )
+         Disp(4*p-1) = SUM( Basis(1:n) * ( FineMesh % Nodes % z(Ind) - FineRef(3,Ind) ) )
+         Disp(4*p) = 1.0_dp
+       END DO
+       CALL ParallelSum(Disp)
+
+       dmax = 0.0_dp
+       DO p=1,nn
+         IF( Disp(4*p) > 0.5_dp ) THEN
+           Disp(4*p-3:4*p-1) = Disp(4*p-3:4*p-1) / Disp(4*p)
+         ELSE
+           Disp(4*p-3:4*p-1) = 0.0_dp
+         END IF
+         dmax = MAX( dmax, MAXVAL(ABS(Disp(4*p-3:4*p-1))) )
+         Mesh % Nodes % x(p) = CoarseRef(1,p) + Disp(4*p-3)
+         Mesh % Nodes % y(p) = CoarseRef(2,p) + Disp(4*p-2)
+         Mesh % Nodes % z(p) = CoarseRef(3,p) + Disp(4*p-1)
+       END DO
+
+       IF( dmax > 0.0_dp .AND. .NOT. MotionReported ) THEN
+         WRITE(Message,'(A,ES12.3)') 'Radiation mesh follows the heat equation mesh, max displacement: ',dmax
+         CALL Info(Caller,Message,Level=5)
+         MotionReported = .TRUE.
+       END IF
+     END SUBROUTINE FollowHeatMeshMotion
+
+
+     ! Nodes of a fine element in the reference geometry
+     SUBROUTINE RefNodes( Element, FNodes )
+       TYPE(Element_t), POINTER :: Element
+       TYPE(Nodes_t) :: FNodes
+       INTEGER :: n
+       n = Element % TYPE % NumberOfNodes
+       FNodes % x(1:n) = FineRef(1,Element % NodeIndexes)
+       FNodes % y(1:n) = FineRef(2,Element % NodeIndexes)
+       FNodes % z(1:n) = FineRef(3,Element % NodeIndexes)
+     END SUBROUTINE RefNodes
+
+
+     ! Bins for finding objects (elements) by their bounding boxes. The bin size is about
+     ! twice the mean object size.
+     !---------------------------------------------------------------------------
+     SUBROUTINE BuildBins( nobj, Box, ObjSize, BoxMin, hb, nbin, BinPtr, BinList )
+       INTEGER :: nobj, nbin(3)
+       REAL(KIND=dp) :: Box(:,:), ObjSize(:), BoxMin(3), hb
+       INTEGER, ALLOCATABLE :: BinPtr(:), BinList(:)
+       REAL(KIND=dp) :: BoxMax(3)
+       INTEGER :: i, j, l, i1, i2, i3, ib0(3), ib1(3), bin, nbins
+
+       BoxMin = MINVAL(Box(1:3,1:nobj),2)
+       BoxMax = MAXVAL(Box(4:6,1:nobj),2)
+       hb = 2 * SUM(ObjSize(1:nobj)) / nobj
+       DO
+         nbin = MAX(1, CEILING((BoxMax-BoxMin)/hb))
+         IF( PRODUCT(nbin) <= 8*nobj + 1000 ) EXIT
+         hb = 1.5_dp * hb
+       END DO
+       nbins = PRODUCT(nbin)
+       ALLOCATE( BinPtr(nbins+1) )
+       BinPtr = 0
+       DO l=1,2
+         DO j=1,nobj
+           ib0 = MAX(1, MIN(nbin, 1 + FLOOR( (Box(1:3,j)-BoxMin) / hb )))
+           ib1 = MAX(1, MIN(nbin, 1 + FLOOR( (Box(4:6,j)-BoxMin) / hb )))
+           DO i3=ib0(3),ib1(3); DO i2=ib0(2),ib1(2); DO i1=ib0(1),ib1(1)
+             bin = 1 + (i1-1) + nbin(1)*((i2-1) + nbin(2)*(i3-1))
+             IF( l == 1 ) THEN
+               BinPtr(bin+1) = BinPtr(bin+1) + 1
+             ELSE
+               BinList(BinPtr(bin)) = j
+               BinPtr(bin) = BinPtr(bin) + 1
+             END IF
+           END DO; END DO; END DO
+         END DO
+         IF( l == 1 ) THEN
+           BinPtr(1) = 1
+           DO i=1,nbins
+             BinPtr(i+1) = BinPtr(i+1) + BinPtr(i)
+           END DO
+           ALLOCATE( BinList(BinPtr(nbins+1)-1) )
+         ELSE
+           ! Pointers were advanced to the start of the next bin
+           DO i=nbins,1,-1
+             BinPtr(i+1) = BinPtr(i)
+           END DO
+           BinPtr(1) = 1
+         END IF
+       END DO
+     END SUBROUTINE BuildBins
+
+
+     ! Mapping between independent fine (heat) and coarse (radiation) boundary meshes.
+     ! Each fine radiation element is projected to the plane (line in 2D) of nearby
+     ! coarse radiation elements having the same boundary condition and an aligned
+     ! normal, and clipped with them. The weights are the fractions of the overlaps.
+     ! The coarse candidates are found by binning the coarse elements.
+     !---------------------------------------------------------------------------------
+     SUBROUTINE BuildGeneralMapping()
+       TYPE(Element_t), POINTER :: Element, CElement
+       TYPE(Nodes_t) :: FNodes, CNodes
+       INTEGER, ALLOCATABLE :: Cand(:), BinPtr(:), BinList(:), LocC(:), TmpI(:), Mark(:)
+       REAL(KIND=dp), ALLOCATABLE :: CBox(:,:), CSize(:), LocW(:), LocD(:), LocS(:), TmpR(:)
+       REAL(KIND=dp) :: x0(3), t1(3), t2(3), nf(3), nc(3), BoxMin(3), FBox(6), &
+           hb, d, RelTol, MinDot, sw, tol, Overlap, FArea, Total, Lost, &
+           Pf(2,16), Pc(2,4), Poly(2,16)
+       INTEGER :: nb, nbc, ncand, i, j, k, l, n, nfc, ncc, npoly, ib0(3), ib1(3), i1, i2, i3, &
+           bin, nloc, dim, cap, NoLost, nbin(3)
+       LOGICAL :: Found
+
+       CALL Info(Caller,'Creating mapping between heat equation and radiation meshes',Level=6)
+
+       dim = CoordinateSystemDimension()
+       RelTol = ListGetCReal( Params,'Radiation Mesh Mapping Tolerance',Found )
+       IF(.NOT. Found) RelTol = 0.5_dp
+       MinDot = ListGetCReal( Params,'Radiation Mesh Mapping Normal Tolerance',Found )
+       IF(.NOT. Found) MinDot = 0.5_dp
+
+       ALLOCATE( FNodes % x(MAX_ELEMENT_NODES), FNodes % y(MAX_ELEMENT_NODES), FNodes % z(MAX_ELEMENT_NODES) )
+       ALLOCATE( CNodes % x(MAX_ELEMENT_NODES), CNodes % y(MAX_ELEMENT_NODES), CNodes % z(MAX_ELEMENT_NODES) )
+
+       ! Coarse candidates
+       nbc = Mesh % NumberOfBoundaryElements
+       ALLOCATE( Cand(nbc), CBox(6,nbc), CSize(nbc) )
+       ncand = 0
+       DO i=1,nbc
+         CElement => Mesh % Elements(Mesh % NumberOfBulkElements+i)
+         IF( .NOT. IsRadiationBC(CElement) ) CYCLE
+         ncand = ncand + 1
+         Cand(ncand) = i
+         n = CElement % TYPE % NumberOfNodes
+         CSize(ncand) = ElementArea(Mesh,CElement,n)
+         IF( dim == 3 ) CSize(ncand) = SQRT(CSize(ncand))
+         tol = RelTol * CSize(ncand)
+         CBox(1,ncand) = MINVAL(Mesh % Nodes % x(CElement % NodeIndexes)) - tol
+         CBox(2,ncand) = MINVAL(Mesh % Nodes % y(CElement % NodeIndexes)) - tol
+         CBox(3,ncand) = MINVAL(Mesh % Nodes % z(CElement % NodeIndexes)) - tol
+         CBox(4,ncand) = MAXVAL(Mesh % Nodes % x(CElement % NodeIndexes)) + tol
+         CBox(5,ncand) = MAXVAL(Mesh % Nodes % y(CElement % NodeIndexes)) + tol
+         CBox(6,ncand) = MAXVAL(Mesh % Nodes % z(CElement % NodeIndexes)) + tol
+       END DO
+       IF( ncand == 0 ) CALL Fatal(Caller,'No radiation elements in radiation mesh!')
+
+       CALL BuildBins( ncand, CBox, CSize, BoxMin, hb, nbin, BinPtr, BinList )
+
+       ! Fine elements
+       nb = FineMesh % NumberOfBoundaryElements
+       cap = 2*nb + 100
+       ALLOCATE( MapFine(cap), MapCoarse(cap), MapW(cap), LocC(ncand), LocW(ncand), &
+           LocD(ncand), LocS(ncand), Mark(ncand) )
+       Mark = 0
+       nMap = 0
+       Total = 0.0_dp
+       Lost = 0.0_dp
+       NoLost = 0
+
+       DO k=1,nb
+         Element => FineMesh % Elements(FineMesh % NumberOfBulkElements+k)
+         IF( .NOT. IsRadiationBC(Element) ) CYCLE
+         ! Radiation elements copied from other partitions have no parents
+         IF( .NOT. ( ASSOCIATED(Element % BoundaryInfo % Left) .OR. &
+             ASSOCIATED(Element % BoundaryInfo % Right) ) ) CYCLE
+
+         ! The fine element in the reference geometry
+         n = Element % TYPE % NumberOfNodes
+         nfc = CornerCount(Element)
+         CALL RefNodes( Element, FNodes )
+         nf = NormalVector( Element, FNodes, Check=.FALSE. )
+         FArea = ElementArea(FineMesh,Element,n)
+         Total = Total + FArea
+
+         FBox(1) = MINVAL(FNodes % x(1:n)); FBox(4) = MAXVAL(FNodes % x(1:n))
+         FBox(2) = MINVAL(FNodes % y(1:n)); FBox(5) = MAXVAL(FNodes % y(1:n))
+         FBox(3) = MINVAL(FNodes % z(1:n)); FBox(6) = MAXVAL(FNodes % z(1:n))
+         ib0 = MAX(1, MIN(nbin, 1 + FLOOR( (FBox(1:3)-BoxMin) / hb )))
+         ib1 = MAX(1, MIN(nbin, 1 + FLOOR( (FBox(4:6)-BoxMin) / hb )))
+
+         nloc = 0
+         DO i3=ib0(3),ib1(3); DO i2=ib0(2),ib1(2); DO i1=ib0(1),ib1(1)
+           bin = 1 + (i1-1) + nbin(1)*((i2-1) + nbin(2)*(i3-1))
+           DO l=BinPtr(bin),BinPtr(bin+1)-1
+             j = BinList(l)
+             IF( Mark(j) == k ) CYCLE
+             Mark(j) = k
+             IF( ANY( FBox(4:6) < CBox(1:3,j) ) .OR. ANY( FBox(1:3) > CBox(4:6,j) ) ) CYCLE
+             CElement => Mesh % Elements(Mesh % NumberOfBulkElements+Cand(j))
+             IF( CElement % BoundaryInfo % Constraint /= Element % BoundaryInfo % Constraint ) CYCLE
+
+             i = CElement % TYPE % NumberOfNodes
+             ncc = CornerCount(CElement)
+             CNodes % x(1:i) = Mesh % Nodes % x(CElement % NodeIndexes)
+             CNodes % y(1:i) = Mesh % Nodes % y(CElement % NodeIndexes)
+             CNodes % z(1:i) = Mesh % Nodes % z(CElement % NodeIndexes)
+             nc = NormalVector( CElement, CNodes, Check=.FALSE. )
+             IF( ABS( SUM(nf*nc) ) < MinDot ) CYCLE
+
+             ! Local frame of the coarse element: origin, tangent(s)
+             x0 = [ CNodes % x(1), CNodes % y(1), CNodes % z(1) ]
+             t1 = [ CNodes % x(2), CNodes % y(2), CNodes % z(2) ] - x0
+             t1 = t1 / SQRT(SUM(t1**2))
+             t2 = CrossProduct(nc,t1)
+
+             ! Distance of the fine element centre from the coarse plane
+             d = ABS( SUM( nc * ( [ SUM(FNodes % x(1:nfc)), SUM(FNodes % y(1:nfc)), &
+                 SUM(FNodes % z(1:nfc)) ] / nfc - x0 ) ) )
+             IF( d > RelTol * CSize(j) ) CYCLE
+
+             DO i=1,nfc
+               Pf(1,i) = SUM( t1 * ( [FNodes % x(i), FNodes % y(i), FNodes % z(i)] - x0 ) )
+               Pf(2,i) = SUM( t2 * ( [FNodes % x(i), FNodes % y(i), FNodes % z(i)] - x0 ) )
+             END DO
+             DO i=1,ncc
+               Pc(1,i) = SUM( t1 * ( [CNodes % x(i), CNodes % y(i), CNodes % z(i)] - x0 ) )
+               Pc(2,i) = SUM( t2 * ( [CNodes % x(i), CNodes % y(i), CNodes % z(i)] - x0 ) )
+             END DO
+
+             IF( nfc == 2 ) THEN
+               ! Segments on a line: overlap of the intervals
+               Overlap = MIN(MAXVAL(Pf(1,1:2)),MAXVAL(Pc(1,1:2))) - MAX(MINVAL(Pf(1,1:2)),MINVAL(Pc(1,1:2)))
+               Overlap = MAX(0.0_dp, Overlap)
+             ELSE
+               CALL ClipConvex( Pf, nfc, Pc, ncc, Poly, npoly )
+               Overlap = 0.0_dp
+               IF( npoly >= 3 ) Overlap = ABS( PolyArea(Poly,npoly) )
+             END IF
+             IF( Overlap <= 1.0d-12 * CSize(j)**(dim-1) ) CYCLE
+
+             nloc = nloc + 1
+             LocC(nloc) = Cand(j)
+             LocW(nloc) = Overlap
+             LocD(nloc) = d
+             LocS(nloc) = CSize(j)
+           END DO
+         END DO; END DO; END DO
+
+         ! Only the closest surface: e.g. the two sides of a thin plate may have the
+         ! same boundary condition and be within the tolerance of each other.
+         IF( nloc > 1 ) THEN
+           d = MINVAL(LocD(1:nloc))
+           i = 0
+           DO l=1,nloc
+             IF( LocD(l) > 2*d + 1.0d-3 * LocS(l) ) CYCLE
+             i = i + 1
+             LocC(i) = LocC(l)
+             LocW(i) = LocW(l)
+           END DO
+           nloc = i
+         END IF
+
+         IF( nloc == 0 ) THEN
+           NoLost = NoLost + 1
+           Lost = Lost + FArea
+           CYCLE
+         END IF
+
+         IF( nMap + nloc > cap ) THEN
+           cap = 2*cap + nloc
+           ALLOCATE( TmpI(cap) ); TmpI(1:nMap) = MapFine(1:nMap); CALL MOVE_ALLOC(TmpI,MapFine)
+           ALLOCATE( TmpI(cap) ); TmpI(1:nMap) = MapCoarse(1:nMap); CALL MOVE_ALLOC(TmpI,MapCoarse)
+           ALLOCATE( TmpR(cap) ); TmpR(1:nMap) = MapW(1:nMap); CALL MOVE_ALLOC(TmpR,MapW)
+         END IF
+         sw = SUM(LocW(1:nloc))
+         DO l=1,nloc
+           nMap = nMap + 1
+           MapFine(nMap) = k
+           MapCoarse(nMap) = LocC(l)
+           MapW(nMap) = LocW(l) / sw
+         END DO
+       END DO
+
+       CALL Info(Caller,'Number of mapping entries: '//I2S(nMap),Level=6)
+       IF( Total > 0.0_dp ) THEN
+         WRITE(Message,'(A,ES12.3)') 'Fraction of fine radiation area not mapped: ',Lost/Total
+         CALL Info(Caller,Message,Level=6)
+       END IF
+       IF( NoLost > 0 ) THEN
+         CALL Warn(Caller,'Could not map '//I2S(NoLost)//' fine radiation elements to radiation mesh!')
+       END IF
+     END SUBROUTINE BuildGeneralMapping
+
+
+     ! Number of corner nodes of a linear boundary element (line, triangle or quad)
+     FUNCTION CornerCount(Element) RESULT(n)
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: n
+       n = Element % TYPE % ElementCode / 100
+       IF( n < 2 .OR. n > 4 ) CALL Fatal(Caller,'Radiation mesh mapping for lines, triangles and quads only!')
+     END FUNCTION CornerCount
+
+
+     ! Clip convex polygon P by convex polygon C (Sutherland-Hodgman) in a plane.
+     SUBROUTINE ClipConvex( P, np, C, nc, Q, nq )
+       INTEGER :: np, nc, nq
+       REAL(KIND=dp) :: P(:,:), C(:,:), Q(:,:)
+       REAL(KIND=dp) :: W(2,16), Cc(2,4), a(2), b(2), s(2), e(2)
+       INTEGER :: i, j, nw
+       LOGICAL :: InE, InS
+
+       ! Clip polygon counterclockwise
+       Cc(:,1:nc) = C(:,1:nc)
+       IF( PolyArea(Cc,nc) < 0.0_dp ) Cc(:,1:nc) = Cc(:,nc:1:-1)
+
+       nq = np
+       Q(:,1:np) = P(:,1:np)
+       DO i=1,nc
+         a = Cc(:,i)
+         b = Cc(:,MOD(i,nc)+1)
+         nw = nq
+         W(:,1:nw) = Q(:,1:nw)
+         nq = 0
+         IF( nw == 0 ) EXIT
+         s = W(:,nw)
+         InS = ClipSide(a,b,s) >= 0.0_dp
+         DO j=1,nw
+           e = W(:,j)
+           InE = ClipSide(a,b,e) >= 0.0_dp
+           IF( InE ) THEN
+             IF( .NOT. InS ) THEN
+               nq = nq + 1; Q(:,nq) = ClipCut(a,b,s,e)
+             END IF
+             nq = nq + 1; Q(:,nq) = e
+           ELSE IF( InS ) THEN
+             nq = nq + 1; Q(:,nq) = ClipCut(a,b,s,e)
+           END IF
+           s = e
+           InS = InE
+         END DO
+       END DO
+
+     END SUBROUTINE ClipConvex
+
+
+     ! Which side of the line a-b the point x is (positive on the left)
+     FUNCTION ClipSide(a,b,x) RESULT(f)
+       REAL(KIND=dp) :: a(2), b(2), x(2), f
+       f = (b(1)-a(1))*(x(2)-a(2)) - (b(2)-a(2))*(x(1)-a(1))
+     END FUNCTION ClipSide
+
+
+     ! Intersection of segment s-e with the line a-b
+     FUNCTION ClipCut(a,b,s,e) RESULT(x)
+       REAL(KIND=dp) :: a(2), b(2), s(2), e(2), x(2), fs, fe
+       fs = ClipSide(a,b,s)
+       fe = ClipSide(a,b,e)
+       x = s + (e-s) * fs / (fs-fe)
+     END FUNCTION ClipCut
+
+
+     ! Signed area of a planar polygon
+     FUNCTION PolyArea(P,n) RESULT(A)
+       REAL(KIND=dp) :: P(:,:), A
+       INTEGER :: n, i, j
+       A = 0.0_dp
+       DO i=1,n
+         j = MOD(i,n)+1
+         A = A + P(1,i)*P(2,j) - P(1,j)*P(2,i)
+       END DO
+       A = 0.5_dp * A
+     END FUNCTION PolyArea
+
+
+     ! Is the boundary element participating in radiation
+     FUNCTION IsRadiationBC(Element) RESULT(IsRad)
+       TYPE(Element_t), POINTER :: Element
+       LOGICAL :: IsRad
+       TYPE(ValueList_t), POINTER :: BC
+       LOGICAL :: Found
+
+       IsRad = .FALSE.
+       IF ( GetElementFamily(Element)<=1 ) RETURN
+       BC => GetBC(Element)
+       IF(.NOT. ASSOCIATED(BC)) RETURN
+       IsRad = ( GetString(BC,'Radiation',Found) == 'diffuse gray' ) .OR. &
+           GetLogical(BC,'Radiator BC',Found)
+     END FUNCTION IsRadiationBC
+
+
+     ! Move local coordinates to the closest point of the reference element,
+     ! returning also the distance moved in local coordinates.
+     SUBROUTINE ClampLocal( Element, u, v, ld )
+       TYPE(Element_t), POINTER :: Element
+       REAL(KIND=dp) :: u, v, ld
+       REAL(KIND=dp) :: u0, v0, s
+
+       u0 = u; v0 = v
+       SELECT CASE( GetElementFamily(Element) )
+       CASE(2)
+         u = MAX(-1.0_dp, MIN(1.0_dp, u))
+         v = 0.0_dp
+       CASE(3)
+         u = MAX(0.0_dp, u)
+         v = MAX(0.0_dp, v)
+         s = u + v
+         IF( s > 1.0_dp ) THEN
+           u = u / s; v = v / s
+         END IF
+       CASE(4)
+         u = MAX(-1.0_dp, MIN(1.0_dp, u))
+         v = MAX(-1.0_dp, MIN(1.0_dp, v))
+       END SELECT
+       ld = ABS(u-u0) + ABS(v-v0)
+     END SUBROUTINE ClampLocal
 
 
      ! Level of the mesh in the hierarchy, the mesh on disk being level 1.
@@ -540,6 +1168,40 @@
      END SUBROUTINE ParallelSum
 
 
+     ! In parallel each partition has all the radiation elements, but those of the
+     ! other partitions are copies without parents and without correct field values.
+     ! Take the element data from the partitions owning the element instead.
+     !---------------------------------------------------------------------------
+     SUBROUTINE ParallelSurfaceData( a, b, c )
+       REAL(KIND=dp) :: a(:)
+       REAL(KIND=dp), OPTIONAL :: b(:), c(:)
+       REAL(KIND=dp), ALLOCATABLE :: w(:)
+       INTEGER :: i
+
+       IF( ParEnv % PEs <= 1 ) RETURN
+       ALLOCATE( w(RadiationSurfaces) )
+       DO i=1,RadiationSurfaces
+         Element => Mesh % Elements(ElementNumbers(i))
+         w(i) = OwnFraction(Element)
+       END DO
+       a(1:RadiationSurfaces) = w * a(1:RadiationSurfaces)
+       CALL ParallelSum( a(1:RadiationSurfaces) )
+       IF( PRESENT(b) ) THEN
+         b(1:RadiationSurfaces) = w * b(1:RadiationSurfaces)
+         CALL ParallelSum( b(1:RadiationSurfaces) )
+       END IF
+       IF( PRESENT(c) ) THEN
+         c(1:RadiationSurfaces) = w * c(1:RadiationSurfaces)
+         CALL ParallelSum( c(1:RadiationSurfaces) )
+       END IF
+       CALL ParallelSum( w )
+       IF( ANY( w < 0.5_dp ) ) CALL Fatal(Caller,'Radiation element not owned by any partition!')
+       a(1:RadiationSurfaces) = a(1:RadiationSurfaces) / w
+       IF( PRESENT(b) ) b(1:RadiationSurfaces) = b(1:RadiationSurfaces) / w
+       IF( PRESENT(c) ) c(1:RadiationSurfaces) = c(1:RadiationSurfaces) / w
+     END SUBROUTINE ParallelSurfaceData
+
+
      ! Sum, minimum or maximum of a scalar over the partitions.
      FUNCTION ParallelScalar(x,oper) RESULT(y)
        REAL(KIND=dp) :: x, y
@@ -569,8 +1231,9 @@
        INTEGER, POINTER :: TempPerm(:), Inds(:)
        INTEGER, TARGET :: DGInds(27)
        REAL(KIND=dp), ALLOCATABLE :: SumA(:), SumT4(:), SumET4(:), SumE(:), SumAbs(:)
+       INTEGER, ALLOCATABLE :: FineIdx(:)
        REAL(KIND=dp) :: A, T, e, ab, r, T4
-       INTEGER :: i,j,k,m,n,nb
+       INTEGER :: i,j,k,m,n,nb,p
        LOGICAL :: DG, Found, Dummy
 
        IF(.NOT. ASSOCIATED(TSolver % Variable)) CALL Fatal(Caller, &
@@ -582,8 +1245,9 @@
            ListGetLogical(Params, 'DG Reduced Basis',Found )
 
        nb = FineMesh % NumberOfBoundaryElements
-       ALLOCATE( FineElem(nb), FineRad(nb), FineEmis(nb), FineAbs(nb), FineT(nb), &
-           FineArea(nb), FineGrad(nb), FineW(nb), CoarseA(RadiationSurfaces), CoarseS(RadiationSurfaces) )
+       ALLOCATE( FineElem(nb), FineEmis(nb), FineAbs(nb), FineT(nb), &
+           FineArea(nb), FineGrad(nb), FineW(nb), CoarseA(RadiationSurfaces), CoarseS(RadiationSurfaces), &
+           CoarseScale(RadiationSurfaces) )
        FineGrad = 0.0_dp; CoarseS = 0.0_dp
        ALLOCATE( CoarseT(RadiationSurfaces), SumA(RadiationSurfaces), SumT4(RadiationSurfaces), &
            SumET4(RadiationSurfaces), SumE(RadiationSurfaces), SumAbs(RadiationSurfaces) )
@@ -592,12 +1256,18 @@
        ! Material parameters may depend on fields that live in the fine mesh.
        CALL SetCurrentMesh( Model, FineMesh )
 
+       ! The fine elements covering some coarse element of this radiation body
+       ALLOCATE( FineIdx(nb) )
+       FineIdx = 0
+       DO p=1,nMap
+         IF( InvElementNumbers(MapCoarse(p)) > 0 ) FineIdx(MapFine(p)) = -1
+       END DO
+
        Dummy = .FALSE.
        nFine = 0
        DO k=1,nb
-         IF( FineParent(k) <= 0 ) CYCLE
-         i = InvElementNumbers(FineParent(k))
-         IF( i <= 0 ) CYCLE
+         IF( FineIdx(k) == 0 ) CYCLE
+         FineIdx(k) = 0
 
          Element => FineMesh % Elements(FineMesh % NumberOfBulkElements+k)
          n = GetElementNOFNodes(Element)
@@ -620,24 +1290,40 @@
          IF( m == 0 ) CYCLE
          T = T / m
 
-         A = ElementArea(FineMesh,Element,n)
-         T4 = T**4
-
          nFine = nFine + 1
+         FineIdx(k) = nFine
          FineElem(nFine) = Element % ElementIndex
-         FineRad(nFine) = i
          FineEmis(nFine) = e
          FineAbs(nFine) = ab
          FineT(nFine) = T
-         FineArea(nFine) = A
+         FineArea(nFine) = ElementArea(FineMesh,Element,n)
          FineW(nFine) = OwnFraction(Element)
+       END DO
 
-         A = FineW(nFine) * A
+       ! The pieces of fine elements on coarse elements of this radiation body
+       ALLOCATE( PcFine(nMap), PcRad(nMap), PcW(nMap) )
+       nPc = 0
+       DO p=1,nMap
+         k = FineIdx(MapFine(p))
+         i = InvElementNumbers(MapCoarse(p))
+         IF( k <= 0 .OR. i <= 0 ) CYCLE
+         nPc = nPc + 1
+         PcFine(nPc) = k
+         PcRad(nPc) = i
+         PcW(nPc) = MapW(p)
+       END DO
+
+       DO p=1,nPc
+         k = PcFine(p)
+         i = PcRad(p)
+         A = PcW(p) * FineW(k) * FineArea(k)
+         T4 = FineT(k)**4
+         e = FineEmis(k)
          SumA(i) = SumA(i) + A
          SumT4(i) = SumT4(i) + A * T4
          SumET4(i) = SumET4(i) + A * e * T4
          SumE(i) = SumE(i) + A * e
-         SumAbs(i) = SumAbs(i) + A * ab
+         SumAbs(i) = SumAbs(i) + A * FineAbs(k)
        END DO
 
        CALL SetCurrentMesh( Model, Mesh )
@@ -656,13 +1342,17 @@
          ELSE
            Emissivity(i) = SumE(i) / SumA(i)
          END IF
-         CoarseT(i) = ( SumT4(i) / SumA(i) )**0.25_dp
+         ! Emitted power is conserved over the coarse element of area Areas(i), and
+         ! the irradiation of the coarse element is spread over the fine area SumA(i).
+         CoarseT(i) = ( SumT4(i) / Areas(i) )**0.25_dp
          CoarseA(i) = SumA(i)
+         CoarseScale(i) = Areas(i) / SumA(i)
        END DO
 
        IF( InfoActive(20) ) THEN
-         PRINT *,'Hybrid radiation: fine elements',nFine,' coarse elements',RadiationSurfaces
+         PRINT *,'Hybrid radiation: fine elements',nFine,' pieces',nPc,' coarse elements',RadiationSurfaces
          PRINT *,'Hybrid radiation: area ratio',SUM(SumA)/SUM(Areas(1:RadiationSurfaces))
+         PRINT *,'Hybrid radiation: coarse scale range',MINVAL(CoarseScale),MAXVAL(CoarseScale)
        END IF
      END SUBROUTINE TabulateHybrid
 
@@ -678,9 +1368,9 @@
        REAL(KIND=dp), OPTIONAL :: SOL_d(:)
 
        TYPE(Factors_t), POINTER :: RadiosityFactors
-       INTEGER :: i,k
-       REAL(KIND=dp) :: e, a, r, Jc, Gc, T
-       REAL(KIND=dp), ALLOCATABLE :: Irrad(:), Irrad_d(:)
+       INTEGER :: i,k,p
+       REAL(KIND=dp) :: e, a, r, Jc, T
+       REAL(KIND=dp), ALLOCATABLE :: Irrad(:), Irrad_d(:), FineG(:), FineG_d(:)
        LOGICAL :: Deriv
 
        Deriv = Newton .AND. PRESENT(SOL_d)
@@ -698,17 +1388,26 @@
          END IF
        END DO
 
+       ! Irradiation of the fine elements from the coarse ones
+       ALLOCATE( FineG(nFine), FineG_d(nFine) )
+       FineG = FineGrad(1:nFine)
+       FineG_d = 0.0_dp
+       DO p=1,nPc
+         k = PcFine(p)
+         i = PcRad(p)
+         FineG(k) = FineG(k) + PcW(p) * CoarseScale(i) * Irrad(i)
+         IF( Deriv ) FineG_d(k) = FineG_d(k) + PcW(p) * CoarseScale(i) * Irrad_d(i)
+       END DO
+
        DO k=1,nFine
          RadiosityFactors => FineFactors(k)
-
-         Gc = Irrad(FineRad(k)) + FineGrad(k)
          e = FineEmis(k)
          a = FineAbs(k)
          r = 1-a
          T = FineT(k)
 
-         RadiosityFactors % Factors(1) = a * Gc + (a*e/r) * Sigma * T**4
-         IF( Deriv ) RadiosityFactors % Factors(2) = a * Irrad_d(FineRad(k)) + &
+         RadiosityFactors % Factors(1) = a * FineG(k) + (a*e/r) * Sigma * T**4
+         IF( Deriv ) RadiosityFactors % Factors(2) = a * FineG_d(k) + &
              4 * (a*e/r) * Sigma * T**3
        END DO
 
@@ -808,7 +1507,7 @@
      !--------------------------------------------------------------------------------------
      SUBROUTINE SpectralHybrid()
        REAL(KIND=dp) :: Tmin, Tmax, dT, Trad, q, qsum, totsum, c, r, a, T, w, Black
-       INTEGER :: i,j,k,kmin,kmax,nc
+       INTEGER :: i,j,k,p,kmin,kmax,nc
        LOGICAL :: RBC, ApproxNewton, AccurateNewton, SimpleTdep
        INTEGER, ALLOCATABLE :: RadiatorSet(:), FineKey(:)
        TYPE(Element_t), POINTER :: Element
@@ -879,14 +1578,15 @@
          ! Aggregate absorptivity and emitted power of this interval to coarse elements
          SumAbs = 0.0_dp; Ec = 0.0_dp
          IF( AccurateNewton ) Ec_d = 0.0_dp
-         DO j=1,nFine
-           i = FineRad(j)
-           SumAbs(i) = SumAbs(i) + FineW(j) * FineArea(j) * Af(j)
+         DO p=1,nPc
+           j = PcFine(p)
+           i = PcRad(p)
+           SumAbs(i) = SumAbs(i) + PcW(p) * FineW(j) * FineArea(j) * Af(j)
            q = FineT(j) / dT - k
            IF( ABS(q) < 1 ) THEN
              T = FineT(j)
              Black = Sigma * T**4
-             w = FineW(j) * FineArea(j) * (1-ABS(q)) * Ef(j)
+             w = PcW(p) * FineW(j) * FineArea(j) * (1-ABS(q)) * Ef(j)
              Ec(i) = Ec(i) + w * Black
              IF( AccurateNewton ) Ec_d(i) = Ec_d(i) + w * 4 * Black / T
            END IF
@@ -894,8 +1594,8 @@
          CALL ParallelSum(SumAbs); CALL ParallelSum(Ec)
          IF( AccurateNewton ) CALL ParallelSum(Ec_d)
          Absorptivity(1:nc) = SumAbs / CoarseA
-         Ec = Ec / CoarseA
-         IF( AccurateNewton ) Ec_d = Ec_d / CoarseA
+         Ec = Ec / Areas(1:nc)
+         IF( AccurateNewton ) Ec_d = Ec_d / Areas(1:nc)
 
          IF ( UseFullMatrix ) THEN
            G_full = 0.0_dp
@@ -905,7 +1605,7 @@
          CALL RadiosityAssembly(nc,G,Diag)
          DO i=1,nc
            a = Absorptivity(i)
-           c = RelAreas(i) * (r/a)
+           c = RelAreas(i) / a
            RHS(i) = -c * Ec(i)
            IF( AccurateNewton ) RHS_d(i) = -c * Ec_d(i)
          END DO
@@ -927,12 +1627,14 @@
          END DO
 
          ! ... and absorbed by the fine elements
-         DO j=1,nFine
-           w = Af(j) * Gc(FineRad(j))
+         DO p=1,nPc
+           j = PcFine(p)
+           i = PcRad(p)
+           w = Af(j) * PcW(p) * CoarseScale(i) * Gc(i)
            Fact1(j) = Fact1(j) + w
            WAbs(j) = WAbs(j) + Af(j) * w
            WTemp(j) = WTemp(j) + Trad * w
-           IF( Newton ) Fact2(j) = Fact2(j) + Af(j) * Gc_d(FineRad(j))
+           IF( Newton ) Fact2(j) = Fact2(j) + Af(j) * PcW(p) * CoarseScale(i) * Gc_d(i)
          END DO
        END DO
 
@@ -972,13 +1674,16 @@
                      Element % BoundaryInfo % Radiators(i) * RadiatorPowers(i)
                END DO
              END IF
-             i = FineRad(j)
-             SumAbs(i) = SumAbs(i) + FineW(j) * FineArea(j) * Af(j)
-             Ec(i) = Ec(i) + FineW(j) * FineArea(j) * (1-Af(j)) * Grad(j)
+           END DO
+           DO p=1,nPc
+             j = PcFine(p)
+             i = PcRad(p)
+             SumAbs(i) = SumAbs(i) + PcW(p) * FineW(j) * FineArea(j) * Af(j)
+             Ec(i) = Ec(i) + PcW(p) * FineW(j) * FineArea(j) * (1-Af(j)) * Grad(j)
            END DO
            CALL ParallelSum(SumAbs); CALL ParallelSum(Ec)
            Absorptivity(1:nc) = SumAbs / CoarseA
-           Ec = Ec / CoarseA
+           Ec = Ec / Areas(1:nc)
 
            IF ( UseFullMatrix ) THEN
              G_full = 0.0_dp
@@ -988,7 +1693,7 @@
            CALL RadiosityAssembly(nc,G,Diag)
            DO i=1,nc
              a = Absorptivity(i)
-             c = RelAreas(i) * (r/a)
+             c = RelAreas(i) / a
              RHS(i) = -c * Ec(i)
            END DO
            CALL RadiationLinearSolver(nc,G,SOL,RHS,Diag,Solver)
@@ -999,8 +1704,18 @@
              Gc(i) = ( SOL(i) * r / a - Ec(i) ) / r
            END DO
 
+           ! Direct irradiation by the radiators ...
            DO j=1,nFine
-             w = Af(j) * ( Gc(FineRad(j)) + Grad(j) )
+             w = Af(j) * Grad(j)
+             Fact1(j) = Fact1(j) + w
+             WAbs(j) = WAbs(j) + Af(j) * w
+             WTemp(j) = WTemp(j) + Trad * w
+           END DO
+           ! ... and their reflected part via the coarse mesh
+           DO p=1,nPc
+             j = PcFine(p)
+             i = PcRad(p)
+             w = Af(j) * PcW(p) * CoarseScale(i) * Gc(i)
              Fact1(j) = Fact1(j) + w
              WAbs(j) = WAbs(j) + Af(j) * w
              WTemp(j) = WTemp(j) + Trad * w
@@ -1210,7 +1925,7 @@
        CHARACTER(:), ALLOCATABLE :: RadiationFlag
        INTEGER, ALLOCATABLE :: gPerm(:), iPerm(:)
 
-       Parallel = ParEnv % PEs > 1
+       Parallel = ParEnv % PEs > 1 .AND. .NOT. GeneralMesh
        IF (Parallel) THEN
          ALLOCATE(gPerm(GetNOFBoundaryElements()), iPerm(GetNOFBoundaryElements()))
          gPerm = 0; iPerm = 0
@@ -1262,7 +1977,7 @@
        TYPE(Element_t), POINTER :: Element
        CHARACTER(:), ALLOCATABLE :: RadiationFlag
 
-       Parallel = ParEnv % PEs > 1
+       Parallel = ParEnv % PEs > 1 .AND. .NOT. GeneralMesh
        IF (Parallel) THEN
          ALLOCATE(gPerm(GetNOFBoundaryElements()), iPerm(GetNOFBoundaryElements()))
          gPerm = 0; iPerm = 0
@@ -1432,8 +2147,8 @@
            IF ( .NOT.Found ) RadiatorFactorsFile = 'RadiatorFactors.dat'
            RadiatorFactorsFile = SuffixedName(RadiatorFactorsFile,RadSuffix)
          
-           IF ( LEN_TRIM(MeshDirName) > 0 ) THEN
-             OutputName = TRIM(OutputPath) // '/' // TRIM(MeshDirName) &
+           IF ( LEN_TRIM(RadDirName) > 0 ) THEN
+             OutputName = TRIM(OutputPath) // '/' // TRIM(RadDirName) &
                      // '/' // RadiatorFactorsFile
            ELSE
              OutputName = RadiatorFactorsFile
@@ -1475,8 +2190,8 @@
        IF ( .NOT.Found ) RadiatorFactorsFile = 'RadiatorFactors.dat'
        RadiatorFactorsFile = SuffixedName(RadiatorFactorsFile,RadSuffix)
        
-       IF ( LEN_TRIM(MeshDirName) > 0 ) THEN
-         OutputName = TRIM(OutputPath) // '/' // TRIM(MeshDirName) // &
+       IF ( LEN_TRIM(RadDirName) > 0 ) THEN
+         OutputName = TRIM(OutputPath) // '/' // TRIM(RadDirName) // &
              '/' // RadiatorFactorsFile
        ELSE
          OutputName = RadiatorFactorsFile
@@ -1574,7 +2289,26 @@
 
        nb = FineMesh % NumberOfBoundaryElements
 
-       IF( ParEnv % PEs <= 1 ) THEN
+       IF( ParEnv % PEs > 1 .AND. GeneralMesh ) THEN
+         ! All radiator elements of the heat equation mesh are present in each
+         ! partition, the serial order is that of their global indexes.
+         ALLOCATE( FineNums(nb), FineAreas(nb), cKey(nb), cPerm(nb) )
+         nf = 0
+         DO j=1,nb
+           Element => FineMesh % Elements(FineMesh % NumberOfBulkElements+j)
+           IF ( .NOT. IsRadiatorBC(Element) ) CYCLE
+           nf = nf + 1
+           cKey(nf) = Element % GElementIndex
+           cPerm(nf) = j
+         END DO
+         CALL Sorti(nf,cKey,cPerm)
+         DO i=1,nf
+           Element => FineMesh % Elements(FineMesh % NumberOfBulkElements+cPerm(i))
+           n = GetElementNOFNodes(Element)
+           FineNums(i) = Element % ElementIndex
+           FineAreas(i) = ElementArea(FineMesh,Element,n)
+         END DO
+       ELSE IF( ParEnv % PEs <= 1 ) THEN
          ALLOCATE( FineNums(nb), FineAreas(nb) )
          nf = 0
          DO j=1,nb
@@ -2074,6 +2808,17 @@
          END DO
        END IF
        
+       ! Radiation elements copied from other partitions have no parents but
+       ! the body giving the emissivity.
+       IF( .NOT. ( ASSOCIATED(Element % BoundaryInfo % Left) .OR. &
+           ASSOCIATED(Element % BoundaryInfo % Right) ) ) THEN
+         k = Element % BoundaryInfo % EmissivityBody
+         IF( k > 0 .AND. .NOT. ListCheckPresent(Vlist,'Emissivity') ) THEN
+           mat_id = ListGetInteger( CurrentModel % Bodies(k) % Values,'Material',Found)
+           IF( Found ) Vlist => CurrentModel % Materials(mat_id) % Values
+         END IF
+       END IF
+
        IF(.NOT. ASSOCIATED(Vlist) ) CALL Fatal('TabulateEmissivity','Emissivity list not associated!')
 
        IF( PRESENT(Key) ) THEN
@@ -2180,6 +2925,7 @@
          CALL TabulateHybrid()
        ELSE
          CALL TabulateEmissivity()
+         CALL ParallelSurfaceData( Emissivity, Absorptivity, Reflectivity )
        END IF
 
        IF( Radiosity ) THEN
@@ -2195,8 +2941,8 @@
        END IF
 
        DEALLOCATE(Emissivity,Reflectivity,Absorptivity)
-       IF( Hybrid ) DEALLOCATE( FineElem, FineRad, FineEmis, FineAbs, FineT, CoarseT, &
-           FineArea, FineGrad, FineW, CoarseA, CoarseS )
+       IF( Hybrid ) DEALLOCATE( FineElem, FineEmis, FineAbs, FineT, CoarseT, &
+           FineArea, FineGrad, FineW, CoarseA, CoarseS, CoarseScale, PcFine, PcRad, PcW )
        
      END SUBROUTINE CalculateRadiation
 
@@ -2675,7 +3421,9 @@
        IF( Hybrid ) THEN
          SurfaceTemperature = CoarseT
        ELSE
+         SurfaceTemperature = 0.0_dp
          CALL TabulateSurfaceTemperatures(SurfaceTemperature,Temperature,TempPerm)
+         CALL ParallelSurfaceData( SurfaceTemperature )
        END IF
 
        IF( InfoActive(30) ) THEN
@@ -2702,7 +3450,7 @@
        REAL(KIND=dp) :: SurfaceTemperature(:)
  
        LOGICAL :: RBC
-       INTEGER :: i,k
+       INTEGER :: i,j,k
        REAL(KIND=dp) :: r, e, a, c, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
@@ -2725,7 +3473,7 @@
          e = Emissivity(i)
          a = Absorptivity(i)
          r = 1-a  ! 1-e
-         c = RelAreas(i) * (r/a)
+         c = RelAreas(i) / a
          Temp = SurfaceTemperature(i)
          Black = Sigma*Temp**4
          RHS(i) = -c*e*Black
@@ -2741,15 +3489,18 @@
            Element => FineMesh % Elements(FineElem(k))
            IF ( .NOT. ALLOCATED(Element % BoundaryInfo % Radiators)) CYCLE
            FineGrad(k) = SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
-           i = FineRad(k)
-           CoarseS(i) = CoarseS(i) + FineW(k) * FineArea(k) * (1-FineAbs(k)) * FineGrad(k)
+         END DO
+         DO k=1,nPc
+           j = PcFine(k)
+           i = PcRad(k)
+           CoarseS(i) = CoarseS(i) + PcW(k) * FineW(j) * FineArea(j) * (1-FineAbs(j)) * FineGrad(j)
          END DO
          CALL ParallelSum(CoarseS)
          DO i=1,RadiationSurfaces
-           CoarseS(i) = CoarseS(i) / CoarseA(i)
+           CoarseS(i) = CoarseS(i) / Areas(i)
            a = Absorptivity(i)
            r = 1-a
-           c = RelAreas(i) * (r/a)
+           c = RelAreas(i) / a
            RHS(i) = RHS(i) - c * CoarseS(i)
          END DO
        ELSE IF( RBC) THEN
@@ -2760,7 +3511,7 @@
              a = Absorptivity(i)
              !r = Reflectivity(i)
              r = 1-a  ! e
-             c = RelAreas(i) * (r/a)
+             c = RelAreas(i) / a
              RHS(i) = RHS(i) - c*r* &
                  SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
            END IF
@@ -2903,7 +3654,7 @@
              e = Emissivity(i)
              a = Absorptivity(i)
              r = 1-a
-             c = RelAreas(i) * (r/a)
+             c = RelAreas(i) / a
 
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
@@ -3003,7 +3754,7 @@
                e = Emissivity(i)
                a = Absorptivity(i) 
                r = 1-a
-               c = RelAreas(i) * (r/a)
+               c = RelAreas(i) / a
                DO j=1,SIZE(RadiatorSet)
                  IF(RadiatorSet(j) == k) THEN
                    RHS(i) = RHS(i) - c * r * &
@@ -3116,13 +3867,13 @@
 !        e = Emissivity(i)
          a = Absorptivity(i)
          r = 1-a !e
-         c = RelAreas(i) * (r/a)**2
+         c = RelAreas(i) * r / a**2
          IF( .NOT. UseFullMatrix ) previ = G % Rows(i)-1
          DO j=1,nf
 !          ej = Emissivity(Cols(j))
            aj = Absorptivity(Cols(j))
            rj = 1-aj !ej
-           s = r*Vals(j) * (r/a*rj/aj)
+           s = Vals(j) * (r/a) * (rj/aj)
            IF ( UseFullMatrix ) THEN
              G_full(i,Cols(j)) = G_full(i,Cols(j)) + s
            ELSE
@@ -3156,7 +3907,9 @@
 
        ! Solve serially and distribute the result afterwards, memory bandwidth
        ! destroys the performance otherwise (at least for non-supercomputer systems)
-       IF ( ParEnv % PEs <= 1 ) THEN
+       ! A serially loaded radiation mesh is the same in all partitions:
+       ! then each partition solves the (small) system itself.
+       IF ( ParEnv % PEs <= 1 .OR. GeneralMesh ) THEN
          FirstActive = ParEnv % myPE
        ELSE
          FirstActive = -1
@@ -3222,7 +3975,7 @@
          x = x * bscal * Diag
        END IF
 
-       IF ( ParEnv % Pes <= 1 ) RETURN
+       IF ( ParEnv % Pes <= 1 .OR. GeneralMesh ) RETURN
 
        ! Distribute the linear system result
        BLOCK
@@ -3327,6 +4080,11 @@
        r = b - r
        residual = SQRT(SUM(r*r))
        WRITE (*, '(I8, E11.4)') iter, residual
+       IF( residual > eps ) THEN
+         WRITE(Message,'(A,I0,A,ES11.4)') 'Radiosity CG not converged in ',maxiter,&
+             ' iterations, residual: ',residual
+         CALL Warn('RadiationCG',Message)
+       END IF
        DEALLOCATE(r, p, q)
      END SUBROUTINE RadiationCG
 

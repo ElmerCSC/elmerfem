@@ -1418,7 +1418,7 @@ CONTAINS
 
    INTEGER :: RadiationSurfaces, n_New, n_Coord, n_Coord0, n_Curr, n_NodeInd, max_Coord
    LOGICAL :: Found
-   INTEGER :: i,j,k,l,n,ntot,ierr, status(MPI_STATUS_SIZE), narr(ParEnv % PEs)
+   INTEGER :: i,j,k,l,n,ntot,ierr, status(MPI_STATUS_SIZE), narr(ParEnv % PEs), ipe
 
    REAL(KIND=dp), ALLOCATABLE :: Send_Coord(:), Recv_Coords(:)
    INTEGER, ALLOCATABLE :: ElementNumbers(:), Send_Info(:), Send_Ind(:), &
@@ -1477,7 +1477,7 @@ CONTAINS
 
      ! Extract topolgy of the "owned" radiation elements
      ! --------------------------------------------------
-     ALLOCATE(Send_Info(3*RadiationSurfaces), Send_ind(4*RadiationSurfaces))
+     ALLOCATE(Send_Info(4*RadiationSurfaces), Send_ind(4*RadiationSurfaces))
      n_NodeInd  = 0
      DO i=1,RadiationSurfaces
        j = ElementNumbers(i)
@@ -1485,13 +1485,15 @@ CONTAINS
        n = ElemenT % Type % NumberOfNodes
        Element % PartIndex = ParEnv % myPE
 
-       Send_Info(3*(i-1)+1) = Element % Type % ElementCode
-       Send_Info(3*(i-1)+2) = Element % BoundaryInfo % Constraint
-       Send_Info(3*(i-1)+3) = Element % GElementIndex
+       Send_Info(4*(i-1)+1) = Element % Type % ElementCode
+       Send_Info(4*(i-1)+2) = Element % BoundaryInfo % Constraint
+       Send_Info(4*(i-1)+3) = Element % GElementIndex
+       ! The copies have no parents: send the body of the emissivity
+       Send_Info(4*(i-1)+4) = EmissivityBodyOf(Element)
        Send_Ind(n_NodeInd+1:n_NodeInd+n) = cPerm(Element % NodeIndexes)
        n_NodeInd = n_NodeInd + n
      END DO
-     CALL CheckBuffer(ParEnv % PEs*(3*RadiationSurfaces+n_NodeInd+8*n_Coord+MPI_BSEND_OVERHEAD))
+     CALL CheckBuffer(ParEnv % PEs*(4*RadiationSurfaces+n_NodeInd+8*n_Coord+MPI_BSEND_OVERHEAD))
    ELSE
      CALL CheckBuffer(1024+MPI_BSEND_OVERHEAD) ! just something
    END IF
@@ -1503,7 +1505,7 @@ CONTAINS
 
      CALL MPI_BSEND( RadiationSurfaces,1,MPI_INTEGER,i,12000,ELMER_COMM_WORLD,ierr )
      IF ( RadiationSurfaces>0 ) THEN
-       CALL MPI_BSEND( Send_Info,3*RadiationSurfaces,MPI_INTEGER,i,12001,ELMER_COMM_WORLD,ierr )
+       CALL MPI_BSEND( Send_Info,4*RadiationSurfaces,MPI_INTEGER,i,12001,ELMER_COMM_WORLD,ierr )
        CALL MPI_BSEND( Send_Ind, n_NodeInd,MPI_INTEGER,i,12002,ELMER_COMM_WORLD,ierr )
        CALL MPI_BSEND( Send_Nbr,n_Coord,MPI_INTEGER,i,12003,ELMER_COMM_WORLD,ierr )
        CALL MPI_BSEND( Send_Coord,3*n_Coord,MPI_DOUBLE_PRECISION,i,12004,ELMER_COMM_WORLD,ierr )
@@ -1584,13 +1586,13 @@ CONTAINS
    ! Receive the elements from other partitions
    ! ------------------------------------------
    n = MAXVAL(Recv_Size)
-   ALLOCATE(Recv_Info(3*n), Recv_NodeInd(4*n), Recv_Coords(12*n), Recv_Nbr(4*n))
+   ALLOCATE(Recv_Info(4*n), Recv_NodeInd(4*n), Recv_Coords(12*n), Recv_Nbr(4*n))
 
    n_Coord = Mesh % NumberOfNodes
    DO i=0,nprocs-1
      IF (Recv_Size(i) <= 0) CYCLE
 
-     CALL MPI_RECV( Recv_Info,3*Recv_Size(i),MPI_INTEGER,i,12001,ELMER_COMM_WORLD,status,ierr )
+     CALL MPI_RECV( Recv_Info,4*Recv_Size(i),MPI_INTEGER,i,12001,ELMER_COMM_WORLD,status,ierr )
      CALL MPI_RECV( Recv_NodeInd,4*Recv_Size(i),MPI_INTEGER,i,12002,ELMER_COMM_WORLD,status,ierr )
 
      CALL MPI_RECV( Recv_Nbr,4*Recv_Size(i),MPI_INTEGER,i,12003,ELMER_COMM_WORLD,status,ierr )
@@ -1620,20 +1622,16 @@ CONTAINS
 
            IF(.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)) STOP 'a'
 
+           ! All radiation elements are copied to all partitions, hence their
+           ! nodes are shared by all partitions. Keep the first neighbour.
            l = SIZE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
            narr(1:l) = Mesh % ParallelInfo % NeighbourList(k) % Neighbours
-
-           IF (ALL(narr(1:l) /= i)) THEN
-             l = l +1
-             narr(l) = i
-             DEALLOCATE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
-             ALLOCATE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours(l))
-             Mesh % ParallelInfo % NeighbourList(k) % Neighbours = narr(1:l)
-           END IF
-
-           IF (ALL(narr(1:l) /= ParEnv % myPE)) THEN
-             l = l +1
-             narr(l) = ParEnv % myPE
+           DO ipe=0,ParEnv % PEs-1
+             IF (ANY(narr(1:l) == ipe)) CYCLE
+             l = l + 1
+             narr(l) = ipe
+           END DO
+           IF (l > SIZE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)) THEN
              DEALLOCATE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
              ALLOCATE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours(l))
              Mesh % ParallelInfo % NeighbourList(k) % Neighbours = narr(1:l)
@@ -1659,9 +1657,15 @@ CONTAINS
 
          IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours)) STOP 'b'
 
-         ALLOCATE(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(2))
+         ! Shared by all partitions, the sending one first
+         ALLOCATE(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(ParEnv % PEs))
          Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(1) = i
-         Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(2) = ParEnv % myPE
+         l = 1
+         DO ipe=0,ParEnv % PEs-1
+           IF (ipe == i) CYCLE
+           l = l + 1
+           Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(l) = ipe
+         END DO
        END DO
      END BLOCK
 
@@ -1671,18 +1675,19 @@ CONTAINS
      DO j=1,Recv_Size(i)
        Element => Mesh % Elements(j+n_Curr)
 
-       Element % Type => GetElementType(Recv_Info(3*(j-1)+1))
+       Element % Type => GetElementType(Recv_Info(4*(j-1)+1))
        n = Element % Type % NumberOfNodes
 
        ALLOCATE(Element % BoundaryInfo)
-       Element % BoundaryInfo % Constraint = Recv_Info(3*(j-1)+2)
+       Element % BoundaryInfo % Constraint = Recv_Info(4*(j-1)+2)
+       Element % BoundaryInfo % EmissivityBody = Recv_Info(4*(j-1)+4)
        Element % BoundaryInfo % Left => Null()
        Element % BoundaryInfo % Right => Null()
 
        Element % PartIndex = i
        Element % BodyId = 0
        Element % ElementIndex  = j+n_Curr
-       Element % GElementIndex = Recv_Info(3*(j-1)+3)
+       Element % GElementIndex = Recv_Info(4*(j-1)+3)
 
        ALLOCATE(Element % NodeIndexes(n))
        Element % NodeIndexes = cPerm(Recv_NodeInd(k+1:k+n))
@@ -1738,6 +1743,38 @@ CONTAINS
    Mesh % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements + SUM(Recv_Size)
 
 CONTAINS
+
+ !------------------------------------------------------------------------------
+ !> The body whose material defines the emissivity of the boundary element: the
+ !> first parent (left, then right) with emissivity in its material, as in the
+ !> radiation computation. Zero if none.
+ !------------------------------------------------------------------------------
+ FUNCTION EmissivityBodyOf(Element) RESULT(BodyId)
+   TYPE(Element_t), POINTER :: Element
+   INTEGER :: BodyId
+   TYPE(Element_t), POINTER :: Parent
+   INTEGER :: k, mat_id
+   LOGICAL :: Found
+
+   BodyId = 0
+   DO k=1,2
+     IF(k==1) THEN
+       Parent => Element % BoundaryInfo % Left
+     ELSE
+       Parent => Element % BoundaryInfo % Right
+     END IF
+     IF(.NOT. ASSOCIATED(Parent)) CYCLE
+     IF( Parent % BodyId < 1 .OR. Parent % BodyId > CurrentModel % NumberOfBodies ) CYCLE
+     mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',Found)
+     IF(.NOT. Found) CYCLE
+     IF( mat_id < 1 .OR. mat_id > CurrentModel % NumberOfMaterials ) CYCLE
+     IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) THEN
+       BodyId = Parent % BodyId
+       RETURN
+     END IF
+   END DO
+ END FUNCTION EmissivityBodyOf
+
 
  !------------------------------------------------------------------------------
  SUBROUTINE GetMeshRadiationSurfaceInfoA(Mesh,RadiationSurfaces,ElementNumbers,CoordsFlag)

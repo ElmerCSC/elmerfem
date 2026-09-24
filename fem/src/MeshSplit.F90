@@ -1590,6 +1590,38 @@ CONTAINS
     END DO
 
 !
+!   Internal boundaries: above only the parent on one side was set, set
+!   also the other one such that e.g. material properties may be found.
+!   -------------------------------------------------------------------
+    DO k=1,NewElCnt - NewMesh % NumberOfBulkElements
+       i = BndParent(k)
+       IF( i <= 0 ) CYCLE
+       Eold => Mesh % Elements(Mesh % NumberOfBulkElements+i)
+       IF( .NOT. ( ASSOCIATED(Eold % BoundaryInfo % Left) .AND. &
+           ASSOCIATED(Eold % BoundaryInfo % Right) ) ) CYCLE
+       Enew => NewMesh % Elements(NewMesh % NumberOfBulkElements+k)
+       IF( ASSOCIATED(Enew % BoundaryInfo % Right) ) CYCLE
+
+       Eparent => Eold % BoundaryInfo % Right
+       ParentId = Eparent % ElementIndex
+       n1 = 8
+       IF( Eparent % TYPE % DIMENSION == 2 ) n1 = 4
+       n = Enew % TYPE % NumberOfNodes
+       DO j=1,n1
+          IF( Child(ParentId,j) <= 0 ) CYCLE
+          Eptr => NewMesh % Elements( Child(ParentId,j) )
+          n3 = 0
+          DO n2=1,n
+             IF( ANY( Enew % NodeIndexes(n2) == Eptr % NodeIndexes ) ) n3 = n3 + 1
+          END DO
+          IF( n3 == n ) THEN
+             Enew % BoundaryInfo % Right => Eptr
+             EXIT
+          END IF
+       END DO
+    END DO
+
+!
 !   Update new mesh boundary element counts:
 !   ----------------------------------------
     NewMesh % NumberOfBoundaryElements = NewElCnt - &

@@ -841,6 +841,9 @@ MODULE Types
    TYPE BoundaryInfo_t
      TYPE(Factors_t), POINTER :: RadiationFactors => NULL()
      INTEGER :: Constraint = 0, OutBody = -1
+     ! Body whose material gives the emissivity when the element has no parents
+     ! (radiation elements copied from other partitions)
+     INTEGER :: EmissivityBody = 0
      REAL(KIND=dp), ALLOCATABLE :: Radiators(:)
      TYPE(Element_t), POINTER :: Left =>NULL(), Right=>NULL()
    END TYPE BoundaryInfo_t

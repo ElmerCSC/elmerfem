@@ -827,8 +827,22 @@ CONTAINS
      ! than the heat equation. Then the factors are computed for that mesh.
      BLOCK
        INTEGER :: RadLevel, j
-       RadLevel = ListGetInteger( RadSolver % Values,'Radiation Relative Mesh Level',Found )
        FactorsSuffix = ''
+
+       ! Radiation may be resolved on an independent mesh. Then the view factors are
+       ! computed for that mesh and saved in its directory.
+       str = ListGetString( RadSolver % Values,'Radiation Mesh',Found )
+       IF( Found .AND. .NOT. DoRadiators ) THEN
+         Mesh => LoadMesh2( Model, OutputPath, TRIM(OutputPath)//'/'//str, .FALSE., 1, 0 )
+         IF(.NOT. ASSOCIATED(Mesh)) CALL Fatal(Caller,'Could not load radiation mesh: '//str)
+         Mesh % Name = str
+         MeshDirName = str
+         RadSolver % Mesh => Mesh
+         CALL Info(Caller,'Computing view factors for radiation mesh "'//str//'" with '//&
+             I2S(Mesh % NumberOfBoundaryElements)//' boundary elements',Level=5)
+       END IF
+
+       RadLevel = ListGetInteger( RadSolver % Values,'Radiation Relative Mesh Level',Found )
        IF( Found .AND. RadLevel < 0 ) THEN
          ! Radiator factors are resolved on the finer mesh anyways.
          IF( .NOT. DoRadiators ) THEN
@@ -1461,6 +1475,14 @@ CONTAINS
      CALL GetParentInfo(Element % BoundaryInfo % Right, Element, Rbody, Rnode, Rrad)
 
      BC => GetBC( Element )
+
+     ! Surface meshes without parent elements (e.g. an independent radiation mesh):
+     ! the normal given by the node ordering points to the radiating side.
+     IF( Lnode <= 0 .AND. Rnode <= 0 ) THEN
+       dir = 1.0_dp
+       IF( GetLogical( BC,'Radiation Normal Flip',GotIt ) ) dir = -1.0_dp
+       RETURN
+     END IF
 
      RadBody = GetInteger( BC, 'Radiation Target Body',GotIt )
      IF ( .NOT. GotIt ) RadBody = GetInteger( BC, 'Normal Target Body',GotIt )
