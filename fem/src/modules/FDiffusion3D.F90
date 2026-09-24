@@ -433,7 +433,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF ( Bubbles ) THEN
        PRINT*,'FourierDiffusion3DSolver: LocalMatrix: Cannot handle bubbles.'
-       STOP
+       ERROR STOP
        IntegStuff = GaussPoints( Element, Element % Type % GaussPoints2 )
        NBasis = 2*n
     ELSE

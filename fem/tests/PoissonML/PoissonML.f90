@@ -197,7 +197,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
          DO l=1,SIZE(ed(m) % dofIndeces)
            IF(ed(m) % dofIndeces(l)==inds(j)) EXIT
          END DO
-         IF(l>SIZE(ed(m) % dofIndeces)) STOP 'l'
+         IF(l>SIZE(ed(m) % dofIndeces)) ERROR STOP 'l'
 
          IF (j<=n) THEN
            ed(m) % force = ed(m) % force - ed(m) % stiff(:,l)*d_val

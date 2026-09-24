@@ -448,7 +448,7 @@ CONTAINS
     ! This basically tests for NaN's
     IF( J_li /= J_li ) THEN
       PRINT *,'jli',a_s,c_0,k_0,Cs_max - Cs,Ce,Cs,j_li
-      STOP
+      ERROR STOP
     END IF
       
     ! For potentials we use analytical derivatives and chain rule

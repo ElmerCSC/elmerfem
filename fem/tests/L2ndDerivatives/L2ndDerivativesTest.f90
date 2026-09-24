@@ -193,7 +193,7 @@ CONTAINS
             print*,ddxFromNodaldx(i,1,:), ddbasisddx(i,1,:)
              print*,ddxFromNodaldx(i,2,:), ddbasisddx(i,2,:)
              print*,ddxFromNodaldx(i,3,:), ddbasisddx(i,3,:)
-            STOP "ddx's don't match"
+            ERROR STOP "ddx's don't match"
           END IF
         END DO
       END IF
@@ -289,7 +289,7 @@ CONTAINS
      IF( ABS(f1-f2) < 1.d-12 ) RETURN
      IF(ABS(f1-f2)>scal*eps) THEN
        PRINT*,str,":",f1,f2,ABS(f1-f2), '>', scal*eps
-       STOP 
+       ERROR STOP 
      END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE CheckValue

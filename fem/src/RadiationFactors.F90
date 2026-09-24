@@ -2440,7 +2440,7 @@
 
        DO iter=1,maxiter
          rho = SUM(r*r)
-         IF(rho==0.0_dp) STOP 'CG, rho=0'
+         IF(rho==0.0_dp) ERROR STOP 'CG, rho=0'
   
          IF ( iter==1 ) THEN
            p = r
