@@ -58,7 +58,7 @@ MODULE ElementBasis
    USE Lists
 !$ USE omp_lib ! Include module conditionally (for omp_get_max_threads below)
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTEGER, PARAMETER, PRIVATE :: MaxDeg  = 4, MaxDeg3 = MaxDeg**3, &
                                    MaxDeg2 = MaxDeg**2
@@ -2357,7 +2357,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE ElementBasisDegree( Element, BasisDegree, USolver )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Element_t), TARGET :: Element   !< Element structure
      INTEGER :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
@@ -2868,7 +2868,7 @@ CONTAINS
    END SUBROUTINE ElementBasisDegree
      FUNCTION CrossProduct( v1, v2 ) RESULT( v3 )
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        REAL(KIND=dp) :: v1(3), v2(3), v3(3)
        v3(1) =  v1(2)*v2(3) - v1(3)*v2(2)
        v3(2) = -v1(1)*v2(3) + v1(3)*v2(1)

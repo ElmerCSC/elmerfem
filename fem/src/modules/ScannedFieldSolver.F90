@@ -42,7 +42,7 @@
 SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -107,7 +107,7 @@ END SUBROUTINE ScannedFieldSolver_Init
 SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)

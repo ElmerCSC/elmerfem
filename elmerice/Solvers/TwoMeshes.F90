@@ -77,7 +77,7 @@ SUBROUTINE TwoMeshes( Model,Solver,dt,TransientSimulation )
   USE MeshUtils  
   USE InterpVarToVar
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -815,7 +815,7 @@ CONTAINS
       Perm, NodeIndex, NodeValue) 
 !------------------------------------------------------------------------------
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: StiffMatrix
     REAL(KIND=dp) :: ForceVector(:), NodeValue

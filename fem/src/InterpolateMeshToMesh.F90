@@ -1441,7 +1441,7 @@ CONTAINS
   !---------------------------------------------------------------------------
     USE DefUtils
     USE MortarUtils, ONLY : PreRotationalProjector, PostRotationalProjector
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: BMesh1, BMesh2
     REAL(KIND=dp) :: PeriodicScale
@@ -1805,7 +1805,7 @@ CONTAINS
     USE Types
     USE Integration
     USE ElementDescription
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     TYPE(Element_t), TARGET :: Element

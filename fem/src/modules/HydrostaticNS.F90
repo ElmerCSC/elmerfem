@@ -92,7 +92,7 @@ CONTAINS
   FUNCTION EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
       InitHandles, ViscNewton, ViscDerVec, DetJVec, ViscWork ) RESULT ( EffViscVec ) 
 
-    IMPLICIT NONE 
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: ngp,ntot
     REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
@@ -553,7 +553,7 @@ CONTAINS
        SpecificLoad, LinearAssembly, nb, Newton, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ntot, nb
@@ -810,7 +810,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, InitHandles, FrictionNewton)
     !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
@@ -1089,7 +1089,7 @@ CONTAINS
   SUBROUTINE LocalDuz(Element, n, ntot, duz, wuz, FirstElem, ub, dpr )
 !------------------------------------------------------------------------------
     USE LinearForms
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, ntot
@@ -1200,7 +1200,7 @@ CONTAINS
   
   SUBROUTINE PopulateDerivedFields()
     USE ParallelUtils, ONLY : ParallelSumNodalVector
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP, VarVx, VarVy, VarXYAve
     CHARACTER(LEN=MAX_NAME_LEN):: str
@@ -1495,7 +1495,7 @@ CONTAINS
   !---------------------------------------------------------------------------------------
   SUBROUTINE InitializeHeightField()
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Variable_t), POINTER :: VarH
     CHARACTER(LEN=MAX_NAME_LEN):: str
@@ -1556,7 +1556,7 @@ END MODULE HydrostaticNSUtils
 SUBROUTINE HydrostaticNSSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -1580,7 +1580,7 @@ END SUBROUTINE HydrostaticNSSolver_Init0
 SUBROUTINE HydrostaticNSSolver_init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -1648,7 +1648,7 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   USE MainUtils
   USE MeshTransform, ONLY : DetectExtrudedStructure
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model

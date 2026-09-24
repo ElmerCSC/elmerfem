@@ -42,7 +42,7 @@
    SUBROUTINE FlowSolver_init( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options
      TYPE(Model_t), TARGET :: Model    !< All model information (mesh, materials, BCs, etc...)
@@ -124,7 +124,7 @@
     USE FreeSurface
     USE ElementDescription, ONLY: GetEdgeMap
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET :: Solver
@@ -1694,7 +1694,7 @@ CONTAINS
         Quant, Perm, Gnorm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -2061,7 +2061,7 @@ CONTAINS
   SUBROUTINE FlowSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -2296,7 +2296,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)

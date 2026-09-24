@@ -42,7 +42,7 @@ SUBROUTINE ExtrudedRestart_init0( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -71,7 +71,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -260,7 +260,7 @@ END SUBROUTINE ExtrudedRestart
 SUBROUTINE NodeToEdgeField_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -310,7 +310,7 @@ END SUBROUTINE NodeToEdgeField_Init0
 SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver

@@ -53,7 +53,7 @@ MODULE ParticleUtils
   USE GeneralUtils
   USE SaveUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE Particle_t
     INTEGER :: Dim, NumberOfParticles=0, MaxNumberOfParticles=0, &
@@ -1670,7 +1670,7 @@ RETURN
     ! Index to that array element. Return value -1 means Item was not found.
     !
     FUNCTION SearchElement( N, IArray, Item ) RESULT(Indx)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER :: Item, Indx, i
       INTEGER :: N
@@ -5337,7 +5337,7 @@ RETURN
   !> Return the index until the list is finished.
   !------------------------------------------------------------
   FUNCTION GetNextNeighbour( Particles, No ) RESULT ( No2 )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No, No2
@@ -5418,7 +5418,7 @@ RETURN
 !------------------------------------------------------------ 
   SUBROUTINE ParticleParticleInteraction( Particles, dtime, Collision, InteractionKernel ) 
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Particle_t), POINTER :: Particles
     REAL(KIND=dP) :: dtime
@@ -7220,7 +7220,7 @@ RETURN
     USE ElementDescription
     USE AscBinOutputUtils
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Particle_t), POINTER :: Particles  
     
     TYPE(ValueList_t),POINTER :: Params
@@ -8134,7 +8134,7 @@ RETURN
 !------------------------------------------------------------------------------
     USE AscBinOutputUtils    
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Particle_t), POINTER :: Particles  
     INTEGER :: GridExtent(6)
     REAL(KIND=dp) :: GridOrigin(3), GridDx(3)
@@ -8723,7 +8723,7 @@ RETURN
   SUBROUTINE SaveParticleData( Model,Solver,dt,TransientSimulation )
     
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
     TYPE(Model_t) :: Model

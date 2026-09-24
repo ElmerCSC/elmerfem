@@ -84,7 +84,7 @@
 MODULE SSTKOmegaFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -126,7 +126,7 @@ MODULE SSTKOmegaLocalForms
   USE DefUtils
   USE LinearForms
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Per-element bubble history, used by Default1stOrderTime's Nb path
   ! (DefUtils.F90) -- lives on Solver % Variable's own BubbleValues/
@@ -150,7 +150,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, dt, Transient, GlobalBubbles, Stabilize, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     INTEGER, INTENT(IN) :: n, nd, nb
     REAL(KIND=dp), INTENT(IN) :: dt
@@ -524,7 +524,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixScalar( Element, dt, Transient, GlobalBubbles, BubblesDefault )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), INTENT(IN) :: dt
     LOGICAL, INTENT(IN) :: Transient, GlobalBubbles, BubblesDefault
@@ -588,7 +588,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       USE MaterialModels
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL(KIND=dp), DIMENSION(:)   :: FORCE
       REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
@@ -935,7 +935,7 @@ SUBROUTINE SSTKOmega( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE SSTKOmegaLocalForms
   USE SSTKOmegaFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -1095,7 +1095,7 @@ END SUBROUTINE SSTKOmega
 SUBROUTINE SSTKOmega_Init0( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE SSTKOmegaFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -1141,7 +1141,7 @@ END SUBROUTINE SSTKOmega_Init0
 SUBROUTINE SSTKOmega_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE SSTKOmegaFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver

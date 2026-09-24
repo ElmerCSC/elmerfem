@@ -44,7 +44,7 @@
 SUBROUTINE AmsVectorSolver_Init( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -126,7 +126,7 @@ END SUBROUTINE AmsVectorSolver_Init ! }}}
 SUBROUTINE ParallelProjTransposeMultiply( Proj, EdgeMatrix, Mesh, NodalPerm, dofs, u, v )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Matrix_t), POINTER :: Proj, EdgeMatrix
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER, POINTER :: NodalPerm(:)
@@ -176,7 +176,7 @@ END SUBROUTINE ParallelProjTransposeMultiply
 SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -546,7 +546,7 @@ END SUBROUTINE AmsVectorSolver
 SUBROUTINE AmsScalarSolver_Init( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -583,7 +583,7 @@ END SUBROUTINE AmsScalarSolver_Init ! }}}
 SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -725,7 +725,7 @@ END SUBROUTINE AmsScalarSolver
 SUBROUTINE AmsVSolver_Init( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -762,7 +762,7 @@ END SUBROUTINE AmsVSolver_Init ! }}}
 SUBROUTINE AmsVSolver( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)

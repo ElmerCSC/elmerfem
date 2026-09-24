@@ -45,7 +45,7 @@ MODULE MeshLoad
     USE MeshBasics
     USE MeshSplit
     USE MeshTagging
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -57,7 +57,7 @@ CONTAINS
    !------------------------------------------------------------------------------
    USE PElementMaps, ONLY : GetRefPElementNodes
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
    LOGICAL :: BoundariesOnly    

@@ -65,7 +65,7 @@
 MODULE StressSolveFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -152,7 +152,7 @@ END MODULE StressSolveFront
 !------------------------------------------------------------------------------
 SUBROUTINE StressSolver_Init0( Model,Solver,dt,Transient )
   USE StressSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -180,7 +180,7 @@ END SUBROUTINE StressSolver_Init0
 
 SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
   USE StressSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -212,7 +212,7 @@ END SUBROUTINE StressSolver_Init
 
 SUBROUTINE StressSolver( Model,Solver,dt,Transient )
   USE StressSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -242,7 +242,7 @@ END SUBROUTINE StressSolver
 SUBROUTINE StressSolverLegacy_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t)  :: Model
     TYPE(Solver_t) :: Solver
@@ -268,7 +268,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
     USE StressLocal, ONLY: SymTensorComponents, StressFieldDefinition
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t)  :: Model
     TYPE(Solver_t) :: Solver
@@ -439,7 +439,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
     USE DefUtils
     USE MainUtils
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver
@@ -1802,7 +1802,7 @@ CONTAINS
 
     USE DefUtils
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     REAL(KIND=dp), POINTER :: Displ(:),PrevDispl(:,:),DisplVelo(:)
     REAL(KIND=dp) :: dt
@@ -2188,7 +2188,7 @@ CONTAINS
    SUBROUTINE StressSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm, Indicator )
      USE StressLocal
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      TYPE( Mesh_t )    :: Mesh
@@ -2204,7 +2204,7 @@ CONTAINS
   SUBROUTINE StressSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm, Indicator )
      USE StressLocal
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      TYPE(Mesh_t) :: Mesh
@@ -2221,7 +2221,7 @@ CONTAINS
         Mesh, Quant, Perm, Fnorm, Indicator )
      USE StressLocal
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      TYPE( Mesh_t )    :: Mesh

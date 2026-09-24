@@ -50,7 +50,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
   USE DefUtils
   USE MeshBasics
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -702,7 +702,7 @@ SUBROUTINE StructuredFlowLine_init( Model,Solver,dt,Transient )
   USE DefUtils
   USE Lists
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver

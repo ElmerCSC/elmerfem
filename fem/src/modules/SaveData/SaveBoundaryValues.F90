@@ -52,7 +52,7 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
   USE ElementDescription
   USE SolverBasics
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 ! Types
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver

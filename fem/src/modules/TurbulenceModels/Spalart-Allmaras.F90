@@ -70,7 +70,7 @@
 MODULE SpalartAllmarasFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -112,7 +112,7 @@ MODULE SpalartAllmarasLocalForms
   USE DefUtils
   USE LinearForms
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Per-element bubble history, needed by Default1stOrderTime's Nb path
   ! (DefUtils.F90) to form a consistent BDF(1) time derivative for a
@@ -140,7 +140,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, dt, Transient, GlobalBubbles, Stabilize, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     INTEGER, INTENT(IN) :: n, nd, nb
     REAL(KIND=dp), INTENT(IN) :: dt
@@ -445,7 +445,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixScalar( Element, dt, Transient, GlobalBubbles, BubblesDefault )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), INTENT(IN) :: dt
     LOGICAL, INTENT(IN) :: Transient, GlobalBubbles, BubblesDefault
@@ -512,7 +512,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       USE MaterialModels
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL(KIND=dp), DIMENSION(:)   :: FORCE
       REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
@@ -693,7 +693,7 @@ SUBROUTINE SpalartAllmaras( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE SpalartAllmarasLocalForms
   USE SpalartAllmarasFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -839,7 +839,7 @@ END SUBROUTINE SpalartAllmaras
 SUBROUTINE SpalartAllmaras_Init0( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE SpalartAllmarasFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -890,7 +890,7 @@ END SUBROUTINE SpalartAllmaras_Init0
 SUBROUTINE SpalartAllmaras_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE SpalartAllmarasFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver

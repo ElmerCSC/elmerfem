@@ -45,7 +45,7 @@ MODULE AnisotropicMaterialModels
   USE MaterialModels, ONLY: SecondInvariant
   USE StressLocal, ONLY: RotateElasticityMatrix3D, Rotate4IndexTensor
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -206,7 +206,7 @@ SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
   USE SolverBasics
   USE ElementUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -271,7 +271,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   USE AnisotropicMaterialModels
   USE ElementDescription, ONLY: GetEdgeMap
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -1927,7 +1927,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    USE ElementUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:), LoadVector(:,:), &
        NodalSlipCoeff(:,:), NodalExtPressure(:)

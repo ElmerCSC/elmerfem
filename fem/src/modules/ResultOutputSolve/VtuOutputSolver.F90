@@ -31,7 +31,7 @@ MODULE VtuXMLFile
   USE ElementDescription
   USE AscBinOutputUtils
 
-  IMPLICIT NONE 
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
 CONTAINS
 
@@ -260,7 +260,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   USE VtuXMLFile
   USE MeshBasics, ONLY : CalculateBodyAverage
     
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(dp) :: dt

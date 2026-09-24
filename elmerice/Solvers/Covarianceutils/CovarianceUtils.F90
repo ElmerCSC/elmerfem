@@ -36,7 +36,7 @@
       USE MainUtils
       USE DefUtils
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       EXTERNAL :: DPPTRF, DPPTRI, DSPMV, DTPMV
 
       INTERFACE SqrCovarianceVectorMultiply
@@ -616,7 +616,7 @@
 !# Some classical analytical correlation functions
 !####################################################
         function correlation(d,Ctype,r,p) RESULT(c)
-         implicit none
+         IMPLICIT NONE IMPLICIT_EXTERNAL
          real(kind=dp) :: c ! the correlation value
          real(kind=dp) :: d ! the distance
          real(kind=dp) :: r ! the range
@@ -892,7 +892,7 @@
 !   Horner scheme
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       FUNCTION Polynomial(x,P,n) RESULT(y)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: y
       REAL(KIND=dp),INTENT(IN) :: P(n+1),x
       INTEGER ,INTENT(IN) :: n
@@ -910,7 +910,7 @@
 !   Integer factorial
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       function fact(n)
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       integer :: fact
       integer, intent(IN) :: n
       integer :: i

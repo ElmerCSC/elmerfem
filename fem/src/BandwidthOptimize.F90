@@ -48,7 +48,7 @@ MODULE BandwidthOptimize
    USE ListMatrix
 !-------------------------------------------------------------------------------
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !-------------------------------------------------------------------------------
    TYPE Label_t

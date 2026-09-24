@@ -49,7 +49,7 @@ MODULE PElementMaps
   USE Types
   Use GeneralUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Private mappings. For access use get[Element][Type]Map(i)
   PRIVATE QuadEdgeMap, TriangleEdgeMap, &
@@ -88,7 +88,7 @@ CONTAINS
     ! Function returns mapping from edge number to edge endpoints 
 
     FUNCTION getLineEdgeMap(i) RESULT(localEdge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(2) :: localEdge
@@ -103,7 +103,7 @@ CONTAINS
     ! Function returns mapping from edge number to edge endpoints 
 
     FUNCTION getQuadEdgeMap(i) RESULT(localEdge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(2) :: localEdge
@@ -117,7 +117,7 @@ CONTAINS
     ! 
     ! Function returns mapping from face number to face nodes
     FUNCTION getQuadFaceMap(i) RESULT(localFace)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: localFace
@@ -132,7 +132,7 @@ CONTAINS
     ! Function returns mapping from edge number to edge endpoints
 
     FUNCTION getTriangleEdgeMap(i) RESULT(localEdge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(2) :: localEdge
@@ -146,7 +146,7 @@ CONTAINS
     ! 
     ! Function returns mapping from face number to face nodes
     FUNCTION getTriangleFaceMap(i) RESULT(localFace)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(3) :: localFace
@@ -161,7 +161,7 @@ CONTAINS
     ! Function returns mapping from edge number to edge endpoints
 
     FUNCTION getBrickEdgeMap(i) RESULT(localEdge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(2) :: localEdge
@@ -176,7 +176,7 @@ CONTAINS
     ! Function returns mapping from face number to face nodes
 
     FUNCTION getBrickFaceMap(i) RESULT(localFace)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: localFace
@@ -192,7 +192,7 @@ CONTAINS
     ! its local node number. Node number is treated as edges beginning point
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       CHARACTER(:), ALLOCATABLE :: msg
 
       ! Parameters 
@@ -212,7 +212,7 @@ CONTAINS
 
 
     FUNCTION getTetraEdgeMap(i,TYPE) RESULT(edge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: i
       INTEGER, INTENT(IN), OPTIONAL :: TYPE
@@ -238,7 +238,7 @@ CONTAINS
 
 
     FUNCTION getTetraFaceMap(i,TYPE) RESULT(face)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: i
       INTEGER, INTENT(IN), OPTIONAL :: TYPE
@@ -263,7 +263,7 @@ CONTAINS
     END FUNCTION getTetraFaceMap
 
     FUNCTION getWedgeEdgeMap(i) RESULT(edge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(2) :: edge
@@ -275,7 +275,7 @@ CONTAINS
 
 
     FUNCTION getWedgeFaceMap(i) RESULT(face)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: face
@@ -287,7 +287,7 @@ CONTAINS
 
 
     FUNCTION getPyramidEdgeMap(i) RESULT(edge)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(2) :: edge
@@ -299,7 +299,7 @@ CONTAINS
 
 
     FUNCTION getPyramidFaceMap(i) RESULT(face)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: face
@@ -329,7 +329,7 @@ CONTAINS
 !       Map containing local node numbers of given local edge or face
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Element_t) :: Element
       INTEGER, INTENT(IN) :: i
@@ -384,7 +384,7 @@ CONTAINS
 !       Map containing local numbers of edges on face
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Element_t) :: Element
       INTEGER, INTENT(IN) :: i
@@ -441,7 +441,7 @@ CONTAINS
 !       OUTPUT: Map containing local node numbers of local edges
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       TYPE(Element_t) :: Element
       INTEGER,  POINTER :: map(:,:)
 
@@ -498,7 +498,7 @@ CONTAINS
 !       OUTPUT: Map containing local node numbers of local faces
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       TYPE(Element_t) :: Element
       INTEGER, POINTER :: faceMap(:,:)
@@ -554,7 +554,7 @@ CONTAINS
 !       OUTPUT: Map containing local edge numbers of local faces
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Element_t) :: Element
       INTEGER, POINTER :: faceEdgeMap(:,:)
@@ -595,7 +595,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE InitializeMappings() 
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       CALL Info('PElementMaps::InitializeMappings','Initializing mappings for elements',Level=10)
 
@@ -741,7 +741,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION getEdgeDOFs( Element, p ) RESULT(EdgeDOFs)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Element_t) :: Element
     INTEGER :: EdgeDOFs
@@ -781,7 +781,7 @@ CONTAINS
 !       number of face dofs for Element
 !    
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Element_t) :: Element
     TYPE(Element_t), OPTIONAL :: Face
@@ -873,7 +873,7 @@ CONTAINS
 !       number of bubble dofs for Element
 !    
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: p
@@ -956,7 +956,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION getBubbleMaxDegree1D( Element, p ) RESULT(deg)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: p
@@ -1002,7 +1002,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION isActivePModel(Model) RESULT(Active)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Model_t) :: Model
     LOGICAL :: Active
 !------------------------------------------------------------------------------
@@ -1023,7 +1023,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION isActivePElement(Element,USolver) RESULT(retVal)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), INTENT(IN) :: Element
     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
@@ -1062,7 +1062,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION isActivePSolver(Solver) RESULT(retVal)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     LOGICAL :: retVal
@@ -1095,7 +1095,7 @@ CONTAINS
 !       .TRUE. if given element is a p element, .FALSE. otherwise
 !    
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Element_t), INTENT(IN) :: Element
       LOGICAL :: retVal
@@ -1109,7 +1109,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION getEffectiveBubbleP(Element,set_p,bdofs) RESULT(p)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      INTEGER :: p, bdofs, set_p
      TYPE(Element_t) :: Element
@@ -1134,7 +1134,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     FUNCTION getNumberOfGaussPoints( Element, Mesh ) RESULT(ngp)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       TYPE(Mesh_t) :: Mesh 
       TYPE(Element_t) :: Element
       INTEGER :: ngp
@@ -1217,7 +1217,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     FUNCTION getEdgeP( Element, Mesh ) RESULT(edgeP)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       TYPE(Mesh_t) :: Mesh
       TYPE(Element_t) :: Element 
@@ -1248,7 +1248,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     FUNCTION getFaceP( Element, Mesh ) RESULT(faceP)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Element_t) :: Element
       TYPE(Element_t), POINTER :: Face
@@ -1279,7 +1279,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     FUNCTION getNumberOfGaussPointsFace( Face, Mesh ) RESULT(ngp)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Element_t), TARGET :: Face
       TYPE(Mesh_t) :: Mesh
@@ -1340,7 +1340,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 SUBROUTINE GetRefPElementNodes(Element, U, V, W)
         !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         TYPE(ElementType_t) :: Element
         REAL(KIND=dp) :: U(:), V(:), W(:)
         !--------------------------------------------------------------------------------

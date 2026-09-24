@@ -40,7 +40,7 @@
 SUBROUTINE PermafrostHeatTransfer_init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -99,7 +99,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -309,7 +309,7 @@ CONTAINS
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial,&
        ActiveMassMatrix,FluxOutput)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element

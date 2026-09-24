@@ -66,7 +66,7 @@ SUBROUTINE Weertman2CoulombSolver( Model,Solver,dt,TransientSimulation )
 
   USE DefUtils
   USE SolverUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! intent in
   TYPE(Model_t)  :: Model

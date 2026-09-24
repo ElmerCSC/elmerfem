@@ -31,7 +31,7 @@
 !-----------------------------------------------------------------------------
 SUBROUTINE AdjointThickness_ThicknessSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   !    external variables
   !------------------------------------------------------------------------------

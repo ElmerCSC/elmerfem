@@ -42,7 +42,7 @@
 SUBROUTINE ElasticSolver_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -71,7 +71,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE StressLocal, ONLY: StressFieldDefinition, SymTensorComponents
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -390,7 +390,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   USE MainUtils, ONLY : SetGlobalBubblesFlag
   USE ParallelUtils, ONLY : ParallelUpdateRHS
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   EXTERNAL :: DSYEV
 
 !------------------------------------------------------------------------------
@@ -3701,7 +3701,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     EXTERNAL :: DSYEV
     REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
     REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
@@ -6420,7 +6420,7 @@ END SUBROUTINE ElasticSolver
 SUBROUTINE ElasticStrainAtIP( Proj, Element, Nodes, n, nd, t, Basis, dBasisdx, T1, T2 )
 !------------------------------------------------------------------------------
   USE StressLocal
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(NodalProjector_t) :: Proj
   TYPE(Element_t), POINTER :: Element
@@ -6480,7 +6480,7 @@ END SUBROUTINE ElasticStrainAtIP
 SUBROUTINE ElasticUmatStressAtIP( Proj, Element, Nodes, n, nd, t, Basis, dBasisdx, T1, T2 )
 !--------------------------------------------------------------------------------
   USE StressLocal
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(NodalProjector_t) :: Proj
   TYPE(Element_t), POINTER :: Element
@@ -6531,7 +6531,7 @@ END SUBROUTINE ElasticUmatStressAtIP
    SUBROUTINE ElasticSolver_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm, Indicator )
      USE StressLocal
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      TYPE( Mesh_t )    :: Mesh
@@ -6561,7 +6561,7 @@ END SUBROUTINE ElasticUmatStressAtIP
   SUBROUTINE ElasticSolver_Edge_Residual( Model,Edge,Mesh,Quant,Perm, Indicator )
      USE StressLocal
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      TYPE(Mesh_t) :: Mesh
@@ -6591,7 +6591,7 @@ END SUBROUTINE ElasticUmatStressAtIP
         Mesh, Quant, Perm, Fnorm, Indicator )
      USE StressLocal
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
      TYPE( Mesh_t )    :: Mesh

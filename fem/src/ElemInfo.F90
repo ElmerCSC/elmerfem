@@ -60,7 +60,7 @@ MODULE ElemInfo
    USE Lists
 !$ USE omp_lib ! Include module conditionally (for omp_in_parallel below)
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    PRIVATE
 
    PUBLIC :: GetElementType, StabParam, &
@@ -151,7 +151,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE StabParam(Element,Nodes,n,mK,hK,UseLongEdge)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       EXTERNAL :: DSYGV
 
@@ -334,7 +334,7 @@ CONTAINS
        Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree, &
        EdgeBasis, RotBasis, USolver, ip_index ) RESULT(stat)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Element_t), TARGET :: Element             !< Element structure
      TYPE(Nodes_t)   :: Nodes                       !< Element nodal coordinates.
@@ -529,7 +529,7 @@ CONTAINS
 
    SUBROUTINE EvalSecondDerivativesRef(Element, pSolver, u, v, w, &
        n, dim, Basis, nalloc, ddLBasisddx)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Element_t), TARGET, INTENT(IN) :: Element
      TYPE(Solver_t), POINTER, INTENT(IN) :: pSolver
      REAL(KIND=dp), INTENT(IN) :: u, v, w
@@ -572,7 +572,7 @@ CONTAINS
 
    SUBROUTINE EvalBubbleBasis(Element, Nodes, u, v, w, detJ, n, cdim, &
        Basis, dBasisdx, Bubbles, stat)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Element_t), TARGET, INTENT(IN) :: Element
      TYPE(Nodes_t), INTENT(IN) :: Nodes
      REAL(KIND=dp), INTENT(IN) :: u, v, w
@@ -751,7 +751,7 @@ CONTAINS
 
    SUBROUTINE EvalPElementBasis(Element, pSolver, u, v, w, n, q, Basis, dLBasisdx, &
        Compute2ndDerivatives, ddLBasisddx, BasisDegree)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Element_t), TARGET, INTENT(IN) :: Element
      TYPE(Solver_t), POINTER, INTENT(IN) :: pSolver
      REAL(KIND=dp), INTENT(IN) :: u, v, w
@@ -1688,7 +1688,7 @@ CONTAINS
    FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, nbmax, &
                Basis, dBasisdx, USolver ) RESULT(retval)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Element_t), TARGET :: Element    !< Element structure
      TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
@@ -1841,7 +1841,7 @@ CONTAINS
      
    FUNCTION ElementInfoVec_ComputePElementBasis(Element, Nodes, nc, u, v, w, DetJ, nbmax, Basis, &
       uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGmapsWrk, dBasisdx, USolver) RESULT(retval)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Element_t), TARGET :: Element    !< Element structure
      TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
      INTEGER, INTENT(IN) :: nc             !< Number of local coordinates to compute values of the basis function
@@ -2519,7 +2519,7 @@ CONTAINS
   CONTAINS
    
      SUBROUTINE GetElementMeshEdgeInfo(Mesh, Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        
        TYPE(Mesh_t), INTENT(IN) :: Mesh
        TYPE(Element_t), INTENT(IN) :: Element
@@ -2560,7 +2560,7 @@ CONTAINS
      END SUBROUTINE GetElementMeshEdgeInfo
      
      SUBROUTINE GetElementMeshFaceInfo(Mesh, Element, FaceDegree, FaceDirection, FaceMaxDegree)
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        
        TYPE(Mesh_t), INTENT(IN) :: Mesh
        TYPE(Element_t), INTENT(IN) :: Element
@@ -2603,7 +2603,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    
    SUBROUTINE ElementInfoVec_ElementBasisToGlobal(npts, nbasis, nbmax, dLBasisdx, dim, cdim, LtoGMap, offset, dBasisdx)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      INTEGER, INTENT(IN) :: npts
      INTEGER, INTENT(IN) :: nbasis
@@ -2750,7 +2750,7 @@ CONTAINS
          Basis, FBasis, DivFBasis, dBasisdx, BDM, Dual, BasisDegree, &
          ApplyPiolaTransform, LeftHanded) RESULT(stat)
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        TYPE(Element_t), TARGET :: Element        !< Element structure
        TYPE(Nodes_t) :: Nodes                    !< Data corresponding to the classic element nodes
@@ -3721,7 +3721,7 @@ CONTAINS
 !-----------------------------------------------------------------------------------
 SUBROUTINE FaceElementOrientation(Element, ReverseSign, FaceIndex, Nodes)
 !-----------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D/2-D element having 2-D/1-D faces 
   LOGICAL, INTENT(OUT) :: ReverseSign(:)       !< Face-wise information about the sign reversions
@@ -3925,7 +3925,7 @@ END SUBROUTINE FaceElementOrientation
 !-----------------------------------------------------------------------------------
 SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex, ReverseSign)
 !-----------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces
   INTEGER, INTENT(OUT) :: FDofMap(:,:)         !< Face-wise information for the basis permutation  
@@ -4112,7 +4112,7 @@ END SUBROUTINE FaceElementBasisOrdering
 !------------------------------------------------------------------------------
 SUBROUTINE PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Mesh_t), INTENT(IN) :: Mesh  
   TYPE(Element_t), INTENT(IN) :: Parent, Element
   TYPE(Element_t), POINTER, INTENT(OUT) :: Face
@@ -4201,7 +4201,7 @@ END SUBROUTINE PickActiveFace
           ApplyPiolaTransform, ReadyEdgeBasis, ReadyRotBasis, &
           TangentialTrMapping, GradientVersion) RESULT(stat)
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        TYPE(Element_t), TARGET :: Element        !< Element structure
        TYPE(Nodes_t) :: Nodes                    !< Data corresponding to the classic element nodes
@@ -8742,7 +8742,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------------
      SUBROUTINE ReorderingAndSignReversionsData(Element,Nodes,PermVec,SignVec)
 !-------------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        TYPE(Element_t), TARGET :: Element        !< Element structure
        TYPE(Nodes_t) :: Nodes                    !< Data corresponding to the classic element nodes
@@ -10454,7 +10454,7 @@ BLOCK
    CONTAINS
 
      FUNCTION GetSymmetricIndex(i,j) RESULT(utind)
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        INTEGER, INTENT(IN) :: i, j
        INTEGER :: utind
 

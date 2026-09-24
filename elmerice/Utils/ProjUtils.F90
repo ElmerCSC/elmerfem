@@ -44,7 +44,7 @@
       USE proj6_interface
 #endif
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTERFACE proj_inv
         MODULE PROCEDURE projinv_proj6,projinv_stereo

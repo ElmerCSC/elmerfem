@@ -40,7 +40,7 @@
 SUBROUTINE SunAngleSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -63,7 +63,7 @@ END SUBROUTINE SunAngleSolver_init
 SUBROUTINE SunAngleSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model    !< All model information (mesh, materials, BCs, etc...)

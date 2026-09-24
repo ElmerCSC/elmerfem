@@ -51,7 +51,7 @@
      USE MaterialModels
      USE Integration
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------ 
      TYPE(Model_t), TARGET :: Model
      TYPE(Solver_t) :: Solver 
@@ -554,7 +554,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE TriangleIsoLineWeights( NX,NY,NZ,S,w0,w1,Found )
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: NX(:),NY(:),NZ(:),S(:),w0(3),w1(3)
       LOGICAL :: Found
       REAL(KIND=dp) :: t

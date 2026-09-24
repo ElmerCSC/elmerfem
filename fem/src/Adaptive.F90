@@ -63,7 +63,7 @@ MODULE Adaptive
   USE ElementDescription, ONLY: GetEdgeMap, mGetElementDOFs
   USE MainUtils, ONLY : AddEquationSolution
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   
 CONTAINS
@@ -72,7 +72,7 @@ CONTAINS
   SUBROUTINE RefineMesh( Model,Solver,Quant,Perm, &
             InsideResidual, EdgeResidual, BoundaryResidual )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE( Model_t ) :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -1710,7 +1710,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION SplitOneLevel( RefMesh ) RESULT( NewMesh )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE( Mesh_t ), POINTER :: NewMesh
     TYPE( Mesh_t ) :: RefMesh
@@ -2306,7 +2306,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION RGBRefinement(  EdgeSplitted,RefMesh ) RESULT(MarkedEdges)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     LOGICAL :: EdgeSplitted(:)
     INTEGER :: MarkedEdges
@@ -2607,7 +2607,7 @@ CONTAINS
        Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual ) RESULT(MaxError)
 !------------------------------------------------------------------------------
     USE CRSMatrix
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t), TARGET :: RefMesh
     TYPE(Model_t) :: Model
@@ -2777,7 +2777,7 @@ SUBROUTINE FluxRecovery(Model, Solver, Mesh, ErrorIndicator, MaxError)
 ! Flux recovery & a posteriori error estimation
 ! The author of the flux recovery part: mika.malinen@csc.fi
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
   TYPE(Mesh_t) :: Mesh
@@ -3599,7 +3599,7 @@ END MODULE Adaptive
 SUBROUTINE RefineMeshExt(Model,Solver,Quant,Perm,InsideResidual,EdgeResidual,BoundaryResidual)
   USE adaptive
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE( Model_t ) :: Model
   TYPE(Solver_t), TARGET :: Solver

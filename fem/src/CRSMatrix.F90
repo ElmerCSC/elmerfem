@@ -48,7 +48,7 @@ MODULE CRSMatrix
 
   USE Lists
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -785,7 +785,7 @@ CONTAINS
   CONTAINS
 
     PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       INTEGER, INTENT(IN) :: arr(:)
       INTEGER, INTENT(IN) :: key, lind, tind
       INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
@@ -1099,7 +1099,7 @@ CONTAINS
   CONTAINS
     
     PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) CONTIG :: arr(:)
       INTEGER, INTENT(IN) :: key, lind, tind
@@ -1144,7 +1144,7 @@ CONTAINS
     ! radiation tests. Leaving lind alone on a miss keeps the monotonic advance
     ! correct: a later, larger key still cannot sit before the current position.
     FUNCTION GetNextIndex(arr, key, lind, tind) RESULT(keyloc)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) CONTIG :: arr(:)
       INTEGER, INTENT(IN) :: key
@@ -1183,7 +1183,7 @@ CONTAINS
   END SUBROUTINE CRS_GlueLocalMatrixVec
 
   SUBROUTINE InsertionSort(N, val, ind)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(in) :: N, val(N)
     INTEGER, INTENT(inout) :: ind(N)
     INTEGER :: tmp, i, j
@@ -1256,7 +1256,7 @@ CONTAINS
   CONTAINS
 
     PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       INTEGER, INTENT(IN) :: arr(:)
       INTEGER, INTENT(IN) :: key, lind, tind
       INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
@@ -2060,7 +2060,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
      FUNCTION CRS_Transpose( A ) RESULT(B)
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        
        TYPE(Matrix_t), POINTER :: A, B
        

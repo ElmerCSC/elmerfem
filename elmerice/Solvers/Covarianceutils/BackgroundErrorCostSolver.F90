@@ -58,7 +58,7 @@
 !***********************************************************************************************
       USE GeneralUtils
       USE CovarianceUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
       TYPE(Solver_t) :: Solver
 

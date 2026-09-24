@@ -43,7 +43,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   USE ElementDescription
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -494,7 +494,7 @@ FUNCTION GZEPT_scaling(Model, nodenumber, y) RESULT(scaling)
   USE ElementDescription
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   REAL(KIND=dp)  :: scaling, GZEPT, ep, EffectivePressure, y

@@ -53,7 +53,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -353,14 +353,14 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
 CONTAINS
   
   function calcNorm(v) result(v2)
-    implicit none
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     real(kind=dp) :: v(3),v2
     
     v2=v(1)*v(1)+v(2)*v(2)+v(3)*v(3)
   end function calcNorm
 
   function scalar(v1,v2) result(vr)
-    implicit none
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     real(kind=dp) :: v2(3),v1(3),vr
     
     vr=v1(1)*v2(1)+v1(2)*v2(2)+v1(3)*v2(3)

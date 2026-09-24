@@ -39,7 +39,7 @@
   RECURSIVE SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET :: Solver

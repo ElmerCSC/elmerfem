@@ -49,7 +49,7 @@ MODULE LinearAlgebra
 
   USE Types
   USE Messages
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
  CONTAINS
 
@@ -897,7 +897,7 @@ MODULE LinearAlgebra
   !> The matrix is modified in the process.
   ! --------------------------------------------------
   SUBROUTINE EigenValues( A, n, Vals )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: A(:,:)
     INTEGER :: n
     COMPLEX(KIND=dp) :: Vals(:)
@@ -978,7 +978,7 @@ MODULE LinearAlgebra
 CONTAINS
 
     SUBROUTINE vbcalc( x,v,b,beg,end )
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) ::  x(:),v(:),b
       INTEGER ::  beg, end
 
@@ -1008,7 +1008,7 @@ CONTAINS
 
 
     SUBROUTINE Hesse(H, dim)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       INTEGER ::  dim
       REAL(KIND=dp) :: H(:,:)
 
@@ -1061,7 +1061,7 @@ CONTAINS
 
 
     SUBROUTINE Francis( H, dim )
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       INTEGER :: dim
       REAL(KIND=dp) :: H(:,:)
 

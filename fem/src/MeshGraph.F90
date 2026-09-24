@@ -43,14 +43,14 @@
 MODULE MeshGraph
 
     USE MeshBasics
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
 !------------------------------------------------------------------------------
 
   SUBROUTINE ElmerMeshToDualGraph(Mesh, DualGraph, UseBoundaryMesh)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     TYPE(Graph_t) :: DualGraph
@@ -295,7 +295,7 @@ CONTAINS
   CONTAINS
 
     SUBROUTINE VertexToElementList(nelem, nvertex, eptr, eind, vptr, vind)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: nelem, nvertex
       INTEGER :: eptr(:), eind(:)
@@ -354,7 +354,7 @@ CONTAINS
     ! k-way merge with an array
     SUBROUTINE kWayMergeArray(node, nv, ptrli, ptrti, te, vind, &
             nn, neighind, map)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node, nv
       INTEGER :: ptrli(:)
@@ -391,7 +391,7 @@ CONTAINS
     ! k-way merge with an actual heap
     SUBROUTINE kWayMergeHeap(node, nv, ptrli, ptrti, te, vind, &
             nn, neighind, heap)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: node, nv
       INTEGER :: ptrli(:)
@@ -500,7 +500,7 @@ CONTAINS
     END SUBROUTINE kWayMergeHeap
 
     SUBROUTINE BinaryHeapHeapify(heap, nelem, sind)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       TYPE(IntTuple_t) :: heap(:)
       INTEGER, INTENT(IN) :: nelem
       INTEGER, INTENT(IN) :: sind
@@ -533,7 +533,7 @@ CONTAINS
     END SUBROUTINE BinaryHeapHeapify
 
     FUNCTION BinaryHeapIsHeap(heap, nelem) RESULT(heaporder)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       TYPE(IntTuple_t) :: heap(:)
       INTEGER, INTENT(IN) :: nelem
       LOGICAL :: heaporder
@@ -565,7 +565,7 @@ CONTAINS
   END SUBROUTINE ElmerMeshToDualGraph
 
   SUBROUTINE Graph_Deallocate(Graph)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Graph_t) :: Graph
 
     DEALLOCATE(Graph % ptr)
@@ -574,7 +574,7 @@ CONTAINS
   END SUBROUTINE Graph_Deallocate
 
   SUBROUTINE ElmerGraphColour(Graph, Colouring, ConsistentColours)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Graph_t), INTENT(IN) :: Graph
     TYPE(Graphcolour_t) :: Colouring
@@ -771,7 +771,7 @@ CONTAINS
   END SUBROUTINE ElmerGraphColour
 
   SUBROUTINE Colouring_Deallocate(Colours)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(GraphColour_t) :: Colours
 
     DEALLOCATE(Colours % colours)
@@ -779,7 +779,7 @@ CONTAINS
   END SUBROUTINE Colouring_Deallocate
 
   SUBROUTINE ElmerColouringToGraph(Colours, PackedList)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(GraphColour_t), INTENT(IN) :: Colours
     TYPE(Graph_t) :: PackedList
@@ -819,7 +819,7 @@ CONTAINS
 
   ! Routine constructs colouring for boundary mesh based on colours of main mesh
   SUBROUTINE ElmerBoundaryGraphColour(Mesh, Colours, BoundaryColours)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t), INTENT(IN) :: Mesh
     TYPE(GraphColour_t), INTENT(IN) :: Colours
@@ -883,7 +883,7 @@ CONTAINS
   ! evenly load balance the work among the nthr threads
   SUBROUTINE ThreadLoadBalanceElementNeighbour(nthr, gn, gptr, gind, &
           rptr, blkleads)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER :: nthr
     INTEGER, INTENT(IN) :: gn
@@ -940,7 +940,7 @@ CONTAINS
   END SUBROUTINE ThreadLoadBalanceElementNeighbour
 
   SUBROUTINE ThreadStaticWorkShare(nthr, gn, blkleads)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER :: nthr
     INTEGER, INTENT(IN) :: gn
@@ -982,7 +982,7 @@ CONTAINS
 
   ! Given row counts, in-place compute CRS indices to data
   SUBROUTINE ComputeCRSIndexes(n, arr)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: n
     INTEGER :: arr(:)

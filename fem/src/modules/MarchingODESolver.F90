@@ -47,7 +47,7 @@
 SUBROUTINE MarchingODESolver_init( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  
   TYPE(Model_t) :: Model    
@@ -82,7 +82,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   USE MeshTransform, ONLY : DetectExtrudedStructure
   USE MeshBasics, ONLY : MarkBCNodes
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver  !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model            !< All model information (mesh, materials, BCs, etc...)

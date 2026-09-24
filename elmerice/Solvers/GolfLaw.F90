@@ -65,7 +65,7 @@
        
        USE defGrid
        
-       Implicit None
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        Real(kind=dp) :: BGlenT
        Real(kind=dp), Intent(in) :: Tc                     ! Temperature en d Celsius
        Real(kind=dp), Intent(in), Dimension(7) :: W        ! Glen law parameters
@@ -111,7 +111,7 @@
        
         use defgrid
        
-       Implicit None
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        Real(kind=dp), Intent(in), Dimension(3) :: Angle    ! Euler Angles        
        Real(kind=dp), Intent(in), Dimension(6) :: Eta6     ! 6 Viscosities of the
                                                   ! matrice law
@@ -214,7 +214,7 @@
 
        use defgrid
        
-       implicit none
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        
        Real(kind=dp), Dimension(3) ::  ki0,ki
        real(kind=dp), Dimension(6) :: visc,b
@@ -272,7 +272,7 @@
 
       use defgrid
 !
-      Implicit None
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       Real(kind=dp), Dimension(3) :: x,Q
       Real(kind=dp) :: t,InterP,d12,d23
       Real(kind=dp) :: Ip
@@ -308,7 +308,7 @@
 
       use defgrid
 !
-      Implicit None
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       Real(KIND=dp), Dimension(3) ::  xi,yi,a
       Real(kind=dp), Dimension(9) ::  Q
       Real(kind=dp) ::  InterQ9,InterP
@@ -345,7 +345,7 @@
        
        USE DEFGRID
        
-       Implicit None
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        EXTERNAL :: VISCGENE, VISCMAT_AI
        Real(kind=dp), Intent(in), Dimension(3) :: ai       ! Texture parameters 
        Real(kind=dp), Dimension(3) :: ki       ! Texture parameters 
@@ -397,7 +397,7 @@
        
        USE defGrid
        
-       Implicit None
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        EXTERNAL :: TRIKI, InterQ9
        Real(kind=dp), Intent(in), Dimension(3) :: ai0
        Real(kind=dp), Intent(out), Dimension(6) :: eta6
@@ -501,7 +501,7 @@
 
       USE Types
        
-       implicit none
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        Real(dp),dimension(6),intent(in):: a2  
        Real(dp),dimension(9),intent(out):: a4  
        Real(dp):: a_11,a_22,a_33,a_12,a_13,a_23
@@ -708,7 +708,7 @@
       use Types    ! types d'Elmer
       USE Messages
 
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       EXTERNAL :: DGEEV
 
       Real(dp),dimension(6),intent(in) :: a2

@@ -2,7 +2,7 @@ FUNCTION initbedrock(Model, nodenumber, inputarray) RESULT(elevation)
   USE ElementDescription
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber
   REAL (KIND=dp) :: inputarray(*),x,y,elevation,elevation_x,&
@@ -47,7 +47,7 @@ FUNCTION initsurface(Model, nodenumber, inputarray) RESULT(elevation)
   USE ElementDescription
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber

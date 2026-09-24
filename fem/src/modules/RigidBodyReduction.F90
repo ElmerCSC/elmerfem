@@ -74,7 +74,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
   USE Integration
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(model_t)  :: Model
   TYPE(solver_t), TARGET :: Solver
@@ -1035,7 +1035,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE Lists
     USE Integration
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
@@ -1186,7 +1186,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE CRSMatrix
     USE GeneralUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: A
 
@@ -1285,7 +1285,7 @@ CONTAINS
 !
 !------------------------------------------------------------------------------
     USE CRSMatrix
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: A, B
     LOGICAL, OPTIONAL :: MVal, DVal
@@ -1375,7 +1375,7 @@ CONTAINS
   SUBROUTINE CRS_MatrixMatrixMultiply( C, A, B, MVal, DVal )
 !------------------------------------------------------------------------------
     USE CRSMatrix
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: A, B, C
     LOGICAL :: Mval
@@ -1563,7 +1563,7 @@ CONTAINS
   SUBROUTINE LocalFreeMatrix( A )
 !------------------------------------------------------------------------------
     USE GeneralUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(matrix_t), POINTER :: A
 
@@ -1584,7 +1584,7 @@ CONTAINS
   SUBROUTINE MatrixBandWidthOptimize( A, DoneAlready )
 !------------------------------------------------------------------------------
     USE CRSMatrix
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: A
     LOGICAL, OPTIONAL :: DoneAlready

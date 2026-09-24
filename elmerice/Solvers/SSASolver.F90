@@ -58,7 +58,7 @@
   USE ComputeFluxUtils
   USE CutFEMUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -910,7 +910,7 @@ SUBROUTINE GetMeanValueSolver( Model,Solver,dt,TransientSimulation )
   !******************************************************************************
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1200,7 +1200,7 @@ SUBROUTINE SSASolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE SolverUtils !necessary for SetSinglePoint
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

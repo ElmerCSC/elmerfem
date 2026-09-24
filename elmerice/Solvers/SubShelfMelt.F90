@@ -110,7 +110,7 @@
 
   USE DefUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! in args
   TYPE(Solver_t), TARGET :: Solver

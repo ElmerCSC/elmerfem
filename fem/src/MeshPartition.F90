@@ -60,7 +60,7 @@ MODULE MeshPartition
   USE Zoltan
 #endif
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE MeshPack_t
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfBoundaryElements
@@ -96,7 +96,7 @@ CONTAINS
     USE Zoltan
 #endif
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh
@@ -508,7 +508,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     INTEGER FUNCTION zoltNumObjs(DATA, ierr)
       use zoltan 
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Local declarations
       INTEGER(Zoltan_INT), INTENT(in) :: DATA(*)
@@ -529,7 +529,7 @@ CONTAINS
     SUBROUTINE zoltGetObjs (DATA, num_gid_entries, num_lid_entries, global_ids, & 
          local_ids, wgt_dim, obj_wgts, ierr)
       use zoltan
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER(ZOLTAN_INT), INTENT(in) :: DATA(*)
       !TYPE(Mesh_t), POINTER, INTENT(in) :: DATA
@@ -1023,7 +1023,7 @@ CONTAINS
   !----------------------------------------------------------------------------------------
   SUBROUTINE MeshParallelDualGraph( Mesh, ElemAdj, ElemStart, ElemIdx, ElemAdjProc, COMM )
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     INTEGER, ALLOCATABLE :: ElemAdj(:),ElemStart(:),ElemIdx(:),ElemAdjProc(:)
@@ -1425,7 +1425,7 @@ CONTAINS
   CONTAINS
 
     SUBROUTINE VertexToElementList(nelem, nvertex, eptr, eind, vptr, vind)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER, INTENT(IN) :: nelem, nvertex
       INTEGER :: eptr(:), eind(:)
@@ -1501,7 +1501,7 @@ CONTAINS
   !--------------------------------------------------------------------------
   SUBROUTINE PackNodesToSend(Mesh, Mask, GDOFs, NodeCoords, DIM)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     LOGICAL :: Mask(:)
@@ -1603,7 +1603,7 @@ CONTAINS
   !This is largely superceded by RedistributeMesh
   SUBROUTINE PackElemsToSend(Mesh, Mask, ElemStream, custom_tag)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     LOGICAL :: Mask(:)
@@ -2277,7 +2277,7 @@ CONTAINS
   SUBROUTINE PackMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, &
     SentPack, dim, NodalVals )
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh
@@ -2770,7 +2770,7 @@ CONTAINS
   SUBROUTINE LocalNumberingMeshPieces(Model, Mesh, NewPart, ParallelMesh, NoPartitions, &
        RecPack, GlobalToLocal, newnodes, newnbulk, newnbdry, minind, maxind)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh
@@ -2955,7 +2955,7 @@ CONTAINS
       minind, maxind, RecPack, ParallelMesh, GlobalToLocal, &
       dim, NodalVals )
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh, NewMesh
@@ -3682,7 +3682,7 @@ CONTAINS
   !----------------------------------------------------------------------------  
   SUBROUTINE PartitionMeshSerial( Model, Mesh, Params ) 
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      TYPE(Mesh_t), POINTER :: Mesh, ParallelMesh

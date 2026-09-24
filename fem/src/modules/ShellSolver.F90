@@ -72,7 +72,7 @@
 SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -158,7 +158,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   USE SolidMechanicsUtils
   USE ParallelUtils, ONLY : ParallelUpdateRHS
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -940,7 +940,7 @@ CONTAINS
   SUBROUTINE ReadSurfaceDirector(MeshName, NumberOfNodes, SolverPars, Director, &
       ActiveElements)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     CHARACTER(LEN=*), INTENT(IN) :: MeshName
     INTEGER, INTENT(IN) :: NumberOfNodes
@@ -1118,7 +1118,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
   FUNCTION GetElementalDirector(Element, ElementNodes) RESULT(DirectorValues) 
 !-------------------------------------------------------------------------------    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: Element
     TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
     REAL(KIND=dp), POINTER :: DirectorValues(:)
@@ -1169,7 +1169,7 @@ CONTAINS
 !----------------------------------------------------------------------------
   SUBROUTINE CheckSurfaceOrientation()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
     INTEGER :: n, i, j, k, i0, Active, Family
@@ -1263,7 +1263,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
   SUBROUTINE CreateCurvedEdges( FileOutput, MacroElements )
 !-------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     LOGICAL, INTENT(IN) :: FileOutput
     LOGICAL, OPTIONAL, INTENT(IN) :: MacroElements
@@ -1484,7 +1484,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE EdgeFrame(X1, X2, d1, d2, A, cpars, X3, d3)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
     REAL(KIND=dp), INTENT(OUT) :: A(:,:), cpars(:)
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
@@ -1590,7 +1590,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE HermiteForm(X1, X2, d1, d2, cpars, A, X3, d3)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
     REAL(KIND=dp), INTENT(OUT) :: cpars(:)
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: A(:,:)
@@ -1659,7 +1659,7 @@ CONTAINS
   FUNCTION BlendingSurfaceInfo( Element, Nodes, u, v, deta, a1, a2, a3, &
       A, B, x, UseMeshOnly ) RESULT(stat)
 !----------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), INTENT(IN) :: Element  !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes               !< Data corresponding to the element nodes
@@ -2322,7 +2322,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE HermiteBasis(s, h, Basis, dBasis, ddBasis, n, GlobalDerivative)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: s           ! Coordinate
     REAL(KIND=dp), INTENT(IN) :: h           ! A scale factor
     REAL(KIND=dp), INTENT(OUT) :: Basis(:)   ! Basis functions
@@ -2439,7 +2439,7 @@ CONTAINS
       LagrangeNodes, d, PlanarSurface, PlanarPoint, UmbilicalPoint, &
       SaveProperties, SizeRadiusRatio, ReparametrizeMesh)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: xi1, xi2
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: e1(3), e2(3), e3(3)
@@ -3070,7 +3070,7 @@ CONTAINS
   SUBROUTINE LinesOfCurvaturePatch(Element, LocalFrameNodes, TaylorParams, &
       Family, PlanarSurface, Umbilical, ZNodes)
 !-----------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), TARGET, INTENT(IN) :: LocalFrameNodes(MaxPatchNodes,2)
     REAL(KIND=dp), INTENT(IN) :: TaylorParams(:)
@@ -3251,7 +3251,7 @@ CONTAINS
       dual1, dual2, XGlob, YGlob, ZGlob, LowestOrderBasis, PlanarPoint, &
       Umbilical)
 !-----------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: x, y
     REAL(KIND=dp), INTENT(IN) :: TaylorParams(:)
     REAL(KIND=dp), INTENT(IN) :: e1(3), e2(3), e3(3), o(3)
@@ -3457,7 +3457,7 @@ CONTAINS
       MassAssembly, HarmonicAssembly, RHSForce, Area, Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component (after
@@ -4695,7 +4695,7 @@ CONTAINS
       MassAssembly, HarmonicAssembly, LocalSol, RHSForce, Parent, nd_parent, &
       CartesianFormulation, SkipBlending)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: BGElement  ! A boundary element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component
@@ -4942,7 +4942,7 @@ CONTAINS
 ! ---------------------------------------------------------------------------------    
   SUBROUTINE SetSolidCouplingBCs(Model, Solver, Displacement)
 ! ---------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t), INTENT(IN) :: Model                 !< The current model structure
     TYPE(Solver_t), INTENT(INOUT) :: Solver            !< The shell solver
@@ -5212,7 +5212,7 @@ CONTAINS
 SUBROUTINE RetrieveLocalFrame(BGElement, TaylorParams, PatchNodes, e1, e2, e3, &
     o, PlateBody, SphericalSurface, GElement)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: BGElement         ! The target element for retrieval
     REAL(KIND=dp), POINTER, INTENT(OUT) :: TaylorParams(:)    ! The coefficients of the Taylor polynomial
     REAL(KIND=dp), INTENT(OUT) :: PatchNodes(MaxPatchNodes,2) ! The nodes of principal coordinate patch
@@ -5269,7 +5269,7 @@ END SUBROUTINE RetrieveLocalFrame
       ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: BGElement ! An element of background mesh
     INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
     LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
@@ -5419,7 +5419,7 @@ END SUBROUTINE RetrieveLocalFrame
   SUBROUTINE CreateLagrangeElementStructures(BGElement, nd, Element, Nodes, &
       PNodes, GElement)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), TARGET, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs (per component)
     TYPE(Element_t), POINTER, INTENT(OUT) :: Element   ! A Lagrange element data structure
@@ -5526,7 +5526,7 @@ END SUBROUTINE RetrieveLocalFrame
   SUBROUTINE WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
       PNodes, PatchNodes)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: BGElement           ! An element of background mesh
     TYPE(Element_t), INTENT(IN) :: GElement  ! A Lagrange element for surface reconstruction
     TYPE(Element_t), TARGET, INTENT(IN) :: Element   ! The element type for which nodes are written
@@ -5641,7 +5641,7 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
   SUBROUTINE ElasticityMatrix(CMat, GMat, A1, A2, E, nu, DrillingDOFs, StabPar)
 !------------------------------------------------------------------------------    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(OUT) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp), INTENT(IN) :: A1, A2, E, nu  
     LOGICAL, OPTIONAL, INTENT(IN) :: DrillingDOFs
@@ -5712,7 +5712,7 @@ END SUBROUTINE RetrieveLocalFrame
       ApplyPiolaTransform, F, G, detF, Basis, dBasis, DOFWeigths, Bubbles, EdgeDirection) &
       RESULT(stat)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN), TARGET :: Element         !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                     !< Data corresponding to the classic element nodes
     REAL(KIND=dp), INTENT(IN) :: u                         !< 1st reference element coordinate
@@ -5991,7 +5991,7 @@ END SUBROUTINE RetrieveLocalFrame
   SUBROUTINE ReductionOperatorDofs(Element, Nodes, A, nd, n, ReductionMethod, &
       ModelPars, GradientField, EdgeDirection)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
     REAL(KIND=dp), INTENT(INOUT) :: A(:,:)                  !< Coefficients for expressing the DOFs 
@@ -6459,7 +6459,7 @@ END SUBROUTINE RetrieveLocalFrame
   SUBROUTINE ReductionOperatorBubbleDofs(Element, Nodes, A, nd, nb, n, ReductionMethod, &
       ModelPars, GradientField)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN), TARGET :: Element          !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes                      !< Nodes structure
     REAL(KIND=dp), INTENT(INOUT) :: A(nd,2*nb)              !< Coefficients for expressing the DOFs 
@@ -6567,7 +6567,7 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
   FUNCTION AverageDirector(Element, n, PlanarSurface) RESULT(d)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n
     LOGICAL, OPTIONAL, INTENT(OUT) :: PlanarSurface
@@ -6621,7 +6621,7 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
   SUBROUTINE MappedBGMeshArea(Element, LocalFrameNodes, Area)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), TARGET, INTENT(IN) :: LocalFrameNodes(MaxPatchNodes,3)
     REAL(KIND=dp), INTENT(INOUT) :: Area
@@ -6669,7 +6669,7 @@ END SUBROUTINE RetrieveLocalFrame
 !--------------------------------------------------------------------------------
   SUBROUTINE ComputeSurfaceArea(Element, SurfaceArea)
 !--------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), INTENT(IN) :: Element
     REAL(KIND=dp), INTENT(INOUT) :: SurfaceArea
 !------------------------------------------------------------------------------
@@ -6711,7 +6711,7 @@ END SUBROUTINE RetrieveLocalFrame
 !-------------------------------------------------------------------------------------
   FUNCTION EdgeMidNode(Element, e) RESULT(X)
 !-----------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), TARGET, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: e     ! Edge identifier
     REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
@@ -6786,7 +6786,7 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
   SUBROUTINE MaterialLaw3D(CMat, A1, A2, E, nu)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(OUT) :: CMat(6,6)
     REAL(KIND=dp), INTENT(IN) :: A1, A2, E, nu
 !------------------------------------------------------------------------------
@@ -6838,7 +6838,7 @@ END SUBROUTINE RetrieveLocalFrame
 ! as the column vector A(:,k). This subroutine could be generalized to other
 ! cases which admit a parametrization by lines of curvature coordinates.
 !------------------------------------------------------------------------------    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: y1, y2  ! Curvilinear coordinates on a surface
     REAL(KIND=dp), INTENT(OUT) :: A(3,3) 
     REAL(KIND=dp), INTENT(OUT) :: K1, K2 ! The principal curvatures Ki = b_ii/a_ii
@@ -6923,7 +6923,7 @@ END SUBROUTINE RetrieveLocalFrame
       ReparametrizeMesh, BenchmarkProblem)
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), TARGET, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component (after
@@ -7660,7 +7660,7 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
   SUBROUTINE SolveNodesVariables(Element, Nodes, nd, GElement, PatchNodes)
 ! -----------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), TARGET, INTENT(IN) :: Element   ! The element type for which nodes are written
     TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! The nodes data structure to be updated
     INTEGER, INTENT(IN) :: nd                         ! The number of coordinate entries written

@@ -65,7 +65,7 @@ MODULE DefUtils
        GenerateProjectors, GenerateRobinProjectors
    USE CutFEMUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTERFACE DefaultUpdateEquations
      MODULE PROCEDURE DefaultUpdateEquationsR, DefaultUpdateEquationsC, &
@@ -207,7 +207,7 @@ CONTAINS
   END SUBROUTINE EnsureStores
 
   FUNCTION GetIndexStore() RESULT(ind)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, POINTER CONTIG :: ind(:)
     INTEGER :: tid, istat
 
@@ -223,7 +223,7 @@ CONTAINS
   END FUNCTION GetIndexStore
 
   FUNCTION GetPermIndexStore() RESULT(ind)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, POINTER CONTIG :: ind(:)
     INTEGER :: tid, istat
 
@@ -239,7 +239,7 @@ CONTAINS
   END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), POINTER CONTIG :: val(:)
     INTEGER :: tid, n, istat
 
@@ -289,7 +289,7 @@ CONTAINS
 
 !> Returns handle to the active element
   FUNCTION GetCurrentElement(Element) RESULT(Ret_Element)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), OPTIONAL, TARGET :: Element
     TYPE(Element_t), POINTER :: Ret_Element
 
@@ -312,7 +312,7 @@ CONTAINS
 !> Old handle is given as a return value as what would be returned
 !> by a call to GetCurrentElement
   FUNCTION SetCurrentElement(Element) RESULT(OldElement)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), TARGET :: Element
     TYPE(Element_t), POINTER :: OldElement
 
@@ -341,7 +341,7 @@ CONTAINS
   END FUNCTION GetElementIndex
 
   SUBROUTINE GetElementNodeIndex(i, Element, n, FOUND)
-    IMPLICIT None
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! variables in function header
     INTEGER :: i, n
@@ -1518,7 +1518,7 @@ CONTAINS
 
 !> Returns a real by its name if found in the list structure, and in the active element. 
   RECURSIVE FUNCTION GetReal( List, Name, Found, UElement ) RESULT(x)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL, OPTIONAL :: Found
@@ -1554,7 +1554,7 @@ CONTAINS
   END FUNCTION GetReal
 
   RECURSIVE SUBROUTINE GetRealValues( List, Name, Values, Found, UElement )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: List
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) CONTIG :: Values(:)
@@ -6201,7 +6201,7 @@ CONTAINS
 !------------------------------------------------------------------------------------------
      USE ElementDescription, ONLY: FaceElementOrientation
      USE LinearAlgebra, ONLY : SolveLinSys
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      INTEGER, OPTIONAL :: UOffset
      LOGICAL, OPTIONAL :: OffDiagonalMatrix
@@ -7155,7 +7155,7 @@ CONTAINS
       SecondFamily, FaceElement, BasisDegree, GradientVersion)
 !------------------------------------------------------------------------------
     USE ElementDescription, ONLY: GetEdgeMap
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(ValueList_t), POINTER :: BC  !< The list of boundary condition values
     TYPE(Element_t), TARGET :: Element !< The boundary element handled
@@ -7395,7 +7395,7 @@ CONTAINS
   SUBROUTINE SolveLocalFaceDOFs(BC, Element, n, Name, DOFValues, &
       EDOFs, FDOFs, SecondKindBasis, BasisDegree, GradientVersion)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(ValueList_t), POINTER :: BC     !< The list of boundary condition values
     TYPE(Element_t), TARGET :: Element   !< The boundary element handled
@@ -7485,7 +7485,7 @@ CONTAINS
   SUBROUTINE FaceElementDOFs(BC, Element, n, Parent, FaceId, Name, Integral, &
       FDOFs, SecondFamily)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(ValueList_t), POINTER, INTENT(IN) :: BC    !< The list of boundary condition values
     TYPE(Element_t), TARGET, INTENT(IN) :: Element  !< The boundary element handled
@@ -7699,7 +7699,7 @@ CONTAINS
   SUBROUTINE LocalBcBDOFs(BC, Element, nd, Name, STIFF, Force )
 !------------------------------------------------------------------------------
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(ValueList_t), POINTER :: BC     !< The list of boundary condition values
     TYPE(Element_t), TARGET :: Element   !< The boundary element handled
@@ -8058,7 +8058,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE PElementMaps, ONLY : getElementBoundaryMap 
      USE Integration
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      ! Parameters
      TYPE(Element_t) :: Element
@@ -8146,7 +8146,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE MapGaussPoints( Element, n, gaussP, Nodes )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Element_t) :: Element
      TYPE(GaussIntegrationPoints_t) :: gaussP
@@ -8209,7 +8209,7 @@ CONTAINS
 !        starting from index 1
 !    
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      ! Parameters
      TYPE(Mesh_t) :: Mesh
@@ -8375,7 +8375,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetBoundaryEdgeIndex(Boundary,nedge) RESULT(n)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n,nedge
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
@@ -8390,7 +8390,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetBoundaryFaceIndex(Boundary) RESULT(n)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
@@ -8402,7 +8402,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
     INTEGER :: ncolours
 
@@ -8423,7 +8423,7 @@ CONTAINS
   END FUNCTION GetNOFColours
 
   FUNCTION GetNOFBoundaryColours(USolver) RESULT( ncolours ) 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
     INTEGER :: ncolours
 
@@ -8445,7 +8445,7 @@ CONTAINS
   
   ! Check given colourings are valid and see if they are free of race conditions. 
   SUBROUTINE CheckColourings(Solver)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     
     TYPE(Mesh_t), POINTER :: Mesh

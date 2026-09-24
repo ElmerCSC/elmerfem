@@ -42,7 +42,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -289,7 +289,7 @@ CONTAINS
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix,&
        ExtForce)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
@@ -612,7 +612,7 @@ CONTAINS
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial)
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element

@@ -46,7 +46,7 @@
      USE MaterialModels
      USE Integration
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------ 
      TYPE(Model_t), TARGET :: Model
      TYPE(Solver_t) :: Solver

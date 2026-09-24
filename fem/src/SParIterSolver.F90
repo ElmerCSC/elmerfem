@@ -52,7 +52,7 @@ MODULE SParIterSolve
   USE SParIterPrecond
   USE IterSolve, ONLY : NumericalError
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE OrderList_t
     INTEGER, ALLOCATABLE :: NbsGorder(:), NbsGrows(:), IfGorder(:), IfGrows(:)
@@ -143,7 +143,7 @@ CONTAINS
   FUNCTION SplitMatrix( SourceMatrix, ParallelInfo ) &
        RESULT ( SplittedMatrix )
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE (Matrix_t) :: SourceMatrix       ! Original matrix in this partition
     TYPE (ParallelInfo_t) :: ParallelInfo
@@ -878,7 +878,7 @@ END FUNCTION SplitMatrix
 !----------------------------------------------------------------------
 SUBROUTINE EnsureInsideMatrixValues( SplittedMatrix )
 !----------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE (SplittedMatrixT), POINTER :: SplittedMatrix
 !----------------------------------------------------------------------
   TYPE(Matrix_t), POINTER :: Am
@@ -898,7 +898,7 @@ END SUBROUTINE EnsureInsideMatrixValues
 !----------------------------------------------------------------------
 SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
 !----------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !----------------------------------------------------------------------
   TYPE (SplittedMatrixT), POINTER :: SplittedMatrix
 !----------------------------------------------------------------------
@@ -2737,7 +2737,7 @@ END SUBROUTINE SolveHutiter
   SUBROUTINE SParMatrixVector( u,v,ipar )
 !----------------------------------------------------------------------
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
@@ -2763,7 +2763,7 @@ END SUBROUTINE SParMatrixVector
 SUBROUTINE SParMatrixVectorVals( u,v,UseMass )
 !----------------------------------------------------------------------
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   REAL(KIND=dp), DIMENSION(*) :: u, v
   LOGICAL :: UseMass
@@ -2876,7 +2876,7 @@ END SUBROUTINE SParMatrixVectorVals
   SUBROUTINE SParABSMatrixVector( u,v,ipar )
 !----------------------------------------------------------------------
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
@@ -2895,7 +2895,7 @@ END SUBROUTINE SParABSMatrixVector
 SUBROUTINE SParABSMatrixVectorVals( u,v,UseMass )
 !----------------------------------------------------------------------
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   REAL(KIND=dp), DIMENSION(*) :: u, v
   LOGICAL :: UseMass
@@ -3025,7 +3025,7 @@ END SUBROUTINE SParABSMatrixVectorVals
 !----------------------------------------------------------------------
 SUBROUTINE SParCBuildIfBlocks( SP )
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(SplittedMatrixT), POINTER :: SP
 
   TYPE(BasicMatrix_t), POINTER :: CurrIf
@@ -3100,7 +3100,7 @@ END SUBROUTINE SParCBuildIfBlocks
 !----------------------------------------------------------------------
 SUBROUTINE SParCMatrixVector( u, v, ipar )
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER, DIMENSION(*) :: ipar
   COMPLEX(KIND=dp), DIMENSION(*) :: u
@@ -3236,7 +3236,7 @@ END SUBROUTINE SParCMatrixVector
 !--------------------------------------------------------------------------
 SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
 !--------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
   TYPE (ParallelInfo_t) :: ParallelInfo
@@ -3326,7 +3326,7 @@ END SUBROUTINE CountNeighbourConns
 !-----------------------------------------------------------------------
 SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 !-----------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (BasicMatrix_t), TARGET :: SMat1, SMat2, DMat
 ! External routines
@@ -3536,7 +3536,7 @@ END SUBROUTINE CombineCRSMatIndices
 !> been built.
 !----------------------------------------------------------------------
 SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (ParallelInfo_t) :: ParallelInfo
   TYPE(Matrix_t) :: SourceMatrix
@@ -3738,7 +3738,7 @@ END SUBROUTINE GlueFinalize
 SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
             RecvdIfMatrix, ParallelInfo )
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -3831,7 +3831,7 @@ END SUBROUTINE ClearInsideC
 SUBROUTINE RenumberDOFs( SourceMatrix, SplittedMatrix, ParallelInfo )
 
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
   TYPE (ParallelInfo_t) :: ParallelInfo

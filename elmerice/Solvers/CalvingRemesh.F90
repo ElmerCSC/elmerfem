@@ -35,7 +35,7 @@ SUBROUTINE CheckFlowConvergence( Model, Solver, dt, Transient )
 
   USE CalvingGeometry
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -288,7 +288,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   USE SParIterComm
   USE CalvingGeometry
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -716,7 +716,7 @@ CONTAINS
     USE MainUtils
     USE InterpVarToVar
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -3031,7 +3031,7 @@ CONTAINS
   ! Sets the value of coordinate variables from 
   ! a given mesh.
   SUBROUTINE SetCoordVar(Var, Mesh)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Variable_t) :: Var
     TYPE(Mesh_t) :: Mesh
@@ -3120,7 +3120,7 @@ CONTAINS
        Perm, NodeIndex, NodeValue) 
     !------------------------------------------------------------------------------
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t), POINTER :: StiffMatrix
     REAL(KIND=dp) :: ForceVector(:), NodeValue

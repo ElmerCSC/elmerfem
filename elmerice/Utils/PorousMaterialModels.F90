@@ -40,7 +40,7 @@ MODULE PorousMaterialModels
 
    USE DefUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    CONTAINS
 
@@ -58,7 +58,7 @@ MODULE PorousMaterialModels
       USE SolverUtils
       USE ElementDescription
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: a, D, DD     
 
       IF (D > 0.99_dp ) THEN
@@ -83,7 +83,7 @@ MODULE PorousMaterialModels
       USE SolverUtils
       USE ElementDescription
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: b, D, DD 
 
       IF (D > 0.99_dp) THEN

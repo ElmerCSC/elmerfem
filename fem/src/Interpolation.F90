@@ -54,7 +54,7 @@ MODULE Interpolation
    USE GeneralUtils, ONLY : AllocateMatrix
    USE ListMatrix, ONLY : List_AddToMatrixElement, List_toCRSMatrix
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    
  CONTAINS
 
@@ -863,7 +863,7 @@ MODULE Interpolation
       VectorElementVar, GlobalPiMat, cdim, UseNodalPermArg, SkipFaces, &
       NodalOffset )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER, INTENT(IN) :: NodalVar
     TYPE(Variable_t), POINTER, INTENT(IN) :: VectorElementVar
@@ -1293,7 +1293,7 @@ MODULE Interpolation
   SUBROUTINE NodalGradientToNedelecInterpolation_GlobalMatrix(Mesh, NodalVar, &
       VectorElementVar, GlobalPiMat, cdim, UseNodalPermArg )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER, INTENT(IN) :: NodalVar
     TYPE(Variable_t), POINTER, INTENT(IN) :: VectorElementVar

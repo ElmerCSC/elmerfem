@@ -46,7 +46,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   USE MeshRemeshing
   USE MainUtils
   USE MeshIO
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -172,7 +172,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
     USE SParIterComm
     USE MainUtils
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t), TARGET :: Mesh
     TYPE(Element_t),POINTER :: Element
@@ -364,7 +364,7 @@ SUBROUTINE MeshMetricAniso(Model, nodenumber, y, TargetLength)
 
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber

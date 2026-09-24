@@ -45,7 +45,7 @@ SUBROUTINE ReloadInput( Model,Solver,dt,TransientSimulation )
   USE Lists
   USE ModelDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model

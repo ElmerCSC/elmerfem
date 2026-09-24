@@ -43,7 +43,7 @@
      USE DefUtils
 
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      EXTERNAL :: RADIATIONFACTORS
 !------------------------------------------------------------------------------
      INTEGER, PARAMETER :: PHASE_SPATIAL_1 = 1
@@ -2103,7 +2103,7 @@ CONTAINS
      USE DefUtils
      USE Radiation
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -2408,7 +2408,7 @@ CONTAINS
   SUBROUTINE EnthalpySolver_Edge_Residual( Model, Edge, Mesh, Quant, Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -2618,7 +2618,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)

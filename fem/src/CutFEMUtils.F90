@@ -58,7 +58,7 @@ MODULE CutFemUtils
   USE ParallelUtils, ONLY : ParallelReduction
   USE MeshBasics, ONLY : PointInMesh
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   PRIVATE
   
@@ -4096,7 +4096,7 @@ CONTAINS
       ! Find if two 2D line segments intersect
       ! Line segment 'a' runs from point a1 => a2, same for b
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
       LOGICAL :: does_intersect

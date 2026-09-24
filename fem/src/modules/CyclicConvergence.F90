@@ -40,7 +40,7 @@
 SUBROUTINE CyclicConvergence_init( Model,Solver,dt,Transient)
 
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -59,7 +59,7 @@ END SUBROUTINE CyclicConvergence_Init
 SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
 
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver

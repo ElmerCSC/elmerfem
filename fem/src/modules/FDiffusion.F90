@@ -57,7 +57,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
   USE ElementDescription
   USE SolverBasics
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -640,7 +640,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      USE Types
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      REAL(KIND=dp) :: BRe(:),BIm(:)
      REAL(KIND=dp) :: LrFr(:),LrFz(:),LrFp(:), Lorentz(3)
      INTEGER :: Reorder(:)

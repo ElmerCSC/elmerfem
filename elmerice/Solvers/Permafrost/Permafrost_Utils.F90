@@ -44,7 +44,7 @@ SUBROUTINE IPVariableInit(Model, Solver, Timestep, TransientSimulation )
 
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -156,7 +156,7 @@ SUBROUTINE NodalVariableInit(Model, Solver, Timestep, TransientSimulation )
 
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -309,7 +309,7 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -418,7 +418,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -604,7 +604,7 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -715,7 +715,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -848,7 +848,7 @@ CONTAINS
   SUBROUTINE SetIPValues(Element, ElementID, NoElements, n, nd,&
        WriteIPVar, CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
@@ -1163,7 +1163,7 @@ SUBROUTINE InitiliazeXi( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1288,7 +1288,7 @@ CONTAINS
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial,&
        ActiveMassMatrix,FluxOutput)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element

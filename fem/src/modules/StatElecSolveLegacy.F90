@@ -54,7 +54,7 @@
 SUBROUTINE StatElecSolverLegacy_Init( Model,Solver,dt,TransientSimulation)
 !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -141,7 +141,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
   USE DefUtils
 !$ USE omp_lib ! Include module conditionally
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
  
   TYPE(Model_t) :: Model
@@ -1526,7 +1526,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
   SUBROUTINE StatElecSolverLegacy_Boundary_Residual( Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -1772,7 +1772,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
   SUBROUTINE StatElecSolverLegacy_Edge_Residual( Model, Edge, Mesh, Quant, Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -1984,7 +1984,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)

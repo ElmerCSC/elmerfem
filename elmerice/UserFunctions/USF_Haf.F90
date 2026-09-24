@@ -51,7 +51,7 @@ FUNCTION Calculate_Haf ( Model, nodenumber, nodeHeight) RESULT(Haf)
   USE types
   USE DefUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: nodeHeight

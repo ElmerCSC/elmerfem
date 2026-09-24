@@ -26,7 +26,7 @@
 !  mask=+1 for x<0
 FUNCTION gmInit( Model, nodenumber, x) RESULT(gm)
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: x,gm

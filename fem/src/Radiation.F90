@@ -47,7 +47,7 @@ MODULE Radiation
    USE CoordinateSystems
    USE DefUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

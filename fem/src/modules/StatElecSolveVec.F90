@@ -53,7 +53,7 @@
 MODULE StatElecSolveVecFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   REAL(KIND=dp), PARAMETER :: PhysicalEps0 = 8.854187817e-12_dp
 
@@ -136,7 +136,7 @@ END MODULE StatElecSolveVecFront
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver_Init0( Model,Solver,dt,Transient )
   USE StatElecSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -152,7 +152,7 @@ END SUBROUTINE StatElecSolver_Init0
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   USE StatElecSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -165,7 +165,7 @@ END SUBROUTINE StatElecSolver_init
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   USE StatElecSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -183,7 +183,7 @@ END SUBROUTINE StatElecSolver
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   USE StatElecSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt

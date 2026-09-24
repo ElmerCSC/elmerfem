@@ -17,7 +17,7 @@
 !------------------------------------------------------------------------------
     USE Types
     USE Messages
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
@@ -153,7 +153,7 @@
        kstep, kinc)
 !------------------------------------------------------------------------------
     USE Types
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
@@ -316,7 +316,7 @@
        kstep, kinc)
 !------------------------------------------------------------------------------
     USE Types
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
@@ -606,7 +606,7 @@
 !------------------------------------------------------------------------------
     USE Types
     USE Messages
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     EXTERNAL :: DSYEV
 
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)

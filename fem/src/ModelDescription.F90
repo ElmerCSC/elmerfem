@@ -59,7 +59,7 @@ MODULE ModelDescription
     USE BinIO
     USE ElementDescription
  
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
@@ -2651,7 +2651,7 @@ CONTAINS
     USE MeshPartition
     USE SParIterGlobals
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     CHARACTER(LEN=*) :: ModelName
     LOGICAL :: BoundariesOnly
@@ -3491,7 +3491,7 @@ CONTAINS
     ! Initialize Lua in the maximum number of threads
     !------------------------------------------------------------------------------
     SUBROUTINE InitializeLua (Caller, ModelName, mype, loadfile_cmd)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       CHARACTER(*) :: Caller
       CHARACTER(LEN=*) :: ModelName
@@ -6227,7 +6227,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   USE Integration
   USE ElementDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   LOGICAL :: noweight

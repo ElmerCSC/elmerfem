@@ -38,7 +38,7 @@ SUBROUTINE SurfEnthBoundarySolver( Model,Solver,dt,TransientSimulation )
   USE SolverUtils
   USE ElementUtils
 
-IMPLICIT NONE
+IMPLICIT NONE IMPLICIT_EXTERNAL
 TYPE(Model_t) :: Model
 TYPE(Variable_t), POINTER :: Accumulation,Rad_fact_var,SurfGrad1,Surfgrad2
 TYPE(Variable_t), POINTER :: MB,Dens,Firn,SE,Depth,Melting,Refreeze,Raining,PotRad
@@ -617,7 +617,7 @@ CONTAINS
 
 
 subroutine SolveTemp_1D(Model,Solver,Element,z_prof_elmer,firn_thick,TempSurf,temp_10m,surf_node_nb)
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(Model_t) :: Model
   TYPE(Solver_t), POINTER :: Solver
@@ -1069,7 +1069,7 @@ endif
   !*****************************************************************
   
 SUBROUTINE TRIDAG(A,B,C,R,U,N,CODE)
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   INTEGER       :: N,J
   REAL  (KIND=dp)       :: BET,GAM(N),A(N),B(N),C(N),R(N),U(N)
   INTEGER       :: CODE

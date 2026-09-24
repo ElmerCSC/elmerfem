@@ -40,7 +40,7 @@ USE MeshLoad, ONLY : PrepareMesh
 USE MeshPartition
 USE SparIterComm
 
-IMPLICIT NONE
+IMPLICIT NONE IMPLICIT_EXTERNAL
 
 #ifdef HAVE_MMG
 #include "mmg/mmg3d/libmmg3df.h"
@@ -3018,7 +3018,7 @@ END SUBROUTINE DistributedRemeshParMMG
 ! *****************************************************************************
 !------------------------------------------------------------------------------
   FUNCTION GET_MMG2D_MESH(MeshNumber,OutputFilename) RESULT(NewMesh)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     INTEGER :: MeshNumber
     TYPE(Mesh_t), POINTER :: NewMesh
@@ -3390,7 +3390,7 @@ END BLOCK
 
 
   SUBROUTINE SET_MMG2D_SOL(Mesh,MeshSize,Scalar)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: MeshSize
     LOGICAL :: Scalar
@@ -3444,7 +3444,7 @@ END BLOCK
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE Set_MMG2D_Mesh(Mesh,Solver)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER, OPTIONAL :: Solver
     
@@ -3603,7 +3603,7 @@ END BLOCK
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE SET_MMG2D_Parameters(SolverParams)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: SolverParams
     CHARACTER(*), PARAMETER :: FuncName="Set_MMG2D_Parameters"
 #ifdef HAVE_MMG   

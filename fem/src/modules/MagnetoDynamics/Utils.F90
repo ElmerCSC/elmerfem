@@ -40,7 +40,7 @@
 MODULE MagnetoDynamicsUtils
 
    USE MGDynMaterialUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTEGER :: JfixPhase
    REAL(KIND=dp), POINTER :: Jfixrhs(:)
@@ -132,7 +132,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetDOFToValueR(Solver,k,VALUE)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: VALUE,v
     TYPE(Solver_t) :: Solver
     INTEGER :: n,k
@@ -150,7 +150,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetDOFToValueC(Solver,k,VALUE)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     COMPLEX(KIND=dp) :: VALUE
     TYPE(Solver_t) :: Solver
     INTEGER :: n,k
@@ -170,7 +170,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivityR(Material,Acoef,n)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Material
     REAL(KIND=dp) :: Acoef(:)
     INTEGER :: n
@@ -212,7 +212,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivityC(Material,Acoef,n)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Material
     COMPLEX(KIND=dp) :: Acoef(:)
     INTEGER :: n
@@ -258,7 +258,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GetReluctivityTensorR(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
     REAL(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
     INTEGER, INTENT(IN) :: n
@@ -295,7 +295,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
     COMPLEX(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
     INTEGER, INTENT(IN) :: n                                      ! An inactive variable
@@ -763,7 +763,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     INTEGER :: FluxCount, FluxMap(:)
     LOGICAL :: Transient
@@ -886,7 +886,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DepthFirstSearch(Alist,done,i)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrix_t) :: Alist(:)
     INTEGER :: i
     LOGICAL :: Done(:)
@@ -931,7 +931,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
     INTEGER :: FluxCount, FluxMap(:)
     TYPE(Solver_t) :: Solver
@@ -1054,7 +1054,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BreadthFirstSearch(Alist,done,start,nCount,NodeList)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: start,nCount,NodeList(:)
     LOGICAL :: Done(:)
     TYPE(ListMatrix_t) :: Alist(:)
@@ -1181,7 +1181,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddToCycle(bcycle,index)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: bcycle,index
 !------------------------------------------------------------------------------
     TYPE(ListMatrixEntry_t), POINTER :: Btmp

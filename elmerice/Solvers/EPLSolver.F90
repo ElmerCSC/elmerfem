@@ -43,7 +43,7 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
   USE MaterialModels
   USE DefUtils
   !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   !******************************************************************************
   !

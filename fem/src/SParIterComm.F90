@@ -63,7 +63,7 @@ MODULE SParIterComm
 #endif
 
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 
 #ifdef HAVE_PARMMG
@@ -641,7 +641,7 @@ CONTAINS
 ! Helper subroutine for SParIterGlobalNumbering
 ! Adds integer Entry to integer pointer List(:)
 !-----------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: val
     INTEGER, POINTER :: list(:)
 !-----------------------------------------------------------------------
@@ -672,7 +672,7 @@ CONTAINS
 ! Helper subroutine for SParIterGlobalNumbering
 ! Adds integer Entry to integer pointer List(:)
 !-----------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER :: val
     TYPE(CommonList_t) :: list
@@ -2739,7 +2739,7 @@ END  SUBROUTINE SParIterAllReduceOR
 !--------------------------------------------------------------------------
   SUBROUTINE ExchangeInterfaces( NbsIfMatrix, RecvdIfMatrix )
     USE Types
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
 
@@ -2964,7 +2964,7 @@ END SUBROUTINE ExchangeInterfaces
 !-----------------------------------------------------------------
   FUNCTION HalvableIf( M, NeedMass, NeedDamp, NeedPrec, NeedILU ) RESULT( OK )
     USE Types
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(BasicMatrix_t) :: M
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, OK
     INTEGER :: j, k, nj, nb, o, e
@@ -3014,7 +3014,7 @@ END SUBROUTINE ExchangeInterfaces
 !> be rebuilt with no rounding at all, and one that does not is not halved.
 !-----------------------------------------------------------------
   FUNCTION MirroredIf( V, o, e, nj ) RESULT( OK )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: V(:)
     INTEGER :: o, e, nj, k
     LOGICAL :: OK
@@ -3035,7 +3035,7 @@ END SUBROUTINE ExchangeInterfaces
 !-----------------------------------------------------------------
   SUBROUTINE PackHalfIf( M, H, NeedMass, NeedDamp, NeedPrec, NeedILU )
     USE Types
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(BasicMatrix_t) :: M
     TYPE(HalfIf_t) :: H
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU
@@ -3079,7 +3079,7 @@ END SUBROUTINE ExchangeInterfaces
 !> Receive-side buffers for a halved interface block: nb odd rows, nnz values.
 !-----------------------------------------------------------------
   SUBROUTINE AllocHalfIf( H, nb, nnz, NeedMass, NeedDamp, NeedPrec, NeedILU )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(HalfIf_t) :: H
     INTEGER :: nb, nnz
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU
@@ -3101,7 +3101,7 @@ END SUBROUTINE ExchangeInterfaces
 !-----------------------------------------------------------------
   SUBROUTINE ExpandHalfIf( H, M, NeedMass, NeedDamp, NeedPrec, NeedILU )
     USE Types
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(HalfIf_t) :: H
     TYPE(BasicMatrix_t) :: M
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU
@@ -3139,7 +3139,7 @@ END SUBROUTINE ExchangeInterfaces
 !> Write one row pair back out: (x,-y) as it came, then (y,x) derived.
 !-----------------------------------------------------------------
   SUBROUTINE MirrorInto( HV, h0, V, o, e, nj )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: HV(:), V(:)
     INTEGER :: h0, o, e, nj, k
 
@@ -3171,7 +3171,7 @@ END SUBROUTINE ExchangeInterfaces
   SUBROUTINE ExchangeIfvalues( NbsIfMatrix, RecvdIfMatrix, &
              NeedMass, NeedDamp, NeedPrec, NeedILU, Complex )
     USE Types
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
 
@@ -4351,7 +4351,7 @@ END SUBROUTINE ExchangeRHSIf
 !----------------------------------------------------------------------
 SUBROUTINE ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
   USE types
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(SplittedMatrixT) :: SplittedMatrix
   TYPE(Matrix_t) :: SourceMatrix
@@ -4513,7 +4513,7 @@ END SUBROUTINE ExchangeResult
 !> matrix-vector operation).
 !-----------------------------------------------------------------------
 SUBROUTINE BuildRevVecIndices( SplittedMatrix )
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
 
@@ -4684,7 +4684,7 @@ END SUBROUTINE BuildRevVecIndices
 !
 SUBROUTINE Recv_LocIf_Wait( SplittedMatrix, ndim, v, n, neigh, &
                sizes, requests, buffer )
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
   REAL(KIND=dp), DIMENSION(*) :: v
@@ -4872,7 +4872,7 @@ END SUBROUTINE SParActiveSUMComplex
 !*********************************************************************
 FUNCTION SParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 !*********************************************************************
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -4957,7 +4957,7 @@ END FUNCTION SParDotProd
 !*********************************************************************
 FUNCTION MaskedSParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 !*********************************************************************
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -5031,7 +5031,7 @@ FUNCTION MaskedSParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
 !> Compute global 2-norm of vector x
 !
 FUNCTION SParNorm( ndim, x, xind ) RESULT(dres)
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -5085,7 +5085,7 @@ END FUNCTION SParNorm
 
 
 FUNCTION MaskedSParNorm( ndim, x, xind ) RESULT(dres)
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -5161,7 +5161,7 @@ END FUNCTION MaskedSParNorm
 !
 FUNCTION SParCDotProd( ndim, x, xind, y, yind ) result (dres)
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -5235,7 +5235,7 @@ END FUNCTION SParCDotProd
 !
 FUNCTION SParCDotProdU( ndim, x, xind, y, yind ) result (dres)
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -5302,7 +5302,7 @@ END FUNCTION SParCDotProdU
 !> Compute global 2-norm of vector x
 !
 FUNCTION SParCNorm( ndim, x, xind ) result (norm)
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Parameters
 
@@ -5362,7 +5362,7 @@ END FUNCTION SParCNorm
 !> Finalize MPI environment
 !
 SUBROUTINE ParEnvFinalize()
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! local variables
 
@@ -5401,7 +5401,7 @@ END SUBROUTINE ParEnvFinalize
 !
 FUNCTION SearchNode( ParallelInfo, QueriedNode, First, Last,Order ) RESULT ( Indx )
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (ParallelInfo_t) :: ParallelInfo
   INTEGER :: QueriedNode, Indx
@@ -5495,7 +5495,7 @@ END FUNCTION SearchNode
 !
 FUNCTION SearchIAItem( N, IArray, Item, SortOrder, sIndx ) RESULT ( Indx )
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER :: Item, Indx, i
   INTEGER :: N
@@ -5556,7 +5556,7 @@ END FUNCTION SearchIAItem
 !
 FUNCTION SearchIAItemLinear( N, IArray, Item ) RESULT ( Indx )
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER :: N
   INTEGER, DIMENSION(*) :: IArray

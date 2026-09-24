@@ -43,19 +43,19 @@
 MODULE VecUtils
  
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
  
   CONTAINS
  
     FUNCTION norm2(a)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: norm2(3)
       REAL(KIND=dp), INTENT(IN) :: a(3)
       norm2 = sqrt(SUM(a**2))
     END FUNCTION norm2
  
     FUNCTION normalized(a)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: normalized(3)
       REAL(KIND=dp), INTENT(IN) :: a(3)
       normalized = a/norm2(a)
@@ -65,7 +65,7 @@ MODULE VecUtils
     ! old coordinate system and the new coordinate system:
     ! --------------------------------------------------------
     FUNCTION jac(OldCoord, NewCoord)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
  
       REAL(KIND=dp) :: OldCoord(3,3), NewCoord(3,3)
       REAL(KIND=dp) :: jac(3,3)
@@ -85,7 +85,7 @@ MODULE VecUtils
     ! MATMUL(jac, MATMUL(A, TRANSPOSE(jac))):
     ! ------------------------------------------------------
     FUNCTION transform2rank(A, jac) RESULT (B)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
  
       REAL(KIND=dp) :: A(3,3), B(3,3)
       REAL(KIND=dp) :: jac(3,3)
@@ -113,7 +113,7 @@ END MODULE VecUtils
 SUBROUTINE RotMSolver_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -141,7 +141,7 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE VecUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -439,7 +439,7 @@ CONTAINS
   SUBROUTINE PolarDecomposition(RotMLoc, PDMaxIter, PDDetTol)
 !------------------------------------------------------------------------------ 
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: RotMLoc(3,3), RotMLocInv(3,3)
     REAL(KIND=dp) :: C(3,3)
     REAL(KIND=dp) :: Det

@@ -32,7 +32,7 @@
 SUBROUTINE Adjoint_CostContSolver_init0(Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -63,7 +63,7 @@ SUBROUTINE Adjoint_CostContSolver( Model,Solver,dt,TransientSimulation )
 !  see documentation under : elmerice/Solvers/Documentation/Adjoint_CostContSolver.md
 !******************************************************************************
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

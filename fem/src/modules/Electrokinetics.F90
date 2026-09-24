@@ -65,7 +65,7 @@
 !----------------------------------------------------------------------------------
 FUNCTION helmholtz_smoluchowski1( Model, NodeNumber, dummyargument) RESULT(hs_velocity1)
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 ! external variables
 ! ------------------
   TYPE(Model_t) :: Model
@@ -75,7 +75,7 @@ FUNCTION helmholtz_smoluchowski1( Model, NodeNumber, dummyargument) RESULT(hs_ve
   INTERFACE 
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        ! external variables
        ! ------------------
        TYPE(Model_t) :: Model
@@ -97,7 +97,7 @@ END FUNCTION helmholtz_smoluchowski1
 !----------------------------------------------------------------------------------
 FUNCTION helmholtz_smoluchowski2( Model, NodeNumber, dummyargument) RESULT(hs_velocity2)
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 ! external variables
 ! ------------------
   TYPE(Model_t) :: Model
@@ -107,7 +107,7 @@ FUNCTION helmholtz_smoluchowski2( Model, NodeNumber, dummyargument) RESULT(hs_ve
   INTERFACE 
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        ! external variables
        ! ------------------
        TYPE(Model_t) :: Model
@@ -130,7 +130,7 @@ END FUNCTION helmholtz_smoluchowski2
 FUNCTION helmholtz_smoluchowski3( Model, NodeNumber, dummyargument) RESULT(hs_velocity3)
 
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 ! external variables
 ! ------------------
   TYPE(Model_t) :: Model
@@ -140,7 +140,7 @@ FUNCTION helmholtz_smoluchowski3( Model, NodeNumber, dummyargument) RESULT(hs_ve
   INTERFACE 
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        ! external variables
        ! ------------------
        TYPE(Model_t) :: Model
@@ -163,7 +163,7 @@ END FUNCTION helmholtz_smoluchowski3
 !----------------------------------------------------------------------------------
 FUNCTION helmholtz_smoluchowski( Model, NodeNumber, dummyargument) RESULT(hs_velocity_tang)
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 ! external variables
 ! ------------------
   TYPE(Model_t) :: Model
@@ -173,7 +173,7 @@ FUNCTION helmholtz_smoluchowski( Model, NodeNumber, dummyargument) RESULT(hs_vel
   INTERFACE 
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        ! external variables
        ! ------------------
        TYPE(Model_t) :: Model
@@ -195,7 +195,7 @@ END FUNCTION helmholtz_smoluchowski
 !----------------------------------------------------------------------------------
 FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 ! external variables
 ! ------------------
   TYPE(Model_t) :: Model
@@ -440,7 +440,7 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
   USE Lists
   USE CoordinateSystems
 !
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 ! external variables
   TYPE(Model_t) :: Model
   INTEGER :: NodeNumber

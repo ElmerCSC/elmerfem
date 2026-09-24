@@ -47,7 +47,7 @@
 SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -960,7 +960,7 @@ END SUBROUTINE BoxMoveMesh
   USE SolverBasics
   USE ElementDescription
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !-------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   INTEGER:: Node

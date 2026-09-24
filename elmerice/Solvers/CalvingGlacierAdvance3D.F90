@@ -41,7 +41,7 @@
 
    USE CalvingGeometry
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !-----------------------------------------------
    TYPE(Model_t) :: Model

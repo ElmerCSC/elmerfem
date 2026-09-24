@@ -49,7 +49,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
   USE SolverBasics
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver  !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model            !< All model information (mesh, materials, BCs, etc...)

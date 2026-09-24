@@ -40,7 +40,7 @@ FUNCTION ZsIni ( Model, nodenumber, x) RESULT(Zs)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model
@@ -81,7 +81,7 @@ FUNCTION ZsMzsIni ( Model, nodenumber, Zs) RESULT(mu)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model
@@ -124,7 +124,7 @@ FUNCTION ZsTopIni ( Model, nodenumber, x) RESULT(Zs)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model
@@ -165,7 +165,7 @@ FUNCTION ZsTopMzsIni ( Model, nodenumber, Zs) RESULT(mu)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model
@@ -208,7 +208,7 @@ FUNCTION ZsBottomIni ( Model, nodenumber, x) RESULT(Zs)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model
@@ -249,7 +249,7 @@ FUNCTION ZsBottomMzsIni ( Model, nodenumber, Zs) RESULT(mu)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model
@@ -292,7 +292,7 @@ FUNCTION DyIni ( Model, nodenumber, x) RESULT(Zs)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    TYPE(Solver_t), TARGET :: Solver
    INTEGER :: nodenumber,  NMAX, i, dim
@@ -328,7 +328,7 @@ FUNCTION DyMDyIni ( Model, nodenumber, Zs) RESULT(mu)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    TYPE(Solver_t), TARGET :: Solver
    INTEGER :: nodenumber,  NMAX, i, dim
@@ -363,7 +363,7 @@ FUNCTION ZsBottomMzsIniCalving ( Model, nodenumber, Zs) RESULT(mu)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol, Timevar
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model
@@ -453,7 +453,7 @@ FUNCTION ZsTopMzsIniCalving ( Model, nodenumber, Zs) RESULT(mu)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Variable_t), POINTER :: ZsSol, Timevar
    INTEGER, POINTER :: ZsPerm(:)
    TYPE(Model_t) :: Model

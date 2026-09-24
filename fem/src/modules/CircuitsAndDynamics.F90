@@ -46,7 +46,7 @@
 SUBROUTINE CircuitsAndDynamics_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE CircuitUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -110,7 +110,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   USE CircuitsMod
   USE CircMatInitMod
   USE MGDynMaterialUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -342,7 +342,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p,Crt,dt)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: p
     REAL(KIND=dp) :: Crt(:)    
     REAL(KIND=dp) :: dt
@@ -413,7 +413,7 @@ CONTAINS
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn, dt, crt)
 !------------------------------------------------------------------------------
     USE MGDynMaterialUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: p, CompInd, nm, nn, nd, qi
     TYPE(Solver_t), POINTER :: ASolver
     TYPE(Circuit_t), POINTER :: Circuit
@@ -579,7 +579,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
     TYPE(Valuelist_t), POINTER :: CompParams
@@ -789,7 +789,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt,crt)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt, crt(:)
     TYPE(Component_t) :: Comp
@@ -1032,7 +1032,7 @@ CONTAINS
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
 !------------------------------------------------------------------------------
     USE MGDynMaterialUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: nn, nd
     TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn), C(3,3), val, dt
@@ -1316,7 +1316,7 @@ END SUBROUTINE CircuitsAndDynamics
 SUBROUTINE CircuitsAndDynamicsHarmonic_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE CircuitUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -1351,7 +1351,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   USE CircuitUtils
   USE CircMatInitMod
   USE MGDynMaterialUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
@@ -1525,7 +1525,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(ValueList_t), POINTER :: BF, Params
@@ -1606,7 +1606,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: p, nn
     INTEGER :: CompInd, nm
     TYPE(Circuit_t), POINTER :: Circuit
@@ -1756,7 +1756,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
    SUBROUTINE AddComponentElementContributions(Element, Comp, Tcoef, & 
                                                sigma_33, sigmaim_33, boundary)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(Component_t), POINTER :: Comp
@@ -1837,7 +1837,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,CompParams)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(Component_t) :: Comp
@@ -2038,7 +2038,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(Component_t) :: Comp
@@ -2305,7 +2305,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,CompParams)
 !------------------------------------------------------------------------------
     USE MGDynMaterialUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: nn, nd
     TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), val
@@ -2615,7 +2615,7 @@ END SUBROUTINE CircuitsAndDynamicsHarmonic
 SUBROUTINE CircuitsOutput_init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE CircuitUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -2637,7 +2637,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    USE DefUtils
    USE CircuitUtils
    USE CircuitsMod
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------   
    TYPE(Model_t) :: Model
    TYPE(Solver_t) :: Solver
@@ -2909,7 +2909,7 @@ CONTAINS
 !-------------------------------------------------------------------
   SUBROUTINE SimListAddAndOutputConstReal(VariableName, VariableValue, Level)
 !-------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   CHARACTER(LEN=MAX_NAME_LEN) :: VarVal
   CHARACTER(LEN=*) :: VariableName
   REAL(KIND=dp) :: VariableValue

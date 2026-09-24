@@ -38,7 +38,7 @@ MODULE IceProperties
   USE DefUtils
   USE Types
   
-  IMPLICIT None
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   CONTAINS
 
@@ -47,7 +47,7 @@ MODULE IceProperties
   !==============================================================================
 
 
-    IMPLICIT None
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: temp, cond
 
     
@@ -62,7 +62,7 @@ MODULE IceProperties
 
     USE DefUtils
 
-    IMPLICIT None
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: temp, capac
 
@@ -77,7 +77,7 @@ MODULE IceProperties
 
     USE DefUtils
     
-    IMPLICIT None
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: Tpmp, ClausiusClapeyron, press
 
@@ -113,7 +113,7 @@ FUNCTION IceCapacity(Model, Node, temp) RESULT(capac)
 !==============================================================================
   USE IceProperties
 
-  IMPLICIT None
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: Node
@@ -137,7 +137,7 @@ FUNCTION IcePressureMeltingPoint(Model, Node, press) RESULT(Tpmp)
 
   USE IceProperties
 
-  IMPLICIT None
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: Node
@@ -194,7 +194,7 @@ FUNCTION RelativeTemperature(Model, Node, InputArray) RESULT(Trel)
 !==============================================================================
   USE IceProperties
   USE DefUtils
-  IMPLICIT None
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: Node
@@ -268,7 +268,7 @@ FUNCTION ArrheniusFactor(Model, Node, InputArray) RESULT(ArrhF)
 
   USE IceProperties
 
-  IMPLICIT None
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: Node

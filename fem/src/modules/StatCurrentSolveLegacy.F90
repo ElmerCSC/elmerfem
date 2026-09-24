@@ -52,7 +52,7 @@
 SUBROUTINE StatCurrentSolverLegacy_Init( Model,Solver,dt,TransientSimulation)
 !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -104,7 +104,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
      USE DefUtils
      USE Differentials
      USE Adaptive
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------ 
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET:: Solver
@@ -1038,7 +1038,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   SUBROUTINE StatCurrentSolverLegacy_boundary_residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
@@ -1266,7 +1266,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   SUBROUTINE StatCurrentSolverLegacy_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
   
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
@@ -1467,7 +1467,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !------------------------------------------------------------------------------
     USE DefUtils
   !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)

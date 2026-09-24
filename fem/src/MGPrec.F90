@@ -33,7 +33,7 @@
     USE Multigrid, ONLY : MultiGridSolve
     USE IterSolve, ONLY : FirstCall, stack_pos
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, DIMENSION(*) :: ipar  !< structure holding info from (HUTIter-iterative solver package)
     REAL(KIND=dp), TARGET :: u(*)

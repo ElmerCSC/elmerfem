@@ -40,7 +40,7 @@
 MODULE IncompressibleNSVecFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -73,7 +73,7 @@ END MODULE IncompressibleNSVecFront
 !------------------------------------------------------------------------------
 SUBROUTINE IncompressibleNSSolver_Init0( Model,Solver,dt,Transient )
   USE IncompressibleNSVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -86,7 +86,7 @@ END SUBROUTINE IncompressibleNSSolver_Init0
 !------------------------------------------------------------------------------
 SUBROUTINE IncompressibleNSSolver_init( Model,Solver,dt,Transient )
   USE IncompressibleNSVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -99,7 +99,7 @@ END SUBROUTINE IncompressibleNSSolver_init
 !------------------------------------------------------------------------------
 SUBROUTINE IncompressibleNSSolver( Model,Solver,dt,Transient )
   USE IncompressibleNSVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt

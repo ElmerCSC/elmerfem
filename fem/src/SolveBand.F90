@@ -44,7 +44,7 @@
       SUBROUTINE SolveBandLapack( N,M,A,X,Subband,Band )
 
       USE Types
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
  
 
       INTEGER :: N,M,Subband,Band
@@ -76,7 +76,7 @@
       SUBROUTINE SolveComplexBandLapack( N,M,A,X,Subband,Band )
 
       USE Types
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER :: N,M,Subband,Band
       COMPLEX(KIND=dp) :: A(Band,N),X(M,N)

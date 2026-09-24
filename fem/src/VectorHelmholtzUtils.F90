@@ -31,7 +31,7 @@
    USE ElementDescription
    USE SParIterComm
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
    
@@ -56,7 +56,7 @@
 !------------------------------------------------------------------------------
   SUBROUTINE DefinePortParameters(Model, Mesh)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------

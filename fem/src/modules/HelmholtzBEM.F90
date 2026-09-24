@@ -54,7 +54,7 @@
      USE GlobMatC
      USE DefUtils
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
  
      TYPE(Model_t) :: Model
@@ -460,7 +460,7 @@
 !------------------------------------------------------------------------------
      SUBROUTINE Green( dim,k,x,y,z,W,GradW )
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: x,y,z
        INTEGER :: dim
@@ -498,7 +498,7 @@
 !------------------------------------------------------------------------------
      SUBROUTINE Bessel( x, j0, y0, dj0, dy0 )
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        INTEGER, PARAMETER          :: maxrounds = 1000
        DOUBLE PRECISION, PARAMETER :: polylimit = 10.0d0
@@ -713,7 +713,7 @@
      SUBROUTINE FullIterSolver( N,x,b,SolverParam )
 !------------------------------------------------------------------------------
        USE huti_sfe
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
        TYPE(Solver_t) :: SolverParam
        INTEGER :: N

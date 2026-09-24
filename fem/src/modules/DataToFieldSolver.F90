@@ -50,7 +50,7 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE ParticleUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -740,7 +740,7 @@ SUBROUTINE DataToFieldSolver_init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Lists
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

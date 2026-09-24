@@ -38,7 +38,7 @@
 !------------------------------------------------------------------------------
 MODULE PElementVisual
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -52,7 +52,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE MeshBasics, ONLY: AllocateElement
     USE ElementDescription
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), TARGET, INTENT(IN) :: PElement          !< An element structure capable for p-approximation
     INTEGER, INTENT(IN) :: Degree                            !< The desired order of the Lagrange interpolant
@@ -753,7 +753,7 @@ CONTAINS
     SUBROUTINE NodesOnEdge(NodesU, NodesV, ind_start, ind_end, MaxDegree, Offsets, &
         NodeCounts, NodesW)
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp), INTENT(INOUT):: NodesU(:,:), NodesV(:,:) 
       INTEGER, INTENT(IN) :: ind_start, ind_end
       INTEGER, INTENT(IN) :: MaxDegree

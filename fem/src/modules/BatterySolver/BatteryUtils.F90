@@ -60,7 +60,7 @@
 MODULE BatteryModule
 
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   LOGICAL :: BatteryInitialized = .FALSE.
   LOGICAL :: UseTimeAveFlux, UseTimeAveDiff, UseMeanFlux 
@@ -364,7 +364,7 @@ CONTAINS
   !----------------------------------------------------------------------------
   RECURSIVE FUNCTION ButlerVolmer(Material, node, Phis, Phie, Cs, Ce, &
       Eta, EtaFixed, djdPhis, djdPhie, djdCs, djdCe ) RESULT ( j_Li )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE( ValueList_t), POINTER :: Material
     INTEGER :: node
     REAL(KIND=dp) :: Phis, Phie, Cs, Ce, Eta, j_Li, dx, TimeStep
@@ -837,7 +837,7 @@ CONTAINS
   !------------------------------------------------------------------
   FUNCTION CellVoltage( Solver ) RESULT ( VCell ) 
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
      
     INTEGER, SAVE :: iLeft, iRight

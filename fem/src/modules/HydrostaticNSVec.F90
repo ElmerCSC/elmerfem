@@ -39,7 +39,7 @@
 MODULE HydrostaticNSVecFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -72,7 +72,7 @@ END MODULE HydrostaticNSVecFront
 !------------------------------------------------------------------------------
 SUBROUTINE HydrostaticNSSolver_Init0( Model,Solver,dt,Transient )
   USE HydrostaticNSVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -85,7 +85,7 @@ END SUBROUTINE HydrostaticNSSolver_Init0
 !------------------------------------------------------------------------------
 SUBROUTINE HydrostaticNSSolver_init( Model,Solver,dt,Transient )
   USE HydrostaticNSVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -98,7 +98,7 @@ END SUBROUTINE HydrostaticNSSolver_init
 !------------------------------------------------------------------------------
 SUBROUTINE HydrostaticNSSolver( Model,Solver,dt,Transient )
   USE HydrostaticNSVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt

@@ -57,7 +57,7 @@ MODULE ElementGeometry
    USE PElementBase
    USE Lists
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    PRIVATE
 
    PUBLIC :: TriangleInside, QuadInside, TetraInside, BrickInside, &
@@ -1479,7 +1479,7 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
   FUNCTION getTriangleFaceDirection( Element, FaceMap, Indexes ) RESULT(globalDir)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t) :: Element   !< Element to get direction to
     INTEGER :: FaceMap(3)        !< Element triangular face map
@@ -1514,7 +1514,7 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
   FUNCTION getSquareFaceDirection( Element, FaceMap, Indexes ) RESULT(globalDir)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element   !< Element to get direction to
     INTEGER :: FaceMap(:)        !< Element square face map
     INTEGER :: Indexes(:)
@@ -1571,7 +1571,7 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
   FUNCTION wedgeOrdering( ordering ) RESULT(retVal)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER, DIMENSION(4), INTENT(IN) :: ordering  !< Local ordering of a wedge square face
     LOGICAL :: retVal                              !< .TRUE. iff given ordering is legal for wedge square face.

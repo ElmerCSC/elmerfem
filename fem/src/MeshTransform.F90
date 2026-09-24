@@ -43,7 +43,7 @@
 MODULE MeshTransform
 
     USE MeshBasics
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -55,7 +55,7 @@ CONTAINS
       MaskVar )
     
     USE CoordinateSystems
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     TYPE(Solver_t) :: Solver
@@ -718,7 +718,7 @@ CONTAINS
       NumberOfLayers, ElemLayer )
     
     USE CoordinateSystems
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     TYPE(Solver_t) :: Solver

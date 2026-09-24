@@ -84,7 +84,7 @@
 RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimulation )
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 
   !------------------------------------------------------------------------------

@@ -45,7 +45,7 @@
 SUBROUTINE SaveProjection_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -65,7 +65,7 @@ END SUBROUTINE SaveProjection_init
 SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   USE DefUtils
   USE Types
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model

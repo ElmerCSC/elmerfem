@@ -11,7 +11,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
   USE DefUtils
   USE BatteryModule
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t):: Solver

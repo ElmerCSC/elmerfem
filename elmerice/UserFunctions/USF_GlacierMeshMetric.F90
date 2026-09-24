@@ -34,7 +34,7 @@ SUBROUTINE GlacierMeshMetricAniso(Model, nodenumber, y, TargetLength)
 
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: nodenumber

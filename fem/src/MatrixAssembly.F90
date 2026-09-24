@@ -58,7 +58,7 @@ MODULE MatrixAssembly
    USE PElementMaps, ONLY : isActivePElement, getEdgeDOFs, getFaceDOFs, getBubbleDOFs
 
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTERFACE CondensateP
      MODULE PROCEDURE CondensatePR, CondensatePC
@@ -171,7 +171,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddToCmplxMatrixElement(CM, RowId, ColId, Re, Im)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t), POINTER :: CM
     INTEGER :: RowId, ColId
     REAL(KIND=dp) :: Re, Im

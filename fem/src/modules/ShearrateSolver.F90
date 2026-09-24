@@ -44,7 +44,7 @@
   SUBROUTINE ShearrateSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t)  :: Model
     TYPE(Solver_t) :: Solver
@@ -97,7 +97,7 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
   USE DefUtils
   USE Materialmodels
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver

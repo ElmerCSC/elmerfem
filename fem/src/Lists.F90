@@ -49,7 +49,7 @@ MODULE Lists
    USE GeneralUtils
    USE IpFieldInterface
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    ! Not re-exported: the external procedure itself USEs modules that would
    ! then import its own name (see module IpFieldInterface).
    PRIVATE :: Ip2DgFieldInElement
@@ -1282,7 +1282,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE VariableRemove(Variables, NameIn, WarnMiss)
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !-----------------------------------------------
     TYPE(Variable_t), POINTER :: Variables
     CHARACTER(LEN=*) :: NameIn
@@ -9845,7 +9845,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION ListCheckPresentAnyComponent( Model, Name, ValueLst ) RESULT( Found )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE    
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Model_t) :: Model
     CHARACTER(LEN=*) :: Name
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
@@ -9869,7 +9869,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION ListCheckPrefixAnyComponent( Model, Name ) RESULT( Found )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE    
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Model_t) :: Model
     CHARACTER(LEN=*) :: Name
     LOGICAL :: Found
@@ -9892,7 +9892,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION ListGetLogicalAnyComponent( Model, Name ) RESULT( Found )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Model_t) :: Model
     CHARACTER(LEN=*) :: Name
@@ -10031,7 +10031,7 @@ CONTAINS
   SUBROUTINE CreateListForSaving( Model, List, ShowVariables, ClearList, &
       UseGenericKeyword )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     TYPE(ValueList_t), POINTER  :: List

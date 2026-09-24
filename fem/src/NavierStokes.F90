@@ -48,7 +48,7 @@ MODULE NavierStokes
   USE MaterialModels
   USE ElementDescription!, ONLY: GetEdgeMap
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   CONTAINS
 
@@ -1352,7 +1352,7 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
    USE ElementUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LoadVector(:,:), &
      NodalAlpha(:),NodalBeta(:), NodalSlipCoeff(:,:), NodalExtPressure(:)
@@ -1572,7 +1572,7 @@ MODULE NavierStokes
 !******************************************************************************
 !------------------------------------------------------------------------------
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:), &
      Nodalmu(:),Nodalrho(:),Ux(:),Uy(:),Uz(:)
@@ -1779,7 +1779,7 @@ MODULE NavierStokes
 !
 !------------------------------------------------------------------------------
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:), &
      Nodalmu(:),Nodalrho(:),Ux(:),Uy(:),Uz(:)

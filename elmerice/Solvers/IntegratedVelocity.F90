@@ -55,7 +55,7 @@ SUBROUTINE IntegratedVelocity( Model,Solver,dt,TransientSimulation )
 !******************************************************************************
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

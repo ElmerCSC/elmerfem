@@ -42,7 +42,7 @@
 SUBROUTINE FreeSurfaceSolver_RotInit( Model,Solver,dt,TransientSimulation )
   USE DefUtils  
   USE ElementDescription
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -131,7 +131,7 @@ END SUBROUTINE FreeSurfaceSolver_RotInit
 FUNCTION FreeSurfaceToMeshUpdate1( Model, nodenumber,inarray ) RESULT(mu)
   USE Types
   USE Defutils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER :: NodeNumber
   REAL(KIND=dp) ::inarray(*), y, mu, FreeSurfaceToMeshUpdate
@@ -143,7 +143,7 @@ END FUNCTION
 FUNCTION FreeSurfaceToMeshUpdate2( Model, nodenumber,inarray ) RESULT(mu)
   USE Types
   USE Defutils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER :: NodeNumber
   REAL(KIND=dp) ::inarray(*), mu, FreeSurfaceToMeshUpdate
@@ -155,7 +155,7 @@ END FUNCTION
 FUNCTION FreeSurfaceToMeshUpdate3( Model, nodenumber,inarray ) RESULT(mu)
   USE Types
   USE Defutils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER :: NodeNumber
   REAL(KIND=dp) ::inarray(*), mu, FreeSurfaceToMeshUpdate
@@ -168,7 +168,7 @@ FUNCTION FreeSurfaceToMeshUpdate( Model, nodenumber, inarray, axis ) RESULT(mu)
   USE Types
   USE Defutils
   USE ElementDescription
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Variable_t), POINTER :: OrientVar, TimeVar
@@ -229,7 +229,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   USE ElementDescription
   USE Differentials
   USE MaterialModels
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   !------------------------------------------------------------------------------
   !    external variables

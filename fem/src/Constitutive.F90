@@ -92,7 +92,7 @@ MODULE Constitutive
   USE Messages
   USE LinearAlgebra
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   !> Which measure the returned stress is in. Declared by the model; converted by
   !> the driver, which is the only party that knows the deformation gradient it

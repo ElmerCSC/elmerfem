@@ -134,7 +134,7 @@ CONTAINS
 !                                                                       
 ! EXCHANGE AND CORRELATION BY GUNNARSSON-LUNDQVIST                      
       FUNCTION uxcgun (x) 
-      IMPLICIT none 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(8) uxcgun, uxctim, frs, x, pi 
       FRS (X) = (3.d0 / (4.d0 * PI * X) ) ** (1.d0 / 3.d0) 
       UXCtim (X) = - 0.61088d0 / FRS (X) * (1.d0 + 0.0545d0 * FRS (X)   &
@@ -159,7 +159,7 @@ CONTAINS
 !     n : density (a.u.)                                                
 !     s : relative spin polarization (n_up - n_down)/(n_up + n_down)    
 !                                                                       
-      Implicit None 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       Double Precision n, s, uxcpw 
       Integer ispin 
 !      Double Precision excpw 
@@ -395,7 +395,7 @@ CONTAINS
 !     n : density (a.u.)                                                
 !     s : relative spin polarization (n_up - n_down)/(n_up + n_down)    
 !                                                                       
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       DOUBLE PRECISION n, s, excpw 
       DOUBLE PRECISION exrsp, exrsf, rs, pi, exc0, exc1, alpha 
 !                                                                       
@@ -462,7 +462,7 @@ CONTAINS
 ! .................................................e x c................
 ! EXCHANGE AND CORRELATION BY GUNNARSSON-LUNDQVIST                      
       FUNCTION excgun (x) 
-      IMPLICIT NONE 
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(8) excgun, exctim, frs, x, pi 
       FRS (X) = (3.d0 / (4.d0 * PI * X) ) ** (1.d0 / 3.d0) 
       EXCtim (X) = ( - 0.458d0 / FRS (X) - 0.0333d0 * ( (1. + (FRS (X)  &

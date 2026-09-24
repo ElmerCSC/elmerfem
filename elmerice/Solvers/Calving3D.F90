@@ -37,7 +37,7 @@
    USE MainUtils
    USE InterpVarToVar
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !-----------------------------------------------
    TYPE(Model_t) :: Model
@@ -1769,7 +1769,7 @@ CONTAINS
  !Subroutine to print iceberg information to a file, to be processed in python.
  !Also calculates the size of the largest iceberg and returns it
  SUBROUTINE CalvingStats(MaxBergVol)
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    TYPE(Nodes_t) :: ElementNodes
    TYPE(Element_t), POINTER :: CalvingElements(:), Element

@@ -56,7 +56,7 @@ MODULE MeshBasics
         FreeMatrix, Find_Face, Find_Edge
     USE MortarUtils, ONLY : MarkHaloNodes, GeneratePeriodicProjectors
     USE GeometryFitting, ONLY : CylinderFit, SphereFit, TorusFit
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -1410,7 +1410,7 @@ CONTAINS
  !------------------------------------------------------------------------------
  SUBROUTINE RadiationParallelMeshDistribute(Mesh,nprocs)
  !------------------------------------------------------------------------------
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
  !------------------------------------------------------------------------------
    TYPE(Mesh_t) :: Mesh
@@ -1741,7 +1741,7 @@ CONTAINS
  !------------------------------------------------------------------------------
  SUBROUTINE GetMeshRadiationSurfaceInfoA(Mesh,RadiationSurfaces,ElementNumbers,CoordsFlag)
  !------------------------------------------------------------------------------
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    TYPE(ValueList_t), POINTER :: BC
    INTEGER ::  ElementNumbers(:)
@@ -4135,7 +4135,7 @@ CONTAINS
   SUBROUTINE FindMeshFaces3D( Mesh, BulkMask)
     USE PElementMaps, ONLY : GetElementFaceMap
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Mesh_t) :: Mesh
     LOGICAL, OPTIONAL :: BulkMask(:)
@@ -4558,7 +4558,7 @@ CONTAINS
   SUBROUTINE FindMeshEdges3D( Mesh )
     USE PElementMaps, ONLY : GetElementEdgeMap, GetElementFaceEdgeMap
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
@@ -5747,7 +5747,7 @@ END SUBROUTINE FindNeighbourNodes
   SUBROUTINE ConvertToACTetra( Tetra )
 !------------------------------------------------------------------------------
     USE PElementMaps, ONLY : getTetraEdgeMap, getTetraFaceMap
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Element_t), POINTER :: Tetra  !< Tetrahedral element to convert
 !------------------------------------------------------------------------------
@@ -5826,7 +5826,7 @@ END SUBROUTINE FindNeighbourNodes
   SUBROUTINE AssignLocalNumber( EdgeElement, Element, Mesh, NoPE )
 !------------------------------------------------------------------------------
     USE PElementMaps, ONLY : getFaceEdgeMap 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     TYPE(Mesh_t) :: Mesh                     !< Finite element mesh containing faces and edges.
@@ -5966,7 +5966,7 @@ END SUBROUTINE FindNeighbourNodes
   CONTAINS
 
     FUNCTION GetElementEntity(Element, which, Mesh) RESULT(Entity)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Element_t), POINTER :: Element, Entity 
       INTEGER :: which
@@ -5994,7 +5994,7 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
   FUNCTION getElementMaxDOFs( Mesh, Element ) RESULT(dofs)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t), POINTER :: Mesh        !< Finite element mesh
     TYPE(Element_t), POINTER :: Element  !< Element to get maximum dofs for
@@ -6771,7 +6771,7 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
   FUNCTION DetermineRotorRadius(Mesh) RESULT( Radius )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Radius
     

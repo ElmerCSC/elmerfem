@@ -66,7 +66,7 @@ MODULE EigenSolve
   USE Multigrid, ONLY : MultigridSolve
   USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
   USE ParallelUtils, ONLY : ParallelReduction
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   EXTERNAL :: DSAUPD, DNAUPD, DSEUPD, DNEUPD, ZNAUPD, ZNEUPD, BlockSolveExt
 
@@ -142,7 +142,7 @@ CONTAINS
      SUBROUTINE ArpackEigenSolve( Solver,Matrix,N,NEIG,EigValues,EigVectors )
 !------------------------------------------------------------------------------
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Matrix_t), POINTER :: Matrix, A
       TYPE(Solver_t), TARGET :: Solver
@@ -623,7 +623,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE ScaleEigenVectors( Matrix, EigVectors, NoEigen, NormalizeToUnity)
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Matrix_t), TARGET :: Matrix
       COMPLEX(KIND=dp) :: EigVectors(:,:)
@@ -733,7 +733,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE ExpandEigenVectors( Matrix, EigVectors, NoEigen, dofs )
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Matrix_t), TARGET :: Matrix
       COMPLEX(KIND=dp) :: EigVectors(:,:)
@@ -806,7 +806,7 @@ END SUBROUTINE CheckResiduals
           Matrix, N, NEIG, EigValues, EigVectors )
 !------------------------------------------------------------------------------
        
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Matrix_t), POINTER :: Matrix
       TYPE(Solver_t), TARGET :: Solver
@@ -1155,7 +1155,7 @@ END SUBROUTINE CheckResiduals
 !> Solution of Eigen value problems using ARPACK library, complex valued version. 
 !------------------------------------------------------------------------------
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Matrix_t), POINTER :: Matrix, A
       TYPE(Solver_t), TARGET :: Solver
@@ -1643,7 +1643,7 @@ END SUBROUTINE CheckResidualsComplex
 !> Solution of Eigen value problems using ARPACK library, damped version. 
 !------------------------------------------------------------------------------
       USE ElementUtils, ONLY : FreeMatrix
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Matrix_t), POINTER :: KMatrix
       TYPE(Solver_t), TARGET :: Solver

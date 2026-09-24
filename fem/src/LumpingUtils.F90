@@ -54,7 +54,7 @@ MODULE LumpingUtils
   USE ElementDescription, ONLY : mGetElementDOFs, EdgeElementStyle
   USE ParallelUtils, ONLY : ParallelReduction
   USE VectorHelmholtzUtils, ONLY : ElectricPortModel
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   !COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
 

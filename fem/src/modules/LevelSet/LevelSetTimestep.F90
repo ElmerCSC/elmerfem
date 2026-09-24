@@ -42,7 +42,7 @@ FUNCTION LevelSetTimestep( Model ) RESULT( dt )
   USE Integration
   USE ElementDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt

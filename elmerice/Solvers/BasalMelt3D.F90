@@ -48,7 +48,7 @@
    USE ElementDescription
    USE CalvingGeometry
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    TYPE(Model_t) :: Model
    TYPE(Solver_t) :: Solver

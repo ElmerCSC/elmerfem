@@ -71,7 +71,7 @@ MODULE SolverBasics
    USE MatrixAssembly, ONLY: ZeroRow, MoveRow, SetMatrixElement
    USE MatrixScaling, ONLY : ScaleLinearSystemVectors
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    ! Not re-exported: the external procedure itself USEs modules that would
    ! then import its own name (see module IpFieldInterface).
    PRIVATE :: Ip2DgFieldInElement
@@ -1740,7 +1740,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE LocalSourceAssembly(Element, dofs, FORCE)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: dofs
     TYPE(Element_t) :: Element
     REAL(KIND=dp) :: FORCE(:,:)
@@ -2126,7 +2126,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE SetCoupleLoads(Model, Perm, A, F, Dofs)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model                     !< The current model structure
      INTEGER, INTENT(IN) :: Perm(:)              !< The permutation of the associated variable
      TYPE(Matrix_t), INTENT(INOUT) :: A         !< The coefficient matrix of the problem
@@ -2571,7 +2571,7 @@ CONTAINS
 FUNCTION SearchNodeL( ParallelInfo, QueriedNode,n ) RESULT(Indx)
 
   USE Types
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE (ParallelInfo_t) :: ParallelInfo
   INTEGER :: QueriedNode, Indx,n
@@ -3163,7 +3163,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   FUNCTION ComputeNorm(Solver, nin, values) RESULT (Norm)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t), TARGET :: Solver
     INTEGER :: nin
     REAL(KIND=dp), TARGET, OPTIONAL :: values(:)
@@ -4529,7 +4529,7 @@ END FUNCTION SearchNodeL
 
   FUNCTION GaussPointsAdapt( Element, Solver, PReferenceElement, EdgeBasis ) RESULT(IntegStuff)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element
     TYPE(Solver_t), OPTIONAL, TARGET :: Solver
     LOGICAL, OPTIONAL :: PReferenceElement           !< For switching to the p-version reference element
@@ -10262,7 +10262,7 @@ END SUBROUTINE DerivateExportedVariables
   SUBROUTINE CalculateNodalWeights(Solver,WeightAtBoundary,&
       Perm,VarName,Var)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE 
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     LOGICAL :: WeightAtBoundary
     INTEGER, POINTER, OPTIONAL :: Perm(:)
@@ -10443,7 +10443,7 @@ END SUBROUTINE DerivateExportedVariables
 !------------------------------------------------------------------------------
   SUBROUTINE CalculateEntityWeights(Model, Mesh)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE 
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Model_t) :: Model 
     TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------

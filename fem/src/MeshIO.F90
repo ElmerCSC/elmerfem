@@ -48,7 +48,7 @@ MODULE MeshIO
     USE Lists
     USE ListMatrix
     USE MeshAllocations
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -87,7 +87,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE AllocatePDefinitions(Element)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      INTEGER :: istat,n
 
      LOGICAL :: Found
@@ -118,7 +118,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE AllocateBoundaryInfo(Element)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      INTEGER :: istat,n
 
      TYPE(Element_t) :: Element
@@ -143,7 +143,7 @@ CONTAINS
  SUBROUTINE ElmerMeshReader(Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
                  IsParallel, BoundariesOnly )
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTEGER :: Step
    CHARACTER(LEN=*), OPTIONAL :: MeshNamePar
@@ -901,7 +901,7 @@ CONTAINS
  SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
          IsParallel, BoundariesOnly ) 
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTEGER :: Step
    CHARACTER(LEN=*), OPTIONAL :: MeshNamePar

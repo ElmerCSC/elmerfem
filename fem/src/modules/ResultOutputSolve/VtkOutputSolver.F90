@@ -29,7 +29,7 @@ MODULE VtkLegacyFile
   USE ElementDescription
   USE SaveUtils, ONLY : SolverOutputDirectory
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !   PRIVATE
   SAVE
   
@@ -548,7 +548,7 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils 
   USE VtkLegacyFile
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(dp) :: dt

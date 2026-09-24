@@ -39,7 +39,7 @@ MODULE CalvingGeometry
   USE MainUtils
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTERFACE DoubleIntVectorSize
      MODULE PROCEDURE DoubleIntVectorSizeP, DoubleIntVectorSizeA
@@ -271,7 +271,7 @@ CONTAINS
   ! front. Each path will begin and end with a node where OnFront=.TRUE.
   !-----------------------------------------------------------------------------
   SUBROUTINE FindCrevassePaths(IsoMesh, OnFront, CrevassePaths, PathCount)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: IsoMesh
     LOGICAL, ALLOCATABLE :: OnFront(:)
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
@@ -398,7 +398,7 @@ CONTAINS
 
   !Removes a CrevassePath from a linked list of CrevassePaths
   SUBROUTINE RemoveCrevassePath(Path)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(CrevassePath_t), POINTER :: Path
     !------------------------------------------------
     IF(ASSOCIATED(Path % Prev)) Path % Prev % Next => Path % Next
@@ -421,7 +421,7 @@ CONTAINS
   !--------------------------------------------------------------------
 
   SUBROUTINE CheckCrevasseNodes(Mesh, CrevassePaths, Onleft, OnRight)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:)
@@ -680,7 +680,7 @@ CONTAINS
   !       sharing a node. Thinking about it, I see no reason
   !       this should be an issue, but we'll see...
   SUBROUTINE ValidateCrevassePaths(Mesh, CrevassePaths, FrontOrientation, PathCount, OnLeft, OnRight, EnsureProjectible)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:),EnsureProjectible
@@ -1511,7 +1511,7 @@ CONTAINS
   ! reversed such that valid mask values are above the threshold (e.g. grounded) 
   !-----------------------------------------------------------------------------
   SUBROUTINE FindCrevasseGroups(Mesh, Variable, Neighbours, Threshold, Groups, AboveThreshold_Optional)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t), POINTER            :: Mesh
     TYPE(Variable_t), POINTER        :: Variable
@@ -1991,7 +1991,7 @@ CONTAINS
   SUBROUTINE GetDomainEdge(Model, Mesh, TopPerm, OrderedNodes, OrderedNodeNums, Parallel, &
        EdgeMaskName, Simplify, MinDist) 
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
@@ -2884,7 +2884,7 @@ CONTAINS
   ! Copies over time variables and creates coordinate vars. Basically pinched
   ! from AddMeshCoordinatesAndTime() and Multigrid
   SUBROUTINE CopyIntrinsicVars(OldMesh, NewMesh)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
     TYPE(Solver_t), POINTER :: Solver
@@ -2929,7 +2929,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE RotateMesh(Mesh, RotationMatrix)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: RotationMatrix(3,3), NodeHolder(3)
@@ -2951,7 +2951,7 @@ CONTAINS
   
   SUBROUTINE DeallocateElement(Element)
    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element
 
     IF ( ASSOCIATED( Element % NodeIndexes ) ) &
@@ -3297,7 +3297,7 @@ CONTAINS
   ! to solver % values to allow it to be switched back on to the correct setting.
   SUBROUTINE SwitchSolverExec(Solver, Off)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     LOGICAL :: Off
@@ -3377,7 +3377,7 @@ CONTAINS
     ! Find if two 2D line segments intersect
     ! Line segment 'a' runs from point a1 => a2, same for b
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
     LOGICAL :: does_intersect
@@ -3412,7 +3412,7 @@ CONTAINS
     ! Line 'a' explicitly defined by points a1, a2 which lie on line, same for b
     ! based on LineSegmentsIntersect above
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
     LOGICAL :: does_intersect
@@ -3448,7 +3448,7 @@ CONTAINS
     ! Line segment 'a' runs from point a1 => a2
     ! Line b is defined by vector b1 -> b2
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
     LOGICAL :: does_intersect
@@ -3513,7 +3513,7 @@ CONTAINS
   ! (InterpolateVarToVarReduced)
   SUBROUTINE SwitchMesh(Model, Solver, OldMesh, NewMesh)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
@@ -4021,7 +4021,7 @@ CONTAINS
 
     USE InterpVarToVar
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
@@ -4811,7 +4811,7 @@ CONTAINS
     ! but could be anywhere on the mesh which has advanced beyond the previous timestep
     SUBROUTINE InterpAdvanceUnfoundNodes(OldMesh, NewMesh, Unfoundnodes)
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
       LOGICAL, POINTER :: UnfoundNodes(:)
@@ -5652,7 +5652,7 @@ CONTAINS
   ! returns calving polygons if given edge and crevasse info.
   ! assumes all this is on boss and then broadcast to other procs.
   SUBROUTINE  GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, GridSize)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     REAL(kind=dp) :: EdgeX(:), EdgeY(:)
@@ -5747,7 +5747,7 @@ CONTAINS
 
   SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, RemoveInsideCrevs, LateralCrevs, &
                                 OnLeft, OnRight, OnFront, GridSize)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     REAL(kind=dp) :: EdgeX(:), EdgeY(:)
@@ -6318,7 +6318,7 @@ CONTAINS
 
   SUBROUTINE ValidateNPCrevassePaths(Mesh, CrevassePaths, OnLeft, OnRight, FrontLeft, FrontRight, &
                                     EdgeX, EdgeY, LatCalvMargins, GridSize)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     LOGICAL, ALLOCATABLE :: OnLeft(:),OnRight(:)
@@ -7591,7 +7591,7 @@ CONTAINS
   END SUBROUTINE ReleaseCrevassePaths
 
   SUBROUTINE EnforceLateralMargins(Model, SolverParams)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Model_t) :: Model
     TYPE(Valuelist_t), POINTER :: SolverParams
     !-----------------------------------------
@@ -7813,7 +7813,7 @@ CONTAINS
   END FUNCTION ClosestPointOfLineSegment
 
   SUBROUTINE PauseCalvingSolvers(Model, Params, PauseSolvers)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Model_t) :: Model
     TYPE(Valuelist_t), POINTER :: Params
     LOGICAL :: PauseSolvers
@@ -8662,7 +8662,7 @@ CONTAINS
   ! remeshing properly ingrated into calving routines
   SUBROUTINE SaveTerminusPosition(Model, Solver, Mesh, Boss)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
     TYPE(Model_t) :: Model

@@ -64,7 +64,7 @@
      USE MeshTransform, ONLY : RigidMeshMapping
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, SingleSolver
      
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -128,7 +128,7 @@
                  Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine, ClosedForm, ShaftStat, Clip, RayCull) BIND(C)
 
           USE, INTRINSIC :: ISO_C_BINDING
-          IMPLICIT NONE
+          IMPLICIT NONE IMPLICIT_EXTERNAL
           INTEGER, PARAMETER :: dp = 8
           INTEGER  :: n, NofRadiators
           INTEGER :: Surf(*), Type(*)
@@ -150,7 +150,7 @@
               iStart, nLocal, mpiRank, ClosedForm, ShaftStat, Clip, RayCull) BIND(C)
 
             USE, INTRINSIC :: ISO_C_BINDING
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             INTEGER, PARAMETER :: dp = 8
             INTEGER :: n
             INTEGER :: Surf(*), Type(*)
@@ -168,7 +168,7 @@
 
         SUBROUTINE ViewFactorsAxis(n, surf, crd, vf, idiv, fast) BIND(C)
             USE, INTRINSIC :: ISO_C_BINDING
-            IMPLICIT NONE 
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             INTEGER, PARAMETER :: dp = 8
             REAL(KIND=dp) :: crd(*), vf(*)
             INTEGER :: n, surf(*), idiv, fast
@@ -998,7 +998,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE NormalizeFactors( Model, DoRadiators, NofRadiators, &
                     N, Factors, RadiationOpen )
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: NofRadiators, N
@@ -1149,7 +1149,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE MirrorMesh(Mesh,c,Plane,NoDoubles)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !------------------------------------------------------------------------------
      TYPE(Mesh_t) :: Mesh
@@ -1733,7 +1733,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 !------------------------------------------------------------------------------
    SUBROUTINE ExtractMeshInfo( Mesh, nActive, Coord, Surf, Type, Data, Perm, ElimBBox )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: nActive
@@ -2223,7 +2223,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 !> Local handle to the iterative methods for linear systems. 
 !------------------------------------------------------------------------------
     SUBROUTINE IterSolv( N,x,b )
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER :: N
       REAL(KIND=dp), DIMENSION(n) :: x,b

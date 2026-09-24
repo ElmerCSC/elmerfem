@@ -60,7 +60,7 @@ MODULE Multigrid
    USE MeshBasics, ONLY : UpdateSolverMesh, SetCurrentmesh
    USE MeshLoad, ONLY : LoadMesh2
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTERFACE
      SUBROUTINE BlockSolveExt(A,x,b,Solver)
@@ -82,7 +82,7 @@ CONTAINS
     RECURSIVE SUBROUTINE MultiGridSolve( Matrix1, Solution, &
         ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        TYPE(Matrix_t), POINTER :: Matrix1
        INTEGER :: DOFs, Level
@@ -137,7 +137,7 @@ CONTAINS
         ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
        USE ModelDescription, ONLY : OutputPath
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        TYPE(Matrix_t), POINTER :: Matrix1
        INTEGER :: DOFs, Level
@@ -902,7 +902,7 @@ CONTAINS
         ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
 
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        TYPE(Matrix_t), POINTER :: Matrix1
        INTEGER :: DOFs, Level
@@ -1381,7 +1381,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     RECURSIVE FUNCTION PMGSweep() RESULT(RNorm)
 !------------------------------------------------------------------------------
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        INTEGER :: i,j,Rounds
        LOGICAL :: Found
@@ -1484,7 +1484,7 @@ CONTAINS
   RECURSIVE SUBROUTINE AMGSolve( Matrix1, Solution, &
     ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Matrix_t), POINTER :: Matrix1
     INTEGER :: DOFs, Level
@@ -5035,7 +5035,7 @@ CONTAINS
     ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
     USE ClusteringMethods, ONLY : ChooseClusterNodes
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Matrix_t), POINTER :: Matrix1
     INTEGER :: DOFs, Level

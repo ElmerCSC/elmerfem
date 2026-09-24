@@ -36,7 +36,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   USE SSAMaterialModels
   USE ElementDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   !------------------------------------------------------------------------------
   !    external variables

@@ -56,7 +56,7 @@ MODULE H1Basis
 CONTAINS
 
   SUBROUTINE H1Basis_GetEdgeDirection(ecode, nedges, globalind, direction)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: ecode, nedges
     INTEGER, DIMENSION(:), POINTER CONTIG, INTENT(IN) :: globalind
     INTEGER, DIMENSION(H1Basis_MaxPElementEdgeNodes, &
@@ -77,7 +77,7 @@ CONTAINS
   END SUBROUTINE H1Basis_GetEdgeDirection
   
   SUBROUTINE H1Basis_GetTetraEdgeDirection(ttype, direction)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: ttype
     INTEGER, DIMENSION(H1Basis_MaxPElementEdgeNodes, &
                        H1Basis_MaxPElementEdges), TARGET, INTENT(INOUT) :: direction
@@ -107,7 +107,7 @@ CONTAINS
   END SUBROUTINE H1Basis_GetTetraEdgeDirection
   
   SUBROUTINE H1Basis_GetFaceDirection(ecode, nfaces, globalind, direction)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: ecode, nfaces
     INTEGER, DIMENSION(:), POINTER CONTIG, INTENT(IN) :: globalind
     INTEGER, DIMENSION(H1Basis_MaxPElementFaceNodes, &
@@ -195,7 +195,7 @@ CONTAINS
   END SUBROUTINE H1Basis_GetFaceDirection
 
   SUBROUTINE H1Basis_GetTetraFaceDirection(ttype, direction)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: ttype
     INTEGER, DIMENSION(H1Basis_MaxPElementFaceNodes, &
                        H1Basis_MaxPElementFaces), TARGET, INTENT(INOUT) :: direction
@@ -221,7 +221,7 @@ CONTAINS
   END SUBROUTINE H1Basis_GetTetraFaceDirection
 
   SUBROUTINE H1Basis_GetEdgeMap(ecode, map)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: ecode
     INTEGER, DIMENSION(H1Basis_MaxPElementEdgeNodes, &
@@ -291,7 +291,7 @@ CONTAINS
   END SUBROUTINE H1Basis_GetEdgeMap
 
   SUBROUTINE H1Basis_GetFaceMap(ecode, map)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: ecode
     INTEGER, DIMENSION(H1Basis_MaxPElementFaceNodes, &
@@ -340,7 +340,7 @@ CONTAINS
   END SUBROUTINE H1Basis_GetFaceMap
   
   SUBROUTINE H1Basis_LineNodal(nvec, u, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -364,7 +364,7 @@ CONTAINS
   END SUBROUTINE H1Basis_LineNodal
 
   SUBROUTINE H1Basis_dLineNodal(nvec, u, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -387,7 +387,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dLineNodal
 
   SUBROUTINE H1Basis_LineBubbleP(nvec, u, pmax, nbasismax, fval, nbasis, invertEdge)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u
@@ -427,7 +427,7 @@ CONTAINS
   END SUBROUTINE H1Basis_LineBubbleP
 
   SUBROUTINE H1Basis_dLineBubbleP(nvec, u, pmax, nbasismax, grad, nbasis, invertEdge)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u
@@ -469,7 +469,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dLineBubbleP
 
   SUBROUTINE H1Basis_TriangleNodalP(nvec, u, v, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -493,7 +493,7 @@ CONTAINS
   END SUBROUTINE H1Basis_TriangleNodalP
 
   FUNCTION H1Basis_TriangleL(node, u, v) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters 
     INTEGER, INTENT(IN) :: node
@@ -515,7 +515,7 @@ CONTAINS
   END FUNCTION H1Basis_TriangleL
 
   SUBROUTINE H1Basis_dTriangleNodalP(nvec, u, v, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -558,7 +558,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dTriangleNodalP
   
   FUNCTION H1Basis_dTriangleL(node) RESULT(grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters 
     INTEGER, INTENT(IN) :: node
@@ -579,7 +579,7 @@ CONTAINS
   END FUNCTION H1Basis_dTriangleL
   
   SUBROUTINE H1Basis_TriangleEdgeP(nvec, u, v, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -615,7 +615,7 @@ CONTAINS
   END SUBROUTINE H1Basis_TriangleEdgeP
 
   SUBROUTINE H1Basis_dTriangleEdgeP(nvec, u, v, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -660,7 +660,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dTriangleEdgeP
 
   SUBROUTINE H1Basis_TriangleBubbleP(nvec, u, v, pmax, nbasismax, fval, nbasis, localnumbers)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -724,7 +724,7 @@ CONTAINS
   END SUBROUTINE H1Basis_TriangleBubbleP
 
   SUBROUTINE H1Basis_dTriangleBubbleP(nvec, u, v, pmax, nbasismax, grad, nbasis, localnumbers)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -812,7 +812,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dTriangleBubbleP
 
   FUNCTION H1Basis_PowInt(x,j) RESULT(powi)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(IN) :: x
     INTEGER, INTENT(IN) :: j
 
@@ -824,7 +824,7 @@ CONTAINS
   END FUNCTION H1Basis_PowInt
 
   SUBROUTINE H1Basis_QuadNodal(nvec, u, v, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -852,7 +852,7 @@ CONTAINS
   END SUBROUTINE H1Basis_QuadNodal
 
   SUBROUTINE H1Basis_dQuadNodal(nvec, u, v, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -890,7 +890,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_SD_QuadEdgeP(nvec, u, v, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -927,7 +927,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_QuadEdgeP
 
   SUBROUTINE H1Basis_SD_dQuadEdgeP(nvec, u, v, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -973,7 +973,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_dQuadEdgeP
 
   SUBROUTINE H1Basis_SD_QuadBubbleP(nvec, u, v, pmax, nbasismax, fval, nbasis, localNumbers)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -1028,7 +1028,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_QuadBubbleP
 
   SUBROUTINE H1Basis_SD_dQuadBubbleP(nvec, u, v, pmax, nbasismax, grad, nbasis, localNumbers)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -1095,7 +1095,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_QuadEdgeP(nvec, u, v, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -1137,7 +1137,7 @@ CONTAINS
   END SUBROUTINE H1Basis_QuadEdgeP
 
   SUBROUTINE H1Basis_dQuadEdgeP(nvec, u, v, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -1191,7 +1191,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dQuadEdgeP
 
   SUBROUTINE H1Basis_QuadBubbleP(nvec, u, v, pmax, nbasismax, fval, nbasis, localNumbers)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -1246,7 +1246,7 @@ CONTAINS
   END SUBROUTINE H1Basis_QuadBubbleP
 
   SUBROUTINE H1Basis_dQuadBubbleP(nvec, u, v, pmax, nbasismax, grad, nbasis, localNumbers)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
@@ -1319,7 +1319,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dQuadBubbleP
 
   FUNCTION H1Basis_QuadL(node, u, v) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: node
     REAL(KIND=dp), INTENT(IN) :: u, v
@@ -1341,7 +1341,7 @@ CONTAINS
   END FUNCTION H1Basis_QuadL
 
   FUNCTION H1Basis_dQuadL(node) RESULT(grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: node
     ! REAL(KIND=dp), INTENT(IN) :: u, v
@@ -1362,7 +1362,7 @@ CONTAINS
   END FUNCTION H1Basis_dQuadL
 
   SUBROUTINE H1Basis_TetraNodalP(nvec, u, v, w, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -1392,7 +1392,7 @@ CONTAINS
   END SUBROUTINE H1Basis_TetraNodalP
 
   FUNCTION H1Basis_TetraL(node, u, v, w) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters 
     INTEGER, INTENT(IN) :: node
@@ -1417,7 +1417,7 @@ CONTAINS
   END FUNCTION H1Basis_TetraL
   
   SUBROUTINE H1Basis_dTetraNodalP(nvec, u, v, w, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -1488,7 +1488,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dTetraNodalP
   
   FUNCTION H1Basis_dTetraL(node) RESULT(grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters 
     INTEGER, INTENT(IN) :: node
@@ -1511,7 +1511,7 @@ CONTAINS
   END FUNCTION H1Basis_dTetraL
 
   SUBROUTINE H1Basis_TetraEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1546,7 +1546,7 @@ CONTAINS
   END SUBROUTINE H1Basis_TetraEdgeP
   
   SUBROUTINE H1Basis_dTetraEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1592,7 +1592,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dTetraEdgeP
 
   SUBROUTINE H1Basis_TetraFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1633,7 +1633,7 @@ CONTAINS
   END SUBROUTINE H1Basis_TetraFaceP
   
   SUBROUTINE H1Basis_dTetraFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1692,7 +1692,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dTetraFaceP
   
   SUBROUTINE H1Basis_TetraBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1740,7 +1740,7 @@ CONTAINS
   END SUBROUTINE H1Basis_TetraBubbleP
 
   SUBROUTINE H1Basis_dTetraBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1807,7 +1807,7 @@ CONTAINS
 
   
   SUBROUTINE H1Basis_SD_WedgeEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1867,7 +1867,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_WedgeEdgeP
   
   SUBROUTINE H1Basis_SD_dWedgeEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -1947,7 +1947,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_dWedgeEdgeP
   
   SUBROUTINE H1Basis_SD_WedgeFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2030,7 +2030,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_WedgeFaceP
   
   SUBROUTINE H1Basis_SD_dWedgeFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2156,7 +2156,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_dWedgeFaceP
   
   SUBROUTINE H1Basis_SD_WedgeBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2201,7 +2201,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_WedgeBubbleP
 
   SUBROUTINE H1Basis_SD_dWedgeBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2262,7 +2262,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_WedgeNodalP(nvec, u, v, w, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -2296,7 +2296,7 @@ CONTAINS
   END SUBROUTINE H1Basis_WedgeNodalP
 
   SUBROUTINE H1Basis_dWedgeNodalP(nvec, u, v, w, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -2347,7 +2347,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dWedgeNodalP
 
   FUNCTION H1Basis_WedgeL(node, u, v) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: node
@@ -2369,7 +2369,7 @@ CONTAINS
   END FUNCTION H1Basis_WedgeL
 
   FUNCTION H1Basis_dWedgeL(node) RESULT(grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: node
@@ -2389,7 +2389,7 @@ CONTAINS
   END FUNCTION H1Basis_dWedgeL
 
   FUNCTION H1Basis_WedgeH(node, w) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: node
@@ -2407,7 +2407,7 @@ CONTAINS
   END FUNCTION H1Basis_WedgeH
 
   FUNCTION H1Basis_dWedgeH(node) RESULT(grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: node
@@ -2425,7 +2425,7 @@ CONTAINS
   END FUNCTION H1Basis_dWedgeH
   
   SUBROUTINE H1Basis_WedgeEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2487,7 +2487,7 @@ CONTAINS
   END SUBROUTINE H1Basis_WedgeEdgeP
   
   SUBROUTINE H1Basis_dWedgeEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2572,7 +2572,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dWedgeEdgeP
   
   SUBROUTINE H1Basis_WedgeFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2668,7 +2668,7 @@ CONTAINS
   END SUBROUTINE H1Basis_WedgeFaceP
   
   SUBROUTINE H1Basis_dWedgeFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2825,7 +2825,7 @@ CONTAINS
   
 
   SUBROUTINE H1Basis_WedgeBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2868,7 +2868,7 @@ CONTAINS
   END SUBROUTINE H1Basis_WedgeBubbleP
 
   SUBROUTINE H1Basis_dWedgeBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -2933,7 +2933,7 @@ CONTAINS
 !>     Pyramid nodal basis at points (u,v,w)
 !------------------------------------------------------------------------------
   SUBROUTINE H1Basis_PyramidNodalP(nvec, u, v, w, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -2964,7 +2964,7 @@ CONTAINS
 !>     Gradient of pyramids nodal basis at point (u,v,w)
 !------------------------------------------------------------------------------
   SUBROUTINE H1Basis_dPyramidNodalP(nvec, u, v, w, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -3011,7 +3011,7 @@ CONTAINS
 
     ! Define affine coordinates for pyramid square face
     FUNCTION H1Basis_PyramidL(which, u, v) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -3034,7 +3034,7 @@ CONTAINS
     END FUNCTION H1Basis_PyramidL
 
     FUNCTION H1Basis_dPyramidL(which) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -3057,7 +3057,7 @@ CONTAINS
 
 
     FUNCTION H1Basis_PyramidTL(which, u, v, w) RESULT(value)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -3084,7 +3084,7 @@ CONTAINS
     END FUNCTION H1Basis_PyramidTL
 
     FUNCTION H1Basis_dPyramidTL(which) RESULT(grad)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       ! Parameters
       INTEGER, INTENT(IN) :: which
@@ -3121,7 +3121,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_PyramidEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3184,7 +3184,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_dPyramidEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3271,7 +3271,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_PyramidFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3345,7 +3345,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_dPyramidFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3453,7 +3453,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dPyramidFaceP
 
   SUBROUTINE H1Basis_PyramidBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3490,7 +3490,7 @@ CONTAINS
   END SUBROUTINE H1Basis_PyramidBubbleP
 
   SUBROUTINE H1Basis_dPyramidBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3544,7 +3544,7 @@ CONTAINS
 
 
   SUBROUTINE H1Basis_BrickNodal(nvec, u, v, w, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -3581,7 +3581,7 @@ CONTAINS
   END SUBROUTINE H1Basis_BrickNodal
 
   SUBROUTINE H1Basis_dBrickNodal(nvec, u, v, w, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -3636,7 +3636,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dBrickNodal
 
   FUNCTION H1Basis_BrickL(node, u, v, w) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: node
     REAL(KIND=dp), INTENT(IN) :: u, v, w
@@ -3666,7 +3666,7 @@ CONTAINS
   END FUNCTION H1Basis_BrickL
 
   FUNCTION H1Basis_dBrickL(node) RESULT(grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: node
     ! REAL(KIND=dp), INTENT(IN) :: u, v
@@ -3695,7 +3695,7 @@ CONTAINS
   END FUNCTION H1Basis_dBrickL
 
   SUBROUTINE H1Basis_BrickEdgeL(edge, u, v, w, La, Lb)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: edge
     REAL(KIND=dp), INTENT(IN) :: u, v, w
@@ -3744,7 +3744,7 @@ CONTAINS
   END SUBROUTINE H1Basis_BrickEdgeL
 
   SUBROUTINE H1Basis_dBrickEdgeL(edge, dLa, dLb)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: edge
     REAL(KIND=dp), INTENT(OUT) :: dLa(3), dLb(3)
@@ -3794,7 +3794,7 @@ CONTAINS
 
   
   SUBROUTINE H1Basis_SD_BrickEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3833,7 +3833,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_BrickEdgeP
   
   SUBROUTINE H1Basis_SD_dBrickEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3886,7 +3886,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_dBrickEdgeP
   
   SUBROUTINE H1Basis_SD_BrickFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3930,7 +3930,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_BrickFaceP
   
   SUBROUTINE H1Basis_SD_dBrickFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -3990,7 +3990,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_dBrickFaceP
   
   SUBROUTINE H1Basis_SD_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4021,7 +4021,7 @@ CONTAINS
   END SUBROUTINE H1Basis_SD_BrickBubbleP
 
   SUBROUTINE H1Basis_SD_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4062,7 +4062,7 @@ CONTAINS
 ! --- end serendipity brick
   
   SUBROUTINE H1Basis_BrickEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4102,7 +4102,7 @@ CONTAINS
   END SUBROUTINE H1Basis_BrickEdgeP
   
   SUBROUTINE H1Basis_dBrickEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4161,7 +4161,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dBrickEdgeP
   
   SUBROUTINE H1Basis_BrickFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4207,7 +4207,7 @@ CONTAINS
   END SUBROUTINE H1Basis_BrickFaceP
   
   SUBROUTINE H1Basis_dBrickFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4273,7 +4273,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dBrickFaceP
   
   SUBROUTINE H1Basis_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4301,7 +4301,7 @@ CONTAINS
   END SUBROUTINE H1Basis_BrickBubbleP
 
   SUBROUTINE H1Basis_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     INTEGER, INTENT(IN) :: nvec
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
@@ -4337,7 +4337,7 @@ CONTAINS
   END SUBROUTINE H1Basis_dBrickBubbleP
 
   PURE FUNCTION H1Basis_Phi(k, x) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: k
@@ -4408,7 +4408,7 @@ CONTAINS
   END FUNCTION H1Basis_Phi
 
   PURE FUNCTION H1Basis_dPhi(k, x) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: k
@@ -4461,7 +4461,7 @@ CONTAINS
   END FUNCTION H1Basis_dPhi
 
   PURE FUNCTION H1Basis_VarPhi(k, x) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: k
@@ -4513,7 +4513,7 @@ CONTAINS
   END FUNCTION H1Basis_VarPhi
 
   PURE FUNCTION H1Basis_dVarPhi(k, x) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: k
@@ -4563,7 +4563,7 @@ CONTAINS
   END FUNCTION H1Basis_dVarPhi
 
   PURE FUNCTION H1Basis_LegendreP(k, x) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: k
@@ -4634,7 +4634,7 @@ CONTAINS
   END FUNCTION H1Basis_LegendreP
 
   PURE FUNCTION H1Basis_dLegendreP(k, x) RESULT(fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: k
@@ -4694,7 +4694,7 @@ CONTAINS
   
   ! WARNING: this is not a barycentric triangle
   SUBROUTINE H1Basis_TriangleNodal(nvec, u, v, nbasismax, fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -4717,7 +4717,7 @@ CONTAINS
 
   ! WARNING: this is not a barycentric triangle
   SUBROUTINE H1Basis_dTriangleNodal(nvec, u, v, nbasismax, grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -4758,7 +4758,7 @@ CONTAINS
   
   ! WARNING: this is not a barycentric tetra
   SUBROUTINE H1Basis_TetraNodal(nvec, u, v, w, nbasismax, fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -4783,7 +4783,7 @@ CONTAINS
 
   ! WARNING: this is not a barycentric tetra
   SUBROUTINE H1Basis_dTetraNodal(nvec, u, v, w, nbasismax, grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -4850,7 +4850,7 @@ CONTAINS
 
   ! WARNING: this is not a barycentric wedge
   SUBROUTINE H1Basis_WedgeNodal(nvec, u, v, w, nbasismax, fval)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec
@@ -4880,7 +4880,7 @@ CONTAINS
 
   ! WARNING: this is not a barycentric wedge
   SUBROUTINE H1Basis_dWedgeNodal(nvec, u, v, w, nbasismax, grad)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     ! Parameters
     INTEGER, INTENT(IN) :: nvec

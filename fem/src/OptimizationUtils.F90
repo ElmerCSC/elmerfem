@@ -37,7 +37,7 @@ MODULE OptimizationUtils
   USE Messages
 
     
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   PUBLIC :: GetCostFunction
   PUBLIC :: ControlParameters
@@ -183,7 +183,7 @@ CONTAINS
 
     USE minpack_module
 
-    IMPLICIT NONE 
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     PROCEDURE(func) :: funvec
     INTEGER :: i,npar,niter,iflag 
@@ -226,7 +226,7 @@ PRINT *,'niter minpack:',niter
     
     SUBROUTINE MinPack_HYBRD_Wrapper(n,ldfjac,x,fvec,maxfev,xtol,epsfcn) 
 
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       PROCEDURE(func) :: fcn    ! function evaluating the cost
 
@@ -283,7 +283,7 @@ PRINT *,'niter minpack:',niter
 
     USE newuoa_module
 
-    IMPLICIT NONE 
+    IMPLICIT NONE IMPLICIT_EXTERNAL
       
     PROCEDURE(func) :: funcost
     INTEGER :: i,npar,npt,niter,iprint 
@@ -346,7 +346,7 @@ PRINT *,'niter minpack:',niter
 
     USE bobyqa_module
 
-    IMPLICIT NONE 
+    IMPLICIT NONE IMPLICIT_EXTERNAL
       
     PROCEDURE(func) :: funcost
     INTEGER :: i,npar,npt,niter,iprint 
@@ -409,7 +409,7 @@ PRINT *,'niter minpack:',niter
  SUBROUTINE ControlParameters(Params,piter,GotParams,FinishEarly,&
      PostSimulation,SetCoeffs)
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    
    TYPE(ValueList_t), POINTER :: Params
    INTEGER :: piter
@@ -580,7 +580,7 @@ PRINT *,'niter minpack:',niter
  SUBROUTINE SetTabulatedParameters(Params,piter,GotParams,&
      FinishEarly,NoParam,Param)
    !-----------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: piter
     LOGICAL :: GotParams,FinishEarly
@@ -737,7 +737,7 @@ PRINT *,'niter minpack:',niter
   SUBROUTINE SetOptimizationParameters(OptList,piter,GotParams,FinishEarly, &
       NoParam,Param,Cost)
     
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(ValueList_t), POINTER :: OptList
     INTEGER :: piter
@@ -893,7 +893,7 @@ PRINT *,'niter minpack:',niter
     !-------------------------------------------------------------------------------
 
     FUNCTION rnd(n)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       INTEGER, INTENT(IN) :: n
       REAL(KIND=dp), DIMENSION(n) :: rnd
       CALL RANDOM_NUMBER(rnd)
@@ -902,7 +902,7 @@ PRINT *,'niter minpack:',niter
     !-------------------------------------------------------------------------------
 
     INTEGER FUNCTION idx(n)
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       INTEGER, INTENT(IN) :: n
       REAL(KIND=dp) :: x
       CALL RANDOM_NUMBER(x)
@@ -1414,7 +1414,7 @@ PRINT *,'niter minpack:',niter
 !------------------------------------------------------------------------------
  SUBROUTINE ControlResetMesh(Params,piter)
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    
    TYPE(ValueList_t), POINTER :: Params
    INTEGER :: piter

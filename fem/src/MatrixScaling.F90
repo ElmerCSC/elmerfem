@@ -48,7 +48,7 @@ MODULE MatrixScaling
     USE GeneralUtils,  ONLY : I2S
     USE ParallelUtils, ONLY : ParallelReduction, ParallelSumVector, &
                               ParallelInitSolve, ParallelMatrixVector, ParallelVector
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

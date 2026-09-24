@@ -39,7 +39,7 @@
 SUBROUTINE AcousticsSolver_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -79,7 +79,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE GeneralUtils, ONLY : ComplexValues
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   EXTERNAL :: ZGETRF, ZGETRS, ZHEMV
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options

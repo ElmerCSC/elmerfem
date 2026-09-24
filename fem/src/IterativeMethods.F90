@@ -75,7 +75,7 @@ MODULE IterativeMethods
   USE CRSMatrix  
   USE SParIterComm
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   INTEGER :: nc
   LOGICAL :: Constrained
@@ -97,7 +97,7 @@ CONTAINS
   !-----------------------------------------------------------------------------------
   FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT( d )
   !-----------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: ndim, xind, yind
     REAL(KIND=dp) :: x(*)
@@ -138,7 +138,7 @@ CONTAINS
   !-----------------------------------------------------------------------------------
   FUNCTION PseudoZDotProd2( ndim, x, xind, y, yind ) RESULT( d )
   !-----------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: ndim, xind, yind
     REAL(KIND=dp) :: x(*)
@@ -180,7 +180,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -298,7 +298,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -406,7 +406,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -525,7 +525,7 @@ CONTAINS
     SUBROUTINE C_matvec(u,v,ipar,matvecsubr)
 !-----------------------------------------------------------------------------------
       USE huti_interfaces
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
@@ -554,7 +554,7 @@ CONTAINS
     RECURSIVE SUBROUTINE C_rpcond(u,v,ipar,pcondrsubr)
 !-----------------------------------------------------------------------------------
       USE huti_interfaces
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
@@ -579,7 +579,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -1191,7 +1191,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -1484,7 +1484,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -1949,7 +1949,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -2459,7 +2459,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondrsubr
@@ -2671,7 +2671,7 @@ CONTAINS
        pcondrsubr, dotprodfun, normfun, stopcfun )
  !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondrsubr
@@ -3065,7 +3065,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondrsubr

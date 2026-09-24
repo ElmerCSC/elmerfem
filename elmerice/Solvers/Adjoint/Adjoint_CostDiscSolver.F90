@@ -32,7 +32,7 @@
 SUBROUTINE Adjoint_CostDiscSolver_init0(Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -66,7 +66,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 #ifdef HAVE_NETCDF
   USE Netcdf
 #endif
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -798,7 +798,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
  CONTAINS
  ! Find the min and max indexes of values within bBox
  SUBROUTINE MinMaxIndex(x,n,minx,maxx,MinIndex,MaxIndex)
- IMPLICIT NONE
+ IMPLICIT NONE IMPLICIT_EXTERNAL
  REAL(KIND=dp),INTENT(IN) :: x(:),minx,maxx
  INTEGER,INTENT(IN) :: n
  INTEGER,INTENT(OUT) :: MinIndex,MaxIndex

@@ -47,7 +47,7 @@ SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
   USE MeshBasics
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -96,7 +96,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE ModelDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t):: Solver
@@ -731,7 +731,7 @@ CONTAINS
   SUBROUTINE SurfaceCenterPoints( SolidEndBoundaries, SolidConnections, SolidEndAreas)
 !------------------------------------------------------------------------------
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: SolidEndBoundaries(:)
     REAL(KIND=dp) :: SolidEndAreas(:)
@@ -874,7 +874,7 @@ CONTAINS
 !---------------------------------------------------------------------------------------------
   SUBROUTINE LumpedFluidicForce( LumpedBoundaries, FluidicForces, FluidicAreas, FluidicFluxes )
 !---------------------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: LumpedBoundaries(:)
     REAL(KIND=dp) :: FluidicForces(:), FluidicAreas(:), FluidicFluxes(:)
@@ -1129,7 +1129,7 @@ FUNCTION OutletInit( Model,n,t ) RESULT( Winit )
   USE Types
   USE Lists
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(Model_t) :: Model
   INTEGER :: n,mat_id
@@ -1165,7 +1165,7 @@ FUNCTION OutletdX( Model,n,t ) RESULT(dx)
   USE Lists
   USE MeshBasics
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model  
   INTEGER :: n, bc, bc2
   REAL( kind=dp ) :: t, dRout, xcenterpoint, ycenterpoint, zcenterpoint, &
@@ -1249,7 +1249,7 @@ FUNCTION OutletdY( Model,n,t ) RESULT(dy)
   USE Lists
   USE MeshBasics
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model  
   INTEGER :: n, bc, bc2
   REAL( kind=dp ) :: t, dRout, xcenterpoint, ycenterpoint, zcenterpoint, &
@@ -1324,7 +1324,7 @@ FUNCTION OutletPres( Model,n,t ) RESULT(pout)
   USE Types
   USE Lists
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER :: n, bc
   REAL( kind=dp ) :: t, pout

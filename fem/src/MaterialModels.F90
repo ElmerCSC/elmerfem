@@ -46,7 +46,7 @@ MODULE MaterialModels
  
    USE DefUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    INTEGER, PARAMETER :: Incompressible = 0, UserDefined1 = 1,UserDefined2 = 2
    INTEGER, PARAMETER :: PerfectGas1 = 3, PerfectGas2 = 4, PerfectGas3 = 5, Thermal = 6
 

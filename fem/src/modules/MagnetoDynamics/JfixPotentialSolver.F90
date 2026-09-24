@@ -46,7 +46,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   USE MagnetoDynamicsUtils
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -307,7 +307,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE JfixBulkAssembly()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE       
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     INTEGER :: elem,t,p,q,n
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -364,7 +364,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE JfixBCs()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE       
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: i,j,k1,k2,t,n,meshdim,ActParents,ParParents
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: Found, JfixHybrid, JfixNeu, JfixDir, JfixAuto, JfixStatCurr, Parallel, DoIt

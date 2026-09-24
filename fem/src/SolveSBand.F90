@@ -44,7 +44,7 @@
 
        USE Types
 
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        INTEGER :: N,M,Subband,Band
        REAL(KIND=dp) :: A(Band,N),X(N,M)
@@ -79,7 +79,7 @@
 
        USE Types
 
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        INTEGER :: N,M,Subband,Band
        COMPLEX(KIND=dp) :: A(Band,N),X(N,M)

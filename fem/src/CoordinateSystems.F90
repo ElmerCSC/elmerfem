@@ -45,7 +45,7 @@ MODULE CoordinateSystems
 
   USE Types
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER, PARAMETER :: Cartesian = 1
   INTEGER, PARAMETER :: Cylindric = 2, CylindricSymmetric = 3, AxisSymmetric = 4

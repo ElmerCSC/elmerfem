@@ -2,7 +2,7 @@
 RECURSIVE SUBROUTINE DummySolver( Model,Solver,Timestep,TransientSimulation )
   USE DefUtils
  
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 
   !------------------------------------------------------------------------------

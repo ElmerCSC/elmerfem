@@ -123,7 +123,7 @@ CONTAINS
        PStab, PStabCoeff, PStabHmode )
 !------------------------------------------------------------------------------
     USE LinearForms
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     EXTERNAL :: DGEMM
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -1619,7 +1619,7 @@ CONTAINS
     SUBROUTINE LCondensate( N, nb, dim, M, K, F, xprev, x, Element_id )
       !------------------------------------------------------------------------------
       USE LinearAlgebra
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       EXTERNAL :: DGETRF
 
       INTEGER, INTENT(IN) :: N   ! The number of retained DOFs per scalar field
@@ -1751,7 +1751,7 @@ CONTAINS
   SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, dt, SpecificLoad, InitHandles, &
       FrictionNewton)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
@@ -2274,7 +2274,7 @@ END MODULE IncompressibleLocalForms
 SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -2365,7 +2365,7 @@ END SUBROUTINE IncompressibleNSSolver_Init0
 SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -2515,7 +2515,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   USE MainUtils
 
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

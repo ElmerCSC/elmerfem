@@ -49,7 +49,7 @@
  SUBROUTINE FDMeshSolver_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -97,7 +97,7 @@ END SUBROUTINE FDMeshSolver_Init
  SUBROUTINE FDMeshSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -414,7 +414,7 @@ END SUBROUTINE FDMeshSolver_Init
    SUBROUTINE LocalMatrix( STIFF,FORCE,NodalYoung, NodalPoisson, &
               PlaneStress, Isotropic, Element,n, nd, nb )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      REAL(KIND=dp) :: NodalPoisson(:), NodalYoung(:,:,:)
      REAL(KIND=dp), TARGET :: STIFF(:,:), FORCE(:)

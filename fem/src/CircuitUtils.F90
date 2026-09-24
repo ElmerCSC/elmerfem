@@ -43,7 +43,7 @@
 MODULE CircuitUtils
 
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     !> Ticket dispenser for circuit model generations. Never reset, so a number
     !> drawn from it identifies both an instance and one build of that instance.
@@ -69,7 +69,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CircuitsGeneration() RESULT (Gen)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Gen
 
     Gen = 0
@@ -86,7 +86,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION NewCircuitsGeneration() RESULT (Gen)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Gen
 
     CircuitsGenerationCounter = CircuitsGenerationCounter + 1
@@ -104,7 +104,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetCircuitModel(Solver) RESULT (Ckt)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t), TARGET :: Solver
     TYPE(CircuitModel_t), POINTER :: Ckt
     INTEGER :: i
@@ -141,7 +141,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CircuitModelCount() RESULT (Cnt)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Cnt
     INTEGER :: i
 
@@ -159,7 +159,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetCircuitModel(Ckt)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(CircuitModel_t), POINTER :: Ckt
 
     CurrentModel % CircuitModel => Ckt
@@ -172,7 +172,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetCircuitModelOfASolver(ASolver) RESULT (Ckt)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t), POINTER :: ASolver
     TYPE(CircuitModel_t), POINTER :: Ckt
     INTEGER :: i
@@ -204,7 +204,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION ResolveCircuitModel(Solver,Caller) RESULT (Ckt)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     CHARACTER(LEN=*) :: Caller
     TYPE(CircuitModel_t), POINTER :: Ckt
@@ -259,7 +259,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetCircuitModelOfComponent(CompId) RESULT (Ckt)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CompId
     TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Circuit_t), POINTER :: Circuit
@@ -308,7 +308,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE FreeCircuits( UCkt )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(CircuitModel_t), POINTER, OPTIONAL :: UCkt
     TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Circuit_t), POINTER :: Circuit
@@ -436,7 +436,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitsRecordBuild()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Solver_t), POINTER :: ASolver
 
@@ -473,7 +473,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitsCheckStale()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER :: nm
@@ -514,7 +514,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetCircuitModelDepth() RESULT (Depth)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     TYPE(Valuelist_t), POINTER :: simulation
     REAL(KIND=dp) :: depth
@@ -554,7 +554,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CircuitsPartitionedMesh() RESULT (Partitioned)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     LOGICAL :: Partitioned
     TYPE(Mesh_t), POINTER :: Mesh
 
@@ -574,7 +574,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetComponentVoltageFactor(CompInd) RESULT (VoltageFactor)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: CompInd
     REAL(KIND=dp) :: VoltageFactor
@@ -593,7 +593,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: i
     TYPE(Element_t) :: Element
@@ -750,7 +750,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetComponentId(Element) RESULT (ComponentId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: ComponentId
     TYPE(Element_t) :: Element
@@ -769,7 +769,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GetWPotential(Wbase)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: Wbase(:)
 
     CALL GetLocalSolution(Wbase,'W Potential')
@@ -782,7 +782,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GetWPotentialVar(pVar, Quiet)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Variable_t), POINTER :: pVar
     !> Probe only: the caller reports the missing field itself, or does not need
@@ -814,7 +814,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddComponentsToBodyLists()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     LOGICAL :: Found
     INTEGER :: i, j, k
@@ -919,7 +919,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CheckComponentVariables()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     LOGICAL :: Found
     INTEGER :: i, j, k
@@ -981,7 +981,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetComponentBodyIds(Id) RESULT (BodyIds)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     LOGICAL :: Found
     INTEGER :: Id
@@ -1003,7 +1003,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetComponentHomogenizationBodyIds(Id) RESULT (BodyIds)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     LOGICAL :: Found
     INTEGER :: Id
@@ -1024,7 +1024,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION FindSolverWithKey(key) RESULT (Solver)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     CHARACTER(*) :: key
 
@@ -1063,7 +1063,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION FindSlaveSolverHost(SolverId,Slot) RESULT (Host)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: SolverId
     CHARACTER(LEN=*) :: Slot
     TYPE(Solver_t), POINTER :: Host
@@ -1116,7 +1116,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION FindCircuitHost(Solver,Explicit,Caller) RESULT (Host)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     LOGICAL :: Explicit
     CHARACTER(LEN=*) :: Caller
@@ -1183,7 +1183,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION FindCircuitASolver(Solver,Harmonic,Caller) RESULT (ASolver)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     LOGICAL :: Harmonic
     CHARACTER(LEN=*) :: Caller
@@ -1240,7 +1240,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CircuitMatcPrefix() RESULT (Prefix)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     CHARACTER(LEN=MAX_NAME_LEN) :: Prefix
 
     Prefix = ' '
@@ -1264,7 +1264,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CktSym(CId,Suffix) RESULT (Sym)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId
     CHARACTER(LEN=*) :: Suffix
     CHARACTER(LEN=MAX_NAME_LEN) :: Sym
@@ -1293,7 +1293,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetCircuitMatcPrefix(Ckt,Solver,Caller)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(CircuitModel_t), POINTER :: Ckt
     TYPE(Solver_t) :: Solver
     CHARACTER(LEN=*) :: Caller
@@ -1338,7 +1338,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CheckCircuitMultiplierUnique(Ckt,Caller)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(CircuitModel_t), POINTER :: Ckt
     CHARACTER(LEN=*) :: Caller
 
@@ -1392,7 +1392,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitSolverBind(Solver,Slot,Caller)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     CHARACTER(LEN=*) :: Slot
     CHARACTER(LEN=*) :: Caller
@@ -1447,14 +1447,14 @@ MODULE CircuitsMod
 
   USE DefUtils
   USE CircuitUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS 
 
 !------------------------------------------------------------------------------
   SUBROUTINE AllocateCircuitsList()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: slen,n_Circuits
     CHARACTER(:), ALLOCATABLE :: cmd
     CHARACTER(LEN=MAX_NAME_LEN) :: name
@@ -1489,7 +1489,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CountNofCircVarsOfType(CId, Var_type) RESULT (nofc)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: nofc, char_len, slen, CId, i
     CHARACTER(LEN=*) :: Var_type
     CHARACTER(:), ALLOCATABLE :: cmd
@@ -1513,7 +1513,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CountNofCircComponents(CId, nofvar) RESULT (nofc)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: nofc, nofvar, slen, CId, i, j, CompId, ibracket
     INTEGER :: ComponentIDs(nofvar)
     TYPE(Circuit_t), POINTER :: Circuit
@@ -1574,7 +1574,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCircuitVariables(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: slen, ComponentId,i,j,CId, CompInd, nofc, ibracket
     LOGICAL :: Found
     TYPE(Circuit_t), POINTER :: Circuit
@@ -1681,7 +1681,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   FUNCTION GetNofCircVariables(CId) RESULT(n)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId, n, slen 
     TYPE(Circuit_t), POINTER :: Circuit
 
@@ -1696,7 +1696,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE AllocateCircuit(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
 
@@ -1723,7 +1723,7 @@ END FUNCTION isComponentName
 !-------------------------------------------------------------------
  SUBROUTINE SetBoundaryAreasToValueLists()
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Valuelist_t), POINTER :: BC
@@ -1817,7 +1817,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE ReadComponents(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId, CompInd
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
@@ -1995,7 +1995,7 @@ END FUNCTION isComponentName
  SUBROUTINE ComputeElectrodeArea(Comp, CompParams, ExtMaster )
 !-------------------------------------------------------------------
   USE ElementUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Component_t), POINTER :: Comp
   TYPE(ValueList_t), POINTER :: CompParams
   INTEGER, OPTIONAL :: ExtMaster 
@@ -2137,7 +2137,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t) :: Circuit
     TYPE(CircuitVariable_t) :: Variable
     INTEGER :: k                        ! index of the circuit, i.e. CId
@@ -2196,7 +2196,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE AddComponentValuesToLists(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
     TYPE(Valuelist_t), POINTER :: CompParams
@@ -2239,7 +2239,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE AddBareCircuitVariables(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: CVar
     INTEGER :: CId, i
@@ -2259,7 +2259,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCoefficientMatrices(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
 
@@ -2288,7 +2288,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE ReadPermutationVector(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId,n,slen,i
     TYPE(Circuit_t), POINTER :: Circuit
 
@@ -2309,7 +2309,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCircuitSources(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId,n,slen,i
     TYPE(Circuit_t), POINTER :: Circuit
     CHARACTER(:), ALLOCATABLE :: cmd
@@ -2350,7 +2350,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE WriteCoeffVectorsForCircVariables(CId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: CId,n,i
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -2389,7 +2389,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
    FUNCTION IdInList(Id, List) RESULT (T)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      INTEGER :: List(:), Id
      LOGICAL :: T
      T = .FALSE.
@@ -2401,7 +2401,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
    FUNCTION ElAssocToComp(Element, Component) RESULT (T)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Component_t), POINTER :: Component
      TYPE(Element_t), POINTER :: Element
      INTEGER :: k
@@ -2424,7 +2424,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
    FUNCTION ElAssocToCvar(Element, Cvar) RESULT (T)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(CircuitVariable_t), POINTER :: Cvar
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: T
@@ -2440,7 +2440,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   FUNCTION AddIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     Integer :: Ind, AddIndex
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -2463,7 +2463,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   FUNCTION AddImIndex(Ind)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Ind
     Integer :: AddImIndex
     IF ( .NOT. CurrentModel % CircuitModel % Harmonic ) CALL Fatal ('AddImIndex','Model is not of harmonic type!')
@@ -2476,7 +2476,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   FUNCTION ReIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Ind, ReIndex
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -2499,7 +2499,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   FUNCTION ImIndex(Ind)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     Integer :: Ind, ImIndex
 
     ImIndex = 2 * Ind
@@ -2510,7 +2510,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
    FUNCTION HasSupport(Element, nn) RESULT(support)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: nn, dim
     TYPE(Element_t) :: Element
     LOGICAL :: support, Gate=.FALSE.
@@ -2693,7 +2693,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE BuildComponentElementLists()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
     TYPE(Element_t), POINTER :: Element
@@ -2771,7 +2771,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE CheckCircuitSources()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(ValueList_t), POINTER :: Params, BF
     INTEGER :: p, i, nMissing
@@ -2844,7 +2844,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE CheckTransientComponents()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
     TYPE(ValueList_t), POINTER :: CompParams
@@ -2886,7 +2886,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitsSummary()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
@@ -3029,14 +3029,14 @@ END MODULE CircuitsMod
 MODULE CircMatInitMod
 
   USE CircuitsMod
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
 !------------------------------------------------------------------------------
    SUBROUTINE SetCircuitsParallelInfo()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t), POINTER :: CM
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Solver_t), POINTER :: ASolver
@@ -3140,7 +3140,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountCmplxMatElement(Rows, Cnts, RowId, dofs)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Rows(:), Cnts(:)
     INTEGER :: RowId, dofs
 
@@ -3164,7 +3164,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountMatElement(Rows, Cnts, RowId, dofs, Harmonic)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Rows(:), Cnts(:)
     INTEGER :: RowId, dofs
     LOGICAL, OPTIONAL :: Harmonic
@@ -3189,7 +3189,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: RowId, ColId
 
@@ -3225,7 +3225,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateMatElement(Rows, Cols, Cnts, RowId, ColId, Harmonic)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: RowId, ColId
     LOGICAL, OPTIONAL :: Harmonic
@@ -3252,7 +3252,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountBasicCircuitEquations(Rows, Cnts)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
     INTEGER :: i, j, p, nm, RowId, n_Circuits
@@ -3299,7 +3299,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateBasicCircuitEquations(Rows, Cols, Cnts)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
     INTEGER :: i, j, p, nm, RowId, ColId, n_Circuits
@@ -3342,7 +3342,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountComponentEquations(Rows, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Solver_t), POINTER :: ASolver
@@ -3416,7 +3416,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Solver_t), POINTER :: ASolver
@@ -3496,7 +3496,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountComponentElements(Element, Comp, RowId, Rows, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     TYPE(Component_t), POINTER :: Comp
     INTEGER :: nn, nd, RowId
@@ -3529,7 +3529,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateComponentElements(Element, Comp, VvarId, IvarId, Rows, Cols, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     TYPE(Component_t), POINTER :: Comp
     TYPE(Solver_t), POINTER :: ASolver
@@ -3562,7 +3562,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountAndCreateStranded(Element,nn,nd,i,Cnts,Done,Rows,Cols,Jsind,Harmonic)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
@@ -3631,7 +3631,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountAndCreateMassive(Element,nn,nd,i,Cnts,Done,Rows,Cols,Harmonic)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
@@ -3694,7 +3694,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols,Harmonic)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t) :: Element
     TYPE(Component_t), POINTER :: Comp
     INTEGER :: nn, nd, ncdofs, dim
@@ -3778,7 +3778,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_MatrixInit()
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Matrix_t), POINTER :: CM
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:), Cnts(:)

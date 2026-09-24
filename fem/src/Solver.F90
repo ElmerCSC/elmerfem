@@ -36,7 +36,7 @@ PROGRAM Solver
    USE LoadMod, ONLY : CPUTime, RealTime, envir
    USE SParIterGlobals, ONLY : ParEnv
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: CT, RT
    INTEGER, PARAMETER :: Initialize=0
@@ -52,7 +52,7 @@ PROGRAM Solver
    INTERFACE
      SUBROUTINE ElmerSolver(initialize, args, NoArgs)
        USE Types
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        INTEGER, INTENT(IN) :: initialize
        INTEGER, INTENT(IN) :: NoArgs
        TYPE(ArgStr_t), INTENT(IN) :: args(:)

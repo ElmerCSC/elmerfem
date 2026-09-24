@@ -53,6 +53,6 @@ MODULE ElementDescription
    USE ElementBasis
    USE ElemInfo
    USE ElementGeometry
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 END MODULE ElementDescription
 !> \}
