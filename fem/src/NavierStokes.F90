@@ -1606,7 +1606,8 @@ MODULE NavierStokes
 
    INTERFACE
      SUBROUTINE SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX)
-         DOUBLE PRECISION :: Densit, Viscos,Dist, Rough, Ut, Ufric, DFX
+         USE Types, ONLY : dp
+         REAL(KIND=dp) :: Densit, Viscos,Dist, Rough, Ut, Ufric, DFX
      END SUBROUTINE SOLVE_UFRIC
    END INTERFACE
 !------------------------------------------------------------------------------
@@ -1810,7 +1811,8 @@ MODULE NavierStokes
 
    INTERFACE
      SUBROUTINE SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX)
-         DOUBLE PRECISION :: Densit, Viscos,Dist, Rough, Ut, Ufric, DFX
+         USE Types, ONLY : dp
+         REAL(KIND=dp) :: Densit, Viscos,Dist, Rough, Ut, Ufric, DFX
      END SUBROUTINE SOLVE_UFRIC
    END INTERFACE
 !------------------------------------------------------------------------------

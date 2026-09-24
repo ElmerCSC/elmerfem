@@ -190,41 +190,45 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
     ! BLAS interfaces
     INTERFACE
       SUBROUTINE DGEMV(TRANS,M,N,ALPHA,A,LDA,X,INCX,BETA,Y,INCY)
+        USE Types, ONLY : dp
         IMPLICIT NONE
-        DOUBLE PRECISION ALPHA,BETA
+        REAL(KIND=dp) ALPHA,BETA
         INTEGER INCX,INCY,LDA,M,N
         CHARACTER TRANS
-        DOUBLE PRECISION A(LDA,*),X(*),Y(*)
+        REAL(KIND=dp) A(LDA,*),X(*),Y(*)
       END SUBROUTINE DGEMV
     END INTERFACE
     
     INTERFACE
       SUBROUTINE DGEMM(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,B,LDB,BETA,C,LDC)
+        USE Types, ONLY : dp
         IMPLICIT NONE
-        DOUBLE PRECISION ALPHA,BETA
+        REAL(KIND=dp) ALPHA,BETA
         INTEGER K,LDA,LDB,LDC,M,N
         CHARACTER TRANSA,TRANSB
-        DOUBLE PRECISION A(LDA,*),B(LDB,*),C(LDC,*)
+        REAL(KIND=dp) A(LDA,*),B(LDB,*),C(LDC,*)
       END SUBROUTINE DGEMM
     END INTERFACE
     
     ! LAPACK interfaces
     INTERFACE
       SUBROUTINE DGETRF(M, N, A, LDA, IPIV, INFO)
+        USE Types, ONLY : dp
         IMPLICIT NONE
         INTEGER :: INFO, LDA, M, N
         INTEGER :: IPIV( * )
-        DOUBLE PRECISION :: A( LDA, * )
+        REAL(KIND=dp) :: A( LDA, * )
       END SUBROUTINE DGETRF
     END INTERFACE
     
     INTERFACE
       SUBROUTINE DGETRS( TRANS, N, NRHS, A, LDA, IPIV, B, LDB, INFO )
+        USE Types, ONLY : dp
         IMPLICIT NONE
         CHARACTER ::TRANS
         INTEGER :: INFO, LDA, LDB, N, NRHS
         INTEGER :: IPIV(*)
-        DOUBLE PRECISION :: A(LDA,*), B(LDB,*)
+        REAL(KIND=dp) :: A(LDA,*), B(LDB,*)
       END SUBROUTINE DGETRS
     END INTERFACE
     

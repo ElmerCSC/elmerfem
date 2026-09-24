@@ -750,8 +750,9 @@ MODULE LinearAlgebra
 
      INTERFACE
        SUBROUTINE SolveLapack( N,A,x )
+         USE Types, ONLY : dp
          INTEGER  N
-         DOUBLE PRECISION  A(n*n),x(n)
+         REAL(KIND=dp)  A(n*n),x(n)
        END SUBROUTINE
      END INTERFACE
 
@@ -795,8 +796,9 @@ MODULE LinearAlgebra
 
      INTERFACE
        SUBROUTINE SolveLapackSym( N,A,x )
+         USE Types, ONLY : dp
          INTEGER  N
-         DOUBLE PRECISION  A(n*n),x(n)
+         REAL(KIND=dp)  A(n*n),x(n)
        END SUBROUTINE
      END INTERFACE
 

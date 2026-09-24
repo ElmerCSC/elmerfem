@@ -30,17 +30,17 @@
 !------------------------------------------------------------------------------
 FUNCTION NormwiseBackwardError2( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
-  USE Types, ONLY : GlobalMatrix
+  USE Types, ONLY : GlobalMatrix, dp
   USE ParallelUtils, ONLY : ParallelReduction
   USE SParIterSolve, ONLY : SParMatrixVector
   USE CRSMatrix, ONLY : CRS_MatrixVectorMultiply
   USE SParIterGlobals, ONLY : ParEnv
-  
+
   IMPLICIT NONE
-  
+
   INTEGER :: ipar(*),n
-  DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
-  DOUBLE PRECISION :: res(HUTI_NDIM)
+  REAL(KIND=dp) :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
+  REAL(KIND=dp) :: res(HUTI_NDIM)
 
   n = HUTI_NDIM
 
@@ -69,11 +69,12 @@ END FUNCTION NormwiseBackwardError2
 !------------------------------------------------------------------------------
 FUNCTION NormwiseBackwardError( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
+  USE Types, ONLY : dp
   USE ParallelUtils, ONLY : ParallelReduction
   IMPLICIT NONE
-  
+
   INTEGER :: ipar(*),n
-  DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
+  REAL(KIND=dp) :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
 
   n = HUTI_NDIM
 
@@ -94,13 +95,14 @@ END FUNCTION NormwiseBackwardError
 !------------------------------------------------------------------------------
 FUNCTION NormwiseBackwardError_Z( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
+  USE Types, ONLY : dp
   USE ParallelUtils, ONLY : ParallelReduction
   IMPLICIT NONE
-  
-  DOUBLE COMPLEX :: x(*),b(*),r(*)
+
+  COMPLEX(KIND=dp) :: x(*),b(*),r(*)
   INTEGER :: ipar(*)
-  DOUBLE PRECISION :: dpar(*)
-  DOUBLE PRECISION :: err
+  REAL(KIND=dp) :: dpar(*)
+  REAL(KIND=dp) :: err
 
   INTEGER :: n
   
@@ -122,18 +124,18 @@ END FUNCTION NormwiseBackwardError_Z
 !------------------------------------------------------------------------------
 FUNCTION NormwiseBackwardErrorGeneralized( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
-  USE Types, ONLY : GlobalMatrix
+  USE Types, ONLY : GlobalMatrix, dp
   USE ParallelUtils, ONLY : ParallelReduction
   USE SParIterSolve, ONLY : SParMatrixVector, SParABSMatrixVector
   USE CRSMatrix, ONLY : CRS_MatrixVectorMultiply, CRS_ABSMatrixVectorMultiply
   USE SParIterGlobals, ONLY : ParEnv
 
   IMPLICIT NONE
-  
+
   INTEGER :: ipar(*),n
-  DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
-  DOUBLE PRECISION :: res(HUTI_NDIM)
-  DOUBLE PRECISION :: d(HUTI_NDIM), ANorm
+  REAL(KIND=dp) :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
+  REAL(KIND=dp) :: res(HUTI_NDIM)
+  REAL(KIND=dp) :: d(HUTI_NDIM), ANorm
 
   n = HUTI_NDIM
 
@@ -169,17 +171,17 @@ END FUNCTION NormwiseBackwardErrorGeneralized
 !------------------------------------------------------------------------------
 FUNCTION ComponentwiseBackwardError( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
-  USE Types, ONLY : GlobalMatrix, AEPS
+  USE Types, ONLY : GlobalMatrix, AEPS, dp
   USE ParallelUtils, ONLY : ParallelReduction
   USE SParIterSolve, ONLY : SParMatrixVector, SParABSMatrixVector
   USE CRSMatrix, ONLY : CRS_MatrixVectorMultiply, CRS_ABSMatrixVectorMultiply
   USE SParIterGlobals, ONLY : ParEnv
-  
+
   IMPLICIT NONE
-  
+
   INTEGER :: i, ipar(*),n
-  DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
-  DOUBLE PRECISION :: d(HUTI_NDIM),res(HUTI_NDIM)    
+  REAL(KIND=dp) :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
+  REAL(KIND=dp) :: d(HUTI_NDIM),res(HUTI_NDIM)
 
   n = HUTI_NDIM
 
