@@ -765,6 +765,12 @@ IF(CMAKE_Fortran_COMPILER_SUPPORTS_EXECUTECOMMANDLINE)
   ADD_DEFINITIONS(-DHAVE_EXECUTECOMMANDLINE)
 ENDIF()
 
+# Optional F2018/F2023 features. Sources that use them #include
+# elmer_fortran_features.h and keep an F2008 fallback.
+INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fem/include")
+INSTALL(FILES "${CMAKE_SOURCE_DIR}/fem/include/elmer_fortran_features.h"
+  DESTINATION "share/elmersolver/include")
+
 ADD_DEFINITIONS(-DUSE_ISO_C_BINDINGS)
 SET(FC_STDCALLBULL " ")
 SET(ELMER_LINKTYP 1)
