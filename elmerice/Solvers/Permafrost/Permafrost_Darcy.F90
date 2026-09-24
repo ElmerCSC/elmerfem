@@ -843,7 +843,7 @@ CONTAINS
         IF (CgwpI1AtIP > 1.0d-03) THEN ! sanity check
           PRINT *,"CgwpI1AtIP", CgwpI1AtIP,&
                XiAtIP(IPPerm),rhogwAtIP,rhoiAtIP,kappaGAtIP, EGAtIP, nuGAtIP
-          STOP
+          ERROR STOP
         END IF
       END IF
 
@@ -902,7 +902,7 @@ CONTAINS
           IF (KgwpTAtIP(i,1) .NE. KgwpTAtIP(i,1)) PRINT *,CryogenicSuction,fwAtIP,XiPAtIP,KgwAtIP
           PRINT *, "rhowAtIP=",rhowAtIP," rhocAtIP=",rhocAtIP
           PRINT *, "XiAtIP(",IPPerm,")=",XiAtIP(IPPerm)
-          STOP
+          ERROR STOP
         END IF
       END DO
 

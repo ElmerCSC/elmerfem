@@ -199,7 +199,7 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
                 'It is not possible to compute SSA problems with DOFs=',&
                 DIM, ' . Aborting'
            CALL Fatal( SolverName, Message)
-           STOP
+           ERROR STOP
         END IF
 
       BodyForce => GetBodyForce()
