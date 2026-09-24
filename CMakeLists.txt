@@ -767,6 +767,7 @@ ENDIF()
 
 # Optional F2018/F2023 features. Sources that use them #include
 # elmer_fortran_features.h and keep an F2008 fallback.
+INCLUDE(FortranStandardFeatures)
 INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fem/include")
 INSTALL(FILES "${CMAKE_SOURCE_DIR}/fem/include/elmer_fortran_features.h"
   DESTINATION "share/elmersolver/include")
