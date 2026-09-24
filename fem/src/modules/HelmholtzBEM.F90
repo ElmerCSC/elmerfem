@@ -501,30 +501,30 @@
        IMPLICIT NONE
 
        INTEGER, PARAMETER          :: maxrounds = 1000
-       DOUBLE PRECISION, PARAMETER :: polylimit = 10.0d0
-       DOUBLE PRECISION, PARAMETER :: accuracy  = 1.0d-8
-       DOUBLE PRECISION, PARAMETER :: gamma = 0.577215664901532860606512090082D0
+       REAL(KIND=dp), PARAMETER :: polylimit = 10.0d0
+       REAL(KIND=dp), PARAMETER :: accuracy  = 1.0d-8
+       REAL(KIND=dp), PARAMETER :: gamma = 0.577215664901532860606512090082D0
 
        INTEGER :: i, k
        REAL(KIND=dp) :: hk
        REAL(kind=dp) :: x, j0, y0, dj0, dy0, phi, res, p, f
        
-       DOUBLE PRECISION :: A(7) = &
+       REAL(KIND=dp) :: A(7) = &
           (/ 0.79788456D0, -0.00000077D0, -0.00552740D0,  &
              0.00009512D0,  0.00137237D0, -0.00072805D0,  &
              0.00014476D0 /)
 
-       DOUBLE PRECISION :: B(7) = &
+       REAL(KIND=dp) :: B(7) = &
           (/ -0.78539816D0, -0.04166397D0, -0.00003954D0, &
               0.00262573D0, -0.00054125D0, -0.00029333D0, &
               0.00013558D0 /)
 
-       DOUBLE PRECISION :: C(7) = &
+       REAL(KIND=dp) :: C(7) = &
           (/ 0.79788456D0,  0.00000156D0, 0.01659667D0,   &
              0.00017105D0, -0.00249511D0, 0.00113653D0,   &
             -0.0020033D0 /)
 
-       DOUBLE PRECISION :: D(7) = &
+       REAL(KIND=dp) :: D(7) = &
           (/ -2.35619449D0, 0.12499612D0, 0.00005650D0,   &
              -0.00637879D0, 0.00074348D0, 0.00079824D0,   &
              -0.00029166D0 /)

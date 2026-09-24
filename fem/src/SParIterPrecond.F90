@@ -60,7 +60,7 @@ CONTAINS
 
     ! Input parameters
 
-    DOUBLE PRECISION, DIMENSION(*) :: u, v
+    REAL(KIND=dp), DIMENSION(*) :: u, v
     INTEGER, DIMENSION(*) :: ipar
 
     ! Local parameters
@@ -85,14 +85,14 @@ CONTAINS
 
     ! Input parameters
 
-    DOUBLE PRECISION, DIMENSION(*) :: u, v
+    REAL(KIND=dp), DIMENSION(*) :: u, v
     INTEGER, DIMENSION(*) :: ipar
 
     ! Local parameters
 
     INTEGER :: i, k
 
-    DOUBLE PRECISION, POINTER CONTIG :: Vals(:)
+    REAL(KIND=dp), POINTER CONTIG :: Vals(:)
     INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
 
     !*********************************************************************
@@ -110,7 +110,7 @@ CONTAINS
     
     SUBROUTINE LUPrec( n,m,Rows,Cols,Diag,Vals,u,v )
     INTEGER :: n,m,Rows(n+1),Cols(m),Diag(n)
-    DOUBLE PRECISION :: Vals(m),u(n),v(n)
+    REAL(KIND=dp) :: Vals(m),u(n),v(n)
 
     DO i = 1, n
 
@@ -153,7 +153,7 @@ CONTAINS
     
     ! Input parameters
 
-    DOUBLE PRECISION, DIMENSION(*) :: u, v
+    REAL(KIND=dp), DIMENSION(*) :: u, v
     INTEGER, DIMENSION(*) :: ipar
 
     ! Local parameters
@@ -190,7 +190,7 @@ CONTAINS
 
     ! Input parameters
 
-    DOUBLE PRECISION, DIMENSION(*) :: u, v
+    REAL(KIND=dp), DIMENSION(*) :: u, v
     INTEGER, DIMENSION(*) :: ipar
 
     ! Local parameters
@@ -238,7 +238,7 @@ CONTAINS
     ! Local parameters
 
     INTEGER :: i, j, k, l
-    DOUBLE PRECISION :: tl
+    REAL(KIND=dp) :: tl
     PARAMETER ( tl = 1.0d-15 )
   
     !*********************************************************************

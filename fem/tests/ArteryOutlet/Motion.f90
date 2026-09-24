@@ -6,7 +6,7 @@ IMPLICIT NONE
 TYPE(Model_t) :: Model
 
 INTEGER :: n
-DOUBLE PRECISION :: t, uy, x, umax, tpulse
+REAL(KIND=dp) :: t, uy, x, umax, tpulse
 
 x = Model % Nodes % x(n)
 

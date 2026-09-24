@@ -627,8 +627,9 @@ at = CPUTime()
 !------------------------------------------------------------------------------
        INTERFACE SolveLapack
           SUBROUTINE SolveLapack( N,A,x )
+             USE Types, ONLY : dp
              INTEGER N
-             DOUBLE PRECISION a(n*n), x(n)
+             REAL(KIND=dp) a(n*n), x(n)
           END SUBROUTINE SolveLapack
        END INTERFACE
 !------------------------------------------------------------------------------

@@ -5345,11 +5345,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), INTENT(IN) :: A  !< Structure holding input matrix
     INTEGER, INTENT(IN) :: N   !< Size of the system
-    DOUBLE PRECISION :: b(n)   !< on entry the RHS vector, on exit the solution vector.
+    REAL(KIND=dp) :: b(n)   !< on entry the RHS vector, on exit the solution vector.
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k
-    DOUBLE PRECISION :: s1,s2,s3,s4
-    DOUBLE PRECISION, POINTER CONTIG :: Values(:)
+    REAL(KIND=dp) :: s1,s2,s3,s4
+    REAL(KIND=dp), POINTER CONTIG :: Values(:)
     INTEGER, POINTER CONTIG :: Cols(:),Rows(:),Diag(:)
 #ifdef HAVE_MKL
     INTERFACE
@@ -5362,7 +5362,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         REAL(KIND=dp) :: x(*), y(*)
       END SUBROUTINE mkl_dcsrtrsv
     END INTERFACE
-    DOUBLE PRECISION, ALLOCATABLE :: tmp(:)
+    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
 #endif
 !------------------------------------------------------------------------------
 

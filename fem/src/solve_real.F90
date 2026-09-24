@@ -22,10 +22,11 @@
 ! *****************************************************************************/
 
        SUBROUTINE SolveLapack( N,A,x )
+       USE Types, ONLY : dp
        IMPLICIT NONE
 
        INTEGER  N,IPIV(N),INFO
-       DOUBLE PRECISION  A(n*n),x(n)
+       REAL(KIND=dp)  A(n*n),x(n)
 
        IF ( N <= 0 ) RETURN
        CALL DGETRF( N,N,A,N,IPIV,INFO )
@@ -39,10 +40,11 @@
 ! ******************************************************************************
 
        SUBROUTINE SolveLapackSym( N,A,x )
+       USE Types, ONLY : dp
        IMPLICIT NONE
 
        INTEGER  N,INFO
-       DOUBLE PRECISION  A(n*n),x(n)
+       REAL(KIND=dp)  A(n*n),x(n)
 
        IF ( N <= 0 ) RETURN
        CALL DPOTRF( 'L',N,A,N,INFO )

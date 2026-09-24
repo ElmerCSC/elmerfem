@@ -3049,37 +3049,37 @@ CONTAINS
     ! variables have sufficient sizes for 3-D cases. For the use of these variables
     ! see also the definition of the subroutine umat.
     ! -----------------------------------------------------------------------------
-    DOUBLE PRECISION :: StressVec(6)          !*
-    DOUBLE PRECISION :: StateV(NStateV)       !* 
-    DOUBLE PRECISION :: StressDer(6,6)        !*
-    DOUBLE PRECISION :: EnergyElast           !* 
-    DOUBLE PRECISION :: EnergyPlast           !* 
-    DOUBLE PRECISION :: EnergyVisc            !* 
-    DOUBLE PRECISION :: rpl
-    DOUBLE PRECISION :: ddsddt(6)
-    DOUBLE PRECISION :: drplde(6)
-    DOUBLE PRECISION :: drpldt
-    DOUBLE PRECISION :: stran(6)              !*
-    DOUBLE PRECISION :: dstran(6)             !*
-    DOUBLE PRECISION :: TimeAtStep(2)         !*
-    DOUBLE PRECISION :: dtime                 !*
-    DOUBLE PRECISION :: Temp                  !*
-    DOUBLE PRECISION :: dTemp = 0.0d0         !  Zero for isothermal conditions
-    DOUBLE PRECISION :: predef(1) = 0.0d0
-    DOUBLE PRECISION :: dpred(1) = 0.0d0
+    REAL(KIND=dp) :: StressVec(6)          !*
+    REAL(KIND=dp) :: StateV(NStateV)       !* 
+    REAL(KIND=dp) :: StressDer(6,6)        !*
+    REAL(KIND=dp) :: EnergyElast           !* 
+    REAL(KIND=dp) :: EnergyPlast           !* 
+    REAL(KIND=dp) :: EnergyVisc            !* 
+    REAL(KIND=dp) :: rpl
+    REAL(KIND=dp) :: ddsddt(6)
+    REAL(KIND=dp) :: drplde(6)
+    REAL(KIND=dp) :: drpldt
+    REAL(KIND=dp) :: stran(6)              !*
+    REAL(KIND=dp) :: dstran(6)             !*
+    REAL(KIND=dp) :: TimeAtStep(2)         !*
+    REAL(KIND=dp) :: dtime                 !*
+    REAL(KIND=dp) :: Temp                  !*
+    REAL(KIND=dp) :: dTemp = 0.0d0         !  Zero for isothermal conditions
+    REAL(KIND=dp) :: predef(1) = 0.0d0
+    REAL(KIND=dp) :: dpred(1) = 0.0d0
     character(len=80) :: cmname               !*
     INTEGER :: ndi                            !*
     INTEGER :: nshr                           !*
     INTEGER :: ntens                          !*
     !    INTEGER :: NStateV                   !* Specified in the subroutine call
-    DOUBLE PRECISION :: InProps(NrInProps)    !*
+    REAL(KIND=dp) :: InProps(NrInProps)    !*
     !    INTEGER :: NrInProps                 !* Specified in the subroutine call
-    DOUBLE PRECISION :: coords(3) = 0.0d0     !  TO DO: use this to provide the current coordinates
-    DOUBLE PRECISION :: drot(3,3)     
-    DOUBLE PRECISION :: pnewdt = 3.0d0
-    DOUBLE PRECISION :: celent = 1.0d0        !* TO DO: use this to provide the element size 
-    DOUBLE PRECISION :: DefG0(3,3)            !*
-    DOUBLE PRECISION :: DefG(3,3)             !*
+    REAL(KIND=dp) :: coords(3) = 0.0d0     !  TO DO: use this to provide the current coordinates
+    REAL(KIND=dp) :: drot(3,3)     
+    REAL(KIND=dp) :: pnewdt = 3.0d0
+    REAL(KIND=dp) :: celent = 1.0d0        !* TO DO: use this to provide the element size 
+    REAL(KIND=dp) :: DefG0(3,3)            !*
+    REAL(KIND=dp) :: DefG(3,3)             !*
     !    INTEGER :: ElementIndex              !* Specified in the subroutine call
     INTEGER :: npt                            !*
     INTEGER :: layer = 1                     
