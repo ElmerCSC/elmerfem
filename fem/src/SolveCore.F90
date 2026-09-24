@@ -51,7 +51,6 @@ MODULE SolveCore
     USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
     USE MatrixAssembly, ONLY : CreateChildMatrix
     USE IterSolve, ONLY : NumericalError
-    USE ParallelEigenSolve, ONLY : ParallelArpackEigenSolve, ParallelArpackEigenSolveComplex
     IMPLICIT NONE
 
 CONTAINS
