@@ -1566,6 +1566,8 @@ CONTAINS
   !-------------------------------------------------------------------------------------
   SUBROUTINE BlockPickMatrixHorVer( Solver, NoVar, Cart, DTag)
 
+    EXTERNAL :: GetEdgeBasis
+
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
     LOGICAL :: Cart

@@ -51,6 +51,7 @@
      USE DefUtils
 
      IMPLICIT NONE
+     EXTERNAL :: KEWALL
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t) :: Solver

@@ -70,6 +70,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
    USE DefUtils
 
    IMPLICIT NONE
+   EXTERNAL :: DGEEV
 
    TYPE CrevasseGroups_t
       LOGICAL, ALLOCATABLE :: NotEmpty(:),Valid(:)

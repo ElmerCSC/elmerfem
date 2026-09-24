@@ -607,6 +607,7 @@
     USE Types
     USE Messages
     IMPLICIT NONE
+    EXTERNAL :: DSYEV
 
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before

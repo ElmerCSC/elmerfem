@@ -1167,6 +1167,7 @@ CONTAINS
   SUBROUTINE AddEquationBasics( Solver, Name, Transient )
 !------------------------------------------------------------------------------
     USE CoordinateSystems
+    EXTERNAL :: RadiationFactors
     TYPE(Solver_t) :: Solver
     LOGICAL :: Transient
     CHARACTER(LEN=*) :: Name
@@ -4885,6 +4886,7 @@ CONTAINS
   SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
       RowIndOffset,ColIndOffset)
 !---------------------------------------------------
+    EXTERNAL :: DefaultUpdateEquations
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: dt
     LOGICAL :: Transient

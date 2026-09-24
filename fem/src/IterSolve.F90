@@ -189,6 +189,8 @@ CONTAINS
 
     INTEGER :: i,j,n
 
+    EXTERNAL :: DGEMV
+
     n = HUTI_NDIM
 #if 1
 !   CALL DSYMV('U',n,1.0_dp,Jacobian,n,u,1,0.0_dp,v,1)

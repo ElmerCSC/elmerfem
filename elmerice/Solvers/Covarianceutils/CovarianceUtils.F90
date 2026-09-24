@@ -37,6 +37,7 @@
       USE DefUtils
 
       IMPLICIT NONE
+      EXTERNAL :: DPPTRF, DPPTRI, DSPMV, DTPMV
 
       INTERFACE SqrCovarianceVectorMultiply
          MODULE PROCEDURE SqrCovarianceVectorMultiplyD,SqrCovarianceVectorMultiplyL

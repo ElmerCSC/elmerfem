@@ -554,6 +554,7 @@ CONTAINS
     REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), AveNormal(3), CP(3)
     REAL(KIND=dp) :: EigWrk(20)
     INTEGER :: EigInfo, Three
+    EXTERNAL :: DSYEV
     TYPE(GaussIntegrationPoints_t) :: IP
 
     UseConsistentNormal = PRESENT(ConsistentNormal)

@@ -1073,6 +1073,7 @@ SUBROUTINE KESolver( Model,Solver,dt,TransientSimulation )
   USE KESolverLocalForms
   USE KESolverFront
   IMPLICIT NONE
+  EXTERNAL :: KEWALL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver

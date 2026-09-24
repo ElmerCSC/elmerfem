@@ -172,6 +172,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
 
   IMPLICIT NONE
+  EXTERNAL :: DSYEV
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

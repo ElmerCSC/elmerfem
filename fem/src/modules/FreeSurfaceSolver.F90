@@ -135,6 +135,7 @@ FUNCTION FreeSurfaceToMeshUpdate1( Model, nodenumber,inarray ) RESULT(mu)
   TYPE(Model_t) :: Model
   INTEGER :: NodeNumber
   REAL(KIND=dp) ::inarray(*), y, mu, FreeSurfaceToMeshUpdate
+  EXTERNAL :: FreeSurfaceToMeshUpdate
 
   mu = FreeSurfaceToMeshUpdate(Model, nodenumber,inarray, 1)
 END FUNCTION
@@ -146,6 +147,7 @@ FUNCTION FreeSurfaceToMeshUpdate2( Model, nodenumber,inarray ) RESULT(mu)
   TYPE(Model_t) :: Model
   INTEGER :: NodeNumber
   REAL(KIND=dp) ::inarray(*), mu, FreeSurfaceToMeshUpdate
+  EXTERNAL :: FreeSurfaceToMeshUpdate
 
   mu = FreeSurfaceToMeshUpdate(Model, nodenumber,inarray, 2)
 END FUNCTION
@@ -157,6 +159,7 @@ FUNCTION FreeSurfaceToMeshUpdate3( Model, nodenumber,inarray ) RESULT(mu)
   TYPE(Model_t) :: Model
   INTEGER :: NodeNumber
   REAL(KIND=dp) ::inarray(*), mu, FreeSurfaceToMeshUpdate
+  EXTERNAL :: FreeSurfaceToMeshUpdate
 
   mu = FreeSurfaceToMeshUpdate(Model, nodenumber,inarray, 3)
 END FUNCTION

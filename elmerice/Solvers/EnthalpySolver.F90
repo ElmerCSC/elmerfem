@@ -44,6 +44,7 @@
 
 !------------------------------------------------------------------------------
      IMPLICIT NONE
+     EXTERNAL :: RADIATIONFACTORS
 !------------------------------------------------------------------------------
      INTEGER, PARAMETER :: PHASE_SPATIAL_1 = 1
      INTEGER, PARAMETER :: PHASE_SPATIAL_2 = 2

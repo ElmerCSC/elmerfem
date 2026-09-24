@@ -47,6 +47,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
   USE ParallelUtils, ONLY : ParallelUpdateResult, ParallelUpdateSolve
   
   IMPLICIT NONE
+  EXTERNAL :: UPDATEGLOBALPRECONDITIONER
   !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model

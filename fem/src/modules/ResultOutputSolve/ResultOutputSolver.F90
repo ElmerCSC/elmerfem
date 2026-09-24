@@ -35,6 +35,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   USE AscBinOutputUtils
   
   IMPLICIT NONE
+
+  EXTERNAL :: DXOutputSolver, GidOutputSolver, VtkOutputSolver, VtuOutputSolver
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt

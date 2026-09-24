@@ -50,6 +50,7 @@
      LOGICAL :: TopoCall
      LOGICAL :: Newton
      TYPE(Solver_t) :: TSolver
+     EXTERNAL :: RadiationFactorsMesh
 
      CALL RadiationFactorsMesh( TSolver, TopoCall, Newton )
      CALL SetCurrentMesh( CurrentModel, TSolver % Mesh )
@@ -61,6 +62,7 @@
 
      USE DefUtils
      IMPLICIT NONE
+     EXTERNAL :: DGEMV
 
      LOGICAL :: TopoCall
      LOGICAL :: Newton

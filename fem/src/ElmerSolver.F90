@@ -95,6 +95,9 @@
      IMPLICIT NONE
 !------------------------------------------------------------------------------
 
+#ifdef HAVE_MKL
+     EXTERNAL :: mkl_set_num_threads
+#endif
      INTEGER :: Initialize
      INTEGER :: NoArgs
      TYPE(ArgStr_t) :: args(:)

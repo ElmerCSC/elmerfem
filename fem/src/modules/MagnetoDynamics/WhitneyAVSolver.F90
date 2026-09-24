@@ -336,6 +336,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   USE CircuitUtils
 
   IMPLICIT NONE
+  EXTERNAL :: JFIXPOTENTIALSOLVER
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -784,6 +785,7 @@ CONTAINS
   LOGICAL FUNCTION DoSolve(IterNo) RESULT(Converged)
 !------------------------------------------------------------------------------
    IMPLICIT NONE
+   EXTERNAL :: JFIXPOTENTIALSOLVER
    CHARACTER(LEN=MAX_NAME_LEN) :: potname
    INTEGER :: i,j,k,t,n,nd,nb,IterNo
 

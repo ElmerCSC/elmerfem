@@ -258,6 +258,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   USE Adaptive
   USE HeatSolveFront
   IMPLICIT NONE
+  EXTERNAL :: RADIATIONFACTORS
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

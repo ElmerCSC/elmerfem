@@ -1653,6 +1653,8 @@ END SUBROUTINE FetiProject
 !> so the singular values are directly comparable to one.
 !------------------------------------------------------------------------------
   FUNCTION FetiFixingUsable() RESULT(Usable)
+
+    EXTERNAL :: DGESVD
 !------------------------------------------------------------------------------
     LOGICAL :: Usable
 !------------------------------------------------------------------------------
@@ -1814,6 +1816,8 @@ END SUBROUTINE FetiProject
 !> Compute null(A), return value is whether null(A) is nonempty.
 !------------------------------------------------------------------------------
   FUNCTION FetiFloatingDomain(A,Solver,FixInds,TOL) RESULT(Floating)
+
+    EXTERNAL :: DSYEV
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp) :: TOL

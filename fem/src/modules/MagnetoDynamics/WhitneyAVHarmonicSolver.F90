@@ -197,6 +197,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   USE CircuitUtils
 
   IMPLICIT NONE
+  EXTERNAL :: JFIXPOTENTIALSOLVER
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -409,6 +410,7 @@ CONTAINS
   FUNCTION DoSolve(IterNo) RESULT(Converged)
 !---------------------------------------------------------------------------------------------
     IMPLICIT NONE
+    EXTERNAL :: JFIXPOTENTIALSOLVER
     INTEGER :: IterNo
     LOGICAL :: Converged
 !---------------------------------------------------------------------------------------------

@@ -55,6 +55,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
    USE DefUtils
 
    IMPLICIT NONE
+   EXTERNAL :: INTERPOLATEDEM
    TYPE(Solver_t), TARGET :: Solver
    TYPE(Model_t) :: Model
    REAL(KIND=dp) :: dt

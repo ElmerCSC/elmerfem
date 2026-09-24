@@ -153,6 +153,8 @@ CONTAINS
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
+      EXTERNAL :: DSYGV
+
       TYPE(Element_t) :: Element
       INTEGER :: n
       TYPE(Nodes_t) :: Nodes
@@ -10199,6 +10201,7 @@ BLOCK
 !       Local variables
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: dx(VECTOR_BLOCK_LENGTH,3,3)
+     EXTERNAL :: DGEMM
      REAL(KIND=dp) :: Metric(VECTOR_BLOCK_LENGTH,6), &
              G(VECTOR_BLOCK_LENGTH,6)       ! Symmetric Metric(nc,3,3) and G(nc,3,3)
 

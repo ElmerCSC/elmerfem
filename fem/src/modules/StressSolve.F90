@@ -1834,6 +1834,8 @@ CONTAINS
                       NodalStrain(:), PrincipalStress(:), PrincipalStrain(:), &
                       Tresca(:), PrincipalAngle(:)
      LOGICAL, OPTIONAL  :: EvaluateAtIP(3),EvaluateLoadAtIp
+
+     EXTERNAL :: DSYEV
 !------------------------------------------------------------------------------
      TYPE(Nodes_t) :: Nodes
      INTEGER :: n,nd
