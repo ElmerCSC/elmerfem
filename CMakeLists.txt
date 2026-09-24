@@ -236,6 +236,37 @@ IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
   ENDIF()
 ENDIF()
 
+# F2008 is the floor. 2008 adds no -std flag on purpose: -std=f2008 would make
+# gfortran reject the optional F2018 syntax and switch every feature macro off.
+SET(ELMER_FORTRAN_STANDARD "2008" CACHE STRING
+  "Fortran standard to require (2008, 2018 or 2023)")
+SET_PROPERTY(CACHE ELMER_FORTRAN_STANDARD PROPERTY STRINGS 2008 2018 2023)
+
+IF(ELMER_FORTRAN_STANDARD VERSION_LESS 2008)
+  MESSAGE(FATAL_ERROR
+    "ELMER_FORTRAN_STANDARD=${ELMER_FORTRAN_STANDARD} is below the Fortran 2008 floor")
+ENDIF()
+
+IF(ELMER_FORTRAN_STANDARD VERSION_GREATER 2008)
+  IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+    # Older gfortran rejects the -std=f2023 flag itself.
+    IF(ELMER_FORTRAN_STANDARD VERSION_GREATER 2018 AND
+       CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 14)
+      MESSAGE(FATAL_ERROR
+        "ELMER_FORTRAN_STANDARD=${ELMER_FORTRAN_STANDARD} needs gfortran 14 or newer, "
+        "this is ${CMAKE_Fortran_COMPILER_VERSION}")
+    ENDIF()
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=f${ELMER_FORTRAN_STANDARD}")
+    # The header cannot see -std, so tell it the level.
+    SET(ELMER_FORTRAN_STD_DEFINITION -DELMER_FORTRAN_STD=${ELMER_FORTRAN_STANDARD})
+    ADD_DEFINITIONS(${ELMER_FORTRAN_STD_DEFINITION})
+  ELSE()
+    MESSAGE(WARNING
+      "ELMER_FORTRAN_STANDARD is only mapped to a -std flag for GNU Fortran, "
+      "pass the equivalent flag for ${CMAKE_Fortran_COMPILER_ID} manually")
+  ENDIF()
+ENDIF()
+
 
 # Import targets with information for using MPI or the MPI stub
 ADD_LIBRARY(Elmer::MPI_Fortran INTERFACE IMPORTED)
@@ -959,6 +990,7 @@ ELSEIF(WITH_Zoltan AND NOT Zoltan_FOUND)
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
+MESSAGE(STATUS "  Fortran standard:        " "${ELMER_FORTRAN_STANDARD} (floor)")
 MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  C compiler:              " "${CMAKE_C_COMPILER}")
