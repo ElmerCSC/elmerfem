@@ -2505,16 +2505,18 @@ CONTAINS
 
 
 !> Returns the nodal coordinate values in the active element
-  SUBROUTINE GetElementNodes( ElementNodes, UElement, USolver, UMesh )
+  SUBROUTINE GetElementNodes( ElementNodes, UElement, USolver, UMesh, UNodes )
      TYPE(Nodes_t), TARGET :: ElementNodes
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
      TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
+     TYPE(Nodes_t), OPTIONAL, TARGET :: UNodes
 
      INTEGER :: i,n,nd,sz,sz1
      INTEGER, POINTER :: Indexes(:)
      TYPE(Mesh_t),  POINTER  :: Mesh
      TYPE(Element_t), POINTER :: Element
+     TYPE(Nodes_t), POINTER :: MeshNodes
 
      Element => GetCurrentElement(UElement)
 
@@ -2524,6 +2526,14 @@ CONTAINS
        Mesh => USolver % Mesh
      ELSE
        Mesh => CurrentModel % Solver % Mesh
+     END IF
+
+     ! Source of nodal coordinates: by default the current mesh nodes.
+     ! Passing them as argument avoids swapping Mesh % Nodes which is not thread safe.
+     IF( PRESENT( UNodes ) ) THEN
+       MeshNodes => UNodes
+     ELSE
+       MeshNodes => Mesh % Nodes
      END IF
 
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
@@ -2549,9 +2559,9 @@ CONTAINS
 
      n = Element % TYPE % NumberOfNodes
 
-     ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes(1:n))
-     ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes(1:n))
-     ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes(1:n))
+     ElementNodes % x(1:n) = MeshNodes % x(Element % NodeIndexes(1:n))
+     ElementNodes % y(1:n) = MeshNodes % y(Element % NodeIndexes(1:n))
+     ElementNodes % z(1:n) = MeshNodes % z(Element % NodeIndexes(1:n))
 
      sz = SIZE(ElementNodes % x)
      IF ( sz > n ) THEN
@@ -2559,15 +2569,15 @@ CONTAINS
        ElementNodes % y(n+1:sz) = 0.0_dp
        ElementNodes % z(n+1:sz) = 0.0_dp
 
-       sz1 = SIZE(Mesh % Nodes % x)
+       sz1 = SIZE(MeshNodes % x)
        IF (sz1 > Mesh % NumberOfNodes) THEN
          Indexes => GetIndexStore()
          nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
          DO i=n+1,nd
            IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
-             ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
-             ElementNodes % y(i) = Mesh % Nodes % y(Indexes(i))
-             ElementNodes % z(i) = Mesh % Nodes % z(Indexes(i))
+             ElementNodes % x(i) = MeshNodes % x(Indexes(i))
+             ElementNodes % y(i) = MeshNodes % y(Indexes(i))
+             ElementNodes % z(i) = MeshNodes % z(Indexes(i))
            END IF
          END DO
        END IF
@@ -2587,7 +2597,6 @@ CONTAINS
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
      TYPE(Mesh_t),  POINTER  :: Mesh
-     TYPE(Nodes_t), POINTER :: TmpNodes
 
      IF( PRESENT( UMesh ) ) THEN
        Mesh => UMesh
@@ -2596,25 +2605,22 @@ CONTAINS
      ELSE
        Mesh => CurrentModel % Solver % Mesh
      END IF
-
-     TmpNodes => Mesh % Nodes
      IF(.NOT. ASSOCIATED( Mesh % NodesOrig ) ) THEN
        CALL Fatal('GetElementNodesOrig','Original node coordinates not yet stored!')
      END IF
-     Mesh % Nodes => Mesh % NodesOrig
 
-     CALL GetElementNodes( ElementNodes, UElement, Umesh = Mesh )
-     Mesh % Nodes => TmpNodes
+     CALL GetElementNodes( ElementNodes, UElement, UMesh = Mesh, UNodes = Mesh % NodesOrig )
 
    END SUBROUTINE GetElementNodesOrig
 
   
 !> Returns the nodal coordinate values in the active element
-    SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh )
+    SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh, UNodes )
         TYPE(Nodes_t), TARGET :: ElementNodes
         TYPE(Solver_t), OPTIONAL, TARGET :: USolver
         TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
         TYPE(Element_t), OPTIONAL, TARGET :: UElement
+        TYPE(Nodes_t), OPTIONAL, TARGET :: UNodes
 
         INTEGER :: padn, dum
 
@@ -2624,6 +2630,7 @@ CONTAINS
         TYPE(Solver_t),  POINTER  :: Solver
         TYPE(Mesh_t),  POINTER  :: Mesh
         TYPE(Element_t), POINTER :: Element
+        TYPE(Nodes_t), POINTER :: MeshNodes
 
         Element => GetCurrentElement(UElement)
 
@@ -2633,6 +2640,14 @@ CONTAINS
           Mesh => USolver % Mesh
         ELSE
           Mesh => CurrentModel % Solver % Mesh
+        END IF
+
+        ! Source of nodal coordinates: by default the current mesh nodes.
+        ! Passing them as argument avoids swapping Mesh % Nodes which is not thread safe.
+        IF( PRESENT( UNodes ) ) THEN
+          MeshNodes => UNodes
+        ELSE
+          MeshNodes => Mesh % Nodes
         END IF
 
         n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
@@ -2668,9 +2683,9 @@ CONTAINS
         n = Element % TYPE % NumberOfNodes
 !DIR$ IVDEP
         DO i=1,n
-          ElementNodes % x(i) = Mesh % Nodes % x(Element % NodeIndexes(i))
-          ElementNodes % y(i) = Mesh % Nodes % y(Element % NodeIndexes(i))
-          ElementNodes % z(i) = Mesh % Nodes % z(Element % NodeIndexes(i))
+          ElementNodes % x(i) = MeshNodes % x(Element % NodeIndexes(i))
+          ElementNodes % y(i) = MeshNodes % y(Element % NodeIndexes(i))
+          ElementNodes % z(i) = MeshNodes % z(Element % NodeIndexes(i))
         END DO
 
         sz = SIZE(ElementNodes % xyz,1)
@@ -2680,16 +2695,16 @@ CONTAINS
             ElementNodes % xyz(n+1:sz,3) = 0.0d0
         END IF
 
-        sz1 = SIZE(Mesh % Nodes % x)
+        sz1 = SIZE(MeshNodes % x)
         IF (sz1 > Mesh % NumberOfNodes) THEN
             Indexes => GetIndexStore()
             nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
 !DIR$ IVDEP
             DO i=n+1,nd
                 IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
-                    ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
-                    ElementNodes % y(i) = Mesh % Nodes % y(Indexes(i))
-                    ElementNodes % z(i) = Mesh % Nodes % z(Indexes(i))
+                    ElementNodes % x(i) = MeshNodes % x(Indexes(i))
+                    ElementNodes % y(i) = MeshNodes % y(Indexes(i))
+                    ElementNodes % z(i) = MeshNodes % z(Indexes(i))
                 END IF
             END DO
         END IF
@@ -2703,7 +2718,6 @@ CONTAINS
       TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
       
       TYPE(Mesh_t), POINTER :: Mesh
-      TYPE(Nodes_t), POINTER :: TmpNodes
       
       IF( PRESENT( UMesh ) ) THEN
         Mesh => UMesh
@@ -2712,16 +2726,11 @@ CONTAINS
       ELSE
         Mesh => CurrentModel % Solver % Mesh
       END IF
-
-      TmpNodes => Mesh % Nodes
       IF(.NOT. ASSOCIATED( Mesh % NodesOrig ) ) THEN
         CALL Fatal('GetElementNodesOrigVec','Original node coordinates not yet stored!')
       END IF
-      Mesh % Nodes => Mesh % NodesOrig
       
-      CALL GetElementNodesVec( ElementNodes, UElement, UMesh = Mesh ) 
-            
-      Mesh % Nodes => TmpNodes
+      CALL GetElementNodesVec( ElementNodes, UElement, UMesh = Mesh, UNodes = Mesh % NodesOrig ) 
       
     END SUBROUTINE GetElementNodesOrigVec
       

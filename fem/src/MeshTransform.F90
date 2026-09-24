@@ -1082,11 +1082,20 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG :: NewCoords(:)
     INTEGER :: n
 
+    n = SIZE( Mesh % Nodes % x )
+
+    ! By default NodesOrig points to Nodes. Only a separate copy of right size means
+    ! that the original coordinates are already stored. Keep them, since the current
+    ! coordinates may already have been mapped.
     IF( ASSOCIATED( Mesh % NodesOrig ) ) THEN
-      CALL Info('StoreOriginalCoordinates','Original coordinates already stored')
+      IF( .NOT. ASSOCIATED( Mesh % NodesOrig, Mesh % Nodes ) ) THEN
+        IF( SIZE( Mesh % NodesOrig % x ) == n ) THEN
+          CALL Info('StoreOriginalCoordinates','Original coordinates already stored',Level=6)
+          RETURN
+        END IF
+      END IF
     END IF
 
-    n = SIZE( Mesh % Nodes % x )    
     ALLOCATE( NewCoords(3*n) )
 
     ALLOCATE( Mesh % NodesOrig ) 
