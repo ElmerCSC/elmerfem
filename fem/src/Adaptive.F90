@@ -2448,7 +2448,7 @@ CONTAINS
        END IF
     END DO
 
-    IF ( l > 4 ) STOP 'Adaptive: parent 1 not found'
+    IF ( l > 4 ) ERROR STOP 'Adaptive: parent 1 not found'
         
     Element % BoundaryInfo % Left  => Child
     NULLIFY( Element % BoundaryInfo % Right )

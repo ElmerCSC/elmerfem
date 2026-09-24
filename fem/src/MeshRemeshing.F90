@@ -2537,7 +2537,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
       kk =  kk + 1
 
       Element => NewMesh % Elements(kk)
-      IF(.NOT.ASSOCIATED(Element % BoundaryInfo)) STOP
+      IF(.NOT.ASSOCIATED(Element % BoundaryInfo)) ERROR STOP
 
       Element % BoundaryInfo % Left  => Null()
       Element % BoundaryInfo % Right => Null()

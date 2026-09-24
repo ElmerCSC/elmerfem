@@ -5263,7 +5263,7 @@ RETURN
         n_part = n_part+1
         Particles % Status(n_part) = PARTICLE_GHOST
         node = SearchNode(PI,Indexes(j))
-        IF ( node<=0 ) STOP 'a'
+        IF ( node<=0 ) ERROR STOP 'a'
         Particles % ClosestNode(n_part) = node
         Particles % NoClosestParticle(node) = &
             Particles % NoClosestParticle(node) + 1

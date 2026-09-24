@@ -309,7 +309,7 @@ CONTAINS
 
 !-----------------------------------------------------------------------
 
-     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
+     IF ( .NOT. OutputLevelMask(0) ) ERROR STOP EXIT_ERROR
 
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
@@ -324,7 +324,7 @@ CONTAINS
         ELSE
            WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
-        STOP EXIT_ERROR
+        ERROR STOP EXIT_ERROR
      END IF
      nadv1 = nadv
      CALL FLUSH(InfoOutUnit)
@@ -368,7 +368,7 @@ CONTAINS
      IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
 #endif
 
-     STOP EXIT_ERROR
+     ERROR STOP EXIT_ERROR
 !-----------------------------------------------------------------------
    END SUBROUTINE Assert
 !-----------------------------------------------------------------------

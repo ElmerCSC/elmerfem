@@ -2261,7 +2261,7 @@ CONTAINS
       DO i=1, Mesh % NumberOfNodes
         j = PhiVar2D % Perm(i)
         IF(j==0 .AND. .NOT. NonZero) CYCLE
-        IF(j==0) STOP
+        IF(j==0) ERROR STOP
 
         val = SignedDistance(i, Trust(i))
 
@@ -2350,8 +2350,8 @@ CONTAINS
     DO i=1, Mesh % NumberOfNodes
       j = PhiVar2D % Perm(i)
       IF(j==0 .AND. .NOT. NonZero) CYCLE
-      IF(j==0) STOP
-#if 0      
+      IF(j==0) ERROR STOP
+#if 0
       val = PhiVar2D % Values(j)
       IF(val > BW ) THEN
         val = val - BW
@@ -4073,7 +4073,7 @@ CONTAINS
           IF(j==0) THEN
             nCol = nCol+2*dofs
             PRINT *,'We should maybe not be here?:',TRIM(str)
-            STOP
+            ERROR STOP
           END IF
             
           ! Interpolate from the closest distance.

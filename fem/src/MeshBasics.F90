@@ -1618,7 +1618,7 @@ CONTAINS
          IF(k>0) THEN
            cPerm(j)=k;
 
-           IF(.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)) STOP 'a'
+           IF(.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)) ERROR STOP 'a'
 
            l = SIZE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
            narr(1:l) = Mesh % ParallelInfo % NeighbourList(k) % Neighbours
@@ -1657,7 +1657,7 @@ CONTAINS
          Mesh % ParallelInfo % Ginterface(n_Coord) = .TRUE.
          Mesh % ParallelInfo % GlobalDofs(n_Coord) = Recv_Nbr(j)
 
-         IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours)) STOP 'b'
+         IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours)) ERROR STOP 'b'
 
          ALLOCATE(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(2))
          Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(1) = i
@@ -1723,12 +1723,12 @@ CONTAINS
          DO k=1,SIZE(Neighbours)
            IF(Neighbours(k) == Element % PartIndex) EXIT
          END DO
-         if ( k>SIZE(Neighbours) ) stop 'fail0'
+         if ( k>SIZE(Neighbours) ) error stop 'fail0'
 
          l = Neighbours(1); Neighbours(1) = Element % PartIndex; Neighbours(k) = l
          if ( Element % PartIndex == parenv % mype) then
-            IF ( .NOT.ASSOCIATED(element % boundaryinfo % left ) ) stop 'fail1'
-            IF ( neighbours(1) /= parenv % mype ) stop 'fail2'
+            IF ( .NOT.ASSOCIATED(element % boundaryinfo % left ) ) error stop 'fail1'
+            IF ( neighbours(1) /= parenv % mype ) error stop 'fail2'
          end if
        END DO
      END DO
