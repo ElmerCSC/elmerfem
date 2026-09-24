@@ -2796,6 +2796,7 @@ END FUNCTION ComponentNameVar
 
 
   SUBROUTINE ForceLoad
+    EXTERNAL :: MPI_SEND
     CALL MPI_SEND()
   END SUBROUTINE ForceLoad
 

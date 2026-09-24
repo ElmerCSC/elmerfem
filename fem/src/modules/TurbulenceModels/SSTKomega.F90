@@ -885,6 +885,8 @@ CONTAINS
 !> KomegaWallLaw bar taking Element/BC/Solver explicitly.
 !------------------------------------------------------------------------------
   SUBROUTINE KomegaWallLaw( Element, n, BC, Solver )
+
+    EXTERNAL :: KEWALL
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n

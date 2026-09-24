@@ -80,6 +80,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE GeneralUtils, ONLY : ComplexValues
   IMPLICIT NONE
+  EXTERNAL :: ZGETRF, ZGETRS, ZHEMV
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model            !< All model information (mesh, materials, BCs, etc...)

@@ -68,6 +68,8 @@ MODULE EigenSolve
   USE ParallelUtils, ONLY : ParallelReduction
   IMPLICIT NONE
 
+  EXTERNAL :: DSAUPD, DNAUPD, DSEUPD, DNEUPD, ZNAUPD, ZNEUPD, BlockSolveExt
+
 CONTAINS
 
 

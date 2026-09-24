@@ -44,6 +44,7 @@
 
      USE DefUtils
      IMPLICIT NONE
+     EXTERNAL :: DGEMV
 
      LOGICAL :: TopoCall
      LOGICAL :: Newton

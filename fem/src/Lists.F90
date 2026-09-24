@@ -10744,6 +10744,10 @@ END SUBROUTINE ElmerEvalLuaS
      
      CHARACTER(LEN=MAX_NAME_LEN) :: dirname,filename
      INTEGER :: i, totcount, nelem, ReportUnit     
+#if defined(__INTEL_COMPILER)
+     ! An intrinsic in gfortran and flang, a libifport routine for Intel.
+     EXTERNAL :: GETCWD
+#endif
      LOGICAL :: Unused, GotFile
 
      IF(ReportMode == 1 ) THEN

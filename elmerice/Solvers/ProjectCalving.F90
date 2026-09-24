@@ -53,6 +53,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   USE ElementDescription
 
   IMPLICIT NONE
+  EXTERNAL :: DGEEV
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

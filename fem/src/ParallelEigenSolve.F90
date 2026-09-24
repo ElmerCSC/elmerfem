@@ -109,6 +109,8 @@ CONTAINS
 
       IMPLICIT NONE
 
+      EXTERNAL :: PDSAUPD, PDNAUPD, PDSEUPD, PDNEUPD
+
       TYPE(Matrix_t), POINTER :: A
       TYPE(Solver_t), TARGET :: Solver
       INTEGER :: N, NEIG
@@ -623,6 +625,8 @@ CONTAINS
 #endif
 
       IMPLICIT NONE
+
+      EXTERNAL :: PZNAUPD, PZNEUPD
 
       TYPE(Matrix_t), POINTER :: Matrix
       TYPE(Solver_t), TARGET :: Solver

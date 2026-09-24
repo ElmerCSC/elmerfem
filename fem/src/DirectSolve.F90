@@ -61,6 +61,10 @@ MODULE DirectSolve
    INTEGER, PARAMETER :: MumpsWorkspaceRetries = 5
    INTEGER, PARAMETER :: MumpsWorkspaceMin = 20
 
+#ifdef HAVE_MUMPS
+   EXTERNAL :: SMUMPS, DMUMPS, CMUMPS, ZMUMPS
+#endif
+
 CONTAINS
 
 
@@ -81,6 +85,8 @@ CONTAINS
 
      REAL(KIND=dp), POINTER CONTIG :: Values(:)
      INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
+
+     EXTERNAL :: SolveComplexBandLapack, SolveComplexSBandLapack
 
      SAVE BA
 !------------------------------------------------------------------------------
@@ -197,6 +203,8 @@ CONTAINS
 
      REAL(KIND=dp), POINTER CONTIG :: Values(:)
      INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
+
+     EXTERNAL :: SolveBandLapack, SolveSBandLapack
 
      SAVE BA
 !------------------------------------------------------------------------------

@@ -53,6 +53,8 @@ MODULE LinearForms
     MODULE PROCEDURE LinearForms_ProjectToU_rank1, LinearForms_ProjectToU_rankn
   END INTERFACE LinearForms_ProjectToU
 
+  EXTERNAL :: DGEMM, DGEMV
+
   PUBLIC LinearForms_GradUdotGradU, LinearForms_UdotU, LinearForms_GradUdotU, &
         LinearForms_UdotF, LinearForms_ProjectToU, LinearForms_UdotV
 CONTAINS

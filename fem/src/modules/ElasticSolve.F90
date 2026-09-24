@@ -391,6 +391,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   USE ParallelUtils, ONLY : ParallelUpdateRHS
   
   IMPLICIT NONE
+  EXTERNAL :: DSYEV
 
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
@@ -3701,6 +3702,7 @@ CONTAINS
   SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
+    EXTERNAL :: DSYEV
     REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
     REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
     INTEGER, INTENT(IN) :: m, n

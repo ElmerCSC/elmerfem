@@ -51,6 +51,8 @@
 
        INTEGER :: IPIV(N),iINFO
 
+       EXTERNAL :: DPBTRF, DPBTRS
+
        IF ( N <= 0 ) RETURN
 
        iINFO = 0
@@ -83,6 +85,8 @@
        COMPLEX(KIND=dp) :: A(Band,N),X(N,M)
 
        INTEGER :: IPIV(N),iINFO
+
+       EXTERNAL :: ZPBTRF, ZPBTRS
 
        IF ( N <= 0 ) RETURN
 

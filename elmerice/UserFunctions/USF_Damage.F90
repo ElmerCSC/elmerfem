@@ -80,6 +80,7 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    USE DefUtils
    USE GeneralUtils
    IMPLICIT NONE
+   EXTERNAL :: DGEEV
    TYPE(Model_t) :: Model
    REAL (KIND=dp) :: D, Source          
    INTEGER :: nodenumber

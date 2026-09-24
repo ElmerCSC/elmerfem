@@ -6069,6 +6069,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE MSolverActivate( Model, Solver, dt, TransientSimulation )
+
+     EXTERNAL :: MPI_Comm_group, MPI_Group_incl, MPI_Comm_create, MPI_Comm_free
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET :: Solver

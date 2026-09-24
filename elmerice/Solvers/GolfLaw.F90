@@ -312,6 +312,7 @@
       Real(KIND=dp), Dimension(3) ::  xi,yi,a
       Real(kind=dp), Dimension(9) ::  Q
       Real(kind=dp) ::  InterQ9,InterP
+      EXTERNAL :: InterP
       Real(kind=dp) ::  Ip,x,y
       Integer  i
 
@@ -345,6 +346,7 @@
        USE DEFGRID
        
        Implicit None
+       EXTERNAL :: VISCGENE, VISCMAT_AI
        Real(kind=dp), Intent(in), Dimension(3) :: ai       ! Texture parameters 
        Real(kind=dp), Dimension(3) :: ki       ! Texture parameters 
        Real(kind=dp), Intent(in), Dimension(3) :: Angle    ! Euler Angles               
@@ -396,6 +398,7 @@
        USE defGrid
        
        Implicit None
+       EXTERNAL :: TRIKI, InterQ9
        Real(kind=dp), Intent(in), Dimension(3) :: ai0
        Real(kind=dp), Intent(out), Dimension(6) :: eta6
        Real(kind=dp), Intent(in), Dimension(NetaI) :: etaI
@@ -706,6 +709,7 @@
       USE Messages
 
       implicit none
+      EXTERNAL :: DGEEV
 
       Real(dp),dimension(6),intent(in) :: a2
       Real(dp),dimension(3),intent(out) :: ai,Euler

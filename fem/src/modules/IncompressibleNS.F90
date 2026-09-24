@@ -124,6 +124,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
+    EXTERNAL :: DGEMM
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
@@ -1619,6 +1620,7 @@ CONTAINS
       !------------------------------------------------------------------------------
       USE LinearAlgebra
       IMPLICIT NONE
+      EXTERNAL :: DGETRF
 
       INTEGER, INTENT(IN) :: N   ! The number of retained DOFs per scalar field
       INTEGER, INTENT(IN) :: nb  ! The number of eliminated DOFs per scalar field

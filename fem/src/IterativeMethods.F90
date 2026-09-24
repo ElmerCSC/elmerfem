@@ -696,6 +696,7 @@ CONTAINS
       INTEGER :: l   ! polynomial degree
       INTEGER :: n, MaxRounds, OutputInterval   
       LOGICAL :: Converged, Diverged, Halted
+      EXTERNAL :: DGETRF, DGETRS, DSYMV, DDOT
       TYPE(Matrix_t), POINTER :: A
       REAL(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -2734,6 +2735,7 @@ CONTAINS
       INTEGER :: l   ! polynomial degree
       INTEGER :: n, MaxRounds, OutputInterval   
       LOGICAL :: Converged, Diverged
+      EXTERNAL :: ZGETRF, ZGETRS, ZDOTC
       TYPE(Matrix_t), POINTER :: A
       COMPLEX(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -2990,6 +2992,7 @@ CONTAINS
       integer, INTENT(in) :: n
       complex(kind=dp), INTENT(in)  ::a(n,n), x(n)
       complex(kind=dp), INTENT(out) ::y(n)
+      EXTERNAL :: ZHEMV
  
       complex(kind=dp), parameter :: zone  = cmplx(1._dp, 0._dp,kind=dp)
       complex(kind=dp), parameter :: zzero = cmplx(0._dp, 0._dp,kind=dp)
