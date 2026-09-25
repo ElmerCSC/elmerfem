@@ -12,14 +12,14 @@ SET(arpack_SRCS cgetv0.f cnaitr.f cnapps.f cnaup2.f cnaupd.f cneigh.f
 	icopy.f iset.f iswap.f ivout.f second.f smout.f svout.f
 	zmout.f zvout.f)
 
-ADD_LIBRARY(arpack SHARED ${arpack_SRCS})
+ADD_LIBRARY(arpack STATIC ${arpack_SRCS})
 
 IF(APPLE)
-  TARGET_LINK_LIBRARIES(arpack ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  TARGET_LINK_LIBRARIES(arpack PUBLIC ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 ENDIF()
 
 IF(WIN32)
-  TARGET_LINK_LIBRARIES(arpack ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  TARGET_LINK_LIBRARIES(arpack PUBLIC ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 ENDIF()
 
 INSTALL(TARGETS arpack
