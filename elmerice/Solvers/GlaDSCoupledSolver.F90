@@ -32,6 +32,9 @@
 ! *  Original Date: 15 February 2013
 ! *
 ! *****************************************************************************/
+
+#include "elmer_fortran_features.h"
+
 !> Solve for the sheet hydraulic Potential, sheet thickness and channels area
 !> similutaneously  (GlaDS model) - This solver replace the 3 solvers solving
 !> for these 3 variables independently.  
@@ -1708,7 +1711,14 @@ CONTAINS
     smax = 0.0_dp
     ssum = 0.0_dp
     
+    ! Index Mesh % Edges directly: putting the host Edge pointer in LOCAL
+    ! crashes gfortran 15 and 16 with an internal compiler error.
+#if defined(ELMER_HAVE_F2023_DO_CONCURRENT_REDUCE) && defined(ELMER_HAVE_F2018_DO_CONCURRENT_LOCALITY)
+    DO CONCURRENT (t = 1:Mesh % NumberOfEdges) LOCAL(i, n, s) &
+        REDUCE(+:ssum, ncount) REDUCE(MIN:smin) REDUCE(MAX:smax)
+#else
     DO t=1, Mesh % NumberOfEdges 
+#endif
       i = AreaPerm(Mesh % NumberOfNodes + t)
       IF(i==0) CYCLE
       
@@ -1716,9 +1726,8 @@ CONTAINS
         IF (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
       END IF
       
-      Edge => Mesh % Edges(t)
-      n = Edge % TYPE % NumberOfNodes
-      IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
+      n = Mesh % Edges(t) % TYPE % NumberOfNodes
+      IF (ANY(HydPotPerm(Mesh % Edges(t) % NodeIndexes(1:n))==0)) CYCLE
 
       s = AreaSolution(i)
       
