@@ -486,7 +486,7 @@
                 WRITE (0, *) 'Sorry! Element type ',                    &
                     Model % Elements(i) % TYPE % ElementCode, &
                     ' not supported! '
-                STOP
+                ERROR STOP
               END SELECT
             END DO
           END SUBROUTINE GetNElem

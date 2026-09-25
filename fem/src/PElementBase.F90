@@ -8583,7 +8583,7 @@ MODULE PElementBase
       CASE DEFAULT 
 #ifdef DEBUG_PBASIS
          PRINT*,'Legendre phi: ', i
-         STOP 'no ddph > 20'
+         ERROR STOP 'no ddph > 20'
 !        value = SQRT(1d0/(2*(2*i-1)))*(dLegendreP(i,x)-dLegendreP(i-2,x))
 #endif
       END SELECT
@@ -8925,7 +8925,7 @@ MODULE PElementBase
               3*x ** 2 + 7293) * SQRT(0.78D2)
 #ifdef DEBUG_PBASIS
       CASE DEFAULT
-         stop ' ddvarphi > 20 ?'
+         error stop ' ddvarphi > 20 ?'
          IF (x==1 .OR. x==-1) THEN
             ! TEMP SOLUTION
             ! Try to interpolate value of function
@@ -9370,7 +9370,7 @@ MODULE PElementBase
 #ifdef DEBUG_PBASIS
          ! Generate derivative of n:th Legendre polynomial
 
-         STOP 'No 2nd derivative for Legendre > 20'
+         ERROR STOP 'No 2nd derivative for Legendre > 20'
 
          ! Initialize derivative of legendre polynomial for l=20
          ! P,(20,x)=... 

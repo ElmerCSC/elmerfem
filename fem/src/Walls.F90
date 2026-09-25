@@ -80,7 +80,7 @@
 ! Newton step:
          IF (DFX == 0.0d0) THEN
             PRINT*,'Walls:: SOLVE_UFRIC: dfx = 0'
-            STOP 1
+            ERROR STOP 1
          END IF
          UFRIC = UFRIC - FX/DFX
          YPLUS = DENSIT * UFRIC * DIST / VISCOS

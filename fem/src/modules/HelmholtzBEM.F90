@@ -579,7 +579,7 @@
              IF ( ABS(k / (0.5d0 * x) * res) < accuracy ) EXIT
           END DO
           
-          IF ( k >= maxrounds ) STOP 'Error in evaluating Bessel functions'
+          IF ( k >= maxrounds ) ERROR STOP 'Error in evaluating Bessel functions'
 
           y0 = y0 + ( LOG(0.5d0 * x) + gamma ) * j0
           y0 = y0 * 2.0d0 / PI

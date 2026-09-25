@@ -190,7 +190,7 @@
      ELSE
 
        PRINT*,'Solver: ERROR: Unknown global coordinate system: ',TRIM(eq),' Aborting'
-       STOP
+       ERROR STOP
 
      END IF
 

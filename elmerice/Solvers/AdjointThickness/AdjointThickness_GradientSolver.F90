@@ -241,7 +241,7 @@ SUBROUTINE AdjointThickness_GradientSolver( Model,Solver,dt,TransientSimulation 
                 'It is not possible to compute Thickness evolution if Flow Sol DOFs=',&
                 NSDOFs, ' . Aborting'
            CALL Fatal( SolverName, Message) 
-           STOP   
+           ERROR STOP   
         END IF
 
         ! get pointers on BF

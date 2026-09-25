@@ -2432,7 +2432,7 @@ END SUBROUTINE FetiProject
           DO k=1,cnt(proc)
             IF(gtags(m)==gbuf(k,proc)) EXIT
           END DO
-          IF(k>cnt(proc)) stop 'aah'
+          IF(k>cnt(proc)) error stop 'aah'
           WRITE(4,*) bbeg+i,ibuf(k,proc)+sum(asize(0:proc-1)),Bmat % values(j)
         END IF
       END DO

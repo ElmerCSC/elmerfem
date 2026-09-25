@@ -230,7 +230,7 @@ PROGRAM ResultToResult
      ELSE
 
        PRINT*,'Solver: ERROR: Unknown global coordinate system: ',TRIM(eq),' Aborting'
-       STOP
+       ERROR STOP
 
      END IF
 
@@ -268,7 +268,7 @@ PROGRAM ResultToResult
 
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step intervals must be defined.'
-         STOP
+         ERROR STOP
        END IF 
 
        TimestepSizes => ListGetConstRealArray( OldModel % Simulation, &
@@ -276,7 +276,7 @@ PROGRAM ResultToResult
 
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step sizes must be defined.'
-         STOP
+         ERROR STOP
        END IF 
 
        TimeIntervals = SIZE(Timesteps)
@@ -409,7 +409,7 @@ PROGRAM ResultToResult
      ELSE
 
        PRINT*,'Solver: ERROR: Unknown global coordinate system: ',TRIM(eq),' Aborting'
-       STOP
+       ERROR STOP
 
      END IF
 
@@ -447,7 +447,7 @@ PROGRAM ResultToResult
 
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step intervals must be defined.'
-         STOP
+         ERROR STOP
        END IF 
 
        TimestepSizes => ListGetConstRealArray( NewModel % Simulation, &
@@ -455,7 +455,7 @@ PROGRAM ResultToResult
 
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step sizes must be defined.'
-         STOP
+         ERROR STOP
        END IF 
 
        TimeIntervals = SIZE(Timesteps)

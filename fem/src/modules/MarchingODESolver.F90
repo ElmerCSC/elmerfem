@@ -795,7 +795,7 @@ CONTAINS
           END DO
         END IF
 
-        IF(ALL(SingleIndex(1) /= Element % NodeIndexes ) ) STOP
+        IF(ALL(SingleIndex(1) /= Element % NodeIndexes ) ) ERROR STOP
       END DO
     ELSE
       IF( dofs == 1 ) THEN

@@ -1620,7 +1620,7 @@ CONTAINS
          IF(k>0) THEN
            cPerm(j)=k;
 
-           IF(.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)) STOP 'a'
+           IF(.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(k) % Neighbours)) ERROR STOP 'a'
 
            ! All radiation elements are copied to all partitions, hence their
            ! nodes are shared by all partitions. Keep the first neighbour.
@@ -1655,7 +1655,7 @@ CONTAINS
          Mesh % ParallelInfo % Ginterface(n_Coord) = .TRUE.
          Mesh % ParallelInfo % GlobalDofs(n_Coord) = Recv_Nbr(j)
 
-         IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours)) STOP 'b'
+         IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours)) ERROR STOP 'b'
 
          ! Shared by all partitions, the sending one first
          ALLOCATE(Mesh % ParallelInfo % NeighbourList(n_Coord) % Neighbours(ParEnv % PEs))
@@ -1729,12 +1729,12 @@ CONTAINS
          DO k=1,SIZE(Neighbours)
            IF(Neighbours(k) == Element % PartIndex) EXIT
          END DO
-         if ( k>SIZE(Neighbours) ) stop 'fail0'
+         if ( k>SIZE(Neighbours) ) error stop 'fail0'
 
          l = Neighbours(1); Neighbours(1) = Element % PartIndex; Neighbours(k) = l
          if ( Element % PartIndex == parenv % mype) then
-            IF ( .NOT.ASSOCIATED(element % boundaryinfo % left ) ) stop 'fail1'
-            IF ( neighbours(1) /= parenv % mype ) stop 'fail2'
+            IF ( .NOT.ASSOCIATED(element % boundaryinfo % left ) ) error stop 'fail1'
+            IF ( neighbours(1) /= parenv % mype ) error stop 'fail2'
          end if
        END DO
      END DO

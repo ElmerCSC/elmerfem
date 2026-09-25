@@ -360,7 +360,7 @@
              'It is not possible to compute SSA with SSA var DOFs=',&
              STDOFs, '. Aborting'
         CALL Fatal( SolverName, Message)
-        STOP
+        ERROR STOP
       END IF
 
 

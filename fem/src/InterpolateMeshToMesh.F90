@@ -1751,7 +1751,7 @@ CONTAINS
 
 
             DO q = Rows(NoGaussPoints)+np, Rows(NoGaussPoints+1)-1,3
-              IF(Cols(q)>=0) STOP 'q'
+              IF(Cols(q)>=0) ERROR STOP 'q'
 
               vq(1) = Values(q)
               vq(2) = Values(q+1)

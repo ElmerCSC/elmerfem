@@ -605,7 +605,7 @@ CONTAINS
         ELSE 
           PRINT *,'TriangleIsoLineWeights: this should not occur'
           PRINT *,s(1),s(2),s(3)
-          STOP
+          ERROR STOP
         END IF
       END IF
 !------------------------------------------------------------------------------
