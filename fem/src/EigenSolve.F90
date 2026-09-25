@@ -1570,6 +1570,7 @@ END SUBROUTINE CheckResiduals
          
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
            CALL Info(Caller,'Computing eigen system residuals',Level=8)
+           CALL Info( Caller, '--------------------------------',Level=4 )
            CALL CheckResidualsComplex( Matrix, Neig, EigValues, EigVectors )
          END IF
          CALL Info( Caller, '--------------------------------',Level=4 )
@@ -1590,6 +1591,12 @@ END SUBROUTINE CheckResiduals
 
 
 !------------------------------------------------------------------------------
+!> Check the consistency of eigenpairs (lambda,x) of the eigenvalue problem
+!> A x = lambda M x. The relative residual ||A x - lambda M x||/||x|| depends
+!> on the choice units in obtaining A and M, so report also the normwise relative 
+!> backward error err = ||A x - lambda M x|| / ( ||A|| + |lambda| ||M||) ||x|| ),
+!> which is independent of scaling.
+!------------------------------------------------------------------------------
     SUBROUTINE CheckResidualsComplex( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: Matrix
@@ -1598,12 +1605,23 @@ END SUBROUTINE CheckResiduals
 
       REAL(KIND=dp), POINTER CONTIG :: svals(:)
       COMPLEX(KIND=dp), ALLOCATABLE :: x(:), y(:), r(:)
+      REAL(KIND=dp) :: NormA, NormM, NormX, NormR
       INTEGER :: i, sz
       
       sz = Matrix % NumberOfRows/2
 
+      ! The Frobenius norm of the complex-valued matrices:
+      NormA = SQRT(SUM(Matrix % Values**2)/2)
+      NormM = SQRT(SUM(Matrix % MassValues**2)/2)
+
+      WRITE( Message, '(A,2ES12.3)' ) 'Frobenius norms of A and M: ', NormA, NormM
+      CALL Info( 'CheckResidualsComplex', Message, Level = 5 )
+
       ALLOCATE( x(sz), y(sz), r(sz) )
-      
+
+      WRITE( Message, '(A9,3X,A17,3X,A14)' ) 'Eigenpair', '||Ax-L*Mx||/||x||', 'backward error'
+      CALL Info( 'CheckResidualsComplex', Message, Level = 3 )
+
       DO i=1,n
         x = EigVectors(i,:)
         y = eigs(i)*x
@@ -1617,8 +1635,11 @@ END SUBROUTINE CheckResiduals
 
         y(1:sz) = y(1:sz) - r(1:sz)
 
-        WRITE( Message, * ) 'L^2 Norm of the relative residual: ', i,&
-            sqrt(real(sum(conjg(y)*y))) / sqrt(real(sum(conjg(x)*x)))
+        NormX = SQRT(REAL(SUM(CONJG(x)*x)))
+        NormR = SQRT(REAL(SUM(CONJG(y)*y)))
+
+        WRITE( Message, '(I9,3X,ES17.6,3X,ES14.5)' ) i, NormR / NormX, &
+            NormR / ((NormA + ABS(Eigs(i)) * NormM) * NormX)
         CALL Info( 'CheckResidualsComplex', Message, Level = 3 )
       END DO
 
