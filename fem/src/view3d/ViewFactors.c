@@ -163,7 +163,6 @@ void vrand_init()
 extern double ShapeFunctionMatrix2[2][2], ShapeFunctionMatrix3[3][3],ShapeFunctionMatrix4[4][4];
 
 
-static int MaxLev;
 /*******************************************************************************
 
 Compute viewfactor from hierarchy
@@ -188,8 +187,7 @@ static double ComputeViewFactorValue( Geometry_t *Geom,int Level )
      {
         S += ComputeViewFactorValue( Geom->Left,Level+1 );
         S += ComputeViewFactorValue( Geom->Right,Level+1 );
-     } else
-       MaxLev = MAX(MaxLev,Level);
+     }
 
      return S;
 }
@@ -268,7 +266,6 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
         Elements[i].Flags |= GEOMETRY_FLAG_LEAF;
     }
 
-    MaxLev = 0;
     if (NofRadiators==0) {
 #pragma omp parallel
 {
