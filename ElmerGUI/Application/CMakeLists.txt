@@ -92,7 +92,15 @@ SET(SOURCES src/bodypropertyeditor.cpp
   twod/twodview.cpp 
   twod/curveeditor.cpp)
 
-ADD_DEFINITIONS(-DEG_PLUGIN)
+# ElmerGUI uses ElmerGrid source to read and process .grd input files.
+# ElmerGUI includes ElmerVTK, for post processing.
+# Compiling ElmerGUI now uses a static library, elmergrid_core,
+# built from the ElmerGrid source.  This means that ElmerGUI can be
+# synchronized/harmonized with ElmerGrid.  Since the ElmerGrid source
+# is used for the static library build, the old EQ_PLUGIN definition
+# is no longer needed and can be removed completely.
+#
+# ADD_DEFINITIONS(-DEG_PLUGIN)
 
 IF(WITH_QWT)
   SET(HEADERS ${HEADERS} src/convergenceview.h)
@@ -100,6 +108,7 @@ IF(WITH_QWT)
 ENDIF(WITH_QWT)
 
 IF(WITH_VTK AND NOT WITHOUT_VTKPOST)
+  MESSAGE(STATUS "  [ElmerGUI] Compiling with VTK")
   ADD_DEFINITIONS(-DEG_VTK)
   #FIND_PACKAGE(VTK REQUIRED)
   IF(${VTK_VERSION} VERSION_LESS 8.90)
@@ -159,12 +168,17 @@ IF(WITH_VTK AND NOT WITHOUT_VTKPOST)
     vtkpost/ecmaconsole.cpp 
     vtkpost/text.cpp)
 
-  IF(WITH_MATC)
+  IF(USE_MATC_ALL)
+    MESSAGE(STATUS "  [ElmerVTK] Compiling with MATC")
     SET(HEADERS ${HEADERS} vtkpost/matc.h  vtkpost/mc.h)
     SET(FORMS ${FORMS} vtkpost/matc.ui)
     SET(SOURCES ${SOURCES} vtkpost/matc.cpp)
-  ENDIF(WITH_MATC)
+  ELSE()
+    MESSAGE(STATUS "  [ElmerVTK] Compiling without MATC")
+  ENDIF()
 
+ELSE()
+  MESSAGE(STATUS "  [ElmerGUI] Compiling without VTK")
 ENDIF()
 
 IF(WITH_OCC)
@@ -211,8 +225,8 @@ SET(CPACK_PACKAGE_EXECUTABLES ElmerGUI "ElmerGUI")
 
 # The ElmerGrid routines embedded in ElmerGUI come from elmergrid/src via this
 # library.  ElmerGUI used to keep its own copies of those sources; see
-# elmergrid/src/CMakeLists.txt.  The target carries its own include directory
-# and the EG_PLUGIN definition, so nothing else is needed here.
+# elmergrid/src/CMakeLists.txt.  The target carries its own include directory,
+# so nothing else is needed here.
 TARGET_LINK_LIBRARIES(ElmerGUI elmergrid_core)
 
 IF(WITH_QT6)
@@ -237,7 +251,7 @@ IF(WIN32)
   ADD_DEFINITIONS(-DPSAPI_VERSION=1)
 ENDIF(WIN32)
 
-IF(WITH_MATC)
+IF(USE_MATC_ALL)
   TARGET_LINK_LIBRARIES(ElmerGUI matc)
 ENDIF()
 
