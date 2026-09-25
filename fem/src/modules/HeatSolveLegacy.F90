@@ -1799,7 +1799,8 @@ CONTAINS
       INTEGER :: TempPerm(:)
       REAL(KIND=dp) :: Temperature(:), ForceVector(:)      
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: Emis1, Refl1, RadCoeffAtIp, RadLoadAtIp, TempAtIp, s, x, y, z, DetJ
+      REAL(KIND=dp) :: Emis1, Refl1, RadCoeffAtIp, RadLoadAtIp, TempAtIp, s, x, y, z, DetJ, &
+          Beta, Fact1, Fact2
       REAL(KIND=dp) :: Basis(27)
       REAL(KIND=dp), POINTER :: Fact(:)
       INTEGER :: t,p,q,k1,k2
@@ -1812,22 +1813,31 @@ CONTAINS
       
       pIndexes => Element % NodeIndexes     
       
-      Emis1 = Emissivity            
-      IF(.NOT.Spectral ) THEN
-        Refl1 = Reflect(bc_elem)
-        Emis1 = Emis1 / Refl1
-      END IF
+      ! Fact(1) is the absorbed irradiation, the net flux is Fact(1) - e*sigma*T^4.
+      ! For gray surfaces the part (a*e/r)*sigma*T^4 of the radiosity is added to
+      ! both terms, so that it is linearized implicitly, which stabilizes the
+      ! iteration. For black surfaces (r=0) this is not possible.
+      Emis1 = Emissivity
       Fact => Element % BoundaryInfo % RadiationFactors % Factors
       
       TempAtIp = SUM(Temperature(TempPerm(pIndexes(1:n))))/n
 
+      Beta = 0.0_dp
+      IF(.NOT. Spectral ) THEN
+        Refl1 = Reflect(bc_elem)
+        IF( Refl1 > EPSILON(Refl1) ) Beta = Emis1 * (1-Refl1) / Refl1
+      END IF
+      Fact1 = Fact(1) + Beta * TempAtIp**4 * StefanBoltzmann
+      Emis1 = Emis1 + Beta
+
       IF(NewtonLinearization) THEN
+        Fact2 = Fact(2) + 4 * Beta * TempAtIp**3 * StefanBoltzmann
         RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefanBoltzmann + &
-             (Fact(1) - Fact(2)*TempAtIp)
-        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefanBoltzmann - Fact(2)
+             (Fact1 - Fact2*TempAtIp)
+        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefanBoltzmann - Fact2
       ELSE
         RadCoeffAtIp = Emis1 * StefanBoltzmann * TempAtIp**3
-        RadLoadAtIp = Fact(1)
+        RadLoadAtIp = Fact1
       END IF
 
       IP = GaussPoints( Element )

@@ -74,15 +74,11 @@ Solver 1
   Linear System Preconditioning = ILU1
 
   Nonlinear System Newton After Tolerance = 0.0
-  Nonlinear System Newton After Iterations = 5
-  Nonlinear System Max Iterations = 50
-  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1.0e-8
 
   Steady State Convergence Tolerance = 1.0e-8
-
-! These relaxation factors are essential for optimal convergence
-  Nonlinear System Relaxation Factor = 0.4
-  Radiosity Newton Relaxation Factor = 0.8
 
 ! Spell out how the view factors are resolved, so this test keeps exercising
 ! the path it was blessed against even if the defaults change.
@@ -238,17 +234,17 @@ End
 ! from the corners' own measured spread, with roughly a factor of two to
 ! spare.  A method that breaks moves far more than that.
 !
-!   solver 1   half-spread 1.0e-5   tolerance 5.0e-5
-!   solver 2   half-spread 2.0e-4   tolerance 5.0e-4
-!   solver 3   half-spread 2.4e-7   tolerance 1.0e-5
+!   solver 1   half-spread 1.1e-5   tolerance 5.0e-5
+!   solver 2   half-spread 1.7e-4   tolerance 5.0e-4
+!   solver 3   half-spread 4.3e-8   tolerance 1.0e-5
 !
 ! Solver 2 is the loosest because the radiosity temperature is what the
 ! view factors act on most directly, so it is the sensitive one.
-Solver 1 :: Reference Norm = 3.10613983E+02
+Solver 1 :: Reference Norm = 3.10595395E+02
 Solver 1 :: Reference Norm Tolerance = 5.0e-5
-Solver 2 :: Reference Norm = 3.41172909E+02
+Solver 2 :: Reference Norm = 3.38876262E+02
 Solver 2 :: Reference Norm Tolerance = 5.0e-4
 ! This should be 1000 exact, if fully converged.
-Solver 3 :: Reference Norm = 9.99946786E+02
+Solver 3 :: Reference Norm = 9.99999513E+02
 
 Solver 3 :: Reference Norm Tolerance = 1.0e-5

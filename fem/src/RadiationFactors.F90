@@ -1358,8 +1358,8 @@
 
 
      ! Give the coarse irradiation G back to the fine elements such that the heat
-     ! equation sees q = a*G - e*sigma*T^4 in the form q = Fact(1) - (e/r)*sigma*T^4
-     ! i.e. Fact(1) = (a/r)*J where J = e*sigma*T^4 + r*G is the local radiosity.
+     ! equation sees q = a*G - e*sigma*T^4 in the form q = Fact(1) - e*sigma*T^4
+     ! i.e. Fact(1) = a*G where G includes the direct irradiation of the radiators.
      ! As in the single mesh case, the derivative SOL_d is with respect to a uniform
      ! change of temperature, hence it includes the change of irradiation too.
      !------------------------------------------------------------------------------
@@ -1369,24 +1369,17 @@
 
        TYPE(Factors_t), POINTER :: RadiosityFactors
        INTEGER :: i,k,p
-       REAL(KIND=dp) :: e, a, r, Jc, T
+       REAL(KIND=dp) :: a
        REAL(KIND=dp), ALLOCATABLE :: Irrad(:), Irrad_d(:), FineG(:), FineG_d(:)
        LOGICAL :: Deriv
 
        Deriv = Newton .AND. PRESENT(SOL_d)
 
+       ! Irradiation from the surfaces only, the direct radiator part is added per fine element
        ALLOCATE( Irrad(RadiationSurfaces), Irrad_d(RadiationSurfaces) )
        Irrad_d = 0.0_dp
-       DO i=1,RadiationSurfaces
-         a = Absorptivity(i)
-         r = 1-a
-         Jc = SOL(i) * r / a
-         ! Irradiation from the surfaces only, the direct radiator part is added per fine element
-         Irrad(i) = ( Jc - Emissivity(i) * Sigma * CoarseT(i)**4 - CoarseS(i) ) / r
-         IF( Deriv ) THEN
-           Irrad_d(i) = ( SOL_d(i) * r / a - 4 * Emissivity(i) * Sigma * CoarseT(i)**3 ) / r
-         END IF
-       END DO
+       CALL AbsorbedIrradiation(RadiationSurfaces,SOL,Irrad,AbsG=.FALSE.)
+       IF( Deriv ) CALL AbsorbedIrradiation(RadiationSurfaces,SOL_d,Irrad_d,AbsG=.FALSE.)
 
        ! Irradiation of the fine elements from the coarse ones
        ALLOCATE( FineG(nFine), FineG_d(nFine) )
@@ -1401,14 +1394,9 @@
 
        DO k=1,nFine
          RadiosityFactors => FineFactors(k)
-         e = FineEmis(k)
          a = FineAbs(k)
-         r = 1-a
-         T = FineT(k)
-
-         RadiosityFactors % Factors(1) = a * FineG(k) + (a*e/r) * Sigma * T**4
-         IF( Deriv ) RadiosityFactors % Factors(2) = a * FineG_d(k) + &
-             4 * (a*e/r) * Sigma * T**3
+         RadiosityFactors % Factors(1) = a * FineG(k)
+         IF( Deriv ) RadiosityFactors % Factors(2) = a * FineG_d(k)
        END DO
 
        IF(InfoActive(30)) THEN
@@ -1609,22 +1597,20 @@
            RHS(i) = -c * Ec(i)
            IF( AccurateNewton ) RHS_d(i) = -c * Ec_d(i)
          END DO
+         CALL BlackRadiosityToRHS(nc,RHS)
+         IF( AccurateNewton ) CALL BlackRadiosityToRHS(nc,RHS_d)
          CALL RadiationLinearSolver(nc,G,SOL,RHS,Diag,Solver)
          IF( AccurateNewton ) THEN
            CALL RadiationLinearSolver(nc,G,SOL_d,RHS_d,Diag,Solver,Scaling=.FALSE.)
          END IF
 
-         ! Irradiation of the coarse elements from this interval: G = (J-E)/r
-         DO i=1,nc
-           a = Absorptivity(i)
-           r = 1-a
-           Gc(i) = ( SOL(i) * r / a - Ec(i) ) / r
-           IF( ApproxNewton ) THEN
-             Gc_d(i) = 4 * Gc(i) / Trad
-           ELSE IF( AccurateNewton ) THEN
-             Gc_d(i) = ( SOL_d(i) * r / a - Ec_d(i) ) / r
-           END IF
-         END DO
+         ! Irradiation of the coarse elements from this interval
+         CALL AbsorbedIrradiation(nc,SOL,Gc,AbsG=.FALSE.)
+         IF( ApproxNewton ) THEN
+           Gc_d = 4 * Gc / Trad
+         ELSE IF( AccurateNewton ) THEN
+           CALL AbsorbedIrradiation(nc,SOL_d,Gc_d,AbsG=.FALSE.)
+         END IF
 
          ! ... and absorbed by the fine elements
          DO p=1,nPc
@@ -1696,13 +1682,9 @@
              c = RelAreas(i) / a
              RHS(i) = -c * Ec(i)
            END DO
+           CALL BlackRadiosityToRHS(nc,RHS)
            CALL RadiationLinearSolver(nc,G,SOL,RHS,Diag,Solver)
-
-           DO i=1,nc
-             a = Absorptivity(i)
-             r = 1-a
-             Gc(i) = ( SOL(i) * r / a - Ec(i) ) / r
-           END DO
+           CALL AbsorbedIrradiation(nc,SOL,Gc,AbsG=.FALSE.)
 
            ! Direct irradiation by the radiators ...
            DO j=1,nFine
@@ -3460,13 +3442,16 @@
        INTEGER :: i,j,k
        REAL(KIND=dp) :: r, e, a, c, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), &
-            RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
+            RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:), AG(:), AG_d(:), Rdir(:)
 
-       ALLOCATE(RHS(RadiationSurfaces),SOL(RadiationSurfaces),Diag(RadiationSurfaces))
+       ALLOCATE(RHS(RadiationSurfaces),SOL(RadiationSurfaces),Diag(RadiationSurfaces), &
+           AG(RadiationSurfaces),Rdir(RadiationSurfaces))
        RHS = 0.0_dp
+       Rdir = 0.0_dp
 
        IF (Newton) THEN
          ALLOCATE( RHS_d(RadiationSurfaces), SOL_d(RadiationSurfaces) )
+         ALLOCATE( AG_d(RadiationSurfaces) )
          RHS_d = 0.0_dp
        END IF
 
@@ -3519,11 +3504,14 @@
              !r = Reflectivity(i)
              r = 1-a  ! e
              c = RelAreas(i) / a
-             RHS(i) = RHS(i) - c*r* &
-                 SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
+             Rdir(i) = SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
+             RHS(i) = RHS(i) - c*r*Rdir(i)
            END IF
          END DO
        END IF
+
+       CALL BlackRadiosityToRHS(RadiationSurfaces,RHS)
+       IF( Newton ) CALL BlackRadiosityToRHS(RadiationSurfaces,RHS_d)
 
        ! Solve for the radiosities and their derivatives with respect
        ! to the temperature
@@ -3542,10 +3530,17 @@
          ELSE
            CALL UpdateHybridFactors(SOL)
          END IF
-       ELSE IF(Newton) THEN
-         CALL UpdateRadiosityFactors(SOL,SOL_d)
        ELSE
-         CALL UpdateRadiosityFactors(SOL)
+         ! The heat equation needs the absorbed irradiation from the surfaces
+         ! and directly from the radiators.
+         CALL AbsorbedIrradiation(RadiationSurfaces,SOL,AG)
+         AG = AG + Absorptivity(1:RadiationSurfaces) * Rdir
+         IF(Newton) THEN
+           CALL AbsorbedIrradiation(RadiationSurfaces,SOL_d,AG_d)
+           CALL UpdateRadiosityFactors(AG,AG_d)
+         ELSE
+           CALL UpdateRadiosityFactors(AG)
+         END IF
        END IF
      END SUBROUTINE ConstantRadiosity
        
@@ -3564,7 +3559,8 @@
        INTEGER, ALLOCATABLE :: RadiatorSet(:)
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), RadiatorTemps(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
-       REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:), EffAbs(:), EffTemp(:)
+       REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:), EffAbs(:), EffTemp(:), &
+            AG(:), AG_d(:), Rdir(:)
 
        ALLOCATE(RHS(RadiationSurfaces),SOL(RadiationSurfaces),Diag(RadiationSurfaces))
        RHS = 0.0_dp
@@ -3607,8 +3603,8 @@
        SOL = 0.0_dp
        IF(Newton) SOL_d = 0.0_dp
        
-       ALLOCATE( tmpSOL(RadiationSurfaces) )
-       IF(Newton) ALLOCATE(tmpSOL_d(RadiationSurfaces))
+       ALLOCATE( tmpSOL(RadiationSurfaces), AG(RadiationSurfaces), Rdir(RadiationSurfaces) )
+       IF(Newton) ALLOCATE(tmpSOL_d(RadiationSurfaces), AG_d(RadiationSurfaces))
 
        ALLOCATE(EffAbs(RadiationSurfaces),EffTemp(RadiationSurfaces))
        EffAbs = 0.0_dp
@@ -3668,38 +3664,34 @@
              q = 1-ABS(q)
              RHS(i) = -q*c*e*Black
              IF (AccurateNewton) RHS_d(i) = 4*RHS(i)/Temp
-
-             ! This is correction term of radiation not included in the radiosity.
-             ! Confusingly we sum it up to SOL already...
-             S = -q*e*a/r*Black
-             SOL(i) = SOL(i) + S
-             IF(Newton) SOL_d(i) = SOL_d(i) + 4*S/Temp
-
-             EffTemp(i) = EffTemp(i) + Trad * S
-             EffAbs(i) = EffAbs(i) + Emissivity(i) * S
            END IF
          END DO
+         CALL BlackRadiosityToRHS(RadiationSurfaces,RHS)
+         IF (AccurateNewton) CALL BlackRadiosityToRHS(RadiationSurfaces,RHS_d)
 
          ! This is a checksum since integration over all temperature intervals should go through all the
          ! participating surface elements. 
          totsum = totsum + qsum
          !PRINT *,'Trad:',k,Trad,qsum,totsum
          CALL RadiationLinearSolver(RadiationSurfaces,G,tmpSOL,RHS,Diag,Solver)
+         ! Irradiation of this interval absorbed by the surfaces
+         CALL AbsorbedIrradiation(RadiationSurfaces,tmpSOL,AG)
 
          ! Newton linearization including only "self"
          IF( ApproxNewton ) THEN
-           tmpSOL_d = (4.0_dp/Trad) * tmpSOL
+           AG_d = (4.0_dp/Trad) * AG
          ELSE IF( AccurateNewton ) THEN
            CALL RadiationLinearSolver(RadiationSurfaces,G,tmpSOL_d, &
                         RHS_d,Diag,Solver,Scaling=.FALSE.)
+           CALL AbsorbedIrradiation(RadiationSurfaces,tmpSOL_d,AG_d)
          END IF
          
-         ! Cumulative radiosity         
-         SOL = SOL + tmpSOL
-         IF( Newton ) SOL_d = SOL_d + tmpSOL_d
+         ! Cumulative absorbed irradiation
+         SOL = SOL + AG
+         IF( Newton ) SOL_d = SOL_d + AG_d
 
-         EffTemp = EffTemp + Trad * tmpSOL
-         EffAbs = EffAbs + Emissivity * tmpSOL 
+         EffTemp = EffTemp + Trad * AG
+         EffAbs = EffAbs + Emissivity(1:RadiationSurfaces) * AG
        END DO
 
        ! This should be exactly one!
@@ -3755,28 +3747,32 @@
 
            CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.TRUE.,SimpleTdep)
            CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
+           Rdir = 0.0_dp
            DO i=1,RadiationSurfaces
              Element => Mesh % Elements(ElementNumbers(i))
              IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
-               e = Emissivity(i)
+               DO j=1,SIZE(RadiatorSet)
+                 IF(RadiatorSet(j) == k) THEN
+                   Rdir(i) = Rdir(i) + Element % BoundaryInfo % Radiators(j) * RadiatorPowers(j)
+                 END IF
+               END DO
                a = Absorptivity(i) 
                r = 1-a
                c = RelAreas(i) / a
-               DO j=1,SIZE(RadiatorSet)
-                 IF(RadiatorSet(j) == k) THEN
-                   RHS(i) = RHS(i) - c * r * &
-                       Element % BoundaryInfo % Radiators(j) * RadiatorPowers(j)
-                 END IF
-               END DO
+               RHS(i) = RHS(i) - c * r * Rdir(i)
              END IF
            END DO
+           CALL BlackRadiosityToRHS(RadiationSurfaces,RHS)
 
            CALL RadiationLinearSolver(RadiationSurfaces,G,tmpSOL,RHS,Diag,Solver)          
+           ! Absorbed irradiation from the surfaces and directly from the radiators
+           CALL AbsorbedIrradiation(RadiationSurfaces,tmpSOL,AG)
+           AG = AG + Absorptivity(1:RadiationSurfaces) * Rdir
            
-           ! Cumulative radiosity
-           SOL = SOL + tmpSOL
-           EffTemp = EffTemp + Trad * tmpSOL
-           EffAbs = EffAbs + Emissivity * tmpSOL 
+           ! Cumulative absorbed irradiation
+           SOL = SOL + AG
+           EffTemp = EffTemp + Trad * AG
+           EffAbs = EffAbs + Emissivity(1:RadiationSurfaces) * AG
          END DO
        END IF       
        
@@ -3855,7 +3851,10 @@
      ! The unknown is x = (a/r)*J and row i is multiplied by A_i/a_i, so that
      ! the matrix A_i*F_ij*(r_i/a_i)*(r_j/a_j) is symmetric since A_i*F_ij = A_j*F_ji,
      ! and the diagonal is -A_i*r_i/a_i**2. The RHS should be multiplied by A_i/a_i
-     ! too. The solution x = (a/r)*J is what the heat equation needs.
+     ! too. For black surfaces (r=0) the row reduces to -(A_i/a_i)*J_i = RHS_i and
+     ! the columns vanish, so for them J itself is the unknown with diagonal -A_i.
+     ! Their contribution to the gray rows is moved to the RHS by BlackRadiosityToRHS.
+     ! The heat equation needs the absorbed irradiation, see AbsorbedIrradiation.
      ! ---------------------------------------------------------------------------
      SUBROUTINE RadiosityAssembly(n,G,Diag)
        TYPE(Matrix_t) :: G
@@ -3874,7 +3873,11 @@
 !        e = Emissivity(i)
          a = Absorptivity(i)
          r = 1-a !e
-         c = RelAreas(i) * r / a**2
+         IF( IsBlack(i) ) THEN
+           c = RelAreas(i)
+         ELSE
+           c = RelAreas(i) * r / a**2
+         END IF
          IF( .NOT. UseFullMatrix ) previ = G % Rows(i)-1
          DO j=1,nf
 !          ej = Emissivity(Cols(j))
@@ -3895,6 +3898,86 @@
          END IF
        END DO
      END SUBROUTINE RadiosityAssembly
+
+
+     ! Black surfaces have zero reflectivity and hence a priori known radiosity.
+     ! ---------------------------------------------------------------------------
+     FUNCTION IsBlack(i) RESULT(Black)
+       INTEGER :: i
+       LOGICAL :: Black
+       Black = ( 1-Absorptivity(i) < 1.0e-10_dp )
+     END FUNCTION IsBlack
+
+
+     ! The radiosity of the black surfaces is J_i = -RHS_i/A_i. Move their
+     ! contribution (r_i/a_i)*A_i*F_ij*J_j to the RHS of the gray rows.
+     ! ---------------------------------------------------------------------------
+     SUBROUTINE BlackRadiosityToRHS(n,RHS)
+       INTEGER :: n
+       REAL(KIND=dp) :: RHS(:)
+
+       REAL(KIND=dp), POINTER :: Vals(:)
+       INTEGER, POINTER :: Cols(:)
+       INTEGER :: i, j, k
+       REAL(KIND=dp) :: a, s
+
+       DO i=1,n
+         IF( IsBlack(i) ) CYCLE
+         Vals => ViewFactors(i) % Factors
+         Cols => ViewFactors(i) % Elements
+         s = 0.0_dp
+         DO j=1,ViewFactors(i) % NumberOfFactors
+           k = Cols(j)
+           IF( IsBlack(k) ) s = s - Vals(j) * RHS(k) / RelAreas(k)
+         END DO
+         a = Absorptivity(i)
+         RHS(i) = RHS(i) - (1-a)/a * s
+       END DO
+     END SUBROUTINE BlackRadiosityToRHS
+
+
+     ! Absorbed irradiation a_i*G_i = a_i*sum_j F_ij*J_j, where the radiosity of
+     ! the gray surfaces is J = (r/a)*x and of the black ones J = x, x being the
+     ! solution of the radiosity system. Computed directly from the view factors
+     ! instead of from G = (J-e*sigma*T^4)/r which is singular for black surfaces.
+     ! Setting AbsG=.FALSE. gives just the irradiation G.
+     ! ---------------------------------------------------------------------------
+     SUBROUTINE AbsorbedIrradiation(n,SOL,AG,AbsG)
+       INTEGER :: n
+       REAL(KIND=dp) :: SOL(:), AG(:)
+       LOGICAL, OPTIONAL :: AbsG
+
+       REAL(KIND=dp), POINTER :: Vals(:)
+       REAL(KIND=dp), ALLOCATABLE :: J(:)
+       INTEGER, POINTER :: Cols(:)
+       INTEGER :: i, k
+       REAL(KIND=dp) :: a, s
+       LOGICAL :: Absorbed
+
+       Absorbed = .TRUE.
+       IF(PRESENT(AbsG)) Absorbed = AbsG
+
+       ALLOCATE(J(n))
+       DO i=1,n
+         IF( IsBlack(i) ) THEN
+           J(i) = SOL(i)
+         ELSE
+           a = Absorptivity(i)
+           J(i) = (1-a)/a * SOL(i)
+         END IF
+       END DO
+
+       DO i=1,n
+         Vals => ViewFactors(i) % Factors
+         Cols => ViewFactors(i) % Elements
+         s = 0.0_dp
+         DO k=1,ViewFactors(i) % NumberOfFactors
+           s = s + Vals(k) * J(Cols(k))
+         END DO
+         AG(i) = s / RelAreas(i)
+         IF( Absorbed ) AG(i) = Absorptivity(i) * AG(i)
+       END DO
+     END SUBROUTINE AbsorbedIrradiation
 
 
      
@@ -3952,34 +4035,37 @@
 
          ! Scale rhs to one!
          bscal = SQRT(SUM(b**2))
-         b = b / bscal
-
          x = 0.0_dp
-         IF(IterSolveFactors) THEN
-           Solver % Matrix => A
+         ! The RHS may be zero, e.g. when radiators light up only black surfaces
+         IF( bscal > TINY(bscal) ) THEN
+           b = b / bscal
 
-           eps = ListGetCReal( Params,'Linear System Convergence Tolerance', Found)
-           IF  (.NOT. Found ) eps = 1.0d-8
-           maxiter = ListGetInteger( Params,'Linear System Max Iterations', Found)
-           IF  (.NOT. Found ) maxiter = 100
+           IF(IterSolveFactors) THEN
+             Solver % Matrix => A
 
-           IF (UseFullMatrix) THEN
-             BLOCK
-               TYPE(Matrix_t), POINTER :: Gm
-               fm_G => G_full
-               Gm => AllocateMatrix()
-               Gm % NumberOfRows = n
-               mvProc = ADDRFUNC(fm_MatVec)
-               CALL RadiationCG( n, Gm, x, b, eps, maxiter )
-               DEALLOCATE(Gm)
-             END BLOCK
+             eps = ListGetCReal( Params,'Linear System Convergence Tolerance', Found)
+             IF  (.NOT. Found ) eps = 1.0d-8
+             maxiter = ListGetInteger( Params,'Linear System Max Iterations', Found)
+             IF  (.NOT. Found ) maxiter = 100
+
+             IF (UseFullMatrix) THEN
+               BLOCK
+                 TYPE(Matrix_t), POINTER :: Gm
+                 fm_G => G_full
+                 Gm => AllocateMatrix()
+                 Gm % NumberOfRows = n
+                 mvProc = ADDRFUNC(fm_MatVec)
+                 CALL RadiationCG( n, Gm, x, b, eps, maxiter )
+                 DEALLOCATE(Gm)
+               END BLOCK
+             ELSE
+               CALL RadiationCG( n, A, x, b, eps, maxiter )
+             END IF
            ELSE
-             CALL RadiationCG( n, A, x, b, eps, maxiter )
+             CALL DirectSolver( A, x, b, Solver )
            END IF
-         ELSE
-           CALL DirectSolver( A, x, b, Solver )
+           x = x * bscal * Diag
          END IF
-         x = x * bscal * Diag
        END IF
 
        IF ( ParEnv % Pes <= 1 .OR. GeneralMesh ) RETURN

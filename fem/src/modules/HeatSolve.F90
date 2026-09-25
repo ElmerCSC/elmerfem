@@ -271,14 +271,16 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, InitDiscontHandles, AxiSymmetric, &
       DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, &
-      HaveRadNewtonRelax, Converged, PostCalc = .FALSE., Stabilize
+      HaveRadNewtonRelax, Converged, PostCalc = .FALSE., Stabilize, RadRankOne, RankOneActive, &
+      RankOneGiven
   TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: Temperature(:)
   INTEGER, POINTER :: TempPerm(:)
   REAL(KIND=dp), ALLOCATABLE :: Temps4(:), Emiss(:), Absorp(:), Reflect(:),RadiatorPowers(:)
-  REAL(KIND=dp) :: Norm, StefBoltz, RadNewtonRelax
+  REAL(KIND=dp) :: Norm, StefBoltz, RadNewtonRelax, RadSumAD
+  REAL(KIND=dp), ALLOCATABLE :: RadU(:), RadV(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(LEN=MAX_NAME_LEN) :: Msg
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
@@ -421,6 +423,12 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   IF( Spectral ) Radiosity = .TRUE. 
   RadNewtonRelax = ListGetCReal( Params,&
       'Radiosity Newton Relaxation Factor',HaveRadNewtonRelax)
+  ! Newton linearization of radiosity with a rank-one correction, see RankOneSolve
+  ! This is the default since it converges much faster than the lumped linearization.
+  RadRankOne = ListGetLogical( Params,'Radiosity Newton Rank One',RankOneGiven)
+  IF(.NOT. RankOneGiven) RadRankOne = .TRUE.
+  RadRankOne = RadRankOne .AND. Radiosity
+  RankOneActive = .FALSE.
   
   IF(.NOT.Radiosity) CALL RadiationFactors( Solver, .FALSE.,.FALSE.) 
 
@@ -597,6 +605,18 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     !$OMP END PARALLEL 
 
     CALL DefaultFinishBulkAssembly()
+
+    IF( RadRankOne .AND. DG ) THEN
+      IF( RankOneGiven ) CALL Fatal(Caller,'"Radiosity Newton Rank One" not implemented for DG!')
+      CALL Info(Caller,'Rank-one radiosity Newton not available for DG, using the lumped one',Level=6)
+      RadRankOne = .FALSE.
+    END IF
+    RankOneActive = RadRankOne .AND. Newton
+    IF( RankOneActive ) THEN
+      IF(.NOT. ALLOCATED(RadU)) ALLOCATE( RadU(SIZE(Solver % Matrix % RHS)), &
+          RadV(SIZE(Solver % Matrix % RHS)) )
+      RadU = 0.0_dp; RadV = 0.0_dp; RadSumAD = 0.0_dp
+    END IF
     
     nColours = GetNOFBoundaryColours(Solver)
 
@@ -744,7 +764,11 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! And finally, solve:
     !--------------------
     PrevNorm = Norm
-    Norm = DefaultSolve()
+    IF( RankOneActive ) THEN
+      Norm = RankOneSolve()
+    ELSE
+      Norm = DefaultSolve()
+    END IF
 
     ! If modelling phase change (and if requested by the user), check if any
     ! node has jumped over the phase change interval, and if so, reduce
@@ -2780,7 +2804,7 @@ CONTAINS
     REAL(KIND=dp) :: T0,Text, Fj, &
         RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac, cNewton
     REAL(KIND=dp) :: Basis(nd),DetJ,Atext(12),Base(12),S,RadCoeffAtIP
-    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp, Beta, Fact1, Fact2, EmisR
     REAL(KIND=dp), POINTER :: Fact(:) 
     TYPE(Element_t), POINTER :: RadElement
     LOGICAL :: Stat,Found,BCOpen,Radiators
@@ -2865,26 +2889,36 @@ CONTAINS
         CALL Fatal(Caller,'Radiosity model not yet working with open boundaries!')
       END IF
 
-      IF(Refl1 < EPSILON(Refl1) ) THEN
-        CALL Fatal(Caller,'Radiosity Model does not work for zero reflectivity (emissivity one)!')
-      END IF
-
+      ! Fact(1) is the absorbed irradiation, the net flux is Fact(1) - e*sigma*T^4.
+      ! For gray surfaces the part (a*e/r)*sigma*T^4 of the radiosity is added to
+      ! both terms, so that it is linearized implicitly, which stabilizes the
+      ! iteration. For black surfaces (r=0) this is not possible.
       Base = 0.0_dp
-      IF(.NOT. Spectral) Emis1 = Emis1 / Refl1     
       TempAtIp = SUM(NodalTemp(1:n))/n
 
+      Beta = 0.0_dp
+      IF( .NOT. Spectral .AND. Refl1 > EPSILON(Refl1) ) Beta = Emis1 * Abso1 / Refl1
+      EmisR = Emis1 + Beta
+      Fact1 = Fact(1) + Beta * StefBoltz * TempAtIp**4
+
       IF(Newton) THEN
-        RadLoadAtIp =  (3 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)) * TempAtIp &
-             + Fact(1) 
-        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)
+        IF( RankOneActive ) THEN
+          ! Only the self term here, the coupling is the rank-one correction
+          Fact2 = 4 * Beta * StefBoltz * TempAtIp**3
+        ELSE
+          Fact2 = Fact(2) + 4 * Beta * StefBoltz * TempAtIp**3
+        END IF
+        RadLoadAtIp =  (3 * EmisR * TempAtIp**3 * StefBoltz - Fact2) * TempAtIp &
+             + Fact1
+        RadCoeffAtIp = 4 * EmisR * TempAtIp**3 * StefBoltz - Fact2
         
         IF( HaveRadNewtonRelax ) THEN
-          RadLoadAtIp = RadNewtonRelax * RadLoadAtIp + (1-RadNewtonRelax) * Fact(1)
-          RadCoeffAtIp = RadNewtonRelax * RadCoeffAtIp + (1-RadNewtonRelax) * Emis1 * StefBoltz * TempAtIp**3          
+          RadLoadAtIp = RadNewtonRelax * RadLoadAtIp + (1-RadNewtonRelax) * Fact1
+          RadCoeffAtIp = RadNewtonRelax * RadCoeffAtIp + (1-RadNewtonRelax) * EmisR * StefBoltz * TempAtIp**3          
         END IF
       ELSE
-        RadLoadAtIp = Fact(1)
-        RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
+        RadLoadAtIp = Fact1
+        RadCoeffAtIp = EmisR * StefBoltz * TempAtIp**3
       END IF
       
       DO t=1,IP % n
@@ -2895,13 +2929,53 @@ CONTAINS
         END IF
 
         DO p=1,n
-          DO q=1,n
-            STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q) * RadCoeffAtIp 
-          END DO
           FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
         END DO
         Base(1:n) = Base(1:n) + s * Basis(1:n) 
       END DO
+
+      ! The irradiation is constant over the element and depends on the element mean
+      ! temperature Tm, while emission is local: q(x) = a*G(Tm) - e*sigma*Tm^4
+      ! - 4*e*sigma*Tm^3*(T(x)-Tm). Hence only the local emission derivative acts on
+      ! T(x) and the rest of the linearization on the mean temperature, so that the
+      ! converged solution does not depend on the linearization.
+      BLOCK
+        REAL(KIND=dp) :: Dloc
+        Dloc = 4 * Emis1 * StefBoltz * TempAtIp**3
+        DO t=1,IP % n
+          stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
+          s = detJ * IP % s(t)
+          IF ( AxiSymmetric ) s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
+          DO p=1,n
+            DO q=1,n
+              STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q) * Dloc
+            END DO
+          END DO
+        END DO
+        DO p=1,n
+          DO q=1,n
+            STIFF(p,q) = STIFF(p,q) + Base(p) * (RadCoeffAtIp - Dloc) / n
+          END DO
+        END DO
+      END BLOCK
+
+      ! Vectors of the rank-one correction u*v^T of the Jacobian where u is the lumped
+      ! coupling Fact(2) and v is the weight A_j*D_j of the element mean temperature.
+      IF( RankOneActive ) THEN
+        BLOCK
+          REAL(KIND=dp) :: Dself, Area
+          INTEGER :: k
+          Dself = 4 * Emis1 * StefBoltz * TempAtIp**3
+          Area = SUM(Base(1:n))
+          DO p=1,n
+            k = TempPerm(Element % NodeIndexes(p))
+            RadU(k) = RadU(k) + Fact(2) * Base(p)
+            RadV(k) = RadV(k) + Area * Dself / n
+          END DO
+          !$OMP ATOMIC
+          RadSumAD = RadSumAD + Area * Dself
+        END BLOCK
+      END IF
         
     ELSE ! .NOT. Radiosity ) 
       ! Go through surfaces (j) this surface (i) is getting radiated from.
@@ -3490,6 +3564,75 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalJumpsDisContBC
 !------------------------------------------------------------------------------
+
+  ! Solve the Newton system (K0 - U*V^T) x = b - U*(V.T0) where K0 includes only the
+  ! self-derivative of the radiation and U*V^T its coupling to the other surfaces,
+  ! by Sherman-Morrison: x = K0^-1 (b' + s*U), s = V.y/(1-V.z), y = K0^-1 b', z = K0^-1 U.
+  ! The final solve is the default one so that norms and relaxation are as usual.
+  !------------------------------------------------------------------------------
+  FUNCTION RankOneSolve() RESULT(Norm)
+    REAL(KIND=dp) :: Norm
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp), ALLOCATABLE :: y(:), z(:), b(:)
+    REAL(KIND=dp) :: SumAD, VT0, Vy, Vz, sc, Nrm
+    INTEGER :: nrows
+    LOGICAL :: Direct, Refact, HaveRefact
+
+    A => Solver % Matrix
+    nrows = A % NumberOfRows
+    SumAD = ParallelReduction(RadSumAD)
+    IF( SumAD <= TINY(SumAD) ) THEN
+      Norm = DefaultSolve()
+      RETURN
+    END IF
+    RadV(1:nrows) = RadV(1:nrows) / SumAD
+    IF( ALLOCATED(A % ConstrainedDOF) ) THEN
+      WHERE( A % ConstrainedDOF(1:nrows) ) RadU(1:nrows) = 0.0_dp
+    END IF
+
+    VT0 = ParallelReduction(SUM(RadV(1:nrows)*Temperature(1:nrows)))
+    A % RHS(1:nrows) = A % RHS(1:nrows) - VT0 * RadU(1:nrows)
+
+    ALLOCATE( y(nrows), z(nrows), b(nrows) )
+    Direct = ( GetString(Params,'Linear System Solver',Found) == 'direct' )
+
+    CALL ListPushNamespace('rankone:')
+    CALL ListAddLogical( Params,'rankone: Skip Compute Nonlinear Change',.TRUE.)
+    CALL ListAddLogical( Params,'rankone: Skip Advance Nonlinear iter',.TRUE.)
+    b = RadU(1:nrows)
+    z = 0.0_dp
+    CALL SolveSystem(A,ParMatrix,b,z,Nrm,1,Solver)
+    ! Same matrix, the factorization may be reused
+    IF( Direct ) CALL ListAddLogical( Params,'rankone: Linear System Refactorize',.FALSE.)
+    b = A % RHS(1:nrows)
+    y = Temperature(1:nrows)
+    CALL SolveSystem(A,ParMatrix,b,y,Nrm,1,Solver)
+    CALL ListPopNamespace()
+    CALL ListRemove( Params,'rankone: Skip Compute Nonlinear Change')
+    CALL ListRemove( Params,'rankone: Skip Advance Nonlinear iter')
+    IF( Direct ) CALL ListRemove( Params,'rankone: Linear System Refactorize')
+
+    Vy = ParallelReduction(SUM(RadV(1:nrows)*y))
+    Vz = ParallelReduction(SUM(RadV(1:nrows)*z))
+    sc = Vy / (1.0_dp - Vz)
+    WRITE(Msg,'(A,3ES12.4)') 'Rank-one correction (V.T0, V.T, V.z): ',VT0,sc,Vz
+    CALL Info(Caller,Msg,Level=8)
+
+    A % RHS(1:nrows) = A % RHS(1:nrows) + sc * RadU(1:nrows)
+    IF( Direct ) THEN
+      Refact = ListGetLogical( Params,'Linear System Refactorize',HaveRefact)
+      CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE.)
+    END IF
+    Norm = DefaultSolve()
+    IF( Direct ) THEN
+      IF( HaveRefact ) THEN
+        CALL ListAddLogical( Params,'Linear System Refactorize',Refact)
+      ELSE
+        CALL ListRemove( Params,'Linear System Refactorize')
+      END IF
+    END IF
+  END FUNCTION RankOneSolve
+
 
   SUBROUTINE CalculateRadiosityFields(Pre) 
     LOGICAL :: Pre    
