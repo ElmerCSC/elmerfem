@@ -66,7 +66,10 @@ real(kind=dp):: xxx, yyy
   ! Following is in correct place
 
   TYPE (ParEnv_t), SAVE, TARGET :: ParEnv_Common
-  TYPE (ParEnv_t), POINTER, SAVE :: ParEnv => ParEnv_Common
+  ! nvhpc cannot initialise a pointer to a derived type with pointer components
+  ! at module level (NVFORTRAN-S-0034).  ParEnv is initialised explicitly in
+  ! ParCommInit (SParIterComm.F90) before first use.
+  TYPE (ParEnv_t), POINTER, SAVE :: ParEnv
   TYPE (SParIterSolverGlobalD_t), POINTER :: PIGpntr
   TYPE (SParIterSolverGlobalD_t), POINTER :: GlobalData
 END MODULE SParIterGlobals
