@@ -1,7 +1,83 @@
 # Elmer NVHPC Compatibility Fixes
 
-This document describes the changes made to the Elmer source tree to allow compilation with the NVIDIA HPC SDK Fortran compiler (`nvhpc 24.7`, as available on Levante (DKRZ) as well as `nvhpc 25.3`, as available on Dolpung (DKRZ / MPI-M)).
+This document describes the changes made to the Elmer source tree to allow compilation with the NVIDIA HPC SDK Fortran compiler (`nvhpc 24.7`, as available on Levante (DKRZ) as well as `nvhpc 25.7`, as available on Dolpung (DKRZ / MPI-M)).
 All fixes have been written to preserve full backward compatibility with the `gcc 11.2.0` compiler (as available on Levante (DKRZ)).
+
+
+## Building with nvhpc
+
+### Environment
+
+Load the nvhpc and OpenMPI environment (e.g. as set up for building YAC) and point all three compilers at the OpenMPI wrappers.
+`CXX` must be set explicitly: otherwise CMake picks the system C++ compiler, and `FIND_PACKAGE(MPI REQUIRED)` fails with `Could NOT find MPI (missing: MPI_CXX_FOUND)`.
+If the MPI `bin` directory is not on `PATH`, use full paths:
+
+```bash
+export MPIBIN=<openmpi-prefix>/bin
+export CC=$MPIBIN/mpicc CXX=$MPIBIN/mpicxx FC=$MPIBIN/mpifort
+```
+
+CMake only reads `CC`/`CXX`/`FC` on the first configure of a build directory.
+After changing them, remove `CMakeCache.txt` and `CMakeFiles/` (or start from an empty build directory).
+
+### Configure and build
+
+```bash
+mkdir build_nvhpc && cd build_nvhpc
+cmake -DHAVE_QP=OFF \
+      -DBLAS_LIBRARIES="-lblas" \
+      -DLAPACK_LIBRARIES="-llapack" \
+      ..
+make -j install
+```
+
+- `-DHAVE_QP=OFF` is required, see [Note on Quad Precision](#note-on-quad-precision-have_qp-build-flag-vs-source-change).
+- `BLAS_LIBRARIES`/`LAPACK_LIBRARIES` are optional. The values above use the BLAS/LAPACK bundled with nvhpc; NVPL is an alternative on Grace (aarch64). If neither is set, CMake first tries to find MKL, which prints the harmless warning `Finding MKL libraries not implemented for NVHPC`.
+
+### With ElmerIce, XIOS and YAC
+
+All dependencies must be built with the same nvhpc compiler and OpenMPI as Elmer (Fortran `.mod` files are compiler-specific).
+
+| Dependency | Located via | Requirements |
+|---|---|---|
+| NetCDF-C, NetCDF-Fortran | `NETCDF_LIBRARY`, `NETCDFF_LIBRARY`, `NETCDF_INCLUDE_DIR` (or `NETCDF_ROOT` if both share one prefix) | NetCDF-Fortran built with nvfortran |
+| XIOS | `XIOS_ROOT` (`inc/` or `include/`, `lib/`) | Shared library `libxios.so`; must provide `xios_mpi_handshake` |
+| YAXT | `YAXT_ROOT` | Shared libraries `libyaxt.so`, `libyaxt_c.so` |
+| libfyaml | `YAML_ROOT` | |
+| YAC | `YAC_ROOT` | Static libraries `libyac.a`, `libyac_core.a`, `libyac_mci.a`, `libyac_mtime.a` |
+
+The `*_ROOT` values can be given as CMake variables or environment variables.
+If NetCDF-C and NetCDF-Fortran live in separate prefixes, set the libraries and both include directories explicitly:
+
+```bash
+cmake -DHAVE_QP=OFF \
+      -DWITH_ElmerIce=ON \
+      -DWITH_NETCDF=ON \
+      -DNETCDF_LIBRARY=<netcdf-c-prefix>/lib/libnetcdf.so \
+      -DNETCDFF_LIBRARY=<netcdf-fortran-prefix>/lib/libnetcdff.so \
+      -DNETCDF_INCLUDE_DIR="<netcdf-c-prefix>/include;<netcdf-fortran-prefix>/include" \
+      -DWITH_XIOS=ON -DXIOS_ROOT=<xios-prefix> \
+      -DWITH_YAC=ON -DYAC_ROOT=<yac-prefix> -DYAXT_ROOT=<yaxt-prefix> -DYAML_ROOT=<libfyaml-prefix> \
+      -DCMAKE_INSTALL_PREFIX=<install-prefix> \
+      ..
+make -j install
+```
+
+Things to check in the configure output:
+
+- `XIOS_FOUND: TRUE`. If only `libxios.a` exists, XIOS is reported as `only found as a static library`, the MPI handshake check is skipped, and configure then fails in the YAC section with `Building WITH_YAC and WITH_XIOS requires XIOS_HAS_MPI_HANDSHAKE`. The fix is a shared XIOS build, not a change to the handshake support.
+- `Checking whether XIOS supports MPI Handshake -- yes`. The result is cached; after rebuilding XIOS, clear `XIOS_LIBRARY`, `XIOS_INCLUDE_DIR` and `XIOS_HAS_MPI_HANDSHAKE` from the cache (`-U<var>`) or remove `CMakeCache.txt`.
+- `YAC: TRUE`. A missing YAC is reported only as a status message, but `fem/src/elmer_coupling.F90` is still compiled with `WITH_YAC=ON` and fails later.
+
+At runtime, the NetCDF-Fortran, YAXT and XIOS library directories must be on `LD_LIBRARY_PATH`.
+
+This configuration builds with `nvhpc 25.7` and OpenMPI 4.1.8 on Dolpung.
+
+### Harmless configure messages
+
+- `Package 'mpi-cxx', required by 'virtual:world', not found`: FindMPI falls back to the compiler wrapper; fine as long as `Found MPI_CXX` follows.
+- `Checking whether MPI_IN_PLACE is supported ... -- no`: Elmer then defines `ELMER_BROKEN_MPI_IN_PLACE` and uses a code path without `MPI_IN_PLACE`.
+- `Library not found: >HDF5_FOUND<`: HDF5 is optional for ElmerIce output.
 
 
 ## Change 1: Module-level pointer initialization of derived types with pointer components
