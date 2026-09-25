@@ -1386,7 +1386,8 @@
 
        REAL(KIND=dp) :: MinFactor, MaxOmittedFactor, ConsideredSum
        INTEGER :: Colj,i,j,k,n,t, ImplicitEntries, MatrixEntries, previ
-       LOGICAL :: gTriv, gSymm, ImplicitLimitIs
+       LOGICAL :: gTriv, ImplicitLimitIs
+       LOGICAL, ALLOCATABLE :: Gray(:)
        REAL(KIND=dp) :: r,s,st,PrevSelf, MinSum,MaxSum,SolSum,FactorSum,ImplicitSum,&
            ImplicitLimit, NeglectLimit
 
@@ -1410,10 +1411,11 @@
            MinFactor = GetConstReal( Params, 'Minimum Gebhardt Factor',Found )
        IF(.NOT. Found) MinFactor = 1.0d-20
 
-       ! Scale by (1-Emissivity) to get a symmetric system, if all emissivities are not equal to unity anywhere       
+       ! If all surfaces are black the Gebhart factors are directly given by the view factors
        gTriv = ALL(ABS(Reflectivity)<=AEPS)
-       gSymm = ALL(ABS(Reflectivity)>AEPS) .OR. gTriv
-       
+       ALLOCATE(Gray(RadiationSurfaces))
+       Gray = ABS(Reflectivity) > AEPS
+
 
        ImplicitLimit = GetConstReal( Params, 'Implicit Gebhart Factor Fraction', ImplicitLimitIs) 
        IF  (.NOT. ImplicitLimitIs) &
@@ -1424,27 +1426,31 @@
            NeglectLimit  = GetConstReal( Params, 'Neglected Gebhardt Factor Fraction', Found) 
        IF(.NOT. Found) NeglectLimit = 1.0d-6
 
+       ! The equation for the Gebhart factors from surface t is (A-R*AF)x = e_t, with
+       ! R=diag(Reflectivity), AF_ij = A_i*F_ij symmetric and Fac = e_t*E*AF*x. For
+       ! black surfaces (R_i=0) the row reduces to A_i x_i = e_t(i) and the column is
+       ! zero in R*AF. So black unknowns are known a priori and are moved to the RHS.
+       ! Dividing the gray rows by R_i the system becomes (A/R-AF)x = e_t/R for gray,
+       ! and A x = e_t for black surfaces, which is symmetric & diagonally dominant.
        IF(.NOT. gTriv) THEN
-         r=1._dp
          DO i=1,RadiationSurfaces
            Vals => ViewFactors(i) % Factors
            Cols => ViewFactors(i) % Elements
-           
-           if ( gSymm ) r = Reflectivity(i)
+
            IF( .NOT. UseFullMatrix ) previ = G % Rows(i)-1
-           DO j=1,ViewFactors(i) % NumberOfFactors
-             IF (gSymm) THEN
-               s = Reflectivity(i)*Reflectivity(Cols(j))
-             ELSE
-               s = Reflectivity(i)
-             END IF
-             IF (UseFullMatrix) THEN
-               G_full(i,Cols(j)) = G_full(i,Cols(j)) - s*Vals(j)
-             ELSE
-               CALL CRS_AddToMatrixElement(G,i,Cols(j),-s*Vals(j),previ)
-             END  IF
-           END DO
-           Diag(i) = r*RelAreas(i)
+           IF( Gray(i) ) THEN
+             DO j=1,ViewFactors(i) % NumberOfFactors
+               IF( .NOT. Gray(Cols(j)) ) CYCLE
+               IF (UseFullMatrix) THEN
+                 G_full(i,Cols(j)) = G_full(i,Cols(j)) - Vals(j)
+               ELSE
+                 CALL CRS_AddToMatrixElement(G,i,Cols(j),-Vals(j),previ)
+               END  IF
+             END DO
+             Diag(i) = RelAreas(i) / Reflectivity(i)
+           ELSE
+             Diag(i) = RelAreas(i)
+           END IF
            IF (UseFullMatrix) THEN
              G_full(i,i) = Diag(i)
            ELSE
@@ -1496,15 +1502,26 @@
            END DO
 
          ELSE
-           RHS(t) = Diag(t)
+           ! RHS of the unit diagonal scaled system, see above
+           RHS = 0.0_dp
+           IF( Gray(t) ) THEN
+             RHS(t) = Diag(t) / Reflectivity(t)
+           ELSE
+             RHS(t) = Diag(t)
+             Vals => ViewFactors(t) % Factors
+             Cols => ViewFactors(t) % Elements
+             DO k=1,ViewFactors(t) % NumberOfFactors
+               j = Cols(k)
+               IF( Gray(j) ) RHS(j) = RHS(j) + Diag(j) * Vals(k) / RelAreas(t)
+             END DO
+           END IF
 
-           ! It may be a good initial start that the Gii is 
+           ! It may be a good initial start that the Gii is
            ! the same as previously
            IF (t>1) THEN
              PrevSelf = SOL(t)
              SOL(t) = SOL(t-1)
              SOL(t-1) = PrevSelf
-             RHS(t-1) = 0.0_dp
            END IF
 
            SOL = SOL/Diag
@@ -1533,12 +1550,6 @@
                  CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', .FALSE. )
                END IF
 
-               IF(.NOT.gSymm) THEN
-                 IF(GetString(Solver % Values,'Linear System Direct Method', Found)=='cholmod')THEN
-                   CALL Warn(Caller, 'Can not use Cholesky solver if any emissivity==1')
-                   CALL ListAddString( Solver % Values, 'Linear System Direct Method', 'UMFpack' )
-                 END IF
-               END IF
                CALL DirectSolver( G, SOL, RHS, Solver )
              END IF
 
@@ -1555,11 +1566,7 @@
 
              s = 0.0_dp
              DO k=1,ViewFactors(i) % NumberOfFactors
-               IF(gSymm) THEN
-                 s = s + Reflectivity(Cols(k))*Vals(k)*SOL(Cols(k))
-               ELSE
-                 s = s + Vals(k)*SOL(Cols(k))
-               END IF
+               s = s + Vals(k)*SOL(Cols(k))
              END DO
              Fac(i) = s*Emissivity(t)*Emissivity(i)
 

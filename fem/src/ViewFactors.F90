@@ -1103,22 +1103,28 @@ CONTAINS
          CALL Info( Caller,Message, Level=3 );
             
          IF ( cum <= eps ) EXIT
-         
+
+!------------------------------------------------------------------------------
+!    The Jacobian J = diag(S)F + diag(FS) is not symmetric. With dS = diag(S)y
+!    solve instead J diag(S) y = RHS, where J diag(S) = diag(S)Fdiag(S) +
+!    diag(S*(FS)) is symmetric and diagonally dominant, i.e. suitable for CG.
+!------------------------------------------------------------------------------
 !$omp parallel do private(i,j)
          DO i=1,n
            DO j=1,n
-             Jacobian(i,j) = Factors((i-1)*n+j) * SOL(i)
+             Jacobian(i,j) = Factors((i-1)*n+j) * SOL(i) * SOL(j)
            END DO
            DO j=1,n
-             Jacobian(i,i) = Jacobian(i,i) + Factors((i-1)*n+j) * SOL(j)
+             Jacobian(i,i) = Jacobian(i,i) + Factors((i-1)*n+j) * SOL(i) * SOL(j)
            END DO
            Jdiag(i) = 1._dp / Jacobian(i,i)
          END DO
 !$omp end parallel do
 
          PSOL = SOL
+         SOL = 0.0_dp
          CALL IterSolv( n,SOL,RHS )
-         SOL = PSOL + SOL
+         SOL = PSOL + PSOL*SOL
        END DO
           
 !------------------------------------------------------------------------------
