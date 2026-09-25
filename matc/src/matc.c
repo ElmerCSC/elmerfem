@@ -247,7 +247,7 @@ void mtc_init( FILE *input_file, FILE *output_file, FILE *error_file )
 
 char * mtc_domath( char *str )
 {
-  setlocale(LC_ALL, "C");
+  setlocale(LC_NUMERIC, "C");
 
   VARIABLE *headsave;            /* this should not be here */
 
@@ -921,7 +921,7 @@ void *mtc_compile(char *str)
 
     if (!str || !*str) return NULL;
 
-    setlocale(LC_ALL, "C");
+    setlocale(LC_NUMERIC, "C");
 
     /* Isolate parse-tree allocations so they survive across eval calls */
     saved = (LIST *)ALLOC_HEAD;
@@ -971,7 +971,7 @@ char *mtc_eval(void *handle)
      * (2,857142857 -> 2.0). setlocale() is a cheap no-op when the locale
      * hasn't actually changed, so this isn't the hot-path cost the removal
      * was chasing. */
-    setlocale(LC_ALL, "C");
+    setlocale(LC_NUMERIC, "C");
 
     savejmp = jmpbuf;
     jmpbuf = &jmp;
