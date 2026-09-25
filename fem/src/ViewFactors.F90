@@ -539,7 +539,7 @@
            IF ( RT_n > 0 ) THEN
              CALL Info(Caller,'Using separate mesh for shadowing, #elements = '//I2S(RT_n),Level=5)
 
-             WRITE (Message,'(A,2F8.2)') 'Shadow mesh defined time (s):',&
+             WRITE (Message,'(A,2F8.2)') 'Shadow mesh defined in time (s):',&
                  CPUTime()-at2, Realtime()-rt2
              CALL Info( Caller,Message, Level=3 )
              at2 = CPUTime(); rt2 = RealTime()
