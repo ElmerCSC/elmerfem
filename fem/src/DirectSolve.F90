@@ -3456,7 +3456,7 @@ CONTAINS
     INTEGER, POINTER :: Iparm(:)
     INTEGER i, j, k, nz, idum(1), nzutd
     LOGICAL :: Found, matsym, matpd
-    REAL*8  :: ddum(1)
+    REAL(KIND=dp)  :: ddum(1)
 
     LOGICAL :: Factorize, FreeFactorize
     INTEGER :: tlen, allocstat
@@ -3682,7 +3682,7 @@ CONTAINS
       INTEGER, POINTER :: Iparm(:)
       INTEGER i, j, k, nz, idum(1)
       LOGICAL :: Found, Symm, Posdef
-      REAL*8  waltime1, waltime2, ddum(1), dparm(64)
+      REAL(KIND=dp)  waltime1, waltime2, ddum(1), dparm(64)
 
       LOGICAL :: Factorize, FreeFactorize
       INTEGER :: tlen

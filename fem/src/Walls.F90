@@ -61,13 +61,14 @@
 !------------------------------------------------------------------------------
       SUBROUTINE SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX)
 
+      USE Types, ONLY : dp
       IMPLICIT NONE
-      DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,TAUW,  &
+      REAL(KIND=dp) DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,TAUW,  &
       YPLUS, FX, WALL_LAW, D_WALL_LAW
 
       INTEGER :: ITER 
       INTEGER :: MAXITER=100
-      DOUBLE PRECISION ::  TOL=1.0D-14
+      REAL(KIND=dp) ::  TOL=1.0D-14
  
 ! Default value:
       TAUW = UT / DIST
@@ -109,14 +110,15 @@
 !         Output:
 !
 !----------------------------------------------------------------------------
-      DOUBLE PRECISION FUNCTION WALL_LAW(UFRIC,UT,DENSIT, &
+      REAL(KIND=dp) FUNCTION WALL_LAW(UFRIC,UT,DENSIT, &
                  VISCOS,DIST,ROUGH)
 
+      USE Types, ONLY : dp
       IMPLICIT NONE
-      DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX, &
+      REAL(KIND=dp) DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX, &
       YPLUS
 
-      DOUBLE PRECISION :: DKAPPA = 0.41D0, RAJA
+      REAL(KIND=dp) :: DKAPPA = 0.41D0, RAJA
 
 
       YPLUS = DENSIT*UFRIC*DIST / VISCOS
@@ -154,15 +156,16 @@
 !         Output:
 !
 !----------------------------------------------------------------------------
-      DOUBLE PRECISION FUNCTION D_WALL_LAW( UFRIC,UT, DENSIT,  &
+      REAL(KIND=dp) FUNCTION D_WALL_LAW( UFRIC,UT, DENSIT,  &
                     VISCOS,DIST,ROUGH )
 
+      USE Types, ONLY : dp
       IMPLICIT NONE
 
-      DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,  &
+      REAL(KIND=dp) DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,  &
       YPLUS
 
-      DOUBLE PRECISION :: DKAPPA = 0.41D0, RAJA
+      REAL(KIND=dp) :: DKAPPA = 0.41D0, RAJA
       
       YPLUS=DENSIT*UFRIC*DIST/VISCOS
 
@@ -206,14 +209,15 @@
 !----------------------------------------------------------------------------
       SUBROUTINE KEWALL (TK, TEPS, TOMG, UT, DIST, ROUGH, VISCOS, DENSIT )
 
+      USE Types, ONLY : dp
       IMPLICIT NONE
 
-      DOUBLE PRECISION TK, TEPS, TOMG, UT, DIST, VISCOS, DENSIT, ROUGH
-      DOUBLE PRECISION UFRIC, DFX, UTLOCAL
-      DOUBLE PRECISION :: CMYY   = 0.09D0
-      DOUBLE PRECISION :: KARMAN = 0.41D0
-      DOUBLE PRECISION :: SMALL  = 1.0D-10
-      DOUBLE PRECISION :: OmegaWallPlus,Yplus, KsPlus, OmegaPlus, TomgL,TomgT,t,Alpha
+      REAL(KIND=dp) TK, TEPS, TOMG, UT, DIST, VISCOS, DENSIT, ROUGH
+      REAL(KIND=dp) UFRIC, DFX, UTLOCAL
+      REAL(KIND=dp) :: CMYY   = 0.09D0
+      REAL(KIND=dp) :: KARMAN = 0.41D0
+      REAL(KIND=dp) :: SMALL  = 1.0D-10
+      REAL(KIND=dp) :: OmegaWallPlus,Yplus, KsPlus, OmegaPlus, TomgL,TomgT,t,Alpha
 
       UTLOCAL = DMAX1( UT,SMALL )
       CALL SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UTLOCAL,UFRIC,DFX)

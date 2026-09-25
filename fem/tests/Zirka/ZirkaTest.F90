@@ -95,7 +95,7 @@ end subroutine ! }}}
 function readBH(f) result(BH) ! {{{
   real(kind=dp), allocatable :: BH(:,:)
   character(len=*) :: f
-  real*8 :: lenf
+  REAL(KIND=dp) :: lenf
   integer :: iu, len, n
 
   open(newunit=iu, file=f, action='read', status='old')
@@ -114,7 +114,7 @@ end function ! }}}
 function readdat(f, m, n) result(table) ! {{{
   real(kind=dp), allocatable :: table(:,:)
   character(len=*) :: f
-  real*8 :: lenf
+  REAL(KIND=dp) :: lenf
   integer :: iu, m, n, k
 
   open(newunit=iu, file=f, action='read', status='old')
