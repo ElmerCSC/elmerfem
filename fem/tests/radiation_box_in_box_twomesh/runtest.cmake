@@ -1,5 +1,6 @@
 include(test_macros)
 execute_process(COMMAND ${ELMERGRID_BIN} 1 2 box_in_box.grd)
+execute_process(COMMAND ${ELMERGRID_BIN} 1 2 box_in_box_rad.grd)
 execute_process(COMMAND ${RADIATORS_BIN})
 execute_process(COMMAND ${VIEWFACTORS_BIN})
 execute_process(COMMAND ${ELMERGRID_BIN} 2 2 box_in_box -metis ${MPIEXEC_NTASKS} 3 -partdual)

@@ -64,7 +64,8 @@ CONTAINS
     REAL(KIND=dp) :: dxyz(3,3),Dist(3),r,s,t,h1,h2
     TYPE(PElementDefs_t), POINTER :: PDefs
     INTEGER :: ierr, ParTmp(6), ParSizes(6)
-    INTEGER, ALLOCATABLE :: FacePerm(:), BulkPerm(:)
+    INTEGER, ALLOCATABLE :: FacePerm(:), BulkPerm(:), BndParent(:)
+    INTEGER :: BndCnt0
     LOGICAL :: Parallel
     CHARACTER(*), PARAMETER :: Caller = 'SplitMeshEqual'
 !------------------------------------------------------------------------------
@@ -1054,8 +1055,13 @@ CONTAINS
 !   Update boundary elements:
 !   NOTE: Internal boundaries not taken care of...:!!!!
 !   ---------------------------------------------------
+    ALLOCATE( BndParent(4*Mesh % NumberOfBoundaryElements) )
+    BndParent = 0
+
     DO i=1,Mesh % NumberOfBoundaryElements
 
+       ! Children of this boundary element are created consecutively after this.
+       BndCnt0 = NewElCnt - NewMesh % NumberOfBulkElements
        j = i + Mesh % NumberOfBulkElements
        Eold => Mesh % Elements(j)
 !
@@ -1578,6 +1584,41 @@ CONTAINS
           IF( n3 < 3 ) CALL Error( Caller, 'Parent element not found' )
           Enew % BoundaryInfo % Left => Eptr
        END SELECT
+
+       k = NewElCnt - NewMesh % NumberOfBulkElements
+       IF( k > BndCnt0 ) BndParent(BndCnt0+1:k) = i
+    END DO
+
+!
+!   Internal boundaries: above only the parent on one side was set, set
+!   also the other one such that e.g. material properties may be found.
+!   -------------------------------------------------------------------
+    DO k=1,NewElCnt - NewMesh % NumberOfBulkElements
+       i = BndParent(k)
+       IF( i <= 0 ) CYCLE
+       Eold => Mesh % Elements(Mesh % NumberOfBulkElements+i)
+       IF( .NOT. ( ASSOCIATED(Eold % BoundaryInfo % Left) .AND. &
+           ASSOCIATED(Eold % BoundaryInfo % Right) ) ) CYCLE
+       Enew => NewMesh % Elements(NewMesh % NumberOfBulkElements+k)
+       IF( ASSOCIATED(Enew % BoundaryInfo % Right) ) CYCLE
+
+       Eparent => Eold % BoundaryInfo % Right
+       ParentId = Eparent % ElementIndex
+       n1 = 8
+       IF( Eparent % TYPE % DIMENSION == 2 ) n1 = 4
+       n = Enew % TYPE % NumberOfNodes
+       DO j=1,n1
+          IF( Child(ParentId,j) <= 0 ) CYCLE
+          Eptr => NewMesh % Elements( Child(ParentId,j) )
+          n3 = 0
+          DO n2=1,n
+             IF( ANY( Enew % NodeIndexes(n2) == Eptr % NodeIndexes ) ) n3 = n3 + 1
+          END DO
+          IF( n3 == n ) THEN
+             Enew % BoundaryInfo % Right => Eptr
+             EXIT
+          END IF
+       END DO
     END DO
 
 !
@@ -1585,6 +1626,10 @@ CONTAINS
 !   ----------------------------------------
     NewMesh % NumberOfBoundaryElements = NewElCnt - &
             NewMesh % NumberOfBulkElements
+
+    ALLOCATE( NewMesh % BoundaryParent(NewMesh % NumberOfBoundaryElements) )
+    NewMesh % BoundaryParent = BndParent(1:NewMesh % NumberOfBoundaryElements)
+    DEALLOCATE( BndParent )
     NewMesh % MaxElementDOFs  = Mesh % MaxElementDOFs
     NewMesh % MaxElementNodes = Mesh % MaxElementNodes
 
@@ -1732,11 +1777,13 @@ CONTAINS
 
        n = Mesh % NumberOfNodes
        NewMesh % ParallelInfo % GInterface = .FALSE.
-       NewMesh % ParallelInfo % GInterface(1:n) = Mesh % ParallelInfo % GInterface
+       ! The parallel info arrays may be longer than the number of nodes (e.g. after
+       ! RadiationParallelMeshDistribute), so copy only the nodes.
+       NewMesh % ParallelInfo % GInterface(1:n) = Mesh % ParallelInfo % GInterface(1:n)
 
        NewMesh % ParallelInfo % GlobalDOFs = 0
        NewMesh % ParallelInfo % GlobalDOFs(1:n) = &
-          Mesh % ParallelInfo % GlobalDOFs
+          Mesh % ParallelInfo % GlobalDOFs(1:n)
 !
 !      My theory is, that a new node will be an
 !      interface node only if all the edge or face
@@ -1769,6 +1816,8 @@ CONTAINS
              Edge => Mesh % Edges(i)
              IF( ASSOCIATED(Edge % BoundaryInfo % Left) .AND. &
                   ASSOCIATED(Edge % BoundaryInfo % Right) ) CYCLE
+             IF( .NOT. ( ASSOCIATED(Edge % BoundaryInfo % Left) .OR. &
+                  ASSOCIATED(Edge % BoundaryInfo % Right) ) ) CYCLE
              IF( .NOT.ALL( Mesh % ParallelInfo % GInterface( Edge % NodeIndexes ) )) CYCLE
              InterfaceTag(i) = .TRUE.
           END DO
@@ -1852,6 +1901,10 @@ CONTAINS
              Face => Mesh % Faces(i)
              IF( ASSOCIATED(Face % BoundaryInfo % Left) .AND. &
                   ASSOCIATED(Face % BoundaryInfo % Right) ) CYCLE
+             ! Faces of boundary elements without parents (e.g. radiation elements
+             ! copied from other partitions) are not partition interfaces.
+             IF( .NOT. ( ASSOCIATED(Face % BoundaryInfo % Left) .OR. &
+                  ASSOCIATED(Face % BoundaryInfo % Right) ) ) CYCLE
              IF( .NOT.ALL( Mesh % ParallelInfo % GInterface( Face % NodeIndexes ) )) CYCLE
              InterfaceTag(i) = .TRUE.
           END DO
@@ -1942,6 +1995,8 @@ CONTAINS
        DO i = 1,Mesh % NumberOfFaces
           Face => Mesh % Faces(i) 
           IF( Face % TYPE % NumberOfNodes == 4 ) THEN
+             IF( .NOT. ( ASSOCIATED(Face % BoundaryInfo % Left) .OR. &
+                  ASSOCIATED(Face % BoundaryInfo % Right) ) ) CYCLE
              IF ( ALL( Mesh % ParallelInfo % GInterface( Face % NodeIndexes ) ) ) THEN
                 NewMesh % ParallelInfo % GInterface( Mesh % NumberOfNodes &
                      + Mesh % NumberOfEdges + i ) = .TRUE.
@@ -2031,7 +2086,7 @@ CONTAINS
        CALL AllocateVector( Reorder, NewMesh % NumberOfNodes )
        Reorder = [ (i, i=1,NewMesh % NumberOfNodes) ]
 
-       k = NewMesh % Nodes % NumberOfNodes - Mesh % Nodes % NumberOfNodes
+       k = NewMesh % NumberOfNodes - Mesh % NumberOfNodes
 
 
        CALL ResetTimer('ParallelGlobalNumbering')

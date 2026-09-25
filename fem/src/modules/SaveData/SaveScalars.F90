@@ -3442,7 +3442,9 @@ CONTAINS
     Name = ListGetString( Params,'Show Norm Name',GotIt)
     IF(GotIt) THEN
       DO No=1,NoValues
-        IF( TRIM(Name) == TRIM(ValueNames(No)) ) THEN
+        ! With "Parallel Reduce" the name of a reduced value has a suffix, e.g. " : mpi_max"
+        IF( TRIM(Name) == TRIM(ValueNames(No)) .OR. &
+            INDEX( ValueNames(No), TRIM(Name)//' : mpi_' ) == 1 ) THEN
           NormInd = No
           CALL Info(Caller,'Associating scalar '//I2S(No)//' to norm!',Level=8)
           EXIT

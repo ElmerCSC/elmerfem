@@ -1,3 +1,16 @@
+! Test case for radiators & radiosity with a moving body and two independent meshes
+! - as radiation_box_in_box, where the inner box is rotated by RigidMeshMapper
+! - the heat equation is solved on a finer mesh "box_in_box" while radiosity is
+!   solved on an independent coarser mesh "box_in_box_rad" given by "Radiation Mesh"
+! - the view factors are computed for the rotated radiation mesh by the mapping
+!   solver within ViewFactors, and in ElmerSolver the radiation mesh follows the
+!   motion of the heat equation mesh
+! - the mapping between the meshes is made in the original geometry
+! - total flux should be 1000
+! - consistent norm and parallel reduction make the test values independent of partitioning
+!
+! Based on radiation_box_in_box
+!
 ! Test case for beam-like radiator heat sources
 ! - four 1d radiators within a box
 ! - total flux (1000) summed up for reference
@@ -116,6 +129,9 @@ Solver 1
 ! Viewfactor BBox Shadow = Logical True
 
   Radiosity Model = Logical True
+
+  ! Solve radiosity on an independent (coarse) mesh
+  Radiation Mesh = String "box_in_box_rad"
 
   radiation: Linear System Solver = Iterative
   radiation: Linear System Residual Output = 1
@@ -236,11 +252,11 @@ Body Force 1
 End
 
 
-Solver 1 :: Reference Norm = 3.12175465E+02
+Solver 1 :: Reference Norm = 3.13358836E+02
 Solver 1 :: Reference Norm Tolerance = 1.0e-4
-Solver 2 :: Reference Norm = 3.43931061E+02
+Solver 2 :: Reference Norm = 3.46551568E+02
 Solver 2 :: Reference Norm Tolerance = 1.0e-4
 ! This should be 1000 exact, if fully converged.
-Solver 3 :: Reference Norm = 9.99957133E+02
+Solver 3 :: Reference Norm = 9.99956608E+02
 Solver 3 :: Reference Norm Tolerance = 1.0e-4
 

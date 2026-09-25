@@ -841,6 +841,9 @@ MODULE Types
    TYPE BoundaryInfo_t
      TYPE(Factors_t), POINTER :: RadiationFactors => NULL()
      INTEGER :: Constraint = 0, OutBody = -1
+     ! Body whose material gives the emissivity when the element has no parents
+     ! (radiation elements copied from other partitions)
+     INTEGER :: EmissivityBody = 0
      REAL(KIND=dp), ALLOCATABLE :: Radiators(:)
      TYPE(Element_t), POINTER :: Left =>NULL(), Right=>NULL()
    END TYPE BoundaryInfo_t
@@ -998,6 +1001,11 @@ MODULE Types
      LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
      
      INTEGER, POINTER :: InvPerm(:) => NULL()
+
+     ! For a mesh created by splitting (SplitMeshEqual): index of the parent
+     ! mesh boundary element (1..Parent % NumberOfBoundaryElements) for each
+     ! boundary element of this mesh, zero if none.
+     INTEGER, POINTER :: BoundaryParent(:) => NULL()
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
