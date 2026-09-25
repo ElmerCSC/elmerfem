@@ -3353,7 +3353,7 @@ CONTAINS
                CompInd, q, qi
     INTEGER, POINTER :: Rows(:), Cnts(:)
     LOGICAL :: dofsdone
-    LOGICAL*1 :: Done(:)
+    LOGICAL(KIND=1) :: Done(:)
     
     Circuits => CurrentModel % CircuitModel % Circuits
     n_Circuits = CurrentModel % CircuitModel % n_Circuits
@@ -3427,7 +3427,7 @@ CONTAINS
                CompInd, q, qi
     INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
     LOGICAL :: dofsdone
-    LOGICAL*1 :: Done(:)
+    LOGICAL(KIND=1) :: Done(:)
     
     Circuits => CurrentModel % CircuitModel % Circuits
     n_Circuits = CurrentModel % CircuitModel % n_Circuits
@@ -3502,7 +3502,7 @@ CONTAINS
     INTEGER :: nn, nd, RowId
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: Rows(:), Cnts(:)
-    LOGICAL*1 :: Done(:)
+    LOGICAL(KIND=1) :: Done(:)
     LOGICAL :: dofsdone
 
     IF (ElAssocToComp(Element, Comp)) THEN
@@ -3535,7 +3535,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER :: nn, nd, VvarId, IvarId
     INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
-    LOGICAL*1 :: Done(:)
+    LOGICAL(KIND=1) :: Done(:)
     LOGICAL :: dofsdone
     
     IF (ElAssocToComp(Element, Comp)) THEN
@@ -3570,7 +3570,7 @@ CONTAINS
     INTEGER :: p,i,j,k,Indexes(nd)
     INTEGER, OPTIONAL :: Jsind
     INTEGER, POINTER :: PS(:)
-    LOGICAL*1 :: Done(:)
+    LOGICAL(KIND=1) :: Done(:)
     INTEGER :: MyGen = -1
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -3638,7 +3638,7 @@ CONTAINS
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: p,i,j,k,Indexes(nd)
     INTEGER, POINTER :: PS(:)
-    LOGICAL*1 :: Done(:)
+    LOGICAL(KIND=1) :: Done(:)
     INTEGER :: MyGen = -1
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -3706,7 +3706,7 @@ CONTAINS
     LOGICAL :: dofsdone
     INTEGER :: MyGen = -1
     INTEGER, POINTER :: PS(:)
-    LOGICAL*1 :: Done(:)
+    LOGICAL(KIND=1) :: Done(:)
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
     SAVE dim, MyGen
@@ -3785,7 +3785,7 @@ CONTAINS
     INTEGER, POINTER CONTIG :: Rows(:), Cols(:)
     INTEGER :: nm, Circuit_tot_n, n, i
     LOGICAL :: dofsdone
-    LOGICAL*1, ALLOCATABLE :: Done(:)
+    LOGICAL(KIND=1), ALLOCATABLE :: Done(:)
     REAL(KIND=dp), POINTER CONTIG :: Values(:)
     LOGICAL :: Parallel, Found
     
