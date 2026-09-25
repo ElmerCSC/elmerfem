@@ -335,10 +335,8 @@ CONTAINS
     ! Partition zero does all the work!
     IF( ParEnv % MyPe /= 0 ) THEN
       Mesh % NumberOfNodes = 0
-      GOTO 100      
-    END IF
-    
-    
+    ELSE
+
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)
                 
     OPEN(InFileUnit,FILE = Filename, STATUS='old', IOSTAT=IOstatus)
@@ -452,7 +450,9 @@ CONTAINS
     
     CALL Info('Elmer2OpenFoamWrite','Creating coordinates for temporal mesh',Level=7)
 
-100 CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
+    END IF
+
+    CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
         'Coordinate 1',1, Mesh % Nodes % x )
     
     CALL VariableAdd( Mesh % Variables, Mesh, Solver, &

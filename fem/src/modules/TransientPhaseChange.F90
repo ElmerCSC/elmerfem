@@ -293,7 +293,8 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
 
 
   i =  ListGetInteger( Params,'Passive Steps',Stat)
-  IF( i >= SubroutineVisited) GOTO 200
+  passive_steps: BLOCK
+  IF( i >= SubroutineVisited) EXIT passive_steps
 
   ! The first pull velocity should always be set
   IF ( .NOT. PullVelocitySet ) THEN
@@ -521,10 +522,10 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
     IF(PullControl) CALL FindPullBoundary()
   END IF
 
-  
-200 CONTINUE
+
+  END BLOCK passive_steps
   IF(PullControl .OR. TriplePointFixed) THEN
-    CALL ListAddConstReal(Model % Simulation,'res: Pull Position',pos0)       
+    CALL ListAddConstReal(Model % Simulation,'res: Pull Position',pos0)
     CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity',UPull)
     IF( PullControl ) THEN
       Var => VariableGet( Mesh % Variables,'pull velocity')

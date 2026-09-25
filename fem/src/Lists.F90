@@ -365,8 +365,7 @@ CONTAINS
              ' db nodes from bulk hits',Level=15)
 
          IF ( FoundDG ) THEN
-           GOTO 10
-!          RETURN ! Discontinuous bodies !!!
+           RETURN
          END IF
        END BLOCK
      END IF
@@ -448,8 +447,7 @@ CONTAINS
            ' nodes from bulk hits',Level=15)
        
        IF ( FoundDG ) THEN
-          GOTO 10
-!         RETURN ! Discontinuous galerkin !!!
+          RETURN
        END IF
      END IF
 
@@ -736,8 +734,6 @@ CONTAINS
     
      IF ( ALLOCATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs)
      IF ( ALLOCATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
-
-10   CONTINUE
 
 !------------------------------------------------------------------------------
    END FUNCTION InitialPermutation
@@ -10761,11 +10757,10 @@ END SUBROUTINE ElmerEvalLuaS
      
      IF( GotFile ) THEN
        CALL Info('ReportListCounters','Saving ListGet operations counts')
-       ReportUnit = 10
        !IF( ParEnv % PEs > 1 ) THEN
        !  filename = TRIM(filename)//'.'//I2S(ParEnv % MyPe)
        !END IF         
-       OPEN( 10,File=filename,STATUS='UNKNOWN',POSITION='APPEND' )
+       OPEN( NEWUNIT=ReportUnit,File=filename,STATUS='UNKNOWN',POSITION='APPEND' )
        CALL GETCWD(dirname)
        
        ! These are only for reference if writing lot of data to same file

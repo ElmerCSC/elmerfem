@@ -893,7 +893,8 @@ CONTAINS
     
 
     ! Add start and finish planes except if we have a full rotational symmetry
-    IF(Rotate2Pi ) GOTO 100 
+    AddPlanes: BLOCK
+    IF(Rotate2Pi ) EXIT AddPlanes
     
     ! Add bottom, top, and possible mid boundaries:
     ! ---------------------------------------------
@@ -1027,8 +1028,9 @@ CONTAINS
     END DO
 
     
+    END BLOCK AddPlanes
     
-100 Mesh_out % NumberOfBoundaryElements = cnt-Mesh_out % NumberOfBulkElements
+    Mesh_out % NumberOfBoundaryElements = cnt-Mesh_out % NumberOfBulkElements
     
     Mesh_out % Name = Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh

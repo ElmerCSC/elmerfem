@@ -112,6 +112,7 @@ SUBROUTINE Adjoint_CostContSolver( Model,Solver,dt,TransientSimulation )
 
   CHARACTER*10 :: date,temps
 
+  INTEGER :: ioCostHeaderPar,ioCostHeaderSerial,ioCostAppendPar,ioCostAppendSerial
 
   SolverParams => GetSolverParams()
 
@@ -149,18 +150,18 @@ SUBROUTINE Adjoint_CostContSolver( Model,Solver,dt,TransientSimulation )
     CALL DATE_AND_TIME(date,temps)
     If (Parallel) then
       if (ParEnv % MyPe.EQ.0) then
-        OPEN (12, FILE=CostFile)
-             write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-             write(12,'(A)') '#, 1.0'
-             write(12,'(A)') '# iter, J0, sqrt(2J0/Area)'
-        CLOSE(12)
+        OPEN (NEWUNIT=ioCostHeaderPar, FILE=CostFile)
+             write(ioCostHeaderPar,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+             write(ioCostHeaderPar,'(A)') '#, 1.0'
+             write(ioCostHeaderPar,'(A)') '# iter, J0, sqrt(2J0/Area)'
+        CLOSE(ioCostHeaderPar)
       End if
     Else
-        OPEN (12, FILE=CostFile)
-             write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-             write(12,'(A)') '#, 1.0'
-             write(12,'(A)') '# iter, J0, sqrt(2J0/Area)'
-        CLOSE(12)
+        OPEN (NEWUNIT=ioCostHeaderSerial, FILE=CostFile)
+             write(ioCostHeaderSerial,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+             write(ioCostHeaderSerial,'(A)') '#, 1.0'
+             write(ioCostHeaderSerial,'(A)') '# iter, J0, sqrt(2J0/Area)'
+        CLOSE(ioCostHeaderSerial)
     End if
 
    CostSolName =  GetString( SolverParams,'Cost Variable Name', Found)
@@ -282,18 +283,18 @@ SUBROUTINE Adjoint_CostContSolver( Model,Solver,dt,TransientSimulation )
          CostVar % Values(1)=Cost_S
      END IF
      IF (ParEnv % MyPE == 0) then
-        OPEN (12, FILE=CostFile,POSITION='APPEND')
-           write(12,'(3(ES20.11E3))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/Area_S)
-        CLOSE(12)
+        OPEN (NEWUNIT=ioCostAppendPar, FILE=CostFile,POSITION='APPEND')
+           write(ioCostAppendPar,'(3(ES20.11E3))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/Area_S)
+        CLOSE(ioCostAppendPar)
      End if
    ELSE
      CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
      IF (ASSOCIATED(CostVar)) THEN
         CostVar % Values(1)=Cost
      END IF
-     OPEN (12, FILE=CostFile,POSITION='APPEND')
-        write(12,'(3(ES20.11E3))') TimeVar % Values(1),Cost,sqrt(2*Cost/Area)
-     close(12)
+     OPEN (NEWUNIT=ioCostAppendSerial, FILE=CostFile,POSITION='APPEND')
+        write(ioCostAppendSerial,'(3(ES20.11E3))') TimeVar % Values(1),Cost,sqrt(2*Cost/Area)
+     close(ioCostAppendSerial)
      Cost_S=Cost
    END IF
 

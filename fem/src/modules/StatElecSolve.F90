@@ -459,8 +459,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     CALL DefaultFinishBulkAssembly()
 
     ! If a complex-valued problem, the assembly for boundaries is not yet ready
-    IF (CVersion) GOTO 201
-    
+    boundary_assembly: BLOCK
+    IF (CVersion) EXIT boundary_assembly
+
     nColours = GetNOFBoundaryColours(Solver)
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
@@ -494,7 +495,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     !$OMP END PARALLEL
 
     CALL CheckTimer(Caller//'BCAssembly',Delete=.TRUE.)
-201 CONTINUE
+    END BLOCK boundary_assembly
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()

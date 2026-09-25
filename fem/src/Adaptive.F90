@@ -480,6 +480,7 @@ CONTAINS
     !PRINT *,'OutFrac:',OutFrac,MaxFrac, OutFrac < MaxFrac
     !PRINT *,'Depth:',RefMesh % AdaptiveDepth, MinDepth
     
+    AdaptRefineBlock: BLOCK
     IF( RefMesh % AdaptiveDepth > MinDepth ) THEN
       mError = MaxError
       IF(ListGetLogical(Params, 'Adaptive Use Nodal Error As Limit', Found)) mError = NodalMaxError
@@ -496,8 +497,8 @@ CONTAINS
           CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
           RefMesh % Parent % OutputActive = .FALSE.      
           RefMesh % AdaptiveFinished = .TRUE.
-          IF (WithRecovery) RTFlux % SteadyConverged = 1 
-          GOTO 10
+          IF (WithRecovery) RTFlux % SteadyConverged = 1
+          EXIT AdaptRefineBlock
         END IF
       END IF
     END IF
@@ -568,7 +569,7 @@ CONTAINS
       CALL Info( Caller,'Current mesh seems fine. Nothing to do.', Level=6 )
       IF (ASSOCIATED(RefMesh % Parent)) RefMesh % Parent % OutputActive = .FALSE.
       IF (WithRecovery) RTFlux % SteadyConverged = 1
-      GOTO 10
+      EXIT AdaptRefineBlock
     ELSE
       CALL PrepareMesh(Model, NewMesh, ParEnv % PEs>1)
     END IF
@@ -829,10 +830,9 @@ CONTAINS
 
       Mesh => sMesh
     END DO
+    END BLOCK AdaptRefineBlock
 
 !------------------------------------------------------------------------------
-
-10  CONTINUE
 
     IF (.NOT. WithRecovery) THEN
       !   Comment the next calls, if you want to keep the edge tables:
@@ -1437,6 +1437,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,n,dim
+    INTEGER :: gmshPosUnit, ptCloudUnit
     REAL(KIND=dp) :: Lambda
     REAL(KIND=dp), POINTER :: HValueF(:)
     CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile
@@ -1507,23 +1508,23 @@ CONTAINS
         
         ! write the background mesh in .pos format
         CALL Info( Caller,'Saving background mesh density in gmsh .pos format' )
-        OPEN( 11, STATUS='UNKNOWN',FILE='gmsh_bgmesh.pos' )
-        WRITE( 11,* ) 'View "mesh size field" {'           
+        OPEN( NEWUNIT=gmshPosUnit, STATUS='UNKNOWN',FILE='gmsh_bgmesh.pos' )
+        WRITE( gmshPosUnit,* ) 'View "mesh size field" {'
         DO i=1,RefMesh % NumberOfNodes
           IF(.NOT. (HValueF(i) > 0.0_dp )) CYCLE
           IF (dim == 2 ) THEN
-            WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+            WRITE( gmshPosUnit,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
                         ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), ') {', &
                         HValueF(i) / MIN(CoordScale(1), CoordScale(2)), '};'
           ELSE
-            WRITE( 11,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
+            WRITE( gmshPosUnit,* ) 'SP(', (RefMesh % Nodes % x(i)) / CoordScale(1), &
                         ', ', (RefMesh % Nodes % y(i)) / CoordScale(2), &
                         ', ', (RefMesh % Nodes % z(i)) / CoordScale(3), ') {', &
                         HValueF(i) / MIN(CoordScale(1), MIN(CoordScale(2), CoordScale(3))), '};'
           END IF
         END DO
-        WRITE( 11,* ) '};'
-        CLOSE(11)
+        WRITE( gmshPosUnit,* ) '};'
+        CLOSE(gmshPosUnit)
       ELSE
 
         CALL Info( Caller,'Saving background mesh density in gmsh 2.0 (.msh) format' )
@@ -1546,21 +1547,21 @@ CONTAINS
     ELSE      
       CALL Info( Caller,'Saving background mesh density in point cloud format' )
 
-      OPEN( 11, STATUS='UNKNOWN', FILE='bgmesh.nodes' )
-      WRITE( 11,* ) COUNT( HValueF > 0.0_dp )           
+      OPEN( NEWUNIT=ptCloudUnit, STATUS='UNKNOWN', FILE='bgmesh.nodes' )
+      WRITE( ptCloudUnit,* ) COUNT( HValueF > 0.0_dp )
       DO i=1,RefMesh % NumberOfNodes
         IF(.NOT. (HValueF(i) > 0.0_dp )) CYCLE
         IF (dim == 2 ) THEN
-          WRITE(11,'(3e23.15)') RefMesh % Nodes % x(i), &
+          WRITE(ptCloudUnit,'(3e23.15)') RefMesh % Nodes % x(i), &
               RefMesh % Nodes % y(i), HValueF(i)
         ELSE
-          WRITE(11,'(4e23.15)') RefMesh % Nodes % x(i), &
+          WRITE(ptCloudUnit,'(4e23.15)') RefMesh % Nodes % x(i), &
               RefMesh % Nodes % y(i), &
               RefMesh % Nodes % z(i), HValueF(i)
         END IF
       END DO
-      WRITE(11,*) 0
-      CLOSE(11)
+      WRITE(ptCloudUnit,*) 0
+      CLOSE(ptCloudUnit)
 
       CALL MakeDirectory( TRIM(Path) // CHAR(0) )
       CALL WriteMeshToDisk( RefMesh, Path )
@@ -3216,10 +3217,11 @@ CONTAINS
     IF (PRESENT(APostEst_K)) APostEst_K = 0.0d0
     
     c = 0.0d0
+    PostFluxBlock: BLOCK
     IF (PRESENT(UseGiven) .AND. PRESENT(PostLinFun)) THEN
       IF (UseGiven) THEN
         c(1:FDOFs) = PostLinFun(1:FDOFs)
-        GOTO 303
+        EXIT PostFluxBlock
       END IF
     END IF
 
@@ -3506,9 +3508,9 @@ CONTAINS
       END IF
       PostLinFun(1:FDOFs) = c(1:FDOFs)
     END IF
-    
+    END BLOCK PostFluxBlock
+
     ! Compute a posteriori estimate:
-303 CONTINUE
     DO t=1,IP % n
 
       ! Now get the face basis functions so that we can evaluate

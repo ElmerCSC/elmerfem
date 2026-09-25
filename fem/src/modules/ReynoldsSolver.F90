@@ -229,7 +229,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   CALL Info(Caller,'-------------------------------------------------',Level=5)
 
-200 DO iter = 1,NoIterations
+  iter_loop: DO
+  DO iter = 1,NoIterations
 
     LinearModel = ( iter == 1 ) .AND. ListGetLogical( Params,'Linear First Iteration',GotIt)
     
@@ -271,8 +272,10 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   IF(DefaultSensitivity()) THEN
     NoIterations = 1
-    GOTO 200
+    CYCLE iter_loop
   END IF
+  EXIT iter_loop
+  END DO iter_loop
       
   
   IF( ListGetLogical( Params,'Gap Sensitivity', GotIt ) ) THEN       

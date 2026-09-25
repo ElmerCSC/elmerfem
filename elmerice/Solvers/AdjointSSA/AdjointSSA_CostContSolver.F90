@@ -90,8 +90,9 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
   REAL(KIND=dp) :: NodeCostb(Model % MaxElementNodes),NodeCost_der(3,Model %MaxElementNodes)
   CHARACTER*10 :: date,temps
+  INTEGER :: ioCostHeaderPar,ioCostHeaderSerial,ioCostAppendPar,ioCostAppendSerial
 
-  save Firsttime,Parallel 
+  save Firsttime,Parallel
   save SolverName,CostSolName,CostFile
   save ElementNodes
 
@@ -131,18 +132,18 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
     CALL DATE_AND_TIME(date,temps)
     If (Parallel) then
         if (ParEnv % MyPe.EQ.0) then
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,'(A)') '#, 1.0'
-                   write(12,'(A)') '# iter, J0'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderPar, FILE=CostFile)
+                   write(ioCostHeaderPar,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderPar,'(A)') '#, 1.0'
+                   write(ioCostHeaderPar,'(A)') '# iter, J0'
+           CLOSE(ioCostHeaderPar)
          End if
     Else
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,'(A)') '#, 1.0'
-                   write(12,'(A)') '# iter, J0'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderSerial, FILE=CostFile)
+                   write(ioCostHeaderSerial,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderSerial,'(A)') '#, 1.0'
+                   write(ioCostHeaderSerial,'(A)') '# iter, J0'
+           CLOSE(ioCostHeaderSerial)
     End if
 
    CostSolName =  GetString( SolverParams,'Cost Variable Name', Found)
@@ -269,18 +270,18 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
                  CostVar % Values(1)=Cost_S
           END IF
          IF (Solver % ParEnv % MyPE == 0) then
-                 OPEN (12, FILE=CostFile,POSITION='APPEND')
-                 write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
-                 CLOSE(12)
+                 OPEN (NEWUNIT=ioCostAppendPar, FILE=CostFile,POSITION='APPEND')
+                 write(ioCostAppendPar,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
+                 CLOSE(ioCostAppendPar)
          End if
    ELSE
             CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
             IF (ASSOCIATED(CostVar)) THEN
                     CostVar % Values(1)=Cost
             END IF
-                    OPEN (12, FILE=CostFile,POSITION='APPEND')
-                       write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
-                    close(12)
+                    OPEN (NEWUNIT=ioCostAppendSerial, FILE=CostFile,POSITION='APPEND')
+                       write(ioCostAppendSerial,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
+                    close(ioCostAppendSerial)
    END IF
    
    Return

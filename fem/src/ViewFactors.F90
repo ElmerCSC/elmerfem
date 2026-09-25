@@ -881,7 +881,7 @@ CONTAINS
      CHARACTER(*) :: ModelName
      LOGICAL :: DoRadiators
 !------------------------------------------------------------------------------
-     INTEGER :: NoArgs, iostat
+     INTEGER :: NoArgs, iostat, StartInfoUnit
 !------------------------------------------------------------------------------
      NoArgs = COMMAND_ARGUMENT_COUNT()
 
@@ -903,12 +903,12 @@ CONTAINS
      ELSE IF ( NoArgs == 1 .AND. .NOT. DoRadiators ) THEN
        CONTINUE                       ! ModelName already holds the argument
      ELSE
-       OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
+       OPEN( NEWUNIT=StartInfoUnit,file='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
        IF( iostat /= 0 ) THEN
          CALL Fatal( Caller, 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
        END IF
-       READ(1,'(a)') ModelName
-       CLOSE(1)
+       READ(StartInfoUnit,'(a)') ModelName
+       CLOSE(StartInfoUnit)
      END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE ReadCommandlineArguments

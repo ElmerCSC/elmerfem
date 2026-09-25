@@ -236,7 +236,8 @@
       VectorFields = VectorFields+1
     END DO
     
-    IF( ScalarFields + VectorFields == 0 ) GOTO 10
+    write_block: BLOCK
+    IF( ScalarFields + VectorFields == 0 ) EXIT write_block
     
 !------------------------------------------------------------------------------
 ! Write header to output
@@ -620,12 +621,11 @@
         WRITE(PostFileUnit,'()')
       END DO
     END DO
+    END BLOCK write_block
 
 !------------------------------------------------------------------------------
 !   We are done here close the files and deallocate
 !------------------------------------------------------------------------------
-10  CONTINUE
-
     CLOSE(PostFileUnit)
     
     IF(MaskExists) DEALLOCATE(MaskOrder)

@@ -420,7 +420,8 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   n = Mesh % MaxElementDOFs
   ALLOCATE( Force(n), Stiff(n,n), Anodal(3,n), STAT=istat )
 
-1 CALL DefaultInitialize(Solver, ReadySystemMatrix)
+  DO
+  CALL DefaultInitialize(Solver, ReadySystemMatrix)
     
   active = GetNOFActive()
   DO t=1,active
@@ -521,8 +522,10 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
     IsIm = .TRUE.
     imoffset = dofs / 2
     ReadySystemMatrix = ConstantBulkMatrix
-    GOTO 1    
+    CYCLE
   END IF
+  EXIT
+  END DO
 
   IF( ASSOCIATED( EdgeVar ) ) THEN
     IF( InfoActive(20) ) THEN

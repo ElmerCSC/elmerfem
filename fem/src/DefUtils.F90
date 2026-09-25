@@ -4577,7 +4577,7 @@ CONTAINS
       CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b')       
     END IF
       
-10  CONTINUE
+    LinSysTrialRetry: DO
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
     
@@ -4612,11 +4612,13 @@ CONTAINS
         CALL ListPopNamespace()
         CALL Info('DefaultSolve','Linear system namespace number: '//I2S(NameSpaceI),Level=7)
         CALL ListPushNamespace('linsys'//I2S(NameSpaceI)//':')
-        GOTO 10
+        CYCLE LinSysTrialRetry
       END IF
     END IF
-    
-    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.FALSE. ) 
+    EXIT LinSysTrialRetry
+    END DO LinSysTrialRetry
+
+    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.FALSE. )
     IF(NonlinearControl) CALL ControlNonlinearSystem(Solver,PreSolve=.FALSE.)
     
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN

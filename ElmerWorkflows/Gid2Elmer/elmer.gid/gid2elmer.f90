@@ -8,27 +8,28 @@ PROGRAM GID2ELMER
 !----------------------------------------------------------------------------
   IMPLICIT NONE
   CHARACTER(LEN=200) :: lineread
+  INTEGER :: NodesUnit, BoundaryUnit, ElementsUnit, HeaderUnit
 !----------------------------------------------------------------------------
-  OPEN(UNIT=10, FILE='mesh.nodes', STATUS='unknown')
-  OPEN(UNIT=11, FILE='mesh.boundary', STATUS='unknown')
-  OPEN(UNIT=12, FILE='mesh.elements', STATUS='unknown')
-  OPEN(UNIT=13, FILE='mesh.header', STATUS='unknown')
+  OPEN(NEWUNIT=NodesUnit, FILE='mesh.nodes', STATUS='unknown')
+  OPEN(NEWUNIT=BoundaryUnit, FILE='mesh.boundary', STATUS='unknown')
+  OPEN(NEWUNIT=ElementsUnit, FILE='mesh.elements', STATUS='unknown')
+  OPEN(NEWUNIT=HeaderUnit, FILE='mesh.header', STATUS='unknown')
 
-1 CONTINUE
+  DO
 !----------------------------------------------------------------------------
   READ(*,'(A200)', ERR=2) lineread
-  IF( lineread(1:3)=='eof' ) GOTO 2
-  IF( lineread(1:11)=='mesh.nodes:' )    WRITE(10,*) TRIM( lineread(12:200) )
-  IF( lineread(1:14)=='mesh.boundary:' ) WRITE(11,*) TRIM( lineread(15:200) )
-  IF( lineread(1:14)=='mesh.elements:' ) WRITE(12,*) TRIM( lineread(15:200) )
-  IF( lineread(1:12)=='mesh.header:' )   WRITE(13,*) TRIM( lineread(13:200) )
+  IF( lineread(1:3)=='eof' ) EXIT
+  IF( lineread(1:11)=='mesh.nodes:' )    WRITE(NodesUnit,*) TRIM( lineread(12:200) )
+  IF( lineread(1:14)=='mesh.boundary:' ) WRITE(BoundaryUnit,*) TRIM( lineread(15:200) )
+  IF( lineread(1:14)=='mesh.elements:' ) WRITE(ElementsUnit,*) TRIM( lineread(15:200) )
+  IF( lineread(1:12)=='mesh.header:' )   WRITE(HeaderUnit,*) TRIM( lineread(13:200) )
 !----------------------------------------------------------------------------
-  GOTO 1
+  END DO
 
 2 CONTINUE
-  CLOSE(10)
-  CLOSE(11)
-  CLOSE(12)
-  CLOSE(13)
+  CLOSE(NodesUnit)
+  CLOSE(BoundaryUnit)
+  CLOSE(ElementsUnit)
+  CLOSE(HeaderUnit)
 
 END PROGRAM GID2ELMER

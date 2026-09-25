@@ -1200,13 +1200,14 @@ CONTAINS
     TYPE(Mesh_t) :: NewMesh
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,MaxNodes,ElmCode,Parent1,Parent2
+    INTEGER :: headerunit,nodeunit,elemunit,bndunit
 !------------------------------------------------------------------------------
 
-    OPEN( 1,FILE=TRIM(Path) // '/mesh.header',STATUS='UNKNOWN' )
-    WRITE( 1,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
+    OPEN( NEWUNIT=headerunit,FILE=TRIM(Path) // '/mesh.header',STATUS='UNKNOWN' )
+    WRITE( headerunit,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, NewMesh % NumberOfBoundaryElements
     
-    WRITE( 1,'(i0)' ) 2
+    WRITE( headerunit,'(i0)' ) 2
     MaxNodes = 0
     ElmCode  = 0
     DO i=1,NewMesh % NumberOfBoundaryElements
@@ -1216,7 +1217,7 @@ CONTAINS
           MaxNodes = NewMesh % Elements(k) % TYPE % NumberOfNodes
        END IF
     END DO
-    WRITE( 1,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBoundaryElements
+    WRITE( headerunit,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBoundaryElements
 
     MaxNodes = 0
     ElmCode  = 0
@@ -1226,32 +1227,32 @@ CONTAINS
           MaxNodes = NewMesh % Elements(i) % TYPE % NumberOfNodes
        END IF
     END DO
-    WRITE( 1,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBulkElements
-    CLOSE(1)
+    WRITE( headerunit,'(i0,x,i0)' ) ElmCode,NewMesh % NumberOfBulkElements
+    CLOSE(headerunit)
 
-    OPEN( 1,FILE=TRIM(Path) // '/mesh.nodes', STATUS='UNKNOWN' )
+    OPEN( NEWUNIT=nodeunit,FILE=TRIM(Path) // '/mesh.nodes', STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfNodes
-       WRITE(1,'(i0,a,3e23.15)',ADVANCE='NO') i,' -1 ', &
+       WRITE(nodeunit,'(i0,a,3e23.15)',ADVANCE='NO') i,' -1 ', &
             NewMesh % Nodes % x(i), &
             NewMesh % Nodes % y(i), NewMesh % Nodes % z(i)
-       WRITE( 1,* ) ''
+       WRITE( nodeunit,* ) ''
     END DO
-    CLOSE(1)
+    CLOSE(nodeunit)
 
-    OPEN( 1,FILE=TRIM(Path) // '/mesh.elements', STATUS='UNKNOWN' )
+    OPEN( NEWUNIT=elemunit,FILE=TRIM(Path) // '/mesh.elements', STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfBulkElements
-       WRITE(1,'(3(i0,x))',ADVANCE='NO') i, &
+       WRITE(elemunit,'(3(i0,x))',ADVANCE='NO') i, &
             NewMesh % Elements(i) % BodyId, &
             NewMesh % Elements(i) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(i) % TYPE % NumberOfNodes
-          WRITE(1,'(i0,x)', ADVANCE='NO') &
+          WRITE(elemunit,'(i0,x)', ADVANCE='NO') &
                NewMesh % Elements(i) % NodeIndexes(j)
        END DO
-       WRITE(1,*) ''
+       WRITE(elemunit,*) ''
     END DO
-    CLOSE(1)
+    CLOSE(elemunit)
 
-    OPEN( 1,FILE=TRIM(Path) // '/mesh.boundary', STATUS='UNKNOWN' )
+    OPEN( NEWUNIT=bndunit,FILE=TRIM(Path) // '/mesh.boundary', STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfBoundaryElements
        k = i + NewMesh % NumberOfBulkElements
        parent1 = 0
@@ -1260,16 +1261,16 @@ CONTAINS
        parent2 = 0
        IF ( ASSOCIATED( NewMesh % Elements(k) % BoundaryInfo % Right ) ) &
           parent2 = NewMesh % Elements(k) % BoundaryInfo % Right % ElementIndex
-       WRITE(1,'(5(i0,x))',ADVANCE='NO') i, &
+       WRITE(bndunit,'(5(i0,x))',ADVANCE='NO') i, &
             NewMesh % Elements(k) % BoundaryInfo % Constraint, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(k) % TYPE % NumberOfNodes
-          WRITE(1,'(i0,x)', ADVANCE='NO') &
+          WRITE(bndunit,'(i0,x)', ADVANCE='NO') &
                NewMesh % Elements(k) % NodeIndexes(j)
        END DO
-       WRITE(1,*) ''
+       WRITE(bndunit,*) ''
     END DO
-    CLOSE(1)
+    CLOSE(bndunit)
 !------------------------------------------------------------------------------
   END SUBROUTINE WriteMeshToDisk
 !------------------------------------------------------------------------------
@@ -1289,6 +1290,7 @@ CONTAINS
     INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeList(100),ElmCodeCounts(100),&
         Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared, &
         iostat, BCWarns
+    INTEGER :: headerunit,nodeunit,elemunit,boundunit,sharedunit
     INTEGER, POINTER :: BList(:)
     INTEGER, ALLOCATABLE :: ElementCodes(:)
     LOGICAL :: Parallel, WarnNoTarget, Found
@@ -1336,18 +1338,18 @@ CONTAINS
     END DO
 
     !Write header file
-    OPEN( 1,FILE=TRIM(Path) // headerFN,STATUS='UNKNOWN', iostat=iostat)
+    OPEN( NEWUNIT=headerunit,FILE=TRIM(Path) // headerFN,STATUS='UNKNOWN', iostat=iostat)
     IF(iostat /= 0) THEN
       CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//headerFN)
     END IF
 
-    WRITE( 1,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
+    WRITE( headerunit,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, &
          NewMesh % NumberOfBoundaryElements
 
-    WRITE( 1,'(i0)' ) NumElmCodes
+    WRITE( headerunit,'(i0)' ) NumElmCodes
     DO j=1,NumElmCodes
-       WRITE( 1,'(i0,x,i0,x)' ) ElmCodeList(j),ElmCodeCounts(j)
+       WRITE( headerunit,'(i0,x,i0,x)' ) ElmCodeList(j),ElmCodeCounts(j)
     END DO
     IF(Parallel) THEN !need number of shared nodes
        NoShared = 0
@@ -1357,31 +1359,31 @@ CONTAINS
              NoShared = NoShared + 1
           END IF
        END DO
-       WRITE( 1,'(i0,x,i0)') NoShared, 0
+       WRITE( headerunit,'(i0,x,i0)') NoShared, 0
     END IF
-    CLOSE(1)
+    CLOSE(headerunit)
 
     !Write nodes file
-    OPEN( 1,FILE=TRIM(Path) // nodeFN, STATUS='UNKNOWN',iostat=iostat)
+    OPEN( NEWUNIT=nodeunit,FILE=TRIM(Path) // nodeFN, STATUS='UNKNOWN',iostat=iostat)
     IF(iostat /= 0) THEN
       CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//nodeFN)
     END IF
     DO i=1,NewMesh % NumberOfNodes
        IF (Parallel) THEN
-          WRITE(1,'(i0,x)', ADVANCE='NO') &
+          WRITE(nodeunit,'(i0,x)', ADVANCE='NO') &
                NewMesh % ParallelInfo % GlobalDOFs(i)
        ELSE
-          WRITE(1,'(i0,x)', ADVANCE='NO') i
+          WRITE(nodeunit,'(i0,x)', ADVANCE='NO') i
        END IF
-       WRITE(1,'(a,x,ES17.10,x,ES17.10,x,ES17.10)',ADVANCE='NO') &
+       WRITE(nodeunit,'(a,x,ES17.10,x,ES17.10,x,ES17.10)',ADVANCE='NO') &
             ' -1 ', NewMesh % Nodes % x(i), &
             NewMesh % Nodes % y(i), NewMesh % Nodes % z(i)
-       WRITE( 1,* ) ''
+       WRITE( nodeunit,* ) ''
     END DO
-    CLOSE(1)
+    CLOSE(nodeunit)
 
     !Write elements file
-    OPEN( 1,FILE=TRIM(Path) // elementFN, STATUS='UNKNOWN', iostat=iostat)
+    OPEN( NEWUNIT=elemunit,FILE=TRIM(Path) // elementFN, STATUS='UNKNOWN', iostat=iostat)
     IF(iostat /= 0) THEN
       CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//elementFN)
     END IF
@@ -1391,7 +1393,7 @@ CONTAINS
        ELSE
           ElemID = i
        END IF
-       WRITE(1,'(i0,x,i0,x,i0,x)',ADVANCE='NO') ElemID, &
+       WRITE(elemunit,'(i0,x,i0,x,i0,x)',ADVANCE='NO') ElemID, &
             NewMesh % Elements(i) % BodyId, &
             NewMesh % Elements(i) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(i) % TYPE % NumberOfNodes
@@ -1401,15 +1403,15 @@ CONTAINS
           ELSE
              m = NewMesh % Elements(i) % NodeIndexes(j)
           END IF
-          WRITE(1,'(i0,x)', ADVANCE='NO') m
+          WRITE(elemunit,'(i0,x)', ADVANCE='NO') m
        END DO
-       WRITE(1,*) ''
+       WRITE(elemunit,*) ''
     END DO
-    CLOSE(1)
+    CLOSE(elemunit)
 
     !Write boundary file
     WarnNoTarget = .FALSE.
-    OPEN( 1,FILE=TRIM(Path) // boundFN, STATUS='UNKNOWN',iostat=iostat)
+    OPEN( NEWUNIT=boundunit,FILE=TRIM(Path) // boundFN, STATUS='UNKNOWN',iostat=iostat)
     IF(iostat /= 0) THEN
       CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//boundFN)
     END IF
@@ -1450,7 +1452,7 @@ CONTAINS
        END IF
 
        !This meshBC stuff will *only* work if each BC has only 1 target boundary
-       WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
+       WRITE(boundunit,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
             meshBC, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(k) % TYPE % NumberOfNodes
@@ -1460,11 +1462,11 @@ CONTAINS
           ELSE
              m = NewMesh % Elements(k) % NodeIndexes(j)
           END IF
-          WRITE(1,'(x,i0)', ADVANCE='NO') m
+          WRITE(boundunit,'(x,i0)', ADVANCE='NO') m
        END DO
-       WRITE(1,*) !blank write statement to create new line without extra space.
+       WRITE(boundunit,*) !blank write statement to create new line without extra space.
     END DO
-    CLOSE(1)
+    CLOSE(boundunit)
 
     IF(BcWarns > 1 ) THEN
       CALL WARN("WriteMeshToDisk2",&
@@ -1480,7 +1482,7 @@ CONTAINS
     !Write .shared file
     !Need to create part.n.shared from Mesh % ParallelInfo %
     !NeighbourList % Neighbours.
-    OPEN( 1,FILE=TRIM(Path) // sharedFN, STATUS='UNKNOWN',iostat=iostat)
+    OPEN( NEWUNIT=sharedunit,FILE=TRIM(Path) // sharedFN, STATUS='UNKNOWN',iostat=iostat)
     IF(iostat /= 0) THEN
       CALL Fatal('WriteMeshToDisk2','Could not open file: '//TRIM(Path)//sharedFN)
     END IF
@@ -1488,15 +1490,15 @@ CONTAINS
        nneigh = SIZE(NewMesh % ParallelInfo % NeighbourList(i) % &
             Neighbours)
        IF(nneigh < 2) CYCLE
-       WRITE(1,'(i0, x, i0, x)',ADVANCE='NO') &
+       WRITE(sharedunit,'(i0, x, i0, x)',ADVANCE='NO') &
             NewMesh % ParallelInfo % GlobalDOFs(i),nneigh
        DO j=1,nneigh
-          WRITE(1,'(I0, x)',ADVANCE='NO') NewMesh % ParallelInfo %&
+          WRITE(sharedunit,'(I0, x)',ADVANCE='NO') NewMesh % ParallelInfo %&
                NeighbourList(i) % Neighbours(j) + 1
        END DO
-       WRITE( 1,* ) ''
+       WRITE( sharedunit,* ) ''
     END DO
-    CLOSE(1)
+    CLOSE(sharedunit)
 
 
 !------------------------------------------------------------------------------
@@ -1522,6 +1524,7 @@ CONTAINS
     INTEGER :: NoBoundaryElements, NoBulkElements, NoNodes, NoPartitions, Partition
     INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeCounts(827),&
          Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
+    INTEGER :: nodeunit,sharedunit,elemunit,boundunit,headerunit
     LOGICAL :: Found, Hit
     CHARACTER(:), ALLOCATABLE :: DirectoryName, PrefixName
 !------------------------------------------------------------------------------
@@ -1542,20 +1545,20 @@ CONTAINS
       PrefixName = DirectoryName//'/part.'//I2S(Partition)
 
       CALL Info('WriteMeshToDiskPartitioned','Write nodes file',Level=12)
-      OPEN( 1,FILE=TRIM(PrefixName) // '.nodes', STATUS='UNKNOWN' )
+      OPEN( NEWUNIT=nodeunit,FILE=TRIM(PrefixName) // '.nodes', STATUS='UNKNOWN' )
       NoNodes = 0
       DO i=1,Mesh % NumberOfNodes
         IF( ANY( NeighbourList(i) % Neighbours == Partition ) ) THEN
-          WRITE(1,'(I0,x,I0,x,3ES17.10)') i,-1, &
+          WRITE(nodeunit,'(I0,x,I0,x,3ES17.10)') i,-1, &
               Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
           NoNodes = NoNodes + 1
         END IF
       END DO
-      CLOSE(1)
+      CLOSE(nodeunit)
       
 
       CALL Info('WriteMeshToDiskPartitioned','Write shared nodes file',Level=12)
-      OPEN( 1,FILE=TRIM(PrefixName) // '.shared', STATUS='UNKNOWN' )
+      OPEN( NEWUNIT=sharedunit,FILE=TRIM(PrefixName) // '.shared', STATUS='UNKNOWN' )
       NoShared = 0
       DO i=1,Mesh % NumberOfNodes
         nneigh = SIZE( NeighbourList(i) % Neighbours )
@@ -1563,40 +1566,40 @@ CONTAINS
         
         IF( ANY( NeighbourList(i) % Neighbours == Partition ) ) THEN
           NoShared = NoShared + 1
-          WRITE(1,'(i0, x, i0, x)',ADVANCE='NO') i,nneigh
+          WRITE(sharedunit,'(i0, x, i0, x)',ADVANCE='NO') i,nneigh
           DO j=1,nneigh
-            WRITE(1,'(I0, x)',ADVANCE='NO') NeighbourList(i) % Neighbours(j) 
+            WRITE(sharedunit,'(I0, x)',ADVANCE='NO') NeighbourList(i) % Neighbours(j) 
           END DO
-          WRITE( 1,* ) ''
+          WRITE( sharedunit,* ) ''
         END IF
       END DO
-      CLOSE(1)
+      CLOSE(sharedunit)
 
 
       CALL Info('WriteMeshToDiskPartitioned','Write elements file',Level=12)
-      OPEN( 1,FILE=TRIM(PrefixName) // '.elements', STATUS='UNKNOWN' )
+      OPEN( NEWUNIT=elemunit,FILE=TRIM(PrefixName) // '.elements', STATUS='UNKNOWN' )
       NoBulkElements = 0
       ElmCodeCounts = 0      
       DO i=1,Mesh % NumberOfBulkElements
         IF( ElementPart(i) /= Partition ) CYCLE
 
         Element => Mesh % Elements(i)
-        WRITE(1,'(i0,x,i0,x,i0,x)',ADVANCE='NO') i, &
+        WRITE(elemunit,'(i0,x,i0,x,i0,x)',ADVANCE='NO') i, &
             Element % BodyId, Element % TYPE % ElementCode
         DO j=1,Element % TYPE % NumberOfNodes
-          WRITE(1,'(i0,x)', ADVANCE='NO') Element % NodeIndexes(j)
+          WRITE(elemunit,'(i0,x)', ADVANCE='NO') Element % NodeIndexes(j)
         END DO
-        WRITE(1,*) ''
+        WRITE(elemunit,*) ''
         
         ElmCode = Element % TYPE % ElementCode
         ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
         NoBulkElements = NoBulkElements + 1
       END DO
-      CLOSE(1)
+      CLOSE(elemunit)
 
 
       CALL Info('WriteMeshToDiskPartitioned','Write boundary file',Level=12)
-      OPEN( 1,FILE=TRIM(PrefixName) // '.boundary', STATUS='UNKNOWN' )
+      OPEN( NEWUNIT=boundunit,FILE=TRIM(PrefixName) // '.boundary', STATUS='UNKNOWN' )
       NoBoundaryElements = 0
       DO i=Mesh % NumberOfBulkElements +1 ,&
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -1624,33 +1627,33 @@ CONTAINS
 
         IF( .NOT. Hit ) CYCLE
 
-        WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
+        WRITE(boundunit,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
             Constraint, Parent1, Parent2,&
             Element % TYPE % ElementCode
         DO j=1,Element % TYPE % NumberOfNodes
-          WRITE(1,'(x,i0)', ADVANCE='NO') Element % NodeIndexes(j)
+          WRITE(boundunit,'(x,i0)', ADVANCE='NO') Element % NodeIndexes(j)
         END DO
-        WRITE(1,*) 
+        WRITE(boundunit,*) 
 
         ElmCode = Element % TYPE % ElementCode
         ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
         NoBoundaryElements = NoBoundaryElements + 1
       END DO
-      CLOSE(1)
+      CLOSE(boundunit)
 
 
       CALL Info('WriteMeshToDiskPartitioned','Write header file',Level=12)
-      OPEN( 1,FILE=TRIM(PrefixName) // '.header',STATUS='UNKNOWN' )
+      OPEN( NEWUNIT=headerunit,FILE=TRIM(PrefixName) // '.header',STATUS='UNKNOWN' )
       NumElmCodes = COUNT( ElmCodeCounts > 0 ) 
-      WRITE( 1,'(i0,x,i0,x,i0)' ) NoNodes, &
+      WRITE( headerunit,'(i0,x,i0,x,i0)' ) NoNodes, &
           NoBulkElements, NoBoundaryElements      
-      WRITE( 1,'(i0)' ) NumElmCodes
+      WRITE( headerunit,'(i0)' ) NumElmCodes
       DO i=SIZE(ElmCodeCounts),1,-1
         IF( ElmCodeCounts(i) == 0 ) CYCLE
-        WRITE( 1,'(i0,x,i0,x)' ) i,ElmCodeCounts(i)
+        WRITE( headerunit,'(i0,x,i0,x)' ) i,ElmCodeCounts(i)
       END DO
-      WRITE( 1,'(i0,x,i0)') NoShared, 0
-      CLOSE(1)
+      WRITE( headerunit,'(i0,x,i0)') NoShared, 0
+      CLOSE(headerunit)
       
       CALL Info('WriteMeshToDiskPartitioned','Done writing partition',Level=12)
     END DO

@@ -7950,7 +7950,7 @@ CONTAINS
     REAL(kind=dp) :: MaxBergVolume
     !-----------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i, j, k, idx, NBdry, NBulk, NNodes, index, iceberg, node
+    INTEGER :: i, j, k, idx, NBdry, NBulk, NNodes, index, iceberg, node, iounit
     INTEGER, ALLOCATABLE :: ElNodes(:), nodes(:)
     LOGICAL :: HasNeighbour, NoNewNodes, NewIceBerg, Found
     LOGICAL, ALLOCATABLE :: FoundNode(:), UsedElem(:), IcebergElem(:), GotNode(:), &
@@ -8034,27 +8034,27 @@ CONTAINS
 
     ! write to file
     IF(FileCreated) THEN
-      OPEN( 36, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
+      OPEN( NEWUNIT=iounit, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
     ELSE
-        OPEN( 36, FILE=filename, STATUS='UNKNOWN')
-        WRITE(36, '(A)') "Calving Stats Output File"
+        OPEN( NEWUNIT=iounit, FILE=filename, STATUS='UNKNOWN')
+        WRITE(iounit, '(A)') "Calving Stats Output File"
     END IF
 
     !Write out the left and rightmost points
-    WRITE(36, '(A,i0,ES30.21)') 'Time: ',GetTimestep(),GetTime()
+    WRITE(iounit, '(A,i0,ES30.21)') 'Time: ',GetTimestep(),GetTime()
 
     !Write the iceberg count
-    WRITE(36, '(A,i0)') 'Number of Icebergs: ',Iceberg
+    WRITE(iounit, '(A,i0)') 'Number of Icebergs: ',Iceberg
 
     DO i=1,iceberg
 
-        WRITE(36, '(A,i0,A,F20.0,A,F20.4,F20.4,F20.4,F20.4,A,F20.4,F20.4,F20.4)') &
+        WRITE(iounit, '(A,i0,A,F20.0,A,F20.4,F20.4,F20.4,F20.4,A,F20.4,F20.4,F20.4)') &
           'Iceberg ',i, ' Volume ', BergVolumes(i),&
           ' Extent ', BergExtents(i*4-3:i*4), ' Centroid ', BergCentroids(i*3-2:i*3)
 
     END DO
 
-    CLOSE(36)
+    CLOSE(iounit)
     FileCreated = .TRUE.
 
   END SUBROUTINE CalvingStatsMMG
@@ -8677,7 +8677,7 @@ CONTAINS
     LOGICAL :: FileCreated = .FALSE.,Found,FoundRight,FoundLeft,FirstTime,reducecorners(2),&
             ThisBC
     INTEGER :: i,j,k, NNodes, NBulk, NBdry, RCounter, LCounter,dummyint,&
-            Nl,Nr, Naux, ok, Nrail, Counter,FrontBCtag,side,LastNode,CornersTotal
+            Nl,Nr, Naux, ok, Nrail, Counter,FrontBCtag,side,LastNode,CornersTotal,iounit
     REAL(KIND=dp) :: buffer, xx, yy, mindist, tempdist
     REAL(kind=dp), ALLOCATABLE :: xL(:),yL(:),xR(:),yR(:), xRail(:), yRail(:),&
              PAllCorners(:), MinDists(:)
@@ -8966,21 +8966,21 @@ CONTAINS
 
         ! write to file
         IF(FileCreated) THEN
-          OPEN( 37, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
+          OPEN( NEWUNIT=iounit, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
         ELSE
-          OPEN( 37, FILE=filename, STATUS='UNKNOWN')
-          WRITE(37, '(A)') "Terminus Position File"
-          WRITE(37, '(A)') "TimeStep, Time, NumberOfNodes"
-          WRITE(37, '(A)') "xx, yy"
+          OPEN( NEWUNIT=iounit, FILE=filename, STATUS='UNKNOWN')
+          WRITE(iounit, '(A)') "Terminus Position File"
+          WRITE(iounit, '(A)') "TimeStep, Time, NumberOfNodes"
+          WRITE(iounit, '(A)') "xx, yy"
         END IF
 
         !Write out the left and rightmost points
-        WRITE(37, *) 'NewTime:', GetTimestep(), GetTime(), counter
+        WRITE(iounit, *) 'NewTime:', GetTimestep(), GetTime(), counter
         DO i=1, counter
-          WRITE(37, *) Mesh % Nodes % x(NodeList(i)), Mesh % Nodes % y(NodeList(i))
+          WRITE(iounit, *) Mesh % Nodes % x(NodeList(i)), Mesh % Nodes % y(NodeList(i))
         END DO
 
-        CLOSE(37)
+        CLOSE(iounit)
       END IF
     END IF
 

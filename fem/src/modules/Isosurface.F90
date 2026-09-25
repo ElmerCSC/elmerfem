@@ -118,6 +118,8 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   CALL Info( 'IsosurfaceSolver','Determining the isosurface',Level=4 )
   CALL Info( 'IsosurfaceSolver','-------------------------------------',Level=4 )
 
+  MainBody: BLOCK
+
   Mesh => GetMesh()
   OrigMesh => Mesh
   NoOrigElements = Mesh % NumberOfBulkElements
@@ -154,7 +156,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   IF (.NOT.ASSOCIATED(LevelVariable)) THEN
     CALL Error( 'Isosurface', 'Missing isosurface variable: ' // &
         TRIM(LevelVariableName) )
-    GOTO 100
+    EXIT MainBody
   END IF
 
   Levelfun => LevelVariable % Values
@@ -183,7 +185,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
 
   IF(.NOT. Found ) THEN
     CALL Warn('IsosurfaceSolver','Could not determine Isosurface value')
-    GOTO 100
+    EXIT MainBody
   END IF
 
   !--------------------------------------------------------------------------
@@ -199,7 +201,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
 
     ! Report the sizes from the call that actually created the surface.
     ParTmp = SaveParTmp
-    GOTO 100
+    EXIT MainBody
   END IF
 
   ! From here on the isosurface is going to be recreated, so drop the previous
@@ -294,7 +296,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
     NewElemNodes = 4
   ELSE
     CALL Warn('IsoSurfaceSolver','Isosurface mesh can be created only for 2D or 3D')
-    GOTO 100
+    EXIT MainBody
   END IF
 
 
@@ -540,12 +542,13 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
 
   IsoCreated = .TRUE.
 
+  END BLOCK MainBody
+
   ! Information of the new system size, also in parallel.
   ! NOTE: the reduction below is collective. Every exit above therefore
   ! branches here instead of returning, as otherwise a partition that the
   ! isosurface does not cross would leave the others hanging in it.
   !----------------------------------------------------------------------
-100 CONTINUE
 
   IF( IsoCreated ) THEN
     ParTmp(1) = NoMeshNodesOwned

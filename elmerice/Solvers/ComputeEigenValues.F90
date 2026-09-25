@@ -134,11 +134,10 @@
            Do j=2,3
              a=ki(j)
              Do i=j-1,1,-1
-               If (ki(i).LE.a) Goto 20
+               If (ki(i).LE.a) Exit
                ki(i+1)=ki(i)
                ordre(i+1)=ordre(i)
              End Do
-  20         Continue
              ki(i+1)=a
              ordre(i+1)=j
            End Do

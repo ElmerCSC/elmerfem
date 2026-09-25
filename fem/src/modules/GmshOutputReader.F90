@@ -172,7 +172,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   MaxElemDim = 0
   MaxElemNodes = 0
   
-10 CONTINUE
+DO
 
   CumNodes = 0
   CumElems = 0
@@ -248,9 +248,10 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     DO i =1, CumNodes
       Perm(i) = i
     END DO
-
-    GOTO 10 
+  ELSE
+    EXIT
   END IF
+END DO
 
   CALL Info(Caller,'Last bulk element index: '//I2S(NoBulkElems),Level=7)
 

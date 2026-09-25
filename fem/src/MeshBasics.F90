@@ -531,6 +531,7 @@ CONTAINS
 
    ! Ok, we have marked discontinuous nodes, now give them an index. 
    ! This should also create the indexes in parallel.
+   DiscontBody: BLOCK
    DisContPerm => NULL()
    ALLOCATE( DisContPerm(NoNodes) )
    DisContPerm = 0    
@@ -546,7 +547,7 @@ CONTAINS
        Mesh % DisContPerm => DisContPerm
        Mesh % DisContNodes = 0
      END IF
-     GOTO 200
+     EXIT DiscontBody
    END IF
    
    ! Create a table showing nodes that are related to the moving nodes by
@@ -933,8 +934,7 @@ CONTAINS
      Mesh % DisContPerm => DisContPerm
      Mesh % DisContNodes = NoDisContNodes 
    END IF
-
-200 CONTINUE
+   END BLOCK DiscontBody
 
    IF(DoubleBC) THEN
      CALL DropFalseParents()
@@ -3982,7 +3982,8 @@ CONTAINS
 
     Edges => NULL()
     NofEdges = 0
-1   DO i=1,Mesh % NumberOfBulkELements+Mesh % NumberOfBoundaryElements
+    DO
+    DO i=1,Mesh % NumberOfBulkELements+Mesh % NumberOfBoundaryElements
 
        Element => Mesh % Elements(i)
 
@@ -4142,8 +4143,10 @@ CONTAINS
        CALL Info('FindMeshEdges2D','Allocating edge table of size: '//I2S(NofEdges),Level=12)
        CALL AllocateVector( Mesh % Edges, NofEdges ) 
        Edges => Mesh % Edges
-       GOTO 1
+     ELSE
+       EXIT
      END IF
+    END DO
          
     Mesh % NumberOfEdges = NofEdges
     CALL Info('FindMeshEdges2D','Number of edges found: '//I2S(NofEdges),Level=10)
@@ -4280,7 +4283,8 @@ CONTAINS
     NofFaces = 0
     Faces => NULL()
 
-1   DO i=1,SIZE(Mesh % Elements)
+    DO
+    DO i=1,SIZE(Mesh % Elements)
 
       Element => Mesh % Elements(i)
       IF(.NOT.ASSOCIATED(Element % Type)) CYCLE
@@ -4566,8 +4570,10 @@ CONTAINS
           //I2S(NofFaces),Level=25)
       CALL AllocateVector( Mesh % Faces, NofFaces, 'FindMeshFaces3D' )
       Faces => Mesh % Faces
-      GOTO 1
+    ELSE
+      EXIT
     END IF
+    END DO
         
     Mesh % NumberOfFaces = NofFaces
     CALL Info('FindMeshFaces3D','Number of faces found: '//I2S(NofFaces),Level=10)
@@ -4735,7 +4741,8 @@ CONTAINS
     NofEdges = 0
     Edges => NULL()
     
-1   DO i=1,n_e
+    DO
+    DO i=1,n_e
       Element => Mesh % Elements(i)
       
       ! For P elements mappings are different
@@ -4909,8 +4916,10 @@ CONTAINS
       CALL AllocateVector( Mesh % Edges, NofEdges ) 
       Edges => Mesh % Edges
       CALL Info('FindMeshEdges3D','Edge table allocated',Level=25)
-      GOTO 1
+    ELSE
+      EXIT
     END IF
+    END DO
 
     Mesh % NumberOfEdges = NofEdges
     CALL Info('FindMeshEdges3D','Number of edges found: '//I2S(NofEdges),Level=10)
@@ -4984,7 +4993,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: SharpEdge(:)
     REAL(KIND=dp) :: phi0
 
-    INTEGER :: t,i,i1,i2,j,n,Sweep
+    INTEGER :: t,i,i1,i2,j,n,Sweep,iounit
     REAL(KIND=dp) :: cosphi, cosphi0, Normal1(3), Normal2(3)
     INTEGER, ALLOCATABLE :: EdgeUses(:), EdgeToFaceMap(:,:)
     TYPE(Element_t), POINTER :: Face1, Face2
@@ -5075,15 +5084,15 @@ CONTAINS
 #if 0
     ! For debugging reasons we may want to save the edges. 
     ! plot3(sharp(
-    OPEN( 10, FILE = 'sharp_edge.dat' )    
+    OPEN( NEWUNIT=iounit, FILE = 'sharp_edge.dat' )    
     DO t=1, Mesh % NumberOfEdges
       IF(.NOT. SharpEdge(t)) CYCLE
       i1 = Mesh % Edges(t) % NodeIndexes(1)
       i2 = Mesh % Edges(t) % NodeIndexes(2)
-      WRITE(10,*) t,Mesh % Nodes % x(i1),Mesh % Nodes % y(i1),Mesh % Nodes % z(i1), &
+      WRITE(iounit,*) t,Mesh % Nodes % x(i1),Mesh % Nodes % y(i1),Mesh % Nodes % z(i1), &
           Mesh % Nodes % x(i2),Mesh % Nodes % y(i2),Mesh % Nodes % z(i2)
     END DO
-    CLOSE(10)
+    CLOSE(iounit)
 #endif
     
   END SUBROUTINE MarkSharpEdges
@@ -5095,7 +5104,7 @@ CONTAINS
     REAL(KIND=dp) :: phi0
     LOGICAL, ALLOCATABLE :: SharpNode(:)
 
-    INTEGER :: t,i,j,i1,i2,j1,j2,n,Sweep
+    INTEGER :: t,i,j,i1,i2,j1,j2,n,Sweep,iounit
     REAL(KIND=dp) :: cosphi, cosphi0, Normal1(3), Normal2(3)
     INTEGER, ALLOCATABLE :: NodeUses(:), NodeToEdgeMap(:,:)
     TYPE(Element_t), POINTER :: Edge1, Edge2
@@ -5180,12 +5189,12 @@ CONTAINS
 
 #if 0
     ! For debugging reasons we may want to save the corner nodes. 
-    OPEN( 10, FILE = 'sharp_node.dat' )    
+    OPEN( NEWUNIT=iounit, FILE = 'sharp_node.dat' )    
     DO t=1, Mesh % NumberOfNodes
       IF(.NOT. SharpNode(t)) CYCLE
-      WRITE(10,*) t,Mesh % Nodes % x(t),Mesh % Nodes % y(t),Mesh % Nodes % z(t)
+      WRITE(iounit,*) t,Mesh % Nodes % x(t),Mesh % Nodes % y(t),Mesh % Nodes % z(t)
     END DO
-    CLOSE(10)
+    CLOSE(iounit)
 #endif
     
   END SUBROUTINE MarkSharpNodes
@@ -6166,7 +6175,8 @@ END SUBROUTINE FindNeighbourNodes
     ! 1st round initial numbering is given
     ! 2nd round a list matrix giving all the connections is created
 
-100 DO t=ElemStart, ElemFin
+    DO
+    DO t=ElemStart, ElemFin
        
        CurrentElement => Mesh % Elements(t)
        
@@ -6338,9 +6348,10 @@ END SUBROUTINE FindNeighbourNodes
        IF(PRESENT(BreakLoop)) THEN
          IF(BreakLoop) BreakNode = 1
        END IF
-       
-       GOTO 100
+    ELSE
+       EXIT
     END IF
+    END DO
 
 !------------------------------------------------------------------------------
 
@@ -6508,7 +6519,8 @@ END SUBROUTINE FindNeighbourNodes
     Eps2 = LocalEps
 
 
-100 IF( DummySearch ) THEN
+    DO
+    IF( DummySearch ) THEN
 
       mindist = HUGE( mindist ) 
       
@@ -6583,7 +6595,7 @@ END SUBROUTINE FindNeighbourNodes
       IF( IsRecursive ) THEN
         Eps1 = 10.0 * Eps1
         Eps2 = 10.0 * Eps2
-        IF( Eps1 <= 1.0_dp ) GOTO 100
+        IF( Eps1 <= 1.0_dp ) CYCLE
       ELSE
         IF( mindist < Eps1 ) THEN
           CurrentElement => Mesh % Elements(k)
@@ -6592,6 +6604,8 @@ END SUBROUTINE FindNeighbourNodes
         END IF
       END IF
     END IF
+    EXIT
+    END DO
 
     IF( Hit ) HitElement => CurrentElement
     
@@ -8250,7 +8264,7 @@ CONTAINS
 !------------------------------------------------------------------------------    
    TYPE(ParallelInfo_t), POINTER :: ParInfo=>NULL()
    TYPE(ValueList_t), POINTER :: Params
-   INTEGER :: i,j,k,n,maxnei
+   INTEGER :: i,j,k,n,maxnei,iounit
    LOGICAL :: Found, MeshMode, MatrixMode
    CHARACTER(*), PARAMETER :: Caller = "SaveParallelInfo"
    TYPE(Nodes_t), POINTER :: Nodes
@@ -8263,7 +8277,8 @@ CONTAINS
 
    IF( .NOT. ( MeshMode .OR. MatrixMode ) ) RETURN
 
-10 IF( MeshMode ) THEN
+   DO
+   IF( MeshMode ) THEN
      CALL Info(Caller,'Saving parallel mesh info',Level=8 ) 
    ELSE
      CALL Info(Caller,'Saving parallel matrix info',Level=8 ) 
@@ -8304,7 +8319,7 @@ CONTAINS
    IF(ParEnv % PEs > 1) dumpfile = TRIM(dumpfile)//'.'//I2S(ParEnv % myPE)      
    CALL Info(Caller,'Saving parallel info to: '//TRIM(dumpfile),Level=8)
 
-   OPEN(1,FILE=dumpfile, STATUS='Unknown')  
+   OPEN(NEWUNIT=iounit,FILE=dumpfile, STATUS='Unknown')  
    DO i=1,n
      j = ParInfo % GlobalDOFs(i)
      IF( ParInfo % GInterface(i) ) THEN
@@ -8312,31 +8327,33 @@ CONTAINS
      ELSE
        k = 0
      END IF
-     WRITE(1,'(3I6)',ADVANCE='NO') i,j,k
+     WRITE(iounit,'(3I6)',ADVANCE='NO') i,j,k
      IF( ASSOCIATED( ParInfo % NeighbourList(i) % Neighbours ) ) THEN
        k = SIZE( ParInfo % NeighbourList(i) % Neighbours )
      ELSE
        k = 0
      END IF
      DO j=1,k
-       WRITE(1,'(I6)',ADVANCE='NO')  ParInfo % NeighbourList(i) % Neighbours(j)
+       WRITE(iounit,'(I6)',ADVANCE='NO')  ParInfo % NeighbourList(i) % Neighbours(j)
      END DO
      DO j=k+1,maxnei
-       WRITE(1,'(I6)',ADVANCE='NO')  -1 
+       WRITE(iounit,'(I6)',ADVANCE='NO')  -1 
      END DO
      IF( MeshMode ) THEN
-       WRITE(1,'(3ES12.3)',ADVANCE='NO') &
+       WRITE(iounit,'(3ES12.3)',ADVANCE='NO') &
            Nodes % x(i), Nodes % y(i), Nodes % z(i)
      END IF
-     WRITE(1,'(A)') ' ' ! finish the line
+     WRITE(iounit,'(A)') ' ' ! finish the line
    END DO
-   CLOSE(1)
+   CLOSE(iounit)
 
    ! Redo with matrix if both modes are requested
    IF( MeshMode .AND. MatrixMode ) THEN
      MeshMode = .FALSE.
-     GOTO 10
+   ELSE
+     EXIT
    END IF
+   END DO
    
    CALL Info(Caller,'Finished saving parallel info',Level=10)
 

@@ -2149,8 +2149,9 @@ CONTAINS
      END IF     
 #endif
      
+     InitialReorderBlock: BLOCK
      IF( UseGiven ) THEN
-       k = MAXVAL( Perm ) 
+       k = MAXVAL( Perm )
        ALLOCATE( InvInitialReorder(k), STAT=istat )
        IF( istat /= 0 ) THEN
          CALL Fatal(Caller,'Allocation error for InvInitialReorder of size: '//I2S(k))
@@ -2159,7 +2160,7 @@ CONTAINS
        DO i=1,SIZE(Perm)
          IF (Perm(i)>0) InvInitialReorder(Perm(i)) = i
        END DO
-       GOTO 10
+       EXIT InitialReorderBlock
      END IF
 
        
@@ -2222,8 +2223,9 @@ CONTAINS
      
      UseOptimized = ListGetLogical( Solver % Values, &
          'Optimize Bandwidth Use Always', GotIt )
-          
-10   Matrix => NULL()
+     END BLOCK InitialReorderBlock
+
+     Matrix => NULL()
 
      ! check if matrix structures really need to be created:
      ! -----------------------------------------------------

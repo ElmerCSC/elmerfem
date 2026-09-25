@@ -191,7 +191,7 @@ CONTAINS
     
     CHARACTER(LEN=MAX_NAME_LEN) :: DirCommand
     LOGICAL :: FileExists
-    INTEGER, PARAMETER :: InFileUnit = 28
+    INTEGER :: InFileUnit
     
     
     NoDir = 0
@@ -231,7 +231,7 @@ CONTAINS
     CALL Info('OpenFoam2ElmerFit','Performing command: '//TRIM(DirCommand),Level=12)
     CALL SystemCommand( DirCommand )
 
-    OPEN(InFileUnit,File='OpenFOAMBlocks.txt',IOStat=IOstatus)
+    OPEN(NEWUNIT=InFileUnit,File='OpenFOAMBlocks.txt',IOStat=IOstatus)
     IF(IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not open file: OpenFOAMBlocks.txt')
     END IF
@@ -274,7 +274,7 @@ CONTAINS
     INTEGER :: line,i,j,k,n
     REAL(KIND=dp) :: x,y,z
     INTEGER :: NumberOfNodes, IOStatus
-    INTEGER, PARAMETER :: InFileUnit = 28
+    INTEGER :: InFileUnit
     CHARACTER(LEN=:), ALLOCATABLE :: ReadStr
     
     ALLOCATE( Mesh % Nodes )
@@ -284,7 +284,7 @@ CONTAINS
     
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)                   
     
-    OPEN(InFileUnit,FILE = Filename, STATUS='old', IOSTAT=IOstatus)
+    OPEN(NEWUNIT=InFileUnit,FILE = Filename, STATUS='old', IOSTAT=IOstatus)
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not open file for reading: '//TRIM(FileName))
     END IF
@@ -402,7 +402,7 @@ CONTAINS
     INTEGER :: line,i,j,k,n,nstep
     REAL(KIND=dp) :: val
     INTEGER :: NumberOfNodes, IOStatus
-    INTEGER, PARAMETER :: InFileUnit = 28
+    INTEGER :: InFileUnit
     CHARACTER(LEN=:), ALLOCATABLE :: ReadStr
     LOGICAL :: IsScalar
 
@@ -422,7 +422,7 @@ CONTAINS
     
     WRITE(TFileName,'(A)') FileName(1:j)//I2S(nstep)//FileName(j+2:k-1)//TRIM(TSuffix)
     
-    OPEN(InFileUnit,FILE = TFilename, STATUS='old', IOSTAT=IOstatus)
+    OPEN(NEWUNIT=InFileUnit,FILE = TFilename, STATUS='old', IOSTAT=IOstatus)
     IF( IOStatus /= 0 ) THEN
       CALL Warn('OpenFoam2ElmerFit','Could not open file for reading: '//TRIM(TFileName))
       RETURN
@@ -430,12 +430,13 @@ CONTAINS
     
     CALL Info('OpenFoam2ElmerFit','Reading data field from file: '//TRIM(TFileName),Level=6)
 
+    read_block: BLOCK
     j = 0
     DO Line = 1, 100
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
         CALL Warn('OpenFoam2ElmerFit','End of file after '//I2S(Line)//' lines')
-        GOTO 10
+        EXIT read_block
       END IF
 
       j =  INDEX( ReadStr,'internalField',.TRUE.) 
@@ -450,7 +451,7 @@ CONTAINS
     
     IF( j == 0 ) THEN
       CALL Warn('OpenFoam2ElmerFit','Could not find > internalField < in header!')
-      GOTO 10
+      EXIT read_block
     ELSE
       CALL Info('OpenFoam2ElmerFit','internalField found at line: '//I2S(Line),Level=7)    
     END IF
@@ -458,7 +459,7 @@ CONTAINS
     j = INDEX( ReadStr,'nonuniform',.TRUE.)
     IF( j == 0 ) THEN
       CALL Warn('OpenFoam2ElmerFit','This routine only knows how to read nonuniform lists!')
-      GOTO 10
+      EXIT read_block
     END IF
     
       
@@ -491,8 +492,9 @@ CONTAINS
     GotData = .TRUE.
     
     ! PRINT *,'range f:',MINVAL( OFField ), MAXVAL( OFField )
+    END BLOCK read_block
 
-10  CLOSE( InFileUnit )
+    CLOSE( InFileUnit )
     
   END SUBROUTINE ReadFOAMField
 

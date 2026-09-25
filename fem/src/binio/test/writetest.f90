@@ -5,7 +5,7 @@ PROGRAM WriteTest
     IMPLICIT NONE
     INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(15)
     INTEGER, PARAMETER :: fu = 10
-    INTEGER :: a, stat, i
+    INTEGER :: a, stat, i, iounit
     REAL(dp) :: v(3)
     CHARACTER(1) :: E
 
@@ -33,10 +33,10 @@ PROGRAM WriteTest
     CALL BinClose( fu, stat )
     IF ( stat /= 0 ) STOP 6
 
-    OPEN( 10, file="writetest.out", position="append" )
-    WRITE( 10, '(A)' ) ''
-    WRITE( 10, '(A)' ) "Humhum"
-    CLOSE( 10 )
+    OPEN( NEWUNIT=iounit, file="writetest.out", position="append" )
+    WRITE( iounit, '(A)' ) ''
+    WRITE( iounit, '(A)' ) "Humhum"
+    CLOSE( iounit )
 
     CALL BinOpen( fu, "writetest.out", "append", stat )
     IF ( stat /= 0 ) STOP 7

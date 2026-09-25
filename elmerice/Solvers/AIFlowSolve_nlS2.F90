@@ -743,6 +743,7 @@
 CONTAINS
 
       SUBROUTINE GetMaterialDefs()
+      INTEGER :: ioVisc
       ! check if we are isotropic or not
       Isotropic = ListGetLogical( Material , 'Isotropic',Gotit )
       IF (.NOT.Gotit) Then
@@ -760,11 +761,11 @@ CONTAINS
       IF (.NOT.Isotropic) Then
         ! Get the viscosity file and store the viscosities into FabricGrid
          viscosityFile = ListGetString( Material ,'Viscosity File',GotIt,UnFoundFatal )
-         OPEN( 1, File = viscosityFile)
+         OPEN( NEWUNIT=ioVisc, File = viscosityFile)
          DO i=1,813
-             READ( 1, '(6(e14.8))' ) FabricGrid( 6*(i-1)+1:6*(i-1)+6 )
+             READ( ioVisc, '(6(e14.8))' ) FabricGrid( 6*(i-1)+1:6*(i-1)+6 )
          END DO
-         CLOSE(1)
+         CLOSE(ioVisc)
       ENDIF
 
       Wn(2) = ListGetConstReal( Material , 'Powerlaw Exponent', GotIt,UnFoundFatal=UnFoundFatal)

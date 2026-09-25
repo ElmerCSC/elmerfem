@@ -103,6 +103,7 @@
 
       CHARACTER(LEN=MAX_NAME_LEN) :: SolverName="CostCov"
       CHARACTER(LEN=MAX_NAME_LEN) :: CostFile
+      INTEGER :: iounit1,iounit2,iounit3
 
       ! check Parallel/Serial
       Parallel=(ParEnv % PEs > 1)
@@ -152,9 +153,9 @@
        std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
 
        IF (ParEnv%MyPE.EQ.0) THEN
-         open(10,file=TRIM(CostFile))
-           write(10,*) '# Covariance type: ',TRIM(CovType)
-           write(10,*) '# standard deviation: ',std
+         open(NEWUNIT=iounit1,file=TRIM(CostFile))
+           write(iounit1,*) '# Covariance type: ',TRIM(CovType)
+           write(iounit1,*) '# standard deviation: ',std
        END IF
 
         SELECT CASE (CovType)
@@ -171,21 +172,21 @@
 
             Ctype = ListGetString(SolverParams,"correlation type",UnFoundFatal=.TRUE.)
             IF (ParEnv%MyPE.EQ.0) &
-              write(10,*) '# Correlation type: ',TRIM(Ctype)
+              write(iounit1,*) '# Correlation type: ',TRIM(Ctype)
 
             Crange = ListGetConstReal(SolverParams,"correlation range", UnFoundFatal=.TRUE.)
 
             IF (Ctype == 'maternp') THEN
               p = ListGetInteger(SolverParams,"MaternP polynomial order",UnFoundFatal=.TRUE.)
               IF (ParEnv%MyPE.EQ.0) &
-               write(10,*) '# range, exponent: ',Crange,p
+               write(iounit1,*) '# range, exponent: ',Crange,p
             ELSE IF (Ctype == 'materni') THEN
               p = ListGetInteger(SolverParams,"MaternI order",UnFoundFatal=.TRUE.)
               IF (ParEnv%MyPE.EQ.0) &
-               write(10,*) '# range, exponent: ',Crange,p
+               write(iounit1,*) '# range, exponent: ',Crange,p
             ELSE
                IF (ParEnv%MyPE.EQ.0) &
-                 write(10,*) '# range:',Crange
+                 write(iounit1,*) '# range:',Crange
             END IF
 
           CASE('diffusion operator')
@@ -197,7 +198,7 @@
             Crange = ListGetConstReal(SolverParams,"correlation range", UnFoundFatal=.TRUE.)
 
             IF (ParEnv%MyPE.EQ.0) &
-              write(10,*) '# range, exponent: ',Crange,Cm
+              write(iounit1,*) '# range, exponent: ',Crange,Cm
 
            CASE DEFAULT
              CALL FATAL(SolverName,"Covariance type not known")
@@ -205,7 +206,7 @@
         END SELECT
 
         IF (ParEnv%MyPE.EQ.0) &
-         close(10)
+         close(iounit1)
 
        allocate(x(nn),y(nn),One(nn))
        ! normalisation vector; usefull for parallel
@@ -254,15 +255,15 @@
                   MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
           CostVar % Values(1)=CostVar % Values(1)+Cost_S
           IF (ParEnv % MyPE == 0) then
-                 OPEN (10, FILE=CostFile,POSITION='APPEND')
-                 write(10,'(2(ES20.11E3))') GetTime(),Cost_S
-                 CLOSE(10)
+                 OPEN (NEWUNIT=iounit2, FILE=CostFile,POSITION='APPEND')
+                 write(iounit2,'(2(ES20.11E3))') GetTime(),Cost_S
+                 CLOSE(iounit2)
          End if
        ELSE
           CostVar % Values(1)=CostVar % Values(1)+Cost
-          open(10,file=TRIM(CostFile),position='append')
-           write(10,'(2(ES20.11E3))') GetTime(),Cost
-          close(10)
+          open(NEWUNIT=iounit3,file=TRIM(CostFile),position='append')
+           write(iounit3,'(2(ES20.11E3))') GetTime(),Cost
+          close(iounit3)
        END IF
 
      END SUBROUTINE BackgroundErrorCostSolver

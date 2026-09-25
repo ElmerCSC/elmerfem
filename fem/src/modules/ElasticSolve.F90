@@ -2027,8 +2027,9 @@ CONTAINS
         ! so its local matrix is in store and DefaultUpdateEquations will fetch it
         ! rather than read what is passed. Skip building it. See the guard on
         ! "Local Matrix Storage" above for when this is sound.
+        skip_element: BLOCK
         IF( .NOT. ConstantBulkMatrixInUse ) THEN
-          IF( UseLocalMatrixCopy( Solver, activeind = t ) ) GOTO 200
+          IF( UseLocalMatrixCopy( Solver, activeind = t ) ) EXIT skip_element
         END IF
 
         !-----------------------------------------------------------------------------------
@@ -2404,7 +2405,8 @@ CONTAINS
         !------------------------------------------------------------------------------
         !        Update global matrices from local matrices
         !------------------------------------------------------------------------------
-200     IF ( ConstantBulkMatrixInUse ) THEN
+        END BLOCK skip_element
+        IF ( ConstantBulkMatrixInUse ) THEN
           ! The matrix was restored wholesale, so only the load is wanted here.
           CALL DefaultUpdateForce( LocalForce )
         ELSE
