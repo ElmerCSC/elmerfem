@@ -53,6 +53,7 @@
 !------------------------------------------------------------------------------
       
   PROGRAM RadiatorFactors
+    IMPLICIT NONE
     INTEGER :: i,j,k
     CHARACTER(LEN=256) :: s, t
 

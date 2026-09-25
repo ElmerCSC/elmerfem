@@ -1,5 +1,6 @@
 FUNCTION Source( Model, n, f ) RESULT(h)
    USE Lists
+   IMPLICIT NONE
    TYPE(Model_t) :: Model
    INTEGER :: n
    REAL(KIND=dp) :: f, h, x, s, Time, OldTime = 0

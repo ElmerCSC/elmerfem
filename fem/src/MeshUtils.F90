@@ -36,4 +36,5 @@ MODULE MeshUtils
   USE MeshTagging
   USE MeshLoad
   USE MeshExtrusion
+  IMPLICIT NONE
 END MODULE MeshUtils

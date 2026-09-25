@@ -35,4 +35,5 @@ MODULE SolverUtils
   USE SolveCore
   USE ContactUtils
   USE ProjectorUtils
+  IMPLICIT NONE
 END MODULE SolverUtils
