@@ -110,12 +110,12 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,&
        MaskVarName, NormFile
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
 
 !Variables for m1qn3
   external simul_rc !,euclid,ctonbe,ctcabe
-  character*3 normtype
+  CHARACTER(LEN=3) normtype
   REAL(KIND=dp) :: dxmin,df1,epsrel
   real(kind=dp), allocatable :: dz(:),dzs(:)
   REAL :: rzs(1)
