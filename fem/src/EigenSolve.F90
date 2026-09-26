@@ -599,6 +599,7 @@ CONTAINS
                     
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
            CALL Info(Caller,'Computing eigen system residuals',Level=8)
+           CALL Info( Caller, '--------------------------------',Level=4 )
            CALL CheckResiduals( Matrix, Neig, EigValues, EigVectors )
          END IF
          CALL Info( Caller, '--------------------------------',Level=4 )
@@ -771,27 +772,75 @@ CONTAINS
 
     
 !------------------------------------------------------------------------------
+!> Check the consistency of eigenpairs (lambda,x) of the eigenvalue problem
+!> A x = lambda M x, with real-valued matrices A and M. The relative residual 
+!> ||A x - lambda M x||/||x|| depends on the choice units in obtaining A and M, 
+!> so report also the normwise relative backward error 
+!> err = ||A x - lambda M x|| / ( ||A|| + |lambda| ||M||) ||x|| ),
+!> which is independent of scaling. For nonsymmetric problems the eigenpairs
+!> may be complex, so both the real and imaginary parts are considered.
+!------------------------------------------------------------------------------
     SUBROUTINE CheckResiduals( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: Matrix
-      INTEGER :: i,n,sz
+      INTEGER :: n
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
 
-      REAL(KIND=dp), ALLOCATABLE :: x(:), y(:)
+      REAL(KIND=dp), POINTER CONTIG :: svals(:)
+      REAL(KIND=dp), ALLOCATABLE :: xr(:), xi(:), Axr(:), Axi(:), Mxr(:), Mxi(:)
+      REAL(KIND=dp) :: NormA, NormM, NormX, NormR, lr, li
+      INTEGER :: i, sz
 
       sz = Matrix % NumberOfRows
-      ALLOCATE( x(sz), y(sz) )
-      DO i=1,n
-        Matrix % Values = Matrix % Values - REAL(Eigs(i)) * Matrix % MassValues
-        x = REAL( EigVectors(i,1:sz) )
-        CALL CRS_MatrixVectorMultiply( Matrix, x, y )
-        Matrix % Values = Matrix % Values + REAL(Eigs(i)) * Matrix % MassValues
 
-        WRITE( Message, * ) 'L^2 Norm of the relative residual: ', i, &
-            SQRT(SUM(y**2)) / SQRT(SUM(x**2))
+      ! The Frobenius norm of the real-valued matrices:
+      NormA = SQRT(SUM(Matrix % Values**2))
+      NormM = SQRT(SUM(Matrix % MassValues**2))
+
+      WRITE( Message, '(A,2ES12.3)' ) 'Frobenius norms of A and M: ', NormA, NormM
+      CALL Info( 'CheckResiduals', Message, Level = 5 )
+
+      ALLOCATE( xr(sz), xi(sz), Axr(sz), Axi(sz), Mxr(sz), Mxi(sz) )
+
+      WRITE( Message, '(A9,3X,A17,3X,A14)' ) 'Eigenpair', '||Ax-L*Mx||/||x||', 'backward error'
+      CALL Info( 'CheckResiduals', Message, Level = 3 )
+
+      DO i=1,n
+        xr = REAL( EigVectors(i,1:sz) )
+        xi = AIMAG( EigVectors(i,1:sz) )
+        lr = REAL( Eigs(i) )
+        li = AIMAG( Eigs(i) )
+
+        CALL CRS_MatrixVectorMultiply( Matrix, xr, Axr )
+        svals => Matrix % Values
+        Matrix % Values => Matrix % MassValues
+        CALL CRS_MatrixVectorMultiply( Matrix, xr, Mxr )
+        Matrix % Values => svals
+
+        IF ( li /= 0.0_dp .OR. ANY( xi /= 0.0_dp ) ) THEN
+          CALL CRS_MatrixVectorMultiply( Matrix, xi, Axi )
+          svals => Matrix % Values
+          Matrix % Values => Matrix % MassValues
+          CALL CRS_MatrixVectorMultiply( Matrix, xi, Mxi )
+          Matrix % Values => svals
+        ELSE
+          Axi = 0.0_dp
+          Mxi = 0.0_dp
+        END IF
+
+        ! The real and imaginary parts of the residual A x - lambda M x:
+        Axr = Axr - lr * Mxr + li * Mxi
+        Axi = Axi - lr * Mxi - li * Mxr
+
+        NormX = SQRT( SUM(xr**2) + SUM(xi**2) )
+        NormR = SQRT( SUM(Axr**2) + SUM(Axi**2) )
+
+        WRITE( Message, '(I9,3X,ES17.6,3X,ES14.5)' ) i, NormR / NormX, &
+            NormR / ((NormA + ABS(Eigs(i)) * NormM) * NormX)
         CALL Info( 'CheckResiduals', Message, Level = 3 )
       END DO
-      DEALLOCATE( x,y )
+
+      DEALLOCATE( xr, xi, Axr, Axi, Mxr, Mxi )
 !------------------------------------------------------------------------------
 END SUBROUTINE CheckResiduals
 !------------------------------------------------------------------------------
@@ -1593,7 +1642,7 @@ END SUBROUTINE CheckResiduals
 !------------------------------------------------------------------------------
 !> Check the consistency of eigenpairs (lambda,x) of the eigenvalue problem
 !> A x = lambda M x. The relative residual ||A x - lambda M x||/||x|| depends
-!> on the choice units in obtaining A and M, so report also the normwise relative 
+!> on the choice units in obtaining A and M, so report also the normwise relative
 !> backward error err = ||A x - lambda M x|| / ( ||A|| + |lambda| ||M||) ||x|| ),
 !> which is independent of scaling.
 !------------------------------------------------------------------------------
