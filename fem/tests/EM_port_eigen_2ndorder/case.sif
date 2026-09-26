@@ -36,7 +36,7 @@ Simulation
   Coordinate System = "Cartesian"
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Max Output Level = 7
+  Max Output Level = 32
 End
 
 Constants
