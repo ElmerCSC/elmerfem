@@ -110,7 +110,7 @@
           CycleElement=.FALSE., MABool = .FALSE., MaxHBool = .FALSE., LimitEffPres=.FALSE., &
           MinHBool=.FALSE., CycleNode=.FALSE., HaveMoulinMask=.FALSE.
      LOGICAL, SAVE :: UseGM, AllowSheetAtGL, ZeroSheetWithHP
-     LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
+     LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:), MoulinDone(:)
 
      ! For use in masking GlaDS floating shelves.  "MASK_HP" is for situations where
      ! Hydraulic potential should be set to zero but not the sheet thickness.  This is
@@ -976,11 +976,20 @@
         ! Neumann & Newton boundary conditions
         !------------------------------------------------------------------------------
         IF (HaveMoulinMask) THEN                   
+          ! add each moulin's flux (and storage) once per node, not once per element
+          ! touching the node
+          IF (ALLOCATED(MoulinDone)) DEALLOCATE(MoulinDone)
+          ALLOCATE(MoulinDone(Mesh % NumberOfNodes))
+          MoulinDone = .FALSE.
           DO t=1,Solver % NumberOfActiveElements
             Element => GetActiveElement(t,Solver)
             BodyForce => GetBodyForce()
             Storage =  GetLogical(BodyForce,'Moulin Storage', Found)
-            FORCE = 0.0
+            N = GetElementNOFNodes(Element)
+            FORCE = 0.0_dp
+            MASS = 0.0_dp
+            STIFF = 0.0_dp
+            MoulinArea = 0.0_dp
 
             ! cycle halo elements
             !-------------------
@@ -989,11 +998,17 @@
               MoulinArea(1:N) = ListGetReal( BodyForce, 'Moulin Area',  N, Element % NodeIndexes, Found, &
                    UnfoundFatal = .TRUE. )
             END IF
-            DO I=1,Element % TYPE % NumberOfNodes
+            DO I=1,N
               k = Element % NodeIndexes(I)
+              IF (MoulinDone(k)) CYCLE
+              ! on partition interfaces only the owner partition adds the moulin
+              IF (ParEnv % PEs > 1) THEN
+                IF (Mesh % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPE) CYCLE
+              END IF
               IF (MoulinMask(MoulinMaskPerm(k)) > 0.0) THEN
                 FORCE(i) = MoulinFluxVal(MoulinFluxPerm(k))
                 MASS(i,i) = MoulinArea(i)/(WaterDensity*gravity)
+                MoulinDone(k) = .TRUE.
               END IF
             END DO
     
