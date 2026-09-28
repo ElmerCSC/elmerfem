@@ -3,6 +3,7 @@
 ! mpiexec -localonly 2 mpitest
 
 program main
+  implicit none
   include 'mpif.h'
   integer rc
   integer num_procs

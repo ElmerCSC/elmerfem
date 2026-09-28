@@ -1,5 +1,6 @@
 FUNCTION Youngs( Model, n, x ) RESULT( s )
   USE Types
+  IMPLICIT NONE
   TYPE(Model_t) :: Model
   INTEGER :: n
   REAL(KIND=dp) :: x,s,s1,s2,s3,xx,yy
@@ -14,9 +15,10 @@ END FUNCTION Youngs
 
 FUNCTION InFlow( Model, n, x ) RESULT( vin )
   USE Types
+  IMPLICIT NONE
   TYPE(Model_t) :: Model
   INTEGER :: n
-  REAL(KIND=dp) :: yy,x,vin,v0,vt
+  REAL(KIND=dp) :: xx,yy,x,vin,v0,vt
   
   xx = Model % Nodes % x(n)
   yy = Model % Nodes % y(n)

@@ -22,8 +22,9 @@
 ! *****************************************************************************/
 
        SUBROUTINE SolveLapack( N,A,x )
+       IMPLICIT NONE
 
-       INTEGER  N,IPIV(N)
+       INTEGER  N,IPIV(N),INFO
        DOUBLE PRECISION  A(n*n),x(n)
 
        IF ( N <= 0 ) RETURN
@@ -38,8 +39,9 @@
 ! ******************************************************************************
 
        SUBROUTINE SolveLapackSym( N,A,x )
+       IMPLICIT NONE
 
-       INTEGER  N
+       INTEGER  N,INFO
        DOUBLE PRECISION  A(n*n),x(n)
 
        IF ( N <= 0 ) RETURN
