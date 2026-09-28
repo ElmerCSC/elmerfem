@@ -1501,7 +1501,7 @@ CONTAINS
 
     A % SMumpsID % job = 4
     CALL SMumps(A % SMumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -1518,7 +1518,7 @@ CONTAINS
           I2S(A % SMumpsID % ICNTL(14)),Level=5)
       A % SMumpsID % job = 2
       CALL SMumps(A % SMumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % SMumpsID % INFOG(1) < 0) THEN
@@ -1757,7 +1757,7 @@ CONTAINS
 
     A % CMumpsID % job = 4
     CALL CMumps(A % CMumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -1774,7 +1774,7 @@ CONTAINS
           I2S(A % CMumpsID % ICNTL(14)),Level=5)
       A % CMumpsID % job = 2
       CALL CMumps(A % CMumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % CMumpsID % INFOG(1) < 0) THEN
@@ -2086,7 +2086,7 @@ CONTAINS
 
     A % MumpsID % job = 4
     CALL DMumps(A % MumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -2103,7 +2103,7 @@ CONTAINS
           I2S(A % MumpsID % ICNTL(14)),Level=5)
       A % MumpsID % job = 2
       CALL DMumps(A % MumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % MumpsID % INFOG(1) < 0) THEN
@@ -2389,7 +2389,7 @@ CONTAINS
 
     A % ZMumpsID % job = 4
     CALL ZMumps(A % ZMumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -2406,7 +2406,7 @@ CONTAINS
           I2S(A % ZMumpsID % ICNTL(14)),Level=5)
       A % ZMumpsID % job = 2
       CALL ZMumps(A % ZMumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % ZMumpsID % INFOG(1) < 0) THEN
@@ -2794,7 +2794,7 @@ CONTAINS
 
     A % mumpsIDL % JOB = 1 ! Perform analysis
     CALL DMumps(A % mumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! Check return status
     IF (A % mumpsIDL % INFO(1)<0) THEN
@@ -2803,7 +2803,7 @@ CONTAINS
 
     A % mumpsIDL % JOB = 2 ! Perform factorization
     CALL DMumps(A % mumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! INFO(1) = -8 or -9 only means the working space guessed at analysis time
     ! was too small, which ICNTL(14) exists to enlarge. Retry the factorization
@@ -2819,7 +2819,7 @@ CONTAINS
           'ICNTL(14)='//I2S(A % mumpsIDL % ICNTL(14)),Level=5)
       A % mumpsIDL % JOB = 2
       CALL DMumps(A % mumpsIDL)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     ! Check return status
@@ -3002,7 +3002,7 @@ CONTAINS
 
     A % ZmumpsIDL % JOB = 1 ! Perform analysis
     CALL ZMumps(A % ZmumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! Check return status
     IF (A % ZmumpsIDL % INFO(1)<0) THEN
@@ -3011,7 +3011,7 @@ CONTAINS
 
     A % ZmumpsIDL % JOB = 2 ! Perform factorization
     CALL ZMumps(A % ZmumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! See the real valued counterpart: -8 and -9 are a working space guess that
     ! was too small, not a failed factorization.
@@ -3024,7 +3024,7 @@ CONTAINS
           'ICNTL(14)='//I2S(A % ZmumpsIDL % ICNTL(14)),Level=5)
       A % ZmumpsIDL % JOB = 2
       CALL ZMumps(A % ZmumpsIDL)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     ! Check return status

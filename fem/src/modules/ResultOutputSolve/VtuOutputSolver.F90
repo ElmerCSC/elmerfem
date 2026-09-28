@@ -1283,7 +1283,7 @@ CONTAINS
                       ELSE
                         IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
                           PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
-                          call flush(6)
+                          flush(6)
                         END IF
                         vals(k) = Values(dofs*(j-1)+k)              
                       END IF

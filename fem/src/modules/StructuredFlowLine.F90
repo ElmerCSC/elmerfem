@@ -679,7 +679,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
         PRINT *,'y:',SUM( Basis(1:n) * Mesh % Nodes % y( NodeIndexes ) )
         PRINT *,'z:',SUM( Basis(1:n) * Mesh % Nodes % z( NodeIndexes ) )
         PRINT *,'VeloAtPoint:i',VeloAtPoint
-        CALL flush(6)
+        flush(6)
       END IF
     END IF
     

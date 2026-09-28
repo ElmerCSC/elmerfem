@@ -271,7 +271,7 @@ CONTAINS
         Residual = rnorm / bnorm
         IF( MOD(k,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') k, rnorm, residual
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -376,7 +376,7 @@ CONTAINS
         
         IF( MOD(i,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') i, rnorm, residual
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -504,7 +504,7 @@ CONTAINS
         
         IF( MOD(k,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') k, rnorm, residual
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -1112,7 +1112,7 @@ CONTAINS
 
         IF( MOD(Round,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         IF( Robust ) THEN
@@ -1148,12 +1148,12 @@ CONTAINS
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4,I8,2E11.4)') 'BiCGStabl robust: ',&
               MIN(MaxRounds,Round), BestNorm, BestIter, rnrm, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       ELSE
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE (*, '(A, I8, 2E11.4)') 'BiCGStabl: ', MIN(MaxRounds,Round), rnrm, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       END IF
             
@@ -1416,7 +1416,7 @@ CONTAINS
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          ELSE
            Residual = rnorm / bnorm
@@ -1426,7 +1426,7 @@ CONTAINS
              ELSE
                WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, residual, beta
              END IF
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          END IF
            
@@ -1878,7 +1878,7 @@ CONTAINS
         
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
 
         IF( Robust ) THEN
@@ -1921,13 +1921,13 @@ CONTAINS
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4,I8,E11.4)') 'Idrs robust: ',&
               iter, BestNorm, BestIter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       ELSE
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4)') 'Idrs: ',&
               iter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       END IF
       
@@ -2617,13 +2617,13 @@ CONTAINS
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          END IF
         
@@ -2643,7 +2643,7 @@ CONTAINS
                CALL Info('WARNING', Message, Level=2)
                WRITE( Message, * ) 'True residual norm = ', TrueResNorm
                CALL Info('WARNING', Message, Level=2)   
-               CALL FLUSH(6)
+               FLUSH(6)
              END IF
          END IF 
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
@@ -2960,7 +2960,7 @@ CONTAINS
          errorind = rnrm/bnrm
          IF( MOD(Round,OutputInterval) == 0) THEN
            WRITE (*, '(I8, E11.4)') Round, errorind
-           CALL FLUSH(6)
+           FLUSH(6)
          END IF
 
          Converged = (errorind < Tol) 
@@ -2970,7 +2970,7 @@ CONTAINS
 
       IF( EarlyExit .AND. (OutputInterval/=HUGE(OutputInterval)) ) THEN
         WRITE (*, '(I8, E11.4)') Round, errorind
-        CALL FLUSH(6)
+        FLUSH(6)
       END IF
 
       !------------------------------------------------------------
@@ -3296,7 +3296,7 @@ CONTAINS
           
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
-            CALL FLUSH(6)
+            FLUSH(6)
           END IF
 
           Converged = (errorind < Tol)
@@ -3354,7 +3354,7 @@ CONTAINS
 
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
 
         Converged = (errorind < Tol)

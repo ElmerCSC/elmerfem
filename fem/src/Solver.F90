@@ -68,7 +68,7 @@ PROGRAM Solver
    IF ( .NOT. Silent ) THEN
      DateStr = FormatDate()
      WRITE( *,'(A,A)' ) "ELMER SOLVER (v " // ELMER_FEM_VERSION // ") STARTED AT: ", TRIM(DateStr)
-     CALL FLUSH(6)
+     FLUSH(6)
    END IF
 
    ! Get number of command line arguments
@@ -98,7 +98,7 @@ PROGRAM Solver
                    CPUTime()-CT, RealTime()-RT
        DateStr = FormatDate()
        WRITE( *,'(A,A)' ) 'ELMER SOLVER FINISHED AT: ', TRIM(DateStr)
-       CALL FLUSH(6)
+       FLUSH(6)
      END IF
    END IF
    

@@ -675,7 +675,7 @@
          CPUTime()-at, realtime()-rt
      CALL Info( Caller,Message, Level=3 )
 
-     CALL FLUSH(6)
+     FLUSH(6)
      ! Skipped under ELMER_NO_MPI: ParEnvFinalize() opens with an
      ! MPI_BARRIER on ELMER_COMM_WORLD, and handing MPI_Comm_f2c a
      ! communicator before MPI_Init aborts the process.  That abort came

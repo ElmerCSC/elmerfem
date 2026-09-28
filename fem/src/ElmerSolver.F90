@@ -1215,7 +1215,7 @@
              ELSE
                WRITE( 10,'(I1)' ) 0
              END IF
-             CALL FLUSH( 10 )
+             FLUSH( 10 )
              CLOSE( 10 )
 
              dt = ListGetConstReal(CurrentModel % Simulation,'Test Passed Delay', Found )
