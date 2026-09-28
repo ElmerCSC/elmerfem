@@ -1220,10 +1220,9 @@ END SUBROUTINE CheckResiduals
       INTEGER :: IPARAM(11), IPNTR(14), Perm(NEIG)
       LOGICAL, ALLOCATABLE :: Choose(:)
       COMPLEX(KIND=dp) :: D(NEIG)
-      COMPLEX(KIND=dp) :: WORKD(3*N), RESID(N)
+      COMPLEX(KIND=dp), ALLOCATABLE :: WORKD(:), RESID(:)
       COMPLEX(KIND=dp), ALLOCATABLE :: WORKL(:), WORKEV(:), V(:,:)
-      REAL(KIND=dp), TARGET, ALLOCATABLE :: rwork(:)
-      REAL(KIND=dp), TARGET :: x(2*N), b(2*N)
+      REAL(KIND=dp), TARGET, ALLOCATABLE :: rwork(:), x(:), b(:)
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
       
 !
@@ -1300,7 +1299,8 @@ END SUBROUTINE CheckResiduals
       IDO   = 0
       kinfo = 0
 
-      ALLOCATE( WORKL(lWORKL), WORKEV(2*NCV), V(n,NCV), CHOOSE(NCV), &
+      ALLOCATE( WORKD(3*N), RESID(N), x(2*N), b(2*N), &
+          WORKL(lWORKL), WORKEV(2*NCV), V(n,NCV), CHOOSE(NCV), &
           rwork(NCV), STAT=istat )
 
       IF ( istat /= 0 ) THEN
@@ -1626,7 +1626,7 @@ END SUBROUTINE CheckResiduals
 !
       END IF
 
-      DEALLOCATE(WORKL, WORKEV, V, CHOOSE, rwork)
+      DEALLOCATE(WORKD, RESID, x, b, WORKL, WORKEV, V, CHOOSE, rwork)
       
       CALL Info(Caller,'Finished eigen system solution!',Level=8)
       
