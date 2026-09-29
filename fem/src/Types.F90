@@ -346,6 +346,9 @@ MODULE Types
 #ifdef HAVE_CHOLMOD
     INTEGER(KIND=AddrInt) :: Cholmod=0
 #endif
+#ifdef HAVE_CUDSS
+    INTEGER(KIND=AddrInt) :: Cudss=0
+#endif
 #ifdef HAVE_HYPRE
     INTEGER(KIND=C_INTPTR_T) :: Hypre=0
 #endif
