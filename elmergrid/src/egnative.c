@@ -5310,136 +5310,141 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   noparents = 0;
   bctopocreated = FALSE;
 
-  if(binary) {
-    sprintf(filename,"%s","mesh.boundary.bin");
-    in = fopen(filename,"rb");
-  } else {
-    sprintf(filename,"%s","mesh.boundary");
-    in = fopen(filename,"r");
-  }    
-  if (in == NULL) {
-    printf("LoadElmerInput: The opening of the boundary-file %s failed!\n",filename);
-    return(4);
+  if(nosides == 0)  {
+    printf("LoadElmerInput: No boundary elements, skipping 'mesh.boundary' file!\n");
   }
-  else {
-    if(info) printf("Loading %d boundary elements from %s\n",nosides,filename);
-  }
-
-  if( nosides > 0 ) {
-    AllocateBoundary(bound,nosides);
-    data->noboundaries = 1;
-  };
-
-  i = 0;
-  for(k=1; k <= nosides; k++) {
-    
+  else { 
     if(binary) {
-      iostat = fread(&dummyint,sizeof(dummyint),1,in)
-	+ fread(&dummyint,sizeof(dummyint),1,in);      
-    } else {	
-      iostat = fscanf(in,"%d",&dummyint);
-    }
-    if( iostat < 1 ) {
-      printf("LoadElmerInput: Failed reading boundary element line %d, reducing size of element table to %d!\n",k,i);
-      bound->nosides = nosides = i;
-      break;
-    }      
-    i++;
-
-    if(binary) {
-      iostat = fread(&(bound->types[i]),sizeof(dummyint),1,in)
-	+ fread(&p1,sizeof(dummyint),1,in)
-	+ fread(&p2,sizeof(dummyint),1,in)
-	+ fread(&elementtype,sizeof(dummyint),1,in);
-    } else {	
-      iostat = fscanf(in,"%d %d %d %d",&(bound->types[i]),&p1,&p2,&elementtype);
-    }
-    if(iostat < 4 ) {
-      printf("LoadElmerInput: Failed reading definitions for boundary element %d\n",k);
-      bigerror("Cannot continue without this data!\n"); 
+      sprintf(filename,"%s","mesh.boundary.bin");
+      in = fopen(filename,"rb");
+    } else {
+      sprintf(filename,"%s","mesh.boundary");
+      in = fopen(filename,"r");
     }    
-    if( p1 > 0 && (p1 < minelem || p1 > maxelem ) ) {
-      printf("Parent in boundary element %d out of range: %d\n",k,p1);    
-      bigerror("Cannot continue with bad parents");
+    if (in == NULL) {
+      printf("LoadElmerInput: The opening of the boundary-file %s failed!\n",filename);
+      return(4);
     }
-    if( p2 > 0 && (p2 < minelem || p2 > maxelem ) ) {
-      printf("Parent in boundary element %d out of range: %d\n",k,p2);
-      bigerror("Cannot continue with bad parents");
+    else {
+      if(info) printf("Loading %d boundary elements from %s\n",nosides,filename);
     }
-      
-    if(activeelemperm) {
-      if( p1 > 0 ) p1 = invelemperm[p1];
-      if( p2 > 0 ) p2 = invelemperm[p2];
-    }
+
+    if( nosides > 0 ) {
+      AllocateBoundary(bound,nosides);
+      data->noboundaries = 1;
+    };
+
+    i = 0;
+    for(k=1; k <= nosides; k++) {
     
-    if(elementtype > maxelemtype ) {
-      printf("Invalid boundary elementtype: %d\n",elementtype);
-      bigerror("Cannot continue with invalid elements");
-    }
-    nonodes = elementtype % 100;
-    if( nonodes > maxnodes ) {
-      printf("Number of nodes %d in side element %d is greater than allocated maximum %d\n",nonodes,dummyint,maxnodes);
-      bigerror("Cannot continue with invalid elements");
-    }
-    
-    for(j=0;j< nonodes ;j++) { 
       if(binary) {
-	iostat = fread(&l,sizeof(dummyint),1,in);
+	iostat = fread(&dummyint,sizeof(dummyint),1,in)
+	  + fread(&dummyint,sizeof(dummyint),1,in);      
       } else {	
-	iostat = fscanf(in,"%d",&l);
+	iostat = fscanf(in,"%d",&dummyint);
       }
-      if(activeperm) 
-	sideind[j] = invperm[l];
-      else
-	sideind[j] = l;
-    }
-          
-    if( p1 == 0 && p2 != 0 ) {
-      bound->parent[i] = p2;
-      bound->parent2[i] = p1;
-    }
-    else {
-      bound->parent[i] = p1;
-      bound->parent2[i] = p2;
-    }
+      if( iostat < 1 ) {
+	printf("LoadElmerInput: Failed reading boundary element line %d, reducing size of element table to %d!\n",k,i);
+	bound->nosides = nosides = i;
+	break;
+      }      
+      i++;
+
+      if(binary) {
+	iostat = fread(&(bound->types[i]),sizeof(dummyint),1,in)
+	  + fread(&p1,sizeof(dummyint),1,in)
+	  + fread(&p2,sizeof(dummyint),1,in)
+	  + fread(&elementtype,sizeof(dummyint),1,in);
+      } else {	
+	iostat = fscanf(in,"%d %d %d %d",&(bound->types[i]),&p1,&p2,&elementtype);
+      }
+      if(iostat < 4 ) {
+	printf("LoadElmerInput: Failed reading definitions for boundary element %d\n",k);
+	bigerror("Cannot continue without this data!\n"); 
+      }    
+      if( p1 > 0 && (p1 < minelem || p1 > maxelem ) ) {
+	printf("Parent in boundary element %d out of range: %d\n",k,p1);    
+	bigerror("Cannot continue with bad parents");
+      }
+      if( p2 > 0 && (p2 < minelem || p2 > maxelem ) ) {
+	printf("Parent in boundary element %d out of range: %d\n",k,p2);
+	bigerror("Cannot continue with bad parents");
+      }
+      
+      if(activeelemperm) {
+	if( p1 > 0 ) p1 = invelemperm[p1];
+	if( p2 > 0 ) p2 = invelemperm[p2];
+      }
     
-    if(bound->parent[i] > 0) {
-      fail = FindParentSide(data,bound,i,elementtype,sideind);
-      if(fail) falseparents++;      
-    }
-    else {
-#if 0
-      printf("Parents not specified for side %d with inds: ",dummyint);
-      for(j=0;j< elementtype%100 ;j++) 
-	printf("%d ",sideind[j]);
-      printf("and type: %d\n",bound->types[i]);   
-#endif
-      if( !bctopocreated ) {
-	bound->elementtypes = Ivector(1,nosides);
-	for(j=1;j<=nosides;j++)
-	  bound->elementtypes[j] = 0;
-	bound->topology = Imatrix(1,nosides,0,data->maxnodes-1);
-	bctopocreated = TRUE;
+      if(elementtype > maxelemtype ) {
+	printf("Invalid boundary elementtype: %d\n",elementtype);
+	bigerror("Cannot continue with invalid elements");
       }
-      for(j=0;j< elementtype%100 ;j++) 
-	bound->topology[i][j] = sideind[j];
-      bound->elementtypes[i] = elementtype;
+      nonodes = elementtype % 100;
+      if( nonodes > maxnodes ) {
+	printf("Number of nodes %d in side element %d is greater than allocated maximum %d\n",nonodes,dummyint,maxnodes);
+	bigerror("Cannot continue with invalid elements");
+      }
+    
+      for(j=0;j< nonodes ;j++) { 
+	if(binary) {
+	  iostat = fread(&l,sizeof(dummyint),1,in);
+	} else {	
+	  iostat = fscanf(in,"%d",&l);
+	}
+	if(activeperm) 
+	  sideind[j] = invperm[l];
+	else
+	  sideind[j] = l;
+      }
+          
+      if( p1 == 0 && p2 != 0 ) {
+	bound->parent[i] = p2;
+	bound->parent2[i] = p1;
+      }
+      else {
+	bound->parent[i] = p1;
+	bound->parent2[i] = p2;
+      }
+    
+      if(bound->parent[i] > 0) {
+	fail = FindParentSide(data,bound,i,elementtype,sideind);
+	if(fail) falseparents++;      
+      }
+      else {
+#if 0
+	printf("Parents not specified for side %d with inds: ",dummyint);
+	for(j=0;j< elementtype%100 ;j++) 
+	  printf("%d ",sideind[j]);
+	printf("and type: %d\n",bound->types[i]);   
+#endif
+	if( !bctopocreated ) {
+	  bound->elementtypes = Ivector(1,nosides);
+	  for(j=1;j<=nosides;j++)
+	    bound->elementtypes[j] = 0;
+	  bound->topology = Imatrix(1,nosides,0,data->maxnodes-1);
+	  bctopocreated = TRUE;
+	}
+	for(j=0;j< elementtype%100 ;j++) 
+	  bound->topology[i][j] = sideind[j];
+	bound->elementtypes[i] = elementtype;
 
-      printf("elementtype = %d %d %d\n",i,elementtype,sideind[0]);
-      noparents++;
+	printf("elementtype = %d %d %d\n",i,elementtype,sideind[0]);
+	noparents++;
+      }
     }
-  }
   
-  if( falseparents ) {
-    printf("There seems to be %d false parents in the mesh\n",falseparents);
-  }
-  if( noparents ) {
-    printf("There seems to be %d bc elements without parents in the mesh\n",noparents);
-  }
+    if( falseparents ) {
+      printf("There seems to be %d false parents in the mesh\n",falseparents);
+    }
+    if( noparents ) {
+      printf("There seems to be %d bc elements without parents in the mesh\n",noparents);
+    }
 
-  bound->nosides = i;
-  fclose(in); 
-  
+    bound->nosides = i;
+    fclose(in); 
+  }
+    
   /* Save node permutation for later use */
   data->nodepermexist = activeperm;
   if(activeperm) {
