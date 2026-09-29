@@ -1335,7 +1335,7 @@ CONTAINS
        END IF
        
      END SUBROUTINE TrimMatcExpression
-       
+
 #ifdef HAVE_LUA
      SUBROUTINE TrimLuaExpression()
 
@@ -1343,23 +1343,6 @@ CONTAINS
        character(kind=c_char, len=:), pointer :: lua_result
        integer :: result_len
        logical :: closed_region, first_bang
-
-        BLOCK
-          INTERFACE
-            SUBROUTINE setlocale(category,locale) BIND(c,name="setlocale")
-              USE iso_c_binding
-              integer(c_int), value :: category
-              character(kind=c_char), dimension(*) :: locale
-            END SUBROUTINE  setlocale
-          END INTERFACE
-          ! Force period-decimal for Fortran's list-directed READ of the
-          ! substituted value, matching mtc_eval's setlocale(LC_ALL,"C").
-          ! The former "en_US.UTF-8" is a UTF-8 codepage locale whose composite
-          ! locale string trips an intermittent UCRT invalid-parameter fast-fail
-          ! (0xC0000409) inside libgfortran's locale save/restore during the
-          ! subsequent sif READ. "C" is canonical, always valid, and '.'-decimal.
-          CALL setlocale(0,"C"//CHAR(0))
-        END BLOCK
 
        closed_region = .false.
        first_bang = .true.
