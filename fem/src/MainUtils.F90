@@ -157,6 +157,10 @@ CONTAINS
 #ifndef HAVE_FETI4I
           CALL Fatal( 'CheckLinearSolverOptions', 'FETI4I solver has not been installed.' )
 #endif
+        CASE( 'cudss' )
+#ifndef HAVE_CUDSS
+          CALL Fatal( 'CheckLinearSolverOptions', 'cuDSS solver has not been installed.' )
+#endif
         CASE DEFAULT
           CALL Fatal( 'CheckLinearSolverOptions', 'Unknown direct solver method: ' // TRIM(str) )
         END SELECT

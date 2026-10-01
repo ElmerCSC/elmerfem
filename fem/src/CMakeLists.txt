@@ -38,7 +38,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 CutFEMUtils.F90
   RadiationFactors.F90 f_stubs.c GFortranLocaleFix.c
   ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
-  SolveSuperLU.c
+  SolveSuperLU.c SolveCUDSS.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90 PElementVisual.F90 IpFieldInterface.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
@@ -324,6 +324,11 @@ IF (WITH_CHOLMOD)
   SET(CURR_CFLAGS "-DHAVE_CHOLMOD")
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CHOLMOD_INCLUDE_DIR};${SPQR_INCLUDE_DIR}")
   TARGET_LINK_LIBRARIES(elmersolver "${CHOLMOD_LIBRARIES};${SPQR_LIBRARIES}")
+ENDIF()
+
+IF (WITH_CUDSS)
+  TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CUDSS_INCLUDE_DIR}")
+  TARGET_LINK_LIBRARIES(elmersolver "${CUDSS_LIBRARIES}" CUDA::cudart)
 ENDIF()
 
 # elmersolver -library

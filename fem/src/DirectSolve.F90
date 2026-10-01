@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen
+! *  Authors: Juha Ruokolainen, Daniel Reeves
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -39,8 +39,8 @@
 
 !------------------------------------------------------------------------------
 !>  Module containing the direct solvers for linear systems given in CRS format.
-!> Included are Lapack band matrix solver, multifrontal Umfpack, MUMPS, SuperLU, 
-!> and Pardiso. Note that many of these are linked in with ElmerSolver only 
+!> Included are Lapack band matrix solver, multifrontal Umfpack, MUMPS, SuperLU,
+!> Pardiso, and NVIDIA's GPU-based cuDSS. Note that many of these are linked in with ElmerSolver only
 !> if they are made available at the compilation time. 
 !------------------------------------------------------------------------------
 
@@ -622,6 +622,269 @@ CONTAINS
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE Cholmod_SolveSystem
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Solves a linear system using NVIDIA's GPU cuDSS (CUDA direct sparse solver).
+!> Single-GPU only, single MPI. Upper-triangle extraction only for SPD systems. 
+!> Complex systems always use the general matrix type for factorization (LU).
+!> CUDSS_SolveSystem subroutine was written by D. Reeves.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_SolveSystem( Solver,A,x,b,Free_fact )
+!------------------------------------------------------------------------------
+  LOGICAL, OPTIONAL :: Free_Fact
+  TYPE(Matrix_t) :: A
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: x(*), b(*)
+
+#ifdef HAVE_CUDSS
+  INTERFACE
+     FUNCTION cudss_ffactorize(n,nnz,rows,cols,vals,mtype) RESULT(cudss) &
+         BIND(c,NAME="cudss_ffactorize")
+        USE Types
+        INTEGER :: n, nnz, mtype, Rows(*), Cols(*)
+        REAL(KIND=dp) :: Vals(*)
+        INTEGER(KIND=AddrInt) :: cudss
+     END FUNCTION cudss_ffactorize
+
+     SUBROUTINE cudss_fsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_fsolve")
+        USE Types
+        REAL(KIND=dp) :: x(*), b(*)
+        INTEGER :: n, status
+        INTEGER(KIND=AddrInt) :: cudss
+     END SUBROUTINE cudss_fsolve
+
+     ! Complex counterparts. These take the system in *complex* CSR of order
+     ! n = A % NumberOfRows/2, not Elmer's real 2n storage.
+     FUNCTION cudss_zfactorize(n,nnz,rows,cols,vals,mtype) RESULT(cudss) &
+         BIND(c,NAME="cudss_zfactorize")
+        USE Types
+        INTEGER :: n, nnz, mtype, Rows(*), Cols(*)
+        COMPLEX(KIND=dp) :: Vals(*)
+        INTEGER(KIND=AddrInt) :: cudss
+     END FUNCTION cudss_zfactorize
+
+     SUBROUTINE cudss_zsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_zsolve")
+        USE Types
+        COMPLEX(KIND=dp) :: x(*), b(*)
+        INTEGER :: n, status
+        INTEGER(KIND=AddrInt) :: cudss
+     END SUBROUTINE cudss_zsolve
+
+     SUBROUTINE cudss_ffree(cudss) BIND(c,NAME="cudss_ffree")
+        USE Types
+        INTEGER(KIND=AddrInt) :: cudss
+     END SUBROUTINE cudss_ffree
+  END INTERFACE
+
+  LOGICAL :: Factorize, FreeFactorize, Found, MatSym, MatPD, Scaled
+  INTEGER :: i, j, k, n, ip, nzutd, mtype, allocstat, nnz, SolveOk
+  CHARACTER(:), ALLOCATABLE :: mat_type
+  INTEGER, POINTER CONTIG :: Rows(:), Cols(:)
+  REAL(KIND=dp), POINTER CONTIG :: Vals(:)
+  INTEGER, ALLOCATABLE, TARGET :: TRows(:), TCols(:)
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: TVals(:)
+  INTEGER, ALLOCATABLE :: ZRows(:), ZCols(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: ZVals(:), zb(:), zx(:)
+
+  IF ( PRESENT(Free_Fact) ) THEN
+    IF ( Free_Fact ) THEN
+      IF ( A % Cudss/=0 ) THEN
+        CALL cudss_ffree(A % Cudss)
+        A % Cudss = 0
+      END IF
+      RETURN
+    END IF
+  END IF
+
+  ! Single GPU, single MPI task. Nothing here looks at A % ParallelInfo or
+  ! builds a global numbering the way the Mumps paths do, so with more than one
+  ! task each would factorize its own local block and return an answer that is
+  ! wrong without saying so. Refuse instead of solving the wrong system.
+  IF ( ParEnv % PEs > 1 ) THEN
+    CALL Fatal('CUDSS_SolveSystem', &
+        'cuDSS Elmer interface is single-GPU and serial only.')
+  END IF
+
+  ! A complex system is stored by Elmer as a real one of twice the order,
+  ! each complex entry occupying a 2x2 block. n is the complex order; it is
+  ! needed on every solve, not just on the ones that refactorize.
+  n = A % NumberOfRows
+  IF ( A % Complex ) n = A % NumberOfRows / 2
+
+  Factorize = ListGetLogical( Solver % Values, &
+     'Linear System Refactorize', Found )
+  IF ( .NOT. Found ) Factorize = .TRUE.
+
+  IF ( Factorize .OR. A % Cudss==0 ) THEN
+    IF ( A % Cudss/=0 ) THEN
+      CALL cudss_ffree(A % Cudss)
+      A % Cudss = 0
+    END IF
+
+    ! Linear System Matrix Type Positive Definite keyword (as Pardiso_SolveSystem),
+    ! mapped to cuDSS's own matrix types. cuDSS also supports Hermitian matrices, 
+    ! HPD and Real Symmetric factorization, not implemented, check docs
+    mat_type = ListGetString(Solver % Values,'Linear System Matrix Type',Found)
+    IF ( Found ) THEN
+      SELECT CASE(mat_type)
+      CASE('positive definite')
+        mtype = 2
+      CASE DEFAULT
+        mtype = 0
+      END SELECT
+    ELSE
+      MatSym = ListGetLogical(Solver % Values,'Linear System Symmetric', Found)
+      MatPD  = ListGetLogical(Solver % Values,'Linear System Positive Definite', Found)
+
+      ! Force unsymmetric mode when "row equilibration" is used.
+      Scaled = ListGetLogical(Solver % Values,'Linear System Scaling', Found)
+      IF ( .NOT. Found ) Scaled = .TRUE.
+      IF ( Scaled .AND. MatSym ) THEN
+        IF ( ListGetLogical(Solver % Values,'Linear System Row Equilibration',Found) ) THEN
+          CALL Info('CUDSS_SolveSystem', &
+              'Row equilibration is on: treating the system as general, as '// &
+              'the scaling does not preserve numeric symmetry.', Level=6)
+          MatSym = .FALSE.
+        END IF
+      END IF
+
+      IF ( MatSym .AND. MatPD ) THEN
+        mtype = 2
+      ELSE
+        mtype = 0
+      END IF
+    END IF
+
+    ! Complex systems always use the general matrix type (same as MUMPS).
+    ! Factorization for Hermitian matrices could be implemented. Complex
+    ! symmetric systems would be more complicated. Check cuDSS data types.
+    IF ( A % Complex .AND. mtype /= 0 ) THEN
+      CALL Info('CUDSS_SolveSystem', &
+          'Complex system: using the general cuDSS matrix type, the only one '// &
+          'cuDSS documents for complex values other than the Hermitian ones.', &
+          Level=6)
+      mtype = 0
+    END IF
+
+    IF ( A % Complex ) THEN
+      ! Pack the real 2n x 2n storage into complex CSR of order n. The
+      ! conventions are those of ZMumps_SolveSystem: complex row i/2+1 is
+      ! taken from real row i (odd), its entries stride by two, the complex
+      ! column is Cols(j)/2+1 and the value is CMPLX(Values(j),-Values(j+1)).
+      nnz = (A % Rows(A % NumberOfRows+1)-1) / 4
+
+      ALLOCATE( ZRows(n+1), ZCols(nnz), ZVals(nnz), STAT=allocstat )
+      IF ( allocstat /= 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem', &
+            'Memory allocation for the complex matrix failed')
+      END IF
+
+      k = 0
+      ZRows(1) = 1
+      DO i=1,A % NumberOfRows,2
+        ip = i/2 + 1
+        DO j=A % Rows(i),A % Rows(i+1)-1,2
+          k = k + 1
+          ZCols(k) = A % Cols(j)/2 + 1
+          ZVals(k) = CMPLX( A % Values(j), -A % Values(j+1), KIND=dp )
+        END DO
+        ZRows(ip+1) = k + 1
+      END DO
+
+      A % Cudss = cudss_zfactorize( n, nnz, ZRows, ZCols, ZVals, mtype )
+      DEALLOCATE( ZRows, ZCols, ZVals )
+
+      IF ( A % Cudss == 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem','cuDSS analysis/factorization failed.')
+      END IF
+    ! real general system, 
+    ELSE IF ( mtype == 0 ) THEN
+      Rows => A % Rows
+      Cols => A % Cols
+      Vals => A % Values
+    ELSE
+      ! mtype is 2 here: copy upper triangular part of symmetric positive definite system
+      nzutd = 0
+      DO i=1,A % NumberOfRows
+        nzutd = nzutd + A % Rows(i+1)-A % Diag(i)
+      END DO
+
+      ALLOCATE( TVals(nzutd), TCols(nzutd), TRows(A % NumberOfRows+1), STAT=allocstat )
+      IF ( allocstat /= 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem', &
+            'Memory allocation for row and column indices failed')
+      END IF
+
+      TRows(1) = 1
+      DO i=1,A % NumberOfRows
+        nzutd = A % Rows(i+1)-A % Diag(i)
+        TRows(i+1) = TRows(i)+nzutd
+        DO j=0,nzutd-1
+          TCols(TRows(i)+j) = A % Cols(A % Diag(i)+j)
+          TVals(TRows(i)+j) = A % Values(A % Diag(i)+j)
+        END DO
+      END DO
+
+      Rows => TRows
+      Cols => TCols
+      Vals => TVals
+    END IF
+
+    IF ( .NOT. A % Complex ) THEN
+      nnz = Rows(A % NumberOfRows+1)-1
+      A % Cudss = cudss_ffactorize( A % NumberOfRows, nnz, Rows, Cols, Vals, mtype )
+
+      IF ( mtype /= 0 ) DEALLOCATE( TRows, TCols, TVals )
+
+      IF ( A % Cudss == 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem','cuDSS analysis/factorization failed.')
+      END IF
+    END IF
+  END IF
+
+  IF ( A % Complex ) THEN
+    ALLOCATE( zb(n), zx(n), STAT=allocstat )
+    IF ( allocstat /= 0 ) THEN
+      CALL Fatal('CUDSS_SolveSystem', &
+          'Memory allocation for the complex right-hand side failed')
+    END IF
+
+    DO i=1,A % NumberOfRows,2
+      zb(i/2+1) = CMPLX( b(i), b(i+1), KIND=dp )
+    END DO
+
+    CALL cudss_zsolve( A % Cudss, n, zx, zb, SolveOk )
+    IF ( SolveOk == 0 ) THEN
+      DEALLOCATE( zb, zx )
+      CALL Fatal('CUDSS_SolveSystem','cuDSS solve failed.')
+    END IF
+
+    DO i=1,A % NumberOfRows,2
+      x(i)   = REAL( zx(i/2+1), KIND=dp )
+      x(i+1) = AIMAG( zx(i/2+1) )
+    END DO
+
+    DEALLOCATE( zb, zx )
+  ELSE
+    CALL cudss_fsolve( A % Cudss, A % NumberOfRows, x, b, SolveOk )
+    IF ( SolveOk == 0 ) CALL Fatal('CUDSS_SolveSystem','cuDSS solve failed.')
+  END IF
+
+  FreeFactorize = ListGetLogical( Solver % Values, &
+      'Linear System Free Factorization', Found )
+  IF ( .NOT. Found ) FreeFactorize = .TRUE.
+
+  IF ( Factorize .AND. FreeFactorize ) THEN
+    CALL cudss_ffree(A % Cudss)
+    A % Cudss = 0
+  END IF
+#else
+   CALL Fatal( 'CUDSS_SolveSystem', 'cuDSS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_SolveSystem
 !------------------------------------------------------------------------------
 
 
@@ -4308,6 +4571,9 @@ CONTAINS
         CALL SPQR_SolveSystem( Solver, A, x, b, Free_Fact )
         CALL Cholmod_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
+#ifdef HAVE_CUDSS
+        CALL CUDSS_SolveSystem( Solver, A, x, b, Free_Fact )
+#endif
 #ifdef HAVE_FETI4I
         CALL Permon_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
@@ -4377,6 +4643,9 @@ CONTAINS
 
       CASE( 'cpardiso' )
         CALL CPardiso_SolveSystem( Solver, A, x, b )
+
+      CASE( 'cudss' )
+        CALL CUDSS_SolveSystem( Solver, A, x, b )
 
       CASE DEFAULT
         CALL Fatal( 'DirectSolver', 'Unknown direct solver method.' )

@@ -82,6 +82,9 @@
 /* Define if you have a CHOLMOD library */
 #cmakedefine HAVE_CHOLMOD
 
+/* Define if you have NVIDIA's cuDSS GPU sparse direct solver */
+#cmakedefine HAVE_CUDSS
+
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK
 
