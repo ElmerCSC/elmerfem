@@ -84,6 +84,7 @@
 
 /* Define if you have NVIDIA's cuDSS GPU sparse direct solver */
 #cmakedefine HAVE_CUDSS
+#cmakedefine ELMER_CUDSS_COMMLAYER_NAME @ELMER_CUDSS_COMMLAYER_NAME@
 
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK

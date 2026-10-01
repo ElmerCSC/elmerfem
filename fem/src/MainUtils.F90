@@ -111,7 +111,7 @@ CONTAINS
       IF( Found ) THEN
         IF ( Parallel ) THEN
           IF ( str /= 'smumps' .AND. str /= 'cmumps' .AND. str /= 'dmumps' .AND. str/= 'zmumps' &
-                .AND. str /= 'mumps' .AND. str /= 'cpardiso' .AND. str /= 'permon' ) THEN
+                .AND. str /= 'mumps' .AND. str /= 'cpardiso' .AND. str /= 'permon' .AND. str /= 'cudss') THEN
             CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps'
