@@ -1211,7 +1211,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
-    LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found
+    LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found, OuterScaling
     REAL(KIND=dp), POINTER :: pv(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     CHARACTER(*), PARAMETER :: Caller = 'SolveLinearSystem'
@@ -1413,11 +1413,21 @@ CONTAINS
 !   --------------------------------
     IF ( EigenAnalysis ) THEN
       IF ( ScaleSystem ) THEN
-        ! WIP: The serial complex-valued eigensolver does the scaling.
-        !      The other versions have not yet been modified to do so.
-        IF (.NOT. A % Complex .OR. .NOT. ParEnv % PEs <= 1) THEN
-          CALL ScaleLinearSystem(Solver, A )
+        ! WIP: The serial complex-valued eigensolver does the scaling. The serial
+        !      real-valued eigensolver does it in the standard undamped case with
+        !      a consistent mass matrix (mode 3). The other versions have not yet
+        !      been modified to do so. Keep this consistent with ArpackEigenSolve.
+        IF ( ParEnv % PEs > 1 ) THEN
+          OuterScaling = .TRUE.
+        ELSE IF ( A % Complex ) THEN
+          OuterScaling = .FALSE.
+        ELSE
+          OuterScaling = A % Lumped .OR. &
+              ListGetLogical( Params, 'Eigen System Damped', GotIt ) .OR. &
+              ListGetLogical( Params, 'Stability Analysis', GotIt ) .OR. &
+              .NOT. ASSOCIATED( A, Solver % Matrix )
         END IF
+        IF ( OuterScaling ) CALL ScaleLinearSystem(Solver, A )
       END IF
 
       CALL SolveEigenSystem( &
@@ -1426,9 +1436,7 @@ CONTAINS
           Solver % Variable % EigenVectors, Solver )
       
       IF ( ScaleSystem ) THEN
-        IF (.NOT. A % Complex .OR. .NOT. ParEnv % PEs <= 1) THEN
-          CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. )
-        END IF
+        IF ( OuterScaling ) CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. )
       END IF
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
 
