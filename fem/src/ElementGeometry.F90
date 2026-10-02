@@ -1084,7 +1084,7 @@ CONTAINS
 
     third = 3
 
-100 CONTINUE
+    QuadRetry: DO
 
     ! For higher order elements this may be a necessity
     IF( PRESENT( u ) .AND. PRESENT(v) ) THEN
@@ -1135,12 +1135,14 @@ CONTAINS
       IF( third == 3 ) THEN
         third = 4
         Lambda0 = Lambda
-        GOTO 100
+        CYCLE QuadRetry
       END IF
       IF( ABS( Lambda0 ) < ABS( Lambda) ) THEN
-        Lambda = Lambda0 
+        Lambda = Lambda0
       END IF
    END IF
+   EXIT QuadRetry
+   END DO QuadRetry
 
 
   END FUNCTION LineFaceIntersection

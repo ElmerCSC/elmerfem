@@ -1118,7 +1118,8 @@ END SUBROUTINE InterpolateMeshToMesh
           Rows(1) = 1
           ProjectorAllocated = .FALSE.
 
-100       nrow = 1
+          DO
+          nrow = 1
 
           DO i=1,n
 
@@ -1254,9 +1255,10 @@ END SUBROUTINE InterpolateMeshToMesh
             END IF
 
             ProjectorAllocated = .TRUE.
-
-            GOTO 100
+          ELSE
+            EXIT
           END IF
+          END DO
 
           DEALLOCATE( Basis, Vals, ElemPtrs, LocalU, LocalV, LocalW, Indexes )
 

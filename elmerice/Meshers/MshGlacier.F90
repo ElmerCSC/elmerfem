@@ -54,7 +54,8 @@ REAL(KIND=dp), DIMENSION(:), POINTER :: y2s_p, y2b_p
 REAL(KIND=dp), ALLOCATABLE  :: xnode(:), ynode(:)                       
 LOGICAL :: Constraint=.FALSE., Cubic=.FALSE.
 CHARACTER :: NameMsh*20, NameSurf*20, NameBed*20, Rien*1
-INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi 
+INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
+INTEGER :: ioInput, ioHeader, ioSurf, ioBed, ioNodes
 !
 !
 !  
@@ -62,52 +63,52 @@ INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
 !  Read data input from mesh_input.dat
 !
 !
-      OPEN(10,file="mesh_input.dat")
-      READ(10,*)Rien
-      READ(10,*)NameMsh
-      READ(10,*)Rien
-      READ(10,*)XConstraint
+      OPEN(NEWUNIT=ioInput,file="mesh_input.dat")
+      READ(ioInput,*)Rien
+      READ(ioInput,*)NameMsh
+      READ(ioInput,*)Rien
+      READ(ioInput,*)XConstraint
 ! Xconstraint = 0 -> xnode given by the mesh
 ! Xconstraint = 1 -> xnode given by the dataset
       IF (XConstraint > 0.5) Constraint = .TRUE.
 ! xCubic = 0 -> Linear interpolation
 ! xCubic = 1 -> Cubic Spline
-      READ(10,*)Rien
-      READ(10,*)xCubic
+      READ(ioInput,*)Rien
+      READ(ioInput,*)xCubic
       IF (XCubic > 0.5) Cubic = .TRUE.
-      READ(10,*)Rien
-      READ(10,*)NameSurf
-      READ(10,*)Rien
-      READ(10,*)NptS
-      READ(10,*)Rien
-      READ(10,*)NameBed
-      READ(10,*)Rien
-      READ(10,*)NptB
-      READ(10,*)Rien
-      READ(10,*)hmin
-      IF (.Not.Constraint) THEN 
-        READ(10,*)Rien
-        READ(10,*)x0 
-        READ(10,*)Rien
-        READ(10,*)x1
+      READ(ioInput,*)Rien
+      READ(ioInput,*)NameSurf
+      READ(ioInput,*)Rien
+      READ(ioInput,*)NptS
+      READ(ioInput,*)Rien
+      READ(ioInput,*)NameBed
+      READ(ioInput,*)Rien
+      READ(ioInput,*)NptB
+      READ(ioInput,*)Rien
+      READ(ioInput,*)hmin
+      IF (.Not.Constraint) THEN
+        READ(ioInput,*)Rien
+        READ(ioInput,*)x0
+        READ(ioInput,*)Rien
+        READ(ioInput,*)x1
       END IF
-      CLOSE(10)
+      CLOSE(ioInput)
 
       ALLOCATE(xsurf(NptS), ysurf(NptS), y2s(NptS))
       ALLOCATE(xbed(NptB), ybed(NptB), y2b(NptB))
 
-      OPEN(10,file=TRIM(NameMsh)//"/mesh.header")
-        READ(10,1000)NtN
-      CLOSE(10)
+      OPEN(NEWUNIT=ioHeader,file=TRIM(NameMsh)//"/mesh.header")
+        READ(ioHeader,1000)NtN
+      CLOSE(ioHeader)
       ALLOCATE(xnode(NtN), ynode(NtN))
 
-      OPEN(10,file=TRIM(NameSurf))
-        READ(10,*)(xsurf(i), ysurf(i), i=1,NptS)
-      CLOSE(10)
+      OPEN(NEWUNIT=ioSurf,file=TRIM(NameSurf))
+        READ(ioSurf,*)(xsurf(i), ysurf(i), i=1,NptS)
+      CLOSE(ioSurf)
 
-      OPEN(10,file=TRIM(NameBed))
-        READ(10,*)(xbed(i), ybed(i), i=1,NptB)
-      CLOSE(10)
+      OPEN(NEWUNIT=ioBed,file=TRIM(NameBed))
+        READ(ioBed,*)(xbed(i), ybed(i), i=1,NptB)
+      CLOSE(ioBed)
       
       IF (.Not.Constraint) THEN
         IF (((MINVAL(xbed)>x0) .OR. (MAXVAL(xbed)<x1)) ) THEN
@@ -126,9 +127,9 @@ INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
         CALL CubicSpline(Nptb,xbed,ybed,y2b)
       END IF
       
-      OPEN(12,file=TRIM(NameMsh)//"/mesh.nodes")
-      READ(12,*)(N, j, xnode(i), ynode(i), z, i=1,NtN)
-      REWIND(12)
+      OPEN(NEWUNIT=ioNodes,file=TRIM(NameMsh)//"/mesh.nodes")
+      READ(ioNodes,*)(N, j, xnode(i), ynode(i), z, i=1,NtN)
+      REWIND(ioNodes)
 
 
       IF (Constraint) THEN
@@ -177,7 +178,7 @@ INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
 
         ynew = zb + y * MAX((zs - zb),hmin) 
         
-        WRITE(12,1200)N,j,xnew,ynew,z
+        WRITE(ioNodes,1200)N,j,xnew,ynew,z
       END DO
       WRITE(*,*)'END WITH NO TROUBLE ...'
 !

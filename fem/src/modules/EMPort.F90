@@ -1180,10 +1180,11 @@ CONTAINS
           Re_Local_field(n), Im_Local_field(n))
     END IF
 
-    ! If allocations are done and mesh is unchanged no need to do anything. 
+    ! If allocations are done and mesh is unchanged no need to do anything.
+    setup_block: BLOCK
     IF(AllocDone ) THEN
       IF( SIZE( NodalPerm) == SIZE( Solver % Variable % Perm ) ) THEN
-        GOTO 10
+        EXIT setup_block
       ELSE
         DEALLOCATE(NodalPerm)
         CALL FreeMatrix( PostSolver % Matrix )
@@ -1228,9 +1229,10 @@ CONTAINS
 
     ! Use the original communicator
     PostSolver % Matrix % Comm = Solver % Matrix % Comm
-    
+    END BLOCK setup_block
+
     ! The default mode is the 1st mode because of default ordering it should be ok
-10  pSolver => Solver
+    pSolver => Solver
     Active = GetNOFActive(Solver)
         
     n = PostSolver % Matrix % NumberOfRows

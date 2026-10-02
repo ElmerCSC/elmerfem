@@ -170,9 +170,10 @@ CONTAINS
         END IF
       END IF
 
+      smoother_select: BLOCK
       IF( Rounds <= 0 ) THEN
         CALL Info('MGSmooth','Zero smoothing rounds given, doing nothing.')
-        GOTO 10
+        EXIT smoother_select
       END IF
 
 !      Smoothing iterative method:
@@ -423,8 +424,7 @@ CONTAINS
       CASE DEFAULT
         CALL Fatal('MGSmooth','Unknown "MG Smoother", cannot continue: '//TRIM(IterMethod))
       END SELECT
-
-10    CONTINUE
+      END BLOCK smoother_select
 
       CALL MGmv( A, x, r, .TRUE. )
       r = b - r

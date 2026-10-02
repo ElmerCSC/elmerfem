@@ -389,9 +389,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   END IF
 
 
-100 CONTINUE
-  
-  DO iter=1,maxiter    
+  sensitivity_retry: DO
+  DO iter=1,maxiter
     !Initialize the system and do the assembly:
     !----------------
     CALL DefaultInitialize()
@@ -549,9 +548,11 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
   IF(DefaultSensitivity()) THEN
     maxiter = 1
-    GOTO 100
+    CYCLE sensitivity_retry
   END IF
-      
+  EXIT sensitivity_retry
+  END DO sensitivity_retry
+
   CALL DefaultFinish()
 
   IF( CalcHeating ) THEN   

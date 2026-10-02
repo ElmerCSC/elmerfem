@@ -104,8 +104,9 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Apriori,Reset
 
   CHARACTER*10 :: date,temps
+  INTEGER :: ioCostHeaderPar,ioCostHeaderSerial,ioCostAppendPar,ioCostAppendSerial
 
-  save Firsttime,Parallel 
+  save Firsttime,Parallel
   save SolverName,CostSolName,VarSolName,Lambda,CostFile
   save ElementNodes
 
@@ -193,18 +194,18 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
     CALL DATE_AND_TIME(date,temps)
     If (Parallel) then
         if (ParEnv % MyPe.EQ.0) then
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jreg'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderPar, FILE=CostFile)
+                   write(ioCostHeaderPar,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderPar,1001) Lambda
+                   write(ioCostHeaderPar,'(A)') '# iter, Jreg'
+           CLOSE(ioCostHeaderPar)
          End if
     Else
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jreg'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderSerial, FILE=CostFile)
+                   write(ioCostHeaderSerial,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderSerial,1001) Lambda
+                   write(ioCostHeaderSerial,'(A)') '# iter, Jreg'
+           CLOSE(ioCostHeaderSerial)
     End if
   
   !!! End of First visit
@@ -364,9 +365,9 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
                Endif
           END IF
          IF (Solver % ParEnv % MyPE == 0) then
-                 OPEN (12, FILE=CostFile,POSITION='APPEND')
-                 write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
-                 CLOSE(12)
+                 OPEN (NEWUNIT=ioCostAppendPar, FILE=CostFile,POSITION='APPEND')
+                 write(ioCostAppendPar,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
+                 CLOSE(ioCostAppendPar)
          End if
    ELSE
             CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
@@ -377,9 +378,9 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
                     CostVar % Values(1)=CostVar % Values(1)+Lambda*Cost
                  Endif
             END IF
-                    OPEN (12, FILE=CostFile,POSITION='APPEND')
-                       write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
-                    close(12)
+                    OPEN (NEWUNIT=ioCostAppendSerial, FILE=CostFile,POSITION='APPEND')
+                       write(ioCostAppendSerial,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
+                    close(ioCostAppendSerial)
    END IF
    
    Return

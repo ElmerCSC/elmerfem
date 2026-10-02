@@ -1010,38 +1010,39 @@ CONTAINS
    TYPE(Mesh_t), POINTER :: ShadowMesh
 
    INTEGER :: i, j, ncnt, id, body, code, node(8), iostat, nofElements, nofNodes
+   INTEGER :: HeaderUnit, NodesUnit, ElementsUnit
    REAL(KIND=dp)  :: x,y,z
    CHARACTER(LEN=256) :: Line
 
    ShadowMesh => AllocateMesh()
 
-   OPEN( 33, File=TRIM(name)//'/mesh.header', STATUS='OLD', IOSTAT=iostat )
+   OPEN( NEWUNIT=HeaderUnit, File=TRIM(name)//'/mesh.header', STATUS='OLD', IOSTAT=iostat )
    IF (iostat /= 0 ) CALL Error( "ViewUtils:", "Error reading shadow mesh.")
 
    print*,TRIM(Name)//'/mesh.header'
-   READ(33, *) NofNodes, NofElements
-   CLOSE(33)
+   READ(HeaderUnit, *) NofNodes, NofElements
+   CLOSE(HeaderUnit)
 
    ALLOCATE( ShadowMesh % Nodes % x(NofNodes), &
              ShadowMesh % Nodes % y(NofNodes), &
              ShadowMesh % Nodes % z(NofNodes), &
              ShadowMesh % Elements(NofElements) )
 
-   OPEN( 33, File=TRIM(name)//'/mesh.nodes', STATUS='OLD', IOSTAT=iostat  )
+   OPEN( NEWUNIT=NodesUnit, File=TRIM(name)//'/mesh.nodes', STATUS='OLD', IOSTAT=iostat  )
    IF (iostat /= 0 ) CALL Error( "ViewUtils:", "Error reading shadow mesh.")
    DO i=1, NofNodes
-     READ(33, *) id, body, x, y, z
+     READ(NodesUnit, *) id, body, x, y, z
      ShadowMesh % Nodes % x(i) = x
      ShadowMesh % Nodes % y(i) = y
      ShadowMesh % Nodes % z(i) = z
    END DO
-   CLOSE(33)
+   CLOSE(NodesUnit)
    ShadowMesh % NumberOfNodes = NofNodes
 
-   OPEN( 33, File=TRIM(name)//'/mesh.elements', STATUS='OLD', IOSTAT=iostat )
+   OPEN( NEWUNIT=ElementsUnit, File=TRIM(name)//'/mesh.elements', STATUS='OLD', IOSTAT=iostat )
    IF (iostat /= 0 ) CALL Error( "ViewUtils:", "Error reading shadow mesh.")
    DO i=1, NofElements
-     READ(33, '(a)' ) line
+     READ(ElementsUnit, '(a)' ) line
      READ(line, *) id, body, code
 
      ncnt = code - 100 * (code / 100)
@@ -1054,7 +1055,7 @@ CONTAINS
      ShadowMesh % Elements(i) % Type => GetElementType(code)
    END DO
    ShadowMesh % NumberOfBulkElements = Nofelements
-   CLOSE(33)
+   CLOSE(ElementsUnit)
 
 !------------------------------------------------------------------------------
  END FUNCTION LoadShadowMesh

@@ -447,7 +447,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   GroupCollection = GetLogical( Params,'Vtu Part Collection', GotIt ) 
 
   GroupId = 0    
-200 CONTINUE
+  group_loop: DO
   IF( GroupCollection ) THEN
     GroupId = GroupId + 1
     CALL Info(Caller,'Saving group '//I2S(GroupId),Level=8)
@@ -624,7 +624,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
   
   ! We may need to jump here to write a new eigenmode
-100 CONTINUE
+  mode_loop: DO
 
   ParallelDofsNodes = ParallelReduction( NumberOfDofNodes ) 
   
@@ -671,14 +671,18 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   IF( EigenAnalysis ) THEN
     FileIndex = FileIndex + 1
-    IF( FileIndex <= MaxModes + MaxModes2 ) GOTO 100
+    IF( FileIndex <= MaxModes + MaxModes2 ) CYCLE mode_loop
   END IF
+  EXIT mode_loop
+  END DO mode_loop
 
   IF( GroupCollection ) THEN
     IF( GroupId < CurrentModel % NumberOfBodies + CurrentModel % NumberOfBCs ) THEN
-      GOTO 200 
+      CYCLE group_loop
     END IF
   END IF
+  EXIT group_loop
+  END DO group_loop
 
   
   IF( ALLOCATED( NodePerm ) ) DEALLOCATE( NodePerm ) 
@@ -2184,7 +2188,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: PvdFile, DataSetFile
     INTEGER :: nTime, RecLen = 0
     TYPE(Model_t) :: Model     
-    INTEGER, PARAMETER :: VtuUnit = 58
+    INTEGER :: VtuUnit
     INTEGER :: n, nLine = 0, iostat
     REAL(KIND=dp) :: time
     CHARACTER :: lf
@@ -2215,7 +2219,7 @@ CONTAINS
       ! Just long enough
       RecLen = ((n/4)+5)*4
       
-      OPEN( UNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='REPLACE', &
+      OPEN( NEWUNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='REPLACE', &
           ACCESS='DIRECT', ACTION='WRITE', RECL=RecLen, IOSTAT=iostat)
       IF( iostat /= 0 ) THEN
         CALL Fatal('WritePvdFile','Opening of file failed: '//TRIM(PvdFile))
@@ -2228,7 +2232,7 @@ CONTAINS
       END IF     
       nLine = 1
     ELSE
-      OPEN( UNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='OLD', &
+      OPEN( NEWUNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='OLD', &
           ACCESS='DIRECT', ACTION='READWRITE', RECL=RecLen, IOSTAT=iostat)     
       IF( iostat /= 0 ) THEN
         CALL Fatal('WritePvdFile','Opening of file failed: '//TRIM(PvdFile))
@@ -2252,7 +2256,7 @@ CONTAINS
   SUBROUTINE WritePvtuFile( PvtuFile, Model )
     CHARACTER(LEN=*), INTENT(IN) :: PVtuFile
     TYPE(Model_t) :: Model 
-    INTEGER, PARAMETER :: VtuUnit = 58
+    INTEGER :: VtuUnit
     INTEGER :: i,j,k,dofs,Rank,n,dim,vari,sdofs,iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FullName
@@ -2301,7 +2305,7 @@ CONTAINS
     IF( Part > 0 ) RETURN
     CALL Info('WritePvtuFile','List of active partitions was composed',Level=12)
 
-    OPEN( UNIT=VtuUnit, FILE=PvtuFile, form = 'formatted', STATUS='REPLACE', IOSTAT=iostat)
+    OPEN( NEWUNIT=VtuUnit, FILE=PvtuFile, form = 'formatted', STATUS='REPLACE', IOSTAT=iostat)
     IF( iostat /= 0 ) THEN
       CALL Fatal('WritePvtuFile','Opening of file failed: '//TRIM(PvtuFile))
     END IF

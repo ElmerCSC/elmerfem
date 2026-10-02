@@ -1015,6 +1015,7 @@ CONTAINS
   SUBROUTINE CommunicateLosess()
 
     INTEGER :: i,j,k,NoSlices
+    INTEGER :: BodyLossUnit, SeriesLossUnit
     CHARACTER(LEN=MAX_NAME_LEN) :: LossesFile
     
     IF( ParEnv % PEs > 1 ) THEN
@@ -1082,28 +1083,28 @@ CONTAINS
     IF( Parenv % MyPe == 0 ) THEN
       LossesFile = ListGetString(SolverParams,'Fourier Loss Filename',Found )
       IF( Found ) THEN
-        OPEN (10, FILE=LossesFile)
-        WRITE( 10,'(A)')  '!body_id   loss(1)   loss(2) ....'        
-        DO j=1,Model % NumberOfBodies          
+        OPEN (NEWUNIT=BodyLossUnit, FILE=LossesFile)
+        WRITE( BodyLossUnit,'(A)')  '!body_id   loss(1)   loss(2) ....'
+        DO j=1,Model % NumberOfBodies
           IF( SUM( BodyLoss(1:Ncomp,j) ) <= TINY( TotalLoss ) ) CYCLE
-          WRITE( 10,'(I6)',ADVANCE='NO') j
+          WRITE( BodyLossUnit,'(I6)',ADVANCE='NO') j
           DO i=1,Ncomp-1
-            WRITE( 10,'(ES15.6)',ADVANCE='NO') BodyLoss(i,j)            
+            WRITE( BodyLossUnit,'(ES15.6)',ADVANCE='NO') BodyLoss(i,j)
           END DO
-          WRITE( 10,'(ES15.6)') BodyLoss(Ncomp,j)            
+          WRITE( BodyLossUnit,'(ES15.6)') BodyLoss(Ncomp,j)
         END DO
         CALL Info(Caller,'Fourier losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
-        CLOSE(10)
+        CLOSE(BodyLossUnit)
       END IF
 
       LossesFile = ListGetString(SolverParams,'Series Loss Filename',Found )
       IF( Found ) THEN
-        OPEN (10, FILE=LossesFile)
+        OPEN (NEWUNIT=SeriesLossUnit, FILE=LossesFile)
         DO j=1,FourierDofs/2
-          WRITE( 10,'(2ES15.6)') SUM(SeriesLoss(1:Ncomp,2*j-1)), SUM(SeriesLoss(1:Ncomp,2*j))
+          WRITE( SeriesLossUnit,'(2ES15.6)') SUM(SeriesLoss(1:Ncomp,2*j-1)), SUM(SeriesLoss(1:Ncomp,2*j))
         END DO
         CALL Info(Caller,'Series losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
-        CLOSE(10)
+        CLOSE(SeriesLossUnit)
       END IF
     END IF
 

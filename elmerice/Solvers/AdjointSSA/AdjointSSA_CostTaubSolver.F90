@@ -132,6 +132,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
 
   INTEGER :: i,t,p,j
   INTEGER :: ierr
+  INTEGER :: ioCostHeaderPar,ioCostHeaderSerial,ioCostAppendPar,ioCostAppendSerial
 
 
   SolverParams => GetSolverParams()
@@ -184,18 +185,18 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
     CALL DATE_AND_TIME(date,temps)
     If (Parallel) then
         if (ParEnv % MyPe.EQ.0) then
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jreg'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderPar, FILE=CostFile)
+                   write(ioCostHeaderPar,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderPar,1001) Lambda
+                   write(ioCostHeaderPar,'(A)') '# iter, Jreg'
+           CLOSE(ioCostHeaderPar)
          End if
     Else
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jreg'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderSerial, FILE=CostFile)
+                   write(ioCostHeaderSerial,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderSerial,1001) Lambda
+                   write(ioCostHeaderSerial,'(A)') '# iter, Jreg'
+           CLOSE(ioCostHeaderSerial)
     End if
    
   !!! End of First visit
@@ -338,9 +339,9 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
              CostVar % Values(1)=CostVar % Values(1)+Lambda*Cost_S
          Endif
          IF (Solver % ParEnv % MyPE == 0) then
-            OPEN (12, FILE=TRIM(CostFile),POSITION='APPEND')
-              WRITE(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
-            CLOSE(12)
+            OPEN (NEWUNIT=ioCostAppendPar, FILE=TRIM(CostFile),POSITION='APPEND')
+              WRITE(ioCostAppendPar,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
+            CLOSE(ioCostAppendPar)
          End if
    ELSE
          CostVar => VariableGet( Solver % Mesh % Variables, TRIM(CostSolName),UnFoundFatal=.TRUE. )
@@ -349,9 +350,9 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
          Else
               CostVar % Values(1)=CostVar % Values(1)+Lambda*Cost
          Endif
-         OPEN (12, FILE=TRIM(CostFile),POSITION='APPEND')
-           WRITE(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
-         CLOSE(12)
+         OPEN (NEWUNIT=ioCostAppendSerial, FILE=TRIM(CostFile),POSITION='APPEND')
+           WRITE(ioCostAppendSerial,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
+         CLOSE(ioCostAppendSerial)
    END IF
    
    RETURN

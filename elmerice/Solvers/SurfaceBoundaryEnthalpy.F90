@@ -48,6 +48,7 @@ TYPE(ValueList_t), POINTER :: SolverParams
 INTEGER, POINTER :: NodeIndexes(:)
 
 INTEGER :: n,i,j,cont,nb_surf,nb_vert,io,nb_year,nb_day,it
+INTEGER :: iounit_temp_count,iounit_precip_count,iounit_precip_read,iounit_temp_read
 REAL(KIND=dp) :: f, z, deg_pos,accu_ref,a,accu,melt_local,accu_ice, temp_10m,rain,t_simu,deg_jour,T,dt
 REAL(KIND=dp) :: z_precip,grad_accu,grad,z_temp,seuil_precip,seuil_fonte,Rad_fact_snow,Rad_fact_ice,Rad_fact
 REAL(KIND=dp) :: Pfact,temp_correc,surimposed_ice_fact,firn_param,deg1,deg2,precip_correc,sigma,melt
@@ -90,28 +91,28 @@ if (first_time) then
 		ENDIF
     END IF
 	
-	open(1,file=filename,status='old')
+	open(NEWUNIT=iounit_temp_count,file=filename,status='old')
 	nb_day = 0
 	do
-		read(1,*,iostat=io)
+		read(iounit_temp_count,*,iostat=io)
 		nb_day = nb_day + 1
 		if (io/=0) exit
 	enddo
-	close(1)
+	close(iounit_temp_count)
 	
 	nb_day=nb_day-1
 	
 	nb_year=floor(nb_day/365.25)
 	
 	IF (PrecipData) then
-		open(1,file=filename2,status='old')
+		open(NEWUNIT=iounit_precip_count,file=filename2,status='old')
 		cont = 0
 		do
-			read(1,*,iostat=io)
+			read(iounit_precip_count,*,iostat=io)
 			cont = cont + 1
 			if (io/=0) exit
 		enddo
-		close(1)
+		close(iounit_precip_count)
 		cont=cont-1
 	
 		IF (cont.ne.nb_day) then
@@ -122,11 +123,11 @@ if (first_time) then
 	
 		allocate(Precip(nb_day))
 	
-		open(1,file=filename2,status='old')
+		open(NEWUNIT=iounit_precip_read,file=filename2,status='old')
 		do i=1,nb_day
-			read(1,*) Precip(i)
+			read(iounit_precip_read,*) Precip(i)
 		enddo
-		close(1)
+		close(iounit_precip_read)
 	
 	!Mean annual precipitation cycle for steady state thermal regime
 		PrecipMean(:)=0.0
@@ -152,11 +153,11 @@ if (first_time) then
 	
 	ENDIF
 		
-	open(1,file=filename,status='old')
+	open(NEWUNIT=iounit_temp_read,file=filename,status='old')
 	do i=1,nb_day
-		read(1,*) TempAir(i)
+		read(iounit_temp_read,*) TempAir(i)
 	enddo
-	close(1)
+	close(iounit_temp_read)
 	
 	nb_year=floor(nb_day/365.25)
 	

@@ -387,7 +387,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   ! This is a counter for optional case where externally given timestep is
   ! a multitude of internally preferred timestep. 
   dti = 1
-1 CONTINUE
+  DO
 
 
 
@@ -562,9 +562,11 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   IF( dti < dtn ) THEN
     dti = dti + 1
     CALL Info(Caller,'Taking marching step: '//I2S(dti))
-    GOTO 1
+  ELSE
+    EXIT
   END IF
-  
+  END DO
+
   CALL Info(Caller,'All done',Level=5)
   CALL Info(Caller,'-----------------------------------------------------',Level=6)
 

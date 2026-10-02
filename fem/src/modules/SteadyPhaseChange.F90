@@ -350,7 +350,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   Trip_Temp =  Temperature( TempPerm(Trip_node) )    
 
   i =  ListGetInteger( Params,'Passive Steps',Stat)
-  IF( i >= SubroutineVisited) GOTO 200
+  passive_steps: BLOCK
+  IF( i >= SubroutineVisited) EXIT passive_steps
 
 !----------------------------------------------------------------------------
 
@@ -675,8 +676,9 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
      CALL BoxMoveMesh()
   END IF
 
-  
-200 CALL ListAddConstReal(Model % Simulation,'res: Triple point temperature',Trip_temp)
+
+  END BLOCK passive_steps
+  CALL ListAddConstReal(Model % Simulation,'res: Triple point temperature',Trip_temp)
   CALL ListAddConstReal( Model % Simulation,'res: triple point movement',dpos)
 
   ! Add the coordinate y to the list of variables to save
@@ -698,15 +700,17 @@ CONTAINS
 !> Subroutine creates isotherm where the temperature coincides with the melting temperature.
 !-------------------------------------------------------------------------------------------
   SUBROUTINE CreateIsotherm()
+    INTEGER :: IoUnit
 
     IsoSurfAllocated = .FALSE.
     xmin = HUGE(xmin)
     xmax = -HUGE(xmax)
-    
-100 NElems = 0
-    
-    DO t=1,Solver % Mesh % NumberOfBulkElements 
-       
+
+    isotherm_pass: DO
+    NElems = 0
+
+    DO t=1,Solver % Mesh % NumberOfBulkElements
+
        Element => Solver % Mesh % Elements(t)
        ElementCode = Element % TYPE % ElementCode
        IF(ElementCode < 300) CYCLE
@@ -806,17 +810,19 @@ CONTAINS
         IsoSurfAllocated = .TRUE.
         WRITE(Message,'(A,T35,I12)') 'Number of isotherm segments:',Nelems
         CALL Info('SteadyPhaseChange',Message)
-        GOTO 100
+        CYCLE isotherm_pass
      END IF
+     EXIT isotherm_pass
+     END DO isotherm_pass
 
      ! The last one is just one extra node for safety
      IF(ListGetLogical(Params,'Save Isotherm',stat)) THEN
         CALL Info('SteadyPhaseChange','Isotherm saved to file isotherm.dat')
-        OPEN (10,FILE='isotherm.dat')
+        OPEN (NEWUNIT=IoUnit,FILE='isotherm.dat')
         DO i=1,Nelems
-           WRITE(10,*) i,IsoSurf(i,1),IsoSurf(i,2)
+           WRITE(IoUnit,*) i,IsoSurf(i,1),IsoSurf(i,2)
         END DO
-        CLOSE(10)
+        CLOSE(IoUnit)
      END IF
 
 

@@ -104,6 +104,7 @@
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,k,n,l,t,k1,k2,iter,Ndeg,istat,nproc,tlen,nthreads
+     INTEGER :: startInfoUnit
      CHARACTER(LEN=MAX_STRING_LEN) :: threads
      CHARACTER(:), ALLOCATABLE :: CoordTransform
 
@@ -342,13 +343,13 @@
      END IF
 
      IF( .NOT. GotModelName ) THEN
-       OPEN( 1, File='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )       
+       OPEN( NEWUNIT=startInfoUnit, File='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
        IF( iostat /= 0 ) THEN
          CALL Fatal( 'MAIN', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
        END IF
        ALLOCATE(CHARACTER(MAX_PATH_LEN)::ModelName)
-       READ(1,'(a)') ModelName
-       CLOSE(1)
+       READ(startInfoUnit,'(a)') ModelName
+       CLOSE(startInfoUnit)
      END IF
 
      ! This sets optionally some internal parameters for doing scanning
@@ -392,7 +393,8 @@
      MeshIndex = 0
      DO WHILE( .TRUE. )
 
-       IF ( initialize==2 ) GOTO 1
+       LoadModelBlock: BLOCK
+       IF ( initialize==2 ) EXIT LoadModelBlock
 
        IF(MeshMode) THEN
          CALL FreeModel(CurrentModel)
@@ -499,8 +501,7 @@
            Mesh => Mesh % Next
          END DO
        END IF
-
-1      CONTINUE
+       END BLOCK LoadModelBlock
 
        CALL ListAddLogical( CurrentModel % Simulation, &
              'Initialization Phase', .TRUE. )
@@ -1167,6 +1168,7 @@
        LOGICAL, OPTIONAL :: Finalize 
 
        INTEGER :: i, j, k, n, solver_id, TestCount=0, PassCount=0, FailCount, Dofs
+       INTEGER :: passedUnit
        REAL(KIND=dp) :: Norm, RefNorm, Tol, Err, val, refval, dt
        TYPE(Solver_t), POINTER :: Solver
        TYPE(Variable_t), POINTER :: Var
@@ -1203,17 +1205,17 @@
              IF( ParEnv % PEs > 1 ) THEN
                ! Parallel test, add the number of tasks as a suffix
                PassedMsg = "TEST.PASSED_"//I2S(ParEnv % PEs)
-               OPEN( 10, FILE = PassedMsg )
+               OPEN( NEWUNIT=passedUnit, FILE = PassedMsg )
              ELSE
-               OPEN( 10, FILE = 'TEST.PASSED' )
+               OPEN( NEWUNIT=passedUnit, FILE = 'TEST.PASSED' )
              END IF
              IF( Success ) THEN
-               WRITE( 10,'(I1)' ) 1
+               WRITE( passedUnit,'(I1)' ) 1
              ELSE
-               WRITE( 10,'(I1)' ) 0
+               WRITE( passedUnit,'(I1)' ) 0
              END IF
-             CALL FLUSH( 10 )
-             CLOSE( 10 )
+             CALL FLUSH( passedUnit )
+             CLOSE( passedUnit )
 
              dt = ListGetConstReal(CurrentModel % Simulation,'Test Passed Delay', Found )
              IF(Found) CALL WaitSec(dt)
@@ -2417,7 +2419,8 @@
                  CALL Fatal('InitCond','Initialization only for scalar elemental fields!')
                END IF
                
-100            PrevBodyId = -1 
+               GaussReinitRetry: DO
+               PrevBodyId = -1
                DO t=1, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
                  
                  Element => Mesh % Elements(t)
@@ -2461,7 +2464,7 @@
                        ALLOCATE( Var % Values( nsize * Var % Dofs ) )
                      END IF
                      Var % Values = 0.0_dp
-                     GOTO 100 
+                     CYCLE GaussReinitRetry
                    END IF
 
                    Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
@@ -2482,8 +2485,10 @@
 
                    END DO
                    
-                 END IF 
+                 END IF
                END DO
+               EXIT GaussReinitRetry
+               END DO GaussReinitRetry
              END IF
            END DO
            IF(NamespaceFound) CALL ListPopNamespace()
@@ -2889,8 +2894,9 @@
        END IF
      END IF       
      
+     SimulationLoopBlock: BLOCK
      DO interval = 1,TimeIntervals
-       
+
 !------------------------------------------------------------------------------
 !      go through number of timesteps within an interval
 !------------------------------------------------------------------------------       
@@ -3464,18 +3470,18 @@
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
          IF( GotIt .AND. RealTime() - RT0 > maxtime ) THEN
             CALL Info('MAIN','Reached allowed maximum real time, exiting...',Level=3)
-            GOTO 100
+            EXIT SimulationLoopBlock
          END IF
 
          exitcond = ListGetCReal( CurrentModel % Simulation,'Exit Condition',GotIt)
          IF( GotIt .AND. exitcond > 0.0_dp ) THEN
             CALL Info('MAIN','Found a positive exit condition, exiting...',Level=3)
-            GOTO 100
+            EXIT SimulationLoopBlock
          END IF
 
          IF( sFinish(1) > 0.0_dp ) THEN
            CALL Info('MAIN','Finishing condition "finish" found to be positive, exiting...',Level=3)
-           GOTO 100
+           EXIT SimulationLoopBlock
          END IF
            
 !------------------------------------------------------------------------------
@@ -3521,8 +3527,7 @@
          END IF
        END DO
      END BLOCK
-     
-100  CONTINUE
+     END BLOCK SimulationLoopBlock
 
      CALL ListPopNamespace()
 

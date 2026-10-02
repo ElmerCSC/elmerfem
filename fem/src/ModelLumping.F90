@@ -405,6 +405,7 @@ CONTAINS
         ForceAtIp(3), MomentAtIp(3), Coord(3)
     INTEGER, POINTER :: Indexes(:), DisplPerm(:)
     INTEGER :: N_Integ, pn, n, i, j, k, t, dim, maxnodes, STDOFs
+    INTEGER :: KmatInvUnit, KmatMinInvUnit, KmatMinUnit, KmatUnit, KmatCenterUnit
     LOGICAL :: stat, Found
     CHARACTER(LEN=MAX_NAME_LEN) :: KmatFile
 
@@ -617,17 +618,17 @@ CONTAINS
         Lump % Kmat = Lump % Kmat / Lump % Area
 
         ! Save the Kmatrix prior to inversion to external file
-        OPEN (10, FILE= TRIM(KmatFile) // ".inv")
+        OPEN (NEWUNIT=KmatInvUnit, FILE= TRIM(KmatFile) // ".inv")
         DO i=1,Permutation
-          WRITE(10,'(6ES17.8E3)') Lump % Kmat(i,:)
+          WRITE(KmatInvUnit,'(6ES17.8E3)') Lump % Kmat(i,:)
         END DO
-        CLOSE(10)
+        CLOSE(KmatInvUnit)
 
-        OPEN (10, FILE= TRIM(KmatFile) // ".min-inv")
+        OPEN (NEWUNIT=KmatMinInvUnit, FILE= TRIM(KmatFile) // ".min-inv")
         DO i=1,Permutation
-          WRITE(10,'(6ES17.8E3)') Lump % KmatMin(i,:)
+          WRITE(KmatMinInvUnit,'(6ES17.8E3)') Lump % KmatMin(i,:)
         END DO
-        CLOSE(10)
+        CLOSE(KmatMinInvUnit)
 
         IF(ListGetLogical(Solver % Values,'Symmetrisize',stat)) THEN
           Lump % Kmat = (Lump % Kmat + TRANSPOSE(Lump % Kmat)) / 2.0d0
@@ -637,24 +638,24 @@ CONTAINS
         CALL InvertMatrix(Lump % Kmat,Permutation)
         CALL InvertMatrix(Lump % KmatMin,Permutation)
 
-        OPEN (10, FILE= TRIM(KmatFile) // ".min" )
+        OPEN (NEWUNIT=KmatMinUnit, FILE= TRIM(KmatFile) // ".min" )
         DO i=1,Permutation
-          WRITE(10,'(6ES17.8E3)') Lump % KmatMin(i,:)
+          WRITE(KmatMinUnit,'(6ES17.8E3)') Lump % KmatMin(i,:)
         END DO
-        CLOSE(10)
+        CLOSE(KmatMinUnit)
       END IF
 
       ! Save the Kmatrix to an external file
-      OPEN (10, FILE=KmatFile)
+      OPEN (NEWUNIT=KmatUnit, FILE=KmatFile)
       DO i=1,Permutation
-        WRITE(10,'(6ES17.8E3)') Lump % Kmat(i,:)
+        WRITE(KmatUnit,'(6ES17.8E3)') Lump % Kmat(i,:)
       END DO
-      CLOSE(10)
+      CLOSE(KmatUnit)
 
       ! Save the area center to an external file
-      OPEN (10, FILE= TRIM(KmatFile) // ".center")
-      WRITE(10,'(3ES17.8E3)') Lump % Center
-      CLOSE(10)
+      OPEN (NEWUNIT=KmatCenterUnit, FILE= TRIM(KmatFile) // ".center")
+      WRITE(KmatCenterUnit,'(3ES17.8E3)') Lump % Center
+      CLOSE(KmatCenterUnit)
     END IF
 
     IF(Lump % FixDisplacement .AND. Permutation == 6) THEN
@@ -688,6 +689,7 @@ CONTAINS
     REAL(KIND=dp) :: x, y, z, U, V, W, S
     REAL(KIND=dp) :: Moment0, Moment1(3), Moment2(3,3), Center(3), MassMatrix(6,6)
     INTEGER :: i, n, t, mat_id, body_id, maxnodes
+    INTEGER :: KmatMassUnit
     LOGICAL :: stat
     CHARACTER(LEN=MAX_NAME_LEN) :: KmatFile
 
@@ -802,11 +804,11 @@ CONTAINS
 
     ! Save the mass matrix to an external file
     KmatFile = LumpingFile( Solver )
-    OPEN (10, FILE= TRIM(KmatFile) // ".mass")
+    OPEN (NEWUNIT=KmatMassUnit, FILE= TRIM(KmatFile) // ".mass")
     DO i=1,6
-      WRITE(10,'(6ES17.8E3)') MassMatrix(i,:)
+      WRITE(KmatMassUnit,'(6ES17.8E3)') MassMatrix(i,:)
     END DO
-    CLOSE(10)
+    CLOSE(KmatMassUnit)
 
     DEALLOCATE( Basis, dBasisdx, Density )
 !------------------------------------------------------------------------------
