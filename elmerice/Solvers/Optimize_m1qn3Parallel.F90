@@ -140,44 +140,50 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   INTERFACE
      SUBROUTINE MeshUnweight(n,x,y,ps,izs,rzs,dzs)
        !------------------------------------------------------------------------------
+       USE Types, ONLY : dp
        INTEGER n,izs(*)
        REAL rzs(*)
-       DOUBLE PRECISION x(n),y(n),ps,dzs(*)
+       REAL(KIND=dp) x(n),y(n),ps,dzs(*)
      END SUBROUTINE MeshUnweight
 
      SUBROUTINE MeshUnweight_ctonb(n,u,v,izs,rzs,dzs)
        !------------------------------------------------------------------------------
+       USE Types, ONLY : dp
        INTEGER n,izs(*)
        REAL rzs(*)
-       DOUBLE PRECISION u(n),v(n),dzs(*)
+       REAL(KIND=dp) u(n),v(n),dzs(*)
      END SUBROUTINE MeshUnweight_ctonb
 
      SUBROUTINE MeshUnweight_ctcab(n,u,v,izs,rzs,dzs)
        !------------------------------------------------------------------------------
+       USE Types, ONLY : dp
        INTEGER n,izs(*)
        REAL rzs(*)
-       DOUBLE PRECISION u(n),v(n),dzs(*)
+       REAL(KIND=dp) u(n),v(n),dzs(*)
      END SUBROUTINE MeshUnweight_ctcab
 
      SUBROUTINE euclid (n,x,y,ps,izs,rzs,dzs)
        !------------------------------------------------------------------------------
+       USE Types, ONLY : dp
        INTEGER n,izs(*)
        REAL rzs(*)
-       DOUBLE PRECISION x(n),y(n),ps,dzs(*)
+       REAL(KIND=dp) x(n),y(n),ps,dzs(*)
      END SUBROUTINE euclid
             
      SUBROUTINE ctonbe (n,u,v,izs,rzs,dzs)
        !------------------------------------------------------------------------------
+       USE Types, ONLY : dp
        INTEGER n,izs(*)
        REAL rzs(*)
-       DOUBLE PRECISION u(n),v(n),dzs(*)
+       REAL(KIND=dp) u(n),v(n),dzs(*)
      END SUBROUTINE ctonbe
 
      SUBROUTINE ctcabe (n,u,v,izs,rzs,dzs)
-       !------------------------------------------------------------------------------               
+       !------------------------------------------------------------------------------
+       USE Types, ONLY : dp
        INTEGER n,izs(*)
        REAL rzs(*)
-       DOUBLE PRECISION u(n),v(n),dzs(*)
+       REAL(KIND=dp) u(n),v(n),dzs(*)
      END SUBROUTINE ctcabe
 
   END INTERFACE
@@ -642,10 +648,11 @@ END SUBROUTINE Optimize_m1qn3Parallel
 !Uses REAL dp array 'dzs' passed from Optimize_... => m1qn3.F => MeshUnweight.
 SUBROUTINE MeshUnweight (n,x,y,ps,izs,rzs,dzs)
 
+  USE Types, ONLY : dp
   IMPLICIT NONE
   INTEGER n,izs(*)
   REAL rzs(*)
-  DOUBLE PRECISION x(n),y(n),ps,dzs(*)
+  REAL(KIND=dp) x(n),y(n),ps,dzs(*)
 
   INTEGER i
 
@@ -660,10 +667,11 @@ END SUBROUTINE MeshUnweight
 
 SUBROUTINE MeshUnweight_ctonb (n,u,v,izs,rzs,dzs)
 
+  USE Types, ONLY : dp
   IMPLICIT NONE
   INTEGER n,izs(*)
   REAL rzs(*)
-  DOUBLE PRECISION u(n),v(n),dzs(*)
+  REAL(KIND=dp) u(n),v(n),dzs(*)
 
   INTEGER i
 
@@ -675,11 +683,12 @@ SUBROUTINE MeshUnweight_ctonb (n,u,v,izs,rzs,dzs)
 END SUBROUTINE MeshUnweight_ctonb
 
 SUBROUTINE MeshUnweight_ctcab (n,u,v,izs,rzs,dzs)
-  
+
+  USE Types, ONLY : dp
   IMPLICIT NONE
   INTEGER n,izs(*)
   REAL rzs(*)
-  DOUBLE PRECISION u(n),v(n),dzs(*)
+  REAL(KIND=dp) u(n),v(n),dzs(*)
 
   INTEGER i
 

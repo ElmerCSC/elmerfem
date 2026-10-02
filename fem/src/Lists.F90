@@ -1537,7 +1537,7 @@ CONTAINS
       INTEGER :: i,k,n, DOFs, MAXNDOFs
       LOGICAL :: Found, GlobalBubbles, UseProjector, HackMesh, ExecInterpolation
       CHARACTER(LEN=LEN_TRIM(Name)) :: str
-      DOUBLE PRECISION :: t1
+      REAL(KIND=dp) :: t1
       CHARACTER(:), ALLOCATABLE :: tmpname
 !------------------------------------------------------------------------------
       INTERFACE
