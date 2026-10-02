@@ -4374,45 +4374,41 @@ END SUBROUTINE PickActiveFace
              END IF
              IF (.NOT. n==3) CALL Fatal('EdgeElementInfo', 'A 3-node background element expected')
            END IF
-             
-           IF (n == 6) THEN
-             ! Here the element of the background mesh is of type 306.
-             ! The Lagrange interpolation basis on the p-approximation reference element:
-             Basis(1) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(-3.0d0 + 2.0d0*Sqrt(3.0d0)*v))/6.0d0
-             dLBasisdx(1,1) = -0.5d0 + u + v/Sqrt(3.0d0)
-             dLBasisdx(1,2) = (-Sqrt(3.0d0) + 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
-             Basis(2) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(3.0d0 - 2.0d0*Sqrt(3.0d0)*v))/6.0d0
-             dLBasisdx(2,1) = 0.5d0 + u - v/Sqrt(3.d0)
-             dLBasisdx(2,2) = (-Sqrt(3.0d0) - 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
-             Basis(3) = (v*(-Sqrt(3.0d0) + 2.0d0*v))/3.0d0
-             dLBasisdx(3,1) = 0.0d0
-             dLBasisdx(3,2) =  -(1.0d0/Sqrt(3.0d0)) + (4.0d0*v)/3.0d0
-             Basis(4) = (3.0d0 - 3.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + v**2)/3.0d0
-             dLBasisdx(4,1) = -2.0d0*u
-             dLBasisdx(4,2) = (-2.0d0*(Sqrt(3.0d0) - v))/3.0d0
-             Basis(5) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/3.0d0
-             dLBasisdx(5,1) =  (2.0d0*v)/Sqrt(3.0d0)
-             dLBasisdx(5,2) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 2.0d0*v))/3.0d0
-             Basis(6) = (-2.0d0*v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/3.0d0           
-             dLBasisdx(6,1) = (-2.0d0*v)/Sqrt(3.0d0)
-             dLBasisdx(6,2) = (-2.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 2.0d0*v))/3.0d0
-           ELSE
-             ! Here the element of the background mesh is of type 303:
-             DO q=1,3
-               Basis(q) = TriangleNodalPBasis(q, u, v)
-               dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
-             END DO
-           END IF
          ELSE
-           DO q=1,n
-             Basis(q) = TriangleNodalPBasis(q, u, v)
-             dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
-           END DO
            IF (Create2ndKindBasis) THEN
              DOFs = 6
            ELSE
              DOFs = 3
            END IF
+         END IF
+
+         IF (n == 6) THEN
+           ! Here the element of the background mesh is of type 306.
+           ! The Lagrange interpolation basis on the p-approximation reference element:
+           Basis(1) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(-3.0d0 + 2.0d0*Sqrt(3.0d0)*v))/6.0d0
+           dLBasisdx(1,1) = -0.5d0 + u + v/Sqrt(3.0d0)
+           dLBasisdx(1,2) = (-Sqrt(3.0d0) + 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
+           Basis(2) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(3.0d0 - 2.0d0*Sqrt(3.0d0)*v))/6.0d0
+           dLBasisdx(2,1) = 0.5d0 + u - v/Sqrt(3.d0)
+           dLBasisdx(2,2) = (-Sqrt(3.0d0) - 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
+           Basis(3) = (v*(-Sqrt(3.0d0) + 2.0d0*v))/3.0d0
+           dLBasisdx(3,1) = 0.0d0
+           dLBasisdx(3,2) =  -(1.0d0/Sqrt(3.0d0)) + (4.0d0*v)/3.0d0
+           Basis(4) = (3.0d0 - 3.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + v**2)/3.0d0
+           dLBasisdx(4,1) = -2.0d0*u
+           dLBasisdx(4,2) = (-2.0d0*(Sqrt(3.0d0) - v))/3.0d0
+           Basis(5) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/3.0d0
+           dLBasisdx(5,1) =  (2.0d0*v)/Sqrt(3.0d0)
+           dLBasisdx(5,2) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 2.0d0*v))/3.0d0
+           Basis(6) = (-2.0d0*v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/3.0d0           
+           dLBasisdx(6,1) = (-2.0d0*v)/Sqrt(3.0d0)
+           dLBasisdx(6,2) = (-2.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 2.0d0*v))/3.0d0
+         ELSE
+           ! Here the element of the background mesh is of type 303 (or only the vertices are used):
+           DO q=1,3
+             Basis(q) = TriangleNodalPBasis(q, u, v)
+             dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
+           END DO
          END IF
        CASE(4)
          IF (SecondOrder) THEN
