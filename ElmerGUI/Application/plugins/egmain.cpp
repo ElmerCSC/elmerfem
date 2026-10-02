@@ -723,7 +723,13 @@ int eg_loadmesh(const char *filename)
     
   strcpy(Filename,filename);
   info = TRUE;
-  if(info) printf("\nElmerGrid checking filename suffix for file: %s\n",filename);
+
+#if USE_MATC
+  if(info) printf("\nElmerGrid with MATC checking filename suffix for file: %s\n",filename);
+#else
+  if(info) printf("\nElmerGrid without MATC checking filename suffix for file: %s\n",filename);
+#endif // USE_MATC
+
 
   inmethod = DetermineFileType(filename,info);
   Inmethod = inmethod;

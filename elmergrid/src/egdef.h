@@ -4,24 +4,19 @@
 #ifndef _FEMDEF_H_
 #define _FEMDEF_H_
 
-#ifdef EG_PLUGIN
-#define USE_MATC 0
-#else
-#ifdef DISABLE_MATC
-#define USE_MATC 0
-#else
-#define USE_MATC 1
-#endif
-#endif
+/*
+This header file, egdef.h, is used by ElmerGrid and by ElmerGUI.
+The following definition, DISABLE_METIS is
+set in elmerfem/elmergrid/src/CMakeLists.txt
+The flag defined here, USE_METIS, is used
+in the ElmerGrid source files.  The old flag, EG_PLUGIN, is no longer
+needed and has been removed.
+*/
 
-#ifdef EG_PLUGIN
-#define USE_METIS 0
-#else
 #ifdef DISABLE_METIS
 #define USE_METIS 0
 #else
 #define USE_METIS 1
-#endif
 #endif
 
 typedef double Real;
