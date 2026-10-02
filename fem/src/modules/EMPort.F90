@@ -114,7 +114,9 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
       ! the vector field is approximated by the Nedelec element NED2_k of the second family.
       ! Otherwise the variational formulation does not control all gradient fields
       ! and spurious eigenvalues are obtained. Presently the case NED2_1 is supported by using
-      ! a background mesh of 6-node triangles.
+      ! a background mesh of 6-node triangles and/or 8-node quadrilaterals (in the case of
+      ! quadrilaterals the gradients of the 8-node serendipity basis span the gradient
+      ! subspace of the lowest-order edge element of the second kind).
       IF (SecondFamily .AND. SecondOrder) THEN
         CALL Warn(Caller, 'The formulation for Second Kind Basis of degree 2 is not well-posed')
       END IF
@@ -128,7 +130,8 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
           sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
         END IF
       ELSE IF( SecondFamily ) THEN
-        ! A background mesh of 6-node triangles is needed to have quadratic nodal DOFs
+        ! A background mesh of 6-node triangles or 8-node quads is needed to have
+        ! quadratic nodal DOFs
         sname = "n:1 e:2" 
       ELSE IF (PiolaVersion) THEN
         sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
@@ -376,8 +379,16 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
 #if 1
       IF (SecondFamily .AND. EdgeBasisDegree == 1 .AND. .NOT. UseV) THEN
-        IF (EFamily /= 3 .OR. n /= 6) CALL Fatal(Caller, &
-            'Second Kind Basis needs a background mesh of 6-node triangles')
+        SELECT CASE(EFamily)
+        CASE(3)
+          IF (n /= 6) CALL Fatal(Caller, &
+              'Second Kind Basis needs a background mesh of 6-node triangles')
+        CASE(4)
+          IF (n /= 8) CALL Fatal(Caller, &
+              'Second Kind Basis needs a background mesh of 8-node quadrilaterals')
+        CASE DEFAULT
+          CALL Fatal(Caller, 'Second Kind Basis needs a background mesh of triangles or quadrilaterals')
+        END SELECT
       ELSE IF (EdgeBasisDegree == 1) THEN
         IF (n /= EFamily) CALL Fatal(Caller, 'A background mesh must have linear elements!')
       ELSE

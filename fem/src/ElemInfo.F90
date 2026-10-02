@@ -4213,7 +4213,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions b spanning the reference element space
        REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)  !< The Curl of the edge basis functions with respect to the local coordinates
        REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the H1-conforming basis functions at (u,v,w)
-       LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned (only simplicial elements)
+       LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the 2nd kind is returned (simplicial elements and lowest-order quads)
        INTEGER, OPTIONAL :: BasisDegree          !< The approximation degree 2 (or even 3 in some cases) is also supported
        LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
                                                  !< and Curl b, return  B(f(p)) and (curl B)(f(p)) with B(x) the basis 
@@ -4286,6 +4286,7 @@ END SUBROUTINE PickActiveFace
        IF ( PRESENT(SecondFamily) ) Create2ndKindBasis = SecondFamily
        IF (Create2ndKindBasis .AND. .NOT.(Element % TYPE % ElementCode / 100 == 2 .OR. &
            Element % TYPE % ElementCode / 100 == 3 .OR. &
+           Element % TYPE % ElementCode / 100 == 4 .OR. &
            Element % TYPE % ElementCode / 100 == 5)) THEN
          CALL Fatal('EdgeElementInfo', 'Second Kind Basis = True is not supported for the given element shape')
        END IF
@@ -4411,7 +4412,14 @@ END SUBROUTINE PickActiveFace
            END DO
          END IF
        CASE(4)
-         IF (SecondOrder) THEN
+         IF (Create2ndKindBasis) THEN
+           IF (SecondOrder .OR. ThirdOrder) CALL Fatal('EdgeElementInfo', &
+               'A higher-order quad of the 2nd kind is not yet available')
+           ! The lowest-order quad of the second kind (the rotated BDM_1 element):
+           ! its subspace of gradients is spanned by the gradients of the 8-node
+           ! serendipity basis
+           DOFs = 8
+         ELSE IF (SecondOrder) THEN
            ! The second-order quad from the Nedelec's first family: affine physical elements may be needed
            DOFs = 12
          ELSE
@@ -5008,16 +5016,25 @@ END SUBROUTINE PickActiveFace
            ! This branch is for handling quadrilaterals
            !--------------------------------------------------------------
            EdgeMap => GetEdgeMap(4)
-           IF (SecondOrder) THEN
-             IF (GradVersion) THEN
+           IF (SecondOrder .OR. Create2ndKindBasis) THEN
+             IF (GradVersion .OR. Create2ndKindBasis) THEN
                !
                ! An alternate basis which is compatible with the basis originally constructed for
                ! simplicial elements when GradientVersion = .TRUE.. Here the basis functions are  
                ! defined in terms of the Lobatto shape functions Phi(k,.) and the Legendre
                ! polynomials LegendreP(1,.)
                !
+               ! The basis functions associated with edges also span the FE space for the lowest-order
+               ! quad of the second kind. The tangential traces of these basis functions on an edge are
+               ! then the same as those of the basis of the second kind for triangles (that is, 
+               ! the traces of the Whitney form and the gradient of the quadratic edge bubble).
+               !
                EDOFs = 2
-               FDOFs = 4
+               IF (Create2ndKindBasis) THEN
+                 FDOFs = 0
+               ELSE
+                 FDOFs = 4
+               END IF
 
                DO k=1,4
                  i = EdgeMap(k,1)
@@ -5089,75 +5106,78 @@ END SUBROUTINE PickActiveFace
                  !END DO
                END DO
 
-               SquareFaceMap(:) = (/ 1,2,3,4 /)
-               FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
-               CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
+               ! The basis functions associated with the face (not present for the 2nd kind)
+               IF (FDOFs > 0) THEN
+                 SquareFaceMap(:) = (/ 1,2,3,4 /)
+                 FaceIndices(1:4) = GIndexes(SquareFaceMap(1:4))
+                 CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
-               WorkBasis(1:4,1:2) = 0.0d0
+                 WorkBasis(1:4,1:2) = 0.0d0
 
-               ! (u,v) ->  P0/2 * (-2) * sqrt(2.0d0/3.0d0) * phi_2(v) e1
-               !        =  1/2 P0 * 4 L_1(v) L_2(v) e1
-               WorkBasis(1,1) = -sqrt(2.0d0/3.0d0) * Phi(2,v)
-               WorkCurlBasis(1,3) = sqrt(2.0d0/3.0d0) * dPhi(2,v)
+                 ! (u,v) ->  P0/2 * (-2) * sqrt(2.0d0/3.0d0) * phi_2(v) e1
+                 !        =  1/2 P0 * 4 L_1(v) L_2(v) e1
+                 WorkBasis(1,1) = -sqrt(2.0d0/3.0d0) * Phi(2,v)
+                 WorkCurlBasis(1,3) = sqrt(2.0d0/3.0d0) * dPhi(2,v)
 
-               ! (u,v) ->  (-2) * sqrt(2.0d0/3.0d0) * phi_2(u) * P0/2 e2
-               !        =  1/2 P0 * 4 L_1(u) L_2(u) e2               
-               WorkBasis(2,2) = -sqrt(2.0d0/3.0d0) * Phi(2,u)
-               WorkCurlBasis(2,3) = -sqrt(2.0d0/3.0d0) * dPhi(2,u)
+                 ! (u,v) ->  (-2) * sqrt(2.0d0/3.0d0) * phi_2(u) * P0/2 e2
+                 !        =  1/2 P0 * 4 L_1(u) L_2(u) e2               
+                 WorkBasis(2,2) = -sqrt(2.0d0/3.0d0) * Phi(2,u)
+                 WorkCurlBasis(2,3) = -sqrt(2.0d0/3.0d0) * dPhi(2,u)
 
-               ! (u,v) ->  D_u [-1/sqrt(6) * phi_2(u) * (-2) * sqrt(2/3) * phi_2(v) ] e_1
-               !        = -1/2 P1(u) * [(-2) * sqrt(2/3) * phi_2(v)] e_1
-               !        = -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1
-               WorkBasis(3,1) = -1.0d0/2.0d0 * LegendreP(1,u) * (-2.0d0) * sqrt(2.0d0/3.0d0) * Phi(2,v)
-               WorkCurlBasis(3,3) = 1.0d0/2.0d0 * LegendreP(1,u) * (-2.0d0) * sqrt(2.0d0/3.0d0) * dPhi(2,v)
+                 ! (u,v) ->  D_u [-1/sqrt(6) * phi_2(u) * (-2) * sqrt(2/3) * phi_2(v) ] e_1
+                 !        = -1/2 P1(u) * [(-2) * sqrt(2/3) * phi_2(v)] e_1
+                 !        = -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1
+                 WorkBasis(3,1) = -1.0d0/2.0d0 * LegendreP(1,u) * (-2.0d0) * sqrt(2.0d0/3.0d0) * Phi(2,v)
+                 WorkCurlBasis(3,3) = 1.0d0/2.0d0 * LegendreP(1,u) * (-2.0d0) * sqrt(2.0d0/3.0d0) * dPhi(2,v)
 
-               ! (u,v) -> D_v [-1/sqrt(6) * phi_2(v) * (-2) * sqrt(2/3) * phi_2(u) ] e_2
-               !        = -1/2 P1(v) * [(-2) * sqrt(2/3) * phi_2(u)] e_2
-               !        = -1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
-               WorkBasis(4,2) = (-2.0d0) * sqrt(2.0d0/3.0d0) * Phi(2,u) * (-1.0d0/2.0d0) * LegendreP(1,v)
-               WorkCurlBasis(4,3) = (-2.0d0) * sqrt(2.0d0/3.0d0) * dPhi(2,u) * (-1.0d0/2.0d0) * LegendreP(1,v)
+                 ! (u,v) -> D_v [-1/sqrt(6) * phi_2(v) * (-2) * sqrt(2/3) * phi_2(u) ] e_2
+                 !        = -1/2 P1(v) * [(-2) * sqrt(2/3) * phi_2(u)] e_2
+                 !        = -1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
+                 WorkBasis(4,2) = (-2.0d0) * sqrt(2.0d0/3.0d0) * Phi(2,u) * (-1.0d0/2.0d0) * LegendreP(1,v)
+                 WorkCurlBasis(4,3) = (-2.0d0) * sqrt(2.0d0/3.0d0) * dPhi(2,u) * (-1.0d0/2.0d0) * LegendreP(1,v)
 
-               DO l=1,FDOFs
+                 DO l=1,FDOFs
 
-                 SELECT CASE(l)
-                 CASE(1)
-                   ! (u,v) -> -sqrt(2/3) * P0 * phi_2(v) e1
-                   !        = (1/2 P0) * [-2 * sqrt(2/3) * phi_2(v)] e1
-                   !        = (1/2 P0) * 4 L_1(v) L_2(v) e1
-                   !
-                   sfun = 1.0d0
-                   ! tfun = 0.0d0
-                   EdgeBasis(4*EDOFs + l,1:2) = sfun * D1 * WorkBasis(I1,1:2)
-                   CurlBasis(4*EDOFs + l,3) = sfun * D1 * WorkCurlBasis(I1,3)
-                 CASE(2)
-                   ! (u,v) -> -sqrt(2/3) * phi_2(u) * P0 e2
-                   !        = (1/2 P0) * [-2 * sqrt(2/3) * phi_2(u)] e2
-                   !        = (1/2 P0) * 4 L_1(u) L_2(u) e2
-                   !
-                   !sfun = 0.0d0
-                   tfun = 1.0d0
-                   EdgeBasis(4*EDOFs + l,1:2) = tfun * D2 * WorkBasis(I2,1:2)
-                   CurlBasis(4*EDOFs + l,3) = tfun * D2 * WorkCurlBasis(I2,3)
-                 CASE(3)
-                   ! (u,v) ->  -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1,  or -1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
-                   sfun = 1.0d0
-                   tfun = 0.0d0
-                   q = 2
-                   ! Note that sign changes never happen
-                   EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2)
-                   CurlBasis(4*EDOFs + l,3) = sfun * WorkCurlBasis(q+I1,3)
-                 CASE(4)
-                   ! (u,v) -> grad( -1/sqrt(6) * (-2 * sqrt(2/3)) * phi_2(u) * phi_2(v) )
-                   !        = -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1 - 1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
-                   !
-                   sfun = 1.0d0
-                   tfun = 1.0d0
-                   q = 2
-                   ! Note that sign changes never happen
-                   EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2) + tfun * WorkBasis(q+I2,1:2)
-                   CurlBasis(4*EDOFs + l,3) = 0.0d0
-                 END SELECT
-               END DO
+                   SELECT CASE(l)
+                   CASE(1)
+                     ! (u,v) -> -sqrt(2/3) * P0 * phi_2(v) e1
+                     !        = (1/2 P0) * [-2 * sqrt(2/3) * phi_2(v)] e1
+                     !        = (1/2 P0) * 4 L_1(v) L_2(v) e1
+                     !
+                     sfun = 1.0d0
+                     ! tfun = 0.0d0
+                     EdgeBasis(4*EDOFs + l,1:2) = sfun * D1 * WorkBasis(I1,1:2)
+                     CurlBasis(4*EDOFs + l,3) = sfun * D1 * WorkCurlBasis(I1,3)
+                   CASE(2)
+                     ! (u,v) -> -sqrt(2/3) * phi_2(u) * P0 e2
+                     !        = (1/2 P0) * [-2 * sqrt(2/3) * phi_2(u)] e2
+                     !        = (1/2 P0) * 4 L_1(u) L_2(u) e2
+                     !
+                     !sfun = 0.0d0
+                     tfun = 1.0d0
+                     EdgeBasis(4*EDOFs + l,1:2) = tfun * D2 * WorkBasis(I2,1:2)
+                     CurlBasis(4*EDOFs + l,3) = tfun * D2 * WorkCurlBasis(I2,3)
+                   CASE(3)
+                     ! (u,v) ->  -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1,  or -1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
+                     sfun = 1.0d0
+                     tfun = 0.0d0
+                     q = 2
+                     ! Note that sign changes never happen
+                     EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2)
+                     CurlBasis(4*EDOFs + l,3) = sfun * WorkCurlBasis(q+I1,3)
+                   CASE(4)
+                     ! (u,v) -> grad( -1/sqrt(6) * (-2 * sqrt(2/3)) * phi_2(u) * phi_2(v) )
+                     !        = -1/2 P1(u) * [4 L_1(v) L_2(v)] e_1 - 1/2 P1(v) * [4 L_1(u) L_2(u)] e_2
+                     !
+                     sfun = 1.0d0
+                     tfun = 1.0d0
+                     q = 2
+                     ! Note that sign changes never happen
+                     EdgeBasis(4*EDOFs + l,1:2) = sfun * WorkBasis(q+I1,1:2) + tfun * WorkBasis(q+I2,1:2)
+                     CurlBasis(4*EDOFs + l,3) = 0.0d0
+                   END SELECT
+                 END DO
+               END IF
              ELSE
                !---------------------------------------------------------------
                ! The second-order element from the Nedelec's first family with
