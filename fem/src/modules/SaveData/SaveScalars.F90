@@ -44,7 +44,7 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -127,7 +127,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   USE ParallelUtils, ONLY : ParallelSlicesComm, ParallelTimesComm, &
       ParallelPieceRank, ParallelPieceSize
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model

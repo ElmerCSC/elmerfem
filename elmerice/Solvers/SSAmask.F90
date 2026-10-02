@@ -69,7 +69,7 @@ SUBROUTINE SSAmask( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE ElementDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -229,7 +229,7 @@ SUBROUTINE SSAWeights( Model,Solver,dt,TransientSimulation )
 !******************************************************************************  
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

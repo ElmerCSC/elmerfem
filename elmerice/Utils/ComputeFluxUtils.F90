@@ -36,7 +36,7 @@
       MODULE ComputeFluxUtils
       USE DefUtils
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

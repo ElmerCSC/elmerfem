@@ -75,7 +75,7 @@ MODULE IterativeMethods
   USE CRSMatrix  
   USE SParIterComm
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   INTEGER :: nc
   LOGICAL :: Constrained
@@ -97,7 +97,7 @@ CONTAINS
   !-----------------------------------------------------------------------------------
   FUNCTION PseudoZDotProd( ndim, x, xind, y, yind ) RESULT( d )
   !-----------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: ndim, xind, yind
     REAL(KIND=dp) :: x(*)
@@ -138,7 +138,7 @@ CONTAINS
   !-----------------------------------------------------------------------------------
   FUNCTION PseudoZDotProd2( ndim, x, xind, y, yind ) RESULT( d )
   !-----------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     
     INTEGER :: ndim, xind, yind
     REAL(KIND=dp) :: x(*)
@@ -180,7 +180,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -271,7 +271,7 @@ CONTAINS
         Residual = rnorm / bnorm
         IF( MOD(k,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') k, rnorm, residual
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -298,7 +298,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -376,7 +376,7 @@ CONTAINS
         
         IF( MOD(i,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') i, rnorm, residual
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -406,7 +406,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -504,7 +504,7 @@ CONTAINS
         
         IF( MOD(k,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') k, rnorm, residual
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         Converged = (Residual < MinTolerance) 
@@ -525,7 +525,7 @@ CONTAINS
     SUBROUTINE C_matvec(u,v,ipar,matvecsubr)
 !-----------------------------------------------------------------------------------
       USE huti_interfaces
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
@@ -554,7 +554,7 @@ CONTAINS
     RECURSIVE SUBROUTINE C_rpcond(u,v,ipar,pcondrsubr)
 !-----------------------------------------------------------------------------------
       USE huti_interfaces
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
@@ -579,7 +579,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -696,6 +696,7 @@ CONTAINS
       INTEGER :: l   ! polynomial degree
       INTEGER :: n, MaxRounds, OutputInterval   
       LOGICAL :: Converged, Diverged, Halted
+      EXTERNAL :: DGETRF, DGETRS, DSYMV, DDOT
       TYPE(Matrix_t), POINTER :: A
       REAL(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -1112,7 +1113,7 @@ CONTAINS
 
         IF( MOD(Round,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
         
         IF( Robust ) THEN
@@ -1148,12 +1149,12 @@ CONTAINS
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4,I8,2E11.4)') 'BiCGStabl robust: ',&
               MIN(MaxRounds,Round), BestNorm, BestIter, rnrm, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       ELSE
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE (*, '(A, I8, 2E11.4)') 'BiCGStabl: ', MIN(MaxRounds,Round), rnrm, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       END IF
             
@@ -1190,7 +1191,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -1416,7 +1417,7 @@ CONTAINS
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          ELSE
            Residual = rnorm / bnorm
@@ -1426,7 +1427,7 @@ CONTAINS
              ELSE
                WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, residual, beta
              END IF
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          END IF
            
@@ -1483,7 +1484,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -1878,7 +1879,7 @@ CONTAINS
         
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
 
         IF( Robust ) THEN
@@ -1921,13 +1922,13 @@ CONTAINS
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4,I8,E11.4)') 'Idrs robust: ',&
               iter, BestNorm, BestIter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       ELSE
         IF(OutputInterval /= HUGE(OutputInterval)) THEN
           WRITE(*,'(A,I8,E11.4)') 'Idrs: ',&
               iter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
       END IF
       
@@ -1948,7 +1949,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -2458,7 +2459,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondrsubr
@@ -2617,13 +2618,13 @@ CONTAINS
            Residual = stopcfun(x,b,r,ipar,dpar)
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I6, 2E12.4)') '   gcr:',k, rnorm / bnorm, residual
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          ELSE
            Residual = rnorm / bnorm
            IF( MOD(k,OutputInterval) == 0) THEN
              WRITE (*, '(A, I8, 3ES12.4,A)') '   gcrz:',k, residual, beta,'i'
-             CALL FLUSH(6)
+             FLUSH(6)
            END IF
          END IF
         
@@ -2643,7 +2644,7 @@ CONTAINS
                CALL Info('WARNING', Message, Level=2)
                WRITE( Message, * ) 'True residual norm = ', TrueResNorm
                CALL Info('WARNING', Message, Level=2)   
-               CALL FLUSH(6)
+               FLUSH(6)
              END IF
          END IF 
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
@@ -2670,7 +2671,7 @@ CONTAINS
        pcondrsubr, dotprodfun, normfun, stopcfun )
  !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondrsubr
@@ -2734,6 +2735,7 @@ CONTAINS
       INTEGER :: l   ! polynomial degree
       INTEGER :: n, MaxRounds, OutputInterval   
       LOGICAL :: Converged, Diverged
+      EXTERNAL :: ZGETRF, ZGETRS, ZDOTC
       TYPE(Matrix_t), POINTER :: A
       COMPLEX(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
@@ -2960,7 +2962,7 @@ CONTAINS
          errorind = rnrm/bnrm
          IF( MOD(Round,OutputInterval) == 0) THEN
            WRITE (*, '(I8, E11.4)') Round, errorind
-           CALL FLUSH(6)
+           FLUSH(6)
          END IF
 
          Converged = (errorind < Tol) 
@@ -2970,7 +2972,7 @@ CONTAINS
 
       IF( EarlyExit .AND. (OutputInterval/=HUGE(OutputInterval)) ) THEN
         WRITE (*, '(I8, E11.4)') Round, errorind
-        CALL FLUSH(6)
+        FLUSH(6)
       END IF
 
       !------------------------------------------------------------
@@ -2990,6 +2992,7 @@ CONTAINS
       integer, INTENT(in) :: n
       complex(kind=dp), INTENT(in)  ::a(n,n), x(n)
       complex(kind=dp), INTENT(out) ::y(n)
+      EXTERNAL :: ZHEMV
  
       complex(kind=dp), parameter :: zone  = cmplx(1._dp, 0._dp,kind=dp)
       complex(kind=dp), parameter :: zzero = cmplx(0._dp, 0._dp,kind=dp)
@@ -3062,7 +3065,7 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondrsubr
@@ -3296,7 +3299,7 @@ CONTAINS
           
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
-            CALL FLUSH(6)
+            FLUSH(6)
           END IF
 
           Converged = (errorind < Tol)
@@ -3354,7 +3357,7 @@ CONTAINS
 
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
-          CALL FLUSH(6)
+          FLUSH(6)
         END IF
 
         Converged = (errorind < Tol)

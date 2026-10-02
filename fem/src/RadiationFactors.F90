@@ -45,11 +45,12 @@
    SUBROUTINE RadiationFactors( TSolver, TopoCall, Newton )
 
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      LOGICAL :: TopoCall
      LOGICAL :: Newton
      TYPE(Solver_t) :: TSolver
+     EXTERNAL :: RadiationFactorsMesh
 
      CALL RadiationFactorsMesh( TSolver, TopoCall, Newton )
      CALL SetCurrentMesh( CurrentModel, TSolver % Mesh )
@@ -60,7 +61,8 @@
    SUBROUTINE RadiationFactorsMesh( TSolver, TopoCall, Newton )
 
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
+     EXTERNAL :: DGEMV
 
      LOGICAL :: TopoCall
      LOGICAL :: Newton

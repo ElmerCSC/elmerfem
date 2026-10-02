@@ -34,7 +34,9 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   USE SaveUtils
   USE AscBinOutputUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
+
+  EXTERNAL :: DXOutputSolver, GidOutputSolver, VtkOutputSolver, VtuOutputSolver
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
@@ -65,7 +67,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   INTERFACE
     RECURSIVE SUBROUTINE ElmerPostOutputSolver( Model, Solver,dt,TransientSimulation,ONOEfound )
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
       TYPE(Solver_t) :: Solver
       TYPE(Model_t) :: Model

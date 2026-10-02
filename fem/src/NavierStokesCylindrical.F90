@@ -47,7 +47,7 @@ MODULE NavierStokesCylindrical
   USE MaterialModels
   USE ElementDescription, ONLY: GetEdgeMap
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   CONTAINS
 
@@ -934,7 +934,7 @@ MODULE NavierStokesCylindrical
 
    USE ElementUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LoadVector(:,:), &
                  NodalAlpha(:),NodalBeta(:),NodalSlipCoeff(:,:), NodalExtPressure(:)

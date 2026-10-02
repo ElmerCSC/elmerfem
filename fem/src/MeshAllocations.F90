@@ -53,7 +53,7 @@ MODULE MeshAllocations
   USE ElementUtils, ONLY : FreeMatrix !Find_Face, Find_Edge, AllocateMesh, FreeMatrix, TangentDirections !mGetBoundaryIndexesFromParent, &
 !        NormalDirection, CreateMatrix, TangentDirections, &
 !        FreeMatrix
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
   

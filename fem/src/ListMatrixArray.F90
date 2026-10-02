@@ -38,14 +38,14 @@ MODULE ListMatrixArray
   USE Types
   USE GeneralUtils, ONLY : I2S
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 CONTAINS
   
   !-------------------------------------------------------------------------------
   !> Allocates an empty array list matrix.
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_Allocate(ListMatrixArray, N, PoolSize, Atomic)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     INTEGER,INTENT(IN) :: N
     INTEGER, OPTIONAL :: PoolSize
@@ -94,7 +94,7 @@ CONTAINS
   !> Free an array list matrix.
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_Free( ListMatrixArray )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
 
     TYPE(ListMatrixEntryPool_t), POINTER :: p, p1
@@ -118,7 +118,7 @@ CONTAINS
   END SUBROUTINE ListMatrixArray_Free
 
   SUBROUTINE ListMatrixArray_InitializeAtomic(ListMatrixArray)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
 
     INTEGER :: i, N, istat
@@ -143,7 +143,7 @@ CONTAINS
   END SUBROUTINE ListMatrixArray_InitializeAtomic
 
   SUBROUTINE ListMatrixArray_FreeAtomic(ListMatrixArray)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
 
     INTEGER :: i, N
@@ -166,7 +166,7 @@ CONTAINS
   END SUBROUTINE ListMatrixArray_FreeAtomic
 
   SUBROUTINE ListMatrixArray_LockRow(ListMatrixArray, row, Atomic)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     INTEGER, INTENT(IN) :: row
     LOGICAL, OPTIONAL :: Atomic
@@ -179,7 +179,7 @@ CONTAINS
   END SUBROUTINE ListMatrixArray_LockRow
 
   SUBROUTINE ListMatrixArray_UnlockRow(ListMatrixArray, row, Atomic)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     INTEGER, INTENT(IN) :: row
     LOGICAL, OPTIONAL :: Atomic
@@ -196,7 +196,7 @@ CONTAINS
   !> used in most places of the code. 
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_ToGraph( ListMatrixArray, Graph)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     TYPE(Graph_t) :: Graph
     
@@ -209,7 +209,7 @@ CONTAINS
   !> used in most places of the code. The matrix structure can accommodate both forms.
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_ToCRSMatrix( ListMatrixArray, CRSMatrix )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     TYPE(Matrix_t) :: CRSMatrix
     
@@ -218,7 +218,7 @@ CONTAINS
   END SUBROUTINE ListMatrixArray_ToCRSMatrix
 
   SUBROUTINE ListMatrixArray_FromCRSMatrix( ListMatrixArray, CRSMatrix )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     TYPE(Matrix_t) :: CRSMatrix
     
@@ -230,7 +230,7 @@ CONTAINS
   !> Add index (row,col) to the matrix sparsity structure 
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_AddEntry(ListMatrixArray, row, col, val, Atomic)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     INTEGER, INTENT(IN) :: row, col
     REAL(KIND=dp), OPTIONAL :: val
@@ -294,7 +294,7 @@ CONTAINS
   !> Add indexes on a single row to the matrix sparsity structure.
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_AddEntries(ListMatrixArray, row, nentry, Indexes, Perm, Atomic)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     INTEGER, INTENT(IN) :: row, nentry
     INTEGER, INTENT(IN) :: Indexes(nentry), Perm(nentry)
@@ -391,7 +391,7 @@ CONTAINS
    !> Delete entry (row,col) from the matrix sparsity structure 
    !-------------------------------------------------------------------------------
    SUBROUTINE ListMatrixArray_DeleteEntry(ListMatrixArray, row, col, Atomic)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(ListMatrixArray_t) :: ListMatrixArray
      INTEGER, INTENT(IN) :: row, col
      LOGICAL, OPTIONAL :: Atomic
@@ -437,7 +437,7 @@ CONTAINS
    !> ListMatrixPool support routines
    !-------------------------------------------------------------------------------
    SUBROUTINE ListMatrixPool_Initialize(Pool, PoolSize)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      
      TYPE(ListMatrixPool_t) :: Pool
      INTEGER, INTENT(IN) :: PoolSize
@@ -449,7 +449,7 @@ CONTAINS
    END SUBROUTINE ListMatrixPool_Initialize
 
    SUBROUTINE ListMatrixPool_Enlarge(Pool)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(ListMatrixPool_t) :: Pool
 
@@ -470,7 +470,7 @@ CONTAINS
    END SUBROUTINE ListMatrixPool_Enlarge
 
    SUBROUTINE ListMatrixPool_Free(Pool)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(ListMatrixPool_t) :: Pool
      TYPE(ListMatrixEntryPool_t), POINTER :: EntryPool, EntryPoolNext
@@ -485,7 +485,7 @@ CONTAINS
    END SUBROUTINE ListMatrixPool_Free
 
    FUNCTION ListMatrixPool_GetListEntry(Pool, ind, Next) RESULT(ListEntry)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(ListMatrixPool_t) :: Pool
      INTEGER, INTENT(IN) :: ind
@@ -513,7 +513,7 @@ CONTAINS
    END FUNCTION ListMatrixPool_GetListEntry
 
    SUBROUTINE ListMatrixPool_AddDeletedEntry(Pool, DEntry)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(ListMatrixPool_t) :: Pool
      TYPE(ListMatrixEntry_t), POINTER :: DEntry

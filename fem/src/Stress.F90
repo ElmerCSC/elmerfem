@@ -48,7 +48,7 @@ MODULE StressLocal
   USE DefUtils
   USE Materialmodels
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTEGER, PARAMETER :: VOIGT_I1(6) = [1,2,3,1,2,1], VOIGT_I2(6) = [1,2,3,2,3,3]
 
@@ -2046,7 +2046,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE RotateStressVector(C,T)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: T(:,:), C(:), CT(3,3)
     INTEGER :: i,p,q
@@ -2083,7 +2083,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE RotateStrainVector(C,T)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: T(:,:), C(:), CT(3,3)
     INTEGER :: i,p,q
@@ -2139,7 +2139,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE RotateElasticityMatrix2D(C,T)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: T(:,:), C(:,:), CT(2,2,2,2)
     INTEGER :: i,j,p,q,r,s
@@ -2187,7 +2187,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE RotateElasticityMatrix3D(C,T)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp) :: T(:,:), C(:,:), CT(3,3,3,3)
     INTEGER :: i,j,p,q,r,s
@@ -2859,7 +2859,7 @@ CONTAINS
    SUBROUTINE ElasticityBoundaryResidual( Model, Edge, Mesh, Quant, Perm, Gnorm, Indicator, LargeDeflection )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      !> Geometrically nonlinear stress, as ElasticSolve's estimators have always
      !> used; false gives the small strain path through LocalStress. Deliberately
      !> not OPTIONAL -- an absent optional cannot be tested without PRESENT, and
@@ -3086,7 +3086,7 @@ CONTAINS
   SUBROUTINE ElasticityEdgeResidual( Model,Edge,Mesh,Quant,Perm, Indicator, LargeDeflection )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      !> Geometrically nonlinear stress, as ElasticSolve's estimators have always
      !> used; false gives the small strain path through LocalStress. Deliberately
      !> not OPTIONAL -- an absent optional cannot be tested without PRESENT, and
@@ -3289,7 +3289,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      !> Geometrically nonlinear stress, as ElasticSolve's estimators have always
      !> used; false gives the small strain path through LocalStress. Deliberately
      !> not OPTIONAL -- an absent optional cannot be tested without PRESENT, and

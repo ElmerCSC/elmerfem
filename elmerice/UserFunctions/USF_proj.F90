@@ -36,7 +36,7 @@
 !--------------------------------------------------------------------------------
       FUNCTION xy2Lon(Model,nodenumber,VarIn) RESULT(VarOut)
       USE ProjUtils
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       !-----------------
       TYPE(Model_t) :: Model
       INTEGER :: nodenumber
@@ -53,7 +53,7 @@
 
       FUNCTION xy2Lat(Model,nodenumber,VarIn) RESULT(VarOut)
       USE ProjUtils
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       !-----------------
       TYPE(Model_t) :: Model
       INTEGER :: nodenumber
@@ -70,7 +70,7 @@
 
       FUNCTION LonLat2x(Model,nodenumber,VarIn) RESULT(VarOut)
       USE ProjUtils
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       !-----------------
       TYPE(Model_t) :: Model
       INTEGER :: nodenumber
@@ -87,7 +87,7 @@
 
       FUNCTION LonLat2y(Model,nodenumber,VarIn) RESULT(VarOut)
       USE ProjUtils
-      implicit none
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       !-----------------
       TYPE(Model_t) :: Model
       INTEGER :: nodenumber

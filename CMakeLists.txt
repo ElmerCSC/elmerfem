@@ -237,6 +237,37 @@ IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
   ENDIF()
 ENDIF()
 
+# F2008 is the floor. 2008 adds no -std flag on purpose: -std=f2008 would make
+# gfortran reject the optional F2018 syntax and switch every feature macro off.
+SET(ELMER_FORTRAN_STANDARD "2008" CACHE STRING
+  "Fortran standard to require (2008, 2018 or 2023)")
+SET_PROPERTY(CACHE ELMER_FORTRAN_STANDARD PROPERTY STRINGS 2008 2018 2023)
+
+IF(ELMER_FORTRAN_STANDARD VERSION_LESS 2008)
+  MESSAGE(FATAL_ERROR
+    "ELMER_FORTRAN_STANDARD=${ELMER_FORTRAN_STANDARD} is below the Fortran 2008 floor")
+ENDIF()
+
+IF(ELMER_FORTRAN_STANDARD VERSION_GREATER 2008)
+  IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+    # Older gfortran rejects the -std=f2023 flag itself.
+    IF(ELMER_FORTRAN_STANDARD VERSION_GREATER 2018 AND
+       CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 14)
+      MESSAGE(FATAL_ERROR
+        "ELMER_FORTRAN_STANDARD=${ELMER_FORTRAN_STANDARD} needs gfortran 14 or newer, "
+        "this is ${CMAKE_Fortran_COMPILER_VERSION}")
+    ENDIF()
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=f${ELMER_FORTRAN_STANDARD}")
+    # The header cannot see -std, so tell it the level.
+    SET(ELMER_FORTRAN_STD_DEFINITION -DELMER_FORTRAN_STD=${ELMER_FORTRAN_STANDARD})
+    ADD_DEFINITIONS(${ELMER_FORTRAN_STD_DEFINITION})
+  ELSE()
+    MESSAGE(WARNING
+      "ELMER_FORTRAN_STANDARD is only mapped to a -std flag for GNU Fortran, "
+      "pass the equivalent flag for ${CMAKE_Fortran_COMPILER_ID} manually")
+  ENDIF()
+ENDIF()
+
 
 # Import targets with information for using MPI or the MPI stub
 ADD_LIBRARY(Elmer::MPI_Fortran INTERFACE IMPORTED)
@@ -777,6 +808,59 @@ IF(CMAKE_Fortran_COMPILER_SUPPORTS_EXECUTECOMMANDLINE)
   ADD_DEFINITIONS(-DHAVE_EXECUTECOMMANDLINE)
 ENDIF()
 
+# Optional F2018/F2023 features. Sources that use them #include
+# elmer_fortran_features.h and keep an F2008 fallback.
+INCLUDE(FortranStandardFeatures)
+INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fem/include")
+INSTALL(FILES "${CMAKE_SOURCE_DIR}/fem/include/elmer_fortran_features.h"
+  DESTINATION "share/elmersolver/include")
+
+# Spelled through a macro so each IMPLICIT NONE stays one line, like CONTIG.
+# The fallback must be empty: a spec list is itself F2018 syntax.
+OPTION(ELMER_IMPLICIT_NONE_EXTERNAL
+  "Use IMPLICIT NONE (TYPE, EXTERNAL) when the compiler supports it" ON)
+# mpif.h, and some MPI modules for routines taking a buffer of any type, give
+# no interfaces, so only switch on when MPI calls still compile under it.
+SET(ELMER_IMPLICIT_EXTERNAL_MPI_OK TRUE)
+IF(WITH_MPI AND ELMER_IMPLICIT_NONE_EXTERNAL AND ELMER_HAVE_F2018_IMPLICIT_NONE_EXTERNAL)
+  FILE(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPIImplicitExternal.F90 "
+    PROGRAM TEST_MPI_IMPLICIT_EXTERNAL
+#if defined(ELMER_HAVE_MPI_MODULE)
+      USE MPI
+#endif
+      IMPLICIT NONE (TYPE, EXTERNAL)
+#if defined(ELMER_HAVE_MPIF_HEADER)
+      INCLUDE \"mpif.h\"
+#endif
+      INTEGER :: ierr, rank, req, stat(MPI_STATUS_SIZE)
+      REAL(8) :: a(3), b(3)
+      CALL MPI_Comm_rank(MPI_COMM_WORLD, rank, ierr)
+      CALL MPI_Allreduce(a, b, 3, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+      CALL MPI_Bsend(a, 3, MPI_DOUBLE_PRECISION, 0, 0, MPI_COMM_WORLD, ierr)
+      CALL MPI_Recv(b, 3, MPI_DOUBLE_PRECISION, 0, 0, MPI_COMM_WORLD, stat, ierr)
+      CALL MPI_Irecv(b, 3, MPI_DOUBLE_PRECISION, 0, 0, MPI_COMM_WORLD, req, ierr)
+    END PROGRAM TEST_MPI_IMPLICIT_EXTERNAL
+    ")
+  # With ParMMG, SParIterComm gets MPI from ParMMG's header, i.e. mpif.h.
+  SET(ELMER_IMPLICIT_EXTERNAL_MPI_DEFINITION ${ELMER_MPI_DEFINITION})
+  IF(HAVE_PARMMG)
+    SET(ELMER_IMPLICIT_EXTERNAL_MPI_DEFINITION "-DELMER_HAVE_MPIF_HEADER")
+  ENDIF()
+  UNSET(ELMER_IMPLICIT_EXTERNAL_MPI_OK CACHE)
+  TRY_COMPILE(ELMER_IMPLICIT_EXTERNAL_MPI_OK ${CMAKE_BINARY_DIR}
+    SOURCES ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPIImplicitExternal.F90
+    COMPILE_DEFINITIONS ${ELMER_IMPLICIT_EXTERNAL_MPI_DEFINITION}
+    LINK_LIBRARIES MPI::MPI_Fortran)
+  MESSAGE(STATUS "Checking whether MPI calls compile under IMPLICIT NONE (EXTERNAL) -- "
+    "${ELMER_IMPLICIT_EXTERNAL_MPI_OK}")
+ENDIF()
+IF(ELMER_IMPLICIT_NONE_EXTERNAL AND ELMER_HAVE_F2018_IMPLICIT_NONE_EXTERNAL
+   AND ELMER_IMPLICIT_EXTERNAL_MPI_OK)
+  ADD_COMPILE_DEFINITIONS("IMPLICIT_EXTERNAL=(TYPE,EXTERNAL)")
+ELSE()
+  ADD_COMPILE_DEFINITIONS("IMPLICIT_EXTERNAL=")
+ENDIF()
+
 ADD_DEFINITIONS(-DUSE_ISO_C_BINDINGS)
 SET(FC_STDCALLBULL " ")
 SET(ELMER_LINKTYP 1)
@@ -970,6 +1054,7 @@ ELSEIF(WITH_Zoltan AND NOT Zoltan_FOUND)
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
+MESSAGE(STATUS "  Fortran standard:        " "${ELMER_FORTRAN_STANDARD} (floor)")
 MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  C compiler:              " "${CMAKE_C_COMPILER}")

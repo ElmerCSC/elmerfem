@@ -54,7 +54,7 @@
      USE SolverBasics
      USE ElementUtils
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE VariablePtr_t
        TYPE(Variable_t), POINTER :: Var

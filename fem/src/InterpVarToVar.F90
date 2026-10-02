@@ -64,7 +64,7 @@ MODULE InterpVarToVar
   USE Types
   USE Interpolation
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
   SUBROUTINE InterpolateVartoVarReduced( OldMesh, NewMesh, HeightName, HeightDimensions,&

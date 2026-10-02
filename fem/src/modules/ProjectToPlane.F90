@@ -66,7 +66,7 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
   USE GeneralUtils
   USE ElementDescription
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -586,7 +586,7 @@ CONTAINS
 ! 3D mesh faces.
 !------------------------------------------------------------------------------
   SUBROUTINE GetLinearTriangleFaces( Element, face, inds, GotIt )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Element_t) :: Element
     INTEGER :: face, inds(:)
@@ -821,7 +821,7 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
   USE GeneralUtils
   USE ElementDescription
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1662,7 +1662,7 @@ CONTAINS
 ! 3D mesh faces.
 !------------------------------------------------------------------------------
   SUBROUTINE GetLinearTriangleFaces( Element, face, inds, GotIt )
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Element_t) :: Element
     LOGICAL :: GotIt

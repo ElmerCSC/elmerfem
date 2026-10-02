@@ -81,7 +81,7 @@ MODULE MainUtils
       DefaultUpdateMass, DefaultFinishBoundaryAssembly, DefaultInitialize, &
       DefaultUpdateDamp, DefaultFinishAssembly, Default1stOrderTime
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     
     LOGICAL, PRIVATE :: isParallel=.FALSE.
@@ -1171,6 +1171,7 @@ CONTAINS
   SUBROUTINE AddEquationBasics( Solver, Name, Transient )
 !------------------------------------------------------------------------------
     USE CoordinateSystems
+    EXTERNAL :: RadiationFactors
     TYPE(Solver_t) :: Solver
     LOGICAL :: Transient
     CHARACTER(LEN=*) :: Name
@@ -3568,7 +3569,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CoupledSolver( Model, Solver, dt, Transient )
 !------------------------------------------------------------------------------    
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
     TYPE(Model_t) :: Model
@@ -3937,7 +3938,7 @@ CONTAINS
    SUBROUTINE IntegralConstraint( Mass, Damp, Stiff, Force, Element, n )
 !------------------------------------------------------------------------------
      
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Stiff(:,:), Damp(:,:), Mass(:,:), Force(:)
       TYPE(Element_t), TARGET :: Element
@@ -4326,7 +4327,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BlockSolver( Model, Solver, dt, Transient )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
  !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
     TYPE(Model_t) :: Model
@@ -4889,6 +4890,7 @@ CONTAINS
   SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
       RowIndOffset,ColIndOffset)
 !---------------------------------------------------
+    EXTERNAL :: DefaultUpdateEquations
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: dt
     LOGICAL :: Transient

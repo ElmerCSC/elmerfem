@@ -42,7 +42,7 @@
 MODULE EMWaveSolverUtils
 
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -57,7 +57,7 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE EMWaveSolverUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -130,7 +130,7 @@ END SUBROUTINE EMWaveSolver_Init0
 SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE EMWaveSolverUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -524,7 +524,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE EMWaveSolverUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -649,7 +649,7 @@ SUBROUTINE EMWaveCalcFields_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE EMWaveSolverUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -703,7 +703,7 @@ END SUBROUTINE EMWaveCalcFields_Init
 !------------------------------------------------------------------------------
    USE EMWaveSolverUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
    TYPE(Model_t) :: Model
@@ -1058,7 +1058,7 @@ CONTAINS
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
    USE MeshBasics, ONLY : CalculateBodyAverage
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
@@ -1184,7 +1184,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: STIFF(:,:)
     INTEGER :: n,n1,n2
     TYPE(Element_t), TARGET :: Face, P1, P2

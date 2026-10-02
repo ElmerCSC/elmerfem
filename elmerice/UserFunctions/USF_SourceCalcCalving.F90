@@ -55,7 +55,7 @@
   FUNCTION SourceCalc (Model, NodeNumber, SomeVariable) RESULT(Source)
 !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t) :: Model
     INTEGER :: NodeNumber

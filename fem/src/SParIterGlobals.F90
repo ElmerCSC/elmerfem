@@ -46,7 +46,7 @@ MODULE SParIterGlobals
 
   USE Types
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 real(kind=dp):: xxx, yyy
 

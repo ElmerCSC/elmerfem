@@ -76,7 +76,7 @@ SUBROUTINE getStrainHeating( Model,Solver,dt,TransientSimulation )
   USE SolverUtils
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver

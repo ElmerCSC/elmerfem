@@ -39,7 +39,7 @@
 MODULE SolidMechanicsUtils
 
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -56,7 +56,7 @@ CONTAINS
       MassAssembly, HarmonicAssembly, LargeDeflection, LocalSol, RHSForce, &
       CombineWithShell, ApplyRotation, DrillingDOFs)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), TARGET, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, nb
     LOGICAL, INTENT(IN) :: TransientSimulation
@@ -526,7 +526,7 @@ CONTAINS
   SUBROUTINE BeamCondensate(n, nb, dofs, dim, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n    ! Nodes after condensation
     INTEGER, INTENT(IN) :: nb   ! The number of bubble basis functions
     INTEGER, INTENT(IN) :: dofs ! DOFs per node
@@ -583,7 +583,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
     REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
     INTEGER, INTENT(IN) :: m, n
@@ -598,7 +598,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Jacobi3(Jmat, invJ, detJ, x, y)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(OUT) :: Jmat(:,:), invJ(:,:), detJ
     REAL(KIND=dp), INTENT(IN) :: x(:), y(:)
 !------------------------------------------------------------------------------
@@ -620,7 +620,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Jacobi4(Jmat, invJ, detJ, xi, eta, x, y)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), INTENT(OUT) :: Jmat(:,:), invJ(:,:), detJ
     REAL(KIND=dp), INTENT(IN) :: xi, eta, x(:), y(:)
 !------------------------------------------------------------------------------

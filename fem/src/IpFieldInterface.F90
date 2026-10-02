@@ -14,12 +14,12 @@ MODULE IpFieldInterface
 
   USE Types
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   INTERFACE
     SUBROUTINE Ip2DgFieldInElement( Mesh, Element, nip, fip, ndg, fdg )
       USE Types
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       TYPE(Mesh_t) :: Mesh
       TYPE(Element_t), TARGET :: Element
       INTEGER :: nip, ndg

@@ -42,7 +42,7 @@
   USE Integration
   USE Differentials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -2007,7 +2007,7 @@ CONTAINS
 
      USE Types
        
-     implicit none
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      Real(dp),dimension(6),intent(in):: a2  
      Real(dp),dimension(9),intent(out):: a4  
@@ -2229,7 +2229,7 @@ FUNCTION a11Flux(Model, Node, depth) RESULT(flux)
   USE SolverUtils
   USe ElementDescription
  !-------------------------------------------------------------------
- IMPLICIT NONE
+ IMPLICIT NONE IMPLICIT_EXTERNAL
  !-------------------------external variables-----------------------
  TYPE(Model_t) :: Model
  TYPE(Element_t), POINTER :: BoundaryElement, ParentElement
@@ -2311,7 +2311,7 @@ FUNCTION a22Flux(Model, Node, depth) RESULT(flux)
   USE SolverUtils
   USe ElementDescription
  !-------------------------------------------------------------------
- IMPLICIT NONE
+ IMPLICIT NONE IMPLICIT_EXTERNAL
  !-------------------------external variables-----------------------
  TYPE(Model_t) :: Model
  TYPE(Element_t), POINTER :: BoundaryElement, ParentElement

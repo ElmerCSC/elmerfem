@@ -46,7 +46,7 @@
 MODULE HeatSolveFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -91,7 +91,7 @@ END MODULE HeatSolveFront
 SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE HeatSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -142,7 +142,7 @@ END SUBROUTINE HeatSolver_Init0
 SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE HeatSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -257,7 +257,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   USE Radiation
   USE Adaptive
   USE HeatSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
+  EXTERNAL :: RADIATIONFACTORS
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1032,7 +1033,7 @@ CONTAINS
     USE LinearForms
     USE Differentials, ONLY: JouleHeat
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(IN) :: VecAsm
@@ -1612,7 +1613,7 @@ CONTAINS
   SUBROUTINE PhaseChangeElementSetup( Element, n, nd, tid, DoPhaseChange, UseGradient, &
       NodalTemp, NodalEnthalpy, FallbackCp )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     INTEGER, INTENT(IN) :: n, nd, tid
     LOGICAL, INTENT(OUT) :: DoPhaseChange, UseGradient
@@ -1798,7 +1799,7 @@ CONTAINS
   SUBROUTINE PhaseChangeAddVec( ngp, n, dim, Basis, dBasisdx, UseGradient, &
       NodalTemp, NodalEnthalpy, FallbackCp, TmpVec )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: ngp, n, dim
     REAL(KIND=dp), INTENT(IN) :: Basis(:,:), dBasisdx(:,:,:)
     LOGICAL, INTENT(IN) :: UseGradient
@@ -1843,7 +1844,7 @@ CONTAINS
   FUNCTION PhaseChangeCL( n, dim, Basis, dBasisdx, UseGradient, NodalTemp, NodalEnthalpy, FallbackCp ) &
       RESULT( PhaseCL )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, dim
     REAL(KIND=dp), INTENT(IN) :: Basis(:), dBasisdx(:,:)
     LOGICAL, INTENT(IN) :: UseGradient
@@ -1932,7 +1933,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE Differentials, ONLY: JouleHeat
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
@@ -2422,7 +2423,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, nb, VecAsm, DiffuseGray, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: VecAsm, DiffuseGray
@@ -2797,7 +2798,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixDiffuseGray( Element, n, nd, nb )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n, nd, nb
     TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
@@ -3723,7 +3724,7 @@ END SUBROUTINE HeatSolver
      USE DefUtils
      USE Radiation
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -4009,7 +4010,7 @@ END SUBROUTINE HeatSolver
   SUBROUTINE HeatSolver_Edge_Residual(Model,Edge,Mesh,Quant,Perm, Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -4199,7 +4200,7 @@ END SUBROUTINE HeatSolver
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)

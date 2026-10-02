@@ -46,7 +46,7 @@ MODULE TimeIntegrate
    USE Types
    USE Messages
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

@@ -32,7 +32,7 @@
 SUBROUTINE Adjoint_GradientValidation_init0(Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -79,7 +79,7 @@ SUBROUTINE Adjoint_GradientValidation ( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

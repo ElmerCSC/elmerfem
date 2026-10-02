@@ -54,7 +54,7 @@ MODULE ContactUtils
       MatrixVectorMultiply, RotateNTSystem, VariableValuesRange, &
       VectorValuesRange
   USE SolveCore, ONLY : CalculateLoads
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

@@ -60,7 +60,7 @@ SUBROUTINE  ComputeWeight(Model, Solver, VarName, WeightIn)
 !     INPUT/OUTPUT : Variable Associated Weight
 !
 !******************************************************************************
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver
@@ -119,7 +119,7 @@ SUBROUTINE  UpdatePartitionWeight(Model, Solver, VarName, Force, Force_tmp)
 !     INPUT/OUTPUT : Variable Associated Weight
 !
 !******************************************************************************
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver
@@ -206,7 +206,7 @@ SUBROUTINE  UpdatePeriodicNodes(Model, Solver, VarName, WeightIn, ThisDim)
 !******************************************************************************
 
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver
@@ -323,7 +323,7 @@ SUBROUTINE  SetZeroAtPeriodicNodes(Model, Solver, VarName, WeightValues, WeightP
 !******************************************************************************
 
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver

@@ -57,7 +57,7 @@
      USE GlobMat
      USE DefUtils
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
  
      TYPE(Model_t) :: Model
@@ -658,7 +658,7 @@ at = CPUTime()
      SUBROUTINE FullIterSolver( N,x,b,SolverParam )
 !------------------------------------------------------------------------------
        USE huti_sfe
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
        TYPE(Solver_t) :: SolverParam
        INTEGER :: N

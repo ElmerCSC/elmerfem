@@ -42,7 +42,7 @@
 SUBROUTINE DirectionSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -130,7 +130,7 @@ END SUBROUTINE DirectionSolver_Init0
 SUBROUTINE DirectionSolver_Dummy(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -165,7 +165,7 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
 !******************************************************************************
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -271,7 +271,7 @@ CONTAINS
   SUBROUTINE SaveSolutionWithBodyMethod(ns_iter)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   INTEGER :: Active, n, t, nn, ns_iter
   TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -290,7 +290,7 @@ CONTAINS
   SUBROUTINE SaveElementSolution(Element, nn)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   INTEGER :: nn, j, k
   TYPE(Element_t), TARGET :: Element
   TYPE(Valuelist_t), POINTER :: Solverparams
@@ -368,7 +368,7 @@ CONTAINS
 !----------------------------------------------------------------
   SUBROUTINE BoundaryCondition(LOAD, FORCE, Element, n)
 !----------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), DIMENSION(:) :: FORCE, LOAD
     INTEGER :: n
     TYPE(Element_t), TARGET :: Element

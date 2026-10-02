@@ -42,7 +42,7 @@
 FUNCTION LateralFriction_x ( Model, nodenumber, x) RESULT(gx)
    USE Types
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    INTEGER :: nodenumber
    REAL(KIND=dp) :: x, gx, LateralFriction
@@ -55,7 +55,7 @@ END FUNCTION LateralFriction_x
 FUNCTION LateralFriction_y ( Model, nodenumber, x) RESULT(gy)
    USE Types
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    INTEGER :: nodenumber
    REAL(KIND=dp) :: x, gy, LateralFriction
@@ -73,7 +73,7 @@ FUNCTION LateralFriction ( Model, nodenumber, x, axis ) RESULT(gi)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    INTEGER :: nodenumber, axis
    REAL(KIND=dp) :: x, gi, Kspring, mm

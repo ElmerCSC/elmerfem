@@ -45,7 +45,7 @@ MODULE ParallelUtils
      USE SparIterSolve
      USE SparIterComm
      
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      INTERFACE ParallelReduction
        MODULE PROCEDURE ParallelReductionR, ParallelReductionI, ParallelReductionZ

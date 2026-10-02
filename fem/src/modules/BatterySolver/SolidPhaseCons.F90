@@ -11,7 +11,7 @@
 SUBROUTINE SolidPhaseCons_Init( Model,Solver,dt,Transient)
   USE MeshBasics, ONLY : CreateLineMesh
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -81,7 +81,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
   USE DefUtils
   USE BatteryModule
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t):: Solver
@@ -539,7 +539,7 @@ CONTAINS
   !----------------------------------------------------------------------
   SUBROUTINE  LocalAssembly1D( DiffCoeff )
     !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: DiffCoeff
     !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)

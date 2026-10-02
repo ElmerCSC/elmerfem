@@ -38,7 +38,7 @@ MODULE SSAMaterialModels
   
   USE DefUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   CONTAINS
 
@@ -47,7 +47,7 @@ MODULE SSAMaterialModels
 !--------------------------------------------------------------------------------
    FUNCTION SSAEffectiveFriction(Element,nn,Basis,ub,SEP,PartlyGrounded,h,rho,rhow,sealevel,SlipDer) RESULT(Slip)
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    REAL(KIND=dp) :: Slip ! the effective friction coefficient
    TYPE(Element_t), POINTER :: Element ! the current element
    INTEGER :: nn ! number of nodes
@@ -371,7 +371,7 @@ MODULE SSAMaterialModels
 !--------------------------------------------------------------------------------
    FUNCTION SSAEffectiveBMB(Element,nn,Basis,SEM,BMB,hh,FIPcount,rho,rhow,sealevel,FAF) RESULT(BMBatIP)
      
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      
      REAL(KIND=dp)              :: BMBatIP ! the effective basal melt rate at integration point
      
@@ -470,7 +470,7 @@ MODULE SSAMaterialModels
 !--------------------------------------------------------------------------------
    FUNCTION CalcFloatingAreaFraction(element,NodalGM,hhVar,sealevel,rho,rhow) RESULT(FAF)
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      
      REAL(KIND=dp)              :: FAF ! the area fraction of floating ice
 

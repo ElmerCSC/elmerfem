@@ -43,7 +43,7 @@
 SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -129,7 +129,7 @@ END SUBROUTINE MixedPoisson_Init0
 SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -436,7 +436,7 @@ CONTAINS
   SUBROUTINE LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
 !------------------------------------------------------------------------------
     USE ElementDescription, ONLY : PickActiveFace
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t) :: Mesh
@@ -675,7 +675,7 @@ END SUBROUTINE MixedPoisson
 SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver

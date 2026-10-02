@@ -28,7 +28,7 @@
 SUBROUTINE TopoOpt_init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -56,7 +56,7 @@ END SUBROUTINE TopoOpt_init0
 SUBROUTINE TopoOpt_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -108,7 +108,7 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE MeshBasics
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

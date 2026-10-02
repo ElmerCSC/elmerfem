@@ -37,7 +37,7 @@ MODULE ClusteringMethods
   USE SParIterGlobals
   USE ElementUtils, ONLY : TangentDirections
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

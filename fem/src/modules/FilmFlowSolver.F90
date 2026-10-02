@@ -55,7 +55,7 @@
 SUBROUTINE FilmFlowSolver_init0( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -84,7 +84,7 @@ END SUBROUTINE FilmFlowSolver_Init0
 SUBROUTINE FilmFlowSolver_init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -155,7 +155,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   USE ParallelUtils, ONLY : ParallelSumNodalVector
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

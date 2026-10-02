@@ -50,7 +50,7 @@ MODULE SaveUtils
   USE Interpolation, ONLY: CopyElementNodesFromMesh
   USE ElementDescription
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -902,7 +902,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     USE Types
     USE Lists
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
     TYPE(Model_t) :: Model

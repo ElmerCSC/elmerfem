@@ -41,7 +41,7 @@
 FUNCTION ShapeFactorGravity_x ( Model, nodenumber, x) RESULT(gx)
    USE Types
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    INTEGER :: nodenumber
    REAL(KIND=dp) :: x, gx, ShapeFactorGravity
@@ -54,7 +54,7 @@ END FUNCTION ShapeFactorGravity_x
 FUNCTION ShapeFactorGravity_y ( Model, nodenumber, x) RESULT(gy)
    USE Types
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    INTEGER :: nodenumber
    REAL(KIND=dp) :: x, gy, ShapeFactorGravity
@@ -73,7 +73,7 @@ FUNCTION ShapeFactorGravity ( Model, nodenumber, x, axis ) RESULT(gi)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    INTEGER :: nodenumber, axis
    REAL(KIND=dp) :: x, gi

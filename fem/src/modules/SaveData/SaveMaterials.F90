@@ -56,7 +56,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   USE ElementDescription
   USE SolverBasics
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model

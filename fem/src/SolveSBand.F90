@@ -44,12 +44,14 @@
 
        USE Types
 
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        INTEGER :: N,M,Subband,Band
        REAL(KIND=dp) :: A(Band,N),X(N,M)
 
        INTEGER :: IPIV(N),iINFO
+
+       EXTERNAL :: DPBTRF, DPBTRS
 
        IF ( N <= 0 ) RETURN
 
@@ -77,12 +79,14 @@
 
        USE Types
 
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        INTEGER :: N,M,Subband,Band
        COMPLEX(KIND=dp) :: A(Band,N),X(N,M)
 
        INTEGER :: IPIV(N),iINFO
+
+       EXTERNAL :: ZPBTRF, ZPBTRS
 
        IF ( N <= 0 ) RETURN
 

@@ -50,7 +50,7 @@ MODULE Differentials
   USE CoordinateSystems
   USE ElementDescription, ONLY : ElementInfo
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -714,7 +714,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 SUBROUTINE AxiSCurl( Ar,Az,Ap,Br,Bz,Bp,Reorder )
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   REAL(KIND=dp) :: Ar(:),Az(:),Ap(:),Br(:),Bz(:),Bp(:)
   INTEGER :: Reorder(:)
 
