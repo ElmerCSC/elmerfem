@@ -636,7 +636,7 @@ subroutine SolveTemp_1D(Model,Solver,Element,z_prof_elmer,firn_thick,TempSurf,te
   integer                                      :: n1D,i,j,n_elmer,ii,code,time,cont2,ii_ref,day
   logical									   :: converge
 
-  character*100 :: filename
+  CHARACTER(LEN=100) :: filename
   
 dt=3600*24
 cpice=2050.0

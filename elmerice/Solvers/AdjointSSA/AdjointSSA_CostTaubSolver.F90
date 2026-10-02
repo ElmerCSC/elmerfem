@@ -120,7 +120,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName="CostTaub"
   CHARACTER(LEN=MAX_NAME_LEN) :: SName
   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
   LOGICAL :: Reset 
   LOGICAL :: ResetCost
