@@ -66,7 +66,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Found, PiolaVersion, SecondFamily, SecondOrder
   LOGICAL :: UseV, Ground, UnitVoltage
   REAL(KIND=dp) :: c
-  CHARACTER(:), ALLOCATABLE :: sname
+  CHARACTER(:), ALLOCATABLE :: sname, ndef
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
   
   Params => GetSolverParams()
@@ -102,42 +102,41 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
 
-    IF (UseV) THEN
-      IF (PiolaVersion) THEN
-        sname = "n:2 e:1 -quad_face b:2 -quad b:2 -brick b:3"
-      ELSE
-        sname = "n:2 e:1"
-      END IF
-    ELSE
-      
-      ! The scalar variable must be approximated by the Lagrange basis of degree k+1 when
-      ! the vector field is approximated by the Nedelec element NED2_k of the second family.
-      ! Otherwise the variational formulation does not control all gradient fields
-      ! and spurious eigenvalues are obtained. Presently the case NED2_1 is supported by using
-      ! a background mesh of 6-node triangles and/or 8-node quadrilaterals (in the case of
-      ! quadrilaterals the gradients of the 8-node serendipity basis span the gradient
-      ! subspace of the lowest-order edge element of the second kind).
-      IF (SecondFamily .AND. SecondOrder) THEN
-        CALL Warn(Caller, 'The formulation for Second Kind Basis of degree 2 is not well-posed')
-      END IF
+    ! The scalar variable must be approximated by the Lagrange basis of degree k+1 when
+    ! the vector field is approximated by the Nedelec element NED2_k of the second family.
+    ! Otherwise the variational formulation does not control all gradient fields
+    ! and spurious eigenvalues are obtained. Presently the case NED2_1 is supported by using
+    ! a background mesh of 6-node triangles and/or 8-node quadrilaterals (in the case of
+    ! quadrilaterals the gradients of the 8-node serendipity basis span the gradient
+    ! subspace of the lowest-order edge element of the second kind).
+    IF (SecondFamily .AND. SecondOrder) THEN
+      CALL Warn(Caller, 'The formulation for Second Kind Basis of degree 2 is not well-posed')
+    END IF
 
-      ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
-      ! utilized by the vector Helmholtz model:
-      IF (SecondOrder) THEN
-        IF (SecondFamily) THEN
-          sname = "n:1 e:3 -tri b:3 -tri_face b:3"
-        ELSE
-          sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
-        END IF
-      ELSE IF( SecondFamily ) THEN
-        ! A background mesh of 6-node triangles or 8-node quads is needed to have
-        ! quadratic nodal DOFs
-        sname = "n:1 e:2" 
-      ELSE IF (PiolaVersion) THEN
-        sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
+    ! The formulation in terms of potentials has two nodal fields, otherwise one nodal
+    ! approximation is employed. The DOFs for the H(curl) part are the same in both cases.
+    IF (UseV) THEN
+      ndef = "n:2"
+    ELSE
+      ndef = "n:1"
+    END IF
+
+    ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
+    ! utilized by the vector Helmholtz model:
+    IF (SecondOrder) THEN
+      IF (SecondFamily) THEN
+        sname = ndef//" e:3 -tri b:3 -tri_face b:3"
       ELSE
-        sname = "n:1 e:1"
+        sname = ndef//" e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
       END IF
+    ELSE IF( SecondFamily ) THEN
+      ! A background mesh of 6-node triangles or 8-node quads is needed to have
+      ! quadratic nodal DOFs
+      sname = ndef//" e:2" 
+    ELSE IF (PiolaVersion) THEN
+      sname = ndef//" e:1 -quad_face b:2 -quad b:2 -brick b:3"
+    ELSE
+      sname = ndef//" e:1"
     END IF
     CALL Info(Caller, 'Setting element type: '//TRIM(sname), Level=5)
     CALL ListAddString(Params, "Element", TRIM(sname) )      
@@ -306,7 +305,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   ! The scalar variable of NED2_1 approximation is quadratic, so the products of
   ! nodal basis functions need a quadrature for integrands of degree 4
   QuadDegree = EdgeBasisDegree
-  IF (SecondFamily .AND. EdgeBasisDegree == 1 .AND. .NOT. UseV) QuadDegree = 2
+  IF (SecondFamily .AND. EdgeBasisDegree == 1) QuadDegree = 2
   
   EigenProblem = EigenOrHarmonicAnalysis(Solver)
   
@@ -378,7 +377,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       nd = GetElementNOFDOFs(Element)
 
 #if 1
-      IF (SecondFamily .AND. EdgeBasisDegree == 1 .AND. .NOT. UseV) THEN
+      IF (SecondFamily .AND. EdgeBasisDegree == 1) THEN
         SELECT CASE(EFamily)
         CASE(3)
           IF (n /= 6) CALL Fatal(Caller, &
@@ -417,8 +416,13 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       maxeps = ParallelReduction(maxeps, 2)
       maxmu = ParallelReduction(maxmu, 2)
       betalim = Omega * SQRT(maxeps*maxmu)    
-      CALL ListAddConstReal( Params,'Eigen System Shift', -betalim**2 )
-      WRITE(Message,'(A,ES15.6)') 'Eigen System Shift set to ', -betalim**2
+      ! All eigenvalues lambda corresponding to propagating modes satisfy lambda > -betalim^2.
+      ! Here the shift is placed somewhat beyond -betalim**2, since with the shift paramemeter
+      ! sigma = -betalim**2 the diagonal entries of A - sigma*M vanish for gradient basis
+      ! functions within the region where eps is maximal, which spoils the diagonal scaling applied
+      ! in the eigen solution.
+      CALL ListAddConstReal( Params,'Eigen System Shift', -1.1_dp * betalim**2 )
+      WRITE(Message,'(A,ES15.6)') 'Eigen System Shift set to ', -1.1_dp * betalim**2
       CALL Info(Caller, Message, Level=7)
     END IF
 
