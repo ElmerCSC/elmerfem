@@ -2262,7 +2262,16 @@ CONTAINS
         ValueNames(No+3) = 'Flux normal'      
       END IF
 
-      SideNamesFile = TRIM(SideFile) // '.' // TRIM("names")
+      ! Write the .names companion into the same output directory as the .dat.
+      ! SideFile is the bare basename here (CloseLineFile reset the per-step prefix),
+      ! so prepend OutputDirectory; INDEX(...,BACK) keeps it correct even if SideFile
+      ! ever already carries a path.
+      IF( LEN_TRIM(OutputDirectory) > 0 ) THEN
+        SideNamesFile = TRIM(OutputDirectory) // '/' // &
+            TRIM(SideFile(INDEX(SideFile,'/',BACK=.TRUE.)+1:)) // '.names'
+      ELSE
+        SideNamesFile = TRIM(SideFile) // '.names'
+      END IF
       OPEN (newunit=NamesUnit, FILE=SideNamesFile)
 
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
