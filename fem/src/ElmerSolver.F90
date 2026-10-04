@@ -344,7 +344,7 @@
      IF( .NOT. GotModelName ) THEN
        OPEN( 1, File='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )       
        IF( iostat /= 0 ) THEN
-         CALL Fatal( 'MAIN', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
+         CALL FatalInput( 'MAIN', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
        END IF
        ALLOCATE(CHARACTER(MAX_PATH_LEN)::ModelName)
        READ(1,'(a)') ModelName
@@ -357,7 +357,7 @@
      IF( FirstTime ) THEN
        OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)         
        IF( iostat /= 0 ) THEN
-         CALL Fatal( 'MAIN', 'Unable to find input file [' // &
+         CALL FatalInput( 'MAIN', 'Unable to find input file [' // &
              TRIM(Modelname) // '], can not execute.' )
        END IF
        ALLOCATE( Control )          
@@ -415,7 +415,7 @@
          !---------------------------------------------------------------------------------
          OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)
          IF( iostat /= 0 ) THEN
-           CALL Fatal( 'MAIN', 'Unable to find input file [' // &
+           CALL FatalInput( 'MAIN', 'Unable to find input file [' // &
                TRIM(Modelname) // '], can not execute.' )
          END IF
          
@@ -486,7 +486,7 @@
            OPEN( Unit=InFileUnit, Action='Read', & 
                File=ModelName,Status='OLD',IOSTAT=iostat)
            IF( iostat /= 0 ) THEN
-             CALL Fatal( 'MAIN', 'Unable to find input file [' // &
+             CALL FatalInput( 'MAIN', 'Unable to find input file [' // &
                  TRIM(Modelname) // '], can not execute.' )
            END IF                               
          END IF
@@ -1018,7 +1018,7 @@
              'Timestep Intervals', GotIt )
 
          IF ( .NOT.GotIt ) THEN
-           CALL Fatal('MAIN', 'Keyword > Timestep Intervals < MUST be ' //  &
+           CALL FatalInput('MAIN', 'Keyword > Timestep Intervals < MUST be ' //  &
                'defined for transient and scanning simulations' )
          END IF
          
@@ -1029,7 +1029,7 @@
              ALLOCATE(TimestepSizes(SIZE(Timesteps),1))
              TimestepSizes = 1.0_dp
            ELSE
-             CALL Fatal( 'MAIN', 'Keyword [Timestep Sizes] MUST be ' //  &
+             CALL FatalInput( 'MAIN', 'Keyword [Timestep Sizes] MUST be ' //  &
                  'defined for time dependent simulations' )
            END IF
          END IF
@@ -1074,7 +1074,7 @@
            'Output Intervals', GotIt )
        IF( GotIt ) THEN
          IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
-           CALL Fatal('MAIN','> Output Intervals < should have the same size as > Timestep Intervals < !')
+           CALL FatalInput('MAIN','> Output Intervals < should have the same size as > Timestep Intervals < !')
          END IF
        ELSE 
          IF( .NOT. ASSOCIATED( OutputIntervals ) ) THEN
@@ -2787,7 +2787,7 @@
      IF( ParallelTime .OR. ParallelSlices ) THEN
        IF( ParEnv % PEs > 1 ) THEN
          IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Single Mesh',GotIt ) ) THEN
-           CALL Fatal(Caller,'Parallel time and slices only available with "Single Mesh"')
+           CALL FatalInput(Caller,'Parallel time and slices only available with "Single Mesh"')
          END IF
        END IF
      END IF
@@ -2802,17 +2802,17 @@
        nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
        IF(GotIt) THEN
          IF( nSlices > ParEnv % PEs ) THEN
-           CALL Fatal(Caller,'"Number Of Slices" cannot be be larger than #np')
+           CALL FatalInput(Caller,'"Number Of Slices" cannot be be larger than #np')
          END IF
        ELSE
          IF( ParEnv % PEs == 1 ) THEN
            CALL ListAddInteger( CurrentModel % Simulation,'Number Of Slices',nSlices)
          ELSE
-           CALL Fatal(Caller,'We need "Number Of Slices" with parallel timestepping')
+           CALL FatalInput(Caller,'We need "Number Of Slices" with parallel timestepping')
          END IF
        END IF
        IF( MODULO( ParEnv % PEs, nSlices ) /= 0 ) THEN
-         CALL Fatal(Caller,'For hybrid parallelism #np must be divisible with "Number of Slices"')
+         CALL FatalInput(Caller,'For hybrid parallelism #np must be divisible with "Number of Slices"')
        END IF
        nTimes = ParEnv % PEs / nSlices 
        CALL ListAddInteger( CurrentModel % Simulation,'Number Of Times',nTimes )
@@ -2835,7 +2835,7 @@
      IF( nTimes > 1 ) THEN
        DO i=1,SIZE(Timesteps,1)
          IF( MODULO( Timesteps(i), nTimes ) /= 0 ) THEN
-           CALL Fatal(Caller,'"Timestep Intervals" should be divisible by nTimes: '//I2S(nTimes))
+           CALL FatalInput(Caller,'"Timestep Intervals" should be divisible by nTimes: '//I2S(nTimes))
          END IF
          Timesteps(i) = Timesteps(i) / nTimes
        END DO
@@ -2848,10 +2848,10 @@
      nPeriodic = ListGetInteger( CurrentModel % Simulation,'Periodic Timesteps',GotIt )
      IF( ParallelTime ) THEN
        IF( nPeriodic <= 0 ) THEN
-         CALL Fatal(Caller,'Parallel timestepping requires "Periodic Timesteps"')
+         CALL FatalInput(Caller,'Parallel timestepping requires "Periodic Timesteps"')
        END IF
        IF( MODULO( nPeriodic, nTimes ) /= 0 ) THEN
-         CALL Fatal(Caller,'For parallel timestepping "Periodic Timesteps" must be divisible by #np')
+         CALL FatalInput(Caller,'For parallel timestepping "Periodic Timesteps" must be divisible by #np')
        END IF
        nPeriodic = nPeriodic / nTimes
      END IF
@@ -2996,7 +2996,7 @@
            AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Time Error', GotIt )       
            IF ( .NOT. GotIt ) THEN 
-             CALL Fatal('MAIN','Adaptive Time Error must be given for ' // &
+             CALL FatalInput('MAIN','Adaptive Time Error must be given for ' // &
                  'adaptive stepping scheme.')
            END IF
            AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
@@ -3106,7 +3106,7 @@
                IF( GotIt ) THEN
                  CALL Info(Caller,'Swapping mesh to: '//MeshStr,Level=5)
                ELSE
-                 CALL Fatal(Caller,'Could not find >Mesh Name '//I2S(i)//'<')
+                 CALL FatalInput(Caller,'Could not find >Mesh Name '//I2S(i)//'<')
                END IF
                CALL SwapMesh( CurrentModel, Mesh, MeshStr )
                PrevMeshI = i
@@ -3490,7 +3490,7 @@
             Timesteps => ListGetIntegerArray( CurrentModel % Simulation, &
             'Timestep Intervals', GotIt )
             IF ( .NOT.GotIt ) THEN
-                CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
+                CALL FatalInput('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
                     'defined for transient and scanning simulations' )
             END IF
          END IF

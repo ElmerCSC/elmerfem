@@ -340,6 +340,26 @@ CONTAINS
 !-----------------------------------------------------------------------
 
 !-----------------------------------------------------------------------
+!> Terminate the program in the case of a user input error (missing file,
+!> bad keyword, ...). As Fatal, but uses plain STOP so that no runtime
+!> backtrace is printed. Use only where all MPI tasks fail alike, since
+!> plain STOP does not abort the other tasks.
+!-----------------------------------------------------------------------
+   SUBROUTINE FatalInput( Caller, String )
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Caller, String
+!-----------------------------------------------------------------------
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
+
+     WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='YES' ) &
+       'ERROR:: ', TRIM(Caller), ': ', TRIM(String)
+     CALL FLUSH(InfoOutUnit)
+     STOP EXIT_ERROR
+!-----------------------------------------------------------------------
+   END SUBROUTINE FatalInput
+!-----------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
 !> This routine may be used to terminate the program in the case of an error.
 !-----------------------------------------------------------------------
    SUBROUTINE Assert(Condition, Caller, ErrorMessage)
