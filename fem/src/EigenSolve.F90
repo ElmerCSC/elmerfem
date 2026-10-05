@@ -313,7 +313,7 @@ CONTAINS
           Matrix % Values = Matrix % Values - SigmaR * Matrix % MassValues
         END IF
 
-        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix)
+        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix, Shift = CMPLX(SigmaR, 0.0_dp, KIND=dp))
         
         Method = ListGetString( Params,'Linear System Solver', stat )         
         IF ( Method == 'direct' ) THEN
@@ -1391,7 +1391,7 @@ END SUBROUTINE CheckResiduals
           Matrix % Values = Matrix % Values - Sigma * Matrix % MassValues
         END IF
 
-        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix)
+        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix, Shift = Sigma)
         
         Method = ListGetString( Params,'Linear System Solver', stat )         
         IF ( Method == 'direct' ) THEN
