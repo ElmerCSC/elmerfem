@@ -44,7 +44,7 @@ MODULE MatrixScaling
 
     USE Types,         ONLY : dp, Solver_t, Matrix_t
     USE Messages,      ONLY : Info, Warn, Fatal, Message
-    USE Lists,         ONLY : ListGetLogical, ListGetString
+    USE Lists,         ONLY : ListGetLogical, ListGetString, ListGetCReal
     USE GeneralUtils,  ONLY : I2S
     USE ParallelUtils, ONLY : ParallelReduction, ParallelSumVector, &
                               ParallelInitSolve, ParallelMatrixVector, ParallelVector
@@ -54,6 +54,61 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+
+
+!------------------------------------------------------------------------------
+!> Compute the 1-norms of the rows of a CRS matrix. For a complex-valued matrix
+!> (stored in the real-valued representation) the norm of the complex-valued row
+!> is returned for both rows of the real-valued representation. In the parallel
+!> case the absolute values of the partition contributions are summed, so that 
+!> the values are the same in all partitions sharing a row, but each shared 
+!> value gives only an upper bound of the norm of the truly assembled row.
+!> That is, the computation of the true norms would require summing the partition
+!  contributions A_{ij}^(p) before summing the absolute values row-wise.  
+!------------------------------------------------------------------------------
+  SUBROUTINE RowwiseOneNorms(A, RowNorm, ComplexMatrix, Parallel)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(IN) :: A          !< The matrix
+    REAL(KIND=dp), INTENT(OUT) :: RowNorm(:) !< The 1-norms of the rows
+    LOGICAL, INTENT(IN) :: ComplexMatrix     !< Is the matrix complex-valued
+    LOGICAL, INTENT(IN) :: Parallel          !< Sum the partition contributions
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, n
+    REAL(KIND=dp) :: s
+!------------------------------------------------------------------------------
+    n = A % NumberOfRows
+
+    IF ( ComplexMatrix ) THEN
+      ! The odd row of the real-valued representation contains the pairs
+      ! (Re(a_ij), -Im(a_ij)) for the complex-valued entries a_ij of the row.
+      !$OMP PARALLEL DO &
+      !$OMP SHARED(RowNorm, A, N) &
+      !$OMP PRIVATE(i, j, s) &
+      !$OMP DEFAULT(NONE)
+      DO i=1,n,2
+        s = 0.0_dp
+        DO j=A % Rows(i), A % Rows(i+1)-1, 2
+          s = s + SQRT(A % Values(j)**2 + A % Values(j+1)**2)
+        END DO
+        RowNorm(i) = s
+        RowNorm(i+1) = s
+      END DO
+      !$OMP END PARALLEL DO
+    ELSE
+      !$OMP PARALLEL DO &
+      !$OMP SHARED(RowNorm, A, N) &
+      !$OMP PRIVATE(i) &
+      !$OMP DEFAULT(NONE)
+      DO i=1,n
+        RowNorm(i) = SUM(ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)))
+      END DO
+      !$OMP END PARALLEL DO
+    END IF
+
+    IF ( Parallel ) CALL ParallelSumVector(A, RowNorm)
+!------------------------------------------------------------------------------
+  END SUBROUTINE RowwiseOneNorms
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -122,10 +177,11 @@ CONTAINS
     SUBROUTINE ScaleLinearSystemDiagonal()
 
       INTEGER :: i,j
-      REAL(KIND=dp) :: bnorm,s
+      REAL(KIND=dp) :: bnorm,s,DiagTol
       COMPLEX(KIND=dp) :: DiagC
-      LOGICAL :: DoRHS, DoCM
+      LOGICAL :: DoRHS, DoCM, Found
       REAL(KIND=dp), POINTER  :: Diag(:)      
+      REAL(KIND=dp), ALLOCATABLE :: RowSum(:)
       TYPE(Matrix_t), POINTER :: CM
 
       
@@ -181,15 +237,32 @@ CONTAINS
           CALL ParallelSumVector(A, Diag)
         END IF
 
+        ! A diagonal entry which is negligible compared with the other entries of
+        ! the same row would give a huge scaling factor. Such entries may arise from
+        ! cancellation, for example when an eigenvalue problem is shifted so that
+        ! A - sigma*M has a vanishing diagonal for some DOFs. The absolute row sum is
+        ! then used instead of the diagonal entry (this also covers zero diagonal
+        ! entries, as in saddle point problems). The comparison is done row-wise, so that
+        ! differences in the magnitudes of entries between rows are still scaled out.
+        DiagTol = ListGetCReal(Solver % Values, 'Linear System Scaling Diagonal Tolerance', &
+            Found, minv = 0.0_dp, DefValue = 1.0e-10_dp)
+
+        ALLOCATE(RowSum(n))
+        CALL RowwiseOneNorms(A, RowSum, ComplexMatrix, Parallel)
+
         IF ( ComplexMatrix ) THEN
           !$OMP PARALLEL DO &
-          !$OMP SHARED(Diag, A, N) &
-          !$OMP PRIVATE(i, j, DiagC, s) &
+          !$OMP SHARED(Diag, RowSum, DiagTol, N) &
+          !$OMP PRIVATE(i, DiagC, s) &
           !$OMP DEFAULT(NONE)
           DO i=1,n,2
             DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
 
-            s = SQRT( ABS( DiagC ) )
+            IF ( ABS(DiagC) <= DiagTol * RowSum(i) ) THEN
+              s = SQRT( RowSum(i) )
+            ELSE
+              s = SQRT( ABS( DiagC ) )
+            END IF
             IF( s > TINY(s) ) THEN 
               Diag(i)   = 1.0_dp / s
               Diag(i+1) = 1.0_dp / s
@@ -200,29 +273,13 @@ CONTAINS
           END DO
           !$OMP END PARALLEL DO
         ELSE
-          s = 0.0_dp
-          ! TODO: Add threading
-          IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
-          IF(Parallel) s = ParallelReduction(s,2) 
-
-          IF(s > TINY(s) ) THEN 
-            DO i=1,n
-              IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
-                Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
-              ELSE
-                j = A % Diag(i)
-                IF (j>0) Diag(i) = A % Values(j)
-              END IF
-            END DO
-            IF ( Parallel ) CALL ParallelSumVector(A, Diag)
-          END IF
-
           !$OMP PARALLEL DO &
-          !$OMP SHARED(Diag, N, bnorm) &
+          !$OMP SHARED(Diag, RowSum, DiagTol, N) &
           !$OMP PRIVATE(i) &
           !$OMP DEFAULT(NONE)
           DO i=1,n
-            IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
+            IF ( ABS(Diag(i)) <= DiagTol * RowSum(i) ) Diag(i) = RowSum(i)
+            IF ( ABS(Diag(i)) > TINY(Diag(i)) ) THEN
               Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
             ELSE
               Diag(i) = 1.0_dp
@@ -230,6 +287,7 @@ CONTAINS
           END DO
           !$OMP END PARALLEL DO
         END IF
+        DEALLOCATE(RowSum)
       END IF
 
 
@@ -495,7 +553,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
     LOGICAL :: ComplexMatrix, Found
     INTEGER :: i, j, n 
-    REAL(kind=dp) :: norm, tmp
+    REAL(kind=dp) :: norm
     INTEGER, POINTER :: Cols(:), Rows(:)
     REAL(KIND=dp), POINTER :: Values(:), Diag(:)
 !-------------------------------------------------------------------------
@@ -524,50 +582,20 @@ CONTAINS
     !---------------------------------------------
     ! Compute 1-norm of each row
     !---------------------------------------------
-    IF (ComplexMatrix) THEN
-      DO i=1,n,2
-        tmp = 0.0d0
-        DO j=Rows(i),Rows(i+1)-1,2
-          tmp = tmp + ABS( CMPLX( Values(j), -Values(j+1), kind=dp ) )
-        END DO
-        Diag(i) = tmp
-        Diag(i+1) = tmp
-      END DO
-      IF (Parallel) THEN
-        CALL ParallelSUMVector(A,Diag)
-      END IF
+    IF (Parallel .AND. .NOT. ComplexMatrix .AND. &
+        ListGetLogical(Solver % Values, 'Row Equilibration Use M-V',Found)) THEN
+      BLOCK
+        REAL(KIND=dp), ALLOCATABLE :: x(:),y(:),z(:)
+        TYPE(Matrix_t), POINTER :: ap
+        ALLOCATE(x(n),y(n),z(n))
+        ap => a
+        x = 1; y=0; z=0
+        CALL ParallelInitSolve( ap, x, y, z )
+        CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE.,UseABS=.TRUE. )
+      END BLOCK
+      CALL ParallelSUMVector(A,Diag)
     ELSE
-      IF (Parallel) THEN
- 
-        IF(ListGetLogical(Solver % Values, 'Row Equilibration Use M-V',Found)) THEN
-          BLOCK
-             REAL(KIND=dp), ALLOCATABLE :: x(:),y(:),z(:)
-             TYPE(Matrix_t), POINTER :: ap
-             ALLOCATE(x(n),y(n),z(n))
-             ap => a
-             x = 1; y=0; z=0
-             CALL ParallelInitSolve( ap, x, y, z )
-             CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE.,UseABS=.TRUE. )
-          END BLOCK
-        ELSE
-          DO i=1,n
-            tmp = 0.0_dp
-            DO j=Rows(i),Rows(i+1)-1        
-              tmp = tmp + ABS(Values(j))          
-            END DO
-            Diag(i)  = tmp       
-          END DO
-        END IF
-        CALL ParallelSUMVector(A,Diag)
-      ELSE
-        DO i=1,n
-          tmp = 0.0d0
-          DO j=Rows(i),Rows(i+1)-1        
-            tmp = tmp + ABS(Values(j))          
-          END DO
-          Diag(i)  = tmp       
-        END DO
-      END IF
+      CALL RowwiseOneNorms(A, Diag, ComplexMatrix, Parallel)
     END IF
 
     norm = MAXVAL(Diag(1:n))
