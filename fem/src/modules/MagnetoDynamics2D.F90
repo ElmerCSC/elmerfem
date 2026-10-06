@@ -2682,8 +2682,9 @@ CONTAINS
     LOGICAL :: Stat, Found
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
-    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd), imu, invZs, delta
-    REAL(KIND=dp) :: SkinCond(nd), Mu(nd), CondAtIp, MuAtIp, MuVacuum
+    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd), imu, invZs
+    REAL(KIND=dp) :: SkinCond(nd), Mu(nd), CondAtIp, MuAtIp, MuVacuum, delta
+    LOGICAL :: NoMetrics 
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
@@ -2695,6 +2696,7 @@ CONTAINS
     
     SkinCond(1:n) = GetReal( BC,'Layer Electric Conductivity', Found)
     Mu(1:n) = GetReal( BC,'Layer Relative Permeability', Found)
+    NoMetrics = GetLogical( BC,'Layer Skip Csymmetry', Found)
       
     !Numerical integration:
     !----------------------
@@ -2705,7 +2707,7 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx )
 
-      IF( CSymmetry ) THEN
+      IF(.NOT. NoMetrics .AND. CSymmetry ) THEN
         x = SUM( Basis(1:n) * Nodes % x(1:n) )
         detJ = detJ * x
       END IF
