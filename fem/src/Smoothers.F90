@@ -59,6 +59,7 @@ CONTAINS
           ParallelNorm, ParallelMatrixVector, ParallelMatrixVectorC, &
           ParallelMatrix, ParallelSumVector, ParallelDot, ParallelCNorm, &
           ParallelCDotu, ParallelUpdateResult, ParallelUpdateSolve
+      USE MatrixScaling, ONLY : RowwiseOneNorms
       !  USE GeneralUtils, ONLY : ComplexValues, GetVarName
 
       IMPLICIT NONE
@@ -234,11 +235,8 @@ CONTAINS
       DoIt = ( INDEX(IterMethod,'l1jacobi') > 0 )       
       IF( DoIt ) THEN
         ALLOCATE( L1Long(A % NumberOfRows), L1InvDiag(n) )
-        DO i=1,A % NumberOfRows
-          L1Long(i) = SUM(ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)))
-        END DO
+        CALL RowwiseOneNorms( A, L1Long, .FALSE., Parallel )
         IF( Parallel ) THEN
-          CALL ParallelSumVector( A, L1Long )
           CALL ParallelVector( A, L1InvDiag, L1Long )
         ELSE
           L1InvDiag = L1Long
