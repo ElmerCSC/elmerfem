@@ -55,7 +55,7 @@
      USE MaterialModels
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
 !    External variables
@@ -1769,7 +1769,7 @@ CONTAINS
     USE Integration
     USE Differentials
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     REAL(KIND=dp), DIMENSION(:)   :: ForceVector, LoadVector
     REAL(KIND=dp), DIMENSION(:,:) :: MassMatrix, StiffMatrix
@@ -1924,7 +1924,7 @@ CONTAINS
   USE Integration
   USE Differentials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
      REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:), LoadVector(:)
      TYPE(Nodes_t)   :: Nodes
      TYPE(Element_t) :: Element
@@ -1989,7 +1989,7 @@ SUBROUTINE ChannelCompose( MassMatrix, StiffMatrix, ForceVector, &
   USE Integration
   USE Differentials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
      REAL(KIND=dp), DIMENSION(:)   :: ForceVector
      REAL(KIND=dp), DIMENSION(:,:) :: MassMatrix, StiffMatrix
@@ -2167,7 +2167,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
   USE Integration
   USE Differentials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
             
      REAL(KIND=dp) :: ALPHA, BETA, Qcc
@@ -2325,7 +2325,7 @@ END SUBROUTINE GetEvolveChannel
   USE Integration
   USE Differentials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   REAL(KIND=dp) :: SheetConductivity(:), alphas(:), betas(:), Ev(:), ub(:), &
            Snn(:), lr(:), hr(:), Ar(:), ng(:)
   INTEGER :: N
@@ -2390,7 +2390,7 @@ END SUBROUTINE GetParametersSheet
   USE Integration
   USE Differentials
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   REAL(KIND=dp) :: SheetConductivity(:), ChannelConductivity(:), alphac(:), &
            betac(:), alphas(:), betas(:), IceDensity(:), &
            Snn(:), Ac(:), ng(:), CCt(:), CCw(:), lc(:) 
@@ -2470,7 +2470,7 @@ END SUBROUTINE GetParametersChannel
     USE Integration
     USE Differentials
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: NodalHydPot(:), Discharge(:)
     REAL(KIND=dp) :: na, nb, ks, hsheet 
     INTEGER :: n, NodeNumber
@@ -2532,7 +2532,7 @@ RECURSIVE SUBROUTINE GlaDSsheetThickDummy( Model,Solver,Timestep,TransientSimula
      USE DefUtils
 
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
 !    External variables
@@ -2589,7 +2589,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
 
   USE DefUtils
   USE SolverUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! intent in
   TYPE(Model_t)  :: Model
@@ -2897,7 +2897,7 @@ RECURSIVE SUBROUTINE GroundedMelt( Model,Solver,Timestep,TransientSimulation )
 
   USE DefUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   !    External variables
   !------------------------------------------------------------------------------

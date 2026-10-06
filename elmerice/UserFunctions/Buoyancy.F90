@@ -57,7 +57,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    TYPE(Solver_t):: Solver
    TYPE(Nodes_t), SAVE :: Nodes
@@ -368,7 +368,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    USE SolverUtils
    USE ElementDescription
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Model_t) :: Model
    TYPE(Solver_t):: Solver
    TYPE(Nodes_t), SAVE :: Nodes

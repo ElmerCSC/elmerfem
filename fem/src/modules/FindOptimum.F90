@@ -52,7 +52,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
   USE SolverBasics
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -331,7 +331,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
   FUNCTION rnd(n)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n
     REAL(KIND=dp), DIMENSION(n) :: rnd
     CALL RANDOM_NUMBER(rnd)
@@ -340,7 +340,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
   INTEGER FUNCTION idx(n)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n
     REAL(KIND=dp) :: x
     CALL RANDOM_NUMBER(x)

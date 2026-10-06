@@ -44,13 +44,15 @@
       SUBROUTINE SolveBandLapack( N,M,A,X,Subband,Band )
 
       USE Types
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
  
 
       INTEGER :: N,M,Subband,Band
       REAL(KIND=dp) :: A(Band,N),X(M,N)
 
       INTEGER :: IPIV(N),iINFO
+
+      EXTERNAL :: DGBTRF, DGBTRS
 
       IF ( N <= 0 ) RETURN
 
@@ -74,12 +76,14 @@
       SUBROUTINE SolveComplexBandLapack( N,M,A,X,Subband,Band )
 
       USE Types
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       INTEGER :: N,M,Subband,Band
       COMPLEX(KIND=dp) :: A(Band,N),X(M,N)
 
       INTEGER :: IPIV(N),iINFO
+
+      EXTERNAL :: ZGBTRF, ZGBTRS
 
       IF ( N <= 0 ) RETURN
 

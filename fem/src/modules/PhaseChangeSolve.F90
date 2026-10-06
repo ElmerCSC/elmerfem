@@ -43,7 +43,7 @@
 SUBROUTINE PhaseChangeSolve_Init( Model,Solver,dt,TransientSimulation)
 !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Solver_t), TARGET :: Solver
@@ -76,7 +76,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -1250,7 +1250,7 @@ CONTAINS
   USE Types
   USE Lists
   USE ElementDescription
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !-------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   INTEGER:: Node

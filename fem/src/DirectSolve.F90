@@ -52,7 +52,7 @@ MODULE DirectSolve
    USE SParIterSolve
    USE ParallelUtils, ONLY : ParallelSumVector
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    ! How hard MumpsLocal_Factorize tries to grow ICNTL(14), the percentage of
    ! extra working space, when Mumps reports the analysis estimate was too
@@ -60,6 +60,10 @@ MODULE DirectSolve
    ! merely badly estimated case needs.
    INTEGER, PARAMETER :: MumpsWorkspaceRetries = 5
    INTEGER, PARAMETER :: MumpsWorkspaceMin = 20
+
+#ifdef HAVE_MUMPS
+   EXTERNAL :: SMUMPS, DMUMPS, CMUMPS, ZMUMPS
+#endif
 
 CONTAINS
 
@@ -81,6 +85,8 @@ CONTAINS
 
      REAL(KIND=dp), POINTER CONTIG :: Values(:)
      INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
+
+     EXTERNAL :: SolveComplexBandLapack, SolveComplexSBandLapack
 
      SAVE BA
 !------------------------------------------------------------------------------
@@ -197,6 +203,8 @@ CONTAINS
 
      REAL(KIND=dp), POINTER CONTIG :: Values(:)
      INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
+
+     EXTERNAL :: SolveBandLapack, SolveSBandLapack
 
      SAVE BA
 !------------------------------------------------------------------------------
@@ -1764,7 +1772,7 @@ CONTAINS
 
     A % SMumpsID % job = 4
     CALL SMumps(A % SMumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -1781,7 +1789,7 @@ CONTAINS
           I2S(A % SMumpsID % ICNTL(14)),Level=5)
       A % SMumpsID % job = 2
       CALL SMumps(A % SMumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % SMumpsID % INFOG(1) < 0) THEN
@@ -2020,7 +2028,7 @@ CONTAINS
 
     A % CMumpsID % job = 4
     CALL CMumps(A % CMumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -2037,7 +2045,7 @@ CONTAINS
           I2S(A % CMumpsID % ICNTL(14)),Level=5)
       A % CMumpsID % job = 2
       CALL CMumps(A % CMumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % CMumpsID % INFOG(1) < 0) THEN
@@ -2349,7 +2357,7 @@ CONTAINS
 
     A % MumpsID % job = 4
     CALL DMumps(A % MumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -2366,7 +2374,7 @@ CONTAINS
           I2S(A % MumpsID % ICNTL(14)),Level=5)
       A % MumpsID % job = 2
       CALL DMumps(A % MumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % MumpsID % INFOG(1) < 0) THEN
@@ -2652,7 +2660,7 @@ CONTAINS
 
     A % ZMumpsID % job = 4
     CALL ZMumps(A % ZMumpsID)
-    CALL Flush(6)
+    Flush(6)
 
     ! JOB=4 was analysis plus factorization, and its outcome was never looked
     ! at: on failure info(23) below is meaningless and gets used as an
@@ -2669,7 +2677,7 @@ CONTAINS
           I2S(A % ZMumpsID % ICNTL(14)),Level=5)
       A % ZMumpsID % job = 2
       CALL ZMumps(A % ZMumpsID)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     IF (A % ZMumpsID % INFOG(1) < 0) THEN
@@ -2770,7 +2778,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_SolveSystem( Solver, A, x, b, Free_Fact )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Matrix_t) :: A
      TYPE(Solver_t) :: Solver
@@ -2832,7 +2840,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ZMumpsLocal_SolveSystem( Solver, A, x, b, Free_Fact )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Matrix_t) :: A
      TYPE(Solver_t) :: Solver
@@ -2901,7 +2909,7 @@ CONTAINS
     USE mpi
 #  endif
 #endif
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -3057,7 +3065,7 @@ CONTAINS
 
     A % mumpsIDL % JOB = 1 ! Perform analysis
     CALL DMumps(A % mumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! Check return status
     IF (A % mumpsIDL % INFO(1)<0) THEN
@@ -3066,7 +3074,7 @@ CONTAINS
 
     A % mumpsIDL % JOB = 2 ! Perform factorization
     CALL DMumps(A % mumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! INFO(1) = -8 or -9 only means the working space guessed at analysis time
     ! was too small, which ICNTL(14) exists to enlarge. Retry the factorization
@@ -3082,7 +3090,7 @@ CONTAINS
           'ICNTL(14)='//I2S(A % mumpsIDL % ICNTL(14)),Level=5)
       A % mumpsIDL % JOB = 2
       CALL DMumps(A % mumpsIDL)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     ! Check return status
@@ -3117,7 +3125,7 @@ CONTAINS
     USE mpi
 #  endif
 #endif
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -3265,7 +3273,7 @@ CONTAINS
 
     A % ZmumpsIDL % JOB = 1 ! Perform analysis
     CALL ZMumps(A % ZmumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! Check return status
     IF (A % ZmumpsIDL % INFO(1)<0) THEN
@@ -3274,7 +3282,7 @@ CONTAINS
 
     A % ZmumpsIDL % JOB = 2 ! Perform factorization
     CALL ZMumps(A % ZmumpsIDL)
-    CALL Flush(6)
+    Flush(6)
 
     ! See the real valued counterpart: -8 and -9 are a working space guess that
     ! was too small, not a failed factorization.
@@ -3287,7 +3295,7 @@ CONTAINS
           'ICNTL(14)='//I2S(A % ZmumpsIDL % ICNTL(14)),Level=5)
       A % ZmumpsIDL % JOB = 2
       CALL ZMumps(A % ZmumpsIDL)
-      CALL Flush(6)
+      Flush(6)
     END DO
 
     ! Check return status
@@ -3323,7 +3331,7 @@ CONTAINS
       USE mpi
 #  endif
 #endif
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Solver_t) :: Solver
       TYPE(Matrix_t) :: A
@@ -3424,7 +3432,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE MumpsLocal_Free(A)
 !------------------------------------------------------------------------------
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
 
         TYPE(Matrix_t) :: A
 
@@ -3686,7 +3694,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Pardiso_SolveSystem( Solver,A,x,b,Free_fact )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -3699,7 +3707,7 @@ CONTAINS
       SUBROUTINE pardiso(pt, maxfct, mnum, mtype, phase, n, &
                            values, rows, cols, perm, nrhs, iparm, msglvl, b, x, ierror)
         USE Types
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         REAL(KIND=dp) :: values(*), b(*), x(*)
         INTEGER(KIND=AddrInt) :: pt(*)
         INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
@@ -3708,7 +3716,7 @@ CONTAINS
 
       SUBROUTINE pardisoinit(pt, mtype, iparm)
         USE Types
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         INTEGER(KIND=AddrInt) :: pt(*)
         INTEGER :: mtype
         INTEGER :: iparm(*)
@@ -4110,7 +4118,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CPardiso_SolveSystem( Solver,A,x,b,Free_fact )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
@@ -4210,7 +4218,7 @@ CONTAINS
 
 #if defined(HAVE_MKL) && defined(HAVE_CPARDISO)
   SUBROUTINE CPardiso_Factorize(Solver, A)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
 
@@ -4489,7 +4497,7 @@ CONTAINS
 
 
   SUBROUTINE CPardiso_Free(A)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Matrix_t) :: A
     INTERFACE

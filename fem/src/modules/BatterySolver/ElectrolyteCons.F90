@@ -6,7 +6,7 @@
 SUBROUTINE ElectrolyteCons_init( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -37,7 +37,7 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
   USE DefUtils
   USE BatteryModule
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -179,7 +179,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
     !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
@@ -310,7 +310,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, nb, InitHandles )
     !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles

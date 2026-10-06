@@ -50,7 +50,7 @@ MODULE ProjectorUtils
   USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE Lists
   USE ListMatrix
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

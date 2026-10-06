@@ -37,7 +37,7 @@
   SUBROUTINE AdvectionReactionSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model            
      TYPE(Solver_t), TARGET :: Solver  
@@ -72,7 +72,7 @@
 !------------------------------------------------------------------------------
      USE DefUtils
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model            !< All model information (mesh, materials, BCs, etc...)
      TYPE(Solver_t), TARGET :: Solver  !< Linear & nonlinear equation solver options
@@ -478,7 +478,7 @@
 !------------------------------------------------------------------------------
     SUBROUTINE LocalJumps( STIFF,Face,n,LeftParent,n1,RightParent,n2,Velo )
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: STIFF(:,:), Velo(:,:)
       INTEGER :: n,n1,n2
       TYPE(Element_t), TARGET :: Face, LeftParent, RightParent
@@ -646,7 +646,7 @@
 !------------------------------------------------------------------------------
    SUBROUTINE GetLocalALEVelocity(Velo,MeshVelo,SolverName,Material,&
         Equation,Solver,Model,Element)
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      !------------------------------------------------------------------------------
      REAL (KIND=dp) :: Velo(:,:), MeshVelo(:,:)
      CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
@@ -743,7 +743,7 @@
  SUBROUTINE AdvectionReactionSolver_post( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
    TYPE(Model_t) :: Model            
    TYPE(Solver_t), TARGET :: Solver  

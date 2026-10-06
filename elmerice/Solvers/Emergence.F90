@@ -44,7 +44,7 @@ SUBROUTINE GetEmergenceVelocity( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Differentials
   USE MaterialModels
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   !------------------------------------------------------------------------------
   !    external variables

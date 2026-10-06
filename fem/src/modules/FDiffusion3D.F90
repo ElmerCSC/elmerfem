@@ -57,7 +57,7 @@ SUBROUTINE FourierDiffusion3DSolver( Model,Solver,dt,TransientSimulation )
   USE ElementDescription
   USE SolverBasics
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -642,7 +642,7 @@ CONTAINS
 ! and the external AC field may have all components in any coordinate system
 
      USE Types
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      REAL(KIND=dp) :: BRex(:),BImx(:),BRey(:),BImy(:),BRez(:),BImz(:)
      REAL(KIND=dp) :: LrFx(:),LrFy(:),LrFz(:), Lorentz(3)
      INTEGER :: Reorder(:)

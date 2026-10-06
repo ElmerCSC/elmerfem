@@ -72,7 +72,7 @@
    SUBROUTINE ShellSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET :: Solver
@@ -1537,7 +1537,7 @@
           LargeDeflection )
 !------------------------------------------------------------------------------
        USE SolidMechanicsUtils, ONLY: ShearCorrectionFactor, IsotropicElasticity
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
 
        REAL(KIND=dp) :: StabParam1, StabParam2, LocalDeflection(:), &
             Weight3(:), Weight4(:), Eps(3,3), Kap(3,3), NTen(3,3), MTen(3,3), &

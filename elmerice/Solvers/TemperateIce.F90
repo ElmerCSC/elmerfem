@@ -59,7 +59,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
   USE DefUtils
 
   !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   !------------------------------------------------------------------------------
   !    External variables

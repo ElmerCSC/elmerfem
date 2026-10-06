@@ -28,7 +28,7 @@
 SUBROUTINE ChargeDensitySolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -243,7 +243,7 @@ SUBROUTINE WaveFunctionSolver( Model, Solver, dt, TransientSimulation )
   USE DefUtils
   USE ExchangeCorrelations
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -540,7 +540,7 @@ SUBROUTINE PoissonSolver( Model, Solver, dt, TransientSimulation )
   USE DefUtils
   USE LinearAlgebra
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model

@@ -52,7 +52,7 @@
 MODULE StatCurrentSolveFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -95,7 +95,7 @@ END MODULE StatCurrentSolveFront
 SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE StatCurrentSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -213,7 +213,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   USE DefUtils
   USE Adaptive
   USE StatCurrentSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -439,7 +439,7 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(IN) :: VecAsm
@@ -595,7 +595,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
@@ -720,7 +720,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: VecAsm
@@ -830,7 +830,7 @@ END SUBROUTINE StatCurrentSolver
 SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE StatCurrentSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1027,7 +1027,7 @@ CONTAINS
    
   SUBROUTINE LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
@@ -1375,7 +1375,7 @@ END SUBROUTINE StatCurrentSolver_Post
   SUBROUTINE StatCurrentSolver_boundary_residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
@@ -1603,7 +1603,7 @@ END SUBROUTINE StatCurrentSolver_Post
   SUBROUTINE StatCurrentSolver_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
   
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
@@ -1804,7 +1804,7 @@ END SUBROUTINE StatCurrentSolver_Post
   !------------------------------------------------------------------------------
     USE DefUtils
   !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)

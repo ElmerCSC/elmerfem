@@ -51,7 +51,7 @@ MODULE MeshGenerate
       TransferCoordAndTime, UpdateSolverMesh, WriteMeshToDisk, WriteMeshToDisk2
   USE MeshRemeshing
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   
 CONTAINS
@@ -59,7 +59,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReMesh( Model,Solver)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Solver_t), TARGET :: Solver
     TYPE( Model_t ) :: Model
 !------------------------------------------------------------------------------

@@ -43,7 +43,7 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
 
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -192,7 +192,7 @@ END SUBROUTINE PorosityInit
 SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimulation )
  USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -459,7 +459,7 @@ END SUBROUTINE PermafrostPorosityEvolution
 SUBROUTINE PermafrostStressInvariant( Model,Solver,dt,TransientSimulation )
   !-----------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -635,7 +635,7 @@ END SUBROUTINE PermafrostStressInvariant
 FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(Model_t) :: Model
   INTEGER, INTENT(IN) :: IPNo
@@ -713,7 +713,7 @@ END FUNCTION GetKGuu
 FUNCTION GetBetaG(Model,DummyIPNo,ArgumentsAtIP) RESULT(betaGAtIP)
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER, INTENT(IN) :: DummyIPNo
   REAL(KIND=dp) :: ArgumentsAtIP(2), betaGAtIP
@@ -774,7 +774,7 @@ END FUNCTION GetBetaG
 FUNCTION GetNuG(Model,DummyIPNo,ArgumentsAtIP) RESULT(nuGAtIP)
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER, INTENT(IN) :: DummyIPNo
   REAL(KIND=dp) :: ArgumentsAtIP(2), nuGAtIP
@@ -840,7 +840,7 @@ END FUNCTION GetNuG
 FUNCTION GetEG(Model,DummyIPNo,ArgumentsAtIP) RESULT(EGAtIP)
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER, INTENT(IN) :: DummyIPNo
   REAL(KIND=dp) :: ArgumentsAtIP(2), EGAtIP
@@ -905,7 +905,7 @@ END FUNCTION GetEG
 FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs arguments Temperature, Pressure, Porosity, Salinity
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   INTEGER, INTENT(IN) :: IPNo
   REAL(KIND=dp) :: ArgumentsAtIP(5), EforceAtIP

@@ -32,7 +32,7 @@
 SUBROUTINE AdjointThickness_GradientSolver_init0(Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -53,7 +53,7 @@ END SUBROUTINE AdjointThickness_GradientSolver_init0
 !-----------------------------------------------------------------------------
 SUBROUTINE AdjointThickness_GradientSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   !------------------------------------------------------------------------------
   !    external variables

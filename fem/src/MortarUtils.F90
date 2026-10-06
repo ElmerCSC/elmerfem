@@ -56,7 +56,7 @@ MODULE MortarUtils
   USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE GeometryFitting
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
   
@@ -3283,7 +3283,7 @@ CONTAINS
       FullCircle, Radius, DoNodes, DoEdges, NodeScale, EdgeScale, BC ) &
       RESULT ( Projector )
     !---------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t) :: BMesh1, BMesh2
     LOGICAL :: DoNodes, DoEdges

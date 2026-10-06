@@ -55,7 +55,7 @@ MODULE Messages
   USE XIOS
 #endif
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
@@ -183,7 +183,7 @@ CONTAINS
      END IF
      nadv1 = nadv
 
-     CALL FLUSH(InfoOutUnit)
+     FLUSH(InfoOutUnit)
 
           
 !-----------------------------------------------------------------------
@@ -253,7 +253,7 @@ CONTAINS
        END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(InfoOutUnit)
+     FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Warn
 !-----------------------------------------------------------------------
@@ -290,7 +290,7 @@ CONTAINS
         END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(InfoOutUnit)
+     FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Error
 !-----------------------------------------------------------------------
@@ -327,7 +327,7 @@ CONTAINS
         ERROR STOP EXIT_ERROR
      END IF
      nadv1 = nadv
-     CALL FLUSH(InfoOutUnit)
+     FLUSH(InfoOutUnit)
 
 #ifdef HAVE_XIOS
      IF (USE_XIOS) THEN

@@ -55,7 +55,7 @@
 MODULE StatElecSolveFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   REAL(KIND=dp), PARAMETER :: PhysicalEps0 = 8.854187817e-12_dp
 
@@ -97,7 +97,7 @@ END MODULE StatElecSolveFront
 SUBROUTINE StatElecSolver_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE StatElecSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -129,7 +129,7 @@ END SUBROUTINE StatElecSolver_Init0
 SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE StatElecSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -255,7 +255,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   USE DefUtils
   USE Adaptive
   USE StatElecSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -632,7 +632,7 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(IN) :: VecAsm
@@ -747,7 +747,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles, CVersion )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
@@ -866,7 +866,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: VecAsm
@@ -1010,7 +1010,7 @@ END SUBROUTINE StatElecSolver
 SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE StatElecSolveFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1205,7 +1205,7 @@ CONTAINS
    
   SUBROUTINE LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER, INTENT(IN) :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
@@ -1582,7 +1582,7 @@ END SUBROUTINE StatElecSolver_Post
 SUBROUTINE StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnorm,Indicator)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   INTEGER :: Perm(:)
@@ -1811,7 +1811,7 @@ END SUBROUTINE StatElecSolver_boundary_residual
 SUBROUTINE StatElecSolver_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t) :: Model
   INTEGER :: Perm(:)
@@ -2012,7 +2012,7 @@ SUBROUTINE StatElecSolver_Inside_residual(Model, Element, Mesh, &
 !------------------------------------------------------------------------------
   USE DefUtils
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   INTEGER :: Perm(:)

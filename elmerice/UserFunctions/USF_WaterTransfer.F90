@@ -41,7 +41,7 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
   USE SolverUtils
   USE ElementDescription
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-----------------------------------------------
   !    External variables
   !-----------------------------------------------

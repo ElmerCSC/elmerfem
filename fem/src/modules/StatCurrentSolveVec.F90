@@ -44,7 +44,7 @@
 MODULE StatCurrentSolveVecFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -108,7 +108,7 @@ END MODULE StatCurrentSolveVecFront
 !------------------------------------------------------------------------------
 SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   USE StatCurrentSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -121,7 +121,7 @@ END SUBROUTINE StatCurrentSolver_init
 !------------------------------------------------------------------------------
 SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   USE StatCurrentSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -139,7 +139,7 @@ END SUBROUTINE StatCurrentSolver
 !------------------------------------------------------------------------------
 SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   USE StatCurrentSolveVecFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt

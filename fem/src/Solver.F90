@@ -36,7 +36,7 @@ PROGRAM Solver
    USE LoadMod, ONLY : CPUTime, RealTime, envir
    USE SParIterGlobals, ONLY : ParEnv
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    REAL(KIND=dp) :: CT, RT
    INTEGER, PARAMETER :: Initialize=0
@@ -52,7 +52,7 @@ PROGRAM Solver
    INTERFACE
      SUBROUTINE ElmerSolver(initialize, args, NoArgs)
        USE Types
-       IMPLICIT NONE
+       IMPLICIT NONE IMPLICIT_EXTERNAL
        INTEGER, INTENT(IN) :: initialize
        INTEGER, INTENT(IN) :: NoArgs
        TYPE(ArgStr_t), INTENT(IN) :: args(:)
@@ -68,7 +68,7 @@ PROGRAM Solver
    IF ( .NOT. Silent ) THEN
      DateStr = FormatDate()
      WRITE( *,'(A,A)' ) "ELMER SOLVER (v " // ELMER_FEM_VERSION // ") STARTED AT: ", TRIM(DateStr)
-     CALL FLUSH(6)
+     FLUSH(6)
    END IF
 
    ! Get number of command line arguments
@@ -98,7 +98,7 @@ PROGRAM Solver
                    CPUTime()-CT, RealTime()-RT
        DateStr = FormatDate()
        WRITE( *,'(A,A)' ) 'ELMER SOLVER FINISHED AT: ', TRIM(DateStr)
-       CALL FLUSH(6)
+       FLUSH(6)
      END IF
    END IF
    

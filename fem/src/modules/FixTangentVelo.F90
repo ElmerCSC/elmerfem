@@ -29,7 +29,7 @@
 
 SUBROUTINE FixTangentVelo_init( Model,Solver,dt,Transient )
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
@@ -45,7 +45,7 @@ END SUBROUTINE FixTangentVelo_Init
 
 SUBROUTINE FixTangentVelo( Model,Solver,dt,Transient )
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt

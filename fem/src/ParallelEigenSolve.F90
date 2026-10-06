@@ -74,7 +74,7 @@ MODULE ParallelEigenSolve
                              ParallelReduction, ParallelMatrixVector, ParallelNorm, &
                              ParallelDot, ParallelMatrix, PartitionVector, ParallelUpdateResult
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -107,7 +107,9 @@ CONTAINS
 #  endif
 #endif
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
+
+      EXTERNAL :: PDSAUPD, PDNAUPD, PDSEUPD, PDNEUPD
 
       TYPE(Matrix_t), POINTER :: A
       TYPE(Solver_t), TARGET :: Solver
@@ -622,7 +624,9 @@ CONTAINS
 #  endif
 #endif
 
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
+
+      EXTERNAL :: PZNAUPD, PZNEUPD
 
       TYPE(Matrix_t), POINTER :: Matrix
       TYPE(Solver_t), TARGET :: Solver

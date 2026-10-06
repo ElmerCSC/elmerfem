@@ -32,7 +32,7 @@
 ! ******************************************************************************
       SUBROUTINE UpdateExport_init( Model,Solver,dt,TransientSimulation )
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       !------------------------------------------------------------------------------
       TYPE(Solver_t), TARGET :: Solver
       TYPE(Model_t) :: Model
@@ -64,7 +64,7 @@
       SUBROUTINE UpdateExport( Model,Solver,dt,TransientSimulation )
       USE DefUtils
       USE SolverUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       TYPE(Model_t) :: Model
       TYPE(Solver_t):: Solver

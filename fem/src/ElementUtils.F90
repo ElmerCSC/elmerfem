@@ -55,7 +55,7 @@ MODULE ElementUtils
     USE ElementDescription, ONLY : getEdgeDOFs,GetBubbleDOFs,getFaceDOFs, &
       CrossProduct, NormalVector, InterpolateInElement, mGetElementDOFs
             
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     ! Not re-exported: the external procedure itself USEs modules that would
     ! then import its own name (see module IpFieldInterface).
     PRIVATE :: Ip2DgFieldInElement
@@ -1966,7 +1966,7 @@ CONTAINS
           UseGivenPerm, BCMode ) RESULT(Matrix)
 !------------------------------------------------------------------------------
      USE BandMatrix, ONLY : Band_CreateMatrix
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      TYPE(Mesh_t) :: Mesh
      TYPE(Solver_t), TARGET :: Solver
@@ -3465,7 +3465,7 @@ CONTAINS
    !> Return the aspect ratio of an element 
    !------------------------------------------------------------------------------
    FUNCTION ElementAspectRatio(Model, Element ) RESULT ( AspectRatio ) 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) Model
      TYPE(Element_t) :: Element
      REAL(KIND=dp) :: AspectRatio
@@ -3483,7 +3483,7 @@ CONTAINS
    !> Return the characteristic lengths of an element 
    !------------------------------------------------------------------------------
    FUNCTION ElementCharacteristicLengths(Model, Element ) RESULT ( Charlengths ) 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      TYPE(Element_t) :: Element
      REAL(KIND=dp) :: Charlengths(2)
@@ -3528,7 +3528,7 @@ CONTAINS
    !> Return normal of degenerate Element 
    !------------------------------------------------------------------------------
    FUNCTION NormalOfDegenerateElement(Model, Element ) RESULT ( Normal ) 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE(Model_t) :: Model
      TYPE(Element_t) :: Element
      REAL(KIND=dp) :: a(3), b(3), c(3), Normal(3)
@@ -3566,7 +3566,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION FindBoundaryEdgeIndex(Mesh,Boundary,nedge) RESULT(n)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      INTEGER :: n,nedge
      TYPE(Mesh_t), TARGET :: Mesh
      TYPE(Element_t) :: Boundary
@@ -3608,7 +3608,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION FindBoundaryFaceIndex(Mesh,Boundary) RESULT(n)
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      INTEGER :: n
      TYPE(Element_t) :: Boundary
      TYPE(Mesh_t) :: Mesh
@@ -3642,7 +3642,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE FindParentUVW( Element, n, Parent, np, U, V, W, Basis ) 
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE( Element_t ), TARGET :: Element
      TYPE( Element_t ), TARGET :: Parent
      INTEGER :: n, np
@@ -3690,7 +3690,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetParentBasis( Element, n, Basis, Parent, np, Basisp ) 
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
      TYPE( Element_t ), TARGET :: Element
      TYPE( Element_t ), TARGET :: Parent
      INTEGER :: n, np
@@ -4228,7 +4228,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE mGetBoundaryIndexesFromParent( Mesh, Element, Indexes, indSize )
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      ! Parameters
      TYPE(Mesh_t) :: Mesh

@@ -42,7 +42,7 @@
 SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -146,7 +146,7 @@ END SUBROUTINE Wsolve_Init0
 SUBROUTINE Wsolve_Dummy(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -181,7 +181,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
   USE LinearAlgebra
   USE CircuitUtils
   USE MGDynMaterialUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -429,7 +429,7 @@ CONTAINS
 !----------------------------------------------------------------
   SUBROUTINE BoundaryCondition(LOAD, FORCE, Element, n)
 !----------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), DIMENSION(:) :: FORCE, LOAD
     INTEGER :: n
     TYPE(Element_t), TARGET :: Element
@@ -482,7 +482,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SaveElementWSolution(Element, n, Wnorm, RotM, Tcoef, NoRotM)
 !------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   INTEGER :: n, j, k, t
   TYPE(Element_t), TARGET :: Element
   TYPE(Valuelist_t), POINTER :: Solverparams
@@ -602,7 +602,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetWNormsForBodies(nofbodies) RESULT (Wnorms)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: nofbodies
     REAL(KIND=dp) :: Volumes(nofbodies)
     REAL(KIND=dp) :: Wnorms(nofbodies)
@@ -658,7 +658,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddElementWNormAndVolume(Element, n, nd, WnormCoeff, Volume)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: WnormCoeff, Volume
     
     INTEGER :: Active, n, nd, j

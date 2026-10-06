@@ -42,7 +42,7 @@
    SUBROUTINE LevelSetIntegrate( Model,Solver,Timestep,Transient )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
  
      TYPE(Model_t), TARGET :: Model
@@ -341,7 +341,7 @@
  SUBROUTINE LevelSetIntegrate_init( Model,Solver,Timestep,Transient )
 !------------------------------------------------------------------------------
    USE DefUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------ 
    TYPE(Model_t), TARGET :: Model
    TYPE(Solver_t) :: Solver

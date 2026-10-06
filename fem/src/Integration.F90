@@ -45,7 +45,7 @@ MODULE Integration
    USE LoadMod
    USE Messages
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
    INTEGER, PARAMETER, PRIVATE :: MAXN = 13, MAXNPAD = 16 ! Padded to 64-byte alignment
    INTEGER, PARAMETER, PRIVATE :: MAX_INTEGRATION_POINTS = MAXN**3
@@ -1302,6 +1302,7 @@ MODULE Integration
      COMPLEX(KIND=dp) :: Eigs(n/2)
      REAL(KIND=dp)   :: P(n+1),Q(n),P0(n),P1(n+1)
      INTEGER :: i,j,k,np,info
+     EXTERNAL :: DGEEV
 !------------------------------------------------------------------------------
 ! One point is trivial
 !------------------------------------------------------------------------------

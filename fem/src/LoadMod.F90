@@ -41,7 +41,7 @@ MODULE LoadMod
     USE Messages
     USE, INTRINSIC :: ISO_C_BINDING
     USE huti_interfaces
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 #ifdef ARCH_32_BITS
 #define CAddrInt c_int32_t
@@ -234,7 +234,7 @@ MODULE LoadMod
         END FUNCTION MatcCached
 
         SUBROUTINE systemc(cmd, Status)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             CHARACTER(LEN=*) :: cmd
             ! Nonzero if the command could not be run or exited nonzero.  The
             ! return used to be dropped here, so a child that died left no
@@ -284,7 +284,7 @@ MODULE LoadMod
         END SUBROUTINE systemc
 
         SUBROUTINE envir(name, value, len)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             CHARACTER(LEN=*) :: name
             CHARACTER(LEN=*) :: value
             INTEGER :: len
@@ -296,7 +296,7 @@ MODULE LoadMod
 #if 0
         ! FUNCTION ADDRESS (overloaded methods for different function return values)
         FUNCTION AddrFuncSub(fn) RESULT(addr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             PROCEDURE() :: fn
             INTEGER(KIND=AddrInt) :: addr
 
@@ -306,7 +306,7 @@ MODULE LoadMod
         END FUNCTION AddrFuncSub
 
         FUNCTION AddrFuncInt(fn) RESULT(addr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             PROCEDURE(INTEGER(KIND=selected_int_kind(9))) :: fn
             INTEGER(KIND=AddrInt) :: addr
 
@@ -316,7 +316,7 @@ MODULE LoadMod
         END FUNCTION AddrFuncInt
 
         FUNCTION AddrFuncLong(fn) RESULT(addr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             PROCEDURE(INTEGER(KIND=selected_int_kind(18))) :: fn
             INTEGER(KIND=AddrInt) :: addr
 
@@ -326,7 +326,7 @@ MODULE LoadMod
         END FUNCTION AddrFuncLong
 
         FUNCTION AddrFuncReal(fn) RESULT(addr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             PROCEDURE(REAL(KIND=SELECTED_REAL_KIND(6))) :: fn
             INTEGER(KIND=AddrInt) :: addr
 
@@ -336,7 +336,7 @@ MODULE LoadMod
         END FUNCTION AddrFuncReal
 
         FUNCTION AddrFuncDbl(fn) RESULT(addr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             PROCEDURE(REAL(KIND=dp)) :: fn
             INTEGER(KIND=AddrInt) :: addr
 
@@ -346,7 +346,7 @@ MODULE LoadMod
         END FUNCTION AddrFuncDbl
 
         FUNCTION AddrFuncCmp(fn) RESULT(addr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             PROCEDURE(COMPLEX(KIND=SELECTED_REAL_KIND(6))) :: fn
             INTEGER(KIND=AddrInt) :: addr
 
@@ -356,7 +356,7 @@ MODULE LoadMod
         END FUNCTION AddrFuncCmp
 
         FUNCTION AddrFuncDblCmp(fn) RESULT(addr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             PROCEDURE(COMPLEX(KIND=dp)) :: fn
             INTEGER(KIND=AddrInt) :: addr
 
@@ -368,7 +368,7 @@ MODULE LoadMod
 
         ! DYNAMIC LOADING  (wrapper via module procedure for typecasting)
         FUNCTION loadfunction(quiet, abort_not_found, library, fname,mangle) RESULT(ptr)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             INTEGER :: quiet, abort_not_found, mangle
             CHARACTER :: library(*), fname(*)
             TYPE(C_FUNPTR) :: ptr
@@ -389,7 +389,7 @@ MODULE LoadMod
 
         ! DYNAMIC FUNCTION CALLS (wrappers via module procedures)
         RECURSIVE FUNCTION execintfunction(fptr, model ) RESULT(intval)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: intval
@@ -408,7 +408,7 @@ MODULE LoadMod
         END FUNCTION execintfunction
 
         RECURSIVE FUNCTION execconstrealfunction(fptr, model, x, y, z) RESULT(realval)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             REAL(KIND=dp) :: x, y, z
@@ -429,7 +429,7 @@ MODULE LoadMod
         END FUNCTION execconstrealfunction
 
         RECURSIVE FUNCTION execrealfunction(fptr, model, node, val) RESULT(realval)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: node
@@ -452,7 +452,7 @@ MODULE LoadMod
         END FUNCTION execrealfunction
 
         RECURSIVE SUBROUTINE execrealarrayfunction(fptr, model, node, val, arr )
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: node
@@ -475,7 +475,7 @@ MODULE LoadMod
         END SUBROUTINE execrealarrayfunction
 
         RECURSIVE SUBROUTINE execrealvectorfunction(fptr, model, node, val, arr )
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: node
@@ -496,7 +496,7 @@ MODULE LoadMod
         END SUBROUTINE execrealvectorfunction
 
         RECURSIVE SUBROUTINE execsolver(fptr, model, solver, dt, transient)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Solver_t) :: solver
@@ -520,7 +520,7 @@ MODULE LoadMod
 
 
         SUBROUTINE execmortarprojector(fptr, mesh, slavemesh, mastermesh, bcind, projector )
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Mesh_t) :: mesh, slavemesh, mastermesh
             INTEGER :: bcind
@@ -543,7 +543,7 @@ MODULE LoadMod
           FUNCTION enhancementfactoruserfunction( fptr, model, element, nodes, n, nd, &
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip ) &
                                        RESULT(realval)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Element_t), POINTER :: element
@@ -577,7 +577,7 @@ MODULE LoadMod
         FUNCTION materialuserfunction( fptr, model, element, nodes, n, nd, &
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx ) &
                                        RESULT(realval)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Element_t), POINTER :: element
@@ -608,7 +608,7 @@ MODULE LoadMod
         END FUNCTION materialuserfunction
 
         SUBROUTINE execsimulationproc(fptr, model)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
 
@@ -625,7 +625,7 @@ MODULE LoadMod
         END SUBROUTINE execsimulationproc
 
         RECURSIVE FUNCTION execlinsolveprocs(fptr, model, solver, mtr, b, x, n, DOFs, nrm) RESULT(intval)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t) :: model
             TYPE(Solver_t) :: solver
@@ -652,7 +652,7 @@ MODULE LoadMod
         END FUNCTION execlinsolveprocs
 
         SUBROUTINE execlocalproc(fptr, model, solver, G, F, element, n, nd)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t)   :: model
             TYPE(Solver_t)  :: solver
@@ -678,7 +678,7 @@ MODULE LoadMod
 
         SUBROUTINE execlocalassembly(fptr, model, solver, dt, transient, &
                                      M, D, S, F, element, nrow, ncol)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
             TYPE(C_FUNPTR) :: fptr
             TYPE(Model_t)   :: model
             TYPE(Solver_t)  :: solver
@@ -709,7 +709,7 @@ MODULE LoadMod
         END SUBROUTINE execlocalassembly
 
         SUBROUTINE matvecsubrext(fptr, spmv, n, rows, cols, vals, u, v, reinit)
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
 
             TYPE(C_FUNPTR) :: fptr
             INTEGER(KIND=AddrInt) :: spmv
@@ -741,7 +741,7 @@ MODULE LoadMod
 
         RECURSIVE SUBROUTINE itercallR(fptr, x, b, ipar, dpar, work, &
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
 
             INTEGER(KIND=AddrInt) :: fptr
             REAL(KIND=dp), DIMENSION(:) CONTIG :: x,b
@@ -771,7 +771,7 @@ MODULE LoadMod
 
         RECURSIVE SUBROUTINE itercallC(fptr, x, b, ipar, dpar, work, &
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
 
             INTEGER(KIND=AddrInt) :: fptr
             COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
@@ -801,7 +801,7 @@ MODULE LoadMod
 
         RECURSIVE SUBROUTINE itercallFTNR(fptr, x, b, ipar, dpar, work, &
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
 
             INTEGER(KIND=AddrInt) :: fptr
             REAL(KIND=dp), DIMENSION(:) CONTIG :: x,b
@@ -857,7 +857,7 @@ MODULE LoadMod
 
         RECURSIVE SUBROUTINE itercallFTNC(fptr, x, b, ipar, dpar, work, &
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
-            IMPLICIT NONE
+            IMPLICIT NONE IMPLICIT_EXTERNAL
 
             INTEGER(KIND=AddrInt) :: fptr
             COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
@@ -919,7 +919,7 @@ MODULE LoadMod
             coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
             kstep, kinc)
           
-          IMPLICIT NONE
+          IMPLICIT NONE IMPLICIT_EXTERNAL
           
           TYPE(C_FUNPTR) :: fptr
           REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
@@ -960,7 +960,7 @@ MODULE LoadMod
                 kstep, kinc)
               
               USE Types
-              IMPLICIT NONE
+              IMPLICIT NONE IMPLICIT_EXTERNAL
               
               REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
               REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)

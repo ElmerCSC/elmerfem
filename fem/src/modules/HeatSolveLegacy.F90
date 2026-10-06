@@ -51,7 +51,7 @@
 SUBROUTINE HeatSolverLegacy_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -102,7 +102,8 @@ END SUBROUTINE HeatSolverLegacy_Init
      USE DefUtils
 
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
+     EXTERNAL :: RADIATIONFACTORS
 !------------------------------------------------------------------------------
      INTEGER, PARAMETER :: PHASE_SPATIAL_1 = 1
      INTEGER, PARAMETER :: PHASE_SPATIAL_2 = 2
@@ -2321,7 +2322,7 @@ CONTAINS
      USE DefUtils
      USE Radiation
 
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -2618,7 +2619,7 @@ CONTAINS
   SUBROUTINE HeatSolverLegacy_Edge_Residual(Model,Edge,Mesh,Quant,Perm,Indicator )
 !------------------------------------------------------------------------------
      USE DefUtils
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)
@@ -2818,7 +2819,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE DefUtils
 !------------------------------------------------------------------------------
-     IMPLICIT NONE
+     IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      INTEGER :: Perm(:)

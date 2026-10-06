@@ -47,7 +47,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   USE CoordinateSystems
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver  !< Linear & nonlinear equation solver options
   TYPE(Model_t) :: Model    !< All model information (mesh, materials, BCs, etc...)
@@ -488,7 +488,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: STIFF(:,:)
       INTEGER :: n,n1,n2
       TYPE(Element_t) :: Face, P1, P2
@@ -580,7 +580,7 @@ END SUBROUTINE FluxSolver
   SUBROUTINE FluxSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Model_t)  :: Model
     TYPE(Solver_t) :: Solver

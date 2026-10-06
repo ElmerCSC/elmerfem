@@ -36,7 +36,7 @@
  
 
 MODULE HarmUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   CONTAINS
     
@@ -55,7 +55,7 @@ MODULE HarmUtils
     ! -----------------------------------------------------------------
     FUNCTION SinSum(fundamental_f, amplitudes, t, phase) RESULT(sumA)
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       REAL(KIND=dp) :: fundamental_f, fundamental_omega, t
       REAL(KIND=dp) :: amplitudes(:,:)
@@ -74,7 +74,7 @@ MODULE HarmUtils
     
     FUNCTION CosSum(fundamental_f, amplitudes, t, phase) RESULT(sumA)
       USE DefUtils
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       
       REAL(KIND=dp) :: fundamental_f, fundamental_omega, t
       REAL(KIND=dp) :: amplitudes(:,:)
@@ -98,7 +98,7 @@ END MODULE HarmUtils
 FUNCTION source( model, n, time ) RESULT(current)
   USE DefUtils
   USE HarmUtils
-  IMPLICIT None
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: model
   TYPE(ValueList_t), POINTER :: BF
   LOGICAL :: Found, amplitude_fade_in

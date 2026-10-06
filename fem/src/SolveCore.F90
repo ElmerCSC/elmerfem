@@ -51,7 +51,7 @@ MODULE SolveCore
     USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
     USE MatrixAssembly, ONLY : CreateChildMatrix
     USE IterSolve, ONLY : NumericalError
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -1891,7 +1891,7 @@ CONTAINS
          USE Types
          USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
-         IMPLICIT NONE
+         IMPLICIT NONE IMPLICIT_EXTERNAL
 
          INTEGER(KIND=C_INTPTR_T) :: AMGX
          REAL(KIND=dp) :: vals(*), b(*), x(*)
@@ -1952,7 +1952,7 @@ CONTAINS
          USE Types
          USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
-         IMPLICIT NONE
+         IMPLICIT NONE IMPLICIT_EXTERNAL
 
          INTEGER(KIND=C_INTPTR_T) :: AMGX
          REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm
@@ -2492,7 +2492,7 @@ CONTAINS
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         REAL(KIND=dp) :: vals(*), b(*), x(*), tol, schur_vals(*)
         INTEGER :: rows(*), cols(*), nonlin_update, n, imethod, prec, maxiter
         INTEGER :: schur_n, schur_rows(*), schur_cols(*), dofs
@@ -2504,7 +2504,7 @@ CONTAINS
         USE Types
         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
 
-        IMPLICIT NONE
+        IMPLICIT NONE IMPLICIT_EXTERNAL
         REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm, tol
         INTEGER :: gn, n, rows(*), cols(*), goffset(*), fcomm, imethod, prec, maxiter
       END SUBROUTINE ROCParallelSolve
@@ -5185,7 +5185,7 @@ END SUBROUTINE ChangeToHarmonicSystem
 !------------------------------------------------------------------------------
 SUBROUTINE EliminateLinearRestriction( StiffMatrix, ForceVector, RestMatrix, &
     CollectionMatrix, Solver, CopyStiffMatrix, ExportUsePerm, ExportUseIPerm, ExportUseDiag )
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Matrix_t) :: StiffMatrix
   REAL(KIND=dp) :: ForceVector(:) 
   TYPE(Matrix_t), POINTER :: RestMatrix
@@ -5568,7 +5568,7 @@ END SUBROUTINE EliminateLinearRestriction
 RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     Solution, Norm, DOFs, Solver )
 !------------------------------------------------------------------------------  
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Matrix_t), POINTER :: StiffMatrix !< Linear equation matrix information. 
   REAL(KIND=dp),TARGET :: ForceVector(:) !< The right hand side of the linear equation
   REAL(KIND=dp),TARGET :: Solution(:)    !< Previous solution as input, new solution as output.

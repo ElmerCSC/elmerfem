@@ -87,7 +87,7 @@
 MODULE V2FSolverFront
   USE DefUtils
   USE LoadMod, ONLY: ExecSolver
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 
@@ -129,7 +129,7 @@ MODULE V2FSolverLocalForms
   USE DefUtils
   USE LinearForms
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   ! Per-element bubble history, used by Default1stOrderTime's Nb path
   ! (DefUtils.F90) -- lives on Solver % Variable's own BubbleValues/
@@ -153,7 +153,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, dt, Transient, GlobalBubbles, Stabilize, InitHandles )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     INTEGER, INTENT(IN) :: n, nd, nb
     REAL(KIND=dp), INTENT(IN) :: dt
@@ -453,7 +453,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixScalar( Element, dt, Transient, GlobalBubbles, BubblesDefault )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), INTENT(IN) :: dt
     LOGICAL, INTENT(IN) :: Transient, GlobalBubbles, BubblesDefault
@@ -562,7 +562,7 @@ CONTAINS
              LOAD,UX,UY,UZ,Element,n,nd,Nodes )
 !------------------------------------------------------------------------------
       USE MaterialModels
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
 
       REAL(KIND=dp), DIMENSION(:)   :: FORCE,UX,UY,UZ
       REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
@@ -744,7 +744,7 @@ SUBROUTINE V2F_LDM( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE V2FSolverLocalForms
   USE V2FSolverFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -880,7 +880,7 @@ END SUBROUTINE V2F_LDM
 SUBROUTINE V2F_LDM_Init0( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE V2FSolverFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -926,7 +926,7 @@ END SUBROUTINE V2F_LDM_Init0
 SUBROUTINE V2F_LDM_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE V2FSolverFront
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver

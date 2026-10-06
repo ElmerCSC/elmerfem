@@ -37,7 +37,7 @@
 SUBROUTINE PermafrostGroundwaterFlow_Init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   TYPE(Solver_t) :: Solver
@@ -84,7 +84,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   USE DefUtils
   USE PermaFrostMaterials
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -455,7 +455,7 @@ CONTAINS
        CurrentSoluteMaterial,CurrentSolventMaterial,&
        PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix,&
        ComputeDt,ComputeDeformation,HydroGeo,OffsetDensity,FluxOutput,ComputeFreshwaterHead)
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements
@@ -975,7 +975,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBCDarcy( Element,  element_id, n, nd, CurrentSoluteMaterial)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     !------------------------------------------------------------------------------
     INTEGER :: n, nd, element_id
     TYPE(Element_t), POINTER :: Element

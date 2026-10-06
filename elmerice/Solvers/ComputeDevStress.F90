@@ -42,7 +42,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   USE DefUtils
   
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
 !------------------------------------------------------------------------------
 !******************************************************************************

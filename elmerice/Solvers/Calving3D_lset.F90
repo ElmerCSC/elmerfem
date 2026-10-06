@@ -38,7 +38,7 @@
    USE InterpVarToVar
    USE MeshUtils
 
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 
 !-----------------------------------------------
    TYPE(Model_t) :: Model
@@ -1862,7 +1862,7 @@ CONTAINS
   SUBROUTINE CheckLateralCalving(Mesh, SolverParams, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
               CrevLR, Polygon, PolyStart, PolyEnd)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Valuelist_t), POINTER :: SolverParams
@@ -2246,7 +2246,7 @@ CONTAINS
   !(should this be changed? i.e. detect orphaned nodes?)
   SUBROUTINE CutPlaneMesh(Mesh, RmNode, RmElem)
 
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, OPTIONAL :: RmNode(:)

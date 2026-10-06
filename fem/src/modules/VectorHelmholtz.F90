@@ -48,7 +48,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -183,7 +183,7 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
   USE DefUtils
   USE VectorHelmholtzUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
@@ -252,7 +252,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   USE DefUtils
   USE VectorHelmholtzUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -1395,7 +1395,7 @@ SUBROUTINE VectorHelmholtz_Dummy(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1416,7 +1416,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   USE DefUtils
 !  USE VectorHelmholtzUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -1561,7 +1561,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init0
 SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -1646,7 +1646,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    USE DefUtils
    USE VectorHelmholtzUtils
    
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
    TYPE(Model_t) :: Model
@@ -2120,7 +2120,7 @@ CONTAINS
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
    USE MeshBasics, ONLY : CalculateBodyAverage   
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
@@ -2225,7 +2225,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE LocalJumps( STIFF,Face,n,P1,n1,P2,n2)
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+      IMPLICIT NONE IMPLICIT_EXTERNAL
       REAL(KIND=dp) :: STIFF(:,:)
       INTEGER :: n,n1,n2
       TYPE(Element_t), TARGET :: Face, P1, P2

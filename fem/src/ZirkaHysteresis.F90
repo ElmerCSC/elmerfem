@@ -30,7 +30,7 @@
 MODULE zirka ! Pointwise zirka {{{
 USE GeneralUtils
 USE DefUtils
-implicit none
+IMPLICIT NONE IMPLICIT_EXTERNAL
 
 private
 
@@ -154,7 +154,7 @@ END FUNCTION InSaturation ! }}}
 !-------------------------------------------------------------------------------
 !> Returns a-b-c parameters appearing in the Zirka model
 SUBROUTINE GetABC(this, dBout, dBrev, a, b, c) ! {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   !-------------------------------------------------------------------------------
   class(ZirkaABC_t) :: this
   REAL(KIND=dp), INTENT(IN) :: dBout, dBrev
@@ -184,7 +184,7 @@ END SUBROUTINE ! }}}
 !-------------------------------------------------------------------------------
 FUNCTION InitSplineLoop(BHasc, BHsingle) RESULT(Loop) ! {{{
   !-------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   REAL(KIND=dp), intent(in) :: BHasc(:,:), BHsingle(:,:) 
   TYPE(SplineLoop_t), POINTER :: Loop
   !-------------------------------------------------------------------------------
@@ -212,7 +212,7 @@ END FUNCTION InitSplineLoop ! }}}
 
 function init_master_curve(bigloop, ABCParams, &
       init, b0, initseq, n_cachesubsample)  result(mc)!  {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(MasterCurve_t) :: mc
   TYPE(ZirkaABC_t), POINTER :: ABCParams
   TYPE(RevCurve_t), POINTER :: rca, rcd
@@ -295,7 +295,7 @@ END function !  }}}
 ! saturation).
 !
 RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   CLASS(RevCurve_t), POINTER, INTENT(IN) :: rc
   CLASS(RevCurve_t), POINTER :: rc_p
   REAL(kind=dp) :: B
@@ -398,7 +398,7 @@ RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
 END FUNCTION ! }}}
 
 SUBROUTINE EvalSplineLoop(this, B, Hasc, Hdesc, dHasc, dHdesc) ! {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   CLASS(SplineLoop_t), INTENT(IN) :: this
   REAL(KIND=dp), INTENT(IN) :: B
   REAL(KIND=dp), INTENT(OUT) :: Hasc, Hdesc
@@ -440,7 +440,7 @@ SUBROUTINE EvalSplineLoop(this, B, Hasc, Hdesc, dHasc, dHdesc) ! {{{
 END SUBROUTINE EvalSplineLoop ! }}}
 
 SUBROUTINE EvalSplineLoopSingle(this, B, HSingle) ! {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   CLASS(SplineLoop_t), INTENT(IN) :: this
   REAL(KIND=dp), VALUE :: B
   REAL(KIND=dp), INTENT(OUT) :: HSingle
@@ -538,7 +538,7 @@ function mc_eval(mc, B, dhdb, cached) result(H) ! {{{
 end function ! }}}
 
 FUNCTION RecurEvalCurve(rc, B) result (H) ! {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   CLASS(RevCurve_t), TARGET,  INTENT(IN) :: rc
   REAL(KIND=dp), INTENT(IN) :: B
   CLASS(RevCurve_t), POINTER :: rc_p
@@ -553,7 +553,7 @@ FUNCTION RecurEvalCurve(rc, B) result (H) ! {{{
 END FUNCTION ! }}}
 
 SUBROUTINE HBDrive(mc, B, cache) ! {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   CLASS(MasterCurve_t), INTENT(INOUT) :: mc
   CLASS(RevCurve_t), POINTER :: rc
   REAL(KIND=dp), INTENT(IN) :: B
@@ -615,7 +615,7 @@ subroutine mc_printme(mc) ! {{{
 end subroutine ! }}}
 
 SUBROUTINE AddStack(parent, master, B) ! {{{
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   CLASS (RevCurve_t), INTENT(INOUT), POINTER :: parent
   TYPE(MasterCurve_t), INTENT(INOUT) :: master
   CLASS(RevCurve_t), POINTER:: x
@@ -681,7 +681,7 @@ SUBROUTINE AddStack(parent, master, B) ! {{{
 
   CONTAINS
   function check_reallocate(oldparent, newdepth) result(newparent) ! {{{
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTEGER :: newdepth
     !-------------------------------------------------------------------------------
     TYPE(Revcurve_t), POINTER :: newchildren(:)
@@ -740,7 +740,7 @@ subroutine mc_printeval(mc, B, mc2) ! {{{
 end subroutine ! }}}
 
 SUBROUTINE rc_printeval(rc, B, rc0) ! {{{
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   class(revcurve_t), pointer, intent(in) :: rc
   class(revcurve_t), pointer, intent(in), optional :: rc0
   real(kind=dp), intent(in) :: B 
@@ -784,7 +784,7 @@ end subroutine ! }}}
 !-------------------------------------------------------------------------------
 SUBROUTINE FreeRevCurve(mc) ! {{{
 !-------------------------------------------------------------------------------
-  implicit none
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(MasterCurve_t) :: mc
 !-------------------------------------------------------------------------------
   DEALLOCATE(mc % children)
@@ -806,7 +806,7 @@ contains
 !-------------------------------------------------------------------------------
 SUBROUTINE InitHysteresis(Model,Solver) ! {{{
 !-------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
 !-------------------------------------------------------------------------------
@@ -982,7 +982,7 @@ END FUNCTION ! }}}
 FUNCTION CreateZirkaVariable(Material) RESULT(var)
 !-------------------------------------------------------------------------------
   USE MainUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(ValueList_t), POINTER, intent(in) :: Material
   TYPE(Variable_t), POINTER :: var
 !-------------------------------------------------------------------------------
@@ -1054,7 +1054,7 @@ END FUNCTION ! }}}
 !-------------------------------------------------------------------------------
 SUBROUTINE DriveHysteresis(model, solver) ! {{{
 !-------------------------------------------------------------------------------
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   type(model_t) :: model
   type(solver_t) :: solver
 !-------------------------------------------------------------------------------

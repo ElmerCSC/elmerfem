@@ -65,7 +65,7 @@ FUNCTION Sliding_Weertman (Model, nodenumber, x) RESULT(Bdrag)
   USE SolverUtils
   USE ElementDescription
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   REAL (KIND=dp) :: y , x              
   INTEGER :: nodenumber
@@ -193,7 +193,7 @@ FUNCTION Friction_Coulomb (Model, nodenumber, y) RESULT(Bdrag)
   USE SolverUtils
   USE ElementDescription
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Model_t) :: Model
   REAL (KIND=dp) :: y , x              
   INTEGER :: nodenumber
@@ -447,7 +447,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   USE ElementDescription
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 
   TYPE(Model_t)  :: Model
   REAL (KIND=dp) :: z
@@ -752,7 +752,7 @@ FUNCTION EffectivePressure (Model, nodenumber, y) RESULT(ep)
   USE ElementDescription
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(Model_t) :: Model
   REAL (KIND=dp) :: y              
@@ -908,7 +908,7 @@ FUNCTION FreeSlipShelves (Model, nodenumber, BetaIn) RESULT(BetaOut)
   
   USE DefUtils
 
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
   TYPE(Model_t)  :: Model
   REAL (KIND=dp) :: BetaIn

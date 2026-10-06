@@ -44,7 +44,7 @@ MODULE MeshExtrusion
 
     USE MeshBasics
     USE MeshLoad, ONLY : PrepareMesh
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
 
 CONTAINS
 

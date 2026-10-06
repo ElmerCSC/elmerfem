@@ -26,7 +26,7 @@
  MODULE MGDynMaterialUtils
 !------------------------------------------------------------------------------
  USE DefUtils
- IMPLICIT NONE
+ IMPLICIT NONE IMPLICIT_EXTERNAL
 
  INTERFACE GetPermittivity
    MODULE PROCEDURE GetPermittivityR, GetPermittivityC
@@ -37,7 +37,7 @@
   FUNCTION GetElectricConductivityTensor(Element, n, Part, &
                    CoilBody,CoilType) RESULT (Tcoef)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
@@ -103,7 +103,7 @@
   FUNCTION GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) &
                   RESULT (TCoef)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     COMPLEX(KIND=dp) :: TCoef(3,3,n)
     REAL(KIND=dp) :: TCoefRe(3,3,n), TCoefIm(3,3,n)
     TYPE(Element_t), TARGET :: Element
@@ -130,7 +130,7 @@
   FUNCTION GetPermeabilityTensor(Element, n, Part) &
                   RESULT (mu)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
@@ -183,7 +183,7 @@
   FUNCTION GetTensor(Element, n, tsize, varname, Part, Found) &
                   RESULT (T)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize
@@ -239,7 +239,7 @@
   FUNCTION GetCMPLXTensor(Element, n, tsize, varname, Found) &
                   RESULT (T)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize 
     COMPLEX(KIND=dp) :: T(tsize,tsize,n)
@@ -269,7 +269,7 @@
   FUNCTION Get2x2MatrixInverse(M) &
    RESULT (Minv)
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: M(2,2), Minv(2,2)
     REAL(KIND=dp) :: det, a, b, c, d 
 
@@ -294,7 +294,7 @@
   FUNCTION Get2x2TensorInverse(T, n) &
     RESULT (Tinv)
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     REAL(KIND=dp) :: T(2,2,n), Tinv(2,2,n)
     INTEGER :: i, n
 
@@ -310,7 +310,7 @@
   FUNCTION Get2x2CMPLXMatrixInverse(M) &
    RESULT (Minv)
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     COMPLEX(KIND=dp) :: M(2,2), Minv(2,2)
     COMPLEX(KIND=dp) :: det, a, b, c, d 
     REAL(KIND=dp) :: r
@@ -336,7 +336,7 @@
   FUNCTION Get2x2CMPLXTensorInverse(T, n) &
     RESULT (Tinv)
 !-------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     COMPLEX(KIND=dp) :: T(2,2,n), Tinv(2,2,n)
     INTEGER :: i, n
 
@@ -352,7 +352,7 @@
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
    USE CircuitUtils
-   IMPLICIT NONE
+   IMPLICIT NONE IMPLICIT_EXTERNAL
    TYPE(Mesh_t), POINTER, SAVE :: Mesh
    TYPE(Element_t) :: Element
    TYPE(Valuelist_t), POINTER :: CompParams
@@ -491,7 +491,7 @@
 !------------------------------------------------------------------------------
  SUBROUTINE GetPermittivityR(Material,Acoef,n)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
@@ -529,7 +529,7 @@
 !------------------------------------------------------------------------------
  SUBROUTINE GetPermittivityC(Material,Acoef,n)
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)

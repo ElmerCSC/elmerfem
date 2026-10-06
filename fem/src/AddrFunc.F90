@@ -3,7 +3,7 @@
 FUNCTION AddrFunc(fn) RESULT(faddr)
     USE ISO_C_BINDING
     USE Types, ONLY : AddrInt
-    IMPLICIT NONE
+    IMPLICIT NONE IMPLICIT_EXTERNAL
     INTERFACE
         SUBROUTINE dummysubr() bind(C)
         END SUBROUTINE

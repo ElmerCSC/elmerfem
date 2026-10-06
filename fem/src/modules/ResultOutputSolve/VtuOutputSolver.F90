@@ -31,7 +31,7 @@ MODULE VtuXMLFile
   USE ElementDescription
   USE AscBinOutputUtils
 
-  IMPLICIT NONE 
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   
 CONTAINS
 
@@ -260,7 +260,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   USE VtuXMLFile
   USE MeshBasics, ONLY : CalculateBodyAverage
     
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(dp) :: dt
@@ -1283,7 +1283,7 @@ CONTAINS
                       ELSE
                         IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
                           PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
-                          call flush(6)
+                          flush(6)
                         END IF
                         vals(k) = Values(dofs*(j-1)+k)              
                       END IF

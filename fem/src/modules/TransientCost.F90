@@ -38,7 +38,7 @@
 SUBROUTINE TransientCost_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -64,7 +64,7 @@ SUBROUTINE TransientCost( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE MeshBasics, ONLY : ClosestElementInMesh
   USE DefUtils
-  IMPLICIT NONE
+  IMPLICIT NONE IMPLICIT_EXTERNAL
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
