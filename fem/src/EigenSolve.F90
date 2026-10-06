@@ -1251,7 +1251,8 @@ END SUBROUTINE CheckResiduals
       INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, IERR, iter, &
                        maxitr, mode, istat, dofs
       LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize, ScaleSystem, &
-                       Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize
+                       Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize, &
+                       StandardForm
 
       CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
       COMPLEX(KIND=dp) :: Sigma
@@ -1329,15 +1330,14 @@ END SUBROUTINE CheckResiduals
 !     | This program uses exact shifts with respect to    |
 !     | the current Hessenberg matrix (IPARAM(1) = 1).    |
 !     | IPARAM(3) specifies the maximum number of Arnoldi |
-!     | iterations allowed.  Mode 3 of ZNAUPD is used     |
-!     | (IPARAM(7) = 3).  All these options may be        |
+!     | iterations allowed. Mode 3 of ZNAUPD is used      |
+!     | by default. All these options may be              |
 !     | changed by the user. For details, see the         |
 !     | documentation in ZNAUPD.                          |
 !     %---------------------------------------------------%
 !
       IF (Matrix % Lumped) THEN
         CALL Warn(Caller, 'No implementation for a lumped matrix in Mode 2')
-        CALL Info(Caller, 'The routine znaupd will be called in Mode 3', Level=12)
       END IF
         
       CALL ArpackSetWhich( Params, .FALSE., Mode, Which )
@@ -1348,12 +1348,24 @@ END SUBROUTINE CheckResiduals
       IPARAM = 0
       IPARAM(1) = 1
       IPARAM(3) = maxitr 
-      IPARAM(7) = mode
 
-      BMAT  = 'G'
+      ! The generalized mode of ARPACK uses the M-inner product and so needs M to be
+      ! Hermitian positive semidefinite. If this cannot be guaranteed, use instead the
+      ! Euclidean inner product and apply ARPACK to the standard eigenvalue problem
+      ! for OP = (A-sigma*M)^{-1}*M. The eigenvalues are then recovered as
+      ! lambda = sigma + 1/theta, with theta an eigenvalue of OP.
+      StandardForm = ListGetLogical(Params, 'Eigen System Standard Form', stat)
+      IF (StandardForm) THEN
+        BMAT = 'I'
+        Mode = 1
+      ELSE
+        BMAT  = 'G'
+      END IF
+      CALL Info(Caller, 'The ARPACK routine znaupd will be called in mode '//I2S(mode), Level=12)
+      IPARAM(7) = mode
+      
       
       Sigma = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
-!      V = 0
 
 !     Compute LU-factors for (A-\sigma M) (if consistent mass matrix):
 !     ----------------------------------------------------------------
@@ -1457,7 +1469,7 @@ END SUBROUTINE CheckResiduals
             A % rhs => b
             Dofs = Solver % Variable % Dofs
 
-            IF ( ido == -1 ) THEN
+            IF ( ido == -1 .OR. StandardForm ) THEN
               SaveValues => A % Values
               A % Values => A % MassValues
               CALL CRS_ComplexMatrixVectorMultiply( A, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
@@ -1593,6 +1605,17 @@ END SUBROUTINE CheckResiduals
          END IF
 
 !
+         ! Transform the eigenvalues of OP to those of the original problem:
+         IF (StandardForm) THEN
+           DO i=1,NEIG
+             IF (ABS(D(i)) > TINY(1.0_dp)) THEN
+               D(i) = Sigma + 1.0_dp/D(i)
+             ELSE
+               D(i) = CMPLX(HUGE(1.0_dp), 0.0_dp, KIND=dp)
+             END IF
+           END DO
+         END IF
+
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          DO i=1,NEIG
