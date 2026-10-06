@@ -5955,12 +5955,16 @@ static int UnvToElmerType(int unvtype)
 
   case 11: 
   case 21:
+  case 31:
+  case 171:
     elmertype = 202;
     break;
 
   case 22:
   case 23:
   case 24:
+  case 32:
+  case 172:
     elmertype = 203;
     break;
 
@@ -6014,6 +6018,10 @@ static int UnvToElmerType(int unvtype)
 
   case 118:
     elmertype = 510;
+    break;
+
+  case 312:
+    elmertype = 605;
     break;
 
   case 101:
@@ -6298,7 +6306,7 @@ omstart:
 	  printf("line %d: %s\n",linenumber,line);
 	  bigerror("done");
 	}
-
+	
 	if (!allocated) {
 	  minphys = MIN( minphys, physind );
 	  maxphys = MAX( maxphys, physind );	 
