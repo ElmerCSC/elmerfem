@@ -1996,7 +1996,7 @@ END DO
 !------------------------------------------------------------------------------
         IMPLICIT NONE
         INTEGER  N,IPIV(N),LDa,info
-        DOUBLE PRECISION  A(LDa,*),x(n)
+        REAL(KIND=dp)  A(LDa,*),x(n)
 
         IF ( N <= 0 ) RETURN
         CALL DGETRF( N,N,A,LDa,IPIV,INFO )

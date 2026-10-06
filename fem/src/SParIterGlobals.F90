@@ -53,7 +53,7 @@ real(kind=dp):: xxx, yyy
   TYPE HUTICtlT
      INTEGER :: Method
      INTEGER :: Precond
-     DOUBLE PRECISION :: Tolerance
+     REAL(KIND=dp) :: Tolerance
      INTEGER :: MaxIter
      INTEGER :: DebugLevel
   END TYPE HUTICtlT
