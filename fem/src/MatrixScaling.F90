@@ -634,13 +634,13 @@ CONTAINS
     !---------------------------------------------
     ! Compute 1-norm of each row
     !---------------------------------------------
-    IF (Parallel .AND. ListGetLogical(Solver % Values, 'Row Equilibration Use M-V',Found)) THEN
+    IF (Parallel .AND. ListGetLogical(Solver % Values, 'Row Equilibration Use M-V', Found)) THEN
       IF (ComplexMatrix) THEN
         CALL Warn('RowEquilibration', '"Row Equilibration Use M-V" is not available for complex matrices')
       END IF
     END IF
     IF (Parallel .AND. .NOT. ComplexMatrix .AND. &
-        ListGetLogical(Solver % Values, 'Row Equilibration Use M-V',Found)) THEN
+        ListGetLogical(Solver % Values, 'Row Equilibration Use M-V', Found, DefValue = .TRUE.)) THEN
       ! The matrix-vector product |A|*1 is evaluated using the splitted parallel matrix
       ! where the partition contributions have been glued, so that each entry of the
       ! global matrix is stored once and has its final value. The result is thus the
@@ -654,8 +654,7 @@ CONTAINS
         ap => a
         x = 1; y=0; z=0
         CALL ParallelInitSolve( ap, x, y, z )
-        CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE., UseABS=.TRUE. )
-!        CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE., ZeroNotOwned=.TRUE., UseABS=.TRUE. )
+        CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE., ZeroNotOwned=.TRUE., UseABS=.TRUE. )
       END BLOCK
       CALL ParallelSUMVector(A,Diag)
     ELSE
