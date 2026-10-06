@@ -460,9 +460,10 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     CALL CountFixingNodes(Set,2)
   END IF
 
-  IF(TestCut) GOTO 100 
-  
-       
+  MainComputation: BLOCK
+  IF(TestCut) EXIT MainComputation
+
+
   DO iter=1,MaxNonlinIter
     
     IF( iter > 1 ) THEN
@@ -682,8 +683,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       CALL LocalCorrCurrent(  Element, n, nd )
     END DO
   END IF
-  
-100 CONTINUE
+  END BLOCK MainComputation
 
   
   ! Some optional postprocessing mainly for debugging purposes
@@ -1268,7 +1268,8 @@ CONTAINS
     Ready = (NoCand == 0)
     Loop = 0
     ParLoop = 0
-100 DO WHILE(.NOT. Ready) 
+    retry_loop: DO
+    DO WHILE(.NOT. Ready)
       Ready = .TRUE.
 
       DO t = 1, Mesh % NumberOfBulkElements
@@ -1339,10 +1340,12 @@ CONTAINS
         ParLoop = ParLoop + 1
         CALL Info(Caller,'Continuing after parallel reduction: '//I2S(k),Level=6)
         Ready = .FALSE.
-        GOTO 100
+        CYCLE retry_loop
       END IF
     END IF
-        
+    EXIT retry_loop
+    END DO retry_loop
+
     ! Compute the true number of different pieces starting from the biggest one.
     ! This does not really give the correct count in parallel. Only in serial.
     IF( NoCand > 0 ) THEN
@@ -1355,24 +1358,27 @@ CONTAINS
     NoPieces = 0
     l = 0
     IF( MaxIndex > 0 ) THEN
-      NoPieces = 1      
+      NoPieces = 1
       k = MaxIndex
       !PRINT *,'number of cuts:',k,COUNT(MeshPiece==k)
-200   j = 0
+      find_pieces: DO
+      j = 0
       ! Find the biggest piece tag that is not the latest biggest
       DO i=1,m
         IF(MeshPiece(i)>j .AND. MeshPiece(i)<k) THEN
           j=MeshPiece(i)
         END IF
       END DO
-      ! If we found a bigger one then that is one piece more 
+      ! If we found a bigger one then that is one piece more
       IF( j>0 ) THEN
         !PRINT *,'number of cuts:',j,COUNT(MeshPiece==j)
-        NoPieces = NoPieces + 1        
+        NoPieces = NoPieces + 1
         k = j
         MinIndex = j
-        GOTO 200 
+      ELSE
+        EXIT find_pieces
       END IF
+      END DO find_pieces
     END IF
 
     !PRINT *,'MinMax:',ParEnv % MyPe, MinIndex, MaxIndex, NoPieces, COUNT( MeshPiece > 0 )

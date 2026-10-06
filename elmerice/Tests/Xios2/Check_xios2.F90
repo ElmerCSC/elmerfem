@@ -85,6 +85,7 @@
 
       REAL(KIND=dp),PARAMETER :: Tol=1.0d-6
       LOGICAL :: success
+      INTEGER :: iounit
 
 
       Parallel=(ParEnv%PEs>1)
@@ -126,15 +127,15 @@
       NetCDFstatus = NF90_Close(ncid)
 
 
-      OPEN(12,File="f.dat")
+      OPEN(NEWUNIT=iounit,File="f.dat")
       DO t=1,ntime
-         read(12,*) tv,av,vv
+         read(iounit,*) tv,av,vv
          success=( ((abs(av-area)/area).LT.Tol).OR.&
                  ((abs(vv-volume(t))/volume(t)).LT.Tol) )
          IF (.NOT.success) &
            CALL FATAL("Check","Pb with area")
       END DO
-      CLOSE(12)
+      CLOSE(iounit)
       ! Test passed if we are here; otherwise would have stop with a fatal
       Solver % Variable % Norm = 1._dp
       Solver % Variable % Values = 1._dp

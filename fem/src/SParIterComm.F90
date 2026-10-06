@@ -5439,7 +5439,7 @@ FUNCTION SearchNode( ParallelInfo, QueriedNode, First, Last,Order ) RESULT ( Ind
     END DO
   END IF
 
-10 CONTINUE
+  DO
   L = Lower
   IF (PRESENT(Order)) L=Order(L)
   U = Upper
@@ -5479,9 +5479,10 @@ FUNCTION SearchNode( ParallelInfo, QueriedNode, First, Last,Order ) RESULT ( Ind
      ELSE
         Upper = L
      END IF
-     GOTO 10
+     CYCLE
   END IF
   RETURN
+  END DO
 !*********************************************************************
 END FUNCTION SearchNode
 !*********************************************************************

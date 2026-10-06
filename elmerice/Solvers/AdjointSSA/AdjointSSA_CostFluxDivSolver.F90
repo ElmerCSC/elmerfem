@@ -137,8 +137,9 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
   Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit
   LOGICAL :: BoundarySolver
   CHARACTER*10 :: date,temps
+  INTEGER :: ioCostHeaderPar,ioCostHeaderSerial,ioCostAppendPar,ioCostAppendSerial
 
-  save Firsttime,Parallel 
+  save Firsttime,Parallel
   save SolverName,CostSolName,CostFile
   save ElementNodes
 
@@ -190,18 +191,18 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
     CALL DATE_AND_TIME(date,temps)
     If (Parallel) then
         if (ParEnv % MyPe.EQ.0) then
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jdiv'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderPar, FILE=CostFile)
+                   write(ioCostHeaderPar,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderPar,1001) Lambda
+                   write(ioCostHeaderPar,'(A)') '# iter, Jdiv'
+           CLOSE(ioCostHeaderPar)
          End if
     Else
-           OPEN (12, FILE=CostFile)
-                   write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
-                   write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jdiv'
-           CLOSE(12)
+           OPEN (NEWUNIT=ioCostHeaderSerial, FILE=CostFile)
+                   write(ioCostHeaderSerial,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(ioCostHeaderSerial,1001) Lambda
+                   write(ioCostHeaderSerial,'(A)') '# iter, Jdiv'
+           CLOSE(ioCostHeaderSerial)
     End if
 
    CostSolName =  GetString( SolverParams,'Cost Variable Name', Found)
@@ -407,9 +408,9 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
                   MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
 
           IF (Solver % ParEnv % MyPE == 0) then
-                 OPEN (12, FILE=CostFile,POSITION='APPEND')
-                 write(12,'(3(e13.5,2x))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/area)
-                 CLOSE(12)
+                 OPEN (NEWUNIT=ioCostAppendPar, FILE=CostFile,POSITION='APPEND')
+                 write(ioCostAppendPar,'(3(e13.5,2x))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/area)
+                 CLOSE(ioCostAppendPar)
           End if
 
           Cost_S = Lambda * Cost_S
@@ -423,9 +424,9 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
                Endif
           END IF
    ELSE
-            OPEN (12, FILE=CostFile,POSITION='APPEND')
-                  write(12,'(3(e13.5,2x))') TimeVar % Values(1),Cost,sqrt(2*Cost/area)
-            close(12)
+            OPEN (NEWUNIT=ioCostAppendSerial, FILE=CostFile,POSITION='APPEND')
+                  write(ioCostAppendSerial,'(3(e13.5,2x))') TimeVar % Values(1),Cost,sqrt(2*Cost/area)
+            close(ioCostAppendSerial)
 
             Cost = Lambda * Cost
 

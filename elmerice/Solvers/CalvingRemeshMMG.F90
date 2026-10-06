@@ -101,7 +101,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile,&
        RepartMethod, Filename, DistVarName
   TYPE(Variable_t), POINTER :: TimeVar
-  INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
+  INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops, iounit
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
 
   SAVE :: WorkArray, CalvingFileCreated
@@ -1101,9 +1101,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CALL WARN('CalvingStat', 'Output file name not given so using CalvingStats.txt')
           Filename = "CalvingStats.txt"
         END IF
-        OPEN( 36, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
-        WRITE(36, '(A,i0)') 'Remeshing failed: ', GetTimestep()
-        CLOSE(36)
+        OPEN( NEWUNIT=iounit, FILE=filename, STATUS='UNKNOWN', POSITION='APPEND')
+        WRITE(iounit, '(A,i0)') 'Remeshing failed: ', GetTimestep()
+        CLOSE(iounit)
       END IF
 
       CALL ReleaseMesh(GatheredMesh)

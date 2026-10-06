@@ -172,12 +172,13 @@ CONTAINS
       IF(.NOT. GotIt) Dofs = 1
     END IF
     
+    ComputeVarPermBlock: BLOCK
     IF( PRESENT( ExtPerm ) ) THEN
-      nsize = MAXVAL( ExtPerm ) 
+      nsize = MAXVAL( ExtPerm )
       varPerm => ExtPerm
-      GOTO 100
+      EXIT ComputeVarPermBlock
     END IF
-    
+
     Ndeg = 0
     MaxNDOFs  = 0
     MaxBDOFs = 0
@@ -265,8 +266,9 @@ CONTAINS
       END IF
     END DO
     nsize = j
-    
-100 IF( nsize == 0 ) THEN
+    END BLOCK ComputeVarPermBlock
+
+    IF( nsize == 0 ) THEN
       CALL Info('CreateBlockVariable','Variable '//TRIM(VarName)//' of size zero.', Level=10 )
     END IF
 

@@ -96,6 +96,7 @@ FUNCTION TopSurface ( Model, nodenumber, znode) RESULT(Zsurf)
    REAL(KIND=dp), ALLOCATABLE :: xb(:), yb(:), zb(:)       
    REAL(KIND=dp), ALLOCATABLE :: xs(:), ys(:), zs(:)       
    LOGICAL :: FirstTime=.True. 
+   INTEGER :: iounit_surf, iounit_cavity
 
    SAVE FirstTime
    SAVE xb, yb, zb, xs, ys, zs
@@ -120,15 +121,15 @@ FUNCTION TopSurface ( Model, nodenumber, znode) RESULT(Zsurf)
 
    IF (FirstTime) THEN
         FirstTime = .False.
-        OPEN(10,file="./PROG/DEM_TR_surf.dat")
+        OPEN(NEWUNIT=iounit_surf,file="./PROG/DEM_TR_surf.dat")
         ALLOCATE(xs(Ns), ys(Ns), zs(Ns))
-        READ(10,*)(xs(i), ys(i), zs(i), i=1,Ns)
-        CLOSE(10)
+        READ(iounit_surf,*)(xs(i), ys(i), zs(i), i=1,Ns)
+        CLOSE(iounit_surf)
 
-        OPEN(10,file="./PROG/DEM_TR_cavity.dat")
+        OPEN(NEWUNIT=iounit_cavity,file="./PROG/DEM_TR_cavity.dat")
         ALLOCATE(xb(Nb), yb(Nb), zb(Nb))
-        READ(10,*)(xb(i), yb(i), zb(i), i=1,Nb)
-        CLOSE(10)
+        READ(iounit_cavity,*)(xb(i), yb(i), zb(i), i=1,Nb)
+        CLOSE(iounit_cavity)
    END IF
 
         
@@ -163,6 +164,7 @@ FUNCTION BottomSurface ( Model, nodenumber, znode) RESULT(Zbed)
    REAL(KIND=dp) :: R, Rmin, lbx, lby, InterpolateDEM
    REAL(KIND=dp), ALLOCATABLE :: xb(:), yb(:), zb(:)       
    LOGICAL :: FirstTime=.True. 
+   INTEGER :: iounit
 
    SAVE FirstTime
    SAVE xb, yb, zb
@@ -178,10 +180,10 @@ FUNCTION BottomSurface ( Model, nodenumber, znode) RESULT(Zbed)
 
    IF (FirstTime) THEN
         FirstTime = .False.
-        OPEN(10,file="./PROG/DEM_TR_cavity.dat")
+        OPEN(NEWUNIT=iounit,file="./PROG/DEM_TR_cavity.dat")
         ALLOCATE(xb(Nb), yb(Nb), zb(Nb))
-        READ(10,*)(xb(i), yb(i), zb(i), i=1,Nb)
-        CLOSE(10)
+        READ(iounit,*)(xb(i), yb(i), zb(i), i=1,Nb)
+        CLOSE(iounit)
    END IF
         
 ! Compute zbed for that point (x,y)
@@ -213,6 +215,7 @@ FUNCTION Bedrock ( Model, nodenumber, znode) RESULT(Zbed)
    REAL(KIND=dp) :: R, Rmin, lbx, lby, InterpolateDEM
    REAL(KIND=dp), ALLOCATABLE :: xb(:), yb(:), zb(:)       
    LOGICAL :: FirstTime=.True. 
+   INTEGER :: iounit
 
    SAVE FirstTime
    SAVE xb, yb, zb
@@ -228,10 +231,10 @@ FUNCTION Bedrock ( Model, nodenumber, znode) RESULT(Zbed)
 
    IF (FirstTime) THEN
         FirstTime = .False.
-        OPEN(10,file="./PROG/DEM_TR_bed.dat")
+        OPEN(NEWUNIT=iounit,file="./PROG/DEM_TR_bed.dat")
         ALLOCATE(xb(Nb), yb(Nb), zb(Nb))
-        READ(10,*)(xb(i), yb(i), zb(i), i=1,Nb)
-        CLOSE(10)
+        READ(iounit,*)(xb(i), yb(i), zb(i), i=1,Nb)
+        CLOSE(iounit)
    END IF
         
 ! Compute zbed for that point (x,y)
@@ -263,6 +266,7 @@ FUNCTION MaskCavity ( Model, nodenumber, znode) RESULT(Mask)
    REAL(KIND=dp) :: R, Rmin, lbx, lby, zbed, InterpolateDEM
    REAL(KIND=dp), ALLOCATABLE :: xb(:), yb(:), zb(:)       
    LOGICAL :: FirstTime=.True. 
+   INTEGER :: iounit
 
    SAVE FirstTime
    SAVE xb, yb, zb
@@ -279,10 +283,10 @@ FUNCTION MaskCavity ( Model, nodenumber, znode) RESULT(Mask)
 
    IF (FirstTime) THEN
         FirstTime = .False.
-        OPEN(10,file="./PROG/DEM_TR_bed.dat")
+        OPEN(NEWUNIT=iounit,file="./PROG/DEM_TR_bed.dat")
         ALLOCATE(xb(Nb), yb(Nb), zb(Nb))
-        READ(10,*)(xb(i), yb(i), zb(i), i=1,Nb)
-        CLOSE(10)
+        READ(iounit,*)(xb(i), yb(i), zb(i), i=1,Nb)
+        CLOSE(iounit)
    END IF
         
 ! Compute zbed for that point (x,y)

@@ -68,6 +68,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
   LOGICAL :: ShearOutput
   INTEGER :: i,j,k,n,pn,t,dim
   INTEGER :: NbrShearValues, nlen
+  INTEGER :: ShearDataUnit, ShearNamesUnit
   INTEGER, POINTER :: NodeIndexes(:), Indices(:)
   TYPE(Variable_t), POINTER :: Var
   TYPE(Mesh_t), POINTER :: Mesh
@@ -321,22 +322,22 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
         ShearData(1:NbrShearValues,2) = ShearData(Indices,2)
      END IF
 
-     OPEN(10, FILE=ShearFilename)
+     OPEN(NEWUNIT=ShearDataUnit, FILE=ShearFilename)
      DO t = 1, NbrShearValues
-        WRITE( 10, * ) ShearData(t,:)
+        WRITE( ShearDataUnit, * ) ShearData(t,:)
      END DO
-     CLOSE(10)
+     CLOSE(ShearDataUnit)
 
      WRITE( MessageL, * ) 'Variables in columns of matrix: ' // TRIM(ShearFilename)
      ShearFilename = TRIM( ShearFilename ) // '.names'
 
-     OPEN(10, FILE=ShearFilename)
-     WRITE( 10, * ) TRIM(MessageL)
-     WRITE( 10, * ) '1: Shear stress [N/m2]'
-     WRITE( 10, * ) '2: Coordinate 1'
-     WRITE( 10, * ) '3: Coordinate 2'
-     
-     CLOSE(10)
+     OPEN(NEWUNIT=ShearNamesUnit, FILE=ShearFilename)
+     WRITE( ShearNamesUnit, * ) TRIM(MessageL)
+     WRITE( ShearNamesUnit, * ) '1: Shear stress [N/m2]'
+     WRITE( ShearNamesUnit, * ) '2: Coordinate 1'
+     WRITE( ShearNamesUnit, * ) '3: Coordinate 2'
+
+     CLOSE(ShearNamesUnit)
 
      DEALLOCATE( ShearData )
      DEALLOCATE( Indices )

@@ -97,6 +97,7 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: VbPerm(:)
   Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit,UnFoundFatal=.TRUE.
   integer :: i,j,k,l,t,n,NMAX,DIM,ierr,c
+  integer :: iounit1,iounit2,iounit3,iounit4
   real(kind=dp) :: Cost,Cost_bed,Cost_surf,Cost_S,Cost_bed_S,Cost_surf_S,Lambda,Change
   real(kind=dp),Save :: Oldf=0._dp
   real(kind=dp) :: Bu,Bv,u,v,w,s,coeff,SqrtElementMetric,x
@@ -134,16 +135,16 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
     CALL DATE_AND_TIME(date,temps)
     If (Parallel) then
         if (ParEnv % MyPe.EQ.0) then
-           OPEN (12, FILE=CostFile)
-                    write(12,'(a1,a2,a1,a2,a1,a4,5x,a2,a1,a2,a1,a2)') '#',date(5:6),'/',date(7:8),'/',date(1:4), &
+           OPEN (NEWUNIT=iounit1, FILE=CostFile)
+                    write(iounit1,'(a1,a2,a1,a2,a1,a4,5x,a2,a1,a2,a1,a2)') '#',date(5:6),'/',date(7:8),'/',date(1:4), &
                                  temps(1:2),':',temps(3:4),':',temps(5:6)
-           CLOSE(12)
+           CLOSE(iounit1)
          End if
     Else
-           OPEN (12, FILE=CostFile)
-                    write(12,'(a1,a2,a1,a2,a1,a4,5x,a2,a1,a2,a1,a2)') '#',date(5:6),'/',date(7:8),'/',date(1:4), &
+           OPEN (NEWUNIT=iounit2, FILE=CostFile)
+                    write(iounit2,'(a1,a2,a1,a2,a1,a4,5x,a2,a1,a2,a1,a2)') '#',date(5:6),'/',date(7:8),'/',date(1:4), &
                                  temps(1:2),':',temps(3:4),':',temps(5:6)
-           CLOSE(12)
+           CLOSE(iounit2)
     End if
     
 
@@ -289,18 +290,18 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
                  CostVar % Values(1)=Cost_S
           END IF
          IF (ParEnv % MyPE == 0) then
-                 OPEN (12, FILE=CostFile,POSITION='APPEND')
-                 write(12,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost_S,Cost_surf_S,Cost_bed_S
-                 CLOSE(12)
+                 OPEN (NEWUNIT=iounit3, FILE=CostFile,POSITION='APPEND')
+                 write(iounit3,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost_S,Cost_surf_S,Cost_bed_S
+                 CLOSE(iounit3)
          End if
    ELSE
             CostVar => VariableGet( Model % Mesh % Variables, CostSolName )
             IF (ASSOCIATED(CostVar)) THEN
                     CostVar % Values(1)=Cost
             END IF
-            OPEN (12, FILE=CostFile,POSITION='APPEND')
-              write(12,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost,Cost_surf,Cost_bed
-            close(12)
+            OPEN (NEWUNIT=iounit4, FILE=CostFile,POSITION='APPEND')
+              write(iounit4,'(e13.5,2x,e15.8,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost,Cost_surf,Cost_bed
+            close(iounit4)
             Cost_S=Cost
    END IF
    

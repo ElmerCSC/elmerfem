@@ -326,7 +326,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   IF ( CalculateFlux ) NoResults = NoResults + 3
   CALL Info(Caller,'Maximum number of fields for each node: '//I2S(NoResults),Level=18)
 
-  IF( NoVar == 0 .OR. NoResults == 0 ) GOTO 1
+  save_lines: BLOCK
+  IF( NoVar == 0 .OR. NoResults == 0 ) EXIT save_lines
 
   ! Add coordnate values
   MaxBoundary = 0
@@ -361,7 +362,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   
   ! Finally close the file for saving
   !----------------------------------------
-1 CALL CloseLineFile()
+  END BLOCK save_lines
+  CALL CloseLineFile()
 
   CALL SaveVariableNames()
 

@@ -563,13 +563,15 @@ CONTAINS
         IF(ANY(PhiPerm(Element % NodeIndexes) == 0)) CYCLE
         
         IF( Element % BodyId == body_cut ) THEN
-          ! Mark dofs to extend on elements which lack CutFEM dofs. 
-10        pElement => CutInterfaceBulk(Element,isCut,isMore)        
-          IF(ANY(CutPerm(pElement % NodeIndexes) == 0) ) THEN
-            ExtendPerm( pElement % NodeIndexes ) = 1          
-          END IF
-          IF(IsMore) GOTO 10
-          ! Ok, revert the dirty flag. 
+          ! Mark dofs to extend on elements which lack CutFEM dofs.
+          DO
+            pElement => CutInterfaceBulk(Element,isCut,isMore)
+            IF(ANY(CutPerm(pElement % NodeIndexes) == 0) ) THEN
+              ExtendPerm( pElement % NodeIndexes ) = 1
+            END IF
+            IF(.NOT. IsMore) EXIT
+          END DO
+          ! Ok, revert the dirty flag.
           Element % BodyId = body_cut-1
         ELSE          
           IF( ALL( CutPerm( Element % NodeIndexes ) == 0) ) THEN
@@ -1410,10 +1412,12 @@ CONTAINS
       CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )
       IF(.NOT. IsActive) CYCLE      
       IF(IsCut) THEN
-10      pElement => CutInterfaceBulk(Element,isCut,isMore)        
-        IF(ALL(Perm(pElement % NodeIndexes) > 0) ) nBulk = nBulk + 1
-        IF(IsMore) GOTO 10
-      ELSE        
+        DO
+          pElement => CutInterfaceBulk(Element,isCut,isMore)
+          IF(ALL(Perm(pElement % NodeIndexes) > 0) ) nBulk = nBulk + 1
+          IF(.NOT. IsMore) EXIT
+        END DO
+      ELSE
         nBulk0 = nBulk0 + 1
       END IF
     END DO
@@ -1425,11 +1429,14 @@ CONTAINS
       IF(ANY(PhiPerm(Element % NodeIndexes)==0)) CYCLE            
       CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )
       IF(.NOT. IsActive) CYCLE
-20    pElement => CutInterfaceBC(Element,isCut,isMore)        
-      IF(ASSOCIATED(pElement)) THEN          
-        IF(ALL(Perm(pElement % NodeIndexes) > 0) ) nBC = nBC + 1
-        IF(IsMore) GOTO 20
-      END IF
+      DO
+        pElement => CutInterfaceBC(Element,isCut,isMore)
+        IF(ASSOCIATED(pElement)) THEN
+          IF(ALL(Perm(pElement % NodeIndexes) > 0) ) nBC = nBC + 1
+          IF(IsMore) CYCLE
+        END IF
+        EXIT
+      END DO
     END DO
 
     ! Remaining original boundary element.
@@ -1678,14 +1685,18 @@ CONTAINS
         
         n  = Element % Type % NumberOfNodes
 
-30      pElement => CutInterfaceBulk(Element,isCut,isMore)        
-        IF(isCut) THEN          
-          n  = pElement % Type % NumberOfNodes
-          IF(ALL(ExtendPerm(pElement % NodeIndexes) > 0) ) THEN
-            CALL LocalFitMatrix( pElement, n )
+        DO
+          pElement => CutInterfaceBulk(Element,isCut,isMore)
+          IF(isCut) THEN
+            n  = pElement % Type % NumberOfNodes
+            IF(ALL(ExtendPerm(pElement % NodeIndexes) > 0) ) THEN
+              CALL LocalFitMatrix( pElement, n )
+            END IF
+            IF(IsMore) CYCLE
           END IF
-          IF(IsMore) GOTO 30
-        ELSE
+          EXIT
+        END DO
+        IF(.NOT. isCut) THEN
           IF(ALL(ExtendPerm(Element % NodeIndexes) > 0) ) THEN
             CALL LocalFitMatrix( Element, n )
           END IF
@@ -1864,13 +1875,15 @@ CONTAINS
           CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )          
           !IF(.NOT. IsActive) CYCLE      
           IF(IsCut) THEN
-10          pElement => CutInterfaceBulk(Element,isCut,isMore)        
-            IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
-              nBulk = nBulk + 1
-              IF(Sweep==1) CALL AddElementData(pElement,nBulk)
-            END IF
-            IF(IsMore) GOTO 10
-          ELSE IF(.NOT. AddMeshMode ) THEN       
+            DO
+              pElement => CutInterfaceBulk(Element,isCut,isMore)
+              IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
+                nBulk = nBulk + 1
+                IF(Sweep==1) CALL AddElementData(pElement,nBulk)
+              END IF
+              IF(.NOT. IsMore) EXIT
+            END DO
+          ELSE IF(.NOT. AddMeshMode ) THEN
             ! We we create only interface then the standard bulk elements are not included!
             IF(ANY(Perm(Element % NodeIndexes) == 0) ) CYCLE
             nBulk = nBulk + 1
@@ -1884,18 +1897,21 @@ CONTAINS
           Element => Mesh % Elements(t)
           !CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )
           !IF(.NOT. IsActive) CYCLE
-20        pElement => CutInterfaceBC(Element,isCut,isMore)        
-          IF(isCut) THEN
-            IF(ASSOCIATED(pElement)) THEN          
-              IF(ASSOCIATED(Perm)) THEN
-                IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
-                  nBC = nBC + 1
-                  IF(Sweep==1) CALL AddElementData(pElement,nBulk+nBC,InterfaceBC)
+          DO
+            pElement => CutInterfaceBC(Element,isCut,isMore)
+            IF(isCut) THEN
+              IF(ASSOCIATED(pElement)) THEN
+                IF(ASSOCIATED(Perm)) THEN
+                  IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
+                    nBC = nBC + 1
+                    IF(Sweep==1) CALL AddElementData(pElement,nBulk+nBC,InterfaceBC)
+                  END IF
                 END IF
+                IF(IsMore) CYCLE
               END IF
-              IF(IsMore) GOTO 20
             END IF
-          END IF
+            EXIT
+          END DO
         END DO
       END IF
 

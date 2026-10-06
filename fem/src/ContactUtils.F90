@@ -1034,7 +1034,7 @@ CONTAINS
        END IF
 
        
-100    CONTINUE
+ProjectorRetry: DO
 
        DO i = 1,ActiveProjector % NumberOfRows
 
@@ -1055,7 +1055,8 @@ CONTAINS
          CartVec = 0.0_dp
          
          ! This is the most simple contact condition. We just want no slip on the contact.
-         IF( TieContact .AND. .NOT. ResidualMode ) GOTO 200
+         SlaveDistBlock: BLOCK
+         IF( TieContact .AND. .NOT. ResidualMode ) EXIT SlaveDistBlock
 
          ! Get the normal of the slave surface.
          IF( ThisRotatedContact ) THEN
@@ -1297,8 +1298,9 @@ CONTAINS
            ContactVelo = ContactVelo / wsum
          END IF
          CartVec = CartVec / wsum
-         
-200      IF( IsSlave ) THEN
+         END BLOCK SlaveDistBlock
+
+         IF( IsSlave ) THEN
 
            MortarBC % Rhs(cDofs*(i-1)+DofN) = -ContactVec(1)
            IF( StickContact .OR. TieContact ) THEN
@@ -1337,11 +1339,13 @@ CONTAINS
            IsSlave = .FALSE.
            IsMaster = .NOT. IsSlave
            ActiveProjector => DualProjector
-           GOTO 100
+           CYCLE ProjectorRetry
          END IF
        END IF
+       EXIT ProjectorRetry
+       END DO ProjectorRetry
 
-       
+
        IF( LinearContactGap .OR. pContact ) THEN       
          DO elem=Mesh % NumberOfBulkElements + 1, &
              Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -1888,7 +1892,8 @@ CONTAINS
 
        
        CALL Info(Caller,'Setting Tangent contact set',Level=20)
-       
+
+       TangentSetBlock: BLOCK
        IF( FrictionContact .AND. &
            ListGetLogical( BC,'Stick Contact Global',Found ) ) THEN
         
@@ -1919,8 +1924,8 @@ CONTAINS
            IF( Ftangent > Fstatic ) THEN
              SlipContact = .TRUE.
              FrictionContact = .FALSE.
-           ELSE 
-             GOTO 100
+           ELSE
+             EXIT TangentSetBlock
            END IF
          END DO
        END IF
@@ -1932,13 +1937,13 @@ CONTAINS
          IF( cDofs == 3 ) THEN
             MortarBC % Active( DofT2 :: cDofs ) = .FALSE.
           END IF
-          GOTO 100 
+          EXIT TangentSetBlock
        ELSE IF( StickContact .OR. TieContact ) THEN
          MortarBC % Active( DofT1 :: cDofs ) = MortarBC % Active( DofN :: cDofs )
          IF( cDofs == 3 ) THEN
-           MortarBC % Active( DofT2 :: cDofs ) = MortarBC % Active( DofN :: cDofs ) 
+           MortarBC % Active( DofT2 :: cDofs ) = MortarBC % Active( DofN :: cDofs )
          END IF
-         GOTO 100
+         EXIT TangentSetBlock
        END IF
 
        CALL Info('TangentContactSet','Setting the stick set tangent components',Level=10)
@@ -2043,9 +2048,10 @@ CONTAINS
          WRITE(Message,'(A,I0,A)') 'Removed ',removed,' sliding nodes from the stick set'
          CALL Info(Caller,Message,Level=6)
        END IF
+       END BLOCK TangentSetBlock
 
 
-100    CALL Info(Caller,'Creating fields out of normal and stick contact sets',Level=10)
+       CALL Info(Caller,'Creating fields out of normal and stick contact sets',Level=10)
 
        DO i = 1, Projector % NumberOfRows
          j = Projector % InvPerm(i)

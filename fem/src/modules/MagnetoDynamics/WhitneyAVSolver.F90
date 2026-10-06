@@ -1289,7 +1289,8 @@ END BLOCK
   END IF
 
   IF (DefaultLineSearch(Converged)) RETURN
-  IF ( Converged ) GOTO 10
+  FinishSolve: BLOCK
+  IF ( Converged ) EXIT FinishSolve
 
   ! The following gives the user an option to adapt the linear system convergence tolerance
   ! adaptively:
@@ -1401,10 +1402,10 @@ END BLOCK
       
     END BLOCK
   END IF
-    
+  END BLOCK FinishSolve
 
-  
-10 CONTINUE
+
+
 
   IF ( ALLOCATED(FluxMap) ) DEALLOCATE(FluxMap)
 ! IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)

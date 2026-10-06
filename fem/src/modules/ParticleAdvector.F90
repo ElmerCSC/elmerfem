@@ -180,8 +180,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   ! This is the default for particle advector!
   Particles % DtSign = -1
 
-1 CONTINUE
-  
+  DO
   DO i=1,nstep
     ! Get the timestep size, initialize at 1st round
     !--------------------------------------------------------------
@@ -281,11 +280,13 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
       DO i = 1, Particles % NumberOfParticles
         CALL SetParticleStatus( Particles, i, PARTICLE_MOVING)
       END DO
-      GOTO 1
+      CYCLE
     ELSE
       CALL Info(Caller,'Time reversal finished!',Level=7)
     END IF
   END IF
+  EXIT
+  END DO
   
   IF( ListGetLogical( Params,'Fix Tangent Velocity',GotIt ) ) THEN
     CALL ApplyTangentFix(.TRUE.)
@@ -687,7 +688,8 @@ CONTAINS
     Parallel = ( ParEnv % PEs > 1 ) 
 
     Initiated = .FALSE.
-100 NoVar = 0 
+    DO
+    NoVar = 0
     DO WHILE(.TRUE.)
       NoVar = NoVar + 1
       
@@ -1092,8 +1094,10 @@ CONTAINS
         NodeValues => NewValues
       END IF
       Initiated = .TRUE.
-      GOTO 100
+      CYCLE
     END IF
+    EXIT
+    END DO
 
     DEALLOCATE( NewValues ) 
     IF( Parallel ) DEALLOCATE( NodeValues ) 

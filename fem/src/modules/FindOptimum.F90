@@ -83,8 +83,9 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       NoImprovements, FoundBetter, OptTol, OptList
 
   !------------------------------------------------------------------------------
-  ! In the 1st round perform initializations 
+  ! In the 1st round perform initializations
   !------------------------------------------------------------------------------
+  main_body: BLOCK
   IF( OptimizationsDone == 0) THEN
     
     CALL Info('FindOptimum','--------------------------------------------------------------')
@@ -178,7 +179,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     OptimalStart = ListGetLogical(OptList,'Optimal Restart',GotIt)
     IF( OptimalStart ) THEN
       CALL GuessOptimum()
-      GOTO 100
+      EXIT main_body
     END IF
     
   END IF
@@ -267,7 +268,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     IF( OptimalFinish .AND. OptimizationsDone == NoValues - 1 ) THEN
       CALL Info('FindOptimum','Peforming the last step with the best so far')
       Param = BestParam
-      GOTO 100
+      EXIT main_body
     END IF
   END IF
 
@@ -323,8 +324,9 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
   END IF
   CALL Info( 'FindOptimum', '-----------------------------------------', Level=4 )
 
+  END BLOCK main_body
 
-100 OptimizationsDone = OptimizationsDone + 1
+  OptimizationsDone = OptimizationsDone + 1
 
 CONTAINS
 

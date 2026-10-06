@@ -153,11 +153,12 @@ CONTAINS
     CALL Info( Caller, Message, Level=6 )
 
     
+    UpdateMesh: BLOCK
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
       CALL Info( Caller,'Current mesh seems fine. Nothing to do.', Level=6 )
       RefMesh % OUtputActive = .TRUE.
       RefMesh % Parent % OutputActive = .FALSE.
-      GOTO 10
+      EXIT UpdateMesh
     ELSE
       CALL SetMeshMaxDofs(NewMesh)
     END IF
@@ -338,7 +339,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-10  CONTINUE
+    END BLOCK UpdateMesh
 
 !   Comment the next calls, if you want to keep the edge tables:
 !   ------------------------------------------------------------

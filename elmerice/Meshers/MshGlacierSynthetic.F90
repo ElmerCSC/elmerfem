@@ -55,16 +55,17 @@ Character(len=10) :: iNp, iNN
 CHARACTER :: NameMsh*30
 Integer i, j, k, N, Np, dim
 Logical :: Serial = .False.
+INTEGER :: ioInfo, ioHeader, ioNodes
 
 !
 ! Read the name mesh and number of partitions
 !
-OPEN(10,file="mesh_info.in")
-   READ(10,*)Rien
-   READ(10,*)NameMsh 
-   READ(10,*)Rien
-   READ(10,*)Np 
-CLOSE(10)
+OPEN(NEWUNIT=ioInfo,file="mesh_info.in")
+   READ(ioInfo,*)Rien
+   READ(ioInfo,*)NameMsh
+   READ(ioInfo,*)Rien
+   READ(ioInfo,*)Np
+CLOSE(ioInfo)
       
 IF (Np==1) Serial=.True.
 
@@ -100,24 +101,24 @@ DO k = 1, Np
       iNN = ADJUSTL(iNN)
       WRITE(*,*)'iNN',iNN
  
-      OPEN(11,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".header")
+      OPEN(NEWUNIT=ioHeader,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".header")
    ELSE
-      OPEN(11,file=TRIM(NameMsh)//"/mesh.header")
-   END IF 
+      OPEN(NEWUNIT=ioHeader,file=TRIM(NameMsh)//"/mesh.header")
+   END IF
 
-   READ(11,*)NtN
-   CLOSE(11)
+   READ(ioHeader,*)NtN
+   CLOSE(ioHeader)
 
    ALLOCATE (Node(NtN), x(NtN), y(NtN), z(NtN))
    WRITE(*,*)'Part ', k, ' NtN = ', NtN
         
    IF (.NOT.Serial) THEN
-      OPEN(12,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".nodes")
+      OPEN(NEWUNIT=ioNodes,file=TRIM(NameMsh)//"/partitioning."//TRIM(iNp)//"/part."//TRIM(iNN)//".nodes")
    ELSE
-      OPEN(12,file=TRIM(NameMsh)//"/mesh.nodes")
+      OPEN(NEWUNIT=ioNodes,file=TRIM(NameMsh)//"/mesh.nodes")
    END IF
    DO i=1,NtN
-      READ(12,*)Node(i),j,x(i),y(i),z(i)
+      READ(ioNodes,*)Node(i),j,x(i),y(i),z(i)
    END DO
     
    ! Check if we have a 2D or a 3D geometry
@@ -139,7 +140,7 @@ DO k = 1, Np
       END IF
    END IF
 
-   REWIND(12)
+   REWIND(ioNodes)
 
    DO i=1,NtN
       IF (dim==2) THEN
@@ -155,14 +156,14 @@ DO k = 1, Np
       END IF 
 
       IF (dim==2) THEN
-         znew = zb + y(i)*(zs - zb) 
-         WRITE(12,1200)Node(i),j,x(i),znew,z(i)
+         znew = zb + y(i)*(zs - zb)
+         WRITE(ioNodes,1200)Node(i),j,x(i),znew,z(i)
       ELSE
-         znew = zb + z(i)*(zs - zb) 
-         WRITE(12,1200)Node(i),j,x(i),y(i),znew
+         znew = zb + z(i)*(zs - zb)
+         WRITE(ioNodes,1200)Node(i),j,x(i),y(i),znew
       END IF
    END DO
-   CLOSE(12)
+   CLOSE(ioNodes)
 
    DEALLOCATE (Node, x, y, z)
 END DO 
