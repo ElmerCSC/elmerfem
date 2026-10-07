@@ -4375,7 +4375,6 @@ END SUBROUTINE PickActiveFace
              END IF
              IF (.NOT. n==3) CALL Fatal('EdgeElementInfo', 'A 3-node background element expected')
            END IF
-
          ELSE
            IF (Create2ndKindBasis) THEN
              DOFs = 6
@@ -4455,7 +4454,6 @@ END SUBROUTINE PickActiveFace
              END IF
              IF (.NOT. n==4) CALL Fatal('EdgeElementInfo', 'A 4-node background element expected')
            END IF
-
          ELSE
            IF (Create2ndKindBasis) THEN
              DOFs = 12
