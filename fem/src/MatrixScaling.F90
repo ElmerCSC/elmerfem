@@ -44,7 +44,7 @@ MODULE MatrixScaling
 
     USE Types,         ONLY : dp, Solver_t, Matrix_t
     USE Messages,      ONLY : Info, Warn, Fatal, Message
-    USE Lists,         ONLY : ListGetLogical, ListGetString
+    USE Lists,         ONLY : ListGetLogical, ListGetString, ListGetCReal
     USE GeneralUtils,  ONLY : I2S
     USE ParallelUtils, ONLY : ParallelReduction, ParallelSumVector, &
                               ParallelInitSolve, ParallelMatrixVector, ParallelVector
@@ -57,16 +57,72 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Compute the 1-norms of the rows of a CRS matrix. For a complex-valued matrix
+!> (stored in the real-valued representation) the norm of the complex-valued row
+!> is returned for both rows of the real-valued representation. In the parallel
+!> case the absolute values of the partition contributions are summed, so that 
+!> the values are the same in all partitions sharing a row, but each shared 
+!> value gives only an upper bound of the norm of the truly assembled row.
+!> That is, the computation of the true norms would require summing the partition
+!  contributions A_{ij}^(p) before summing the absolute values row-wise.  
+!------------------------------------------------------------------------------
+  SUBROUTINE RowwiseOneNorms(A, RowNorm, ComplexMatrix, Parallel)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(IN) :: A          !< The matrix
+    REAL(KIND=dp), INTENT(OUT) :: RowNorm(:) !< The 1-norms of the rows
+    LOGICAL, INTENT(IN) :: ComplexMatrix     !< Is the matrix complex-valued
+    LOGICAL, INTENT(IN) :: Parallel          !< Sum the partition contributions
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, n
+    REAL(KIND=dp) :: s
+!------------------------------------------------------------------------------
+    n = A % NumberOfRows
+
+    IF ( ComplexMatrix ) THEN
+      ! The odd row of the real-valued representation contains the pairs
+      ! (Re(a_ij), -Im(a_ij)) for the complex-valued entries a_ij of the row.
+      !$OMP PARALLEL DO &
+      !$OMP SHARED(RowNorm, A, N) &
+      !$OMP PRIVATE(i, j, s) &
+      !$OMP DEFAULT(NONE)
+      DO i=1,n,2
+        s = 0.0_dp
+        DO j=A % Rows(i), A % Rows(i+1)-1, 2
+          s = s + SQRT(A % Values(j)**2 + A % Values(j+1)**2)
+        END DO
+        RowNorm(i) = s
+        RowNorm(i+1) = s
+      END DO
+      !$OMP END PARALLEL DO
+    ELSE
+      !$OMP PARALLEL DO &
+      !$OMP SHARED(RowNorm, A, N) &
+      !$OMP PRIVATE(i) &
+      !$OMP DEFAULT(NONE)
+      DO i=1,n
+        RowNorm(i) = SUM(ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)))
+      END DO
+      !$OMP END PARALLEL DO
+    END IF
+
+    IF ( Parallel ) CALL ParallelSumVector(A, RowNorm)
+!------------------------------------------------------------------------------
+  END SUBROUTINE RowwiseOneNorms
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !>  Scale linear system with different strategies.
 !------------------------------------------------------------------------------
   SUBROUTINE ScaleLinearSystem(Solver,A,b,x,DiagScaling, &
-          ApplyScaling,RhsScaling,ConstraintScaling,ScalingStr)
+          ApplyScaling,RhsScaling,ConstraintScaling,ScalingStr,Shift)
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), OPTIONAL :: b(:), x(:)
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
     LOGICAL, OPTIONAL :: ApplyScaling, RhsScaling,ConstraintScaling
     CHARACTER(*), OPTIONAL :: ScalingStr
+    COMPLEX(KIND=dp), OPTIONAL :: Shift  !< The shift sigma when A % Values = K - sigma*M with M = A % MassValues
     INTEGER :: n
 
     CHARACTER(:), ALLOCATABLE :: str
@@ -121,11 +177,12 @@ CONTAINS
     !-------------------------------------------------------------
     SUBROUTINE ScaleLinearSystemDiagonal()
 
-      INTEGER :: i,j
-      REAL(KIND=dp) :: bnorm,s
-      COMPLEX(KIND=dp) :: DiagC
-      LOGICAL :: DoRHS, DoCM
+      INTEGER :: i,j,nRepl
+      REAL(KIND=dp) :: bnorm,s,r,m,DiagTol
+      COMPLEX(KIND=dp) :: DiagC, MassC, ShiftC
+      LOGICAL :: DoRHS, DoCM, Found, Shifted
       REAL(KIND=dp), POINTER  :: Diag(:)
+      REAL(KIND=dp), ALLOCATABLE :: RowSum(:), MDiag(:)
       TYPE(Matrix_t), POINTER :: CM
 
 
@@ -144,11 +201,30 @@ CONTAINS
         Diag => A % DiagScaling
         Diag(1:n) = 0._dp
 
+        ! If the matrix has been obtained by shifting as K - sigma*M, a diagonal entry
+        ! k_ii - sigma*m_ii may become negligible owing to cancellation, which would give
+        ! a huge scaling factor. Such entries are detected by comparing with the upper
+        ! bound |k_ii| + |sigma*m_ii| of the diagonal entry, which is then used in the scaling
+        ! instead of the diagonal entry. This test does not depend on how the units of 
+        ! the field variables have been chosen.
+        !
+        Shifted = PRESENT(Shift) .AND. ASSOCIATED(A % MassValues)
+        IF ( Shifted ) Shifted = SIZE(A % MassValues) == SIZE(A % Values) .AND. ABS(Shift) > 0.0_dp
+        ShiftC = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+        DiagTol = 0.0_dp
+        IF ( Shifted ) THEN
+          ShiftC = Shift
+          DiagTol = ListGetCReal(Solver % Values, 'Linear System Scaling Diagonal Tolerance', &
+              Found, minv = 0.0_dp, DefValue = 1.0e-10_dp)
+          ALLOCATE(MDiag(n))
+          MDiag(1:n) = 0._dp
+        END IF
+
         IF ( ComplexMatrix ) THEN
           CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
 
           !$OMP PARALLEL DO &
-          !$OMP SHARED(Diag, A, N) &
+          !$OMP SHARED(Diag, MDiag, Shifted, A, N) &
           !$OMP PRIVATE(i, j) &
           !$OMP DEFAULT(NONE)
           DO i=1,n,2
@@ -156,6 +232,10 @@ CONTAINS
             IF(j>0) THEN
               Diag(i)   = A % Values(j)
               Diag(i+1) = A % Values(j+1)
+              IF ( Shifted ) THEN
+                MDiag(i)   = A % MassValues(j)
+                MDiag(i+1) = A % MassValues(j+1)
+              END IF
             ELSE
               Diag(i) = 0._dp
               Diag(i+1) = 0._dp
@@ -166,12 +246,15 @@ CONTAINS
           CALL Info('ScaleLinearSystem','Assuming real valued matrix while scaling',Level=25)
 
           !$OMP PARALLEL DO &
-          !$OMP SHARED(Diag, A, N) &
+          !$OMP SHARED(Diag, MDiag, Shifted, A, N) &
           !$OMP PRIVATE(i, j) &
           !$OMP DEFAULT(NONE)
           DO i=1,n
             j = A % Diag(i)
-            IF (j>0) Diag(i) = A % Values(j)
+            IF (j>0) THEN
+              Diag(i) = A % Values(j)
+              IF ( Shifted ) MDiag(i) = A % MassValues(j)
+            END IF
           END DO
           !$OMP END PARALLEL DO
         END IF
@@ -179,57 +262,85 @@ CONTAINS
         IF ( Parallel ) THEN
           CALL Info('ScaleLinearSystem','Performing parallel summation of > DiagScaling < vector',Level=20)
           CALL ParallelSumVector(A, Diag)
+          IF ( Shifted ) CALL ParallelSumVector(A, MDiag)
         END IF
 
+        ! Replace the diagonal entries by their magnitudes, with the cancelled entries
+        ! replaced as described above:
+        nRepl = 0
         IF ( ComplexMatrix ) THEN
           !$OMP PARALLEL DO &
-          !$OMP SHARED(Diag, A, N) &
-          !$OMP PRIVATE(i, j, DiagC, s) &
+          !$OMP SHARED(Diag, MDiag, Shifted, ShiftC, DiagTol, N) &
+          !$OMP PRIVATE(i, s, r, DiagC, MassC) &
+          !$OMP REDUCTION(+:nRepl) &
           !$OMP DEFAULT(NONE)
           DO i=1,n,2
-            DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
+            DiagC = CMPLX(Diag(i), -Diag(i+1), KIND=dp)
+            s = ABS(DiagC)
+            IF ( Shifted .AND. s > TINY(s) ) THEN
+              MassC = ShiftC * CMPLX(MDiag(i), -MDiag(i+1), KIND=dp)
+              r = ABS(DiagC + MassC) + ABS(MassC)
+              IF ( s <= DiagTol * r ) THEN
+                s = r
+                nRepl = nRepl + 1
+              END IF
 
-            s = SQRT( ABS( DiagC ) )
-            IF( s > TINY(s) ) THEN
-              Diag(i)   = 1.0_dp / s
-              Diag(i+1) = 1.0_dp / s
-            ELSE
-              Diag(i)   = 1.0_dp
-              Diag(i+1) = 1.0_dp
             END IF
+            Diag(i) = s
+            Diag(i+1) = s
           END DO
           !$OMP END PARALLEL DO
         ELSE
-          s = 0.0_dp
-          ! TODO: Add threading
-          IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
-          IF(Parallel) s = ParallelReduction(s,2)
-
-          IF(s > TINY(s) ) THEN
-            DO i=1,n
-              IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
-                Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
-              ELSE
-                j = A % Diag(i)
-                IF (j>0) Diag(i) = A % Values(j)
-              END IF
-            END DO
-            IF ( Parallel ) CALL ParallelSumVector(A, Diag)
-          END IF
-
           !$OMP PARALLEL DO &
-          !$OMP SHARED(Diag, N, bnorm) &
-          !$OMP PRIVATE(i) &
+          !$OMP SHARED(Diag, MDiag, Shifted, ShiftC, DiagTol, N) &
+          !$OMP PRIVATE(i, s, r, m) &
+          !$OMP REDUCTION(+:nRepl) &
           !$OMP DEFAULT(NONE)
           DO i=1,n
-            IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
-              Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
-            ELSE
-              Diag(i) = 1.0_dp
+            s = ABS(Diag(i))
+            IF ( Shifted .AND. s > TINY(s) ) THEN
+              m = REAL(ShiftC) * MDiag(i)
+              r = ABS(Diag(i) + m) + ABS(m)
+              IF ( s <= DiagTol * r ) THEN
+                s = r
+                nRepl = nRepl + 1
+              END IF
             END IF
+            Diag(i) = s
           END DO
           !$OMP END PARALLEL DO
         END IF
+
+        IF ( Shifted ) THEN
+          DEALLOCATE(MDiag)
+          IF ( nRepl > 0 ) CALL Info('ScaleLinearSystem', &
+              'Diagonal entries replaced owing to cancellation: '//I2S(nRepl),Level=10)
+        END IF
+
+        ! A zero diagonal entry (as in saddle point problems) is replaced by the 1-norm
+        ! of the row:
+        s = 0.0_dp
+        IF ( ANY(Diag(1:n) <= TINY(s)) ) s = 1.0_dp
+        IF ( Parallel ) s = ParallelReduction(s,2)
+        IF ( s > 0.0_dp ) THEN
+          ALLOCATE(RowSum(n))
+          CALL RowwiseOneNorms(A, RowSum, ComplexMatrix, Parallel)
+          WHERE( Diag(1:n) <= TINY(s) ) Diag(1:n) = RowSum(1:n)
+          DEALLOCATE(RowSum)
+        END IF
+
+        !$OMP PARALLEL DO &
+        !$OMP SHARED(Diag, N) &
+        !$OMP PRIVATE(i) &
+        !$OMP DEFAULT(NONE)
+        DO i=1,n
+          IF ( Diag(i) > TINY(Diag(i)) ) THEN
+            Diag(i) = 1.0_dp / SQRT(Diag(i))
+          ELSE
+            Diag(i) = 1.0_dp
+          END IF
+        END DO
+        !$OMP END PARALLEL DO
       END IF
 
 
@@ -495,7 +606,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
     LOGICAL :: ComplexMatrix, Found
     INTEGER :: i, j, n
-    REAL(kind=dp) :: norm, tmp
+    REAL(kind=dp) :: norm
     INTEGER, POINTER :: Cols(:), Rows(:)
     REAL(KIND=dp), POINTER :: Values(:), Diag(:)
 !-------------------------------------------------------------------------
@@ -524,50 +635,31 @@ CONTAINS
     !---------------------------------------------
     ! Compute 1-norm of each row
     !---------------------------------------------
-    IF (ComplexMatrix) THEN
-      DO i=1,n,2
-        tmp = 0.0d0
-        DO j=Rows(i),Rows(i+1)-1,2
-          tmp = tmp + ABS( CMPLX( Values(j), -Values(j+1), kind=dp ) )
-        END DO
-        Diag(i) = tmp
-        Diag(i+1) = tmp
-      END DO
-      IF (Parallel) THEN
-        CALL ParallelSUMVector(A,Diag)
+    IF (Parallel .AND. ListGetLogical(Solver % Values, 'Row Equilibration Use M-V', Found)) THEN
+      IF (ComplexMatrix) THEN
+        CALL Warn('RowEquilibration', '"Row Equilibration Use M-V" is not available for complex matrices')
       END IF
+    END IF
+    IF (Parallel .AND. .NOT. ComplexMatrix .AND. &
+        ListGetLogical(Solver % Values, 'Row Equilibration Use M-V', Found, DefValue = .TRUE.)) THEN
+      ! The matrix-vector product |A|*1 is evaluated using the splitted parallel matrix
+      ! where the partition contributions have been glued, so that each entry of the
+      ! global matrix is stored once and has its final value. The result is thus the
+      ! row 1-norm of the global matrix (the same as obtained in serial execution, up
+      ! to the order of summation). It is however available only for the rows owned
+      ! by the partition; the other rows are zeroed and then obtained from the owners.
+      BLOCK
+        REAL(KIND=dp), ALLOCATABLE :: x(:),y(:),z(:)
+        TYPE(Matrix_t), POINTER :: ap
+        ALLOCATE(x(n),y(n),z(n))
+        ap => a
+        x = 1; y=0; z=0
+        CALL ParallelInitSolve( ap, x, y, z )
+        CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE., ZeroNotOwned=.TRUE., UseABS=.TRUE. )
+      END BLOCK
+      CALL ParallelSUMVector(A,Diag)
     ELSE
-      IF (Parallel) THEN
-
-        IF(ListGetLogical(Solver % Values, 'Row Equilibration Use M-V',Found)) THEN
-          BLOCK
-             REAL(KIND=dp), ALLOCATABLE :: x(:),y(:),z(:)
-             TYPE(Matrix_t), POINTER :: ap
-             ALLOCATE(x(n),y(n),z(n))
-             ap => a
-             x = 1; y=0; z=0
-             CALL ParallelInitSolve( ap, x, y, z )
-             CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE.,UseABS=.TRUE. )
-          END BLOCK
-        ELSE
-          DO i=1,n
-            tmp = 0.0_dp
-            DO j=Rows(i),Rows(i+1)-1
-              tmp = tmp + ABS(Values(j))
-            END DO
-            Diag(i)  = tmp
-          END DO
-        END IF
-        CALL ParallelSUMVector(A,Diag)
-      ELSE
-        DO i=1,n
-          tmp = 0.0d0
-          DO j=Rows(i),Rows(i+1)-1
-            tmp = tmp + ABS(Values(j))
-          END DO
-          Diag(i)  = tmp
-        END DO
-      END IF
+      CALL RowwiseOneNorms(A, Diag, ComplexMatrix, Parallel)
     END IF
 
     norm = MAXVAL(Diag(1:n))

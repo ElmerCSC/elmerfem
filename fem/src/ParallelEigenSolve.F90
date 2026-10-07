@@ -64,7 +64,7 @@ MODULE ParallelEigenSolve
    USE Messages
    USE Lists, ONLY : ListAddLogical, ListGetConstReal, ListGetInteger, &
                      ListGetLogical, ListGetString, ListRemove
-   USE GeneralUtils, ONLY : seql, sortc
+   USE GeneralUtils, ONLY : seql, sortc, I2S
    USE SParIterGlobals
    USE CRSMatrix, ONLY : CRS_ComplexILUT, CRS_ComplexIncompleteLU, CRS_ILUT, &
                          CRS_IncompleteLU, CRS_LUSolve
@@ -661,7 +661,7 @@ CONTAINS
 
       COMPLEX(KIND=dp) :: Sigma, c, m
 
-      LOGICAL :: Factorize, FreeFactorize,FoundFactorize,FoundFreeFactorize
+      LOGICAL :: Factorize, FreeFactorize,FoundFactorize,FoundFreeFactorize, StandardForm
       REAL(KIND=dp), TARGET :: SigmaR, SigmaI, TOL, s, Residual(2*n), Solution(2*n), &
               ForceVector(2*n), LinConv, ILUTOL
 !
@@ -671,6 +671,8 @@ CONTAINS
       INTEGER :: me
       TYPE(NeighbourList_t), POINTER :: OwnerList(:)
 
+      CHARACTER(*), PARAMETER :: Caller = 'ParallelArpackEigenSolveComplex'
+      
 !     %-----------------------%
 !     | Executable Statements |
 !     %-----------------------%
@@ -748,22 +750,38 @@ CONTAINS
 !     | This program uses exact shifts with respect to    |
 !     | the current Hessenberg matrix (IPARAM(1) = 1).    |
 !     | IPARAM(3) specifies the maximum number of Arnoldi |
-!     | iterations allowed.  Mode 2 of DSAUPD is used     |
-!     | (IPARAM(7) = 2).  All these options may be        |
+!     | iterations allowed.  Mode 3 of PDSAUPD is used    |
+!     | by default. All these options may be              |
 !     | changed by the user. For details, see the         |
-!     | documentation in DSAUPD.                          |
+!     | documentation in PZNAUPD.                         |
 !     %---------------------------------------------------%
 !
       ishfts = 1
-      BMAT  = 'G'
+
       CALL ArpackSetWhich( Solver % Values, Matrix % Lumped, Mode, Which )
 
       Maxitr = ListGetInteger( Solver % Values, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
-!
+
       IPARAM = 0
       IPARAM(1) = ishfts
       IPARAM(3) = maxitr
+
+      ! The generalized mode of ARPACK uses the M-inner product and so needs M to be
+      ! Hermitian positive semidefinite. If this cannot be guaranteed, use instead the
+      ! Euclidean inner product and apply ARPACK to the standard eigenvalue problem
+      ! for OP = (A-sigma*M)^{-1}*M. The eigenvalues are then recovered as
+      ! lambda = sigma + 1/theta, with theta an eigenvalue of OP.
+      StandardForm = ListGetLogical(Solver % Values, 'Eigen System Standard Form', stat)
+      IF (StandardForm .AND. .NOT. Matrix % Lumped) THEN
+        BMAT = 'I'
+        Mode = 1
+      ELSE
+        StandardForm = .FALSE.
+        BMAT  = 'G'        
+      END IF
+      CALL Info(Caller, 'The ARPACK routine pznaupd will be called in mode '//I2S(mode), Level=12)
+
       IPARAM(7) = mode
 
       SigmaR = 0.0d0
@@ -884,7 +902,7 @@ CONTAINS
 !                      ido =-1 inv(A-sigmaR*M)*M*x
 !                      ido = 1 inv(A-sigmaR*M)*z
 !---------------------------------------------------------------------
-            IF ( .NOT. Matrix % Lumped .AND. ido == 1 ) THEN
+            IF ( .NOT. Matrix % Lumped .AND. ido == 1 .AND. .NOT. StandardForm ) THEN
                x => WORKD(IPNTR(2):IPNTR(2)+pn-1)
                b => WORKD(IPNTR(3):IPNTR(3)+pn-1)
 
@@ -1110,6 +1128,17 @@ CONTAINS
             'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
       END IF
 !
+      ! Transform the eigenvalues of OP to those of the original problem:
+      IF (StandardForm) THEN
+        DO i=1,NEIG
+          IF (ABS(D(i)) > TINY(1.0_dp)) THEN
+            D(i) = Sigma + 1.0_dp/D(i)
+          ELSE
+            D(i) = CMPLX(HUGE(1.0_dp), 0.0_dp, KIND=dp)
+          END IF
+        END DO
+      END IF
+
 !     Sort the eigenvalues to ascending order:
 !        ----------------------------------------
       ALLOCATE( Perm(NEIG) )
