@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -30,7 +30,7 @@
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           P.O. Box 405
-! *           FI-02101 Espoo, Finland 
+! *           FI-02101 Espoo, Finland
 ! *
 ! ****************************************************************************/
 
@@ -52,11 +52,11 @@ SUBROUTINE AcousticsSolver_init( Model,Solver,dt,TransientSimulation )
   INTEGER :: dim
 
   CALL Info('AcousticsSolver','Initialization the solver')
-  
+
   Params => GetSolverParams()
   CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
 
-  dim = CoordinateSystemDimension() 
+  dim = CoordinateSystemDimension()
   IF( dim == 2 ) THEN
     CALL ListAddNewString( Params,'Variable',&
         'Flow[Re Velocity 1:1 Im Velocity 1:1 Re Velocity 2:1 Im Velocity 2:1 '&
@@ -66,11 +66,11 @@ SUBROUTINE AcousticsSolver_init( Model,Solver,dt,TransientSimulation )
         'Flow[Re Velocity 1:1 Im Velocity 1:1 Re Velocity 2:1 Im Velocity 2:1 Re Velocity 3:1 Im Velocity 3:1 '&
         //' Re Temperature:1 Im Temperature:1 Re Pressure:1 Im Pressure:1]')
   END IF
-    
-  
+
+
 END SUBROUTINE AcousticsSolver_init
-  
-  
+
+
 
 !-----------------------------------------------------------------------------
 !>  Solve the time-harmonic, generalized NS-equations assuming ideal gas law.
@@ -107,7 +107,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: ElmerStatusFile, CompaStatusFile, CompaMeshPrefix, DataFile
   INTEGER :: MaxCoupledIterations, SolverCalls = 0
   REAL(KIND=dp) :: CoupledTolerance
-  SAVE SolverCalls 
+  SAVE SolverCalls
   !------------------------------------------------------------------------------
   ! Other local variables
   !------------------------------------------------------------------------------
@@ -162,8 +162,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: NewTimeStep, ScanningUsed, FirstTimeStep
   INTEGER :: CurrentDoneTime = 0
   CHARACTER(LEN=MAX_NAME_LEN) :: SimulationType
-  REAL(KIND=dp) :: ReIterationCoeff, ImIterationCoeff, RePotentialCoeff, ImPotentialCoeff 
-  
+  REAL(KIND=dp) :: ReIterationCoeff, ImIterationCoeff, RePotentialCoeff, ImPotentialCoeff
+
   SAVE CurrentDoneTime, ReIterationCoeff, ImIterationCoeff
 
   LOGICAL ::  PotentialFlowBC, DDPreconditioning, Found
@@ -175,9 +175,9 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !IF ( .NOT. AllocationsDone ) THEN
   !  IF ( ListGetLogical( GetSimulation(), 'Output Version Numbers', GotIt ) ) THEN
-  !    CALL Info( 'AcousticsSolver', 'Acoustics version:', Level = 0 ) 
-  !    CALL Info( 'AcousticsSolver', VersionID, Level = 0 ) 
-  !    CALL Info( 'AcousticsSolver', ' ', Level = 0 ) 
+  !    CALL Info( 'AcousticsSolver', 'Acoustics version:', Level = 0 )
+  !    CALL Info( 'AcousticsSolver', VersionID, Level = 0 )
+  !    CALL Info( 'AcousticsSolver', ' ', Level = 0 )
   !  END IF
   !END IF
 
@@ -193,7 +193,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   FlowPerm => Solver % Variable % Perm
   LocalNodes = COUNT( FlowPerm > 0 )
   IF ( LocalNodes <= 0 ) RETURN
-  
+
   ! PRINT *, 'The systems size is ', LocalNodes
 
   StiffMatrix => Solver % Matrix
@@ -210,20 +210,20 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------
   ! Check whether scanning option for coupled simulations is used...
   !------------------------------------------------------------------
-  ScanningUsed = .FALSE.     
+  ScanningUsed = .FALSE.
   SimulationType = ListGetString(Model % Simulation, 'Simulation Type', GotIt)
   IF (SimulationType == 'scanning') THEN
      ScanningUsed = .TRUE.
      NewTimeStep = .FALSE.
      FirstTimeStep = .FALSE.
-     TimeVar => VariableGet( Model % Mesh  % Variables, 'Time' ) 
-     IF (.NOT. ASSOCIATED(TimeVar) ) & 
+     TimeVar => VariableGet( Model % Mesh  % Variables, 'Time' )
+     IF (.NOT. ASSOCIATED(TimeVar) ) &
           CALL Fatal( 'AcousticsSolver',  'Error in reading time variable.' )
 
      IF ( NINT(TimeVar % Values(1)) == 1) THEN
-        FirstTimeStep = .TRUE.          
+        FirstTimeStep = .TRUE.
      ELSE
-        IF ( (NINT(TimeVar % Values(1)) - CurrentDoneTime) == 2) THEN 
+        IF ( (NINT(TimeVar % Values(1)) - CurrentDoneTime) == 2) THEN
            NewTimeStep = .TRUE.
            CurrentDoneTime = CurrentDoneTime + 1
         END IF
@@ -250,17 +250,17 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     IF (.NOT. FirstVisit) THEN
       OPEN( 10, FILE = CompaStatusFile, status='OLD', IOSTAT = istat )
       IF ( istat /= 0) &
-          CALL Fatal( 'AcousticsSolver', 'Cannot open Compa Status File' )           
+          CALL Fatal( 'AcousticsSolver', 'Cannot open Compa Status File' )
       READ(10,'(A)') str2
       CLOSE(10)
-      i = INDEX(str2,'$') + 1    
+      i = INDEX(str2,'$') + 1
       IF ( str2(i:i+3) == 'STOP' .OR. str2(i:i+4) == 'PANIC' ) &
-          CALL Fatal( 'AcousticsSolver', 'CompaSolver is not willing to continue' )           
+          CALL Fatal( 'AcousticsSolver', 'CompaSolver is not willing to continue' )
     END IF
 
     OPEN( 10, FILE = ElmerStatusFile, status='REPLACE', IOSTAT = istat )
     IF ( istat /= 0) THEN
-      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )    
+      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )
     ELSE
       WRITE( 10, '(A)', ADVANCE='NO') '$WAIT'
     END IF
@@ -270,8 +270,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
      DDPreconditioning = ListGetLogical( Model % Simulation, 'DD Preconditioning', GotIt )
      IF (DDPreconditioning) THEN
-        HSol => VariableGet( Model % Variables, 'Pres') 
-        IF( ASSOCIATED(HSol) ) THEN 
+        HSol => VariableGet( Model % Variables, 'Pres')
+        IF( ASSOCIATED(HSol) ) THEN
            H => HSol % Values
            HPerm => HSol % Perm
         ELSE
@@ -310,15 +310,15 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     IF( ParEnv % MyPe == 0 ) THEN
       CurrentElement => Solver % Mesh % Elements( Solver % ActiveElements(1) )
       IP = GaussPoints( CurrentElement )
-      i = IP % n 
+      i = IP % n
       IP = GaussPoints( CurrentElement, RelOrder = RelOrder )
-      j = IP % n 
+      j = IP % n
       CALL Info('AcousticsSolver','Number of Gauss Points: '&
           //I2S(j)//' (vs. '//I2S(i)//')',Level=6)
     END IF
   END IF
 
-  
+
   !-------------------------------------------------------------------------------
   ! If the Helmholtz solution is done with an external BEM solver, create an array
   ! for the node indices on the acoustic interface.
@@ -328,7 +328,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     WRITE(DataFile,'(A,A)') TRIM(CompaMeshPrefix), '.P'
     OPEN( 10, FILE = DataFile, status='OLD', IOSTAT = istat )
     IF ( istat /= 0) THEN
-      WRITE( Message, * ) 'Cannot open file ', DataFile     
+      WRITE( Message, * ) 'Cannot open file ', DataFile
       CALL Fatal( 'AcousticsSolver', Message )
     END IF
 
@@ -348,12 +348,12 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       AcousticInterfaceNodes(1:j) = 0
     END IF
     !------------------------------------------------------------------------------
-    !PRINT *, j,' nodes were found' 
+    !PRINT *, j,' nodes were found'
     REWIND 10
-    
+
     OPEN( 20, FILE = 'mesh.nodes', status='OLD', IOSTAT = istat )
     IF ( istat /= 0) &
-        CALL Fatal( 'AcousticsSolver', 'Cannot open file mesh.nodes' )    
+        CALL Fatal( 'AcousticsSolver', 'Cannot open file mesh.nodes' )
     DO i = 1, j
       READ( 10, *) t, ReP, Imp
       !-----------------------------------------
@@ -361,25 +361,25 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       !-----------------------------------------
       k = 0
       DO
-        READ( 20, *, IOSTAT = istat) m 
+        READ( 20, *, IOSTAT = istat) m
         IF (istat == 0) THEN
           k = k + 1
           IF ( m==t ) THEN
             AcousticInterfaceNodes(i) = k
             AcousticInterfaceResults(i,1) = ReP
-            AcousticInterfaceResults(i,2) = -1.0d0*ImP            
+            AcousticInterfaceResults(i,2) = -1.0d0*ImP
             EXIT
           END IF
         ELSE
           WRITE( Message, * ) 'Inconsistent node numbering in the file ', DataFile
-          CALL Fatal( 'AcousticsSolver', Message )          
+          CALL Fatal( 'AcousticsSolver', Message )
         END IF
       END DO
       REWIND 20
     END DO
     !----------------------------------
     CLOSE(20)
-    CLOSE(10)     
+    CLOSE(10)
     BEMNodesCreated = .TRUE.
   END IF
 
@@ -388,14 +388,14 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Find out whether the block preconditioning is used...
   !------------------------------------------------------------------------------
-  dim = CoordinateSystemDimension() 
+  dim = CoordinateSystemDimension()
   BlockPreconditioning = ListGetLogical( Solver % Values, 'Block Preconditioning', GotIt )
-  
+
   IF (BlockPreconditioning) THEN
     CALL Info('AcousticsSolver', 'Block preconditioning will be used.')
 
     OuterIterationMethod = ListGetString(Solver % Values, 'Outer Iteration Method', GotIt)
-    IF ( .NOT. GotIt ) OuterIterationMethod = 'nested gcr'     
+    IF ( .NOT. GotIt ) OuterIterationMethod = 'nested gcr'
     ToleranceRatio = ListGetConstReal( Solver % Values, &
         'Ratio of Convergence Tolerances', GotIt )
     IF (GotIt) THEN
@@ -412,7 +412,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
     VelocityAssembly = ListGetLogical(Solver % Values, 'Velocity Assembly', GotIt)
     IF (.NOT. GotIt) VelocityAssembly = .FALSE.
-    
+
   END IF
 
   !------------------------------------------------------------------------------
@@ -420,7 +420,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
     N = Solver % Mesh % MaxElementDOFs
-    
+
     IF ( AllocationsDone ) THEN
       DEALLOCATE(                 &
           ElementNodes % x,      &
@@ -428,7 +428,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           ElementNodes % z,      &
           ParentNodes % x,      &
           ParentNodes % y,      &
-          ParentNodes % z,      &         
+          ParentNodes % z,      &
           LocalForce,            &
           temp,                  &
           LocalStiffMatrix,      &
@@ -451,8 +451,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           TotalArea,             &
           MomentOutput,          &
           GapIndexes,            &
-          NodesOnBoundary)           
-      
+          NodesOnBoundary)
+
     END IF
 
     !-----------------------------------------------------------------
@@ -471,7 +471,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
       SMatrix => CreateMatrix( Model, Solver, Solver % Mesh, Solver % Variable % Perm, &
           4, MATRIX_CRS, OptimizeBW, ListGetString( Solver % Values, 'Equation' ) )
-      
+
       !------------------------------------------------------
       ! Matrices to construct consistent boundary conditions
       !------------------------------------------------------
@@ -487,7 +487,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         CALL Fatal( 'AcousticsSolver', 'Memory allocation error.' )
       END IF
     END IF
-    
+
     ALLOCATE( ElementNodes % x( N ), &
         ElementNodes % y( N ),       &
         ElementNodes % z( N ),       &
@@ -531,15 +531,15 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   !---------------------------------------------------------------------------------
-  ! Create the array which contains the indeces of the nodes located on the boundary. 
-  ! This is for testing an explicit stabilisation technique 
+  ! Create the array which contains the indeces of the nodes located on the boundary.
+  ! This is for testing an explicit stabilisation technique
   !---------------------------------------------------------------------------------
   IF (.FALSE.) THEN
     NodesOnBoundary = 0
     i = 1
     DO t = Solver % Mesh % NumberOfBulkElements + 1,  &
         Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements
-      
+
       CurrentElement => Solver % Mesh % Elements(t)
       Model % CurrentElement => CurrentElement
       !------------------------------------------------------------------------------
@@ -558,7 +558,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   ! Initialization related to the block preconditioning
   !---------------------------------------------------------------------------
   IF (BlockPreconditioning) THEN
-    IF (VelocityAssembly) CALL CRS_ZeroMatrix( AMatrix ) 
+    IF (VelocityAssembly) CALL CRS_ZeroMatrix( AMatrix )
     CALL CRS_ZeroMatrix( SMatrix )
     CALL CRS_ZeroMatrix( MMatrix )
     CALL CRS_ZeroMatrix( LMatrix )
@@ -577,7 +577,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   !------------------------------------------------------------------------------
-  ! Figure out angular frequency 
+  ! Figure out angular frequency
   !------------------------------------------------------------------------------
   AngularFrequency = GetCReal( Model % Simulation, 'Angular Frequency', GotIt )
   IF(.NOT. GotIt ) THEN
@@ -585,10 +585,10 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   !------------------------------------------------------------------------------
-  ! The nodal values of the approximations of 
-  ! div(v)-type term and the scaled temperature may be overwritten in such a way 
+  ! The nodal values of the approximations of
+  ! div(v)-type term and the scaled temperature may be overwritten in such a way
   ! that the previous solution is used as an initial guess...
-  !----------------------------------------------------------------------------- 
+  !-----------------------------------------------------------------------------
   UtilizePreviousSolution = ListGetLogical( Solver % Values, &
       'Utilize Previous Solution', GotIt )
 
@@ -613,11 +613,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       HeatRatio(1:n) = ListGetReal( Material, 'Specific Heat Ratio', &
           n, NodeIndexes )
       Density(1:n) = ListGetReal( Material, 'Equilibrium Density', &
-          n, NodeIndexes )    
+          n, NodeIndexes )
       Temperature(1:n) = ListGetReal( Material, 'Equilibrium Temperature', &
-          n, NodeIndexes )        
+          n, NodeIndexes )
       Viscosity(1:n) = ListGetReal( Material, 'Viscosity', &
-          n, NodeIndexes )   
+          n, NodeIndexes )
       Lambda(1:n) = -2.0d0/3.0d0 * Viscosity(1:n)
       BulkViscosity(1:n) = ListGetReal( Material, 'Bulk Viscosity', &
           n, NodeIndexes, GotIt )
@@ -679,7 +679,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         IF( CPUTime() - at > 1.0_dp .AND. t < Solver % NumberOfActiveElements / 2) THEN
           WRITE(Message,'(a,F8.2)' ) 'Estimated assembly time (s): ', &
               (CPUTime()-at)*(Solver % NumberOfActiveElements) / t
-          CALL Info( 'AcousticsSolver', Message, Level=5 )        
+          CALL Info( 'AcousticsSolver', Message, Level=5 )
           TimeEstimated = .TRUE.
         END IF
       END IF
@@ -705,7 +705,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     END  IF
 
     NodeIndexes => CurrentElement % NodeIndexes
- 
+
     ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
     ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
     ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
@@ -724,11 +724,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     Density(1:n) = ListGetReal( Material, 'Equilibrium Density', &
         n, NodeIndexes )
     Temperature(1:n) = ListGetReal( Material, 'Equilibrium Temperature', &
-        n, NodeIndexes )        
+        n, NodeIndexes )
     Conductivity(1:n) = ListGetReal( Material, 'Heat Conductivity', &
-        n, NodeIndexes )   
+        n, NodeIndexes )
     Viscosity(1:n) = ListGetReal( Material, 'Viscosity', &
-        n, NodeIndexes )   
+        n, NodeIndexes )
     Lambda(1:n) = -2.0d0/3.0d0 * Viscosity(1:n)
     BulkViscosity(1:n) = ListGetReal( Material, ' Bulk Viscosity', &
         n, NodeIndexes, GotIt )
@@ -768,7 +768,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         SpecificHeat, HeatRatio, Density,                     &
         Temperature, Conductivity, Viscosity, Lambda,                   &
         HeatSource, Load, Bubbles, MiniBubbles, CurrentElement, n, ElementNodes,     &
-        Dofs, nb)  
+        Dofs, nb)
 
     !------------------------------------------------------------------------------
     !   Update global matrix and rhs vector from local matrix & vector
@@ -795,7 +795,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       END DO
 
       !----------------------------------
-      ! Compute the stabilisation matrix 
+      ! Compute the stabilisation matrix
       !----------------------------------
       CALL ExplicitStabilisationMatrix(  LocalStiffMatrix, LocalForce, AngularFrequency, &
           SpecificHeat, HeatRatio, Density,                    &
@@ -804,7 +804,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           Dofs, NodeOnBoundary)
 
       !-------------------
-      ! Do the assembly 
+      ! Do the assembly
       !-------------------
       CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
           ForceVector, LocalForce, n, Dofs, FlowPerm(NodeIndexes) )
@@ -825,11 +825,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       END IF
 
       CALL PressureLaplaceMatrix( AnLocal, Viscosity, AngularFrequency, Density, &
-          CurrentElement, n, dim)      
+          CurrentElement, n, dim)
       CALL UpdateGlobalPreconditioner( LMatrix, AnLocal, n, 2, &
           FlowPerm( CurrentElement % NodeIndexes ) )
 
-      CALL PressureMassMatrix( AnLocal, CurrentElement, n, dim)      
+      CALL PressureMassMatrix( AnLocal, CurrentElement, n, dim)
       CALL UpdateGlobalPreconditioner( MMatrix, AnLocal, n, 2, &
           FlowPerm( CurrentElement % NodeIndexes ) )
 
@@ -856,15 +856,15 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     CurrentElement => Solver % Mesh % Elements(t)
     Model % CurrentElement => CurrentElement
 
-    IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE    
+    IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE
 
     !------------------------------------------------------------------------------
-    ! Extract the parent element to find its material parameters... 
-    !----------------------------------------------------------------------------- 
+    ! Extract the parent element to find its material parameters...
+    !-----------------------------------------------------------------------------
     n = CurrentElement % TYPE % NumberOfNodes
     NodeIndexes => CurrentElement % NodeIndexes
     IF (ANY(FlowPerm(NodeIndexes(1:n)) == 0)) CYCLE
-    
+
     DO i=1,Model % NumberOfBCs
       IF ( CurrentElement % BoundaryInfo % Constraint == &
           Model % BCs(i) % Tag ) THEN
@@ -872,7 +872,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
         ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
-        
+
         Parent => CurrentELement % BoundaryInfo % Left
         stat = ASSOCIATED( Parent )
         IF (stat) stat = ALL( FlowPerm(Parent % NodeIndexes(1: Parent % TYPE % NumberOfNodes)) > 0 )
@@ -886,11 +886,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               'No parent element can be found for given boundary element' )
         END IF
         ! IF ( .NOT. CheckElementEquation( Model, Parent, EquationName ) ) CYCLE
-    
+
         k = ListGetInteger( Model % Bodies(Parent % Bodyid) % Values, &
             'Material' )
         Material => Model % Materials(k) % Values
-        
+
         SpecificHeat(1:n) = ListGetReal( Material, 'Specific Heat', &
             n, NodeIndexes )
         HeatRatio(1:n) = ListGetReal( Material, 'Specific Heat Ratio', &
@@ -898,9 +898,9 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         Density(1:n) = ListGetReal( Material, 'Equilibrium Density', &
             n, NodeIndexes )
         Temperature(1:n) = ListGetReal( Material, &
-            'Equilibrium Temperature', n, NodeIndexes )        
+            'Equilibrium Temperature', n, NodeIndexes )
         Conductivity(1:n) = ListGetReal( Material, 'Heat Conductivity', &
-            n, NodeIndexes )   
+            n, NodeIndexes )
         Pressure(1:n) = (HeatRatio(1:n)-1.0d0)* SpecificHeat(1:n) * Density(1:n) * Temperature(1:n)
 
 
@@ -921,7 +921,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
             ! compute the average of the normal velocity over the element.
             !----------------------------------------------------------------
             DO j=1,n
-              k = FlowPerm( NodeIndexes(j) ) 
+              k = FlowPerm( NodeIndexes(j) )
               WallVelocity(1,j) =  Flow( (k-1)*(dim*2+4)+1 )
               WallVelocity(2,j) =  Flow( (k-1)*(dim*2+4)+2 )
               WallVelocity(3,j) =  Flow( (k-1)*(dim*2+4)+3 )
@@ -944,22 +944,22 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
                   IF ( AcousticInterfaceNodes(k) == NodeIndexes(j) )THEN
                     Load(1,j) = AcousticInterfaceResults(k,1)
                     Load(2,j) = AcousticInterfaceResults(k,2)
-                    !ZAppr = -CMPLX( AcousticInterfaceResults(k,1), & 
+                    !ZAppr = -CMPLX( AcousticInterfaceResults(k,1), &
                     !    AcousticInterfaceResults(k,2), kind=dp) / AverVel
                     !Impedance(1,j) = REAL(ZAppr)
                     !Impedance(2,j) = AIMAG(ZAppr)
                     !ZAppr = CMPLX( 0.0d0, AngularFrequency*Density(j), kind=dp) / ZAppr
                     !Impedance(3,j) = REAL(ZAppr)
-                    !Impedance(4,j) = AIMAG(ZAppr)                      
+                    !Impedance(4,j) = AIMAG(ZAppr)
                     istat = 0
                     EXIT
                   END IF
                 END DO
-                IF (istat /= 0) & 
-                    CALL Fatal('AcousticsSolver', 'Helmholtz solution is not available on the node')             
+                IF (istat /= 0) &
+                    CALL Fatal('AcousticsSolver', 'Helmholtz solution is not available on the node')
               END DO
               ! Impedance calculation by pressure averaging
-              ZAppr = -CMPLX( SUM( Load(1,1:n) )/n, & 
+              ZAppr = -CMPLX( SUM( Load(1,1:n) )/n, &
                   SUM( Load(2,1:n) )/n, kind=dp) / AverVel
               DO j=1,n
                 Impedance(1,j) = REAL(ZAppr)
@@ -972,13 +972,13 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
             ELSE
               IF ( ALL( HPerm( NodeIndexes(1:n) ) > 0 ) ) THEN
                 DO j=1,n
-                  k = HPerm( NodeIndexes(j) ) 
+                  k = HPerm( NodeIndexes(j) )
                   ZAppr = -CMPLX( H(2*k-1), H(2*k), kind=dp) / AverVel
                   Impedance(1,j) = REAL(ZAppr)
                   Impedance(2,j) = AIMAG(ZAppr)
                   ZAppr = CMPLX( 0.0d0, AngularFrequency*Density(j), kind=dp) / ZAppr
                   Impedance(3,j) = REAL(ZAppr)
-                  Impedance(4,j) = AIMAG(ZAppr)                
+                  Impedance(4,j) = AIMAG(ZAppr)
                 END DO
               END IF
             END IF
@@ -1000,7 +1000,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           Impedance(4,1:n) = ListGetReal( Model % BCs(i) % Values, &
               'Im Specific Thermal Impedance', n, NodeIndexes, GotIt )
         END IF
-          
+
         Load(1,1:n) = ListGetReal( Model % BCs(i) % Values, &
             'Re Surface Traction 1', n, NodeIndexes, GotIt )
         Load(2,1:n) = ListGetReal( Model % BCs(i) % Values, &
@@ -1021,7 +1021,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
             AngularFrequency , SpecificHeat, HeatRatio, Density, &
             Pressure, Temperature, Conductivity,     &
             Impedance, Load, CurrentElement, n, ElementNodes, Dofs)
-        
+
         !------------------------------------------------------------------------------
         ! Update global matrix and rhs vector from local matrix & vector
         !------------------------------------------------------------------------------
@@ -1048,18 +1048,18 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
                        EXIT
                     END IF
                  END DO
-                 IF (istat /= 0) & 
-                      CALL Fatal('AcousticsSolver', 'Helmholtz solution is not available on the node')             
+                 IF (istat /= 0) &
+                      CALL Fatal('AcousticsSolver', 'Helmholtz solution is not available on the node')
               END DO
 
               CALL LocalInterfaceMatrix( LocalStiffMatrix, LocalForce, &
                    AngularFrequency , SpecificHeat, HeatRatio, Density, &
                    Pressure, Temperature, Conductivity,     &
                    Impedance, Load, CurrentElement, n, ElementNodes, Dofs)
-            
+
               CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
                    ForceVector, LocalForce, n, Dofs, FlowPerm(NodeIndexes) )
-            
+
               !--------------------------------------------------------------------
               ! Set Dirichlet BCs for temperature...
               !--------------------------------------------------------------------
@@ -1070,7 +1070,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
                       (m-1)*(dim*2+4)+dim*2+1, 1.0d0 )
                  CALL ZeroRow( Solver % Matrix, (m-1)*(dim*2+4)+dim*2+2 )
                  CALL SetMatrixElement( Solver % Matrix, (m-1)*(dim*2+4)+dim*2+2, &
-                      (m-1)*(dim*2+4)+dim*2+2, 1.0d0 )  
+                      (m-1)*(dim*2+4)+dim*2+2, 1.0d0 )
                  Solver % Matrix % RHS( (m-1)*(dim*2+4)+dim*2+1 ) = &
                       (HeatRatio(j)-1.0d0)/(Density(j)*HeatRatio(j)*AngularFrequency) * Load(1,j)
                  Solver % Matrix % RHS( (m-1)*(dim*2+4)+dim*2+2 ) = &
@@ -1080,19 +1080,19 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
            ELSE
               IF ( ALL( HPerm( NodeIndexes(1:n) ) > 0 ) ) THEN
                  DO j=1,n
-                    k = HPerm( NodeIndexes(j) ) 
+                    k = HPerm( NodeIndexes(j) )
                     Load(1,j) = H(2*k-1)
                     Load(2,j) = H(2*k)
                  END DO
-                 
+
                  CALL LocalInterfaceMatrix( LocalStiffMatrix, LocalForce, &
                       AngularFrequency , SpecificHeat, HeatRatio, Density, &
                       Pressure, Temperature, Conductivity,     &
                       Impedance, Load, CurrentElement, n, ElementNodes, Dofs)
-            
+
                  CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
                       ForceVector, LocalForce, n, Dofs, FlowPerm(NodeIndexes) )
-            
+
                  !--------------------------------------------------------------------
                  ! Set Dirichlet BCs for temperature...
                  !--------------------------------------------------------------------
@@ -1104,7 +1104,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
                          (m-1)*(dim*2+4)+dim*2+1, 1.0d0 )
                     CALL ZeroRow( Solver % Matrix, (m-1)*(dim*2+4)+dim*2+2 )
                     CALL SetMatrixElement( Solver % Matrix, (m-1)*(dim*2+4)+dim*2+2, &
-                         (m-1)*(dim*2+4)+dim*2+2, 1.0d0 )  
+                         (m-1)*(dim*2+4)+dim*2+2, 1.0d0 )
                     Solver % Matrix % RHS( (m-1)*(dim*2+4)+dim*2+1 ) = &
                          (HeatRatio(j)-1.0d0)/(Density(j)*HeatRatio(j)*AngularFrequency) * H(2*k-1)
                     Solver % Matrix % RHS( (m-1)*(dim*2+4)+dim*2+2 ) = &
@@ -1143,7 +1143,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   END DO
   !------------------------------------------------------------------------------
 
- 
+
 
   !------------------------------------------------------------------------------
   !    Slip boundary conditions
@@ -1153,11 +1153,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       Solver % Mesh % NumberOfBoundaryElements
     CurrentElement => Solver % Mesh % Elements(t)
     Model % CurrentElement => CurrentElement
-    IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE    
+    IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE
 
     !------------------------------------------------------------------------------
-    ! Extract the parent element to find its material parameters... 
-    !----------------------------------------------------------------------------- 
+    ! Extract the parent element to find its material parameters...
+    !-----------------------------------------------------------------------------
     n = CurrentElement % TYPE % NumberOfNodes
     NodeIndexes => CurrentElement % NodeIndexes
     IF (ANY(FlowPerm(NodeIndexes(1:n)) == 0)) CYCLE
@@ -1198,27 +1198,27 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         Density(1:n) = ListGetReal( Material, 'Equilibrium Density', &
             n, NodeIndexes )
         Conductivity(1:n) = ListGetReal( Material, 'Heat Conductivity', &
-            n, NodeIndexes )   
+            n, NodeIndexes )
         Temperature(1:n) = ListGetReal( Material, &
             'Equilibrium Temperature', n, NodeIndexes )
         Pressure(1:n) = (HeatRatio(1:n)-1.0d0)* SpecificHeat(1:n) * Density(1:n) * Temperature(1:n)
-    
+
         WallTemperature(1:n) = ListGetReal(Model % BCs(i) % Values, &
             'Reference Wall Temperature', n, NodeIndexes )
-        WallVelocity(1,1:n) = ListGetReal(Model % BCs(i) % Values, & 
+        WallVelocity(1,1:n) = ListGetReal(Model % BCs(i) % Values, &
             'Re Reference Wall Velocity 1', n, NodeIndexes, GotIt)
-        WallVelocity(2,1:n) = ListGetReal(Model % BCs(i) % Values, & 
+        WallVelocity(2,1:n) = ListGetReal(Model % BCs(i) % Values, &
             'Im Reference Wall Velocity 1', n, NodeIndexes, GotIt )
-        WallVelocity(3,1:n) = ListGetReal(Model % BCs(i) % Values, & 
+        WallVelocity(3,1:n) = ListGetReal(Model % BCs(i) % Values, &
             'Re Reference Wall Velocity 2', n, NodeIndexes, GotIt )
-        WallVelocity(4,1:n) = ListGetReal(Model % BCs(i) % Values, & 
+        WallVelocity(4,1:n) = ListGetReal(Model % BCs(i) % Values, &
             'Im Reference Wall Velocity 2', n, NodeIndexes, GotIt )
-        WallVelocity(5,1:n) = ListGetReal(Model % BCs(i) % Values, & 
+        WallVelocity(5,1:n) = ListGetReal(Model % BCs(i) % Values, &
             'Re Reference Wall Velocity 3', n, NodeIndexes, GotIt )
-        WallVelocity(6,1:n) = ListGetReal(Model % BCs(i) % Values, & 
-            'Im Reference Wall Velocity 3', n, NodeIndexes, GotIt ) 
+        WallVelocity(6,1:n) = ListGetReal(Model % BCs(i) % Values, &
+            'Im Reference Wall Velocity 3', n, NodeIndexes, GotIt )
 
-        
+
         SlipCoefficient1 = ListGetConstReal( Model % BCs(i) % Values, &
             'Tangential Momentum Accommodation Coefficient')
         SlipCoefficient2 = ListGetConstReal( Model % BCs(i) % Values, &
@@ -1258,7 +1258,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           ! Slip BC for the Schur complement
           !------------------------------------------------------------------------
           CALL SchurComplementSlipMatrix( SLocal, SpecificHeat, &
-              HeatRatio, Density, Temperature, AngularFrequency, Conductivity, & 
+              HeatRatio, Density, Temperature, AngularFrequency, Conductivity, &
               WallTemperature, SlipCoefficient2, &
               CurrentElement, n, ElementNodes, dim)
           CALL UpdateGlobalPreconditioner( SMatrix, SLocal, n, 4, &
@@ -1284,7 +1284,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   !  CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
   !      'Re Initialvelo 1', 1, Dofs, FlowPerm )
   !  CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
-  !      'Im Initialvelo 1', 2, Dofs, FlowPerm )   
+  !      'Im Initialvelo 1', 2, Dofs, FlowPerm )
   !END IF
   !---------- The end of testing ----------------------------------------------------
 
@@ -1297,23 +1297,23 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         VariableName, (i-1)*2+2, Dofs, FlowPerm )
   END DO
 
-  CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, & 
+  CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
       'Re Temperature', Dofs-3, Dofs, FlowPerm )
-  CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, & 
+  CALL SetDirichletBoundaries( Model, StiffMatrix, ForceVector, &
       'Im Temperature', Dofs-2, Dofs, FlowPerm )
-  
+
   IF(.TRUE.) CALL AcousticShellInterface()
 
   CALL DefaultDirichletBCs()
-  
+
   CALL Info( 'AcousticsSolver', 'Assembly done', Level=4 )
 
   !------------------------------------------------------------------------------
   ! Set Dirichlet BCs for the normal velocity on the slip boundary:
-  ! Nothing is done in the current implementation as it is assumed that 
-  ! the user specifies explicitly the boundary condition for the normal 
-  ! velocity. 
-  !----------------------------------------------------------------------------- 
+  ! Nothing is done in the current implementation as it is assumed that
+  ! the user specifies explicitly the boundary condition for the normal
+  ! velocity.
+  !-----------------------------------------------------------------------------
 
   !-------------------------------------------------------------------------
   ! Set boundary conditions for the preconditioners...
@@ -1321,18 +1321,18 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   IF (BlockPreconditioning) THEN
     IF (VelocityAssembly) THEN
       CALL SetBoundaryConditions(Model, AMatrix, 'Re Velocity 1', 1, dim*2, &
-          FlowPerm)        
+          FlowPerm)
       CALL SetBoundaryConditions(Model, AMatrix, 'Im Velocity 1', 2, dim*2,  &
-          Solver % Variable % Perm)        
+          Solver % Variable % Perm)
       CALL SetBoundaryConditions(Model, AMatrix, 'Re Velocity 2', 3, dim*2,  &
-          FlowPerm)        
+          FlowPerm)
       CALL SetBoundaryConditions(Model, AMatrix, 'Im Velocity 2', 4, dim*2,  &
-          FlowPerm)      
+          FlowPerm)
       IF (dim > 2) THEN
         CALL SetBoundaryConditions(Model, AMatrix, 'Re Velocity 3', 5, dim*2,  &
-            FlowPerm)        
+            FlowPerm)
         CALL SetBoundaryConditions(Model, AMatrix, 'Im Velocity 3', 6, dim*2,  &
-            FlowPerm)  
+            FlowPerm)
       END IF
     END IF
 
@@ -1343,18 +1343,18 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
 
     !------------------------------------------------------
-    ! ? Testing boundary conditions on traction boundary 
+    ! ? Testing boundary conditions on traction boundary
     !------------------------------------------------------
     DO t = Solver % Mesh % NumberOfBulkElements + 1,  &
          Solver % Mesh % NumberOfBulkElements +  &
          Solver % Mesh % NumberOfBoundaryElements
        CurrentElement => Solver % Mesh % Elements(t)
        Model % CurrentElement => CurrentElement
-       IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE    
+       IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel% Solver) ) CYCLE
 
        !------------------------------------------------------------------------------
-       ! Extract the parent element to find its material parameters... 
-       !----------------------------------------------------------------------------- 
+       ! Extract the parent element to find its material parameters...
+       !-----------------------------------------------------------------------------
        n = CurrentElement % TYPE % NumberOfNodes
        NodeIndexes => CurrentElement % NodeIndexes
        IF (ANY(FlowPerm(NodeIndexes(1:n)) == 0)) CYCLE
@@ -1380,7 +1380,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
                 Parent => CurrentELement % BoundaryInfo % Right
                 stat = ASSOCIATED( Parent )
                 IF (stat) stat = ALL( FlowPerm(Parent % NodeIndexes(1: Parent % TYPE % NumberOfNodes)) > 0 )
-                
+
                 IF ( .NOT. stat )  CALL Fatal( 'AcousticsSolver', &
                      'No parent element can be found for given boundary element' )
              END IF
@@ -1388,8 +1388,8 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
              k = ListGetInteger( Model % Bodies(Parent % Bodyid) % Values, &
                   'Material' )
              Material => Model % Materials(k) % Values
-             
-             
+
+
              SpecificHeat(1:n) = ListGetReal( Material, 'Specific Heat', &
                   n, NodeIndexes )
              HeatRatio(1:n) = ListGetReal( Material, 'Specific Heat Ratio', &
@@ -1397,11 +1397,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
              Density(1:n) = ListGetReal( Material, 'Equilibrium Density', &
                   n, NodeIndexes )
              Temperature(1:n) = ListGetReal( Material, 'Equilibrium Temperature', &
-                  n, NodeIndexes )        
+                  n, NodeIndexes )
              Conductivity(1:n) = ListGetReal( Material, 'Heat Conductivity', &
-                  n, NodeIndexes )   
+                  n, NodeIndexes )
              Viscosity(1:n) = ListGetReal( Material, 'Viscosity', &
-                  n, NodeIndexes )   
+                  n, NodeIndexes )
              Lambda(1:n) = -2.0d0/3.0d0 * Viscosity(1:n)
              BulkViscosity(1:n) = ListGetReal( Material, ' Bulk Viscosity', &
                   n, NodeIndexes, GotIt )
@@ -1412,9 +1412,9 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
              C1 = CMPLX(0.0d0, -0.5d0*Density(1)*AngularFrequency/Viscosity(1), kind=dp)
 
              C2 = C1 * CMPLX( 1.0d0,AngularFrequency/Pressure(1)*(2.0d0*Viscosity(1)+Lambda(1)), kind=dp ) / &
-                  CMPLX( 1.0d0,AngularFrequency/Pressure(1)*Lambda(1), kind=dp )  
+                  CMPLX( 1.0d0,AngularFrequency/Pressure(1)*Lambda(1), kind=dp )
 
-             
+
              reb = REAL(C1)
              imb = AIMAG(C1)
              rec = REAL(C2)
@@ -1450,7 +1450,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     !------------------------------------------------------------------------------
 
   END IF
- 
+
 
   !------------------------------------------------------------------------------
   !    Solve the linear system...
@@ -1490,7 +1490,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     Solver % Variable % Norm = Norm
 
   ELSE
-    Norm = DefaultSolve()      
+    Norm = DefaultSolve()
   END IF
   st = CPUTime() - st
 
@@ -1507,16 +1507,16 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   WRITE( Message, * ) 'Relative Change: ', RelativeChange
   CALL Info( 'AcousticsSolver', Message, Level=4 )
 
-  WRITE(Message,'(a,F8.2)') ' Assembly: (s)', at  
+  WRITE(Message,'(a,F8.2)') ' Assembly: (s)', at
   CALL Info( 'AcousticsSolver', Message, Level=4 )
   WRITE(Message,'(a,F8.2)') ' Solve:    (s)', st
   CALL Info( 'AcousticsSolver', Message, Level=4 )
 
-  PrevNorm = Norm  
+  PrevNorm = Norm
 
   !------------------------------------------------------------------------------
-  ! Overwrite the nodal values of the approximations of the div(v)-type term 
-  ! and the scaled temperature in such a way that the resulting nodal values 
+  ! Overwrite the nodal values of the approximations of the div(v)-type term
+  ! and the scaled temperature in such a way that the resulting nodal values
   ! are approximations to the true pressure and the temperature.
   !------------------------------------------------------------------------------
   VisitedNodes = .FALSE.
@@ -1539,17 +1539,17 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     HeatRatio(1:n) = ListGetReal( Material, 'Specific Heat Ratio', &
         n, NodeIndexes )
     Temperature(1:n) = ListGetReal( Material, 'Equilibrium Temperature', &
-        n, NodeIndexes )        
+        n, NodeIndexes )
     Density(1:n) = ListGetReal( Material, 'Equilibrium Density', &
         n, NodeIndexes )
     Viscosity(1:n) = ListGetReal( Material, 'Viscosity', &
-        n, NodeIndexes )   
+        n, NodeIndexes )
     Lambda(1:n) = -2.0d0/3.0d0 * Viscosity(1:n)
     BulkViscosity(1:n) = ListGetReal( Material, ' Bulk Viscosity', &
         n, NodeIndexes, GotIt )
     IF (GotIt) Lambda(1:n) = BulkViscosity(1:n) - 2.0d0/3.0d0 * Viscosity(1:n)
     Pressure(1:n) = (HeatRatio(1:n)-1.0d0)* SpecificHeat(1:n) * Density(1:n) * Temperature(1:n)
-    
+
     DO i=1,n
       j = FlowPerm(NodeIndexes(i))
       IF ( .NOT. VisitedNodes(j) ) THEN
@@ -1577,21 +1577,21 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   END DO
 
   !-----------------------------------------------------------------------------
-  ! Write an input file for an external BEM solver if it is required 
+  ! Write an input file for an external BEM solver if it is required
   !-----------------------------------------------------------------------------
   IF ( BEMCoupling ) THEN
     CALL Info('AcousticsSolver', 'Writing input file for BEM solver')
-    
+
     IF (FirstVisit) THEN
       !----------------------------------------------
-      ! Create an array for boundary element indeces 
+      ! Create an array for boundary element indeces
       !----------------------------------------------
       ALLOCATE( BemElementIndeces(Solver % Mesh % NumberOfBoundaryElements), &
           STAT=istat )
       IF ( istat /= 0 ) CALL Fatal( 'AcousticsSolver', 'Memory allocation error.' )
- 
+
       OPEN( 10, FILE = 'mesh.boundary', status='OLD')
-      DO t = 1, Solver % Mesh % NumberOfBoundaryElements    
+      DO t = 1, Solver % Mesh % NumberOfBoundaryElements
         READ( 10, *) j
         BemElementIndeces(t) = j
       END DO
@@ -1600,7 +1600,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
     WRITE(DataFile,'(A,A,A)') TRIM(CompaMeshPrefix), '.', 'param'
     OPEN( 10, FILE = DataFile, status='REPLACE')
-  
+
     DO t = Solver % Mesh % NumberOfBulkElements + 1,  &
         Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements
 
@@ -1609,11 +1609,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
-      
+
       DO i=1,Model % NumberOfBCs
         IF ( CurrentElement % BoundaryInfo % Constraint == &
             Model % BCs(i) % Tag ) THEN
-          
+
           BEMBoundary = ListGetLogical( Model % BCs(i) % Values, &
               'BEM Boundary', GotIt )
           AcousticInterface = ListGetLogical( Model % BCs(i) % Values, &
@@ -1625,11 +1625,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
               ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
               ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
-        
+
               Parent => CurrentELement % BoundaryInfo % Left
               stat = ASSOCIATED( Parent )
               IF (stat) stat = ALL(FlowPerm(Parent % NodeIndexes(1:n)) > 0)
-              
+
               IF ( .NOT. stat) THEN
                 Parent => CurrentELement % BoundaryInfo % Right
                 stat = ASSOCIATED( Parent )
@@ -1638,19 +1638,19 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
                     'No parent element can be found for given boundary element' )
               END IF
               IF ( .NOT. CheckElementEquation( Model, Parent, EquationName ) ) CYCLE
-              
+
               k = ListGetInteger( Model % Bodies(Parent % Bodyid) % Values, &
                   'Material' )
               Material => Model % Materials(k) % Values
 
               Density(1:n) = ListGetReal( Material, 'Equilibrium Density', &
                   n, NodeIndexes )
-        
+
               !------------------------------------------------------------
               ! Compute the average of the normal velocity over the element
               !------------------------------------------------------------
               DO j=1,n
-                k = FlowPerm( NodeIndexes(j) ) 
+                k = FlowPerm( NodeIndexes(j) )
                 WallVelocity(1,j) =  Flow( (k-1)*(dim*2+4)+1 )
                 WallVelocity(2,j) =  Flow( (k-1)*(dim*2+4)+2 )
                 WallVelocity(3,j) =  Flow( (k-1)*(dim*2+4)+3 )
@@ -1671,10 +1671,10 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
                   Solver % Mesh % NumberOfBulkElements ), 0.0d+0, 0.0d+0, 1.0d+0, 0.0d+0, &
                   REAL(AverVel), AIMAG(AverVel)
-              WRITE( 10,* ) ''             
+              WRITE( 10,* ) ''
 
             ELSE
-              !---------------------------------------------------------  
+              !---------------------------------------------------------
               ! Handling bem boundaries not shared with the fem domain
               !---------------------------------------------------------
               Load(1,1:n) = ListGetReal( Model % BCs(i) % Values, &
@@ -1688,13 +1688,13 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
               Load(5,1:n) = ListGetReal( Model % BCs(i) % Values, &
                   'Re c', n, NodeIndexes, GotIt )
               Load(6,1:n) = ListGetReal( Model % BCs(i) % Values, &
-                  'Im c', n, NodeIndexes, GotIt )             
-              
+                  'Im c', n, NodeIndexes, GotIt )
+
               WRITE( 10, '(I9,6e23.15)',ADVANCE='NO') BemElementIndeces( CurrentElement % ElementIndex - &
-                  Solver % Mesh % NumberOfBulkElements ), Load(1,1), Load(2,1), Load(3,1), Load(4,1), & 
+                  Solver % Mesh % NumberOfBulkElements ), Load(1,1), Load(2,1), Load(3,1), Load(4,1), &
                   Load(5,1), Load(6,1)
-              WRITE( 10,* ) ''   
-              
+              WRITE( 10,* ) ''
+
             END IF
           END IF
         END IF
@@ -1720,15 +1720,15 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
     CurrentElement => Solver % Mesh % Elements(t)
     Model % CurrentElement => CurrentElement
 
-    IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE    
+    IF ( .NOT. ActiveBoundaryElement(CurrentElement, CurrentModel % Solver) ) CYCLE
 
     !------------------------------------------------------------------------------
-    ! Extract the parent element to find its material parameters... 
-    !----------------------------------------------------------------------------- 
+    ! Extract the parent element to find its material parameters...
+    !-----------------------------------------------------------------------------
     n = CurrentElement % TYPE % NumberOfNodes
     NodeIndexes => CurrentElement % NodeIndexes
     IF (ANY(FlowPerm(NodeIndexes(1:n)) == 0)) CYCLE
-    
+
     DO i=1,Model % NumberOfBCs
       IF ( CurrentElement % BoundaryInfo % Constraint == &
           Model % BCs(i) % Tag ) THEN
@@ -1739,7 +1739,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
         ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
-        
+
         Parent => CurrentELement % BoundaryInfo % Left
         stat = ASSOCIATED( Parent )
         IF (stat) stat = ALL( FlowPerm(Parent % NodeIndexes(1: Parent % TYPE % NumberOfNodes)) > 0 )
@@ -1752,7 +1752,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           IF ( .NOT. stat )  CALL Fatal( 'AcousticsSolver', &
               'No parent element can be found for given boundary element' )
         END IF
-    
+
         np = Parent % TYPE % NumberOfNodes
         ParentNodes % x(1:np) = Solver % Mesh % Nodes % x(Parent % NodeIndexes)
         ParentNodes % y(1:np) = Solver % Mesh % Nodes % y(Parent % NodeIndexes)
@@ -1761,28 +1761,28 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         k = ListGetInteger( Model % Bodies(Parent % Bodyid) % Values, &
             'Material' )
         Material => Model % Materials(k) % Values
-        
+
         Viscosity(1:np) = ListGetReal( Material, 'Viscosity', &
-            np, Parent % NodeIndexes )   
+            np, Parent % NodeIndexes )
         Lambda(1:np) = -2.0d0/3.0d0 * Viscosity(1:np)
         BulkViscosity(1:np) = ListGetReal( Material, 'Bulk Viscosity', &
             np, Parent % NodeIndexes, GotIt )
         IF (GotIt) Lambda(1:np) = BulkViscosity(1:np) - 2.0d0/3.0d0 * Viscosity(1:np)
-        
+
         MomentAbout(1) = ListGetConstReal( Model % BCs(i) % Values, &
             'Moment About 1', GotIt )
 
         MomentAbout(2) = ListGetConstReal( Model % BCs(i) % Values, &
             'Moment About 2', CalculateMoment )
         CalculateMoment = GotIt .OR. CalculateMoment
-        
+
         MomentAbout(3) = ListGetConstReal( Model % BCs(i) % Values, &
             'Moment About 3', GotIt)
         CalculateMoment = GotIt .OR. CalculateMoment
         MomentOutput(i) = CalculateMoment
 
         DO j=1,np
-          k = FlowPerm( Parent % NodeIndexes(j) ) 
+          k = FlowPerm( Parent % NodeIndexes(j) )
           WallVelocity(1,j) =  Flow( (k-1)*(dim*2+4)+1 )
           WallVelocity(2,j) =  Flow( (k-1)*(dim*2+4)+2 )
           WallVelocity(3,j) =  Flow( (k-1)*(dim*2+4)+3 )
@@ -1792,18 +1792,18 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
             WallVelocity(5,j) =  Flow( (k-1)*(dim*2+4)+5 )
             WallVelocity(6,j) =  Flow( (k-1)*(dim*2+4)+6 )
             Load(1,j) =  Flow( (k-1)*(dim*2+4)+9 )
-            Load(2,j) =  Flow( (k-1)*(dim*2+4)+10 )           
+            Load(2,j) =  Flow( (k-1)*(dim*2+4)+10 )
           ELSE
             WallVelocity(5,j) =  0.0d0
             WallVelocity(6,j) =  0.0d0
             Load(1,j) =  Flow( (k-1)*(dim*2+4)+7 )
-            Load(2,j) =  Flow( (k-1)*(dim*2+4)+8 )                       
+            Load(2,j) =  Flow( (k-1)*(dim*2+4)+8 )
           END IF
         END DO
-        
+
         Traction = 0.0d0
         Moment = 0.0d0
-  
+
         CALL SurfaceForceIntegration(CurrentElement, Parent, Traction, Moment, &
             MomentAbout, Area, CalculateMoment, WallVelocity, Load, Viscosity, &
             Lambda, ElementNodes, ParentNodes, np)
@@ -1811,7 +1811,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         TotalForce(i,1:6) = TotalForce(i,1:6) + Traction(1:6)
         TotalArea(i) = TotalArea(i) + Area
         IF (CalculateMoment) THEN
-          TotalMoment(i,1:6) = TotalMoment(i,1:6) + Moment(1:6)          
+          TotalMoment(i,1:6) = TotalMoment(i,1:6) + Moment(1:6)
         END IF
 
       END IF
@@ -1835,9 +1835,9 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
     CALL Info('ForceCompute','Forces on Boundary '//BoundaryName(1:nlen),Level=4 )
     WRITE( Message, '("Real Fluidic Force (X,Y,Z):", 3ES17.6E2)') TotalForce(k,1:3)
-    CALL Info( 'ForceCompute', Message, Level=4 )    
+    CALL Info( 'ForceCompute', Message, Level=4 )
     WRITE( Message, '("Imaginary Fluidic Force (X,Y,Z):", 3ES17.6E2)') TotalForce(k,4:6)
-    CALL Info( 'ForceCompute', Message, Level=4 ) 
+    CALL Info( 'ForceCompute', Message, Level=4 )
     WRITE( Message, '("Contact Area:   ", ES17.6E2)') TotalArea(k)
     CALL Info( 'ForceCompute', Message, Level=4 )
 
@@ -1878,7 +1878,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
           'res: im contact moment 3 '//BoundaryName(1:nlen), TotalMoment(k,6) )
     END IF
 
-    CALL ListAddConstReal( Model % Simulation, & 
+    CALL ListAddConstReal( Model % Simulation, &
         'res: contact force area '//BoundaryName(1:nlen), TotalArea(k) )
 
   END DO
@@ -1889,14 +1889,14 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
      ZAppr = CMPLX(0.0d0, 1.0d0, kind=dp) * AngularFrequency * C1/C2
      ZAppr2 = CMPLX(0.0d0, 1.0d0, kind=dp) * AngularFrequency * C3/C4
   END IF
-  
+
   IF (.FALSE.) THEN
   !if (ScanningUsed) then
      !if (FirstTimeStep) then
-     !   CALL ListAddConstReal( Model % Simulation, & 
+     !   CALL ListAddConstReal( Model % Simulation, &
      !        'res: Re Iteration Coefficient', 0.0d0)
-     !   CALL ListAddConstReal( Model % Simulation, & 
-     !        'res: Im Iteration Coefficient', 0.0d0)        
+     !   CALL ListAddConstReal( Model % Simulation, &
+     !        'res: Im Iteration Coefficient', 0.0d0)
      !else
      !   if (NewTimeStep) then
      !ReIterationCoeff = 0.0d0
@@ -1904,14 +1904,14 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
      ReIterationCoeff = REAL(ZAppr2)
      ImIterationCoeff = AIMAG(ZAppr2)
      !   end if
-     CALL ListAddConstReal( Model % Simulation, & 
+     CALL ListAddConstReal( Model % Simulation, &
           'res: Re Iteration Coefficient', ReIterationCoeff)
-     CALL ListAddConstReal( Model % Simulation, & 
+     CALL ListAddConstReal( Model % Simulation, &
           'res: Im Iteration Coefficient', ImIterationCoeff)
      !end if
   END IF
-        
-  
+
+
   !WRITE( Message, '("Iteration Coefficient:   ", 2ES17.6E2)') real(ZAppr), aimag(ZAppr)
   !CALL Info( 'IterationCoefficientCompute', Message, Level=4 )
 
@@ -1925,7 +1925,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ALLOCATE( Bndries( Model % NumberOfBCs ) )
   Bndries = 0
-  
+
   AcousticI = 0
   DO i = 1, Model % NumberOfBCs
     IF ( ListGetLogical( Model % BCs(i) % Values, &
@@ -1995,7 +1995,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         Bndries(1)
     CALL ListAddConstReal( Model % Simulation, Message, &
         AcImpedances(1,1) )
-    
+
     DEALLOCATE( AcImpedances )
   END IF
 
@@ -2010,15 +2010,15 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   IF ( BEMCoupling ) THEN
     OPEN( 10, FILE = ElmerStatusFile, status='REPLACE', IOSTAT = istat )
     IF ( istat /= 0) THEN
-      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )    
+      CALL Fatal( 'AcousticsSolver', 'Cannot open Elmer Status File' )
     ELSE
       CoupledTolerance = ListGetConstReal( Solver % Values, &
           'Steady State Convergence Tolerance' )
       MaxCoupledIterations =  ListGetInteger( Model % Simulation, &
           'Steady State Max Iterations' )
       IF ( (RelativeChange < CoupledTolerance) .OR. (SolverCalls >= MaxCoupledIterations) ) THEN
-        WRITE( 10, '(A)', ADVANCE='NO') '$STOP'  
-      ELSE  
+        WRITE( 10, '(A)', ADVANCE='NO') '$STOP'
+      ELSE
         WRITE(str(1:3),'(I3)') SolverCalls
         WRITE( 10, '(A)', ADVANCE='NO') '$CONTINUE #' // ADJUSTL(str(1:3))
       END IF
@@ -2027,7 +2027,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   FirstVisit = .FALSE.
-  CALL Info( 'AcousticsSolver', 'Exiting the solver...', Level=4 )  
+  CALL Info( 'AcousticsSolver', 'Exiting the solver...', Level=4 )
 
 
 CONTAINS
@@ -2037,9 +2037,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE OptimalScaling( n, A, s )
 !------------------------------------------------------------------------------
-!   This subroutine equilibrates the rows of the complex-coefficient matrix A 
-!   to minimize the condition number. Only the coefficients necessary for obtaining 
-!   Re(A*z), with z a complex vector, are modified. The vector s will contain 
+!   This subroutine equilibrates the rows of the complex-coefficient matrix A
+!   to minimize the condition number. Only the coefficients necessary for obtaining
+!   Re(A*z), with z a complex vector, are modified. The vector s will contain
 !   the complex scaling factors.
 !-----------------------------------------------------------------------------
     INTEGER :: n
@@ -2061,7 +2061,7 @@ CONTAINS
       DO j=Rows(2*i-1),Rows(2*i)-1,2
         tmp = tmp + CDABS( CMPLX( Values(j), -Values(j+1), kind=dp ) )
       END DO
-      IF (tmp > norm) norm = tmp     
+      IF (tmp > norm) norm = tmp
       s(i) = CMPLX( 1.0d0,0.0d0, kind=dp) / tmp
     END DO
 
@@ -2072,9 +2072,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE OptimalMatrixScaling( n, A, s )
 !------------------------------------------------------------------------------
-!   This subroutine equilibrates the rows of the complex-coefficient matrix A 
-!   to minimize the condition number. Only the coefficients necessary for obtaining 
-!   Re(A*z), with z a complex vector, are modified. The vector s will contain 
+!   This subroutine equilibrates the rows of the complex-coefficient matrix A
+!   to minimize the condition number. Only the coefficients necessary for obtaining
+!   Re(A*z), with z a complex vector, are modified. The vector s will contain
 !   the complex scaling factors.
 !-----------------------------------------------------------------------------
     INTEGER :: n
@@ -2096,7 +2096,7 @@ CONTAINS
       DO j=Rows(2*i-1),Rows(2*i)-1,2
         tmp = tmp + CDABS( CMPLX( Values(j), -Values(j+1), kind=dp ) )
       END DO
-      IF (tmp > norm) norm = tmp     
+      IF (tmp > norm) norm = tmp
       s(i) = CMPLX( 1.0d0,0.0d0, kind=dp) / tmp
       DO j=Rows(2*i-1),Rows(2*i)-1,2
         Values(j) = Values(j) * s(i)
@@ -2104,7 +2104,7 @@ CONTAINS
       END DO
     END DO
     !--------------------------------------------------------------
-    WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
+    WRITE( Message, * ) 'Unscaled matrix norm: ', norm
     CALL Info( 'AcousticsSolver', Message, Level=5 )
     !--------------------------------------------------------------
     norm = 0.0d0
@@ -2124,8 +2124,8 @@ CONTAINS
     !DO i=1,n
     !  b(i) = b(i)/s(i)
     !  DO j=Rows(2*i-1),Rows(2*i)-1,2
-    !    Values(j) = Values(j)/s(i) 
-    !    Values(j+1) = Values(j+1)/s(i) 
+    !    Values(j) = Values(j)/s(i)
+    !    Values(j+1) = Values(j+1)/s(i)
     !  END DO
     !END DO
 
@@ -2144,7 +2144,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    This is the preconditioned GCR iteration for the complex linear system Ax=b.
 !    The Schur complement preconditioning strategy is used.
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
     INTEGER :: n, q, Rounds, dim
     REAL(KIND=dp), TARGET :: x(n), b(n)
@@ -2165,21 +2165,21 @@ CONTAINS
 
     tottime = CPUTime()
     !-----------------------------------------------------------------------------
-    ! Scaling to minimize the condition number 
+    ! Scaling to minimize the condition number
     !-----------------------------------------------------------------------------
-    SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)     
+    SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)
     IF (.NOT. GotIt) SystemScaling = .FALSE.
     IF (SystemScaling) THEN
-      CALL OptimalMatrixScaling( n/2, A, da ) 
+      CALL OptimalMatrixScaling( n/2, A, da )
       CALL OptimalMatrixScaling( q, PS, dps )
-      CALL OptimalMatrixScaling( dim*q/2, PA, dpa )   
+      CALL OptimalMatrixScaling( dim*q/2, PA, dpa )
     END IF
 
     !-------------------------------------------------------------------------------
-    ! Compute ILU factorizations for the preconditioner matrices. 
-    ! This needs to be done only once. 
+    ! Compute ILU factorizations for the preconditioner matrices.
+    ! This needs to be done only once.
     !-------------------------------------------------------------------------------
-    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement') 
+    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement')
 
     CALL Info( 'AcousticsSolver', ' ', Level=4)
     CALL Info( 'AcousticsSolver', 'ILU factorization for the Schur complement preconditioner', &
@@ -2187,7 +2187,7 @@ CONTAINS
     CALL Info( 'AcousticsSolver', ' ', Level=4)
     Condition = CRS_ComplexIncompleteLU( PS, IluOrder )
 
-    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt) 
+    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt)
 
     IF (GotIt) THEN
       CALL Info( 'AcousticsSolver', ' ', Level=4)
@@ -2201,19 +2201,19 @@ CONTAINS
 
     !--------------------------------------------------------------------------------
     !   Some initializations
-    !-------------------------------------------------------------------------------- 
+    !--------------------------------------------------------------------------------
     InnerTol = ListGetConstReal( Solver % Values, &
         'Linear System Convergence Tolerance' )
     InnerRounds = ListGetInteger( Solver % Values, &
-        'Linear System Max Iterations') 
+        'Linear System Max Iterations')
     MaxRestarts = ListGetInteger( Solver % Values, &
-        'Max GCR Restarts', GotIt) 
+        'Max GCR Restarts', GotIt)
     IF (.NOT. GotIt) MaxRestarts = 1
- 
+
     !--------------------------------------------------------------------------------------------
     ! The solution of an initial guess, the previous solution cannot be used as an initial guess
     !--------------------------------------------------------------------------------------------
-    x(1:n) = 0.0d0 
+    x(1:n) = 0.0d0
 
     Vel(1:dim*q/2) = CMPLX( 0.0d0,0.0d0, kind=dp )
     DO i=1,dim
@@ -2225,11 +2225,11 @@ CONTAINS
 
     IF ( ANY( VelRhs /= CMPLX(0.0d0, 0.0d0, kind=dp) ) ) THEN
       !-----------------------------------
-      ! Scale the right-hand side vector 
+      ! Scale the right-hand side vector
       !-----------------------------------
-      IF (SystemScaling) THEN 
+      IF (SystemScaling) THEN
         DO i=1,dim*q/2
-          VelRhs(i) = dpa(i) * VelRhs(i)       
+          VelRhs(i) = dpa(i) * VelRhs(i)
         END DO
       END IF
       !-----------------------------------------------------------------
@@ -2247,10 +2247,10 @@ CONTAINS
         END DO
       END DO
     END IF
- 
+
     !--------------------------------------------------------------------------------
-    ! The start of the GCR iteration... 
-    !--------------------------------------------------------------------------------     
+    ! The start of the GCR iteration...
+    !--------------------------------------------------------------------------------
     m = n/2
     !----------------------------------------------------------------------------
     ! View the solution vector x and the right-hand side vector b as the
@@ -2266,7 +2266,7 @@ CONTAINS
     !--------------------------------------------------------
     IF (SystemScaling) THEN
       DO i=1,m
-        f(i) = da(i) * f(i)       
+        f(i) = da(i) * f(i)
       END DO
     END IF
     r(1:m) = f(1:m) - r(1:m)
@@ -2274,9 +2274,9 @@ CONTAINS
     res = ComplexNorm(m,r)/res0
 
     ! PRINT *,'OuterIteration ',0, ComplexNorm(m,r)/res0, StoppingCriterion(m,A,y,f,r), &
-    !     CPUTime() - tottime        
+    !     CPUTime() - tottime
     WRITE(*,'(a,I4,ES12.3,ES12.3)') 'OuterIteration residual for iterate', &
-        0, res, CPUTime() - tottime 
+        0, res, CPUTime() - tottime
 
     DO j=1,MaxRestarts
       IF (ConvergedSol) EXIT
@@ -2289,15 +2289,15 @@ CONTAINS
         T1(1:m) = r(1:m)
         CALL PreconditioningIteration(n, A, q, PA, PS, T1, dim, &
             da, dpa, dps, SystemScaling, MMatrix, LMatrix)
-        CALL ComplexMatrixVectorProduct( A, T1, T2 )  
-      
+        CALL ComplexMatrixVectorProduct( A, T1, T2 )
+
         !--------------------------------------------------------------
         ! Perform the orthogonalisation of the search directions...
         !--------------------------------------------------------------
         DO i=1,k-1
           beta = ComplexDotProduct( m, V(1:m,i), T2(1:m) )
           T1(1:m) = T1(1:m) - beta * S(1:m,i)
-          T2(1:m) = T2(1:m) - beta * V(1:m,i)        
+          T2(1:m) = T2(1:m) - beta * V(1:m,i)
         END DO
         alpha = ComplexNorm(m,T2)
         T1(1:m) = CMPLX( 1.0d0, 0.0d0, kind=dp)/CMPLX( alpha, 0.0d0, kind=dp) * T1(1:m)
@@ -2305,12 +2305,12 @@ CONTAINS
 
         !-------------------------------------------------------------
         ! The update of the solution and save the search data...
-        !------------------------------------------------------------- 
+        !-------------------------------------------------------------
         beta = ComplexDotProduct(m, T2, r)
-        y(1:m) = y(1:m) + beta * T1(1:m)      
+        y(1:m) = y(1:m) + beta * T1(1:m)
         r(1:m) = r(1:m) - beta * T2(1:m)
         S(1:m,k) = T1(1:m)
-        V(1:m,k) = T2(1:m) 
+        V(1:m,k) = T2(1:m)
 
         !----------------------------------------------------------------
         ! Check the accuracy of the residual, if desired...
@@ -2323,18 +2323,18 @@ CONTAINS
           PRINT *, 'Relative error of the residual: ', norm
         END IF
 
-        !---------------------------------------------------- 
-        ! Check whether the convergence criterion is met 
+        !----------------------------------------------------
+        ! Check whether the convergence criterion is met
         !----------------------------------------------------
         res = ComplexNorm(m,r)/res0
 
-        !res = StoppingCriterion( m, A, y, f, r ) 
+        !res = StoppingCriterion( m, A, y, f, r )
         !PRINT *,'OuterIteration ',i,res, StoppingCriterion(m,A,y,f,r),CPUTime() - tottime
 
         WRITE(*,'(a,I4,ES12.3,ES12.3)') 'OuterIteration residual for iterate', &
-            k + (j-1) * Rounds, res, CPUTime() - tottime 
+            k + (j-1) * Rounds, res, CPUTime() - tottime
         ConvergedSol = ( res < TOL)
-        IF (ConvergedSol) EXIT      
+        IF (ConvergedSol) EXIT
       END DO
     END DO
 
@@ -2344,7 +2344,7 @@ CONTAINS
     !----------------------------------------------
     ! No transforming back: y aliases x.
     !----------------------------------------------
-    Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))  
+    Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))
 
 !------------------------------------------------------------------------------
   END SUBROUTINE GCROuterIteration
@@ -2357,9 +2357,9 @@ CONTAINS
   SUBROUTINE BiCGStabOuterIteration( n, A, q, PA, PS, MMatrix, LMatrix, &
       x, b, Rounds, TOL, dim, Norm )
 !------------------------------------------------------------------------------
-!   This is the preconditioned BiCGStab iteration for the complex linear 
+!   This is the preconditioned BiCGStab iteration for the complex linear
 !   system Ax=b. The Schur complement preconditioning strategy is used.
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
     INTEGER :: n, q, Rounds, dim
     REAL(KIND=dp), TARGET :: x(n), b(n)
@@ -2378,21 +2378,21 @@ CONTAINS
 
     tottime = CPUTime()
     !-----------------------------------------------------------------------------
-    ! Scaling to minimize the condition number 
+    ! Scaling to minimize the condition number
     !-----------------------------------------------------------------------------
-    SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)     
+    SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)
     IF (.NOT. GotIt) SystemScaling = .FALSE.
     IF (SystemScaling) THEN
-      CALL OptimalMatrixScaling( n/2, A, da ) 
+      CALL OptimalMatrixScaling( n/2, A, da )
       CALL OptimalMatrixScaling( q, PS, dps )
-      CALL OptimalMatrixScaling( dim*q/2, PA, dpa )   
+      CALL OptimalMatrixScaling( dim*q/2, PA, dpa )
     END IF
 
     !-------------------------------------------------------------------------------
-    ! Compute ILU factorizations for the preconditioner matrices. 
-    ! This needs to be done only once. 
+    ! Compute ILU factorizations for the preconditioner matrices.
+    ! This needs to be done only once.
     !-------------------------------------------------------------------------------
-    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement') 
+    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement')
 
     CALL Info( 'AcousticsSolver', ' ', Level=4)
     CALL Info( 'AcousticsSolver', 'ILU factorization for the Schur complement preconditioner', &
@@ -2400,7 +2400,7 @@ CONTAINS
     CALL Info( 'AcousticsSolver', ' ', Level=4)
     Condition = CRS_ComplexIncompleteLU( PS, IluOrder )
 
-    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt) 
+    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt)
 
     IF (GotIt) THEN
       CALL Info( 'AcousticsSolver', ' ', Level=4)
@@ -2414,16 +2414,16 @@ CONTAINS
 
     !--------------------------------------------------------------------------------
     !   Some initializations
-    !-------------------------------------------------------------------------------- 
+    !--------------------------------------------------------------------------------
     InnerTol = ListGetConstReal( Solver % Values, &
         'Linear System Convergence Tolerance' )
     InnerRounds = ListGetInteger( Solver % Values, &
-        'Linear System Max Iterations') 
+        'Linear System Max Iterations')
 
     !--------------------------------------------------------------------------------------------
     ! The solution of an initial guess, the previous solution cannot be used as an initial guess
     !--------------------------------------------------------------------------------------------
-    x(1:n) = 0.0d0 
+    x(1:n) = 0.0d0
 
     Vel(1:dim*q/2) = CMPLX( 0.0d0,0.0d0, kind=dp )
     DO i=1,dim
@@ -2435,11 +2435,11 @@ CONTAINS
 
     IF ( ANY( VelRhs /= CMPLX(0.0d0, 0.0d0, kind=dp) ) ) THEN
       !-----------------------------------
-      ! Scale the right-hand side vector 
+      ! Scale the right-hand side vector
       !-----------------------------------
-      IF (SystemScaling) THEN 
+      IF (SystemScaling) THEN
         DO i=1,dim*q/2
-          VelRhs(i) = dpa(i) * VelRhs(i)       
+          VelRhs(i) = dpa(i) * VelRhs(i)
         END DO
       END IF
       !-----------------------------------------------------------------
@@ -2457,10 +2457,10 @@ CONTAINS
         END DO
       END DO
     END IF
- 
+
     !--------------------------------------------------------------------------------
-    ! The start of the BiCGStab iteration... 
-    !--------------------------------------------------------------------------------     
+    ! The start of the BiCGStab iteration...
+    !--------------------------------------------------------------------------------
     m = n/2
     !----------------------------------------------------------------------------
     ! View the solution vector x and the right-hand side vector b as the
@@ -2476,7 +2476,7 @@ CONTAINS
     !--------------------------------------------------------
     IF (SystemScaling) THEN
       DO i=1,m
-        f(i) = da(i) * f(i)       
+        f(i) = da(i) * f(i)
       END DO
     END IF
     r(1:m) = f(1:m) - r(1:m)
@@ -2485,9 +2485,9 @@ CONTAINS
 
     ! PRINT *,'OuterIteration ',0, ComplexNorm(m,r)/res0, StoppingCriterion(m,A,y,f,r), &
     !     CPUTime() - tottime
-        
+
     WRITE(*,'(a,I4,ES12.3,ES12.3)') 'OuterIteration residual for iterate', &
-        0, res, CPUTime() - tottime 
+        0, res, CPUTime() - tottime
 
     Ri(1:m) = r(1:m)
     P(1:m) = CMPLX( 0.0d0, 0.0d0, kind=dp)
@@ -2511,9 +2511,9 @@ CONTAINS
       CALL ComplexMatrixVectorProduct( A, T1, V )
       alpha = rho / ComplexDotProduct( m, Ri, V )
       S(1:m) = r(1:m) - alpha * V(1:m)
-      
+
       !---------------------------------------------------------------------------------
-      ! The update of the solution and the computation of the residual-based error indicator  
+      ! The update of the solution and the computation of the residual-based error indicator
       !---------------------------------------------------------------------------------
       y(1:m) = y(1:m) + alpha*T1(1:m)
 
@@ -2530,7 +2530,7 @@ CONTAINS
       T(1:m) = S(1:m)
       !----------------------------------------------------------
       ! Perform the preconditioning...
-      !-----------------------------------------------------------------         
+      !-----------------------------------------------------------------
       CALL PreconditioningIteration(n, A, q, PA, PS, T, dim, &
           da, dpa, dps, SystemScaling, MMatrix, LMatrix)
       !-----------------------------------------------------------------
@@ -2542,7 +2542,7 @@ CONTAINS
       y(1:m) = y(1:m) + omega*T2(1:m)
 
       res = ComplexNorm(m,r)/res0
-      ! res = StoppingCriterion( m, A, y, f, r ) 
+      ! res = StoppingCriterion( m, A, y, f, r )
 
       WRITE(*,'(a,I4,ES12.3,ES12.3)') 'OuterIteration residual for iterate', i, res, &
           StoppingCriterion( m, A, y, f, r )
@@ -2557,7 +2557,7 @@ CONTAINS
     !----------------------------------------------
     ! No transforming back: y aliases x.
     !----------------------------------------------
-    Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))  
+    Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))
 
 
 !------------------------------------------------------------------------------
@@ -2570,11 +2570,11 @@ CONTAINS
   SUBROUTINE BiCGStablOuterIteration( l, m, A, q, PA, PS, MMatrix, LMatrix, &
       v, f, MaxRounds, Tol, dim, Norm)
 !-----------------------------------------------------------------------------------
-!  This is the preconditioned BiCGStab(l) iteration for the complex linear 
+!  This is the preconditioned BiCGStab(l) iteration for the complex linear
 !  system Ax=b. The Schur complement preconditioning strategy is used.
-!------------------------------------------------------------------------------  
-   INTEGER :: l, m, q, MaxRounds, dim   
-   TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix  
+!------------------------------------------------------------------------------
+   INTEGER :: l, m, q, MaxRounds, dim
+   TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
    REAL(KIND=dp), TARGET :: v(m), f(m)
    REAL(KIND=dp) :: Tol, Norm
 !-----------------------------------------------------------------------------------
@@ -2593,26 +2593,26 @@ CONTAINS
    COMPLEX(KIND=dp) :: work(m/2,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
        alpha, beta, omega, rho0, rho1, sigma, varrho, hatgamma
    LOGICAL rcmp, xpdt
-   
+
 !------------------------------------------------------------------------------
 
    tottime = CPUTime()
    !-----------------------------------------------------------------------------
-   ! Scaling to minimize the condition number 
+   ! Scaling to minimize the condition number
    !-----------------------------------------------------------------------------
-   SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)     
+   SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)
    IF (.NOT. GotIt) SystemScaling = .FALSE.
    IF (SystemScaling) THEN
-     CALL OptimalMatrixScaling( m/2, A, da ) 
+     CALL OptimalMatrixScaling( m/2, A, da )
      CALL OptimalMatrixScaling( q, PS, dps )
-     CALL OptimalMatrixScaling( dim*q/2, PA, dpa )   
+     CALL OptimalMatrixScaling( dim*q/2, PA, dpa )
    END IF
- 
+
    !-------------------------------------------------------------------------------
-   ! Compute ILU factorizations for the preconditioner matrices. 
-   ! This needs to be done only once. 
+   ! Compute ILU factorizations for the preconditioner matrices.
+   ! This needs to be done only once.
    !-------------------------------------------------------------------------------
-   IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement') 
+   IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement')
 
    CALL Info( 'AcousticsSolver', ' ', Level=4)
    CALL Info( 'AcousticsSolver', 'ILU factorization for the Schur complement preconditioner', &
@@ -2620,7 +2620,7 @@ CONTAINS
    CALL Info( 'AcousticsSolver', ' ', Level=4)
    Condition = CRS_ComplexIncompleteLU( PS, IluOrder )
 
-   IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt) 
+   IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt)
 
    IF (GotIt) THEN
      CALL Info( 'AcousticsSolver', ' ', Level=4)
@@ -2634,11 +2634,11 @@ CONTAINS
 
    !--------------------------------------------------------------------------------
    !   Some initializations
-   !-------------------------------------------------------------------------------- 
+   !--------------------------------------------------------------------------------
    InnerTol = ListGetConstReal( Solver % Values, &
        'Linear System Convergence Tolerance' )
    InnerRounds = ListGetInteger( Solver % Values, &
-       'Linear System Max Iterations') 
+       'Linear System Max Iterations')
 
    !--------------------------------------------------------------------------------------------
    ! The solution of an initial guess, the previous solution cannot be used as an initial guess
@@ -2653,9 +2653,9 @@ CONTAINS
      END DO
    END DO
 
-   IF ( ANY( VelRhs /= CMPLX(0.0d0, 0.0d0, kind=dp) ) ) THEN   
+   IF ( ANY( VelRhs /= CMPLX(0.0d0, 0.0d0, kind=dp) ) ) THEN
      !-----------------------------------
-     ! Scale the right-hand side vector 
+     ! Scale the right-hand side vector
      !-----------------------------------
      IF (SystemScaling) THEN
        DO i=1,dim*q/2
@@ -2679,8 +2679,8 @@ CONTAINS
    END IF
 
    !--------------------------------------------------------------------------------
-   ! The start of the BiCGStabl iteration... 
-   !--------------------------------------------------------------------------------     
+   ! The start of the BiCGStabl iteration...
+   !--------------------------------------------------------------------------------
    n = m/2
    !----------------------------------------------------------------------------
    ! View the solution vector v and the right-hand side vector f as the
@@ -2694,7 +2694,7 @@ CONTAINS
    zone =  CMPLX( 1.0d0,0.0d0, kind=dp)
    work = CMPLX( 0.0d0, 0.0d0, kind=dp )
    rwork = CMPLX( 0.0d0, 0.0d0, kind=dp )
-    
+
    rr = 1
    r = rr+1
    u = r+(l+1)
@@ -2710,8 +2710,8 @@ CONTAINS
    CALL ComplexMatrixVectorProduct( A, x, work(1:n,r) )
    work(1:n,r) = b(1:n) - work(1:n,r)
    bnrm = dznrm2(n, b(1:n), 1)
-    
-   work(1:n,rr) = work(1:n,r) 
+
+   work(1:n,rr) = work(1:n,r)
    work(1:n,bp) = work(1:n,r)
    work(1:n,xp) = x(1:n)
    x(1:n) = zzero
@@ -2719,7 +2719,7 @@ CONTAINS
    rnrm = rnrm0
    mxnrmx = rnrm0
    mxnrmr = rnrm0
-    
+
    alpha = zzero
    omega = zone
    sigma = zone
@@ -2729,10 +2729,10 @@ CONTAINS
    errorind = rnrm/bnrm
 
    WRITE(*,'(a,I4,ES12.3)') 'OuterIteration residual for iterate', &
-        0, errorind 
+        0, errorind
 
-   DO WHILE ( errorind > Tol .AND. Round < MaxRounds) 
-     Round = Round + 1 
+   DO WHILE ( errorind > Tol .AND. Round < MaxRounds)
+     Round = Round + 1
      !-------------------------
      ! --- The BiCG part ---
      !-------------------------
@@ -2755,8 +2755,8 @@ CONTAINS
        CALL PreconditioningIteration(m, A, q, PA, PS, t, dim, &
           da, dpa, dps, SystemScaling, MMatrix, LMatrix)
        !--------------------------------------------------------------
-       
-       CALL ComplexMatrixVectorProduct( A, t, work(1:n,u+k) )      
+
+       CALL ComplexMatrixVectorProduct( A, t, work(1:n,u+k) )
        sigma = zdotc(n, work(1:n,rr), 1, work(1:n,u+k), 1)
        IF (sigma == zzero) THEN
          CALL Fatal( 'ComplexBiCGStab(l)', 'Breakdown error.' )
@@ -2773,7 +2773,7 @@ CONTAINS
        CALL PreconditioningIteration(m, A, q, PA, PS, t, dim, &
            da, dpa, dps, SystemScaling, MMatrix, LMatrix)
        !------------------------------------------------------------------
-       CALL ComplexMatrixVectorProduct( A, t, work(1:n,r+k) )  
+       CALL ComplexMatrixVectorProduct( A, t, work(1:n,r+k) )
        rnrm = dznrm2(n, work(1:n,r), 1)
        mxnrmx = MAX (mxnrmx, rnrm)
        mxnrmr = MAX (mxnrmr, rnrm)
@@ -2785,7 +2785,7 @@ CONTAINS
 
      DO i=1,l+1
        DO j=1,i
-         rwork(i,j) = zdotc(n, work(1:n,r+i-1), 1, work(1:n,r+j-1),1 ) 
+         rwork(i,j) = zdotc(n, work(1:n,r+i-1), 1, work(1:n,r+j-1),1 )
        END DO
      END DO
      DO j=2,l+1
@@ -2797,15 +2797,15 @@ CONTAINS
          iwork, stat)
 
      ! --- tilde r0 and tilde rl (small vectors)
-     
+
      rwork(1,y0) = -zone
-     rwork(2:l,y0) = rwork(2:l,z) 
+     rwork(2:l,y0) = rwork(2:l,z)
      CALL zgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
          rwork(2:l,y0), l-1, stat)
      rwork(l+1,y0) = zzero
 
      rwork(1,yl) = zzero
-     rwork(2:l,yl) = rwork(2:l,z+l) 
+     rwork(2:l,yl) = rwork(2:l,z+l)
      CALL zgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
          rwork(2:l,yl), l-1, stat)
      rwork(l+1,yl) = -zone
@@ -2827,7 +2827,7 @@ CONTAINS
      rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
 
      !  --- Update
-     
+
      omega = rwork(l+1,y0)
      DO j=1,l
        work(1:n,u) = work(1:n,u) - rwork(j+1,y0) * work(1:n,u+j)
@@ -2852,7 +2852,7 @@ CONTAINS
          IF (rcmp) THEN
            PRINT *, 'Performing residual update...'
            t(1:n) = x(1:n)
-           CALL CRS_ComplexLUSolve2( n, A, t )         
+           CALL CRS_ComplexLUSolve2( n, A, t )
            CALL ComplexMatrixVectorProduct( A, t, work(1:n,r) )
            work(1:n,r) = work(1:n,bp) - work(1:n,r)
            mxnrmr = rnrm
@@ -2868,14 +2868,14 @@ CONTAINS
        ENDIF
 
        IF (rcmp) THEN
-         IF (xpdt) THEN       
+         IF (xpdt) THEN
            t(1:n) = work(1:n,xp)
          ELSE
-           t(1:n) = t(1:n) + work(1:n,xp)  
+           t(1:n) = t(1:n) + work(1:n,xp)
          END IF
        ELSE
          t(1:n) = x(1:n)
-         CALL CRS_ComplexLUSolve2( n, A, t ) 
+         CALL CRS_ComplexLUSolve2( n, A, t )
          t(1:n) =  t(1:n) + work(1:n,xp)
        END IF
      END IF
@@ -2921,10 +2921,10 @@ CONTAINS
       x, b, Rounds, TOL, dim, Norm )
 !------------------------------------------------------------------------------
 !   This is the nested GCR iteration for the complex linear system Ax=b.
-!   The new search direction is solved from the residual equation As = r. 
+!   The new search direction is solved from the residual equation As = r.
 !   The residual equations is solved using the block-preconditioned GCR(m) method
 !   ideally with a small m.
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
     INTEGER :: n, q, Rounds, dim
     REAL(KIND=dp), TARGET :: x(n), b(n)
@@ -2948,30 +2948,30 @@ CONTAINS
     ConvergedSol = .FALSE.
     tottime = CPUTime()
     !-----------------------------------------------------------------------------
-    ! Scaling to minimize the condition number 
+    ! Scaling to minimize the condition number
     !-----------------------------------------------------------------------------
-    SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)     
+    SystemScaling = ListGetLogical( Solver % Values, 'Linear System Scaling', GotIt)
 
     IF (.NOT. GotIt) SystemScaling = .TRUE.
     IF (SystemScaling) THEN
       WRITE( Message, * ) 'Scaling the system matrix...'
       CALL Info( 'AcousticsSolver', Message, Level=5 )
-      CALL OptimalMatrixScaling( n/2, A, da ) 
+      CALL OptimalMatrixScaling( n/2, A, da )
       WRITE( Message, * ) 'Scaling the preconditioning matrix for Schur complement...'
       CALL Info( 'AcousticsSolver', Message, Level=5 )
       CALL OptimalMatrixScaling( q, PS, dps )
       IF ( ASSOCIATED(PA) ) THEN
-        WRITE( Message, * ) 'Scaling the preconditioning matrix for velocities...'    
+        WRITE( Message, * ) 'Scaling the preconditioning matrix for velocities...'
         CALL Info( 'AcousticsSolver', Message, Level=5 )
         CALL OptimalMatrixScaling( dim*q/2, PA, dpa )
       END IF
     END IF
 
     !-------------------------------------------------------------------------------
-    ! Compute ILU factorizations for the preconditioner matrices. 
-    ! This needs to be done only once. 
+    ! Compute ILU factorizations for the preconditioner matrices.
+    ! This needs to be done only once.
     !-------------------------------------------------------------------------------
-    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement') 
+    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Schur Complement')
 
     CALL Info( 'AcousticsSolver', ' ', Level=4)
     CALL Info( 'AcousticsSolver', 'ILU factorization for the Schur complement preconditioner', &
@@ -2980,7 +2980,7 @@ CONTAINS
     Condition = CRS_ComplexIncompleteLU( PS, IluOrder )
     !Condition = CRS_ComplexILUT(PS,1.0d-2)
 
-    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt) 
+    IluOrder = ListGetInteger( Solver % Values, 'ILU Order for Velocities', GotIt)
 
     IF (GotIt .AND. ASSOCIATED(PA) ) THEN
       CALL Info( 'AcousticsSolver', ' ', Level=4)
@@ -2994,14 +2994,14 @@ CONTAINS
 
     !--------------------------------------------------------------------------------
     !   Some initializations
-    !-------------------------------------------------------------------------------- 
+    !--------------------------------------------------------------------------------
     InnerTol = ListGetConstReal( Solver % Values, &
         'Linear System Convergence Tolerance' )
     InnerRounds = ListGetInteger( Solver % Values, &
-        'Linear System Max Iterations') 
+        'Linear System Max Iterations')
     MaxRestarts = ListGetInteger( Solver % Values, &
         'Max Outer GCR Cycles', GotIt)
-    IF (.NOT. GotIt) MaxRestarts = 1   
+    IF (.NOT. GotIt) MaxRestarts = 1
     InnerRestart = ListGetInteger( Solver % Values, 'Max Inner GCR Iterations', GotIt)
     IF (.NOT. GotIt) InnerRestart = 5
     ResidualReductionRatio = ListGetConstReal( Solver % Values, 'Residual Reduction Ratio', GotIt)
@@ -3010,13 +3010,13 @@ CONTAINS
         'Use Truncation', GotIt)
     IF (.NOT. GotIt) Truncation = .FALSE.
 
-    
+
 
     !--------------------------------------------------------------------------------------------
     ! The solution of an initial guess, the previous solution can be used as an initial guess
     !--------------------------------------------------------------------------------------------
     IF ( FirstVisit .OR. (.NOT. UtilizePreviousSolution) ) THEN
-      x(1:n) = 0.0d0 
+      x(1:n) = 0.0d0
 
       Vel(1:dim*q/2) = CMPLX( 0.0d0,0.0d0, kind=dp )
       DO i=1,dim
@@ -3027,13 +3027,13 @@ CONTAINS
       END DO
 
       IF ( ANY( VelRhs /= CMPLX(0.0d0, 0.0d0, kind=dp) ) ) THEN
-        IF ( ASSOCIATED(PA) ) THEN 
+        IF ( ASSOCIATED(PA) ) THEN
           !-----------------------------------
-          ! Scale the right-hand side vector 
+          ! Scale the right-hand side vector
           !-----------------------------------
-          IF (SystemScaling) THEN 
+          IF (SystemScaling) THEN
             DO i=1,dim*q/2
-              VelRhs(i) = dpa(i) * VelRhs(i)       
+              VelRhs(i) = dpa(i) * VelRhs(i)
             END DO
           END IF
           !-----------------------------------------------------------------
@@ -3042,16 +3042,16 @@ CONTAINS
               'Solving initial guess for velocities', Level=4)
           CALL Info( 'AcousticsSolver', ' ', Level=4)
           !------------------------------------------------------------------
-          !CALL ComplexBiCGStab( q*dim, PA, Vel, VelRhs, InnerRounds, 1.0d-7, 0 )      
+          !CALL ComplexBiCGStab( q*dim, PA, Vel, VelRhs, InnerRounds, 1.0d-7, 0 )
           CALL ComplexBiCGStabl( 4, q*dim/2, PA, Vel, VelRhs, InnerRounds, 1.0d-7, 0)
         ELSE
           !-----------------------------------
-          ! Scale the right-hand side vector 
+          ! Scale the right-hand side vector
           !-----------------------------------
           IF (SystemScaling) THEN
             DO i=1,dim
               DO j=1,q/2
-                VelRhs((j-1)*dim+i) = da((j-1)*(dim+2)+i) * VelRhs((j-1)*dim+i)   
+                VelRhs((j-1)*dim+i) = da((j-1)*(dim+2)+i) * VelRhs((j-1)*dim+i)
               END DO
             END DO
           END IF
@@ -3061,7 +3061,7 @@ CONTAINS
               'Solving initial guess for velocities', Level=4)
           CALL Info( 'AcousticsSolver', ' ', Level=4)
           !------------------------------------------------------------------
-          CALL VelocitySolve( 4, q*dim/2, A, Vel, VelRhs, dim, InnerRounds, 1.0d-7, 0)         
+          CALL VelocitySolve( 4, q*dim/2, A, Vel, VelRhs, dim, InnerRounds, 1.0d-7, 0)
         END IF
 
         DO j=1,q/2
@@ -3073,10 +3073,10 @@ CONTAINS
       END IF
       FirstVisit = .FALSE.
     END IF
-    
+
     !--------------------------------------------------------------------------------
-    ! The start of the GCR iteration... 
-    !--------------------------------------------------------------------------------     
+    ! The start of the GCR iteration...
+    !--------------------------------------------------------------------------------
     m = n/2
     !----------------------------------------------------------------------------
     ! View the solution vector x and the right-hand side vector b as the
@@ -3092,7 +3092,7 @@ CONTAINS
     !--------------------------------------------------------
     IF (SystemScaling) THEN
       DO i=1,m
-        f(i) = da(i) * f(i)       
+        f(i) = da(i) * f(i)
       END DO
     END IF
     r(1:m) = f(1:m) - r(1:m)
@@ -3100,7 +3100,7 @@ CONTAINS
     res = ComplexNorm(m,r)/res0
 
     WRITE(*,'(a,I4,ES12.3,ES12.3,ES12.3)') 'OuterIteration residual for iterate', &
-        0, res, StoppingCriterion(m,A,y,f,r), CPUTime() - tottime 
+        0, res, StoppingCriterion(m,A,y,f,r), CPUTime() - tottime
 
     DO j=1,MaxRestarts
       IF (ConvergedSol) EXIT
@@ -3116,15 +3116,15 @@ CONTAINS
             InnerRestart, ResidualReductionRatio, dim, MMatrix, LMatrix, &
             SystemScaling, da, dpa, dps)
         T1(1:m) = Sol(1:m)
-        CALL ComplexMatrixVectorProduct( A, T1, T2 )  
-      
+        CALL ComplexMatrixVectorProduct( A, T1, T2 )
+
         !--------------------------------------------------------------
         ! Perform the orthogonalisation of the search directions....
         !--------------------------------------------------------------
         DO i=1,k-1
           beta = ComplexDotProduct( m, V(1:m,i), T2(1:m) )
           T1(1:m) = T1(1:m) - beta * S(1:m,i)
-          T2(1:m) = T2(1:m) - beta * V(1:m,i)        
+          T2(1:m) = T2(1:m) - beta * V(1:m,i)
         END DO
         alpha = ComplexNorm(m,T2)
         T1(1:m) = CMPLX( 1.0d0, 0.0d0, kind=dp)/CMPLX( alpha, 0.0d0, kind=dp) * T1(1:m)
@@ -3132,25 +3132,25 @@ CONTAINS
 
         !-------------------------------------------------------------
         ! The update of the solution and save the search data...
-        !------------------------------------------------------------- 
+        !-------------------------------------------------------------
         beta = ComplexDotProduct(m, T2, r)
-        y(1:m) = y(1:m) + beta * T1(1:m)      
+        y(1:m) = y(1:m) + beta * T1(1:m)
         r(1:m) = r(1:m) - beta * T2(1:m)
         S(1:m,k) = T1(1:m)
-        V(1:m,k) = T2(1:m) 
+        V(1:m,k) = T2(1:m)
 
         !--------------------------------------------------------------
-        ! Check whether the convergence criterion is met 
+        ! Check whether the convergence criterion is met
         !--------------------------------------------------------------
         res = ComplexNorm(m,r)/res0
 
-        bw_error = StoppingCriterion( m, A, y, f, r ) 
+        bw_error = StoppingCriterion( m, A, y, f, r )
         !PRINT *,'OuterIteration residual',i,res, StoppingCriterion(m,A,y,f,r),CPUTime() - tottime
 
         WRITE(*,'(a,I4,ES12.3,ES12.3,ES12.3)') 'OuterIteration residual for iterate', &
-            k + (j-1) * Rounds, res, bw_error, CPUTime() - tottime 
+            k + (j-1) * Rounds, res, bw_error, CPUTime() - tottime
         ConvergedSol = ( bw_error < TOL)
-        IF (ConvergedSol) EXIT              
+        IF (ConvergedSol) EXIT
       END DO
     END DO
 
@@ -3160,7 +3160,7 @@ CONTAINS
     !----------------------------------------------
     ! No transforming back: y aliases x.
     !----------------------------------------------
-    Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))          
+    Norm = SQRT(DOT_PRODUCT( x(1:2*m), x(1:2*m) )/(2*m))
 
 !------------------------------------------------------------------------------
    END SUBROUTINE InnerOuterIteration
@@ -3175,23 +3175,23 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   This is the preconditioned GCR(Rounds) iteration for the complex linear system Ax=b.
 !   The Schur complement preconditioning strategy is used.
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A, PA, PS, MMatrix, LMatrix
     INTEGER :: n, q, Rounds, dim
     REAL(KIND=dp) :: TOL
     COMPLEX(KIND=dp) :: x(n/2), b(n/2)
-    LOGICAL, OPTIONAL :: SystemScaling 
+    LOGICAL, OPTIONAL :: SystemScaling
     COMPLEX(KIND=dp), OPTIONAL :: da(n/2), dpa(dim*q/2), dps(q)
 !-------------------------------------------------------------------------------
     INTEGER :: k, m
     REAL(KIND=dp) :: res, tottime, res0, alpha
-    COMPLEX(KIND=dp) :: r(n/2), T1(n/2), T2(n/2), S(n/2,Rounds), V(n/2,Rounds) 
-    COMPLEX(KIND=dp) :: beta 
+    COMPLEX(KIND=dp) :: r(n/2), T1(n/2), T2(n/2), S(n/2,Rounds), V(n/2,Rounds)
+    COMPLEX(KIND=dp) :: beta
 !------------------------------------------------------------------------------
 
 !--------------------------------------------------------------------------------
-!   The start of the GCR iteration... 
-!--------------------------------------------------------------------------------     
+!   The start of the GCR iteration...
+!--------------------------------------------------------------------------------
     tottime = CPUTime()
     m = n/2
 
@@ -3209,15 +3209,15 @@ CONTAINS
       T1(1:m) = r(1:m)
       CALL PreconditioningIteration( n, A, q, PA, PS, T1, dim, &
           da, dpa, dps, SystemScaling, MMatrix, LMatrix)
-      CALL ComplexMatrixVectorProduct( A, T1, T2 )  
-      
+      CALL ComplexMatrixVectorProduct( A, T1, T2 )
+
       !--------------------------------------------------------------
       ! Perform the orthogonalisation of the search directions....
       !--------------------------------------------------------------
       DO i=1,k-1
         beta = ComplexDotProduct( m, V(1:m,i), T2(1:m) )
         T1(1:m) = T1(1:m) - beta * S(1:m,i)
-        T2(1:m) = T2(1:m) - beta * V(1:m,i)        
+        T2(1:m) = T2(1:m) - beta * V(1:m,i)
       END DO
       alpha = ComplexNorm(m,T2)
       T1(1:m) = CMPLX( 1.0d0, 0.0d0, kind=dp)/CMPLX( alpha, 0.0d0, kind=dp) * T1(1:m)
@@ -3225,19 +3225,19 @@ CONTAINS
 
       !-------------------------------------------------------------
       ! The update of the solution and save the search data...
-      !------------------------------------------------------------- 
+      !-------------------------------------------------------------
       beta = ComplexDotProduct(m, T2, r)
-      x(1:m) = x(1:m) + beta * T1(1:m)      
+      x(1:m) = x(1:m) + beta * T1(1:m)
       r(1:m) = r(1:m) - beta * T2(1:m)
       S(1:m,k) = T1(1:m)
-      V(1:m,k) = T2(1:m) 
+      V(1:m,k) = T2(1:m)
 
       !--------------------------------------------------------------
-      ! Check whether the convergence criterion is met 
+      ! Check whether the convergence criterion is met
       !--------------------------------------------------------------
       res = ComplexNorm(m,r)/res0
       WRITE(*,'(a,I4,ES12.3,ES12.3)') 'InnerIteration residual for iterate', &
-          k, res, CPUTime() - tottime 
+          k, res, CPUTime() - tottime
       IF ( res < TOL) EXIT
     END DO
 !------------------------------------------------------------------------------
@@ -3251,21 +3251,21 @@ CONTAINS
      SUBROUTINE PreconditioningIteration( n, A, q, PA, PS, V, dim, &
          da, dpa, dps, Scaling, MMatrix, LMatrix)
 !------------------------------------------------------------------------------
-!     This subroutine solves iteratively the upper triangular preconditioning 
+!     This subroutine solves iteratively the upper triangular preconditioning
 !     system P*z = V. The vector V is overwritten by the solution z.
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A, PA, PS
       INTEGER :: n, q, dim
       COMPLEX(KIND=dp) :: V(n/2)
       COMPLEX(KIND=dp), OPTIONAL :: da(n/2), dpa(dim*q/2), dps(q)
       LOGICAL, OPTIONAL :: Scaling
-      TYPE(Matrix_t), POINTER, OPTIONAL :: MMatrix, LMatrix    
+      TYPE(Matrix_t), POINTER, OPTIONAL :: MMatrix, LMatrix
 !--------------------------------------------------------------------------------
       REAL(kind=dp) :: InnerTol, VelocityTol, SchurTol
       INTEGER :: i, j, InnerRounds
       LOGICAL :: SystemScaling, ConsistentSplitting, VelocityCriterion, &
           SchurCriterion, GotIt
-      COMPLEX(kind=dp) :: z(n/2), y(q/2), f(q/2), w(q), g(q), & 
+      COMPLEX(kind=dp) :: z(n/2), y(q/2), f(q/2), w(q), g(q), &
           Vel(dim*q/2), VelRhs(dim*q/2)
 !------------------------------------------------------------------------------
       InnerTol = ListGetConstReal( Solver % Values, &
@@ -3287,16 +3287,16 @@ CONTAINS
 
       z(1:n/2) = CMPLX( 0.0d0,0.0d0, kind=dp )
       !-------------------------------------------------------------------------
-      ! If the consistent splitting approach is used, 
+      ! If the consistent splitting approach is used,
       ! compute the continuous approximation of the continuity equation residual
       !-------------------------------------------------------------------------
-      IF ( ConsistentSplitting ) THEN  
+      IF ( ConsistentSplitting ) THEN
         y(1:q/2) = CMPLX( 0.0d0,0.0d0, kind=dp )
         IF (SystemScaling) THEN
           !-------------------------------
           ! Recover the unscaled residual
           !--------------------------------
-          DO j=1,q/2 
+          DO j=1,q/2
             f(j) = 1.0d0/da( (dim+2)*j ) * V( (dim+2)*j )
           END DO
         ELSE
@@ -3316,14 +3316,14 @@ CONTAINS
 
       !-----------------------------------------------------------------
       ! The solution of the Schur complement equation...
-      !------------------------------------------------------------------ 
+      !------------------------------------------------------------------
       w(1:q) = CMPLX( 0.0d0,0.0d0, kind=dp )
       !------------------------------------------------------------------
       ! Construct the right-hand side vector g for the Schur complement
       ! system. The vector g consists of the unscaled residuals and the
       ! modification term which arises from the consistent splitting.
-      !------------------------------------------------------------------ 
-      IF ( ConsistentSplitting ) THEN 
+      !------------------------------------------------------------------
+      IF ( ConsistentSplitting ) THEN
 
         IF ( SystemScaling ) THEN
           DO j=1,q/2
@@ -3341,7 +3341,7 @@ CONTAINS
 
         IF ( SystemScaling ) THEN
           g(2*j-1) = 1.0d0 / da( (dim+2)*j-1 ) * V((dim+2)*j-1)
-          g(2*j) = 1.0d0 / da( (dim+2)*j ) * V((dim+2)*j)         
+          g(2*j) = 1.0d0 / da( (dim+2)*j ) * V((dim+2)*j)
         ELSE
           DO j=1,q/2
             g(2*j-1) = V((dim+2)*j-1)
@@ -3352,13 +3352,13 @@ CONTAINS
       END IF
 
       !--------------------------------------------------------------------
-      ! If scaling is used, we must scale g according to the scaling of 
-      ! the Schur complement matrix 
+      ! If scaling is used, we must scale g according to the scaling of
+      ! the Schur complement matrix
       !--------------------------------------------------------------------
       IF ( SystemScaling ) THEN
         DO j=1,q/2
           g(2*j-1) = dps( 2*j-1 ) * g(2*j-1)
-          g(2*j) = dps( 2*j ) * g(2*j)         
+          g(2*j) = dps( 2*j ) * g(2*j)
         END DO
       END IF
       !-------------------------------------------------------------------
@@ -3371,7 +3371,7 @@ CONTAINS
             'Preconditioning iteration for the Schur complement system', Level=4)
         CALL Info( 'AcousticsSolver', ' ', Level=4)
         !-------------------------------------------------------------------
-        IF (SchurCriterion) THEN 
+        IF (SchurCriterion) THEN
           CALL ComplexBiCGStabl( 4, q, PS, w, g, InnerRounds, SchurTol, 0 )
         ELSE
           CALL ComplexBiCGStabl( 4, q, PS, w, g, InnerRounds, InnerTol, 0 )
@@ -3380,7 +3380,7 @@ CONTAINS
       END IF
 
       DO j=1,q/2
-        V((dim+2)*j-1) = w(2*j-1) 
+        V((dim+2)*j-1) = w(2*j-1)
         V((dim+2)*j) = w(2*j)
       END DO
 
@@ -3418,7 +3418,7 @@ CONTAINS
           CALL Info( 'AcousticsSolver', ' ', Level=4)
           !------------------------------------------------------------------
           IF (VelocityCriterion) THEN
-            CALL ComplexBiCGStabl( 2, q*dim/2, PA, Vel, VelRhs, InnerRounds, VelocityTol, 0)            
+            CALL ComplexBiCGStabl( 2, q*dim/2, PA, Vel, VelRhs, InnerRounds, VelocityTol, 0)
           ELSE
             CALL ComplexBiCGStabl( 2, q*dim/2, PA, Vel, VelRhs, InnerRounds, InnerTol, 0)
           END IF
@@ -3434,7 +3434,7 @@ CONTAINS
           CALL Info( 'AcousticsSolver', ' ', Level=4)
           !------------------------------------------------------------------
           IF (VelocityCriterion) THEN
-            CALL VelocitySolve( 2, q*dim/2, A, Vel, VelRhs, dim, InnerRounds, VelocityTol, 0)            
+            CALL VelocitySolve( 2, q*dim/2, A, Vel, VelRhs, dim, InnerRounds, VelocityTol, 0)
           ELSE
             CALL VelocitySolve( 2, q*dim/2, A, Vel, VelRhs, dim, InnerRounds, InnerTol, 0)
           END IF
@@ -3477,7 +3477,7 @@ CONTAINS
     normb = 0.0d0
     normres = 0.0d0
     normx = 0.0d0
-    
+
     IF (PRESENT(CriterionType)) THEN
       DO i=1,n
         normb = MAX( normb, CDABS(b(i)) )
@@ -3534,7 +3534,7 @@ CONTAINS
       normx = MAX( normx, CDABS(x(i)) )
     END DO
 
-    err = norm*normx/normb 
+    err = norm*normx/normb
 !------------------------------------------------------------------------------
   END FUNCTION ConditionEstimate
 !------------------------------------------------------------------------------
@@ -3579,7 +3579,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: m
     COMPLEX(KIND=dp) :: x(m)
-    REAL(KIND=dp) :: s  
+    REAL(KIND=dp) :: s
 !--------------------------------------------------------------------
     s = 0.0d0
     DO i=1,m
@@ -3626,29 +3626,29 @@ CONTAINS
 !-----------------------------------------------------------------------------------
   SUBROUTINE ComplexBiCGStabl( l, n, A, x, b, MaxRounds, Tol, StoppingCriterionType )
 !-----------------------------------------------------------------------------------
-!   This subroutine solves complex linear systems by using the BiCGStab(l) algorithm 
-!   with l >= 2. It has been developed by using as a starting point the work of D.R. Fokkema 
+!   This subroutine solves complex linear systems by using the BiCGStab(l) algorithm
+!   with l >= 2. It has been developed by using as a starting point the work of D.R. Fokkema
 !   (subroutine zbistbl v1.1 1998). Dr. Fokkema has given the right to distribute
-!   the derived work under GPL and hence the original more conservative 
-!   copyright notice of the subroutine has been removed accordingly. 
+!   the derived work under GPL and hence the original more conservative
+!   copyright notice of the subroutine has been removed accordingly.
 !
 !   This version uses right-oriented ILU(n) preconditioning.
-!----------------------------------------------------------------------------------- 
+!-----------------------------------------------------------------------------------
     INTEGER :: l   ! polynomial degree
-    INTEGER :: n, MaxRounds   
+    INTEGER :: n, MaxRounds
     TYPE(Matrix_t), POINTER :: A
     COMPLEX(KIND=dp) :: x(n), b(n)
     REAL(KIND=dp) :: Tol
-    INTEGER, OPTIONAL :: StoppingCriterionType 
+    INTEGER, OPTIONAL :: StoppingCriterionType
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal 
+    COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal
     REAL(KIND=dp) :: rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
         delta = 1.0d-2, bnrm, bw_errorind, tottime
     INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round, &
         IluOrder
     COMPLEX(KIND=dp) :: work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
         alpha, beta, omega, rho0, rho1, sigma, varrho, hatgamma
-    LOGICAL rcmp, xpdt, GotIt, BackwardError  
+    LOGICAL rcmp, xpdt, GotIt, BackwardError
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
     tottime = CPUTime()
@@ -3662,7 +3662,7 @@ CONTAINS
     zone =  dcmplx( 1.0d0,0.0d0)
     work = dcmplx( 0.0d0, 0.0d0 )
     rwork = dcmplx( 0.0d0, 0.0d0 )
-    
+
     rr = 1
     r = rr+1
     u = r+(l+1)
@@ -3679,7 +3679,7 @@ CONTAINS
     work(1:n,r) = b(1:n) - work(1:n,r)
     bnrm = dznrm2(n, b(1:n), 1)
 
-    work(1:n,rr) = work(1:n,r) 
+    work(1:n,rr) = work(1:n,r)
     work(1:n,bp) = work(1:n,r)
     work(1:n,xp) = x(1:n)
     x(1:n) = zzero
@@ -3687,7 +3687,7 @@ CONTAINS
     rnrm = rnrm0
     mxnrmx = rnrm0
     mxnrmr = rnrm0
-    
+
     alpha = zzero
     omega = zone
     sigma = zone
@@ -3695,8 +3695,8 @@ CONTAINS
 
     Round = 0
     errorind = 1.0d0
-    DO WHILE ( errorind > Tol .AND. Round < MaxRounds) 
-      Round = Round + 1 
+    DO WHILE ( errorind > Tol .AND. Round < MaxRounds)
+      Round = Round + 1
       !-------------------------
       ! --- The BiCG part ---
       !-------------------------
@@ -3714,7 +3714,7 @@ CONTAINS
         ENDDO
         t(1:n) = work(1:n,u+k-1)
         CALL CRS_ComplexLUSolve2( n, A, t )
-        CALL ComplexMatrixVectorProduct( A, t, work(1:n,u+k) )      
+        CALL ComplexMatrixVectorProduct( A, t, work(1:n,u+k) )
         sigma = zdotc(n, work(1:n,rr), 1, work(1:n,u+k), 1)
         IF (sigma == zzero) THEN
           CALL Fatal( 'ComplexBiCGStab(l)', 'Breakdown error.' )
@@ -3725,8 +3725,8 @@ CONTAINS
           work(1:n,r+j) = work(1:n,r+j) - alpha * work(1:n,u+j+1)
         ENDDO
         t(1:n) = work(1:n,r+k-1)
-        CALL CRS_ComplexLUSolve2( n, A, t ) 
-        CALL ComplexMatrixVectorProduct( A, t, work(1:n,r+k) )  
+        CALL CRS_ComplexLUSolve2( n, A, t )
+        CALL ComplexMatrixVectorProduct( A, t, work(1:n,r+k) )
         rnrm = dznrm2(n, work(1:n,r), 1)
         mxnrmx = MAX (mxnrmx, rnrm)
         mxnrmr = MAX (mxnrmr, rnrm)
@@ -3738,7 +3738,7 @@ CONTAINS
 
       DO i=1,l+1
         DO j=1,i
-          rwork(i,j) = zdotc(n, work(1:n,r+i-1), 1, work(1:n,r+j-1),1 ) 
+          rwork(i,j) = zdotc(n, work(1:n,r+i-1), 1, work(1:n,r+j-1),1 )
         END DO
       END DO
       DO j=2,l+1
@@ -3752,13 +3752,13 @@ CONTAINS
       ! --- tilde r0 and tilde rl (small vectors)
 
       rwork(1,y0) = -zone
-      rwork(2:l,y0) = rwork(2:l,z) 
+      rwork(2:l,y0) = rwork(2:l,z)
       CALL zgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
           rwork(2:l,y0), l-1, stat)
       rwork(l+1,y0) = zzero
 
       rwork(1,yl) = zzero
-      rwork(2:l,yl) = rwork(2:l,z+l) 
+      rwork(2:l,yl) = rwork(2:l,z+l)
       CALL zgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
           rwork(2:l,yl), l-1, stat)
       rwork(l+1,yl) = -zone
@@ -3805,7 +3805,7 @@ CONTAINS
         IF (rcmp) THEN
           ! PRINT *, 'Performing residual update...'
           t(1:n) = x(1:n)
-          CALL CRS_ComplexLUSolve2( n, A, t )         
+          CALL CRS_ComplexLUSolve2( n, A, t )
           CALL ComplexMatrixVectorProduct( A, t, work(1:n,r) )
           work(1:n,r) = work(1:n,bp) - work(1:n,r)
           mxnrmr = rnrm
@@ -3820,21 +3820,21 @@ CONTAINS
       ENDIF
 
       IF (rcmp) THEN
-        IF (xpdt) THEN       
+        IF (xpdt) THEN
           t(1:n) = work(1:n,xp)
         ELSE
-          t(1:n) = t(1:n) + work(1:n,xp)  
+          t(1:n) = t(1:n) + work(1:n,xp)
         END IF
       ELSE
         t(1:n) = x(1:n)
-        CALL CRS_ComplexLUSolve2( n, A, t ) 
+        CALL CRS_ComplexLUSolve2( n, A, t )
         t(1:n) =  t(1:n) + work(1:n,xp)
       END IF
 
       bw_errorind = StoppingCriterion( n, A, t, b, work(1:n,r) )
       errorind = rnrm/bnrm
       WRITE(*,'(I4,ES12.3,ES12.3)') Round, errorind, bw_errorind
-      
+
       IF (BackwardError) errorind = bw_errorind
 
     END DO
@@ -3848,7 +3848,7 @@ CONTAINS
     WRITE(*,'(a,ES12.3)') 'An approximate lower bound for the condition number ', &
         ConditionEstimate( n, A, x, b )
     WRITE(*,'(a,ES12.3)') 'The 2-norm of the solution: ', &
-        ComplexNorm( n, x )  
+        ComplexNorm( n, x )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ComplexBiCGStabl
@@ -3861,18 +3861,18 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE ComplexBiCGStab( n, A, x, b, Rounds, TOL, StoppingCriterionType)
 !------------------------------------------------------------------------------
-!   This is the ILU or Jacobi preconditioned BiCGStab method for the complex 
-!   linear system Ax = b. The optional argument StoppingCriterionType can be 
+!   This is the ILU or Jacobi preconditioned BiCGStab method for the complex
+!   linear system Ax = b. The optional argument StoppingCriterionType can be
 !   used to define the type of the stopping criterion.
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: n, Rounds
       REAL(KIND=dp) :: TOL
       COMPLEX(kind=dp) :: x(n/2), b(n/2)
-      INTEGER, OPTIONAL :: StoppingCriterionType 
+      INTEGER, OPTIONAL :: StoppingCriterionType
 !------------------------------------------------------------------------------
       INTEGER :: i, m, k
-      LOGICAL :: BackwardError 
+      LOGICAL :: BackwardError
       REAL(KIND=dp) :: res, tottime, res0, const
       COMPLEX(KIND=dp) :: r(n/2),Ri(n/2),P(n/2),V(n/2),T(n/2),T1(n/2),T2(n/2),&
           S(n/2)
@@ -3925,14 +3925,14 @@ CONTAINS
           WRITE(*,'(a,ES12.3)') 'An approximate lower bound for the condition number ', &
               ConditionEstimate( m, A, x, b )
           WRITE(*,'(a,ES12.3)') 'The 2-norm of the solution: ', &
-              ComplexNorm( m, x )          
+              ComplexNorm( m, x )
           EXIT
         END IF
 
         T(1:m) = S(1:m)
 
         CALL CRS_ComplexLUSolve2( m, A, T )
-           
+
         T2(1:m) = T(1:m)
         CALL ComplexMatrixVectorProduct( A, T2, T )
         omega = ComplexDotProduct( m,T,S ) / ComplexDotProduct( m,T,T )
@@ -3952,7 +3952,7 @@ CONTAINS
           WRITE(*,'(a,ES12.3)') 'An approximate lower bound for the condition number ', &
               ConditionEstimate( m, A, x, b )
           WRITE(*,'(a,ES12.3)') 'The 2-norm of the solution: ', &
-              ComplexNorm( m, x )              
+              ComplexNorm( m, x )
           EXIT
         END IF
       END DO
@@ -3985,7 +3985,7 @@ CONTAINS
 !
 !******************************************************************************
 !------------------------------------------------------------------------------
- 
+
     TYPE(Matrix_t), POINTER :: A
     INTEGER :: N
     COMPLEX(KIND=dp) :: b(N)
@@ -3996,7 +3996,7 @@ CONTAINS
     INTEGER :: i,j
     COMPLEX(KIND=dp) :: x, s
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
-    
+
 !------------------------------------------------------------------------------
 
     Diag => A % ILUDiag
@@ -4076,7 +4076,7 @@ CONTAINS
   SUBROUTINE ComplexMatrixVectorProduct2( A,u,v,dim )
 !------------------------------------------------------------------------------
 !
-!   The computation of a specific matrix-vector product for preconditioning  
+!   The computation of a specific matrix-vector product for preconditioning
 !
 !------------------------------------------------------------------------------
 
@@ -4096,19 +4096,19 @@ CONTAINS
 
     Rows   => A % Rows
     Cols   => A % Cols
-    Diag   => A % Diag 
+    Diag   => A % Diag
     Values => A % Values
 
-    v(1:n) = u(1:n) 
+    v(1:n) = u(1:n)
 
     DO k=1,q
       DO p=1,dim
         i = (k-1)*(dim+2)+p
-        DO j = Rows(2*i-1)+2*dim, Rows(2*i)-1, 2*(dim+2)       
+        DO j = Rows(2*i-1)+2*dim, Rows(2*i)-1, 2*(dim+2)
           s = CMPLX( Values(j), -Values(j+1), kind=dp )
           v(i) = v(i) - s * u((Cols(j)+1)/2)
         END DO
-        DO j = Rows(2*i-1)+2*(dim+1), Rows(2*i)-1, 2*(dim+2)       
+        DO j = Rows(2*i-1)+2*(dim+1), Rows(2*i)-1, 2*(dim+2)
           s = CMPLX( Values(j), -Values(j+1), kind=dp )
           v(i) = v(i) - s * u((Cols(j)+1)/2)
         END DO
@@ -4127,26 +4127,26 @@ CONTAINS
 !-----------------------------------------------------------------------------------
   SUBROUTINE VelocitySolve( l, n, A, x, b, dim, MaxRounds, Tol, StoppingCriterionType )
 !-----------------------------------------------------------------------------------
-!   This subroutine solves the velocity preconditioning system without requiring 
+!   This subroutine solves the velocity preconditioning system without requiring
 !   that the assembly has been made for the preconditioning system. The required
 !   matrix-vector products are performed by extracting the required entries from
 !   the primary coefficient matrix A. This version uses diagonal preconditioning.
-!----------------------------------------------------------------------------------- 
+!-----------------------------------------------------------------------------------
     INTEGER :: l   ! polynomial degree
-    INTEGER :: n, MaxRounds, dim  
+    INTEGER :: n, MaxRounds, dim
     TYPE(Matrix_t), POINTER :: A
     COMPLEX(KIND=dp) :: x(n), b(n)
     REAL(KIND=dp) :: Tol
-    INTEGER, OPTIONAL :: StoppingCriterionType 
+    INTEGER, OPTIONAL :: StoppingCriterionType
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal 
+    COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal
     REAL(KIND=dp) :: rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
         delta = 1.0d-2, bnrm, bw_errorind, tottime
     INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round, &
         IluOrder
     COMPLEX(KIND=dp) :: work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
         alpha, beta, omega, rho0, rho1, sigma, varrho, hatgamma
-    LOGICAL rcmp, xpdt, GotIt, BackwardError  
+    LOGICAL rcmp, xpdt, GotIt, BackwardError
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
     tottime = CPUTime()
@@ -4160,7 +4160,7 @@ CONTAINS
     zone =  dcmplx( 1.0d0,0.0d0)
     work = dcmplx( 0.0d0, 0.0d0 )
     rwork = dcmplx( 0.0d0, 0.0d0 )
-    
+
     rr = 1
     r = rr+1
     u = r+(l+1)
@@ -4177,7 +4177,7 @@ CONTAINS
     work(1:n,r) = b(1:n) - work(1:n,r)
     bnrm = dznrm2(n, b(1:n), 1)
 
-    work(1:n,rr) = work(1:n,r) 
+    work(1:n,rr) = work(1:n,r)
     work(1:n,bp) = work(1:n,r)
     work(1:n,xp) = x(1:n)
     x(1:n) = zzero
@@ -4185,7 +4185,7 @@ CONTAINS
     rnrm = rnrm0
     mxnrmx = rnrm0
     mxnrmr = rnrm0
-    
+
     alpha = zzero
     omega = zone
     sigma = zone
@@ -4193,8 +4193,8 @@ CONTAINS
 
     Round = 0
     errorind = 1.0d0
-    DO WHILE ( errorind > Tol .AND. Round < MaxRounds) 
-      Round = Round + 1 
+    DO WHILE ( errorind > Tol .AND. Round < MaxRounds)
+      Round = Round + 1
       !-------------------------
       ! --- The BiCG part ---
       !-------------------------
@@ -4213,8 +4213,8 @@ CONTAINS
         t(1:n) = work(1:n,u+k-1)
         !CALL CRS_ComplexLUSolve2( n, A, t )
         CALL DiagonalVelocityPreconditioning( A, t, dim)
-        !CALL ComplexMatrixVectorProduct( A, t, work(1:n,u+k) ) 
-        CALL ComplexMatrixVelocityVectorProduct( A, t, work(1:n,u+k), dim ) 
+        !CALL ComplexMatrixVectorProduct( A, t, work(1:n,u+k) )
+        CALL ComplexMatrixVelocityVectorProduct( A, t, work(1:n,u+k), dim )
         sigma = zdotc(n, work(1:n,rr), 1, work(1:n,u+k), 1)
         IF (sigma == zzero) THEN
           CALL Fatal( 'ComplexBiCGStab(l)', 'Breakdown error.' )
@@ -4226,9 +4226,9 @@ CONTAINS
         ENDDO
         t(1:n) = work(1:n,r+k-1)
         !CALL CRS_ComplexLUSolve2( n, A, t )
-        CALL DiagonalVelocityPreconditioning( A, t, dim) 
+        CALL DiagonalVelocityPreconditioning( A, t, dim)
         !CALL ComplexMatrixVectorProduct( A, t, work(1:n,r+k) )
-        CALL ComplexMatrixVelocityVectorProduct( A, t, work(1:n,r+k), dim )  
+        CALL ComplexMatrixVelocityVectorProduct( A, t, work(1:n,r+k), dim )
         rnrm = dznrm2(n, work(1:n,r), 1)
         mxnrmx = MAX (mxnrmx, rnrm)
         mxnrmr = MAX (mxnrmr, rnrm)
@@ -4240,7 +4240,7 @@ CONTAINS
 
       DO i=1,l+1
         DO j=1,i
-          rwork(i,j) = zdotc(n, work(1:n,r+i-1), 1, work(1:n,r+j-1),1 ) 
+          rwork(i,j) = zdotc(n, work(1:n,r+i-1), 1, work(1:n,r+j-1),1 )
         END DO
       END DO
       DO j=2,l+1
@@ -4254,13 +4254,13 @@ CONTAINS
       ! --- tilde r0 and tilde rl (small vectors)
 
       rwork(1,y0) = -zone
-      rwork(2:l,y0) = rwork(2:l,z) 
+      rwork(2:l,y0) = rwork(2:l,z)
       CALL zgetrs('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
           rwork(2:l,y0), l-1, stat)
       rwork(l+1,y0) = zzero
 
       rwork(1,yl) = zzero
-      rwork(2:l,yl) = rwork(2:l,z+l) 
+      rwork(2:l,yl) = rwork(2:l,z+l)
       CALL zgetrs ('n', l-1, 1, rwork(2:l,zz+1:zz+l-1), l-1, iwork, &
           rwork(2:l,yl), l-1, stat)
       rwork(l+1,yl) = -zone
@@ -4308,7 +4308,7 @@ CONTAINS
           ! PRINT *, 'Performing residual update...'
           t(1:n) = x(1:n)
           !CALL CRS_ComplexLUSolve2( n, A, t )
-          CALL DiagonalVelocityPreconditioning( A, t, dim)         
+          CALL DiagonalVelocityPreconditioning( A, t, dim)
           !CALL ComplexMatrixVectorProduct( A, t, work(1:n,r) )
           CALL ComplexMatrixVelocityVectorProduct( A, t, work(1:n,r), dim )
           work(1:n,r) = work(1:n,bp) - work(1:n,r)
@@ -4324,14 +4324,14 @@ CONTAINS
       ENDIF
 
       IF (rcmp) THEN
-        IF (xpdt) THEN       
+        IF (xpdt) THEN
           t(1:n) = work(1:n,xp)
         ELSE
-          t(1:n) = t(1:n) + work(1:n,xp)  
+          t(1:n) = t(1:n) + work(1:n,xp)
         END IF
       ELSE
         t(1:n) = x(1:n)
-        !CALL CRS_ComplexLUSolve2( n, A, t ) 
+        !CALL CRS_ComplexLUSolve2( n, A, t )
         CALL DiagonalVelocityPreconditioning( A, t, dim)
         t(1:n) =  t(1:n) + work(1:n,xp)
       END IF
@@ -4339,7 +4339,7 @@ CONTAINS
       ! bw_errorind = StoppingCriterion( n, A, t, b, work(1:n,r) )
       errorind = rnrm/bnrm
       WRITE(*,'(I4,ES12.3,ES12.3)') Round, errorind
-      
+
       !IF (BackwardError) errorind = bw_errorind
 
     END DO
@@ -4354,7 +4354,7 @@ CONTAINS
     !WRITE(*,'(a,ES12.3)') 'An approximate lower bound for the condition number ', &
     !    ConditionEstimate( n, A, x, b )
     WRITE(*,'(a,ES12.3)') 'The 2-norm of the solution: ', &
-        ComplexNorm( n, x )  
+        ComplexNorm( n, x )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE VelocitySolve
@@ -4382,7 +4382,7 @@ CONTAINS
 !   The computation of a specific matrix-vector product needed in preconditioning.
 !   The subroutine computes the matrix-vector product v = Au where A is
 !   the coefficient matrix for unknown velocities occupying
-!   the (1,1) block of the coefficient matrix K. 
+!   the (1,1) block of the coefficient matrix K.
 !
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), DIMENSION(*) :: u, v
@@ -4402,16 +4402,16 @@ CONTAINS
     Cols   => K % Cols
     Values => K % Values
 
-    v(1:dim*q) = CMPLX( 0.0d0, 0.0d0, kind=dp) 
+    v(1:dim*q) = CMPLX( 0.0d0, 0.0d0, kind=dp)
 
     DO m=1,q
       DO p=1,dim
         i = (m-1)*(dim+2)+p
         DO l = 1,dim
-          DO j = Rows(2*i-1)+2*(l-1), Rows(2*i)-1, 2*(dim+2)       
+          DO j = Rows(2*i-1)+2*(l-1), Rows(2*i)-1, 2*(dim+2)
             s = CMPLX( Values(j), -Values(j+1), kind=dp )
             t = (Cols(j)+1)/2
-            v((m-1)*dim+p) = v((m-1)*dim+p) + s * u( (t-l)/(dim+2)*dim+p )  
+            v((m-1)*dim+p) = v((m-1)*dim+p) + s * u( (t-l)/(dim+2)*dim+p )
           END DO
         END DO
       END DO
@@ -4428,10 +4428,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !
 !   This subroutine performs a specific diagonal preconditioning needed in
-!   solving the velocities. The subroutine computes the matrix-vector product 
-!   v = inv(P)* v where P is the diagonal matrix consisting of the diagonal 
+!   solving the velocities. The subroutine computes the matrix-vector product
+!   v = inv(P)* v where P is the diagonal matrix consisting of the diagonal
 !   entries of the coefficient matrix for unknown velocities occupying
-!   the (1,1) block of the coefficient matrix K. 
+!   the (1,1) block of the coefficient matrix K.
 !
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), DIMENSION(*) :: v
@@ -4447,14 +4447,14 @@ CONTAINS
     n = K % NumberOfRows / 2
     q = n/(dim+2)
 
-    Diag   => K % Diag 
+    Diag   => K % Diag
     Values => K % Values
 
     DO j=1,q
       DO p=1,dim
         i = (j-1)*(dim+2)+p
         s = CMPLX( Values(Diag(2*i-1)), -Values(Diag(2*i-1)+1), kind=dp )
-        v((j-1)*dim+p) = v((j-1)*dim+p) / s  
+        v((j-1)*dim+p) = v((j-1)*dim+p) / s
       END DO
     END DO
 
@@ -4535,11 +4535,11 @@ CONTAINS
                CStiff((p-1)*dim+i, (q-1)*dim+i) = &
                    CStiff((p-1)*dim+i, (q-1)*dim+i) + &
                    CMPLX( 0.0d0, -2*mu/(AngularFrequency*rho0), KIND=dp ) * 1/r**2 * &
-                   Basis(q) * Basis(p) * s  
+                   Basis(q) * Basis(p) * s
              END IF
 
              CStiff((p-1)*dim+i,(q-1)*dim+i) = CStiff((p-1)*dim+i,(q-1)*dim+i) + &
-                 s * CMPLX(1.0d0, 0.0d0, KIND=dp ) * Basis(q) * Basis(p)             
+                 s * CMPLX(1.0d0, 0.0d0, KIND=dp ) * Basis(q) * Basis(p)
            END DO
          END DO
        END DO
@@ -4603,7 +4603,7 @@ CONTAINS
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, ddBasisddx, .FALSE. )
-      
+
       s = IP % s(t) * detJ
       IF (CoordSys == AxisSymmetric) THEN
         r = SUM( Basis * Nodes % x(1:n) )
@@ -4689,7 +4689,7 @@ CONTAINS
       DO p=1,n
         DO q=1,n
           CStiff(p,q) = CStiff(p,q) + s * CMPLX(1.0d0, 0.0d0, KIND=dp) * &
-              Basis(q) * Basis(p)             
+              Basis(q) * Basis(p)
         END DO
       END DO
     END DO
@@ -4756,7 +4756,7 @@ CONTAINS
         !-----------------------------------------------
         ! Material parameters at the integration point:
         !----------------------------------------------
-        CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+        CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
         kappa = SUM( Conductivity(1:n) * Basis(1:n) )
         mu  = SUM( Basis(1:n) * Viscosity(1:n) )
         rho0  = SUM( Basis(1:n) * Density(1:n) )
@@ -4765,7 +4765,7 @@ CONTAINS
         la = SUM( Basis(1:n) * Lambda(1:n) )
 
         C1 = CMPLX( 1.0d0,AngularFrequency/P0*(2.0d0*mu+la), kind=dp ) / &
-            CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )  
+            CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )
 
         C2 = CMPLX( rho0*AngularFrequency,0.0d0, kind=dp) / &
             CMPLX( P0/AngularFrequency, la, kind=dp )
@@ -4874,7 +4874,7 @@ CONTAINS
       rho0 = SUM( Density(1:n) * Basis(1:n) )
       Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       Impedance1 = 1.0d0/(AngularFrequency*rho0) * SUM( Impedance(1,1:n) * Basis(1:n) )
-      Impedance2 = 1.0d0/(AngularFrequency*rho0) * SUM( Impedance(2,1:n) * Basis(1:n) ) 
+      Impedance2 = 1.0d0/(AngularFrequency*rho0) * SUM( Impedance(2,1:n) * Basis(1:n) )
       !---------------------------------------------
       ! the stiffness matrix...
       !---------------------------------------------
@@ -4883,7 +4883,7 @@ CONTAINS
           DO q=1,n
             DO j=1,dim
               CStiff( (p-1)*DIM+i, (q-1)*DIM+j) = &
-                  CStiff( (p-1)*DIM+i, (q-1)*DIM+j) + &  
+                  CStiff( (p-1)*DIM+i, (q-1)*DIM+j) + &
                   CMPLX(-Impedance2, Impedance1, kind=dp) * &
                   Basis(q) * Normal(j) * Basis(p) * Normal(i) * s
             END DO
@@ -4959,14 +4959,14 @@ CONTAINS
       !-----------------------------------------------
       ! Material parameters at the integration point:
       !----------------------------------------------
-      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
       kappa = SUM( Conductivity(1:n) * Basis(1:n) )
       rho0  = SUM( Basis(1:n) * Density(1:n) )
       gamma  = SUM( Basis(1:n) * HeatRatio(1:n) )
 
       K1 = CMPLX( 0.0d0, kappa/(rho0*AngularFrequency*(gamma-1.0d0)*CV), kind=dp )
       ZT = CMPLX( SUM( Impedance(3,1:n) * Basis(1:n) ), SUM( Impedance(4,1:n) * Basis(1:n) ), kind=dp )
-      
+
       DO p=1,n
         DO q=1,n
           CStiff((p-1)*2+1,(q-1)*2+1) = CStiff((p-1)*2+1,(q-1)*2+1) - &
@@ -4974,7 +4974,7 @@ CONTAINS
         END DO
       END DO
     END DO
-   
+
     DO p=1,n
       DO i=1,2
         DO q=1,n
@@ -5014,7 +5014,7 @@ CONTAINS
     TYPE(Element_t), TARGET :: Element
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
-    COMPLEX(kind=dp) :: CStiff(dim*n,dim*n)    
+    COMPLEX(kind=dp) :: CStiff(dim*n,dim*n)
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), DetJ, r, &
         CV, gamma, rho0, T0, WallT0, C1, s, &
         Normal(3), Tangent1(3), Tangent2(3)
@@ -5042,7 +5042,7 @@ CONTAINS
       !-----------------------------------------------
       ! Material parameters etc. at the integration point:
       !----------------------------------------------
-      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
       gamma = SUM( HeatRatio(1:n) * Basis(1:n) )
       rho0 = SUM( Density(1:n) * Basis(1:n) )
       T0 =  SUM( Temperature(1:n) * Basis(1:n) )
@@ -5148,7 +5148,7 @@ CONTAINS
       !-----------------------------------------------
       ! Material parameters at the integration point:
       !----------------------------------------------
-      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
       gamma = SUM( HeatRatio(1:n) * Basis(1:n) )
       rho0 = SUM( Density(1:n) * Basis(1:n) )
       kappa = SUM( Conductivity(1:n) * Basis(1:n) )
@@ -5159,7 +5159,7 @@ CONTAINS
       C2 = 1/kappa*SlipCoefficient2/(2.0d0-SlipCoefficient2) * &
           (gamma+1.0d0)/2.0d0 * rho0 * CV * &
           SQRT(2.0d0*(gamma-1.0d0)*CV*(T0+WallT0)/PI)
-      
+
       DO p=1,n
         DO q=1,n
           CStiff((p-1)*2+1,(q-1)*2+1) = CStiff((p-1)*2+1,(q-1)*2+1) + &
@@ -5167,7 +5167,7 @@ CONTAINS
         END DO
       END DO
     END DO
-   
+
     DO p=1,n
       DO i=1,2
         DO q=1,n
@@ -5212,11 +5212,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(2*n), dBasisdx(2*n,3), ddBasisddx(n,3,3)
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, L(6), &
-        CV, gamma, rho0, P0, T0, kappa, mu, la, f1, f2, K1, K2, K3, r  
+        CV, gamma, rho0, P0, T0, kappa, mu, la, f1, f2, K1, K2, K3, r
     COMPLEX(KIND=dp) :: LSTIFF(n*(Dofs-2),n*(Dofs-2)), LFORCE(n*(Dofs-2)), A, &
         SchurConst, C1
 
-    INTEGER :: i, j, p, q, t, DIM, NBasis, VelocityDofs, & 
+    INTEGER :: i, j, p, q, t, DIM, NBasis, VelocityDofs, &
         VelocityComponents
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
 
@@ -5239,11 +5239,11 @@ CONTAINS
     IF ( Bubbles .OR. Mini_Bubbles) THEN
       IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints2 )
       IF (Mini_Bubbles) THEN
-        NBasis = n+1 
+        NBasis = n+1
       ELSE
         NBasis = 2*n
       ENDIF
-    ELSE       
+    ELSE
       NBasis = n + nb
       IntegStuff = GaussPoints( Element, RelOrder = RelOrder )
     END IF
@@ -5260,32 +5260,32 @@ CONTAINS
        IF (Mini_Bubbles .OR. MyBubbles) THEN
          stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
              Basis, dBasisdx, ddBasisddx, .FALSE., .FALSE. )
-        
+
          dBasisdx(n+1:,:) = 0._dp
-         SELECT CASE( Element % TYPE % ElementCode ) 
-           
+         SELECT CASE( Element % TYPE % ElementCode )
+
          CASE(504)
            Basis(n+1) = 1.0d0
            DO i=1,n
              Basis(n+1) = Basis(n+1)*Basis(i)
            END DO
-       
+
            DO j=1,dim
              dBasisdx(n+1,j) = dBasisdx(1,j)*Basis(2)*Basis(3)*Basis(4) + &
                  dBasisdx(2,j)*Basis(1)*Basis(3)*Basis(4) + &
                  dBasisdx(3,j)*Basis(1)*Basis(2)*Basis(4) + &
-                 dBasisdx(4,j)*Basis(1)*Basis(2)*Basis(3)  
+                 dBasisdx(4,j)*Basis(1)*Basis(2)*Basis(3)
            END DO
-          
+
          CASE(404)
-           Basis(n+1) = Basis(1)*Basis(3)           
+           Basis(n+1) = Basis(1)*Basis(3)
            DO j=1,dim
              dBasisdx(n+1,j) = dBasisdx(1,j)*Basis(3) + &
                  dBasisdx(3,j)*Basis(1)
            END DO
-          
+
          CASE(303)
-           Basis(n+1) = Basis(1)*Basis(2)*Basis(3)           
+           Basis(n+1) = Basis(1)*Basis(2)*Basis(3)
            DO j=1,dim
              dBasisdx(n+1,j) = dBasisdx(1,j)*Basis(2)*Basis(3) + &
                  dBasisdx(2,j)*Basis(1)* Basis(3) + &
@@ -5301,13 +5301,13 @@ CONTAINS
                  ( Basis(1)+Basis(4) ) * ( Basis(2)+Basis(5) ) * ( Basis(3)+Basis(6) ) + &
                  ( dBasisdx(4,j)+dBasisdx(5,j)+dBasisdx(6,j) ) * &
                  ( Basis(1)+Basis(2)+Basis(3) ) * &
-                 ( Basis(1)+Basis(4) ) * ( Basis(2)+Basis(5) ) * ( Basis(3)+Basis(6) ) + &  
+                 ( Basis(1)+Basis(4) ) * ( Basis(2)+Basis(5) ) * ( Basis(3)+Basis(6) ) + &
                  ( Basis(1)+Basis(2)+Basis(3) ) * ( Basis(4)+Basis(5)+Basis(6) ) * &
                  ( dBasisdx(1,j)+dBasisdx(4,j) ) * ( Basis(2)+Basis(5) ) * ( Basis(3)+Basis(6) ) + &
                  ( Basis(1)+Basis(2)+Basis(3) ) * ( Basis(4)+Basis(5)+Basis(6) ) * &
                  ( dBasisdx(2,j)+dBasisdx(5,j) ) * ( Basis(1)+Basis(4) ) * ( Basis(3)+Basis(6) ) + &
                  ( Basis(1)+Basis(2)+Basis(3) ) * ( Basis(4)+Basis(5)+Basis(6) ) * &
-                 ( dBasisdx(3,j)+dBasisdx(6,j) ) * ( Basis(1)+Basis(4) ) * ( Basis(2)+Basis(5) ) 
+                 ( dBasisdx(3,j)+dBasisdx(6,j) ) * ( Basis(1)+Basis(4) ) * ( Basis(2)+Basis(5) )
            END DO
 
          CASE(808)
@@ -5316,32 +5316,32 @@ CONTAINS
              dBasisdx(n+1,j) = dBasisdx(1,j)*Basis(7) + &
                  dBasisdx(7,j)*Basis(1)
            END DO
-          
+
          CASE DEFAULT
            WRITE( Message, '(a,i4,a)' ) 'Mini-bubbles for element ', &
                Element % TYPE % ElementCode, ' are not implemented.'
            CALL Error( 'Acoustics', Message )
-           
+
          END SELECT
-        
+
          IF (MyBubbles) THEN
-            ! Second derivatives of bubble function... 
+            ! Second derivatives of bubble function...
             SELECT CASE( Element % TYPE % ElementCode )
-            
+
             CASE(303)
                BubbleLaplacian = 0.0d0
                DO j = 1,dim
                   BubbleLaplacian = BubbleLaplacian + &
                        2.0d0 * dBasisdx(1,j) * dBasisdx(2,j) * Basis(3) + &
-                       2.0d0 * dBasisdx(1,j) * dBasisdx(3,j) * Basis(2) + & 
-                       2.0d0 * dBasisdx(2,j) * dBasisdx(3,j) * Basis(1)                       
+                       2.0d0 * dBasisdx(1,j) * dBasisdx(3,j) * Basis(2) + &
+                       2.0d0 * dBasisdx(2,j) * dBasisdx(3,j) * Basis(1)
                END DO
-                
+
             CASE DEFAULT
                WRITE( Message, '(a,i4,a)' ) 'Second derivatives for element ', &
                     Element % TYPE % ElementCode, ' are not implemented.'
-               CALL Error( 'Acoustics', Message ) 
-               
+               CALL Error( 'Acoustics', Message )
+
             END SELECT
          END IF
 
@@ -5357,17 +5357,17 @@ CONTAINS
 
        ENDIF
 
-       s = s * SqrtElementMetric 
+       s = s * SqrtElementMetric
        IF (AxialSymmetry) THEN
          r = SUM( Basis(1:n) * Nodes % x(1:n) )
          s = r * s
        END IF
 
        !------------------------------------------------------------------------------
-       !  Problem parameters and the real and imaginary part of the 
+       !  Problem parameters and the real and imaginary part of the
        !  load at the integration point
        !------------------------------------------------------------------------------
-       CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+       CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
        gamma = SUM( HeatRatio(1:n) * Basis(1:n) )
        rho0 = SUM( Density(1:n) * Basis(1:n) )
        !       P0 = SUM( Pressure(1:n) * Basis(1:n) )
@@ -5384,11 +5384,11 @@ CONTAINS
        K3 = 1.0d0/AngularFrequency**2
 
        SchurConst = CMPLX( 1.0d0,AngularFrequency/P0*(2.0d0*mu+la), kind=dp ) / &
-          CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )  
-       k = 1.0d0/SQRT( gamma*P0/(rho0*AngularFrequency**2) )   
+          CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )
+       k = 1.0d0/SQRT( gamma*P0/(rho0*AngularFrequency**2) )
 
        C1 = CMPLX( 1.0d0,AngularFrequency/P0*(2.0d0*mu+la), kind=dp ) / &
-            CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )  
+            CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )
 
        f1 = K3*SUM( HeatSource(1,1:n) * Basis(1:n) )
        f2 = K3*SUM( HeatSource(2,1:n) * Basis(1:n) )
@@ -5399,8 +5399,8 @@ CONTAINS
        !------------------------------------------------------------------------------
        !  The stiffness matrix and load vector...
        !  The following is the contribution from the heat equation and pressure
-       !  equation, i.e. the part arising from the loop over the test functions 
-       !  for temperature and pressure 
+       !  equation, i.e. the part arising from the loop over the test functions
+       !  for temperature and pressure
        !------------------------------------------------------------------------------
        DO p=1,N
          StabTerms(p) = StabTerms(p) + s * Basis(p)
@@ -5412,12 +5412,12 @@ CONTAINS
              !-----------------------------------------------
              LSTIFF( p*(DIM+2), (q-1)*(DIM+2)+i) =  &
                  LSTIFF( p*(DIM+2), (q-1)*(DIM+2)+i) + &
-                 CMPLX(0.0d0, 1.0d0, kind=dp) * dBasisdx(q,i) * Basis(p) * s 
+                 CMPLX(0.0d0, 1.0d0, kind=dp) * dBasisdx(q,i) * Basis(p) * s
 
              IF ((i==1) .AND. AxialSymmetry) THEN
                LSTIFF( p*(DIM+2), (q-1)*(DIM+2)+i) =  &
                    LSTIFF( p*(DIM+2), (q-1)*(DIM+2)+i) + &
-                   CMPLX(0.0d0, 1.0d0, kind=dp) * 1/r * Basis(q) * Basis(p) * s 
+                   CMPLX(0.0d0, 1.0d0, kind=dp) * 1/r * Basis(q) * Basis(p) * s
              END IF
 
              A = A + CMPLX( 0.0d0, K1, kind=dp ) * &
@@ -5446,13 +5446,13 @@ CONTAINS
            !-------------------------------------------------------------------------------
            IF (.FALSE.) THEN  !(.NOT. Bubbles) THEN
              LSTIFF( p*(DIM+2), q*(DIM+2) ) = &
-                 LSTIFF( p*(DIM+2), q*(DIM+2) ) - CMPLX( 1.0d0/k**2, 0.0d0, kind=dp) * & 
+                 LSTIFF( p*(DIM+2), q*(DIM+2) ) - CMPLX( 1.0d0/k**2, 0.0d0, kind=dp) * &
                  CMPLX( 1.0d0,AngularFrequency/P0*(2.0d0*mu+la), kind=dp ) / &
                  CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )  * &
-                 s * Basis(q) * Basis(p) 
-            
+                 s * Basis(q) * Basis(p)
+
              LSTIFF( p*(DIM+2), q*(DIM+2)-1 ) = &
-                 LSTIFF( p*(DIM+2), q*(DIM+2)-1 ) - CMPLX( 1.0d0/k**2, 0.0d0, kind=dp) * & 
+                 LSTIFF( p*(DIM+2), q*(DIM+2)-1 ) - CMPLX( 1.0d0/k**2, 0.0d0, kind=dp) * &
                  s * Basis(q) * Basis(p)
            END IF
 
@@ -5475,7 +5475,7 @@ CONTAINS
                IF ((i==1) .AND. AxialSymmetry) THEN
                  LSTIFF( p*(DIM+2), (q-1)*DIM+2*n+i) = &
                      LSTIFF( p*(DIM+2), (q-1)*DIM+2*n+i) + &
-                     CMPLX( 0.0d0, 1.0d0, kind=dp ) * 1/r * Basis(q) * Basis(p) * s  
+                     CMPLX( 0.0d0, 1.0d0, kind=dp ) * 1/r * Basis(q) * Basis(p) * s
                END IF
              END DO
            END DO
@@ -5483,14 +5483,14 @@ CONTAINS
        END IF
 
        !------------------------------------------------------------------------------
-       !  The following is the contribution from the NS-equation, i.e. the 
-       !  part arising from the loop over the test functions for velocity 
+       !  The following is the contribution from the NS-equation, i.e. the
+       !  part arising from the loop over the test functions for velocity
        !------------------------------------------------------------------------------
        DO i=1,DIM
          DO p=1,n
            DO q=1,n
              !------------------------------------------------------------------------------
-             !  Coefficients for the nodal temperatures...               
+             !  Coefficients for the nodal temperatures...
              !------------------------------------------------------------------------------
              LSTIFF( (p-1)*(DIM+2)+i, (q-1)*(DIM+2)+DIM+1 ) = &
                  LSTIFF( (p-1)*(DIM+2)+i, (q-1)*(DIM+2)+DIM+1 ) + &
@@ -5501,7 +5501,7 @@ CONTAINS
                    CMPLX( 0.0d0, 1.0d0, kind=dp ) * 1/r * Basis(p) * Basis(q) * s
              END IF
              !------------------------------------------------------------------------------
-             !  Coefficients for the nodal pressures...               
+             !  Coefficients for the nodal pressures...
              !------------------------------------------------------------------------------
              LSTIFF( (p-1)*(DIM+2)+i, q*(DIM+2) ) = &
                  LSTIFF( (p-1)*(DIM+2)+i, q*(DIM+2) ) + &
@@ -5509,10 +5509,10 @@ CONTAINS
              IF ((i==1) .AND. AxialSymmetry) THEN
                LSTIFF( (p-1)*(DIM+2)+i, q*(DIM+2) ) = &
                    LSTIFF( (p-1)*(DIM+2)+i, q*(DIM+2) ) + &
-                   CMPLX( 0.0d0, 1.0d0, kind=dp ) * 1/r * Basis(p) * Basis(q) * s  
+                   CMPLX( 0.0d0, 1.0d0, kind=dp ) * 1/r * Basis(p) * Basis(q) * s
              END IF
              !------------------------------------------------------------------------------
-             !  Coefficients for the nodal velocities...             
+             !  Coefficients for the nodal velocities...
              !------------------------------------------------------------------------------
              LSTIFF( (p-1)*(DIM+2)+i, (q-1)*(DIM+2)+i) = &
                  LSTIFF( (p-1)*(DIM+2)+i,(q-1)*(DIM+2)+i) + &
@@ -5521,7 +5521,7 @@ CONTAINS
 
              !------------------------------------------------------------------------------
              !  grad(v)grav(w)-type terms
-             !------------------------------------------------------------------------------                
+             !------------------------------------------------------------------------------
              DO j=1,DIM
                LSTIFF((p-1)*(DIM+2)+i, (q-1)*(DIM+2)+i) = &
                    LSTIFF((p-1)*(DIM+2)+i, (q-1)*(DIM+2)+i) + &
@@ -5536,7 +5536,7 @@ CONTAINS
              IF ((i==1) .AND. AxialSymmetry) THEN
                LSTIFF((p-1)*(DIM+2)+i, (q-1)*(DIM+2)+i) = &
                    LSTIFF((p-1)*(DIM+2)+i, (q-1)*(DIM+2)+i) + &
-                   CMPLX( 0.0d0, -2*mu/(AngularFrequency*rho0), kind=dp ) * 1/r**2 * Basis(q) * Basis(p) * s  
+                   CMPLX( 0.0d0, -2*mu/(AngularFrequency*rho0), kind=dp ) * 1/r**2 * Basis(q) * Basis(p) * s
              END IF
            END DO
            !------------------------------------------------------------------------------
@@ -5552,7 +5552,7 @@ CONTAINS
            DO p=1,n
              DO q=n+1,NBasis
                !------------------------------------------------------------------------------
-               !  coefficients for the nodal velocities             
+               !  coefficients for the nodal velocities
                !------------------------------------------------------------------------------
                LSTIFF( (p-1)*(DIM+2)+i, (q-1)*DIM+2*n+i) = &
                    LSTIFF( (p-1)*(DIM+2)+i,(q-1)*DIM+2*n+i) + &
@@ -5561,7 +5561,7 @@ CONTAINS
 
                !------------------------------------------------------------------------------
                !  grad(v)grav(w)-type terms
-               !------------------------------------------------------------------------------                
+               !------------------------------------------------------------------------------
                DO j=1,DIM
                  LSTIFF((p-1)*(DIM+2)+i, (q-1)*DIM+2*n+i) = &
                      LSTIFF((p-1)*(DIM+2)+i, (q-1)*DIM+2*n+i) + &
@@ -5576,7 +5576,7 @@ CONTAINS
                IF ((i==1) .AND. AxialSymmetry) THEN
                  LSTIFF((p-1)*(DIM+2)+i, (q-1)*DIM+2*n+i) = &
                      LSTIFF((p-1)*(DIM+2)+i, (q-1)*DIM+2*n+i) + &
-                     CMPLX( 0.0d0, -2*mu/(AngularFrequency*rho0), kind=dp ) * 1/r**2 * Basis(q) * Basis(p) * s 
+                     CMPLX( 0.0d0, -2*mu/(AngularFrequency*rho0), kind=dp ) * 1/r**2 * Basis(q) * Basis(p) * s
                END IF
              END DO
            END DO
@@ -5586,7 +5586,7 @@ CONTAINS
            DO p=n+1,NBasis
              DO q=1,n
                !------------------------------------------------------------------------------
-               !  Coefficients for the nodal temperatures               
+               !  Coefficients for the nodal temperatures
                !------------------------------------------------------------------------------
                LSTIFF( (p-1)*DIM+2*n+i, (q-1)*(DIM+2)+DIM+1 ) = &
                    LSTIFF( (p-1)*DIM+2*n+i, (q-1)*(DIM+2)+DIM+1 ) + &
@@ -5597,7 +5597,7 @@ CONTAINS
                      CMPLX( 0.0d0, 1.0d0, kind=dp) * 1/r * Basis(p) * Basis(q) * s
                END IF
                !------------------------------------------------------------------------------
-               !  Coefficients for the nodal pressures...               
+               !  Coefficients for the nodal pressures...
                !------------------------------------------------------------------------------
                LSTIFF( (p-1)*DIM+2*n+i, q*(DIM+2) ) = &
                    LSTIFF( (p-1)*DIM+2*n+i, q*(DIM+2) ) + &
@@ -5605,10 +5605,10 @@ CONTAINS
                IF ((i==1) .AND. AxialSymmetry) THEN
                  LSTIFF( (p-1)*DIM+2*n+i, q*(DIM+2) ) = &
                      LSTIFF( (p-1)*DIM+2*n+i, q*(DIM+2) ) + &
-                     CMPLX( 0.0d0, 1.0d0, kind=dp ) * 1/r * Basis(p) * Basis(q) * s  
+                     CMPLX( 0.0d0, 1.0d0, kind=dp ) * 1/r * Basis(p) * Basis(q) * s
                END IF
                !------------------------------------------------------------------------------
-               !  coefficients for the nodal velocities 
+               !  coefficients for the nodal velocities
                !------------------------------------------------------------------------------
                LSTIFF( (p-1)*DIM+2*n+i, (q-1)*(DIM+2)+i) = &
                    LSTIFF( (p-1)*DIM+2*n+i,(q-1)*(DIM+2)+i) + &
@@ -5617,7 +5617,7 @@ CONTAINS
 
                !------------------------------------------------------------------------------
                !  grad(v)grav(w)-type terms
-               !------------------------------------------------------------------------------                
+               !------------------------------------------------------------------------------
                DO j=1,DIM
                  LSTIFF( (p-1)*DIM+2*n+i, (q-1)*(DIM+2)+i) = &
                      LSTIFF( (p-1)*DIM+2*n+i, (q-1)*(DIM+2)+i) + &
@@ -5645,7 +5645,7 @@ CONTAINS
            DO p=n+1,NBasis
              DO q=n+1,NBasis
                !------------------------------------------------------------------------------
-               !  coefficients for the nodal velocities 
+               !  coefficients for the nodal velocities
                !------------------------------------------------------------------------------
                LSTIFF( (p-1)*DIM+2*n+i, (q-1)*DIM+2*n+i) = &
                    LSTIFF( (p-1)*DIM+2*n+i,(q-1)*DIM+2*n+i) + &
@@ -5654,7 +5654,7 @@ CONTAINS
 
                !------------------------------------------------------------------------------
                !  grad(v)grav(w)-type terms
-               !------------------------------------------------------------------------------                
+               !------------------------------------------------------------------------------
                DO j=1,DIM
                  LSTIFF( (p-1)*DIM+2*n+i, (q-1)*DIM+2*n+i) = &
                      LSTIFF( (p-1)*DIM+2*n+i, (q-1)*DIM+2*n+i) + &
@@ -5670,7 +5670,7 @@ CONTAINS
                END IF
             END DO
            END DO
-         END DO         
+         END DO
        END IF   ! IF (Bubbles)...
 
 
@@ -5678,7 +5678,7 @@ CONTAINS
 
           DO j=1,dim
              LSTIFF( (dim+2)*n+1, (dim+2)*n+1 ) = LSTIFF( (dim+2)*n+1, (dim+2)*n+1 ) + &
-                  dBasisdx(n+1,j) * dBasisdx(n+1,j) * s                
+                  dBasisdx(n+1,j) * dBasisdx(n+1,j) * s
           END DO
 
           DO q=1,n
@@ -5688,7 +5688,7 @@ CONTAINS
 
                 LSTIFF( (dim+2)*n+1, dim*n+2 ) = LSTIFF( (dim+2)*n+1, dim*n+2) + &
                      C1 * CMPLX( 0.0d0, 1.0d0, kind=dp ) * dBasisdx(n+1,j) * dBasisdx(q,j) * s
-                
+
                 LSTIFF( (dim+2)*n+1, (q-1)*(dim+2)+j ) = LSTIFF( (dim+2)*n+1, (q-1)*(dim+2)+j ) - &
                   Basis(q) * dBasisdx(n+1,j)
 
@@ -5711,11 +5711,11 @@ CONTAINS
               CMPLX( 1.0d0,AngularFrequency/P0*(2.0d0*mu+la), kind=dp ) / &
               CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )  * &
               1.0d0/AK * StabTerms(p) * StabTerms(q)
-          
+
           LSTIFF( p*(DIM+2), q*(DIM+2)-1 ) = &
               LSTIFF( p*(DIM+2), q*(DIM+2)-1 ) + CMPLX( 1.0d0/k**2, 0.0d0, kind=dp ) * &
               1.0d0/AK * StabTerms(p) * StabTerms(q)
-          
+
         END DO
       END DO
     END IF
@@ -5725,15 +5725,15 @@ CONTAINS
     ELSE
        IF ( Bubbles .OR. Mini_Bubbles) THEN
           IF (Mini_Bubbles) THEN
-             CALL LCondensateBubbles( n, dim, LSTIFF, LFORCE, 1 )  
+             CALL LCondensateBubbles( n, dim, LSTIFF, LFORCE, 1 )
           ELSE
-             CALL LCondensate( n, dim, LSTIFF, LFORCE ) 
+             CALL LCondensate( n, dim, LSTIFF, LFORCE )
           END IF
        END IF
     END IF
 
 !    if (MyBubbles) then
-!        CALL LCondensateMyBubble( n, dim, LSTIFF, LFORCE )  
+!        CALL LCondensateMyBubble( n, dim, LSTIFF, LFORCE )
 !    end if
 
 
@@ -5844,7 +5844,7 @@ CONTAINS
     TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, Impedance1, Impedance2, &
-        Impedance3, Impedance4, CV, gamma, rho0, P0, T0, kappa, K1, L(6),   & 
+        Impedance3, Impedance4, CV, gamma, rho0, P0, T0, kappa, K1, L(6),   &
         Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), X, Y, Z, Normal(3), r
     COMPLEX(KIND=dp) :: LSTIFF(n*(Dofs-2),n*(Dofs-2)), LFORCE(n*(Dofs-2))
     LOGICAL :: Stat
@@ -5877,7 +5877,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     Problem parameters at the integration point
 !------------------------------------------------------------------------------
-      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
       gamma = SUM( HeatRatio(1:n) * Basis(1:n) )
       rho0 = SUM( Density(1:n) * Basis(1:n) )
       P0 = SUM( Pressure(1:n) * Basis(1:n) )
@@ -5889,9 +5889,9 @@ CONTAINS
       Normal = Normalvector(Element, Nodes, U, V, .TRUE.)
 
       Impedance1 = 1.0d0/(AngularFrequency*rho0) * SUM( Impedance(1,1:n) * Basis(1:n) )
-      Impedance2 = 1.0d0/(AngularFrequency*rho0) * SUM( Impedance(2,1:n) * Basis(1:n) ) 
-      Impedance3 = SUM( Impedance(3,1:n) * Basis(1:n) ) 
-      Impedance4 = SUM( Impedance(4,1:n) * Basis(1:n) ) 
+      Impedance2 = 1.0d0/(AngularFrequency*rho0) * SUM( Impedance(2,1:n) * Basis(1:n) )
+      Impedance3 = SUM( Impedance(3,1:n) * Basis(1:n) )
+      Impedance4 = SUM( Impedance(4,1:n) * Basis(1:n) )
 
       DO i=1,2*DIM
         L(i) = 1.0d0/(AngularFrequency*rho0) * SUM( Load(i,1:n) * Basis(1:n) )
@@ -5968,7 +5968,7 @@ CONTAINS
     TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, Impedance1, Impedance2, &
-        Impedance3, Impedance4, CV, gamma, rho0, P0, T0, kappa, K1, L(6),   & 
+        Impedance3, Impedance4, CV, gamma, rho0, P0, T0, kappa, K1, L(6),   &
         Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), X, Y, Z, Normal(3), r
     COMPLEX(KIND=dp) :: LSTIFF(n*(Dofs-2),n*(Dofs-2)), LFORCE(n*(Dofs-2))
     LOGICAL :: Stat
@@ -6003,7 +6003,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     Problem parameters at the integration point
 !------------------------------------------------------------------------------
-      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
       gamma = SUM( HeatRatio(1:n) * Basis(1:n) )
       rho0 = SUM( Density(1:n) * Basis(1:n) )
       P0 = SUM( Pressure(1:n) * Basis(1:n) )
@@ -6058,7 +6058,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, Impedance1, Impedance2, &
         Impedance3, Impedance4, CV, gamma, rho0, P0, T0, ReV0(3), ImV0(3), &
-        WallT0, kappa, K1, L(6),C1, C2, C3, & 
+        WallT0, kappa, K1, L(6),C1, C2, C3, &
         Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), X, Y, Z, Normal(3), r,  &
         Tangent1(3), Tangent2(3)
     COMPLEX(KIND=dp) :: LSTIFF(n*(Dofs-2),n*(Dofs-2)), LFORCE(n*(Dofs-2))
@@ -6094,14 +6094,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     Problem parameters at the integration point
 !------------------------------------------------------------------------------
-      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
       gamma = SUM( HeatRatio(1:n) * Basis(1:n) )
       rho0 = SUM( Density(1:n) * Basis(1:n) )
       kappa = SUM( Conductivity(1:n) * Basis(1:n) )
       P0 =  SUM( Pressure(1:n) * Basis(1:n) )
       T0 =  SUM( Temperature(1:n) * Basis(1:n) )
       WallT0 = SUM( WallTemperature(1:n) * Basis(1:n) )
-      
+
       DO i=1,3
         ReV0(i) = SUM( WallVelocity((i-1)*2+1,1:n) * Basis(1:n) )
         ImV0(i) = SUM( WallVelocity((i-1)*2+2,1:n) * Basis(1:n) )
@@ -6138,7 +6138,7 @@ CONTAINS
             LFORCE( (p-1)*(DIM+2)+i) = LFORCE( (p-1)*(DIM+2)+i) + &
                 CMPLX(0.0d0, C1, kind=dp) * 1.0d0/(AngularFrequency*rho0) * &
                 CMPLX(ReV0(j),ImV0(j),kind=dp) * &
-                Tangent1(j) * Basis(p) * Tangent1(i) * s 
+                Tangent1(j) * Basis(p) * Tangent1(i) * s
           END DO
         END DO
       END DO
@@ -6157,7 +6157,7 @@ CONTAINS
               LFORCE( (p-1)*(DIM+2)+i) = LFORCE( (p-1)*(DIM+2)+i) + &
                   CMPLX(0.0d0, C1, kind=dp) * 1.0d0/(AngularFrequency*rho0) * &
                   CMPLX(ReV0(j),ImV0(j),kind=dp) * &
-                  Tangent2(j) * Basis(p) * Tangent2(i) * s 
+                  Tangent2(j) * Basis(p) * Tangent2(i) * s
             END DO
           END DO
         END DO
@@ -6178,7 +6178,7 @@ CONTAINS
                LFORCE( (p-1)*(DIM+2)+i) = LFORCE( (p-1)*(DIM+2)+i) + &
                     CMPLX(0.0d0, C3, kind=dp) * 1.0d0/(AngularFrequency*rho0) * &
                     CMPLX(ReV0(j),ImV0(j),kind=dp) * &
-                    Normal(j) * Basis(p) * Normal(i) * s 
+                    Normal(j) * Basis(p) * Normal(i) * s
             END DO
          END DO
       END DO
@@ -6231,7 +6231,7 @@ CONTAINS
   SUBROUTINE UpdateGlobalPreconditioner( StiffMatrix, LocalStiffMatrix, &
       n, NDOFs, NodeIndexes )
 !------------------------------------------------------------------------------
-! 
+!
 ! Add element matrices to global matrices
 !
 ! TYPE(Matrix_t), POINTER :: StiffMatrix
@@ -6245,7 +6245,7 @@ CONTAINS
 !
 ! INTEGER :: NodeIndexes(:)
 !   INPUT: Element node to global node numbering mapping
-! 
+!
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), POINTER :: StiffMatrix
 
@@ -6300,7 +6300,7 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Matrix_t), POINTER :: StiffMatrix
 
-    CHARACTER(LEN=*) :: Name 
+    CHARACTER(LEN=*) :: Name
     INTEGER :: DOF, NDOFs, Perm(:)
 !------------------------------------------------------------------------------
 
@@ -6336,7 +6336,7 @@ CONTAINS
               k = Perm(NodeIndexes(j))
               IF ( k > 0 ) THEN
                 k = NDOFs * (k-1) + DOF
-                s = 1.0d0 
+                s = 1.0d0
                 CALL ZeroRow( StiffMatrix,k )
                 CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 * s )
               END IF
@@ -6418,7 +6418,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-               
+
                 stat = ElementInfo( CurrentElement, ElementNodes, u, v, w, &
                      SqrtElementMetric, Basis, dBasisdx, ddBasisddx, &
                      .FALSE., .FALSE. )
@@ -6433,12 +6433,12 @@ CONTAINS
                    zpos = SUM( ElementNodes % z(1:n) * Basis(1:n) )
                    s = 2*PI
                 END IF
-         
+
                 CALL CoordinateSystemInfo( Metric, SqrtMetric, Symb, dSymb, &
                      xpos, ypos, zpos)
- 
+
                 s = s * SqrtMetric * SqrtElementMetric * IntegStuff % s(j)
-        
+
 !------------------------------------------------------------------------------
 
                 PReal = SUM( Flow( DOFs * ( FlowPerm(NodeIndexes) ) &
@@ -6512,12 +6512,12 @@ CONTAINS
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n
     REAL(KIND=dp) :: WallVelo(:,:)
-    COMPLEX(KIND=dp) :: res   
+    COMPLEX(KIND=dp) :: res
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
     INTEGER :: t
-    REAL(KIND=dp) :: AK, SqrtElementMetric,U,V,W,S 
+    REAL(KIND=dp) :: AK, SqrtElementMetric,U,V,W,S
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),ddBasisddx(n,3,3)
     REAL(KIND=dp) :: Normal(3)
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
@@ -6581,11 +6581,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(2*n), dBasisdx(2*n,3), ddBasisddx(n,3,3)
     REAL(KIND=dp) :: SqrtElementMetric, U, V, W, S, L(6), &
-        CV, gamma, rho0, P0, T0, kappa, mu, la, f1, f2, K1, K2, K3, k  
+        CV, gamma, rho0, P0, T0, kappa, mu, la, f1, f2, K1, K2, K3, k
     COMPLEX(KIND=dp) :: LSTIFF(n*(Dofs-2),n*(Dofs-2)), LFORCE(n*(Dofs-2)), A, &
         SchurConst, C1, C2, C3
 
-    INTEGER :: i, j, p, q, t, DIM, NBasis, CoordSys, VelocityDofs, & 
+    INTEGER :: i, j, p, q, t, DIM, NBasis, CoordSys, VelocityDofs, &
         VelocityComponents
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
 
@@ -6593,7 +6593,7 @@ CONTAINS
         dSymb(3,3,3,3), StabTerms(n), AK
 !------------------------------------------------------------------------------
     DIM = CoordinateSystemDimension()
-   
+
     Metric = 0.0d0
     Metric(1,1) = 1.0d0
     Metric(2,2) = 1.0d0
@@ -6619,10 +6619,10 @@ CONTAINS
           Basis, dBasisdx, ddBasisddx, .FALSE., Bubbles )
       s = s * SqrtElementMetric
 !------------------------------------------------------------------------------
-!     Problem parameters and the real and imaginary part of the 
+!     Problem parameters and the real and imaginary part of the
 !     load at the integration point
 !------------------------------------------------------------------------------
-      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )       
+      CV = SUM( SpecificHeat(1:n) * Basis(1:n) )
       gamma = SUM( HeatRatio(1:n) * Basis(1:n) )
       rho0 = SUM( Density(1:n) * Basis(1:n) )
       T0 = SUM( Temperature(1:n) * Basis(1:n) )
@@ -6632,7 +6632,7 @@ CONTAINS
 
       P0 = (gamma-1.0d0)*CV*rho0*T0
       C1 = CMPLX( 1.0d0,AngularFrequency/P0*(2.0d0*mu+la), kind=dp ) / &
-          CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )  
+          CMPLX( 1.0d0,AngularFrequency/P0*(la), kind=dp )
       C2 = CMPLX( rho0*AngularFrequency,0.0d0, kind=dp) / &
           CMPLX( P0/AngularFrequency, la, kind=dp )
       C3 = CMPLX( 1.0d0, 0.0d0, kind=dp)
@@ -6641,7 +6641,7 @@ CONTAINS
         IF ( NodeOnBoundary(p) ) CYCLE
         DO q=1,N
           DO i=1,dim
-            
+
             LSTIFF( p*(DIM+2), (q-1)*(DIM+2)+DIM+1 ) = &
                 LSTIFF( p*(DIM+2), (q-1)*(DIM+2)+DIM+1 ) - &
                 s * C3 * dBasisdx(q,i) * dBasisdx(p,i)
@@ -6651,7 +6651,7 @@ CONTAINS
                 s * C1 * dBasisdx(q,i) * dBasisdx(p,i)
 
           END DO
-          
+
           LSTIFF( p*(DIM+2), q*(DIM+2) ) = &
               LSTIFF( p*(DIM+2), q*(DIM+2) ) + &
               s * C2 * Basis(q) * Basis(p)
@@ -6678,7 +6678,7 @@ CONTAINS
       END DO
     END DO
     Force = 0.0d0
-!--------------------------------------------------------------------------------   
+!--------------------------------------------------------------------------------
   END SUBROUTINE ExplicitStabilisationMatrix
 !--------------------------------------------------------------------------------
 
@@ -6714,11 +6714,11 @@ CONTAINS
 !----------------------------------------------------------------------------------
   SELECT CASE( Element % TYPE % NumberOfNodes )
   CASE(2)
-    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.)    
+    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.)
   CASE( 3 )
-    Normal = Normalvector(Element, Nodes, 0.3d0, 0.3d0, .TRUE.)          
+    Normal = Normalvector(Element, Nodes, 0.3d0, 0.3d0, .TRUE.)
   CASE( 4 )
-    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.) 
+    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.)
   END SELECT
 
 
@@ -6730,7 +6730,7 @@ CONTAINS
   V_Integ => IntegStuff % v
   W_Integ => IntegStuff % w
   S_Integ => IntegStuff % s
-  N_Integ =  IntegStuff % n 
+  N_Integ =  IntegStuff % n
 
 !------------------------------------------------------------------------------
   DO t=1,N_Integ
@@ -6745,13 +6745,13 @@ CONTAINS
         detJ, Basis, dBasisdx )
 
     s = detJ * S_Integ(t)
- 
+
     IF (CoordSys == AxisSymmetric) THEN
        r = SUM( Basis(1:np) * ParentNodes % x(1:np) )
        s = r * s
     END IF
 
-    Visc = SUM( Viscosity(1:np) * Basis(1:np) ) 
+    Visc = SUM( Viscosity(1:np) * Basis(1:np) )
 !    Visc = 0.0d0
     Lambda = SUM( BulkViscosity(1:np) * Basis(1:np) )
 !    Lambda = 0.0d0
@@ -6759,16 +6759,16 @@ CONTAINS
     ImP = SUM(Pressure(2,1:np) * Basis(1:np))
     tmpmat(1,1:np) = Velo(1,1:np)
     tmpmat(2,1:np) = Velo(3,1:np)
-    tmpmat(3,1:np) = Velo(5,1:np)    
+    tmpmat(3,1:np) = Velo(5,1:np)
     ReGrad = MATMUL( tmpmat, dBasisdx )
     tmpmat(1,1:np) = Velo(2,1:np)
     tmpmat(2,1:np) = Velo(4,1:np)
-    tmpmat(3,1:np) = Velo(6,1:np)    
+    tmpmat(3,1:np) = Velo(6,1:np)
     ImGrad = MATMUL( tmpmat, dBasisdx )
 
     ReD = Visc * ( ReGrad + TRANSPOSE(ReGrad) )
-    ImD = Visc * ( ImGrad + TRANSPOSE(ImGrad) )    
-    
+    ImD = Visc * ( ImGrad + TRANSPOSE(ImGrad) )
+
     ReDiv = 0.0d0
     ImDiv = 0.0d0
     DO i = 1,dim
@@ -6788,7 +6788,7 @@ CONTAINS
         ImDiv * Normal(1:3) + MATMUL( ImD, Normal)
 
   END DO
-  
+
   Area = ElementArea(Solver % Mesh, Element, Element % TYPE % NumberOfNodes)
 
   IF (CoordSys == AxisSymmetric) Area = 2*pi*Area
@@ -6858,13 +6858,13 @@ SUBROUTINE SurfaceImpedanceIntegration(Element, Velo, Pressure, Nodes, n, Impeda
 
      ReP = SUM(Pressure(1,1:n) * Basis(1:n))
      ImP = SUM(Pressure(2,1:n) * Basis(1:n))
-      
+
      u1 = SUM(Velo(1,1:n) * Basis(1:n))
      v1 = SUM(Velo(2,1:n) * Basis(1:n))
-      
+
      u2 = SUM(Velo(3,1:n) * Basis(1:n))
      v2 = SUM(Velo(4,1:n) * Basis(1:n))
-      
+
      u3 = SUM(Velo(5,1:n) * Basis(1:n))
      v3 = SUM(Velo(6,1:n) * Basis(1:n))
 
@@ -6877,7 +6877,7 @@ SUBROUTINE SurfaceImpedanceIntegration(Element, Velo, Pressure, Nodes, n, Impeda
      C3 = C3 - CMPLX(ReP, ImP, kind=dp) * CMPLX(un, vn, kind=dp) * s
      C4 = C4 + CMPLX(un, vn, kind=dp) * CMPLX(un, vn, kind=dp) * s
 
-    
+
      Area = Area + s
    END DO
 
@@ -6904,16 +6904,16 @@ FUNCTION DiscontIndexes( Solver, Element, n ) RESULT(GapIndexes)
 
     GapIndexes(1:n) = 0
     IF ( .NOT. ASSOCIATED(Left) .OR. .NOT. ASSOCIATED(Right) ) RETURN
-    
+
     DO i=1,n
       Parent => Left
       k = Element % NodeIndexes(i)
       IF ( ANY( Parent % NodeIndexes == k ) ) Parent => Right
-      
-      x0 = Solver % Mesh % Nodes % x(k) 
-      y0 = Solver % Mesh % Nodes % y(k) 
-      z0 = Solver % Mesh % Nodes % z(k) 
-      
+
+      x0 = Solver % Mesh % Nodes % x(k)
+      y0 = Solver % Mesh % Nodes % y(k)
+      z0 = Solver % Mesh % Nodes % z(k)
+
       mini = 0
       mindist = HUGE(mindist)
       DO j=1,Parent % TYPE % NumberOfNodes
@@ -6921,7 +6921,7 @@ FUNCTION DiscontIndexes( Solver, Element, n ) RESULT(GapIndexes)
         dx = Solver % Mesh % Nodes % x(k) - x0
         dy = Solver % Mesh % Nodes % y(k) - y0
         dz = Solver % Mesh % Nodes % z(k) - z0
-        dist = dx**2 + dy**2 + dz**2 
+        dist = dx**2 + dy**2 + dz**2
         IF( dist < mindist) THEN
           mini = k
           mindist = dist
@@ -6938,7 +6938,7 @@ FUNCTION DiscontIndexes( Solver, Element, n ) RESULT(GapIndexes)
 
 !------------------------------------------------------------------------------
   SUBROUTINE SetDirichletPoints( StiffMatrix, ForceVector, DOF, NDOFs, &
-      Perm, n, NodeIndexes, NodeValues) 
+      Perm, n, NodeIndexes, NodeValues)
 !------------------------------------------------------------------------------
 
     INTEGER :: n
@@ -6955,28 +6955,28 @@ FUNCTION DiscontIndexes( Solver, Element, n ) RESULT(GapIndexes)
     DO i=1,n
       PermIndex = Perm(NodeIndexes(i))
       IF ( PermIndex == 0 ) CYCLE
-      
+
       PermIndex = NDOFs * (PermIndex-1) + DOF
-      
+
       IF ( StiffMatrix % FORMAT == MATRIX_SBAND ) THEN
-        
+
         CALL SBand_SetDirichlet( StiffMatrix,ForceVector,PermIndex,NodeValues(i) )
-        
+
       ELSE IF ( StiffMatrix % FORMAT == MATRIX_CRS .AND. &
           StiffMatrix % Symmetric ) THEN
-        
+
         CALL CRS_SetSymmDirichlet(StiffMatrix,ForceVector,PermIndex,NodeValues(i) )
-        
-      ELSE                  
-        
+
+      ELSE
+
         s = StiffMatrix % Values(StiffMatrix % Diag(PermIndex))
         ForceVector(PermIndex) = NodeValues(i) * s
         CALL ZeroRow( StiffMatrix,PermIndex )
         CALL SetMatrixElement( StiffMatrix,PermIndex,PermIndex,1.0d0*s )
-        
+
       END IF
     END DO
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletPoints
 !------------------------------------------------------------------------------
@@ -7012,33 +7012,33 @@ SUBROUTINE AcousticShellInterface()
 
     DO t = Model % NumberOfBulkElements + 1, &
         Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
-      
+
       Element => Model % Elements(t)
       IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BC) % Tag ) CYCLE
-      
+
       Model % CurrentElement => Element
       n = Element % TYPE % NumberOfNodes
       Indexes(1:n) = Element % NodeIndexes
-      
+
       IF( AcousticShell) THEN
-        GapIndexes(1:n) = Indexes(1:n)       
+        GapIndexes(1:n) = Indexes(1:n)
         !DoneDiscont = .FALSE.
-        
+
         DO i=1,VelocityComponents
-          ! Real part 
+          ! Real part
           NodeValues(1:n) = -AngularFrequency * Deflection( 6 * (DeflectionPerm(Indexes(1:n)) - 1) + 2*i)
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i-1, 10, FlowPerm, n, GapIndexes, NodeValues) 
-          ! Im part 
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i-1, 10, FlowPerm, n, GapIndexes, NodeValues)
+          ! Im part
           NodeValues(1:n) = AngularFrequency * Deflection( 6 * (DeflectionPerm(Indexes(1:n)) - 1) + 2*i-1)
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i, 10, FlowPerm, n, GapIndexes, NodeValues) 
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i, 10, FlowPerm, n, GapIndexes, NodeValues)
         END DO
-        
+
         IF(AcousticIsothermal) THEN
           NodeValues(1:n) = 0.0
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-3, Dofs, FlowPerm, n, GapIndexes, NodeValues) 
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-2, Dofs, FlowPerm, n, GapIndexes, NodeValues) 
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-3, Dofs, FlowPerm, n, GapIndexes, NodeValues)
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-2, Dofs, FlowPerm, n, GapIndexes, NodeValues)
         END IF
-        
+
         !IF( .NOT. DoneDiscont ) THEN
         !  DoneDiscont = .TRUE.
         !  GapIndexes(1:n) = DiscontIndexes(Solver, Element, n)
@@ -7052,12 +7052,12 @@ SUBROUTINE AcousticShellInterface()
         NodeValues(1:n) = 0.0
 
         DO i=1, VelocityComponents
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i-1, Dofs, FlowPerm, n, Indexes, NodeValues) 
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i, Dofs, FlowPerm, n, Indexes, NodeValues) 
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i-1, Dofs, FlowPerm, n, Indexes, NodeValues)
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, 2*i, Dofs, FlowPerm, n, Indexes, NodeValues)
         END DO
         IF(AcousticIsothermal) THEN
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-3, Dofs, FlowPerm, n, Indexes, NodeValues) 
-          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-2, Dofs, FlowPerm, n, Indexes, NodeValues) 
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-3, Dofs, FlowPerm, n, Indexes, NodeValues)
+          CALL SetDirichletPoints( StiffMatrix, ForceVector, Dofs-2, Dofs, FlowPerm, n, Indexes, NodeValues)
         END IF
       END IF
     END DO
@@ -7111,29 +7111,29 @@ SUBROUTINE FSIIntegration(Element, Velo, Pressure, Nodes, n, uf, wf, Area)
 
      ReP = SUM(Pressure(1,1:n) * Basis(1:n))
      ImP = SUM(Pressure(2,1:n) * Basis(1:n))
-      
+
      u1 = SUM(Velo(1,1:n) * Basis(1:n))
      v1 = SUM(Velo(2,1:n) * Basis(1:n))
-      
+
      u2 = SUM(Velo(3,1:n) * Basis(1:n))
      v2 = SUM(Velo(4,1:n) * Basis(1:n))
-      
+
      u3 = SUM(Velo(5,1:n) * Basis(1:n))
      v3 = SUM(Velo(6,1:n) * Basis(1:n))
 
-     un = u1 * Normal(1) + u2 * Normal(2) + u3 * Normal(3) 
-     vn = v1 * Normal(1) + v2 * Normal(2) + v3 * Normal(3) 
+     un = u1 * Normal(1) + u2 * Normal(2) + u3 * Normal(3)
+     vn = v1 * Normal(1) + v2 * Normal(2) + v3 * Normal(3)
 
 
      ! U = \int (u.u*)
      uf = uf + (s / AngularFrequency ** 2) * ( CMPLX(u1, v1, kind=dp) * CMPLX(u1, -v1, kind=dp) + &
           CMPLX(u2, v2, kind=dp) * CMPLX(u2, -v2, kind=dp) + &
-          CMPLX(u3, v3, kind=dp) * CMPLX(u3, -v3, kind=dp) )         
-     
-     ! Kf = \int p.u* 
+          CMPLX(u3, v3, kind=dp) * CMPLX(u3, -v3, kind=dp) )
+
+     ! Kf = \int p.u*
      wf = wf + CMPLX(0.0d0, 1.0d0, kind=dp) * (s / AngularFrequency) * CMPLX(ReP, ImP, kind=dp) * &
           CMPLX(un, -vn, kind=dp)
-    
+
      Area = Area + s
    END DO
 

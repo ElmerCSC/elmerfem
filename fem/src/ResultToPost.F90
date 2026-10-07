@@ -3,20 +3,20 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
 ! *  of the License, or (at your option) any later version.
-! * 
+! *
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! *  GNU General Public License for more details.
 ! *
 ! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
@@ -28,20 +28,20 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 02 Jun 1997
 ! *
 ! *****************************************************************************/
 
-!> \ingroup Programs 
+!> \ingroup Programs
 !> \{
 
 !> \defgroup ResultToPost Program ResultToPost
 !> \{
 
 !------------------------------------------------------------------------------
-!>  Stand-alone program for Elmer results file to Elmer post processing 
+!>  Stand-alone program for Elmer results file to Elmer post processing
 !> file conversion.
 !------------------------------------------------------------------------------
    PROGRAM ResultToPost
@@ -97,7 +97,7 @@
 !------------------------------------------------------------------------------
 !    If parallel execution requested, initialize parallel environment
 !------------------------------------------------------------------------------
-     ParEnv % PEs  = 1 
+     ParEnv % PEs  = 1
      ParEnv % MyPE = 0
 
 !------------------------------------------------------------------------------
@@ -211,7 +211,7 @@
 !    parameter computing routines can ask for them...
 !------------------------------------------------------------------------------
      TimeVariable => SimulationTime
-     Mesh => CurrentModel % Meshes 
+     Mesh => CurrentModel % Meshes
      DO WHILE( ASSOCIATED( Mesh ) )
        CALL VariableAdd(Mesh % Variables,Mesh,NULL(),'Coordinate 1',1,Mesh % Nodes % x )
        CALL VariableAdd(Mesh % Variables,Mesh,NULL(),'Coordinate 2',1,Mesh % Nodes % y )

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16 Apr 2024
 ! *
@@ -99,9 +99,9 @@ CONTAINS
       Usedn = Usedn+1
 
       ! Check if the 1st element may be skipped because we do a planar reduction.
-      ! If it can be, the whole set can be skipped. 
+      ! If it can be, the whole set can be skipped.
       SkipElements = .FALSE.
-      IF( FlattenBody > 0 ) THEN        
+      IF( FlattenBody > 0 ) THEN
         TestIt = .FALSE.
         Parent => Mesh % Elements(i) % BoundaryInfo % Left
         IF(ASSOCIATED(Parent)) THEN
@@ -119,7 +119,7 @@ CONTAINS
           END IF
         END IF
       END IF
-      
+
       Setn = 1
       Set(1) = i
       CALL Traverse( N, i, Normals, Set, Setn, Used, Usedn, Mesh )
@@ -157,14 +157,14 @@ CONTAINS
       DEALLOCATE(MeshOut % Elements)
       DEALLOCATE(MeshOut)
       MeshOut => NULL()
-      RETURN     
+      RETURN
     END IF
-    
+
     MeshOut % NumberOfBulkElements = nn
     MeshOut % NumberOfBoundaryElements = 0
 
     CALL Info('PlanarReduce','Reduced mesh number of elements: '//I2S(nn))
-   
+
     !t0 = cputime() - t0
     !PRINT*,' Shadow elments,and time spent ', nn, t0
 
@@ -187,7 +187,7 @@ CONTAINS
      el => Mesh % Elements(i)
 
      DO l = 1,el % Type % NumberOfEdges
-       ed => Mesh % Edges(el % EdgeIndexes(l)) 
+       ed => Mesh % Edges(el % EdgeIndexes(l))
 
        pel => ed % BoundaryInfo % Left
        IF ( ASSOCIATED(pel, el) ) THEN
@@ -231,7 +231,7 @@ CONTAINS
        maxi = MAX(maxi,Mesh % Elements(i) % NodeIndexes(2))
      END DO
 
-     ALLOCATE(Mesh % Edges(maxi)) 
+     ALLOCATE(Mesh % Edges(maxi))
 
      DO i=1,maxi
        ALLOCATE( Mesh % Edges(i) % BoundaryInfo )
@@ -370,7 +370,7 @@ CONTAINS
          mm = 3*(ed % NodeIndexes(l)-1)+1
          e = e + Coord(mm:mm+2)
        END DO
-       ! direction vector from edge center to parent center 
+       ! direction vector from edge center to parent center
        c = c/3 - e/2
 
        ! "outer" normal
@@ -479,7 +479,7 @@ CONTAINS
 
      IF( SkipElements ) THEN
        CALL Info('PlanarReduce','Skipping '//I2S(Setn)//' element when using planar plate approximation',Level=10)
-     
+
      ELSE IF ( Pinched ) THEN
        ! Open chain or loops touching at a node, cannot repair
        CALL Info('PlanarReduce','Could not construct superelement? Using original elements.',Level=10)

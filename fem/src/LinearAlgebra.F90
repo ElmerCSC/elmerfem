@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,14 +13,14 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-! 
+!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -28,18 +28,18 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !------------------------------------------------------------------------------
-!> Linear Algebra: LU-decomposition & matrix inverse & nonsymmetric full 
-!>  matrix eigenvalues  (don't use this for anything big, use for example 
+!> Linear Algebra: LU-decomposition & matrix inverse & nonsymmetric full
+!>  matrix eigenvalues  (don't use this for anything big, use for example
 !>  LAPACK routines instead...)
 !------------------------------------------------------------------------------
 
@@ -55,7 +55,7 @@ MODULE LinearAlgebra
 
   SUBROUTINE InvertMatrix( A,n )
 
-    INTEGER :: n 
+    INTEGER :: n
     REAL(KIND=dp) :: A(:,:)
 
     REAL(KIND=dp) :: s
@@ -70,7 +70,7 @@ MODULE LinearAlgebra
 
    IF (erroneous) CALL Fatal('InvertMatrix', 'inversion needs successful LU-decomposition')
 
-   ! /*  
+   ! /*
    !  *  INV(U)
    !  */
    DO i=N-1,1,-1
@@ -95,8 +95,8 @@ MODULE LinearAlgebra
        A(j,i) = A(i,i)*s
      END DO
    END DO
-  
-   ! /* 
+
+   ! /*
    !  * A  = INV(AP)
    !  */
    DO i=1,n
@@ -132,7 +132,7 @@ MODULE LinearAlgebra
  SUBROUTINE LUSolve( n,A,x,pivot_in )
    REAL(KIND=dp) :: A(:,:)
    REAL(KIND=dp) :: x(n)
-   INTEGER :: n 
+   INTEGER :: n
    INTEGER, OPTIONAL :: pivot_in(:)
 
    REAL(KIND=dp) :: s
@@ -156,7 +156,7 @@ MODULE LinearAlgebra
       DO j=1,i-1
          s = s - A(i,j) * x(j)
       END DO
-      x(i) = A(i,i) * s 
+      x(i) = A(i,i) * s
    END DO
 
    !
@@ -182,10 +182,10 @@ MODULE LinearAlgebra
 
 !----------------------------------------------------------------------
 !> LU- decomposition by gaussian elimination. Row pivoting is used.
-!  
+!
 !> result : AP = L'U ; L' = LD; pivot[i] is the swapped column number
 !> for column i.
-! 
+!
 !> Result is stored in place of original matrix.
 !----------------------------------------------------------------------
   SUBROUTINE LUDecomp( a,n,pivot,erroneous )
@@ -248,7 +248,7 @@ MODULE LinearAlgebra
       IF ( ABS(A(i,i)) == 0.0d0 ) THEN
         CALL Error( 'LUSolve', 'Matrix is singular.' )
         IF (PRESENT(erroneous)) erroneous = .TRUE.
-        RETURN       
+        RETURN
       END IF
       A(i,i) = 1.0_dp / A(i,i)
     END DO
@@ -260,7 +260,7 @@ MODULE LinearAlgebra
   SUBROUTINE ComplexInvertMatrix( A,n )
 
     COMPLEX(KIND=dp), DIMENSION(:,:) :: A
-    INTEGER :: n 
+    INTEGER :: n
 
     COMPLEX(KIND=dp) :: s
     INTEGER :: i,j,k
@@ -277,12 +277,12 @@ MODULE LinearAlgebra
    DO i=1,n
      IF ( ABS(A(i,i))==0.0d0 ) THEN
        CALL Error( 'ComplexInvertMatrix', 'Matrix is singular.' )
-       RETURN       
+       RETURN
      END IF
      A(i,i) = 1.0D0/A(i,i)
    END DO
 
-   ! /*  
+   ! /*
    !  *  INV(U)
    !  */
    DO i=N-1,1,-1
@@ -307,8 +307,8 @@ MODULE LinearAlgebra
        A(j,i) = A(i,i)*s
      END DO
    END DO
-  
-   ! /* 
+
+   ! /*
    !  * A  = INV(AP)
    !  */
    DO i=1,n
@@ -343,7 +343,7 @@ MODULE LinearAlgebra
 !-------------------------------------------------------------------------
 !> LU- decomposition by gaussian elimination for complex valued linear system.
 !> Row pivoting is used.
-! 
+!
 !> result : AP = L'U ; L' = LD; pivot[i] is the swapped column number
 !> for column i.
 !
@@ -370,7 +370,7 @@ MODULE LinearAlgebra
 
       IF ( ABS(A(i,j))==0.0d0 ) THEN
         CALL Error( 'ComplexLUDecomp', 'Matrix is singular.' )
-        IF (PRESENT(erroneous)) erroneous = .TRUE.        
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
         RETURN
       END IF
 
@@ -695,7 +695,7 @@ MODULE LinearAlgebra
        g(1) = b(2) - s * b(1)
        g(2) = b(3) - t * b(1)
        CALL SolveLinSys2x2( C,y,g )
-       
+
        x(2) = y(1)
        x(3) = y(2)
        x(1) = q * ( b(1) - A(1,2) * x(2) - A(1,3) * x(3) )
@@ -707,7 +707,7 @@ MODULE LinearAlgebra
        C(1,2) = A(2,3) - s * A(1,3)
        C(2,1) = A(3,1) - t * A(1,1)
        C(2,2) = A(3,3) - t * A(1,3)
-       
+
        g(1) = b(2) - s * b(1)
        g(2) = b(3) - t * b(1)
        CALL SolveLinSys2x2( C,y,g )
@@ -833,11 +833,11 @@ MODULE LinearAlgebra
     REAL(KIND=dp) :: detG, s
 !------------------------------------------------------------------------------
     s = 1.0 / DetG
-    
+
     GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
     GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
     GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
-    
+
     GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
     GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
     GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
@@ -855,16 +855,16 @@ MODULE LinearAlgebra
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3QP( G,GI,detG )
 !------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)
     REAL(KIND=qp) :: G(3,3),GI(3,3)
     REAL(KIND=qp) :: detG, s
 !------------------------------------------------------------------------------
     s = 1.0 / DetG
-    
+
     GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
     GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
     GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
-    
+
     GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
     GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
     GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
@@ -876,22 +876,22 @@ MODULE LinearAlgebra
   END SUBROUTINE InvertMatrix3x3QP
 !------------------------------------------------------------------------------
 #endif
-  
+
 !------------------------------------------------------------------------------
 !> Compute the value of 3x3 determinant
 !------------------------------------------------------------------------------
-  FUNCTION Det3x3( A ) RESULT ( val ) 
-!------------------------------------------------------------------------------      
+  FUNCTION Det3x3( A ) RESULT ( val )
+!------------------------------------------------------------------------------
     REAL(KIND=dp) :: A(3,3)
     REAL(KIND=dp) :: val
 
     val = A(1,1) * ( A(2,2) * A(3,3) - A(2,3) * A(3,2) ) &
         - A(1,2) * ( A(2,1) * A(3,3) - A(2,3) * A(3,1) ) &
-        + A(1,3) * ( A(2,1) * A(3,2) - A(2,2) * A(3,1) ) 
+        + A(1,3) * ( A(2,1) * A(3,2) - A(2,2) * A(3,1) )
 !------------------------------------------------------------------------------
   END FUNCTION Det3x3
-!------------------------------------------------------------------------------  
-  
+!------------------------------------------------------------------------------
+
   ! --------------------------------------------------
   !> Solve eigenvalues of a nonsymmetric matrix A(n,n)
   !> The matrix is modified in the process.
@@ -917,7 +917,7 @@ MODULE LinearAlgebra
         s = AEPS * ( ABS(A(i,i))+ABS(A(i+1,i+1)) )
         IF ( ABS(A(i+1,i)) < s ) A(i+1,i) = 0.0
       END DO
-    
+
       i = 1
       DO WHILE( .TRUE. )
         DO j=i,n-1
@@ -930,14 +930,14 @@ MODULE LinearAlgebra
         i = k;
         IF ( i >= n .OR. k-j+1 >= 3 ) EXIT
       END DO
-    
+
       IF (k-j+1 < 3) EXIT
       CALL Francis(A(j:,j:), k-j+1);
     END DO
 
     j = 0
     i = 1
-    DO WHILE( i<n ) 
+    DO WHILE( i<n )
       IF (A(i+1,i) == 0) THEN
         j = j + 1
         Vals(j) = A(i,i)
@@ -969,7 +969,7 @@ MODULE LinearAlgebra
       END IF
       i = i + 1
     END DO
-  
+
     IF (A(n, n-1) == 0) THEN
       j = j + 1
       Vals(j) = A(n,n)
@@ -1096,7 +1096,7 @@ CONTAINS
         !   s = s + H(i,j) * v(j)
         ! END DO
         s = H(i,1)*v(1) + H(i,2)*v(2) + H(i,3)*v(3)
-   
+
         ! DO j=1,3
         !   H(i,j) = H(i,j) - s * x(j)
         ! END DO

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 10 May 2000
 ! *
@@ -53,7 +53,7 @@
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
-  Calculate = ListGetLogical( Params,'Compute Mesh Velocity',Found ) 
+  Calculate = ListGetLogical( Params,'Compute Mesh Velocity',Found )
   IF(.NOT. Found ) Calculate = .TRUE.
 
   IF( Calculate ) THEN
@@ -61,24 +61,24 @@
       IF( dim == 2 ) THEN
         CALL ListAddString( Params,&
             NextFreeKeyword('Exported Variable',Params),&
-            '-dofs 2 Mesh Velocity')        
+            '-dofs 2 Mesh Velocity')
       ELSE
         CALL ListAddString( Params,&
             NextFreeKeyword('Exported Variable',Params),&
-            '-dofs 3 Mesh Velocity')                  
+            '-dofs 3 Mesh Velocity')
       END IF
-    END IF    
+    END IF
   END IF
 
 END SUBROUTINE MeshSolver_Init
 
 
 !------------------------------------------------------------------------------
-!> Subroutine for extending displacement in mesh smoothly over 
-!> the domain. The intended use of the solver is in fluid-structure interaction, 
-!> for example. In transient cases the solver also computes the mesh velocity. 
+!> Subroutine for extending displacement in mesh smoothly over
+!> the domain. The intended use of the solver is in fluid-structure interaction,
+!> for example. In transient cases the solver also computes the mesh velocity.
 !> This is a dynamically loaded solver with a standard interface.
-!> May be also loaded internally to mimic the old static implementation. 
+!> May be also loaded internally to mimic the old static implementation.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
  SUBROUTINE MeshSolver( Model,Solver,dt,TransientSimulation )
@@ -113,7 +113,7 @@ END SUBROUTINE MeshSolver_Init
        Alpha(:,:), Beta(:)
   INTEGER :: dim
   REAL(KIND=dp) :: at,at0
-  
+
   SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
        ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
        SkipFirstMeshVelocity, FirstTime
@@ -123,7 +123,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
-  NULLIFY( MeshVelocity ) 
+  NULLIFY( MeshVelocity )
   IF ( TransientSimulation ) THEN
     MeshSol      => VariableGet( Solver % Mesh % Variables, 'Mesh Velocity' )
     IF( ASSOCIATED( MeshSol ) ) THEN
@@ -147,8 +147,8 @@ END SUBROUTINE MeshSolver_Init
     ! We can solve the equation also on a DIM-1 dimensional boundary of DIM dimensional object
     dim = STDOFs
   END IF
-    
-  
+
+
 !------------------------------------------------------------------------------
 
   StressSol => VariableGet( Solver % Mesh % Variables, 'Displacement' )
@@ -158,7 +158,7 @@ END SUBROUTINE MeshSolver_Init
 
   DisplaceFirst = ListGetLogical( Solver % Values,'First Time Non-Zero', Found)
   SkipDisplace = ListGetLogical( Solver % Values,'Skip Displace Mesh',Found )
-  
+
   IF( SkipDisplace ) THEN
     CALL Info('MeshSolver','Skipping the displacement of mesh!',Level=5)
   ELSE IF ( ASSOCIATED( StressSol ) )  THEN
@@ -240,8 +240,8 @@ END SUBROUTINE MeshSolver_Init
   DO iter=1,MaxIter
 
     CALL DefaultInitialize()
-    
-    DO t=1,Solver % NumberOfActiveElements      
+
+    DO t=1,Solver % NumberOfActiveElements
 
       IF ( RealTime() - at0 > 1.0 ) THEN
         WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
@@ -283,7 +283,7 @@ END SUBROUTINE MeshSolver_Init
           PoissonRatio, .FALSE., Isotropic, Element, n, nd, nb )
 
 !------------------------------------------------------------------------------
-!    Update global matrices from local matrices 
+!    Update global matrices from local matrices
 !------------------------------------------------------------------------------
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
@@ -316,9 +316,9 @@ END SUBROUTINE MeshSolver_Init
         LOAD = 0.0D0
         Alpha =  0.0D0
         DO i = 1, DIM
-          Alpha(i,1:n) =  ListGetReal( BC, 'Mesh Penalty Factor '//TRIM(I2S(i)), n, Element % NodeIndexes, Found)        
+          Alpha(i,1:n) =  ListGetReal( BC, 'Mesh Penalty Factor '//TRIM(I2S(i)), n, Element % NodeIndexes, Found)
           IF (Found) THEN
-            WRITE(Message,*) 'Mesh Penalty Factor '//TRIM(I2S(i))//' =', Alpha(i,1) 
+            WRITE(Message,*) 'Mesh Penalty Factor '//TRIM(I2S(i))//' =', Alpha(i,1)
             CALL INFO("MeshSolve", Message, Level=20)
             !CALL INFO("MeshSolve"
           END IF
@@ -343,9 +343,9 @@ END SUBROUTINE MeshSolver_Init
         CALL DefaultUpdateEquations( STIFF, FORCE )
       END DO
     END IF
-    
+
 !------------------------------------------------------------------------------
-  
+
     CALL DefaultFinishBoundaryAssembly()
 
     CALL DefaultFinishAssembly()
@@ -373,24 +373,24 @@ END SUBROUTINE MeshSolver_Init
     SkipFirstMeshVelocity = .FALSE.
     IF (ComputeMeshVelocity .AND. FirstTime) THEN
        SkipFirstMeshVelocity = ListGetLogical( Solver % Values, 'Skip First Mesh Velocity', Found )
-       IF (.NOT. Found ) THEN 
+       IF (.NOT. Found ) THEN
           SkipFirstMeshVelocity = .FALSE.
        ELSE
           CALL INFO('MeshSolve', 'Skipping computation of initial Mesh Velocity', Level=3)
        END IF
        FirstTime = .FALSE.
     END IF
-    
+
     IF ( ComputeMeshVelocity .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN
       k = MIN( SIZE(Solver % Variable % PrevValues,2), Solver % DoneTime )
-      
+
       j = ListGetInteger( Solver % Values,'Compute Mesh Velocity Order', Found)
       IF( Found ) THEN
-        k = MIN( k, j )        
+        k = MIN( k, j )
       ELSE
         k = 1
       END IF
-      
+
       DOFs = MeshSol % DOFs
 
       DO i=1,Solver % Mesh % NumberOfNodes
@@ -422,7 +422,7 @@ END SUBROUTINE MeshSolver_Init
             END DO
          END SELECT
       END DO
-    ELSE IF( ASSOCIATED( MeshVelocity ) .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN 
+    ELSE IF( ASSOCIATED( MeshVelocity ) .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN
       MeshVelocity = 0.0d0
     END IF
   END IF
@@ -463,7 +463,7 @@ END SUBROUTINE MeshSolver_Init
      REAL(KIND=dp), POINTER :: A(:,:)
      REAL(KIND=dp) :: s,u,v,w
      INTEGER :: i,j,k,p,q,t
-  
+
      LOGICAL :: stat
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -472,7 +472,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 
      CALL GetElementNodes( Nodes )
-     
+
      IF ( PlaneStress ) THEN
         NodalLame1(1:n) = NodalYoung(1,1,1:n) * NodalPoisson(1:n) / &
                ((1.0d0 - NodalPoisson(1:n)**2))
@@ -487,7 +487,7 @@ END SUBROUTINE MeshSolver_Init
      FORCE = 0.0d0
 
      ! Integration stuff:
-     ! ------------------  
+     ! ------------------
      IntegStuff = GaussPoints( Element )
 
      ! Now we start integrating:
@@ -524,7 +524,7 @@ END SUBROUTINE MeshSolver_Init
           END DO
        END DO
        END DO
-     END DO 
+     END DO
 
      ! Assign the symmetric block:
      ! ---------------------------
@@ -626,7 +626,7 @@ END SUBROUTINE MeshSolver_Init
      END DO
 
    END DO
- 
+
    IF ( nb == 0 ) THEN
      DO p=MAX(n+1,nd-Element % BDOFs+1),nd
        DO i=1,dim

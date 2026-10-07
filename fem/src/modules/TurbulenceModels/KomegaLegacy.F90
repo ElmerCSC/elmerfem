@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 10 Nov 1997
 ! *
@@ -319,7 +319,7 @@
 !     Dirichlet boundary conditions
 !------------------------------------------------------------------------------
       DO t=1,Solver % Mesh % NumberOfBoundaryElements
-        Element => GetBoundaryElement(t) 
+        Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
         n = GetElementNOFNodes()
         BC => GetBC()
@@ -372,7 +372,7 @@ CONTAINS
 !******************************************************************************
 !
 !  Return element local matrices and RSH vector for diffusion-convection
-!  equation: 
+!  equation:
 !
 !  ARGUMENTS:
 !
@@ -620,9 +620,9 @@ CONTAINS
      rho(1:np)= GetReal( GetMaterial(Parent), 'Density', UElement=Parent )
      mu(1:np) = GetReal( GetMaterial(Parent), 'Viscosity', UElement=Parent )
 
-     x0(1:n) = Model % Nodes % x(Element % NodeIndexes)      
-     y0(1:n) = Model % Nodes % y(Element % NodeIndexes)      
-     z0(1:n) = Model % Nodes % z(Element % NodeIndexes)      
+     x0(1:n) = Model % Nodes % x(Element % NodeIndexes)
+     y0(1:n) = Model % Nodes % y(Element % NodeIndexes)
+     z0(1:n) = Model % Nodes % z(Element % NodeIndexes)
 
      omega_wall = 1.d10
      DO i=1,np

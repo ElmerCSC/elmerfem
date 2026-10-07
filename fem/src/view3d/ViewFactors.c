@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -358,10 +358,10 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 	   ny = RadiatorCoords[4*NofRadiators+i] - ry;
 	   nz = RadiatorCoords[5*NofRadiators+i] - rz;
          }
-         	 
+
          for( j=0; j<N; j++ ) Factors[i*N+j] = 0.0;
          for( j=0; j<N; j++ )
-         { 
+         {
             if ( lel[j].Area<1.0e-10 ) continue;
 
             FreeLinks( &lel[j] );
@@ -593,22 +593,22 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
    printf("Combining original boundary elements for shading\n");
 
    maxind=0; maxnodehits=0;
-   for (i=0; i<2*N; i++) 
+   for (i=0; i<2*N; i++)
      if(maxind < Topo[i]) maxind = Topo[i];
 
    nodehits = (int*) malloc((maxind+1)*sizeof(int));
    for(i=0;i<=maxind;i++)
      nodehits[i] = 0;
-   for(i=0; i<2*N; i++)  
+   for(i=0; i<2*N; i++)
      nodehits[Topo[i]]++;
 
    maxnodehits = 0;
-   for(i=0; i<=maxind; i++) 
+   for(i=0; i<=maxind; i++)
      if(nodehits[i] > maxnodehits) maxnodehits = nodehits[i];
-    
+
    tablesize = (maxind+1)*maxnodehits;
    nodetable = (int*) malloc(tablesize*sizeof(int));
-   for(i=0; i< tablesize; i++) 
+   for(i=0; i< tablesize; i++)
      nodetable[i] = 0;
 
    for(i=0;i<=maxind;i++)
@@ -622,32 +622,32 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
      nodehits[ind1] += 1;
      nodehits[ind2] += 1;
    }
- 
+
    for(i=0;i<2*N;i++)
      RT_Topo[i] = Topo[i];
- 
+
    for (i=0; i<=maxind; i++) {
      int elem1,elem2;
      ind0 = i;
-    
+
      if( nodehits[ind0] != 2) continue;
 
      elem1 = nodetable[maxnodehits*ind0+0];
-     if( RT_Topo[2*elem1+1] == ind0 ) 
+     if( RT_Topo[2*elem1+1] == ind0 )
        ind1 = RT_Topo[2*elem1];
-     else 
+     else
        ind1 = RT_Topo[2*elem1+1];
 
      elem2 = nodetable[maxnodehits*ind0+1];
-     if( RT_Topo[2*elem2+1] == ind0 ) 
+     if( RT_Topo[2*elem2+1] == ind0 )
        ind2 = RT_Topo[2*elem2];
-     else 
+     else
        ind2 = RT_Topo[2*elem2+1];
 
      x0 = Coord[3*ind0];
      x1 = Coord[3*ind1];
      x2 = Coord[3*ind2];
-      
+
      y0 = Coord[3*ind0+1];
      y1 = Coord[3*ind1+1];
      y2 = Coord[3*ind2+1];
@@ -656,31 +656,31 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
      dx2 = x2-x0;
      dy1 = y1-y0;
      dy2 = y2-y0;
-      
+
      dp1 = dx1*dx2+dy1*dy2;
      ds1 = sqrt(dx1*dx1+dy1*dy1);
      ds2 = sqrt(dx2*dx2+dy2*dy2);
-      
+
      dp1 /= (ds1*ds2);
 
      /* Boundary elements must be aligned */
      if( dp1 > eps - 1. ) continue;
 
      /* Make the 1st element bigger  */
-     if( RT_Topo[2*elem1] == ind0 ) 
+     if( RT_Topo[2*elem1] == ind0 )
        RT_Topo[2*elem1] = ind2;
-     else 
+     else
        RT_Topo[2*elem1+1] = ind2;
-      
+
      /* Destroy the 2nd element */
      RT_Topo[2*elem2] = 0;
      RT_Topo[2*elem2+1] = 0;
 
      /* Update the node information */
      nodehits[ind0] = 0;
-     if( nodetable[maxnodehits*ind2] == elem2) 
+     if( nodetable[maxnodehits*ind2] == elem2)
        nodetable[maxnodehits*ind2] = elem1;
-     else 
+     else
        nodetable[maxnodehits*ind2+1] = elem1;
    }
 
@@ -708,9 +708,9 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
 
-   AreaEPS   = Aeps; 
-   RayEPS    = Reps; 
-   FactorEPS = Feps; 
+   AreaEPS   = Aeps;
+   RayEPS    = Reps;
+   FactorEPS = Feps;
    Nrays     = Nr;
 
    ClosedFormInteg = ClosedForm;

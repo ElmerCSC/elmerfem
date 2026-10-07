@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,15 +27,15 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
 ! *****************************************************************************/
- 
+
 
 !------------------------------------------------------------------------------
-!>  Calculates the force due to static electric field by integrating 
+!>  Calculates the force due to static electric field by integrating
 !>  Maxwell stress tensor over specified boundaries. Nodal forces added later.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -65,7 +65,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t) :: ElementNodes, ParentNodes
   TYPE(Element_t), POINTER   :: CurrentElement, Parent
   TYPE(ValueList_t), POINTER :: Material
-  REAL(KIND=dp), ALLOCATABLE :: LocalPotential(:), Permittivity(:,:,:) 
+  REAL(KIND=dp), ALLOCATABLE :: LocalPotential(:), Permittivity(:,:,:)
   REAL(KIND=dp), POINTER :: Potential(:), Pwrk(:,:,:), ForceDensity(:), NodalForce(:)
   REAL(KIND=dp) :: Force(3), MomentAbout(3), Moment(3), &
     Area, PermittivityOfVacuum, sf
@@ -79,7 +79,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   CALL Info('StatElecForce','Computing electric force on boundaries')
-  
+
   DIM = CoordinateSystemDimension()
   Mesh => Solver % Mesh
   NULLIFY( Pwrk )
@@ -87,11 +87,11 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !    Figure out the mesh that potential solver is using
 !------------------------------------------------------------------------------
-  
+
   PotName = ListGetString( Solver % Values, 'Potential Field Name', stat )
   IF(.NOT. Stat) PotName = 'Potential'
   IF ( .NOT. stat ) THEN
-    PotVar => VariableGet( Mesh % Variables, PotName ) 
+    PotVar => VariableGet( Mesh % Variables, PotName )
     IF(ASSOCIATED(PotVar)) THEN
       Potential => PotVar % Values
       PotentialPerm => PotVar % Perm
@@ -100,7 +100,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  
+
   CalculateNodal = ListGetLogical( Solver % Values,'Calculate Nodal Force',stat )
   NodalVar => VariableGet( Mesh % Variables, 'Electric Nodal Force' )
   IF(.NOT. ASSOCIATED(NodalVar) .AND. CalculateNodal ) THEN
@@ -110,8 +110,8 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
   ELSE IF( ASSOCIATED( NodalVar ) ) THEN
     CalculateNodal = .TRUE.
   END IF
-  IF( CalculateNodal ) NodalForce => NodalVar % Values    
-  
+  IF( CalculateNodal ) NodalForce => NodalVar % Values
+
   CalculateField = ListGetLogical( Solver % Values,'Calculate Force Density',stat )
   IF(.NOT. CalculateNodal ) CalculateField = .TRUE.
   FieldVar => VariableGet( Mesh % Variables, 'Electric Force Density' )
@@ -123,13 +123,13 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
     CalculateField = .TRUE.
   END IF
   IF( CalculateField ) ForceDensity => FieldVar % Values
-      
+
   n = Mesh % MaxElementNodes
   ALLOCATE( ElementNodes % x( n ), &
 	ElementNodes % y(n), ElementNodes % z(n) )
   ALLOCATE( ParentNodes % x( n ), &
 	ParentNodes % y(n), ParentNodes % z(n) )
-  ALLOCATE( LocalPotential( n ), Permittivity( 3, 3, n ) ) 
+  ALLOCATE( LocalPotential( n ), Permittivity( 3, 3, n ) )
   ALLOCATE( NodalWeight( Mesh % NumberOfNodes ) )
 
 !------------------------------------------------------------------------------
@@ -152,7 +152,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
   END IF
 
   MomentAbout(1) = ListGetConstReal( Model % Simulation,'Moment About 1', stat )
-  CalculateMoment = stat 
+  CalculateMoment = stat
   MomentAbout(2) = ListGetConstReal( Model % Simulation,'Moment About 2', stat )
   CalculateMoment = stat .OR. CalculateMoment
   MomentAbout(3) = ListGetConstReal( Model % Simulation,'Moment About 3', stat )
@@ -178,7 +178,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
     CurrentElement => Mesh % Elements(t)
 !------------------------------------------------------------------------------
-!    Set the current element pointer in the model structure to 
+!    Set the current element pointer in the model structure to
 !    reflect the element being processed
 !------------------------------------------------------------------------------
     Model % CurrentElement => Mesh % Elements(t)
@@ -189,20 +189,20 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
     IF ( CurrentElement % TYPE % ElementCode == 101 ) CYCLE
 
     ActiveBoundary = .FALSE.
-    
+
     IF(DoDisplacedBoundaries) THEN
       ActiveBoundary = ALL( DVar % Perm( NodeIndexes ) > 0 )
-    ELSE 
+    ELSE
       DO k=1, Model % NumberOfBCs
-        IF ( Model % BCs(k) % Tag /= CurrentElement % BoundaryInfo & 
+        IF ( Model % BCs(k) % Tag /= CurrentElement % BoundaryInfo &
             % Constraint ) CYCLE
         IF ( ListGetLogical(Model % BCs(k) % Values, &
             'Calculate Electric Force', stat ) ) ActiveBoundary = .TRUE.
       END DO
     END IF
-    
+
     IF(.NOT. ActiveBoundary) CYCLE
-      
+
     ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
     ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
     ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -211,14 +211,14 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 !     Need parent element to determine material number
 !------------------------------------------------------------------------------
     Parent => CurrentElement % BoundaryInfo % Left
-    
+
     stat = ASSOCIATED( Parent )
     IF ( stat ) THEN
       i = Parent % BodyId
       j = ListGetInteger( Model % Bodies(i) % Values, 'Material', &
           minv=1, maxv=Model % NumberOfMaterials )
       Material => Model % Materials(j) % Values
-      
+
       CALL ListGetRealArray( Material, 'Relative Permittivity', Pwrk, n, &
           NodeIndexes, stat )
       IF ( .NOT. stat )  CALL ListGetRealArray( Material, &
@@ -234,30 +234,30 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
       j = ListGetInteger( Model % Bodies(i) % Values, 'Material', &
           minv=1, maxv=Model % NumberOfMaterials )
       Material => Model % Materials(j) % Values
-      
+
       CALL ListGetRealArray( Material, 'Relative Permittivity', Pwrk, n, &
           NodeIndexes, stat )
       IF ( .NOT. stat )  CALL ListGetRealArray( Material, &
           'Permittivity', Pwrk, n, NodeIndexes, stat )
-      
+
       IF ( .NOT. stat ) THEN
         WRITE( Message, *) 'No permittivity found on specified boundary'
         CALL Fatal( 'StatElecForce', Message )
       END IF
     END IF
-      
+
 !------------------------------------------------------------------------------
 
     stat = ALL( PotVar % Perm( NodeIndexes ) > 0 )
-    
+
     IF ( .NOT. stat ) THEN
       WRITE( Message, *) 'No potential available for specified boundary'
       CALL Fatal( 'StatElecForce', Message )
     END IF
-      
+
 !------------------------------------------------------------------------------
     pn = Parent % TYPE % NumberOfNodes
-      
+
     ParentNodes % x(1:pn) = Mesh % Nodes % x(Parent % NodeIndexes)
     ParentNodes % y(1:pn) = Mesh % Nodes % y(Parent % NodeIndexes)
     ParentNodes % z(1:pn) = Mesh % Nodes % z(Parent % NodeIndexes)
@@ -282,14 +282,14 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
     END IF
 
 !------------------------------------------------------------------------------
-      
+
     LocalPotential = 0.0d0
     LocalPotential(1:pn) = Potential( PotentialPerm( Parent % NodeIndexes ) )
-    
-    CALL MaxwellStressTensorIntegrate( Force, Moment, Area )      
+
+    CALL MaxwellStressTensorIntegrate( Force, Moment, Area )
   END DO
 
-  
+
   DO i= 1, Mesh % NumberOfNodes
     IF ( NodalWeight(i) > 0 ) THEN
       DO j = 1, Dim
@@ -307,27 +307,27 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
     WRITE( Message, '("Net electric force  : ", 3ES15.6E2 )' ) Force
   END IF
   CALL Info( 'StatElecForce', Message, Level=4 )
-  
+
   sf = SQRT(SUM( Force**2 ) )
   WRITE( Message, '("Resultant force  : ", ES15.6 )' ) sf
   CALL Info( 'StatElecForce', Message, Level=4 )
 
   IF(CalculateMoment) THEN
     CALL ListAddConstReal( Model % Simulation, &
-        'res: Electric Moment 3', Moment(3)  )    
+        'res: Electric Moment 3', Moment(3)  )
     CALL ListAddConstReal( Model % Simulation, &
         'res: Electric Moment 2', Moment(2)  )
     CALL ListAddConstReal( Model % Simulation, &
         'res: Electric Moment 1', Moment(1)  )
   END IF
- 
+
   IF(DIM > 2) CALL ListAddConstReal( Model % Simulation, &
       'res: Electric Force 3', Force(3)  )
   CALL ListAddConstReal( Model % Simulation, &
       'res: Electric Force 2', Force(2)  )
   CALL ListAddConstReal( Model % Simulation, &
       'res: Electric Force 1', Force(1)  )
-   
+
   DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
   DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z )
   DEALLOCATE( LocalPotential, Permittivity )
@@ -344,7 +344,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
     CALL InvalidateVariable( Model % Meshes,  Mesh, 'Electric Force Density' )
     NodalVar % Valid = .TRUE.
   END IF
-    
+
   CALL SetCurrentMesh( Model, Solver % Mesh )
 
 CONTAINS
@@ -406,9 +406,9 @@ CONTAINS
         zpos = SUM( ElementNodes % z(1:n) * Basis(1:n) )
         s = 2*PI
       END IF
-         
+
       CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,xpos,ypos,zpos )
- 
+
       s = s * SqrtMetric * detJ * S_Integ(l)
 
       Normal = Normalvector( CurrentElement,ElementNodes, u,v, .TRUE. )
@@ -472,14 +472,14 @@ CONTAINS
         Moment = Moment + s * Lmoment
       END IF
 
-      DO i=1,n      
+      DO i=1,n
         ElementForce(:,i) = ElementForce(:,i) + s * LForce * Basis(i)
         ElementWeight(i) = ElementWeight(i) + s * Basis(i)
       END DO
 
 !------------------------------------------------------------------------------
     END DO
-    
+
     DO i=1, n
       k = PotentialPerm( CurrentElement % NodeIndexes(i))
       DO j = 1, Dim
@@ -489,12 +489,12 @@ CONTAINS
         END IF
         IF( CalculateField ) THEN
           ForceDensity( Dim*(k-1)+j ) = ForceDensity(Dim*(k-1)+j) &
-              + ElementForce(j,i) 
+              + ElementForce(j,i)
         END IF
       END DO
       NodalWeight(k) = NodalWeight(k) + ElementWeight(i)
     END DO
-  
+
 !------------------------------------------------------------------------------
   END SUBROUTINE MaxwellStressTensorIntegrate
 !------------------------------------------------------------------------------

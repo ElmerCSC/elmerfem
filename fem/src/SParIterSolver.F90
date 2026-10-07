@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2000
 ! *
@@ -130,7 +130,7 @@ CONTAINS
 
     SParMatrixDesc % SplittedMatrix => SplitMatrix( SourceMatrix, ParallelInfo )
 
-    
+
   END FUNCTION ParInitMatrix
 
 
@@ -219,7 +219,7 @@ CONTAINS
   !----------------------------------------------------------------------
 
     CALL Info('SplitMatrix','Allocating split stuff for '//I2S(ParEnv % PEs)//' partitions!',Level=12)
-    
+
     ALLOCATE( OwnIfMRows(ParEnv % PEs) )
     ALLOCATE( OwnIfMCols(ParEnv % PEs) )
     ALLOCATE( NbsIfMRows(ParEnv % PEs) )
@@ -229,18 +229,18 @@ CONTAINS
     ALLOCATE( OwnOldCols(ParEnv % PEs) )
     ALLOCATE( NbsOldCols(ParEnv % PEs) )
     OwnIfMRows(:) = 0; OwnIfMCols(:) = 0; NbsIfMRows(:) = 0; NbsIfMCols(:) = 0
-    
+
     j = 0
-    k = SIZE(ParallelInfo % NeighbourList) 
+    k = SIZE(ParallelInfo % NeighbourList)
     DO i=1,k
       IF(.NOT. ASSOCIATED( ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
         ALLOCATE(ParallelInfo % NeighbourList(i) % Neighbours(1))
-        ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe        
+        ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe
         j = j+1
       END IF
     END DO
     IF(j>0) CALL Info('SplitMatrix','Added mention to self in '//I2S(j)//' neighbours ouf of '//TRIM(I2S(k)))
-    
+
   !----------------------------------------------------------------------
   !
   ! Compute the memory allocations for split matrix blocks
@@ -259,7 +259,7 @@ CONTAINS
 !         --------------------------------------
           DO j = SourceMatrix % Rows(i), SourceMatrix % Rows(i+1) - 1
 
-             ColInd = SourceMatrix % Cols(j)                          
+             ColInd = SourceMatrix % Cols(j)
              IF ( ParallelInfo % NeighbourList(ColInd) % Neighbours(1) == &
                                 ParEnv % MyPE ) THEN
 
@@ -311,7 +311,7 @@ CONTAINS
               OwnIfMCols( CurrNbsL % Neighbours(1) + 1) = &
                    OwnIfMCols( CurrNbsL % Neighbours(1) + 1) + 1
               OwnOCOR( CurrNbsL % Neighbours(1) + 1) = 1
-              
+
            ELSE
 
               !----------------------------------------------------------
@@ -371,10 +371,10 @@ CONTAINS
   IF( ListGetString(CurrentModel % Solver % Values, &
       'Linear System Solver', Found ) == 'iterative' ) THEN
     Prec = ListGetString(CurrentModel % Solver % Values, &
-        'Linear System Preconditioning', Found ) 
+        'Linear System Preconditioning', Found )
     IF(Found) NeedILU = SEQL(Prec,'vanka')
   END IF
-  
+
   SplittedMatrix % InsideMatrix % Ordered = .FALSE.
   NULLIFY( SplittedMatrix % InsideMatrix % ILUValues )
 
@@ -392,7 +392,7 @@ CONTAINS
   ALLOCATE( RecvdIfMatrix(ParEnv % PEs) )
 
   NbsIfMatrix => SplittedMatrix  % NbsIfMatrix
- 
+
   SplittedMatrix % InsideMatrix % NumberOfRows = InsideMRows
 
   DO i = 1, ParEnv % PEs
@@ -457,7 +457,7 @@ CONTAINS
         ! Connection is local-local or local-if
         !
         !----------------------------------------------------------------
-        
+
         DO j = SourceMatrix % Rows(i), SourceMatrix % Rows(i+1) - 1
 
            ColInd = SourceMatrix % Cols(j)
@@ -484,8 +484,8 @@ CONTAINS
               !
               !----------------------------------------------------------
               currifi = ParallelInfo % NeighbourList(Colind) % Neighbours(1) + 1
-              
-              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &  
+
+              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &
                   ParallelInfo  % GlobalDOFs(ColInd)
               NbsIfMcols(currifi) = NbsIfMcols(currifi) + 1
               NbsOCOR(currifi) = 1
@@ -530,7 +530,7 @@ CONTAINS
               !
               !----------------------------------------------------------
               currifi = ParallelInfo % NeighbourList(ColInd) % Neighbours(1) + 1
-              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  & 
+              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &
                 ParallelInfo  % GlobalDOFs(ColInd)
               SplittedMatrix % GlueTable % Inds(j) = -(ParEnv % PEs + currifi)
               NbsOCOR(currifi) = 1
@@ -731,7 +731,7 @@ CONTAINS
   !----------------------------------------------------------------------
   sz = A % Rows(A % NumberOfRows+1)-1
 
-  ! Check whether we need to create List matrix and add new column entries. 
+  ! Check whether we need to create List matrix and add new column entries.
   GotNewCol = .FALSE.
   DO i=1,Parenv % PEs
     CurrIF => SplittedMatrix % IfMatrix(i)
@@ -745,8 +745,8 @@ CONTAINS
         IF( .NOT. CRS_CheckMatrixElement(A,RowInd,ColInd) ) THEN
           GotNewCol = .TRUE.
           GOTO 1
-        END IF        
-      END DO      
+        END IF
+      END DO
     END DO
   END DO
 
@@ -772,7 +772,7 @@ CONTAINS
     END DO
     CALL List_toCRSMatrix(A)
   END IF
-    
+
   !----------------------------------------------------------------------
   !
   ! If need be, rebuild the inside part of GlueTable (place in the parallel
@@ -783,7 +783,7 @@ CONTAINS
     ALLOCATE(Perm(A % NumberOfRows))
     j = 0;
     DO i=1,SourceMatrix % NumberOfRows
-      IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN 
+      IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN
         j=j+1
         Perm(j)=i
       END IF
@@ -793,7 +793,7 @@ CONTAINS
       RowInd = Perm(i)
       K = SourceMatrix % Rows(RowInd)
       DO j=A % Rows(i),A % Rows(i+1)-1
-        ColInd = Perm(A % Cols(j)) 
+        ColInd = Perm(A % Cols(j))
         DO WHILE(K<SourceMatrix % Rows(RowInd+1))
           IF(SourceMatrix % Cols(K)>=ColInd) THEN
             IF(SourceMatrix % Cols(K)==ColInd) &
@@ -1065,12 +1065,12 @@ END SUBROUTINE ZeroSplittedMatrix
     REAL(KIND=dp) :: hypre_dppara(10), r
     INTEGER :: hypre_intpara(20)
 
-    CHARACTER(:), ALLOCATABLE, TARGET :: PrecMethod, IterativeMethod    
+    CHARACTER(:), ALLOCATABLE, TARGET :: PrecMethod, IterativeMethod
     CHARACTER(:), POINTER :: Method
     INTEGER :: hypre_sol, hypre_pre, i, j, k
     LOGICAL :: BPC, Found
-    CHARACTER(*), PARAMETER :: Caller = 'HypreParameters' 
-       
+    CHARACTER(*), PARAMETER :: Caller = 'HypreParameters'
+
     CALL Info(Caller,'Setting parameters for Hypre solvers',Level=12)
 
     hypremethod = 0
@@ -1084,7 +1084,7 @@ END SUBROUTINE ZeroSplittedMatrix
     !---------------------------------------
     !              No  Prec
     ! none         0    x   -
-    ! BoomerAMG    1    x   x 
+    ! BoomerAMG    1    x   x
     ! AMS          2    x   x
     ! ILU          3    x   x
     ! Parasails    4    x   -
@@ -1095,23 +1095,23 @@ END SUBROUTINE ZeroSplittedMatrix
     ! FlexGMRes    9    -   x
     ! LGMRes       10   -   x
     ! COGMRes      11   -   x
-    !---------------------------------------    
+    !---------------------------------------
 
     ! 1st round set the method
     ! 2nd round set the preconditioner!
-    ! Many hypre methods can be both preconditioners and solvers. 
+    ! Many hypre methods can be both preconditioners and solvers.
     DO i=0,1
       j = 0
-      
-      IF(i==0) THEN        
+
+      IF(i==0) THEN
         hypre_sol = ListGetInteger( Params,'Linear System Method Hypre Index',Found )
-        IF(Found ) CYCLE                    
-        IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )      
+        IF(Found ) CYCLE
+        IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )
         Method => IterativeMethod
       ELSE
         hypre_pre = ListGetInteger( Params,'Linear System Preconditioning Hypre Index',Found )
 
-        IF(Found ) CYCLE                    
+        IF(Found ) CYCLE
         PrecMethod = ListGetString(Params,'Linear System Preconditioning',Found)
 
         IF(.NOT. Found) THEN
@@ -1120,7 +1120,7 @@ END SUBROUTINE ZeroSplittedMatrix
         END IF
         Method => PrecMethod
       END IF
-      
+
       IF( Method == 'none' ) THEN
         j = 0
       ELSE IF( Method == 'boomeramg' ) THEN
@@ -1151,7 +1151,7 @@ END SUBROUTINE ZeroSplittedMatrix
       ELSE
         CALL Fatal(Caller,'Invalid method for Hypre: '//TRIM(Method))
       END IF
-      
+
       IF(i==0) THEN
         CALL Info(Caller,'Using HYPRE iterative method: '//TRIM(IterativeMethod),Level=7)
         hypre_sol = j
@@ -1160,7 +1160,7 @@ END SUBROUTINE ZeroSplittedMatrix
         hypre_pre = j
       END IF
     END DO
-    
+
     ! Some methods (Krylov methods) can not act as preconditioners!
     IF( ANY( hypre_pre == [6,7,8,9,10,11] ) ) THEN
       CALL Fatal(Caller,'Invalid preconditioner for Hypre: '//TRIM(PrecMethod))
@@ -1171,17 +1171,17 @@ END SUBROUTINE ZeroSplittedMatrix
       CALL Fatal(Caller,'Invalid solver for Hypre: '//TRIM(IterativeMethod))
     END IF
 
-    ! We map the preconditioner + solver to one figure. 
+    ! We map the preconditioner + solver to one figure.
     hypremethod = 100 * hypre_sol + hypre_pre
     CALL Info(Caller,'Hypre method index: '//I2S(hypremethod),Level=6)
-    
+
     DO i=0,1
       IF(i==0) THEN
         j = hypre_pre
       ELSE
         j = hypre_sol
       END IF
-      
+
       SELECT CASE(j)
       CASE(1) ! BoomerAMG
         hypre_intpara(1) = ListGetInteger( Params,&
@@ -1208,7 +1208,7 @@ END SUBROUTINE ZeroSplittedMatrix
         BPC = ListGetLogical( Params, 'Block Preconditioner', Found )
 
         hypre_intpara(8) = ListGetInteger( Params, 'BoomerAMG Num Functions', Found )
-        k = CurrentModel % Solver % Variable % DOFs            
+        k = CurrentModel % Solver % Variable % DOFs
         IF (.NOT.Found)  THEN
           IF (BPC) THEN
             hypre_intpara(8) = 1
@@ -1225,16 +1225,16 @@ END SUBROUTINE ZeroSplittedMatrix
             'BoomerAMG Strong Threshold', Found, DefValue = 0.25_dp)
 
       CASE(2) ! AMS
-        ! The numbering follows the old convention. 
+        ! The numbering follows the old convention.
         hypre_intpara(1) = ListGetInteger( Params,&
             'AMS Max Iterations', Found, DefValue = 1 )
 
         hypre_dppara(1) = ListGetCReal( Params,&
             'AMS Tolerance', Found, DefValue = 1.0e-6_dp )
-        
+
         hypre_intpara(2) = ListGetInteger( Params,&
             'AMS Cycle Type', Found, DefValue = 1)  ! 1-14
-       
+
         hypre_intpara(3) = ListGetInteger( Params,&
             'AMS Relax Type', Found, DefValue = 2 )
         hypre_intpara(4) = ListGetInteger( Params,&
@@ -1248,10 +1248,10 @@ END SUBROUTINE ZeroSplittedMatrix
             'AMS Alpha Threshold', Found, DefValue = 0.25_dp )
         hypre_dppara(5) = ListGetCReal( Params,&
             'AMS Beta Threshold', Found, DefValue = 0.25_dp )
-        
+
         IF( ListGetLogical( Params,&
             'AMS Singular Matrix', Found ) ) hypre_intpara(5) = 1
-                
+
       CASE(3) ! ILU
         hypre_intpara(1) = ListGetInteger( Params,&
             'ILU Max Iterations', Found, DefValue = 1 )
@@ -1267,7 +1267,7 @@ END SUBROUTINE ZeroSplittedMatrix
 
         hypre_intpara(5) = ListGetInteger( Params,&
             'ILU Trisolve Direct', Found, DefValue = 0 )
-        
+
         hypre_dppara(1) = ListGetCReal( Params,&
             'ILU Tolerance', Found, DefValue = 0.0_dp)
 
@@ -1275,8 +1275,8 @@ END SUBROUTINE ZeroSplittedMatrix
             'ILU Drop Threshold', Found, DefValue = 0.0_dp)
 
         hypre_dppara(3) = ListGetCReal( Params,&
-            'ILU NSH Drop Threshold', Found, DefValue = 0.0_dp)     
-        
+            'ILU NSH Drop Threshold', Found, DefValue = 0.0_dp)
+
       CASE(4) ! Parasails
         hypre_intpara(1) = ListGetInteger( Params,&
             'ParaSails Symmetry', Found, DefValue = 0 )
@@ -1295,12 +1295,12 @@ END SUBROUTINE ZeroSplittedMatrix
             'FSAI Max Steps', Found, DefValue = 5 )
         hypre_intpara(2) = ListGetInteger( Params,&
             'FSAI Max Step Size', Found, DefValue = 3 )
-        
+
         hypre_dppara(1) = ListGetCReal( Params,&
             'FSAI Kap Tolerance', Found, DefValue = 1.0e-3_dp )
-        
 
-      CASE(6) ! PCG 
+
+      CASE(6) ! PCG
         IF( ListGetLogical(Params,'PCG Two Norm',Found ) ) THEN
           hypre_intpara(11) = 1
         END IF
@@ -1310,20 +1310,20 @@ END SUBROUTINE ZeroSplittedMatrix
 
       CASE(7) ! BiCGStab
 
-      CASE(8) ! GMRes        
+      CASE(8) ! GMRes
 
       CASE(9) ! FlexGMRes
-        
+
       CASE(10) ! LGMRes
         hypre_intpara(11) = ListGetInteger( Params,&
             'HYPRE LGmRes Aug Dim', Found, DefValue = 2 )
-        
+
       CASE(11) ! COGGMRes
         hypre_intpara(11) = ListGetInteger( Params,&
             'HYPRE COGMRes Unroll', Found, DefValue = 0 )
         hypre_intpara(12) = ListGetInteger( Params,&
             'HYPRE COGMRes CGS', Found, DefValue = 0 )
-        
+
       END SELECT
 
       ! These are used by many
@@ -1422,7 +1422,7 @@ END SUBROUTINE ZeroSplittedMatrix
           OrderList(i) % NbsGrows = CurrIf % GRows
           CALL SortI(n, OrderList(i) % NbsGRows, OrderList(i) % NbsGorder)
         END IF
-                
+
         CurrIf => SplittedMatrix % IfMatrix(i)
         n = CurrIf % NumberOfRows
         IF ( n > 0 )THEN
@@ -1437,7 +1437,7 @@ END SUBROUTINE ZeroSplittedMatrix
 
       GT => SplittedMatrix % GlueTable
       DO i = 1, SourceMatrix % NumberOfRows
-       
+
          GRow = ParallelInfo % GlobalDOFs(i)
          DO j = SourceMatrix % Rows(i),SourceMatrix % Rows(i+1) - 1
 
@@ -1504,7 +1504,7 @@ END SUBROUTINE ZeroSplittedMatrix
 
                ifind = -ParEnv % PEs + ABS(GT % Inds(j))
                CurrIf => SplittedMatrix % NbsIfMatrix(ifind)
-                  
+
                RowInd = -1
                IF ( CurrIf % NumberOfRows > 0 ) THEN
                   RowInd = SearchIAItem( CurrIf % NumberOfRows, OrderList(ifind) % NbsGRows, &
@@ -1545,7 +1545,7 @@ END SUBROUTINE ZeroSplittedMatrix
          ALLOCATE( SplittedMatrix % InsideMatrix % RHS(  &
            SplittedMatrix % InsideMatrix % NumberOfRows ) )
          SPlittedMatrix % InsideMatrix % RHS = 0
-  
+
          ALLOCATE( SplittedMatrix % TmpXVec( SplittedMatrix %  &
                     InsideMatrix % NumberOfRows ) )
          SplittedMatrix % TmpXVec = 0
@@ -1563,7 +1563,7 @@ END SUBROUTINE ZeroSplittedMatrix
     END IF
 
     CALL SParUpdateRHS( SourceMatrix, RHSVec, ParallelInfo )
- 
+
     !
     ! Initialize temporary XVec and RVec for iterator. The
     ! originals contain also the items on interfaces.
@@ -1668,7 +1668,7 @@ END SUBROUTINE ZeroSplittedMatrix
       ALLOCATE( SourceMatrix % Rhs(SourceMatrix % NumberOfRows) )
       SourceMatrix % Rhs = 0.0_dp
     END IF
-           
+
     j = 0
     DO i = 1, SourceMatrix % NumberOfRows
        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
@@ -1725,7 +1725,7 @@ END SUBROUTINE ZeroSplittedMatrix
        END IF
      END DO
 
-     CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, RVec, DOFs ) 
+     CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, RVec, DOFs )
 #endif
      !
      ! Clean the work space:
@@ -1771,7 +1771,7 @@ END SUBROUTINE ZeroSplittedMatrix
        nneigh = ParEnvNeighbourCount( ParEnv )
        isNeighbour => ParEnv % IsNeighbour
      ENDIF
- 
+
      DO min_id=0,Parenv % PEs-1
        IF ( ParEnv % Active(min_id+1) ) EXIT
      END DO
@@ -1808,7 +1808,7 @@ END SUBROUTINE ZeroSplittedMatrix
      END DO
 
 
-     ! Compute the number of dofs owned                                         
+     ! Compute the number of dofs owned
      IF (PRESENT(nOwn)) nOwn = gind - gindp
 
      ! next pe in line needs it's base:
@@ -1898,7 +1898,7 @@ END SUBROUTINE ZeroSplittedMatrix
            CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,ELMER_COMM_WORLD,ierr )
          END IF
        END IF
-     END DO 
+     END DO
 
      DEALLOCATE( buf_a, buf_g, neigh, sz )
 
@@ -1937,7 +1937,7 @@ END SUBROUTINE ZeroSplittedMatrix
 RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
     RHSVec, Solver, SParMatrixDesc )
 
-  USE, INTRINSIC :: iso_c_binding                
+  USE, INTRINSIC :: iso_c_binding
 
   TYPE (ParallelInfo_t) :: ParallelInfo
   TYPE (Matrix_t) :: SourceMatrix
@@ -1970,12 +1970,12 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, Found
   LOGICAL :: NewSetup, UpdateTolerance
   INTEGER :: verbosity
-  
+
   INTEGER :: nrows, ncols, nnz
   TYPE(ValueList_t), POINTER :: Params
   INTEGER,ALLOCATABLE::revdoflist(:)
-  INTEGER::inside   
-  CHARACTER(*), PARAMETER :: Caller = 'SParIterSolver' 
+  INTEGER::inside
+  CHARACTER(*), PARAMETER :: Caller = 'SParIterSolver'
 
   !******************************************************************
   SaveGlobalData => GlobalData
@@ -1996,7 +1996,7 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   IF (ListGetLogical(Params,'Linear System Use HYPRE', Found )) THEN
 #ifdef HAVE_HYPRE
     CALL SolveHypre(SourceMatrix,XVec,RHSVec,Solver,&
-        ParallelInfo,SplittedMatrix)    
+        ParallelInfo,SplittedMatrix)
     RETURN
 #else
     CALL Fatal(Caller,'This version has been compiled without HYPRE!')
@@ -2042,7 +2042,7 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
       OrderList(i) % NbsGrows = CurrIf % GRows
       CALL SortI(n, OrderList(i) % NbsGRows, OrderList(i) % NbsGorder)
     END IF
-                
+
     CurrIf => SplittedMatrix % IfMatrix(i)
     n = CurrIf % NumberOfRows
     IF ( n > 0 )THEN
@@ -2055,7 +2055,7 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
     END IF
   END DO
 
-  
+
   GT => SplittedMatrix % GlueTable
   DO i = 1, SourceMatrix % NumberOfRows
      GRow = ParallelInfo % GlobalDOFs(i)
@@ -2063,7 +2063,7 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
      DO j = SourceMatrix % Rows(i),SourceMatrix % Rows(i+1) - 1
 
         GCol = ParallelInfo % GlobalDOFs(SourceMatrix % Cols(j))
-        
+
         IF ( GT % Inds(j) > 0 ) THEN
            SplittedMatrix % InsideMatrix % Values( GT % Inds(j) ) = &
                 SplittedMatrix % InsideMatrix % Values( &
@@ -2170,11 +2170,11 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
       ParallelInfo, RHSVec, XVec, Solver, Errinfo )
 
   GlobalData => SaveGlobalData
-  
+
 
 CONTAINS
-  
-  
+
+
 !*********************************************************************
 END SUBROUTINE SParIterSolver
 !*********************************************************************
@@ -2183,7 +2183,7 @@ END SUBROUTINE SParIterSolver
 
 SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix )
 
-  USE, INTRINSIC :: iso_c_binding                
+  USE, INTRINSIC :: iso_c_binding
 
   TYPE (Matrix_t) :: Matrix
   REAL(KIND=dp), DIMENSION(:) :: XVec, RHSVec
@@ -2192,12 +2192,12 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   TYPE (SplittedMatrixT), POINTER, OPTIONAL :: SplittedMatrix
 
 
-  CHARACTER(*), PARAMETER :: Caller = 'HypreSolver' 
+  CHARACTER(*), PARAMETER :: Caller = 'HypreSolver'
 
 #ifndef HAVE_HYPRE
   CALL Fatal(Caller,'Serial Hypre requested but the library is not linked in!')
 #else
-    
+
   ! Local variables
   LOGICAL :: Parallel
   INTEGER :: i, j, k, l, n
@@ -2219,10 +2219,10 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   TYPE(Matrix_t), POINTER :: GM, PiM
   INTEGER:: nnd,ind(2), precond
   REAL(KIND=dp), POINTER :: PrecVals(:)
-  REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)  
+  REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)
   INTEGER, ALLOCATABLE :: nodeowner(:),nodeperm(:),bperm(:), bowner(:)
 
-  
+
   INTERFACE
     !! create HYPRE matrix and setup solver/preconditioner
     SUBROUTINE SolveHYPRE1( n, Rows, Cols, Vals, Precond, PrecVals, GDOFs, &
@@ -2256,12 +2256,12 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
       INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       INTEGER(KIND=c_int) :: verbosity
     END SUBROUTINE SolveHYPRE4
-    
+
     SUBROUTINE CreateHypreAMS(nrows,rows,cols,vals,n,grows,gcols,gvals, pirows, picols, pivals, &
         perm, invperm, globaldofs, owner, Bperm,nodeowner,xvec, rhsvec, pe, ILUn, rounds, &
-        TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm ) & 
+        TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm ) &
         BIND(C,name="createhypreams")
-      
+
       USE, INTRINSIC :: iso_c_binding
       INTEGER(KIND=c_int) :: nrows, n, Rows(*), Cols(*), Perm(*), INVPerm(*), &
           Grows(*), gcols(*), PE, Owner(*), Rounds, ILUn, hypremethod, fcomm, pirows(*), picols(*), &
@@ -2278,34 +2278,34 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
       INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       INTEGER(KIND=c_int) :: verbosity, fcomm
     END SUBROUTINE UpdateHypre
-    
+
   END INTERFACE
 
-  
+
   CALL Info(Caller,'Solving linear system using HYPRE library',Level=6)
 
   Rows => Matrix % Rows
   Cols => Matrix % Cols
   Vals => Matrix % Values
   Params => Solver % Values
-  
+
   CALL SetHypreParameters(Params, hypremethod, ilun, hypre_dppara, hypre_intpara )
 
   TOL = ListGetCReal( Params,'Linear System Convergence Tolerance', Found )
   IF ( .NOT. Found ) TOL = 1.0d-6
-  
+
   Rounds = ListGetInteger( Params,'Linear System Max Iterations', Found )
-  IF ( .NOT. Found ) Rounds = 1000  
-  
+  IF ( .NOT. Found ) Rounds = 1000
+
   ! Hypre wants to have a continuous ascending numbering across
   ! partitions, try creating such a beast:
   ! ------------------------------------------------------------
-  Parallel = PRESENT(ParallelInfo) 
+  Parallel = PRESENT(ParallelInfo)
   IF( Parallel ) THEN
     n = SIZE(ParallelInfo % GlobalDOFs)
     ALLOCATE( Owner(n), Aperm(n) )
     CALL ContinuousNumbering(ParallelInfo,Matrix % Perm,APerm,Owner)
-    ! Newer hypre libraries require zero based indexing    
+    ! Newer hypre libraries require zero based indexing
     Aperm = Aperm-1
   ELSE
     n = Matrix % NumberOfRows
@@ -2318,14 +2318,14 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
 
   CALL SParIterActiveBarrier()
 
-  
+
   !------------------------------------------------------------
   verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
   IF( .NOT. Found ) verbosity = 10
 
-  NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+  NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found )
   IF(.NOT.Found) NewSetup = .TRUE.
-  
+
   IF (ListGetLogical(Params, 'HYPRE Block Diagonal', Found)) THEN
     bilu = Solver % Variable % Dofs
   ELSE
@@ -2334,7 +2334,7 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
 
   ! AMS requites additional information and is therefore treated separately.
   DoAMS = ( ( MODULO(hypremethod,100) == 2 ) .OR. (hypremethod/100 == 2) )
-  
+
   IF (NewSetup) THEN
     IF (Matrix % Hypre /= 0) THEN
       CALL Info(Caller,'Destroy old Hypre solver structures',Level=10)
@@ -2360,14 +2360,14 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
 !       CALL Fatal(Caller,'More unknowns that edges, current Hypre AMS can not be used!')
       END IF
 
-      CALL PrepareHypreAMS() 
-      nnd = Solver % Mesh % NumberOfNodes      
+      CALL PrepareHypreAMS()
+      nnd = Solver % Mesh % NumberOfNodes
       CALL CreateHYPREAMS( Matrix % NumberOfRows, Rows, Cols, Vals, &
           nnd,GM % Rows,GM % Cols,GM % Values,PiM % Rows, PiM % Cols, PiM % Values, &
            Aperm,Aperm,Aperm,Owner, Bperm,NodeOwner,Xvec,RHSvec,ParEnv % myPE, ILUn, Rounds,TOL,  &
             xx_d,yy_d,zz_d,hypremethod,hypre_intpara, hypre_dppara,verbosity, &
              Matrix % Hypre, Matrix % Comm)
-      CALL CleanHypreAMS() 
+      CALL CleanHypreAMS()
     END IF
     CALL SolveHYPRE1( Matrix % NumberOfRows, Rows, Cols, Vals, Precond, &
         PrecVals, Aperm, Owner,  ILUn, BILU, hypremethod, hypre_intpara, hypre_dppara,&
@@ -2388,14 +2388,14 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   ! NOTE: this is only correct if the matrix has not changed,
   ! otherwise we should use the SolveHYPRE3 function, which is
   ! not implemented, yet. This function will not update the matrix
-  ! in the solver and thus solve an old system if A has changed. 
+  ! in the solver and thus solve an old system if A has changed.
   !-----------------------------------------------------------------------
   CALL Info(Caller,'Solving previously created Hypre setup',Level=10)
   CALL SolveHYPRE2( Matrix % NumberOfRows, Aperm, Owner, Xvec, RHSvec, &
       Rounds, TOL, verbosity, Matrix % Hypre, Matrix % Comm )
 
-  IF(Parallel) CALL ExchangeHypreResults()    
-  
+  IF(Parallel) CALL ExchangeHypreResults()
+
   CALL SParIterActiveBarrier()
   DEALLOCATE( Owner, Aperm )
 
@@ -2409,7 +2409,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
 
     Mesh => Solver % Mesh
-    
+
     nnd = Mesh % NumberOfNodes
     ALLOCATE( NodeOwner(nnd), NodePerm(nnd), Bperm(nnd))
 
@@ -2434,7 +2434,7 @@ BLOCK
 
     Nvar => VariableGet( Solver % Mesh % Variables, 'ams nodal var' )
     IF(.NOT. ASSOCIATED(NVar)) CALL Fatal(Caller,'Variable "ams nodal var" does not exist!')
-    
+
     PiM => Null()
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Nvar, Solver % Variable, PiM, &
              cdim=CurrentModel % Dimension, UseNodalPermArg=.FALSE. )
@@ -2449,22 +2449,22 @@ END BLOCK
   END SUBROUTINE PrepareHypreAMS
 
 
-  SUBROUTINE CleanHypreAMS() 
-    
+  SUBROUTINE CleanHypreAMS()
+
     IF(.NOT. ASSOCIATED(GM) .OR. .NOT. ASSOCIATED(PiM)) THEN
       CALL Fatal(Caller,'Matrices "GM" and "PiM" should be allocated!')
     END IF
-    
-    DEALLOCATE(GM % Rows) 
-    DEALLOCATE(GM % Cols) 
-    DEALLOCATE(GM % Diag) 
-    DEALLOCATE(GM % Values) 
+
+    DEALLOCATE(GM % Rows)
+    DEALLOCATE(GM % Cols)
+    DEALLOCATE(GM % Diag)
+    DEALLOCATE(GM % Values)
     DEALLOCATE(GM)
 
-    DEALLOCATE(PiM % Rows) 
-    DEALLOCATE(PiM % Cols) 
-    DEALLOCATE(PiM % Diag) 
-    DEALLOCATE(PiM % Values) 
+    DEALLOCATE(PiM % Rows)
+    DEALLOCATE(PiM % Cols)
+    DEALLOCATE(PiM % Diag)
+    DEALLOCATE(PiM % Values)
     DEALLOCATE(PiM)
 
   END SUBROUTINE CleanHypreAMS
@@ -2472,7 +2472,7 @@ END BLOCK
 
   SUBROUTINE ExchangeHypreResults()
     INTEGER :: nbind
-    
+
     ALLOCATE( VecEPerNB( ParEnv % PEs ) )
     VecEPerNB = 0
     DO i = 1, Matrix % NumberOfRows
@@ -2499,7 +2499,7 @@ END BLOCK
 
 
 #endif
-  
+
 END SUBROUTINE SolveHypre
 
 
@@ -2650,7 +2650,7 @@ RECURSIVE SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
     IF( ListGetLogical( Solver % Values,'Linear System Skip Mask', GotIt ) ) THEN
       CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
           TmpRHSVec, Solver, DotF=AddrFunc(MaskedSParDotProd), NormF=AddrFunc(MaskedSParNorm), &
-          matVecF=AddrFunc(SParMatrixVector) )      
+          matVecF=AddrFunc(SParMatrixVector) )
     ELSE
       CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
           TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
@@ -3272,7 +3272,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
       CYCLE
       !CALL Fatal('CountNeighbourConns','Neighbours not associated: '//I2S(i))
     END IF
-    
+
     !    IF ( ParallelInfo % GInterface(i) ) THEN
         IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
            DO j = 1, SIZE( ParallelInfo % NeighbourList(i) % Neighbours )
@@ -3287,7 +3287,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
         END IF
 !    END IF
   END DO
-  
+
   !----------------------------------------------------------------------
   !
   ! Allocate some buffers for communication
@@ -3377,7 +3377,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
      RETURN
 
   END IF
-        
+
   !----------------------------------------------------------------------
   !
   ! First we have to compute the storage allocations
@@ -3448,7 +3448,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
         i1 = i1 + 1
 
      ELSE IF ( Ind /= -1 ) THEN
-              
+
         DMat % Rows(Row)  = Col
         DMat % GRows(Row) = SMat1 % GRows(i1)
         DMat % RowOwner(Row) = SMat1 % RowOwner(i1)
@@ -3471,7 +3471,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
               j1 = j1 + 1
               CYCLE
             ELSE IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
-              
+
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
               j1 = j1 + 1
@@ -3500,7 +3500,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
             END IF
           END IF
           IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
-            
+
             DMat % Cols(col) = SMat1 % Cols(j1)
             Col = Col + 1
             j1 = j1 + 1
@@ -3755,7 +3755,7 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
 
   INTEGER :: NewRow, NewCol,old_nv,nc
   INTEGER :: p,i,j,k,l,RowInd,ColInd,GCol
-  
+
   !*********************************************************************
   !
   ! Compression of the matrix is done in place and lengths are
@@ -3815,7 +3815,7 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
            NewRow = NewRow + 1
         END IF
         old_nv = NewCol
-           
+
      END DO
      RecvdIfMatrix(p) % Rows(NewRow) = NewCol
      RecvdIfMatrix(p) % NumberOfRows  = NewRow - 1

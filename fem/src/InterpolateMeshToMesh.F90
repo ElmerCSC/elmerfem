@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,14 +28,14 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *
 ! ******************************************************************************/
 
 
 !------------------------------------------------------------------------------
-!> Map results from mesh to mesh. The from-mesh is stored in an octree from 
+!> Map results from mesh to mesh. The from-mesh is stored in an octree from
 !> which it is relatively fast to find the to-nodes. When the node is found
 !> interpolation is performed. Optionally there may be an existing projector
 !> that speeds up the interpolation.
@@ -114,7 +114,7 @@
            n = COUNT(.NOT. FoundNodes )
            IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
          END IF
-                    
+
          IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
          RETURN
       END IF
@@ -123,19 +123,19 @@
       ! for the bounding box checks.
       !---------------------------------------------------------------------------
       PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
-          'Interpolation Passive Coordinate', Stat ) 
+          'Interpolation Passive Coordinate', Stat )
       IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
         PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
-            'Interpolation Passive Coordinate', Stat ) 
+            'Interpolation Passive Coordinate', Stat )
       END IF
-            
+
       ! Interpolate within our own partition, flag the points we found:
-      ! ---------------------------------------------------------------      
+      ! ---------------------------------------------------------------
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
          NewVariables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
 
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
-      
+
       ! special case "all found":
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
@@ -143,7 +143,7 @@
       IF( InfoActive(20) ) THEN
         IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
       END IF
-      
+
       AL = .FALSE.
       IF (.NOT.ASSOCIATED(ParEnv % Active) ) THEN
         ALLOCATE(Parenv % Active(PArEnv % PEs))
@@ -273,7 +273,7 @@
         DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
       END IF
 
-       
+
       ! receive points from others:
       ! ----------------------------
       ALLOCATE(ProcRecv(Parenv % Pes))
@@ -297,13 +297,13 @@
                1004, ELMER_COMM_WORLD, status, ierr )
       END DO
 
-      ! Count variables and received nodes, and check MPI buffer is 
+      ! Count variables and received nodes, and check MPI buffer is
       ! sufficiently large:
       ! -----------------------------------------------------------
       Var => OldVariables
       nvars = 0
       DO WHILE(ASSOCIATED(Var))
-        IF(LegitInterpVar(Var)) THEN         
+        IF(LegitInterpVar(Var)) THEN
           nvars = nvars + 1
           IF ( ASSOCIATED(Var % PrevValues) ) THEN
             j = SIZE(Var % PrevValues,2)
@@ -317,13 +317,13 @@
       DO i=1,SIZE(ProcRecv)
          maxrecv = MAX(maxrecv, ProcRecv(i) % n)
       END DO
-      
-      !For each node, we send a single integer perm and 
+
+      !For each node, we send a single integer perm and
       !a real(dp) per variable. Also sending two counts
       CALL CheckBuffer(SIZE(ProcRecv) * maxrecv * ((2 * nvars) + 1) + 2)
 
       ! Check the received points and extract values for the to-be-interpolated-
-      ! variables, if we have the points within our domain: 
+      ! variables, if we have the points within our domain:
       ! ------------------------------------------------------------------------
       DO i=1,ParEnv % PEs
         IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
@@ -335,7 +335,7 @@
           CALL MPI_BSEND( n, 1, MPI_INTEGER, proc, 2001, ELMER_COMM_WORLD, ierr )
           CYCLE
         END IF
-      
+
         ! Construct temporary mesh structure for the received points:
         ! -----------------------------------------------------------
         Nmesh => AllocateMesh()
@@ -352,7 +352,7 @@
         Var => OldVariables
         nvars = 0
         DO WHILE(ASSOCIATED(Var))
-          IF(LegitInterpVar(Var)) THEN         
+          IF(LegitInterpVar(Var)) THEN
             ALLOCATE(store(n)); store=0
             nvars = nvars+1
             CALL VariableAdd(nMesh % Variables,nMesh,Var % Solver, &
@@ -371,7 +371,7 @@
         ! try interpolating values for the points:
         ! ----------------------------------------
         ALLOCATE( FoundNodesPar(n) ); FoundNodesPar=.FALSE.
-        
+
         CALL InterpolateMeshToMeshQ( OldMesh, nMesh, OldVariables, &
            nMesh % Variables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodesPar )
 
@@ -385,7 +385,7 @@
           ALLOCATE(vstore(nfound,nvars), vperm(nfound)); vstore=0
           k = 0
           DO j=1,n
-            IF ( .NOT.FoundNodesPar(j)) CYCLE   
+            IF ( .NOT.FoundNodesPar(j)) CYCLE
             k = k + 1
             vperm(k) = j
             Var => OldVariables
@@ -453,12 +453,12 @@
         CALL MPI_RECV( vperm, n, MPI_INTEGER, proc, &
               2002, ELMER_COMM_WORLD, status, ierr )
 
-        !Mark nodes as found 
+        !Mark nodes as found
         DO j=1,n
-          k=perm(ProcSend(proc+1) % Perm(vperm(j)))          
+          k=perm(ProcSend(proc+1) % Perm(vperm(j)))
           FoundNodes(k) = .TRUE.
         END DO
-                
+
         ! recv values and store:
         ! ----------------------
         Var => OldVariables
@@ -516,14 +516,14 @@
         ParEnv % Active => NULL()
       END IF
 
-      n = COUNT(.NOT. FoundNodes )           
+      n = COUNT(.NOT. FoundNodes )
       IF(n>0) CALL Info('InterpolateMeshToMesh',&
        'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
-      
+
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
-      DEALLOCATE( FoundNodes ) 
-      
-      
+      DEALLOCATE( FoundNodes )
+
+
 CONTAINS
 
   ! Collect here all the historical ways how a variable might be not good for interpolation.
@@ -537,12 +537,12 @@ CONTAINS
       RETURN
     END IF
 
-    ! Only nodal and discontinuous galerkin fields can be interpolated as for now. 
-    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
-    ! Even for vectors the interpolation is done for each scalar component. 
+    ! Only nodal and discontinuous galerkin fields can be interpolated as for now.
+    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes )
+    ! Even for vectors the interpolation is done for each scalar component.
     IF( Var % Dofs > 1 ) IsLegit = .FALSE.
     !IF( Var % Secondary ) IsLegit = .FALSE.
-    ! Coordinates are special and should not be interpolated. 
+    ! Coordinates are special and should not be interpolated.
     IF(LEN(Var % Name) >= 10) THEN
       IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
     END IF
@@ -552,10 +552,10 @@ CONTAINS
        IF (SIZE(Var % Values)==1 ) IsLegit = .FALSE.
      END IF
     END IF
-    
+
   END FUNCTION LegitInterpVar
 
-  
+
 !------------------------------------------------------------------------------
    FUNCTION AllocateMesh() RESULT(Mesh)
 !------------------------------------------------------------------------------
@@ -612,7 +612,7 @@ CONTAINS
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
      NULLIFY( Mesh % ParallelInfo % GInterface )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )
-         
+
   END FUNCTION AllocateMesh
 !-------------------------------------------------------------------------------
 END SUBROUTINE InterpolateMeshToMesh
@@ -649,29 +649,29 @@ END SUBROUTINE InterpolateMeshToMesh
        REAL(KIND=dp), POINTER :: ElementValues(:)
        TYPE(Quadrant_t), POINTER :: LeafQuadrant
        TYPE(Element_t),POINTER :: Element, Parent
-       
+
        REAL(KIND=dp), ALLOCATABLE :: Basis(:),Vals(:),dVals(:,:), &
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
-       
+
        LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, &
            TryLinear, KeepUnfoundNodesL, InterpolatePartial
        TYPE(Quadrant_t), POINTER :: RootQuadrant
-       
+
        INTEGER, POINTER   CONTIG :: Rows(:), Cols(:)
        INTEGER, POINTER    :: Diag(:), OldPerm(:), NewPerm(:)
 
        TYPE Epntr_t
          TYPE(Element_t), POINTER :: Element
        END TYPE Epntr_t
-       
+
        TYPE(Epntr_t), ALLOCATABLE :: ElemPtrs(:)
-       
+
        INTEGER, ALLOCATABLE, TARGET :: RInd(:), Unitperm(:)
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, CylProject, ProjectorAllocated
        INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1_dp, eps2, eps_global, eps_local, eps_basis,eps_numeric
-       REAL(KIND=dp), POINTER CONTIG :: Values(:) 
+       REAL(KIND=dp), POINTER CONTIG :: Values(:)
        REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
        TYPE(Nodes_t) :: Nodes
@@ -692,7 +692,7 @@ END SUBROUTINE InterpolateMeshToMesh
 !      ------------------------------------------------
        IF ( PRESENT(Projector) ) THEN
          Projector => NewMesh % Projector
-         
+
          DO WHILE( ASSOCIATED( Projector ) )
            IF ( ASSOCIATED(Projector % Mesh, OldMesh) ) THEN
               CALL Info('InterpolateMesh2Mesh','Applying exiting projector in interpolation',Level=12)
@@ -716,13 +716,13 @@ END SUBROUTINE InterpolateMeshToMesh
        dim = CoordinateSystemDimension()
 
        dim = MAX(dim,OldMesh % MeshDim)
-       
+
        IF ( .NOT. PRESENT( UseQuadrantTree ) ) THEN
          UseQTree = .TRUE.
        ELSE
          UseQTree = UseQuadrantTree
        ENDIF
-    
+
        IF ( UseQTree ) THEN
          IF ( .NOT.ASSOCIATED( RootQuadrant ) ) THEN
            BoundingBox(1) = MINVAL(OldMesh % Nodes % x)
@@ -731,7 +731,7 @@ END SUBROUTINE InterpolateMeshToMesh
            BoundingBox(4) = MAXVAL(OldMesh % Nodes % x)
            BoundingBox(5) = MAXVAL(OldMesh % Nodes % y)
            BoundingBox(6) = MAXVAL(OldMesh % Nodes % z)
-           
+
            eps2 = 0.1_dp * MAXVAL(BoundingBox(4:6)-BoundingBox(1:3))
            BoundingBox(1:3) = BoundingBox(1:3) - eps2
            BoundingBox(4:6) = BoundingBox(4:6) + eps2
@@ -741,7 +741,7 @@ END SUBROUTINE InterpolateMeshToMesh
            RootQuadrant => OldMesh % RootQuadrant
          END IF
        END IF
-       
+
 ! Use mask or not
 !---------------------------------------
        MaskExists = PRESENT( MaskName )
@@ -751,11 +751,11 @@ END SUBROUTINE InterpolateMeshToMesh
        n = OldMesh % MaxElementNodes
        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), &
            ElementNodes % z(n), ElementValues(n) )
-       
+
        eps_global = ListGetConstReal( CurrentModel % Simulation,  &
            'Interpolation Global Epsilon', Stat)
        IF(.NOT. Stat) eps_global = 2.0d-10
-       
+
        eps_local = ListGetConstReal( CurrentModel % Simulation,  &
            'Interpolation Local Epsilon', Stat )
        IF(.NOT. Stat) eps_local = 1.0d-10
@@ -769,23 +769,23 @@ END SUBROUTINE InterpolateMeshToMesh
        IF(.NOT. Stat) eps_numeric = 1.0e-10
 
        PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
-            'Interpolation Passive Coordinate', Stat ) 
+            'Interpolation Passive Coordinate', Stat )
        IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
          PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
-               'Interpolation Passive Coordinate', Stat ) 
+               'Interpolation Passive Coordinate', Stat )
        END IF
-              
+
        CylProject = ListGetLogical( CurrentModel % Simulation, &
-            'Interpolation Cylindric', Stat )                     
+            'Interpolation Cylindric', Stat )
        IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
          CylProject = ListGetLogical( CurrentModel % Solver % Values, &
-               'Interpolation Cylindric', Stat ) 
+               'Interpolation Cylindric', Stat )
        END IF
 
        InterpolatePartial = ListGetLogical( CurrentModel % Simulation, &
-            'Interpolation Partial Hit', Stat )                     
+            'Interpolation Partial Hit', Stat )
 
-       
+
        QTreeFails = 0
        TotFails = 0
 
@@ -807,8 +807,8 @@ END SUBROUTINE InterpolateMeshToMesh
          KeepUnfoundNodesL = KeepUnfoundNodes
        ELSE
          KeepUnfoundNodesL = .TRUE.
-       END IF        
-       
+       END IF
+
        FoundCnt = 0
 
        i = MAX(NewMesh % NumberOfNodes,OldMesh % NumberOfNodes)
@@ -838,12 +838,12 @@ END SUBROUTINE InterpolateMeshToMesh
            Point(2) = Point(3)
            Point(3) = 0.0_dp
          END IF
-         
+
 !------------------------------------------------------------------------------
 ! Find in which old mesh bulk element the point belongs to
 !------------------------------------------------------------------------------
          Found = .FALSE.
-         TryQTree = ASSOCIATED(RootQuadrant) .AND. UseQTree 
+         TryQTree = ASSOCIATED(RootQuadrant) .AND. UseQTree
 
          IF( TryQTree ) THEN
 !------------------------------------------------------------------------------
@@ -851,7 +851,7 @@ END SUBROUTINE InterpolateMeshToMesh
 !------------------------------------------------------------------------------
            Element => NULL()
            CALL FindLeafElements(Point, dim, RootQuadrant, LeafQuadrant)
-           
+
            IF ( ASSOCIATED(LeafQuadrant) ) THEN
              ! Go through the bulk elements in the last ChildQuadrant
              ! only.  Try to find matching element with progressively
@@ -859,11 +859,11 @@ END SUBROUTINE InterpolateMeshToMesh
              ! -------------------------------------------------------
              Eps1 = eps_global
              Eps2 = eps_local
-             
+
              DO j=1,eps_tries
                DO k=1, LeafQuadrant % NElemsInQuadrant
                  Element => OldMesh % Elements(LeafQuadrant % Elements(k))
-                 
+
                  IF( MaskExists ) THEN
                    bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values, &
                        'Body Force', Found )
@@ -871,10 +871,10 @@ END SUBROUTINE InterpolateMeshToMesh
                    IF(.NOT. ListCheckPresent( &
                        CurrentModel % BodyForces(bf_id) % Values,MaskName) ) CYCLE
                  END IF
-                  
+
                  Indexes => Element % NodeIndexes
                  n = Element % TYPE % NumberOfNodes
-                 
+
                  ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
                  ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
                  ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
@@ -888,30 +888,30 @@ END SUBROUTINE InterpolateMeshToMesh
                      ElementNodes % z(1:n) = 0.0_dp
                    END IF
                  END IF
-                 
+
                  Found = PointInElement( Element, ElementNodes, &
                      Point, LocalCoordinates, Eps1, Eps2, NumericEps=eps_numeric,EdgeBasis=PiolaT)
                  IF ( Found ) EXIT
                END DO
-               IF ( Found ) EXIT  
-               
+               IF ( Found ) EXIT
+
                Eps1 = 10 * Eps1
-               Eps2 = 10 * Eps2               
+               Eps2 = 10 * Eps2
                IF( Eps1 > 1.0_dp ) EXIT
              END DO
            END IF
          END IF
-         
+
          IF( .NOT. TryQTree .OR. (.NOT. Found .AND. .NOT. Parallel .AND. TryLinear ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
            !------------------------------------------------------------------------------
            DO k=1,OldMesh % NumberOfBulkElements
              Element => OldMesh % Elements(k)
-             
+
              n = Element % TYPE % NumberOfNodes
              Indexes => Element % NodeIndexes
-             
+
              ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
              ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
              ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
@@ -925,21 +925,21 @@ END SUBROUTINE InterpolateMeshToMesh
                  ElementNodes % z(1:n) = 0.0_dp
                END IF
              END IF
-             
+
              Found =  PointInElement( Element, ElementNodes, &
-                 Point, LocalCoordinates  ) 
+                 Point, LocalCoordinates  )
              IF( Found ) THEN
                IF( TryQTree ) QTreeFails = QtreeFails + 1
                EXIT
              END IF
            END DO
          END IF
-         
+
          IF (.NOT.Found) THEN
            Element => NULL()
            IF (.NOT. Parallel ) THEN
              WRITE( Message,'(A,I0,A,3ES10.2,A)' ) 'Point ',i,' at ',Point,' not found!'
-             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )             
+             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )
              TotFails = TotFails + 1
            END IF
            CYCLE
@@ -976,8 +976,8 @@ END SUBROUTINE InterpolateMeshToMesh
           Var => OldVariables
           DO WHILE( ASSOCIATED( Var ) )
 
-            IF(LegitInterpVar(Var)) THEN                         
-               
+            IF(LegitInterpVar(Var)) THEN
+
 !------------------------------------------------------------------------------
 !
 !               Interpolate variable at Point in Element:
@@ -997,8 +997,8 @@ END SUBROUTINE InterpolateMeshToMesh
                 IF( .NOT. ASSOCIATED( OldSol ) ) THEN
                   CALL Fatal('InterpolateMeshToMesh','Variable not associated: '//TRIM(Var % Name))
                 END IF
-                  
-                
+
+
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN
@@ -1019,10 +1019,10 @@ END SUBROUTINE InterpolateMeshToMesh
                    IF (.NOT.ASSOCIATED(NewPerm)) NewPerm => Unitperm
 
                    k = COUNT( OldPerm(Indexes) > 0 )
-                   
+
                    IF ( k == SIZE(Indexes) .OR. (InterpolatePartial .AND. k>0) ) THEN
                     IF( NewSol % TYPE == Variable_on_nodes_on_elements ) THEN
-                      IF(.NOT. ALLOCATED(OneDGIndex) ) THEN                        
+                      IF(.NOT. ALLOCATED(OneDGIndex) ) THEN
                         CALL CreateOneDGIndex()
                       END IF
                       IF( OneDGIndex(i) > 0 ) THEN
@@ -1033,26 +1033,26 @@ END SUBROUTINE InterpolateMeshToMesh
                     ELSE
                       k = NewPerm(i)
                     END IF
-                      
+
                     IF ( k /= 0 ) THEN
-                      WHERE( OldPerm(Indexes(1:n)) > 0 ) 
+                      WHERE( OldPerm(Indexes(1:n)) > 0 )
                         ElementValues(1:n) = OldSol % Values(OldPerm(Indexes))
                       ELSE WHERE
                         ElementValues(1:n) = 0.0_dp
                       END WHERE
-                        
+
                       val = InterpolateInElement( Element, ElementValues, &
                           LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
-                      
+
                       NewSol % Values(k) = val
 
                       IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
                         DO j=1,SIZE(OldSol % PrevValues,2)
 
-                          WHERE( OldPerm(Indexes(1:n)) > 0 )                           
+                          WHERE( OldPerm(Indexes(1:n)) > 0 )
                             ElementValues(1:n) = OldSol % PrevValues(OldPerm(Indexes),j)
                           END WHERE
-                            
+
                           val = InterpolateInElement( Element, ElementValues, &
                               LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
 
@@ -1077,7 +1077,7 @@ END SUBROUTINE InterpolateMeshToMesh
              WRITE( Message,'(A,I0)' ) 'Number of points not found in quadtree: ',QtreeFails
              CALL Info( 'InterpolateMeshToMesh', Message )
              IF( TotFails == 0 ) THEN
-               CALL Info( 'InterpolateMeshToMesh','All nodes still found by N^2 dummy search!' )               
+               CALL Info( 'InterpolateMeshToMesh','All nodes still found by N^2 dummy search!' )
              END IF
            END IF
            IF( TotFails == 0 ) THEN
@@ -1106,9 +1106,9 @@ END SUBROUTINE InterpolateMeshToMesh
           END IF
           ALLOCATE( Basis(100),Vals(100), Indexes(100))
 
-          ! The critical value of basis function that is accepted to the 
+          ! The critical value of basis function that is accepted to the
           ! projector. Note that the sum of weights is one, so this
-          ! we know the scale for this one. 
+          ! we know the scale for this one.
           eps_basis = ListGetConstReal( CurrentModel % Simulation,  &
                  'Interpolation Basis Epsilon', Stat )
           IF(.NOT. Stat) eps_basis = 0.0d-12
@@ -1134,8 +1134,8 @@ END SUBROUTINE InterpolateMeshToMesh
             ELSE
               Element => ElemPtrs(i) % Element
             END IF
-            Found = ASSOCIATED( Element ) 
-            
+            Found = ASSOCIATED( Element )
+
             IF( .NOT. Found ) THEN
              ! It seems unnecessary to make a matrix entry in case no target element is found!
               IF(.FALSE.) THEN
@@ -1157,9 +1157,9 @@ END SUBROUTINE InterpolateMeshToMesh
                 CALL GetElementNodes(Nodes,Element,UMesh=OldMesh)
               END IF
 
-              np = GetElementNOFNodes(Element)              
+              np = GetElementNOFNodes(Element)
               IF (EdgeBasis) THEN
-                k = GetElementDOFs( Indexes, Element, NotDG=.TRUE.)                
+                k = GetElementDOFs( Indexes, Element, NotDG=.TRUE.)
               ELSE
                 !
                 ! In this case calling GetElementDOFs appears to generate warnings
@@ -1169,7 +1169,7 @@ END SUBROUTINE InterpolateMeshToMesh
                 k = np
                 Indexes(1:k) = Element % NodeIndexes(1:k)
               END IF
-              
+
               IF (ANY(Indexes(1:np)>Element % NodeIndexes)) np=0
 
               IF( EdgeBasis) THEN
@@ -1180,7 +1180,7 @@ END SUBROUTINE InterpolateMeshToMesh
                   ALLOCATE(dVals(k,3),WBasis(k,3),RotWBasis(k,3))
                 END IF
 
-                IF(PiolaT) THEN 
+                IF(PiolaT) THEN
                   stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals,EdgeBasis=WBasis )
                 ELSE
                   stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals,dVals)
@@ -1189,7 +1189,7 @@ END SUBROUTINE InterpolateMeshToMesh
               ELSE
                 stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals)
               END IF
-              
+
 
               rowsum = 0.0_dp
               DO j=1,k
@@ -1203,7 +1203,7 @@ END SUBROUTINE InterpolateMeshToMesh
                   END IF
                 END IF
               END DO
-              
+
 
               IF( ProjectorAllocated ) THEN
                 DO j=1,k
@@ -1214,20 +1214,20 @@ END SUBROUTINE InterpolateMeshToMesh
                   IF (.NOT.EdgeBasis.OR.(EdgeBasis.AND.j<=np)) THEN
                     Cols(nrow) = Indexes(j)
                     Values(nrow) = vals(j) / rowsum
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                   ELSE
                     Cols(nrow) = -Indexes(j)
                     Values(nrow) = WBasis(j-np,1)
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                     Cols(nrow) = -Indexes(j)
                     Values(nrow) = WBasis(j-np,2)
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                     Cols(nrow) = -Indexes(j)
                     Values(nrow) = WBasis(j-np,3)
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                   END IF
                 END DO
-              END IF                
+              END IF
             END IF
 
             Rows(i+1) = nrow
@@ -1237,18 +1237,18 @@ END SUBROUTINE InterpolateMeshToMesh
             ALLOCATE( Cols(Rows(n+1)-1), Values(Rows(n+1)-1) )
             Cols   = 0
             Values = 0
-            
+
             ALLOCATE( Projector )
             Projector % Matrix => AllocateMatrix()
             Projector % Matrix % NumberOfRows = n
             Projector % Matrix % Rows   => Rows
-            Projector % Matrix % Cols   => Cols 
+            Projector % Matrix % Cols   => Cols
             Projector % Matrix % Values => Values
-            
+
             Projector % Next => NewMesh % Projector
             NewMesh % Projector => Projector
             NewMesh % Projector % Mesh => OldMesh
-            
+
             IF( .NOT.EdgeBasis) THEN
               ALLOCATE(Rind(OldMesh % NumberOfNodes)); Rind = 0
             END IF
@@ -1261,7 +1261,7 @@ END SUBROUTINE InterpolateMeshToMesh
           DEALLOCATE( Basis, Vals, ElemPtrs, LocalU, LocalV, LocalW, Indexes )
 
 !         Store also the transpose of the projector:
-!         ------------------------------------------ 
+!         ------------------------------------------
           Projector % TMatrix => NULL()
           IF(.NOT.EdgeBasis) THEN
             IF ( FoundCnt > 0 ) THEN
@@ -1279,7 +1279,7 @@ END SUBROUTINE InterpolateMeshToMesh
               Projector % TMatrix => AllocateMatrix()
               Projector % TMatrix % NumberOfRows = n
               Projector % TMatrix % Rows   => Rows
-              Projector % TMatrix % Cols   => Cols 
+              Projector % TMatrix % Cols   => Cols
               Projector % TMatrix % Values => Values
 
               RInd = 0
@@ -1319,23 +1319,23 @@ CONTAINS
 
   END FUNCTION LegitInterpVar
 
-  
+
 
   ! Create a representative dg index to be used for interpolation.
   ! This is cheating since it does not work in general. It does work
   ! for the reduced basis DG. Even there it works only at intersections
   ! if there is an additional mask that is used to pick the correct element.
-  ! For generic cases we would need a table to all DG indexes. 
+  ! For generic cases we would need a table to all DG indexes.
   !------------------------------------------------------------------------
   SUBROUTINE CreateOneDGIndex()
     INTEGER :: i,j,k,t,n
     TYPE(Element_t), POINTER :: Element,Parent
     INTEGER, TARGET :: TmpIndexes(20)
     INTEGER, POINTER :: pIndexes(:)
-    
+
 
     CALL Info('InterpolateMesh2Mesh','Creating representative DG reindexing table!',Level=12)
-    
+
     ALLOCATE(OneDGIndex(NewMesh % NumberOfNodes))
     OneDGIndex = 0
 
@@ -1343,11 +1343,11 @@ CONTAINS
       Element => NewMesh % Elements(t)
 
       ! This might take away all bulk elements so we need to be able to deal with
-      ! boundary elements as well. 
+      ! boundary elements as well.
       IF( PRESENT( NewMaskPerm ) ) THEN
         IF( ANY( NewMaskPerm(Element % NodeIndexes) == 0 ) ) CYCLE
       END IF
-      
+
       n = Element % Type % NumberOfNodes
       IF( ASSOCIATED( Element % DGIndexes ) ) THEN
         pIndexes => Element % DGIndexes
@@ -1374,18 +1374,18 @@ CONTAINS
       ELSE
         CYCLE
       END IF
-      
+
       DO i=1,n
         j = Element % NodeIndexes(i)
         IF( OneDGIndex(j) > 0) CYCLE
         OneDGIndex(j) = pIndexes(i)
-      END DO      
+      END DO
     END DO
 
-    
+
   END SUBROUTINE CreateOneDGIndex
 
-  
+
 
 !------------------------------------------------------------------------------
      SUBROUTINE ApplyProjector
@@ -1416,8 +1416,8 @@ CONTAINS
               END IF
            END IF
            Var => Var % Next
-         END DO         
-         
+         END DO
+
 !------------------------------------------------------------------------------
      END SUBROUTINE ApplyProjector
 !------------------------------------------------------------------------------
@@ -1428,14 +1428,14 @@ CONTAINS
 
   !---------------------------------------------------------------------------
   !> Create a projector for mapping between interfaces using the Galerkin method
-  !> A temporal mesh structure with a node for each Gaussian integration point is 
+  !> A temporal mesh structure with a node for each Gaussian integration point is
   !> created. This projector matrix is transferred to a projector on the nodal
   !> coordinates.
   !> Note that this approach is very suboptimal compared to the version where
-  !> a temporal supermesh is used for in the integration. 
+  !> a temporal supermesh is used for in the integration.
   !---------------------------------------------------------------------------
    FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
-       UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, & 
+       UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, &
        NodalJump ) &
       RESULT ( Projector )
   !---------------------------------------------------------------------------
@@ -1491,7 +1491,7 @@ CONTAINS
         'Projector Relative Integration Order', Found, minv=-1,maxv=1)
 
     ! Calculate the total number of Gaussian integration points
-    ! and allocate space for the node structures. 
+    ! and allocate space for the node structures.
     !----------------------------------------------------------
     NoGaussPoints = 0
     DO i=1, BMesh1 % NumberOfBulkElements
@@ -1499,7 +1499,7 @@ CONTAINS
       IntegStuff = GaussPoints( Element, RelOrder=RelOrder, EdgeBasis=PiolaT )
       NoGaussPoints = NoGaussPoints + IntegStuff % n
     END DO
-    
+
     WRITE( Message,'(A,I0,A,I0)') 'Number of nodes and gauss points:'&
         ,NoNodes,' and ',NoGaussPoints
     CALL Info('WeightedProjector',Message,Level=10)
@@ -1567,16 +1567,16 @@ CONTAINS
 
 
     ! Create the nodal coordinates for all Gaussian integration points
-    !-----------------------------------------------------------------    
+    !-----------------------------------------------------------------
     NoGaussPoints = 0
     DO i=1, BMesh1 % NumberOfBulkElements
       Element => BMesh1 % Elements(i)
-      n = Element % TYPE % NumberOfNodes        
+      n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
       ElementNodes % x(1:n) = RealNodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = RealNodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = RealNodes % z(NodeIndexes(1:n))
-      
+
       IntegStuff = GaussPoints( Element, RelOrder=RelOrder, EdgeBasis=PiolaT )
       DO j=1,IntegStuff % n
         NoGaussPoints = NoGaussPoints + 1
@@ -1598,8 +1598,8 @@ CONTAINS
     BMesh1 % Nodes => GaussNodes
     BMesh1 % NumberOfNodes = NoGaussPoints
 
-    ! Create the mirror node flag and map the nodes of Mesh1 to be 
-    ! in the interval of Mesh2.    
+    ! Create the mirror node flag and map the nodes of Mesh1 to be
+    ! in the interval of Mesh2.
     !-----------------------------------------------------------------
     IF( Repeating ) THEN
       IF( AntiRepeating ) THEN
@@ -1611,7 +1611,7 @@ CONTAINS
 
     ! Create the projector for Gaussian integration points
     !-----------------------------------------------------------------
-    GaussProjector => MeshProjector( BMesh2, BMesh1, UseQuadrantTree )    
+    GaussProjector => MeshProjector( BMesh2, BMesh1, UseQuadrantTree )
     Rows => GaussProjector % Rows
     Cols => GaussProjector % Cols
     Values => GaussProjector % Values
@@ -1620,7 +1620,7 @@ CONTAINS
     !-----------------------------------------------------------------------------
     IF( AntiRepeating ) THEN
       CALL PostRotationalProjector( GaussProjector, MirrorNode )
-      IF( ALLOCATED( MirrorNode) ) DEALLOCATE( MirrorNode ) 
+      IF( ALLOCATED( MirrorNode) ) DEALLOCATE( MirrorNode )
     END IF
 
     ! Transfer the projector on the Gaussian points to that on
@@ -1648,7 +1648,7 @@ CONTAINS
         CALL GetElementNodes(Nodes,Element)
       ELSE
         Element => BMesh1 % Elements(i)
-        n = Element % TYPE % NumberOfNodes        
+        n = Element % TYPE % NumberOfNodes
         np = n
         Indexes(1:n) = Element % NodeIndexes
         ElementNodes % x(1:n) = RealNodes % x(Indexes(1:n))
@@ -1687,8 +1687,8 @@ CONTAINS
 
 
         ! Do the numbering of new dofs
-        ! This needs to be done here because the nodal jump 
-        ! needs the index related to (p,q) pair.  
+        ! This needs to be done here because the nodal jump
+        ! needs the index related to (p,q) pair.
         DO p=1,np
           IF (EQind(Indexes(p))==0) THEN
             Ind = Ind+1
@@ -1703,17 +1703,17 @@ CONTAINS
 
         DO p=1,np
           val = weight * Basis(p)
- 
+
           DO q=1,np
             qq = Indexes(q)
             IF(.NOT.EdgeBasis) qq=InvPerm1(qq)
-            CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)), qq, Basis(q) * val ) 
+            CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)), qq, Basis(q) * val )
 
             ! Add a diagonal entry to the future constrained system.
             ! This will enable a jump to the discontinuous boundary.
             ! So far no value is added just the sparse matrix entry.
             !IF( NodalJump ) THEN
-            !  IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN 
+            !  IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN
             !    CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
             !        totsize + EQInd(Indexes(q)), 0.0_dp )
             !  END IF
@@ -1725,7 +1725,7 @@ CONTAINS
             IF (qq<=0) EXIT
             IF(.NOT.EdgeBasis) qq=InvPerm2(qq)
             CALL List_AddToMatrixElement(Projector % ListMatrix, &
-                EQind(Indexes(p)), qq, -PeriodicScale * Values(q) * val ) 
+                EQind(Indexes(p)), qq, -PeriodicScale * Values(q) * val )
           END DO
         END DO
 
@@ -1780,7 +1780,7 @@ CONTAINS
     DEALLOCATE( GaussNodes )
 
     DEALLOCATE( Basis )
-    IF(EdgeBasis) DEALLOCATE( dBasisdx, WBasis, RotWBasis ) 
+    IF(EdgeBasis) DEALLOCATE( dBasisdx, WBasis, RotWBasis )
 
 !------------------------------------------------------------------------------
   END FUNCTION WeightedProjector
@@ -1927,4 +1927,4 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE Ip2DgFieldInElement
 !------------------------------------------------------------------------------
-  
+

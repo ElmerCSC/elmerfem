@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,16 +13,16 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 ! *  Utilities written as solvers to compute the Helmholtz projection P(A)
-! *  of a curl-conforming vector field A. The projection can be obtained as 
-! *  P(A) = A - W where  W is the curl-conforming field fitted to represent 
+! *  of a curl-conforming vector field A. The projection can be obtained as
+! *  P(A) = A - W where  W is the curl-conforming field fitted to represent
 ! *  grad Phi, with Phi being a H1-regular scalar field.
 ! *
 ! *  Authors: Mika Malinen
@@ -30,7 +30,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: March 20, 2020
 ! *
@@ -55,7 +55,7 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
   CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
 
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE HelmholtzProjector_Init
 !------------------------------------------------------------------------------
@@ -63,7 +63,7 @@ END SUBROUTINE HelmholtzProjector_Init
 
 !------------------------------------------------------------------------------
 !> Compute a H1-regular scalar field to obtain the Helmholtz projection P(A)
-!> of a curl-conforming vector field A. Given the solution field Phi of this 
+!> of a curl-conforming vector field A. Given the solution field Phi of this
 !> solver, the projection can be evaluated as P(A) = A - grad Phi.
 !------------------------------------------------------------------------------
 SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
@@ -142,15 +142,15 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     CALL Fatal('HelmholtzProjection', 'Solver associated with potential variable > '&
         //TRIM(PotName)//' < not found!')
   END IF
-  
+
   PotDOFs = SolverPtr % Variable % DOFs
   IF (PotDOFs > 1) CALL Fatal('HelmholtzProjection', 'A real-valued potential expected')
 
   !
-  ! Find some parameters to inherit the vector FE basis as defined in 
+  ! Find some parameters to inherit the vector FE basis as defined in
   ! the primary solver:
   !
-  
+
   CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
   IF (PiolaVersion) CALL Info('HelmholtzProjection', &
       'Using Piola-transformed finite elements', Level=5)
@@ -169,8 +169,8 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     ! the background mesh defines the number of Lagrange basis functions.
     !
     n = GetElementNOFNodes()
-   
-    ! The DOF counts for the potential (target) variable: 
+
+    ! The DOF counts for the potential (target) variable:
     n_pot = n*SolverPtr % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
     nd_pot = GetElementNOFDOFs(USolver=SolverPtr)
 
@@ -180,7 +180,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     !----------------------------------------
     CALL LocalMatrix(Stiff, Force, Element, n, dim, PiolaVersion, &
         SecondOrder, n_pot, nd_pot, PotSol, ReadySystemMatrix)
-    
+
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
     IF (ReadySystemMatrix) THEN
@@ -190,7 +190,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     END IF
   END DO
 
-  IF (ConstantBulkMatrix) THEN 
+  IF (ConstantBulkMatrix) THEN
     CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ReadySystemMatrix, RHSUpdate = .FALSE.)
   ELSE
     CALL DefaultFinishBulkAssembly()
@@ -208,7 +208,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   !
   Solver % Variable % Values = 0.0d0
 
-  Norm = DefaultSolve()  
+  Norm = DefaultSolve()
 
 
 CONTAINS
@@ -231,10 +231,10 @@ CONTAINS
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: u, v, w, s, DetJ
-    REAL(KIND=dp) :: Basis(n), DBasis(n,3) 
+    REAL(KIND=dp) :: Basis(n), DBasis(n,3)
     REAL(KIND=dp) :: WBasis(nd_pot-n_pot,3), CurlWBasis(nd_pot-n_pot,3)
     REAL(KIND=dp) :: A(1,3)
 !------------------------------------------------------------------------------
@@ -244,7 +244,7 @@ CONTAINS
     Force = 0.0d0
 
     IF (SecondOrder) THEN
-      EdgeBasisDegree = 2  
+      EdgeBasisDegree = 2
       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
           EdgeBasisDegree=EdgeBasisDegree)
     ELSE
@@ -255,11 +255,11 @@ CONTAINS
     IF( dim == 2 .AND. .NOT. PiolaVersion) THEN
       CALL Fatal('HelmholtzProjection', '"Use Piola Transform = True" needed in 2D')
     END IF
-    
+
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, DBasis, EdgeBasis = WBasis, &
-          RotBasis = CurlWBasis, USolver = SolverPtr ) 
+          RotBasis = CurlWBasis, USolver = SolverPtr )
 
       A(1,1:dim) = MATMUL(PotSol(1,n_pot+1:nd_pot), WBasis(1:nd_pot-n_pot,1:dim))
       s = detJ * IP % s(t)
@@ -326,7 +326,7 @@ END SUBROUTINE RemoveKernelComponent_Init0
 !>  when the kernel component grad phi of A (with respect to the curl operator)
 !>  has been computed by using the subroutine HelmholtzProjector. This solver
 !>  generates the representation W of grad phi in terms of the curl-conforming
-!>  basis and finally redefines A := A - W, with W = grad phi. 
+!>  basis and finally redefines A := A - W, with W = grad phi.
 !------------------------------------------------------------------------------
 SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
@@ -423,14 +423,14 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
     CALL Fatal('RemoveKernelComponent', 'Solver associated with kernel variable > '&
         //TRIM(Name)//' < not found!')
   END IF
-  
+
   IF (KerSolverPtr % Variable % DOFs > 1) CALL Fatal('RemoveKernelComponent', &
       'A real-valued potential expected')
 
   !
   ! Find some parameters to inherit the vector FE basis as defined in the primary solver:
   !
-  
+
   CALL EdgeElementStyle(SolverPtr % Values, PiolaVersion, QuadraticApproximation = SecondOrder )
 
   IF (PiolaVersion) CALL Info('RemoveKernelComponent', &
@@ -447,8 +447,8 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
 
     n = GetElementNOFNodes()
     nd = GetElementNOFDOFs()
-   
-    ! The DOF counts for the potential variable: 
+
+    ! The DOF counts for the potential variable:
     n_pot = n*SolverPtr % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
     nd_pot = GetElementNOFDOFs(USolver=SolverPtr)
 
@@ -462,7 +462,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
     !----------------------------------------
     CALL LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
         SecondOrder, PhiSol, ReadySystemMatrix)
-    
+
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
     IF (ReadySystemMatrix) THEN
@@ -473,7 +473,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
 
   END DO
 
-  IF (ConstantBulkMatrix) THEN 
+  IF (ConstantBulkMatrix) THEN
     CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ReadySystemMatrix, RHSUpdate = .FALSE.)
   ELSE
     CALL DefaultFinishBulkAssembly()
@@ -489,7 +489,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
   !
   Solver % Variable % Values = 0.0d0
 
-  Norm = DefaultSolve()  
+  Norm = DefaultSolve()
 
   !
   ! Finally, redefine the potential variable:
@@ -506,7 +506,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
           Solver % Variable % Values(j)
     END DO
   ELSE
-    CALL Fatal('RemoveKernelComponent', 'The variable and potential permutations differ')  
+    CALL Fatal('RemoveKernelComponent', 'The variable and potential permutations differ')
   END IF
 
 CONTAINS
@@ -527,10 +527,10 @@ CONTAINS
 
     LOGICAL :: Stat
 
-    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree
 
     REAL(KIND=dp) :: s, DetJ
-    REAL(KIND=dp) :: Basis(n), DBasis(n,3) 
+    REAL(KIND=dp) :: Basis(n), DBasis(n,3)
     REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
     REAL(KIND=dp) :: A(3)
 !------------------------------------------------------------------------------
@@ -540,7 +540,7 @@ CONTAINS
     Force = 0.0d0
 
     IF (SecondOrder) THEN
-      EdgeBasisDegree = 2  
+      EdgeBasisDegree = 2
     ELSE
       EdgeBasisDegree = 1
     END IF
@@ -551,12 +551,12 @@ CONTAINS
       CALL Fatal('RemoveKernelComponent', '"Use Piola Transform = True" needed in 2D')
     END IF
 
-    
+
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, DBasis, EdgeBasis = WBasis, &
-          RotBasis = CurlWBasis, USolver = SolverPtr ) 
-      
+          RotBasis = CurlWBasis, USolver = SolverPtr )
+
       s = detJ * IP % s(t)
 
       A = 0.0d0
@@ -564,7 +564,7 @@ CONTAINS
         A(1:dim) = A(1:dim) + PhiSol(i) * DBasis(i,1:dim)
       END DO
 
-      IF (.NOT. ReadySystemMatrix) THEN 
+      IF (.NOT. ReadySystemMatrix) THEN
         DO p=1,nd
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + SUM(WBasis(q,1:dim) * WBasis(p,1:dim)) * s

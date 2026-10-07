@@ -28,14 +28,14 @@ SUBROUTINE ElectrolytePot_init( Model,Solver,dt,Transient )
   IF( ListGetLogical( Params,'Linearize Flux',Found ) ) THEN
     CALL ListAddNewLogical( Params,'Calculate Phie Sensitivity',.TRUE.)
   END IF
-  
+
 END SUBROUTINE ElectrolytePot_Init
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
 !> Solves for the conservation of charge in electrolyte equation
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
 SUBROUTINE ElectrolytePot( Model,Solver,dt,Transient )
   USE DefUtils
   USE BatteryModule
@@ -55,7 +55,7 @@ SUBROUTINE ElectrolytePot( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'ElectrolytePot'
-  TYPE(Variable_t), POINTER :: SensVar 
+  TYPE(Variable_t), POINTER :: SensVar
   REAL(KIND=dp) :: TotDiffFlux, AbsDiffFlux, TotArea
   REAL(KIND=dp), ALLOCATABLE, SAVE :: PhieWeight(:),PhieForce(:)
   REAL(KIND=dp) :: ForceAbsSum, ForceSum, WeightSum, coeff
@@ -66,21 +66,21 @@ SUBROUTINE ElectrolytePot( Model,Solver,dt,Transient )
   CALL Info(Caller,'------------------------------------------------')
 
   CALL InitializeBattery()
-  
+
   CALL DefaultStart()
 
   Mesh => GetMesh()
-  Params => GetSolverParams() 
+  Params => GetSolverParams()
 
-  dim = CoordinateSystemDimension() 
+  dim = CoordinateSystemDimension()
 
   maxiter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
-  
+
   Newton = ListGetLogical( Params,'Linearize Flux',Found )
-  
-  CorrectDisbalance = ListGetLogical( Params,'Correct Source Disbalance',Found ) 
+
+  CorrectDisbalance = ListGetLogical( Params,'Correct Source Disbalance',Found )
 
   TimeAveDiff = ListGetLogical( Params,'Use Time Average Diffusion',Found )
 
@@ -89,17 +89,17 @@ SUBROUTINE ElectrolytePot( Model,Solver,dt,Transient )
   END IF
 
   IF(.NOT. ALLOCATED( PhieWeight ) ) THEN
-    n = SIZE( PhieVar % Values ) 
+    n = SIZE( PhieVar % Values )
     ALLOCATE( PhieWeight(n), PhieForce(n) )
   END IF
-    
+
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
     IF(maxiter>1) CALL Info(Caller,'Nonlinear system iteration: '//I2S(iter),Level=5)
-    
+
     ! Update flux from Butler-Volmer equation
-    !------------------------------------------------------------------    
+    !------------------------------------------------------------------
     CALL ButlerVolmerUpdate(Solver)
 
     IF( Newton ) THEN
@@ -108,13 +108,13 @@ SUBROUTINE ElectrolytePot( Model,Solver,dt,Transient )
         CALL Fatal(Caller,'Variable "dJli dPhie" not present!')
       END IF
     END IF
-    
+
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
 
     CALL Info(Caller,'Performing bulk element assembly',Level=12)
-    Active = GetNOFActive(Solver) 
+    Active = GetNOFActive(Solver)
     InitHandles = .TRUE.
 
     PhieForce = 0.0_dp
@@ -125,19 +125,19 @@ SUBROUTINE ElectrolytePot( Model,Solver,dt,Transient )
 
     DO t=1,Active
       Element => GetActiveElement(t)
-      n  = GetElementNOFNodes(Element) 
-      nd = GetElementNOFDOFs(Element) 
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
       nb = GetElementNOFBDOFs(Element)
       CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
     END DO
     CALL DefaultFinishBulkAssembly()
 
-    
-#if 0 
+
+#if 0
     ! Currently the BCs are always natural
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     Active = GetNOFBoundaryActive(Solver)
-    InitHandles = .TRUE. 
+    InitHandles = .TRUE.
     DO t=1,Active
       Element => GetBoundaryElement(t)
       IF(ActiveBoundaryElement(Element)) THEN
@@ -149,35 +149,35 @@ SUBROUTINE ElectrolytePot( Model,Solver,dt,Transient )
     END DO
 #endif
 
-    IF( InfoActive(7) .OR. CorrectDisbalance ) THEN        
+    IF( InfoActive(7) .OR. CorrectDisbalance ) THEN
       ForceSum = SUM( PhieForce )
-      ForceAbsSum = SUM( ABS( PhieForce ) )    
+      ForceAbsSum = SUM( ABS( PhieForce ) )
       PRINT *,'Phie Source disbalance:',ForceSum, ForceAbsSum, ForceSum / ForceAbsSum
     END IF
-      
+
     IF( CorrectDisbalance ) THEN
       WeightSum = SUM( PhieWeight )
       coeff = -ForceSum / WeightSum
       Solver % Matrix % Rhs = Solver % Matrix % Rhs + coeff * PhieWeight
-    END IF      
-    
-    CALL DefaultFinishBoundaryAssembly()  
-    CALL DefaultFinishAssembly() 
+    END IF
+
+    CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishAssembly()
 
     ! BCs are always natural
-    ! CALL DefaultDirichletBCs() 
+    ! CALL DefaultDirichletBCs()
 
-    
+
     ! And finally, solve:
     !--------------------
     Norm = DefaultSolve()
 
     CALL VariableRange( PhieVar, 8 )
-    
+
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT
-    
+
   END DO
-  
+
   CALL DefaultFinish()
 
 
@@ -207,14 +207,14 @@ CONTAINS
     !------------------------------------------------------------------------------
 
     dim = CoordinateSystemDimension()
-    IP = GaussPointsAdapt( Element ) 
+    IP = GaussPointsAdapt( Element )
 
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
       ALLOCATE(Basis(m), dBasisdx(m,3), ddBasisddx(m,3,3), MASS(m,m), STIFF(m,m), &
           FORCE(m), NewtonForce(m), ElemSource(m), ElemPhie(m), ElemDiff(m), ElemCe(m), &
-          ElemSens(m), STAT=allocstat)      
+          ElemSens(m), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
       END IF
@@ -244,26 +244,26 @@ CONTAINS
         ElemPhie(1:n) = PhieVar % Values( PhieVar % Perm( Element % NodeIndexes ) )
       END IF
     END IF
-      
+
     ! Electrolyte concentration at nodes
     IF( DoDiffusion ) THEN
       IF( UseTimeAveDiff ) THEN
-        ElemCe(1:n) = 0.5_dp * ( & 
+        ElemCe(1:n) = 0.5_dp * ( &
             CeVar % Values( CeVar % Perm( Element % NodeIndexes ) ) + &
             CeVar % PrevValues( CeVar % Perm( Element % NodeIndexes ), 1 ) )
       ELSE
         ElemCe(1:n) = CeVar % Values( CeVar % Perm( Element % NodeIndexes ) )
       END IF
     END IF
-        
+
     CALL GetElementNodes( Nodes, UElement=Element )
     Material => GetMaterial(Element)
-    
-    ! Initialize    
+
+    ! Initialize
     STIFF = 0._dp
     FORCE = 0._dp
     NewtonForce = 0.0_dp
-    
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -280,24 +280,24 @@ CONTAINS
 
       ! Getting conductivity term + assembly of the K matrix
       CeAtIp = SUM( Basis(1:n) * ElemCe(1:n) )
-      Kappa = EffIonConductivity(Material, CeAtIp ) 
+      Kappa = EffIonConductivity(Material, CeAtIp )
 
       TotArea = TotArea + Weight
 
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
           Kappa * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
-      
+
       ! Source term at integration point (j_li)
       ! Electrolyte uses positive sign with the source as in (3.12) of [1]
-      ! Note that the sign of DivGrad gets changed for weak form. 
+      ! Note that the sign of DivGrad gets changed for weak form.
       IF( HaveSource ) THEN
         SourceAtIP = SUM(Basis(1:n)*ElemSource(1:n))
         FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
       END IF
-        
+
       ! This could be optional when testing for different formulations
       IF( DoDiffusion ) THEN
-        DiffCoeff = EffDiffConductivity(Material, CeAtIp ) 
+        DiffCoeff = EffDiffConductivity(Material, CeAtIp )
         IF( QuadDiffusion ) THEN
           DO i=1,dim
             FORCE(1:nd) = FORCE(1:nd) + &
@@ -313,24 +313,24 @@ CONTAINS
                 Weight * dBasisdx(1:nd,i) * DiffCoeff * GradLogCe(i)
           END DO
         END IF
-          
+
         !DO p=1,nd
         !  ElemDiff(p) = -DiffCoeff * SUM( dBasisdx(p,1:dim) * GradLogCe(1:dim) )
-        !END DO        
+        !END DO
         !FORCE(1:nd) = FORCE(1:nd) + Weight * ElemDiff(1:nd)
       END IF
-      
+
       IF( HaveSource .AND. Newton ) THEN
         SensAtIp = SUM( Basis(1:n) * ElemSens(1:n) )
-        PhieAtIp = SUM( Basis(1:n) * ElemPhie(1:n) ) 
+        PhieAtIp = SUM( Basis(1:n) * ElemPhie(1:n) )
         DO p=1,nd
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) - Weight * SensAtIp * Basis(p) * Basis(q)
           END DO
-          NewtonFORCE(p) = NewtonFORCE(p) - Weight * SensAtIp * PhieAtIp * Basis(p)  
+          NewtonFORCE(p) = NewtonFORCE(p) - Weight * SensAtIp * PhieAtIp * Basis(p)
         END DO
       END IF
-      
+
       PhieWeight( PhieVar % Perm(Element % NodeIndexes) ) = &
           PhieWeight( PhieVar % Perm(Element % NodeIndexes) ) + Weight * Basis(1:nd)
     END DO
@@ -338,11 +338,11 @@ CONTAINS
     ! This is just the pure r.h.s. vector without newton linearization
     PhieForce( PhieVar % Perm(Element % NodeIndexes) ) = &
         PhieForce( PhieVar % Perm(Element % NodeIndexes) ) + FORCE(1:nd)
-    
+
     IF( Newton ) THEN
       FORCE(1:nd) = FORCE(1:nd) + NewtonForce(1:nd)
     END IF
-    
+
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element )
 
     !---------------------------
@@ -365,7 +365,7 @@ CONTAINS
     LOGICAL :: Stat,Found
     INTEGER :: i,t,dim
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: PotAtCc
     SAVE Nodes
@@ -410,7 +410,7 @@ CONTAINS
   END SUBROUTINE LocalMatrixBC
   !------------------------------------------------------------------------------
 #endif
-  
+
   !-------------------------------
 END SUBROUTINE ElectrolytePot
 !------------------------------------------------------------------------------

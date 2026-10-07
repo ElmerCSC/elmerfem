@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,16 +27,16 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Nov 2002
 ! *
 ! *****************************************************************************/
- 
+
 !------------------------------------------------------------------------------
-!>  This is the wave equation solver for the convective transport equation. 
+!>  This is the wave equation solver for the convective transport equation.
 !>  As initial data one has to specify the field subject to the convection
-!>  operator. This field should be declared using the sif-file flag Advection 
+!>  operator. This field should be declared using the sif-file flag Advection
 !>  Variable.  The rate of change of the field subject to the convection
 !>  operator which is needed as initial condition at the beginning of time step
 !>  is solved using RateOfChangeSolver and should be available to the solver
@@ -71,7 +71,7 @@
      TYPE(Matrix_t), POINTER  :: StiffMatrix
      TYPE(Nodes_t) :: ElementNodes
      TYPE(Element_t), POINTER :: CurrentElement, Parent
-     TYPE(Variable_t), POINTER :: FlowSol, Udot0Var 
+     TYPE(Variable_t), POINTER :: FlowSol, Udot0Var
      TYPE(VariablePtr_t), POINTER :: U0Var(:)
      TYPE(ValueList_t), POINTER :: Material
 
@@ -84,7 +84,7 @@
      LOGICAL :: GotIt, stat, AllocationsDone = .FALSE.
      CHARACTER(LEN=MAX_NAME_LEN) :: AdvectionFlag, AdvectionVariable, &
          VariableName, EquationName
- 
+
      REAL(KIND=dp), POINTER :: U(:), Udot0(:), ForceVector(:), Flow(:), &
          Velocity(:)
      REAL(KIND=dp) :: at,st,Norm, PrevNorm
@@ -94,9 +94,9 @@
           LocalMassMatrix(:,:), LocalDampMatrix(:,:), &
           V1(:), V2(:), V3(:)
 
-     SAVE LocalStiffMatrix, LocalForce, ElementNodes, & 
+     SAVE LocalStiffMatrix, LocalForce, ElementNodes, &
           AllocationsDone, LocalMassMatrix, LocalDampMatrix, &
-          U0Var, V1, V2, V3      
+          U0Var, V1, V2, V3
 
 !------------------------------------------------------------------------------
      ThisSolverCalls = ThisSolverCalls + 1
@@ -111,7 +111,7 @@
 !------------------------------------------------------------------------------
        U     => Solver % Variable % Values
        UPerm => Solver % Variable % Perm
-     
+
        LocalNodes = Model % NumberOfNodes
        StiffMatrix => Solver % Matrix
        ForceVector => StiffMatrix % RHS
@@ -125,7 +125,7 @@
 
        IF ( .NOT. AllocationsDone ) THEN
          N = Model % MaxElementNodes
-         
+
          ALLOCATE( ElementNodes % x( N ),                       &
              ElementNodes % y( N ),                             &
              ElementNodes % z( N ),                             &
@@ -139,7 +139,7 @@
              N*AdvectionVariableComponents),                    &
              V1(N), V2(N), V3(N),                               &
              STAT=istat )
-         
+
          IF ( istat /= 0 ) THEN
            CALL Fatal('TransportEquationSolver', &
                'Memory allocation error, aborting.')
@@ -175,13 +175,13 @@
                'Specified Advection Variable component does not exist')
          END DO
        END IF
-       
+
        VariableName = ListGetString( Solver % Values, &
            'Rate Of Change Equation Variable' )
        Udot0Var => VariableGet(Solver % Mesh % Variables, VariableName)
-       
+
 !------------------------------------------------------------------------------
-!    Get the type of Advection Velocity field and read the velocity field if 
+!    Get the type of Advection Velocity field and read the velocity field if
 !    computed by the Navier-Stokes equations solver
 !------------------------------------------------------------------------------
        AdvectionFlag = ListGetString(Solver % Values, 'Advection')
@@ -190,8 +190,8 @@
              'Flow Solution' )
          IF ( ASSOCIATED( FlowSol ) ) THEN
            VelocityPerm => FlowSol % Perm
-           Flow => FlowSol % Values  
-           VelocityComponents = FlowSol % DOFs - 1 
+           Flow => FlowSol % Values
+           VelocityComponents = FlowSol % DOFs - 1
            IF (VelocityComponents /= CoordinateSystemDimension()) &
                CALL Warn('TransportEquationSolver', &
                'Coordinate system and Advection Velocity dimensions unequal')
@@ -202,8 +202,8 @@
        ELSE
          IF (AdvectionFlag /= 'constant') CALL Fatal(     &
              'TransportEquationSolver', &
-             'Advection flag should be either "computed" or "constant"') 
-         VelocityComponents = CoordinateSystemDimension()         
+             'Advection flag should be either "computed" or "constant"')
+         VelocityComponents = CoordinateSystemDimension()
        END IF
 
 !------------------------------------------------------------------------------
@@ -214,7 +214,7 @@
 !    Set initial conditions by updating (Solver % Variable)-fields
 !------------------------------------------------------------------------------
 
-       DO i=1,Model % NumberOfNodes 
+       DO i=1,Model % NumberOfNodes
          j = UPerm(i)
          k = U0Var(1) % Var % Perm(i)
          p = Udot0Var % Perm(i)
@@ -231,7 +231,7 @@
            END DO
          ELSE
            CALL Fatal('TransportEquationSolver',&
-               'Nonmatching variable permutations') 
+               'Nonmatching variable permutations')
          END IF
        END DO
 
@@ -266,15 +266,15 @@
            SELECT CASE (VelocityComponents)
              CASE(1)
              V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
-                 NodeIndexes) 
+                 NodeIndexes)
              V2 = 0.0d0
-             V3 = 0.0d0            
+             V3 = 0.0d0
              CASE(2)
              V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
                  NodeIndexes)
              V2(1:n) = ListGetReal( Material,'Advection Velocity 2',n, &
                  NodeIndexes)
-             V3 = 0.0d0  
+             V3 = 0.0d0
              CASE(3)
              V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
                  NodeIndexes)
@@ -283,7 +283,7 @@
              V3(1:n) = ListGetReal( Material,'Advection Velocity 3',n, &
                  NodeIndexes)
            END SELECT
-         ELSE ! Use computed velocity field   
+         ELSE ! Use computed velocity field
            DO i=1,n
              j = VelocityPerm( NodeIndexes(i) )
              SELECT CASE (VelocityComponents)
@@ -313,13 +313,13 @@
          CALL Add2ndOrderTime2( LocalMassMatrix, LocalDampMatrix, &
              LocalStiffMatrix, LocalForce, 2.0d0*dt, N, &
              AdvectionVariableComponents, UPerm( NodeIndexes ), Solver )
-       
+
 !------------------------------------------------------------------------------
 !      Update global matrix and rhs vector from local matrix & vector
 !------------------------------------------------------------------------------
          CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
              ForceVector, LocalForce, n, AdvectionVariableComponents, &
-             UPerm(NodeIndexes) ) 
+             UPerm(NodeIndexes) )
        END DO
 
 !------------------------------------------------------------------------------
@@ -328,19 +328,19 @@
        DO t = Solver % Mesh % NumberOfBulkElements + 1,  &
            Solver % Mesh % NumberOfBulkElements +  &
            Solver % Mesh % NumberOfBoundaryElements
-         
+
          CurrentElement => Solver % Mesh % Elements(t)
          NodeIndexes => CurrentElement % NodeIndexes
 
-         IF ( SIZE(NodeIndexes) > 1 ) THEN         
+         IF ( SIZE(NodeIndexes) > 1 ) THEN
 
            Parent => CurrentELement % BoundaryInfo % Left
            stat = ASSOCIATED( Parent )
            IF (stat) stat = ALL(UPerm(Parent % NodeIndexes) > 0)
            IF ( .NOT. stat) THEN
              Parent => CurrentELement % BoundaryInfo % Right
-             stat = ASSOCIATED( Parent ) 
-             IF (stat) stat = ALL(UPerm(Parent % NodeIndexes) > 0)            
+             stat = ASSOCIATED( Parent )
+             IF (stat) stat = ALL(UPerm(Parent % NodeIndexes) > 0)
              IF ( .NOT. stat )  CALL Fatal( 'TransportEquationSolver', &
                  'No parent element can be found for given boundary element' )
            END IF
@@ -360,15 +360,15 @@
              SELECT CASE (VelocityComponents)
                CASE(1)
                V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
-                   NodeIndexes) 
+                   NodeIndexes)
                V2 = 0.0d0
-               V3 = 0.0d0            
+               V3 = 0.0d0
                CASE(2)
                V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
                    NodeIndexes)
                V2(1:n) = ListGetReal( Material,'Advection Velocity 2',n, &
                    NodeIndexes)
-               V3 = 0.0d0  
+               V3 = 0.0d0
                CASE(3)
                V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
                    NodeIndexes)
@@ -377,7 +377,7 @@
                V3(1:n) = ListGetReal( Material,'Advection Velocity 3',n, &
                    NodeIndexes)
              END SELECT
-           ELSE ! Use computed velocity field   
+           ELSE ! Use computed velocity field
              DO i=1,n
                j = VelocityPerm( NodeIndexes(i) )
                SELECT CASE (VelocityComponents)
@@ -407,7 +407,7 @@
 
            CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
                ForceVector, LocalForce, n, AdvectionVariableComponents, &
-               UPerm(NodeIndexes) ) 
+               UPerm(NodeIndexes) )
          END IF
        END DO
 
@@ -430,7 +430,7 @@
 !------------------------------------------------------------------------------
       st = CPUTime()
 !------------------------------------------------------------------------------
-!    Solve the primary unknown and update velocity and acceleration 
+!    Solve the primary unknown and update velocity and acceleration
 !    vectors
 !------------------------------------------------------------------------------
       Norm = DefaultSolve()
@@ -444,8 +444,8 @@
       Solver % dt = dt
 
 !------------------------------------------------------------------------------
-!    Retrieve correct boundary conditions on the outflow boundary and 
-!    update Advection Variable for the next time step. 
+!    Retrieve correct boundary conditions on the outflow boundary and
+!    update Advection Variable for the next time step.
 !------------------------------------------------------------------------------
       SELECT CASE(AdvectionVariableComponents)
         CASE(1)
@@ -459,7 +459,7 @@
         END DO
       END SELECT
 
-      DO i=1,Model % NumberOfNodes 
+      DO i=1,Model % NumberOfNodes
         j = UPerm(i)
         k = U0Var(1) % Var % Perm(i)
         IF(j>0 .AND. k>0) THEN
@@ -468,16 +468,16 @@
           END DO
         ELSE
           CALL Fatal('TransportEquationSolver',&
-              'Nonmatching variable permutations') 
+              'Nonmatching variable permutations')
         END IF
       END DO
-        
+
 !-----------------------------------------------------------------------------
     END IF         ! IF (MOD(ThisSolverCalls,2)==1)
 !------------------------------------------------------------------------------
 
 
-!----------------------------------------------------------------------------- 
+!-----------------------------------------------------------------------------
   CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE LocalMatrix( StiffMatrix, DampMatrix, MassMatrix, &
@@ -517,7 +517,7 @@
 !------------------------------------------------------------------------------
          stat = ElementInfo( Element,Nodes, U, V, W, SqrtElementMetric, &
                     Basis, dBasisdx )
- 
+
          S = S * SqrtElementMetric
          vel(1) = SUM( V1(1:n) * Basis(1:n) )
          vel(2) = SUM( V2(1:n) * Basis(1:n) )
@@ -619,7 +619,7 @@
          VariableComponents, U, Perm)
 !------------------------------------------------------------------------------
        TYPE(Model_t) :: Model
-       CHARACTER(LEN=*) :: Name 
+       CHARACTER(LEN=*) :: Name
        INTEGER :: Component, VariableComponents, Perm(:)
        REAL(KIND=dp) :: U(:)
 !------------------------------------------------------------------------------
@@ -677,10 +677,10 @@
 !
 ! REAL(KIND=dp) :: StiffMatrix(:,:)
 !   INOUT:
-!   
+!
 ! REAL(KIND=dp) :: Force(:)
 !   INOUT:
-!   
+!
 ! REAL(KIND=dp) :: dt
 !   INPUT: Simulation timestep size
 !
@@ -692,7 +692,7 @@
 !
 ! TYPE(Solver_t) :: Solver
 !   INPUT: solver parameter list (used to get some options for time integration)
-! 
+!
 !------------------------------------------------------------------------------
        TYPE(Solver_t) :: Solver
 
@@ -712,7 +712,7 @@
        IF ( Solver % Matrix % Lumped ) THEN
 !------------------------------------------------------------------------------
          CALL Fatal('TransportEquationSolver',&
-             '"Lumped" option is not available') 
+             '"Lumped" option is not available')
 !------------------------------------------------------------------------------
        END IF
 !------------------------------------------------------------------------------
@@ -763,9 +763,9 @@
          DO j=1,N
            s = s + ( (1.0d0 - Alpha) / (Beta*dt**2) ) * MassMatrix(i,j) * X(j)
            s = s + ( (1.0d0 - Alpha) / (Beta*dt)) * MassMatrix(i,j) * V(j)
-           
+
            s = s + ( Gamma / (Beta*dt) ) * DampMatrix(i,j) * X(j)
-           
+
            s = s - StiffMatrix(i,j) * X(j)
 
            StiffMatrix(i,j) = StiffMatrix(i,j) +  &

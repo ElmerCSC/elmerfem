@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,13 +28,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 17 Oct 1996
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !-------------------------------------------------------------------------------
@@ -88,10 +88,10 @@ CONTAINS
 
      IF( PRESENT(Reorder) ) pReorder => Reorder
      IF( PRESENT(InvInitialReorder) ) pInvInitialReorder => InvInitialReorder
-     
+
      !$OMP PARALLEL DO &
-     !$OMP SHARED(List, pReorder, pInvInitialReorder, N) & 
-     !$OMP PRIVATE(Clist, j, k) & 
+     !$OMP SHARED(List, pReorder, pInvInitialReorder, N) &
+     !$OMP PRIVATE(Clist, j, k) &
      !$OMP REDUCTION(max:HalfBandWidth) &
      !$OMP DEFAULT(NONE)
      DO i=1,n
@@ -104,7 +104,7 @@ CONTAINS
          IF ( ASSOCIATED( pReorder ) ) THEN
            HalfBandwidth = MAX( HalfBandWidth, ABS(pReorder(j)-pReorder(k)) )
          ELSE
-           HalfBandwidth = MAX( HalfBandWidth, ABS(j-k) )             
+           HalfBandwidth = MAX( HalfBandWidth, ABS(j-k) )
          END IF
          Clist => Clist % Next
        END DO
@@ -119,13 +119,13 @@ CONTAINS
    SUBROUTINE OrderPermByMortars(Mesh,Perm)
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: Perm(:)
-     
+
      INTEGER :: SlaveTag, MasterTag, DefaultTag, i,j,k,n
      INTEGER, ALLOCATABLE :: NodeTag(:)
      LOGICAL, ALLOCATABLE :: SlaveBC(:), MasterBC(:)
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Found
-     
+
      n = CurrentModel % NumberOfBCs
      ALLOCATE(SlaveBC(n), MasterBC(n) )
      SlaveBC = .FALSE.; MasterBC = .FALSE.
@@ -142,22 +142,22 @@ CONTAINS
 
      ! Tags should have values 1,2,3
      SlaveTag = ListGetInteger( CurrentModel % Solver % Values,'Slave Tag',UnfoundFatal=.TRUE.)
-     MasterTag = ListGetInteger( CurrentModel % Solver % Values,'Master Tag',UnfoundFatal=.TRUE.)     
+     MasterTag = ListGetInteger( CurrentModel % Solver % Values,'Master Tag',UnfoundFatal=.TRUE.)
      DefaultTag = 6 - SlaveTag - MasterTag
 
      ALLOCATE( NodeTag( Mesh % NumberOfNodes ) )
-     NodeTag = DefaultTag     
-     
+     NodeTag = DefaultTag
+
      DO i=Mesh % NumberOfBulkElements+1, &
-         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
        Element => Mesh % Elements(i)
        IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) CYCLE
        j = Element % BoundaryInfo % Constraint
-       
+
        IF(SlaveBC(j)) NodeTag(Element % NodeIndexes) = SlaveTag
        IF(MasterBC(j)) NodeTag(Element % NodeIndexes) = MasterTag
      END DO
-     
+
      k = 0
      ! Here we go through cases 1,2,3
      DO j=1,3
@@ -169,11 +169,11 @@ CONTAINS
          END IF
        END DO
      END DO
-     
+
    END SUBROUTINE OrderPermByMortars
 #endif
 
-   
+
 !-------------------------------------------------------------------------------
 !> Subroutine for reordering variables for bandwidth and/or gaussian elimination
 !> fillin optimization. Also computes node to element connections (which
@@ -241,9 +241,9 @@ use spariterglobals
 
      MaxLevel = 0
      DoneAlready = .FALSE.
- 
+
      CALL Levelize( StartNode,0 )
- 
+
      NewRoot = .TRUE.
      DO WHILE( NewRoot )
        NewRoot = .FALSE.

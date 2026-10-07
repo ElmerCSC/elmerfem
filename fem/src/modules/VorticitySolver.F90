@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 14.02.2008
 ! *
@@ -37,7 +37,7 @@
 
 
 !------------------------------------------------------------------------------
-!>  Subroutine for computing vorticity of vector fields. May be used to compute 
+!>  Subroutine for computing vorticity of vector fields. May be used to compute
 !>  either the whole vorticity vector (3D) or just its z-component (2D).
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -65,7 +65,7 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER CONTIG :: ForceVectors(:,:), ForceVector(:)
   REAL(KIND=dp) :: at0,at1,at2
   TYPE(Variable_t), POINTER :: VorticitySol
-  
+
   SAVE Visited
 
   CALL Info( 'VorticitySolver', '-------------------------------------',Level=4 )
@@ -78,7 +78,7 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN
-  
+
   SolverParams => GetSolverParams()
 
   IF( dim == 2 ) THEN
@@ -88,7 +88,7 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
       PRINT *,'DOFS',Dofs
       CALL Fatal('VorticitySolver','Vorticity should have 1 component in 2D')
     END IF
-  ELSE IF( dim == 3) THEN    
+  ELSE IF( dim == 3) THEN
     VarName = GetString(SolverParams,'Vorticity Result Variable',GotIt )
     IF(.NOT. gotIt) VarName = 'Vorticity'
     VorticitySol => VariableGet( Solver % Mesh % Variables,  VarName )
@@ -99,31 +99,31 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
         CALL Fatal('VorticitySolver','Vorticity should have 3 components in 3D')
       END IF
     ELSE
-      CALL Fatal('VorticitySolver','Vorticity Result Variable is missing: '//TRIM(VarName))      
+      CALL Fatal('VorticitySolver','Vorticity Result Variable is missing: '//TRIM(VarName))
     END IF
   END IF
 
   CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric
-  
+
   VarName = GetString(SolverParams,'Vorticity Variable',GotIt )
   IF(.NOT. GotIt) VarName = GetString(SolverParams,'Target Variable',GotIt )
   IF(.NOT. GotIt) VarName = TRIM('Velocity')
 
   ! For future use
   CondName = ListGetString(SolverParams,'Vorticity Coefficient',GotCoeff )
-  
+
   at0 = RealTime()
-  
+
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', GotIt )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
-  
+
   CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   ! If vorticity has many components, compute them one-by-one
   IF(Dofs > 1) THEN
-    ALLOCATE(ForceVectors(SIZE(Solver % Matrix % RHS),Dofs-1))  
+    ALLOCATE(ForceVectors(SIZE(Solver % Matrix % RHS),Dofs-1))
     ForceVectors = 0.0_dp
     SaveRHS => Solver % Matrix % RHS
   END IF
@@ -141,8 +141,8 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   at1 = RealTime()
   WRITE(Message,* ) 'Assembly Time: ',at1-at0
   CALL Info( 'VorticitySolver', Message, Level=5 )
-        
-!------------------------------------------------------------------------------     
+
+!------------------------------------------------------------------------------
 
   IF(Dofs > 1) THEN
     TotNorm = 0._dp
@@ -159,30 +159,30 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
       END DO
     END DO
     TotNorm = SQRT(TotNorm)
- 
+
     DEALLOCATE( ForceVectors )
     Solver % Matrix % RHS => SaveRHS
     Solver % Variable % Norm = Totnorm
   ELSE
     TotNorm = DefaultSolve()
   END IF
-!------------------------------------------------------------------------------     
+!------------------------------------------------------------------------------
 
 
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1
   CALL Info( 'VorticitySolver', Message, Level=5 )
-  
+
   WRITE( Message, * ) 'Result Norm: ',TotNorm
   CALL Info( 'VorticitySolver', Message, Level=4 )
-  
+
 CONTAINS
 
 
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-       
+
     INTEGER :: elem,t,i,j,p,q,n,nd, Rank
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:,:)
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -193,16 +193,16 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Vx(:), Vy(:), Vz(:), GradVx(:), GradVy(:), GradVz(:), Coeff(:)
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Material
-    
+
     SAVE Coeff, Nodes
-    
+
     n = MAX( Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes )
     ALLOCATE( STIFF(n,n), FORCE(dim,n), Coeff(n) )
     ALLOCATE( Vx(n), Vy(n), Vz(n), GradVx(3), GradVy(3), GradVz(3), &
         Basis(n), dBasisdx(n,3) )
 
     DO elem = 1,Solver % NumberOFActiveElements
-         
+
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
@@ -226,14 +226,14 @@ CONTAINS
       DO i=1,dim
         C(i,i) = 1.0_dp
       END DO
-      
+
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
                 IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
-        
+
         Weight = IntegStuff % s(t) * detJ
         IF ( CSymmetry ) Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
-        
+
         IF ( .NOT. ConstantBulkMatrixInUse ) THEN
           DO p=1,nd
             DO q=1,nd
@@ -241,7 +241,7 @@ CONTAINS
             END DO
           END DO
         END IF
-        
+
         GradVx(1:dim) = MATMUL( Vx(1:nd), dBasisdx(1:nd,1:dim) )
         GradVy(1:dim) = MATMUL( Vy(1:nd), dBasisdx(1:nd,1:dim) )
         GradVz(1:dim) = MATMUL( Vz(1:nd), dBasisdx(1:nd,1:dim) )
@@ -249,7 +249,7 @@ CONTAINS
         IF(Dofs == 1) THEN
           FORCE(1,1:nd) = FORCE(1,1:nd) + &
               Basis(1:nd) * Weight * ( GradVy(1) - GradVx(2) )
-        ELSE 
+        ELSE
           FORCE(1,1:nd) = FORCE(1,1:nd) + &
               Basis(1:nd) * Weight * ( GradVz(2) - GradVy(3) )
           FORCE(2,1:nd) = FORCE(2,1:nd) + &
@@ -258,16 +258,16 @@ CONTAINS
               Basis(1:nd) * Weight * ( GradVy(1) - GradVx(2) )
         END IF
       END DO
-      
+
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
 
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         IF(Dofs > 1) Solver % Matrix % RHS => SaveRHS
         CALL DefaultUpdateEquations( STIFF, FORCE(1,1:nd) )
       ELSE
-        CALL DefaultUpdateForce( FORCE(1,1:nd) )        
+        CALL DefaultUpdateForce( FORCE(1,1:nd) )
       END IF
 
       ! Assembly the 2nd and 3rd r.h.s. in 3D case
@@ -276,7 +276,7 @@ CONTAINS
         CALL DefaultUpdateForce( FORCE(i,1:nd) )
       END DO
     END DO
-    
+
     DEALLOCATE( STIFF, FORCE, Basis, dBasisdx, Coeff, Vx, Vy, Vz, &
         GradVx, GradVy, GradVz )
 !------------------------------------------------------------------------------
@@ -333,8 +333,8 @@ END SUBROUTINE VorticitySolver
 
     IF( GetLogical( SolverParams,'Calculate Abs',GotIt) ) THEN
       CALL ListAddString( SolverParams,&
-          NextFreeKeyword('Exported Variable',SolverParams),TRIM(VorName)//'_abs')        
-    END IF	
+          NextFreeKeyword('Exported Variable',SolverParams),TRIM(VorName)//'_abs')
+    END IF
 
     CALL ListAddInteger( SolverParams, 'Time derivative order', 0 )
 

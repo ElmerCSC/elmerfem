@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2012-01-30
 ! *
@@ -35,8 +35,8 @@
 
 
 !
-! The following module should contain the definition of anisotropic viscosity 
-! models. This could be contained within MaterialModels module. 
+! The following module should contain the definition of anisotropic viscosity
+! models. This could be contained within MaterialModels module.
 ! NOTE: This module of material models is still under construction
 !
 MODULE AnisotropicMaterialModels
@@ -78,7 +78,7 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
      TYPE(ValueList_t), POINTER :: Material
      REAL(KIND=dp) :: x, y, z, c1n(n), c2n(n), c3n(n), c4n(n), &
-          c1, c2, c3, c4, UnitNorm, TransformMatrix(3,3), mu_tensor(6,6) 
+          c1, c2, c3, c4, UnitNorm, TransformMatrix(3,3), mu_tensor(6,6)
 
      REAL(KIND=dp), POINTER :: Uwrk(:,:)
 
@@ -132,7 +132,7 @@ CONTAINS
         ! Read Power Law Exponent
         c2n = ListGetReal( Material, 'Power law Exponent', n, Element % NodeIndexes )
         c2 = SUM( Basis(1:n) * c2n(1:n) )
-        
+
         ! Read Critical Shear Rate and set the limit if needed
         c3n = ListGetReal( Material, 'Critical Shear Rate',n, Element % NodeIndexes,gotIt )
         IF (GotIt) THEN
@@ -155,7 +155,7 @@ CONTAINS
           ELSE IF( i == 2 ) THEN
             CALL GetConstRealArray( Material, UWrk, &
                 'Material Coordinates Unit Vector 2', stat, Element )
-          ELSE                
+          ELSE
             CALL GetConstRealArray( Material, UWrk, &
                 'Material Coordinates Unit Vector 3', stat, Element )
           END IF
@@ -172,13 +172,13 @@ CONTAINS
         mu = (1.0_dp/c1)**(1.0_dp/c2)
 
         ! Create Viscosity tensor in the grain frame and with Voigt Notation
-        ! Taken from Gagliardini and Meyissonnier 1999 
+        ! Taken from Gagliardini and Meyissonnier 1999
         mu_tensor = 0.0_dp
         mu_tensor(1,1) = mu * c4
         mu_tensor(2,2) = mu * c4
         mu_tensor(3,3) = mu * c4
         mu_tensor(4,4) = mu * c4  ! Not a "real" Voigt Notation as there is no factor two on the stresses
-        mu_tensor(5,5) = mu       ! Not a "real" Voigt Notation as there is no factor two on the stresses 
+        mu_tensor(5,5) = mu       ! Not a "real" Voigt Notation as there is no factor two on the stresses
         mu_tensor(6,6) = mu       ! Not a "real" Voigt Notation as there is no factor two on the stresses
 
         ! Rotate to general frame
@@ -217,8 +217,8 @@ SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
 
-  ! Set default values when not given. 
-  CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)    
+  ! Set default values when not given.
+  CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)
   CALL ListAddNewString(SolverParams, 'Linear System Solver', 'Iterative')
   CALL ListAddNewString(SolverParams, 'Linear System Iterative Method', 'GCR')
   CALL ListAddNewInteger(SolverParams, 'Linear System GCR Restart', 50)
@@ -239,9 +239,9 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !******************************************************************************
 !
 !  A parallel solver that uses two-level iterations to solve the discrete
-!  Stokes model. Inner iterations can be associated with preconditioning and 
-!  they provide search directions for the outer iterative method (GCR) applied 
-!  to the primitive Stokes problem. 
+!  Stokes model. Inner iterations can be associated with preconditioning and
+!  they provide search directions for the outer iterative method (GCR) applied
+!  to the primitive Stokes problem.
 !
 !  A key design choice here has been that the inner iterations are performed
 !  via calling DefaultSolve routine, so that the full range of standard parallel
@@ -251,7 +251,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !
 !  ARGUMENTS:
 !
-!  TYPE(Model_t) :: Model,  
+!  TYPE(Model_t) :: Model,
 !     INPUT: All model information (mesh, materials, BCs, etc...)
 !
 !  TYPE(Solver_t) :: Solver
@@ -302,8 +302,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 
 
 !-----------------------------------------------------------------------------
-! Variables for two-level iterations... 
-!----------------------------------------------------------------------------- 
+! Variables for two-level iterations...
+!-----------------------------------------------------------------------------
   LOGICAL :: BlockPreconditioning, Parallel, UpdateMatrix, UseTrueResidual, Timing, P2P1
   LOGICAL :: DoScaling, DoEquilibration, BlockDiagonalA, UseVeloLaplacian, AdaptiveTols
   CHARACTER(LEN=MAX_NAME_LEN) :: Eq
@@ -313,7 +313,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: MinTolerance, t0, rt0, st, rst, ct, &
        BaseTolerance, TargetTol, RelTolerance, PrecondTol
   TYPE(Solver_t), POINTER :: PressureSolver, VelocitySolver
-  TYPE(Matrix_t), POINTER :: MMatrix, PMatrix, AMatrix 
+  TYPE(Matrix_t), POINTER :: MMatrix, PMatrix, AMatrix
   REAL(KIND=dp), ALLOCATABLE :: Snew(:), R(:), S(:,:), V(:,:), &
        ALocal(:,:), PLocal(:,:), Vx(:), Vy(:), Vz(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:), RotatedVarValues(:), TempRes(:), TempS(:), &
@@ -336,12 +336,12 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. Found) BlockPreconditioning = .FALSE.
 
   Convect = GetLogical( GetSolverParams(), 'Convective', Found )
-  IF ( .NOT. Found ) Convect = .FALSE. 
+  IF ( .NOT. Found ) Convect = .FALSE.
 
   SkipPowerLaw = ListGetLogical( Solver % Values, 'Constant-Viscosity Start', Found)
   IF ( .NOT. Found) SkipPowerLaw = .TRUE.
 
-  DoScaling=ListGetLogical(Solver % Values, 'Linear System Scaling', Found) 
+  DoScaling=ListGetLogical(Solver % Values, 'Linear System Scaling', Found)
   DoEquilibration=ListGetLogical(Solver % Values, 'Linear System Row Equilibration', Found)
   DoScaling = DoScaling .OR. DoEquilibration
 
@@ -356,7 +356,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
      ELSE
         RelTolerance = ListGetConstReal(Solver % Values, 'Linear System Relative Tolerance')
      END IF
-     
+
      IF (.NOT. ListCheckPresent(Solver % Values, 'Linear System Base Tolerance')) THEN
         BaseTolerance = 1.0d-4
      ELSE
@@ -384,10 +384,10 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
      END DO
 
      IF ( .NOT. ASSOCIATED(PressureSolver) ) &
-          CALL Fatal( 'ParStokes', 'Pressure preconditioning operation missing...' )     
+          CALL Fatal( 'ParStokes', 'Pressure preconditioning operation missing...' )
 
      IF ( .NOT. ASSOCIATED(VelocitySolver) ) &
-          CALL Fatal( 'ParStokes', 'Velocity preconditioning operation missing...' ) 
+          CALL Fatal( 'ParStokes', 'Velocity preconditioning operation missing...' )
 
      !---------------------------------------------------------------------------
      ! Perform permutation check...
@@ -424,7 +424,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
           LoadVector(4,p), &
           SlipCoeff(3,p), &
           ExtPressure(p), &
-          ALocal(m,m), & 
+          ALocal(m,m), &
           PLocal(p,p), &
           STAT=istat )
      IF ( istat /= 0 ) THEN
@@ -479,7 +479,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
          Newton = .TRUE.
        ELSE
          MaxPicardIterations = ListGetInteger( Solver % Values, &
-             'Nonlinear System Newton After Iterations', Found )    
+             'Nonlinear System Newton After Iterations', Found )
          IF ( Found ) THEN
            IF ( iter > MaxPicardIterations ) THEN
              Newton = .TRUE.
@@ -492,27 +492,27 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         WRITE(Message,'(a)') 'The Newton linearization is used...'
         CALL Info('ParSolver', Message, Level=4)
      END IF
- 
+
      !------------------------------------------------------------------
      ! Initialize matrix structures...
      !------------------------------------------------------------------
      CALL DefaultInitialize()
 
      IF (BlockPreconditioning) THEN
-       !CALL InitializeToZero( AMatrix, AMatrix % RHS ) 
-       !CALL InitializeToZero( PMatrix, PMatrix % RHS )        
+       !CALL InitializeToZero( AMatrix, AMatrix % RHS )
+       !CALL InitializeToZero( PMatrix, PMatrix % RHS )
        CALL DefaultInitialize(USolver=VelocitySolver)
        CALL DefaultInitialize(USolver=PressureSolver)
      END IF
 
      !------------------------------------------------------------
-     ! We need to make a copy of the rotated solution vector to 
+     ! We need to make a copy of the rotated solution vector to
      ! handle normal-tangential bcs.
      !------------------------------------------------------------
-     IF ( BlockPreconditioning .AND. Iter==1 ) THEN     
+     IF ( BlockPreconditioning .AND. Iter==1 ) THEN
        n =  Solver % Matrix % NumberOfRows
        ALLOCATE( RotatedVarValues(n) )
-       RotatedVarValues = 0.0d0          
+       RotatedVarValues = 0.0d0
      END IF
 
      !---------------------------------------------------------------
@@ -527,7 +527,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 
      CALL StartAdvanceOutput( 'StokesSolver', 'Assembly:' )
      DO t=1,Active
-        CALL AdvanceOutput(t, Active)        
+        CALL AdvanceOutput(t, Active)
 
         Element => GetActiveElement(t)
         n  = GetElementNOFNodes()
@@ -552,7 +552,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         Material => GetMaterial()
         rho(1:n) = GetReal( Material, 'Density' )
         mu(1:n)  = GetReal( Material, 'Viscosity' )
-        !-------------------------------------------------------    
+        !-------------------------------------------------------
 
         !--------------------------------------------------------------------------
         ! Get previous elementwise velocity iterate for approximating nonlinearity
@@ -561,7 +561,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         Vy = 0.0d0
         Vz = 0.0d0
         CALL GetScalarLocalSolution( Vx, ComponentName(Solver % Variable % Name,1) )
-        CALL GetScalarLocalSolution( Vy, ComponentName(Solver % Variable % Name,2) )      
+        CALL GetScalarLocalSolution( Vy, ComponentName(Solver % Variable % Name,2) )
         IF( dim > 2 ) THEN
           CALL GetScalarLocalSolution( Vz, ComponentName(Solver % Variable % Name,3) )
         END IF
@@ -603,7 +603,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
                 END DO
               END DO
 	    END IF
-          END IF     
+          END IF
         END IF
 
         CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -613,11 +613,11 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
           CALL DefaultUpdateEquations( ALocal, FORCE, USolver=VelocitySolver)
           CALL DefaultUpdateEquations( PLocal, FORCE, USolver=PressureSolver)
         END IF
- 
+
      END DO
-     
+
      CALL DefaultFinishBulkAssembly()
-     
+
      !------------------------------------------------------------------------------
      ! Surface force and slip boundary conditions
      !------------------------------------------------------------------------------
@@ -625,10 +625,10 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-        
+
         n = GetElementNOFNodes()
         nd = GetElementDOFs( Indexes )
-      
+
         IF ( GetElementFamily() == 1 ) CYCLE
 
         CALL GetElementNodes( ElementNodes )
@@ -675,7 +675,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 
            NormalTangential = GetLogical( BC, &
                 NormalTangentialName, Found )
-         
+
            CALL NavierStokesBoundary( STIFF, FORCE, &
                 LoadVector, ExtPressure, SlipCoeff, NormalTangential,   &
                 Element, n, nd, ElementNodes )
@@ -745,7 +745,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            END IF
            RowScalingA=1.0_dp
            ! for row equilibration we do not scale the A and Q matrices
-           ! so that their symmetry is not destroyed, instead we scale 
+           ! so that their symmetry is not destroyed, instead we scale
            ! the RHS back to the symmetric scaling
            IF (DoEquilibration) THEN
               DO i=1,j
@@ -819,15 +819,15 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
               ALLOCATE( Residual(n) )
               Residual = 0.0d0
            END IF
-           IF ( .NOT. ALLOCATED(TempRes) ) THEN           
+           IF ( .NOT. ALLOCATED(TempRes) ) THEN
               ALLOCATE( TempRes(n) )
               TempRes = 0.0d0
            END IF
-           IF ( .NOT. ALLOCATED(TempS) ) THEN           
+           IF ( .NOT. ALLOCATED(TempS) ) THEN
               ALLOCATE( TempS(n) )
               TempS = 0.0d0
            END IF
-           IF ( .NOT. ALLOCATED(TempRHS) ) THEN           
+           IF ( .NOT. ALLOCATED(TempRHS) ) THEN
               ALLOCATE( TempRHS(n) )
               TempRHS = 0.0d0
            END IF
@@ -840,13 +840,13 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            MMatrix => ParallelMatrix( Solver % Matrix, Mx, Mb, Mr )
            n = MMatrix % NumberOfRows
 
-           IF ( .NOT. ALLOCATED(TempMx) ) THEN           
+           IF ( .NOT. ALLOCATED(TempMx) ) THEN
              ALLOCATE( TempMx(n) )
            END IF
-           IF ( .NOT. ALLOCATED(TempMb) ) THEN           
+           IF ( .NOT. ALLOCATED(TempMb) ) THEN
              ALLOCATE( TempMb(n) )
            END IF
-           IF ( .NOT. ALLOCATED(TempMr) ) THEN           
+           IF ( .NOT. ALLOCATED(TempMr) ) THEN
              ALLOCATE( TempMr(n) )
            END IF
 
@@ -856,11 +856,11 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
               ALLOCATE( Residual(n) )
               Residual = 0.0d0
            END IF
-           IF ( .NOT. ALLOCATED(TempRes) ) THEN           
+           IF ( .NOT. ALLOCATED(TempRes) ) THEN
               ALLOCATE( TempRes(n) )
               TempRes = 0.0d0
            END IF
-           IF ( .NOT. ALLOCATED(TempS) ) THEN           
+           IF ( .NOT. ALLOCATED(TempS) ) THEN
               ALLOCATE( TempS(n) )
               TempS = 0.0d0
            END IF
@@ -893,7 +893,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 
            WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
               Iter-1, NonLinError
-           CALL Info('StokesSolver', Message, Level=3)            
+           CALL Info('StokesSolver', Message, Level=3)
 
            IF ( NonLinError < NonlinearTol .OR. Iter==NonlinearIter ) THEN
              DEALLOCATE( Residual )
@@ -902,7 +902,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
              IF (Parallel) THEN
                DEALLOCATE( TempMx )
                DEALLOCATE( TempMr )
-               DEALLOCATE( TempMb )             
+               DEALLOCATE( TempMb )
                DEALLOCATE( TempRHS )
              END IF
              CALL BackRotateNTSystem( Solver % Variable % Values, Solver % Variable % Perm, &
@@ -916,7 +916,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         !------------------------------------------------------------------
         ! Initialize the variable containing the new search direction...
         !------------------------------------------------------------------
-        Snew = 0.0d0 
+        Snew = 0.0d0
 
         IF (AdaptiveTols) THEN
            !---------------------------------------------------------------------------------------
@@ -936,7 +936,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         UseTrueResidual = .TRUE.
         !----------------------------------------------------------------------
         ! Perform solution timing for the actual GCR loop if desired...
-        !--------------------------------------------------------------------- 
+        !---------------------------------------------------------------------
         Timing = ListGetLogical(Solver % Values,'Linear System Timing', Found)
 
         IF( Timing ) THEN
@@ -955,7 +955,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            ! the matrix-vector multiplication or utilize the residual vector
            ! generated by the iterative algorithm. The iterative residual cannot
            ! be employed currently, since the residual entries corresponding to nodes
-           ! which are not owned by the partition are not received in parallel 
+           ! which are not owned by the partition are not received in parallel
            ! computations...
            !-----------------------------------------------------------------------
            IF ( UseTrueResidual ) THEN
@@ -971,9 +971,9 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            ! Update the preconditioner system rhs by assuming that the preconditioning
            ! system and the primary system have the same permutation...
            !--------------------------------------------------------------------------
-           ! we multiply by the inverse of the row scaling of the global matrix, for  
-           ! symmetric scaling we have set the arrays to 1 so nothing happens here.   
-           ! For row equilibration this makes sure that the correct system is solved  
+           ! we multiply by the inverse of the row scaling of the global matrix, for
+           ! symmetric scaling we have set the arrays to 1 so nothing happens here.
+           ! For row equilibration this makes sure that the correct system is solved
            ! without having to scale the A and Q matrices.
            j = PressureSolver % Matrix % NumberOfRows
            DO i=1,j
@@ -987,7 +987,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            !--------------------------------------------------------------------------
            ! Solve the preconditioning systems sequentially...
            !--------------------------------------------------------------------------
-           IF (Round > 1) THEN 
+           IF (Round > 1) THEN
              CALL ListAddLogical(PressureSolver % Values, &
                'No Precondition Recompute', .TRUE.)
              CALL ListAddLogical(PressureSolver % Values, &
@@ -1004,8 +1004,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            CALL ListAddLogical(PressureSolver % Values, &
                'No Precondition Recompute', .FALSE.)
            CALL ListAddLogical(PressureSolver % Values, &
-               'Linear System Refactorize', .TRUE.)               
-           
+               'Linear System Refactorize', .TRUE.)
+
            !-----------------------------------------------------------------------------
            ! Perform matrix-vector product to produce upper triangular preconditioner...
            !-----------------------------------------------------------------------------
@@ -1044,14 +1044,14 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
              END DO
 
              !-------------------------------------------------------------------------------
-             ! Update the vectors of the parallel matrix structure   
+             ! Update the vectors of the parallel matrix structure
              !-------------------------------------------------------------------------------
              CALL ParallelUpdateSolve( Solver % Matrix, Solver % Variable % Values, TempRes )
              !-----------------------------------------------------------------------
              ! Perform mv-product and insert the result into the argument vectors...
              !-----------------------------------------------------------------------
              CALL Mymv( Solver % Matrix, Solver % Variable % Values, TempRes, .TRUE.)
-           
+
              !-------------------------------------------------------------------------
              ! Update the velocity solver rhs by adding the result of the gradient mv...
              !-------------------------------------------------------------------------
@@ -1060,7 +1060,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
                  VelocitySolver % Matrix % RHS( dim*(i-1)+p ) = &
                      VelocitySolver % Matrix % RHS( dim*(i-1)+p ) - &
                      TempRes( (dim+1)*(i-1)+p ) * RowScalingA(dim*(i-1)+p )
-                       
+
                END DO
              END DO
              !-----------------------------------------------------------------------------
@@ -1069,7 +1069,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
              j=Solver % Matrix % NumberOfRows
              Solver % Variable % Values(1:j) = TempS(1:j)
              Solver % Matrix % RHS(1:j) = TempRHS(1:j)
- 
+
              j = MMatrix % NumberOfRows
              Mx(1:j) = TempMx(1:j)
              Mb(1:j) = TempMb(1:j)
@@ -1084,7 +1084,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            END IF
            CurrentModel % Solver => VelocitySolver
            !----------------------------------------------------------------------------
-           ! Adapt the preconditioning system convergence tolerance in terms of the 
+           ! Adapt the preconditioning system convergence tolerance in terms of the
            ! current convergence tolerance for the primary system
            !----------------------------------------------------------------------------
            !IF (AdaptiveTols) THEN
@@ -1099,15 +1099,15 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            CALL Info( 'Velocity Preconditioning', 'Performing linear solve', Level=4 )
            CALL Info( 'Velocity Preconditioning', '-------------------------------------', Level=4 )
            CALL Info( 'Velocity Preconditioning', ' ', Level=4 )
-           Norm = DefaultSolve(VelocitySolver)      
+           Norm = DefaultSolve(VelocitySolver)
            CurrentModel % Solver => Solver
            CALL ListAddLogical(VelocitySolver % Values, &
-               'No Precondition Recompute', .FALSE.)  
+               'No Precondition Recompute', .FALSE.)
            CALL ListAddLogical(VelocitySolver % Values, &
-               'Linear System Refactorize', .TRUE.)  
+               'Linear System Refactorize', .TRUE.)
 
            !-------------------------------------------------------------------------
-           ! Insert the computed approximation of the error into the search direction 
+           ! Insert the computed approximation of the error into the search direction
            ! variable which will be given to the GCR routine...
            !--------------------------------------------------------------------------
            DO t=1, Active
@@ -1119,8 +1119,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
                  k = PressureSolver % Variable % Perm( Indexes(i) )
                  Snew( j*(dim+1) ) = PressureSolver % Variable % Values(k)
 
-                 k = VelocitySolver % Variable % Perm( Indexes(i) )   
-                 DO p=1,dim          
+                 k = VelocitySolver % Variable % Perm( Indexes(i) )
+                 DO p=1,dim
                     Snew( (j-1)*(dim+1)+p ) = VelocitySolver % Variable % Values( (j-1)*dim+p )
                  END DO
 
@@ -1128,7 +1128,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            END DO
 
            !-----------------------------------------------------------------------------
-           ! Perform GCR update for solving the primitive linear system... 
+           ! Perform GCR update for solving the primitive linear system...
            !-----------------------------------------------------------------------------
            CALL GCRUpdate(n, Solver % Matrix, MMatrix, Mx, Mb, Mr, Snew, S, V, R, Round, &
                 Norm, RestartM)
@@ -1139,7 +1139,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            IF (Norm < MinTolerance) EXIT
 
         END DO
-        
+
         ! unscale solution if column scaling was used
         IF (DoScaling .AND. (.NOT. DoEquilibration)) THEN
           CALL BackScaleLinearSystem(Solver,Solver%Matrix,Solver%Matrix%RHS,Solver%Variable%Values)
@@ -1155,7 +1155,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
               //GetVarName(Solver % Variable),rst)
           WRITE(Message,'(a,f8.2,f8.2,a)') 'Linear system time (CPU,REAL) for '&
               //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
-          CALL Info('SolveSystem',Message)    
+          CALL Info('SolveSystem',Message)
 
           IF( ListGetLogical(Solver % Values,'Linear System Timing Cumulative',Found)) THEN
             ct = ListGetConstReal(CurrentModel % Simulation,'res: cum linsys cpu time '&
@@ -1173,8 +1173,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         END IF
 
         DEALLOCATE( Residual )
-        DEALLOCATE( TempRes )        
-        DEALLOCATE( TempS )          
+        DEALLOCATE( TempRes )
+        DEALLOCATE( TempS )
 
         ! Compute Var Loads if needed
         IF ( ListGetLogical( Solver % Values,'Calculate Loads', Found ) ) &
@@ -1211,7 +1211,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
        CASE (4)
          MidEdgeNodes(1:4) = (/ 5, 6, 7, 8 /)
        CASE (5)
-         MidEdgeNodes(1:6) = (/ 5, 6, 7, 8, 9, 10 /) 
+         MidEdgeNodes(1:6) = (/ 5, 6, 7, 8, 9, 10 /)
        CASE (6)
          MidEdgeNodes(1:8) = (/ 6, 7, 8, 9, 10, 11, 12, 13 /)
        CASE (7)
@@ -1225,10 +1225,10 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
          i = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,1)))
          j = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,2)))
          Solver % Variable % Values(m) = 0.5d0 * ( Solver % Variable % Values(i) + &
-             Solver % Variable % Values(j) )   
+             Solver % Variable % Values(j) )
        END DO
 
-       ! The pressure at the midface nodes for 409 elements: 
+       ! The pressure at the midface nodes for 409 elements:
        IF (k==4 .AND. nd==9) THEN
          res = 0.0d0
          DO q=1,4
@@ -1241,11 +1241,11 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 
        ! The pressure at the midpoint and at the midface nodes for 827 elements:
        IF (k==8 .AND. nd==27) THEN
-         BrickFaceMap(1,:) = (/ 1,2,6,5 /)         
+         BrickFaceMap(1,:) = (/ 1,2,6,5 /)
          BrickFaceMap(2,:) = (/ 2,3,7,6 /)
          BrickFaceMap(3,:) = (/ 4,3,7,8 /)
          BrickFaceMap(4,:) = (/ 1,4,8,5 /)
-         BrickFaceMap(5,:) = (/ 1,2,3,4 /)          
+         BrickFaceMap(5,:) = (/ 1,2,3,4 /)
          BrickFaceMap(6,:) = (/ 5,6,7,8 /)
          DO j=1,6
            res = 0.0d0
@@ -1255,14 +1255,14 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            END DO
            m = (dim+1) * Solver % Variable % Perm(Indexes(20+j))
            Solver % Variable % Values(m) = 0.25d0 * res
-         END DO           
+         END DO
 
          res = 0.0d0
          DO q=1,8
            i = (dim+1) * Solver % Variable % Perm(Indexes(q))
            res = res + Solver % Variable % Values(i)
          END DO
-         m = (dim+1) * Solver % Variable % Perm(Indexes(27))      
+         m = (dim+1) * Solver % Variable % Perm(Indexes(27))
          Solver % Variable % Values(m) = 0.125d0 * res
        END IF
 
@@ -1277,18 +1277,18 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: n, Round, MParam
     TYPE(Matrix_t), POINTER :: A, M
-    REAL(KIND=dp) :: x(:), b(:), r(:), Snew(:)  
+    REAL(KIND=dp) :: x(:), b(:), r(:), Snew(:)
     REAL(KIND=dp) :: S(:,:), V(:,:), RR(:), res
 !--------------------------------------------------------------------------------
     REAL(KIND=dp) :: T1(n), T2(n), beta, alpha
     INTEGER :: i,j,k
 !--------------------------------------------------------------------------------
 
-    IF ( Parallel ) CALL ParallelVector(A,Snew)   
+    IF ( Parallel ) CALL ParallelVector(A,Snew)
 
     !----------------------------------------------
     ! Check for restarting
-    !--------------------------------------------- 
+    !---------------------------------------------
     IF ( MOD(Round,MParam)==0 ) THEN
        j = MParam
     ELSE
@@ -1296,7 +1296,7 @@ CONTAINS
     END IF
 
     IF ( j == 1) THEN
-      CALL Mymv( A, x, r ) 
+      CALL Mymv( A, x, r )
       r(1:n) = b(1:n)-r(1:n)
       res = MyNorm(n,r)/Mynorm(n,b)
       IF (Round==1) THEN
@@ -1316,7 +1316,7 @@ CONTAINS
     DO i=1,j-1
        beta = Mydot( n, V(1:n,i), T2(1:n) )
        T1(1:n) = T1(1:n) - beta * S(1:n,i)
-       T2(1:n) = T2(1:n) - beta * V(1:n,i)    
+       T2(1:n) = T2(1:n) - beta * V(1:n,i)
     END DO
 
     alpha = Mynorm(n,T2)
@@ -1325,7 +1325,7 @@ CONTAINS
 
     !-------------------------------------------------------------
     ! The update of the solution and save the search data...
-    !------------------------------------------------------------- 
+    !-------------------------------------------------------------
     beta = Mydot(n, T2, r)
 
     x(1:n) = x(1:n) + beta * T1(1:n)
@@ -1366,7 +1366,7 @@ CONTAINS
          DetJ, LoadAtIP(dim+1), Velo(dim), Grad(dim,dim), w1, w2, w3, ViscAtIp, RhoAtIP
     REAL(KIND=dp) :: LinBasis(nd)
     REAL(KIND=dp), POINTER :: A(:,:), F(:), Jac(:,:)
-    REAL(KIND=dp), TARGET :: JacM(nd*(dim+1),nd*(dim+1)), Sol(nd*(dim+1)) 
+    REAL(KIND=dp), TARGET :: JacM(nd*(dim+1),nd*(dim+1)), Sol(nd*(dim+1))
     LOGICAL :: Stat, ViscNewtonLin, Anisotropy
     INTEGER :: t, i, j, k, l, p, q, nlin
     INTEGER :: LinearCode(3:8) = (/ 303,404,504,605,706,808 /)
@@ -1384,10 +1384,10 @@ CONTAINS
 
     ViscosityFlag = ListGetString(Material, 'Viscosity Model', Stat)
     !
-    ! Check for anisotropic material laws which need to treat the viscosity as 
+    ! Check for anisotropic material laws which need to treat the viscosity as
     ! a higher-order tensor. Now this is checked by the names of material models.
-    ! TO DO: Check the names so that the need for anisotropic viscosity is decided 
-    ! correctly. 
+    ! TO DO: Check the names so that the need for anisotropic viscosity is decided
+    ! correctly.
     !
     Anisotropy = ViscosityFlag == 'orthotropic non linear'
     IF (Anisotropy) THEN
@@ -1442,7 +1442,7 @@ CONTAINS
        !----------------------------------------------
        ViscAtIP  = SUM( Basis(1:n) * Nodalmu(1:n) )
        RhoAtIP = SUM( Basis(1:n) * Nodalrho(1:n) )
-       
+
        IF (Anisotropy) THEN
 
          IF ( SkipPowerLaw ) THEN
@@ -1457,7 +1457,7 @@ CONTAINS
              mu_tensor(i,i) = 2.0_dp * ViscAtIP
              mu_tensor(i+3,i+3) = ViscAtIP
            END DO
-         ELSE       
+         ELSE
            ! Compute the effective anisotropic viscosity
            mu_tensor = AnisotropicEffectiveViscosity(ViscAtIP, RhoAtIP, Vx, Vy, Vz, &
                Element, Nodes, n, n, IP % U(t), IP % V(t), &
@@ -1492,9 +1492,9 @@ CONTAINS
        END IF
 
        IF (Convect) THEN
-          w1 = SUM( Vx(1:n) * Basis(1:n) ) 
-          w2 = SUM( Vy(1:n) * Basis(1:n) )           
-          IF (dim > 2) w3 = SUM( Vz(1:n) * Basis(1:n) )  
+          w1 = SUM( Vx(1:n) * Basis(1:n) )
+          w2 = SUM( Vy(1:n) * Basis(1:n) )
+          IF (dim > 2) w3 = SUM( Vz(1:n) * Basis(1:n) )
        END IF
 
        !--------------------------------------------
@@ -1518,7 +1518,7 @@ CONTAINS
              TestTuple(5) = SymGrad(1,3) + SymGrad(3,1)
              TestTuple(6) = SymGrad(2,3) + SymGrad(3,2)
 
-             ! Apply the constitutive tensor via a transposed version: 
+             ! Apply the constitutive tensor via a transposed version:
              TestTuple = MATMUL(TRANSPOSE(mu_tensor),TestTuple)
 
              DO q=1,nd
@@ -1605,12 +1605,12 @@ CONTAINS
              ELSE
                IF (q <= n) &
                    A(i,dim+1) = A(i,dim+1) - s * Basis(q) * dBasisdx(p,i)
-                 
-               IF (p <= n) &   
+
+               IF (p <= n) &
                    A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * Basis(p)
              END IF
            END DO
-           
+
            IF (Convect) THEN
              A(1,1) = A(1,1) + s * RhoAtIP * w1 * dBasisdx(q,1) * Basis(p)
              A(1,1) = A(1,1) + s * RhoAtIP * w2 * dBasisdx(q,2) * Basis(p)
@@ -1634,14 +1634,14 @@ CONTAINS
 
        IF (P2P1) THEN
          DO p=1,nlin
-           DO q=1,nlin       
-             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu_iso * Basis(p) * Basis(q)            
+           DO q=1,nlin
+             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu_iso * Basis(p) * Basis(q)
            END DO
          END DO
        ELSE
          DO p=1,n
-           DO q=1,n       
-             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu_iso * Basis(p) * Basis(q)            
+           DO q=1,n
+             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu_iso * Basis(p) * Basis(q)
            END DO
          END DO
        END IF
@@ -1663,7 +1663,7 @@ CONTAINS
         i = (dim+1) * p
         FORCE(i)   = 0.0d0
         STIFF(i,:) = 0.0d0
-        STIFF(:,i) = 0.0d0       
+        STIFF(:,i) = 0.0d0
         STIFF(i,i) = 1.0d0
         Mass(p,p) = 1.0d0
       END DO
@@ -1672,7 +1672,7 @@ CONTAINS
         i = (dim+1) * p
         FORCE(i)   = 0.0d0
         STIFF(i,:) = 0.0d0
-        STIFF(:,i) = 0.0d0       
+        STIFF(:,i) = 0.0d0
         STIFF(i,i) = 1.0d0
         Mass(p,p) = 1.0d0
       END DO
@@ -1810,9 +1810,9 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Matrix_t), POINTER :: StiffMatrix
 
-    CHARACTER(LEN=*) :: Name 
+    CHARACTER(LEN=*) :: Name
     INTEGER :: DOF, NDOFs, Perm(:)
-    REAL(KIND=dp), OPTIONAL :: rhs(:)    
+    REAL(KIND=dp), OPTIONAL :: rhs(:)
 !------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: CurrentElement
@@ -1858,16 +1858,16 @@ CONTAINS
                      k = NDOFs * (k-1) + DOF
                      CALL ZeroRow( StiffMatrix,k )
                      CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 )
-                     IF ( PRESENT(rhs) ) rhs(k) = work(j) 
+                     IF ( PRESENT(rhs) ) rhs(k) = work(j)
                   END IF
                END DO
 
                DO j=n+1,nd
                   k = Perm(Indexes(j))
-                  k = NDOFs * (k-1) + DOF              
+                  k = NDOFs * (k-1) + DOF
                   CALL ZeroRow( StiffMatrix,k )
                   CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 )
-                  IF ( PRESENT(rhs) ) rhs(k) = 0.0d0  
+                  IF ( PRESENT(rhs) ) rhs(k) = 0.0d0
                END DO
 
             END IF
@@ -1887,7 +1887,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundary( BoundaryMatrix, BoundaryVector, LoadVector,   &
      NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, n, nd, Nodes )
-             
+
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -2028,7 +2028,7 @@ CONTAINS
         Tangent(3) =  0.0_dp
         Tangent2   =  0.0_dp
      CASE(2)
-        CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+        CALL TangentDirections( Normal, Tangent, Tangent2 )
      END SELECT
 
      IF ( ANY( NodalSlipCoeff(:,:) /= 0.0d0 ) ) THEN

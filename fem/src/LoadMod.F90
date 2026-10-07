@@ -244,7 +244,7 @@ MODULE LoadMod
             CHARACTER(LEN=40) :: buf
             INTEGER :: estat, cstat
 
-            INTERFACE 
+            INTERFACE
                 ! int system(const char *command)
                 FUNCTION system(command) RESULT(retval)
                     USE, INTRINSIC :: ISO_C_BINDING
@@ -257,7 +257,7 @@ MODULE LoadMod
             estat = 0; cstat = 0
             CALL EXECUTE_COMMAND_LINE(cmd, .TRUE., EXITSTAT=estat, CMDSTAT=cstat)
 #else
-            ! Workaround for Fortran compilers which do not 
+            ! Workaround for Fortran compilers which do not
             ! support EXECUTE_COMMAND_LINE intrinsic function
             cstat = 0
             estat = system(TRIM(cmd) // C_NULL_CHAR)
@@ -539,7 +539,7 @@ MODULE LoadMod
             CALL C_F_PROCPOINTER(fptr, pptr)
             CALL pptr(mesh, slavemesh, mastermesh, bcind, projector )
           END SUBROUTINE execmortarprojector
-          
+
           FUNCTION enhancementfactoruserfunction( fptr, model, element, nodes, n, nd, &
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip ) &
                                        RESULT(realval)
@@ -571,9 +571,9 @@ MODULE LoadMod
             CALL C_F_PROCPOINTER(fptr, pptr)
             realval = pptr(model, element, nodes, n, nd, &
                            Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip)
-        END FUNCTION enhancementfactoruserfunction  
+        END FUNCTION enhancementfactoruserfunction
 
-        
+
         FUNCTION materialuserfunction( fptr, model, element, nodes, n, nd, &
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx ) &
                                        RESULT(realval)
@@ -903,7 +903,7 @@ MODULE LoadMod
             ! Stopping criterion operator
             cfptr = TRANSFER(stopcptr, cfptr)
             IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, stopcfun)
-            
+
             ! Finally, do the itercall
             cfptr = TRANSFER(fptr, cfptr)
             CALL C_F_PROCPOINTER(cfptr, iterfun)
@@ -912,15 +912,15 @@ MODULE LoadMod
         END SUBROUTINE itercallFTNC
 
 
-        SUBROUTINE UMATusersubrtn( fptr, &            
+        SUBROUTINE UMATusersubrtn( fptr, &
             STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
             rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
             predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
             coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
             kstep, kinc)
-          
+
           IMPLICIT NONE
-          
+
           TYPE(C_FUNPTR) :: fptr
           REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
           REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
@@ -938,7 +938,7 @@ MODULE LoadMod
           CHARACTER(len=80), INTENT(IN) :: CMNAME
           INTEGER, INTENT(IN) :: NDI
           INTEGER, INTENT(IN) :: NSHR
-          INTEGER, INTENT(IN) :: NTENS 
+          INTEGER, INTENT(IN) :: NTENS
           INTEGER, INTENT(IN) :: NSTATEV
           REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
           INTEGER, INTENT(IN) :: NPROPS
@@ -958,10 +958,10 @@ MODULE LoadMod
                 predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
                 coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
                 kstep, kinc)
-              
+
               USE Types
               IMPLICIT NONE
-              
+
               REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
               REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
               REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
@@ -978,7 +978,7 @@ MODULE LoadMod
               CHARACTER(len=80), INTENT(IN) :: CMNAME
               INTEGER, INTENT(IN) :: NDI
               INTEGER, INTENT(IN) :: NSHR
-              INTEGER, INTENT(IN) :: NTENS 
+              INTEGER, INTENT(IN) :: NTENS
               INTEGER, INTENT(IN) :: NSTATEV
               REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
               INTEGER, INTENT(IN) :: NPROPS
@@ -994,17 +994,17 @@ MODULE LoadMod
             END SUBROUTINE UMATsubrtn
           END INTERFACE
 
-          
+
           PROCEDURE(UMATsubrtn), POINTER :: pptr
 
           CALL C_F_PROCPOINTER(fptr, pptr)
-          
+
           CALL pptr( STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
               rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
               predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
               coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
               kstep, kinc )
         END SUBROUTINE UMATusersubrtn
-    
-        
+
+
 END MODULE LoadMod

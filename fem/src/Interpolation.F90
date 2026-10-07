@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,13 +28,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
 ! ****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !------------------------------------------------------------------------------
@@ -55,7 +55,7 @@ MODULE Interpolation
    USE ListMatrix, ONLY : List_AddToMatrixElement, List_toCRSMatrix
 
    IMPLICIT NONE
-   
+
  CONTAINS
 
 !------------------------------------------------------------------------------
@@ -90,7 +90,7 @@ MODULE Interpolation
      REAL(KIND=dp) :: BBox(6), eps3
      REAL(KIND=dp), PARAMETER :: eps2=0.0_dp !!!!!!! *** !!!!!!
 !------------------------------------------------------------------------------
-     
+
 !    Loop over ChildQuadrants:
 !    -------------------------
      DO i=1, 2**dim
@@ -133,7 +133,7 @@ MODULE Interpolation
  END SUBROUTINE FindLeafElements
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
 !>    Checks whether a given point belongs to a given bulk element.
 !>    If it does, returns the local coordinates in the bulk element
@@ -154,7 +154,7 @@ MODULE Interpolation
     REAL(KIND=dp), OPTIONAL :: GlobalDistance !< Returns the distance from the element in global coordinates.
     REAL(KIND=dp), OPTIONAL :: LocalDistance  !< Returns the distance from the element in local coordinates.
     LOGICAL, OPTIONAL :: EdgeBasis
-    TYPE(Solver_t), POINTER, OPTIONAL :: USolver 
+    TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
     INTEGER :: n
     INTEGER :: i
@@ -170,20 +170,20 @@ MODULE Interpolation
     IsInElement = .FALSE.
     n = Element % TYPE % NumberOfNodes
 
-    ! The numeric precision 
+    ! The numeric precision
     IF ( PRESENT(NumericEps) ) THEN
       eps0 = NumericEps
     ELSE
       eps0 = EPSILON( eps0 )
     END IF
-    
+
     ! The rough check, used for global coordinates
     IF ( PRESENT(GlobalEps) ) THEN
       Eps1 = GlobalEps
     ELSE
       Eps1 = 1.0e-4
-    END IF 
-    
+    END IF
+
     ! The more detailed condition, used for local coordinates
     IF ( PRESENT(LocalEps) ) THEN
       Eps2 = LocalEps
@@ -192,14 +192,14 @@ MODULE Interpolation
     END IF
 
     IF( PRESENT( LocalDistance ) ) THEN
-      LocalDistance = HUGE( LocalDistance ) 
+      LocalDistance = HUGE( LocalDistance )
     END IF
-    
+
    IF( Eps1 < 0.0_dp ) THEN
       CONTINUE
    ELSE IF( PRESENT( GlobalDistance ) ) THEN
       ! When distance has to be computed all coordinate directions need to be checked
-      
+
       minx = MINVAL( ElementNodes % x(1:n) )
       maxx = MAXVAL( ElementNodes % x(1:n) )
 
@@ -208,33 +208,33 @@ MODULE Interpolation
 
       minz = MINVAL( ElementNodes % z(1:n) )
       maxz = MAXVAL( ElementNodes % z(1:n) )
-      
+
       xdist = MAX( MAX( Point(1) - maxx, 0.0_dp ), minx - Point(1) )
       ydist = MAX( MAX( Point(2) - maxy, 0.0_dp ), miny - Point(2) )
       zdist = MAX( MAX( Point(3) - maxz, 0.0_dp ), minz - Point(3) )
-      
+
       GlobalDistance = SQRT( xdist**2 + ydist**2 + zdist**2)
-      
-      IF( xdist > eps0 + eps1 * (maxx - minx) ) RETURN 
-      IF( ydist > eps0 + eps1 * (maxy - miny) ) RETURN 
-      IF( zdist > eps0 + eps1 * (maxz - minz) ) RETURN 
+
+      IF( xdist > eps0 + eps1 * (maxx - minx) ) RETURN
+      IF( ydist > eps0 + eps1 * (maxy - miny) ) RETURN
+      IF( zdist > eps0 + eps1 * (maxz - minz) ) RETURN
     ELSE
       ! Otherwise make decision independently after each coordinate direction
-      
+
       minx = MINVAL( ElementNodes % x(1:n) )
       maxx = MAXVAL( ElementNodes % x(1:n) )
       xdist = MAX( MAX( Point(1) - maxx, 0.0_dp ), minx - Point(1) )
-      IF( xdist > eps0 + eps1 * (maxx - minx) ) RETURN 
-      
+      IF( xdist > eps0 + eps1 * (maxx - minx) ) RETURN
+
       miny = MINVAL( ElementNodes % y(1:n) )
       maxy = MAXVAL( ElementNodes % y(1:n) )
       ydist = MAX( MAX( Point(2) - maxy, 0.0_dp ), miny - Point(2) )
-      IF( ydist > eps0 + eps1 * (maxy - miny) ) RETURN 
-      
+      IF( ydist > eps0 + eps1 * (maxy - miny) ) RETURN
+
       minz = MINVAL( ElementNodes % z(1:n) )
       maxz = MAXVAL( ElementNodes % z(1:n) )
       zdist = MAX( MAX( Point(3) - maxz, 0.0_dp ), minz - Point(3) )
-      IF( zdist > eps0 + eps1 * (maxz - minz) ) RETURN 
+      IF( zdist > eps0 + eps1 * (maxz - minz) ) RETURN
     END IF
 
 !   Get element local coordinates from global
@@ -255,30 +255,30 @@ MODULE Interpolation
         sumdist = MAX( ug - 1.0, MAX( -ug - 1.0, 0.0 ) )
 
       CASE(3)
-        sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 ) 
-        sumdist = sumdist + MAX( ug + vg - 1.0_dp, 0.0 ) 
+        sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 )
+        sumdist = sumdist + MAX( ug + vg - 1.0_dp, 0.0 )
 
       CASE(4)
         sumdist = MAX( ug - 1.0, MAX( -ug -1.0, 0.0 ) )
         sumdist = sumdist + MAX( vg - 1.0, MAX( -vg - 1.0, 0.0 ) )
 
       CASE(5)
-        sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 ) + MAX( -wg, 0.0 ) 
-        sumdist = sumdist + MAX( ug + vg + wg - 1.0, 0.0 ) 
-        
+        sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 ) + MAX( -wg, 0.0 )
+        sumdist = sumdist + MAX( ug + vg + wg - 1.0, 0.0 )
+
       CASE(7)
-        sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 ) 
-        sumdist = sumdist + MAX( ug + vg - 1.0_dp, 0.0 ) 
+        sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 )
+        sumdist = sumdist + MAX( ug + vg - 1.0_dp, 0.0 )
         sumdist = sumdist + MAX( wg - 1.0, MAX( -wg - 1.0, 0.0 ) )
 
       CASE(8)
         sumdist = MAX( ug - 1.0, MAX( -ug -1.0, 0.0 ) )
         sumdist = sumdist + MAX( vg - 1.0, MAX( -vg - 1.0, 0.0 ) )
         sumdist = sumdist + MAX( wg - 1.0, MAX( -wg - 1.0, 0.0 ) )
-        
+
       CASE DEFAULT
         WRITE( Message,'(A,I4)') 'Not implemented for element code',&
-            Element % TYPE % ElementCode 
+            Element % TYPE % ElementCode
         CALL Warn('PointInElement',Message)
       END SELECT
 
@@ -290,7 +290,7 @@ MODULE Interpolation
       IF( PRESENT( LocalDistance ) ) THEN
         LocalDistance = sumdist
       END IF
-        
+
 
     trans = PRESENT(EdgeBasis)
     IF(trans) trans=EdgeBasis
@@ -338,7 +338,7 @@ MODULE Interpolation
     INTEGER :: MaxLeafElems
 
     dim = MAX( Mesh % MeshDim, CoordinateSystemDimension() )
-        
+
     IF ( dim == 3 ) THEN
       MaxLeafElems = 16
     ELSE
@@ -557,7 +557,7 @@ MODULE Interpolation
                ! (for the duration of the construction routine):
                ! ----------------------------------------------------
                ElementList(i,ChildQuadrant(i) % Quadrant % NElemsInQuadrant) = &
-                               MotherQuadrant % Elements(t) 
+                               MotherQuadrant % Elements(t)
             END IF
 !-------------------------------------------------------------------------------
          END DO
@@ -588,14 +588,14 @@ MODULE Interpolation
 !> structure for the given set of nodal Indexes.
 !-------------------------------------------------------------------------------
   SUBROUTINE CopyElementNodesFromMesh(ElementNodes, Mesh, n, Indexes)
-!-------------------------------------------------------------------------------    
+!-------------------------------------------------------------------------------
     TYPE(Nodes_t), TARGET :: ElementNodes
     TYPE(Mesh_t) :: Mesh
     INTEGER :: n
     INTEGER :: Indexes(:)
 !-------------------------------------------------------------------------------
     INTEGER :: m
-!-------------------------------------------------------------------------------    
+!-------------------------------------------------------------------------------
 
 
     IF ( .NOT. ALLOCATED( ElementNodes % xyz ) ) THEN
@@ -624,17 +624,17 @@ MODULE Interpolation
 !-------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Create a matrix representation of the Nedelec interpolation operator which 
+!> Create a matrix representation of the Nedelec interpolation operator which
 !> operates on a vector field expressed in terms of the nodal basis functions
 !> and gives the values of DOFs for obtaining its vector element (Nedelec)
 !> interpolant. This subroutine assumes that DOFs are associated
 !> with edges, so that the geometric domain of the finite element given as input
 !> is supposed to be one-dimensional.
-!> TO DO: Add support for higher-order basis functions  
+!> TO DO: Add support for higher-order basis functions
 !------------------------------------------------------------------------------
   SUBROUTINE NodalToNedelecPiMatrix(PiMat, Edge, Mesh, dim, SecondFamily)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,6)      !< The interpolation operator as a matrix 
+    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,6)      !< The interpolation operator as a matrix
     TYPE(Element_t), INTENT(IN) :: Edge  !< The element for which the operator is created
     TYPE(Mesh_t), INTENT(IN) :: Mesh     !< The Edge should belong to the mesh given
     INTEGER, INTENT(IN) :: dim                    !< The number of components of the vector field
@@ -652,7 +652,7 @@ MODULE Interpolation
       CALL Warn('NodalToNedelecPiMatrix', 'A 1-dimensional element expected')
       RETURN
     END IF
-        
+
     IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
       CALL Fatal('NodalToNedelecPiMatrix', 'Mesh edges are not associated!')
     END IF
@@ -670,7 +670,7 @@ MODULE Interpolation
     IF (SecondKindBasis) THEN
       EDOFs = 2
     ELSE
-      EDOFs = 1  
+      EDOFs = 1
     END IF
 
     CALL CopyElementNodesFromMesh(Nodes, Mesh, n,  Edge % NodeIndexes)
@@ -678,12 +678,12 @@ MODULE Interpolation
     t(1) = Nodes % x(2) - Nodes % x(1)
     t(2) = Nodes % y(2) - Nodes % y(1)
     t(3) = Nodes % z(2) - Nodes % z(1)
-      
+
     i1 = Edge % NodeIndexes(1)
     i2 = Edge % NodeIndexes(2)
-    IF (ParEnv % PEs > 1) THEN                            
-      j1 = Mesh % ParallelInfo % GlobalDOFs(i1)             
-      j2 = Mesh % ParallelInfo % GlobalDOFs(i2)             
+    IF (ParEnv % PEs > 1) THEN
+      j1 = Mesh % ParallelInfo % GlobalDOFs(i1)
+      j2 = Mesh % ParallelInfo % GlobalDOFs(i2)
     ELSE
       j1 = i1
       j2 = i2
@@ -700,7 +700,7 @@ MODULE Interpolation
     IP = GaussPoints(Edge)
     DO p=1,IP % n
       stat = ElementInfo(Edge, Nodes, IP % u(p), IP % v(p), IP % w(p), DetJ, Basis)
-      s = IP % s(p) * DetJ        
+      s = IP % s(p) * DetJ
 
       DO k=1,dim
         e(:) = 0.0_dp
@@ -713,23 +713,23 @@ MODULE Interpolation
             v = -3.0d0 * u
             PiMat(2,3*(i-1)+k) = PiMat(2,3*(i-1)+k) + s * SUM(fun*t)*v
           ELSE
-            PiMat(1,3*(i-1)+k) = PiMat(1,3*(i-1)+k) + s * sgn * SUM(fun*t)  
+            PiMat(1,3*(i-1)+k) = PiMat(1,3*(i-1)+k) + s * sgn * SUM(fun*t)
           END IF
         END DO
       END DO
-    END DO    
+    END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE NodalToNedelecPiMatrix
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
 !> This subroutine is analogous to the subroutine NodalToNedelecPiMatrix, but
 !> here the matrix representation of the interpolation operator is created for
 !> the DOFs associated with the element faces.
 !------------------------------------------------------------------------------
   SUBROUTINE NodalToNedelecPiMatrix_Faces(PiMat, Face, Mesh, dim, BasisDegree)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,12)     !< The interpolation operator as a matrix 
+    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,12)     !< The interpolation operator as a matrix
     TYPE(Element_t), INTENT(IN) :: Face  !< The element for which the operator is created
     TYPE(Mesh_t), INTENT(IN) :: Mesh     !< The Face should belong to the mesh given
     INTEGER, INTENT(IN) :: dim                    !< The number of components of the vector field
@@ -744,18 +744,18 @@ MODULE Interpolation
     INTEGER :: FaceIndices(4), SquareFaceMap(4)
     REAL(KIND=dp) :: t(3), WorkPiMat(2,12), D1, D2
     REAL(KIND=dp) :: Basis(2), detJ, s, e(3), fun(3), wrkfun(3), u, v
-    
+
     CHARACTER(*), PARAMETER :: Caller = 'NodalToNedelecPiMatrix_Faces'
 !------------------------------------------------------------------------------
     IF (.NOT. (Face % Type % ElementCode / 100 /= 3 .OR. &
         Face % Type % ElementCode / 100 /= 4)) THEN
       CALL Fatal(Caller, 'A 2-dimensional element expected')
     END IF
-    
+
     IF (Face % Type % ElementCode / 100 == 3) THEN
       CALL Fatal(Caller, 'Cannot handle triangular faces yet')
     END IF
-        
+
     IF (.NOT. ASSOCIATED(Mesh % Faces)) THEN
       CALL Fatal(Caller, 'Mesh faces are not associated!')
     END IF
@@ -766,10 +766,10 @@ MODULE Interpolation
     ELSE
       SecondOrder = .FALSE.
     END IF
-    
+
     n = Face % Type % NumberOfNodes
     FDOFs = 2
-    
+
     CALL CopyElementNodesFromMesh(Nodes, Mesh, n, Face % NodeIndexes)
 
     IF (.NOT. ASSOCIATED(EdgeNodes % x)) THEN
@@ -780,7 +780,7 @@ MODULE Interpolation
       ALLOCATE(Edge, stat=istat)
       Edge % Type => GetElementType(202, .FALSE.)
     END IF
-    
+
     IP = GaussPoints(Edge, EdgeBasis = .TRUE.)
     WorkPiMat(:,:) = 0.0_dp
 
@@ -799,23 +799,23 @@ MODULE Interpolation
         EdgeNodes % y(1) = 0.5_dp * (Nodes % y(4) + Nodes % y(1))
         EdgeNodes % z(1) = 0.5_dp * (Nodes % z(4) + Nodes % z(1))
       CASE(2)
-        EdgeNodes % x(2) = 0.5_dp * (Nodes % x(3) + Nodes % x(4)) 
+        EdgeNodes % x(2) = 0.5_dp * (Nodes % x(3) + Nodes % x(4))
         EdgeNodes % y(2) = 0.5_dp * (Nodes % y(3) + Nodes % y(4))
-        EdgeNodes % z(2) = 0.5_dp * (Nodes % z(3) + Nodes % z(4))        
+        EdgeNodes % z(2) = 0.5_dp * (Nodes % z(3) + Nodes % z(4))
         EdgeNodes % x(1) = 0.5_dp * (Nodes % x(2) + Nodes % x(1))
         EdgeNodes % y(1) = 0.5_dp * (Nodes % y(2) + Nodes % y(1))
         EdgeNodes % z(1) = 0.5_dp * (Nodes % z(2) + Nodes % z(1))
       END SELECT
-      
+
       t(1) = EdgeNodes % x(2) - EdgeNodes % x(1)
       t(2) = EdgeNodes % y(2) - EdgeNodes % y(1)
       t(3) = EdgeNodes % z(2) - EdgeNodes % z(1)
-      
-      t = t/SQRT(SUM(t**2))      
+
+      t = t/SQRT(SUM(t**2))
 
       DO p=1,IP % n
         stat = ElementInfo(Edge, EdgeNodes, IP % u(p), IP % v(p), IP % w(p), DetJ, Basis)
-        s = IP % s(p) * DetJ        
+        s = IP % s(p) * DetJ
 
         DO i=1,Face % Type % NumberOfNodes
           SELECT CASE(i)
@@ -826,24 +826,24 @@ MODULE Interpolation
           CASE DEFAULT
             CALL Fatal(Caller, 'The lowest-order mesh supposed')
           END SELECT
-          
+
           DO k=1,dim
             e(:) = 0.0_dp
             e(k) = 1.0_dp
             fun(:) = wrkfun * e(:)
-            WorkPiMat(j,3*(i-1)+k) = WorkPiMat(j,3*(i-1)+k) + s * SUM(fun*t)  
+            WorkPiMat(j,3*(i-1)+k) = WorkPiMat(j,3*(i-1)+k) + s * SUM(fun*t)
           END DO
         END DO
       END DO
     END DO
 
-    ! Finally change the order/signs 
+    ! Finally change the order/signs
     !
-    SquareFaceMap(:) = (/ 1,2,3,4 /)          
+    SquareFaceMap(:) = (/ 1,2,3,4 /)
     FaceIndices(1:n) = Face % NodeIndexes(SquareFaceMap(1:n))
 
     Parallel = ParEnv % PEs > 1
-    IF (Parallel) FaceIndices(1:n) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(1:n)) 
+    IF (Parallel) FaceIndices(1:n) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(1:n))
 
     CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
@@ -889,7 +889,7 @@ MODULE Interpolation
 !------------------------------------------------------------------------------
 
     CALL Info(Caller,'Creating interpolation matrix between H1 and H(curl)!')
-    
+
     DoFatal = .FALSE.
     IF (.NOT. ASSOCIATED(NodalVar)) THEN
       CALL Warn(Caller, 'H1 variable is not associated!')
@@ -898,7 +898,7 @@ MODULE Interpolation
     IF (.NOT. ASSOCIATED(VectorElementVar)) THEN
       CALL Warn(Caller, 'H(curl) variable is not associated!')
       DoFatal = .TRUE.
-    END IF   
+    END IF
     IF(.NOT. ASSOCIATED(Mesh)) THEN
       CALL Warn(Caller, 'Mesh structure is not associated!')
       DoFatal = .TRUE.
@@ -908,17 +908,17 @@ MODULE Interpolation
       DoFatal = .TRUE.
     END IF
     IF(DoFatal) CALL Fatal(Caller,'Cannot continue with these errors!')
-    
+
     IF (.NOT. ASSOCIATED(Mesh % Edges)) CALL Fatal(Caller, 'Mesh edges not associated!')
 
-    ! We only want to apply the projector to the master nodes/edges of the conforming system. 
+    ! We only want to apply the projector to the master nodes/edges of the conforming system.
     SkipPeriodicSlave = ASSOCIATED( Mesh % PeriodicPerm )
 
     DoFaces = ASSOCIATED(Mesh % Faces)
     IF(PRESENT(SkipFaces)) THEN
       IF(SkipFaces) DoFaces = .FALSE.
     END IF
-        
+
     IF (PRESENT(cdim)) THEN
       dim = cdim
     ELSE
@@ -928,7 +928,7 @@ MODULE Interpolation
     IF(vdofs /=1 .AND. vdofs /= 2) THEN
       CALL Fatal(Caller,'H(curl) variable has to consist of either 1 (real) or 2 (complex) components!')
     END IF
-    
+
     NodalPerm => NodalVar % Perm
     UseNodalPerm = .TRUE.
     IF ( PRESENT(UseNodalPermArg) ) UseNodalPerm = UseNodalPermArg
@@ -937,7 +937,7 @@ MODULE Interpolation
 
     IF (NodalVar % DOFs /= dim * vdofs) CALL Fatal(Caller, &
         'Coordinate system dimension and DOF counts are not as expected')
-    
+
     CALL EdgeElementStyle(VectorElementVar % Solver % Values, PiolaVersion, SecondKindBasis, &
         SecondOrder, Check = .TRUE.)
 
@@ -949,10 +949,10 @@ MODULE Interpolation
 
     n0 = 0
     IF(PRESENT(NodalOffset)) n0 = NodalOffset
-    
+
     GlobalPiMat => AllocateMatrix()
     GlobalPiMat % Format = MATRIX_LIST
-    
+
     ! Add the extreme entry since otherwise the ListMatrix operations may be very slow:
     CALL List_AddToMatrixElement(GlobalPiMat % ListMatrix, SIZE(VectorElementVar % Values), &
         SIZE(NodalVar % Values), 0.0_dp)
@@ -962,7 +962,7 @@ MODULE Interpolation
       ALLOCATE( Ind(Mesh % MaxElementDOFs), stat=istat )
     END IF
 
-    
+
     ! Here we need separate loops over edges, faces and elements so that all DOFs are handled
     !
     DO edgej=1, Mesh % NumberOfEdges
@@ -991,7 +991,7 @@ MODULE Interpolation
           IF(Ind(j)>n0) EXIT
           i0 = i0 + 1
         END DO
-      END IF        
+      END IF
 
       DO dofi=1, vdofs
         DO j=1,EDOFs
@@ -1001,7 +1001,7 @@ MODULE Interpolation
           IF(SkipPeriodicSlave) THEN
             IF(Mesh % PeriodicPerm(Ind(i0+j)) > 0) CYCLE
           END IF
-            
+
           k0 = vdofs*(k-1)+dofi
           DO i=1,dim
             CALL List_AddToMatrixElement(GlobalPiMat % ListMatrix, k0, 3*vdofs*(k1-1)+vdofs*(i-1)+dofi, PiMat(j,i) )
@@ -1018,7 +1018,7 @@ MODULE Interpolation
 
         ! TEMPORARY FIX FOR TRIANGULAR FACES
         IF ( Face % Type % ElementCode /100 == 3 ) CYCLE
-        
+
         nd = mGetElementDOFs(Ind, Face, VectorElementVar % Solver)
 
         ! Count the offset for picking the true face DOFs
@@ -1048,7 +1048,7 @@ MODULE Interpolation
             IF(SkipPeriodicSlave) THEN
               IF(Mesh % PeriodicPerm(Ind(j+i0)) > 0) CYCLE
             END IF
-            
+
             k0 = vdofs*(k2-1)+dofi
             DO i=1,Face % TYPE % NumberOfNodes
               k1 = Face % NodeIndexes(i)
@@ -1063,27 +1063,27 @@ MODULE Interpolation
     END IF
 
     ! TO DO: Add loop over elements
-    
+
     ! Finally, change to CRS matrix format which is much faster:
     CALL List_toCRSMatrix(GlobalPiMat)
-    
+
     CALL Info(Caller, 'Created Projection Matrix: H1 -> H(curl)', Level=6)
 !------------------------------------------------------------------------------
   END SUBROUTINE NodalToNedelecInterpolation_GlobalMatrix
 !------------------------------------------------------------------------------
 
-  
+
 !------------------------------------------------------------------------------
-!> Create a matrix representation of the Nedelec interpolation operator which 
+!> Create a matrix representation of the Nedelec interpolation operator which
 !> operates on a gradient field expressed in terms of the nodal basis functions
 !> and gives the values of DOFs for obtaining its vector element (Nedelec)
 !> interpolant. This subroutine assumes that DOFs are associated
 !> with edges, so that the geometric domain of the finite element given as input
-!> is supposed to be one-dimensional.  
+!> is supposed to be one-dimensional.
 !------------------------------------------------------------------------------
   SUBROUTINE NodalGradientToNedelecPiMatrix(PiMat, Edge, Mesh, SecondFamily)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,2)      !< The interpolation operator as a matrix 
+    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,2)      !< The interpolation operator as a matrix
     TYPE(Element_t), INTENT(IN) :: Edge  !< The element for which the operator is created
     TYPE(Mesh_t), INTENT(IN) :: Mesh     !< The Edge should belong to the mesh given
     LOGICAL, OPTIONAL, INTENT(IN) :: SecondFamily !< To select the Nedelec family
@@ -1101,7 +1101,7 @@ MODULE Interpolation
       CALL Warn('NodalGradientToNedelecPiMatrix', 'A 1-dimensional element expected')
       RETURN
     END IF
-        
+
     IF (.NOT. ASSOCIATED(Mesh % Edges)) THEN
       CALL Fatal('NodalGradientToNedelecPiMatrix', 'Mesh edges are not associated!')
     END IF
@@ -1119,7 +1119,7 @@ MODULE Interpolation
     IF (SecondKindBasis) THEN
       EDOFs = 2
     ELSE
-      EDOFs = 1  
+      EDOFs = 1
     END IF
 
     CALL CopyElementNodesFromMesh(Nodes, Mesh, n,  Edge % NodeIndexes)
@@ -1127,12 +1127,12 @@ MODULE Interpolation
     t(1) = Nodes % x(2) - Nodes % x(1)
     t(2) = Nodes % y(2) - Nodes % y(1)
     t(3) = Nodes % z(2) - Nodes % z(1)
-      
+
     i1 = Edge % NodeIndexes(1)
     i2 = Edge % NodeIndexes(2)
-    IF (ParEnv % PEs > 1) THEN                            
-      j1 = Mesh % ParallelInfo % GlobalDOFs(i1)             
-      j2 = Mesh % ParallelInfo % GlobalDOFs(i2)             
+    IF (ParEnv % PEs > 1) THEN
+      j1 = Mesh % ParallelInfo % GlobalDOFs(i1)
+      j2 = Mesh % ParallelInfo % GlobalDOFs(i2)
     ELSE
       j1 = i1
       j2 = i2
@@ -1149,7 +1149,7 @@ MODULE Interpolation
     IP = GaussPoints(Edge)
     DO p=1,IP % n
       stat = ElementInfo(Edge, Nodes, IP % u(p), IP % v(p), IP % w(p), DetJ, Basis, dBasis)
-      s = IP % s(p) * DetJ        
+      s = IP % s(p) * DetJ
 
       DO i=1,n
         fun(:) = dBasis(i,:)
@@ -1159,7 +1159,7 @@ MODULE Interpolation
           v = -3.0d0*u
           PiMat(2,i) = PiMat(2,i) + s * SUM(fun*t)*v
         ELSE
-          PiMat(1,i) = PiMat(1,i) + s * sgn * SUM(fun*t)  
+          PiMat(1,i) = PiMat(1,i) + s * sgn * SUM(fun*t)
         END IF
       END DO
     END DO
@@ -1167,14 +1167,14 @@ MODULE Interpolation
   END SUBROUTINE NodalGradientToNedelecPiMatrix
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
 !> This subroutine is analogous to the subroutine NodalGradientToNedelecPiMatrix,
 !> but here the matrix representation of the interpolation operator is created for
 !> the DOFs associated with the element faces.
 !------------------------------------------------------------------------------
   SUBROUTINE NodalGradientToNedelecPiMatrix_Faces(PiMat, Face, Mesh, BasisDegree)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,4)      !< The interpolation operator as a matrix 
+    REAL(KIND=dp), INTENT(OUT) :: PiMat(2,4)      !< The interpolation operator as a matrix
     TYPE(Element_t), INTENT(IN) :: Face  !< The element for which the operator is created
     TYPE(Mesh_t), INTENT(IN) :: Mesh     !< The Face should belong to the mesh given
     INTEGER, OPTIONAL, INTENT(IN) :: BasisDegree  !< The order of basis
@@ -1188,18 +1188,18 @@ MODULE Interpolation
     INTEGER :: FaceIndices(4), SquareFaceMap(4)
     REAL(KIND=dp) :: t(3), WorkPiMat(2,4), D1, D2
     REAL(KIND=dp) :: Basis(4), detJ, s, fun(3), u, v, grad0(4,3)
-    
+
     CHARACTER(*), PARAMETER :: Caller = 'NodalGradientToNedelecPiMatrix_Faces'
 !------------------------------------------------------------------------------
     IF (.NOT. (Face % Type % ElementCode / 100 /= 3 .OR. &
         Face % Type % ElementCode / 100 /= 4)) THEN
       CALL Fatal(Caller, 'A 2-dimensional element expected')
     END IF
-    
+
     IF (Face % Type % ElementCode / 100 == 3) THEN
       CALL Fatal(Caller, 'Cannot handle triangular faces yet')
     END IF
-        
+
     IF (.NOT. ASSOCIATED(Mesh % Faces)) THEN
       CALL Fatal(Caller, 'Mesh faces are not associated!')
     END IF
@@ -1210,10 +1210,10 @@ MODULE Interpolation
     ELSE
       SecondOrder = .FALSE.
     END IF
-    
+
     n = Face % Type % NumberOfNodes
     FDOFs = 2
-    
+
     CALL CopyElementNodesFromMesh(Nodes, Mesh, n, Face % NodeIndexes)
 
     IF (.NOT. ASSOCIATED(EdgeNodes % x)) THEN
@@ -1224,15 +1224,15 @@ MODULE Interpolation
       ALLOCATE(Edge, stat=istat)
       Edge % Type => GetElementType(202, .FALSE.)
     END IF
-    
+
     IP = GaussPoints(Edge, EdgeBasis = .TRUE.)
     WorkPiMat(:,:) = 0.0_dp
 
     ! For the lowest-order case it sufficies to evaluate the gradient at
-    ! the mid-point of the face 
+    ! the mid-point of the face
     !
     stat = ElementInfo(Face, Nodes, 0.0_dp, 0.0_dp, 0.0_dp, DetJ, Basis, grad0)
-    
+
     ! First create the projection matrix for the basis in the default order
     !
     DO j=1,FDOFs
@@ -1248,38 +1248,38 @@ MODULE Interpolation
         EdgeNodes % y(1) = 0.5_dp * (Nodes % y(4) + Nodes % y(1))
         EdgeNodes % z(1) = 0.5_dp * (Nodes % z(4) + Nodes % z(1))
       CASE(2)
-        EdgeNodes % x(2) = 0.5_dp * (Nodes % x(3) + Nodes % x(4)) 
+        EdgeNodes % x(2) = 0.5_dp * (Nodes % x(3) + Nodes % x(4))
         EdgeNodes % y(2) = 0.5_dp * (Nodes % y(3) + Nodes % y(4))
-        EdgeNodes % z(2) = 0.5_dp * (Nodes % z(3) + Nodes % z(4))        
+        EdgeNodes % z(2) = 0.5_dp * (Nodes % z(3) + Nodes % z(4))
         EdgeNodes % x(1) = 0.5_dp * (Nodes % x(2) + Nodes % x(1))
         EdgeNodes % y(1) = 0.5_dp * (Nodes % y(2) + Nodes % y(1))
         EdgeNodes % z(1) = 0.5_dp * (Nodes % z(2) + Nodes % z(1))
       END SELECT
-      
+
       t(1) = EdgeNodes % x(2) - EdgeNodes % x(1)
       t(2) = EdgeNodes % y(2) - EdgeNodes % y(1)
       t(3) = EdgeNodes % z(2) - EdgeNodes % z(1)
-      
-      t = t/SQRT(SUM(t**2))      
+
+      t = t/SQRT(SUM(t**2))
 
       DO p=1,IP % n
         stat = ElementInfo(Edge, EdgeNodes, IP % u(p), IP % v(p), IP % w(p), DetJ, Basis)
-        s = IP % s(p) * DetJ        
+        s = IP % s(p) * DetJ
 
         DO i=1,Face % Type % NumberOfNodes
           fun(:) = grad0(i,:)
-          WorkPiMat(j,i) = WorkPiMat(j,i) + s * SUM(fun*t)  
+          WorkPiMat(j,i) = WorkPiMat(j,i) + s * SUM(fun*t)
         END DO
       END DO
     END DO
 
-    ! Finally change the order/signs 
+    ! Finally change the order/signs
     !
-    SquareFaceMap(:) = (/ 1,2,3,4 /)          
+    SquareFaceMap(:) = (/ 1,2,3,4 /)
     FaceIndices(1:n) = Face % NodeIndexes(SquareFaceMap(1:n))
 
     Parallel = ParEnv % PEs > 1
-    IF (Parallel) FaceIndices(1:n) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(1:n)) 
+    IF (Parallel) FaceIndices(1:n) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(1:n))
 
     CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndices)
 
@@ -1316,7 +1316,7 @@ MODULE Interpolation
     IF (.NOT. ASSOCIATED(NodalVar) .OR. .NOT. ASSOCIATED(VectorElementVar)) THEN
       CALL Fatal(Caller, 'H1 or H(curl) variable is not associated')
     END IF
-    
+
     IF (ASSOCIATED(Mesh)) THEN
       IF (.NOT. ASSOCIATED(Mesh % Edges)) CALL Fatal(Caller, 'Mesh edges not associated!')
     ELSE
@@ -1343,7 +1343,7 @@ MODULE Interpolation
     IF(PRESENT(UseNodalPermArg)) UseNodalPerm = UseNodalPermArg
 
     VectorPerm => VectorElementVar % Perm
-    
+
     CALL EdgeElementStyle(VectorElementVar % Solver % Values, PiolaVersion, SecondKindBasis, &
         SecondOrder, Check = .TRUE.)
 
@@ -1352,7 +1352,7 @@ MODULE Interpolation
     ELSE
       EDOFs = 1
     END IF
-    
+
     GlobalPiMat => AllocateMatrix()
     GlobalPiMat % Format = MATRIX_LIST
 
@@ -1366,11 +1366,11 @@ MODULE Interpolation
     END IF
 
     ! Here we need separate loops over edges, faces and elements so that all DOFs are handled
-    !    
-    DO j=1, Mesh % NumberOfEdges      
+    !
+    DO j=1, Mesh % NumberOfEdges
       Edge => Mesh % Edges(j)
 
-      ! Create the matrix representation of the Nedelec interpolation operator 
+      ! Create the matrix representation of the Nedelec interpolation operator
       CALL NodalGradientToNedelecPiMatrix(PiMat, Edge, Mesh, SecondKindBasis)
 
       nd = mGetElementDOFs(Ind, Edge, VectorElementVar % Solver)
@@ -1396,7 +1396,7 @@ MODULE Interpolation
 
         ! TEMPORARY FIX FOR TRIANGULAR FACES
         IF ( Face % Type % ElementCode /100 == 3 ) CYCLE
-        
+
         nd = mGetElementDOFs(Ind, Face, VectorElementVar % Solver)
 
         ! Count the offset for picking the true face DOFs
@@ -1425,17 +1425,17 @@ MODULE Interpolation
         END DO
       END DO
     END IF
-    
+
     ! TO DO: Add loop over elements
-    
+
     ! Finally, change to CRS matrix format which is much faster:
     CALL List_toCRSMatrix(GlobalPiMat)
-    
-    CALL Info(Caller, 'Created Gradient Matrix: grad(H1) -> H(curl)', Level=6)    
+
+    CALL Info(Caller, 'Created Gradient Matrix: grad(H1) -> H(curl)', Level=6)
 !------------------------------------------------------------------------------
   END SUBROUTINE NodalGradientToNedelecInterpolation_GlobalMatrix
 !------------------------------------------------------------------------------
-    
+
 !-------------------------------------------------------------------------------
 END MODULE Interpolation
 !-------------------------------------------------------------------------------

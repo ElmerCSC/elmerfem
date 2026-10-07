@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2002
 ! *
@@ -46,7 +46,7 @@
 !------------------------------------------------------------------------------
 !>  Solves the Helmholtz equation using BEM!
 !> This solver can only deal with rather small problems as it does not use any
-!> multilevel strategies. 
+!> multilevel strategies.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
    SUBROUTINE HelmholtzBEMSolver( Model,Solver,dt,TransientSimulation )
@@ -56,12 +56,12 @@
 
      IMPLICIT NONE
 !------------------------------------------------------------------------------
- 
+
      TYPE(Model_t) :: Model
      TYPE(Solver_t):: Solver
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
- 
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -76,7 +76,7 @@
      INTEGER, POINTER :: PotentialPerm(:), BoundaryPerm(:)
      LOGICAL, ALLOCATABLE :: PotentialKnown(:)
      COMPLEX(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), Load(:)
-     REAL(KIND=dp), ALLOCATABLE :: P1(:), P2(:) 
+     REAL(KIND=dp), ALLOCATABLE :: P1(:), P2(:)
      REAL(KIND=dp) :: at,st,s, AngularFrequency, Work(1)
      TYPE(Variable_t), POINTER :: Var
 
@@ -93,8 +93,8 @@
      IF( ParEnv % PEs > 1 ) THEN
        CALL Fatal('HelmholtzBEMSolver','Unfortunately this module does not support MPI!')
      END IF
-     
-     
+
+
      IF( CurrentCoordinateSystem() /= Cartesian ) THEN
        CALL Fatal('HelmholtzBEMSolver','This solver is implemented only for cartesian coordinates!')
      END IF
@@ -136,9 +136,9 @@
         END DO
 
         CALL Info('HelmholtzBEMSolver','Number of nodes on boundaries: '//I2S(BoundaryNodes))
-        
+
         N = Model % MaxElementNodes
- 
+
         ALLOCATE( ElementNodes % x( N ),                  &
                   ElementNodes % y( N ),                  &
                   ElementNodes % z( N ),                  &
@@ -154,12 +154,12 @@
         END IF
 
         ALLOCATE( Potential( Solver % Mesh % NumberOfNodes ), P1(n), P2(n), &
-             ForceVector( Solver % Mesh % NumberOfNodes ),STAT=istat ) 
+             ForceVector( Solver % Mesh % NumberOfNodes ),STAT=istat )
 
         IF ( istat /= 0 ) THEN
            CALL Fatal( 'HelmholtzBEMSolver', 'Memory allocation error 3.' )
         END IF
- 
+
         AllocationsDone = .TRUE.
      END IF
 
@@ -203,7 +203,7 @@
         DO i=1,Model % NumberOfBCs
           IF ( CurrentElement % BoundaryInfo % Constraint /= Model % BCs(i) % Tag ) CYCLE
 
-          
+
           P1(1:n) = ListGetReal( Model % BCs(i) % Values, &
                ComponentName(Solver % Variable,1), n, NodeIndexes, GotIt )
 
@@ -246,7 +246,7 @@
 
         n = CurrentElement % Type % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
- 
+
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x( NodeIndexes )
         ElementNodes % y(1:n) = Solver % Mesh % Nodes % y( NodeIndexes )
         ElementNodes % z(1:n) = Solver % Mesh % Nodes % z( NodeIndexes )
@@ -317,7 +317,7 @@
 
         CALL ComputePotential( Potential, Pot, Flx, CurrentElement, n, ElementNodes )
      END DO
-     
+
 !    ------------------------------------------
      CALL Info('HelmholtzBEMSolver','Creating fields for postprocessing',Level=7)
      Solver % Variable % Values = 0.0d0
@@ -342,17 +342,17 @@
 !    All done, finalize:
 !    -------------------
      Solver % Variable % Norm = SQRT( SUM( ABS(Potential)**2 ) ) / &
-                Solver % Mesh % NumberOfNodes 
-     
+                Solver % Mesh % NumberOfNodes
+
      CALL InvalidateVariable( Model % Meshes, &
                   Solver % Mesh, Solver % Variable % Name )
 !------------------------------------------------------------------------------
      st = CPUTime() - st
      PRINT*,'Post Processing (s):    ',st
 !------------------------------------------------------------------------------
-         
+
      CALL Info('HelmholtzBEMSolver','All done for now!',Level=7)
-    
+
 
    CONTAINS
 
@@ -375,7 +375,7 @@
        REAL(KIND=dp) :: detJ,U,V,W,S,A,L,Normal(3),rad
 
        INTEGER :: j,k,p,q,t,dim
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
@@ -409,7 +409,7 @@
 !------------------------------------------------------------------------------
           stat = ElementInfo( Element, Nodes, U, V, W, detJ, &
                  Basis, dBasisdx )
- 
+
           S = S * detJ
 
           Normal = NormalVector( Element, Nodes, u,v, CheckNormals )
@@ -508,7 +508,7 @@
        INTEGER :: i, k
        REAL(KIND=dp) :: hk
        REAL(kind=dp) :: x, j0, y0, dj0, dy0, phi, res, p, f
-       
+
        DOUBLE PRECISION :: A(7) = &
           (/ 0.79788456D0, -0.00000077D0, -0.00552740D0,  &
              0.00009512D0,  0.00137237D0, -0.00072805D0,  &
@@ -534,21 +534,21 @@
 !         ---------------
           P = x
           F = 0.0d0
-          DO k=1,7 
+          DO k=1,7
              F = F + A(k)*(3/x)**(k-1.0d0)
              P = P + B(k)*(3/x)**(k-1.0d0)
           END DO
-          
+
           j0 = F * COS(P) / SQRT(x)
           y0 = F * SIN(P) / SQRT(x)
-          
+
           P = x
           F = 0.0d0
-          DO k=1,7 
+          DO k=1,7
              F = F + C(k)*(3/x)**(k-1.0d0)
              P = P + D(k)*(3/x)**(k-1.0d0)
           END DO
-          
+
           dj0 = -F * COS(P) / SQRT(x)
           dy0 = -F * SIN(P) / SQRT(x)
        ELSE
@@ -556,38 +556,38 @@
 !         ----------
           j0 = 1.0d0
           y0 = 0.0d0
-          
+
           dj0 = 0.0d0 ! = - j1
           dy0 = 0.0d0 ! = - y1
-          
+
           hk = 0.0d0
-          
+
           DO k = 1,maxrounds
              hk = hk + 1.0d0 / k
-             
+
              res = 1.0d0
              DO i = 1,k
                 res = res * ( x / (2.0d0 * i) )**2
              END DO
-             
+
              j0 = j0 + (-1)**k * res
              y0 = y0 + (-1)**(k+1) * hk * res
-             
+
              dj0 = dj0 + (-1)**k * k / (0.5d0 * x) * res
              dy0 = dy0 + (-1)**(k+1) * hk * k / (0.5d0 * x) * res
-             
+
              IF ( ABS(k / (0.5d0 * x) * res) < accuracy ) EXIT
           END DO
-          
+
           IF ( k >= maxrounds ) ERROR STOP 'Error in evaluating Bessel functions'
 
           y0 = y0 + ( LOG(0.5d0 * x) + gamma ) * j0
           y0 = y0 * 2.0d0 / PI
-          
+
           dy0 = dy0 + (1.0d0 / x) * j0 + ( LOG(0.5d0 * x) + gamma ) * dj0
           dy0 = dy0 * 2.0d0 / PI
        END IF
-!------------------------------------------------------------------------------       
+!------------------------------------------------------------------------------
      END SUBROUTINE Bessel
 !------------------------------------------------------------------------------
 
@@ -608,7 +608,7 @@
        COMPLEX(KIND=dp) :: dGdN, G, GradG(3)
 
        INTEGER :: i,j,k,p,q,t,dim
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
@@ -686,7 +686,7 @@
         END INTERFACE
 !------------------------------------------------------------------------------
        INTEGER ::  N
- 
+
        COMPLEX(KIND=dp) CONTIG ::  A(:,:),x(:),b(:)
 !------------------------------------------------------------------------------
 
@@ -748,8 +748,8 @@
 
        HUTI_MAXTOLERANCE = ListGetConstReal( Solver % Values, &
             'Linear System Divergence Limit', GotIt )
-       IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20       
-       
+       IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20
+
        HUTI_MAXIT = ListGetInteger( Solver % Values, &
             'Linear System Max Iterations' )
 
@@ -780,7 +780,7 @@
           END IF
        END IF
 !------------------------------------------------------------------------------
-     END SUBROUTINE FullIterSolver 
+     END SUBROUTINE FullIterSolver
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
    END SUBROUTINE HelmholtzBEMSolver

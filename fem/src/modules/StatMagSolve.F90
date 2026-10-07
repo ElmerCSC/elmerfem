@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12 May 2000
 ! *
@@ -48,12 +48,12 @@
 
     USE DefUtils
     USE Differentials
-    
+
     IMPLICIT NONE
-    
+
     TYPE(Model_t) :: Model
     TYPE(Solver_t), TARGET :: Solver
-    REAL (KIND=DP) :: dt 
+    REAL (KIND=DP) :: dt
     LOGICAL :: Transient
 !------------------------------------------------------------------------------
 !    Local variables
@@ -62,7 +62,7 @@
     REAL (KIND=DP), POINTER :: ForceVector(:),MVP(:),MFD(:), PhaseAngle(:)
     REAL (KIND=DP), POINTER :: A(:), Br(:), Bz(:), Bp(:), Brim(:), Bzim(:), Babs(:), &
         Joule(:), absJoule(:), Ax(:), Ay(:), Az(:)
-    
+
     TYPE(ValueList_t),POINTER :: Material
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t),POINTER :: CurrentElement
@@ -102,9 +102,9 @@
     dim = Solver % Mesh % MeshDim
 
     PermeabilityOfVacuum = GetConstReal( Model % Constants,'Permeability Of Vacuum',GotIt)
-    IF(.NOT. GotIt) PermeabilityOfVacuum = PI * 4.0d-7 
+    IF(.NOT. GotIt) PermeabilityOfVacuum = PI * 4.0d-7
 
-    MagneticSol => Solver % Variable 
+    MagneticSol => Solver % Variable
     MagneticPerm  => MagneticSol % Perm
     MVP => MagneticSol % Values
 
@@ -115,7 +115,7 @@
     ForceVector => StiffMatrix % RHS
     dofs = Solver % Variable % DOFs
 
-    HarmonicSimulation = ListGetLogical( Solver % Values, &      
+    HarmonicSimulation = ListGetLogical( Solver % Values, &
               'Harmonic Simulation',gotIt )
     IF (.NOT.gotIt) HarmonicSimulation = ( dofs == 2 )
 
@@ -128,7 +128,7 @@
     IF( Dim == 3 ) THEN
       IF ( dofs /= 3 ) THEN
         CALL Fatal('StatMagSolver','In 3D there must be three components for the vector potential!')
-        CalculateJouleHeating = .FALSE.      
+        CalculateJouleHeating = .FALSE.
       END IF
       CALL Warn('StatMagSolver','This solver does not really fulfill the Coulomb gauge, use Whitney solver in 3D!')
     ELSE
@@ -138,7 +138,7 @@
         END IF
         Solver % Matrix % COMPLEX = .TRUE.
         AngularFrequency = GetAngularFrequency()
-      ELSE 
+      ELSE
         IF( dofs /= 1) THEN
           CALL Fatal('StatMagSolver','For 2d steady-state cases there should be just one component for vector potential!')
         END IF
@@ -178,13 +178,13 @@
           LocalForce(dofs*N), &
           Ap(n), &
           Ae(n), &
-          VecLoadVector(3,n), & 
+          VecLoadVector(3,n), &
           STAT=istat)
 
 !------------------------------------------------------------------------------
 !    Add magnetic flux density to variables
-!------------------------------------------------------------------------------        
-       
+!------------------------------------------------------------------------------
+
       IF(CalculateMagneticFlux) THEN
         TempVar => VariableGet( Solver % Mesh % Variables,'Magnetic Flux Density')
         MFD => TempVar % Values
@@ -223,25 +223,25 @@
 !---------------------------------------------------------------
 
     DO iter=1,NonlinearIter
-  
+
        WRITE( Message, '(A,I0)' ) 'Magnetic Field Iteration: ', iter
        CALL Info( 'StatMagSolve', Message, Level=4)
-      
+
        at  = CPUTime()
        at0 = RealTime()
 
        CALL DefaultInitialize()
-       
-       DO t=1, Solver % NumberOfActiveElements 
+
+       DO t=1, Solver % NumberOfActiveElements
          IF ( RealTime() - at0 > 1.0 ) THEN
            WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
                (Model % NumberOfBulkElements-t) / &
                (1.0*Model % NumberOfBulkElements)), ' % done'
-           
+
            CALL Info( 'StatMagSolve', Message, Level=5 )
            at0 = RealTime()
          END IF
-     
+
 !------------------------------------------------------------------------------
 !        Check if this element belongs to a body where the equations
 !        should be calculated
@@ -254,12 +254,12 @@
          ElementNodes % x(1:n) = Model % Nodes % x(NodeIndexes(1:n))
          ElementNodes % y(1:n) = Model % Nodes % y(NodeIndexes(1:n))
          ElementNodes % z(1:n) = Model % Nodes % z(NodeIndexes(1:n))
-         
+
          body_id = CurrentElement % BodyId
          k = ListGetInteger( Model % Bodies(body_id) % Values, 'Material', &
                   minv=1, maxv=Model % NumberOFMaterials )
          Material => Model % Materials(k) % Values
-         
+
          Permeability(1:n) = ListGetReal(Material, &
              'Relative Permeability',n,NodeIndexes,GotIt)
          IF( GotIt ) THEN
@@ -271,7 +271,7 @@
          END IF
 
          Reluctivity(1:n) = 1.0 / Permeability(1:n)
-         
+
          IF(HarmonicSimulation) THEN
            Conductivity(1:n) = ListGetReal(Material, &
                'Electrical Conductivity',n,NodeIndexes,GotIt)
@@ -282,11 +282,11 @@
                  'Electric Conductivity',n,NodeIndexes)
            END IF
          END IF
-         
+
 !------------------------------------------------------------------------------
 !        Set body forces (applied current densities)
 !------------------------------------------------------------------------------
-  
+
          bf_id = ListGetInteger( Model % Bodies(body_id) % Values, &
              'Body Force',gotIt, minv=1, maxv=Model % NumberOFBodyForces )
 
@@ -295,10 +295,10 @@
            IF ( bf_id > 0  ) THEN
              CurrentDensity(1:n) = ListGetReal( &
                  Model % BodyForces(bf_id) % Values,'Current Density',n,NodeIndexes,GotIt )
-           ELSE 
+           ELSE
              CurrentDensity(1:n) = 0.0d0
            END IF
-           
+
            IF(HarmonicSimulation) THEN
              IF(bf_id > 0) THEN
                PhaseAngle(1:n) = ListGetReal( &
@@ -315,11 +315,11 @@
              VecLoadVector(1,1:n) = VecLoadVector(1,1:n) + ListGetReal( &
                  Model % BodyForces(bf_id) % Values, &
                  'Current Density 1',n,NodeIndexes,gotIt )
-             
+
              VecLoadVector(2,1:n) = VecLoadVector(2,1:n) + ListGetReal( &
                  Model % BodyForces(bf_id) % Values, &
                  'Current Density 2',n,NodeIndexes,gotIt )
-             
+
              VecLoadVector(3,1:n) = VecLoadVector(3,1:n) + ListGetReal( &
                  Model % BodyForces(bf_id) % Values, &
                  'Current Density 3',n,NodeIndexes,gotIt )
@@ -347,9 +347,9 @@
        END IF
 
        CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
-       
+
      END DO
-      
+
      CALL Info( 'StatMagSolve', 'Assembly done', Level=4 )
 
      CALL DefaultFinishAssembly()
@@ -358,7 +358,7 @@
 !     Dirichlet boundary conditions
 !------------------------------------------------------------------------------
      CALL DefaultDirichletBCs()
-     
+
      CALL Info( 'StatMagSolve', 'Set boundaries done', Level=4 )
 !------------------------------------------------------------------------------
 !     Solve the system and check for convergence
@@ -371,15 +371,15 @@
 !---------------------------------------------------------------------
 
      IF(CalculateMagneticFlux) THEN
-       
+
        MFD = 0.0d0
        IF(HarmonicSimulation) THEN
-         A => MVP(2::2)     
+         A => MVP(2::2)
          CALL AxiSCurl(Bp,Bp,A,Brim,Bzim,Bp,MagneticPerm)
-         
+
          A => MVP(1::2)
          CALL AxiSCurl(Bp,Bp,A,Br,Bz,Bp,MagneticPerm)
-         
+
          DO i=1, Model%NumberofNodes
            j = MagneticPerm(i)
            IF(j > 0) THEN
@@ -397,17 +397,17 @@
            Ax => MVP(1::3)
            Ay => MVP(2::3)
            Az => MVP(3::3)
-           
+
            Br = 0.0d0
            Bp = 0.0d0
            Bz = 0.0d0
            CALL Curl( Ax, Ay, Az, Br, Bz, Bp, MagneticPerm )
          END IF
        END IF
-       
+
        CALL InvalidateVariable( Model % Meshes, Solver % Mesh, &
          'Magnetic Flux Density')
-              
+
        IF( CalculateMagneticFluxAbs ) THEN
          DO i=1,SIZE(Babs)
            Babs(i) = SQRT( Br(i)**2 + Bz(i)**2 + Bp(i)**2 )
@@ -417,7 +417,7 @@
              'Magnetic Flux Density_abs')
        END IF
      END IF
-     
+
 
      IF( Solver % Variable % NonlinConverged == 1 ) THEN
        WRITE( Message,'(A,I0,A)' ) 'Convergence after ',iter,' iterations'
@@ -433,37 +433,37 @@
 !---------------------------------------------------------------------
 
    IF(HarmonicSimulation .AND. CalculateJouleHeating) THEN
-    
+
      jc = 0.5_dp * AngularFrequency**2
-     
+
      DO i=1, Model % NumberofNodes
-       j = MagneticPerm(i) 
+       j = MagneticPerm(i)
        IF(j > 0) THEN
          jre = MVP(2*j-1)
          jim = MVP(2*j)
          absJoule(j) = jc * (jre*jre+jim*jim)
        END IF
      END DO
-     
+
      TotalHeating = 0.0d0
      TotalVolume = 0.0d0
 
-    
+
      DO t=1, Solver % NumberOfActiveElements
-       
-       CurrentElement => GetActiveElement(t)    
+
+       CurrentElement => GetActiveElement(t)
        NodeIndexes => CurrentElement % NodeIndexes
        n  = GetElementNOFNodes()
-       
+
        ElementNodes % x(1:n) = Model % Nodes % x(NodeIndexes)
        ElementNodes % y(1:n) = Model % Nodes % y(NodeIndexes)
        ElementNodes % z(1:n) = Model % Nodes % z(NodeIndexes)
-       
+
        body_id = CurrentElement % BodyId
        k = ListGetInteger( Model % Bodies(body_id) % Values, 'Material', &
                minv=1, maxv=Model % NumberOFMaterials )
        Material => Model % Materials(k) % Values
-       
+
        Conductivity(1:n) = ListGetReal(Material, &
            'Electrical Conductivity',n,NodeIndexes,GotIt)
        IF( GotIt ) THEN
@@ -472,11 +472,11 @@
          Conductivity(1:n) = ListGetReal(Material, &
              'Electric Conductivity',n,NodeIndexes)
        END IF
-       
+
        Ae(1:n) = absJoule(MagneticPerm(NodeIndexes(1:n)))
        CALL JouleIntegrate(Ae,Conductivity,TotalHeating,TotalVolume,&
            CurrentElement,n,ElementNodes )
-       
+
        DO i=1,n
          j = MagneticPerm(NodeIndexes(i))
          IF(j > 0) THEN
@@ -484,16 +484,16 @@
            IF(jc > Joule(j)) Joule(j) = jc
          END IF
        END DO
-       
+
      END DO
-   
+
      DesiredHeating = ListGetConstReal( Solver % Values, 'Desired Heating Power',gotIt)
      IF(.NOT. GotIt) DesiredHeating = ListGetConstReal( Solver % Values, 'Power Control',gotIt)
      IF(gotIt .AND. TotalHeating > 0.0d0) THEN
        absJoule = (DesiredHeating/TotalHeating) * absJoule
        Joule = (DesiredHeating/TotalHeating) * Joule
      END IF
-     
+
      WRITE(Message,'(A,ES15.4)') 'Joule Heating (W): ',TotalHeating
      CALL Info('StatMagSolve',Message,Level=4)
      CALL ListAddConstReal( Model % Simulation, 'res: Joule heating',TotalHeating)
@@ -551,7 +551,7 @@ CONTAINS
       USE ElementDescription
 
       IMPLICIT NONE
-     
+
       REAL (KIND=DP),TARGET :: MassMatrix(:,:),StiffMatrix(:,:),&
           ForceVector(:)
       REAL (KIND=DP) :: NodalReluctivity(:), Reluctivity
@@ -578,7 +578,7 @@ CONTAINS
           S_Integ
       LOGICAL :: stat
 !------------------------------------------------------------------------------
-	  
+
      DIM = 2
 
      ForceVector = 0.0D0
@@ -613,7 +613,7 @@ CONTAINS
 
        r = SUM( Basis(1:n) * Nodes%x(1:n))
        s = SqrtElementMetric * S_Integ(t)
-       
+
 !------------------------------------------------------------------------------
 !     Values at integration point
 !------------------------------------------------------------------------------
@@ -642,7 +642,7 @@ CONTAINS
                r*dBasisdx(p,2)*dBasisdx(q,2) + &
                Basis(p)*dBasisdx(q,1) + &
                Basis(q)*dBasisdx(p,1) + &
-               Basis(p)*Basis(q)/r 
+               Basis(p)*Basis(q)/r
            mat = mat * Reluctivity * s
 
            StiffMatrix(p,q) = StiffMatrix(p,q) + mat
@@ -675,35 +675,35 @@ CONTAINS
      USE Types
      USE Integration
      USE ElementDescription
-     
+
      IMPLICIT NONE
-     
+
      REAL (KIND=DP),TARGET :: StiffMatrix(:,:), ForceVector(:)
      REAL (KIND=DP) :: NodalReluctivity(:), NodalAngle(:), Reluctivity, &
          NodalConductivity(:), Conductivity, Angle
      REAL (KIND=DP) :: CurrentDensity(:),Wang
-     
+
      INTEGER :: n
-     
+
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t) :: Element
-     
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
 
      REAL (KIND=DP) :: Basis(n),dBasisdx(n,3),ddBasisddx(n,3,3)
-     REAL (KIND=DP) :: SqrtElementMetric     
+     REAL (KIND=DP) :: SqrtElementMetric
      REAL (KIND=DP) :: Force,r,a11,a21,a12,a22
      REAL (KIND=DP), POINTER :: A(:,:),M(:,:),Load(:)
-     
-     INTEGER :: DIM,t,i,j,p,q     
+
+     INTEGER :: DIM,t,i,j,p,q
      REAL (KIND=DP) :: s,u,v,w
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      INTEGER :: N_Integ
      REAL (KIND=DP), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,&
          S_Integ
-     
+
      LOGICAL :: stat
 
 !------------------------------------------------------------------------------
@@ -741,7 +741,7 @@ CONTAINS
 
        r = SUM( basis*nodes%x(1:n))
        s = SqrtElementMetric * S_Integ(t)
-       
+
 !------------------------------------------------------------------------------
 !     Force at integration point
 !------------------------------------------------------------------------------
@@ -766,11 +766,11 @@ CONTAINS
                dBasisdx(p,2)*dBasisdx(q,2)*r + &
                Basis(p)*dBasisdx(q,1) + &
                Basis(q)*dBasisdx(p,1) + &
-               Basis(p)*Basis(q)/r 
+               Basis(p)*Basis(q)/r
            a11 = Reluctivity * s * a11
            a22 = a11
 
-           a21 = -Conductivity * wang * s * r * Basis(q) * Basis(p) 
+           a21 = -Conductivity * wang * s * r * Basis(q) * Basis(p)
            a12 = -a21
 
            StiffMatrix(2*p-1,2*q-1) = StiffMatrix(2*p-1,2*q-1) + a11
@@ -788,7 +788,7 @@ CONTAINS
        DO p=1,N
 
          ForceVector(2*p-1) = ForceVector(2*p-1) + Force * COS(Angle) * Basis(p) * r * s
-         ForceVector(2*p)   = ForceVector(2*p) + Force * SIN(Angle) * Basis(p) * r * s         
+         ForceVector(2*p)   = ForceVector(2*p) + Force * SIN(Angle) * Basis(p) * r * s
 
        END DO
 
@@ -807,28 +807,28 @@ CONTAINS
      USE Types
      USE Integration
      USE ElementDescription
-     
+
      IMPLICIT NONE
-     
+
      REAL (KIND=DP) :: NodalConductivity(:), NodalField(:)
      REAL (KIND=DP) :: TotalHeating, TotalVolume, Conductivity, Field
      INTEGER :: n
-     
+
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t) :: Element
-     
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
 
      REAL (KIND=DP) :: Basis(n),dBasisdx(n,3),ddBasisddx(n,3,3)
-     REAL (KIND=DP) :: SqrtElementMetric     
-     INTEGER :: DIM,t,i,j,p,q     
+     REAL (KIND=DP) :: SqrtElementMetric
+     INTEGER :: DIM,t,i,j,p,q
      REAL (KIND=DP) :: r,s,u,v,w
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      INTEGER :: N_Integ
      REAL (KIND=DP), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
-     
+
      LOGICAL :: stat
 
 !------------------------------------------------------------------------------
@@ -863,7 +863,7 @@ CONTAINS
 
        r = SUM( basis*nodes%x(1:n))
        s = SqrtElementMetric * S_Integ(t)
-       
+
 !------------------------------------------------------------------------------
 !     Force at integration point
 !------------------------------------------------------------------------------
@@ -872,7 +872,7 @@ CONTAINS
        Conductivity = SUM( NodalConductivity(1:n)*Basis(1:n) )
 
        DO p=1,N
-         TotalVolume = TotalVolume + 2.0d0 * PI * r * s * Basis(p) 
+         TotalVolume = TotalVolume + 2.0d0 * PI * r * s * Basis(p)
          TotalHeating = TotalHeating + 2.0d0 * PI * r * s * Basis(p) * Field * Conductivity
        END DO
 
@@ -921,7 +921,7 @@ CONTAINS
       USE ElementDescription
 
       IMPLICIT NONE
-     
+
       REAL (KIND=DP),TARGET :: StiffMatrix(:,:), ForceVector(:)
       REAL (KIND=DP) :: NodalReluctivity(:)
       REAL (KIND=DP) :: LoadVector(:,:)
@@ -977,7 +977,7 @@ CONTAINS
                  Basis,dBasisdx,ddBasisddx,.FALSE. )
 
        s = SqrtElementMetric * S_Integ(t)
-       
+
 !------------------------------------------------------------------------------
 !     Values at integration point
 !------------------------------------------------------------------------------
@@ -1055,7 +1055,7 @@ CONTAINS
 
     Calculate = ListGetLogical(Params,'Calculate Magnetic Flux',Found)
     CalculateAbs = ListGetLogical( Params, 'Calculate Magnetic Flux Abs',Found)
-  
+
     IF( CalculateAbs .AND. .NOT. Calculate ) THEN
       CALL Warn('StatMagSolver_init','Cannot compute Abs without computing field')
     END IF
@@ -1065,7 +1065,7 @@ CONTAINS
           '-dofs 3 Magnetic Flux Density' )
       IF( CalculateAbs ) THEN
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-            'Magnetic Flux Density_abs' )	
+            'Magnetic Flux Density_abs' )
       END IF
     END IF
     Calculate = ListGetLogical( Params, 'Calculate Joule Heating', Found )

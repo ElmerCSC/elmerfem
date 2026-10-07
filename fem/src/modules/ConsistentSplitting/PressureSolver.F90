@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12 Dec 2003
 ! *
@@ -76,14 +76,14 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
 
   SAVE STIFF, LOAD, FORCE, r, AllocationsDone, Indexes, TmpVec, CVelo, PVelo, PPres
   !------------------------------------------------------------------------------
- 
+
   ! Traction computations on boundary
   TYPE(Element_t),POINTER :: Parent
   TYPE(ValueList_t), POINTER :: Material
-  REAL(KIND=dp), ALLOCATABLE :: TotalForce(:,:), TotalArea(:), mu(:) 
+  REAL(KIND=dp), ALLOCATABLE :: TotalForce(:,:), TotalArea(:), mu(:)
   REAL(KIND=dp) :: Traction(3), Area
   INTEGER, ALLOCATABLE :: ParentIndexes(:)
-  TYPE(Nodes_t) :: ElementNodes, ParentNodes  
+  TYPE(Nodes_t) :: ElementNodes, ParentNodes
   INTEGER, POINTER :: FlowPerm(:)
   LOGICAL :: CalculateTraction
   INTEGER :: np, ndp, nlen
@@ -106,11 +106,11 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
   Mesh => GetMesh()
 
   VeloVar => VariableGet( Mesh % Variables, "VelocityTot" )
-  DivVar => VariableGet( Mesh % Variables, "Divergence" ) 
+  DivVar => VariableGet( Mesh % Variables, "Divergence" )
   if (BlockPreconditioning) then
      PresVar => VariableGet( Mesh % Variables, "Flow" )
      IF ( .NOT. ASSOCIATED(PresVar) ) &
-          CALL Fatal( 'PressureSolver', 'The coupled flow variable Flow was not found' )     
+          CALL Fatal( 'PressureSolver', 'The coupled flow variable Flow was not found' )
   end if
 
   IF ( .NOT. ASSOCIATED(VeloVar) ) &
@@ -125,8 +125,8 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
      ALLOCATE( FORCE(N), LOAD(N), STIFF(N,N), Indexes(N), r(t), &
          CVelo(dim,n), PVelo(dim,n), PPres(n,2), &
          TotalForce(Model % NumberOfBCs,3), &
-         TotalArea(Model % NumberOfBCs), & 
-         ParentIndexes(n), &    
+         TotalArea(Model % NumberOfBCs), &
+         ParentIndexes(n), &
          mu(n), &
          STAT=istat )
      IF ( istat /= 0 ) THEN
@@ -150,14 +150,14 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
       !-------------------------------------------
       if (BlockPreconditioning) then
          DO i=1,dim
-            PVelo(i,1:nd) = 0.0d0 ! This should work here since previous velocity is divergence-free  
+            PVelo(i,1:nd) = 0.0d0 ! This should work here since previous velocity is divergence-free
             CVelo(i,1:nd) = VeloVar % Values( &
-                 VeloVar % DOFs * (VeloVar % Perm(Indexes(1:nd))-1)+i)            
+                 VeloVar % DOFs * (VeloVar % Perm(Indexes(1:nd))-1)+i)
          end DO
          PPres(1:nd,1) = DivVar % Values( DivVar % Perm(Indexes(1:nd)) )
          PPres(1:nd,2) = PresVar % Values( &
               PresVar % DOFs*(PresVar % &
-              Perm(Indexes(1:nd))-1)+dim+1)     
+              Perm(Indexes(1:nd))-1)+dim+1)
       else
 
          DO i=1,dim
@@ -186,12 +186,12 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
    END DO
 
    CALL DefaultFinishAssembly()
-   
+
 
    Active = GetNOFBoundaryElements()
    !PRINT *, Active
-  
-   DO t=1, Active           !Solver % Mesh % NumberOfBoundaryElements   
+
+   DO t=1, Active           !Solver % Mesh % NumberOfBoundaryElements
      Element => GetBoundaryElement(t)
      IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
@@ -202,7 +202,7 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
 
      BC => GetBC()
      IF ( ASSOCIATED( BC ) ) THEN
-       OutflowBC= ListGetLogical( BC, 'Outflow Boundary', Found ) 
+       OutflowBC= ListGetLogical( BC, 'Outflow Boundary', Found )
        IF (OutFlowBC) THEN
 
          DO i=1,dim
@@ -229,7 +229,7 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
               ELSE
                  Solver % Matrix % RHS(j) = PresVar % Values( PresVar % DOFs * (PresVar % &
                       Perm(Indexes(i))-1)+dim+1) - DivVar % Values(k)
-              END IF              
+              END IF
            else
               IF ( i > n ) THEN
                  Solver % Matrix % RHS(j) = 0.0d0
@@ -271,7 +271,7 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
          ! Skip degenerate element types
          !------------------------------------------------------------------------------
          IF ( Element % TYPE % ElementCode == 101 ) CYCLE
-         IF ( (dim > 2) .AND. Element % TYPE % ElementCode == 202 ) CYCLE    
+         IF ( (dim > 2) .AND. Element % TYPE % ElementCode == 202 ) CYCLE
          !------------------------------------------------------------------------------
 
          n  = GetElementNOFNodes()
@@ -305,7 +305,7 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
                Material => Model % Materials(k) % Values
 
                mu(1:np) = ListGetReal( Material, 'Viscosity', &
-                    np, Parent % NodeIndexes(1:np) )   
+                    np, Parent % NodeIndexes(1:np) )
 
 
                DO j=1,dim
@@ -339,7 +339,7 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
 
          CALL Info('ForceCompute','Forces on Boundary '//BoundaryName(1:nlen),Level=4 )
          WRITE( Message, '("Fluidic Force (X,Y,Z):", 3ES17.6E2)') TotalForce(k,1:3)
-         CALL Info( 'ForceCompute', Message, Level=4 ) 
+         CALL Info( 'ForceCompute', Message, Level=4 )
          WRITE( Message, '("Contact Area:   ", ES17.6E2)') TotalArea(k)
          CALL Info( 'ForceCompute', Message, Level=4 )
 
@@ -351,7 +351,7 @@ SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
          IF ( DIM > 2 )  CALL ListAddConstReal( Model % Simulation, &
               'res: contact force 3 '//BoundaryName(1:nlen), TotalForce(k,3) )
 
-         CALL ListAddConstReal( Model % Simulation, & 
+         CALL ListAddConstReal( Model % Simulation, &
               'res: contact force area '//BoundaryName(1:nlen), TotalArea(k) )
 
       END DO
@@ -398,7 +398,7 @@ CONTAINS
       Ddivu = 0.0d0
       DO i=1,dim
         Ddivu = Ddivu + ( SUM( Cvelo(i,1:nd) * dBasisdx(1:nd,i) ) - &
-            SUM( Pvelo(i,1:nd) * dBasisdx(1:nd,i) ) ) / dt 
+            SUM( Pvelo(i,1:nd) * dBasisdx(1:nd,i) ) ) / dt
       END DO
 
       ! Finally, the elemental matrix & vector:
@@ -415,20 +415,20 @@ CONTAINS
       !FORCE(1:nd) = FORCE(1:nd) +  s * LoadAtIP * Basis(1:nd)
 
     END DO
-    
+
     Force(1:n) = Force(1:n) - MATMUL( Stiff(1:n, 1:n), PPres(1:n,1) ) + &
         MATMUL( Stiff(1:n, 1:n), Ppres(1:n,2) )
-    
+
 
     ! Eliminate the bubble and edge degrees of freedom if any
-    
+
     DO i = n+1,ntot
       FORCE(i)   = 0.0d0
       STIFF(i,:) = 0.0d0
       STIFF(:,i) = 0.0d0
       STIFF(i,i) = 1.0d0
     END DO
-    
+
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -440,7 +440,7 @@ CONTAINS
   SUBROUTINE SurfaceForceIntegration(Element, Parent, Traction, Area, &
      Velo, Pres, Viscosity, np, ndp)
 !----------------------------------------------------------------------------------
-  TYPE(Element_t), POINTER :: Element, Parent  
+  TYPE(Element_t), POINTER :: Element, Parent
   REAL(kind=dp) :: Traction(3), Area, Velo(:,:), &
       Viscosity(:), Pres(:,:)
   INTEGER :: np, ndp
@@ -468,11 +468,11 @@ CONTAINS
 !----------------------------------------------------------------------------------
   SELECT CASE( Element % TYPE % NumberOfNodes )
   CASE(2)
-    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.)    
+    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.)
   CASE( 3 )
-    Normal = Normalvector(Element, Nodes, 0.3d0, 0.3d0, .TRUE.)          
+    Normal = Normalvector(Element, Nodes, 0.3d0, 0.3d0, .TRUE.)
   CASE( 4 )
-    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.) 
+    Normal = Normalvector(Element, Nodes, 0.0d0, 0.0d0, .TRUE.)
   END SELECT
 
   CALL GetElementNodes( ParentNodes, Parent )
@@ -484,7 +484,7 @@ CONTAINS
   V_Integ => IntegStuff % v
   W_Integ => IntegStuff % w
   S_Integ => IntegStuff % s
-  N_Integ =  IntegStuff % n 
+  N_Integ =  IntegStuff % n
 
 !------------------------------------------------------------------------------
   DO t=1,N_Integ
@@ -500,7 +500,7 @@ CONTAINS
 
     s = detJ * S_Integ(t)
 
-    Visc = SUM( Viscosity(1:np) * Basis(1:np) ) 
+    Visc = SUM( Viscosity(1:np) * Basis(1:np) )
     ReP = SUM(Pres(1:ndp,1) * Basis(1:ndp))
 
     tmpmat(1,1:ndp) = Velo(1,1:ndp)
@@ -518,7 +518,7 @@ CONTAINS
     Traction(1:3) = Traction(1:3) - ReP * Normal(1:3) + MATMUL( ReD, Normal)
 
   END DO
-  
+
   Area = ElementArea(Solver % Mesh, Element, Element % TYPE % NumberOfNodes)
 
   Traction = -Area/N_Integ * Traction

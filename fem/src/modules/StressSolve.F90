@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -39,7 +39,7 @@
 
 
 !------------------------------------------------------------------------------
-!> Initialization for the primary solver: StressSolver. 
+!> Initialization for the primary solver: StressSolver.
 !------------------------------------------------------------------------------
 !> THE FRONT.
 !>
@@ -255,14 +255,14 @@ SUBROUTINE StressSolverLegacy_Init0( Model,Solver,dt,Transient )
     SolverParams => GetSolverParams()
 
     CALL ListAddLogical( SolverParams,'Solid Solver',.TRUE.)
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolverLegacy_Init0
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-!> Initialization for the primary solver: StressSolver. 
+!> Initialization for the primary solver: StressSolver.
 !------------------------------------------------------------------------------
 SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
@@ -284,11 +284,11 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 
 !------------------------------------------------------------------------------
     CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=4 )
-    CALL Info( 'StressSolve_init', 'Solving displacements from linear elasticity model',Level=4 )     
+    CALL Info( 'StressSolve_init', 'Solving displacements from linear elasticity model',Level=4 )
     CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=4 )
     SolverParams => GetSolverParams()
 
-    dim = CoordinateSystemDimension()   
+    dim = CoordinateSystemDimension()
     CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//I2S(dim)//' Displacement' )
 
     MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
@@ -341,13 +341,13 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
       IF( ListGetLogical( SolverParams,'Block Preconditioner',Found ) ) THEN
         CALL ListAddNewString( SolverParams,'Block Matrix Schur Variable','elast schur')
         CALL ListAddNewLogical(SolverParams,'elast schur: Variable Output',.FALSE.)
-      END IF      
+      END IF
     END IF
-    
+
     CALL ListAddNewInteger( SolverParams, 'Time derivative order', 2 )
 
     CALL ListAddNewLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
-    
+
     CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
     CalcPrincipalAngle = GetLogical(SolverParams, 'Calculate PAngle', Found)
     CalcPrincipalAll = GetLogical(SolverParams, 'Calculate Principal', Found)
@@ -355,15 +355,15 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
     IF(CalcPrincipalAngle) CalcPrincipalAll = .TRUE. ! can't calculate angle without principal
     IF(CalcPrincipalAll)   CalcStressAll = .TRUE. ! can't calculate principal without components
     CalcPrincipalStrain = CalculateStrains .AND. CalcPrincipalAll
-    IF (CalculateStrains) CalcStressAll = .TRUE. ! TO DO: Strain computation shouldn't trigger stress 
+    IF (CalculateStrains) CalcStressAll = .TRUE. ! TO DO: Strain computation shouldn't trigger stress
 
     IF (Transient) THEN
       CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
     ELSE
       CalcVelocities = .FALSE.
     END IF
-    
-    ! If stress computation is requested somewhere then enforce it 
+
+    ! If stress computation is requested somewhere then enforce it
     IF( .NOT. ( CalcStressAll .OR. CalculateStrains) ) THEN
       CalcStressAll = ListGetLogicalAnyEquation( Model,'Calculate Stresses')
       IF( CalcStressAll ) CALL ListAddLogical( SolverParams,'Calculate Stresses',.TRUE.)
@@ -379,7 +379,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), &
           'vonMises' )
-      
+
       IF(CalcPrincipalAll) THEN
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
@@ -387,15 +387,15 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
             'Tresca' )
-        
+
         IF(CalcPrincipalAngle) THEN
           CALL ListAddString( SolverParams,&
               NextFreeKeyword('Exported Variable ',SolverParams), &
               '-dofs 9 Principal Angle' )
         END IF ! PrincipalAngle
-      END IF !CalcPrincipalAll      
+      END IF !CalcPrincipalAll
     END IF ! CalcStressAll
-    
+
     IF (CalculateStrains) THEN
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), &
@@ -406,17 +406,17 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
             'Principal Strain[Principal Strain:3]' )
       END IF
     END IF
-    
+
     IF (CalcVelocities) THEN
       CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
             '-dofs '//I2S(dim)//' Displacement Velocity')
     END IF
-    
+
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
 
-   
-    
+
+
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolverLegacy_Init
 !------------------------------------------------------------------------------
@@ -502,7 +502,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
      REAL(KIND=dp), ALLOCATABLE :: SchurMass(:,:), SchurForce(:)
      REAL(KIND=dp) :: schurMult
      LOGICAL :: BlockPrec
-     
+
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:),&
        DAMP(:,:), LOAD(:,:),LOAD_im(:,:),FORCE(:),FORCE_im(:), &
        LocalTemperature(:),ElasticModulus(:,:,:),PoissonRatio(:), &
@@ -564,11 +564,11 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 
      CALL Info( 'StressSolve', ' ', Level=4 )
      CALL Info( 'StressSolve', '--------------------------------------------------',Level=4 )
-     CALL Info( 'StressSolve', 'Solving displacements from linear elasticity model',Level=4 )     
+     CALL Info( 'StressSolve', 'Solving displacements from linear elasticity model',Level=4 )
      CALL Info( 'StressSolve', '--------------------------------------------------',Level=4 )
 
      CALL DefaultStart()
-     
+
      DIM = CoordinateSystemDimension()
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -589,14 +589,14 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
            //I2S(STDOFs)//' vs. '//I2S(Mesh % MeshDim))
      END IF
      QuasiStationary = GetLogical( SolverParams, 'Quasi Stationary',Found)
-     
+
      Incompr = GetLogical( SolverParams, 'Incompressible', Found )
      IF( Incompr ) THEN
        IF( STDOFs /= dim+1 ) THEN
          CALL Fatal('StressSolver','Invalid size for incompressible displacement solution!')
        END IF
      END IF
-     
+
      MeshDisplacementActive = ListGetLogical( SolverParams,  &
                'Displace Mesh', Found )
 
@@ -610,7 +610,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
           CALL DisplaceMesh( Mesh, Displacement, -1, DisplPerm, STDOFs )
         END IF
      END IF
-     
+
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -677,7 +677,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'StressSolve', 'Memory allocation error.' )
        END IF
-        
+
        NULLIFY( Work )
        TransformMatrix = 0.0d0
 
@@ -706,7 +706,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        ELSE
          CalcVelocities = .FALSE.
        END IF
-       
+
        Contact = GetLogical( SolverParams, 'Contact', Found )
        IF( Contact ) THEN
          n = SIZE( Displacement ) / STDOFs
@@ -740,17 +740,17 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 !    Stuff for Schur complement preconditioning.
 !------------------------------------------------------------------------------
      SchurSolver => NULL()
-     BlockPrec = Incompr .AND. GetLogical(SolverParams,'Block Preconditioner',Found )     
+     BlockPrec = Incompr .AND. GetLogical(SolverParams,'Block Preconditioner',Found )
      IF(BlockPrec ) THEN
        CALL Info('StressSolve','Creating Schur complement approximation',Level=7)
        IF(.NOT. ASSOCIATED( SchurSolver ) ) THEN
-         SchurSolver => CreateChildSolver( Solver,'elast schur', 1,'elast schur:') 
+         SchurSolver => CreateChildSolver( Solver,'elast schur', 1,'elast schur:')
        END IF
        schurMult = ListGetCReal( SolverParams,'Schur matrix multiplier', Found )
        IF(.NOT. Found) schurMult = 1.0_dp
        ALLOCATE(SchurMass(n,n),SchurForce(n))
      END IF
-     
+
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
@@ -760,7 +760,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        IF ( ASSOCIATED( Var ) ) THEN
          StressPerm  => Var % Perm
          NodalStress => Var % Values
-       ELSE  
+       ELSE
          CALL Fatal('StressSolver','Variable > Stress < does not exits!')
        END IF
 
@@ -770,33 +770,33 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        ELSE
          CALL Fatal('StressSolver','Variable > vonMises < does not exits!')
        END IF
-       
+
        IF(CalcPrincipalAll) THEN
          Var => VariableGet( Mesh % Variables, 'Principal Stress',.TRUE. )
          IF ( ASSOCIATED( Var ) ) THEN
            PrincipalStress => Var % Values
-         ELSE                 
+         ELSE
            CALL Fatal('StressSolver','Variable > Principal Stress < does not exits!')
          END IF
-         
+
          Var => VariableGet( Mesh % Variables, 'Tresca',.TRUE. )
          IF ( ASSOCIATED( Var ) ) THEN
            Tresca => Var % Values
          ELSE
            CALL Fatal('StressSolver','Variable > Tresca < does not exits!')
          END IF
-         
+
          IF(CalcPrincipalAngle) THEN
-           Var => VariableGet( Mesh % Variables, 'Principal Angle' )                 
+           Var => VariableGet( Mesh % Variables, 'Principal Angle' )
            IF ( ASSOCIATED( Var ) ) THEN
              PrincipalAngle => Var % Values
            ELSE
              CALL Fatal('StressSolver','Variable > Principal Angle < does not exits!')
            END IF
          END IF ! PrincipalAngle
-       END IF !CalcPrincipalAll             
+       END IF !CalcPrincipalAll
      END IF ! CalcStress or CalcStressAll
-     
+
      IF (CalculateStrains) THEN
        Var => VariableGet( Mesh % Variables, 'Strain' )
        IF ( ASSOCIATED( Var ) ) THEN
@@ -813,7 +813,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
          END IF
        END IF
      END IF !Calculate strains
-     
+
      IF ( ANY( UpdatePresent ) ) THEN
        RefDofs = ReferenceSol % DOFs
        UpdateActive = .FALSE.
@@ -853,7 +853,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
      END IF
 
      HarmonicAnalysis = getLogical( SolverParams, 'Harmonic Analysis', Found ) .OR. &
-         getLogical( SolverParams,'Harmonic Mode',Found ) 
+         getLogical( SolverParams,'Harmonic Mode',Found )
 !------------------------------------------------------------------------------
      Refactorize = GetLogical( SolverParams, 'Linear System Refactorize', Found, DefValue = .TRUE. )
 
@@ -872,7 +872,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
      IF( .NOT. ListGetString( CurrentModel % Simulation,'Simulation Type') == 'steady state') THEN
        UpdateSystem = GetLogical( SolverParams, 'Update Transient System', Found )
        IF(UpdateSystem) THEN
-         TimeVar => VariableGet( Mesh % Variables, 'Time' )            
+         TimeVar => VariableGet( Mesh % Variables, 'Time' )
          IF (ABS(TimeVar % Values(1) - PrevTime) > AEPS) THEN
            PrevTime = TimeVar % Values(1)
          ELSE
@@ -915,7 +915,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        IF (ASSOCIATED(SchurSolver)) THEN
          CALL DefaultInitialize(USolver=SchurSolver)
        END IF
-       
+
        ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
            ASSOCIATED(Solver % Matrix % BulkValues)
 
@@ -935,7 +935,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
          IF ( ConstantBulkSystem ) GO TO 2000
          IF ( ConstantSystem )     GO TO 3000
        END IF
- 
+
 !       CALL DefaultInitialize()
 
 1000   CALL BulkAssembly()
@@ -951,7 +951,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        ! traction is the normal traction multiplied by a coefficient.
        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
            'Friction Direction')
-    
+
        CALL DefaultFinishAssembly()
 
        IF( UseModelLumping .AND. Lump % FixDisplacement) THEN
@@ -960,7 +960,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 
        CALL DefaultDirichletBCS()
        IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
-       
+
        !------------------------------------------------------------------------------
        !     Check stepsize for nonlinear iteration
        !------------------------------------------------------------------------------
@@ -968,7 +968,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 
        IF( Converged ) EXIT
 
-       ! Solve the system and check for convergence:       
+       ! Solve the system and check for convergence:
        !--------------------------------------------
        UNorm = DefaultSolve()
 
@@ -984,14 +984,14 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        IF ( Contact ) THEN
          CALL ComputeNormalDisplacement( Displacement, &
             NormalDisplacement, DisplPerm, STDOFs )
-         
+
          UzawaParameter = GetConstReal( SolverParams, 'Uzawa Parameter', Found )
          IF( .NOT.Found ) THEN
             WRITE( Message, * ) 'Using default value 1.0 for Uzawa parameter'
             CALL Info( 'StressSolve', Message, Level=5 )
             UzawaParameter = 1.0d0
          END IF
-         
+
          ContactPressure = MAX( 0.0d0, ContactPressure &
               + UzawaParameter * NormalDisplacement )
        END IF
@@ -1005,7 +1005,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
                VonMises, DisplPerm, StressPerm, &
                NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
                EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP )
-           
+
            CALL InvalidateVariable( Model % Meshes, Mesh, 'Stress' )
            CALL InvalidateVariable( Model % Meshes, Mesh, 'VonMises' )
            CALL InvalidateVariable( Model % Meshes, Mesh, 'Strain' )
@@ -1015,7 +1015,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
            CALL InvalidateVariable( Model % Meshes, Mesh, 'Principal Angle' )
          END IF
        END IF
-       
+
        IF( UseModelLumping ) THEN
          CALL ModelLumpingSprings( Lump, Solver, Model, iter )
        END IF
@@ -1025,18 +1025,18 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
      IF (CalcVelocities) THEN
        CALL ComputeDisplacementVelocity(Displacement,StressSol % PrevValues,DisplPerm,&
            DisplacementVel,DisplacementVelPerm,StressSol % DOFs, DisplacementVelDOFs, dt)
-     END IF     
-     
+     END IF
+
      IF ( CalcStressAll .AND. .NOT. StabilityAnalysis ) THEN
-         
+
        IF ( EigenAnalysis ) THEN
-         
+
          nomodes = Solver % NOFEigenValues
 
          DO i=1,nomodes
 
-           WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i 
-           CALL INfo('StressSolver', Message ) 
+           WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i
+           CALL INfo('StressSolver', Message )
 
            Displacement = Solver % Variable % EigenVectors(i,:)
 
@@ -1054,8 +1054,8 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 
          DO i=1,nomodes
 
-           WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i 
-           CALL INfo('StressSolver', Message,Level=5 ) 
+           WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i
+           CALL INfo('StressSolver', Message,Level=5 )
 
            DO l=1,2
             IF ( l==1 ) THEN
@@ -1095,7 +1095,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
        IF ( .NOT. GetLogical( SolverParams, 'Library Adaptivity', Found) ) THEN
          CALL RefineMesh( Model, Solver, Displacement, DisplPerm, &
              StressSolver_Inside_Residual, StressSolver_Edge_Residual, StressSolver_Boundary_Residual )
-       
+
          IF ( MeshDisplacementActive ) THEN
            StressSol => Solver % Variable
            IF ( .NOT.ASSOCIATED( Mesh, Model % Mesh ) ) &
@@ -1104,7 +1104,7 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
          END IF
        END IF
      END IF
- 
+
      IF ( MeshDisplacementActive ) THEN
        IF (Incompr ) THEN
          CALL DisplaceMesh(Model % Mesh, Displacement, 1, &
@@ -1134,47 +1134,47 @@ SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
          END IF
        END DO
      END IF
-     
+
      CALL DefaultFinish()
-     
+
      CALL Info('StressSolver','All done',Level=5)
      CALL Info('StressSolver','------------------------------------------',Level=5)
 
 !------------------------------------------------------------------------------
 
 CONTAINS
- 
+
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-    INTEGER :: RelIntegOrder, NoActive 
+    INTEGER :: RelIntegOrder, NoActive
     LOGICAL :: AnyDamping, NeedMass, NeedDensity, AnyPre, AnyStress
     LOGICAL :: LocalMatrixIdentical
     REAL(KIND=dp) :: tFORCE(SIZE(FORCE))
-    
+
     AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
         ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
     Damping = 0.0_dp
     RayleighDamping = .FALSE.
 
-    NeedDensity = Transient .OR. EigenOrHarmonicAnalysis()    
+    NeedDensity = Transient .OR. EigenOrHarmonicAnalysis()
     NeedMass = .NOT. QuasiStationary
 
-    AnyPre = ListCheckPrefixAnyMaterial( Model, 'Pre' ) 
+    AnyPre = ListCheckPrefixAnyMaterial( Model, 'Pre' )
     AnyStress = ListCheckPrefixAnyBodyForce( Model,'Stress')
 
-    LocalMatrixIdentical = ListGetLogical( Solver % Values,'Local Matrix Identical', Found ) 
+    LocalMatrixIdentical = ListGetLogical( Solver % Values,'Local Matrix Identical', Found )
     IF( LocalMatrixIdentical ) THEN
-      IF( NeedDensity ) CALL Fatal('StressSolve','"Local Matrix Identical" applicable only for steady cases!')      
+      IF( NeedDensity ) CALL Fatal('StressSolve','"Local Matrix Identical" applicable only for steady cases!')
     END IF
-            
+
      CALL StartAdvanceOutput( 'StressSolve', 'Assembly:')
      body_id = -1
 
      RelIntegOrder = ListGetInteger( SolverParams,'Relative Integration Order',Found)
      ! This might be a good idea!
      !IF(.NOT. Found .AND. Incompr ) RelIntegOrder = 1
-     
+
      NoActive = GetNOFActive()
 
      DO t=1,NoActive
@@ -1186,15 +1186,15 @@ CONTAINS
        Element => GetActiveElement(t)
 
        ! If elements are similar skip the other similar elements.
-       IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100 
-       
+       IF( UseLocalMatrixCopy( Solver, activeind = t) ) GOTO 100
+
        n = GetElementNOFNOdes()
        IF( STDOFs > dim ) THEN
          ntot = GetElementNOFDOFs() + GetElementNOFBDOFs()
        ELSE
-         ntot = GetElementNOFDOFs() 
+         ntot = GetElementNOFDOFs()
        END IF
-         
+
        NodeIndexes => Element % NodeIndexes
        CALL GetElementNodes( ElementNodes )
 
@@ -1204,14 +1204,14 @@ CONTAINS
 
          PlaneStress = GetLogical( Equation, 'Plane Stress',Found )
          TemperatureName = ListGetString( Equation,'Temperature Name', Found)
-         IF (.NOT.Found) TemperatureName = 'Temperature'          
+         IF (.NOT.Found) TemperatureName = 'Temperature'
 
          ! inquire if material parameters shall be replaced by handles
          EvaluateAtIP(1) = GetLogical( Material, 'Youngs Modulus at IP',Found)
          EvaluateAtIP(2) = GetLogical( Material, 'Heat Expansion Coefficient IP',Found)
-         EvaluateAtIP(3) = GetLogical( Material, 'Poisson Ratio at IP',Found) 
+         EvaluateAtIP(3) = GetLogical( Material, 'Poisson Ratio at IP',Found)
        END IF
-         
+
        Density(1:n) = GetReal( Material, 'Density', Found )
        IF( NeedDensity .AND. .NOT. Found ) THEN
          CALL Fatal('StressSolve','Transient and harmonic analysis needs "Density"')
@@ -1225,7 +1225,7 @@ CONTAINS
            RayleighBeta(1:N) = GetReal( Material, 'Rayleigh Damping beta', Found )
          ELSE
            RayleighAlpha = 0.0d0
-           RayleighBeta = 0.0d0        
+           RayleighBeta = 0.0d0
          END IF
        END IF
 
@@ -1245,7 +1245,7 @@ CONTAINS
          CALL InputTensor( ElasticModulus, Isotropic(1), &
               'Youngs Modulus', Material, n, NodeIndexes )
        END IF
-       
+
        PoissonRatio = 0.0d0
        IF ( Isotropic(1) .AND. (.NOT. Incompr ) .AND. (.NOT.EvaluateAtIP(3)) )  THEN
          PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
@@ -1254,7 +1254,7 @@ CONTAINS
        IF( GotHeatExp ) THEN
          ReferenceTemperature(1:n) = GetReal(Material, &
               'Reference Temperature', Found )
-         
+
          CALL GetScalarLocalSolution( LocalTemperature, TemperatureName)
          LocalTemperature(1:n) = LocalTemperature(1:n) - &
              ReferenceTemperature(1:n)
@@ -1284,7 +1284,7 @@ CONTAINS
        IF ( Element % BodyId /= body_id ) THEN
          body_id = Element % BodyId
          RotateC = GetLogical( Material, 'Rotate Elasticity Tensor', stat )
-       
+
          IF ( RotateC ) THEN
            RotateC = .FALSE.
            DO i=1,3
@@ -1294,31 +1294,31 @@ CONTAINS
              ELSE IF( i == 2 ) THEN
                CALL GetConstRealArray( Material, UWrk, &
                    'Material Coordinates Unit Vector 2', stat, Element )
-             ELSE                
+             ELSE
                CALL GetConstRealArray( Material, UWrk, &
                    'Material Coordinates Unit Vector 3', stat, Element )
              END IF
-             
+
              IF( stat ) THEN
                UnitNorm = SQRT( SUM( Uwrk(1:3,1)**2 ) )
                IF( UnitNorm < EPSILON( UnitNorm ) ) THEN
                  CALL Fatal('StressSolver','Given > Materia Coordinate Unit Vector < too short!')
                END IF
-               TransformMatrix(i,1:3) = Uwrk(1:3,1) / UnitNorm  
+               TransformMatrix(i,1:3) = Uwrk(1:3,1) / UnitNorm
                RotateC = .TRUE.
-             ELSE 
+             ELSE
                TransformMatrix(i,1:3) = 0.0_dp
                TransformMatrix(i,i) = 1.0_dp
              END IF
            END DO
-           
+
            IF( .NOT. RotateC  ) THEN
              CALL Fatal( 'StressSolver', &
                  'No unit vectors found but > Rotate Elasticity Tensor < set True?' )
            END IF
          END IF
        END IF
-       
+
        ! Set body forces:
        !-----------------
        BodyForce => GetBodyForce()
@@ -1330,7 +1330,7 @@ CONTAINS
            EvaluateLoadAtIP= &
                GetLogical( BodyForce, 'Stress Bodyforce at IP',Found)
 
-           IF (.NOT.EvaluateLoadAtIP) THEN         
+           IF (.NOT.EvaluateLoadAtIP) THEN
              LOAD(1,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 1', Found )
              LOAD(2,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 2', Found )
              LOAD(3,1:n)  = GetReal( BodyForce, 'Stress Bodyforce 3', Found )
@@ -1344,19 +1344,19 @@ CONTAINS
              END IF
            END IF
 
-           IF( ListCheckPrefix( BodyForce,'Stress Load' ) ) THEN         
+           IF( ListCheckPrefix( BodyForce,'Stress Load' ) ) THEN
              CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
              IF ( Found ) THEN
                k = SIZE(Work,1)
                StressLoad(1:k,1:n) = Work(1:k,1,1:n)
              END IF
              IF(.NOT. Found ) THEN
-               StressLoad(1,1:n) = GetReal( BodyForce,'Stress Load 1', Found ) 
-               StressLoad(2,1:n) = GetReal( BodyForce,'Stress Load 2', Found ) 
-               StressLoad(3,1:n) = GetReal( BodyForce,'Stress Load 3', Found ) 
-               StressLoad(4,1:n) = GetReal( BodyForce,'Stress Load 4', Found ) 
-               StressLoad(5,1:n) = GetReal( BodyForce,'Stress Load 5', Found ) 
-               StressLoad(6,1:n) = GetReal( BodyForce,'Stress Load 6', Found ) 
+               StressLoad(1,1:n) = GetReal( BodyForce,'Stress Load 1', Found )
+               StressLoad(2,1:n) = GetReal( BodyForce,'Stress Load 2', Found )
+               StressLoad(3,1:n) = GetReal( BodyForce,'Stress Load 3', Found )
+               StressLoad(4,1:n) = GetReal( BodyForce,'Stress Load 4', Found )
+               StressLoad(5,1:n) = GetReal( BodyForce,'Stress Load 5', Found )
+               StressLoad(6,1:n) = GetReal( BodyForce,'Stress Load 6', Found )
              END IF
            END IF
          END IF
@@ -1406,11 +1406,11 @@ CONTAINS
              PoissonRatio,Density,PlaneStress,Isotropic,HeatExpansionCoeff,   &
              LocalTemperature, Element,n,ElementNodes )
        END SELECT
-       
+
 !------------------------------------------------------------------------------
 ! Add approximation for Schur complement currently assuming that is is proportional
 ! to mass matrix. This is misuse since probably the matrix should be proportional
-! to the elastic or viscous properties. 
+! to the elastic or viscous properties.
 !------------------------------------------------------------------------------
        IF( ASSOCIATED( SchurSolver ) ) THEN
          SchurMass = 0.0_dp
@@ -1419,20 +1419,20 @@ CONTAINS
            DO j=1,ntot
              SchurMass(i,j) = schurMult * MASS(STDOFS*(i-1)+1,STDOFS*(j-1)+1)
            END DO
-         END DO           
+         END DO
          CALL DefaultUpdateEquations( SchurMass, SchurForce, UElement=Element, &
              Usolver = SchurSolver )
-       END IF      
-       
+       END IF
+
 !------------------------------------------------------------------------------
-!      If time dependent simulation, add mass matrix to global 
+!      If time dependent simulation, add mass matrix to global
 !      matrix and global RHS vector
 !------------------------------------------------------------------------------
        IF( STDOFs > dim ) THEN
          tForce = 0._dp
          IF (Transient) tForce = FORCE
        END IF
-         
+
        IF ( .NOT. (ConstantBulkMatrix .OR. ConstantBulkSystem .OR. ConstantSystem) ) THEN
          IF ( Transient .AND. .NOT. EigenOrHarmonicAnalysis() ) THEN
             IF( GetInteger( GetSolverParams(), 'Time derivative order', Found) == 2 ) THEN
@@ -1483,7 +1483,7 @@ CONTAINS
        END IF
 
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
 100    IF ( ConstantBulkMatrixInUse ) THEN
          CALL DefaultUpdateForce( FORCE )
@@ -1493,7 +1493,7 @@ CONTAINS
            CALL DefaultUpdateForce( FORCE_im )
            Solver % Matrix % RHS => SaveRHS
          END IF
-       ELSE                 
+       ELSE
          CALL DefaultUpdateEquations( STIFF, FORCE )
          IF ( HarmonicAnalysis ) THEN
            SaveRHS => Solver % Matrix % RHS
@@ -1508,7 +1508,7 @@ CONTAINS
            CALL DefaultUpdateDamp( DAMP )
          END IF
 
-                 
+
        END IF
 
 !------------------------------------------------------------------------------
@@ -1526,7 +1526,7 @@ CONTAINS
 
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-       
+
        i = GetElementDim(Element)
        IF( i >= Mesh % MeshDim ) THEN
          CALL Warn('StressSolve','Invalid dimension '//I2S(i)//' for BC element '//I2S(t))
@@ -1537,7 +1537,7 @@ CONTAINS
          CALL Info('StressSolve','Skipping lower dimensional element!',Level=30)
          CYCLE
        END IF
-       
+
        n = GetElementNOFNodes()
        ntot = GetElementNOFDOFs()
 
@@ -1569,31 +1569,31 @@ CONTAINS
               LOAD_im(3,1:n) = GetReal( BC, 'Force 3 im',Found )
             END IF
           END IF
-            
+
           Beta(1:n) =  GetReal( BC, 'Normal Force',Found )
           IF ( HarmonicAnalysis ) THEN
             Beta_im(1:n) =  GetReal( BC, 'Normal Force im',Found )
           END IF
 
           StressLoad = 0.0d0
-          IF( ListCheckPrefix( BC,'Stress Load' ) ) THEN         
+          IF( ListCheckPrefix( BC,'Stress Load' ) ) THEN
             CALL ListGetRealArray( BC, 'Stress Load', Work, n, NodeIndexes, Found )
             IF ( Found ) THEN
               k = SIZE(Work,1)
               StressLoad(1:k,1:n) = Work(1:k,1,1:n)
             END IF
             IF(.NOT. Found ) THEN
-              StressLoad(1,1:n) = GetReal( BC,'Stress Load 1', Found ) 
-              StressLoad(2,1:n) = GetReal( BC,'Stress Load 2', Found ) 
-              StressLoad(3,1:n) = GetReal( BC,'Stress Load 3', Found ) 
-              StressLoad(4,1:n) = GetReal( BC,'Stress Load 4', Found ) 
-              StressLoad(5,1:n) = GetReal( BC,'Stress Load 5', Found ) 
-              StressLoad(6,1:n) = GetReal( BC,'Stress Load 6', Found ) 
+              StressLoad(1,1:n) = GetReal( BC,'Stress Load 1', Found )
+              StressLoad(2,1:n) = GetReal( BC,'Stress Load 2', Found )
+              StressLoad(3,1:n) = GetReal( BC,'Stress Load 3', Found )
+              StressLoad(4,1:n) = GetReal( BC,'Stress Load 4', Found )
+              StressLoad(5,1:n) = GetReal( BC,'Stress Load 5', Found )
+              StressLoad(6,1:n) = GetReal( BC,'Stress Load 6', Found )
             END IF
           END IF
 
           NormalSpring = .FALSE.
-          IF( ListCheckPrefix( BC,'Spring' ) ) THEN         
+          IF( ListCheckPrefix( BC,'Spring' ) ) THEN
             SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
             IF ( .NOT. NormalSpring ) THEN
               DO i=1,dim
@@ -1608,7 +1608,7 @@ CONTAINS
           END IF
 
           NormalDamp = .FALSE.
-          IF( ListCheckPrefix( BC,'Damping' ) ) THEN                  
+          IF( ListCheckPrefix( BC,'Damping' ) ) THEN
             DampCoeff(1:n,1,1) =  GetReal( BC, 'Damping', NormalDamp )
             IF ( .NOT. NormalDamp ) THEN
               DO i=1,dim
@@ -1621,7 +1621,7 @@ CONTAINS
               END DO
             END IF
           END IF
-                        
+
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
 
           IF(UseModelLumping .AND. .NOT. Lump % FixDisplacement) THEN
@@ -1634,9 +1634,9 @@ CONTAINS
           IF( Contact ) THEN
              CALL GetScalarLocalSolution( LocalContactPressure, 'Contact Pressure' )
              Beta = Beta - LocalContactPressure
-          END IF 
+          END IF
 
-          NormalTangential = GetLogical( BC, 'Normal-Tangential ' // & 
+          NormalTangential = GetLogical( BC, 'Normal-Tangential ' // &
                    GetVarName(Solver % Variable), Found )
 
           SELECT CASE( CurrentCoordinateSystem() )
@@ -1756,36 +1756,36 @@ CONTAINS
     DO t = 1, Mesh % NumberOfBoundaryElements
        Element => GetBoundaryElement(t)
        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-       
+
        n = GetElementNOFNodes()
        BC => GetBC()
-       
+
        IF ( ASSOCIATED( BC ) ) THEN
-          ContactBoundary = GetLogical( BC, 'Contact Boundary', Found ) 
+          ContactBoundary = GetLogical( BC, 'Contact Boundary', Found )
           IF( .NOT.Found .OR. .NOT.ContactBoundary ) CYCLE
 !------------------------------------------------------------------------------
           ContactLimit(1:n) =  GetReal( BC, 'Contact Limit', Found )
           IF( .NOT.Found ) ContactLimit = 9.9d9
-             
+
           CALL GetElementNodes( ElementNodes )
-          
+
           DO i = 1,n
              U = Element % TYPE % NodeU(i)
              V = Element % TYPE % NodeV(i)
-             
-             Normal = NormalVector( Element, ElementNodes, U, V, .TRUE. )    
+
+             Normal = NormalVector( Element, ElementNodes, U, V, .TRUE. )
              k = DisplPerm( Element % NodeIndexes(i) )
-             
+
              LocalDisplacement = 0.0d0
              DO j = 1,STDOFs
                 LocalDisplacement( j ) = Displacement( STDOFs*(k-1)+j )
              END DO
-             
-             NormalDisplacement( k ) = NormalDisplacement( k ) & 
+
+             NormalDisplacement( k ) = NormalDisplacement( k ) &
                   + SUM( Normal(1:3) * LocalDisplacement(1:3) ) - ContactLimit(i)
 
              Visited( k ) = Visited( k ) + 1
-             
+
           END DO
 !------------------------------------------------------------------------------
        END IF
@@ -1801,27 +1801,27 @@ CONTAINS
        DisplVelo,DisplVeloPerm,DispDofs,VeloDofs,dt)
 
     USE DefUtils
-    
+
     IMPLICIT NONE
-    
+
     REAL(KIND=dp), POINTER :: Displ(:),PrevDispl(:,:),DisplVelo(:)
     REAL(KIND=dp) :: dt
     INTEGER, POINTER :: DisplPerm(:),DisplVeloPerm(:)
     INTEGER :: DispDofs, VeloDofs
     !---------------------------------
     INTEGER :: i, di, j, k
-    
+
     DO i=1,SIZE( DisplPerm )
-      di = DisplPerm(i) 
+      di = DisplPerm(i)
       IF(di==0) CYCLE
       DO j=1,VeloDofs
         k = DispDofs*(di-1)+j
         DisplVelo(VeloDofs*(di-1)+j) = (Displ(k) - PrevDispl(k,1))/dt
       END DO
     END DO
-    
+
   END SUBROUTINE ComputeDisplacementVelocity
-  
+
 !------------------------------------------------------------------------------
    SUBROUTINE ComputeStress( Displacement, NodalStress, &
               VonMises, DisplPerm, StressPerm, &
@@ -1930,15 +1930,15 @@ CONTAINS
      END IF
 
      !CALL DefaultInitialize()
-     
+
      CALL InitializeToZero( StSolver % Matrix, StSolver % Matrix % RHS )
      IF( ALLOCATED(StSolver % Matrix % ConstrainedDOF) ) THEN
        StSolver % Matrix % ConstrainedDOF = .FALSE.
-     END IF       
+     END IF
      IF( ALLOCATED(StSolver % Matrix % Dvalues) ) THEN
        StSolver % Matrix % Dvalues = 0._dp
      END IF
-     
+
      DO elem = 1,Solver % NumberOfActiveElements
         Element => GetActiveElement(elem, Solver)
         n  = GetElementNOFNodes()
@@ -1974,10 +1974,10 @@ CONTAINS
           CALL InputTensor( ElasticModulus, Isotropic(1), &
                'Youngs Modulus', Material, n, Element % NodeIndexes )
         END IF
-       
+
         PoissonRatio = 0.0d0
         IF ( Isotropic(1)   .AND. (.NOT.EvaluateAtIP(3))) &
-             PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )          
+             PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
 
 !!$        CALL InputTensor( HeatExpansionCoeff, Isotropic(2),  &
 !!$            'Heat Expansion Coefficient', Material, n, Element % NodeIndexes, GotHeatExp )
@@ -2080,10 +2080,10 @@ CONTAINS
           CALL DSYEV( 'N', 'U', sdim, PriCache, 3, PriW, PriWork, PriLWork, PriInfo )
           IF (PriInfo /= 0) THEN !error in dsyev
             PriW = 0; !we probably should put NaN in error
-          END IF              
+          END IF
 
           DO l=1,sdim
-            ! eigenvalues are returned in opposite order 
+            ! eigenvalues are returned in opposite order
             PrincipalStress(3 * (StressPerm(i)-1 )+l) = PriW(sdim+1-l)
           END DO
 
@@ -2100,7 +2100,7 @@ CONTAINS
               !   v1**2 + v2**2 + v3**2 = 1
               !   where v1...3 are the directional cosines of the primary stresses,
               !   sij are the stress matrix components and
-              !   p   is the primary stress in question  
+              !   p   is the primary stress in question
               ! The code is practically unreadable.
               ! This code unit has been tested with the non-trivial
               ! known solutions from following textbooks:
@@ -2108,7 +2108,7 @@ CONTAINS
               !   Shames, I. H., Cozzarelli, F., A. Elastic and inelastic stress analysis
               PriAngT1 =( PriCache(1,2) + &
                  ((PriCache(2,2)-PriW(4-k)) * (PriCache(1,1)-PriW(4-k))) / &
-                 (-PriCache(1,2) ) ) / & 
+                 (-PriCache(1,2) ) ) / &
                 (((PriCache(2,2)-PriW(4-k))*PriCache(1,3))/&
                   PriCache(1,2) - PriCache(2,3) )
               PriAngT2 =(PriCache(1,1)-PriW(4-k))/(PriCache(1,2)) + &
@@ -2122,11 +2122,11 @@ CONTAINS
               PrincipalAngle(9 * (StressPerm(i)-1 ) +3*(k-1) + 2) = &
                           (ACOS(PriAngV(2)) ) !angle in radians *360/6.28
               PrincipalAngle(9 * (StressPerm(i)-1 ) +3*(k-1) + 3) = &
-                          (ACOS(PriAngV(3)) ) !angle in radians *360/6.28                              
+                          (ACOS(PriAngV(3)) ) !angle in radians *360/6.28
             END DO
           END IF
 
-          !Tresca                        
+          !Tresca
           Tresca(StressPerm(i)) = (PrincipalStress(3*(StressPerm(i)-1) +1) - &
                        PrincipalStress(3*(StressPerm(i)-1) +2))/2
           PriTmp = (PrincipalStress(3*(StressPerm(i)-1) +2) - &
@@ -2136,7 +2136,7 @@ CONTAINS
           PriTmp = (PrincipalStress(3*(StressPerm(i)-1) +1) - &
                        PrincipalStress(3*(StressPerm(i)-1) +3))/2
           IF (PriTmp > Tresca(StressPerm(i)) ) Tresca(StressPerm(i)) = PriTmp
-          
+
           !Strain:
           IF (CalcPrincipalStrain) THEN
             q = ncomp * (StressPerm(i)-1)
@@ -2148,7 +2148,7 @@ CONTAINS
             CALL DSYEV( 'N', 'U', sdim, PriCache, 3, PriW, PriWork, PriLWork, PriInfo )
             IF(PriInfo /= 0) PriW = 0;
             DO l=1,sdim
-              ! eigenvalues are returned in opposite order 
+              ! eigenvalues are returned in opposite order
               PrincipalStrain(3 * (StressPerm(i)-1 )+l) = PriW(sdim+1-l)
             END DO
           END IF ! CalculatePrincipalStrain

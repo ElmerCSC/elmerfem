@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16.11.2005
 ! *
@@ -35,8 +35,8 @@
 ! *  Modified by: Cruz Garcia Molina
 ! *  Email:   Cruz.Garcia-molina@univ-grenoble-alpes.fr
 ! *  Address: IGE - OSUG B
-! *           460 rue de la Piscine 
-! *           Domaine universitaire 
+! *           460 rue de la Piscine
+! *           Domaine universitaire
 ! *           38400 St Martin d'Hères, France
 !------------------------------------------------------------------------------
 !>  Renormalizes the level-set function using straight-forward geometric search.
@@ -52,9 +52,9 @@
      USE Integration
 
      IMPLICIT NONE
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
      TYPE(Model_t), TARGET :: Model
-     TYPE(Solver_t) :: Solver 
+     TYPE(Solver_t) :: Solver
      REAL(KIND=dp) :: Timestep
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
@@ -64,7 +64,7 @@
      TYPE(Element_t),POINTER :: CurrentElement, Element
      TYPE(ValueList_t), POINTER :: Material
      TYPE(Variable_t), POINTER :: SurfSol, DistanceSol
- 
+
      INTEGER :: i,j,k,l,n,t,istat,body_id,mat_id,bf_id,&
           CoordinateSystem, TimesVisited = 0
      INTEGER, POINTER :: NodeIndexes(:)
@@ -93,16 +93,16 @@
 
      TimesVisited = TimesVisited + 1
      ReinitializeInterval = ListGetInteger(Solver % Values,&
-          'Reinitialize Interval',GotIt) 
+          'Reinitialize Interval',GotIt)
      IF(.NOT. GotIt) ReinitializeInterval = 1
 
      ExtractInterval = ListGetInteger(Solver % Values,&
-         'Extract Interval',GotIt) 
+         'Extract Interval',GotIt)
      IF(.NOT. GotIt) ExtractInterval = ReinitializeInterval
-     
+
      IF( ReinitializeInterval == 0) THEN
        Reinitialize = .FALSE.
-     ELSE       
+     ELSE
        Reinitialize = ( MOD(TimesVisited, ReinitializeInterval) == 0 )
      END IF
 
@@ -111,16 +111,16 @@
      ELSE
        Extrct = Reinitialize .OR. ( MOD(TimesVisited, ExtractInterval) == 0 )
      END IF
-     
+
      IF(.NOT. Extrct) THEN
        CALL Info( 'LevelSetDistance','--------------------------------------', Level=4 )
        CALL Info( 'LevelSetDistance','Doing nothing this time', Level=4 )
-       CALL Info( 'LevelSetDistance','--------------------------------------', Level=4 )          
+       CALL Info( 'LevelSetDistance','--------------------------------------', Level=4 )
        RETURN
      END IF
 
      ! The variable that should be reinitialized
-     LevelSetVariableName = ListGetString(Solver % Values,'LevelSet Variable',GotIt) 
+     LevelSetVariableName = ListGetString(Solver % Values,'LevelSet Variable',GotIt)
      IF(.NOT. GotIT) LevelSetVariableName = 'Surface'
      SurfSol => VariableGet( Solver % Mesh % Variables, TRIM(LevelSetVariableName) )
      IF(ASSOCIATED(SurfSol)) THEN
@@ -131,21 +131,21 @@
        RETURN
      END IF
 
-     CoordinateSystem = CurrentCoordinateSystem() 
+     CoordinateSystem = CurrentCoordinateSystem()
      Convect = ListGetLogical(Solver % Values,'Levelset Convect',GotIt)
      NarrowBand = ListGetConstReal(Solver % Values,'Narrow Band',GotIt)
      IF(.NOT. GotIt) NarrowBand = HUGE(NarrowBand)
      dsMax = 0.0d0
      dt = Timestep
-     
- 
+
+
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
      IF ( .NOT. ExtractAllocated ) THEN
        Parallel = ( ParEnv % PEs > 1 )
        IF (Parallel) ALLOCATE(pZeroLevels(ParEnv % PEs),disps(ParEnv % PEs))
-       
+
        N = Solver % Mesh % MaxElementNodes
        ALLOCATE( ElementNodes % x( N ), ElementNodes % y( N ), ElementNodes % z( N ),   &
            ElemVelo( 2, N), ZeroNodes(Solver % Mesh % NumberOfBulkElements,2,2), &
@@ -163,7 +163,7 @@
      END IF
 
 !------------------------------------------------------------------------------
-!    Extract the zero levelset 
+!    Extract the zero levelset
 !------------------------------------------------------------------------------
 
      CALL Info( 'LevelSetDistance','--------------------------------------', Level=4 )
@@ -178,12 +178,12 @@
      WRITE(Message,'(a,F8.2)') 'Zero level extracted in time (s):',st
      CALL Info( 'LevelSetDistance',Message, Level=4 )
      recZeroLevels = ZeroLevels
-     
+
      ! BEGIN of SENDING-RECEIVING ZeroLevels array
      IF (Parallel) THEN
-#if 0 
+#if 0
        BLOCK
-         INTEGER status(MPI_STATUS_SIZE)     
+         INTEGER status(MPI_STATUS_SIZE)
 
          nPEs=ParEnv % PEs
          CALL MPI_AllGather(ZeroLevels,1,MPI_INTEGER,pZeroLevels,1,MPI_INTEGER,ELMER_COMM_WORLD, ierr)
@@ -209,19 +209,19 @@
          END IF
          ZeroNodes(1:ZeroLevels,1:2,1:2) = recZeroNodes(1:recZeroLevels,1:2,1:2)
 
-         DEALLOCATE(send,recv,recZeroNodes)         
+         DEALLOCATE(send,recv,recZeroNodes)
        END BLOCK
 #else
        CALL Fatal('LevelSetDistance','Subroutine not compiled with MPI!')
 #endif
      ENDIF
      ! END of SENDING-RECEIVING ZeroLevels array
-     
+
      IF( ZeroLevels == 0) THEN
        CALL Warn('LevelSetDistance','The does not seem to be a zero level-set present, exiting...')
        RETURN
      END IF
-     
+
      IF(.NOT. Reinitialize) THEN
        CALL Info('LevelSetDistance','Exiting without reinitialization')
        RETURN
@@ -235,7 +235,7 @@
 !    Allocate some permanent storage for computing the signed distance
 !------------------------------------------------------------------------------
      IF ( .NOT. DistanceAllocated ) THEN
-       
+
        ! The variable for computing the distance
        DistanceSol => Solver % Variable
        IF(ASSOCIATED(DistanceSol)) THEN
@@ -281,10 +281,10 @@
        CALL Info('LevelSetDistance','Reinitialization not applied to Levelset function')
      ELSE
        ! Update also the previous timesteps so that the differentials remain
-       ! unchanged. Otherwise spurious effects are introduced. 
-       IF(ASSOCIATED(SurfSol % PrevValues)) THEN        
+       ! unchanged. Otherwise spurious effects are introduced.
+       IF(ASSOCIATED(SurfSol % PrevValues)) THEN
          j = MIN(2, SIZE(SurfSol % PrevValues,2) )
-         IF( ReinitializeInterval > j) THEN                 
+         IF( ReinitializeInterval > j) THEN
            DO i=1,j
              SurfSol % PrevValues(:,i) = SurfSol % PrevValues(:,i) + Distance - Surface
            END DO
@@ -296,10 +296,10 @@
      st = CPUTIme()-st
      WRITE(Message,'(a,F8.2)') 'Reinitialization done in time (s):',st
      CALL Info( 'LevelSetDistance',Message, Level=4 )
- 
+
      IF(Convect) THEN
        WRITE(Message,'(a,ES12.3)') 'Maximum Levelset Change',dsmax
-       CALL Info( 'LevelSetDistance',Message, Level=4 )     
+       CALL Info( 'LevelSetDistance',Message, Level=4 )
        CALL ListAddConstReal(Model % Simulation,'res: LevelSet Max Change',dsmax)
      END IF
 
@@ -327,7 +327,7 @@ CONTAINS
     INTEGER :: VisitedTimes = 0, NumberOfFields=0
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: IOUnit
-    
+
     SAVE VisitedTimes, FileAppend, NumberOfFields
 !------------------------------------------------------------------------------
 
@@ -335,34 +335,34 @@ CONTAINS
     Params => GetSolverParams()
     Filename = ListGetString(Params,'Filename',FileSave )
 
-    IF(FileSave) THEN         
-      FileNumber = ListGetLogical(Params,'Filename Numbering',GotIt)     
+    IF(FileSave) THEN
+      FileNumber = ListGetLogical(Params,'Filename Numbering',GotIt)
       FileAppend = ListGetLogical(Params,'File Append',GotIt)
 
       IF( FileNumber ) THEN
         WRITE( Filename,'(A,I0)') TRIM(Filename),VisitedTimes
         OPEN (NEWUNIT=IOUnit,FILE=Filename)
-      ELSE IF(FileAppend .AND. VisitedTimes > 1) THEN 
+      ELSE IF(FileAppend .AND. VisitedTimes > 1) THEN
         OPEN (NEWUNIT=IOUnit, FILE=Filename, POSITION='APPEND')
-      ELSE 
+      ELSE
         OPEN (NEWUNIT=IOUnit,FILE=Filename)
-      END IF      
+      END IF
     END IF
-    
+
     Surface => SurfSol % Values
     SurfPerm => SurfSol % Perm
-    
+
     ZeroLevels = 0
     DO i=1,Solver % Mesh % NumberOfBulkElements
-      
+
       Element => Solver % Mesh % Elements(i)
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
       IF ( Element % PartIndex /= ParEnv % MyPE ) CYCLE !! ommit halo elements
       IF ( ALL( Surface(SurfPerm(NodeIndexes)) < 0) .OR. &
           ALL( Surface(SurfPerm(NodeIndexes)) > 0) ) CYCLE
-      
-      corners = Element % TYPE % ElementCode / 100 
+
+      corners = Element % TYPE % ElementCode / 100
       IF(corners < 3 .OR. corners > 4) THEN
         CALL Warn('ExtractZeroLevel','Implemented only for triangles and quads')
       END IF
@@ -382,15 +382,15 @@ CONTAINS
 
       DO div = 1,corners-2
 
-        SELECT CASE (corners) 
+        SELECT CASE (corners)
         CASE (3)
           LocalInd(1) = 1
           LocalInd(2) = 2
           LocalInd(3) = 3
-          
-        CASE(4)               
+
+        CASE(4)
           IF(div == 1) THEN
-            LocalInd(1) = 1 
+            LocalInd(1) = 1
             LocalInd(2) = 2
             LocalInd(3) = 4
           ELSE
@@ -400,9 +400,9 @@ CONTAINS
           END IF
 
         END SELECT
-        
+
         TriangleIndexes = NodeIndexes(LocalInd)
-        srf = Surface(SurfPerm(TriangleIndexes))                       
+        srf = Surface(SurfPerm(TriangleIndexes))
         IF ( ALL(srf < 0) .OR. ALL( srf > 0) ) CYCLE
 
         nx = Solver % Mesh % Nodes % x(TriangleIndexes)
@@ -418,7 +418,7 @@ CONTAINS
         y1 = SUM(w1 * ny)
 
         r1x = x1 - x0
-        r1y = y1 - y0 
+        r1y = y1 - y0
 
         ds1 = SQRT( r1x*r1x + r1y*r1y)
         IF(ds1 < AEPS) CYCLE
@@ -436,18 +436,18 @@ CONTAINS
               j = k
             END IF
           END DO
-          
+
           r2x = nx(j) - x0
           r2y = ny(j) - y0
-          
+
           aid = r1x * r2y - r2x * r1y
           ds2 = SQRT( r2x*r2x + r2y*r2y)
-          
+
           Direction( ZeroLevels ) = aid / (ds1 * ds2)
           IF( Maxsrf < 0.0) THEN
             Direction( ZeroLevels ) = -Direction( ZeroLevels )
           END IF
-          
+
           r1x = SUM(w0 * ElemVelo(1,LocalInd)) * dt
           r1y = SUM(w0 * ElemVelo(2,LocalInd)) * dt
           r2x = SUM(w1 * ElemVelo(1,LocalInd)) * dt
@@ -456,7 +456,7 @@ CONTAINS
           ds1 = SQRT( r1x*r1x + r1y*r1y)
           ds2 = SQRT( r2x*r2x + r2y*r2y)
           dsmax = MAX(dsmax, MAX(ds1, ds2) )
-            
+
           ZeroNodes(ZeroLevels,1,1) = x0 + r1x
           ZeroNodes(ZeroLevels,1,2) = y0 + r1y
           ZeroNodes(ZeroLevels,2,1) = x1 + r2x
@@ -470,22 +470,22 @@ CONTAINS
 
 
         IF(FileSave) THEN
-          
+
           DO onetwo = 1,2
-            
+
             IF( FileAppend ) THEN
               WRITE(IOUnit,'(I4)',ADVANCE='NO') Solver % DoneTime
-            END IF            
+            END IF
 
 	    m = 0
             Var => Model % Variables
             DO WHILE( ASSOCIATED( Var ) )
-              
+
               IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == 1 .OR. (Var % DOFs /= 1) ) THEN
-                Var => Var % Next        
+                Var => Var % Next
                 CYCLE
               END IF
-	      m = m + 1              
+	      m = m + 1
 
               fval = 0.0d0
               DO k=1,3
@@ -499,20 +499,20 @@ CONTAINS
                   END IF
                 END IF
               END DO
-              
+
               WRITE(IOUnit,'(ES20.11E3)',ADVANCE='NO') fval
-              Var => Var % Next          
+              Var => Var % Next
             END DO
             WRITE(IOUnit,'(A)') ' '
-            
+
           END DO
-	END IF        
+	END IF
 
       END DO
 
     END DO ! of elements
 
-    
+
 
 
     IF(FileSave) THEN
@@ -529,28 +529,28 @@ CONTAINS
         WRITE(IOUnit,'(A,A)') 'Variables in file: ',TRIM(Filename)
         j = 1
         WRITE(IOUnit,'(I3,": ",A)') j,'timestep'
-        
+
         Var => Model % Variables
-        DO WHILE( ASSOCIATED( Var ) )          
+        DO WHILE( ASSOCIATED( Var ) )
           IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == 1 .OR. (Var % DOFs /= 1) ) THEN
-            Var => Var % Next        
-            CYCLE 
-          END IF          
+            Var => Var % Next
+            CYCLE
+          END IF
           j = j + 1
           WRITE(IOUnit,'(I3,": ",A)') j,TRIM(Var % Name)
-          Var => Var % Next          
+          Var => Var % Next
         END DO
         CLOSE(IOUnit)
-      END IF  
+      END IF
     END  IF
 
 !------------------------------------------------------------------------------
    END SUBROUTINE ExtractZeroLevel
 !------------------------------------------------------------------------------
- 
+
 
 !------------------------------------------------------------------------------
-!> This subroutine extracts the zero line of one triangular element. 
+!> This subroutine extracts the zero line of one triangular element.
 !------------------------------------------------------------------------------
    SUBROUTINE TriangleIsoLineWeights( NX,NY,NZ,S,w0,w1,Found )
 !------------------------------------------------------------------------------
@@ -578,7 +578,7 @@ CONTAINS
         Found = .FALSE.
       ELSE
         IF ( S(1) >= 0 .AND. S(2) >= 0 .OR. &
-            S(1) <= 0 .AND. S(2) <= 0 ) THEN          
+            S(1) <= 0 .AND. S(2) <= 0 ) THEN
           t = -S(1) / ( S(3) - S(1) )
           w0(3) = t
           w0(1) = 1-t
@@ -593,16 +593,16 @@ CONTAINS
           t = -S(3) / ( S(2) - S(3) )
           w1(2) = t
           w1(3) = 1-t
-          
+
         ELSE IF ( S(2) >= 0 .AND. S(3) >= 0 .OR. &
-            S(2) <= 0 .AND. S(3) <= 0 ) THEN          
+            S(2) <= 0 .AND. S(3) <= 0 ) THEN
           t = -S(2) / ( S(1) - S(2) )
           w0(1) = t
           w0(2) = 1-t
           t = -S(3) / ( S(1) - S(3) )
           w1(1) = t
           w1(3) = 1-t
-        ELSE 
+        ELSE
           PRINT *,'TriangleIsoLineWeights: this should not occur'
           PRINT *,s(1),s(2),s(3)
           ERROR STOP
@@ -612,9 +612,9 @@ CONTAINS
     END SUBROUTINE TriangleIsoLineWeights
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
-!> Computes the distance from the given zero levelset given by ZeroNodes. 
+!> Computes the distance from the given zero levelset given by ZeroNodes.
 !------------------------------------------------------------------------------
    FUNCTION ComputeDistance(xp,yp,zp) RESULT(dist)
 !------------------------------------------------------------------------------
@@ -627,16 +627,16 @@ CONTAINS
      DO i=1,ZeroLevels
        x0 = ZeroNodes(i,1,1)
        y0 = ZeroNodes(i,1,2)
-       
+
        x1 = ZeroNodes(i,2,1)
        y1 = ZeroNodes(i,2,2)
-       
+
        a = xp - x0
        b = x0 - x1
        d = y0 - y1
        c = yp - y0
        s = b**2 + d**2
-       
+
        x = x0
        y = y0
        IF ( s > 10*AEPS ) THEN
@@ -644,7 +644,7 @@ CONTAINS
          x = (1-s) * x0 + s * x1
          y = (1-s) * y0 + s * y1
        END IF
-       
+
        dist = MIN( dist, SQRT( (xp - x)**2 + (yp - y)**2 ) )
      END DO
 !------------------------------------------------------------------------------
@@ -653,7 +653,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Computes the signed distance from the given zero levelset given by ZeroNodes. 
+!> Computes the signed distance from the given zero levelset given by ZeroNodes.
 !------------------------------------------------------------------------------
    FUNCTION ComputeDistanceWithDirection(xp,yp,zp,prevdist) RESULT(mindist)
 !------------------------------------------------------------------------------
@@ -677,16 +677,16 @@ CONTAINS
      DO i=1,ZeroLevels
        x0 = ZeroNodes(i,1,1)
        y0 = ZeroNodes(i,1,2)
-       
+
        x1 = ZeroNodes(i,2,1)
        y1 = ZeroNodes(i,2,2)
-       
+
        a = xp - x0
        b = x0 - x1
        d = y0 - y1
        c = yp - y0
        s = b**2 + d**2
-       
+
        x = x0
        y = y0
        IF ( s > 10*AEPS ) THEN
@@ -694,19 +694,19 @@ CONTAINS
          x = (1-s) * x0 + s * x1
          y = (1-s) * y0 + s * y1
        END IF
-       
-       dist = SQRT( (xp - x)**2 + (yp - y)**2 ) 
-       
+
+       dist = SQRT( (xp - x)**2 + (yp - y)**2 )
+
 
        IF(dist <= (ABS(mindist) + AEPS) ) THEN
-         
+
          r1x = x1 - x0
          r1y = y1 - y0
          r2x = xp - x0
          r2y = yp - y0
-         
+
          angle = r1x * r2y - r2x * r1y
-         
+
          ! Favor parents with clear angles
          IF( dist < (ABS(mindist) - AEPS) .OR. (ABS(angle) > ABS(angle0)) ) THEN
            IF(Direction(i) * angle < 0.0) THEN
@@ -716,7 +716,7 @@ CONTAINS
            END IF
            angle0 = angle
          END IF
-           
+
        END IF
 
       END DO

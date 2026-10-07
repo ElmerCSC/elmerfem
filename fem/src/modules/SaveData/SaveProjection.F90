@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 1.10.2024
 ! *
@@ -51,16 +51,16 @@ SUBROUTINE SaveProjection_init( Model,Solver,dt,Transient )
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
   CALL ListAddNewString( Solver % Values,'Variable',&
-      '-nooutput -global SaveProjection_var') 
+      '-nooutput -global SaveProjection_var')
 
 END SUBROUTINE SaveProjection_init
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-!> Routine for saving projections from fields as fields. 
+!> Routine for saving projections from fields as fields.
 !------------------------------------------------------------------------------
 SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   USE DefUtils
@@ -90,12 +90,12 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   ! Because this solver does not have a DefaultInitialize slot the nonlinear projectors
   ! are not initialized. Do it here.
   CALL GenerateProjectors(Model,Solver,Nonlinear = .TRUE. )
- 
+
   i = 0
-  DO WHILE(.TRUE.)  
+  DO WHILE(.TRUE.)
     i = i + 1
     VarName = ListGetString( Params,'Variable '//I2S(i), Found )
-    IF(.NOT. Found) EXIT    
+    IF(.NOT. Found) EXIT
     Var => VariableGet( Model % Variables, TRIM(VarName) )
     IF(.NOT. ASSOCIATED(Var)) THEN
       CALL Warn('SaveProjection','Requested variable does not exist!')
@@ -107,19 +107,19 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
   IF(NoVar==0) RETURN
 
   Nrm = 0.0_dp
-  DO i=1,NoVar    
+  DO i=1,NoVar
     VarName = ListGetString( Params,'Variable '//I2S(i), Found )
     Var => VariableGet( Model % Variables, TRIM(VarName), ThisOnly = .TRUE.)
     CALL info('SaveProjection','Doing variable: '//TRIM(VarName),Level=8)
-    
+
     TargetName = ListGetString( Params,'Target Variable '//I2S(i), Found )
     IF(.NOT. Found) TargetName = 'Projection '//TRIM(VarName)
 
     Normalize = ListGetLogical( Params,'Normalize '//I2S(i), Found )
     IF(.NOT. Found) Normalize = .TRUE.
-    ToSlave = ListGetLogical( Params,'Project To Slave '//I2S(i),Found ) 
-    ToMaster = ListGetLogical( Params,'Project To Master '//I2S(i),Found ) 
-    
+    ToSlave = ListGetLogical( Params,'Project To Slave '//I2S(i),Found )
+    ToMaster = ListGetLogical( Params,'Project To Master '//I2S(i),Found )
+
     TargetVar => VariableGet( Model % Variables, TRIM(TargetName), ThisOnly = .TRUE.)
     IF(.NOT. ASSOCIATED(TargetVar)) THEN
       IF(.NOT. ASSOCIATED(Var % Perm) ) THEN
@@ -129,29 +129,29 @@ SUBROUTINE SaveProjection( Model,Solver,dt,Transient )
           UnitPerm(j) = j
         END DO
         CALL VariableAddVector( Model % Mesh % Variables, Solver % Mesh, Solver, &
-            TRIM(TargetName), Var % Dofs, Perm = UnitPerm ) 
+            TRIM(TargetName), Var % Dofs, Perm = UnitPerm )
       ELSE
         CALL VariableAddVector( Model % Mesh % Variables, Solver % Mesh, Solver, &
             TRIM(TargetName), Var % Dofs, Perm = Var % Perm, Secondary = .TRUE.)
       END IF
-      TargetVar => VariableGet( Model % Variables, TRIM(TargetName) )       
+      TargetVar => VariableGet( Model % Variables, TRIM(TargetName) )
     END IF
 
     ActiveProjs => ListGetIntegerArray( Params,'Active Projectors '//I2S(i),Found )
-    
+
     ! Do additive projection!
     CALL ProjectToVariable()
     Nrm = Nrm + SUM(TargetVar % Values**2)
   END DO
-  
+
   Nrm = SQRT(Nrm)
   IF(SIZE(Solver % Variable % Values) == 1 ) THEN
     Solver % Variable % Values = Nrm
   END IF
-  
+
   WRITE(Message,'(A,ES12.3)') 'Combined L2 norm of all projected fields: ', Nrm
   CALL Info('SaveProjection',Message)
-  
+
 CONTAINS
 
 
@@ -161,36 +161,36 @@ CONTAINS
     INTEGER, POINTER :: Rows(:), Cols(:)
     LOGICAL :: acti, actj, AddThis
     REAL(KIND=dp) :: r1
-    REAL(KIND=dp), POINTER :: Values(:)      
+    REAL(KIND=dp), POINTER :: Values(:)
     REAL(KIND=dp), ALLOCATABLE :: Weight(:)
     LOGICAL, POINTER :: IsInvInvPerm(:)
-    
+
     dofs = Var % Dofs
     TargetVar % Values = 0.0_dp
-    
+
     IF(Normalize) THEN
       ALLOCATE(Weight(SIZE(TargetVar % Values)))
-      Weight = 0.0_dp      
+      Weight = 0.0_dp
     END IF
 
     ! Go through all the projectors.
     ! There could be perhaps reason to skip some, but this will do for now.
-    DO bc=1,Model % NumberOfBCs        
+    DO bc=1,Model % NumberOfBCs
       IF(ASSOCIATED(ActiveProjs)) THEN
-        IF(.NOT. ANY(ActiveProjs == bc)) CYCLE 
+        IF(.NOT. ANY(ActiveProjs == bc)) CYCLE
       END IF
 
       A => CurrentModel % BCs(bc) % PMatrix
       IF(.NOT. ASSOCIATED(A) ) THEN
         A => Solver % MortarBCs(bc) % Projector
       END IF
-           
+
       IF(.NOT. ASSOCIATED(A)) CYCLE
       n = A % NumberOfRows
       IF(n==0) CYCLE
 
       CALL Info('SaveProjection','Doing projection for BC '//I2S(bc)//' of size '//I2S(n),Level=20)
-      
+
       Rows => A % Rows
       Cols => A % Cols
       Values => A % Values
@@ -199,7 +199,7 @@ CONTAINS
         CALL Fatal('SaveProjection','InvPerm not associated!')
       END IF
 
-      ! Create table telling which is slave/master dof. 
+      ! Create table telling which is slave/master dof.
       m = MAXVAL(Cols)
       ALLOCATE(IsInvInvPerm(m))
       IsInvInvPerm = .FALSE.
@@ -230,7 +230,7 @@ CONTAINS
             END IF
             pj = dofs*(pj-1)+k
             actj = IsInvInvPerm(Cols(j))
-            
+
             IF( ToSlave ) THEN
               IF(.NOT. actj) THEN
                 ! Project only master dofs to slave.
@@ -243,21 +243,21 @@ CONTAINS
               TargetVar % Values(pi) = TargetVar % Values(pi) + r1
             END IF
             ! Normalize using just the weights from slave dofs.
-            IF( Normalize .AND. actj) Weight(pi) = Weight(pi) + Values(j)                
+            IF( Normalize .AND. actj) Weight(pi) = Weight(pi) + Values(j)
 
             IF( ToMaster ) THEN
               ! Project slave dofs to master
               IF(.NOT. actj) THEN
                 r1 = Values(j) * Var % Values(pi)
-                TargetVar % Values(pj) = TargetVar % Values(pj) + r1               
+                TargetVar % Values(pj) = TargetVar % Values(pj) + r1
                 ! Normalize using just the weights from master dofs.
                 IF(Normalize .AND. .NOT. actj) Weight(pj) = Weight(pj) + Values(j)
               END IF
-            END IF                        
-          END DO          
+            END IF
+          END DO
         END DO
       END DO
-      DEALLOCATE(IsInvInvPerm)       
+      DEALLOCATE(IsInvInvPerm)
     END DO
 
     IF(Normalize) THEN
@@ -265,9 +265,9 @@ CONTAINS
         TargetVar % Values = TargetVar % Values / Weight
       END WHERE
     END IF
-    
+
   END SUBROUTINE ProjectToVariable
-  
+
 END SUBROUTINE SaveProjection
 
 !> \}

@@ -6,7 +6,7 @@ void IPoints1d( int N_Integ )
   double *T,  *S;
   int i;
   double du;
-  
+
   U_Integ1d = (double *)malloc(N_Integ*sizeof(double));
   S_Integ1d = (double *)malloc(N_Integ*sizeof(double));
   N_Integ1d = N_Integ;
@@ -16,51 +16,51 @@ void IPoints1d( int N_Integ )
    U_Integ1d[0]=0.50000000000000;
    S_Integ1d[0]=1.00000000000000;
  break;
- 
+
  case(2):
    U_Integ1d[0]=0.78867513459481;
    U_Integ1d[1]=0.21132486540519;
- 
+
    S_Integ1d[0]=0.50000000000000;
    S_Integ1d[1]=0.50000000000000;
  break;
- 
+
  case(3):
    U_Integ1d[0]=0.88729833462074;
    U_Integ1d[1]=0.11270166537926;
    U_Integ1d[2]=0.50000000000000;
- 
+
    S_Integ1d[0]=0.27777777777778;
    S_Integ1d[1]=0.27777777777778;
    S_Integ1d[2]=0.44444444444444;
  break;
- 
+
  case(4):
    U_Integ1d[0]=0.66999052179243;
    U_Integ1d[1]=0.33000947820757;
    U_Integ1d[2]=0.93056815579703;
    U_Integ1d[3]=0.06943184420297;
- 
+
    S_Integ1d[0]=0.32607257743127;
    S_Integ1d[1]=0.32607257743127;
    S_Integ1d[2]=0.17392742256873;
    S_Integ1d[3]=0.17392742256873;
  break;
- 
+
  case(5):
    U_Integ1d[0]=0.76923465505284;
    U_Integ1d[1]=0.23076534494716;
    U_Integ1d[2]=0.95308992296933;
    U_Integ1d[3]=0.04691007703067;
    U_Integ1d[4]=0.50000000000000;
- 
+
    S_Integ1d[0]=0.23931433524968;
    S_Integ1d[1]=0.23931433524968;
    S_Integ1d[2]=0.11846344252809;
    S_Integ1d[3]=0.11846344252809;
    S_Integ1d[4]=0.28444444444444;
  break;
- 
+
  case(6):
    U_Integ1d[0]=0.61930959304160;
    U_Integ1d[1]=0.38069040695840;
@@ -68,7 +68,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[3]=0.03376524289842;
    U_Integ1d[4]=0.83060469323313;
    U_Integ1d[5]=0.16939530676687;
- 
+
    S_Integ1d[0]=0.23395696728635;
    S_Integ1d[1]=0.23395696728635;
    S_Integ1d[2]=0.08566224618959;
@@ -76,7 +76,7 @@ void IPoints1d( int N_Integ )
    S_Integ1d[4]=0.18038078652407;
    S_Integ1d[5]=0.18038078652407;
  break;
- 
+
  case(7):
    U_Integ1d[0]=0.70292257568870;
    U_Integ1d[1]=0.29707742431130;
@@ -85,7 +85,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[4]=0.97455395617138;
    U_Integ1d[5]=0.02544604382862;
    U_Integ1d[6]=0.50000000000000;
- 
+
    S_Integ1d[0]=0.19091502525256;
    S_Integ1d[1]=0.19091502525256;
    S_Integ1d[2]=0.13985269574464;
@@ -94,7 +94,7 @@ void IPoints1d( int N_Integ )
    S_Integ1d[5]=0.06474248308443;
    S_Integ1d[6]=0.20897959183673;
  break;
- 
+
  case(8):
    U_Integ1d[0]=0.98014492824877;
    U_Integ1d[1]=0.01985507175123;
@@ -104,7 +104,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[5]=0.23723379504184;
    U_Integ1d[6]=0.59171732124782;
    U_Integ1d[7]=0.40828267875218;
- 
+
    S_Integ1d[0]=0.05061426814519;
    S_Integ1d[1]=0.05061426814519;
    S_Integ1d[2]=0.11119051722669;
@@ -114,7 +114,7 @@ void IPoints1d( int N_Integ )
    S_Integ1d[6]=0.18134189168918;
    S_Integ1d[7]=0.18134189168918;
  break;
- 
+
  case(9):
    U_Integ1d[0]=0.98408011975381;
    U_Integ1d[1]=0.01591988024619;
@@ -125,7 +125,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[6]=0.66212671170190;
    U_Integ1d[7]=0.33787328829810;
    U_Integ1d[8]=0.50000000000000;
- 
+
    S_Integ1d[0]=0.04063719418079;
    S_Integ1d[1]=0.04063719418079;
    S_Integ1d[2]=0.09032408034743;
@@ -136,7 +136,7 @@ void IPoints1d( int N_Integ )
    S_Integ1d[7]=0.15617353852000;
    S_Integ1d[8]=0.16511967750063;
  break;
- 
+
  case(10):
    U_Integ1d[0]=0.98695326425859;
    U_Integ1d[1]=0.01304673574141;
@@ -148,7 +148,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[7]=0.28330230293538;
    U_Integ1d[8]=0.57443716949082;
    U_Integ1d[9]=0.42556283050918;
- 
+
    S_Integ1d[0]=0.03333567215434;
    S_Integ1d[1]=0.03333567215434;
    S_Integ1d[2]=0.07472567457529;
@@ -160,7 +160,7 @@ void IPoints1d( int N_Integ )
    S_Integ1d[8]=0.14776211235738;
    S_Integ1d[9]=0.14776211235738;
  break;
- 
+
  case(11):
    U_Integ1d[0]=0.98911432907303;
    U_Integ1d[1]=0.01088567092697;
@@ -173,7 +173,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[8]=0.63477157797617;
    U_Integ1d[9]=0.36522842202383;
    U_Integ1d[10]=0.50000000000000;
- 
+
    S_Integ1d[0]=0.02783428355809;
    S_Integ1d[1]=0.02783428355809;
    S_Integ1d[2]=0.06279018473244;
@@ -186,7 +186,7 @@ void IPoints1d( int N_Integ )
    S_Integ1d[9]=0.13140227225513;
    S_Integ1d[10]=0.13646254338895;
  break;
- 
+
  case(12):
    U_Integ1d[0]=0.99078031712336;
    U_Integ1d[1]=0.00921968287664;
@@ -200,7 +200,7 @@ void IPoints1d( int N_Integ )
    U_Integ1d[9]=0.31608425050091;
    U_Integ1d[10]=0.56261670425573;
    U_Integ1d[11]=0.43738329574427;
- 
+
    S_Integ1d[0]=0.02358766819325;
    S_Integ1d[1]=0.02358766819325;
    S_Integ1d[2]=0.05346966299766;
@@ -216,14 +216,14 @@ void IPoints1d( int N_Integ )
  break;
 
  default:
-   /* If more than 12 IP points are requested use evenly distributed 
+   /* If more than 12 IP points are requested use evenly distributed
       integration points. */
    du = 1.0/N_Integ;
    for( i=0; i<N_Integ; i++ ) {
      U_Integ1d[i]=du/2+i*du;
      S_Integ1d[i]=du;
    }
-     
+
    /* fprintf( stderr, "Viewfactors: Invalid number of 1d i-points requested: %d\n", N_Integ );
       exit(0); */
   break;
@@ -257,7 +257,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
    /* 1d points ... */
    N_Integ1d = NInteg2;
    if ( n1d != N_Integ1d ) {
-     free( U_Integ1d ); 
+     free( U_Integ1d );
      free( S_Integ1d );
      IPoints1d(N_Integ1d);
    }
@@ -274,7 +274,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[0]=0.33333333333333;
     S_Integ3[0]=0.50000000000000;
   break;
-  
+
   case(3):
     U_Integ3[0]=0.16666666666667;
     V_Integ3[0]=0.16666666666667;
@@ -282,12 +282,12 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[1]=0.16666666666667;
     U_Integ3[2]=0.16666666666667;
     V_Integ3[2]=0.66666666666667;
-  
+
     S_Integ3[0]=0.16666666666667;
     S_Integ3[1]=0.16666666666667;
     S_Integ3[2]=0.16666666666667;
   break;
-  
+
   case(4):
     U_Integ3[0]=0.33333333333333;
     V_Integ3[0]=0.33333333333333;
@@ -297,13 +297,13 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[2]=0.20000000000000;
     U_Integ3[3]=0.20000000000000;
     V_Integ3[3]=0.60000000000000;
-  
+
     S_Integ3[0]=-.28125000000000;
     S_Integ3[1]=0.26041666666667;
     S_Integ3[2]=0.26041666666667;
     S_Integ3[3]=0.26041666666667;
   break;
-  
+
   case(6):
     U_Integ3[0]=0.09157621350977;
     V_Integ3[0]=0.09157621350977;
@@ -317,7 +317,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[4]=0.44594849091597;
     U_Integ3[5]=0.44594849091597;
     V_Integ3[5]=0.10810301816807;
-  
+
     S_Integ3[0]=0.05497587182766;
     S_Integ3[1]=0.05497587182766;
     S_Integ3[2]=0.05497587182766;
@@ -325,7 +325,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[4]=0.11169079483901;
     S_Integ3[5]=0.11169079483901;
   break;
-  
+
   case(7):
     U_Integ3[0]=0.33333333333333;
     V_Integ3[0]=0.33333333333333;
@@ -341,7 +341,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[5]=0.47014206410511;
     U_Integ3[6]=0.47014206410511;
     V_Integ3[6]=0.05971587178977;
-  
+
     S_Integ3[0]=0.11250000000000;
     S_Integ3[1]=0.06296959027241;
     S_Integ3[2]=0.06296959027241;
@@ -349,9 +349,9 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[4]=0.06619707639425;
     S_Integ3[5]=0.06619707639425;
     S_Integ3[6]=0.06619707639425;
-  
+
   break;
-  
+
   case(9):
     U_Integ3[0]=0.10000000000000;
     V_Integ3[0]=0.88729833462074;
@@ -371,7 +371,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[7]=0.50000000000000;
     U_Integ3[8]=0.25000000000000;
     V_Integ3[8]=0.50000000000000;
-  
+
     S_Integ3[0]=0.00869611615581;
     S_Integ3[1]=0.00869611615581;
     S_Integ3[2]=0.01391378584929;
@@ -382,7 +382,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[7]=0.06172839506173;
     S_Integ3[8]=0.09876543209877;
   break;
-  
+
   case(11):
     U_Integ3[0]=0.03019427231413;
     V_Integ3[0]=0.25598919856738;
@@ -406,7 +406,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[9]=0.04654861310423;
     U_Integ3[10]=0.21510209951739;
     V_Integ3[10]=0.39296813578105;
-  
+
     S_Integ3[0]=0.03375321205343;
     S_Integ3[1]=0.01148426034649;
     S_Integ3[2]=0.04197958777582;
@@ -419,7 +419,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[9]=0.02649352562792;
     S_Integ3[10]=0.08320249389723;
   break;
-  
+
   case(12):
     U_Integ3[0]=0.62327204949111;
     V_Integ3[0]=0.32150249385202;
@@ -445,7 +445,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[10]=0.06751786707389;
     U_Integ3[11]=0.06751786707389;
     V_Integ3[11]=0.06238226509441;
-  
+
     S_Integ3[0]=0.04388140871441;
     S_Integ3[1]=0.04388140871441;
     S_Integ3[2]=0.04388140871441;
@@ -459,7 +459,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[10]=0.02651702815744;
     S_Integ3[11]=0.02651702815744;
   break;
-  
+
   case(16):
     U_Integ3[0]=0.22110322250074;
     V_Integ3[0]=0.66999052179243;
@@ -493,7 +493,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[14]=0.06943184420297;
     U_Integ3[15]=0.06461106321355;
     V_Integ3[15]=0.06943184420297;
-  
+
     S_Integ3[0]=0.03508770525293;
     S_Integ3[1]=0.03508770525293;
     S_Integ3[2]=0.01871581531501;
@@ -511,7 +511,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[14]=0.02815038307693;
     S_Integ3[15]=0.02815038307693;
   break;
-  
+
   case(17):
     U_Integ3[0]=0.22924236426279;
     V_Integ3[0]=0.51174072110064;
@@ -547,7 +547,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[15]=0.40808049678469;
     U_Integ3[16]=0.23589342469353;
     V_Integ3[16]=0.71278721627418;
-  
+
     S_Integ3[0]=0.05956595662857;
     S_Integ3[1]=0.02813390230006;
     S_Integ3[2]=0.03500735477097;
@@ -566,7 +566,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[15]=0.02522089247693;
     S_Integ3[16]=0.03239087356573;
   break;
-  
+
   case(20):
     U_Integ3[0]=0.02469118866488;
     V_Integ3[0]=0.47834512481764;
@@ -608,7 +608,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[18]=0.19732093645450;
     U_Integ3[19]=0.63000243766727;
     V_Integ3[19]=0.19793810591700;
-  
+
     S_Integ3[0]=0.01776913091123;
     S_Integ3[1]=0.04667544936904;
     S_Integ3[2]=0.02965283331433;
@@ -630,7 +630,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[18]=0.03995072336993;
     S_Integ3[19]=0.03790911262589;
   break;
-  
+
   case(25):
     U_Integ3[0]=0.17751270051858;
     V_Integ3[0]=0.76923465505284;
@@ -682,7 +682,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[23]=0.50000000000000;
     U_Integ3[24]=0.25000000000000;
     V_Integ3[24]=0.50000000000000;
-  
+
     S_Integ3[0]=0.01321624308203;
     S_Integ3[1]=0.01321624308203;
     S_Integ3[2]=0.00654219752925;
@@ -709,7 +709,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[23]=0.01684813404844;
     S_Integ3[24]=0.04045432098765;
   break;
-  
+
   case(36):
     U_Integ3[0]=0.23576522100825;
     V_Integ3[0]=0.61930959304160;
@@ -783,7 +783,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[34]=0.16939530676687;
     U_Integ3[35]=0.14070053681223;
     V_Integ3[35]=0.16939530676687;
-  
+
     S_Integ3[0]=0.02083741778627;
     S_Integ3[1]=0.02083741778627;
     S_Integ3[2]=0.00762952278390;
@@ -821,7 +821,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[34]=0.02702557440373;
     S_Integ3[35]=0.02702557440373;
   break;
-  
+
   case(49):
     U_Integ3[0]=0.20882242827586;
     V_Integ3[0]=0.70292257568870;
@@ -921,7 +921,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[47]=0.50000000000000;
     U_Integ3[48]=0.25000000000000;
     V_Integ3[48]=0.50000000000000;
-  
+
     S_Integ3[0]=0.01082804042319;
     S_Integ3[1]=0.01082804042319;
     S_Integ3[2]=0.00793196156673;
@@ -972,7 +972,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[47]=0.00676492884474;
     S_Integ3[48]=0.02183623490212;
   break;
-  
+
   case(64):
     U_Integ3[0]=0.01946084787699;
     V_Integ3[0]=0.98014492824877;
@@ -1102,7 +1102,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[62]=0.40828267875218;
     U_Integ3[63]=0.24158793298312;
     V_Integ3[63]=0.40828267875218;
-  
+
     S_Integ3[0]=0.00005086480501;
     S_Integ3[1]=0.00005086480501;
     S_Integ3[2]=0.00011174090202;
@@ -1168,7 +1168,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[62]=0.01945855409808;
     S_Integ3[63]=0.01945855409808;
   break;
-  
+
   case(81):
     U_Integ3[0]=0.01566643765913;
     V_Integ3[0]=0.98408011975381;
@@ -1332,7 +1332,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[79]=0.50000000000000;
     U_Integ3[80]=0.25000000000000;
     V_Integ3[80]=0.50000000000000;
-  
+
     S_Integ3[0]=0.00002628979653;
     S_Integ3[1]=0.00002628979653;
     S_Integ3[2]=0.00005843419414;
@@ -1415,7 +1415,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[79]=0.01289366215728;
     S_Integ3[80]=0.01363225394896;
   break;
-  
+
   case(100):
     U_Integ3[0]=0.01287651842791;
     V_Integ3[0]=0.98695326425859;
@@ -1617,7 +1617,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[98]=0.42556283050918;
     U_Integ3[99]=0.24445910779820;
     V_Integ3[99]=0.42556283050918;
-  
+
     S_Integ3[0]=0.00001449840738;
     S_Integ3[1]=0.00001449840738;
     S_Integ3[2]=0.00003249981782;
@@ -1719,7 +1719,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[98]=0.01254205542302;
     S_Integ3[99]=0.01254205542302;
   break;
-  
+
   case(121):
     U_Integ3[0]=0.01076717309544;
     V_Integ3[0]=0.98911432907303;
@@ -1963,7 +1963,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[119]=0.50000000000000;
     U_Integ3[120]=0.25000000000000;
     V_Integ3[120]=0.50000000000000;
-  
+
     S_Integ3[0]=0.00000843364461;
     S_Integ3[1]=0.00000843364461;
     S_Integ3[2]=0.00001902510269;
@@ -2086,7 +2086,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[119]=0.00896574413951;
     S_Integ3[120]=0.00931101287409;
   break;
-  
+
   case(144):
     U_Integ3[0]=0.00913468032429;
     V_Integ3[0]=0.99078031712336;
@@ -2376,7 +2376,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     V_Integ3[142]=0.43738329574427;
     U_Integ3[143]=0.24607914834815;
     V_Integ3[143]=0.43738329574427;
-  
+
     S_Integ3[0]=0.00000512962956;
     S_Integ3[1]=0.00000512962956;
     S_Integ3[2]=0.00001162809149;
@@ -2522,7 +2522,7 @@ void FillIPointArrays(int NInteg2, int NInteg3, int NInteg4)
     S_Integ3[142]=0.00873100255008;
     S_Integ3[143]=0.00873100255008;
   break;
-  
+
   default:
     fprintf( stderr, "Viewfactors: Invalid triangular element integration point count requested: %d\n", NInteg3 );
     exit(0);

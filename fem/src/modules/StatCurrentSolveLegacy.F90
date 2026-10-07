@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Aug 2002
 ! *
@@ -74,7 +74,7 @@ SUBROUTINE StatCurrentSolverLegacy_Init( Model,Solver,dt,TransientSimulation)
     IF (ListGetLogical(Params,'Calculate Nodal Heating',Found)) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Nodal Joule Heating' )
-    
+
     Calculate = ListGetLogical(Params,'Calculate Volume Current',Found)
     IF( Calculate ) THEN
       IF( Dim == 2 ) THEN
@@ -90,13 +90,13 @@ SUBROUTINE StatCurrentSolverLegacy_Init( Model,Solver,dt,TransientSimulation)
 #ifdef LIBRARY_ADAPTIVITY
     CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
-        
+
 !------------------------------------------------------------------------------
 END SUBROUTINE StatCurrentSolverLegacy_Init
 !------------------------------------------------------------------------------
-    
+
 !------------------------------------------------------------------------------
-!>  Solve the Poisson equation for the electric potential and compute the 
+!>  Solve the Poisson equation for the electric potential and compute the
 !>  volume current and Joule heating
 !------------------------------------------------------------------------------
   SUBROUTINE StatCurrentSolverLegacy( Model,Solver,dt,TransientSimulation )
@@ -105,7 +105,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
      USE Differentials
      USE Adaptive
      IMPLICIT NONE
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET:: Solver
      REAL (KIND=DP) :: dt
@@ -133,7 +133,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
      INTEGER, POINTER :: PotentialPerm(:)
      INTEGER :: i, j, k, n, t, istat, bf_id, LocalNodes, Dim, &
          iter, NonlinearIter
- 
+
      LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC
      LOGICAL :: CalculateField = .FALSE., ConstantWeights
      LOGICAL :: CalculateCurrent, CalculateHeating, CalculateNodalHeating
@@ -147,7 +147,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
      LOGICAL :: GetCondAtIp
      TYPE(ValueHandle_t) :: CondAtIp_h
      REAL(KIND=dp) :: CondAtIp
-     
+
      SAVE LocalStiffMatrix, Load, LocalForce, &
           ElementNodes, CalculateCurrent, CalculateHeating, &
           AllocationsDone, VolCurrent, Heating, Conductivity, &
@@ -218,13 +218,13 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
      IF ( .NOT. GotIt ) NonlinearIter = 1
 
      GetCondAtIp = ListGetLogical( Params,'Conductivity At Ip',GotIt )
-     
+
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
      IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
        N = Model % MaxElementNodes
- 
+
        IF(AllocationsDone) THEN
          DEALLOCATE( ElementNodes % x, &
                    ElementNodes % y,   &
@@ -243,13 +243,13 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
                  LocalStiffMatrix(N,N), &
                  Load(N),               &
                  STAT=istat )
- 
+
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'StatCurrentSolve', 'Memory allocation error.' )
        END IF
 
        NULLIFY( Cwrk )
- 
+
        CalculateCurrent = ListGetLogical( Params, &
            'Calculate Volume Current', GotIt )
        IF ( CalculateCurrent ) THEN
@@ -260,7 +260,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
            CALL Fatal('StatCurrentSolver','Volume Current does not exist')
          END IF
        END IF
-        
+
        CalculateHeating = ListGetLogicalAnyEquation( &
            Model,'Calculate Joule heating')
        IF ( .NOT. CalculateHeating )  &
@@ -287,7 +287,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
        END IF
 
 
-       
+
        ConstantWeights = ListGetLogical( Params, &
            'Constant Weights', GotIt )
 
@@ -301,11 +301,11 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
 !------------------------------------------------------------------------------
 !      Add electric field to the variable list (disabled)
 !------------------------------------------------------------------------------
-       IF ( CalculateField ) THEN         
+       IF ( CalculateField ) THEN
           CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, &
                Solver, 'Electric Field', dim, ElField, PotentialPerm)
        END IF
-          
+
        AllocationsDone = .TRUE.
      END IF
 
@@ -320,7 +320,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
      CALL Info( 'StatCurrentSolve', '-------------------------------------',Level=4 )
 
      CALL DefaultStart()
-     
+
      DO iter = 1, NonlinearIter
        at  = CPUTime()
        at0 = RealTime()
@@ -342,8 +342,8 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
        IF( GetCondAtIp ) THEN
          CALL ListInitElementKeyword( CondAtIp_h,'Material','Electric Conductivity')
        END IF
-         
-       
+
+
        DO t = 1, Solver % NumberOfActiveElements
 
          IF ( RealTime() - at0 > 1.0 ) THEN
@@ -387,7 +387,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
            !------------------------------------------------------------------------------
            !      Read conductivity values (might be a tensor)
            !------------------------------------------------------------------------------
-           
+
            CALL ListGetRealArray( Model % Materials(k) % Values, &
                'Electric Conductivity', Cwrk, n, NodeIndexes )
 
@@ -408,7 +408,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
              END DO
            END IF
          END IF
-           
+
          !------------------------------------------------------------------------------
          !      Get element local matrix, and rhs vector
          !------------------------------------------------------------------------------
@@ -448,7 +448,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
              IF ( ANY( PotentialPerm(NodeIndexes) <= 0 ) ) CYCLE
 
              FluxBC = ListGetLogical(Model % BCs(i) % Values, &
-                 'Current Density BC',gotIt) 
+                 'Current Density BC',gotIt)
              IF(GotIt .AND. .NOT. FluxBC) CYCLE
 
              !------------------------------------------------------------------------------
@@ -515,18 +515,18 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
 !------------------------------------------------------------------------------
 !    Compute the Joule heating: H,tot = Integral (E . D)dV
 !------------------------------------------------------------------------------
-       
+
        IF ( Control .OR. CalculateCurrent .OR. CalculateHeating .OR. &
-           CalculateNodalHeating ) THEN 
+           CalculateNodalHeating ) THEN
          CALL GeneralCurrent( Model, Potential, PotentialPerm )
 
          WRITE( Message, * ) 'Total Heating Power   :', Heatingtot
          CALL Info( 'StatCurrentSolve', Message, Level=4 )
          CALL ListAddConstReal( Model % Simulation, &
              'RES: Total Joule Heating', Heatingtot )
-         
+
          PotDiff = DirichletDofsRange( Solver )
-         
+
          IF( PotDiff > 0 ) THEN
            Resistance = PotDiff**2 / HeatingTot
            WRITE( Message, * ) 'Effective Resistance  :', Resistance
@@ -581,13 +581,13 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
        END IF
      END IF
 
-     
+
     CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Potential')
-   
+
     IF ( CalculateCurrent ) THEN
       CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Volume Current')
     END IF
-    
+
     IF ( CalculateHeating ) THEN
       CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Joule Heating')
     END IF
@@ -598,10 +598,10 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     END IF
 
     CALL DefaultFinish()
-    
+
 
 !------------------------------------------------------------------------------
- 
+
    CONTAINS
 
 !------------------------------------------------------------------------------
@@ -614,7 +614,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     INTEGER :: Reorder(:)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    TYPE(Nodes_t) :: Nodes 
+    TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
     REAL(KIND=dp), POINTER :: U_Integ(:), V_Integ(:), W_Integ(:), S_Integ(:)
@@ -652,7 +652,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     IF( GetCondAtIp ) THEN
       CALL ListInitElementKeyword( CondAtIp_h,'Material','Electric Conductivity')
     END IF
-     
+
 !------------------------------------------------------------------------------
 !   Go through model elements, we will compute on average of elementwise
 !   fluxes to nodes of the model
@@ -673,7 +673,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
        IF ( ANY(Reorder(NodeIndexes) == 0) ) CYCLE
 
        ElementPot(1:n) = Potential( Reorder( NodeIndexes(1:n) ) )
-       
+
        Nodes % x(1:n) = Model % Nodes % x( NodeIndexes )
        Nodes % y(1:n) = Model % Nodes % y( NodeIndexes )
        Nodes % z(1:n) = Model % Nodes % z( NodeIndexes )
@@ -714,7 +714,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
            END DO
          END IF
        END IF
-         
+
 !------------------------------------------------------------------------------
 ! Loop over Gauss integration points
 !------------------------------------------------------------------------------
@@ -745,7 +745,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
             x = SUM( Nodes % x(1:n)*Basis(1:n) )
             y = SUM( Nodes % y(1:n)*Basis(1:n) )
             z = SUM( Nodes % z(1:n)*Basis(1:n) )
-            
+
             CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
             s = s * SqrtMetric * 2 * PI
           END IF
@@ -769,7 +769,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
             END DO
           END IF
 
-            
+
           VolTot = VolTot + s
 
           HeatingTot = HeatingTot + &
@@ -777,11 +777,11 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
 
           IF( CalculateHeating .OR. CalculateCurrent .OR. CalculateNodalHeating ) THEN
             HeatingDensity = HeatingDensity + &
-                s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) ) 
+                s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) )
             DO j = 1,DIM
               Current(j) = Current(j) - EpsGrad(j) * s
             END DO
-            
+
             ElemVol = ElemVol + s
           END IF
 
@@ -802,19 +802,19 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
                SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + ElemVol
          END IF
        END IF
-         
+
        IF ( CalculateHeating ) THEN
          Heating( Reorder(NodeIndexes(1:n)) ) = &
              Heating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
        END IF
-       
+
        IF ( CalculateNodalHeating ) THEN
          NodalHeating( Reorder(NodeIndexes(1:n)) ) = &
              NodalHeating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
        END IF
-         
+
        IF ( CalculateCurrent ) THEN
-         DO j=1,DIM 
+         DO j=1,DIM
            VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) = &
                VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) + &
                Current(j)
@@ -827,7 +827,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
       IF ( ParEnv % PEs > 1) THEN
         VolTot     = ParallelReduction(VolTot)
         HeatingTot = ParallelReduction(HeatingTot)
-        
+
         IF ( CalculateCurrent) THEN
           ALLOCATE(tmp(SIZE(VolCurrent)/dim))
           DO i=1,dim
@@ -839,7 +839,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
         IF (CalculateHeating ) CALL ParallelSumVector(Solver % Matrix, Heating)
         CALL ParallelSumVector(Solver % Matrix, SumOfWeights)
       END IF
-      
+
 !------------------------------------------------------------------------------
 !   Finally, compute average of the fluxes at nodes
 !------------------------------------------------------------------------------
@@ -852,16 +852,16 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
           END DO
         END IF
       END DO
-      DEALLOCATE( SumOfWeights ) 
+      DEALLOCATE( SumOfWeights )
     END IF
-      
+
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
 
 !------------------------------------------------------------------------------
    END SUBROUTINE GeneralCurrent
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
      SUBROUTINE StatCurrentCompose( StiffMatrix,Force,Conductivity, &
                             Load,Element,n,Nodes )
@@ -871,28 +871,28 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
        TYPE(Nodes_t) :: Nodes
        TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
- 
+
        REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
        LOGICAL :: Stat
 
        INTEGER :: i,p,q,t,DIM
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
- 
+
 !------------------------------------------------------------------------------
        DIM = CoordinateSystemDimension()
 
        Force = 0.0d0
        StiffMatrix = 0.0d0
 !------------------------------------------------------------------------------
- 
+
 !------------------------------------------------------------------------------
 !      Numerical integration
 !------------------------------------------------------------------------------
        IntegStuff = GaussPoints( Element )
- 
+
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
          V = IntegStuff % v(t)
@@ -913,7 +913,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
          END IF
 
          CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
- 
+
          S = S * SqrtElementMetric * SqrtMetric
 
          L = SUM( Load(1:n) * Basis )
@@ -931,7 +931,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
              END DO
            END DO
          END IF
-         
+
 !------------------------------------------------------------------------------
 !        The Poisson equation
 !------------------------------------------------------------------------------
@@ -956,7 +956,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RHS vector for boundary conditions
-!>  of the electrostatic equation. 
+!>  of the electrostatic equation.
 !------------------------------------------------------------------------------
    SUBROUTINE StatCurrentBoundary( BoundaryMatrix, BoundaryVector, &
         LoadVector, Element, n, Nodes )
@@ -1016,7 +1016,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
          END IF
 
          CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
- 
+
          s = S_Integ(t) * SqrtElementMetric * SqrtMetric
 
 !------------------------------------------------------------------------------
@@ -1063,22 +1063,22 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     LOGICAL :: First = .TRUE., Dirichlet
     SAVE Hwrk, First
   !------------------------------------------------------------------------------
-  
+
   !    Initialize:
   !    -----------
     IF (First) THEN
       First = .FALSE.
       NULLIFY (Hwrk)
     END IF
-  
+
     Indicator = 0.0d0
     Gnorm = 0.0d0
-  
+
     Metric = 0.0d0
     DO i = 1, 3
       Metric(i, i) = 1.0d0
     END DO
-  
+
     SELECT CASE (CurrentCoordinateSystem())
     CASE (AxisSymmetric, CylindricSymmetric)
       dim = 3
@@ -1087,40 +1087,40 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     END SELECT
   !
   !    ---------------------------------------------
-  
+
     Element => Edge % BoundaryInfo % Left
-  
+
     IF (.NOT. ASSOCIATED(Element)) THEN
       Element => Edge % BoundaryInfo % Right
     ELSE IF (ANY(Perm(Element % NodeIndexes) <= 0)) THEN
       Element => Edge % BoundaryInfo % Right
     END IF
-  
+
     IF (.NOT. ASSOCIATED(Element)) RETURN
     IF (ANY(Perm(Element % NodeIndexes) <= 0)) RETURN
-  
+
     en = Edge % TYPE % NumberOfNodes
     pn = Element % TYPE % NumberOfNodes
-  
+
     ALLOCATE (EdgeNodes % x(en), EdgeNodes % y(en), EdgeNodes % z(en))
-  
+
     EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
     EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
     EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
-  
+
     nd = GetElementNOFDOFs(Element)
     ALLOCATE (Potential(nd), Basis(nd), &
               x(en), y(en), z(en), EdgeBasis(nd), &
               dBasisdx(nd, 3), NodalConductivity(nd), Flux(nd), &
               Indexes(nd))
-  
+
     nd = GetElementDOFs(Indexes, Element)
-  
+
     ALLOCATE (Nodes % x(nd), Nodes % y(nd), Nodes % z(nd))
     Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
     Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
     Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
-  
+
     DO l = 1, en
       DO k = 1, pn
         IF (Edge % NodeIndexes(l) == Element % NodeIndexes(k)) THEN
@@ -1134,14 +1134,14 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !
   !    Integrate square of residual over boundary element:
   !    ---------------------------------------------------
-  
+
     Indicator = 0.0d0
     EdgeLength = 0.0d0
     ResidualNorm = 0.0d0
-  
+
     DO j = 1, Model % NumberOfBCs
       IF (Edge % BoundaryInfo % Constraint /= Model % BCs(j) % Tag) CYCLE
-  
+
   !
   !       Check if dirichlet BC given:
   !       ----------------------------
@@ -1152,48 +1152,48 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
                                     'Constraint Mode')
       END IF
       ! TODO s = ListGetConstReal( Model % BCs(j) % Values,'Potential',Dirichlet )
-  
+
   !       Get various flux bc options:
   !       ----------------------------
-  
+
   !       ...given flux:
   !       --------------
       Flux(1:en) = ListGetReal(Model % BCs(j) % Values, &
                                 'Electric Flux', en, Edge % NodeIndexes, Found)
-  
+
   !       get material parameters:
   !       ------------------------
       k = ListGetInteger(Model % Bodies(Element % BodyId) % Values, 'Material', &
                           minv=1, maxv=Model % NumberOFMaterials)
-  
+
       CALL ListGetRealArray(Model % Materials(k) % Values, &
                             'Electric Conductivity', Hwrk, en, Edge % NodeIndexes, stat)
       IF (.NOT. stat) THEN
         CALL Fatal('StatCurrentSolver_boundary_residual:','Electric Conductivity not found')
       END IF
       NodalConductivity(1:en) = Hwrk(1, 1, 1:en)
-  
+
   !       elementwise nodal solution:
   !       ---------------------------
       nd = GetElementDOFs(Indexes, Element)
       Potential(1:nd) = Quant(Perm(Indexes(1:nd)))
-  
+
   !       do the integration:
   !       -------------------
       EdgeLength = 0.0d0
       ResidualNorm = 0.0d0
-  
+
       IntegStuff = GaussPoints(Edge)
-  
+
       DO t = 1, IntegStuff % n
         u = IntegStuff % u(t)
         v = IntegStuff % v(t)
         w = IntegStuff % w(t)
-  
+
         stat = ElementInfo(Edge, EdgeNodes, u, v, w, detJ, &
                             EdgeBasis, dBasisdx)
         Normal = NormalVector(Edge, EdgeNodes, u, v, .TRUE.)
-  
+
         IF (CurrentCoordinateSystem() == Cartesian) THEN
           s = IntegStuff % s(t) * detJ
         ELSE
@@ -1204,7 +1204,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
                                     Symb, dSymb, gx, gy, gz)
           s = IntegStuff % s(t) * detJ * SqrtMetric
         END IF
-  
+
   !
   !          Integration point in parent element local
   !          coordinates:
@@ -1213,7 +1213,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
         v = SUM(EdgeBasis(1:en) * y(1:en))
         w = SUM(EdgeBasis(1:en) * z(1:en))
         stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-  
+
   !
   !          Conductivity at the integration point:
   !          --------------------------------------
@@ -1222,7 +1222,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !          given flux at integration point:
   !          --------------------------------
         Residual = -SUM(Flux(1:en) * EdgeBasis(1:en))
-  
+
   !          flux given by the computed solution, and
   !          force norm for scaling the residual:
   !          -----------------------------------------
@@ -1230,7 +1230,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
           DO k = 1, dim
             Residual = Residual + Conductivity * &
                         SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(k)
-  
+
             Gnorm = Gnorm + s * (Conductivity * &
                                   SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(k))**2
           END DO
@@ -1239,13 +1239,13 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
             DO l = 1, dim
               Residual = Residual + Metric(k, l) * Conductivity * &
                           SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(l)
-  
+
               Gnorm = Gnorm + s * (Metric(k, l) * Conductivity * &
                                     SUM(dBasisdx(1:nd, k) * Potential(1:nd)) * Normal(l))**2
             END DO
           END DO
         END IF
-  
+
         EdgeLength = EdgeLength + s
         IF (.NOT. Dirichlet) THEN
           ResidualNorm = ResidualNorm + s * Residual**2
@@ -1253,21 +1253,21 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
       END DO
       EXIT
     END DO
-  
+
     IF (CoordinateSystemDimension() == 3) EdgeLength = SQRT(EdgeLength)
-  
+
   !    Gnorm = EdgeLength * Gnorm
     Indicator = EdgeLength * ResidualNorm
   !------------------------------------------------------------------------------
     END SUBROUTINE StatCurrentSolverLegacy_boundary_residual
     !------------------------------------------------------------------------------
-      
-  
+
+
   SUBROUTINE StatCurrentSolverLegacy_edge_residual(Model, Edge, Mesh, Quant, Perm,Indicator)
   !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
-  
+
     TYPE(Model_t) :: Model
     INTEGER :: Perm(:)
     REAL(KIND=dp) :: Quant(:), Indicator(2)
@@ -1289,25 +1289,25 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     REAL(KIND=dp) :: ResidualNorm
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(ValueList_t), POINTER :: Material
-  
+
     LOGICAL :: First = .TRUE.
     SAVE Hwrk, First
   !------------------------------------------------------------------------------
-  
+
     !    Initialize:
     !    -----------
     IF (First) THEN
       First = .FALSE.
       NULLIFY (Hwrk)
     END IF
-  
+
     SELECT CASE (CurrentCoordinateSystem())
     CASE (AxisSymmetric, CylindricSymmetric)
       dim = 3
     CASE DEFAULT
       dim = CoordinateSystemDimension()
     END SELECT
-  
+
     Metric = 0.0d0
     DO i = 1, 3
       Metric(i, i) = 1.0d0
@@ -1315,51 +1315,51 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     Grad = 0.0d0
   !
   !    ---------------------------------------------
-  
+
     n = Mesh % MaxElementDOFs
     ALLOCATE (Nodes % x(n), Nodes % y(n), Nodes % z(n))
-  
+
     en = Edge % TYPE % NumberOfNodes
     ALLOCATE (EdgeNodes % x(en), EdgeNodes % y(en), EdgeNodes % z(en))
-  
+
     EdgeNodes % x = Mesh % Nodes % x(Edge % NodeIndexes)
     EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
     EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
-  
+
     ALLOCATE (NodalConductivity(en), EdgeBasis(en), Basis(n), &
               dBasisdx(n, 3), x(en), y(en), z(en), Potential(n), Indexes(n))
-  
+
   !    Integrate square of jump over edge:
   !    -----------------------------------
     ResidualNorm = 0.0d0
     EdgeLength = 0.0d0
     Indicator = 0.0d0
-  
+
     IntegStuff = GaussPoints(Edge)
-  
+
     DO t = 1, IntegStuff % n
-  
+
       u = IntegStuff % u(t)
       v = IntegStuff % v(t)
       w = IntegStuff % w(t)
-  
+
       stat = ElementInfo(Edge, EdgeNodes, u, v, w, detJ, &
                           EdgeBasis, dBasisdx)
-  
+
       Normal = NormalVector(Edge, EdgeNodes, u, v, .FALSE.)
-  
+
       IF (CurrentCoordinateSystem() == Cartesian) THEN
         s = IntegStuff % s(t) * detJ
       ELSE
         u = SUM(EdgeBasis(1:en) * EdgeNodes % x(1:en))
         v = SUM(EdgeBasis(1:en) * EdgeNodes % y(1:en))
         w = SUM(EdgeBasis(1:en) * EdgeNodes % z(1:en))
-  
+
         CALL CoordinateSystemInfo(Metric, SqrtMetric, &
                                   Symb, dSymb, u, v, w)
         s = IntegStuff % s(t) * detJ * SqrtMetric
       END IF
-  
+
       !
       ! Compute flux over the edge as seen by elements
       ! on both sides of the edge:
@@ -1381,7 +1381,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !          local coordinates:
   !          -----------------------------------------
         pn = Element % TYPE % NumberOfNodes
-  
+
         DO j = 1, en
           DO k = 1, pn
             IF (Edge % NodeIndexes(j) == Element % NodeIndexes(k)) THEN
@@ -1392,7 +1392,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
             END IF
           END DO
         END DO
-  
+
         u = SUM(EdgeBasis(1:en) * x(1:en))
         v = SUM(EdgeBasis(1:en) * y(1:en))
         w = SUM(EdgeBasis(1:en) * z(1:en))
@@ -1403,7 +1403,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
         Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
         Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
         Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
-  
+
         stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
   !
   !          Material parameters:
@@ -1411,14 +1411,14 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
         k = ListGetInteger(Model % Bodies( &
                             Element % BodyId) % Values, 'Material', &
                             minv=1, maxv=Model % NumberOFMaterials)
-  
+
         Material => Model % Materials(k) % Values
         CALL ListGetRealArray(Material, &
                               'Electric Conductivity', Hwrk, en, Edge % NodeIndexes, stat)
         IF (.NOT. stat) THEN
           CALL Fatal('StatCurrentSolver_edge_residual:', 'Electric Conductivity not found')
         END IF
-  
+
         NodalConductivity(1:en) = Hwrk(1, 1, 1:en)
         Conductivity = SUM(NodalConductivity(1:en) * EdgeBasis(1:en))
   !
@@ -1432,7 +1432,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
           Grad(j, i) = Conductivity * SUM(dBasisdx(1:nd, j) * Potential(1:nd))
         END DO
       END DO
-  
+
   !       Compute square of the flux jump:
   !       -------------------------------
       EdgeLength = EdgeLength + s
@@ -1449,19 +1449,19 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
       END DO
       ResidualNorm = ResidualNorm + s * Jump**2
     END DO
-  
+
     IF (dim == 3) EdgeLength = SQRT(EdgeLength)
     Indicator = EdgeLength * ResidualNorm
-  
+
     DEALLOCATE (Nodes % x, Nodes % y, Nodes % z)
-  
+
     DEALLOCATE (EdgeNodes % x, EdgeNodes % y, EdgeNodes % z)
     DEALLOCATE (x, y, z, NodalConductivity, EdgeBasis, &
                 Basis, dBasisdx, Potential)
   !------------------------------------------------------------------------------
     END SUBROUTINE StatCurrentSolverLegacy_edge_residual
     !------------------------------------------------------------------------------
-      
+
   !------------------------------------------------------------------------------
   SUBROUTINE StatCurrentSolverLegacy_inside_residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
   !------------------------------------------------------------------------------
@@ -1490,11 +1490,11 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     REAL(KIND=dp) :: Residual, ResidualNorm, Area
     TYPE(ValueList_t), POINTER :: Material
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-  
+
     LOGICAL :: First = .TRUE.
     SAVE Hwrk, First
   !------------------------------------------------------------------------------
-  
+
   !    Initialize:
   !    -----------
     Indicator = 0.0d0
@@ -1503,24 +1503,24 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !    Check if this eq. computed in this element:
   !    -------------------------------------------
     IF (ANY(Perm(Element % NodeIndexes) <= 0)) RETURN
-  
+
     IF (First) THEN
       First = .FALSE.
       NULLIFY (Hwrk)
     END IF
-  
+
     Metric = 0.0d0
     DO i = 1, 3
       Metric(i, i) = 1.0d0
     END DO
-  
+
     SELECT CASE (CurrentCoordinateSystem())
     CASE (AxisSymmetric, CylindricSymmetric)
       dim = 3
     CASE DEFAULT
       dim = CoordinateSystemDimension()
     END SELECT
-  
+
   !    Allocate local arrays
   !    ----------------------
     nd = GetElementNOFDOFs(Element)
@@ -1532,7 +1532,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !    Element nodal points:
   !    ---------------------
     ALLOCATE (Nodes % x(nd), Nodes % y(nd), Nodes % z(nd))
-  
+
     nd = GetElementDOFs(Indexes, Element)
     Nodes % x = Mesh % Nodes % x(Indexes(1:nd))
     Nodes % y = Mesh % Nodes % y(Indexes(1:nd))
@@ -1555,15 +1555,15 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !    ---------------------------------
     k = ListGetInteger(Model % Bodies(Element % BodyId) % Values, 'Material', &
                         minv=1, maxv=Model % NumberOfMaterials)
-  
+
     Material => Model % Materials(k) % Values
-  
+
     CALL ListGetRealArray(Material, 'Electric Conductivity', Hwrk, n, Element % NodeIndexes, stat)
     IF (.NOT. stat) THEN
       CALL Fatal('StatCurrentSolver_inside_residual:', 'Electric Conductivity not found')
     END IF
     NodalConductivity(1:n) = Hwrk(1, 1, 1:n)
-  
+
   !
   !    Current source density (source):
   !    --------------------------------
@@ -1571,43 +1571,43 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
     k = ListGetInteger( &
         Model % Bodies(Element % BodyId) % Values, 'Body Force', Found, &
         1, Model % NumberOFBodyForces)
-  
+
     NodalSource = 0.0d0
     IF (Found .AND. k > 0) THEN
       NodalSource(1:n) = ListGetReal(Model % BodyForces(k) % Values, &
           'Current Source', n, Element % NodeIndexes, stat)
     END IF
-  
+
   !
   !    Integrate square of residual over element:
   !    ------------------------------------------
-  
+
     ResidualNorm = 0.0d0
     Area = 0.0d0
-  
+
     IntegStuff = GaussPoints(Element)
     ddBasisddx = 0
-  
+
     DO t = 1, IntegStuff % n
       u = IntegStuff % u(t)
       v = IntegStuff % v(t)
       w = IntegStuff % w(t)
-  
+
       stat = ElementInfo(Element, Nodes, u, v, w, detJ, &
                           Basis, dBasisdx, ddBasisddx, .TRUE., .FALSE.)
-  
+
       IF (CurrentCoordinateSystem() == Cartesian) THEN
         s = IntegStuff % s(t) * detJ
       ELSE
         u = SUM(Basis(1:nd) * Nodes % x(1:nd))
         v = SUM(Basis(1:nd) * Nodes % y(1:nd))
         w = SUM(Basis(1:nd) * Nodes % z(1:nd))
-  
+
         CALL CoordinateSystemInfo(Metric, SqrtMetric, &
                                   Symb, dSymb, u, v, w)
         s = IntegStuff % s(t) * detJ * SqrtMetric
       END IF
-  
+
       Conductivity = SUM(NodalConductivity(1:n) * Basis(1:n))
   !
   !       Residual of the current conservation equation:
@@ -1621,7 +1621,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
   !       ---------------------------------------------------
   !
       Residual = -SUM(NodalSource(1:n) * Basis(1:n))
-  
+
       IF (CurrentCoordinateSystem() == Cartesian) THEN
         DO j = 1, dim
   !
@@ -1630,7 +1630,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
           Residual = Residual - &
                       SUM(Potential(1:nd) * dBasisdx(1:nd, j)) * &
                       SUM(NodalConductivity(1:n) * dBasisdx(1:n, j))
-  
+
   !
   !             - σ div(grad(u)):
   !             ------------------
@@ -1646,7 +1646,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
             Residual = Residual - Metric(j, k) * &
                         SUM(Potential(1:nd) * dBasisdx(1:nd, j)) * &
                         SUM(NodalConductivity(1:n) * dBasisdx(1:n, k))
-  
+
   !
   !                - g^{jk} σ u_{,jk}:
   !                --------------------
@@ -1662,7 +1662,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
           END DO
         END DO
       END IF
-  
+
   !
   !       Compute also force norm for scaling the residual:
   !       -------------------------------------------------
@@ -1672,10 +1672,10 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
       Area = Area + s
       ResidualNorm = ResidualNorm + s * Residual**2
     END DO
-  
+
   !    Fnorm = Element % hk**2 * Fnorm
     Indicator = Element % hK**2 * ResidualNorm
   !------------------------------------------------------------------------------
   END SUBROUTINE StatCurrentSolverLegacy_inside_residual
 !------------------------------------------------------------------------------
- 
+

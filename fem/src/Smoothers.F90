@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2001
 ! *
@@ -40,7 +40,7 @@
 !-----------------------------------------------------------------------------
 !> Module containing the smoothers used in multigrid solvers.
 !-----------------------------------------------------------------------------
- 
+
 MODULE Smoothers
 
   IMPLICIT NONE
@@ -94,7 +94,7 @@ CONTAINS
 !      SAVE Z, Pr, Q, Ri, T, T1, T2, S, V
 !------------------------------------------------------------------------------
 
-      
+
       Parallel = ( ParEnv % PEs > 1 )
 
       IF ( .NOT. Parallel ) THEN
@@ -119,7 +119,7 @@ CONTAINS
         END IF
         CALL ParallelVector( A, Mb, b )
       END IF
-      
+
       WHERE (Diag /= 0.0_dp)
         InvDiag = 1.0_dp / Diag
       ELSEWHERE
@@ -135,16 +135,16 @@ CONTAINS
         END IF
       END DO
 #endif
-      
+
       ! If we have a MG algo then the Smoother count order is reversed.
       ! The other use case is, for example, "Prec Solvers" where the
-      ! smoother count order is maintained. 
+      ! smoother count order is maintained.
       IF( Solver % MultiGridTotal > 0 ) THEN
         InvLevel = MAX(1,1 + Solver % MultiGridTotal - Level)
       ELSE
         InvLevel = Level
       END IF
-      
+
       Lowest = .FALSE.
       IF( PRESENT( LowestSmooth ) ) Lowest = LowestSmooth
 
@@ -158,14 +158,14 @@ CONTAINS
         Iters => ListGetIntegerArray( Solver % Values,'MG Pre Smoothing Iterations',Found)
         IF(Found) THEN
           Rounds = Iters(MIN(InvLevel,SIZE(Iters)))
-        ELSE        
+        ELSE
           Rounds = 1
         END IF
       ELSE
         Iters => ListGetIntegerArray( Solver % Values,'MG Post Smoothing Iterations',Found)
         IF(Found) THEN
           Rounds = Iters(MIN(InvLevel,SIZE(Iters)))
-        ELSE        
+        ELSE
           Rounds = 1
         END IF
       END IF
@@ -231,7 +231,7 @@ CONTAINS
 
       ! L1-Jacobi: scale by the row's L1-norm (sum of |A_ij|) instead of the
       ! plain diagonal.
-      DoIt = ( INDEX(IterMethod,'l1jacobi') > 0 )       
+      DoIt = ( INDEX(IterMethod,'l1jacobi') > 0 )
       IF( DoIt ) THEN
         ALLOCATE( L1Long(A % NumberOfRows), L1InvDiag(n) )
         DO i=1,A % NumberOfRows
@@ -256,8 +256,8 @@ CONTAINS
           CALL Fatal('MGSmooth','"masked" smoother requires SkipMask to be present!')
         END IF
       END IF
-        
-      
+
+
       ! We may use the InvDiag to enforce a mask in all routines using InvDiag.
       ! This is more efficient than having extra IF statement and minimizes code.
       IF(PRESENT(SkipMask)) THEN
@@ -275,21 +275,21 @@ CONTAINS
         END DO
       END IF
 
-      
+
       SELECT CASE( IterMethod )
       CASE( 'jacobi' )
         CALL Jacobi( n, A, M, Mx, Mb, Mr, Rounds )
-       
-      CASE( 'gs' )                         
+
+      CASE( 'gs' )
         CALL GS( n, A, M, Mx, Mb, Mr, Rounds )
 
-      CASE( 'bgs' )                         
+      CASE( 'bgs' )
         CALL BGS( n, A, M, Mx, Mb, Mr, DOFs, Rounds )
-       
-      CASE( 'sgs' )                                     
+
+      CASE( 'sgs' )
         CALL SGS( n, A, M, Mx, Mb, Mr, Rounds)
 
-      CASE( 'isgs' )                                     
+      CASE( 'isgs' )
         CALL InternalSGS( n, A, M, x, b, r, Rounds, SkipMask )
 
       CASE( 'icsgs' )
@@ -306,9 +306,9 @@ CONTAINS
 
       CASE( 'l1jacobi' )
         CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
-          
+
       CASE( 'l1jacobi+isgs' )
-#if 0 
+#if 0
         CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
         IF(Parallel) CALL ParallelUpdateResult(A,x,r)
 
@@ -322,15 +322,15 @@ CONTAINS
             CALL L1Jacobi( n, A, M, Mx, Mb, Mr, Omega, 1 )
             CALL ParallelUpdateResult(A,x,r)
           END IF
-            
+
           CALL InternalSGS( n, A, M, x, b, r, 1, SkipMask )
 
           IF(Parallel) CALL ParallelUpdateSolve(A,x,r)
         END DO
 #endif
-        
+
       CASE( 'el1jacobi+isgs' )
-#if 0   
+#if 0
         CALL ExternalL1Jacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
         IF(Parallel) CALL ParallelUpdateResult(A,x,r)
 
@@ -348,7 +348,7 @@ CONTAINS
             CALL ParallelUpdateResult(A,x,r)
           END IF
         END DO
-#endif          
+#endif
       CASE( 'cjacobi+isgs' )
         CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
         IF(Parallel) CALL ParallelUpdateResult(A,x,r)
@@ -366,58 +366,58 @@ CONTAINS
         ! they never see what the interior gained and are never exchanged again.
         CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
-      CASE( 'bsgs' )                                     
+      CASE( 'bsgs' )
         CALL BSGS( n, A, M, Mx, Mb, Mr, DOFs, Rounds)
-       
-      CASE( 'wjacobi' )                                     
+
+      CASE( 'wjacobi' )
         CALL SmoothedJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
       CASE( 'masked jacobi' )
         CALL SmoothedJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
-        
-      CASE( 'wgs' )                                   
+
+      CASE( 'wgs' )
         CALL SmoothedGS( n, A, M, Mx, Mb, Mr, Omega, Rounds )
-        
-      CASE( 'wsgs' )                                     
+
+      CASE( 'wsgs' )
         CALL SmoothedSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds)
-        
-      CASE( 'csgs' )                                     
+
+      CASE( 'csgs' )
         CALL ComplexSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds)
-        
-      CASE( 'cjacobi' )                                     
+
+      CASE( 'cjacobi' )
         CALL ComplexJacobi( n, A, M, Mx, Mb, Mr, Omega, Rounds )
-        
-      CASE( 'psgs' )                                     
+
+      CASE( 'psgs' )
         CALL PostSGS( n, A, M, Mx, Mb, Mr, CF, Rounds)
 
       CASE( 'masked sgs' )
         CALL SmoothedSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds )
 
-      CASE( 'direct1d' )                                     
+      CASE( 'direct1d' )
         ALLOCATE( dx(n) )
         CALL Direct1dSmoother( n, A, M, Mx, Mb, Mr, CF, Rounds)
         DEALLOCATE(dx)
-        
+
       CASE( 'cg' )
         ALLOCATE( Z(n), Pr(n), Q(n) )
         CALL CG( n, A, M, Mx, Mb, Mr, Rounds )
         DEALLOCATE( Z, Pr, Q)
-        
+
       CASE( 'ccg' )
         CALL CCG( n, A, M, Mx, Mb, Mr, Rounds )
-       
+
       CASE( 'bicgstab' )
         ALLOCATE( Pr(n), Ri(n), T(n), T1(n), T2(n), S(n), V(n) )
         CALL BiCG( n, A, M, Mx, Mb, Mr, Rounds )
         DEALLOCATE( Pr, Ri, T, T1, T2, S, V )
 
-      CASE( 'uzawa' )                                   
+      CASE( 'uzawa' )
         CALL Uzawa( n, A, M, Mx, Mb, Mr, Rounds )
 
-      CASE( 'vanka' )                                   
+      CASE( 'vanka' )
         CALL Vanka( n, A, M, Mx, Mb, Mr, Rounds )
 
-      CASE( 'test gs' )                                   
+      CASE( 'test gs' )
         CALL TestGS( n, A, M, Mx, Mb, Mr, Rounds )
 
       CASE DEFAULT
@@ -433,7 +433,7 @@ CONTAINS
           Mr(i) = Mb(i) - Mr(i)
         END DO
       END IF
-      RNorm = MGnorm( n, Mr ) 
+      RNorm = MGnorm( n, Mr )
 
       CALL Info('MGSmooth','Smoothing finished',Level=12)
 
@@ -475,7 +475,7 @@ CONTAINS
       END FUNCTION MGCnorm
 !------------------------------------------------------------------------------
 
-      
+
 !------------------------------------------------------------------------------
       FUNCTION MGdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
@@ -532,7 +532,7 @@ CONTAINS
         IF ( .NOT. Parallel ) THEN
           CALL CRS_MatrixVectorMultiply( A, x, b )
         ELSE
-          L = SIZE(b) == A % NumberOfRows 
+          L = SIZE(b) == A % NumberOfRows
           IF ( PRESENT( Update ) ) THEN
             CALL ParallelMatrixVector( A,x,b,Update,ZeroNotOwned=L )
           ELSE
@@ -642,7 +642,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 ! This smooher only affects the dofs that are on the interface between domains.
-! This way it completes the smoothers that are only applied within the domain. 
+! This way it completes the smoothers that are only applied within the domain.
 !------------------------------------------------------------------------------
       SUBROUTINE ExternalL1Jacobi( n, A, M, x, b, r, w, Rounds )
 !------------------------------------------------------------------------------
@@ -661,7 +661,7 @@ CONTAINS
           CALL MGmv( A, x, r )
 
           k = 0
-          DO j=1,A % NumberOFRows           
+          DO j=1,A % NumberOFRows
             IF ( A % ParallelInfo % Neighbourlist(j) % &
                 Neighbours(1) /= Parenv % Mype ) CYCLE
             k=k+1
@@ -674,7 +674,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       END SUBROUTINE ExternalL1Jacobi
 !------------------------------------------------------------------------------
-      
+
 
 !------------------------------------------------------------------------------
       SUBROUTINE ComplexJacobi( n, A, M, rx, rb, rr, w, Rounds )
@@ -733,13 +733,13 @@ CONTAINS
         INTEGER, POINTER :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER :: Values(:)
 !------------------------------------------------------------------------------
-     
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-                
+
         DO k=1,Rounds
-          
+
           DO i=1,n
             s = 0.0_dp
             DO j=Rows(i),Rows(i+1)-1
@@ -769,22 +769,22 @@ CONTAINS
         INTEGER, POINTER :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER :: Values(:)
 !------------------------------------------------------------------------------
-     
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-                
+
         DO k=1,Rounds
-          
+
           DO i=1,n
             s = 0.0_dp
             q = 0.0_dp
             DO j=Rows(i),Rows(i+1)-1
               t = Values(j)
-              s = s + t * x(Cols(j)) 
+              s = s + t * x(Cols(j))
               q = q + t
             END DO
-            
+
             r(i) = (b(i)-s) / q
             x(i) = x(i) + r(i)
           END DO
@@ -807,12 +807,12 @@ CONTAINS
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
 !------------------------------------------------------------------------------
-     
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-                
-        DO k=1,Rounds          
+
+        DO k=1,Rounds
           DO i=1,n / DOFs
             s = 0.0d0
             DO dof=1,DOFs
@@ -848,18 +848,18 @@ CONTAINS
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
 !------------------------------------------------------------------------------
-     
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-       
+
         DO k=1,Rounds
           DO i=1,n
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
             END DO
-            
+
             r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + w * r(i)
           END DO
@@ -880,11 +880,11 @@ CONTAINS
         REAL(KIND=dp) :: s
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-        
+
         DO k=1,Rounds
           DO i=1,n
             s = 0.0d0
@@ -894,7 +894,7 @@ CONTAINS
             r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
-          
+
           DO i=n,1,-1
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
@@ -943,9 +943,9 @@ CONTAINS
         r => ComplexValues( rr, na/2 )
 
         Rows   => A % Rows
-        Cols   => A % Cols 
+        Cols   => A % Cols
         Values => A % Values
-        
+
         DO k=1,Rounds
           DO i=1,na,2
             l = (i+1)/2
@@ -965,7 +965,7 @@ CONTAINS
             r(l) = (b(l)-s) / v
             x(l) = x(l) + w*r(l)
           END DO
-          
+
           DO i=na-1,1,-2
             l = (i+1)/2
             IF( Parallel ) THEN
@@ -999,16 +999,16 @@ CONTAINS
         INTEGER :: Rounds
         REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
         LOGICAL, OPTIONAL :: SkipMask(:)
-        
+
         INTEGER :: i,j,k,n
         REAL(KIND=dp) :: s
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        
+
         Rows   => A % Rows
-        Cols   => A % Cols 
+        Cols   => A % Cols
         Values => A % Values
-        
+
         DO k=1,Rounds
           DO i=1,A % NumberOFRows
             ! Skip the interface elements as the gauss-seidel cannot be used to update them
@@ -1019,7 +1019,7 @@ CONTAINS
             IF(PRESENT(SkipMask)) THEN
               IF(SkipMask(i)) CYCLE
             END IF
-            
+
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
               s = s + x(Cols(j)) * Values(j)
@@ -1027,7 +1027,7 @@ CONTAINS
             r(i) = (b(i)-s) / A % Values(A % Diag(i))
             x(i) = x(i) + r(i)
           END DO
-          
+
           DO i=A % NumberOfRows,1,-1
             IF( Parallel ) THEN
               IF( A % ParallelInfo % GInterface(i) ) CYCLE
@@ -1047,9 +1047,9 @@ CONTAINS
       END SUBROUTINE InternalSGS
 !------------------------------------------------------------------------------
 
-      
+
 !------------------------------------------------------------------------------
-! Block Symmetric Gauss Seidel 
+! Block Symmetric Gauss Seidel
 !------------------------------------------------------------------------------
       SUBROUTINE BSGS( n, A, M, x, b, r, DOFs, Rounds )
 !------------------------------------------------------------------------------
@@ -1061,7 +1061,7 @@ CONTAINS
         REAL(KIND=dp) :: s(DOFs)
         INTEGER, POINTER CONTIG  :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
@@ -1081,7 +1081,7 @@ CONTAINS
               x(id) = x(id) + r(id)
             END DO
           END DO
-          
+
           DO i=n/DOFs,1,-1
             s = 0.0d0
             DO dof = 1,DOFs
@@ -1113,11 +1113,11 @@ CONTAINS
         REAL(KIND=dp) :: s
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-        
+
         DO k=1,Rounds
           DO i=1,n
             s = 0.0d0
@@ -1127,7 +1127,7 @@ CONTAINS
             r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + w * r(i)
           END DO
-          
+
           DO i=n,1,-1
             s = 0.0d0
             DO j=Rows(i),Rows(i+1)-1
@@ -1168,29 +1168,29 @@ CONTAINS
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-        
+
         DO k=1,Rounds
           DO i=1,n/2
 
             s = 0.0_dp
-            DO j=Rows(2*i-1),Rows(2*i)-1,2             
+            DO j=Rows(2*i-1),Rows(2*i)-1,2
               v = CMPLX(Values(j), -Values(j+1),KIND=dp)
               s = s + v * x((Cols(j)+1)/2)
             END DO
-            
+
             j = M % Diag(2*i-1)
             v = CMPLX(Values(j), -Values(j+1),KIND=dp)
             r(i) = (b(i)-s) / v
             x(i) = x(i) + w * r(i)
           END DO
-          
+
           DO i=n/2,1,-1
             s = 0.0_dp
-            DO j=Rows(2*i-1),Rows(2*i)-1,2             
+            DO j=Rows(2*i-1),Rows(2*i)-1,2
               v = CMPLX(Values(j), -Values(j+1),KIND=dp)
               s = s + v * x((Cols(j)+1)/2)
             END DO
-            
+
             j = M % Diag(2*i-1)
             v = CMPLX(Values(j), -Values(j+1),KIND=dp)
             r(i) = (b(i)-s) / v
@@ -1214,13 +1214,13 @@ CONTAINS
         REAL(KIND=dp) :: s
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
-        
+
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-        
+
         DO k=1,Rounds
-          
+
           DO i=1,n
             IF(f(i) /= 0) CYCLE
             s = 0.0d0
@@ -1239,7 +1239,7 @@ CONTAINS
             r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
-          
+
           DO i=n,1,-1
             IF(f(i) /= 0) CYCLE
             s = 0.0d0
@@ -1258,7 +1258,7 @@ CONTAINS
             r(i) = (b(i)-s) * InvDiag(i)
             x(i) = x(i) + r(i)
           END DO
-          
+
         END DO
       END SUBROUTINE PostSGS
 !------------------------------------------------------------------------------
@@ -1267,10 +1267,10 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> For some cases a smoother that only works with the local strong connections
-!> might be ideal. Given the clustering "f" just picks the entries i and j 
+!> might be ideal. Given the clustering "f" just picks the entries i and j
 !> such that f(i)=f(j) and use the reduced matrix in a direct solver to smooth
 !> the system. Note that the method guarantees that the linear system actually
-!> consists of a number of local problems that are fairly small in size. 
+!> consists of a number of local problems that are fairly small in size.
 !------------------------------------------------------------------------------
       SUBROUTINE Direct1dSmoother( n, A, M, x, b, r, f, Rounds )
 !------------------------------------------------------------------------------
@@ -1294,7 +1294,7 @@ CONTAINS
             ii,jj,mi,mj
 
 
-        TYPE(Mesh_t), POINTER :: Mesh        
+        TYPE(Mesh_t), POINTER :: Mesh
 
         SAVE :: Acluster, NodeLayer, NoLayers
 
@@ -1310,7 +1310,7 @@ CONTAINS
         ! First time, compute the size of the reduced matrix
         !---------------------------------------------------
         IF(.NOT. ASSOCIATED( Acluster ) ) THEN
-          ALLOCATE( Acluster ) 
+          ALLOCATE( Acluster )
           ALLOCATE( Acluster % Rows(n+1) )
           Acluster % NumberOfRows = n
           Acluster % Rows = 0
@@ -1337,14 +1337,14 @@ CONTAINS
             END DO
             RowsB(i+1) = kb
           END DO
-          
+
           ALLOCATE( Acluster % Cols(kb-1), Acluster % Values(kb-1), &
-              Acluster % Diag(n) ) 
-          
-          WRITE(Message,'(A,F8.3,A)') '1D matrix size fraction: ',100.0_dp*kb/SIZE(Values),' %'      
+              Acluster % Diag(n) )
+
+          WRITE(Message,'(A,F8.3,A)') '1D matrix size fraction: ',100.0_dp*kb/SIZE(Values),' %'
           CALL Info('Direct1dSmoother',Message)
 
-          ! PRINT *,'making matrix structure'          
+          ! PRINT *,'making matrix structure'
           Acluster % Cols = 0
           ColsB => Acluster % Cols
           DiagB => Acluster % Diag
@@ -1357,7 +1357,7 @@ CONTAINS
               ii = ( i - 1) / NoBlocks + 1
             ELSE
               ii = i
-            END IF            
+            END IF
             DO k=Rows(i),Rows(i+1)-1
               j = Cols(k)
               IF( NoBlocks > 1 ) THEN
@@ -1369,7 +1369,7 @@ CONTAINS
               IF( f(ii) == f(jj) ) THEN
                 ValuesB(kb) = ValuesB(kb) + Values(k)
                 ColsB(kb) = j
-                kb = kb + 1                
+                kb = kb + 1
               END IF
             END DO
           END DO
@@ -1390,23 +1390,23 @@ CONTAINS
         ValuesB = 0.0_dp
 
         ! Now pick up the values for the reduced matrix.
-        ! Initialization of ColsB could actually be done 
+        ! Initialization of ColsB could actually be done
         ! as a preprocessing step...
         !--------------------------------------------------
         ValuesB = 0.0_dp
-        kb = 1        
+        kb = 1
         klayer = 0
 
         DO i=1,n
           IF( NoBlocks > 1 ) THEN
             ii = ( i - 1) / NoBlocks + 1
             mi = MODULO( i-1, NoBlocks )
-            layer0 = NoBlocks * NodeLayer(ii) + mi 
+            layer0 = NoBlocks * NodeLayer(ii) + mi
           ELSE
             ii = i
             layer0 = NodeLayer(ii)
           END IF
-                    
+
           ! First find the dlayer->klayer mapping for the cluster
           !------------------------------------------------------
           DO k=Rows(i),Rows(i+1)-1
@@ -1418,7 +1418,7 @@ CONTAINS
             ELSE
               jj = j
             END IF
-            
+
             IF( f(ii) == f(jj) ) THEN
               IF( NoBlocks > 1 ) THEN
                 dlayer = NoBlocks * NodeLayer(jj) +  mj - layer0
@@ -1433,12 +1433,12 @@ CONTAINS
               kb = kb + 1
             END IF
           END DO
-          
+
           ! Using the mapping map values in all columns to the cluster one
           !----------------------------------------------------------------
           DO k=Rows(i),Rows(i+1)-1
-            j = Cols(k)  
-            
+            j = Cols(k)
+
             IF( NoBlocks > 1 ) THEN
               jj = ( j - 1) / NoBlocks + 1
               mj = MODULO( j-1, NoBlocks )
@@ -1456,7 +1456,7 @@ CONTAINS
             ValuesB(kc) = ValuesB(kc) + Values(k)
           END DO
         END DO
-        
+
         ! Perform given number of rounds
         ! For this smoother one is probably a good value most often
         !------------------------------------------------------------
@@ -1465,10 +1465,10 @@ CONTAINS
 
           CALL MGmv( A, x, r )
           r(1:n) = b(1:n) - r(1:n)
-          
-          ! Make the correction that is caused when the matrix values are lumped on the 
+
+          ! Make the correction that is caused when the matrix values are lumped on the
           ! vertical lines. The objective is that if x is solution of Ax=b then it will
-          ! not be modified by this smoother. 
+          ! not be modified by this smoother.
           !----------------------------------------------------------------------------
           klayer = 0
           DO i=1,n
@@ -1476,7 +1476,7 @@ CONTAINS
             IF( NoBlocks > 1 ) THEN
               ii = ( i - 1) / NoBlocks + 1
               mi = MODULO( i-1, NoBlocks )
-              layer0 = NoBlocks * NodeLayer(ii) + mi 
+              layer0 = NoBlocks * NodeLayer(ii) + mi
             ELSE
               ii = i
               layer0 = NodeLayer(i)
@@ -1492,7 +1492,7 @@ CONTAINS
               ELSE
                 jj = j
               END IF
-              
+
               IF( f(ii) == f(jj) ) THEN
                 IF( NoBlocks > 1 ) THEN
                   dlayer = NoBlocks * NodeLayer(jj) + mj - layer0
@@ -1505,7 +1505,7 @@ CONTAINS
 
             ! For the non-cluster entries perform the lumping to the 1d cluster
             DO k=Rows(i),Rows(i+1)-1
-              j = Cols(k)            
+              j = Cols(k)
 
               IF( NoBlocks > 1 ) THEN
                 jj = ( j - 1) / NoBlocks + 1
@@ -1513,7 +1513,7 @@ CONTAINS
               ELSE
                 jj = j
               END IF
-               
+
               IF( f(ii) /= f(jj) ) THEN
                 IF( NoBlocks > 1 ) THEN
                   dlayer = NoBlocks * NodeLayer(jj) + mj - layer0
@@ -1521,7 +1521,7 @@ CONTAINS
                   dlayer = NodeLayer(j) - layer0
                 END IF
                 jc = klayer( dlayer )
-                r(i) = r(i) + Values(k) * (x(j) - x(jc)) 
+                r(i) = r(i) + Values(k) * (x(j) - x(jc))
               END IF
             END DO
           END DO
@@ -1541,7 +1541,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Conjugate gradient as a smoother. 
+!> Conjugate gradient as a smoother.
 !------------------------------------------------------------------------------
       SUBROUTINE CG( n, A, M, x, b, r, Rounds )
 !------------------------------------------------------------------------------
@@ -1556,22 +1556,22 @@ CONTAINS
         CALL MGmv( A, x, r )
         r(1:n) = b(1:n) - r(1:n)
         residual0 = MGnorm(n, r)
-        
+
         DO i=1,Rounds
           Z(1:n) = r(1:n)
           CALL CRS_LUSolve( n, M, Z )
           rho = MGdot( n, r, Z )
-          
+
           IF ( i == 1 ) THEN
             Pr(1:n) = Z(1:n)
           ELSE
             Pr(1:n) = Z(1:n) + rho * Pr(1:n) / oldrho
           END IF
-          
+
           CALL MGmv( A, Pr, Q )
           alpha  = rho / MGdot( n, Pr, Q )
           oldrho = rho
-          
+
           x(1:n) = x(1:n) + alpha * Pr(1:n)
           r(1:n) = r(1:n) - alpha * Q(1:n)
 
@@ -1612,17 +1612,17 @@ CONTAINS
           Z(1:n/2) = r(1:n/2)
           CALL CRS_ComplexLUSolve( n/2, M, Z )
           rho = MGCdot( n/2, r, Z )
-          
+
           IF ( i == 1 ) THEN
             Pc(1:n/2) = Z(1:n/2)
           ELSE
             Pc(1:n/2) = Z(1:n/2) + rho * Pc(1:n/2) / oldrho
           END IF
-          
+
           CALL MGCmv( A, Pc, Q )
           alpha  = rho / MGCdot( n/2, Pc, Q )
           oldrho = rho
-          
+
           x(1:n/2) = x(1:n/2) + alpha * Pc(1:n/2)
           r(1:n/2) = r(1:n/2) - alpha * Q(1:n/2)
         END DO
@@ -1665,9 +1665,9 @@ DO it=1,200
          k = 0
          DO i=dofs,n,dofs
            k = k + 1
-           px(k) = x(i) 
-           pb(k) = b(i) 
-           pr(k) = r(i) 
+           px(k) = x(i)
+           pb(k) = b(i)
+           pr(k) = r(i)
          END DO
 
          k = 0
@@ -1822,20 +1822,20 @@ END DO
 
         CALL UzawaMv( A, x, r )
         r(1:n) = b(1:n) - r(1:n)
-        
+
         Ri(1:n) = r(1:n)
         Pr(1:n) = 0
         V(1:n) = 0
         omega  = 1
         alpha  = 0
         oldrho = 1
-        
+
         DO i=1,200
           rho = MGdot( n, r, Ri )
-          
+
           beta = alpha * rho / ( oldrho * omega )
           Pr(1:n) = r(1:n) + beta * (Pr(1:n) - omega*V(1:n))
-          
+
           V(1:n) = Pr(1:n)
           CALL UzawaPcond( A,V )
           T1(1:n) = V(1:n)
@@ -1843,7 +1843,7 @@ END DO
 
           alpha = rho / MGdot( n, Ri, V )
           S(1:n) = r(1:n) - alpha * V(1:n)
-          
+
           T(1:n) = S(1:n)
           CALL UzawaPcond( A,T )
           T2(1:n) = T(1:n)
@@ -1878,29 +1878,29 @@ END DO
 
         CALL MGmv( A, x, r )
         r(1:n) = b(1:n) - r(1:n)
-        
+
         Ri(1:n) = r(1:n)
         Pr(1:n) = 0
         V(1:n) = 0
         omega  = 1
         alpha  = 0
         oldrho = 1
-        
+
         DO i=1,Rounds
           rho = MGdot( n, r, Ri )
-          
+
           beta = alpha * rho / ( oldrho * omega )
           Pr(1:n) = r(1:n) + beta * (Pr(1:n) - omega*V(1:n))
-          
+
           V(1:n) = Pr(1:n)
           CALL CRS_LUSolve( n, M, V )
           T1(1:n) = V(1:n)
           CALL MGmv( A, T1, V )
 
           alpha = rho / MGdot( n, Ri, V )
-          
+
           S(1:n) = r(1:n) - alpha * V(1:n)
-          
+
           T(1:n) = S(1:n)
           CALL CRS_LUSolve( n, M, T )
           T2(1:n) = T(1:n)
@@ -1937,8 +1937,8 @@ END DO
         Var => VariableGet( Mesh % Variables, &
                  CurrentModel % Solver % Variable % Name, ThisOnly=.TRUE. )
 
-        NS = ( GetVarName( Var ) == 'flow solution' ) 
-        
+        NS = ( GetVarName( Var ) == 'flow solution' )
+
         elem = Mesh % NumberOfBulkElements
         nsize = Mesh % MaxElementDOFs*DOFs
         ALLOCATE( AL(nsize,nsize), ind(nsize), h(nsize) )
@@ -2021,11 +2021,11 @@ END DO
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
         REAL(KIND=dp), POINTER CONTIG :: Values(:)
 !------------------------------------------------------------------------------
-     
+
         Rows   => A % Rows
         Cols   => A % Cols
         Values => A % Values
-        
+
         PRINT *,'TestGS: Starting',&
             ASSOCIATED(Rows),ASSOCIATED(Cols),ASSOCIATED(Values),ASSOCIATED(M % diag)
         PRINT *,'TestGS: Sizes',&
@@ -2034,15 +2034,15 @@ END DO
             MINVAL(Rows),MINVAL(Cols),MINVAL(Values),MINVAL(M % diag)
         PRINT *,'TestGS: MaxVal',&
             MAXVAL(Rows),MAXVAL(Cols),MAXVAL(Values),MAXVAL(M % diag)
-        
+
         nsize = SIZE(Cols)
-        
-        
+
+
         DO k=1,Rounds
-          
+
           DO i=1,n
             s = 0.0d0
-            
+
             DO j=Rows(i),Rows(i+1)-1
               IF(j<1 .OR. j>nsize) THEN
                 PRINT *,'TestGs A:',i,j
@@ -2053,7 +2053,7 @@ END DO
               END IF
               s = s + x(o) * Values(j)
             END DO
-            
+
             l = M % diag(i)
             IF(l<1 .OR. l>nsize) THEN
               PRINT *,'TestGs C:',i,j,o,l
@@ -2062,7 +2062,7 @@ END DO
             x(i) = x(i) + r(i)
           END DO
         END DO
-        
+
         PRINT *,'TestGS: Finished'
 !------------------------------------------------------------------------------
       END SUBROUTINE TestGS

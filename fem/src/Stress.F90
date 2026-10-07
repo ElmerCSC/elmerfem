@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -145,11 +145,11 @@ MODULE StressLocal
      REAL(KIND=dp) :: RayleighAlpha(:), RayleighBeta(:)
      REAL(KIND=dp), DIMENSION(:) :: NodalPoisson, NodalDensity, NodalDamping
 
-     
+
      LOGICAL :: PlaneStress, Isotropic(2), StabilityAnalysis, GeometricStiffness
      LOGICAL :: RotateC, RayleighDamping
      LOGICAL  :: EvaluateAtIP(3),EvaluateLoadAtIp,NeedMass
- 
+
 
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t),POINTER :: Element
@@ -193,7 +193,7 @@ MODULE StressLocal
      TYPE(ValueHandle_t), SAVE :: BetaIP_h, EIP_h, nuIP_h, Load_h(4), Load_h_im(4)
 
      TYPE(ValueList_t), POINTER :: BF
-   
+
      REAL(KIND=dp) :: GPA_Coeff(n)
 
      TYPE(Mesh_t), POINTER :: Mesh
@@ -219,7 +219,7 @@ MODULE StressLocal
        IF(EvaluateLoadAtIP) THEN
          DO I=1,DIM
            WRITE(DimensionString,'(I1)') I
-           CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))          
+           CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))
            CALL ListInitElementKeyword( Load_h_im(I),'Body Force','Stress BodyForce '//TRIM(DimensionString)//' im')
          END DO
          CALL ListInitElementKeyword( Load_h(4),'Body Force','Stress Pressure')
@@ -250,7 +250,7 @@ MODULE StressLocal
      DAMP  = 0.0d0
 
      IF (NeedMass) &
-          NeedMass = ANY( NodalDensity(1:n) /= 0.0d0 )       
+          NeedMass = ANY( NodalDensity(1:n) /= 0.0d0 )
      NeedMass = NeedMass .OR. ANY( NodalDamping(1:n) /= 0.0d0 ) .OR. RayleighDamping
 
      NeedHeat = ANY( NodalTemperature(1:ntot) /= 0.0d0 )
@@ -275,7 +275,7 @@ MODULE StressLocal
 
 
      !      ! Integration stuff:
-     ! ------------------  
+     ! ------------------
      NBasis = ntot
      IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
 
@@ -351,7 +351,7 @@ MODULE StressLocal
          Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
          Uz = (SOL(3,1:ntot) - PSOL(3,1:ntot))/dt
        CASE DEFAULT
-         CALL Fatal( 'StressCompose', 'Unkown coordinate system dimension' ) 
+         CALL Fatal( 'StressCompose', 'Unkown coordinate system dimension' )
        END SELECT
 
       END IF
@@ -381,9 +381,9 @@ MODULE StressLocal
 
        IF ( NeedHeat ) THEN
          ! Temperature at the integration point:
-         !-------------------------------------- 
+         !--------------------------------------
          Temperature = SUM( NodalTemperature(1:ntot)*Basis(1:ntot) )
- 
+
          ! Heat expansion tensor values at the integration point:
          !-------------------------------------------------------
          HeatExpansion = 0.0d0
@@ -409,9 +409,9 @@ MODULE StressLocal
            Poisson = SUM( Basis(1:n) * NodalPoisson(1:n) )
          END IF
        END IF
-       
+
        C = 0
-       IF ( .NOT. Isotropic(1) ) THEN 
+       IF ( .NOT. Isotropic(1) ) THEN
           DO i=1,SIZE(ElasticModulus,1)
             DO j=1,SIZE(ElasticModulus,2)
                C(i,j) = SUM( Basis(1:n) * ElasticModulus(i,j,1:n) )
@@ -485,18 +485,18 @@ MODULE StressLocal
            PreStress(i) = SUM( NodalPreStress(i,1:n)*Basis(1:n) )
          END DO
          PreStress = PreStress - MATMUL( C, PreStrain  )
-         
+
          DO i=1,6
            StrainLoad(i) = SUM( NodalStrainLoad(i,1:n)*Basis(1:n) )
            StressLoad(i) = SUM( NodalStressLoad(i,1:n)*Basis(1:n) )
          END DO
          StressLoad = MATMUL( C, StrainLoad ) - StressLoad
-         
-         IF( .NOT. ActiveGeometricStiffness ) THEN 
+
+         IF( .NOT. ActiveGeometricStiffness ) THEN
            StressTensor = 0.0d0
-           StrainTensor = 0.0d0          
+           StrainTensor = 0.0d0
          END IF
-         
+
          SELECT CASE(dim)
          CASE(2)
            IF ( Csymmetry ) THEN
@@ -586,7 +586,7 @@ MODULE StressLocal
                END DO
              END DO
            END IF
- 
+
            B = 0.0d0
            SELECT CASE(dim)
            CASE(2)
@@ -602,7 +602,7 @@ MODULE StressLocal
                  B(3,1) = dBasisdx(q,2)
                  B(3,2) = dBasisdx(q,1)
               END IF
- 
+
            CASE(3)
               B(1,1) = dBasisdx(q,1)
               B(2,2) = dBasisdx(q,2)
@@ -614,13 +614,13 @@ MODULE StressLocal
               B(6,1) = dBasisdx(q,3)
               B(6,3) = dBasisdx(q,1)
            END SELECT
- 
+
            A = 0._dp
            IF ( .NOT. Incompressible ) THEN
               A(1:3,1:3) = MATMUL( G, B ) * xPhi
            ELSE
-              DO i=1,dim 
-                DO j=1,dim 
+              DO i=1,dim
+                DO j=1,dim
                   A(i,i) = A(i,i) + Young/3 * dBasisdx(q,j) * dBasisdx(p,j)
                   A(i,j) = A(i,j) + Young/3 * dBasisdx(q,i) * dBasisdx(p,j)
                 END DO
@@ -630,7 +630,7 @@ MODULE StressLocal
                 A(ndim,i) = A(ndim,i) - dBasisdx(q,i) * Basis(p)
              END DO
            END IF
- 
+
            IF( GPA ) THEN
              DO i=1,dim
                A(i,dim) = A(i,dim) + GPA_ip*dBasisdx(q,i)*Basis(p)
@@ -658,7 +658,7 @@ MODULE StressLocal
                 END DO
               END DO
            END IF
-      
+
            IF ( ActiveGeometricStiffness ) THEN
              DO k = 1,dim
                InnerProd = 0.0d0
@@ -674,7 +674,7 @@ MODULE StressLocal
                      = MASS( ndim*(p-1)+k,ndim*(q-1)+k ) - s * InnerProd
                ELSE
                  STIFF( ndim*(p-1)+k,ndim*(q-1)+k ) &
-                    = STIFF( ndim*(p-1)+k,ndim*(q-1)+k ) + s * InnerProd 
+                    = STIFF( ndim*(p-1)+k,ndim*(q-1)+k ) + s * InnerProd
                END IF
              END DO
            END IF
@@ -841,9 +841,9 @@ CONTAINS
      FORCE_im = 0.0D0
 
      NeedHeat = ANY( NodalTemperature(1:ntot) /= 0.0d0 )
-     !    
+     !
      ! Integration stuff:
-     ! ------------------  
+     ! ------------------
      NBasis = ntot
      IntegStuff = GaussPoints( element, RelOrder = RelIntegOrder )
 
@@ -868,9 +868,9 @@ CONTAINS
 !------------------------------------------------------------------------------
        IF ( NeedHeat ) THEN
          ! Temperature at the integration point:
-         !-------------------------------------- 
+         !--------------------------------------
          Temperature = SUM( NodalTemperature(1:ntot)*Basis(1:ntot) )
- 
+
          ! Heat expansion tensor values at the integration point:
          !-------------------------------------------------------
          HeatExpansion = 0.0d0
@@ -888,7 +888,7 @@ CONTAINS
        IF ( Isotropic(1) ) Poisson = SUM( Basis(1:n) * NodalPoisson(1:n) )
 
        C = 0
-       IF ( .NOT. Isotropic(1) ) THEN 
+       IF ( .NOT. Isotropic(1) ) THEN
           DO i=1,SIZE(ElasticModulus,1)
             DO j=1,SIZE(ElasticModulus,2)
                C(i,j) = SUM( Basis(1:n) * ElasticModulus(i,j,1:n) )
@@ -1114,7 +1114,7 @@ CONTAINS
          Tangent(3) =  0.0_dp
          Tangent2   =  0.0_dp
        CASE(2)
-         CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+         CALL TangentDirections( Normal, Tangent, Tangent2 )
        END SELECT
      END IF
 
@@ -1224,7 +1224,7 @@ CONTAINS
       argEvaluateAtIP, argEvaluateLoadAtIP, GaussPoint, argC, argYoung,&
       argPoisson)
 !------------------------------------------------------------------------------
-     LOGICAL :: Isotropic(2), CSymmetry, PlaneStress  
+     LOGICAL :: Isotropic(2), CSymmetry, PlaneStress
      LOGICAL, OPTIONAL :: ApplyPressure
      INTEGER :: n,nd,dim
      INTEGER, OPTIONAL :: nBasis, GaussPoint
@@ -1243,7 +1243,7 @@ CONTAINS
      TYPE(ValueHandle_t), SAVE :: BetaIP_h, EIP_h, nuIP_h, Load_h(4), Load_h_im(4)
      TYPE(Element_t), POINTER :: Element
      CHARACTER :: DimensionString
-     LOGICAL :: EvaluateAtIP(3), EvaluateLoadAtIP     
+     LOGICAL :: EvaluateAtIP(3), EvaluateLoadAtIP
 !------------------------------------------------------------------------------
 
      SAVE FirstTime
@@ -1259,7 +1259,7 @@ CONTAINS
      ELSE
        EvaluateLoadAtIp = .FALSE.
      END IF
-     
+
      Incompressible = GetLogical( GetSolverParams(), 'Incompressible', Found )
 
      Element => CurrentModel % CurrentElement
@@ -1277,7 +1277,7 @@ CONTAINS
          IF(EvaluateLoadAtIP) THEN
            DO I=1,DIM
              WRITE(DimensionString,'(I1)') I
-             CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))          
+             CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))
              CALL ListInitElementKeyword( Load_h_im(I),'Body Force','Stress BodyForce '//TRIM(DimensionString)//' im')
            END DO
            CALL ListInitElementKeyword( Load_h(4),'Body Force','Stress Pressure')
@@ -1286,7 +1286,7 @@ CONTAINS
        END IF
        FirstTime = .FALSE.
      END IF
-     
+
      Stress = 0.0d0
      Strain = 0.0d0
 
@@ -1405,7 +1405,7 @@ CONTAINS
      END DO
 
      !
-     ! Compute stresses: 
+     ! Compute stresses:
      ! -----------------
      IF (Incompressible) THEN
        Stress = 2 * Young * Strain / 3
@@ -2012,7 +2012,7 @@ CONTAINS
       IsScalar = .TRUE.
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
-      IF( PRESENT( Found ) ) Found = Stat  
+      IF( PRESENT( Found ) ) Found = Stat
       IF ( .NOT. stat ) RETURN
 
       IsScalar = SIZE(HWrk,1) == 1 .AND. SIZE(HWrk,2) == 1
@@ -3028,7 +3028,7 @@ CONTAINS
            u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
            v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
            w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
-   
+
            CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                        Symb, dSymb, u, v, w )
 
@@ -3357,7 +3357,7 @@ CONTAINS
      END DO
 
      dim = CoordinateSystemDimension()
-     DOFs = dim 
+     DOFs = dim
 
      CSymmetry = CurrentCoordinateSystem() == CylindricSymmetric .OR. &
                  CurrentCoordinateSystem() == AxisSymmetric
@@ -3554,7 +3554,7 @@ CONTAINS
      YoungsAverage = YoungsAverage / Area
      Fnorm = Energy
      Indicator = Area * ResidualNorm / YoungsAverage
- 
+
      DEALLOCATE( ElasticModulus, NodalDensity, NodalPoissonRatio,  &
          NodalDamping, NodalDisplacement, LocalHExp, vec, Stressi, &
          LocalTemp, Basis, dBasisdx, NodalForce, Veloc, Accel )

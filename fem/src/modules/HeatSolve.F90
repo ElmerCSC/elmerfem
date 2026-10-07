@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,27 +13,27 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !/******************************************************************************
 ! *
 ! *  Module for solving heating equation.
-! *  Partly vectorized version with handles. 
+! *  Partly vectorized version with handles.
 ! *
 ! *  Authors: Peter Råback & Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Created: 20.01.2020
-! * 
+! *
 ! *****************************************************************************/
 
 
@@ -132,7 +132,7 @@ SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
       END IF
     END IF
   END IF
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE HeatSolver_Init0
 !------------------------------------------------------------------------------
@@ -168,16 +168,16 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
 
   ! Tell the matrix structure creation about the need of view factor coupling
   CALL ListAddNewLogical( Params,'Radiation Solver',.TRUE.)
-  
-  DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
-  DB = GetLogical( Params,'DG Reduced Basis',Found ) 
-  
+
+  DG = GetLogical( Params,'Discontinuous Galerkin',Found )
+  DB = GetLogical( Params,'DG Reduced Basis',Found )
+
   IF( DG .OR. DB ) THEN
     ! Enforcing indirect nodal connections in parallel for DG just to be sure
-    ! The special BCs may require this. 
+    ! The special BCs may require this.
     CALL ListAddLogical( Params,'DG Indirect Connections',.TRUE.)
   END IF
-  
+
   CALL ListWarnUnsupportedKeyword('body force','Smart Heater Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','Integral Heat Source',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('body force','Friction Heat',FatalFound=.TRUE.)
@@ -249,7 +249,7 @@ END SUBROUTINE HeatSolver_Init
 !-----------------------------------------------------------------------------
 !> A modern version for the heat equation supporting multi-threading and
 !> SIMD friendly ElmerSolver kernels. This tries to be backward compatible
-!> with the legacy HeatSolver but some rarely used features are missing. 
+!> with the legacy HeatSolver but some rarely used features are missing.
 !------------------------------------------------------------------------------
 SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
@@ -409,8 +409,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! have changed. The routine may also affect matrix topology.
   !---------------------------------------------------------------------------
   Mesh => GetMesh()
-  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
-  dim = CoordinateSystemDimension() 
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
+  dim = CoordinateSystemDimension()
   Params => GetSolverParams()
   EqName = ListGetString( Params,'Equation', Found )
 
@@ -420,7 +420,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
   Radiosity = GetLogical( Params, 'Radiosity Model', Found )
   Spectral = GetLogical( Params,'Spectral Model',Found )
-  IF( Spectral ) Radiosity = .TRUE. 
+  IF( Spectral ) Radiosity = .TRUE.
   RadNewtonRelax = ListGetCReal( Params,&
       'Radiosity Newton Relaxation Factor',HaveRadNewtonRelax)
   ! Newton linearization of radiosity with a rank-one correction, see RankOneSolve
@@ -429,8 +429,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   IF(.NOT. RankOneGiven) RadRankOne = .TRUE.
   RadRankOne = RadRankOne .AND. Radiosity
   RankOneActive = .FALSE.
-  
-  IF(.NOT.Radiosity) CALL RadiationFactors( Solver, .FALSE.,.FALSE.) 
+
+  IF(.NOT.Radiosity) CALL RadiationFactors( Solver, .FALSE.,.FALSE.)
 
   HaveFactors = ListCheckPresentAnyBC( Model,'Radiation')
 
@@ -445,12 +445,12 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   TempPerm => Solver % Variable % Perm
 
   DB = GetLogical( Params,'DG Reduced Basis',Found )
-  DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
+  DG = GetLogical( Params,'Discontinuous Galerkin',Found )
 
   maxiter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
-  
+
   nthr = 1
   !$ nthr = omp_get_max_threads()
 
@@ -523,9 +523,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   IF( VecAsm ) THEN
     CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
   ELSE
-    CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)      
+    CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)
   END IF
-  
+
   ! See the CheckLatentHeatVec declaration comment above: this outer loop is
   ! legacy HeatSolve.F90's own substep wrapper, always present there (a
   ! single pass when "Check Latent Heat Release" is inactive, exactly as
@@ -558,39 +558,39 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     Newton = GetNewtonActive()
 
 100 CONTINUE
-    IF(Radiosity) CALL RadiationFactors( Solver, .FALSE., Newton) 
-    
+    IF(Radiosity) CALL RadiationFactors( Solver, .FALSE., Newton)
+
     ! Initialize the matrix equation to zero.
     !---------------------------------------
     CALL DefaultInitialize()
     CALL CalculateRadiosityFields(Pre=.TRUE.)
-    
+
     ! For speed compute averaged emissivity and temperature over boundary elements
     ! for diffuse gray radiation.
     !-----------------------------------------------------------------------------
     IF( HaveFactors ) THEN
-      CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect) 
+      CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect)
     END IF
-    
+
     totelem = 0
-    
+
     !$OMP PARALLEL &
     !$OMP SHARED(Solver, Active, nColours, VecAsm) &
     !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     InitHandles = .TRUE.
-    
+
     DO col=1,nColours
-      
+
       !$OMP SINGLE
       CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
-      
+
       !$OMP DO
       DO t=1,Active
         Element => GetActiveElement(t)
-        totelem = totelem + 1                
+        totelem = totelem + 1
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
         nb = GetElementNOFBDOFs(Element)
@@ -602,7 +602,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       END DO
       !$OMP END DO
     END DO
-    !$OMP END PARALLEL 
+    !$OMP END PARALLEL
 
     CALL DefaultFinishBulkAssembly()
 
@@ -617,7 +617,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
           RadV(SIZE(Solver % Matrix % RHS)) )
       RadU = 0.0_dp; RadV = 0.0_dp; RadSumAD = 0.0_dp
     END IF
-    
+
     nColours = GetNOFBoundaryColours(Solver)
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
@@ -680,13 +680,13 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       !$OMP END DO
     END DO
     !$OMP END PARALLEL
-    
+
     IF( DG ) THEN
       BLOCK
         INTEGER :: ElemCount, n1, n2
         TYPE(Element_t), POINTER :: ElemList(:), Parent1, Parent2
         LOGICAL :: BcDone
-                
+
         IF( dim == 2 ) THEN
           ElemCount = Mesh % NumberOfEdges
           ElemList => Mesh % Edges
@@ -695,7 +695,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
           ElemList => Mesh % Faces
         END IF
 
-        InitDiscontHandles = .TRUE.      
+        InitDiscontHandles = .TRUE.
         DO t = 1, ElemCount
           Element => ElemList(t)
           IF ( .NOT. ActiveBoundaryElement(Element, DGBoundary=.TRUE.) ) CYCLE
@@ -715,52 +715,52 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
           CALL LocalJumpsDiscontBC( Element, n, Parent1, &
               n1, Parent2, n2, InitDiscontHandles, BCDone )
 
-          IF( .NOT. ( BCDone .OR. DB ) ) THEN          
+          IF( .NOT. ( BCDone .OR. DB ) ) THEN
             CALL LocalJumps( Element, n, Parent1, n1, Parent2, n2 )
           END IF
         END DO
       END BLOCK
     END IF
-    
+
     IF (ALLOCATED(RadiatorPowers)) DEALLOCATE( RadiatorPowers)
 
 
-    BLOCK 
+    BLOCK
       CHARACTER(:), ALLOCATABLE :: str
       TYPE(ValueList_t), POINTER :: BC
-      
+
       str = GetVarName(Solver % Variable)//' Nitsche'
-      
+
       IF( ListCheckPresentAnyBC(Model, str) ) THEN
         CALL Info(Caller,"Setting BC's weakly using the Nitshce method!",Level=6)
-        
+
         Active = GetNOFBoundaryElements()
         DO t=1,Active
           Element => GetBoundaryElement(t)
           n  = GetElementNOFNodes()
           nd = GetElementNOFDOFs()
-          
+
           BC => GetBC(Element)
           IF (.NOT.ASSOCIATED(BC)) CYCLE
-          
+
           CALL LocalNitscheBC( Element, n, BC, str )
         END DO
       END IF
     END BLOCK
-      
 
-    
+
+
     CALL DefaultFinishBoundaryAssembly()
-        
+
     CALL DefaultFinishAssembly()
 
     CALL DefaultDirichletBCs()
-    
+
     ! Check stepsize for nonlinear iteration
     !------------------------------------------------------------------------------
     IF( DefaultLinesearch( Converged ) ) GOTO 100
     IF( Converged ) EXIT
-        
+
     ! And finally, solve:
     !--------------------
     PrevNorm = Norm
@@ -817,7 +817,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
          HeatSolver_Boundary_Residual )
    END IF
  END IF
-   
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -970,7 +970,7 @@ CONTAINS
 
     CALL GetElementNodes( Nodes, Element )
     Esize = ElementDiameter(Element, Nodes)
-    
+
     Parent => Element % BoundaryInfo % Left
     CALL GetElementNodes( PNodes, Parent )
 
@@ -984,10 +984,10 @@ CONTAINS
         END IF
       END DO
     END DO
-    
+
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    
+
     ! Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
@@ -997,7 +997,7 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                  IP % W(t), detJ, Basis )
       weight = DetJ * IP % s(t)
-      
+
       ! Normal vector of the surface
       CALL GetParentUVW( Element, nd, Parent, pnd, U, V, W, Basis )
       stat = ElementInfo(Parent,PNodes,U,V,W,detJ,pBasis,pdBasisdx)
@@ -1006,7 +1006,7 @@ CONTAINS
 
       ! Target value at integration point
       D = SUM(Dnodal(1:n) * Basis(1:n))
-      
+
       DO i=1,nd
         DO j=1,nd
           STIFF(i,j) = STIFF(i,j) + weight * SUM(pdBasisdx(Ind(j),:)*Nrm) * Basis(i)
@@ -1016,13 +1016,13 @@ CONTAINS
         FORCE(i) = FORCE(i) + weight * d * SUM(pdBasisdx(Ind(i),:)*Nrm)
         FORCE(i) = FORCE(i) + weight * d * Basis(i) / Esize / Gamma
       END DO
-    END DO    
+    END DO
 
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
-    
+
   END SUBROUTINE LocalNitscheBC
-    
-  
+
+
 
 !------------------------------------------------------------------------------
 ! Assembly of the matrix entries arising from the bulk elements. SIMD version.
@@ -1232,26 +1232,26 @@ CONTAINS
       CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
-    IF( ListGetElementLogical( OrigMesh_h ) ) THEN      
+    IF( ListGetElementLogical( OrigMesh_h ) ) THEN
       CALL GetElementNodesOrigVec( Nodes, UElement=Element )
     ELSE
       CALL GetElementNodesVec( Nodes, UElement=Element )
     END IF
-      
+
     ! Initialize
     MASS  = 0._dp
     STIFF = 0._dp
     FORCE = 0._dp
 
-    ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )    
+    ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )
     ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
-    
+
     ! Numerical integration:
     ! Compute basis function values and derivatives at integration points
     !--------------------------------------------------------------
     stat = ElementInfoVec( Element, Nodes, ngp, IP % U, IP % V, IP % W, detJvec, &
         SIZE(Basis,2), Basis, dBasisdx )
-    
+
     ! Compute actual integration weights (recycle the memory space of DetJVec)
     DetJVec(1:ngp) = IP % s(1:ngp) * DetJVec(1:ngp)
 
@@ -1267,7 +1267,7 @@ CONTAINS
     END IF
 
     ! Get pointer to vector including density on all integration points
-    RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found ) 
+    RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found )
 
     ! thermal conductivity term: STIFF=STIFF+(kappa*grad(u),grad(v))
     ! Probe the rank at the 1st Gauss point: it is a structural property of how
@@ -1474,7 +1474,7 @@ CONTAINS
       ! legacy HeatSolve's "Stabilize" uses (DiffuseConvectiveAnisotropic.F90),
       ! less its C0 (reaction/perfusion, not supported in this Vec path) and
       ! second-derivative-of-basis diffusion residual pieces -- both are zero
-      ! on the plain linear no-bubble element. Same simplification 
+      ! on the plain linear no-bubble element. Same simplification
       ! IncompressibleNSVec's own equal-order stabilization makes for its dropped
       ! viscous residual.
       IF( Stabilize .AND. HaveCond ) THEN
@@ -1513,7 +1513,7 @@ CONTAINS
     IF( Transient ) THEN
       CALL LinearForms_UdotU(ngp, nd, dim, Basis, DetJVec, MASS, TmpVec )
     END IF
-      
+
     ! source term: FORCE=FORCE+(u,f)
     SourceAtIpVec => ListGetElementRealVec( VolSource_h, ngp, Basis, Element, Found )
     IF( Found ) THEN
@@ -1875,7 +1875,7 @@ CONTAINS
   ! are structural ones. Either 404 or 808 type of elements are ok as for now.
   !------------------------------------------------------------------------------
   FUNCTION CalculatePlateTangent(n,Nodes) RESULT ( PlateTan )
-    INTEGER :: n    
+    INTEGER :: n
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp) :: PlateTan(3)
 
@@ -1883,14 +1883,14 @@ CONTAINS
     INTEGER :: i, sgn
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp) :: xmean
-    
+
     IF( ActiveCoord < 1 ) THEN
       ActiveCoord = ListGetInteger( Params,'Active Coordinate',Found )
       IF(.NOT. Found ) THEN
         CALL Fatal('CalculatePlateTangent','Keyword "Draw Velocity" requires "Active Coordinate" to be given!')
       END IF
     END IF
-      
+
     IF(ActiveCoord==1) THEN
       x => Nodes % x
     ELSE IF(ActiveCoord==2) THEN
@@ -1905,7 +1905,7 @@ CONTAINS
       CALL Warn('CalculatePlateTangent',&
           'Heuristics is well suited only for structural meshes: '//I2S(n))
     END IF
-    
+
     xmean = SUM(x(1:n)) / n
 
     PlateTan = 0.0_dp
@@ -1921,7 +1921,7 @@ CONTAINS
     END DO
 
     PlateTan = PlateTan / SQRT( SUM( PlateTan**2 ) )
-    
+
   END FUNCTION CalculatePlateTangent
 
 
@@ -2049,18 +2049,18 @@ CONTAINS
     END IF
 
     IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
-    
+
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
     END IF
-      
+
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN
       CALL GetElementNodesOrig( Nodes, UElement=Element )
     ELSE
       CALL GetElementNodes( Nodes, UElement=Element )
     END IF
-      
+
     ! Initialize
     MASS  = 0._dp
     STIFF = 0._dp
@@ -2140,7 +2140,7 @@ CONTAINS
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
       CondAtIp = ListGetElementReal( Cond_h, Basis, Element, Found, &
-         GaussPoint = t, Rdim = CondRank, Rtensor = CondTensor ) 
+         GaussPoint = t, Rdim = CondRank, Rtensor = CondTensor )
       IF(.NOT. Found ) THEN
         CALL Fatal(Caller,'Required keyword: '//TRIM(Cond_h % Name))
       END IF
@@ -2148,7 +2148,7 @@ CONTAINS
       IF( CondRank == 0 ) THEN
         STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
             CondAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
-      ELSE 
+      ELSE
         DO p=1,nd
           DO q=1,nd
             A = 0.0_dp
@@ -2187,7 +2187,7 @@ CONTAINS
       END IF
 
       IF( ConvConst .OR. ConvComp ) THEN
-        IF( ConvConst ) THEN                    
+        IF( ConvConst ) THEN
           PlateSpeed = ListGetElementReal( PlateSpeed_h, Basis, Element, Found )
           IF( Found ) THEN
             IF(t==1) PlateTangent = CalculatePlateTangent(n,Nodes)
@@ -2285,8 +2285,8 @@ CONTAINS
           END DO
         END IF
       END IF
-      
-      ! reaction term (R*u,v) - perfusion      
+
+      ! reaction term (R*u,v) - perfusion
       ! -----------------------------------
       PerfRateAtIp = ListGetElementReal( PerfRate_h, Basis, Element, Found )
       IF( Found ) THEN
@@ -2295,13 +2295,13 @@ CONTAINS
         PerfRefTempAtIp = ListGetElementReal( PerfRefTemp_h, Basis, Element, Found )
         PerfCoeff = PerfRateAtIp * PerfDensAtIp * PerfCpAtIp
         DO p=1,nd
-          DO q=1,nd        
+          DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + Weight * PerfCoeff
           END DO
-        END DO        
+        END DO
         FORCE(1:nd) = FORCE(1:nd) + Weight * PerfCoeff * PerfRefTempAtIp * Basis(1:nd)
       END IF
-                      
+
       ! Time derivative term
       ! -----------------------------------
       ! EffCp (Cp*Rho, with Rho already carrying any Compressibility Model
@@ -2386,7 +2386,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Compute the fraction to be assembled. In serial case it is always one,
 ! in parallel case only true parents result to assembly, mixed parents gives
-! assembly fraction of 1/2. 
+! assembly fraction of 1/2.
 !------------------------------------------------------------------------------
   FUNCTION BCAssemblyFraction( Element ) RESULT ( AssFrac )
 !------------------------------------------------------------------------------
@@ -2394,11 +2394,11 @@ CONTAINS
     REAL(KIND=dp) :: AssFrac
 
     INTEGER :: NoParents, NoOwners
-    
-    IF( ParEnv % PEs > 1 ) THEN    
+
+    IF( ParEnv % PEs > 1 ) THEN
       NoParents = 0; NoOwners = 0
       IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
-        IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN   
+        IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
           NoParents = NoParents + 1
           IF ( Element % BoundaryInfo % Left % PartIndex == ParEnv % myPE ) NoOwners = NoOwners + 1
         END IF
@@ -2411,14 +2411,14 @@ CONTAINS
     ELSE
       AssFrac = 1.0_dp
     END IF
-    
+
   END FUNCTION BCAssemblyFraction
  !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
 ! Assembly of the matrix entries arising from the Neumann and Robin conditions.
-! Also farfield condition and idealized radiation are treated here. 
+! Also farfield condition and idealized radiation are treated here.
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, nb, VecAsm, DiffuseGray, InitHandles )
 !------------------------------------------------------------------------------
@@ -2518,18 +2518,18 @@ CONTAINS
     STIFF = 0._dp
     FORCE = 0._dp
     ElemWeight = 0._dp
-    
-    RadIdeal = ListCompareElementString( RadFlag_h,'idealized',Element, Found )    
+
+    RadIdeal = ListCompareElementString( RadFlag_h,'idealized',Element, Found )
     RadDiffuse = ListCompareElementString( RadFlag_h,'diffuse gray',Element, Found )
 
     IF( DG ) THEN
       CALL DgRadiationIndexes(Element,n,Indexes,.FALSE.)
     END IF
-    
+
     ! This routine does not do diffuse gray radiation.
-    ! Pass on the information to the routine that does. 
+    ! Pass on the information to the routine that does.
     DiffuseGray = RadDiffuse
-    
+
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
@@ -2555,12 +2555,12 @@ CONTAINS
               IP % W(t), detJ, Basis )
 
       Weight = IP % s(t) * DetJ
-      
+
       IF ( AxiSymmetric ) THEN
         Weight = Weight * SUM( Nodes % x(1:n)*Basis(1:n) )
       END IF
-      ElemWeight(1:nd) = ElemWeight(1:nd) + Weight * Basis(1:nd) 
-      
+      ElemWeight(1:nd) = ElemWeight(1:nd) + Weight * Basis(1:nd)
+
       ! Evaluate terms at the integration point:
       !------------------------------------------
 
@@ -2631,7 +2631,7 @@ CONTAINS
 
         Emis = ListGetElementRealParent( EmisMat_h, Basis, Element = Element, Found = Found )
         IF( .NOT. Found ) THEN
-          Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
+          Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found )
         END IF
         IF(.NOT. Found ) THEN
           ! GetStringThreadSafe, not ListGetString directly: this runs inside
@@ -2641,16 +2641,16 @@ CONTAINS
               //TRIM(NameStr))
           CYCLE
         END IF
-        
+
         IF( DG ) THEN
           T0 = SUM( Basis(1:n) * Temperature(TempPerm(Indexes(1:n))))
         ELSE
           T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes)))
         END IF
-          
+
         IF( Newton ) THEN
           RadC = StefBoltz * Emis * 4*T0**3
-          RadF = StefBoltz * Emis * (3*T0**4+RadText**4) 
+          RadF = StefBoltz * Emis * (3*T0**4+RadText**4)
         ELSE
           RadC = Emis * StefBoltz * (T0**3 + &
               T0**2*RadText+T0*RadText**2 + RadText**3)
@@ -2659,14 +2659,14 @@ CONTAINS
       ELSE
         RadC = 0; RadF=0;
       END IF
-        
+
       IF( RobinBC .OR. RadIdeal) THEN
         DO p=1,nd
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + Weight * ( C + RadC ) * Basis(q) * Basis(p)
           END DO
         END DO
-        FORCE(1:nd) = FORCE(1:nd) + Weight * ( C * Text + RadF ) * Basis(1:nd) 
+        FORCE(1:nd) = FORCE(1:nd) + Weight * ( C * Text + RadF ) * Basis(1:nd)
       END IF
 
     END DO
@@ -2684,7 +2684,7 @@ CONTAINS
       END BLOCK
     END IF
 #endif
-    
+
     IF( ABS(AssFrac-1.0_dp) > TINY( AssFrac ) ) THEN
       FORCE(1:nd) = AssFrac * FORCE(1:nd)
       STIFF(1:nd,1:nd) = AssFrac * STIFF(1:nd,1:nd)
@@ -2692,8 +2692,8 @@ CONTAINS
 
     IF( DG ) THEN
       CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
-          Solver % Matrix % Rhs, FORCE, n, 1, TempPerm(Indexes(1:n)), UElement=Element)      
-    ELSE    
+          Solver % Matrix % Rhs, FORCE, n, 1, TempPerm(Indexes(1:n)), UElement=Element)
+    ELSE
       CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
     END IF
 
@@ -2705,7 +2705,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-! To save some time tabulate the data needed for the diffuse gray radiation. 
+! To save some time tabulate the data needed for the diffuse gray radiation.
 ! Temps4 is the ^4 averaged temperature over elements.
 !------------------------------------------------------------------------------
   SUBROUTINE TabulateBoundaryAverages( Mesh, Temps4, Emiss, Absorp, Reflect )
@@ -2718,10 +2718,10 @@ CONTAINS
      INTEGER :: bindex, nb, n, j, noactive
      INTEGER :: ElemInds(12)
      REAL(KIND=dp) :: NodalVal(12), NodalTemp(12)
-     
+
      nb = Mesh % NumberOfBoundaryElements
      NoActive = 0
-     
+
      DO j=1,nb
 !      bindex = j + Mesh % NumberOfBulkElements
 !      Element => Mesh % Elements(bindex)
@@ -2729,7 +2729,7 @@ CONTAINS
 
        BC => GetBC(Element)
        IF(.NOT. ASSOCIATED( BC ) ) CYCLE
-       
+
        IF( ListGetString( BC,'Radiation',Found) /= 'diffuse gray' ) CYCLE
        NoActive = NoActive + 1
 
@@ -2740,7 +2740,7 @@ CONTAINS
          Absorp = 0.0_dp
          Reflect = 0.0_dp
        END IF
-         
+
        n = GetElementNOFNodes(Element)
 
        IF( DG ) THEN
@@ -2785,15 +2785,15 @@ CONTAINS
          END IF
        END IF
      END DO
-     
+
    END SUBROUTINE TabulateBoundaryAverages
 !------------------------------------------------------------------------------
 
-   
+
 !------------------------------------------------------------------------------
 ! Assembly of the matrix entries arising diffuse gray radiation. All the terms
 ! are treated here. This is a special routine since the view factors create
-! additional connections to the matrix. 
+! additional connections to the matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixDiffuseGray( Element, n, nd, nb )
 !------------------------------------------------------------------------------
@@ -2805,24 +2805,24 @@ CONTAINS
         RadLoadAtIp, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac, cNewton
     REAL(KIND=dp) :: Basis(nd),DetJ,Atext(12),Base(12),S,RadCoeffAtIP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp, Beta, Fact1, Fact2, EmisR
-    REAL(KIND=dp), POINTER :: Fact(:) 
+    REAL(KIND=dp), POINTER :: Fact(:)
     TYPE(Element_t), POINTER :: RadElement
     LOGICAL :: Stat,Found,BCOpen,Radiators
     INTEGER :: j,t,p,q,bindex,k,k1,k2,nf,nf_imp
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     INTEGER, POINTER :: ElementList(:),pIndexes(:)
-    REAL(KIND=dp), POINTER :: ForceVector(:)   
+    REAL(KIND=dp), POINTER :: ForceVector(:)
     REAL(KIND=dp) :: NodalTemp(12)
     INTEGER, TARGET :: ElemInds(12),ElemInds2(12)
-    
+
 !------------------------------------------------------------------------------
     IF(Element % PartIndex /= ParEnv % myPE ) RETURN
-    
+
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
-    
+
     ! The caller (LocalMatrixBC) only invokes this subroutine when it has
     ! already established RadDiffuse == .TRUE. for this same Element, via
     ! the thread-safe RadFlag_h handle + ListCompareElementString. Re-checking
@@ -2833,20 +2833,20 @@ CONTAINS
     AssFrac = BCAssemblyFraction(Element)
     IF( AssFrac < TINY( AssFrac ) ) RETURN
 
-    CALL GetElementNodes( Nodes, UElement=Element) 
+    CALL GetElementNodes( Nodes, UElement=Element)
     n = Element % TYPE % NumberOfNodes
-    
+
     IF( .NOT. ASSOCIATED( Element % BoundaryInfo % RadiationFactors ) ) THEN
       CALL Fatal(Caller,'Radiation factors not calculated for boundary!')
     END IF
-    
+
     Fact => Element % BoundaryInfo % RadiationFactors % Factors
     ElementList => Element % BoundaryInfo % RadiationFactors % Elements
 
     bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
     nf = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
-      
-    nf_imp = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors      
+
+    nf_imp = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors
     IF( nf_imp == 0 ) nf_imp = nf
 
     ! Temperature/TempPerm are shared, host-associated pointers already set
@@ -2859,7 +2859,7 @@ CONTAINS
     Emis1 = Emiss(bindex)
     Refl1 = Reflect(bindex)
     Abso1 = Absorp(bindex)
-    
+
     IP = GaussPoints( Element )
 
     BCOpen = GetLogical( BC, 'Radiation Boundary Open', Found)
@@ -2870,7 +2870,7 @@ CONTAINS
     END IF
 
     STIFF(1:n,1:n) = 0.0_dp
-    FORCE(1:n) = 0.0_dp      
+    FORCE(1:n) = 0.0_dp
 
     IF( DG ) THEN
       CALL DgRadiationIndexes(Element,n,ElemInds,.TRUE.)
@@ -2878,7 +2878,7 @@ CONTAINS
     ELSE
       NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
     END IF
-    
+
     Text  = 0.0_dp
 
     Radiators = ALLOCATED(Element % BoundaryInfo % Radiators) .AND. &
@@ -2911,27 +2911,27 @@ CONTAINS
         RadLoadAtIp =  (3 * EmisR * TempAtIp**3 * StefBoltz - Fact2) * TempAtIp &
              + Fact1
         RadCoeffAtIp = 4 * EmisR * TempAtIp**3 * StefBoltz - Fact2
-        
+
         IF( HaveRadNewtonRelax ) THEN
           RadLoadAtIp = RadNewtonRelax * RadLoadAtIp + (1-RadNewtonRelax) * Fact1
-          RadCoeffAtIp = RadNewtonRelax * RadCoeffAtIp + (1-RadNewtonRelax) * EmisR * StefBoltz * TempAtIp**3          
+          RadCoeffAtIp = RadNewtonRelax * RadCoeffAtIp + (1-RadNewtonRelax) * EmisR * StefBoltz * TempAtIp**3
         END IF
       ELSE
         RadLoadAtIp = Fact1
         RadCoeffAtIp = EmisR * StefBoltz * TempAtIp**3
       END IF
-      
+
       DO t=1,IP % n
         stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
-        s = detJ * IP % s(t)        
+        s = detJ * IP % s(t)
         IF ( AxiSymmetric ) THEN
           s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
         END IF
 
         DO p=1,n
-          FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
+          FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp
         END DO
-        Base(1:n) = Base(1:n) + s * Basis(1:n) 
+        Base(1:n) = Base(1:n) + s * Basis(1:n)
       END DO
 
       ! The irradiation is constant over the element and depends on the element mean
@@ -2976,18 +2976,18 @@ CONTAINS
           RadSumAD = RadSumAD + Area * Dself
         END BLOCK
       END IF
-        
-    ELSE ! .NOT. Radiosity ) 
+
+    ELSE ! .NOT. Radiosity )
       ! Go through surfaces (j) this surface (i) is getting radiated from.
-      !------------------------------------------------------------------------------        
-      IF ( Newton ) THEN                
+      !------------------------------------------------------------------------------
+      IF ( Newton ) THEN
         ! Linearization of T^4_i term
         !----------------------------------------------------------------------------
         Base = 0.0_dp
 
         DO t=1,IP % n
           stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
-          s = detJ * IP % s(t)        
+          s = detJ * IP % s(t)
           IF ( AxiSymmetric ) THEN
             s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
           END IF
@@ -2998,11 +2998,11 @@ CONTAINS
 
           DO p=1,n
             DO q=1,n
-              STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q)*RadCoeffAtIp 
+              STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q)*RadCoeffAtIp
             END DO
             FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp
-          END DO            
-          Base(1:n) = Base(1:n) + s * Basis(1:n) 
+          END DO
+          Base(1:n) = Base(1:n) + s * Basis(1:n)
         END DO
 
         ! Linearization of the G_jiT^4_j term
@@ -3018,7 +3018,7 @@ CONTAINS
           bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
           Text = Temps4(bindex)**(0.25_dp)
 
-          IF( j <= nf_imp ) THEN        
+          IF( j <= nf_imp ) THEN
             ! Linearization of the G_jiT^4_j term
             !------------------------------------------------------------------------------
             RadCoeffAtIp = -4 * Fj * Text**3 * StefBoltz
@@ -3033,7 +3033,7 @@ CONTAINS
             END IF
 
             ! Integrate the contribution of surface j over surface j and add to global matrix
-            !------------------------------------------------------------------------------                    
+            !------------------------------------------------------------------------------
             ! ForceVector is shared across boundary elements/threads (no
             ! coloring guarantees disjoint nodes here — RadElement can be
             ! anywhere in the mesh), and unlike DefaultUpdateEquations this
@@ -3078,13 +3078,13 @@ CONTAINS
         IF( Radiators ) THEN
           DO p=1,n
             FORCE(p) = FORCE(p) + Base(p) * Emis1 * SUM(Element % BoundaryInfo % &
-                Radiators * RadiatorPowers ) 
+                Radiators * RadiatorPowers )
           END DO
         END IF
-        
-      ELSE ! .NOT. Newton 
+
+      ELSE ! .NOT. Newton
         ! Compute the weighted sum of T^4
-        
+
         Text = 0._dp
         DO j=1,nf
           Fj = Fact(j)
@@ -3102,7 +3102,7 @@ CONTAINS
           END IF
         END DO
       END IF
-   
+
 
       ! Add the missing part of the incoming radiation in case the boundary is open
       !----------------------------------------------------------------------------
@@ -3112,26 +3112,26 @@ CONTAINS
 
         IF( AngleFraction < 1.0_dp ) THEN
           Topen = (SUM( Atext(1:n)**4 ) )**0.25_dp
-          IF( Newton ) THEN        
+          IF( Newton ) THEN
             RadLoadAtIp = (1.0_dp-AngleFraction) * Emis1 * Topen**4 * StefBoltz
             DO p=1,n
-              FORCE(p) = FORCE(p) + Base(p) * RadLoadAtIp 
+              FORCE(p) = FORCE(p) + Base(p) * RadLoadAtIp
             END DO
           ELSE
             Text = Text + (1.0_dp-AngleFraction) * Topen**4
           END IF
         END IF
       END IF
-        
+
       ! Because we split the product in T^4-T_ext^4 we cannot linearize it before
       ! having computed the complete T_ext^4. So this is done in the end.
       !----------------------------------------------------------------------------
-      IF( .NOT. Newton ) THEN      
+      IF( .NOT. Newton ) THEN
         Base = 0.0_dp
         Text = Text**0.25_dp
         DO t=1,IP % n
           stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
-          s = detJ * IP % s(t)        
+          s = detJ * IP % s(t)
           IF ( AxiSymmetric ) THEN
             s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
           END IF
@@ -3145,11 +3145,11 @@ CONTAINS
             END DO
             FORCE(p) = FORCE(p) + s * Basis(p) * RadCoeffAtIp * Text
           END DO
-          Base(1:n) = Base(1:n) + s * Basis(1:n) 
+          Base(1:n) = Base(1:n) + s * Basis(1:n)
         END DO
       END IF
     END IF ! .NOT. Radiosity
-      
+
     ! Calculate fluxes on-the-fly
     IF( PostCalc ) THEN
       BLOCK
@@ -3170,11 +3170,11 @@ CONTAINS
         END IF
       END BLOCK
     END IF
-    
+
     ! Glue standard local matrix equation to the global matrix
     ! The view factor part has already been glued.
     !-----------------------------------------------------------------
-    
+
     IF( DG ) THEN
       pIndexes => ElemInds
     ELSE
@@ -3197,17 +3197,17 @@ CONTAINS
   END SUBROUTINE LocalMatrixDiffuseGray
 !------------------------------------------------------------------------------
 
-  
+
 !------------------------------------------------------------------------------
 ! This assembles the local jumps related to standard DG formulation.
-! For fully reduced basis this is possibly never needed. 
+! For fully reduced basis this is possibly never needed.
 !------------------------------------------------------------------------------
   SUBROUTINE LocalJumps( Element,n,LeftParent,nl,RightParent,nr)
 !------------------------------------------------------------------------------
     INTEGER :: n,nl,nr
     TYPE(Element_t) :: Element, LeftParent, RightParent
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),FORCE(:)   
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),FORCE(:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp) :: LeftBasis(nl), LeftdBasisdx(nl,3)
     REAL(KIND=dp) :: RightBasis(nr), RightdBasisdx(nr,3)
@@ -3227,7 +3227,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDofs
-      ALLOCATE(Basis(m), dBasisdx(m,3),STIFF(2*m,2*m), FORCE(2*m), STAT=allocstat)      
+      ALLOCATE(Basis(m), dBasisdx(m,3),STIFF(2*m,2*m), FORCE(2*m), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed in LocalJumps')
       END IF
@@ -3240,7 +3240,7 @@ CONTAINS
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    
+
     CALL GetElementNodes( Nodes, Element )
     CALL GetElementNodes( LeftParentNodes, LeftParent )
     CALL GetElementNodes( RightParentNodes, RightParent )
@@ -3259,7 +3259,7 @@ CONTAINS
     !      Numerical integration over the edge
     !------------------------------------------------------------------------------
     IP = GaussPoints(Element)
-    
+
     DO k=1,IP % n
       U = IP % u(k)
       V = IP % v(k)
@@ -3272,7 +3272,7 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, U, V, W, detJ, Basis, dBasisdx )
 
       S = S * detJ
-      
+
       Normal = NormalVector( Element, Nodes, U, V, .FALSE. )
       IF ( SUM( LeftOut*Normal ) < 0 ) Normal = -Normal
 
@@ -3282,28 +3282,28 @@ CONTAINS
 
       stat = ElementInfo( LeftParent, LeftParentNodes, &
           U, V, W, detJ, LeftBasis, LeftdBasisdx )
-      
+
       CALL GetParentUVW( Element, n, RightParent, nr, U, V, W, Basis )
 
       stat = ElementInfo( RightParent, RightParentNodes, &
           U, V, W, detJ, RightBasis, RightdBasisdx )
-      
+
       ! Integrate jump terms:
       !-------------------------
       Jump(1:nl) = LeftBasis(1:nl)
       Jump(nl+1:nl+nr) = -RightBasis(1:nr)
-      
+
       DO i = 1,nl
         LeftdBasisdn(i)  = SUM( LeftdBasisdx(i,:)  * Normal(:) )
       END DO
-      
+
       DO i = 1,nr
         RightdBasisdn(i) = SUM( RightdBasisdx(i,:) * Normal(:) )
       END DO
-      
+
       AverageFlux(1:nl) = LeftdBasisdn(1:nl) / 2.0d0
       AverageFlux(nl+1:nl+nr) = RightdBasisdn(1:nr) / 2.0d0
-      
+
       DO p = 1,nl+nr
         DO q = 1,nl+nr
           STIFF(p,q) = STIFF(p,q) + (gamma/hE)*Jump(p)*Jump(q) * s
@@ -3312,9 +3312,9 @@ CONTAINS
         END DO
       END DO
     END DO
-    
+
     CALL DefaultUpdateEquations( STIFF, FORCE, Element )
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
@@ -3324,25 +3324,25 @@ CONTAINS
 ! Swap parent elements of a boundary element such that always the Parent1
 ! belongs to the desired body.
 !-------------------------------------------------------------------------
-  FUNCTION SwapParentsOnFlag(Parent1, Parent2,FoundJump) RESULT ( Swapped ) 
+  FUNCTION SwapParentsOnFlag(Parent1, Parent2,FoundJump) RESULT ( Swapped )
 !-------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Parent1, Parent2
     TYPE(Element_t), POINTER :: pElem
-    LOGICAL :: FoundJump, Swapped    
+    LOGICAL :: FoundJump, Swapped
     TYPE(ValueList_t), POINTER :: Mat
     LOGICAL :: LeftActive, RightActive, HaveJump
-        
+
     SAVE LeftActive, HaveJump
 
     HaveJump = .FALSE.
     Swapped = .FALSE.
-    
-    ! If we visit subroutine again with same body combination then use also the previous analysis.   
+
+    ! If we visit subroutine again with same body combination then use also the previous analysis.
     Mat => GetMaterial( Parent1 )
-    LeftActive = ListGetLogical( Mat,'Heat Gap Parent',Found )        
-    Mat =>  GetMaterial( Parent2 ) 
+    LeftActive = ListGetLogical( Mat,'Heat Gap Parent',Found )
+    Mat =>  GetMaterial( Parent2 )
     RightActive = ListGetLogical( Mat,'Heat Gap Parent',Found )
-      
+
     IF( LeftActive .AND. RightActive ) THEN
       HaveJump = .FALSE.
     ELSE IF( LeftActive ) THEN
@@ -3353,10 +3353,10 @@ CONTAINS
       HaveJump = .FALSE.
       LeftActive = .TRUE.
     END IF
-    
+
     FoundJump = HaveJump
     IF( .NOT. FoundJump ) RETURN
-    
+
     ! Switch the reference body always to Parent1
     IF(.NOT. LeftActive ) THEN
       pElem => Parent1
@@ -3364,15 +3364,15 @@ CONTAINS
       Parent2 => pElem
       Swapped = .TRUE.
     END IF
-    
+
   END FUNCTION SwapParentsOnFlag
 !------------------------------------------------------------------------------
 
-  
+
 
 !------------------------------------------------------------------------------
 ! Add jump boundary conditions. These may only occur in conjunction with
-! discontinuous Galerkin method. 
+! discontinuous Galerkin method.
 !------------------------------------------------------------------------------
   SUBROUTINE LocalJumpsDiscontBC( Element,n,&
       Parent1,n1,Parent2,n2,InitHandles,BCDone)
@@ -3380,7 +3380,7 @@ CONTAINS
     INTEGER :: n, n1, n2
     TYPE(Element_t), TARGET :: Element
     TYPE(Element_t), POINTER :: Parent1, Parent2
-    LOGICAL :: InitHandles, BCDone 
+    LOGICAL :: InitHandles, BCDone
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: Basis(n), detJ, S, alpha, beta, AssFrac
@@ -3396,77 +3396,77 @@ CONTAINS
     REAL(KIND=dp) :: Alpha0, Beta0
     LOGICAL :: AllocationsDone = .FALSE.
     INTEGER :: allocstat, m
-    
+
     SAVE Beta_h, Cond_h, BetaParent_h, CondParent_h, Nodes, JumpOrder, DiagJump, &
         Alpha0, Beta0, AllocationsDone, STIFF, FORCE
-    
+
     !------------------------------------------------------------------------------
 
     BCDone = .FALSE.
-    
+
     ! Both sides need to be active parent elements for a jump condition
     IF( .NOT. CheckElementEquation( Model, Parent1, EqName ) ) RETURN
     IF( .NOT. CheckElementEquation( Model, Parent2, EqName ) ) RETURN
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDofs
-      ALLOCATE(STIFF(2*m,2*m), FORCE(2*m), STAT=allocstat)      
+      ALLOCATE(STIFF(2*m,2*m), FORCE(2*m), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed in LocalJumps')
       END IF
       AllocationsDone = .TRUE.
     END IF
-    
-    
+
+
     IF( InitHandles ) THEN
-      JumpOrder = ListGetInteger( Params,'Jump Integration Order',Found )     
-      
+      JumpOrder = ListGetInteger( Params,'Jump Integration Order',Found )
+
       DiagJump = ListGetLogical( Params,'Diagonal Jump Glue',Found )
       IF( DiagJump ) THEN
         CALL Info( Caller,'Setting gluing projector to be diagonal',Level=7)
       ELSE
         CALL Info( Caller,'Setting gluing projector to standard Galerkin',Level=7)
       END IF
-      
+
       CALL ListInitElementKeyword( Cond_h,'Boundary Condition','Heat Gap Coefficient')
-      CALL ListInitElementKeyword( Beta_h,'Boundary Condition','Heat Gap Flux')      
+      CALL ListInitElementKeyword( Beta_h,'Boundary Condition','Heat Gap Flux')
       CALL ListInitElementKeyword( CondParent_h,'Material','Heat Gap Coefficient')
-      CALL ListInitElementKeyword( BetaParent_h,'Material','Heat Gap Flux')      
-      
+      CALL ListInitElementKeyword( BetaParent_h,'Material','Heat Gap Flux')
+
       Alpha0 = ListGetCReal( Params,'Heat Gap Coefficient',Found)
       Beta0 = ListGetCReal( Params,'Heat Gap Flux',Found)
-      
-      InitHandles = .FALSE.      
+
+      InitHandles = .FALSE.
     END IF
-    
-    ! Get the material parameters from the BC 
+
+    ! Get the material parameters from the BC
     FoundBCJump = .FALSE.
-    Mat => GetBC( Element ) 
-    IF( ASSOCIATED(Mat) ) THEN      
+    Mat => GetBC( Element )
+    IF( ASSOCIATED(Mat) ) THEN
       FoundBCJump =  GetLogical( Mat,'Heat Gap', Found )
     END IF
 
     ! Or find body jump between two parents
     Swapped = SwapParentsOnFlag( Parent1, Parent2, FoundBodyJump )
-    
+
     IF( .NOT. ( FoundBCJump .OR. FoundBodyJump ) ) RETURN
 
     AssFrac = BCAssemblyFraction(Element)
-    IF( AssFrac < TINY( AssFrac ) ) RETURN    
-    
+    IF( AssFrac < TINY( AssFrac ) ) RETURN
+
     IF( FoundBCJump ) THEN
       pElem => Element
     ELSE
       pElem => Parent1
     END IF
-    
+
     IF( Swapped ) THEN
       ntmp = n1
       n1 = n2
       n2 = ntmp
     END IF
-    
-    ! Find the DG indexes for the local assembly 
+
+    ! Find the DG indexes for the local assembly
     !---------------------------------------------
     DgIndexes(1:2*n) = 0
     DO i=1,n
@@ -3488,14 +3488,14 @@ CONTAINS
     IF( ANY( DgIndexes(1:2*n) == 0 ) ) THEN
       CALL Fatal(Caller,'There should not be zero DG indexes!')
     END IF
-    
+
     DgIndexes(1:2*n) = TempPerm( DgIndexes(1:2*n) )
-        
+
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    
+
     CALL GetElementNodes( Nodes, Element )
-   
+
     !------------------------------------------------------------------------------
     !      Numerical integration over the edge
     !------------------------------------------------------------------------------
@@ -3520,40 +3520,40 @@ CONTAINS
       IF(.NOT. Found ) alpha = alpha0
 
       IF( FoundBCJump ) THEN
-        beta = ListGetElementReal( Beta_h, Basis, pElem, Found ) 
+        beta = ListGetElementReal( Beta_h, Basis, pElem, Found )
       ELSE
-        beta = ListGetElementReal( BetaParent_h, Basis, pElem, Found ) 
+        beta = ListGetElementReal( BetaParent_h, Basis, pElem, Found )
       END IF
       IF(.NOT. Found ) beta = beta0
 
-      DO p = 1,n                  
-        IF( DiagJump ) THEN          
+      DO p = 1,n
+        IF( DiagJump ) THEN
           ! 1st side
-          STIFF(p,p) = STIFF(p,p) + alpha * Basis(p) * s 
-          STIFF(p,n+p) = STIFF(p,n+p) - alpha * Basis(p) * s 
+          STIFF(p,p) = STIFF(p,p) + alpha * Basis(p) * s
+          STIFF(p,n+p) = STIFF(p,n+p) - alpha * Basis(p) * s
           ! 2nd side
-          STIFF(p+n,p) = STIFF(p+n,p) - alpha * Basis(p) * s 
-          STIFF(p+n,n+p) = STIFF(p+n,n+p) + alpha * Basis(p) * s 
+          STIFF(p+n,p) = STIFF(p+n,p) - alpha * Basis(p) * s
+          STIFF(p+n,n+p) = STIFF(p+n,n+p) + alpha * Basis(p) * s
         ELSE
           DO q = 1,n
-            STIFF(p,q) = STIFF(p,q) + alpha * Basis(p) * Basis(q) * s 
-            STIFF(p,n+q) = STIFF(p,n+q) - alpha * Basis(p) * Basis(q) * s 
-            STIFF(p+n,q) = STIFF(p+n,q) - alpha * Basis(p) * Basis(q) * s 
-            STIFF(p+n,n+q) = STIFF(p+n,n+q) + alpha * Basis(p) * Basis(q) * s 
+            STIFF(p,q) = STIFF(p,q) + alpha * Basis(p) * Basis(q) * s
+            STIFF(p,n+q) = STIFF(p,n+q) - alpha * Basis(p) * Basis(q) * s
+            STIFF(p+n,q) = STIFF(p+n,q) - alpha * Basis(p) * Basis(q) * s
+            STIFF(p+n,n+q) = STIFF(p+n,n+q) + alpha * Basis(p) * Basis(q) * s
           END DO
-        END IF          
-        FORCE(p) = FORCE(p) + beta/2 * Basis(p) * s 
-        FORCE(p+n) = FORCE(p+n) + beta/2 * Basis(p) * s 
+        END IF
+        FORCE(p) = FORCE(p) + beta/2 * Basis(p) * s
+        FORCE(p+n) = FORCE(p+n) + beta/2 * Basis(p) * s
       END DO
     END DO
 
     ! In parallel case the contribution will come from both sides.
-    ! Hence scale it by half and neglect pure halo contributions. 
-    IF( ABS(AssFrac-1.0_dp) > TINY( AssFrac ) ) THEN     
-      FORCE(1:2*n) = AssFrac * FORCE(1:2*n) 
-      STIFF(1:2*n,1:2*n) = AssFrac * STIFF(1:2*n,1:2*n) 
+    ! Hence scale it by half and neglect pure halo contributions.
+    IF( ABS(AssFrac-1.0_dp) > TINY( AssFrac ) ) THEN
+      FORCE(1:2*n) = AssFrac * FORCE(1:2*n)
+      STIFF(1:2*n,1:2*n) = AssFrac * STIFF(1:2*n,1:2*n)
     END IF
-        
+
     ! We need our own caller since we may have switched order of parents
     ! This results to the need to have our own scaling in parallel.
     CALL UpdateGlobalEquations( Solver % Matrix, STIFF, Solver % Matrix % rhs, FORCE, &
@@ -3634,42 +3634,42 @@ CONTAINS
   END FUNCTION RankOneSolve
 
 
-  SUBROUTINE CalculateRadiosityFields(Pre) 
-    LOGICAL :: Pre    
+  SUBROUTINE CalculateRadiosityFields(Pre)
+    LOGICAL :: Pre
     LOGICAL :: Visited = .FALSE., CalcRadiosityFields = .TRUE.
     INTEGER, POINTER :: Perm(:)
     INTEGER :: i,t,nsize = 0
     TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp) :: c
-    
+
     SAVE Perm, nsize, CalcRadiosityFields, Visited
 
     IF(.NOT. CalcRadiosityFields ) RETURN
-    
-    IF(.NOT. Visited ) THEN    
+
+    IF(.NOT. Visited ) THEN
       Visited = .TRUE.
-      CalcRadiosityFields = ListGetLogical( Params,'Calculate Radiosity Fields',Found ) 
+      CalcRadiosityFields = ListGetLogical( Params,'Calculate Radiosity Fields',Found )
       IF( CalcRadiosityFields ) THEN
         IF(.NOT. Radiosity ) THEN
           CALL Warn('CalculateRadiosityFields','Radiosity Model is not active, fields omitted!')
           CalcRadiosityFields = .FALSE.
           RETURN
         END IF
-        
+
         ALLOCATE(Perm(Solver % Mesh % NumberOfNodes))
         Perm = 0
-        
+
         CALL Info(Caller,'Creating permutation for radiosity fields',Level=8)
         DO t=Mesh % NumberOfBulkElements+1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           Element => Mesh % Elements(t)
           BC => GetBC(Element)
-          IF(.NOT. ASSOCIATED( BC ) ) CYCLE       
+          IF(.NOT. ASSOCIATED( BC ) ) CYCLE
           IF( ListCheckPresent( BC,'Radiation') .OR. &
               ListCheckPresent( BC,'Radiator') ) THEN
             Perm(Element % NodeIndexes) = 1
           END IF
         END DO
-        
+
         nsize = 0
         DO i=1,Mesh % NumberOfNodes
           IF(Perm(i) > 0) THEN
@@ -3678,7 +3678,7 @@ CONTAINS
           END IF
         END DO
         CALL Info(Caller,'Number of active nodes for boundary fields: '//I2S(nsize),Level=10)
-        
+
         CALL DefaultVariableAdd('Radiation Weight',Perm=Perm,Var=PostWeight,Output=.FALSE.)
         CALL DefaultVariableAdd('Radiation Flux',Perm=Perm,Var=PostFlux,Secondary=.TRUE.)
         IF( Radiosity ) THEN
@@ -3688,7 +3688,7 @@ CONTAINS
         END IF
         IF(nsize == 0) CalcRadiosityFields = .FALSE.
       END IF
-      PostCalc = CalcRadiosityFields 
+      PostCalc = CalcRadiosityFields
     ELSE IF(Pre) THEN
       PostWeight % Values = 0.0_dp
       PostFlux % Values = 0.0_dp
@@ -3707,9 +3707,9 @@ CONTAINS
           PostEmis % Values = PostEmis % Values / PostWeight % Values
           PostTemp % Values = PostTemp % Values / PostWeight % Values
         END WHERE
-      END IF      
+      END IF
     END IF
-         
+
   END SUBROUTINE CalculateRadiosityFields
 
 !------------------------------------------------------------------------------
@@ -3771,7 +3771,7 @@ END SUBROUTINE HeatSolver
         CASE DEFAULT
            dim = CoordinateSystemDimension()
      END SELECT
-!    
+!
 !    ---------------------------------------------
 
      Element => Edge % BoundaryInfo % Left
@@ -3798,7 +3798,7 @@ END SUBROUTINE HeatSolver
      ALLOCATE( Temperature(nd), Basis(nd), ExtTemperature(nd), &
         TransferCoeff(en), x(en), y(en), z(en), EdgeBasis(nd), &
         dBasisdx(nd,3), NodalConductivity(nd), Flux(nd), &
-        NodalEmissivity(nd), Indexes(nd) ) 
+        NodalEmissivity(nd), Indexes(nd) )
 
      nd = GetElementDOFs(Indexes,Element)
 
@@ -3964,7 +3964,7 @@ END SUBROUTINE HeatSolver
                      ( SUM( Temperature(1:nd) * Basis(1:nd) ) ** 4 - &
                        SUM( ExtTemperature(1:en) * EdgeBasis(1:en) ) ** 4 )
 
-!          flux given by the computed solution, and 
+!          flux given by the computed solution, and
 !          force norm for scaling the residual:
 !          -----------------------------------------
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
@@ -4101,7 +4101,7 @@ END SUBROUTINE HeatSolver
            s = IntegStuff % s(t) * detJ * SqrtMetric
         END IF
 
-        ! 
+        !
         ! Compute flux over the edge as seen by elements
         ! on both sides of the edge:
         ! ----------------------------------------------
@@ -4113,7 +4113,7 @@ END SUBROUTINE HeatSolver
                  Element => Edge % BoundaryInfo % Right
            END SELECT
 !
-!          Can this really happen (maybe it can...)  ?      
+!          Can this really happen (maybe it can...)  ?
 !          -------------------------------------------
            IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) CYCLE
 !
@@ -4170,7 +4170,7 @@ END SUBROUTINE HeatSolver
         END DO
 
 !       Compute squre of the flux jump:
-!       -------------------------------   
+!       -------------------------------
         EdgeLength  = EdgeLength + s
         Jump = 0.0d0
         DO k=1,dim
@@ -4375,7 +4375,7 @@ END SUBROUTINE HeatSolver
      NodalSource = 0.0d0
      IF( k > 0 ) THEN
        NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
-           'Volumetric Heat Source',VolSource ) 
+           'Volumetric Heat Source',VolSource )
        IF( .NOT. VolSource ) THEN
          NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
              'Heat Source',  Found )
@@ -4433,7 +4433,7 @@ END SUBROUTINE HeatSolver
         ELSE
           Residual = -Density * SUM( NodalSource(1:n) * Basis(1:n) )
         END IF
-          
+
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
            DO j=1,dim
 !

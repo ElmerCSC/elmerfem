@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -33,7 +33,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE SaveUtils
   USE AscBinOutputUtils
-  
+
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -58,8 +58,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: CalcNrm
   REAL(KIND=dp) :: Nrm
   REAL(KIND=dp), POINTER :: RefResults(:,:), ThisResults(:,:)
-  
-  
+
+
   SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMeshName
 
   INTERFACE
@@ -132,7 +132,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   IF( .NOT. SubroutineVisited ) THEN
     IF ( GetLogical(Params,'Show Variables',Found) ) THEN
-      CALL CreateListForSaving( Model, Params,.TRUE. )    
+      CALL CreateListForSaving( Model, Params,.TRUE. )
     END IF
   END IF
 
@@ -151,12 +151,12 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     FilePrefix = 'Case'
     CALL ListAddString( Params,'Output File Name',FilePrefix)
   END IF
-  
-  IF( .NOT. SubroutineVisited ) THEN 
-    CALL Info(Caller,'Saving with prefix: '//TRIM(FilePrefix))
-  END IF	
 
-  ! The idea of this is that the independent subroutines may be called 
+  IF( .NOT. SubroutineVisited ) THEN
+    CALL Info(Caller,'Saving with prefix: '//TRIM(FilePrefix))
+  END IF
+
+  ! The idea of this is that the independent subroutines may be called
   ! with different data sets and still maintaining the standard output calling convention
   IF(SaveVtu)  OutputCount(1) = OutputCount(1) + 1
   IF(SaveGmsh) OutputCount(2) = OutputCount(2) + 1
@@ -165,7 +165,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   IF(SaveGid)  OutputCount(5) = OutputCount(5) + 1
   IF(SaveOpenDx) OutputCount(6) = OutputCount(6) + 1
   IF(SaveSTL) OutputCount(7) = OutputCount(7) + 1
-  
+
   ! Finally go for it and write desired data
   ! Some formats requite that the list of variables is explicitly given
   !-----------------------------------------
@@ -173,19 +173,19 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   MeshLevel = GetInteger( Params,'Output Mesh Level',Found)
   SomeMeshSaved = .FALSE.
 
-  SaveAllMeshes = GetLogical( Params,'Save All Meshes',Found ) 
-  SaveThisMesh = GetLogical( Params,'Save This Mesh Only',Found ) 
-  SaveSolverMeshIndex = GetInteger( Params,'Save Solver Mesh Index',Found ) 
-  
+  SaveAllMeshes = GetLogical( Params,'Save All Meshes',Found )
+  SaveThisMesh = GetLogical( Params,'Save This Mesh Only',Found )
+  SaveSolverMeshIndex = GetInteger( Params,'Save Solver Mesh Index',Found )
+
   MinMeshDim = ListGetInteger( Params,'Minimum Mesh Dimension',Found )
   MaxMeshDim = ListGetInteger( Params,'Maximum Mesh Dimension',Found )
 
   RefResults => ListGetConstRealArray( Params,'Reference Values',CalcNrm )
-  CALL AscBinInitNorm(CalcNrm) 
+  CALL AscBinInitNorm(CalcNrm)
 
   ! Loop over the meshes and save them using the selected format(s).
-  ! First iteration just count the meshes. 
-  !----------------------------------------------------------------------------------  
+  ! First iteration just count the meshes.
+  !----------------------------------------------------------------------------------
   NowSave = .FALSE.
 1 NoMeshes = 0
   m = 1
@@ -195,8 +195,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     IF ( .NOT. SaveAllMeshes .AND. .NOT. iMesh % OutputActive ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping inactive mesh: '//TRIM(iMesh % Name), Level=10 )
       iMesh => iMesh % next; m=m+1
-      CYCLE 
-    END IF    
+      CYCLE
+    END IF
 
     IF( SaveThisMesh ) THEN
       IF( .NOT. ASSOCIATED( iMesh, MyMesh ) ) THEN
@@ -212,7 +212,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
         CYCLE
       END IF
     END IF
-        
+
     IF(NowSave) CALL Info(Caller,'Dimension of mesh is: '//I2S(iMesh % MeshDim),Level=10)
 
     IF( MinMeshDim /= 0 .AND. iMesh % MeshDim < MinMeshDim ) THEN
@@ -227,26 +227,26 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       CYCLE
     END IF
 
-    ! Optionally skip the writing of given meshes 
-    !---------------------------------------------------------------    
-    nlen = StringToLowerCase( iMeshName, iMesh % Name ) 
+    ! Optionally skip the writing of given meshes
+    !---------------------------------------------------------------
+    nlen = StringToLowerCase( iMeshName, iMesh % Name )
     MeshName = GetString( Params,'Mesh Name',Found )
-    IF(Found) THEN      
-      i = StringToLowerCase( MeshName, MeshName )      
-      Found = ( i <= nlen ) 
+    IF(Found) THEN
+      i = StringToLowerCase( MeshName, MeshName )
+      Found = ( i <= nlen )
       IF( Found ) Found = ( MeshName(1:i) == iMeshName(1:i) )
-      
+
       IF( .NOT. Found ) THEN
         IF(NowSave) CALL Info(Caller,'Skipping mesh with mismatching name: '//TRIM(iMesh % Name), Level=10 )
         iMesh => iMesh % next; m=m+1
-        CYCLE 
+        CYCLE
       END IF
     END IF
-    
+
     IF(.NOT. NowSave ) THEN
       ! Discont mesh will get a separate prefix anyways so don't count that as
-      ! a mesh competing from the same directory.     
-      IF ( .NOT. iMesh % DiscontMesh ) THEN    
+      ! a mesh competing from the same directory.
+      IF ( .NOT. iMesh % DiscontMesh ) THEN
         NoMeshes = NoMeshes + 1
       END IF
       iMesh => iMesh % Next; m=m+1
@@ -257,15 +257,15 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       CALL Info(Caller,'Working on mesh '//I2S(m)//': '//TRIM(iMesh % Name)//&
           ' with '//I2S(iMesh % NumberOfNodes)//' nodes', Level=10)
     END IF
-      
+
     CALL SetCurrentMesh( Model, iMesh )
     ModelVariables => Model % Variables
-    Model % Variables => iMesh % variables 
+    Model % Variables => iMesh % variables
 
-    
+
     IF( .NOT. ListSet ) THEN
       CALL Info(Caller,'Creating list for saving - if not present',Level=7)
-      CALL CreateListForSaving( Model, Params,.TRUE. )    
+      CALL CreateListForSaving( Model, Params,.TRUE. )
       ListSet = .TRUE.
     ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. (iMeshName(1:nlen) /= TRIM(ListMeshName))) THEN
       CALL Info(Caller,'Mesh name changed - recreating list for saving',Level=7)
@@ -286,17 +286,17 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
     IF ( ASSOCIATED(Mesh)) THEN
       CALL SetCurrentMesh( Model, Mesh )
-      Model % Variables => Mesh % variables 
+      Model % Variables => Mesh % variables
       SomeMeshSaved = .TRUE.
 
       IF( SaveVTU ) THEN
-        CALL Info( Caller,'Saving in unstructured VTK XML (.vtu) format' )               
+        CALL Info( Caller,'Saving in unstructured VTK XML (.vtu) format' )
         CALL ListAddInteger( Params,'Output Count',OutputCount(1))
         CALL VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveGmsh ) THEN
         CALL Info( Caller,'Saving in gmsh 2.0 (.msh) format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(2))      
+        CALL ListAddInteger( Params,'Output Count',OutputCount(2))
         ! For other call uses this recides in SaveUtils.
         CALL SaveGmshOutput( Model,Solver,dt,TransientSimulation )
       END IF
@@ -311,7 +311,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
         CALL ElmerPostOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveGid ) THEN
-        CALL Info( Caller,'Saving in GiD format' )    
+        CALL Info( Caller,'Saving in GiD format' )
         CALL ListAddInteger( Params,'Output Count',OutputCount(5))
         CALL GiDOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
@@ -328,7 +328,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
       CALL Info( Caller, '-------------------------------------')
     END IF
-    
+
     iMesh => iMesh % Next; m=m+1
   END DO
 
@@ -338,7 +338,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     NowSave = .TRUE.
     GOTO 1
   END IF
-    
+
   IF( .NOT. SomeMeshSaved ) THEN
     OutputCount = OutputCount - 1
   END IF
@@ -352,15 +352,15 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     ELSE IF(SaveStl) THEN
       ! For STL format these have been precomputed.
       ThisResults => ListGetConstRealArray( Params,'This Values')
-      Nrm = AscBinCompareNorm(RefResults(:,1),ThisResults(:,1))      
+      Nrm = AscBinCompareNorm(RefResults(:,1),ThisResults(:,1))
     ELSE
       CALL Fatal(Caller,'Reference norm computation implemented only for (VTU,STL) formats!')
     END IF
-    
+
     Solver % Variable % Norm = Nrm
     WRITE( Message,'(A,ES15.6)' ) 'Calculate Pseudonorm:',Nrm
     CALL Info(Caller, Message)
   END IF
 
-  
+
 END SUBROUTINE ResultOutputSolver

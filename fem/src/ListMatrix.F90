@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,15 +13,15 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 
@@ -79,7 +79,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
   END FUNCTION List_AllocateMatrix
 !-------------------------------------------------------------------------------
- 
+
 
 !-------------------------------------------------------------------------------
 !> Frees a list matrix.
@@ -162,7 +162,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
-!> Transfer the flexible list matrix to the more efficient CRS matrix that is 
+!> Transfer the flexible list matrix to the more efficient CRS matrix that is
 !> used in most places of the code. Here the target is the rows and columns of the matrix.
 !-------------------------------------------------------------------------------
   SUBROUTINE List_ToCRS(L,Rows,Cols,Diag)
@@ -182,7 +182,7 @@ CONTAINS
       CALL Fatal('List_ToCRS','Could not allocate memory for CRS Rows of size '//I2S(n))
     END IF
 
-    
+
     Rows(1) = 1
     DO i=1,n
       Rows(i+1) = Rows(i) + L(i) % Degree
@@ -219,14 +219,14 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-!> Transfer the flexible list matrix to the more efficient CRS matrix that is 
+!> Transfer the flexible list matrix to the more efficient CRS matrix that is
 !> used in most places of the code. The matrix structure can accommodate both forms.
 !-------------------------------------------------------------------------------
   SUBROUTINE List_ToCRSMatrix(A)
 !-------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A
-    
-    TYPE(ListMatrix_t), POINTER :: L(:)   
+
+    TYPE(ListMatrix_t), POINTER :: L(:)
     INTEGER :: i,j,k,n,m,istat
     TYPE(ListMatrixEntry_t), POINTER :: P
     INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
@@ -236,25 +236,25 @@ CONTAINS
       CALL Warn('List_ToCRSMatrix','The initial matrix type is not List')
       RETURN
     END IF
-    
+
     L => A % ListMatrix
 
     IF( .NOT. ASSOCIATED( L ) ) THEN
-      A % FORMAT = MATRIX_CRS      
+      A % FORMAT = MATRIX_CRS
       A % NumberOfRows = 0
       RETURN
-    END IF 
-    
+    END IF
+
     DO n=SIZE(L),1,-1
       IF ( L(n) % Degree > 0 ) EXIT
     END DO
     CALL Info('List_ToCRSMatrix','List size '//I2S(SIZE(L))//' vs. active rows '//I2S(n),Level=25)
-    
+
     ALLOCATE( Rows(n+1), Diag(n), STAT=istat)
     IF(istat /= 0 ) THEN
       CALL Fatal('List_ToCRSMatrix','Could not allocate memory for CRS Rows of size '//I2S(n))
     END IF
-    
+
     Diag = 0
     Rows(1) = 1
     DO i=1,n
@@ -265,7 +265,7 @@ CONTAINS
     CALL Info('List_ToCRSMatrix',&
         'Changing matrix type with number of non-zeros: '//I2S(m),Level=8)
 
-    ALLOCATE( Cols(m),Values(m),STAT=istat) 
+    ALLOCATE( Cols(m),Values(m),STAT=istat)
     IF(istat /= 0 ) THEN
       CALL Fatal('List_ToCRS','Could not allocate memory for CRS Cols & Values of size '//I2S(m))
     END IF
@@ -280,13 +280,13 @@ CONTAINS
         P => P % Next
       END DO
     END DO
-    
+
     A % NumberOfRows = n
     A % Rows => Rows
     A % Diag => Diag
     A % Cols => Cols
-    A % Values => Values  
-  
+    A % Values => Values
+
     A % Ordered=.FALSE.
     CALL CRS_SortMatrix( A )
 
@@ -309,7 +309,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A
     LOGICAL, OPTIONAL :: Truncate
-    
+
     INTEGER :: i,j,n
     LOGICAL :: Trunc
     TYPE(ListMatrixEntry_t), POINTER :: CList, Dummy
@@ -380,15 +380,15 @@ CONTAINS
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
 
-    A % Rows => Null()  
-    A % Cols => Null()  
-    A % Diag => Null()  
+    A % Rows => Null()
+    A % Cols => Null()
+    A % Diag => Null()
     A % Values => NULL()
 
     ! If the CRS matrix had a specific structure it is probably spoiled when going into
     ! free form matrix structure.
-    A % ndeg = -1 
-    
+    A % ndeg = -1
+
     CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix
@@ -441,7 +441,7 @@ CONTAINS
      ELSE
         List(k1) % Head => Entry
      END IF
- 
+
      List(k1) % Degree = List(k1) % Degree + 1
 !-------------------------------------------------------------------------------
    END FUNCTION List_GetMatrixIndex
@@ -466,14 +466,14 @@ CONTAINS
        List => List_EnlargeMatrix(List,MAX(k1, &
              SIZE(List)+LISTMATRIX_GROWTH) )
      END IF
-     
+
      ! Add each element in Ind to the row list
      RowPtr => List(k1) % Head
-    
-     ! First element needs special treatment as it may modify 
+
+     ! First element needs special treatment as it may modify
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
-       Dummy => NULL() 
+       Dummy => NULL()
        Entry => List_GetMatrixEntry(Ind(1),Dummy)
        List(k1) % Degree = 1
        List(k1) % Head => Entry
@@ -506,7 +506,7 @@ CONTAINS
          PrevPtr => RowPtr
          RowPtr  => RowPtr % Next
        END DO
-       
+
        IF (ASSOCIATED(RowPtr)) THEN
          ! Do not add duplicates
          IF (RowPtr % Index /= k2) THEN
@@ -517,7 +517,7 @@ CONTAINS
 
            ! Advance to next element in list
            PrevPtr => Entry
-!          RowPtr  => 
+!          RowPtr  =>
          ELSE
            ! Advance to next element in list
            PrevPtr => RowPtr
@@ -580,23 +580,23 @@ CONTAINS
        CALL SortF(nk2, Ind, Vals)
      END IF
 
-       
+
      IF(ASSOCIATED(List)) THEN
        i = SIZE(List)
      ELSE
        i = 0
      END IF
-     
+
      IF (k1>i) THEN
        List => List_EnlargeMatrix(List,MAX(k1, &
              i+LISTMATRIX_GROWTH) )
      END IF
      RowPtr => List(k1) % Head
-       
-     ! First element needs special treatment as it may modify 
+
+     ! First element needs special treatment as it may modify
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
-       Dummy => NULL() 
+       Dummy => NULL()
        Entry => List_GetMatrixEntry(Ind(1),Dummy)
        Entry % Val = Vals(1)
        List(k1) % Degree = 1
@@ -634,7 +634,7 @@ CONTAINS
          PrevPtr => RowPtr
          RowPtr  => RowPtr % Next
        END DO
-       
+
        IF (ASSOCIATED(RowPtr)) THEN
          ! Do not add duplicates
          IF (RowPtr % Index /= k2) THEN
@@ -675,10 +675,10 @@ CONTAINS
      END DO
 
      IF( DoOrder ) THEN
-       Ind(1:nk2) = OrigInd 
-       Vals(1:nk2) = OrigVals 
+       Ind(1:nk2) = OrigInd
+       Vals(1:nk2) = OrigVals
      END IF
-     
+
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_AddMatrixRow
 !-------------------------------------------------------------------------------
@@ -863,7 +863,7 @@ CONTAINS
 
      lKeep = .FALSE.
      IF(PRESENT(Keep)) lKeep = Keep
-     
+
      IF(lKeep) THEN
        List(k1) % Degree=0
        List(k1) % Head=>NULL()
@@ -920,7 +920,7 @@ CONTAINS
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
      REAL(KIND=dp) :: Val
-     LOGICAL, OPTIONAL :: SetVal 
+     LOGICAL, OPTIONAL :: SetVal
 !-------------------------------------------------------------------------------
      TYPE(ListMatrixEntry_t), POINTER :: Entry
      LOGICAL :: Set
@@ -1000,23 +1000,23 @@ CONTAINS
      INTEGER :: k1
 !-------------------------------------------------------------------------------
      TYPE(ListMatrixEntry_t), POINTER :: CList
-     
+
      IF ( .NOT. ASSOCIATED(List) ) THEN
        CALL Warn('List_ZeroRow','No List matrix present!')
        RETURN
      END IF
-     
+
      IF ( k1 > SIZE(List) ) THEN
        CALL Warn('List_ZeroRow','No such row!')
        RETURN
      END IF
-     
+
      Clist => List(k1) % Head
      IF ( .NOT. ASSOCIATED(Clist) ) THEN
        CALL Warn('List_ZeroRow','Row not associated!')
        RETURN
      END IF
-     
+
      DO WHILE( ASSOCIATED(CList) )
        Clist % Val = 0.0_dp
        CList => CList % Next
@@ -1296,7 +1296,7 @@ CONTAINS
    SUBROUTINE List_GlueLocalSubMatrix( List,row0,col0,Nrow,Ncol, &
           RowInds,ColInds,RowDofs,ColDofs,LocalMatrix )
 !------------------------------------------------------------------------------
-     TYPE(ListMatrix_t), POINTER :: List(:) 
+     TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: Nrow,Ncol,RowDofs,ColDofs,Col0,Row0,RowInds(:),ColInds(:)
      REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------

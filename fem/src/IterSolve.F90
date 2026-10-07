@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -36,7 +36,7 @@
 
 #include "huti_fdefs.h"
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 
@@ -157,7 +157,7 @@ CONTAINS
     INTEGER :: ipar(*)
     COMPLEX(KIND=dp) :: u(HUTI_NDIM), v(HUTI_NDIM)
 !------------------------------------------------------------------------------
-    u = v 
+    u = v
 !------------------------------------------------------------------------------
   END SUBROUTINE pcond_dummy_cmplx
 !------------------------------------------------------------------------------
@@ -208,7 +208,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE fm_MatVec
 !------------------------------------------------------------------------------
-  
+
 
 !> Computed masked dot product.
 !----------------------------------------------------------------------
@@ -254,12 +254,12 @@ FUNCTION MaskedDotProd( ndim, x, xind, y, yind ) RESULT(dres)
   INTEGER :: i
 
   LOGICAL, POINTER :: SkipMask(:) => NULL()
-  
+
   SkipMask => CurrentModel % Solver % Matrix % SkipMask
   IF(.NOT. ASSOCIATED(SkipMask)) THEN
     CALL Fatal('MaskedSDotProd','SkipMask not associated but here we are!?')
   END IF
-    
+
   BLOCK
     REAL(KIND=dp), ALLOCATABLE :: part(:)
     REAL(KIND=dp) :: s
@@ -317,7 +317,7 @@ FUNCTION MaskedNorm( ndim, x, xind ) RESULT(dres)
   ! Local variables
   INTEGER :: i
   LOGICAL, POINTER :: SkipMask(:) => NULL()
-  
+
   SkipMask => CurrentModel % Solver % Matrix % SkipMask
   IF(.NOT. ASSOCIATED(SkipMask)) THEN
     CALL Fatal('MaskedSDotProd','SkipMask not associated but here we are!?')
@@ -545,14 +545,14 @@ END FUNCTION MaskedNorm
   END FUNCTION Otmp_zdotu
 !----------------------------------------------------------------------
 
-    
+
 !------------------------------------------------------------------------------
 !> The routine that decides which linear system solver to call, and calls it.
 !> There are two main sources of iterations within Elmer.
 !> 1) The old HUTiter library that includes the most classic iterative Krylov
 !>    methods.
 !> 2) The internal MODULE IterativeMethods that includes some classic iterative
-!>    methods and also some more recent Krylov methods. 
+!>    methods and also some more recent Krylov methods.
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
 !> May the scalar 2N values of a complex matrix be released for the duration of a
@@ -656,7 +656,7 @@ END FUNCTION MaskedNorm
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
     LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal, LeftOriented
     LOGICAL :: BlockCRS
-    
+
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
     TYPE(ValueList_t), POINTER :: Params
@@ -667,13 +667,13 @@ END FUNCTION MaskedNorm
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
     EXTERNAL NormwiseBackwardErrorGeneralized
     EXTERNAL NormwiseBackwardError_Z
-    
+
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pconddProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
     COMPLEX(KIND=dp), POINTER :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
-    EXTERNAL :: AddrFunc    
+    EXTERNAL :: AddrFunc
 
     INTERFACE
       SUBROUTINE VankaCreate(A,Solver)
@@ -681,7 +681,7 @@ END FUNCTION MaskedNorm
         TYPE(Matrix_t) :: A
         TYPE(Solver_t) :: Solver
       END SUBROUTINE VankaCreate
-      
+
       SUBROUTINE VankaPrec(u,v,ipar)
         USE Types
         INTEGER :: ipar(*)
@@ -710,12 +710,12 @@ END FUNCTION MaskedNorm
         USE Types
         INTEGER :: ipar(*)
         COMPLEX(KIND=dp) :: u(*),v(*)
-      END SUBROUTINE SlavePrecComplex      
+      END SUBROUTINE SlavePrecComplex
     END INTERFACE
 !------------------------------------------------------------------------------
     N = A % NumberOfRows
     IF ( PRESENT(ndim) ) n=ndim
-    
+
     ipar = 0
     dpar = 0.0D0
     pconddProc = 0
@@ -724,31 +724,31 @@ END FUNCTION MaskedNorm
     str = ListGetString( Params,'Linear System Iterative Method',Found )
     IF( .NOT. Found ) THEN
       CALL Warn('IterSolver','> Linear System Iterative Method < not found, using BiCGstab')
-      str = 'bicgstab'      
+      str = 'bicgstab'
     ELSE
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
-    
+
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
       CALL Info('IterSolver','This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
     ELSE
-      ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
-      IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
+      ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found )
+      IF( .NOT. Found ) ComplexSystem = A % COMPLEX
     END IF
-    
-    PseudoComplexSystem = ListGetLogical( Params,'Linear System Pseudo Complex',Found ) 
+
+    PseudoComplexSystem = ListGetLogical( Params,'Linear System Pseudo Complex',Found )
 
     IF( ComplexSystem ) THEN
       CALL Info('IterSolver','Matrix is complex valued',Level=10)
     ELSE IF( PseudoComplexSystem ) THEN
       CALL Info('IterSolver','Matrix is pseudo complex valued',Level=10)
-    ELSE    
+    ELSE
       CALL Info('IterSolver','Matrix is real valued',Level=12)
     END IF
 
-    
+
     SELECT CASE(str)
     CASE('bicgstab2')
       ! NOTE:
@@ -789,59 +789,59 @@ END FUNCTION MaskedNorm
     CASE('mprgp')
       IterType = ITER_MPRGP
     END SELECT
-    
+
 !------------------------------------------------------------------------------
 
     HUTI_WRKDIM = 0
     HUTI_PSEUDOCOMPLEX = 0
     IF( PseudoComplexSystem ) THEN
-      HUTI_PSEUDOCOMPLEX = 1     
+      HUTI_PSEUDOCOMPLEX = 1
       IF ( ListGetLogical( Params,'Block Split Complex',Found ) ) HUTI_PSEUDOCOMPLEX = 2
     END IF
     Internal = .FALSE.
-    
+
     SELECT CASE ( IterType )
-      
+
       ! Solvers from HUTiter
-      !-------------------------------------------------------       
+      !-------------------------------------------------------
     CASE (ITER_BiCGStab)
       HUTI_WRKDIM = HUTI_BICGSTAB_WORKSIZE
-      
+
     CASE (ITER_BiCGStab2)
       HUTI_WRKDIM = HUTI_BICGSTAB_2_WORKSIZE
-      
+
     CASE (ITER_TFQMR)
       HUTI_WRKDIM = HUTI_TFQMR_WORKSIZE
-      
+
     CASE (ITER_CG)
       HUTI_WRKDIM = HUTI_CG_WORKSIZE
-      
+
     CASE (ITER_CGS)
       HUTI_WRKDIM = HUTI_CGS_WORKSIZE
-      
+
     CASE (ITER_GMRES)
       HUTI_GMRES_RESTART = ListGetInteger( Params,&
-          'Linear System GMRES Restart',  GotIt ) 
+          'Linear System GMRES Restart',  GotIt )
       IF ( .NOT. GotIT ) HUTI_GMRES_RESTART = 10
       HUTI_WRKDIM = HUTI_GMRES_WORKSIZE + HUTI_GMRES_RESTART
-      
+
       ! Solvers from IterativeMethods.src
-      !-------------------------------------------------------       
+      !-------------------------------------------------------
     CASE (ITER_SGS)
       HUTI_WRKDIM = 1
       HUTI_SGSPARAM = ListGetConstReal( Params,'SGS Overrelaxation Factor',&
           GotIt,minv=0.0_dp,maxv=2.0_dp)
       IF(.NOT. GotIt) HUTI_SGSPARAM = 1.8_dp
       Internal = .TRUE.
-      
+
     CASE (ITER_Jacobi, ITER_Richardson)
       HUTI_WRKDIM = 1
       Internal = .TRUE.
-      
+
     CASE (ITER_GCR)
       HUTI_WRKDIM = 1
       HUTI_GCR_RESTART = ListGetInteger( Params, &
-          'Linear System GCR Restart',  GotIt ) 
+          'Linear System GCR Restart',  GotIt )
       IF ( .NOT. GotIt ) THEN
         i = ListGetInteger( Params,'Linear System Max Iterations', minv=1 )
         IF( i > 200 ) THEN
@@ -851,7 +851,7 @@ END FUNCTION MaskedNorm
         HUTI_GCR_RESTART = i
       END IF
       Internal = .TRUE.
-      
+
     CASE (ITER_BICGSTABL)
       HUTI_WRKDIM = 1
       HUTI_BICGSTABL_L = ListGetInteger( Params,'BiCGstabl polynomial degree',&
@@ -864,7 +864,7 @@ END FUNCTION MaskedNorm
       HUTI_IDRS_S = ListGetInteger( Params,'IDRS parameter',GotIt,minv=1)
       IF(.NOT. GotIt) HUTI_IDRS_S = 4
       Internal = .TRUE.
-    
+
     CASE (ITER_MPRGP)
       HUTI_WRKDIM = 1
       Internal = .TRUE.
@@ -873,19 +873,19 @@ END FUNCTION MaskedNorm
       HUTI_MPRGP_TOLFACTOR = ListGetConstReal( Params, 'Linear System MPRGP TolFactor', GotIt )
       IF(.NOT. GotIt) HUTI_MPRGP_TOLFACTOR = 5.0_dp
       !HUTI_MPRGP_BOUND = ListGetString( Params, 'Linear System MPRGP Bound Type', GotIt )
-      !IF(.NOT. GotIt) HUTI_MPRGP_BOUND = 'lower' ! TODO: should write error if no bounds      
+      !IF(.NOT. GotIt) HUTI_MPRGP_BOUND = 'lower' ! TODO: should write error if no bounds
       HUTI_MPRGP_ADAPT = 1
       IF( ListGetLogical( Params, 'Linear System MPRGP Adaptive', GotIt ) ) THEN
         HUTI_MPRGP_ADAPT = 1
       ELSE
         IF(GotIt) HUTI_MPRGP_ADAPT = 0
       END IF
-        
+
     END SELECT
 !------------------------------------------------------------------------------
-    
+
     wsize = HUTI_WRKDIM
-    
+
     StopcProc = 0
     IF (PRESENT(StopcF)) THEN
        StopcProc = StopcF
@@ -924,19 +924,19 @@ END FUNCTION MaskedNorm
        END IF
     END IF
     HUTI_NDIM  = N
-    
+
     HUTI_DBUGLVL  = ListGetInteger( Params, &
         'Linear System Residual Output', GotIt )
     IF ( .NOT.Gotit ) HUTI_DBUGLVL = 1
-    
+
     IF ( Parenv % myPE /= 0 ) HUTI_DBUGLVL=0
-    
+
     HUTI_MAXIT = ListGetInteger( Params, &
         'Linear System Max Iterations', minv=1 )
-    
+
     HUTI_MINIT = ListGetInteger( Params, &
         'Linear System Min Iterations', GotIt )
-    
+
     IF( ComplexSystem ) THEN
       ALLOCATE(workC(N/2,wsize), stat=istat)
       IF ( istat /= 0 ) THEN
@@ -963,20 +963,20 @@ END FUNCTION MaskedNorm
          IterType == ITER_BiCGStab ) .AND. ALL(x == 0.0) ) x = 1.0d-8
 
     HUTI_INITIALX = HUTI_USERSUPPLIEDX
-    
+
     HUTI_TOLERANCE = ListGetCReal( Params, &
         'Linear System Convergence Tolerance' )
-    
+
     HUTI_MAXTOLERANCE = ListGetCReal( Params, &
         'Linear System Divergence Limit', GotIt)
     IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20
-    
+
     IF( ListGetLogical( Params,'Linear System Robust',GotIt) ) THEN
       HUTI_ROBUST = 1
       HUTI_ROBUST_TOLERANCE = ListGetCReal( Params,'Linear System Robust Tolerance',GotIt)
       IF(.NOT. GotIt ) HUTI_ROBUST_TOLERANCE = HUTI_TOLERANCE**(2.0/3.0)
       HUTI_ROBUST_MAXTOLERANCE = ListGetCReal( Params,'Linear System Robust Limit',GotIt)
-      IF(.NOT. GotIt ) HUTI_ROBUST_MAXTOLERANCE = SQRT( HUTI_TOLERANCE )      
+      IF(.NOT. GotIt ) HUTI_ROBUST_MAXTOLERANCE = SQRT( HUTI_TOLERANCE )
       HUTI_ROBUST_STEPSIZE = ListGetCReal( Params,'Linear System Robust Margin',GotIt)
       IF(.NOT. GotIt ) HUTI_ROBUST_STEPSIZE = 1.1_dp
       HUTI_ROBUST_MAXBADIT = ListGetInteger( Params,'Linear System Robust Max Iterations',GotIt)
@@ -993,12 +993,12 @@ END FUNCTION MaskedNorm
     ELSE
       HUTI_SMOOTHING = 0
     END IF
-      
-    
+
+
 !------------------------------------------------------------------------------
 
     ! By default the right-oriented preconditioning is applied, but BiCGStab2,
-    ! GMRES and TFQMR are called with the left-oriented preconditining since 
+    ! GMRES and TFQMR are called with the left-oriented preconditining since
     ! the right-oriented preconditioning does not work as expected. The methods
     ! from the module IterativeMethods use always the right-oriented preconditioning:
     !
@@ -1010,7 +1010,7 @@ END FUNCTION MaskedNorm
       IF (Internal) LeftOriented = .FALSE.
     END SELECT
 
-    
+
     ! Build the block view here rather than at the matvec selection further
     ! down: the preconditioner is set up in between, and the complex ILU reads
     ! the view when it is present. Refreshing it afterwards would have the
@@ -1051,9 +1051,9 @@ END FUNCTION MaskedNorm
     IF ( .NOT. PRESENT(PrecF) ) THEN
       str = ListGetString( Params, 'Linear System Preconditioning',gotit )
       IF ( .NOT.gotit ) str = 'none'
-      
+
       A % Cholesky = ListGetLogical( Params,'Linear System Symmetric ILU', Gotit )
-      
+
       ILUn = -1
       IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
@@ -1091,10 +1091,10 @@ END FUNCTION MaskedNorm
 
       ELSE IF ( SEQL(str,'vanka') ) THEN
         PCondType = PRECOND_VANKA
-        
+
       ELSE IF ( str == 'auxiliary space solver' .OR. str == 'slave' ) THEN
         PCondType = PRECOND_SLAVE
-        
+
       ELSE IF ( str == 'circuit' ) THEN
         ILUn = ListGetInteger( Params, 'Linear System ILU Order', gotit )
         IF(.NOT.Gotit ) ILUn=-1
@@ -1110,10 +1110,10 @@ END FUNCTION MaskedNorm
 
         n = ListGetInteger( Params, 'Linear System Precondition Recompute', GotIt )
         IF ( n <= 0 ) n = 1
-        
+
         Refactorize = ListGetLogical( Params, 'Linear System Refactorize', Gotit )
         IF ( .NOT. Gotit ) Refactorize = .TRUE.
-        
+
         IF (.NOT.(ASSOCIATED(A % ILUValues).OR.ASSOCIATED(A % CILUValues)).OR. &
                   (Refactorize.AND.MOD(A % SolveCount, n)==0) ) THEN
 
@@ -1122,13 +1122,13 @@ END FUNCTION MaskedNorm
 
             ! Optionally one may emphasize the diagonal entries in the linear system
             ! to make the preconditioning more stable.
-            !-------------------------------------------------------------------------          
-            DiagFactor = ListGetCReal( Params,'Linear System ILU Factor',GotIt ) 
-            GotDiagFactor = ( DiagFactor > EPSILON( DiagFactor ) ) 
+            !-------------------------------------------------------------------------
+            DiagFactor = ListGetCReal( Params,'Linear System ILU Factor',GotIt )
+            GotDiagFactor = ( DiagFactor > EPSILON( DiagFactor ) )
             IF( GotDiagFactor ) THEN
               CALL Info('IterSolver','Applying diagonal relaxation for ILU', Level=8)
               DiagFactor = DiagFactor + 1.0_dp
-              A % Values( A % Diag ) = DiagFactor * A % Values( A % Diag )      
+              A % Values( A % Diag ) = DiagFactor * A % Values( A % Diag )
             END IF
 
             IF ( ComplexSystem ) THEN
@@ -1286,7 +1286,7 @@ END FUNCTION MaskedNorm
                     A % ILURows   => Adiag % ILURows
                     A % ILUCols   => Adiag % ILUCols
                     A % ILUValues => Adiag % ILUValues
-                    A % ILUDiag   => Adiag % ILUDiag                 
+                    A % ILUDiag   => Adiag % ILUDiag
                     IF (ILUn > 0) THEN
                       DEALLOCATE(Adiag % Rows,Adiag % Cols, Adiag % Diag, Adiag % Values)
                     END IF
@@ -1313,10 +1313,10 @@ END FUNCTION MaskedNorm
             END IF
           END IF
         END IF
-        CALL CheckTimer("Prec-"//TRIM(str),Level=8,Delete=.TRUE.)                  
+        CALL CheckTimer("Prec-"//TRIM(str),Level=8,Delete=.TRUE.)
       END IF
     END IF
-    
+
     A % SolveCount = A % SolveCount + 1
 !------------------------------------------------------------------------------
 
@@ -1338,20 +1338,20 @@ END FUNCTION MaskedNorm
         END IF
       END IF
     END IF
-    
+
     IF ( PRESENT(dotF) ) THEN
       dotProc = dotF
     ELSE
       dotProc = 0
     END IF
-    
+
     IF ( PRESENT(normF) ) THEN
       normProc = normF
     ELSE
       normProc = 0
     END IF
-    
-    
+
+
     IF ( PRESENT(PrecF) ) THEN
       pcondProc = PrecF
     ELSE
@@ -1362,14 +1362,14 @@ END FUNCTION MaskedNorm
         ELSE
           pcondProc = AddrFunc( pcond_dummy_cmplx  )
         END IF
-        
+
       CASE (PRECOND_DIAGONAL)
         IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CRS_DiagPrecondition )
         ELSE
           pcondProc = AddrFunc( CRS_ComplexDiagPrecondition )
         END IF
-        
+
       CASE (PRECOND_ILUn, PRECOND_ILUT, PRECOND_BILUn )
         IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CRS_LUPrecondition )
@@ -1379,38 +1379,38 @@ END FUNCTION MaskedNorm
 
       CASE (PRECOND_MG)
         pcondProc = AddrFunc( MultiGridPrec )
-        
+
       CASE (PRECOND_VANKA)
         pcondProc = AddrFunc( VankaPrec )
 
       CASE (PRECOND_Slave)
         IF(ListGetLogical( Solver % Values,'Linear System Refactorize First',Found ) ) THEN
           CALL LIstAddLogical( Solver % Values,'Linear System Refactorize',.TRUE.)
-        END IF        
+        END IF
         IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( SlavePrec )
         ELSE
           pcondProc = AddrFunc( SlavePrecComplex )
         END IF
-        
+
       CASE (PRECOND_Circuit)
         IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CircuitPrec )
         ELSE
           pcondProc = AddrFunc( CircuitPrecComplex )
         END IF
-        
+
       CASE DEFAULT
         pcondProc = 0
       END SELECT
     END IF
-    
+
 
     IF ( .NOT. ComplexSystem ) THEN
       SELECT CASE ( IterType )
 
-       ! Solvers from HUTiter library 
-       !-------------------------------------------------------       
+       ! Solvers from HUTiter library
+       !-------------------------------------------------------
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_D_BICGSTAB )
       CASE (ITER_BiCGStab2)
@@ -1423,8 +1423,8 @@ END FUNCTION MaskedNorm
         iterProc = AddrFunc( HUTI_D_CGS )
       CASE (ITER_GMRES)
         iterProc = AddrFunc( HUTI_D_GMRES )
-        
-        ! Solvers from IterativeMethods.src 
+
+        ! Solvers from IterativeMethods.src
         !-------------------------------------------------------
       CASE (ITER_SGS)
         iterProc = AddrFunc( itermethod_sgs )
@@ -1432,7 +1432,7 @@ END FUNCTION MaskedNorm
         iterProc = AddrFunc( itermethod_jacobi )
       CASE (ITER_RICHARDSON)
         iterProc = AddrFunc( itermethod_richardson )
-      CASE (ITER_GCR)        
+      CASE (ITER_GCR)
         iterProc = AddrFunc( itermethod_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
@@ -1440,16 +1440,16 @@ END FUNCTION MaskedNorm
         iterProc = AddrFunc( itermethod_idrs )
       CASE (ITER_MPRGP)
         iterProc = AddrFunc( itermethod_mprgp )
-        
+
       END SELECT
 
 
       IF( ListGetLogical( Params,'Linear System Skip Mask',Found ) ) THEN
         ! In parallel runs these are already set
         IF(dotProc==0) dotProc = AddrFunc(MaskedDotProd)
-        IF(normProc==0) normproc = AddrFunc(MaskedNorm)        
+        IF(normProc==0) normproc = AddrFunc(MaskedNorm)
       END IF
-      
+
       IF( Internal ) THEN
         IF( PseudoComplexSystem ) THEN
           IF( HUTI_PSEUDOCOMPLEX == 1 ) THEN
@@ -1457,23 +1457,23 @@ END FUNCTION MaskedNorm
             dotProc = AddrFunc( PseudoZDotProd )
           ELSE
             CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd2',Level=15)
-            dotProc = AddrFunc( PseudoZDotProd2 )             
+            dotProc = AddrFunc( PseudoZDotProd2 )
           END IF
-        ELSE        
+        ELSE
 !         IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
         END IF
         IF ( normProc == 0 ) normproc = AddrFunc(dnrm2)
-        IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )        
+        IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )
       END IF
 
       IF ( dotProc  == 0 ) dotProc = AddrFunc(Otmp_ddot)
-      
+
     ELSE
       HUTI_NDIM = HUTI_NDIM / 2
       SELECT CASE ( IterType )
 
-        ! Solvers from HUTiter library 
-        !-------------------------------------------------------       
+        ! Solvers from HUTiter library
+        !-------------------------------------------------------
       CASE (ITER_BiCGStab)
         iterProc = AddrFunc( HUTI_Z_BICGSTAB )
       CASE (ITER_BiCGStab2)
@@ -1486,8 +1486,8 @@ END FUNCTION MaskedNorm
         iterProc = AddrFunc( HUTI_Z_CGS )
       CASE (ITER_GMRES)
         iterProc = AddrFunc( HUTI_Z_GMRES )
-        
-        ! Solvers from IterativeMethods.src 
+
+        ! Solvers from IterativeMethods.src
         !-------------------------------------------------------
       CASE (ITER_GCR)
         iterProc = AddrFunc( itermethod_z_gcr )
@@ -1498,7 +1498,7 @@ END FUNCTION MaskedNorm
       CASE DEFAULT
         CALL Fatal('IterSolver', 'Complex arithmetic version of the given linear solver is not available')
       END SELECT
-      
+
       IF( Internal ) THEN
 !       IF ( dotProc  == 0 ) dotProc = AddrFunc(zdotc)
         IF ( normProc == 0 ) normproc = AddrFunc(dznrm2)
@@ -1523,7 +1523,7 @@ END FUNCTION MaskedNorm
       END IF
 
     END IF
-    
+
 !------------------------------------------------------------------------------
 
     stack_pos = stack_pos+1
@@ -1536,7 +1536,7 @@ END FUNCTION MaskedNorm
 
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
-    
+
     IF ( ComplexSystem ) THEN
       ! x and b already hold the complex vectors as consecutive (Re,Im) pairs,
       ! so alias them instead of copying into complex temporaries. The solution
@@ -1627,7 +1627,7 @@ END FUNCTION MaskedNorm
 
       IF (LeftOriented) THEN
         CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-            mvProc, pcondProc, pconddProc, dotProc, normProc, stopcProc )          
+            mvProc, pcondProc, pconddProc, dotProc, normProc, stopcProc )
       ELSE
         CALL IterCall( iterProc, x, b, ipar, dpar, work, &
             mvProc, pconddProc, pcondProc, dotProc, normProc, stopcProc )
@@ -1635,9 +1635,9 @@ END FUNCTION MaskedNorm
     ENDIF
 
     GlobalMatrix => SaveGlobalM
-    
+
     stack_pos=stack_pos-1
-    
+
     IF ( ComplexSystem ) HUTI_NDIM = HUTI_NDIM * 2
 
     !------------------------------------------------------------------------------
@@ -1649,7 +1649,7 @@ END FUNCTION MaskedNorm
       CALL Info('IterSolve','Returned return code: '//I2S(HUTI_INFO),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
-      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN                
+      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
         DoFatal = ListGetLogical( Params,'Linear System Abort Not Converged',Found )
         IF(.NOT. Found ) DoFatal = .TRUE.
         IF( DoFatal ) THEN

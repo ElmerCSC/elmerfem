@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16.9.2020
 ! *
@@ -51,7 +51,7 @@ SUBROUTINE MeshChecksum_init( Model,Solver,dt,Transient)
 
   ! Introduce variable so that we have a place for pseudonorm
   CALL ListAddNewString( Solver % Values,'Variable',&
-      '-nooutput -global meshcheck_var') 
+      '-nooutput -global meshcheck_var')
 
 END SUBROUTINE MeshChecksum_Init
 
@@ -77,9 +77,9 @@ SUBROUTINE MeshChecksum( Model,Solver,dt,Transient)
   REAL(KIND=dp), POINTER :: WrkArray(:,:),RefSum(:)
   CHARACTER(*), PARAMETER :: Caller = 'MeshChecksum'
 
-  
+
   CALL Info(Caller,'Checking for mesh consistency')
-  
+
   Mesh => Solver % Mesh
   Params => Solver % Values
 
@@ -88,7 +88,7 @@ SUBROUTINE MeshChecksum( Model,Solver,dt,Transient)
       Mesh % NumberOfNodes
 
 
-  DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements    
+  DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
     Element => Mesh % Elements(t)
     IF( t <= Mesh % NumberOfBulkElements ) THEN
       ind = 2
@@ -100,37 +100,37 @@ SUBROUTINE MeshChecksum( Model,Solver,dt,Transient)
         tag = Element % BoundaryInfo % Constraint
       END IF
     END IF
-    
+
     CheckSum(ind) = CheckSum(ind) + Element % Type % ElementCode
     CheckSum(ind+1) = CheckSum(ind+1) + tag
     CheckSum(ind+2) = CheckSum(ind+2) + SUM( Element % NodeIndexes )
   END DO
-  
+
   CheckSum(8) = SUM( Mesh % Nodes % x ) + &
       SUM( Mesh % Nodes % y) + SUM( Mesh % Nodes % z)
   nsize = 8
-  
+
   PRINT *,'Checksums for file output:'
   PRINT *,'ThisResults:',NINT(CheckSum(1:7)),CheckSum(8)
-  
+
   WrkArray => ListGetConstRealArray( Params,'Reference Values',Found )
   IF( Found ) THEN
     RefSum => WrkArray(:,1)
-    PRINT *,'RefResults:',NINT(RefSum(1:7)),RefSum(8)    
+    PRINT *,'RefResults:',NINT(RefSum(1:7)),RefSum(8)
 
     PseudoNorm = 0.0
     j = 0
     DO i=1,nsize
       IF( ABS(RefSum(i)) > EPSILON(c) ) THEN
         c = CheckSum(i) / RefSum(i)
-        c = MAX( c, 1.0_dp /c ) 
+        c = MAX( c, 1.0_dp /c )
       ELSE
-        c = 1.0_dp + CheckSum(i) 
+        c = 1.0_dp + CheckSum(i)
       END IF
       PseudoNorm = PseudoNorm + c / nsize
-    END DO          
+    END DO
     PRINT *,'PseudoNorm:',PseudoNorm
-    
+
     ! By construction the reference norm should now be one!
     Solver % Variable % Values = PseudoNorm
     CALL ListAddNewConstReal( Params,'Reference Norm',1.0_dp)

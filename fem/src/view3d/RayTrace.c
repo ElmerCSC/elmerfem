@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -48,7 +48,7 @@ static double REPS = 1.0E-4;
 /*******************************************************************************
 
 Solve for volume box/ray (btw. points (Fx,Fy,Fz)->(Tx,Ty,Tz ), end points not
-included) intersection.  Return value is whether there is a hit or not. If 
+included) intersection.  Return value is whether there is a hit or not. If
 either of points is inside the box hit is given.
 
 LAST Modified: 23 Aug 1995
@@ -65,16 +65,16 @@ int RayHitBBox( BBox_t *BBox,double Fx,double Fy,double Fz,double Tx,double Ty,d
      if (
          BBox->XMin>Fx && BBox->XMin>Tx || BBox->XMax<Fx && BBox->XMax<Tx ||
          BBox->YMin>Fy && BBox->YMin>Ty || BBox->YMax<Fy && BBox->YMax<Ty ||
-         BBox->ZMin>Fz && BBox->ZMin>Tz || BBox->ZMax<Fz && BBox->ZMax<Tz 
+         BBox->ZMin>Fz && BBox->ZMin>Tz || BBox->ZMax<Fz && BBox->ZMax<Tz
       ) return FALSE;
 
      if (
-           Fx>=BBox->XMin && Fx<=BBox->XMax && Fy>=BBox->YMin && 
+           Fx>=BBox->XMin && Fx<=BBox->XMax && Fy>=BBox->YMin &&
            Fy<=BBox->YMax && Fz>=BBox->ZMin && Fz<=BBox->ZMax
        ) return TRUE;
 
      if (
-           Tx>=BBox->XMin && Tx<=BBox->XMax && Ty>=BBox->YMin && 
+           Tx>=BBox->XMin && Tx<=BBox->XMax && Ty>=BBox->YMin &&
            Ty<=BBox->YMax && Tz>=BBox->ZMin && Tz<=BBox->ZMax
        ) return TRUE;
 
@@ -111,7 +111,7 @@ int RayHitBBox( BBox_t *BBox,double Fx,double Fy,double Fz,double Tx,double Ty,d
 
          if ( TMin>XMin ) XMin = TMin;
          if ( TMax<XMax ) XMax = TMax;
- 
+
          if ( XMin>XMax ) return FALSE;
      }
 
@@ -179,7 +179,7 @@ int SolveRayBiCubicNewton(
 
         det = J0*J3 - J1*J2;
         if ( ABS(det)<1.0E-12 ) return FALSE;
-        det = 1.0/det; 
+        det = 1.0/det;
 
         VX = BiCubicValue(U,V,X);
         VY = BiCubicValue(U,V,Y);
@@ -205,7 +205,7 @@ int SolveRayBiCubicNewton(
 
     if ( U<0.0 || U>1.0 || V<0.0 || V>1.0 ) return FALSE;
 
-    if ( ABS(DX)>ABS(DY) && ABS(DX)>ABS(DZ) ) 
+    if ( ABS(DX)>ABS(DY) && ABS(DX)>ABS(DZ) )
     {
         T = (VX-FX)/DX;
     } else if ( ABS(DY)>ABS(DZ) )
@@ -239,7 +239,7 @@ int SolveRayBiCubic(
 {
     int T;
 
-    if ( Geometry->Flags & GEOMETRY_FLAG_PLANE ) 
+    if ( Geometry->Flags & GEOMETRY_FLAG_PLANE )
     {
         T = SolveRayBiCubicNewton(   RayPlanes,FX,FY,FZ,DX,DY,DZ,L,
                                     Geometry->BiCubic->PolyFactors[0],
@@ -312,7 +312,7 @@ int RayHitBiCubic
 
     if ( !RayHitBBox(&Geometry->BBox,FX,FY,FZ,DX,DY,DZ) ) return FALSE;
 
-    if ( ABS(DX)>ABS(DY) && ABS(DX)>ABS(DZ) ) 
+    if ( ABS(DX)>ABS(DY) && ABS(DX)>ABS(DZ) )
     {
         B0 = 1;
         C0 = 2;
@@ -328,7 +328,7 @@ int RayHitBiCubic
         A1 = 3;
         C1 = 1;
         B1 = (-A1*DX - C1*DZ)/DY;
-    } else 
+    } else
     {
         A0 = 1;
         B0 = 2;
@@ -492,7 +492,7 @@ int RayHitBiLinear(
           U = (D0 - B0*V) / (A0 + C0*V);
 
         if ( U<0.0 || U>1.0 ) return FALSE;
-  
+
         T = (BiLinearValue(U,V,TX)-TF) / TD;
         return T>EPS && T<1-EPS;
     }
@@ -1099,7 +1099,7 @@ void VolumeBBox( VolumeBounds_t *Volume,Geometry_t *RTElements )
     int i,j,k,N, NC;
 
     double U[] = {0.0,1.0,0.0,1.0}, V[] = {0.0,0.0,1.0,1.0}, R;
- 
+
     xMin = yMin = zMin =  1.0e20;
     xMax = yMax = zMax = -1.0e20;
 
@@ -1182,15 +1182,15 @@ void VolumeDivide( VolumeBounds_t *Volume,int NBounds,Geometry_t *RT_Elements,in
 
     if ( L1 > L2 &&  L1 > L3 )
     {
-       LeftVolume->BBox.XMax = RightVolume->BBox.XMin = 
+       LeftVolume->BBox.XMax = RightVolume->BBox.XMin =
            (Volume->BBox.XMax - Volume->BBox.XMin)/2 + Volume->BBox.XMin;
     } else if ( L2 > L3 )
     {
-       LeftVolume->BBox.YMax = RightVolume->BBox.YMin = 
+       LeftVolume->BBox.YMax = RightVolume->BBox.YMin =
            (Volume->BBox.YMax - Volume->BBox.YMin)/2 + Volume->BBox.YMin;
-    } else 
+    } else
     {
-       LeftVolume->BBox.ZMax = RightVolume->BBox.ZMin = 
+       LeftVolume->BBox.ZMax = RightVolume->BBox.ZMin =
            (Volume->BBox.ZMax - Volume->BBox.ZMin)/2 + Volume->BBox.ZMin;
     }
 
@@ -1259,7 +1259,7 @@ void VolumeDivide( VolumeBounds_t *Volume,int NBounds,Geometry_t *RT_Elements,in
 	    x = RTElements[k].Circle->CenterPoint.x;
 	    y = RTElements[k].Circle->CenterPoint.y;
 	    z = RTElements[k].Circle->CenterPoint.z;
-		 
+
             if ( (x >= LeftVolume->BBox.XMin) && (x <= LeftVolume->BBox.XMax) )
             if ( (y >= LeftVolume->BBox.YMin) && (y <= LeftVolume->BBox.YMax) )
             if ( (z >= LeftVolume->BBox.ZMin) && (z <= LeftVolume->BBox.ZMax) )  left = TRUE;
@@ -1332,29 +1332,29 @@ void VolumeDivide( VolumeBounds_t *Volume,int NBounds,Geometry_t *RT_Elements,in
     if ( RightVolume->n>NBounds && Level<MAX_LEVEL )
       VolumeDivide( RightVolume,NBounds,RTElements,Level+1 );
 
-    LeftVolume->BBox.XMin = LeftVolume->BBox.XMin - 
+    LeftVolume->BBox.XMin = LeftVolume->BBox.XMin -
         0.001*(LeftVolume->BBox.XMax-LeftVolume->BBox.XMin);
 
     LeftVolume->BBox.XMax = LeftVolume->BBox.XMax +
         0.001*(LeftVolume->BBox.XMax-LeftVolume->BBox.XMin);
 
-    LeftVolume->BBox.YMin = LeftVolume->BBox.YMin - 
+    LeftVolume->BBox.YMin = LeftVolume->BBox.YMin -
         0.001*(LeftVolume->BBox.YMax-LeftVolume->BBox.YMin);
 
     LeftVolume->BBox.YMax = LeftVolume->BBox.YMax +
         0.001*(LeftVolume->BBox.YMax-LeftVolume->BBox.YMin);
 
-    LeftVolume->BBox.ZMin = LeftVolume->BBox.ZMin - 
+    LeftVolume->BBox.ZMin = LeftVolume->BBox.ZMin -
         0.001*(LeftVolume->BBox.ZMax-LeftVolume->BBox.ZMin);
 
-    LeftVolume->BBox.ZMax = LeftVolume->BBox.ZMax + 
+    LeftVolume->BBox.ZMax = LeftVolume->BBox.ZMax +
         0.001*(LeftVolume->BBox.ZMax-LeftVolume->BBox.ZMin);
 
 
-    RightVolume->BBox.XMin = RightVolume->BBox.XMin - 
+    RightVolume->BBox.XMin = RightVolume->BBox.XMin -
         0.001*(RightVolume->BBox.XMax-RightVolume->BBox.XMin);
 
-    RightVolume->BBox.XMax = RightVolume->BBox.XMax + 
+    RightVolume->BBox.XMax = RightVolume->BBox.XMax +
         0.001*(RightVolume->BBox.XMax-RightVolume->BBox.XMin);
 
     RightVolume->BBox.YMin = RightVolume->BBox.YMin -
@@ -1366,7 +1366,7 @@ void VolumeDivide( VolumeBounds_t *Volume,int NBounds,Geometry_t *RT_Elements,in
     RightVolume->BBox.ZMin = RightVolume->BBox.ZMin -
         0.001*(RightVolume->BBox.ZMax-RightVolume->BBox.ZMin);
 
-    RightVolume->BBox.ZMax = RightVolume->BBox.ZMax + 
+    RightVolume->BBox.ZMax = RightVolume->BBox.ZMax +
         0.001*(RightVolume->BBox.ZMax-RightVolume->BBox.ZMin);
 }
 

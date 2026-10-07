@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -45,7 +45,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -68,7 +68,7 @@ MODULE ParallelEigenSolve
    USE SParIterGlobals
    USE CRSMatrix, ONLY : CRS_ComplexILUT, CRS_ComplexIncompleteLU, CRS_ILUT, &
                          CRS_IncompleteLU, CRS_LUSolve
-   USE DirectSolve, ONLY : DirectSolver 
+   USE DirectSolve, ONLY : DirectSolver
    USE Multigrid, ONLY : MultiGridSolve
    USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve, ParallelIter, &
                              ParallelReduction, ParallelMatrixVector, ParallelNorm, &
@@ -84,7 +84,7 @@ CONTAINS
 
 ! to suit the needs of ELMER.
 !
-!  Oct 21 2000, Juha Ruokolainen 
+!  Oct 21 2000, Juha Ruokolainen
 !
 !\Original Authors
 !     Richard Lehoucq
@@ -158,7 +158,7 @@ CONTAINS
           REAL(KIND=dp) :: x(:), b(:)
         END SUBROUTINE BlockSolveExt
       END INTERFACE
-      
+
 !     %-----------------------%
 !     | Executable Statements |
 !     %-----------------------%
@@ -172,7 +172,7 @@ CONTAINS
       DOFs = Solver % Variable % DOFs
       CALL ParallelInitSolve( A, Solution, ForceVector, Residual )
 
-      PMatrix => ParallelMatrix(A) 
+      PMatrix => ParallelMatrix(A)
       PN = PMatrix % NumberOfRows
 
 !     %----------------------------------------------------%
@@ -183,16 +183,16 @@ CONTAINS
 !     | to solve problems of different sizes, and to get   |
 !     | different parts of the spectrum.  However, The     |
 !     | following conditions must be satisfied:            |
-!     |                     N <= MAXN,                     | 
+!     |                     N <= MAXN,                     |
 !     |                   NEV <= MAXNEV,                   |
-!     |               NEV + 1 <= NCV <= MAXNCV             | 
+!     |               NEV + 1 <= NCV <= MAXNCV             |
 !     %----------------------------------------------------%
 !
       NCV = ListGetInteger( Solver % Values, 'Eigen System Lanczos Vectors', stat )
       IF ( .NOT. stat ) NCV = 3*NEIG + 1
 
       IF ( NCV <=  NEIG ) THEN
-         CALL Fatal( 'ParallelEigenSolve', & 
+         CALL Fatal( 'ParallelEigenSolve', &
                'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
 
@@ -221,7 +221,7 @@ CONTAINS
       END IF
       IDO   = 0
       kinfo = 0
-      lWORKL = 3*NCV**2 + 6*NCV 
+      lWORKL = 3*NCV**2 + 6*NCV
 !
 !     %---------------------------------------------------%
 !     | This program uses exact shifts with respect to    |
@@ -242,7 +242,7 @@ CONTAINS
 !
       IPARAM = 0
       IPARAM(1) = ishfts
-      IPARAM(3) = maxitr 
+      IPARAM(3) = maxitr
       IPARAM(7) = mode
 
       SigmaR = 0.0d0
@@ -328,7 +328,7 @@ CONTAINS
       DO WHILE( ido /= 99 )
 !
 !        %---------------------------------------------%
-!        | Repeatedly call the routine DSAUPD and take | 
+!        | Repeatedly call the routine DSAUPD and take |
 !        | actions indicated by parameter IDO until    |
 !        | either convergence is indicated or maxitr   |
 !        | has been exceeded.                          |
@@ -347,7 +347,7 @@ CONTAINS
             iter = iter + 1
 !---------------------------------------------------------------------
 !             Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
-!                      ido =-1 inv(A-sigmaR*M)*M*x 
+!                      ido =-1 inv(A-sigmaR*M)*M*x
 !                      ido = 1 inv(A-sigmaR*M)*z
 !---------------------------------------------------------------------
             IF ( ido == -1 .OR. A % Lumped ) THEN
@@ -414,7 +414,7 @@ CONTAINS
                b => WORKD(IPNTR(2):IPNTR(2)+PN-1)
                CALL MGmv( A, x, b, .FALSE., .TRUE. )
             END IF
-         END IF 
+         END IF
 
          IF ( NewSystem .AND. ido /= 2 ) THEN
             IF ( Iterative ) THEN
@@ -459,12 +459,12 @@ CONTAINS
 !     | No fatal errors occurred.                 |
 !     | Post-Process using DSEUPD.                |
 !     |                                           |
-!     | Computed eigenvalues may be extracted.    |  
+!     | Computed eigenvalues may be extracted.    |
 !     |                                           |
 !     | Eigenvectors may also be computed now if  |
-!     | desired.  (indicated by rvec = .true.)    | 
+!     | desired.  (indicated by rvec = .true.)    |
 !     %-------------------------------------------%
-!        
+!
       D = 0.0d0
       IF ( A % Symmetric ) THEN
          CALL pDSEUPD ( A % Comm, .TRUE., 'A', Choose, D, V, PN, SigmaR,  &
@@ -488,7 +488,7 @@ CONTAINS
 !     | returned in V.                               |
 !     %----------------------------------------------%
 
-      IF (IERR /= 0) THEN 
+      IF (IERR /= 0) THEN
 !
 !        %------------------------------------%
 !        | Error condition:                   |
@@ -508,7 +508,7 @@ CONTAINS
       ELSE IF ( kinfo == 3 ) THEN
          CALL Fatal( 'ParallelEigenSolve', &
             'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
-      END IF      
+      END IF
 !
 !     Sort the eigenvalues to ascending order:
 !        ----------------------------------------
@@ -600,7 +600,7 @@ CONTAINS
 
 ! to suit the needs of ELMER.
 !
-!  Oct 21 2000, Juha Ruokolainen 
+!  Oct 21 2000, Juha Ruokolainen
 !
 !\Original Authors
 !     Richard Lehoucq
@@ -694,9 +694,9 @@ CONTAINS
 !     | to solve problems of different sizes, and to get   |
 !     | different parts of the spectrum.  However, The     |
 !     | following conditions must be satisfied:            |
-!     |                     N <= MAXN,                     | 
+!     |                     N <= MAXN,                     |
 !     |                   NEV <= MAXNEV,                   |
-!     |               NEV + 1 <= NCV <= MAXNCV             | 
+!     |               NEV + 1 <= NCV <= MAXNCV             |
 !     %----------------------------------------------------%
 !
       NCV = ListGetInteger( Solver % Values, 'Eigen System Lanczos Vectors', stat )
@@ -704,7 +704,7 @@ CONTAINS
       NCV = ParallelReduction(NCV,1)
 
       IF ( NCV <=  NEIG ) THEN
-         CALL Fatal( 'ParallelEigenSolve', & 
+         CALL Fatal( 'ParallelEigenSolve', &
                'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
 
@@ -742,7 +742,7 @@ CONTAINS
       END IF
       IDO   = 0
       kinfo = 0
-      lWORKL = 3*NCV**2 + 6*NCV 
+      lWORKL = 3*NCV**2 + 6*NCV
 !
 !     %---------------------------------------------------%
 !     | This program uses exact shifts with respect to    |
@@ -763,7 +763,7 @@ CONTAINS
 !
       IPARAM = 0
       IPARAM(1) = ishfts
-      IPARAM(3) = maxitr 
+      IPARAM(3) = maxitr
       IPARAM(7) = mode
 
       SigmaR = 0.0d0
@@ -868,7 +868,7 @@ CONTAINS
       DO WHILE( ido /= 99 )
 !
 !        %---------------------------------------------%
-!        | Repeatedly call the routine DSAUPD and take | 
+!        | Repeatedly call the routine DSAUPD and take |
 !        | actions indicated by parameter IDO until    |
 !        | either convergence is indicated or maxitr   |
 !        | has been exceeded.                          |
@@ -881,7 +881,7 @@ CONTAINS
             CALL Info( 'ParallelEigenSolve', '.', .TRUE., Level=5 )
 !---------------------------------------------------------------------
 !             Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
-!                      ido =-1 inv(A-sigmaR*M)*M*x 
+!                      ido =-1 inv(A-sigmaR*M)*M*x
 !                      ido = 1 inv(A-sigmaR*M)*z
 !---------------------------------------------------------------------
             IF ( .NOT. Matrix % Lumped .AND. ido == 1 ) THEN
@@ -1020,7 +1020,7 @@ CONTAINS
                b => WORKD(IPNTR(2):IPNTR(2)+PN-1)
                CALL CMGmv( Matrix, x, b, .FALSE., .TRUE. )
             END IF
-         END IF 
+         END IF
 
          IF ( NewSystem .AND. ido /= 2 ) THEN
             IF ( Iterative ) THEN
@@ -1065,12 +1065,12 @@ CONTAINS
 !     | No fatal errors occurred.                 |
 !     | Post-Process using DSEUPD.                |
 !     |                                           |
-!     | Computed eigenvalues may be extracted.    |  
+!     | Computed eigenvalues may be extracted.    |
 !     |                                           |
 !     | Eigenvectors may also be computed now if  |
-!     | desired.  (indicated by rvec = .true.)    | 
+!     | desired.  (indicated by rvec = .true.)    |
 !     %-------------------------------------------%
-!        
+!
 
       d = 0.0_dp
       CALL pzNEUPD ( Matrix % Comm, .TRUE., 'A', Choose, D, V, pn, Sigma, WORKEV, BMAT, pn, &
@@ -1088,7 +1088,7 @@ CONTAINS
 !     | returned in V.                               |
 !     %----------------------------------------------%
 
-      IF (IERR /= 0) THEN 
+      IF (IERR /= 0) THEN
 !
 !        %------------------------------------%
 !        | Error condition:                   |
@@ -1108,7 +1108,7 @@ CONTAINS
       ELSE IF ( kinfo == 3 ) THEN
          CALL Fatal( 'ParallelEigenSolve', &
             'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
-      END IF      
+      END IF
 !
 !     Sort the eigenvalues to ascending order:
 !        ----------------------------------------
@@ -1253,7 +1253,7 @@ CONTAINS
        END DO
 
        WRITE( Message, * ) 'Iters: ', i, RNorm
-       CALL Info( 'CGParEigen', Message, Level=4 ) 
+       CALL Info( 'CGParEigen', Message, Level=4 )
 
        DEALLOCATE( Z, P, Q )
 

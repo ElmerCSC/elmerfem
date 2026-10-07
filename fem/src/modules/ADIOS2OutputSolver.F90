@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12 Feb 2026
 ! *
@@ -83,7 +83,7 @@ SUBROUTINE MakeFidesJson(Variables, params, holder, fname)
   character(len=:), allocatable :: fields
 
   NL = NEW_LINE('a')
-  
+
   pre = ' {' // NL // &
   &'    "unstructured_grid": {' // NL // &
   &'        "data_sources": [' // NL // &
@@ -138,7 +138,7 @@ SUBROUTINE MakeFidesJson(Variables, params, holder, fname)
   post = NL // &
   &'        ]' // NL // &
   &'' // NL // &
-  &'    } }' // NL 
+  &'    } }' // NL
 
   open(unit=10, file=fname, status='replace', action='write')
   write(10,*) pre
@@ -192,14 +192,14 @@ END SUBROUTINE
 &'              "data_source": "source",' // NL // &
 &'              "variable": "', fieldname, '"'//NL // &
 &'            }' // NL // &
-&'          }' 
+&'          }'
   end function
 END MODULE
 
 !------------------------------------------------------------------------------
 !> ADIOS2OutputSolver_Init initializes ADIOS2OutputSolver
 !> Makes Fides json-file and sets up adios2 io-object AdiosWriter_t
-!> 
+!>
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE ADIOS2OutputSolver_Init(Model, Solver, dt, TransientSimulation)
@@ -229,13 +229,13 @@ SUBROUTINE ADIOS2OutputSolver_Init(Model, Solver, dt, TransientSimulation)
   output_holder => Null()
 
   params => ListGetSolverParams()
-  
+
   CALL GetAdiosHolder(Solver, output_holder, found)
 
   if(found) return
 
   ALLOCATE(output_holder)
-  writer => output_holder % writer 
+  writer => output_holder % writer
 
   output_fname = trim(ListGetString(params, 'Output File name', UnfoundFatal=.true.))
 
@@ -281,13 +281,13 @@ SUBROUTINE ADIOS2OutputSolver(Model, Solver, dt, TransientSimulation)
   integer(kind=4), allocatable :: elem_types(:), offsets(:), num_elem_nodes(:)
   integer(kind=4), allocatable :: connectivity(:)
   real(kind=dp), ALLOCATABLE :: debug_arr(:,:)
-  integer :: lcon 
+  integer :: lcon
   CHARACTER(:), ALLOCATABLE :: field_name
 
   Writer => Null()
 
   params => ListGetSolverParams()
-  
+
   CALL GetAdiosHolder(Solver, output_holder, found)
 
   IF(.not. Found) then
@@ -322,7 +322,7 @@ SUBROUTINE ADIOS2OutputSolver(Model, Solver, dt, TransientSimulation)
 
     save_mesh = ListGetLogical(params, field_name // ' save mesh', found_save_mesh, defvalue = save_mesh)
     if(.not. found_save_mesh) call ListAddLogical(params, field_name // ' save mesh', .false.)
-    
+
     if(save_mesh) then
       call LocalSaveMesh()
       save_mesh = .false.
@@ -424,7 +424,7 @@ END SUBROUTINE
 
 !------------------------------------------------------------------------------
 !> ADIOS2OutputSolver_Finalize Finalizes ADIOS2OutputSolver
-!> Finalizes the AdiosWriter_t object and deallocates structs 
+!> Finalizes the AdiosWriter_t object and deallocates structs
 !> that Elmer library is unaware
 !> \ingroup Solvers
 !------------------------------------------------------------------------------

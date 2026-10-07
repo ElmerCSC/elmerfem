@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -58,7 +58,7 @@
       ELSE
         CALL ListGetRealArray( Material, &
              'Electric Conductivity im', Cwrk, n, Element % NodeIndexes, Found )
-      END IF 
+      END IF
       IF (Found) THEN
         IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
           DO i=1,3
@@ -97,9 +97,9 @@
 
 !------------------------------------------------------------------------------
   END FUNCTION GetElectricConductivityTensor
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
   FUNCTION GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) &
                   RESULT (TCoef)
 !------------------------------------------------------------------------------
@@ -110,7 +110,7 @@
     INTEGER :: n, i, j
     LOGICAL :: CoilBody
     CHARACTER(LEN=*) :: CoilType
-    
+
     TCoef=0._dp
     TCoefRe=0._dp
     TCoefIm=0._dp
@@ -122,9 +122,9 @@
        END DO
     END DO
 
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
   END FUNCTION GetCMPLXElectricConductivityTensor
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION GetPermeabilityTensor(Element, n, Part) &
@@ -149,7 +149,7 @@
       ELSE
         CALL ListGetRealArray( Material, &
              'Relative Permeability im', Cwrk, n, Element % NodeIndexes, Found )
-      END IF 
+      END IF
       IF (Found) THEN
         IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
           DO i=1,3
@@ -177,7 +177,7 @@
     IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 !------------------------------------------------------------------------------
   END FUNCTION GetPermeabilityTensor
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION GetTensor(Element, n, tsize, varname, Part, Found) &
@@ -199,13 +199,13 @@
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
       slen = LEN_TRIM(varname)
-      IF (Part=='re') THEN 
+      IF (Part=='re') THEN
         CALL ListGetRealArray( Material, &
           varname(1:slen), Cwrk, n, Element % NodeIndexes, Found )
       ELSE
         CALL ListGetRealArray( Material, &
           varname(1:slen)//' im', Cwrk, n, Element % NodeIndexes, Found )
-      END IF 
+      END IF
       IF (Found) THEN
         IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
           DO i=1,tsize
@@ -233,7 +233,7 @@
     IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 !------------------------------------------------------------------------------
   END FUNCTION GetTensor
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION GetCMPLXTensor(Element, n, tsize, varname, Found) &
@@ -241,7 +241,7 @@
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: n, i, j, slen, tsize 
+    INTEGER :: n, i, j, slen, tsize
     COMPLEX(KIND=dp) :: T(tsize,tsize,n)
     REAL(KIND=dp) :: TRe(tsize,tsize,n), TIm(tsize,tsize,n)
     CHARACTER(LEN=2) :: Part
@@ -262,7 +262,7 @@
     END DO
 !------------------------------------------------------------------------------
   END FUNCTION GetCMPLXTensor
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
 
 
 !-------------------------------------------------------------------
@@ -271,21 +271,21 @@
 !-------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: M(2,2), Minv(2,2)
-    REAL(KIND=dp) :: det, a, b, c, d 
+    REAL(KIND=dp) :: det, a, b, c, d
 
     a = M(1,1); b = M(1,2); c=M(2,1); d=M(2,2)
     Minv=0._dp
-  
+
     IF ( ABS(a) <= TINY(a) .AND. ABS(b) <= TINY(b) .AND. &
          ABS(c) <= TINY(c) .AND. ABS(d) <= TINY(d)         ) RETURN
     det = a*d-b*c
-    IF (ABS(det) <= TINY(det)) CALL Fatal('Get2x2MatrixInverse', 'Determinant is zero! This should not happen...') 
-    
+    IF (ABS(det) <= TINY(det)) CALL Fatal('Get2x2MatrixInverse', 'Determinant is zero! This should not happen...')
+
     Minv(1,1) =  1/det * d
-    Minv(1,2) = -1/det * b 
-    Minv(2,1) = -1/det * c 
-    Minv(2,2) =  1/det * a 
-    
+    Minv(1,2) = -1/det * b
+    Minv(2,1) = -1/det * c
+    Minv(2,2) =  1/det * a
+
 !-------------------------------------------------------------------
   END FUNCTION Get2x2MatrixInverse
 !-------------------------------------------------------------------
@@ -312,22 +312,22 @@
 !-------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: M(2,2), Minv(2,2)
-    COMPLEX(KIND=dp) :: det, a, b, c, d 
+    COMPLEX(KIND=dp) :: det, a, b, c, d
     REAL(KIND=dp) :: r
 
     a = M(1,1); b = M(1,2); c=M(2,1); d=M(2,2)
     Minv=0._dp
-  
+
     IF ( ABS(a) <= TINY(r) .AND. ABS(b) <= TINY(r) .AND. &
          ABS(c) <= TINY(r) .AND. ABS(d) <= TINY(r)         ) RETURN
     det = a*d-b*c
-    IF (ABS(det) <= TINY(r)) CALL Fatal('Get2x2MatrixInverse', 'Determinant is zero! This should not happen...') 
-    
+    IF (ABS(det) <= TINY(r)) CALL Fatal('Get2x2MatrixInverse', 'Determinant is zero! This should not happen...')
+
     Minv(1,1) =  1/det * d
-    Minv(1,2) = -1/det * b 
-    Minv(2,1) = -1/det * c 
-    Minv(2,2) =  1/det * a 
-    
+    Minv(1,2) = -1/det * b
+    Minv(2,1) = -1/det * c
+    Minv(2,2) =  1/det * a
+
 !-------------------------------------------------------------------
   END FUNCTION Get2x2CMPLXMatrixInverse
 !-------------------------------------------------------------------
@@ -431,7 +431,7 @@
 !     DO j = 1, n
 !       DO k=1,RotMvar % DOFs
 !         RotMvar % Values(RotMvar % DOFs*(&
-!           RotMvar % Perm(Element % DGIndexes(j))-1)+k) = RotM(ind1(k),ind2(k),j) 
+!           RotMvar % Perm(Element % DGIndexes(j))-1)+k) = RotM(ind1(k),ind2(k),j)
 !       END DO
 !
 !       IF (ASSOCIATED(alphavecvar)) THEN
@@ -483,7 +483,7 @@
 !      END IF
 !   END IF
 
-       
+
 !------------------------------------------------------------------------------
  END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
@@ -550,7 +550,7 @@
     Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
     IF ( Found ) THEN
       Acoef(1:n) = Pvacuum * Acoef(1:n)
-      Acoef(1:n) = Acoef(1:n) + im * Pvacuum * & 
+      Acoef(1:n) = Acoef(1:n) + im * Pvacuum * &
               GetReal(Material,'Relative Permittivity  im', Found_im )
     ELSE
       Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
@@ -572,7 +572,7 @@
 
 !------------------------------------------------------------------------------
 !> This gets keywords for a loss model that is needed by FourierLossSolver and
-!> MagnetoDynamicsCalcFields. There is an old and new format. 
+!> MagnetoDynamicsCalcFields. There is an old and new format.
 !------------------------------------------------------------------------------
   SUBROUTINE GetLossExponents(vList,FreqPower,FieldPower,Ncomp,OldKeywords)
 !------------------------------------------------------------------------------
@@ -580,41 +580,41 @@
     REAL(KIND=dp) :: FreqPower(:), FieldPower(:)
     INTEGER :: Ncomp
     LOGICAL, OPTIONAL :: OldKeywords
-    
+
     REAL(KIND=dp), POINTER :: WrkArray(:,:)
     LOGICAL :: Found
     INTEGER :: icomp
     CHARACTER(*), PARAMETER :: Caller = 'GetLossExponents'
 
     IF( PRESENT(OldKeywords) ) THEN
-      IF( OldKeywords ) THEN      
+      IF( OldKeywords ) THEN
         CALL Info('GetLossExponents','Using old keyword format',Level=20)
         FreqPower(1) = GetCReal( vList,'Harmonic Loss Linear Frequency Exponent',Found )
         IF( .NOT. Found ) FreqPower(1) = 1.0_dp
-        
+
         FreqPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Frequency Exponent',Found )
         IF( .NOT. Found ) FreqPower(2) = 2.0_dp
-        
-        FieldPower(1) = GetCReal( vList,'Harmonic Loss Linear Exponent',Found ) 
+
+        FieldPower(1) = GetCReal( vList,'Harmonic Loss Linear Exponent',Found )
         IF( .NOT. Found ) FieldPower(1) = 2.0_dp
         FieldPower(1) = FieldPower(1) / 2.0_dp
-        
-        FieldPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Exponent',Found ) 
+
+        FieldPower(2) = GetCReal( vList,'Harmonic Loss Quadratic Exponent',Found )
         IF( .NOT. Found ) FieldPower(2) = 2.0_dp
-        FieldPower(2) = FieldPower(2) / 2.0_dp    
+        FieldPower(2) = FieldPower(2) / 2.0_dp
         RETURN
       ELSE
-        CALL Info('GetLossExponents','Using new keyword format',Level=20)    
+        CALL Info('GetLossExponents','Using new keyword format',Level=20)
       END IF
     END IF
-      
-    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Frequency Exponent',Found )    
-    IF( Found ) THEN 
+
+    WrkArray => ListGetConstRealArray( vList,'Harmonic Loss Frequency Exponent',Found )
+    IF( Found ) THEN
       IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
         CALL Fatal(Caller,'> Harmonic Loss Frequency Exponent < too small')
       END IF
       FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
-    ELSE       
+    ELSE
       DO icomp = 1, Ncomp
         FreqPower(icomp) = GetCReal( vList,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
       END DO
@@ -625,16 +625,16 @@
       IF( SIZE( WrkArray,1 ) < Ncomp ) THEN
         CALL Fatal(Caller,'> Harmonic Loss Field Exponent < too small')
       END IF
-      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
+      FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)
     ELSE
       DO icomp = 1, Ncomp
         FieldPower(icomp) = GetCReal( vList,'Harmonic Loss Field Exponent '//I2S(icomp) )
       END DO
-    END IF    
-    
+    END IF
+
   END SUBROUTINE GetLossExponents
 
-  
+
 !------------------------------------------------------------------------------
  END MODULE MGDynMaterialUtils
 !------------------------------------------------------------------------------

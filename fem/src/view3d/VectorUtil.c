@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -121,7 +121,7 @@ void CylinderNormal( double FX,double FY,double FZ, double DX,double DY,double D
      FX -= Cyl->CenterPoint.x;
      FY -= Cyl->CenterPoint.y;
      FZ -= Cyl->CenterPoint.z;
-    
+
      RotateVector(&FX,&FY,&FZ,Cyl->RotationMatrix);
      RotateVector(&DX,&DY,&DZ,Cyl->RotationMatrix);
 
@@ -141,7 +141,7 @@ void CylinderNormal( double FX,double FY,double FZ, double DX,double DY,double D
          if ( T<0 || T>1  ) T = (-B - D)/(2*A);
        } else {
          exit(1);
-       } 
+       }
      }
 
      if ( T>=0 && T<=1 ) {
@@ -154,5 +154,5 @@ void CylinderNormal( double FX,double FY,double FZ, double DX,double DY,double D
        *nx /= R; *ny /= R; *nz /= R;
      } else {
        *nx = 0; *ny = 0; *nz = 0;
-     } 
+     }
 }

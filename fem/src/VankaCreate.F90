@@ -3,7 +3,7 @@
 ! * Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! * Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *****************************************************************************/
 
@@ -44,7 +44,7 @@
 !-------------------------------------------------------------------------------
       USE DefUtils
       IMPLICIT NONE
-      
+
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -110,7 +110,7 @@
 !------------------------------------------------------------------------------
   SUBROUTINE VankaCreate(A,Solver)
     USE DefUtils
-    IMPLICIT NONE 
+    IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      TYPE(Solver_t), TARGET :: Solver
@@ -125,7 +125,7 @@
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:)
      REAL(KIND=dp) :: veps
-     
+
      TYPE Buf_t
         REAL(KIND=dp), ALLOCATABLE :: gval(:)
         INTEGER, ALLOCATABLE :: grow(:),gcol(:)
@@ -134,7 +134,7 @@
 
      TYPE(Matrix_t), POINTER :: B
      INTEGER :: VankaMode
-     
+
      Diag => A % Diag
      Rows => A % Rows
      Cols => A % Cols
@@ -143,10 +143,10 @@
      Perm => Solver % Variable % Perm
 
      Svalues => A % Values
-     
+
      ! If we have a block solver then we may be coming here with another dof count!
-     dofs = dofs * A % NumberOfRows / SIZE(Solver % Variable % Values) 
-     
+     dofs = dofs * A % NumberOfRows / SIZE(Solver % Variable % Values)
+
      ALLOCATE(TotValues(SIZE(A % Values)))
      IF(ASSOCIATED(A % PrecValues)) THEN
        TotValues = A % PrecValues
@@ -271,7 +271,7 @@
      VankaMode = ListGetInteger(Solver % Values,'Vanka Mode',Found)
      veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
      IF(.NOT. Found) veps = 1.0e-6
-     
+
      IF( VankaMode == 0 ) THEN
        ! For the basic mode the filling is exactly the same as for the primary matrix
        IF ( .NOT. ASSOCIATED(A % ILUValues) ) THEN
@@ -285,8 +285,8 @@
        B % FORMAT = MATRIX_LIST
        A % Values => TotValues
      END IF
-       
-     
+
+
      SELECT CASE(VankaMode)
 
      CASE(0)
@@ -309,7 +309,7 @@
            END DO
          END DO
          IF(l==0) CYCLE
-         
+
          A % Values => TotValues
          DO j=1,l
            DO k=1,l
@@ -327,22 +327,22 @@
 
      CASE(1)
        CALL Info('VankaCreate','Using block created from connections in matrix row')
-       
+
        ! Add the max index first because list matrix likes this
-       i = A % NumberOfRows 
+       i = A % NumberOfRows
        CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
-       
+
        DO i=1,A % NumberOfRows / dofs
          j = dofs*(i-1)+1
-         
+
          nn = A % Rows(j+1)-A % Rows(j)
-         IF(nn > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')         
+         IF(nn > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')
          Ind(1:nn) = A % Cols(A % Rows(j):A % Rows(j+1)-1)
 
          CALL AssembleVankaBlock()
        END DO
-         
-     CASE(2) 
+
+     CASE(2)
 
        BLOCK
          TYPE(Matrix_t), POINTER :: NodeGraph, EdgeGraph
@@ -351,19 +351,19 @@
          INTEGER :: n0
 
          CALL Info('VankaCreate','Using aggressive block created around edge')
-         
+
          Mesh => Solver % Mesh
          IF(.NOT. ASSOCIATED(Mesh % Edges)) THEN
            CALL Fatal('VankaCreate','This version requires Edges!')
          END IF
-           
+
          ! Create a graph for node-to-edge connectivity
          !----------------------------------------------
          NodeGraph => AllocateMatrix()
-         NodeGraph % FORMAT = MATRIX_LIST         
+         NodeGraph % FORMAT = MATRIX_LIST
          DO i = Mesh % NumberOfEdges, 1, -1
            Edge => Mesh % Edges(i)
-           DO j=1, Edge % TYPE % NumberOfNodes 
+           DO j=1, Edge % TYPE % NumberOfNodes
              CALL List_AddToMatrixElement( NodeGraph % ListMatrix,Edge % NodeIndexes(j),i,1.0_dp )
            END DO
          END DO
@@ -373,10 +373,10 @@
          ! Create a graph for edge-to-edge connectivity
          !----------------------------------------------
          EdgeGraph => AllocateMatrix()
-         EdgeGraph % FORMAT = MATRIX_LIST                 
+         EdgeGraph % FORMAT = MATRIX_LIST
          DO i = Mesh % NumberOfEdges, 1, -1
            Edge => Mesh % Edges(i)
-           DO j=1, Edge % TYPE % NumberOfNodes 
+           DO j=1, Edge % TYPE % NumberOfNodes
              k = Edge % NodeIndexes(j)
              DO l = NodeGraph % Rows(k),NodeGraph % Rows(k+1)-1
                CALL List_AddToMatrixElement( EdgeGraph % ListMatrix,i,NodeGraph % Cols(l),1.0_dp )
@@ -384,13 +384,13 @@
            END DO
          END DO
          CALL FreeMatrix( NodeGraph)
-         
+
          CALL List_ToCRSMatrix(EdgeGraph)
          PRINT *,'Nonzeros per row EdgeGraph:',1.0_dp * SIZE(EdgeGraph % Values) / EdgeGraph % NumberOfRows
 
          ! Create the preconditioning matrix
          !-----------------------------------
-         i = A % NumberOfRows 
+         i = A % NumberOfRows
          CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
 
          n0 = Mesh % NumberOfNodes
@@ -436,8 +436,8 @@
            nn = l
            CALL AssembleVankaBlock()
          END DO
-         CALL FreeMatrix( EdgeGraph )         
-         
+         CALL FreeMatrix( EdgeGraph )
+
        END BLOCK
 
 
@@ -447,9 +447,9 @@
          TYPE(Element_t), POINTER :: Face
          INTEGER :: nn2, NoElems
          INTEGER, POINTER :: Indexes2(:)
-         
+
          CALL Info('VankaCreate','Using block created around each face')
-         
+
          Mesh => Solver % Mesh
          IF( Mesh % MeshDim == 3 ) THEN
            IF(.NOT. ASSOCIATED(Mesh % Faces)) THEN
@@ -462,23 +462,23 @@
              CALL Warn('VankaCreate','This mode requires existence of Edges in 2D!')
              CALL FindMeshEdges2D(Mesh)
            END IF
-           
+
            NoElems = Mesh % NumberOfEdges
          END IF
 
          ALLOCATE(Indexes2(SIZE(Indexes)))
-         
+
          ! Add the max index first because list matrix likes this
-         i = A % NumberOfRows 
+         i = A % NumberOfRows
          CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
-         
-         DO i=1, NoElems 
+
+         DO i=1, NoElems
            IF( Mesh % MeshDim == 3 ) THEN
              Face => Mesh % Faces(i)
            ELSE
              Face => Mesh % Edges(i)
            END IF
-             
+
            nn = 0
            nn2 = 0
            DO j=1,2
@@ -489,7 +489,7 @@
              END IF
              IF(.NOT. ASSOCIATED(Element) ) CYCLE
 
-             IF(j==1) THEN 
+             IF(j==1) THEN
                nn = GetElementDOFs(Indexes,Element)
              ELSE
                nn2 = GetElementDOFs(Indexes2,Element)
@@ -509,9 +509,9 @@
              CONTINUE
            ELSE IF( nn == 0 ) THEN
              nn = nn2
-             Indexes(1:nn) = Indexes2(1:nn2)             
+             Indexes(1:nn) = Indexes2(1:nn2)
            END IF
-             
+
            l = 0
            DO j=1,nn
              k = Indexes(j)
@@ -532,21 +532,21 @@
 #if 0
      CASE(4)
        ! This does not really work for the problems tested
-       BLOCK                  
+       BLOCK
          TYPE(Mesh_t), POINTER :: Mesh
          INTEGER :: NoLayers = 0
          INTEGER, POINTER :: DownPointer(:), TopPointer(:)
          TYPE(Variable_t), POINTER :: ExtVar
          TYPE(Solver_t), POINTER :: pSolver
-         
+
          SAVE ExtVar, DownPointer, TopPointer, NoLayers
-         
-         CALL Info('VankaCreate','Using block created by inverse extrusion') 
+
+         CALL Info('VankaCreate','Using block created by inverse extrusion')
 
          pSolver => Solver
          Mesh => Solver % Mesh
-         
-         ! Find the extruded structure 
+
+         ! Find the extruded structure
          IF( NoLayers == 0 ) THEN
            CALL DetectExtrudedStructure( Mesh, pSolver, ExtVar, &
                TopNodePointer = TopPointer, DownNodePointer = DownPointer, &
@@ -556,9 +556,9 @@
          i = (NoLayers+1)*dofs
          IF( SIZE(Ind) < i ) THEN
            DEALLOCATE( Ind, al)
-           ALLOCATE(Ind(i),al(i,i))           
+           ALLOCATE(Ind(i),al(i,i))
          END IF
-           
+
          DO i=1,Mesh % NumberOfNodes
            IF( TopPointer(i) == i ) THEN
              l = 1
@@ -569,7 +569,7 @@
                l = l+1
                Indexes(l) = k
              END DO
-             
+
              nn = l
              l = 0
              DO j=1,nn
@@ -589,35 +589,35 @@
              nn = l
              CALL AssembleVankaBlock()
            END IF
-         END DO                      
+         END DO
        END BLOCK
 #endif
 
      CASE DEFAULT
 
        CALL Fatal('VankaCreate','Unknown vanka mode: '//I2S(VankaMode))
-       
+
      END SELECT
 
-     ! This is common to all other vanka modes except the basic elemental one. 
+     ! This is common to all other vanka modes except the basic elemental one.
      IF( VankaMode > 0 ) THEN
        CALL List_ToCRSMatrix(B)
        PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
        PRINT *,'Fill ratio for Vanka:',1.0_dp * SIZE(B % Values) / SIZE(A % Values)
-       
+
        IF(ASSOCIATED(A % ILUValues)) DEALLOCATE(A % ILUValues)
        IF(ASSOCIATED(A % ILUCols)) DEALLOCATE(A % ILUCols)
        IF(ASSOCIATED(A % ILURows)) DEALLOCATE(A % ILURows)
-       
+
        A % ILUValues => B % Values
        A % ILUCols => B % Cols
        A % ILURows => B % Rows
-       
+
        ! Nullify these so that they won't be destroyed
        NULLIFY( B % Values, B % Cols, B % Rows)
-       CALL FreeMatrix( B )               
+       CALL FreeMatrix( B )
      END IF
-   
+
      A % Values => Svalues
      DEALLOCATE(AL, Indexes, Ind, TotValues)
 
@@ -637,11 +637,11 @@
      END SUBROUTINE GrowBuffers
 
      SUBROUTINE AssembleVankaBlock()
-       
+
        INTEGER :: jj, kk
        REAL(KIND=dp) :: asum, ab
-       
-       
+
+
        al(1:nn,1:nn) = 0.0_dp
        DO j=1,nn
          DO k=1,nn
@@ -661,13 +661,13 @@
              ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
              IF(ab < veps * asum ) CYCLE
              DO jj=-1,0
-               DO kk=-1,0                     
+               DO kk=-1,0
                  CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
                END DO
              END DO
            END DO
          END DO
-       ELSE    
+       ELSE
          DO j=1,nn
            DO k=1,nn
              ab = ABS(AL(j,k))
@@ -676,9 +676,9 @@
            END DO
          END DO
        END IF
-       
+
      END SUBROUTINE AssembleVankaBlock
-              
+
 !------------------------------------------------------------------------------
   END SUBROUTINE VankaCreate
 !------------------------------------------------------------------------------
@@ -691,7 +691,7 @@
       USE DefUtils
       !USE DirectSolve, ONLY: MumpsLocal_SolveSystem, Umfpack_SolveSystem
       IMPLICIT NONE
-      
+
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -714,7 +714,7 @@
           ALLOCATE(sv)
           str = ListGetString( CurrentModel % Solver % Values, &
               'Linear System Direct Method', Stat )
-          IF(.NOT. Stat ) str = "umfpack"                    
+          IF(.NOT. Stat ) str = "umfpack"
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
           IF( str == "umfpack" ) THEN
             CALL Warn( 'CircuitPrec', 'Umfpack solver not installed, using MUMPS instead!' )
@@ -733,11 +733,11 @@
           CALL ListAddLogical( sv % Values, 'Linear System Free Factorization', .FALSE.)
 
           CALL Info('CircuitPrec','Using direct solver '&
-              //TRIM(str)//' of size '//I2S(A % ExtraDofs),Level=10)          
+              //TRIM(str)//' of size '//I2S(A % ExtraDofs),Level=10)
         END IF
         i = ndim - A % ExtraDOFs + 1
         j = ndim - A % ExtraDOFs + n
-        
+
         IF(ANY(ABS(A % CircuitMatrix % Values)>0)) THEN
           SELECT CASE( str )
           CASE('umfpack')
@@ -753,13 +753,13 @@
 !-------------------------------------------------------------------------------
     END SUBROUTINE CircuitPrec
 !-------------------------------------------------------------------------------
- 
+
 !-------------------------------------------------------------------------------
     SUBROUTINE CircuitPrecComplex(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
       IMPLICIT NONE
-      
+
       INTEGER :: ipar(*)
       COMPLEX(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -783,7 +783,7 @@
           ALLOCATE(sv)
           str = ListGetString( CurrentModel % Solver % Values, &
               'Linear System Direct Method', Stat )
-          IF(.NOT. Stat ) str = "umfpack"                    
+          IF(.NOT. Stat ) str = "umfpack"
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
           IF( str == "umfpack" ) THEN
             CALL Warn( 'CircuitPrecComplex', 'Umfpack solver not installed, using MUMPS instead!' )
@@ -802,16 +802,16 @@
           CALL ListAddLogical( sv % Values, 'Linear System Free Factorization', .FALSE.)
 
           CALL Info('CircuitPrecComplex','Using direct solver '&
-              //TRIM(str)//' of size '//I2S(A % ExtraDofs/2),Level=10)          
+              //TRIM(str)//' of size '//I2S(A % ExtraDofs/2),Level=10)
         END IF
- 
+
         IF(.NOT.ALLOCATED(ru)) THEN
           ALLOCATE(ru(n), rv(n))
         ELSE IF(SIZE(ru)<n) THEN
           DEALLOCATE(ru, rv)
           ALLOCATE(ru(n), rv(n))
         END IF
- 
+
         i = (ndim  - A % ExtraDOFs)/2
         j = 0
         DO k=1,n,2
@@ -827,7 +827,7 @@
         CASE DEFAULT
           CALL Fatal('CircuitPrecComplex','Impossible direct method: '//TRIM(str))
         END SELECT
-        
+
         j = 0
         DO k=1,n,2
           j = j + 1
@@ -1015,7 +1015,7 @@
      ELSE
        A % ParMatrix % SplittedMatrix % InsideMatrix % CircuitMatrix => tm
      END IF
-    
+
      ALLOCATE(Perm(n)); Perm=0
 
      IF ( A % Complex ) THEN
@@ -1083,18 +1083,18 @@
 
 
 
-  
+
 !-------------------------------------------------------------------------------
 !> This assumes that another solver is used for the preconditioning.
 !> Given a residual "v" this solves Au=v (usually in an approximate manner),
 !> where A is the matrix of the solver specified by using the keyword
 !> "Prec Solvers". The preconditioning solver must be able to read as input
 !> the residual variable (whose name is here specified with the keyword
-!> "Preconditioning Residual") and produce the correction variable (whose name 
+!> "Preconditioning Residual") and produce the correction variable (whose name
 !> is here specified as the value of the keyword "Preconditioning Update").
 !> If the discretizations are incompatible, a transformation of the equations
 !> must also be made outside this subroutine so that the equation "Au=v" can
-!> be thought.  
+!> be thought.
 !-------------------------------------------------------------------------------
   SUBROUTINE SlavePrec(u,v,ipar)
 !-------------------------------------------------------------------------------
@@ -1135,7 +1135,7 @@
     END IF
     IF(n /= SIZE(pVar % Values) ) THEN
       CALL Fatal('SlavePrec','Residual should have same size as primary variable!')
-    END IF       
+    END IF
     res => pVar % Values
 
     IF( ParEnv % PEs > 1 ) THEN
@@ -1150,7 +1150,7 @@
     ELSE
       res(1:n) = v(1:n)
     END IF
-    
+
     str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
     IF(pVar % Dofs /= dofs ) THEN
@@ -1164,9 +1164,9 @@
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
 
-    ! Shall we do smoother after each preconitioner step, or after all? 
+    ! Shall we do smoother after each preconitioner step, or after all?
     AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
-    
+
     ALLOCATE(r(n))
     IF( ParEnv % PEs > 1 ) ALLOCATE(zshort(m), rshort(m))
 
@@ -1226,14 +1226,14 @@
       ! Ideally we need to multiply by "1" to get minimum norm.
       CALL ExperimentalStuff()
 
-      ! If we just have one solver, no need to cumulative summation etc. 
+      ! If we just have one solver, no need to cumulative summation etc.
       IF( SlaveCnt == 1 ) EXIT
 
       ! Sum up cumulative solution
       IF(SlaveInd == 1) THEN
-        ALLOCATE(z(n)) 
+        ALLOCATE(z(n))
         z(1:n) = dx(1:n)
-      ELSE          
+      ELSE
         z(1:n) = z(1:n) + dx(1:n)
       END IF
 
@@ -1248,17 +1248,17 @@
         DEALLOCATE(z)
         EXIT
       END IF
-        
+
     END DO
-    !--------------------------------------------------------------------------   
-    
+    !--------------------------------------------------------------------------
+
 
     ! If we want to perform smoothing only once at the very end.
     IF( .NOT. AdditiveSmoother ) THEN
       CALL TailoredSmooth(dx,res,1)
-      CALL ExperimentalStuff()            
+      CALL ExperimentalStuff()
     END IF
-    
+
     DEALLOCATE(r)
     IF( ParEnv % PEs > 1 ) DEALLOCATE(zshort, rshort)
 
@@ -1271,10 +1271,10 @@
   CONTAINS
 
     SUBROUTINE TailoredSmooth(dx,res,Level)
-      REAL(KIND=dp) :: dx(:), res(:)     
+      REAL(KIND=dp) :: dx(:), res(:)
       LOGICAL :: DoMask
       INTEGER :: Level
-      
+
       DoMask = .FALSE.
       str = ListGetString(Params,'MG Smoother')
       IF(len_TRIM(str) >= 6 ) THEN
@@ -1284,9 +1284,9 @@
         DoMask = ListGetLogical(Params,'Linear System Skip Mask', Found )
       END IF
 
-      r(1:n) = 0.0_dp      
+      r(1:n) = 0.0_dp
       IF(DoMask) THEN
-        BLOCK                    
+        BLOCK
           IF(.NOT. ASSOCIATED(Amat % SkipMask)) THEN
             CALL Fatal('TailoredSmooth','SkipMask not associated but here we are!?')
           END IF
@@ -1295,24 +1295,24 @@
         END BLOCK
       ELSE
         RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, Level, dofs )
-      END IF      
+      END IF
 
     END SUBROUTINE TailoredSmooth
 
-    
+
     SUBROUTINE ExperimentalStuff()
 
-      REAL(KIND=dp) :: rn, bn      
+      REAL(KIND=dp) :: rn, bn
 
       IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
-        CALL MatrixVectorMultiply( Amat, dx, r) 
+        CALL MatrixVectorMultiply( Amat, dx, r)
         rn = SUM( r(1:n)**2 )
         bn = SUM( r(1:n) * res(1:n) )
         IF( rn > TINY( rn ) ) THEN
-          bn = bn / rn 
-          dx(1:n) = dx(1:n) * bn 
+          bn = bn / rn
+          dx(1:n) = dx(1:n) * bn
           WRITE( Message,'(A,ES12.3)') 'Preconditioning Normalizing Factor: ',bn
-          CALL Info('SlavePrec',Message,Level=6) 
+          CALL Info('SlavePrec',Message,Level=6)
         END IF
 
       END IF
@@ -1357,7 +1357,7 @@
     Amat => Solver % Matrix
     n = SIZE(Solver % Variable % Values)
     DOFs = Solver % Variable % dofs
-    
+
     str = ListGetString( Params,'Preconditioning Residual', UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
@@ -1367,13 +1367,13 @@
     IF(n /= SIZE(pVar % Values) ) THEN
       CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
     END IF
-    
+
     res => pVar % Values
     cres => ComplexVariableValues( pVar )
     cres(1:n/2) = v(1:n/2)
 
     str = ListGetString( Params,'Preconditioning Update', UnfoundFatal=.TRUE.)
-    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )    
+    pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
     IF(pVar % Dofs /= dofs ) THEN
       CALL Fatal('SlavePrecComplex','Update should have the same count of DOFs as primary variable!')
@@ -1387,17 +1387,17 @@
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
 
-    ! Shall we do smoother after each preconitioner step, or after all? 
+    ! Shall we do smoother after each preconitioner step, or after all?
     AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
-    
+
 
 
     ALLOCATE(r(n))
-      
+
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
     DO SlaveInd = 1, 10
-      
+
       ! Calculate remaining residual, if we have just one slave we just need the initial residual.
       IF( SlaveInd > 1 ) THEN
         r(1:n) = 0.0_dp
@@ -1405,38 +1405,38 @@
         cres(1:n/2) = v(1:n/2)
         res(1:n) = res(1:n) - r(1:n)
       END IF
-      
+
       IF (ScaleRHS) THEN
-        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff. 
+        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
         CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
       END IF
 
       ! (dx,res) are the vectors that should go in here by their name
       dx(1:n) = 0.0_dp
       CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd, SlaveCnt = SlaveCnt  )
-      
+
       IF (ScaleRHS) THEN
         ! Transform the search direction so that it corresponds to the scaled linear system
         CALL ScaleLinearSystemVectors(AMat, res, n, dx)
       END IF
-      
+
       IF( AdditiveSmoother ) THEN
         r = 0.0_dp
         RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SlaveInd, dofs )
       END IF
 
       ! This is just to test that the suggested search direction is a good one.
-      ! Ideally we need to multiply by "1" to get minimum norm. 
-      CALL ExperimentalStuffZ()            
-      
-      ! If we just have one solver, no need to cumulative summation etc. 
+      ! Ideally we need to multiply by "1" to get minimum norm.
+      CALL ExperimentalStuffZ()
+
+      ! If we just have one solver, no need to cumulative summation etc.
       IF( SlaveCnt == 1 ) EXIT
 
       ! Sum up cumulative solution
       IF(SlaveInd == 1) THEN
-        ALLOCATE(z(n)) 
+        ALLOCATE(z(n))
         z(1:n) = dx(1:n)
-      ELSE          
+      ELSE
         z(1:n) = z(1:n) + dx(1:n)
       END IF
 
@@ -1447,18 +1447,18 @@
         DEALLOCATE(z)
         EXIT
       END IF
-        
+
     END DO
-    !--------------------------------------------------------------------------   
-    
+    !--------------------------------------------------------------------------
+
 
     ! If we want to perform smoothing only once at the very end.
     IF( .NOT. AdditiveSmoother ) THEN
       r = 0.0_dp
       RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, 1, dofs )
-      CALL ExperimentalStuffZ()            
+      CALL ExperimentalStuffZ()
     END IF
-    
+
     DEALLOCATE(r)
 
     u(1:n/2) = cdx(1:n/2)
@@ -1467,14 +1467,14 @@
 
 
     SUBROUTINE ExperimentalStuffZ()
-      
+
       REAL(KIND=dp) :: rn, bnre, bnim
 
       IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
 
-        CALL MatrixVectorMultiply( Amat, dx, r) 
+        CALL MatrixVectorMultiply( Amat, dx, r)
         rn = SUM( r(1:n)**2 )
-        bnre = SUM( r(1:n) * res(1:n) )          
+        bnre = SUM( r(1:n) * res(1:n) )
         bnim = SUM( r(1:n:2) * res(2:n:2) - r(2:n:2) * res(1:n:2) )
 
         IF( rn > TINY( rn ) ) THEN
@@ -1485,22 +1485,22 @@
           res(1:n) = dx(1:n)
           dx(1:n:2) = bnre * r(1:n:2) - bnim * r(2:n:2)
           dx(2:n:2) = bnim * r(1:n:2) + bnre * r(2:n:2)
-#else            
+#else
           dx(1:n) = dx(1:n) * bnre
 #endif
           WRITE( Message,'(A,2ES12.3)') 'Preconditioning Normalizing Factor: ',bnre,bnim
-          CALL Info('SlavePrecComplex',Message,Level=6) 
+          CALL Info('SlavePrecComplex',Message,Level=6)
         END IF
       END IF
 
     END SUBROUTINE ExperimentalStuffZ
-      
+
 !-------------------------------------------------------------------------------
   END SUBROUTINE SlavePrecComplex
 !-------------------------------------------------------------------------------
 
-  
-  
+
+
 !> \}
 
 !> \}

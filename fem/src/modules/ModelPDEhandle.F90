@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -25,13 +25,13 @@
 ! * A prototype solver for advection-diffusion-reaction equation,
 ! * This equation is generic and intended for education purposes
 ! * but may also serve as a starting point for more complex solvers.
-! * This one uses the ListGetElement* commands with handles that offer 
+! * This one uses the ListGetElement* commands with handles that offer
 ! * speed and generality over ListGetReal.
 ! *
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *****************************************************************************/
 
@@ -59,7 +59,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ValueHandle_t) :: Load_h, FieldSource_h, DiffCoeff_h, ReactCoeff_h, ConvCoeff_h, &
       TimeCoeff_h, ConvVelo1_h, ConvVelo2_h, ConvVelo3_h, &
       BCFlux_h, BCCoeff_h, BCExt_h
-      
+
   CALL ListInitElementKeyword( Load_h,'Body Force','Field Source')
   CALL ListInitElementKeyword( DiffCoeff_h,'Material','Diffusion Coefficient')
   CALL ListInitElementKeyword( ReactCoeff_h,'Material','Reaction Coefficient')
@@ -72,15 +72,15 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   CALL ListInitElementKeyword( BCFlux_h,'Boundary Condition','Field Flux')
   CALL ListInitElementKeyword( BCCoeff_h,'Boundary Condition','Robin Coefficient')
   CALL ListInitElementKeyword( BCExt_h,'Boundary Condition','External Field')
-  
+
   CALL DefaultStart()
-  
+
   maxiter = ListGetInteger( GetSolverParams(),&
       'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
 
   dim = CoordinateSystemDimension()
-  
+
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
@@ -93,7 +93,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     TotArea = 0.0_dp
     TotLen = 0.0_dp
     TotSrc = 0.0_dp
-    
+
 1   Active = GetNOFActive()
 
     DO t=1,Active
@@ -118,7 +118,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     END DO
 
     IF(DefaultCutFEM()) GOTO 1
-    
+
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -126,19 +126,19 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     ! And finally, solve:
     !--------------------
     Norm = DefaultSolve()
-    IF( DefaultConverged() ) EXIT    
+    IF( DefaultConverged() ) EXIT
 
   END DO
 
   CALL DefaultFinish()
-  
+
   IF( ListGetLogical( GetSolverParams(),'CutFEM',Found) &
       .OR. ListGetLogical( GetSolverParams(),'Integ Test',Found) ) THEN
-    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total area',TotArea ) 
-    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total len',TotLen ) 
-    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total src',TotSrc ) 
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total area',TotArea )
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total len',TotLen )
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total src',TotSrc )
   END IF
- 
+
 CONTAINS
 
 ! Assembly of the matrix entries arising from the bulk elements
@@ -165,11 +165,11 @@ CONTAINS
     STIFF = 0._dp
     FORCE = 0._dp
     a = 0.0_dp
-    
+
     ! Numerical integration:
     !-----------------------
     IP = GaussPointsAdapt( Element )
-    
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -178,19 +178,19 @@ CONTAINS
 
       ! The source term at the integration point:
       !------------------------------------------
-      LoadAtIP = ListGetElementReal( Load_h, Basis, Element, Found ) 
-      rho = ListGetElementReal( TimeCoeff_h, Basis, Element, Found ) 
+      LoadAtIP = ListGetElementReal( Load_h, Basis, Element, Found )
+      rho = ListGetElementReal( TimeCoeff_h, Basis, Element, Found )
 
-      a(1) = ListGetElementReal( ConvVelo1_h, Basis, Element, Found ) 
-      a(2) = ListGetElementReal( ConvVelo2_h, Basis, Element, Found ) 
+      a(1) = ListGetElementReal( ConvVelo1_h, Basis, Element, Found )
+      a(2) = ListGetElementReal( ConvVelo2_h, Basis, Element, Found )
       IF( dim == 3 ) THEN
-        a(3) = ListGetElementReal( ConvVelo3_h, Basis, Element, Found ) 
+        a(3) = ListGetElementReal( ConvVelo3_h, Basis, Element, Found )
       END IF
-        
-      D = ListGetElementReal( DiffCoeff_h, Basis, Element, Found ) 
-      C = ListGetElementReal( ConvCoeff_h, Basis, Element, Found ) 
-      R = ListGetElementReal( ReactCoeff_h, Basis, Element, Found ) 
-      
+
+      D = ListGetElementReal( DiffCoeff_h, Basis, Element, Found )
+      C = ListGetElementReal( ConvCoeff_h, Basis, Element, Found )
+      R = ListGetElementReal( ReactCoeff_h, Basis, Element, Found )
+
       Weight = IP % s(t) * DetJ
 
       ! diffusion term (D*grad(u),grad(v)):
@@ -216,7 +216,7 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
-      TotArea = TotArea + Weight 
+      TotArea = TotArea + Weight
       TotSrc = TotSrc + Weight * LoadAtIp
     END DO
 
@@ -270,12 +270,12 @@ CONTAINS
 
       ! Given flux:
       ! -----------
-      F = ListGetElementReal( BCFlux_h, Basis, Element, Found ) 
+      F = ListGetElementReal( BCFlux_h, Basis, Element, Found )
 
       ! Robin condition (C*(u-u_0)):
       ! ---------------------------
-      C = ListGetElementReal( BCCoeff_h, Basis, Element, Found ) 
-      Ext = ListGetElementReal( BCExt_h, Basis, Element, Found ) 
+      C = ListGetElementReal( BCCoeff_h, Basis, Element, Found )
+      Ext = ListGetElementReal( BCExt_h, Basis, Element, Found )
 
       DO p=1,nd
         DO q=1,nd
@@ -284,7 +284,7 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * (F + C*Ext) * Basis(1:nd)
-      TotLen = TotLen + Weight 
+      TotLen = TotLen + Weight
     END DO
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------

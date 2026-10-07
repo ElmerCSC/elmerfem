@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,16 +27,16 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2000
 ! *
 ! ****************************************************************************/
 
 !------------------------------------------------------------------------------
-!> Subroutine for computing the force a fluid exerts to surfaces. Note that here 
+!> Subroutine for computing the force a fluid exerts to surfaces. Note that here
 !> integration points of the boundary elements are used to estimate the force
-!> resulting to a suboptimal accuracy. 
+!> resulting to a suboptimal accuracy.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
@@ -63,7 +63,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: ShearData(:,:)
   REAL(KIND=dp), ALLOCATABLE :: Forces(:,:), Moments(:,:), Areas(:)
   REAL(KIND=dp) :: Force(3), Moment(3), MomentAbout(3),Area, ShearStress
-  REAL(KIND=dp), POINTER :: mWork(:,:)	
+  REAL(KIND=dp), POINTER :: mWork(:,:)
   LOGICAL :: Stat, CalculateMoment, ViscousForce, Compressible, SumForces
   LOGICAL :: ShearOutput
   INTEGER :: i,j,k,n,pn,t,dim
@@ -81,7 +81,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
   CALL Info( 'ForceCompute', '-------------------------------------',Level=4 )
   CALL Info( 'ForceCompute', 'Computing Fluidic Force:  ', Level=4 )
   CALL Info( 'ForceCompute', '-------------------------------------',Level=4 )
- 
+
   Mesh => GetMesh()
 
   VariableName = GetString( Solver % Values, 'Velocity Field Name', stat )
@@ -147,7 +147,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      CurrentElement => Mesh % Elements(t)
 !------------------------------------------------------------------------------
-!    Set the current element pointer in the model structure to 
+!    Set the current element pointer in the model structure to
 !    reflect the element being processed
 !------------------------------------------------------------------------------
      Model % CurrentElement => Mesh % Elements(t)
@@ -205,9 +205,9 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
         IF( CalculateMoment ) THEN
           MomentAbout(1:dim) = mWork(1:dim,1)
         ELSE
-          MomentAbout(1) = ListGetCReal( BC,'Moment About 1', stat )        
+          MomentAbout(1) = ListGetCReal( BC,'Moment About 1', stat )
           MomentAbout(2) = ListGetCReal( BC,'Moment About 2', CalculateMoment )
-          CalculateMoment = stat .OR. CalculateMoment        
+          CalculateMoment = stat .OR. CalculateMoment
           MomentAbout(3) = ListGetCReal( BC,'Moment About 3', stat )
           CalculateMoment = stat .OR. CalculateMoment
         END IF
@@ -226,7 +226,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
         Area = 0.0d0
         ShearStress = 0.0d0
 
-        CALL ForceIntegrate( Force, Moment, MomentAbout, ViscousForce, Compressible, & 
+        CALL ForceIntegrate( Force, Moment, MomentAbout, ViscousForce, Compressible, &
              Area, ShearStress)
 
         Forces(k,1:3) = Forces(k,1:3) + Force(1:3)
@@ -245,14 +245,14 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
 
   DO k=1, Model % NumberOfBCs
 
-    IF( SumForces ) THEN    
+    IF( SumForces ) THEN
       IF( k > 1) EXIT
       Areas(1) = SUM(Areas)
       DO i=1,3
         Forces(1,i) = SUM(Forces(:,i))
         Moments(1,i) = SUM(Moments(:,i))
       END DO
-      WRITE( BoundaryName, '("")') 
+      WRITE( BoundaryName, '("")')
     ELSE
       IF ( .NOT. ListGetLogical(Model % BCs(k) % Values,'Calculate Fluidic Force',stat ) ) CYCLE
       WRITE( BoundaryName, '("bc ",I0)') k
@@ -272,7 +272,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
           '("Moment about (",ES9.3E1,",",ES9.3E1,",",ES9.3E1,") is:",3Es14.6E2)') &
           MomentAbout(1:3), Moments(k,1:3)
       CALL Info( 'ForceCompute', Message, Level=4 )
-      
+
       CALL ListAddConstReal( Model % Simulation, &
            'res: fluid moment 3 '//BoundaryName(1:nlen), Moments(k,3) )
       CALL ListAddConstReal( Model % Simulation, &
@@ -281,7 +281,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
            'res: fluid moment 1 '//BoundaryName(1:nlen), Moments(k,1) )
    END IF
 
-    CALL ListAddConstReal( Model % Simulation, & 
+    CALL ListAddConstReal( Model % Simulation, &
         'res: fluid force area '//BoundaryName(1:nlen), Areas(k) )
     CALL ListAddConstReal( Model % Simulation, &
         'res: fluid force '//BoundaryName(1:nlen), SQRT(SUM(Forces(k,1:3)**2 )) )
@@ -335,7 +335,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
      WRITE( 10, * ) '1: Shear stress [N/m2]'
      WRITE( 10, * ) '2: Coordinate 1'
      WRITE( 10, * ) '3: Coordinate 2'
-     
+
      CLOSE(10)
 
      DEALLOCATE( ShearData )
@@ -409,9 +409,9 @@ CONTAINS
           zpos = SUM( ElementNodes % z(1:n) * Basis(1:n) )
           s = 2*PI
         END IF
-         
+
         CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,xpos,ypos,zpos)
- 
+
         s = s * SqrtMetric * detJ * S_Integ(t)
 
         Normal = Normalvector( CurrentElement, ElementNodes, u, v, .TRUE. )
@@ -446,7 +446,7 @@ CONTAINS
         Div = 0.0d0
 
         IF ( ViscousForce ) THEN
-          
+
           Grad = MATMUL( Velocity(:,1:pn),ParentdBasisdx )
           Visc = SUM( Viscosity(1:pn) * ParentBasis(1:pn) )
 
@@ -455,7 +455,7 @@ CONTAINS
                'Viscosity models ignored in fluidic force computation' )
 
           IF ( Compressible ) THEN
-            
+
             IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               DO i = 1, DIM
                 Div = Div + Grad(i,i)
@@ -467,9 +467,9 @@ CONTAINS
             END IF
 
           END IF
-          
+
           Stress = Visc * ( Grad + TRANSPOSE(Grad) )
-          
+
         END IF
 
         IF ( CurrentCoordinateSystem() == 2 &
@@ -492,15 +492,15 @@ CONTAINS
           Radius(1) = SUM( (ElementNodes % x(1:n) - MomentAbout(1)) * Basis )
           Radius(2) = SUM( (ElementNodes % y(1:n) - MomentAbout(2)) * Basis )
           Radius(3) = SUM( (ElementNodes % z(1:n) - MomentAbout(3)) * Basis )
-          
+
           LMoment(1) = Radius(2) * LForce(3) - Radius(3) * LForce(2)
           LMoment(2) = Radius(3) * LForce(1) - Radius(1) * LForce(3)
           LMoment(3) = Radius(1) * LForce(2) - Radius(2) * LForce(1)
-          
+
           Moment = Moment + s * LMoment
         END IF
 
-        Area = Area + s 
+        Area = Area + s
 
 !------------------------------------------------------------------------------
      END DO
