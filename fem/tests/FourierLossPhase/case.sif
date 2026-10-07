@@ -1,0 +1,96 @@
+!---------------------------------------------------------------------
+! Test for FourierLoss that the loss does not depend on the phase of
+! the field, i.e. on the start time of the Fourier cycle, also when the
+! field exponent is not 2. The cos and sin parts of each harmonic are
+! combined into one amplitude sqrt(c^2+s^2) before applying the exponent.
+!
+! The field is spatially uniform and a known Fourier series in time.
+! The result is the same for any start time, e.g. 1.0, 1.1 or 1.25.
+! Earlier the cos and sin parts were treated separately (and the
+! direct field was signed) which gave a phase dependent result, here NaN.
+!--------------------------------------------------------------------
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Intervals(1) = 120
+  Timestep Sizes(1) = 0.025
+  Output Intervals(1) = 0
+  Steady State Max Iterations = 1
+
+  Frequency = 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Solvers"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Poisson"
+  Variable = "Potential"
+  Procedure = "ModelPDE" "AdvDiffSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = BiCGStabL
+End
+
+Solver 2
+  Equation = "Fourier"
+  Procedure = "FourierLoss" "FourierLossSolver"
+
+  Target Variable = String Potential
+  Target Variable Direct = Logical True
+  Fourier Series Components = Integer 3
+
+! Start at some phase of the field
+  Fourier Start Time = Real 1.37
+  Fourier Integrate Cycles = Integer 1
+
+  Harmonic Loss Frequency Exponent(3) = Real 0.0 0.0 0.0
+  Harmonic Loss Field Exponent(3) = Real 1.6 1.6 1.6
+
+! The norm is the total loss of the last completed cycle
+  Calculate Elemental Fields = True
+  Calculate Nodal Fields = False
+End
+
+Material 1
+  Time Derivative Coefficient = Real 0.0
+  Diffusion Coefficient = Real 1.0
+
+  Harmonic Loss Coefficient 1 = Real 1.0
+  Harmonic Loss Coefficient 2 = Real 2.0
+  Harmonic Loss Coefficient 3 = Real 0.5
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Variable time
+    Real MATC "2+cos(2*pi*tx)+0.5*cos(2*2*pi*tx)+0.25*cos(3*2*pi*tx)+0.4*sin(2*pi*tx)+0.2*sin(2*2*pi*tx)+0.1*sin(3*2*pi*tx)"
+End
+
+Solver 2 :: Reference Norm = 1.62377880E+01

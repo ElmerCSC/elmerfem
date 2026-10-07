@@ -619,7 +619,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: ldetJ,detJ, C_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
    REAL(KIND=dp) :: Freq, FreqPower(2), FieldPower(2), LossCoeff(2), ElemLoss(2), ValAtIP
-   REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
+   REAL(KIND=dp) :: rot_velo(3), angular_velo(3)
    REAL(KIND=dp) :: Coeff, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3)
    REAL(KIND=dp) :: R_ip, mu_r
@@ -994,6 +994,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      IF(.NOT. MaterialExponents) THEN
        OldLossKeywords = .NOT. ListCheckPresent(SolverParams,'Harmonic Loss Frequency Exponent')
        CALL GetLossExponents(SolverParams,FreqPower,FieldPower,LossN,OldLossKeywords)
+       ! Here the field exponent is applied to |B|^2. The new keyword gives the
+       ! exponent of |B| (as in FourierLoss) while the old keywords are halved already.
+       IF(.NOT. OldLossKeywords) FieldPower(1:LossN) = 0.5_dp * FieldPower(1:LossN)
      END IF
 
      IF( OldLossKeywords ) THEN
@@ -1010,7 +1013,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL Info(Caller,'Consider using more generic keywords for loss computation!')
      END IF
 
-     ComponentLoss = 0.0_dp
      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
      BodyLoss = 0.0_dp
      TotalLoss = 0._dp
@@ -2089,18 +2091,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
            IF(MaterialExponents) THEN
              CALL GetLossExponents(Material,FreqPower,FieldPower,LossN,OldLossKeywords)
+             IF(.NOT. OldLossKeywords) FieldPower(1:LossN) = 0.5_dp * FieldPower(1:LossN)
            END IF
 
            ! No losses to add if loss coefficient is not given
            IF( Found .OR. MaterialExponents ) THEN
-             ElemLoss = 0.0_dp
-             DO l=1,2
-               ValAtIP = SUM( B(l,1:3) ** 2 )
-               ElemLoss(1) = ElemLoss(1) + s * Basis(p) * LossCoeff(1) * ( Freq ** FreqPower(1) ) * ( ValAtIp ** FieldPower(1) )
-               ElemLoss(2) = ElemLoss(2) + s * Basis(p) * LossCoeff(2) * ( Freq ** FreqPower(2) ) * ( ValAtIp ** FieldPower(2) )
-               ComponentLoss(:,l) = ComponentLoss(:,l) + ElemLoss
-               BodyLoss(1:2,BodyId) = BodyLoss(1:2,BodyId) + ElemLoss
-             END DO
+             ! Squared amplitude |B|^2 = |Re B|^2 + |Im B|^2. Combining the cos and
+             ! sin modes before applying the exponent makes the loss independent
+             ! of the phase.
+             ValAtIP = SUM( B(1,1:3)**2 ) + SUM( B(2,1:3)**2 )
+             ElemLoss(1) = s * Basis(p) * LossCoeff(1) * ( Freq ** FreqPower(1) ) * ( ValAtIp ** FieldPower(1) )
+             ElemLoss(2) = s * Basis(p) * LossCoeff(2) * ( Freq ** FreqPower(2) ) * ( ValAtIp ** FieldPower(2) )
+             BodyLoss(1:2,BodyId) = BodyLoss(1:2,BodyId) + ElemLoss
            ELSE
              ElemLoss = 0.0_dp
            END IF
@@ -2706,18 +2708,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      Energy(3) = ParallelReduction(Energy(3)) / NoSlices
 
      IF (LossEstimation) THEN
-       DO j=1,2
-         DO i=1,2
-           ComponentLoss(j,i) = ParallelReduction(ComponentLoss(j,i)) / NoSlices
-         END DO
-       END DO
-
-       TotalLoss = 0._dp
        DO j=1,3
          DO i=1,Model % NumberOfBodies
            BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i)) / NoSlices
          END DO
-         TotalLoss(j) = SUM( BodyLoss(j,:) )
        END DO
      END IF
 
@@ -2761,23 +2755,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 
    IF (LossEstimation) THEN
+     ! Sum over bodies also in serial (bodywise losses are reduced in parallel above)
+     DO j=1,3
+       TotalLoss(j) = SUM( BodyLoss(j,:) )
+     END DO
+
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss quadratic',TotalLoss(2) )
      CALL ListAddConstReal( Model % Simulation,'res: joule loss',TotalLoss(3) )
 
-     DO k=1,2
-       IF( k == 1 ) THEN
-         CALL Info(Caller,'Harmonic Loss Linear by components',Level=6)
-       ELSE
-         CALL Info(Caller,'Harmonic Loss Quadratic by components',Level=6)
-       END IF
-       WRITE( Message,'(A,ES15.6)') 'Loss for cos mode: ', ComponentLoss(k,1)
-       CALL Info(Caller, Message, Level=6 )
-       WRITE( Message,'(A,ES15.6)') 'Loss for sin mode: ', ComponentLoss(k,2)
-       CALL Info(Caller, Message, Level=6 )
-       WRITE( Message,'(A,ES15.6)') 'Total loss: ',TotalLoss(k)
-       CALL Info(Caller,Message, Level=5 )
-     END DO
+     WRITE( Message,'(A,ES15.6)') 'Total harmonic loss linear: ',TotalLoss(1)
+     CALL Info(Caller,Message, Level=5 )
+     WRITE( Message,'(A,ES15.6)') 'Total harmonic loss quadratic: ',TotalLoss(2)
+     CALL Info(Caller,Message, Level=5 )
 
      DO k=1,3
        IF( TotalLoss(k) < TINY( TotalLoss(k) ) ) CYCLE
