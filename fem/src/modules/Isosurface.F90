@@ -1937,7 +1937,7 @@ CONTAINS
     IF( .NOT. Found ) MeshParam = MeshDiam / 50
 
     NodeEps = ListGetCReal( Params,'Mesh Node Epsilon',Found )
-    IF( .NOT. Found ) NodeEps = 1.0e-3*MeshDiam
+    IF( .NOT. Found ) NodeEps = 1.0d-3*MeshDiam
 
     ! Find the continuous loops and neglect points that are redundant
     !-----------------------------------------------------------------

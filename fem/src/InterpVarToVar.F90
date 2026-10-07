@@ -752,7 +752,7 @@ CONTAINS
     ELSE
        eps_global_limit = ListGetConstReal( CurrentModel % Simulation,  &
             'Interpolation Global Epsilon', Found)
-       IF(.NOT. Found) eps_global_limit = 1.0e-10
+       IF(.NOT. Found) eps_global_limit = 1.0d-10
     END IF
 
     IF(PRESENT(LocalEps)) THEN
@@ -760,7 +760,7 @@ CONTAINS
     ELSE
        eps_local_limit = ListGetConstReal( CurrentModel % Simulation,  &
             'Interpolation Local Epsilon', Found )
-       IF(.NOT. Found) eps_local_limit = 1.0e-10
+       IF(.NOT. Found) eps_local_limit = 1.0d-10
     END IF
 
     IF(PRESENT(NumericalEps)) THEN

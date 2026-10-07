@@ -205,7 +205,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   GradP = GetLogical( Params, 'GradP Discretization', Found )
   LateralStrain = GetLogical( Params,'Lateral Strain',Found )
   mingap = ListGetCReal( Params,'Min Gap Height',Found )
-  IF(.NOT. Found) mingap = 1.0e-20
+  IF(.NOT. Found) mingap = 1.0d-20
   GotAC = ListCheckPresentAnyMaterial( Model,'Artificial Compressibility')
 
   UsePrevGap = ListGetLogical( Params,'Use Gap Average',Found )
@@ -745,7 +745,7 @@ CONTAINS
       MinPres = ListGetConstReal( Params,'Min FilmPressure',Found )
       IF(.NOT. Found) MinPres = -HUGE(MinPres)
       MinSpeed = ListGetConstReal( Params,'Min Speed',Found )
-      IF(.NOT. Found) MinSpeed = 1.0e-6
+      IF(.NOT. Found) MinSpeed = 1.0d-6
       Visited = .TRUE.
     END IF
 
@@ -841,7 +841,7 @@ CONTAINS
            IF( FrictionModel == 1 ) THEN
              MuCoeff = fd * rho * Speed / (2*D)
            ELSE
-             GradZphi2 =  MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0E-09)
+             GradZphi2 =  MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0d-09)
              MuCoeff = rho * SQRT(fd*Grav) * (2*gap)**(-1.0/2.0) * GradZphi2**(1.0/4.0)
            END IF
          END BLOCK
@@ -849,7 +849,7 @@ CONTAINS
        CASE( 3 )
          BLOCK
            REAL(KIND=dp) :: GradZphi2
-           GradZphi2 = MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0E-09)
+           GradZphi2 = MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0d-09)
            MuCoeff = nm * rho * Grav * (gapi/2)**(-2.0/3) * GradZphi2**(1.0/4.0)
          END BLOCK
 

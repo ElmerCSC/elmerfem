@@ -3314,7 +3314,7 @@ CONTAINS
     IF ( FirstTime ) THEN
       mu0 = GetConstReal(CurrentModel % Constants, &
         'Permeability of Vacuum', Found)
-      IF(.NOT. Found) mu0 = 1.2566370614359173e-6
+      IF(.NOT. Found) mu0 = 1.2566370614359173d-6
     END IF
 
     LeftBodyID = -1

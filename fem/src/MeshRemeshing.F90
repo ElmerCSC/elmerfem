@@ -923,7 +923,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems, Calving)
         END IF
       END DO
       !PRINT *,'MaxMin dx:',SQRT(s2minmax)
-      IF( SQRT(s2minmax) > 1.0e-8 ) THEN
+      IF( SQRT(s2minmax) > 1.0d-8 ) THEN
         PRINT *,'s2minmax:',s2minmax
         CALL Fatal(FuncName,'Could not accurately find the boundary nodes in the new mesh!')
       END IF
@@ -3197,7 +3197,7 @@ END SUBROUTINE DistributedRemeshParMMG
           END IF
         END DO
         !PRINT *,'MaxMin dx:',SQRT(s2minmax)
-        IF( SQRT(s2minmax) > 1.0e-8 ) THEN
+        IF( SQRT(s2minmax) > 1.0d-8 ) THEN
           CALL Fatal(FuncName,'Could not accurately find the boundary nodes in the new mesh!')
         END IF
       END BLOCK

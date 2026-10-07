@@ -971,10 +971,10 @@ CONTAINS
           ! Weertman friction law computed internally
           wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, GaussPoint = t )
           wexp = ListGetElementReal( WeertmanExp_h, Basis, Element, GaussPoint = t )
-          TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
+          TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0d20)
           ! dTanFrictionCoeff/dut for Newton
           TanFder=0._dp
-          IF ((ut > wut0).AND.(TanFrictionCoeff < 1.0e20)) &
+          IF ((ut > wut0).AND.(TanFrictionCoeff < 1.0d20)) &
               TanFder = (wexp-1.0_dp) * wcoeff * ut**(wexp-2.0_dp)
         ELSE
           ! Else, user defined friction law
@@ -1814,7 +1814,7 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
   BLOCK
     TYPE(Variable_t), POINTER, SAVE :: pVar, wVar
     REAL(KIND=dp) :: minw
-    minw = 1.0e-20
+    minw = 1.0d-20
     DO i=1,4
       SELECT CASE(i)
       CASE( 1 )

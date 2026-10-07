@@ -1523,7 +1523,7 @@ CONTAINS
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
       END IF
-      IF( .NOT. Found ) Eps0 = 8.854187817e-12
+      IF( .NOT. Found ) Eps0 = 8.854187817d-12
       InitHandles = .FALSE.
 
 

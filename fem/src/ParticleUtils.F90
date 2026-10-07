@@ -657,7 +657,7 @@ CONTAINS
     IF( PrevNoParticles > 0 ) THEN
       ! In parallel have a small buffer so that we are not next step here again!
       IF( ParEnv % PEs > 0 ) THEN
-        AllocParticles = 1.02 * AllocParticles
+        AllocParticles = 1.02d0 * AllocParticles
       END IF
     END IF
 
@@ -3522,8 +3522,8 @@ RETURN
     LOGICAL :: Success, AtBoundary, AtFace, Visited = .FALSE.
 
 
-    PosEps = 1.0e-10
-    NegEps = -1.0e-7
+    PosEps = 1.0d-10
+    NegEps = -1.0d-7
 
     ElemDim = BulkElement % TYPE % DIMENSION
 
@@ -3613,8 +3613,8 @@ RETURN
     LOGICAL :: Success, AtBoundary, AtFace, Visited = .FALSE.
 
 
-    PosEps = 1.0e-10
-    NegEps = -1.0e-7
+    PosEps = 1.0d-10
+    NegEps = -1.0d-7
 
     ElemDim = BulkElement % TYPE % DIMENSION
     MinLambda = -HUGE( MinLambda )
@@ -3827,7 +3827,7 @@ RETURN
       BoundingBox(5) = MAXVAL( Mesh % Nodes % y )
       BoundingBox(6) = MAXVAL( Mesh % Nodes % z )
 
-      eps1 = 1.0e-3
+      eps1 = 1.0d-3
       eps2 = eps1 * MAXVAL( BoundingBox(4:6) - BoundingBox(1:3) )
       BoundingBox(1:3) = BoundingBox(1:3) - eps2
       BoundingBox(4:6) = BoundingBox(4:6) + eps2
@@ -3936,7 +3936,7 @@ RETURN
       dim = Particles % dim
 
       Eps = ListGetConstReal( Params,'Particle Hit Tolerance',Stat)
-      IF(.NOT. Stat) Eps = 1.0e-8
+      IF(.NOT. Stat) Eps = 1.0d-8
       Problems = 0
       Visited = .TRUE.
     END IF

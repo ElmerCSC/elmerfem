@@ -3554,7 +3554,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: List, ListB
     INTEGER :: i,j,k,n,nb
     LOGICAL :: Found, Flag, DoIt, DoItB
-    REAL(KIND=dp) :: Tol = 1.0e-8
+    REAL(KIND=dp) :: Tol = 1.0d-8
     INTEGER, POINTER :: TmpInts(:)
     CHARACTER(:), ALLOCATABLE :: Name, NameB
 
@@ -3565,19 +3565,19 @@ CONTAINS
     IF( ListGetLogical( Model % Simulation,'Mortar BCs Rotational',Found ) ) THEN
       Tol = ListGetConstReal( Model % Simulation,&
           'Mortar BCs Rotational Tolerance',Found )
-      IF(.NOT. Found ) Tol = 1.0e-6
+      IF(.NOT. Found ) Tol = 1.0d-6
       CALL DetectMortarPairs( Model, Model % Meshes, Tol, 4, .TRUE. )
     END IF
     IF( ListGetLogical( Model % Simulation,'Mortar BCs Radial',Found ) ) THEN
       Tol = ListGetConstReal( Model % Simulation,&
           'Mortar BCs Radial Tolerance',Found )
-      IF(.NOT. Found ) Tol = 1.0e-3
+      IF(.NOT. Found ) Tol = 1.0d-3
       CALL DetectMortarPairs( Model, Model % Meshes, Tol, 5, .FALSE. )
     END IF
     IF( ListGetLogical( Model % Simulation,'Mortar BCs Axial',Found ) ) THEN
       Tol = ListGetConstReal( Model % Simulation,&
           'Mortar BCs Axial Tolerance',Found )
-      IF(.NOT. Found ) Tol = 1.0e-6
+      IF(.NOT. Found ) Tol = 1.0d-6
       CALL DetectMortarPairs( Model, Model % Meshes, Tol, 3, .TRUE. )
     END IF
 

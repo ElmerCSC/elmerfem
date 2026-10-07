@@ -206,7 +206,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   END IF
 
   newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found )
-  IF(.NOT. Found) newton_eps = 1.0e-3
+  IF(.NOT. Found) newton_eps = 1.0d-3
 
   MassAsm = Transient
   IF( ConstantMassInUse ) MassAsm = .FALSE.
@@ -499,7 +499,7 @@ CONTAINS
    ELSE
      rmean = ListGetConstReal( CurrentModel % Simulation,'Rotor Radius',CalcTorque)
      rdiff = ListGetConstReal( CurrentModel % Simulation,'Rotor Air Gap Width',Found)
-     IF(.NOT. Found ) rdiff = 1.0e-3 * rmean
+     IF(.NOT. Found ) rdiff = 1.0d-3 * rmean
      HaveRange = .FALSE.
    END IF
 
@@ -1950,7 +1950,7 @@ CONTAINS
        CalcTorque = .TRUE.
      END IF
      rdiff = ListGetConstReal( CurrentModel % Simulation,'Rotor Air Gap Width',Found)
-     IF(.NOT. Found ) rdiff = 1.0e-3 * rmean
+     IF(.NOT. Found ) rdiff = 1.0d-3 * rmean
      HaveRange = .FALSE.
    END IF
 

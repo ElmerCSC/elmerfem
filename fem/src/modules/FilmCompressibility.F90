@@ -379,7 +379,7 @@ CONTAINS
       dhmax = MAX(dhmax,h1)
       dpmax = MAX(dpmax,dpres)
 
-      IF(h1 * dpres > 1.0e-20 ) nt = nt + 1
+      IF(h1 * dpres > 1.0d-20 ) nt = nt + 1
     END DO
 
     ! If the whole element is lifted then add the counter

@@ -1230,7 +1230,7 @@ END SUBROUTINE ZeroSplittedMatrix
             'AMS Max Iterations', Found, DefValue = 1 )
 
         hypre_dppara(1) = ListGetCReal( Params,&
-            'AMS Tolerance', Found, DefValue = 1.0e-6_dp )
+            'AMS Tolerance', Found, DefValue = 1.0d-6 )
 
         hypre_intpara(2) = ListGetInteger( Params,&
             'AMS Cycle Type', Found, DefValue = 1)  ! 1-14
@@ -1297,7 +1297,7 @@ END SUBROUTINE ZeroSplittedMatrix
             'FSAI Max Step Size', Found, DefValue = 3 )
 
         hypre_dppara(1) = ListGetCReal( Params,&
-            'FSAI Kap Tolerance', Found, DefValue = 1.0e-3_dp )
+            'FSAI Kap Tolerance', Found, DefValue = 1.0d-3 )
 
 
       CASE(6) ! PCG

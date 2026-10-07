@@ -1040,7 +1040,7 @@ CONTAINS
 
     TallCoil = ListGetLogical( Params, 'Coil Geometry Tall', Found)
     IF(.NOT. Found) THEN
-      TallCoil = ( ABS(EigVal(2)-EigVal(3)) < 0.01 * ABS(EigVal(2)-EigVal(1)) )
+      TallCoil = ( ABS(EigVal(2)-EigVal(3)) < 0.01d0 * ABS(EigVal(2)-EigVal(1)) )
       IF( TallCoil ) THEN
       END IF
     END IF

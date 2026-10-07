@@ -1613,7 +1613,7 @@ CONTAINS
     Normal = 0.0_dp
     Normal(ActiveCoordinate) = 1.0_dp
 
-    Wtol = 1.0e-3
+    Wtol = 1.0d-3
 
 
     DO t=1,Solver % NumberOfActiveElements

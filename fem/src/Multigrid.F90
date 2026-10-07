@@ -2047,7 +2047,7 @@ CONTAINS
            ELSE IF(i==12) THEN
              WRITE( Message, '(A,A,F3.1,I9,F9.3)' ) '...',' - ',0.0,RatioClasses(i),100.0*RatioClasses(i)/k
            ELSE
-             WRITE( Message, '(F3.1,A,F3.1,I9,F9.3)' ) 0.1*(i-1),' - ',0.1*i,RatioClasses(i),100.0*RatioClasses(i)/k
+             WRITE( Message, '(F3.1,A,F3.1,I9,F9.3)' ) 0.1d0*(i-1),' - ',0.1d0*i,RatioClasses(i),100.0*RatioClasses(i)/k
            END IF
            CALL Info('CompatibleRelaxation',Message)
          END IF
@@ -3706,7 +3706,7 @@ CONTAINS
                    IF(posbond < refbond) EXIT
                  ELSE
                    posbond = possum * poscoeffs(i) / (poscsum + poscoeffs(i))
-                   IF(posbond < refbond .AND. poscoeffs(i) < 0.99 * poscoeffs(i-1)) EXIT
+                   IF(posbond < refbond .AND. poscoeffs(i) < 0.99d0 * poscoeffs(i-1)) EXIT
                  END IF
                  posi = i
                  poscsum = poscsum + poscoeffs(posi)
@@ -3776,7 +3776,7 @@ CONTAINS
                    IF(-negbond < refbond) EXIT
                  ELSE
                    negbond = negsum * negcoeffs(i) / (negcsum + negcoeffs(i) )
-                   IF(-negbond < refbond .AND. negcoeffs(i) > 0.99 * negcoeffs(i-1)) EXIT
+                   IF(-negbond < refbond .AND. negcoeffs(i) > 0.99d0 * negcoeffs(i-1)) EXIT
                  END IF
                  negi = i
                  negcsum = negcsum + negcoeffs(i)
@@ -5972,7 +5972,7 @@ CONTAINS
           END DO
 
           k = B % Diag(j)
-          IF( ABS( rowsum - B % Values(k) ) < 1.0e-3 * ABS( rowsum ) ) THEN
+          IF( ABS( rowsum - B % Values(k) ) < 1.0d-3 * ABS( rowsum ) ) THEN
             PRINT *,'Dirichlet node:',j
             CYCLE
           END IF

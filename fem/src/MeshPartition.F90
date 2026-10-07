@@ -4447,7 +4447,7 @@ CONTAINS
          END IF
 
          MaxDx = MAXVAL( Bbox(2::2)-Bbox(1::2) )
-         ConstCoord = (BBox(2::2)-BBox(1::2) < 1.0e-6*MaxDx)
+         ConstCoord = (BBox(2::2)-BBox(1::2) < 1.0d-6*MaxDx)
 
          !ConstCoord(1:2) = .TRUE.
 

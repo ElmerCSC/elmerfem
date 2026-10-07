@@ -142,7 +142,7 @@ SUBROUTINE SunAngleSolver( Model,Solver,dt,Transient )
 
   CALL Info(Caller,'Computing the sun angles for real!',Level=7)
 
-  eps = 1.0e-6
+  eps = 1.0d-6
   SunAngle = -100.0_dp
 
   DO idof=1,dofs

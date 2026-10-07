@@ -1088,7 +1088,7 @@ SUBROUTINE DriveHysteresis(model, solver) ! {{{
 drivehystblock: block
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ, B_ip(3), POT(nd), Agrad(3)
     LOGICAL :: einfostat
-    REAL(kind=dp), parameter :: zstab=1.0e-5
+    REAL(kind=dp), parameter :: zstab=1.0d-5
     integer :: counter, t, n_dir
 
     CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)

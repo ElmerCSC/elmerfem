@@ -179,11 +179,11 @@
       D_WALL_LAW=DLOG(1.0D0 + 0.4D0*YPLUS)/DKAPPA  &
           + (0.4D0/DKAPPA)*YPLUS/(1.0D0 + 0.4D0*YPLUS) &
           + 7.8D0*( 1.0D0 - DEXP(-YPLUS/11.0D0) -   &
-          (YPLUS/11.0D0)*DEXP(-0.33*YPLUS) )  &
+          (YPLUS/11.0D0)*DEXP(-0.33d0*YPLUS) )  &
           + 7.8D0*(YPLUS/11.0D0)  &
           *(  &
-          DEXP(-YPLUS/11.0D0)-DEXP(-0.33*YPLUS)  &
-          +0.33D0*YPLUS*DEXP(-0.33*YPLUS) &
+          DEXP(-YPLUS/11.0D0)-DEXP(-0.33d0*YPLUS)  &
+          +0.33D0*YPLUS*DEXP(-0.33d0*YPLUS) &
           )
 
       RETURN

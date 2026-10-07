@@ -98,7 +98,7 @@ MODULE SolverBasics
      INTEGER :: Sample = 20               !< elements sampled per family
      INTEGER :: Top = 2                   !< relative steps above the element's own rule
      INTEGER :: Down = 8                  !< and below it; see IntegRuleProbeStart
-     REAL(KIND=dp) :: Tol = 1.0e-12_dp
+     REAL(KIND=dp) :: Tol = 1.0d-12
      ! Per family, indexed by ElementCode/100.
      INTEGER :: Seen(8) = 0, Np(8) = 0, DefNp(8) = 0, RelOff(8) = 0
      LOGICAL :: Failed(8) = .FALSE., IsRel(8) = .FALSE.
@@ -5168,7 +5168,7 @@ END FUNCTION SearchNodeL
     IF( .NOT. Probe % Active ) RETURN
 
     Probe % Tol = ListGetCReal( Params,'Integration Rule Probe Tolerance', Found )
-    IF( .NOT. Found ) Probe % Tol = 1.0e-12_dp
+    IF( .NOT. Found ) Probe % Tol = 1.0d-12
 
     Probe % Sample = ListGetInteger( Params,'Integration Rule Probe Elements', Found )
     IF( .NOT. Found ) Probe % Sample = 20
@@ -5180,7 +5180,7 @@ END FUNCTION SearchNodeL
     ! worth turning down. The probe hands the solver rules the solver was never
     ! given, and a coarse one is not always survivable: on a mesh with flattened
     ! elements -- FixTangentVelo maps a structured mesh down to a minimum height
-    ! of 2e-16 -- a one point rule on a degenerate prism leaves a Jacobian that
+    ! of 2d-16 -- a one point rule on a degenerate prism leaves a Jacobian that
     ! InvertMatrix ends the run over. The default reaches as deep as GaussPoints
     ! allows, because that is where the large reductions are; lower it when a
     ! probe run dies in the assembly rather than reporting.
@@ -5635,7 +5635,7 @@ END FUNCTION SearchNodeL
             ' points, still moving at ',Probe % Np(fam),', closest relative change ', &
             Probe % Resid(fam)
         CALL Info( Caller, Message, Level=3 )
-        IF( Probe % Resid(fam) > 1.0e-6_dp ) THEN
+        IF( Probe % Resid(fam) > 1.0d-6 ) THEN
           AnyFail = .TRUE.
         ELSE
           CALL Info( Caller,'      -- that is small; an integrand that is not '// &
@@ -5692,7 +5692,7 @@ END FUNCTION SearchNodeL
         'given. Under-integration does not announce itself in the answer, so '// &
         'that is the finding worth acting on here.',Level=3)
     IF( AnyFail ) CALL Info( Caller,'Some families are still moving at the top of '// &
-        'the ladder by more than 1e-6. Either they want more points, or their '// &
+        'the ladder by more than 1d-6. Either they want more points, or their '// &
         'integrand is not polynomial and never will converge -- check whether '// &
         'the residual above is large enough to matter.',Level=3)
     IF( .NOT. ( AnyUp .OR. AnyFail ) .AND. LEN_TRIM(Line) == 0 .AND. &
@@ -7807,7 +7807,7 @@ END SUBROUTINE DerivateExportedVariables
                         !PRINT *,'fs:',ifluid,jstruct,MultFS,val
                       ELSE
                         ! Ensure correct matrix structure
-                        CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val*0.001)
+                        CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val*0.001d0)
                       END IF
                     END IF
                   ELSE
@@ -10174,7 +10174,7 @@ END SUBROUTINE DerivateExportedVariables
            DO k=2,dim
              IF( ABS( Normal(k) ) > ABS( Normal(DofN) ) ) DofN = k
            END DO
-           IF( ABS(Normal(dofN)) < 0.99 ) THEN
+           IF( ABS(Normal(dofN)) < 0.99d0 ) THEN
              CALL Warn(Caller,'No normal-tangential system for implicit friction!')
            END IF
            IF( DofN == 1 ) THEN

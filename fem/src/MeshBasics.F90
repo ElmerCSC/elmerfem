@@ -2587,7 +2587,7 @@ CONTAINS
          Dist = SQRT( SUM( (Center - Ref)**2.0 ) )
 
          TotCount = TotCount + 1
-         IF( Dist > 0.01 * Length ) THEN
+         IF( Dist > 0.01d0 * Length ) THEN
            ErrCount = ErrCount + 1
            PRINT *,'Center Displacement:',i,ElemCode,n,k,Dist/Length
          END IF
@@ -5630,7 +5630,7 @@ END SUBROUTINE FindNeighbourNodes
         r0 = r1
         n0 = n
         t0 = t
-        eps = 1.0e-6 * SUM(ABS(r0))/n0
+        eps = 1.0d-6 * SUM(ABS(r0))/n0
         CYCLE
       END IF
 
@@ -6891,7 +6891,7 @@ END SUBROUTINE FindNeighbourNodes
     IF(PRESENT(DoParallel)) THEN
       IF( DoParallel ) THEN
         ParDist2 = ParallelReduction(MinDist2,1)
-        IF(ABS(ParDist2-MinDist2) > 1.0e-20 ) THEN
+        IF(ABS(ParDist2-MinDist2) > 1.0d-20 ) THEN
           NodeIndx = 0
         END IF
       END IF
@@ -7788,8 +7788,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element0, Element1
     INTEGER, POINTER :: Inds0(:), Inds1(:)
 
-    phieps = 1.0e-3*angle
-    reps = 1.0e-3
+    phieps = 1.0d-3*angle
+    reps = 1.0d-3
     maxdphi = 0.0_dp
     hits = 0
     nsym = 0
@@ -7837,7 +7837,7 @@ CONTAINS
 
         smax = MAXVAL(Mesh % Nodes % x(Inds0)) - MINVAL(Mesh % Nodes % x(Inds0)) &
             + MAXVAL(Mesh % Nodes % y(Inds0)) - MINVAL(Mesh % Nodes % y(Inds0))
-        reps = 1.0e-3 * smax
+        reps = 1.0d-3 * smax
 
         DO j=1,Mesh % NumberOfBulkElements
           Element1 => Mesh % Elements(j)

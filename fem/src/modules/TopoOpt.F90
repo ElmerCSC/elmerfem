@@ -267,7 +267,7 @@ SUBROUTINE TopoOpt( Model,Solver,dt,Transient )
     ALLOCATE(local_sol_array(dofs,n), local_sol(dofs*n), local_act(dofs*n))
 
     wmin = ListGetConstReal( Params,'Sensitivity Filter Threshold', Found )
-    IF(.NOT. Found) wmin = 1.0e-3
+    IF(.NOT. Found) wmin = 1.0d-3
     SkipInterface = .FALSE.
 
     IF(PdeFilter ) THEN
@@ -684,7 +684,7 @@ CONTAINS
 
       ! Note: xnew in [0,1]
       ! Suggested new density
-      xnew = x*(MAX(1.0e-10,-dc/(dv*lmid)))**damp
+      xnew = x*(MAX(1.0d-10,-dc/(dv*lmid)))**damp
 
       ! Regulators and limiters
       xnew = MAX(0.0_dp,MAX(x-move,MIN(1.0_dp,MIN(x+move,xnew))))

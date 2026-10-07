@@ -670,7 +670,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
               DO i=1,n
                  j = NSDOFs*FlowPerm(NodeIndexes(i))
 
-                 IF(TransientSimulation .AND. ABS(cv-1.0) > 0.001) THEN
+                 IF(TransientSimulation .AND. ABS(cv-1.0) > 0.001d0) THEN
                     IF((DIM == 2) .AND. (NSDOFs == 3)) THEN
                        Velo(1,i) = cv * FlowSolution( j-2 ) + (1-cv) * PrevFlowSol(j-2,1)
                        Velo(2,i) = cv * FlowSolution( j-1 ) + (1-cv) * PrevFlowSol(j-1,1)

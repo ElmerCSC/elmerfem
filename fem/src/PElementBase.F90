@@ -8617,7 +8617,7 @@ MODULE PElementBase
 
       INTEGER, INTENT(IN) :: i
       REAL (KIND=dp), INTENT(IN) :: x
-      REAL (KIND=dp), PARAMETER :: dx = 1E-11
+      REAL (KIND=dp), PARAMETER :: dx = 1d-11
       REAL (KIND=dp) :: value
 
       ! 20 first varphi functions are precalculated

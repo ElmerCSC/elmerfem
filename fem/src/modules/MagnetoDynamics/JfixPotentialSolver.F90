@@ -108,9 +108,9 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       ! AV tolerances messing then Jfix tolerances too.
       Eps = GetCReal(SolverParams,'Linear System Convergence Tolerance', Found)
       IF(Found) THEN
-        Eps = MIN(0.001_dp * Eps,1.0e-8)
+        Eps = MIN(0.001_dp * Eps,1.0d-8)
       ELSE
-        Eps = 1.0e-8
+        Eps = 1.0d-8
       END IF
 
       CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance',Eps)
@@ -465,7 +465,7 @@ CONTAINS
       IF (.NOT. Found) NrmEps = 0.5_dp
 
       Jrel = GetCReal(SolverParams, 'Jfix relative eps', Found)
-      IF (.NOT. Found) Jrel = 1.0e-6
+      IF (.NOT. Found) Jrel = 1.0d-6
 
       Jabs = GetCReal(SolverParams, 'Jfix absolute eps', Found)
       IF (.NOT. Found) Jabs = EPSILON( Jabs )

@@ -675,7 +675,7 @@ CONTAINS
       BC => Model % BCs(bc_ind) % Values
 
       eps = ListGetCReal(BC,'Boundary Detect Epsilon',Found )
-      IF(.NOT. Found) eps = 1.0e-6
+      IF(.NOT. Found) eps = 1.0d-6
 
       pSign = 0
       RuleInd = 0

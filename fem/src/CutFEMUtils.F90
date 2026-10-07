@@ -218,7 +218,7 @@ CONTAINS
     IF(CutExtend) body_cut = body_cut + 1
 
     Eps = ListGetCReal(Params,'CutFem Epsilon',Found )
-    IF(.NOT. Found) Eps = 1.0e-3
+    IF(.NOT. Found) Eps = 1.0d-3
     UseAbsEps = ListGetLogical(Params,'CutFEM Epsilon Absolute',Found )
 
 
@@ -253,8 +253,8 @@ CONTAINS
           END IF
         END IF
       ELSE IF( ABS(hprod) < 1.0d-20 ) THEN
-        IF(ABS(h1) < 1.0e-20) CutDof(NodeIndexes(1)) = .TRUE.
-        IF(ABS(h2) < 1.0e-20) CutDof(NodeIndexes(2)) = .TRUE.
+        IF(ABS(h1) < 1.0d-20) CutDof(NodeIndexes(1)) = .TRUE.
+        IF(ABS(h2) < 1.0d-20) CutDof(NodeIndexes(2)) = .TRUE.
       END IF
     END DO
 
@@ -2334,7 +2334,7 @@ CONTAINS
     END IF
 
     PhiMax = MAXVAL(ABS(PhiVar1D % Values))
-    PhiMax = 1.01 * ( PhiMax + SQRT(Vx**2+Vy**2)*dt )
+    PhiMax = 1.01d0 * ( PhiMax + SQRT(Vx**2+Vy**2)*dt )
 
     IF(NormalMove .OR. NonZero) THEN
       CALL LevelsetNormalMove()

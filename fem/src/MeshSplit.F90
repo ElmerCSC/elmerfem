@@ -2745,7 +2745,7 @@ CONTAINS
     END IF
 
     Eps = ListGetCReal( Vlist,'Levelset Epsilon',Found )
-    IF(.NOT. Found ) Eps = 1.0e-3
+    IF(.NOT. Found ) Eps = 1.0d-3
 
     n_pos = COUNT( Phi > 0.0 )
     n_neg = COUNT( Phi < 0.0 )
@@ -2793,8 +2793,8 @@ CONTAINS
           EdgeSplit(i) = j
         END IF
       ELSE IF( ABS(hprod) < 1.0d-20 ) THEN
-        IF(ABS(h1) < 1.0e-20) CutNode(NodeIndexes(1)) = .TRUE.
-        IF(ABS(h2) < 1.0e-20) CutNode(NodeIndexes(2)) = .TRUE.
+        IF(ABS(h1) < 1.0d-20) CutNode(NodeIndexes(1)) = .TRUE.
+        IF(ABS(h2) < 1.0d-20) CutNode(NodeIndexes(2)) = .TRUE.
       END IF
     END DO
 

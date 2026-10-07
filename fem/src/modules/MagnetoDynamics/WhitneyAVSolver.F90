@@ -506,7 +506,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   Newton = .FALSE.
   newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found )
-  IF(.NOT. Found) newton_eps = 1.0e-3
+  IF(.NOT. Found) newton_eps = 1.0d-3
 
   mass_reg_epsilon = GetCReal(SolverParams, 'Mass regularize epsilon', RegularizeWithMass)
   IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
@@ -1552,7 +1552,7 @@ END BLOCK
    ELSE
      rmean = ListGetConstReal( CurrentModel % Simulation,'Rotor Radius',CalcTorque)
      rdiff = ListGetConstReal( CurrentModel % Simulation,'Rotor Air Gap Width',Found)
-     IF(.NOT. Found ) rdiff = 1.0e-3 * rmean
+     IF(.NOT. Found ) rdiff = 1.0d-3 * rmean
      HaveRange = .FALSE.
    END IF
 
@@ -1677,7 +1677,7 @@ END BLOCK
            IF( dim == 3 ) THEN
              CALL GetLocalSolution(Wpot,'W',UElement=Element)
              W = [0._dp, 0._dp, 1._dp]
-             WbaseFound = ANY(ABS(Wpot(1:n)) > 1.0e-20 )
+             WbaseFound = ANY(ABS(Wpot(1:n)) > 1.0d-20 )
            END IF
          END IF
        END IF
@@ -2087,7 +2087,7 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
-                     A_t(3,3), A_t_der(3,3), eps=1.0e-3, Permittivity(nd), P_ip
+                     A_t(3,3), A_t_der(3,3), eps=1.0d-3, Permittivity(nd), P_ip
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd), weight
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)

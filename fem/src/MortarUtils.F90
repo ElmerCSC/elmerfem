@@ -1713,7 +1713,7 @@ CONTAINS
     CALL CopyElementNodesFromMesh(ParentNodesM, Mesh, npM, ParentM % NodeIndexes)
 
     Gamma = ListGetCReal(BC,'Nitsche Penalty',Found)
-    IF(.NOT. Found) Gamma = 1.0e-3
+    IF(.NOT. Found) Gamma = 1.0d-3
     Cond = ListGetCReal(BC,'Nitsche Conductivity',Found)
     IF(.NOT. Found) Cond = 1.0_dp
 
@@ -1962,7 +1962,7 @@ CONTAINS
     IF(.NOT. Found ) NodeScale = 1.0_dp
 
     MaxNormalDot = ListGetCReal( BC,'Max Search Normal',Found)
-    IF(.NOT. Found ) MaxNormalDot = -0.1
+    IF(.NOT. Found ) MaxNormalDot = -0.1d0
 
     MaxDistance = ListGetCReal( BC,'Projector Max Distance',Found)
     IF(.NOT. Found ) THEN
@@ -2173,7 +2173,7 @@ CONTAINS
       IF( MaxDistance < ElemH ) THEN
         CALL Info(Caller,'Increasing search distance radius')
         !PRINT *,'MaxDistance:',MaxDistance,ElemH
-        MaxDistance = 1.2 * ElemH ! some tolerance!
+        MaxDistance = 1.2d0 * ElemH ! some tolerance!
       END IF
 
       DO ind=1,BMesh1 % NumberOfBulkElements
@@ -2611,7 +2611,7 @@ CONTAINS
           IF( DebugElem ) PRINT *,'Element integrated:',indM,SumArea,RefArea,SumArea / RefArea
 
           ! If we have integrated enough area we are done!
-          IF( SumArea > RefArea*(1.0_dp - 1.0e-6) ) EXIT
+          IF( SumArea > RefArea*(1.0_dp - 1.0d-6) ) EXIT
 
         END DO ! indM
 
@@ -2844,7 +2844,7 @@ CONTAINS
       IF( MaxDistance < ElemH ) THEN
         CALL Info(Caller,'Increasing search distance radius')
         !PRINT *,'MaxDistance:',MaxDistance,ElemH
-        MaxDistance = 1.2 * ElemH ! some tolerance!
+        MaxDistance = 1.2d0 * ElemH ! some tolerance!
       END IF
 
       DO ind=1,BMesh1 % NumberOfBulkElements
@@ -5478,7 +5478,7 @@ CONTAINS
 
         IF( DebugEdge ) THEN
           EdgeErr = SUM( ABS( EdgeProj-EdgeProjM) ) / SUM( ABS(EdgeProj)+ABS(EdgeProjM) )
-          IF( EdgeErr > 1.0e-3 ) THEN
+          IF( EdgeErr > 1.0d-3 ) THEN
             PRINT *,'EdgeProj:',ind,EdgeErr,EdgeProj,EdgeProjM
           END IF
           MaxEdgeErr = MAX( MaxEdgeErr, EdgeErr )
@@ -5596,7 +5596,7 @@ CONTAINS
 
       TYPE EdgeHelper_t
         INTEGER :: NoCuts = 0
-        REAL, ALLOCATABLE :: Cuts(:)
+        REAL(KIND=dp), ALLOCATABLE :: Cuts(:)
       END TYPE EdgeHelper_t
 
       REAL(KIND=dp) :: Cuts(50),ds,xc,yc,zc,ips
@@ -6023,7 +6023,7 @@ CONTAINS
           ! Go through the pieces of each edge and apply numerical integration to each of them.
           DO ic=1,k+1
             ! We may have cut at almost the same coordinate.
-            IF( ABS(Cuts(ic)-Cuts(ic+1)) < 1.0e-8 ) THEN
+            IF( ABS(Cuts(ic)-Cuts(ic+1)) < 1.0d-8 ) THEN
               RedCuts = RedCuts + 1
               CYCLE
             END IF
@@ -6059,12 +6059,12 @@ CONTAINS
               END IF
 
               IF( ne == 4 ) THEN
-                IF( ABS(u)-1.0_dp > 1.0e-6 .OR. ABS(v)-1.0_dp > 1.0e-6 ) THEN
+                IF( ABS(u)-1.0_dp > 1.0d-6 .OR. ABS(v)-1.0_dp > 1.0d-6 ) THEN
                   PRINT *,'Local coords (u,v):',u,v
                   CALL Fatal(Caller,'Invalid local coordinates for quad element!')
                 END IF
               ELSE
-                IF( u < -1.0e-6 .OR. v < -1.0e-6 .OR. u+v-1.0_dp > 1.0e-6 ) THEN
+                IF( u < -1.0d-6 .OR. v < -1.0d-6 .OR. u+v-1.0_dp > 1.0d-6 ) THEN
                   PRINT *,'Local coords (u,v,u+v):',u,v,u+v
                   CALL Fatal(Caller,'Invalid local coordinates for triangle element!')
                 END IF
@@ -6160,9 +6160,9 @@ CONTAINS
                 END IF
 
                 IF( neM == 4 ) THEN
-                  IF( ABS(um)-1.0_dp > 1.0e-6 .OR. ABS(vm)-1.0_dp > 1.0e-6 ) GOTO 100
+                  IF( ABS(um)-1.0_dp > 1.0d-6 .OR. ABS(vm)-1.0_dp > 1.0d-6 ) GOTO 100
                 ELSE
-                  IF( um < -1.0e-6 .OR. vm < -1.0e-6 .OR. um+vm-1.0_dp > 1.0e-6 ) GOTO 100
+                  IF( um < -1.0d-6 .OR. vm < -1.0d-6 .OR. um+vm-1.0_dp > 1.0d-6 ) GOTO 100
                 END IF
 
                 ! Ok, we know that we have a hit!
@@ -7594,7 +7594,7 @@ CONTAINS
       Nsymmetry = 360.0_dp / dFii2
       WRITE(Message,'(A,ES12.3)') 'Suggested sections in target:',Nsymmetry
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)
-      IF( ABS( Nsymmetry - NINT( Nsymmetry ) ) < 0.01 .OR. Nsymmetry < 1.5 ) THEN
+      IF( ABS( Nsymmetry - NINT( Nsymmetry ) ) < 0.01d0 .OR. Nsymmetry < 1.5 ) THEN
         CALL Info('RotationalINterfaceMeshes','Assuming number of periods: '&
             //I2S(NINT(Nsymmetry)),Level=8)
       ELSE
@@ -10038,11 +10038,11 @@ CONTAINS
           DO i=edofs+1,edofs+fdofs
             DO j=1,fdofs
               s = SUM(EdgeBasis(i,:)*EdgeBasisB(edofs+j,:))
-              IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
+              IF( ABS(s-1.0_dp) < 1.0d-2 ) THEN
                 ! PRINT *,'EdgeProd plus:',s,i-edofs,j,EdgeBasis(i,:),EdgeBasis(edofs+j,:)
                 swap(i) = j
                 EXIT
-              ELSE IF( ABS(s+1.0_dp) < 1.0e-2 ) THEN
+              ELSE IF( ABS(s+1.0_dp) < 1.0d-2 ) THEN
                 ! PRINT *,'EdgeProd minus:',s,i-edofs,j,EdgeBasis(i,:),EdgeBasis(edofs+j,:)
                 swap(i) = -j
                 EXIT
@@ -10063,10 +10063,10 @@ CONTAINS
           i=imax
           DO j=1,edofs
             s = SUM(EdgeBasis(i,:)*EdgeBasisB(j,:))
-            IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
+            IF( ABS(s-1.0_dp) < 1.0d-2 ) THEN
               swap(i) = j
               EXIT
-            ELSE IF( ABS(s+1.0_dp) < 1.0e-2 ) THEN
+            ELSE IF( ABS(s+1.0_dp) < 1.0d-2 ) THEN
               swap(i) = -j
               EXIT
             END IF

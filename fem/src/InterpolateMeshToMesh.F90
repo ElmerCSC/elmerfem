@@ -766,7 +766,7 @@ END SUBROUTINE InterpolateMeshToMesh
 
        eps_numeric = ListGetConstReal( CurrentModel % Simulation, &
            'Interpolation Numeric Epsilon', Stat)
-       IF(.NOT. Stat) eps_numeric = 1.0e-10
+       IF(.NOT. Stat) eps_numeric = 1.0d-10
 
        PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
             'Interpolation Passive Coordinate', Stat )

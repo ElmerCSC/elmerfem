@@ -238,7 +238,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     IntersectEpsilon = ListGetConstReal(Params,'Intersect Epsilon')
   END IF
   DetEpsilon = ListGetConstReal(Params,'Det Epsilon',GotIt)
-  IF(.NOT. GotIt) DetEpsilon = 1.0e-6
+  IF(.NOT. GotIt) DetEpsilon = 1.0d-6
 
   CalculateFlux = ListGetLogical(Params,'Save Heat Flux',GotIt )
   IF(.NOT. CalculateFlux) THEN
@@ -1533,7 +1533,7 @@ CONTAINS
 
             ! Shrink the element so that external sort work better!
             Coord0 = Coord
-            Coord = Center + 0.9999*(Coord-Center)
+            Coord = Center + 0.9999d0*(Coord-Center)
 
             ! Do this dirty way such that DG nodes may be sorted
             Mesh % Nodes % x(node) = Coord(1)
@@ -1611,7 +1611,7 @@ CONTAINS
     REAL(KIND=dp) :: linepos = 0, tanprod(2), s, eps
 
     pSolver => Solver
-    eps = 1.0e-5
+    eps = 1.0d-5
 
     SaveAxis(1) = ListGetLogical(Params,'Save Axis',GotIt)
     IF(GotIt) THEN
@@ -2159,7 +2159,7 @@ CONTAINS
           q = 1-q
         END IF
 
-        IF( q > 0.999 ) THEN
+        IF( q > 0.999d0 ) THEN
           IF( LineTag(k) ) CYCLE
           LineTag(k) = .TRUE.
         END IF

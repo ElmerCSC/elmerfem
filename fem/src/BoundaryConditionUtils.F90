@@ -1139,7 +1139,7 @@ CONTAINS
               IF( GotMult ) THEN
                 ParMaxMult = ABS(MaxMult)
                 ParMaxMult = ParallelReduction( ParMaxMult, 2 )
-                IF(ABS(ABS(MaxMult)-ParMaxMult) > 1.0e-3*ParMaxMult) ind = 0
+                IF(ABS(ABS(MaxMult)-ParMaxMult) > 1.0d-3*ParMaxMult) ind = 0
               END IF
               k = -1
               IF( ind > 0 ) k = ParEnv % MyPe

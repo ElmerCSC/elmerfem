@@ -95,7 +95,7 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
   END IF
   ! We apply a small offset so that at the exact time we would
   ! swap the cycle is triggered just at the end of cycle.
-  nCycle = FLOOR( perCycleVar % Values(1) + 1.0e-3*dt )
+  nCycle = FLOOR( perCycleVar % Values(1) + 1.0d-3*dt )
 
   IF(.NOT. Visited) THEN
     prevCycle = nCycle

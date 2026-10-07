@@ -371,7 +371,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       CALL Info(Caller,'Timestep so large than we can use steady algo!')
       dtn = 0
     ELSE
-      IF( ABS( dt/dth - dtn ) > 0.01 ) THEN
+      IF( ABS( dt/dth - dtn ) > 0.01d0 ) THEN
         PRINT *,'Mesh parameter:',Hparam
         PRINT *,'Draw Velocity:',velo
         PRINT *,'Suggested timesteps:',dt,dth

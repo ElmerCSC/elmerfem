@@ -270,7 +270,7 @@
 
      VankaMode = ListGetInteger(Solver % Values,'Vanka Mode',Found)
      veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
-     IF(.NOT. Found) veps = 1.0e-6
+     IF(.NOT. Found) veps = 1.0d-6
 
      IF( VankaMode == 0 ) THEN
        ! For the basic mode the filling is exactly the same as for the primary matrix

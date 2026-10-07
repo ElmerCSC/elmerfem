@@ -202,7 +202,7 @@ CONTAINS
 PRINT *,'niter minpack:',niter
     npar = ListGetInteger( OptList,'Parameter Count',Found )
     xtol = ListGetConstReal( OptList,'Optimization Tolerance',Found)
-    IF(.NOT. Found ) xtol = 1.0e-6
+    IF(.NOT. Found ) xtol = 1.0d-6
     epsfcn = ListGetConstReal( OptList,'Run Control Variation',Found )
     IF(.NOT. Found) epsfcn = 0.01_dp
 
@@ -301,7 +301,7 @@ PRINT *,'niter minpack:',niter
     niter = ListGetInteger( OptList,'Run Control Iterations', Found )
     npar = ListGetInteger( OptList,'Parameter Count',Found )
     xtol = ListGetConstReal( OptList,'Optimization Tolerance',Found)
-    IF(.NOT. Found ) xtol = 1.0e-6
+    IF(.NOT. Found ) xtol = 1.0d-6
 
     npt = ListGetInteger( OptList,'Powell Interpolation Conditions', Found )
     npt = MIN(MAX(npar+2,npt),(npar+1)*(npar+2)/2)
@@ -364,7 +364,7 @@ PRINT *,'niter minpack:',niter
     niter = ListGetInteger( OptList,'Run Control Iterations', Found )
     npar = ListGetInteger( OptList,'Parameter Count',Found )
     xtol = ListGetConstReal( OptList,'Optimization Tolerance',Found)
-    IF(.NOT. Found ) xtol = 1.0e-6
+    IF(.NOT. Found ) xtol = 1.0d-6
 
     npt = ListGetInteger( OptList,'Optimization Interpolation Conditions', Found )
     npt = MIN(MAX(npar+2,npt),(npar+1)*(npar+2)/2)
@@ -1226,7 +1226,7 @@ PRINT *,'niter minpack:',niter
       IF( nomax > 0 .AND. no > nomax .AND. ratio > maxratio ) THEN
         CALL Info(Caller,'Making a restart in simplex')
         ratio = 0.0_dp
-        ls = 0.1 * ls
+        ls = 0.1d0 * ls
 
         !PRINT *,'Simplex: coeff',ls
         no = 1

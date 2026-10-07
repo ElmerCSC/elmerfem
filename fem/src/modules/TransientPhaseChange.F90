@@ -817,7 +817,7 @@ CONTAINS
             DO i = 1,n
               x = Mesh % Nodes % x(NodeIndexes(i))
               y = Mesh % Nodes % y(NodeIndexes(i))
-              IF(y > Ybot .AND. ABS(x-Xtrip) > 1.0e-6 * (Ymax-Ybot)) Ytop = y
+              IF(y > Ybot .AND. ABS(x-Xtrip) > 1.0d-6 * (Ymax-Ybot)) Ytop = y
             END DO
           END IF
         END DO

@@ -169,7 +169,7 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
   ! Polar Decomposition
   !--------------------
   LOGICAL :: UsePDecomp
-  REAL :: PDDetTol
+  REAL(KIND=dp) :: PDDetTol
   INTEGER :: PDMaxIter
 
   LOGICAL :: LocalSystemBetaRefAndGamma
@@ -219,7 +219,7 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
     PDDetTol = GetConstReal(GetSolverParams(), 'Polar Decomposition Determinant Tolerance', Found)
     IF (.NOT. Found) THEN
       CALL Warn('CoordinateTransform','Polar Decomposition Determinant Tolerance not set.')
-      PDDetTol = 1e-9
+      PDDetTol = 1.0d-9
     END IF
     PDMaxIter = GetInteger(GetSolverParams(), 'Polar Decomposition Max Iterations', Found)
     IF (.NOT. Found) THEN
@@ -283,7 +283,7 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: UsePDecomp
-    REAL :: PDDetTol
+    REAL(KIND=dp) :: PDDetTol
     INTEGER :: PDMaxIter
 
     CALL GetElementNodes(Nodes)
@@ -444,7 +444,7 @@ CONTAINS
     REAL(KIND=dp) :: C(3,3)
     REAL(KIND=dp) :: Det
     INTEGER :: i
-    REAL :: PDDetTol
+    REAL(KIND=dp) :: PDDetTol
     INTEGER :: PDMaxIter
     LOGICAL :: Converged
 

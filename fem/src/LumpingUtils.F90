@@ -112,7 +112,7 @@ MODULE LumpingUtils
      isParallel = CurrentModel % Solver % Parallel
 
 
-     eps = 1.0e-6
+     eps = 1.0d-6
      BcMode = .FALSE.
      BulkMode = .FALSE.
      RotorMode = ListGetLogical( CompParams,'Rotor Mode',Found )
@@ -1918,7 +1918,7 @@ MODULE LumpingUtils
       OutFlux = int_el
       InFlux = int_norm
 
-      IF(ABS(int_norm) < 1.0e-20 ) THEN
+      IF(ABS(int_norm) < 1.0d-20 ) THEN
         PRINT *,'int_norm:',int_norm,area,EPSILON(area)
         CALL Warn(Caller,'Source seems to be close to zero!')
       END IF

@@ -1433,7 +1433,7 @@ END FUNCTION PointFaceDistance
 
         ! Use sloppier criteria when iteration still unsuccessful
         IF( i > 20 ) THEN
-          IF( SUM( ABS( delta - prevdelta ) ) < 1.0e-8 ) EXIT
+          IF( SUM( ABS( delta - prevdelta ) ) < 1.0d-8 ) EXIT
         END IF
 
         ! If the iteration does not proceed try with some relaxation
@@ -1450,7 +1450,7 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
 
     IF ( .NOT. Converged ) THEN
-      IF( err > 1.0e-8 ) THEN
+      IF( err > 1.0d-8 ) THEN
         IF( i > MaxIter ) THEN
           CALL Warn( 'GlobalToLocal', 'did not converge.')
           PRINT *,'rst',i,r,s,t
@@ -1644,7 +1644,7 @@ END FUNCTION PointFaceDistance
 
     INTEGER :: i,i2,n
     REAL(KIND=dp) :: h1,h2,hprod,r
-    REAL(KIND=dp), PARAMETER :: Eps=1.0e-3
+    REAL(KIND=dp), PARAMETER :: Eps=1.0d-3
 
     n = Element % TYPE % ElementCode / 100
     ElemCut(1:2*n) = .FALSE.
@@ -1679,8 +1679,8 @@ END FUNCTION PointFaceDistance
           ElemNodes % z(n+i) = (1-r) * ElemNodes % z(i2) + r * ElemNodes % z(i)
         END IF
       ELSE IF( ABS(hprod) < 1.0d-20 ) THEN
-        IF(ABS(h1) < 1.0e-20) ElemCut(i) = .TRUE.
-        IF(ABS(h2) < 1.0e-20) ElemCut(i2) = .TRUE.
+        IF(ABS(h1) < 1.0d-20) ElemCut(i) = .TRUE.
+        IF(ABS(h2) < 1.0d-20) ElemCut(i2) = .TRUE.
       END IF
     END DO
 

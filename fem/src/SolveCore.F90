@@ -6567,7 +6567,7 @@ CONTAINS
           END DO
         END  IF
 
-        IF( ABS(cAmp(iControl)) > 1.0e-20 ) THEN
+        IF( ABS(cAmp(iControl)) > 1.0d-20 ) THEN
           b(1:nsize) = b(1:nsize) + cAmp(iControl) * f(1:nsize,iControl)
         END IF
       END DO

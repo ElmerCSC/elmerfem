@@ -246,7 +246,7 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
     LineNodes % y(1) = ymin
     LineNodes % y(2) = LineNodes % y(1) + scale
 
-    Eps = 1.0e-6 * scale
+    Eps = 1.0d-6 * scale
 
 !------------------------------------------------------------------------------
 !  Check control parameters
@@ -1060,7 +1060,7 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
     LimitRadius = ListGetLogical(Solver % Values,'Limit Radius',GotIt)
     IF(GotIt) THEN
       MaxRelativeRadius = ListGetConstReal( Solver % Values,'Max Relative Radius',GotIt)
-      IF(.NOT. GotIt) MaxRelativeRadius = 0.9999
+      IF(.NOT. GotIt) MaxRelativeRadius = 0.9999d0
     END IF
 
     MinimumHits = ListGetInteger(Solver % Values,'Minimum Hits At Radius',GotIt)

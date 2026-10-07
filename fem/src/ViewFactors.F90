@@ -1240,7 +1240,7 @@ CONTAINS
      IF(NoDoubles) THEN
        ALLOCATE(SymNode(nd),SymPerm(nd))
        SymNode = .FALSE.
-       Eps = 1.0e-8
+       Eps = 1.0d-8
        SELECT CASE(c)
        CASE(1,2)
          SymNode = ( ABS( ox(1:nd) - Plane) < eps )
@@ -1730,7 +1730,7 @@ CONTAINS
      CALL Info( Caller, Message )
      WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
      CALL Info( Caller, Message )
-     IF( Fmax > 1.001 ) THEN
+     IF( Fmax > 1.001d0 ) THEN
        CALL Warn(Caller,'Rowsum of view factors/radiator factors should not be larger than one!')
      END IF
      IF( Fmin < 0.999_dp ) THEN
@@ -1855,7 +1855,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
         END SELECT
         minx = MINVAL(pX(1:m),Ref>0)
         maxx = MAXVAL(pX(1:m),Ref>0)
-        xeps = EPSILON(xeps) +  1.0e-8 * ( maxx - minx )
+        xeps = EPSILON(xeps) +  1.0d-8 * ( maxx - minx )
 
         ! Nodes need to be on the same boundary in order them to be applicable
         ! for being at bounding box boundary.
@@ -1877,7 +1877,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
       pR = SQRT(pX(1:m)**2+pY(1:m)**2)
 
       maxx = MAXVAL(pR(1:m),Ref>0)
-      xeps = EPSILON(xeps) +  1.0e-8 * maxx
+      xeps = EPSILON(xeps) +  1.0d-8 * maxx
 
       WHERE(ABS(pR - maxx) < xeps )
         NodeAtBBox(:,7) = .TRUE.

@@ -280,10 +280,10 @@ CONTAINS
       IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
         IF(j==1) THEN
           Dist = ParallelReduction( MinDist, 1 )
-          IF(ABS(MinDist-Dist) > 1.0e-8) CYCLE
+          IF(ABS(MinDist-Dist) > 1.0d-8) CYCLE
         ELSE IF(j==2) THEN
           Dist = ParallelReduction( MaxDist, 2)
-          IF(ABS(MaxDist-Dist) > 1.0e-8) CYCLE
+          IF(ABS(MaxDist-Dist) > 1.0d-8) CYCLE
         END IF
       END IF
 
@@ -346,7 +346,7 @@ CONTAINS
     DoIt = .TRUE.
     IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
       Dist = ParallelReduction( MaxDist, 2 )
-      DoIt = ( ABS(MaxDist-Dist) < 1.0e-8 )
+      DoIt = ( ABS(MaxDist-Dist) < 1.0d-8 )
     END IF
 
     IF( DoIt ) THEN

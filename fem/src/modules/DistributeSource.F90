@@ -185,7 +185,7 @@ CONTAINS
 
     eps_numeric = ListGetConstReal( Model % Simulation, &
         'Interpolation Numeric Epsilon', Stat)
-    IF(.NOT. Stat) eps_numeric = 1.0e-10
+    IF(.NOT. Stat) eps_numeric = 1.0d-10
 
     NoFails = 0
     NoFound = 0

@@ -1432,7 +1432,7 @@ CONTAINS
 
             ! Renormalize the effect of strength of connection to [0,1]
             maxv = MAXVAL(LocalVal(1:n))
-            LocalVal(1:n) = 0.999 * ConnectionPoints * LocalVal(1:n) / maxv + LocalCon(1:n)
+            LocalVal(1:n) = 0.999d0 * ConnectionPoints * LocalVal(1:n) / maxv + LocalCon(1:n)
             k = HalfSize
             IF( HalfSize > 0) THEN
               CALL SortR(n,LocalInd,LocalVal)

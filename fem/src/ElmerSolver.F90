@@ -3014,7 +3014,7 @@
 
            AdaptiveMinTimestep = ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Min Timestep', GotIt )
-           IF(.NOT. GotIt) AdaptiveMinTimestep = 1.0e-8 * AdaptiveMaxTimestep
+           IF(.NOT. GotIt) AdaptiveMinTimestep = 1.0d-8 * AdaptiveMaxTimestep
 
            AdaptiveIncrease =  ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Increase Coefficient', GotIt )
@@ -3391,7 +3391,7 @@
                   END IF
                 !END IF
              ELSE
-               IF( ddt < AdaptiveMinTimestep * (1+1.0e-8) ) THEN
+               IF( ddt < AdaptiveMinTimestep * (1+1.0d-8) ) THEN
                  CALL Fatal(Caller,'Could not find stable timestep above given minimum')
                END IF
 

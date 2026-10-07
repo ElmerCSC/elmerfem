@@ -181,14 +181,14 @@ MODULE Interpolation
     IF ( PRESENT(GlobalEps) ) THEN
       Eps1 = GlobalEps
     ELSE
-      Eps1 = 1.0e-4
+      Eps1 = 1.0d-4
     END IF
 
     ! The more detailed condition, used for local coordinates
     IF ( PRESENT(LocalEps) ) THEN
       Eps2 = LocalEps
     ELSE
-      Eps2 = 1.0e-10
+      Eps2 = 1.0d-10
     END IF
 
     IF( PRESENT( LocalDistance ) ) THEN

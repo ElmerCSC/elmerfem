@@ -1639,7 +1639,7 @@
            kmax = kmax+1
            RadiatorSet(i) = kmax
            DO j=i+1,SIZE(RadiatorTemps)
-             IF(ABS(RadiatorTemps(i)-RadiatorTemps(j)) < 1.0e-6) RadiatorSet(j) = kmax
+             IF(ABS(RadiatorTemps(i)-RadiatorTemps(j)) < 1.0d-6) RadiatorSet(j) = kmax
            END DO
          END DO
          CALL Info('SpectralHybrid','Going through radiators in '//I2S(kmax)//' sets',Level=6)
@@ -3704,7 +3704,7 @@
          Tmin = MINVAL(RadiatorTemps)
          Tmax = MAXVAL(RadiatorTemps)
 
-         IF(ABS(Tmin-Tmax) < 1.0e-6 ) THEN
+         IF(ABS(Tmin-Tmax) < 1.0d-6 ) THEN
            WRITE(Message,'(A,ES12.3)') 'Only radiator temperature: ',Tmin
            CALL Info('SpectralRadiosity',Message,Level=10)
          ELSE
@@ -3722,7 +3722,7 @@
            k=k+1
            RadiatorSet(i) = k
            DO j=i+1,SIZE(RadiatorTemps)
-             IF(ABS(RadiatorTemps(i)-RadiatorTemps(j)) < 1.0e-6) RadiatorSet(j) = RadiatorSet(i)
+             IF(ABS(RadiatorTemps(i)-RadiatorTemps(j)) < 1.0d-6) RadiatorSet(j) = RadiatorSet(i)
            END DO
          END DO
          kmax = k

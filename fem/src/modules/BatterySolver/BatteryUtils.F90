@@ -337,8 +337,8 @@ CONTAINS
 
     sqrtx = SQRT(x)
 
-    Un = 8.0029 + 5.0647*x - 12.578*sqrtx - 8.6322e-4/x &
-        + 2.1765e-5*x*sqrtx - 0.46016*EXP(15*(0.06-x)) - 0.55364*EXP(-2.4326*(x-0.92))
+    Un = 8.0029d0 + 5.0647d0*x - 12.578d0*sqrtx - 8.6322d-4/x &
+        + 2.1765d-5*x*sqrtx - 0.46016d0*EXP(15*(0.06d0-x)) - 0.55364d0*EXP(-2.4326d0*(x-0.92d0))
 
   END FUNCTION Uneg
 
@@ -353,8 +353,8 @@ CONTAINS
     y4 = y2*y2
     y6 = y2*y4
 
-    Up = 85.6781*y6 - 357.7*y*y4 + 613.89*y4 - 555.65*y*y2 + 281.06*y2 &
-        - 76.648*y - 0.30987*EXP(5.657*y**115) + 13.1983
+    Up = 85.6781d0*y6 - 357.7d0*y*y4 + 613.89d0*y4 - 555.65d0*y*y2 + 281.06d0*y2 &
+        - 76.648d0*y - 0.30987d0*EXP(5.657d0*y**115) + 13.1983d0
   END FUNCTION Upos
 
 
@@ -576,7 +576,7 @@ CONTAINS
     END IF
 
     ! Eq. (3.14) and (3.15) in [1] for electrolyte phase ionic conductivity
-    KeffIon = Eps_e * 15.8e-4 * Ce * EXP( 0.85*(1.0e-3 * Ce)**1.4)
+    KeffIon = Eps_e * 15.8d-4 * Ce * EXP( 0.85d0*(1.0d-3 * Ce)**1.4d0)
 
   END FUNCTION EffIonConductivity
 
@@ -811,7 +811,7 @@ CONTAINS
       ! This just fixes disbalance during iteration. It is not a proper fix
       ! but might still be useful.
       IF( CorrectFluxes ) THEN
-        IF( TotFluxA * TotFluxC < -1.0e-8 )  THEN
+        IF( TotFluxA * TotFluxC < -1.0d-8 )  THEN
           Corr = SQRT( -TotFluxC / TotFluxA )
         ELSE
           PRINT *,'Cannot correct flux disbalance:',TotFluxA, TotFluxC

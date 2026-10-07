@@ -218,7 +218,7 @@
 
       NonLinConvTol = GetConstReal( SolverParams, &
           'Nonlinear System Convergence Tolerance', GotIt )
-      IF( .NOT. GotIt ) NonLinConvTol = 1.0e-6
+      IF( .NOT. GotIt ) NonLinConvTol = 1.0d-6
 
       NonLinMaxIt = GetInteger( SolverParams, &
           'Nonlinear System Max Iterations', GotIt )
@@ -355,10 +355,10 @@
        END DO
        Unorm = SQRT( Unorm )
 
-       IF( ABS(Norm + PrevNorm) > 1.0e-8 )  RelChange = &
+       IF( ABS(Norm + PrevNorm) > 1.0d-8 )  RelChange = &
            ABS(Norm - PrevNorm)/ABS(Norm + PrevNorm)
 
-       IF( ABS(UNorm + PrevUNorm) > 1.0e-8) RelUChange = &
+       IF( ABS(UNorm + PrevUNorm) > 1.0d-8) RelUChange = &
            ABS(UNorm - PrevUnorm)/ABS(UNorm + PrevUNorm)
 
        st = CPUTime() - st

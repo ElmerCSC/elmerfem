@@ -6165,7 +6165,7 @@ END BLOCK
         epsilon = ListGetCReal( Model % Simulation,  &
                         'Predictor-Corrector Control Tolerance', Found )
         IF ( .NOT. Found ) THEN
-          epsilon = 1.0e-6
+          epsilon = 1.0d-6
         END IF
         CALL ListAddConstReal( SolverParams, &
                         'Predictor-Corrector Control Tolerance', epsilon )

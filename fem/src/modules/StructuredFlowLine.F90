@@ -177,7 +177,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     ! Determine the pointer up and down using dot product as criterion
     !-----------------------------------------------------------------
     Eps = GetConstReal(SolverParams,'Dot Product Tolerance',GotIt)
-    IF(.NOT. GotIt) Eps = 1.0e-4
+    IF(.NOT. GotIt) Eps = 1.0d-4
 
     IF(.FALSE.) PRINT *,'determine up and down pointers'
 
@@ -531,7 +531,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     TYPE(ElementP), ALLOCATABLE, SAVE :: Elements(:)
 
     TYPE(Quadrant_t), POINTER, SAVE :: RootQuadrant =>Null(), LeafQuadrant
-    REAL(kind=dp) :: BoundingBox(6), eps2, eps1 = 1e-3
+    REAL(kind=dp) :: BoundingBox(6), eps2, eps1 = 1d-3
 
 
     SAVE :: CurrentElement, ElementNodes, Basis, dBasisdx
