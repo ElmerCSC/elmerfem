@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
- * 
+ *
  *  You should have received a copy of the GNU Lesser General Public
- *  License along with this library (in file ../LGPL-2.1); if not, write 
- *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+ *  License along with this library (in file ../LGPL-2.1); if not, write
+ *  to the Free Software Foundation, Inc., 51 Franklin Street,
  *  Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -56,21 +56,21 @@ static void stackDump(lua_State *L) {
         printf("`%s'", lua_tostring(L, i));
         break;
 
-      case LUA_TBOOLEAN:  
+      case LUA_TBOOLEAN:
         printf(lua_toboolean(L, i) ? "true" : "false");
         break;
 
-      case LUA_TNUMBER:  
+      case LUA_TNUMBER:
         printf("%g", lua_tonumber(L, i));
         break;
 
-      default: 
+      default:
         printf("%s", lua_typename(L, t));
         break;
     }
-    printf("  ");  
+    printf("  ");
   }
-  printf("\n"); 
+  printf("\n");
 }
 
 lua_State* lua_init() {
@@ -109,7 +109,7 @@ static NumArray *checkarray(lua_State *L) {
   return (NumArray *) ud;
 }
 
-/* Get element pointer */ 
+/* Get element pointer */
 static double *getelem(lua_State *L) {
   NumArray *a = checkarray(L);
   /* int index = luaL_checkint(L, 2); */

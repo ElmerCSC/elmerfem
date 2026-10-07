@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -29,12 +29,12 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
-!> Solves a simple equation for the elementsize using the Galerkin method. 
+!> Solves a simple equation for the elementsize using the Galerkin method.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE ElementSizeSolver( Model,Solver,dt,TransientSimulation )
@@ -78,39 +78,39 @@ SUBROUTINE ElementSizeSolver( Model,Solver,dt,TransientSimulation )
   IF ( istat /= 0 ) THEN
     CALL Fatal( 'ElementSizeSolver', 'Memory allocation error.' )
   END IF
-  
-  ElemMin = HUGE( ElemMin ) 
-  ElemMax = -HUGE( ElemMax ) 
+
+  ElemMin = HUGE( ElemMin )
+  ElemMax = -HUGE( ElemMax )
 
   !Initialize the system and do the assembly:
   !------------------------------------------
   CALL DefaultInitialize()
-  
+
   Power = 1.0_dp / ListGetCReal( Solver % Values,'Element Size Exponent',GotIt)
   IF(.NOT. GotIt ) Power = 1.0_dp
   NoWeight = ListGetLogical( Solver % Values,'No Integration Weight',GotIt)
-  
+
   active = GetNOFActive()
   DO t=1,active
     Element => GetActiveElement(t)
     n = GetElementNOFNodes()
-    
+
     !Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(  STIFF, FORCE, Element, n )
-    
+
     !Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
     CALL DefaultUpdateEquations( STIFF, FORCE )
   END DO
   CALL DefaultFinishBulkAssembly()
-  
+
   ! No flux BCs
   CALL DefaultFinishAssembly()
 
   CALL DefaultDirichletBCs()
   Norm = DefaultSolve()
-  
+
   DEALLOCATE( FORCE, STIFF )
 
   WRITE(Message,'(A,ES12.4)') 'Minimum Element Size: ',ElemMin
@@ -119,7 +119,7 @@ SUBROUTINE ElementSizeSolver( Model,Solver,dt,TransientSimulation )
   CALL Info('ElementSizeSolver',Message)
   WRITE(Message,'(A,ES12.4)') 'Element Size Ratio: ',ElemMax / ElemMin
   CALL Info('ElementSizeSolver',Message)
- 
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -155,14 +155,14 @@ CONTAINS
        !------------------------------------------
        LoadAtIP = DetJ ** Power
        IF( NoWeight ) THEN
-         Weight = IP % s(t) 
+         Weight = IP % s(t)
        ELSE
          Weight = IP % s(t) * DetJ
        END IF
 
        ElemMin = MIN( ElemMin, LoadAtIP )
        ElemMax = MAX( ElemMax, LoadAtIP )
-       
+
        ! Finally, the elemental matrix & vector:
        !----------------------------------------
        DO i = 1, n

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -260,9 +260,9 @@
 !------------------------------------------------------------------------------
        body_id = -1
        CALL StartAdvanceOutput('KESolver','Assembly' )
-       
+
        NoActive = GetNOFActive()
-       
+
        DO t=1,NoActive
 
 !------------------------------------------------------------------------------
@@ -461,10 +461,10 @@
          CALL DefaultUpdateEquations( STIFF, FORCE )
 !------------------------------------------------------------------------------
       END DO     !  Bulk elements
-      CALL DefaultFinishBulkAssembly()      
+      CALL DefaultFinishBulkAssembly()
       CALL Info( 'KESolver', 'Assembly done', Level=4 )
 
-    
+
       IF(ListGetLogicalAnyBC(Model,'Epsilon Wall BC') .OR. &
           ListGetLogicalAnyBC(Model,'Noslip Wall BC') ) THEN
         DO t = 1, Solver % Mesh % NumberOfBoundaryElements
@@ -624,7 +624,7 @@ CONTAINS
 !******************************************************************************
 !
 !  Return element local matrices and RSH vector for diffusion-convection
-!  equation: 
+!  equation:
 !
 !  ARGUMENTS:
 !
@@ -1047,7 +1047,7 @@ CONTAINS
        rho = SUM( Basis(1:np) * Density(1:np) )
        mu  = SUM( Basis(1:np) * Viscosity(1:np) )
 
-       E = SUM( Basis(1:np) *Evals(1:np) ) 
+       E = SUM( Basis(1:np) *Evals(1:np) )
        K = SUM( BasisK(1:np)*Kvals(1:np) )
        KVals(1:np) = SQRT(KVals(1:np))
        Kder = 0.0_dp

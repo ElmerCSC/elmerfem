@@ -4800,7 +4800,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, tagpart, elemnodes=0,maxelemtype;
-  int tagmat,verno,meshdim,tagdim,frcount;
+  int tagmat,verno,meshdim,tagdim,frcount,renumber;
   int physvolexist, physsurfexist,**tagmap=NULL,tagsize=0;
   int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4];
   int maxphystag[4],minphystag[4],tagoffset[4],phystagoffset[4];
@@ -4815,6 +4815,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading mesh in Gmsh format 4.1 from file %s\n",filename);
 
   allocated = FALSE;
+  renumber = FALSE;
   dim = data->dim;
   meshdim = 0;
   maxnodes = 0;
@@ -4924,10 +4925,11 @@ omstart:
           if( 0 && numNodes > 1 ) printf("block %d node %d tagNode %lu %d\n",j,i,(unsigned long)tagNode,k+i);
 
           if(allocated) {
-            if(maxindx > noknots) revindx[tagNode] = k+i;
+            if(renumber) revindx[tagNode] = k+i;
           }
           else {
             maxindx = MAX(tagNode,maxindx);
+	    if(k+i != tagNode) renumber = TRUE;
           }
         }
 
@@ -5504,7 +5506,8 @@ omstart:
     if(info) printf("Allocating for %d knots and %d elements.\n",noknots,noelements);
     AllocateKnots(data);
 
-    if(maxindx > noknots) {
+    if(maxindx > noknots) renumber = TRUE;
+    if(renumber) {
       revindx = Ivector(1,maxindx);
       for(i=1;i<=maxindx;i++) revindx[i] = 0;
     }
@@ -5513,7 +5516,7 @@ omstart:
     goto omstart;
   }
 
-  if(maxindx > noknots) {
+  if(renumber) {
     int cnt1,cnt2,cnt3,cnt4;
     printf("Renumbering the Gmsh nodes from %d to %d\n",maxindx,noknots);
 
@@ -5955,12 +5958,16 @@ static int UnvToElmerType(int unvtype)
 
   case 11: 
   case 21:
+  case 31:
+  case 171:
     elmertype = 202;
     break;
 
   case 22:
   case 23:
   case 24:
+  case 32:
+  case 172:
     elmertype = 203;
     break;
 
@@ -6014,6 +6021,10 @@ static int UnvToElmerType(int unvtype)
 
   case 118:
     elmertype = 510;
+    break;
+
+  case 312:
+    elmertype = 605;
     break;
 
   case 101:
@@ -6298,7 +6309,7 @@ omstart:
 	  printf("line %d: %s\n",linenumber,line);
 	  bigerror("done");
 	}
-
+	
 	if (!allocated) {
 	  minphys = MIN( minphys, physind );
 	  maxphys = MAX( maxphys, physind );	 

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -26,10 +26,10 @@
 ! *  by using nodal finite finite elements. Although the use of the nodal finite
 ! *  elements is not generally recommended for this problem, this approximation
 ! *  might be utilized as a preconditioner for a truthful discretization based on
-! *  curl-conforming finite elements. This solver can handle the equations 
+! *  curl-conforming finite elements. This solver can handle the equations
 ! *  either in the curl-curl form, which couples the solution
 ! *  components, or in the component-wise manner, which requires that
-! *  the permeability is constant and the boundaries are Cartesian planes. 
+! *  the permeability is constant and the boundaries are Cartesian planes.
 ! *  More flexibility in regard to setting BCs is obtained by using the curl-curl
 ! *  form.
 ! *
@@ -38,7 +38,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Created: 24.5.2023
 ! *
@@ -65,19 +65,19 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
   INTEGER :: soln, i, j
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
 !------------------------------------------------------------------------------
-  
+
   Params => GetSolverParams()
   !dim = CoordinateSystemDimension()
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found )
   Monolithic = ListGetLogical( Params,'Monolithic Solver',Found )
-  
+
   CurlCurlForm = ListGetLogical( Params,'curl-curl Form',Found )
   IF (CurlCurlForm .AND. .NOT. Monolithic) THEN
     CALL ListAddLogical(Params, 'Monolithic Solver', .TRUE.)
     Monolithic = .TRUE.
   END IF
-  
+
   IF( Monolithic ) THEN
     ! We use different naming convention if this is used as preconditioner.
     IF( PrecUse ) THEN
@@ -87,7 +87,7 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
       CALL ListAddNewString( Params,'Variable',&
           "Elfield[EX re:1 EX im:1 EY re:1 EY im:1 EZ re:1 EZ im:1]" )
     END IF
-  ELSE    
+  ELSE
     ! We solve the equation component-wise. Hence the primary variable is a temporary one.
     ! TO DO: This complicates setting Dirichlet BCs as the BCs of the full vector
     !        field should be used to create a BC for the temporary variable.
@@ -95,7 +95,7 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
     CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)
     CALL ListAddNewString( Params,'Variable','Etmp[Etmp re:1 Etmp im:1]')
 
-    ! We use different naming convention if this is used as preconditioner. 
+    ! We use different naming convention if this is used as preconditioner.
     IF( PrecUse ) THEN
       CALL ListAddString( Params,&
           NextFreeKeyword('Exported Variable', Params), &
@@ -107,9 +107,9 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
     END IF
   END IF
 
-  
-  CALL ListAddNewLogical( Params, "Linear System Complex", .TRUE.)  
-  CALL ListAddInteger( Params,'Time Derivative Order', 0 )  
+
+  CALL ListAddNewLogical( Params, "Linear System Complex", .TRUE.)
+  CALL ListAddInteger( Params,'Time Derivative Order', 0 )
 
 
   !
@@ -122,7 +122,7 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
       EXIT
     END IF
   END DO
-  
+
   IF ( FindEigen ) THEN
     soln = 0
     DO i=1,Model % NumberOfSolvers
@@ -135,13 +135,13 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
     END DO
 
     IF( soln == 0 ) THEN
-      CALL Fatal('VectorHelmholtzNodal_Init','Eigenfunction BC given without solving a port model')      
+      CALL Fatal('VectorHelmholtzNodal_Init','Eigenfunction BC given without solving a port model')
     ELSE
       CALL Info('VectorHelmholtzNodal_Init','The eigensolver index is: '//I2S(soln), Level=12)
       CALL ListAddInteger(Params, 'Eigensolver Index', soln)
     END IF
   END IF
-  
+
   !IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
   !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
   !      'Electric Energy Density' )
@@ -149,7 +149,7 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
 
   !IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
   !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-  !      'Elecric Flux[Elecric Flux:'//I2S(dim)//']' )       
+  !      'Elecric Flux[Elecric Flux:'//I2S(dim)//']' )
   !END IF
 
   ! Nodal fields that may directly be associated as nodal loads
@@ -158,12 +158,12 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
   !      'Nodal Energy Density' )
   !END IF
 
-  
+
 END SUBROUTINE VectorHelmholtzNodal_Init
 
 
 !-----------------------------------------------------------------------------
-!> A solver for the vector Helmholtz equation based on nodal basis  
+!> A solver for the vector Helmholtz equation based on nodal basis
 !> functions
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
@@ -203,19 +203,19 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   CALL Info(Caller,'------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving harmonic electric waves using nodal basis!')
 
-  dim = CoordinateSystemDimension() 
+  dim = CoordinateSystemDimension()
 
-  IF( CurrentCoordinateSystem() /= Cartesian ) THEN 
+  IF( CurrentCoordinateSystem() /= Cartesian ) THEN
     CALL Fatal(Caller,'Only implemented for Cartesian problems!')
   END IF
-  
+
   Mesh => GetMesh()
   Params => GetSolverParams()
 
   Monolithic = ListGetLogical(Params, 'Monolithic Solver', Found)
-  
+
   EiVar => Solver % Variable
-  dofs = EiVar % Dofs / 2 
+  dofs = EiVar % Dofs / 2
   IF( dofs == 1 ) THEN
     IF (Monolithic) CALL Fatal(Caller, 'Variable DOFs incompatible with the segregated solution')
     CALL Info(Caller,'Treating the equation in segregated manner!')
@@ -229,13 +229,13 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   END IF
   Segregated = .NOT. Monolithic
 
-  PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found ) 
+  PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found )
   CurlCurlForm = ListGetLogical( Params,'curl-curl Form',Found )
 
   IF( PrecUse ) THEN
     IF (.NOT. Monolithic) CALL Fatal(Caller, 'The use as a preconditioner needs Monolithic Solver = True')
-    
-    EF => VariableGet( Mesh % Variables,'Prec ElField')        
+
+    EF => VariableGet( Mesh % Variables,'Prec ElField')
 
     EdgeSolVar => NULL()
     sname = ListGetString(Params, 'Edge Update Name', Found)
@@ -246,8 +246,8 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
       CALL Warn(Caller, 'Give Edge Update Name to enable the use as a preconditioner')
       PrecUse = .FALSE.
     END IF
-    
-    EdgeResVar => NULL()  
+
+    EdgeResVar => NULL()
     sname = ListGetString( Params,'Edge Residual Name',Found)
     IF(Found) THEN
       EdgeResVar => VariableGet( Mesh % Variables, sname )
@@ -256,7 +256,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
       EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
 
       CALL EdgeElementStyle(EdgeSolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
-      IF (SecondOrder) CALL Fatal(Caller, 'The lowest-order edge basis assumed') 
+      IF (SecondOrder) CALL Fatal(Caller, 'The lowest-order edge basis assumed')
 
     ELSE
       CALL Warn(Caller, 'Give Edge Residual Name to enable the use as a preconditioner')
@@ -271,33 +271,33 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   ELSE
     EF => VariableGet( Mesh % Variables,'ElField')
   END IF
-  
+
   IF(.NOT. ASSOCIATED(EF) ) THEN
     CALL Fatal(Caller,'Variable for Electric field not found!')
-  END IF  
+  END IF
 
   IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
-    CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
+    CALL FollowCurvedBoundary( Model, Mesh, .TRUE. )
   END IF
-  
+
   CALL DefaultStart()
 
   maxiter = ListGetInteger( Params,'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
 
-  RelOrder = GetInteger( Params,'Relative Integration Order',Found ) 
+  RelOrder = GetInteger( Params,'Relative Integration Order',Found )
   CALL InitStuff()
 
   IF (PrecUse .AND. .NOT. ASSOCIATED(Proj)) THEN
     CALL Info(Caller,'Creating projection matrix to map a nodal solution into vector element space', Level=6)
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, EF, EdgeSolVar, Proj, cdim=3)
   END IF
-  
+
   DO compi=1,compn
     IF( Segregated ) THEN
       CALL Info(Caller,'Solving for component '//I2S(compi),Level=6)
     END IF
-      
+
     CALL DefaultInitialize()
 
     CALL Info(Caller,'Performing bulk element assembly',Level=12)
@@ -310,7 +310,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
       nb = GetElementNOFBDOFs(Element)
       CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
     END DO
-    
+
     CALL DefaultFinishBulkAssembly()
     IF( PrecUse ) THEN
       !
@@ -322,16 +322,16 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
         CALL Info(Caller,'Using Transposed Projection Matrix: H(curl) -> H1', Level=6)
 !          PRINT *,'sizes:',MAXVAL(Proj % Cols),MINVAL(Proj % Cols),Proj % NumberOfRows, &
 !              SIZE(EdgeResVar % Values), SIZE(Solver % Matrix % rhs)
-        CALL CRS_TransposeMatrixVectorMultiply(Proj, EdgeResVar % Values, Solver % Matrix % rhs )           
+        CALL CRS_TransposeMatrixVectorMultiply(Proj, EdgeResVar % Values, Solver % Matrix % rhs )
       ELSE
-        ! TO DO: Add the transformation of the residual for the component-wise wave equation 
+        ! TO DO: Add the transformation of the residual for the component-wise wave equation
       END IF
     END IF
 
     IF( InfoActive(20) ) THEN
-      CALL VectorValuesRange(Solver % Matrix % Values,SIZE(Solver % Matrix % Values),'A0')       
+      CALL VectorValuesRange(Solver % Matrix % Values,SIZE(Solver % Matrix % Values),'A0')
     END IF
-        
+
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     Active = GetNOFBoundaryActive(Solver)
 
@@ -352,25 +352,25 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
       CALL DefaultDirichletBCs()
     ELSE
       DO i=1,2
-        sname = ComponentName( EF,2*(compi-1)+i) 
+        sname = ComponentName( EF,2*(compi-1)+i)
         CALL SetDirichletBoundaries( CurrentModel, Solver % Matrix, Solver % Matrix % rhs, &
             sname, i, 2, Solver % Variable % Perm )
       END DO
       CALL EnforceDirichletConditions( Solver, Solver % Matrix, Solver % Matrix % rhs )
     END IF
-          
+
     ! And finally, solve:
     !--------------------
     IF( Segregated) THEN
-      EiVar % Values(1::2) = EF % Values(2*compi-1::2*dim) 
-      EiVar % Values(2::2) = EF % Values(2*compi::2*dim) 
+      EiVar % Values(1::2) = EF % Values(2*compi-1::2*dim)
+      EiVar % Values(2::2) = EF % Values(2*compi::2*dim)
     END IF
-      
+
     Norm(compi) = DefaultSolve()
 
     IF( Segregated ) THEN
       IF( InfoActive(25) ) THEN
-        CALL VectorValuesRange(EiVar % Values,SIZE(EiVar % Values),'E'//I2S(compi))       
+        CALL VectorValuesRange(EiVar % Values,SIZE(EiVar % Values),'E'//I2S(compi))
         PRINT *,'Component Norm:',Norm(compi)
       END IF
       EF % Values(2*compi-1::2*dim) = EiVar % Values(1::2)
@@ -381,20 +381,20 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   IF (PrecUse) THEN
     CALL Info(Caller,'Projecting nodal solution to vector element space', Level=6)
     CALL Info(Caller,'Using Projection Matrix: H1 -> H(curl)',Level=6)
-    CALL CRS_MatrixVectorMultiply(Proj, EF % Values, EdgeSolVar % Values ) 
+    CALL CRS_MatrixVectorMultiply(Proj, EF % Values, EdgeSolVar % Values )
   END IF
-    
+
   !IF( Solver % Variable % NonlinConverged == 1 ) EXIT
-  
+
   CALL DefaultFinish()
 
   IF( Segregated ) THEN
     Solver % Variable % Norm = SQRT(SUM(Norm(1:compn)**2) / compn)
   END IF
-    
+
   CALL Info(Caller,'All done',Level=12)
-  
-    
+
+
 CONTAINS
 
 
@@ -407,23 +407,23 @@ CONTAINS
       mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
     END IF
     IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
-    
+
     Found = .FALSE.
     IF( ASSOCIATED( Model % Constants ) ) THEN
       eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
     END IF
     IF(.NOT. Found ) eps0 = 8.854187817d-12
-    
+
     Omega = GetAngularFrequency(Found=Found)
     IF(.NOT. Found) CALL Fatal(Caller,'We should have Omega!')
 
     rob0 = Omega * SQRT( eps0 / mu0inv )
 
     !PRINT *,'InitStuff:',mu0inv, eps0, omega, rob0
-    
+
   END SUBROUTINE InitStuff
 
-    
+
 !------------------------------------------------------------------------------
 ! Assembly of the matrix entries arising from the bulk elements. Not vectorized.
 !------------------------------------------------------------------------------
@@ -453,13 +453,13 @@ CONTAINS
       CALL ListInitElementKeyword( CurrDens_h,'Body Force','Current Density',InitIm=.TRUE.,InitVec3D=.TRUE.)
       InitHandles = .FALSE.
     END IF
-    
+
     IF( RelOrder /= 0 ) THEN
       IP = GaussPoints( Element, RelOrder = RelOrder)
     ELSE
       IP = GaussPoints( Element )
     END IF
-      
+
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
@@ -470,7 +470,7 @@ CONTAINS
         k = 3
         q = m
       END IF
-      ALLOCATE(Basis(m), dBasisdx(m,3), STIFF(q,q,k), FORCE(q,k), STAT=allocstat)      
+      ALLOCATE(Basis(m), dBasisdx(m,3), STIFF(q,q,k), FORCE(q,k), STAT=allocstat)
       IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
@@ -480,11 +480,11 @@ CONTAINS
     IF (PrecUse) THEN
       IF (HasPrecDampCoeff) kappa = kappa - PrecDampCoeff
     END IF
-      
+
     ! Initialize
     STIFF = 0._dp
     FORCE = 0._dp
-    
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -492,22 +492,22 @@ CONTAINS
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
 
-      muinvAtIp = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = t )      
+      muinvAtIp = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = t )
       IF( Found ) THEN
         muinvAtIp = muinvAtIp * mu0inv
       ELSE
         muinvAtIp = mu0inv
       END IF
-      
-      EpsAtIp = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
+
+      EpsAtIp = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )
       IF( Found ) THEN
         EpsAtIp = EpsAtIp * eps0
       ELSE
         epsAtIp = eps0
-      END IF        
+      END IF
 
       CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, WithConductivity, GaussPoint = t )
-      
+
       IF (CurlCurlForm) THEN
         DO p=1,nd
           DO j=1,dim
@@ -519,7 +519,7 @@ CONTAINS
                 STIFF(dim*(p-1)+j,dim*(q-1)+j,1) = STIFF(dim*(p-1)+j,dim*(q-1)+j,1) - &
                     im * Weight * Omega * CondAtIP * Basis(q) * Basis(p)
               END IF
-              
+
               IF (j==1) THEN
                 STIFF(dim*(p-1)+j,dim*(q-1)+1,1) = STIFF(dim*(p-1)+j,dim*(q-1)+1,1) + Weight * MuinvAtIp * ( &
                     dBasisdx(q,3) * dBasisdx(p,3) + dBasisdx(q,2) * dBasisdx(p,2) )
@@ -552,9 +552,9 @@ CONTAINS
         END DO
         ! TO DO: add the integration of RHS if not used as a preconditioner
       ELSE
-        
+
         ! "diffusion" term (D*grad(u),grad(v)):
-        ! -----------------------------------      
+        ! -----------------------------------
         STIFF(1:nd,1:nd,1) = STIFF(1:nd,1:nd,1) + Weight * &
             MuinvAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
 
@@ -570,7 +570,7 @@ CONTAINS
         END DO
 
         IF(.NOT. PrecUse ) THEN
-          CurrAtIP = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found )                 
+          CurrAtIP = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found )
           IF( Found ) THEN
             IF( Monolithic ) THEN
               DO i=1,dofs
@@ -616,18 +616,18 @@ CONTAINS
     REAL(KIND=dp) :: TestVec(3), TrialVec(3)
 !    COMPLEX(KIND=dp) :: STIFF(nd,nd,3), FORCE(nd,3)
     COMPLEX(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:,:), FORCE(:,:)
-    COMPLEX(KIND=dp) :: muInvAtIp, muinv, Cond, SurfImp, TemGrad(3), L(3), B 
+    COMPLEX(KIND=dp) :: muInvAtIp, muinv, Cond, SurfImp, TemGrad(3), L(3), B
     LOGICAL :: Stat,Found,RobinBC,NT,GoodConductor,Absorb,GotPort,GotSome
     INTEGER :: i,j,k,m,p,q,t,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: ElRobin_h, MagLoad_h, Absorb_h, TemRe_h, TemIm_h, MuCoeff_h
     TYPE(ValueHandle_t), SAVE :: GoodConductor_h, RelNu_h, CondCoeff_h
 
     SAVE GotPort
-    
+
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
 
@@ -637,7 +637,7 @@ CONTAINS
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
       CALL ListInitElementKeyword( GoodConductor_h,'Boundary Condition','Good Conductor BC')
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
-      CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im') 
+      CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
@@ -646,7 +646,7 @@ CONTAINS
       CALL ElectricPortModel(1,Solver)
       InitHandles = .FALSE.
     END IF
-    
+
     CALL GetElementNodes( Nodes, UElement=Element )
 
     IF (.NOT. ALLOCATED(STIFF)) THEN
@@ -658,7 +658,7 @@ CONTAINS
         k = 3
         q = m
       END IF
-      ALLOCATE(STIFF(q,q,k), FORCE(q,k), STAT=allocstat)      
+      ALLOCATE(STIFF(q,q,k), FORCE(q,k), STAT=allocstat)
       IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
     END IF
     STIFF = 0._dp
@@ -672,15 +672,15 @@ CONTAINS
 
     GoodConductor = ListGetElementLogical(GoodConductor_h, Element, Found)
     Absorb = ListGetElementLogical(Absorb_h, Element, Found)
-    
+
     CALL ElectricPortModel(2,Solver,Element,GotPort)
-        
+
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
 
     Parent => GetBulkElementAtBoundary(Element)
-    
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -688,8 +688,8 @@ CONTAINS
               IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
 
-      IF( ASSOCIATED( Parent ) ) THEN        
-        muinvAtIp = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+      IF( ASSOCIATED( Parent ) ) THEN
+        muinvAtIp = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )
       END IF
       IF( Found ) THEN
         muinvAtIp = muinvAtIp * mu0inv
@@ -700,7 +700,7 @@ CONTAINS
       L = 0.0_dp
       GotSome = .TRUE.  ! by default we get some bc, if not this will be set False
       IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-        B = CMPLX(0.0_dp, rob0, KIND=dp ) 
+        B = CMPLX(0.0_dp, rob0, KIND=dp )
       ELSE IF (GoodConductor) THEN
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
         muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
@@ -710,32 +710,32 @@ CONTAINS
           muinv = mu0inv
         END IF
         SurfImp = CMPLX(1.0_dp, -1.0_dp, KIND=dp) * SQRT(omega/(2.0_dp * Cond * muinv))
-        B = 1.0_dp/SurfImp    
+        B = 1.0_dp/SurfImp
       ELSE IF(GotPort) THEN
         IF(PrecUse) THEN
-          CALL ElectricPortModel(3,Solver,Element,GotPort,B,Basis=Basis,dBasisdx=dBasisdx) 
+          CALL ElectricPortModel(3,Solver,Element,GotPort,B,Basis=Basis,dBasisdx=dBasisdx)
         ELSE
-          CALL ElectricPortModel(3,Solver,Element,GotPort,B,L,Basis=Basis,dBasisdx=dBasisdx) 
+          CALL ElectricPortModel(3,Solver,Element,GotPort,B,L,Basis=Basis,dBasisdx=dBasisdx)
         END IF
-      ELSE        
+      ELSE
         IF( .NOT. PrecUse ) THEN
           L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
           TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
               ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found),KIND=dp )
-          L = L + TemGrad          
+          L = L + TemGrad
         END IF
         B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
         GotSome = Found
       END IF
 
-      
+
       IF( GotSome ) THEN
         IF( .NOT. PrecUse ) THEN
           DO i=1,dim
             FORCE(1:nd,i) = FORCE(1:nd,i) - muinvAtIp * L(i) * Basis(1:nd) * Weight
           END DO
         END IF
-        
+
         IF (CurlCurlForm) THEN
           Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
           DO p=1,nd
@@ -750,7 +750,7 @@ CONTAINS
                   TrialVec = CrossProduct(TrialVec, Normal)
 
                   STIFF(dim*(p-1)+j, dim*(q-1)+i,1) = STIFF(dim*(p-1)+j, dim*(q-1)+i,1) - &
-                      muinvAtIp * B * SUM(TestVec(:) * TrialVec(:)) * Weight 
+                      muinvAtIp * B * SUM(TestVec(:) * TrialVec(:)) * Weight
                 END DO
               END DO
             END DO
@@ -760,7 +760,7 @@ CONTAINS
             IF( NT ) THEN
               IF(i==1) CYCLE
               coeff = 1.0_dp
-            ELSE          
+            ELSE
               coeff = 1.0_dp - Normal(i)**2
               IF(coeff <= 0.0_dp ) THEN
                 coeff = 0.0_dp
@@ -778,16 +778,16 @@ CONTAINS
     END DO
 
     IF (CurlCurlForm) THEN
-      CALL DefaultUpdateEquations(STIFF(1:dim*nd,1:dim*nd,1),FORCE(1:dim*nd,1),UElement=Element)      
+      CALL DefaultUpdateEquations(STIFF(1:dim*nd,1:dim*nd,1),FORCE(1:dim*nd,1),UElement=Element)
     ELSE
       IF( Monolithic ) THEN
-        ! For normal-tangential coordinate system the slip 
+        ! For normal-tangential coordinate system the slip
         CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
       ELSE
         CALL DefaultUpdateEquations(STIFF(:,:,compi),FORCE(:,compi),UElement=Element)
       END IF
     END IF
-      
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------

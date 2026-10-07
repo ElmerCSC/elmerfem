@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -47,7 +47,7 @@ INTEGER, PARAMETER :: ADIOS2_ARRAY_LOCAL = 2
 INTEGER, PARAMETER :: ADIOS2_MAX_VARNAME_LEN = 512
 
 ! Global array support added
-! NOTE: Global arrays are catenated in first dimension across ranks. 
+! NOTE: Global arrays are catenated in first dimension across ranks.
 ! NOTE: Local arrays are named part_#/<varname> where # is MPI rank
 
 
@@ -342,7 +342,7 @@ FUNCTION finalize_adios_t(this) result(ierr)
 
 END FUNCTION finalize_adios_t
 
-SUBROUTINE finalize_sub(this) 
+SUBROUTINE finalize_sub(this)
   IMPLICIT NONE
   TYPE(AdiosWriter_t) :: this
   INTEGER :: ierr

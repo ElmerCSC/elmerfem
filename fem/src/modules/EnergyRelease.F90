@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -71,7 +71,7 @@ SUBROUTINE ReleaseRateSolver( Model,Solver,dt,TransientSimulation )
    DO t = 1, Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
       n = GetElementNOFNodes()
-      
+
       CALL GetVectorLocalSolution( LocalDisplacement, 'True Displacement' )
       CALL GetVectorLocalSolution( LocalStress, 'Stress' )
       CALL GetVectorLocalSolution( LocalPropagationShape, 'Shape Displacement')
@@ -122,7 +122,7 @@ CONTAINS
     LocalGtheta = 0.0d0
 
     IP = GaussPoints( Element )
-    
+
     ! Loop over integration points:
     !------------------------------
     DO t = 1, IP % n
@@ -133,13 +133,13 @@ CONTAINS
        DO i = 1,3
           Displacement(i) = SUM( Basis(1:n) * LocalDisplacement(i,1:n) )
           PropagationShape(i) = SUM( Basis(1:n) * LocalPropagationShape(i,1:n) )
-          
+
           DO j = 1,3
              GradDisplacement(i,j) = SUM( dBasisdx(1:n,j) * LocalDisplacement(i,1:n) )
              GradPropagationShape(i,j) = SUM( dBasisdx(1:n,j) * LocalPropagationShape(i,1:n) )
           END DO
        END DO
-       
+
        DivPropagationShape = 0.0d0
        DO i = 1,3
           DivPropagationShape = DivPropagationShape + GradPropagationShape(i,i)
@@ -162,7 +162,7 @@ CONTAINS
 
        LocalGtheta = LocalGtheta + ( SUM( s_tensor * GradDisplacement)  &
             - SUM( r_tensor * StressTensor ) ) * IP % s(t) * detJ
-       
+
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalReleaseRate

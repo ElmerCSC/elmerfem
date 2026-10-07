@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,13 +28,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: Autumn 2000
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !--------------------------------------------------------------------------------------------------------
@@ -53,7 +53,7 @@ MODULE MeshGenerate
 
   IMPLICIT NONE
 
-  
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -81,7 +81,7 @@ CONTAINS
     LOGICAL :: NoInterp, Parallel
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Solver_t), POINTER :: pSolver
-    INTEGER :: VisitedCount = 0, RemeshInterval    
+    INTEGER :: VisitedCount = 0, RemeshInterval
     CHARACTER(*), PARAMETER :: Caller = 'ReMesh'
 
     INTERFACE
@@ -96,9 +96,9 @@ CONTAINS
         TYPE(Projector_t), POINTER, OPTIONAL :: Projector
       END SUBROUTINE InterpolateMeshToMesh
     END INTERFACE
-    
+
     SAVE VisitedCount
-    
+
 !   Initialize:
 !   -----------
     CALL Info( Caller, ' ', Level=5 )
@@ -112,7 +112,7 @@ CONTAINS
       CALL Fatal(Caller,'No remeshing possible for discontinuous mesh!')
     END IF
 
-    Params => Solver % Values 
+    Params => Solver % Values
     VisitedCount = VisitedCount + 1
 
     RemeshInterval = ListGetInteger( Params,'Remesh Interval',Found )
@@ -123,12 +123,12 @@ CONTAINS
         CALL Info( Caller,'Visited Count is '//I2S(VisitedCount)//', doing nothing!')
         RETURN
       END IF
-    END IF         
-    
+    END IF
+
     ! Interpolation is best done all in one sweep at the end
-    ! Hence this is omitted at the moment. 
-    NoInterp = .TRUE. 
-    
+    ! Hence this is omitted at the moment.
+    NoInterp = .TRUE.
+
 !   Compute the local error indicators:
 !   -----------------------------------
     t = CPUTime()
@@ -147,12 +147,12 @@ CONTAINS
     NewMesh => MMG_ReMesh( RefMesh )
 #else
     CALL Fatal( Caller,'Remeshing requested with MMG but not compiled with!')
-#endif          
+#endif
     RemeshTime = RealTime() - t
     WRITE( Message, * ) 'Remeshing time (real-secs):                      ',RemeshTime
     CALL Info( Caller, Message, Level=6 )
 
-    
+
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
       CALL Info( Caller,'Current mesh seems fine. Nothing to do.', Level=6 )
       RefMesh % OUtputActive = .TRUE.
@@ -180,7 +180,7 @@ CONTAINS
 
 !   Add the new mesh to the global list of meshes:
 !   ----------------------------------------------
-    NewMesh % Next   => Model % Meshes 
+    NewMesh % Next   => Model % Meshes
     Model % Meshes   => NewMesh
     RefMesh % Child  => NewMesh
     NewMesh % Parent => RefMesh
@@ -190,15 +190,15 @@ CONTAINS
 
     NewMesh % Name = ListGetString( Params,'Remesh Mesh Name', Found )
     IF ( .NOT. Found ) NewMesh % Name = 'DeformedMesh'
-    
+
     MeshNumbering = ListGetLogical( Params,'Remesh Mesh Numbering', Found )
     IF(.NOT. Found ) MeshNumbering = .TRUE.
-    
+
     NewMesh % AdaptiveDepth = RefMesh % AdaptiveDepth + 1
     IF( MeshNumbering ) THEN
       NewMesh % Name = TRIM( NewMesh % Name ) // I2S(NewMesh % AdaptiveDepth)
     END IF
-    
+
     IF ( ListGetLogical( Params, 'Remesh Save Mesh', Found ) ) THEN
       Nlen = LEN_TRIM(OutputPath)
       IF ( Nlen > 0 ) THEN
@@ -213,12 +213,12 @@ CONTAINS
         CALL WriteMeshToDisk( NewMesh, Path )
       END IF
     END IF
-    
+
 !   Initialize glocal variables for the new mesh:
 !   --------------------------------------------
-    NULLIFY( NewMesh % Variables )    
-    CALL TransferCoordAndTime( RefMesh, NewMesh ) 
-    
+    NULLIFY( NewMesh % Variables )
+    CALL TransferCoordAndTime( RefMesh, NewMesh )
+
     ! Set the current mesh.
     ! -----------------------------------------------------------
     CALL SetCurrentMesh( Model, NewMesh )
@@ -226,13 +226,13 @@ CONTAINS
     ! Change the active mesh to be the new one.
     !------------------------------------------
     RefMesh % OutputActive = .FALSE.
-    NewMesh % SavesDone = 0  
+    NewMesh % SavesDone = 0
     NewMesh % OutputActive = .TRUE.
     NewMesh % Changed = .TRUE.
     NewMesh % Projector => NULL()
-    
+
 !   Create matrix structures for the new mesh:
-!   ------------------------------------------    
+!   ------------------------------------------
     t = CPUTime()
     CALL Info( Caller,'Updating primary solver structures: '//TRIM(Solver % Variable % Name))
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
@@ -246,11 +246,11 @@ CONTAINS
       Solver % NumberOfActiveElements = 0
     END IF
 
-    ! Update also other variables that use the same mesh but in different solvers.    
+    ! Update also other variables that use the same mesh but in different solvers.
     DO i=1,Model % NumberOfSolvers
       pSolver => Model % Solvers(i)
       IF( .NOT. ASSOCIATED( pSolver ) ) CYCLE
-      IF( ASSOCIATED( pSolver, Solver ) ) CYCLE      
+      IF( ASSOCIATED( pSolver, Solver ) ) CYCLE
       IF( .NOT. ASSOCIATED( pSolver % Mesh, RefMesh ) ) CYCLE
 
       DoIt = .TRUE.
@@ -263,8 +263,8 @@ CONTAINS
       END IF
       IF( DoIt ) THEN
         CALL Info( Caller,'Updating other solver structures: '//TRIM(pSolver % Variable % Name))
-        CALL UpdateSolverMesh( pSolver, NewMesh, NoInterp )          
-        CALL ParallelInitMatrix( pSolver, pSolver % Matrix )        
+        CALL UpdateSolverMesh( pSolver, NewMesh, NoInterp )
+        CALL ParallelInitMatrix( pSolver, pSolver % Matrix )
         IF(pSolver % NumberOfActiveElements > 0 ) THEN
           DEALLOCATE(pSolver % ActiveElements )
           pSolver % NumberOfActiveElements = 0
@@ -278,14 +278,14 @@ CONTAINS
     CALL Info( Caller, Message, Level=6 )
 
     !   Update Solver structure to use the new mesh:
-    !   ---------------------------------------------    
+    !   ---------------------------------------------
     CALL MeshStabParams( NewMesh )
 
     Model % Solver % Mesh => NewMesh
-        
+
     ! Here is all the real interpolation work (serial & parallel)
     ! Do it at the end since now all variables have been properly initialized
-    ! and mainly interpolation remains to be done. 
+    ! and mainly interpolation remains to be done.
     !---------------------------------------------------------------------
     IF( .NOT. ListGetLogical( Params,'Skip Interpolation', Found ) ) THEN
       CALL Info(Caller,'Mapping all fields in old mesh to new mesh!',Level=7)
@@ -301,9 +301,9 @@ CONTAINS
         IF(.NOT. ASSOCIATED( pSolver % Matrix ) ) CYCLE
         CALL Info(Caller,'Computing norm for mapped field of solver: '//I2S(pSolver % SolverId),Level=12)
         pSolver % Variable % Norm = ComputeNorm(pSolver, &
-            SIZE(pSolver % Variable % Values), pSolver % Variable % Values ) 
+            SIZE(pSolver % Variable % Values), pSolver % Variable % Values )
       END DO
-    END IF    
+    END IF
 
     IF( ListGetLogical( Params,'Elemental Interpolation', Found ) ) THEN
       IF( ASSOCIATED( NewMesh % InvPerm ) ) THEN
@@ -312,7 +312,7 @@ CONTAINS
       END IF
     END IF
 
-    
+
     ! Release previous meshes. Keep only the original mesh, and
     ! the last two meshes:
     !---------------------------------------------------------
@@ -323,12 +323,12 @@ CONTAINS
       n = n+1
       IF ( Mesh % AdaptiveDepth /= 0 ) THEN
         IF ( ASSOCIATED( Mesh % Parent ) ) THEN
-          Mesh % Parent % Child => Mesh % Child                        
+          Mesh % Parent % Child => Mesh % Child
         END IF
         IF ( ASSOCIATED(Mesh % Child) ) THEN
           Mesh % Child % Parent => Mesh % Parent
           ! Eliminate the mesh to be released also from here!
-          Mesh % Child % Next => Mesh % Next 
+          Mesh % Child % Next => Mesh % Next
         END IF
         CALL Info(Caller,'Releasing mesh: '//TRIM(Mesh % Name),Level=8)
         CALL ReleaseMesh( Mesh )
@@ -346,18 +346,18 @@ CONTAINS
       CALL ReleaseMeshEdgeTables( RefMesh )
       CALL ReleaseMeshFaceTables( RefMesh )
     END IF
-    
+
 20  CONTINUE
 
     WRITE( Message, * ) 'Mesh alteration took in total (cpu-secs):           ', &
-        CPUTIme() - TotalTime 
+        CPUTIme() - TotalTime
     CALL Info( Caller, Message, Level=6 )
     CALL Info( Caller,'----------- E N D   M E S H   R E F I N E M E N T --------------', Level=5 )
-    
-    
+
+
 CONTAINS
 
-  
+
 #ifdef HAVE_MMG
 
 !------------------------------------------------------------------------------
@@ -374,8 +374,8 @@ CONTAINS
     TYPE(Variable_t), POINTER :: hVar
     LOGICAL :: Visited = .FALSE., UsePerm
 !------------------------------------------------------------------------------
-    
-    Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
+
+    Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )
 
     hName = ListGetString( Params, 'Metric Variable Name',Found )
     IF(.NOT. Found) hName = "hvalue"
@@ -388,9 +388,9 @@ CONTAINS
     END IF
 
     UsePerm = .FALSE.
-    IF( ListGetLogical( Params,'Remesh Active Regions', Found ) ) THEN      
+    IF( ListGetLogical( Params,'Remesh Active Regions', Found ) ) THEN
       pSolver => Solver
-      UsePerm = ASSOCIATED( Solver % Variable ) 
+      UsePerm = ASSOCIATED( Solver % Variable )
       IF( UsePerm ) THEN
         IF(.NOT. ASSOCIATED( Solver % Variable % Perm ) ) THEN
           CALL Fatal('MMG_Remesh','Requesting "Remesh Active Regions" but Perm not associated!')
@@ -407,7 +407,7 @@ CONTAINS
     IF( RefMesh % MeshDim == 2 ) THEN
       CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
       IF( UsePerm ) THEN
-        CALL Info('MMG_Remesh','Masking meshing where solver is active!')        
+        CALL Info('MMG_Remesh','Masking meshing where solver is active!')
         NewMesh => MMG2D_ReMesh( RefMesh, hVar, pSolver )
       ELSE
         CALL Info('MMG_Remesh','Performing meshing everywhere!')
@@ -421,13 +421,13 @@ CONTAINS
         CALL RenumberGElems(TmpMesh)
         Rebalance = ListGetLogical(Params, 'Adaptive Rebalance', Found, DefValue = .TRUE.)
         IF(Rebalance) THEN
-          CALL Zoltan_Interface( Model, TmpMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )          
+          CALL Zoltan_Interface( Model, TmpMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
           NewMesh => RedistributeMesh(Model, TmpMesh, .TRUE., .FALSE.)
           CALL ReleaseMesh(TmpMesh)
         ELSE
-          NewMesh => TmpMesh          
+          NewMesh => TmpMesh
         END IF
-      ELSE              
+      ELSE
         CALL Info('MMG_Remesh','Calling serial remeshing routines in 3D',Level=10)
         IF( UsePerm ) THEN
           CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Params, &
@@ -437,14 +437,14 @@ CONTAINS
               HVar = hVar, Success = Success )
         END IF
       END IF
-      CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)      
+      CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)
     END IF
 
     !For debugging
     !CALL CheckMeshInfo(NewMesh)
-    
+
     Visited = .TRUE.
-    
+
 !------------------------------------------------------------------------------
   END FUNCTION MMG_Remesh
 !------------------------------------------------------------------------------
@@ -468,37 +468,37 @@ CONTAINS
        TYPE(Solver_t), POINTER :: pSolver
        LOGICAL :: DoIt
 !------------------------------------------------------------------------------
-       
-       IF ( OldMesh % NumberOfNodes == 0 ) RETURN       
-       IF ( OldMesh % NumberOfBulkElements == 0 ) RETURN       
-             
+
+       IF ( OldMesh % NumberOfNodes == 0 ) RETURN
+       IF ( OldMesh % NumberOfBulkElements == 0 ) RETURN
+
 !------------------------------------------------------------------------------
 ! Loop over all bulk elements in the new mesh
 !------------------------------------------------------------------------------
        DO i=1,NewMesh % NumberOfBulkElements
-         
+
          j = InvPerm(i)
          IF(j==0) CYCLE
-         Element => NewMesh % Elements(i)         
-         
-         ! Find the same element in the old mesh         
+         Element => NewMesh % Elements(i)
+
+         ! Find the same element in the old mesh
          OldElement => OldMesh % Elements(j)
 
          ! Go through all variables to be interpolated:
          Var => NewMesh % Variables
-         DO WHILE( ASSOCIATED( Var ) )            
+         DO WHILE( ASSOCIATED( Var ) )
            DoIt = .TRUE.
-           
+
            ! There are many reasons to skip interpolation of this field
-           IF( SIZE( Var % Values ) == Var % DOFs ) DoIt = .FALSE.            
-           IF( Var % Secondary ) DoIt = .FALSE.            
+           IF( SIZE( Var % Values ) == Var % DOFs ) DoIt = .FALSE.
+           IF( Var % Secondary ) DoIt = .FALSE.
            IF( Var % Name(1:10) == 'coordinate') DoIt = .FALSE.
            IF( Var % Secondary ) DoIt = .FALSE.
-           
+
            IF( DoIt ) THEN
              ! Get the old variable with the same name
-             dofs = Var % Dofs 
-             OldVar => VariableGet( OldMesh % Variables, Var % Name, .TRUE. ) 
+             dofs = Var % Dofs
+             OldVar => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
              m = 0
              IF( ASSOCIATED( OldVar ) ) THEN
                IF( ASSOCIATED( OldVar % PrevValues ) ) THEN
@@ -509,41 +509,41 @@ CONTAINS
                  END IF
                END IF
              END IF
-               
+
              IF(.NOT. ASSOCIATED(OldVar) ) THEN
                CONTINUE
-               
+
              ELSE IF( Var % TYPE == Variable_on_nodes ) THEN
                DO ii=1,Element % TYPE % NumberOfNodes
                  jj = Var % Perm( Element % NodeIndexes(ii) )
                  IF(jj==0) CYCLE
                  kk = OldVar % Perm( OldElement % NodeIndexes(ii) )
                  IF(kk==0) CYCLE
-                 
+
                  Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values(dofs*(kk-1)+1:dofs*kk )
                  IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
                      OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
                END DO
-                 
+
              ELSE IF (Var % TYPE == Variable_on_nodes_on_elements ) THEN
                DO ii=1,Element % TYPE % NumberOfNodes
                  jj = Var % Perm( Element % DGIndexes(ii) )
                  IF(jj==0) CYCLE
                  kk = OldVar % Perm( OldElement % DGIndexes(ii) )
                  IF(kk==0) CYCLE
-                 
+
                  Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk )
                  IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
                      OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
                END DO
-                 
+
              ELSE IF( Var % Type == Variable_on_elements ) THEN
                jj = Var % Perm( i )
                IF(jj==0) CYCLE
                kk = OldVar % Perm( j )
                IF(kk==0) CYCLE
-               
-               Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk ) 
+
+               Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk )
                IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
                    OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
              ELSE
@@ -551,14 +551,14 @@ CONTAINS
                IF( ASSOCIATED( pSolver ) ) THEN
                  np = mGetElementDOFs(pIndexes,Element,USolver=pSolver,UMesh=Mesh)
                  oldnp = mGetElementDOFs(OldpIndexes,OldElement,USolver=pSolver,UMesh=Mesh)
-                 
+
                  DO ii=1,np
                    jj = Var % Perm(pIndexes(ii))
                    IF(jj==0) CYCLE
                    kk = OldVar % perm(OldPIndexes(ii))
                    IF(kk==0) CYCLE
-                   
-                   Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk ) 
+
+                   Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk )
                    IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
                        OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
                  END DO
@@ -569,7 +569,7 @@ CONTAINS
            Var => Var % next
          END DO
        END DO
-       
+
      END SUBROUTINE InterpolateMeshToMeshElemental
 
 !------------------------------------------------------------------------------
@@ -580,4 +580,4 @@ CONTAINS
 END MODULE MeshGenerate
 !-----------------------------------------------------------------------------
 
-!> \} 
+!> \}

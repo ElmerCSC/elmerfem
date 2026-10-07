@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,18 +28,18 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 02 Jun 1997
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !-----------------------------------------------------------------------------
-!>  This module contains some built-in material laws, and also some 
-!> vector utilities, curl, dot, cross, etc. Some of these may be 
+!>  This module contains some built-in material laws, and also some
+!> vector utilities, curl, dot, cross, etc. Some of these may be
 !> of no use currently.
 !-----------------------------------------------------------------------------
 MODULE Differentials
@@ -55,7 +55,7 @@ MODULE Differentials
 CONTAINS
 
 !------------------------------------------------------------------------------
-!> Computes the Lorentz force resulting from a magnetic field at 
+!> Computes the Lorentz force resulting from a magnetic field at
 !> integration point (u,v,w).
 !------------------------------------------------------------------------------
   FUNCTION LorentzForce( Element,Nodes,u,v,w,n ) RESULT(L)
@@ -105,7 +105,7 @@ CONTAINS
     Material => CurrentModel % Materials(k) % Values
 
     Permeability(1:n) = ListGetReal( Material, 'Magnetic Permeability', &
-                              n, NodeIndexes ) 
+                              n, NodeIndexes )
 !------------------------------------------------------------------------------
     ExtMx(1:n) = ListGetReal( Material, 'Applied Magnetic Field 1', &
                     n,NodeIndexes, Gotit )
@@ -130,7 +130,7 @@ CONTAINS
 #endif
 
 !------------------------------------------------------------------------------
-!   Get element info 
+!   Get element info
 !------------------------------------------------------------------------------
     stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric, &
                Basis,dBasisdx )
@@ -248,7 +248,7 @@ CONTAINS
       END DO
       Ji(i) = s
     END DO
- 
+
     Jc = 0.0d0
     DO i=1,3
       DO j=1,3
@@ -277,9 +277,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Compute the Joule heating at integration point (u,v,w) given the 
-!> appropriate electrostatic or magnetic field that initiates the 
-!> current through a conductor. 
+!> Compute the Joule heating at integration point (u,v,w) given the
+!> appropriate electrostatic or magnetic field that initiates the
+!> current through a conductor.
 !------------------------------------------------------------------------------
   FUNCTION JouleHeat( Element,Nodes,u,v,w,n ) RESULT(JouleH)
 !------------------------------------------------------------------------------
@@ -303,7 +303,7 @@ CONTAINS
     REAL(KIND=dp) :: ExtMx(n),ExtMy(n),ExtMz(n)
     REAL(KIND=dp) :: mu,elcond,SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
 
-    INTEGER, SAVE :: JouleMode = 0 
+    INTEGER, SAVE :: JouleMode = 0
     TYPE(Variable_t), POINTER, SAVE :: Jvar
 !------------------------------------------------------------------------------
     JouleH = 0.0_dp
@@ -312,7 +312,7 @@ CONTAINS
          Values, 'Body Force', GotIt, 1, CurrentModel % NumberOfBodyForces )
 
     IF ( .NOT.GotIt ) RETURN
-    
+
     IF ( .NOT.ListGetLogical( CurrentModel % BodyForces( &
          bfId ) % Values, 'Joule Heat' , GotIt ) ) RETURN
 !------------------------------------------------------------------------------
@@ -354,13 +354,13 @@ CONTAINS
     END IF
 
     IF( JouleMode == 1 ) THEN
-      NodeIndexes => Element % DgIndexes 
+      NodeIndexes => Element % DgIndexes
     ELSE
       NodeIndexes => Element % NodeIndexes
     END IF
     IF( ANY( Jvar % Perm( NodeIndexes ) == 0 ) ) RETURN
 
-    
+
     !------------------------------------------------------------------------------
     ! The simplest model just evaluates precomputed elemental heating at integration point
     !------------------------------------------------------------------------------
@@ -368,7 +368,7 @@ CONTAINS
       stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis )
       JouleH = SUM( Basis(1:n) * Jvar % Values( Jvar % Perm( NodeIndexes ) ) )
 
-      ! Make an early exit since we don't need conductivity 
+      ! Make an early exit since we don't need conductivity
       RETURN
     END IF
 
@@ -379,13 +379,13 @@ CONTAINS
     k = ListGetInteger( CurrentModel % Bodies &
          (Element % BodyId) % Values, 'Material')
     Material => CurrentModel % Materials(k) % Values
-    
+
     ElectricConductivity(1:n) = ListGetReal( Material, &
         'Electric Conductivity',n,NodeIndexes,GotIt )
 
     IF( JouleMode == 2 ) THEN
       ! This model uses a "joule field" and multiplies it with conductivity at the integration point
-      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis )     
+      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis )
       elcond = SUM( ElectricConductivity(1:n) * Basis(1:n) )
       JouleH = elcond * SUM( Basis(1:n) * Jvar % Values(Jvar % Perm(NodeIndexes)) )
 
@@ -396,7 +396,7 @@ CONTAINS
 
       B(1) = SUM( dBasisdx(1:n,1) * Jvar % Values(Jvar % Perm(NodeIndexes)) )
       B(2) = SUM( dBasisdx(1:n,2) * Jvar % Values(Jvar % Perm(NodeIndexes)) )
-      B(3) = SUM( dBasisdx(1:n,3) * Jvar % Values(Jvar % Perm(NodeIndexes)) )     
+      B(3) = SUM( dBasisdx(1:n,3) * Jvar % Values(Jvar % Perm(NodeIndexes)) )
       JouleH = elcond * SUM( B * B )
 
     ELSE IF( JouleMode == 4 ) THEN
@@ -408,17 +408,17 @@ CONTAINS
       IF( elcond < TINY( elcond ) ) RETURN
 
       Permeability(1:n) = ListGetReal( Material, 'Magnetic Permeability', &
-          n, NodeIndexes ) 
-      
+          n, NodeIndexes )
+
       Mx => VariableGet( CurrentModel % Variables, 'Magnetic Field 1' )
       My => VariableGet( CurrentModel % Variables, 'Magnetic Field 2' )
       Mz => VariableGet( CurrentModel % Variables, 'Magnetic Field 3' )
-      
+
       !------------------------------------------------------------------------------
       ExtMx(1:n) = ListGetReal( Material, 'Applied Magnetic Field 1', &
-          n,NodeIndexes, Gotit )       
+          n,NodeIndexes, Gotit )
       ExtMy(1:n) = ListGetReal( Material, 'Applied Magnetic Field 2', &
-          n,NodeIndexes, Gotit )       
+          n,NodeIndexes, Gotit )
       ExtMz(1:n) = ListGetReal( Material, 'Applied Magnetic Field 3', &
           n,NodeIndexes, Gotit )
       !
@@ -430,16 +430,16 @@ CONTAINS
         ExtMy(1:n) = ExtMy(1:n) + MFy % Values(MFy % Perm(NodeIndexes))
         ExtMz(1:n) = ExtMz(1:n) + MFz % Values(MFz % Perm(NodeIndexes))
       END IF
-      
+
       !------------------------------------------------------------------------------
       B(1) = SUM( Basis(1:n) * Mx % Values(Mx % Perm(NodeIndexes)) )
       B(2) = SUM( Basis(1:n) * My % Values(My % Perm(NodeIndexes)) )
       B(3) = SUM( Basis(1:n) * Mz % Values(Mz % Perm(NodeIndexes)) )
-      
+
       B(1) = B(1) + SUM( Basis(1:n) * ExtMx(1:n) )
       B(2) = B(2) + SUM( Basis(1:n) * ExtMy(1:n) )
       B(3) = B(3) + SUM( Basis(1:n) * ExtMz(1:n) )
-      
+
       mu = SUM( Basis(1:n) * Permeability(1:n) )
       DO i=1,3
         dHdx(1,i) = SUM( dBasisdx(1:n,i)* &
@@ -449,7 +449,7 @@ CONTAINS
         dHdx(3,i) = SUM( dBasisdx(1:n,i)* &
             Mz % Values(Mz % Perm(NodeIndexes))/Permeability(1:n) )
       END DO
-      
+
       IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
         x = SUM( Nodes % x(1:n) * Basis(1:n))
         y = SUM( Nodes % y(1:n) * Basis(1:n))
@@ -458,9 +458,9 @@ CONTAINS
         CALL InvertMatrix( Metric,3 )
       END IF
       JouleH = ComputeMagneticHeat( B,dHdx,mu,SqrtMetric,Metric,Symb ) / &
-          elcond            
+          elcond
     END IF
-    
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -524,7 +524,7 @@ CONTAINS
       END DO
       Ji(i) = s
     END DO
- 
+
     Jc = 0.0d0
     DO i=1,3
       DO j=1,3
@@ -556,7 +556,7 @@ CONTAINS
     INTEGER :: Reorder(:)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    TYPE(Nodes_t) :: Nodes 
+    TYPE(Nodes_t) :: Nodes
 
     LOGICAL :: Stat
     INTEGER :: i,j,k,l,m,n,p,q,t
@@ -672,7 +672,7 @@ CONTAINS
               END DO
               B(i) = s
             END DO
-       
+
             Bx(q) = Bx(q) + B(1) / SqrtMetric
             By(q) = By(q) + B(2) / SqrtMetric
             Bz(q) = Bz(q) + B(3) / SqrtMetric
@@ -719,7 +719,7 @@ SUBROUTINE AxiSCurl( Ar,Az,Ap,Br,Bz,Bp,Reorder )
   INTEGER :: Reorder(:)
 
   TYPE(Element_t), POINTER :: Element
-  TYPE(Nodes_t) :: Nodes 
+  TYPE(Nodes_t) :: Nodes
 
   LOGICAL :: Stat
 
@@ -783,7 +783,7 @@ SUBROUTINE AxiSCurl( Ar,Az,Ap,Br,Bz,Bp,Reorder )
               Bz(q) = Bz(q) + SUM( dBasisdx(1:n,1)*Ap(Reorder(NodeIndexes)) )
            END IF
 
-           Visited(q) = Visited(q) + 1           
+           Visited(q) = Visited(q) + 1
         END DO
      END IF
   END DO
@@ -845,7 +845,7 @@ END SUBROUTINE AxiSCurl
 
 
 !------------------------------------------------------------------------------
-!>  Compute dot product of given vectors: L=A \cdot B in orthogonal 
+!>  Compute dot product of given vectors: L=A \cdot B in orthogonal
 !> coordinate system.
 !> \deprecated Is this used anywhere?
 !------------------------------------------------------------------------------

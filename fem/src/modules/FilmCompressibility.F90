@@ -5,12 +5,12 @@ SUBROUTINE FilmCompressibility_init( Model,Solver,dt,Transient )
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
-  TYPE(Model_t) :: Model  
-  REAL(KIND=dp) :: dt     
-  LOGICAL :: Transient 
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-  
+
   Params => GetSolverParams()
   CALL ListAddNewInteger( Params,'Time Derivative Order',0)
 
@@ -19,12 +19,12 @@ SUBROUTINE FilmCompressibility_init( Model,Solver,dt,Transient )
 
   ! This is the initial value or relaxed valued for the AC field
   CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params),'AC' )
-    
+
 END SUBROUTINE FilmCompressibility_Init
 
 
 !------------------------------------------------------------------------------
-!> Subroutine for computing the artificial compressibility from the volume change 
+!> Subroutine for computing the artificial compressibility from the volume change
 !> of elements. The volume change is obtained by extending the displacement field
 !> of a test load to the fluid domain.
 !> \ingroup Solvers
@@ -43,9 +43,9 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   TYPE(Variable_t), POINTER :: HeightSol, PresSol, SensSol, Var, LSVar
   TYPE(Element_t), POINTER :: Element
-  TYPE(Mesh_t), POINTER :: Mesh  
+  TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
-  LOGICAL :: FullMode, SensMode, DiffMode, GotEqPres, SolvePDE, LSInit  
+  LOGICAL :: FullMode, SensMode, DiffMode, GotEqPres, SolvePDE, LSInit
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), ElemHeight(:), ElemPres(:), &
       PrevElemHeight(:), PrevElemPres(:), ElemSens(:), Density(:), Thickness(:), EqPres(:)
   REAL(KIND=dp), POINTER :: ACinst(:), ACave(:), gWork(:,:)
@@ -55,40 +55,40 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   INTEGER, POINTER :: NodeIndexes(:)
   INTEGER :: t, i, j, k, n, m, istat, dim, nlift, nVisited = 0
   TYPE(ValueList_t), POINTER :: Params
-  TYPE(Nodes_t) :: Nodes 
+  TYPE(Nodes_t) :: Nodes
   LOGICAL :: AllocationsDone = .FALSE., Found, PressureExists, DoIt
   CHARACTER(*), PARAMETER :: Caller = 'FilmCompressibility'
 
-  
+
   SAVE STIFF, FORCE, Nodes, ElemPres, ElemHeight, ElemSens, Density, Thickness, EqPres, &
-      PrevElemHeight, PrevElemPres, ACave, ACinst, AllocationsDone, nVisited 
+      PrevElemHeight, PrevElemPres, ACave, ACinst, AllocationsDone, nVisited
 
   CALL Info(Caller,' ')
   CALL Info(Caller,'----------------------------------------------')
   CALL Info(Caller,'Solving compressibility field for FilmPressure')
   CALL Info(Caller,'----------------------------------------------')
 
-  
+
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
 !------------------------------------------------------------------------------
   CALL DefaultStart()
-  
-  Mesh => Solver % Mesh  
+
+  Mesh => Solver % Mesh
   IF(.NOT. Transient) THEN
     CALL Fatal(Caller,'Implemented only for transient problems!')
-  END IF  
+  END IF
   dim = CoordinateSystemDimension()
 
   ! Instatations suggestion for the AC field value.
   ACinst => Solver % Variable % Values
-  
+
   Params => GetSolverParams()
-  
+
   DiffMode = ListGetLogical( Params,'Differential Mode',Found )
   SensMode =  ListGetLogical( Params,'Sensitivity Mode',Found )
   FullMode = .NOT. (DiffMode .OR. SensMode)
-  
+
   VarName = GetString( Params,'Pressure Variable Name', Found )
   IF ( .NOT. Found ) VarName = 'Pressure'
   PresSol => VariableGet( Mesh % Variables, VarName )
@@ -104,11 +104,11 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   END IF
 
   IF(InfoActive(20)) THEN
-    CALL VectorValuesRange(PresSol % Values,SIZE(PresSol % values),PresSol % Name)       
-    CALL VectorValuesRange(HeightSol % Values,SIZE(HeightSol % values),HeightSol % Name)       
+    CALL VectorValuesRange(PresSol % Values,SIZE(PresSol % values),PresSol % Name)
+    CALL VectorValuesRange(HeightSol % Values,SIZE(HeightSol % values),HeightSol % Name)
   END IF
 
-  
+
   IF( SensMode ) THEN
     VarName = ListGetString( Params,'Sensitivity Variable Name', Found )
     IF(.NOT. Found) THEN
@@ -119,13 +119,13 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
       CALL Fatal(Caller,'"Sensitivity" variable '//TRIM(VarName)//' not found!')
     END IF
     IF(InfoActive(20)) THEN
-      CALL VectorValuesRange(SensSol % Values,SIZE(SensSol % values),SensSol % Name)       
+      CALL VectorValuesRange(SensSol % Values,SIZE(SensSol % values),SensSol % Name)
     END IF
   END IF
-     
-  
+
+
   grav = 0.0_dp
-  IF( ListGetLogical( Params,'Use Gravity',Found ) ) THEN  
+  IF( ListGetLogical( Params,'Use Gravity',Found ) ) THEN
     gWork => ListGetConstRealArray( Model % Constants,'Gravity',Found)
     IF(Found) THEN
       grav = ABS(gWork(SIZE(gWork,1),1))
@@ -137,16 +137,16 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
     Var => VariableGet( Mesh % Variables,'coupled iter' )
     IF( NINT(Var % Values(1)) > i ) RETURN
   END IF
-    
 
 
-  
-  Var => Solver % Variable  
+
+
+  Var => Solver % Variable
   IF ( .NOT. AllocationsDone ) THEN
     n = Mesh % MaxElementNodes
     m = SIZE(Var % Values)
     ALLOCATE( FORCE( n ), STIFF(n,n), ElemHeight(n), PrevElemHeight(n), ElemSens(n), ElemPres(n), PrevElemPres(n), &
-        Density(n), Thickness(n), EqPres(n), Nodes % X(n), Nodes % Y(n), Nodes % Z(n), STAT=istat ) 
+        Density(n), Thickness(n), EqPres(n), Nodes % X(n), Nodes % Y(n), Nodes % Z(n), STAT=istat )
     IF ( istat /= 0 ) CALL Fatal(Caller, 'Memory allocation error.' )
     AllocationsDone = .TRUE.
     LSInit = ListGetLogical( Params,'Levelset Initialize',Found )
@@ -157,10 +157,10 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   Volume = 0.0_dp
   Area = 0.0_dp
   PresInt = 0.0_dp
-      
+
   IF(LSInit) THEN
     VarName = GetString( Params,'Levelset Variable Name', Found )
-    LSVar => VariableGet( Mesh % Variables, VarName, UnfoundFatal = .TRUE.) 
+    LSVar => VariableGet( Mesh % Variables, VarName, UnfoundFatal = .TRUE.)
 
     H3Int = 0.0_dp
     LSMin = 0.0_dp
@@ -168,17 +168,17 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
       Element => GetActiveElement(t)
       n = GetElementNOFNodes()
       CALL LocalLS( Element, n )
-    END DO    
+    END DO
     Area = ParallelReduction(Area)
     H3Int = ParallelReduction(H3Int)
     LSMin = ParallelReduction(LSMin,1)
-   
+
     ! Use the above parameters to set the initial values
     CALL SetACInit()
     CALL Info(caller,'Initialized the artificial compressibility field!',Level=6)
-    RETURN   
+    RETURN
   END IF
-  
+
   ! Get maximum values for dp and dh since the may affect the formulation for compressibility
   dpmax = 0.0_dp
   dhmax = 0.0_dp
@@ -188,8 +188,8 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
     n = GetElementNOFNodes()
     CALL LocalMaxima( Element, n, dpmax, dhmax, nlift )
   END DO
-  dpmax = ParallelReduction( dpmax, 2 ) 
-  dhmax = ParallelReduction( dhmax, 2 ) 
+  dpmax = ParallelReduction( dpmax, 2 )
+  dhmax = ParallelReduction( dhmax, 2 )
 
   WRITE(Message,'(A,ES12.3)') 'Maximum pressure overhead:', dpmax
   CALL Info(Caller,Message,Level=10)
@@ -198,9 +198,9 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   CALL Info(Caller,'Number of lifted elements: '//I2S(nlift),Level=10)
 
   ! We will solve this as a PDE only when there is diffusion, even zero.
-  ! Otherwise the matrix equation will be fully diagonal. 
+  ! Otherwise the matrix equation will be fully diagonal.
   Diff = ListGetCReal( Params,'AC Diffusion',SolvePDE)
-  
+
   ac_min = ListGetCReal( Params,'AC Minimum Value',Found )
 
   dp0 = ListGetCReal( Params,'AC Pressure Epsilon',Found )
@@ -209,12 +209,12 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
     IF(.NOT. Found) val = 0.01_dp
     dp0 = MAX(EPSILON(dp0),val*dpmax)
   END IF
-  
+
 !------------------------------------------------------------------------------
 ! Initialize the system and do the assembly
 !------------------------------------------------------------------------------
   CALL DefaultInitialize()
-  
+
   DO t=1,Solver % NumberOfActiveElements
     Element => GetActiveElement(t)
     n = GetElementNOFNodes()
@@ -235,8 +235,8 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   Volume = ParallelReduction(Volume)
   Area = ParallelReduction(Area)
   PresInt = ParallelReduction(PresInt)
-  
-  CALL VectorValuesRange(ACinst,SIZE(ACinst),Solver % Variable % Name)       
+
+  CALL VectorValuesRange(ACinst,SIZE(ACinst),Solver % Variable % Name)
 
   CALL ListAddConstReal(Model % Simulation,'res: AC Volume',Volume)
   WRITE(Message,'(A,ES12.5)') 'AC Volume: ',Volume
@@ -251,35 +251,35 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   CALL ListAddConstReal(Model % Simulation,'res: AC Average',val)
   WRITE(Message,'(A,ES12.5)') 'AC Average: ',val
   CALL Info(Caller, Message)
-  
+
   DoIt = .TRUE.
-  val = ListGetCReal( Params,'AC Update Condition',Found ) 
+  val = ListGetCReal( Params,'AC Update Condition',Found )
   IF(Found .AND. val < 0.0_dp ) THEN
-    CALL Info(Caller,'Not updating the AC field because of condition!',Level=7) 
-    DoIt = .FALSE.
-  END IF
-    
-  val = ListGetCReal( Params,'AC Critical Volume',Found ) 
-  IF(Found .AND. Volume < val ) THEN
-    CALL Info(Caller,'Not updating the AC field because of small volume!',Level=7) 
+    CALL Info(Caller,'Not updating the AC field because of condition!',Level=7)
     DoIt = .FALSE.
   END IF
 
-  val = ListGetCReal( Params,'AC Critical Area',Found ) 
+  val = ListGetCReal( Params,'AC Critical Volume',Found )
+  IF(Found .AND. Volume < val ) THEN
+    CALL Info(Caller,'Not updating the AC field because of small volume!',Level=7)
+    DoIt = .FALSE.
+  END IF
+
+  val = ListGetCReal( Params,'AC Critical Area',Found )
   IF(Found .AND. Area < val ) THEN
-    CALL Info(Caller,'Not updating the AC field because of small area!',Level=7) 
+    CALL Info(Caller,'Not updating the AC field because of small area!',Level=7)
     DoIt = .FALSE.
   END IF
 
   Var => VariableGet( Mesh % Variables,'AC')
   ACave => Var % Values
-  
+
   IF(DoIt) THEN
-    CALL Info(Caller,'Updating AC field for FSI coupling!',Level=7) 
+    CALL Info(Caller,'Updating AC field for FSI coupling!',Level=7)
 
     ! Do some asymmetric relaxation.
     ! Larger values are more robust. Hence one could use larger relaxation
-    ! factor for growing and smaller factor for decreasing values. 
+    ! factor for growing and smaller factor for decreasing values.
     Relax = ListGetCReal( Params,'AC Relaxation Factor',Found )
     IF(.NOT. Found) Relax = 1.0_dp
     RelaxM = ListGetCReal( Params,'AC Relaxation Factor Negative',Found )
@@ -291,14 +291,14 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
       RelaxM = 1.0_dp
       RelaxP = 1.0_dp
     END IF
-    
+
     val = ListGetCReal( Params,'AC Multiplier',Found )
     IF(.NOT. Found ) val = 1.0_dp
-    
+
     IF(RelaxM*RelaxP < 1.0_dp - EPSILON(Relax)) THEN
       ! We cab relax the decreasing and increasing suggested AC values differently.
-      ! Idea is that increaing values should maybe react quicker. 
-      WHERE ( val * ACinst > ACave ) 
+      ! Idea is that increaing values should maybe react quicker.
+      WHERE ( val * ACinst > ACave )
         ACave = ACave + RelaxP * (val*ACinst-ACave)
       ELSE WHERE
         ACave = ACave + RelaxM * (val*ACinst-ACave)
@@ -317,8 +317,8 @@ SUBROUTINE FilmCompressibility( Model,Solver,dt,Transient )
   nVisited = nVisited + 1
 
   CALL Info(Caller,'All done for now!',Level=12)
-  
-  
+
+
 CONTAINS
 
 
@@ -334,15 +334,15 @@ CONTAINS
     REAL(KIND=dp) :: p0, p1, dpres, h0, h1, dh, th
     INTEGER :: t, nt
     TYPE(ValueList_t), POINTER :: Material
-    
-    CALL GetScalarLocalSolution( elemHeight, tStep=0, UVariable=HeightSol)   
+
+    CALL GetScalarLocalSolution( elemHeight, tStep=0, UVariable=HeightSol)
     CALL GetScalarLocalSolution( elemPres, tStep=0, UVariable=PresSol)
-      
+
     IF(DiffMode) THEN
       CALL GetScalarLocalSolution( prevElemHeight, tStep=-1, UVariable=HeightSol)
       CALL GetScalarLocalSolution( prevElemPres, tStep=-1, UVariable=PresSol)
     END IF
-    
+
     Material => GetMaterial( Element )
 
     EqPres(1:n) = GetReal( Material,'Hydrostatic Pressure',GotEqPres)
@@ -357,21 +357,21 @@ CONTAINS
         h0 = 0.0_dp
         IF(GotEqPres) THEN
           p0 = EqPres(t)
-        ELSE          
+        ELSE
           rho = Density(t)
           th = Thickness(t)
           p0 = rho * grav * th
         END IF
       ELSE
-        ! In differential mode we need the data from previous timestep. 
+        ! In differential mode we need the data from previous timestep.
         h0 = prevElemHeight(t)
         p0 = prevElemPres(t)
       END IF
-      
+
       ! The "height" field could have an offset which is not seen in the difference: h1-h0
-      h1 = elemHeight(t)       
+      h1 = elemHeight(t)
       dh = (h1-h0)
-      
+
       ! The "pressure" field could have an offset which is not seen in the difference: p1-p0
       p1 = elemPres(t)
       dpres = p1-p0
@@ -385,7 +385,7 @@ CONTAINS
     ! If the whole element is lifted then add the counter
     IF(nt == n) nlift = nlift + 1
 
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMaxima
 !------------------------------------------------------------------------------
@@ -403,7 +403,7 @@ CONTAINS
     REAL(KIND=dp) :: h
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material
-    
+
     IP = GaussPoints( Element )
 
     Nodes % x(1:n) = Model % Nodes % x(Element % NodeIndexes)
@@ -415,14 +415,14 @@ CONTAINS
     Material => GetMaterial( Element )
 
     Thickness(1:n) = GetReal( Material, 'Thickness')
-    
-    DO t=1,IP % n      
+
+    DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % u(t), IP % v(t), IP % w(t), &
           DetJ, Basis )
 
       S = IP % s(t) * detJ
-      
-      LS = SUM(Basis(1:n) * elemLS(1:n) )      
+
+      LS = SUM(Basis(1:n) * elemLS(1:n) )
       IF( LS < 0.0 ) THEN
         Area = Area + s
         h = SUM(Basis(1:n) * Thickness(1:n) )
@@ -430,7 +430,7 @@ CONTAINS
         LSMin = MIN(LSMin, LS)
       END IF
     END DO
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalLS
 !------------------------------------------------------------------------------
@@ -441,7 +441,7 @@ CONTAINS
     REAL(KIND=dp) :: Youngs, Pois, D, Reff, LS, h, Heff
     INTEGER :: i,j
     TYPE(ValueList_t), POINTER :: Material
-    
+
     ! Here we takes exactly the 1st material from the elastic body!!!
     DO i=1,Model % NumberOfMaterials
       Material => Model % Materials(i) % Values
@@ -452,7 +452,7 @@ CONTAINS
 
     ! Effective thickness
     Heff = (H3Int/Area)**(-1.0/3)
-    
+
     !  flexural rigidity D with Young's modulus, effective thickness, and Poisson's ratio
     D = Youngs * Heff**3 / (12 * (1-Pois**2))
 
@@ -460,8 +460,8 @@ CONTAINS
     Reff = SQRT(Area / PI)
 #else
     Reff = -LSMin
-#endif 
-           
+#endif
+
     DO i=1,Mesh % NumberOfNodes
       j = Solver % Variable % Perm(i)
       IF(j==0) CYCLE
@@ -474,14 +474,14 @@ CONTAINS
         ! This assumes circular plate
         h = ( Reff**4 / 64 * D ) * ( 1 - (LS/LSMin)**2)**2
       END IF
-      
+
       ACave(j) = h
     END DO
 
   END SUBROUTINE SetACInit
-  
-  
-  
+
+
+
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(  STIFF, FORCE, Element, n )
 !------------------------------------------------------------------------------
@@ -495,10 +495,10 @@ CONTAINS
     INTEGER :: t, p, q, dim, k
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material
-    
+
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    
+
     dim = CoordinateSystemDimension()
     IP = GaussPoints( Element )
 
@@ -507,19 +507,19 @@ CONTAINS
     !IF(dim == 3) Nodes % z(1:n) = Model % Nodes % z(Element % NodeIndexes)
     Nodes % z(1:n) = 0_dp
 
-    CALL GetScalarLocalSolution( elemHeight, tStep=0, UVariable=HeightSol)   
+    CALL GetScalarLocalSolution( elemHeight, tStep=0, UVariable=HeightSol)
     CALL GetScalarLocalSolution( elemPres, tStep=0, UVariable=PresSol)
-      
+
     IF(DiffMode) THEN
       CALL GetScalarLocalSolution( prevElemHeight, tStep=-1, UVariable=HeightSol)
       CALL GetScalarLocalSolution( prevElemPres, tStep=-1, UVariable=PresSol)
     END IF
 
     IF( SensMode ) THEN
-      CALL GetScalarLocalSolution( elemSens, UVariable=SensSol)   
+      CALL GetScalarLocalSolution( elemSens, UVariable=SensSol)
     END IF
-      
-    
+
+
     Material => GetMaterial( Element )
 
     IF(FullMode) THEN
@@ -529,48 +529,48 @@ CONTAINS
         Thickness(1:n) = GetReal( Material, 'Thickness')
       END IF
     END IF
-      
-        
+
+
     DO t=1,IP % n
-      
+
       stat = ElementInfo( Element, Nodes, IP % u(t), IP % v(t), IP % w(t), &
           DetJ, Basis, dBasisdx )
       S = IP % s(t) * detJ
 
 
-      h1 = SUM(elemHeight(1:n) * Basis(1:n))      
+      h1 = SUM(elemHeight(1:n) * Basis(1:n))
       p1 = SUM(elemPres(1:n) * Basis(1:n))
 
       IF(GotEqPres) THEN
         p0 = SUM(Basis(1:n) * EqPres(1:n))
-      ELSE          
+      ELSE
         rho = SUM(Basis(1:n) * Density(1:n))
         th = SUM(Basis(1:n) * Thickness(1:n))
         p0 = rho * grav * th
       END IF
 
-      
+
       IF( SensMode ) THEN
         dh = h1
-        dpres = p1-p0        
-        ac = SUM(elemSens(1:n) * Basis(1:n))      
+        dpres = p1-p0
+        ac = SUM(elemSens(1:n) * Basis(1:n))
       ELSE IF(FullMode) THEN
         dh = h1
-        dpres = p1-p0        
-        ac = dh / MAX(dpres, dp0 )        
+        dpres = p1-p0
+        ac = dh / MAX(dpres, dp0 )
       ELSE
-        ! In differential mode we need the data from previous timestep. 
+        ! In differential mode we need the data from previous timestep.
         dh = h1 - SUM(prevElemHeight(1:n) * Basis(1:n))
-        dpres = p1 - SUM(prevElemPres(1:n) * Basis(1:n))        
-        ac = dh / MAX(dpres, dp0 )        
-      END IF      
-        
+        dpres = p1 - SUM(prevElemPres(1:n) * Basis(1:n))
+        ac = dh / MAX(dpres, dp0 )
+      END IF
+
 !------------------------------------------------------------------------------
 !      Finally, the elemental matrix & vector
-!------------------------------------------------------------------------------       
+!------------------------------------------------------------------------------
 
       IF( SolvePDE ) THEN
-        ! diffusion of AC parameter     
+        ! diffusion of AC parameter
         STIFF(1:n,1:n) = STIFF(1:n,1:n) + &
             S * Diff * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
 
@@ -591,12 +591,12 @@ CONTAINS
       IF( h1 > EPSILON(h1)) THEN
         Volume = Volume + s * dh
         Area = Area + s
-        ! ~pV 
+        ! ~pV
         PresInt = PresInt + s * dpres
       END IF
     END DO
 
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------

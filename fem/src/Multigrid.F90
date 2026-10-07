@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2001
 ! *
@@ -59,7 +59,7 @@ MODULE Multigrid
    USE ElemInfo, ONLY : mGetElementDofs
    USE MeshBasics, ONLY : UpdateSolverMesh, SetCurrentmesh
    USE MeshLoad, ONLY : LoadMesh2
-   
+
    IMPLICIT NONE
 
    INTERFACE
@@ -70,7 +70,7 @@ MODULE Multigrid
        REAL(KIND=dp) :: x(:),b(:)
      END SUBROUTINE BlockSolveExt
    END INTERFACE
-   
+
 
 CONTAINS
 
@@ -95,7 +95,7 @@ CONTAINS
        CHARACTER(:), ALLOCATABLE :: MGMethod
 
        Params => Solver % Values
-       MGMethod = ListGetString( Params,'MG Method',Found) 
+       MGMethod = ListGetString( Params,'MG Method',Found)
        IF(.NOT. Found ) THEN
          IF( ListGetLogical( Params, 'MG Algebraic', Found ) ) THEN
            MGMethod = 'algebraic'
@@ -108,7 +108,7 @@ CONTAINS
          END IF
        END IF
 
-       IF( Level == Solver % MultigridLevel ) THEN 
+       IF( Level == Solver % MultigridLevel ) THEN
          CALL Info('MultiGridSolve','*********************************',Level=7)
          CALL Info('MultiGridSolve','Performing multigrid solution: '//TRIM(MgMethod),Level=7)
        END IF
@@ -142,13 +142,13 @@ CONTAINS
        TYPE(Matrix_t), POINTER :: Matrix1
        INTEGER :: DOFs, Level
        LOGICAL, OPTIONAL :: NewSystem
-       TYPE(Solver_t), TARGET :: Solver       
+       TYPE(Solver_t), TARGET :: Solver
        REAL(KIND=dp), TARGET CONTIG :: ForceVector(:), Solution(:)
 !------------------------------------------------------------------------------
        TYPE(Variable_t), POINTER :: Variable1, TimeVar, SaveVariable
        TYPE(Mesh_t), POINTER   :: Mesh1, Mesh2, SaveMesh
        TYPE(Matrix_t), POINTER :: Matrix2, PMatrix, SaveMatrix
-       TYPE(Solver_t), POINTER :: PSolver             
+       TYPE(Solver_t), POINTER :: PSolver
 
 
        INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100,ndofs
@@ -197,7 +197,7 @@ CONTAINS
        ForceVector(1:n) = ForceVector(1:n) / RHSnorm
 !
 !      Check for top & bottom levels:
-!      ------------------------------ 
+!      ------------------------------
 
        IF ( Level == Solver % MultiGridLevel ) THEN
           NewLinearSystem = .TRUE.
@@ -214,7 +214,7 @@ CONTAINS
 
 
           CALL ListPushNamespace('mglowest:')
-          
+
           CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
           CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', NewLinearSystem )
 
@@ -225,7 +225,7 @@ CONTAINS
             LowestSolver='direct'
             IF ( LIter ) LowestSolver='iterative'
           END IF
-          
+
           CALL Info('GMGSolve','Starting lowest linear solver using: '//TRIM(LowestSolver),Level=10 )
 
           SELECT CASE(LowestSolver)
@@ -250,7 +250,7 @@ CONTAINS
             tmp = MGSmooth( PSolver, Matrix1, Solver % Mesh, Solution, &
                  ForceVector, Residual, Level, DOFs, LowestSmooth = .TRUE. )
 
-          CASE('none') 
+          CASE('none')
             CALL Info('GMGSolve','Applying no solver for coarsest level')
 
           CASE DEFAULT
@@ -266,7 +266,7 @@ CONTAINS
           END SELECT
 
           CALL ListPopNamespace('mglowest:')
-          
+
           Solution(1:n) = Solution(1:n) * RHSNorm
           ForceVector(1:n) = ForceVector(1:n) * RHSnorm
 
@@ -288,7 +288,7 @@ CONTAINS
 
        CALL MGmv( Matrix1, Solution, Residual, .TRUE. )
        Residual(1:n) = ForceVector(1:n) - Residual(1:n)
- 
+
        Tolerance = ListGetConstReal( Params,'Linear System Convergence Tolerance' )
 !---------------------------------------------------------------------
 !
@@ -374,8 +374,8 @@ CONTAINS
          Solver % Variable => VariableGet( Mesh2 % Variables, &
              Variable1 % Name, ThisOnly = .TRUE. )
        END IF
-       
- 
+
+
 !------------------------------------------------------------------------------
 !
 !      Some more initializations:
@@ -471,7 +471,7 @@ CONTAINS
              IF ( .NOT. Found ) THEN
                ILUTOL = ListGetConstReal( Params,'Linear System ILUT Tolerance' )
              END IF
-             
+
              IF ( Parallel ) THEN
                Condition = CRS_ILUT( PMatrix, ILUTOL )
              ELSE
@@ -511,7 +511,7 @@ CONTAINS
           IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
              CALL Fatal('GMGSolve','We seem to have diverged')
           END IF
-          
+
           IF( Level == Solver % MultiGridTotal ) THEN
             IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
           ELSE
@@ -524,7 +524,7 @@ CONTAINS
 !
 !      Finalize:
 !      ---------
-       IF ( Parallel ) THEN 
+       IF ( Parallel ) THEN
           CALL ParallelUpdateResult( Matrix1, Solution, Residual )
        END IF
        Solution(1:n) = Solution(1:n) * RHSNorm
@@ -548,7 +548,7 @@ CONTAINS
 
   CONTAINS
 
-  
+
 !------------------------------------------------------------------------------
     RECURSIVE FUNCTION GMGSweep() RESULT(RNorm)
 !------------------------------------------------------------------------------
@@ -557,7 +557,7 @@ CONTAINS
        REAL(KIND=dp) :: RNorm
 !------------------------------------------------------------------------------
        INTEGER :: Sweeps
-       REAL(KIND=dp) :: Bnorm 
+       REAL(KIND=dp) :: Bnorm
        INTEGER, POINTER :: Iters(:)
        REAL(KIND=dp), POINTER :: R1(:),R2(:)
 !------------------------------------------------------------------------------
@@ -568,7 +568,7 @@ CONTAINS
        Iters => ListGetIntegerArray( Params,'MG Sweeps',Found)
        IF(Found) THEN
          Sweeps = Iters(MIN(Level,SIZE(Iters)))
-       ELSE        
+       ELSE
          Sweeps = 1
        END IF
 
@@ -607,7 +607,7 @@ CONTAINS
              DOFs, Solver, Level-1, NewLinearSystem )
       END DO
       CALL Info('GMGSolve','Returning from MG solver call',Level=12)
- 
+
 !
 !     Compute x = x + Qz:
 !     -------------------
@@ -894,9 +894,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Multigrid solution in the case when different levels are different 
+!> Multigrid solution in the case when different levels are different
 !> power of element basis functions. Applicable to H1 p-elements and
-!> H(curl) elements (Only quadratic supported currently). 
+!> H(curl) elements (Only quadratic supported currently).
 !------------------------------------------------------------------------------
     RECURSIVE SUBROUTINE PMGSolve( Matrix1, Solution, &
         ForceVector, DOFs, Solver, Level, NewSystem )
@@ -907,12 +907,12 @@ CONTAINS
        TYPE(Matrix_t), POINTER :: Matrix1
        INTEGER :: DOFs, Level
        LOGICAL, OPTIONAL :: NewSystem
-       TYPE(Solver_t), TARGET :: Solver       
+       TYPE(Solver_t), TARGET :: Solver
        REAL(KIND=dp), TARGET CONTIG :: ForceVector(:), Solution(:)
 !------------------------------------------------------------------------------
        TYPE(Variable_t), POINTER :: Variable1, TimeVar, SaveVariable
        TYPE(Matrix_t), POINTER :: Matrix2, PMatrix, SaveMatrix
-       TYPE(Solver_t), POINTER :: PSolver             
+       TYPE(Solver_t), POINTER :: PSolver
 
        INTEGER :: i,j,j2,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, RDOF, CDOF,ndofs
        LOGICAL :: Condition, Found, Parallel, Project,Transient, EdgeBasis, LFact
@@ -1020,7 +1020,7 @@ CONTAINS
             tmp = MGSmooth( PSolver, Matrix1, Solver % Mesh, Solution, &
                  ForceVector, Residual, Level, DOFs, LowestSmooth = .TRUE. )
 
-          CASE('none') 
+          CASE('none')
             CALL Info('PMGSolve','Applying no solver for coarsest level')
 
           CASE DEFAULT
@@ -1045,14 +1045,14 @@ CONTAINS
 !      -------------------------
        IF ( Parallel ) THEN
           CALL ParallelInitSolve(Matrix1,Solution,ForceVector,Residual,NewLinearSystem)
-          PMatrix => ParallelMatrix(Matrix1) 
+          PMatrix => ParallelMatrix(Matrix1)
        END IF
 !
 !      Compute residual:
 !      -----------------
        CALL MGmv(Matrix1,Solution, Residual,.TRUE.)
        Residual(1:n) = ForceVector(1:n) - Residual(1:n)
- 
+
        RHSNorm = MGnorm(n, ForceVector)
 
 !      A zero right-hand side would divide by zero here and turn every residual
@@ -1068,7 +1068,7 @@ CONTAINS
        END IF
 
        ResidualNorm = MGnorm( n, Residual ) / RHSNorm
- 
+
        Tolerance = ListGetConstReal( Params,'Linear System Convergence Tolerance' )
 
 !---------------------------------------------------------------------
@@ -1083,7 +1083,7 @@ CONTAINS
 
        Matrix2 => Matrix1 % Child
        EdgeBasis = ListGetLogical( Solver % Values, 'Edge Basis', Found)
-      
+
        IF ( NewLinearSystem ) THEN
          IF ( .NOT. ASSOCIATED(Matrix2) ) THEN
 
@@ -1091,19 +1091,19 @@ CONTAINS
 
            IF( EdgeBasis ) THEN
              BLOCK
-               LOGICAL :: SecondKind 
+               LOGICAL :: SecondKind
 
                SecondKind = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
 
-               ! Default degree is 2 
+               ! Default degree is 2
                Degree = 2
 
                DO i=1,Solver % Mesh % NumberOfNodes
                  ! Set all nodes to 1st degree
                  j2 = Permutation(i)
                  IF(j2>0) THEN
-                   DO k=1,DOFs                                  
-                     Degree(DOFs*(j2-1)+k) = 1                   
+                   DO k=1,DOFs
+                     Degree(DOFs*(j2-1)+k) = 1
                    END DO
                  END IF
                END DO
@@ -1115,8 +1115,8 @@ CONTAINS
                      j2 = Solver % Mesh % NumberOfNodes + 3*(i-1)+j
                      j2 = Permutation(j2)
                      IF(j2>0) THEN
-                       DO k=1,DOFs                                  
-                         Degree(DOFs*(j2-1)+k) = 1                   
+                       DO k=1,DOFs
+                         Degree(DOFs*(j2-1)+k) = 1
                        END DO
                      END IF
                    END DO
@@ -1124,8 +1124,8 @@ CONTAINS
                    j2 = Solver % Mesh % NumberOfNodes + 2*(i-1)+1
                    j2 = Permutation(j2)
                    IF(j2>0) THEN
-                     DO k=1,DOFs                                  
-                       Degree(DOFs*(j2-1)+k) = 1                   
+                     DO k=1,DOFs
+                       Degree(DOFs*(j2-1)+k) = 1
                      END DO
                    END IF
                  END IF
@@ -1137,7 +1137,7 @@ CONTAINS
              DO i=1,Solver % NumberOfActiveElements
                Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
 
-               n = mGetElementDOFs( Indexes, Element ) 
+               n = mGetElementDOFs( Indexes, Element )
                CALL ElementBasisDegree(Element, Deg)
                DO j=1,n
                  DO k=1,DOFs
@@ -1147,7 +1147,7 @@ CONTAINS
              END DO
              DEALLOCATE(Indexes,Deg)
            END IF
-             
+
            PatLevel => ListGetIntegerArray( Params,'MG P at Level',Found)
            IF(.NOT.Found) THEN
              ALLOCATE(PatLevel(Level-1))
@@ -1359,7 +1359,7 @@ CONTAINS
 !
 !      Finalize:
 !      ---------
-       IF ( Parallel ) THEN 
+       IF ( Parallel ) THEN
           CALL ParallelUpdateResult( Matrix1, Solution, Residual )
        END IF
        Solver % Matrix   => SaveMatrix
@@ -1478,14 +1478,14 @@ CONTAINS
 !> so far been rather limited.
 !
 !        Author: Peter Råback
-!        Modified by: 
+!        Modified by:
 !        Date of modification: 30.10.2003
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE AMGSolve( Matrix1, Solution, &
     ForceVector, DOFs, Solver, Level, NewSystem )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    
+
     TYPE(Matrix_t), POINTER :: Matrix1
     INTEGER :: DOFs, Level
     LOGICAL, OPTIONAL :: NewSystem
@@ -1494,22 +1494,22 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE AMG_t
       INTEGER, POINTER :: CF(:)
-      INTEGER, POINTER :: InvCF(:) 
+      INTEGER, POINTER :: InvCF(:)
     END TYPE AMG_t
 
     TYPE(AMG_t), POINTER :: AMG(:)
     TYPE(Mesh_t), POINTER   :: Mesh
     TYPE(Matrix_t), POINTER :: Matrix2, Pmatrix
-    TYPE(Matrix_t), POINTER :: ProjPN, ProjQT, ProjT 
+    TYPE(Matrix_t), POINTER :: ProjPN, ProjQT, ProjT
     TYPE(Solver_t), POINTER :: PSolver
-   
+
     INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, DirectLimit, &
         MinLevel, InvLevel
     LOGICAL :: Condition, Found, Parallel, EliminateDir, CoarseSave, RecomputeProjector
     CHARACTER(:), ALLOCATABLE :: str,IterMethod,FileName
     INTEGER, POINTER :: CF(:), InvCF(:)
     LOGICAL, POINTER :: Fixed(:)
-    
+
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:), Solution2(:)
     REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
     REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL
@@ -1519,19 +1519,19 @@ CONTAINS
     LOGICAL :: NewLinearSystem, gotit
 
     SAVE NewLinearSystem, AMG, MinLevel
-    
+
 !------------------------------------------------------------------------------
 
     IF( ParEnv % PEs > 1 ) THEN
       CALL Fatal('AMGSolve','This algebraic multigrid is not parallel')
     END IF
 
-    IF(.FALSE.) THEN 
+    IF(.FALSE.) THEN
       WRITE(Message,*) 'Starting level ',Level,NewLinearSystem,NewSystem
       CALL Info('AMGSolve',Message)
     END IF
 
-    Mesh => Solver % Mesh    
+    Mesh => Solver % Mesh
     Params => Solver % Values
 
     tt = CPUTime()
@@ -1546,7 +1546,7 @@ CONTAINS
     IF ( Level == Solver % MultiGridLevel ) THEN
       IF( ListGetLogical(Params,'MG Recompute Projector',GotIt) ) THEN
         NewLinearSystem = .TRUE.
-      ELSE 
+      ELSE
         NewLinearSystem = .NOT. ASSOCIATED(Matrix1 % Parent)
       END IF
       MinLevel = Solver % MultiGridLevel
@@ -1558,7 +1558,7 @@ CONTAINS
 !      -----------------------------------
     n = Matrix1 % NumberOfRows
 
-    DirectLimit = ListGetInteger(Params,'MG Lowest Linear Solver Limit',GotIt) 
+    DirectLimit = ListGetInteger(Params,'MG Lowest Linear Solver Limit',GotIt)
     IF(.NOT. GotIt) DirectLimit = 20
 
     IF ( Level <= 1 .OR. n < DirectLimit) THEN
@@ -1592,7 +1592,7 @@ CONTAINS
 !      -------------------------
     IF ( Parallel ) THEN
       CALL ParallelInitSolve( Matrix1, Solution, ForceVector, Residual )
-      PMatrix => ParallelMatrix( Matrix1 ) 
+      PMatrix => ParallelMatrix( Matrix1 )
     END IF
 
 !      Compute residual:
@@ -1649,30 +1649,30 @@ CONTAINS
       WRITE( Message, '(A,I3)' ) 'Creating a new matrix and projector for level',Level
       CALL Info('AMGSolve', Message)
       MinLevel = MIN(MinLevel,Level)
-      
-      EliminateDir = ListGetLogical(Params,'MG Eliminate Dirichlet',GotIt) 
+
+      EliminateDir = ListGetLogical(Params,'MG Eliminate Dirichlet',GotIt)
       IF(.NOT. GotIt) EliminateDir = .TRUE.
       IF(Level /= Solver % MultiGridTotal) EliminateDir = .FALSE.
 
       ! Determine projector with one dof and use it for others
       ! Determine C/F split and projector from one dof, then project everything with it
-      CALL ChooseCoarseNodes(Matrix1, Solver, ProjT, DOFs, CF, InvCF)        
-      
+      CALL ChooseCoarseNodes(Matrix1, Solver, ProjT, DOFs, CF, InvCF)
+
       IF( ListGetLogical(Params,'MG Projector Matrix Save',GotIt) ) THEN
         Filename = 'P'//I2S(Level)//'.dat'
-        CALL SaveMatrix(ProjT,TRIM(FileName))          
+        CALL SaveMatrix(ProjT,TRIM(FileName))
       END IF
-      
-      ! The initial projection matrix is a transpose of the wanted one. 
-      ! It is needed only in determining the matrix structure.       
+
+      ! The initial projection matrix is a transpose of the wanted one.
+      ! It is needed only in determining the matrix structure.
       ProjPN => CRS_Transpose( ProjT )
       !     CALL ParallelInitMatrix( Solver, Solver % Matrix )
       CALL CRS_ProjectMatrixCreate( Matrix1, ProjPN, ProjT, Matrix2, DOFs)
-      CALL FreeMatrix(ProjT)             
+      CALL FreeMatrix(ProjT)
 
       Matrix2 % Child  => Matrix1
       Matrix1 % Parent => Matrix2
-      ProjQT => ProjPN      
+      ProjQT => ProjPN
       Matrix1 % Ematrix => ProjPN
 
       WRITE( Message, '(A,F8.2)' ) 'MG coarse matrix creation time: ', CPUTime() - tt
@@ -1681,7 +1681,7 @@ CONTAINS
       ! Make the cnodes point to the set of original nodes
       IF(CoarseSave) THEN
         ProjPN % Perm => CF
-        ! Make the cnodes point to the set of original nodes         
+        ! Make the cnodes point to the set of original nodes
         IF(Level < Solver % MultiGridTotal) THEN
           IF( ASSOCIATED(InvCF)) THEN
             AMG(Level) % InvCF => InvCF
@@ -1694,23 +1694,23 @@ CONTAINS
 
       IF( ListGetLogical(Params,'MG Projected Matrix Save', GotIt ) ) THEN
         Filename = 'B'//I2S(Level)//'.dat'
-        CALL SaveMatrix(Matrix2,TRIM(FileName))          
+        CALL SaveMatrix(Matrix2,TRIM(FileName))
       END IF
-            
+
       IF( CoarseSave ) THEN
         CALL AMGTest(0)
         !        CALL AMGTest(1)
-        !        CALL AMGTest(2)         
+        !        CALL AMGTest(2)
       END IF
 
     ELSE
       ! .NOT. new linear system
-      Matrix2 => Matrix1 % Parent      
+      Matrix2 => Matrix1 % Parent
       ProjPN => Matrix1 % Ematrix
       CF => ProjPN % Perm
-      ProjQT => ProjPN      
-    END IF  
- 
+      ProjQT => ProjPN
+    END IF
+
     n  = Matrix1 % NumberOfRows
     n2 = Matrix2 % NumberOfRows
     Residual2 => Matrix2 % RHS
@@ -1736,33 +1736,33 @@ CONTAINS
       END IF
     ELSE
       MaxIter = ListGetInteger( Params,'MG Level Max Iterations', Found )
-      IF ( .NOT. Found ) MaxIter = 1         
+      IF ( .NOT. Found ) MaxIter = 1
       Tolerance = ListGetConstReal( Params,'MG Level Convergence Tolerance', Found )
       IF ( .NOT. Found ) Tolerance = HUGE(Tolerance)
     END IF
-   
+
 !   Smoothing preconditiong, if not given diagonal preconditioning is used:
 !   ----------------------------------------------------------------------
     str = ListGetString( Params, 'MG Preconditioning', Found )
     IF ( .NOT. Found ) THEN
       str = ListGetString( Params,'Linear System Preconditioning', Found )
     END IF
-   
+
     IF ( str == 'ilut' )  THEN
       IF ( NewLinearSystem ) THEN
         ILUTOL = ListGetConstReal( Params,'MG ILUT Tolerance', GotIt )
         IF ( .NOT. GotIt ) THEN
           ILUTOL = ListGetConstReal( Params,'Linear System ILUT Tolerance' )
         END IF
-        
+
         IF ( Parallel ) THEN
           Condition = CRS_ILUT( PMatrix, ILUTOL )
         ELSE
           Condition = CRS_ILUT( Matrix1, ILUTOL )
         END IF
       END IF
-      
-    ELSE IF ( SEQL(str, 'ilu') ) THEN      
+
+    ELSE IF ( SEQL(str, 'ilu') ) THEN
       IF ( NewLinearSystem ) THEN
         k = 0
         IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
@@ -1776,7 +1776,7 @@ CONTAINS
                  'Linear System Symmetric ILU', Found )
           Condition = CRS_IncompleteLU( Matrix1, k, Params )
         END IF
-      END IF      
+      END IF
     END IF
 
 !------------------------------------------------------------------------------
@@ -1784,7 +1784,7 @@ CONTAINS
 !      ------------
     DO iter = 1,MaxIter
       ResidualNorm = AMGSweep() / RHSNorm
-    
+
       WRITE(Message,'(A,I0,A,I0,A,E20.12E3)') 'MG Residual at level: ', &
           Level, ' iter: ', iter,' is:', ResidualNorm
       CALL Info( 'AMGSolve', Message, Level=5 )
@@ -1792,21 +1792,21 @@ CONTAINS
       IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
          CALL Fatal('AMGSolve','We seem to have diverged')
       END IF
-            
+
       IF ( ResidualNorm < Tolerance ) EXIT
 
     END DO
-    
+
 !------------------------------------------------------------------------------
 !
 !      Finalize:
 !      ---------
-    IF ( Parallel ) THEN 
+    IF ( Parallel ) THEN
       CALL ParallelUpdateResult( Matrix1, Solution, Residual )
     END IF
-    
+
     DEALLOCATE( Residual, Solution2 )
-    
+
     IF ( Level == Solver % MultiGridTotal ) THEN
       WRITE( Message, '(A,F8.2)' ) 'MG iter time: ', CPUTime() - tt
       CALL Info( 'AMGSolve', Message, Level=5 )
@@ -1820,13 +1820,13 @@ CONTAINS
         END IF
       END IF
     END IF
- 
+
     RETURN
 !------------------------------------------------------------------------------
 
   CONTAINS
 
-  
+
 !------------------------------------------------------------------------------
     RECURSIVE FUNCTION AMGSweep() RESULT(RNorm)
 !------------------------------------------------------------------------------
@@ -1842,18 +1842,18 @@ CONTAINS
 
 !      Presmoothing:
 !      -------------
-      
+
       Iters => ListGetIntegerArray( Params,'MG Sweeps',GotIt)
       IF(GotIt) THEN
         Sweeps = Iters(MIN(InvLevel,SIZE(Iters)))
-      ELSE        
+      ELSE
         Sweeps = 1
       END IF
-      
+
       PSolver => Solver
       RNorm = MGSmooth( PSolver, Matrix1, Solver % Mesh, Solution, ForceVector, &
              Residual, Level, DOFs, PreSmooth = .TRUE. )
-      
+
 !------------------------------------------------------------------------------
 !
 !      Solve (PAQ)z = Pr, x = x + Qz:
@@ -1865,7 +1865,7 @@ CONTAINS
       R2 => Residual2(1:n2)
 
       CALL CRS_ProjectVector( ProjPN, R1, R2, DOFs, Trans = .FALSE. )
- 
+
 !      Recursively solve (PAQ)z = Pr:
 !      ------------------------------
 !      numbers of W-cycles. MultigridSolve improves the coarse iterate in
@@ -1883,8 +1883,8 @@ CONTAINS
 !      -------------------
       R1 => Residual (1:n)
       R2 => Solution2(1:n2)
-      
-      CALL CRS_ProjectVector( ProjQT, R2, R1, DOFs, Trans = .TRUE. )      
+
+      CALL CRS_ProjectVector( ProjQT, R2, R1, DOFs, Trans = .TRUE. )
 
       Solution(1:n) = Solution(1:n) + Residual(1:n)
 
@@ -1965,29 +1965,29 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Apply compatible relaxation for the current C/F split and based on the 
+!> Apply compatible relaxation for the current C/F split and based on the
 !> convergence behavior include some of the F nodes to the new candidate list.
 !------------------------------------------------------------------------------
 
      SUBROUTINE CompatibleRelaxation(Amat, Solver, CF, CandList, nods, newcands)
-       
+
        TYPE(Matrix_t), POINTER  :: Amat
        TYPE(solver_t), TARGET :: Solver
        INTEGER, POINTER :: CF(:)
        INTEGER, POINTER :: CandList(:)
        INTEGER :: nods, newcands
-       
+
        INTEGER :: i, j, k, Rounds
        REAL(KIND=dp), POINTER :: Ones(:), Zeros(:)
        REAL(KIND=dp) :: Limit, MaxRatio, Ratio
        INTEGER :: cnods, RatioClasses(101)
        LOGICAL :: GotIt
-       
+
        Rounds = ListGetInteger(Params,'MG Compatible Relax Rounds',GotIt)
        IF(.NOT. GotIt) Rounds = 3
-       
+
        ALLOCATE(Ones(nods),Zeros(nods))
-       
+
        k = 0
        DO i=1,nods
          IF(CF(i) <= 0) THEN
@@ -1998,28 +1998,28 @@ CONTAINS
          END IF
        END DO
        Zeros = 0.0
-       
+
        IterMethod = ListGetString( Params, 'MG Smoother', Found )
-       
+
        IF ( .NOT. Found ) THEN
          IterMethod = ListGetString( Params,'Linear System Iterative Method', Found )
        END IF
        IF ( .NOT. Found ) IterMethod = 'jacobi'
-       
+
        SELECT CASE( IterMethod )
-       CASE( 'gs' )                         
+       CASE( 'gs' )
          CALL CR_GS( Amat, Ones, Zeros, CF, Rounds )
-         
-       CASE( 'sor','sgs','psgs')                                     
+
+       CASE( 'sor','sgs','psgs')
          CALL CR_SGS( Amat, Ones, Zeros, CF, Rounds)
-         
-       CASE( 'csgs')                                     
-         CALL CR_CSGS( nods, Amat, Ones, Zeros, CF, Rounds)       
-         
+
+       CASE( 'csgs')
+         CALL CR_CSGS( nods, Amat, Ones, Zeros, CF, Rounds)
+
        CASE DEFAULT
          CALL CR_Jacobi( Amat, Ones, Zeros, CF, Rounds )
        END SELECT
-       
+
        MaxRatio = 0.0d0
        RatioClasses = 0
        DO i=1,nods
@@ -2029,17 +2029,17 @@ CONTAINS
            IF(j > 0 .AND. j <= 10) THEN
              RatioClasses(j) = RatioClasses(j) + 1
            ELSE IF(j > 0) THEN
-             RatioClasses(11) = RatioClasses(11) + 1            
+             RatioClasses(11) = RatioClasses(11) + 1
            ELSE IF(j < 0) THEN
-             RatioClasses(12) = RatioClasses(12) + 1                        
+             RatioClasses(12) = RatioClasses(12) + 1
            END IF
-           MaxRatio = MAX(Ratio, MaxRatio) 
+           MaxRatio = MAX(Ratio, MaxRatio)
          END IF
        END DO
-              
+
        WRITE( Message, '(A)' ) 'Compatible relaxation classes (interval, no and %)'
        CALL Info('CompatibleRelaxation',Message)
-       
+
        DO i=1,13
          IF(RatioClasses(i) > 0) THEN
            IF(i==11) THEN
@@ -2052,47 +2052,47 @@ CONTAINS
            CALL Info('CompatibleRelaxation',Message)
          END IF
        END DO
-       
+
        WRITE( Message, '(A,ES15.5)' ) 'Compatible relaxation merit',MaxRatio
        CALL Info('CompatibleRelaxation',Message)
-       
+
        newcands = 0
        Limit = ListGetConstReal(Params,'MG Compatible Relax Limit',GotIt)
        IF(GotIt) THEN
-         DO i=1,nods         
+         DO i=1,nods
            Ratio = ABS(Zeros(i))
-           IF(Ratio <= Limit) CYCLE 
-           
+           IF(Ratio <= Limit) CYCLE
+
            IF(CF(i) > 0) THEN
              CALL Warn('CompatibleRelaxation','Coarse nodes should relax well!?')
            END IF
-           
+
            ! Add the node to the list of candidates and eliminate the old C/F info
            newcands = newcands + 1
            CF(i) = 0
            CandList(i) = 1
          END DO
-         
+
          IF(newcands > 0) THEN
            WRITE(Message,'(A,I8)') 'Number of new candidate nodes using CR ',newcands
-           CALL Info('CompatibleRelaxation',Message)         
+           CALL Info('CompatibleRelaxation',Message)
          END IF
        END IF
 
        DEALLOCATE(Ones, Zeros)
-       
+
      END SUBROUTINE CompatibleRelaxation
 
 
 !------------------------------------------------------------------------------
-!> Create a coarse mesh given the fine mesh and the stiffness matrix. 
-!> The coarse nodes may be selected in a number of ways and after the 
+!> Create a coarse mesh given the fine mesh and the stiffness matrix.
+!> The coarse nodes may be selected in a number of ways and after the
 !> selection a new mesh is made of them. This mesh is then used to create
-!> a projection between the coarse and fine degrees of freedom. 
+!> a projection between the coarse and fine degrees of freedom.
 !------------------------------------------------------------------------------
 
-  SUBROUTINE ChooseCoarseNodes(Amat, Solver, Projector, Components, CF, InvCF) 
-    
+  SUBROUTINE ChooseCoarseNodes(Amat, Solver, Projector, Components, CF, InvCF)
+
     TYPE(Matrix_t), POINTER  :: Amat
     TYPE(solver_t), TARGET :: Solver
     TYPE(Matrix_t), POINTER :: Projector
@@ -2128,10 +2128,10 @@ CONTAINS
     nods = Amat % NumberOfRows
     ALLOCATE( Bonds(SIZE(Amat % Cols)), CandList(nods), CF(nods), Fixed(nods) )
 
-    ! Make the candidate and strong bond list for determining the coarse nodes    
+    ! Make the candidate and strong bond list for determining the coarse nodes
     Fixed = .FALSE.
     CF = 0
-    UseCR =  ListGetLogical(Params,'MG Compatible Relax Init',GotIt) 
+    UseCR =  ListGetLogical(Params,'MG Compatible Relax Init',GotIt)
     IF(UseCR .AND. Components > 1) THEN
       CALL Fatal('CompatibleRelaxation','CR may only be applied to cases with 1 DOFs!')
     END IF
@@ -2142,25 +2142,25 @@ CONTAINS
       Bonds = .TRUE.
       CALL AMGBondsDirichlet(Amat, Bonds, CandList)
       CALL CompatibleRelaxation(Amat, Solver, CF, CandList, nods, newcands)
-    ELSE 
+    ELSE
       IF( Components > 1) THEN
         CandList = 0
         CandList(Component1:nods:Components) = 1
        ELSE
         CandList = 1
       END IF
-      
+
       IF(CompMat) THEN
         CALL AMGBondsComplex(Amat, Bonds, CandList)
       ELSE IF(PseudoGeometric) THEN
-        CALL AMGBondsGeometric(Amat, Bonds, CandList, Components)      
+        CALL AMGBondsGeometric(Amat, Bonds, CandList, Components)
       ELSE
-        CALL AMGBonds(Amat, Bonds, CandList, Components)      
+        CALL AMGBonds(Amat, Bonds, CandList, Components)
       END IF
     END IF
 
 
-100 CALL AMGCoarse(Amat, CandList, Bonds, CF, CompMat)     
+100 CALL AMGCoarse(Amat, CandList, Bonds, CF, CompMat)
 
     IF(.NOT. (CompMat .OR. UseCR ) ) THEN
       IF( ListGetLogical(Params,'MG Positive Connection Eliminate',GotIt)) THEN
@@ -2194,7 +2194,7 @@ CONTAINS
     DEALLOCATE(Bonds, CandList)
 
     IF(CompMat) THEN
-      Projector => ComplexInterpolateF2C( Amat, CF )      
+      Projector => ComplexInterpolateF2C( Amat, CF )
     ELSE IF(PseudoGeometric) THEN
       Projector => InterpolateF2CDistance( Amat, CF, Components)
     ELSE
@@ -2209,7 +2209,7 @@ CONTAINS
         IF(CF(i) > 0) InvCF(CF(i)) = i
       END DO
     END IF
-    
+
 !    CALL Info('ChooseCoarseNodes','Coarse set chosen')
 
   END SUBROUTINE ChooseCoarseNodes
@@ -2221,7 +2221,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   SUBROUTINE AMGBonds(Amat, Bonds, Cands, Components)
-    
+
     LOGICAL, POINTER :: Bonds(:)
     TYPE(Matrix_t), POINTER  :: Amat
     INTEGER, POINTER :: Cands(:)
@@ -2241,7 +2241,7 @@ CONTAINS
     NegLim = ListGetConstReal(Params,'MG Strong Connection Limit',GotIt)
     IF(.NOT. GotIt) NegLim = 0.06_dp
 
-    ! Negative connections are more useful for the interpolation, but also 
+    ! Negative connections are more useful for the interpolation, but also
     ! positive strong connection may be taken into account
     AllowPosLim = ListGetLogical(Params,'MG Positive Connection Allow',GotIt)
     PosLim = ListGetConstReal(Params,'MG Positive Connection Limit',GotIt)
@@ -2251,7 +2251,7 @@ CONTAINS
     ! their value is determined at the finest level and need not to be recomputed
     ElimDir = EliminateDir
     DirLim = ListGetConstReal(Params,'MG Eliminate Dirichlet Limit',GotIt)
-    IF(.NOT. GotIt) DirLim = 1.0d-8      
+    IF(.NOT. GotIt) DirLim = 1.0d-8
 
     nods = Amat % NumberOfRows
     Rows   => Amat % Rows
@@ -2308,7 +2308,7 @@ CONTAINS
         IF(minbond * diagsign < 0.0) maxbond = minbond
         maxbond = ABS(maxbond)
       END IF
-   
+
       ! Mark Dirichlet nodes with negative sign in order to favour boundaries in future
       IF( maxbond <= DirLim * ABS(Values (Amat % Diag(ind)) ) ) THEN
         IF(ElimDir) THEN
@@ -2355,12 +2355,12 @@ CONTAINS
 
       IF(MaxConns > 0) THEN
         DO WHILE(posnew + negnew > MaxConns)
-          
+
           ! Find the weakest used connection
           measlim = HUGE(measlim)
           DO j=Rows(ind),Rows(ind+1)-1
             IF(.NOT. Bonds(j)) CYCLE
-            
+
             meas = ABS(measures(j-Rows(ind)+1))
             IF(meas < measlim) THEN
               measlim = meas
@@ -2373,24 +2373,24 @@ CONTAINS
           ELSE
             posnew = posnew - 1
           END IF
-          Bonds(measind) = .FALSE.          
+          Bonds(measind) = .FALSE.
         END DO
       END IF
 
 
       IF(MinConns > 0) THEN
         DO WHILE(posnew + negnew < MinConns)
-          
+
           ! Find the strongest unused connection
           measlim = 0.0
           measind = 0
           DO j=Rows(ind),Rows(ind+1)-1
             IF(Bonds(j)) CYCLE
-            
+
             cj = Cols(j)
             IF(Cands(cj) == 0 .OR. cj == ind ) CYCLE
             IF( MOD(ind, Components) /= MOD(cj, Components) ) CYCLE
- 
+
             meas = ABS(measures(j-Rows(ind)+1))
             IF(meas > measlim) THEN
               measlim = meas
@@ -2438,11 +2438,11 @@ CONTAINS
 !> Mark the Dirichlet bonds in the AMG target matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE AMGBondsDirichlet(Amat, Bonds, Cands)
-    
+
     LOGICAL, POINTER :: Bonds(:)
     TYPE(Matrix_t), POINTER  :: Amat
     INTEGER, POINTER :: Cands(:)
-    INTEGER :: Components, Component1    
+    INTEGER :: Components, Component1
 
     REAL(KIND=dp) :: NegLim, PosLim
     INTEGER :: nods, cnods, diagsign, maxconn, posnew, negnew, MaxConns, MinConns
@@ -2461,7 +2461,7 @@ CONTAINS
     IF(.NOT. ElimDir ) RETURN
 
     DirLim = ListGetConstReal(Params,'MG Eliminate Dirichlet Limit',GotIt)
-    IF(.NOT. GotIt) DirLim = 1.0d-8      
+    IF(.NOT. GotIt) DirLim = 1.0d-8
 
     nods = Amat % NumberOfRows
     Rows   => Amat % Rows
@@ -2490,7 +2490,7 @@ CONTAINS
         END IF
       END IF
     END DO
-    
+
     IF(elimnods > 0) THEN
       WRITE(Message,'(A,I8)') 'Number of eliminated nodes',elimnods
       CALL Info('AMGBondsDirichlet',Message)
@@ -2499,12 +2499,12 @@ CONTAINS
   END SUBROUTINE AMGBondsDirichlet
 
 !------------------------------------------------------------------------------
-!> Create the initial list for measure of importance using geometric distance 
+!> Create the initial list for measure of importance using geometric distance
 !> information and topology information from the matrix..
 !------------------------------------------------------------------------------
 
   SUBROUTINE AMGBondsGeometric(Amat, Bonds, Cands, Components)
-    
+
     LOGICAL, POINTER :: Bonds(:)
     TYPE(Matrix_t), POINTER  :: Amat
     INTEGER, POINTER :: Cands(:)
@@ -2523,13 +2523,13 @@ CONTAINS
 
     NegLim = ListGetConstReal(Params,'MG Strong Connection Limit',GotIt)
     IF(.NOT. GotIt) NegLim = 0.25
-    
+
     Pow = ListGetConstReal(Params,'MG Geometric Power',GotIt)
     IF(.NOT. GotIt) Pow = 1.0d0
 
     ElimDir = EliminateDir
     DirLim = ListGetConstReal(Params,'MG Eliminate Dirichlet Limit',GotIt)
-    IF(.NOT. GotIt) DirLim = 1.0d-8      
+    IF(.NOT. GotIt) DirLim = 1.0d-8
 
     nods   = Amat % NumberOfRows
     Rows   => Amat % Rows
@@ -2555,7 +2555,7 @@ CONTAINS
 
       minmaxset = .FALSE.
       maxbond = 0.0
-       
+
       IF ( Level == Solver % MultiGridTotal ) THEN
         k = ind
       ELSE
@@ -2569,27 +2569,27 @@ CONTAINS
 
       DO j=Rows(ind),Rows(ind+1)-1
         cj = Cols(j)
-        measures(j-Rows(ind)+1) = 0.0d0   
+        measures(j-Rows(ind)+1) = 0.0d0
 
         IF(Cands(cj) == 0 .OR. cj == ind ) CYCLE
-        IF(ElimDir .AND. ABS(Values(j)) < Dirlim) CYCLE 
+        IF(ElimDir .AND. ABS(Values(j)) < Dirlim) CYCLE
 
-        minmaxset = .TRUE.          
-        
+        minmaxset = .TRUE.
+
         IF ( Level == Solver % MultiGridTotal ) THEN
           k = cj
         ELSE
           k = AMG(Level+1) % InvCF(cj)
         END IF
         k = (k-1) / Components + 1
-        
+
         x1 = Mesh % Nodes % x(k)
         y1 = Mesh % Nodes % y(k)
         z1 = Mesh % Nodes % z(k)
-        
+
         s2 = (x1-x0)*(x1-x0) + (y1-y0)*(y1-y0) + (z1-z0)*(z1-z0)
         meas = s2 ** (-Pow/2)
-        
+
         measures(j-Rows(ind)+1) = meas
         maxbond = MAX(maxbond, meas)
       END DO
@@ -2620,12 +2620,12 @@ CONTAINS
 
       IF(MaxConns > 0) THEN
         DO WHILE(negnew > MaxConns)
-          
+
           ! Find the weakest used connection and drop it
           measlim = HUGE(measlim)
           DO j=Rows(ind),Rows(ind+1)-1
             IF(.NOT. Bonds(j)) CYCLE
-            
+
             meas = measures(j-Rows(ind)+1)
             IF(meas < measlim) THEN
               measlim = meas
@@ -2634,23 +2634,23 @@ CONTAINS
           END DO
 
           negnew = negnew - 1
-          Bonds(measind) = .FALSE.          
+          Bonds(measind) = .FALSE.
         END DO
       END IF
 
 
       IF(MinConns > 0) THEN
         DO WHILE(negnew < MinConns)
-          
+
           ! Find the strongest unused connection
           measlim = 0.0
           measind = 0
           DO j=Rows(ind),Rows(ind+1)-1
             IF(Bonds(j)) CYCLE
-            
+
             cj = Cols(j)
             IF(Cands(cj) == 0 .OR. cj == ind ) CYCLE
- 
+
             meas = measures(j-Rows(ind)+1)
             IF(meas > measlim) THEN
               measlim = meas
@@ -2662,7 +2662,7 @@ CONTAINS
           IF(measind == 0 .OR. measlim < 1.0d-50) EXIT
 
           negnew = negnew + 1
-          Bonds(measind) = .TRUE.          
+          Bonds(measind) = .TRUE.
         END DO
       END IF
 
@@ -2689,7 +2689,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   SUBROUTINE AMGBondsComplex(Amat, Bonds, Cands)
-    
+
     LOGICAL, POINTER :: Bonds(:)
     TYPE(Matrix_t), POINTER  :: Amat
     INTEGER, POINTER :: Cands(:)
@@ -2711,7 +2711,7 @@ CONTAINS
     ! their value is determined at the finest level and need not to be recomputed
     ElimDir = EliminateDir
     DirLim = ListGetConstReal(Params,'MG Eliminate Dirichlet Limit',GotIt)
-    IF(.NOT. GotIt) DirLim = 1.0d-8      
+    IF(.NOT. GotIt) DirLim = 1.0d-8
 
     nods = Amat % NumberOfRows
     Rows   => Amat % Rows
@@ -2740,12 +2740,12 @@ CONTAINS
       DO j=Rows(ind),Rows(ind+1)-1
         cj = Cols(j)
         IF(Cands(cj) == 0 .OR. cj == ind ) CYCLE
-        
+
         j2 = j + Rows(ind+1) - Rows(ind)
         meas = SQRT( Values(j)**2 + Values(j2)**2 )
         maxbond = MAX(meas,maxbond)
       END DO
-     
+
       meas = SQRT(Values (Amat % Diag(ind)) ** 2 + Values (Amat % Diag(ind+1)) ** 2 )
 
       IF( maxbond < DirLim * meas ) THEN
@@ -2776,12 +2776,12 @@ CONTAINS
 
       IF(MaxConns > 0) THEN
         DO WHILE(negnew > MaxConns)
-          
+
           ! Find the weakest used connection
           measlim = HUGE(measlim)
           DO j=Rows(ind),Rows(ind+1)-1
             IF(.NOT. Bonds(j)) CYCLE
-            
+
             meas = measures(j-Rows(ind)+1)
             IF(meas < measlim) THEN
               measlim = meas
@@ -2790,23 +2790,23 @@ CONTAINS
           END DO
 
           negnew = negnew - 1
-          Bonds(measind) = .FALSE.          
+          Bonds(measind) = .FALSE.
         END DO
       END IF
 
 
       IF(MinConns > 0) THEN
         DO WHILE(negnew < MinConns)
-          
+
           ! Find the strongest unused connection
           measlim = 0.0
           measind = 0
           DO j=Rows(ind),Rows(ind+1)-1
             IF(Bonds(j)) CYCLE
-            
+
             cj = Cols(j)
             IF(Cands(cj) == 0 .OR. cj == ind ) CYCLE
- 
+
             meas = measures(j-Rows(ind)+1)
             IF(meas > measlim) THEN
               measlim = meas
@@ -2839,12 +2839,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Add a posteriori some nodes to be coarse nodes which have 
+!> Add a posteriori some nodes to be coarse nodes which have
 !> strong positive-positive connections
 !------------------------------------------------------------------------------
   SUBROUTINE AMGPositiveBonds(Amat, Bonds, Cands, CF)
-    
-    LOGICAL, POINTER :: Bonds(:)    
+
+    LOGICAL, POINTER :: Bonds(:)
     TYPE(Matrix_t), POINTER  :: Amat
     INTEGER, POINTER :: Cands(:), CF(:)
 
@@ -2856,7 +2856,7 @@ CONTAINS
 
     CALL Info('AMGPositiveBonds','Adding some F-nodes with positive connections to C-nodes')
 
-    ! Negative connections are more useful for the interpolation, but also 
+    ! Negative connections are more useful for the interpolation, but also
     ! positive strong connection may be taken into account
     AllowPosLim = ListGetLogical(Params,'MG Positive Connection Allow',GotIt)
     PosLim = ListGetConstReal(Params,'MG Positive Connection Limit',GotIt)
@@ -2866,7 +2866,7 @@ CONTAINS
     ! their value is determined at the finest level and need not to be recomputed
     ElimDir = EliminateDir
     DirLim = ListGetConstReal(Params,'MG Eliminate Dirichlet Limit',GotIt)
-    IF(.NOT. GotIt) DirLim = 1.0d-8      
+    IF(.NOT. GotIt) DirLim = 1.0d-8
 
     nods = Amat % NumberOfRows
     Rows   => Amat % Rows
@@ -2876,7 +2876,7 @@ CONTAINS
     posnods = 0
 
     DO ind=1,nods
-      
+
       IF(Cands(ind) == 0 .OR. CF(ind) > 0) CYCLE
 
       ! Matrix entries will be treated differently depending if they have the same or
@@ -2885,7 +2885,7 @@ CONTAINS
       diagvalue = Values (Amat % Diag(ind))
       minbond = 0.0
       minbond2 = 0.0
-      maxbond = 0.0      
+      maxbond = 0.0
 
       DO j=Rows(ind),Rows(ind+1)-1
         cj = Cols(j)
@@ -2900,13 +2900,13 @@ CONTAINS
       END DO
 
       IF(maxbond < DirLim * ABS(diagvalue)) CYCLE
-      IF(minbond2 < minbond) CYCLE 
+      IF(minbond2 < minbond) CYCLE
 
       IF(minbond2 > PosLim * maxbond) THEN
         CF(ind) = 1
         posnods = posnods + 1
       END IF
-        
+
     END DO
 
     WRITE(Message,'(A,I9)') 'Number of added positive connection nodes',posnods
@@ -2916,9 +2916,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Creates a coarse mesh using the given list of strong connections. 
-!> Only nodes assigned by the Cands vector may be included in the 
-!> coarse set - others are ignored. The subroutine returns the vector CF which is 
+!> Creates a coarse mesh using the given list of strong connections.
+!> Only nodes assigned by the Cands vector may be included in the
+!> coarse set - others are ignored. The subroutine returns the vector CF which is
 !> nonzero for coarse nodes. The nodes are chosen using a heuristics which
 !> takes into account the strength of the coupling.
 !
@@ -2933,13 +2933,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   SUBROUTINE AMGCoarse(Amat, Cands, Bonds, CF, CompMat)
-    
+
     TYPE(Matrix_t), POINTER :: Amat
     LOGICAL :: Bonds(:)
     INTEGER, POINTER :: Cands(:), CF(:)
     LOGICAL :: CompMat
 
-    INTEGER :: nods, cnods    
+    INTEGER :: nods, cnods
     INTEGER :: i,j,k,cj,ci,ind,maxi,maxi2,newstarts, loops, minneigh, maxneigh, &
         MaxCon, MaxConInd, RefCon, RefCon2, prevstart, cind, find, ind0, &
         CoarseningMode, GatMax, anods, FollowBounds, points, &
@@ -2949,7 +2949,7 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:)
     INTEGER, ALLOCATABLE :: GatLims(:), GatNos(:), ConInd(:), RevConInd(:)
     REAL(KIND=dp), POINTER :: Values(:)
-    
+
     nods = Amat % NumberOfRows
     Rows   => Amat % Rows
     Cols   => Amat % Cols
@@ -2971,11 +2971,11 @@ CONTAINS
     cind = 0
     find = 0
 
-    ! Make the tightly bonded neighbours of coarse nodes to be fine nodes 
+    ! Make the tightly bonded neighbours of coarse nodes to be fine nodes
     ! This has an effect only if the CF list has been initialized
     DO ind = 1, nods
       IF(CF(ind) == 0) CYCLE
-      
+
       IF(CF(ind) < 0) THEN
         find = find + 1
         CF(ind) = -find
@@ -3002,13 +3002,13 @@ CONTAINS
 
 
     ! Calculate the initial measure of of importance
-    ! unvisited neighbour get 1 point, and a decided coarse node 2 points   
+    ! unvisited neighbour get 1 point, and a decided coarse node 2 points
 
-    DO ind = 1, nods      
+    DO ind = 1, nods
       ! Points are obtained when a neighbour is undicided or fine node
       IF(CF(ind) > 0) CYCLE
       IF(Cands(ind) <= 0) CYCLE
-      
+
       DO i=Rows(ind),Rows(ind+1)-1
         IF(.NOT. Bonds(i)) CYCLE
         ci = Cols(i)
@@ -3050,33 +3050,33 @@ CONTAINS
 
 
     IF(CoarseningMode == 3) THEN
-      MaxCon = MAXVAL( Con ) 
+      MaxCon = MAXVAL( Con )
       GatMax = 2 * MaxCon + 1
-      
+
       ! Bookkeeping is kept on category boundaries of the points
       ALLOCATE( GatLims(GatMax), GatNos(GatMax) )
       GatLims = 0
       GatNos = 0
-      
-      ! Number of points in different categories 
+
+      ! Number of points in different categories
       DO ind = 1, nods
         IF(Con(ind) == 0) CYCLE
-        GatNos(Con(ind)) = GatNos(Con(ind)) + 1 
+        GatNos(Con(ind)) = GatNos(Con(ind)) + 1
       END DO
       anods = SUM(GatNos)
 
       DO ind = 2, MaxCon
         GatLims(ind) = GatLims(ind-1) + GatNos(ind-1)
       END DO
-    
+
       ALLOCATE( ConInd(nods), RevConInd(anods) )
       ConInd = 0
       RevConInd = 0
-      
+
       GatNos = 0
       DO ind = 1, nods
         IF(Con(ind) == 0) CYCLE
-        GatNos(Con(ind)) = GatNos(Con(ind)) + 1 
+        GatNos(Con(ind)) = GatNos(Con(ind)) + 1
         ConInd(ind) = GatNos(Con(ind)) + GatLims(Con(ind))
       END DO
 
@@ -3085,46 +3085,46 @@ CONTAINS
         IF(Con(ind) == 0) CYCLE
         RevConInd(ConInd(ind)) = ind
       END DO
-      
 
-      DO WHILE( MaxCon > 0 ) 
+
+      DO WHILE( MaxCon > 0 )
         ind = RevConInd(anods)
- 
+
         cind = cind + 1
         CF(ind) = cind
         cnods = cnods + 1
-        
+
         ! Go through all strongly bonded neighbours to 'ind'
         DO j=Rows(ind),Rows(ind+1)-1
           IF(.NOT. Bonds(j)) CYCLE
           cj = Cols(j)
-          
+
           IF(CF(cj) == 0) THEN
             find = find + 1
             CF(cj) = -find
             IF(Cands(cj) == 0) CYCLE
-            
+
             ! Recompute the measure of importance for the neighbours
             DO i=Rows(cj),Rows(cj+1)-1
               IF(Bonds(i)) THEN
-                ci = Cols(i)          
+                ci = Cols(i)
                 IF(Cands(ci) > 0 .AND. CF(ci) == 0) THEN
                   loops = loops + 1
 
                   points = Con(ci) + 1
-                  
+
                   oldorder = ConInd(ci)
                   IF(GatLims(points) == 0) GatLims(points) = anods
                   neworder = GatLims(points)
                   Con(ci) = points
                   GatLims(points) = GatLims(points) - 1
-                  
+
                   IF(neworder /= oldorder) THEN
                     k = RevConInd(neworder)
-                    
+
                     ConInd(ci) = neworder
                     ConInd(k) = oldorder
-                    
+
                     RevConInd(neworder) = ci
                     RevConInd(oldorder) = k
                   END IF
@@ -3140,17 +3140,17 @@ CONTAINS
         ! DO WHILE( anods > 0 .AND. CF(RevConInd(anods)) /= 0 )
         DO WHILE( anods > 0)
           IF (CF(RevConInd(anods)) == 0) EXIT
-          MaxCon = Con(RevConInd(anods))          
+          MaxCon = Con(RevConInd(anods))
           Refcon = MAX(MaxCon,RefCon)
           anods = anods - 1
-          Refcon = MAX(MaxCon,RefCon)            
+          Refcon = MAX(MaxCon,RefCon)
         END DO
 
         IF(anods > 0) THEN
           MaxCon = Con(RevConInd(anods))
           RefCon = MAX(MaxCon,RefCon)
           GatLims((MaxCon+1):(Refcon+1)) = 0
-        ELSE        
+        ELSE
           MaxCon = 0
         END IF
       END DO
@@ -3160,9 +3160,9 @@ CONTAINS
     ELSE
 
       ! Find the point to start the coarse node selection from
-      MaxCon = 1000 
+      MaxCon = 1000
       prevstart = 1
-      
+
 10    MaxConInd =  0
       RefCon = 0
       newstarts = newstarts + 1
@@ -3175,9 +3175,9 @@ CONTAINS
         END IF
         IF(RefCon >= MaxCon) EXIT
       END DO
-      
+
       IF(RefCon < MaxCon .AND. prevstart > 1) THEN
-        DO ind=1, prevstart-1        
+        DO ind=1, prevstart-1
           loops = loops + 1
           IF(Cands(ind) == 0) CYCLE
           IF(Con(ind) > RefCon) THEN
@@ -3187,35 +3187,35 @@ CONTAINS
           IF(RefCon >= MaxCon) EXIT
         END DO
       END IF
-      
+
       MaxCon = RefCon
       ind = MaxConInd
       prevstart = MAX(1,ind)
       ind0 = prevstart
-      
-      
-      DO WHILE( MaxCon > 0) 
-        
+
+
+      DO WHILE( MaxCon > 0)
+
         cind = cind + 1
         CF(ind) = cind
         Con(ind) = 0
         cnods = cnods + 1
-        
+
         ! Go through all strongly bonded neighbours to 'ind'
         DO j=Rows(ind),Rows(ind+1)-1
           IF(.NOT. Bonds(j)) CYCLE
           cj = Cols(j)
-          
+
           IF(CF(cj) == 0) THEN
             find = find + 1
             CF(cj) = -find
             Con(cj) = 0
             IF(Cands(cj) == 0) CYCLE
-            
+
             ! Recompute the measure of importance for the neighbours
             DO i=Rows(cj),Rows(cj+1)-1
               IF(Bonds(i)) THEN
-                ci = Cols(i)          
+                ci = Cols(i)
                 IF(Cands(ci) > 0 .AND. CF(ci) == 0) THEN
                   Con(ci) = Con(ci) + 1
                 END IF
@@ -3223,26 +3223,26 @@ CONTAINS
             END DO
           END IF
         END DO
-        
+
         ! The next candidate is probably among the secondary neighbours
         RefCon = 0
         RefCon2 = 0
         maxi = 0
         maxi2 = 0
-        
-        
-        IF(CoarseningMode == 2) THEN       
+
+
+        IF(CoarseningMode == 2) THEN
           DO j=Rows(ind),Rows(ind+1)-1
             IF(.NOT. Bonds(j)) CYCLE
             cj = Cols(j)
             IF(Cands(cj) == 0) CYCLE
-            
+
             DO i=Rows(cj),Rows(cj+1)-1
               IF(.NOT. Bonds(i)) CYCLE
               ci = Cols(i)
-              
+
               IF(Cands(ci) == 0 .OR. CF(ci) /= 0) CYCLE
-              
+
               IF(Con(ci) > RefCon .AND. ci /= maxi) THEN
                 RefCon2 = RefCon
                 maxi2 = maxi
@@ -3254,27 +3254,27 @@ CONTAINS
               END IF
             END DO
           END DO
-          
+
           ! If none of the neighbouring nodes is a potential node go and find a new candidate
           IF(RefCon < MaxCon) THEN
             GOTO 10
           END IF
-          
+
           MaxCon = MAX(RefCon2,MaxCon)
-          
+
         ELSE
           maxneigh = 0
           DO j=Rows(ind),Rows(ind+1)-1
             IF(.NOT. Bonds(j)) CYCLE
             cj = Cols(j)
             IF(Cands(cj) == 0) CYCLE
-            
+
             DO i=Rows(cj),Rows(cj+1)-1
               IF(.NOT. Bonds(i)) CYCLE
               ci = Cols(i)
-              
+
               IF(Cands(ci) == 0 .OR. CF(ci) /= 0) CYCLE
-              
+
               IF((Con(ci) > RefCon) .OR. (Con(ci) == RefCon .AND. -CF(cj) > maxneigh)) THEN
                 RefCon = Con(ci)
                 maxi = ci
@@ -3282,20 +3282,20 @@ CONTAINS
               END IF
             END DO
           END DO
-          
+
           IF(RefCon < MaxCon) THEN
-            
+
             DO j=Rows(ind0),Rows(ind0+1)-1
               IF(.NOT. Bonds(j)) CYCLE
               cj = Cols(j)
               IF(Cands(cj) == 0) CYCLE
-              
+
               DO i=Rows(cj),Rows(cj+1)-1
                 IF(.NOT. Bonds(i)) CYCLE
                 ci = Cols(i)
-                
+
                 IF(Cands(ci) == 0 .OR. CF(ci) /= 0) CYCLE
-                
+
                 IF(Con(ci) > RefCon2) THEN
                   RefCon2 = Con(ci)
                   maxi2 = ci
@@ -3309,7 +3309,7 @@ CONTAINS
                 END IF
               END DO
             END DO
-            
+
             ! Favor the vicinity of the previous starting point
             IF(RefCon2 >= RefCon) THEN
               maxi = maxi2
@@ -3317,11 +3317,11 @@ CONTAINS
             END IF
             ind0 = maxi
           END IF
-          
+
           IF(CoarseningMode == 1 .AND. RefCon < MaxCon) GOTO 10
-          
+
           IF(CoarseningMode == 0 .AND. RefCon < 1) GOTO 10
-          
+
         END IF
 
         ind = maxi
@@ -3345,7 +3345,7 @@ CONTAINS
 
     IF(k > 0) THEN
       WRITE(Message,'(A,I8)') 'Enforced coarse nodes',k
-      CALL Info('AMGCoarse',Message)      
+      CALL Info('AMGCoarse',Message)
     END IF
 
 !    WRITE(Message,'(A,I8)') 'Coarsening algorithm tests',loops
@@ -3389,14 +3389,14 @@ CONTAINS
 
 
        IF(Debug) CALL Info('InterpolateF2C','Starting interpolation')
-       
+
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
        IF(.NOT. GotIt) ProjLim = 0.6_dp
 
        Lumping = ListGetLogical(Params,'MG Projection Lumping',GotIt)
 
        DirectInterpolate = ListGetLogical(Params,'MG Direct Interpolate',GotIt)
-       DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)      
+       DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)
        IF(.NOT. GotIt) THEN
          IF(DirectInterpolate) THEN
            DirectLimit = 0
@@ -3421,7 +3421,7 @@ CONTAINS
        FRows   => Fmat % Rows
        FCols   => Fmat % Cols
        FValues => Fmat % Values
-       
+
        ALLOCATE(CoeffsInds(Fdofs))
        CoeffsInds = 0
 
@@ -3433,7 +3433,7 @@ CONTAINS
            CF(ind) = Cdofs
          END IF
        END DO
-       
+
        ! Initialize stuff before allocations
        AllocationsDone = .FALSE.
        ALLOCATE( PRows(Fdofs/Components+1) )
@@ -3442,7 +3442,7 @@ CONTAINS
        ! Go through the fine dofs and make a projection based on the strongly coupled nodes
        ! The first time only compute the structure of matrix to be allocated
 10     inds = 0
-       coeffs = 0.0d0      
+       coeffs = 0.0d0
        posinds = 0
        neginds = 0
        poscoeffs = 0.0
@@ -3454,21 +3454,21 @@ CONTAINS
          ! In component mode this corresponds to a physical node with multiple dofs
          node = (ind-Component1) / Components + 1
 
-         Debug = (node == InfoNode) 
+         Debug = (node == InfoNode)
 
          ! For C-nodes use 1-to-1 mapping
          IF(CF(ind) > 0) THEN
            projnodes = 1
            IF(AllocationsDone) THEN
              PCols(PRows(node)) = CF(ind)
-             Pvalues(PRows(node)) = 1.0d0            
+             Pvalues(PRows(node)) = 1.0d0
            END IF
          ELSE
-           
+
            no = 0
            projnodes = 0
            j = 0
-           
+
            IF(DirectInterpolate) THEN
              DO i=FRows(ind),FRows(ind+1)-1
                ci = Fcols(i)
@@ -3510,7 +3510,7 @@ CONTAINS
 
                IF(CF(ci) > 0 .OR. ci == ind) THEN
                  val = FValues(i)
-                 IF(ABS(val) < 1.0d-50) CYCLE 
+                 IF(ABS(val) < 1.0d-50) CYCLE
                  no = no + 1
                  inds(no) = ci
                  coeffs(no) = val
@@ -3519,7 +3519,7 @@ CONTAINS
                END IF
              END DO
 
-             
+
              ! Then go though the F-neigbours and express them with linear combinations
              DO i=FRows(ind),FRows(ind+1)-1
                ci = Fcols(i)
@@ -3527,9 +3527,9 @@ CONTAINS
                IF(MOD(ci,Components) /= MOD(ind,Components)) CYCLE
 
                IF(CF(ci) > 0 .OR. ci == ind) CYCLE
- 
+
                IF(Fixed(ci)) CYCLE
-             
+
                DO j=FRows(ci),FRows(ci+1)-1
                  cj = Fcols(j)
                  IF(ci == cj) CYCLE
@@ -3540,8 +3540,8 @@ CONTAINS
 
                  val = Fvalues(i) * Fvalues(j) / Fvalues(Fmat % diag(ci))
                  IF(ABS(val) < 1.0d-50) CYCLE
-                 
-                 k = CoeffsInds(cj) 
+
+                 k = CoeffsInds(cj)
                  IF(k == 0) THEN
                    no = no + 1
                    inds(no) = cj
@@ -3560,7 +3560,7 @@ CONTAINS
              CoeffsInds(inds(1:no)) = 0
            END IF
 
-             
+
            k = MOD(inds(1),Components)
            IF( ANY(MOD(inds(1:no),Components) /= k)) THEN
              PRINT *,'no',no
@@ -3583,12 +3583,12 @@ CONTAINS
                projnodes =  0
                inds(1:no) = 0
                coeffs(1:no) = 0.0
-               GOTO 20 
+               GOTO 20
 !             END IF
            END IF
 
-          
-           ! Calculate the bond limit and the total sums 
+
+           ! Calculate the bond limit and the total sums
            possum = 0.0
            negsum = 0.0
            negmax = 0.0
@@ -3599,8 +3599,8 @@ CONTAINS
            IF(Lumping) THEN
              coeffs(diag) = coeffs(diag) - SUM(coeffs(1:no))
            END IF
-          
-           ! If the diagonal is negative then invert the selection 
+
+           ! If the diagonal is negative then invert the selection
            IF(coeffs(diag) < 0.0) THEN
              coeffs(1:no) = -coeffs(1:no)
            END IF
@@ -3616,7 +3616,7 @@ CONTAINS
                  posmax = MAX(posmax, val)
                  posi = posi + 1
                END IF
-             ELSE 
+             ELSE
                negsum = negsum + val
                ci = inds(i)
                IF(CF(ci) > 0) THEN
@@ -3631,7 +3631,7 @@ CONTAINS
              projnodes =  0
              inds(1:no) = 0
              coeffs(1:no) = 0.0
-             GOTO 20               
+             GOTO 20
            END IF
 
            posno = 0
@@ -3646,11 +3646,11 @@ CONTAINS
                PRINT *,'inds',inds(1:no)
                PRINT *,'cf',CF(inds(1:no))
                PRINT *,'coeffs',coeffs(1:no)
-               
+
                projnodes =  0
                inds(1:no) = 0
                coeffs(1:no) = 0.0
-               GOTO 20                
+               GOTO 20
              END IF
 
              negcsum = 0.0
@@ -3666,11 +3666,11 @@ CONTAINS
                ELSE IF(val > ProjLim * posmax) THEN
                  posno = posno + 1
                  posinds(posno) = ci
-                 poscoeffs(posno) = val                 
+                 poscoeffs(posno) = val
                END IF
              END DO
 
-             negi = negno             
+             negi = negno
              posi = 0
              refbond = -ProjLim * negsum * negmax / (FavorNeg * negcsum)
 
@@ -3696,24 +3696,24 @@ CONTAINS
                    PRINT *,'coeffs',poscoeffs(1:posno)
                  END IF
                END IF
-               
+
                poscsum = 0.0
 
-               ! Now go through the possible positive connections 
+               ! Now go through the possible positive connections
                DO i=1,posno
                  IF(i == 1) THEN
-                   posbond = possum 
+                   posbond = possum
                    IF(posbond < refbond) EXIT
                  ELSE
-                   posbond = possum * poscoeffs(i) / (poscsum + poscoeffs(i))                
-                   IF(posbond < refbond .AND. poscoeffs(i) < 0.99 * poscoeffs(i-1)) EXIT 
+                   posbond = possum * poscoeffs(i) / (poscsum + poscoeffs(i))
+                   IF(posbond < refbond .AND. poscoeffs(i) < 0.99 * poscoeffs(i-1)) EXIT
                  END IF
                  posi = i
                  poscsum = poscsum + poscoeffs(posi)
                END DO
              END IF
 
-             
+
            ELSE ! Positive weight dominate
 
              IF(posi == 0) THEN
@@ -3721,7 +3721,7 @@ CONTAINS
                projnodes =  0
                inds(1:no) = 0
                coeffs(1:no) = 0.0
-               GOTO 20                
+               GOTO 20
              END IF
 
              poscsum = 0.0
@@ -3742,7 +3742,7 @@ CONTAINS
              END DO
 
              posi = posno
-             negi = 0             
+             negi = 0
              refbond = ProjLim * possum * posmax / ( poscsum * FavorNeg )
 
              IF(-negsum > refbond) THEN
@@ -3769,14 +3769,14 @@ CONTAINS
 
                negcsum = 0.0
 
-               ! Now go through the possible positive connections 
+               ! Now go through the possible positive connections
                DO i=1,negno
                  IF(i == 1) THEN
-                   negbond = negsum 
+                   negbond = negsum
                    IF(-negbond < refbond) EXIT
                  ELSE
                    negbond = negsum * negcoeffs(i) / (negcsum + negcoeffs(i) )
-                   IF(-negbond < refbond .AND. negcoeffs(i) > 0.99 * negcoeffs(i-1)) EXIT 
+                   IF(-negbond < refbond .AND. negcoeffs(i) > 0.99 * negcoeffs(i-1)) EXIT
                  END IF
                  negi = i
                  negcsum = negcsum + negcoeffs(i)
@@ -3787,18 +3787,18 @@ CONTAINS
 
            projnodes = posi + negi
            IF(debug) PRINT *,'bonds',posi,negi,negcsum,neginds(1)
-           
+
            ! Compute the weights and store them to the projection matrix
            IF(AllocationsDone) THEN
              wsum = 0.0
 
              IF(posi == 0) THEN
                diagsum = diagsum + possum / FavorNeg
-             END IF    
+             END IF
 
              IF(negi == 0) THEN
                diagsum = (diagsum + negsum) / FavorNeg
-             END IF            
+             END IF
 
              DO i=1,negi
                val = -negsum * negcoeffs(i) / (negcsum * diagsum)
@@ -3838,7 +3838,7 @@ CONTAINS
          no = Fdofs / Components
 
          Projector % NumberOfRows = no
-         ALLOCATE( PCols(entries), PValues(entries) )           
+         ALLOCATE( PCols(entries), PValues(entries) )
 
          WRITE(Message,'(A,I8)') 'Projector matrix size',no
          CALL Info('InterpolateF2C',Message)
@@ -3849,26 +3849,26 @@ CONTAINS
          AllocationsDone = .TRUE.
          PCols   = 0
          PValues = 0
-         
+
          Projector % Rows   => PRows
-         Projector % Cols   => PCols 
+         Projector % Cols   => PCols
          Projector % Values => PValues
-         
+
          GOTO 10
        END IF
 
        IF(Debug) THEN
-         no = MAXVAL(Pcols) 
+         no = MAXVAL(Pcols)
          IF( no /= Cdofs) PRINT *,'********* MAXVAL(Pcols)',no,Cdofs
-         
-         no = MINVAL(PCols) 
-         IF( no < 1) PRINT *,'********** MINVAL(Pcols)',no      
-         
+
+         no = MINVAL(PCols)
+         IF( no < 1) PRINT *,'********** MINVAL(Pcols)',no
+
          PRINT *,'Projector interval',MINVAL(PValues),MAXVAL(Pvalues)
        END IF
 
        DEALLOCATE(CoeffsInds)
-       
+
      END FUNCTION InterpolateF2C
 !-------------------------------------------------------------------------
 
@@ -3877,7 +3877,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
 !>     A pseudo geometric version of the previous
 !>     Here the strength of connections is assumed to be inversily proportional
-!>     to the distance between nodes. 
+!>     to the distance between nodes.
 !------------------------------------------------------------------------------
      FUNCTION InterpolateF2CDistance( Fmat, CF, DOFs) RESULT (Projector)
 !------------------------------------------------------------------------------
@@ -3903,7 +3903,7 @@ CONTAINS
        Debug = .FALSE.
        Components = 1
        IF(Debug) CALL Info('InterpolateF2CDistance','Starting interpolation')
-       
+
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
        IF(.NOT. GotIt) ProjLim = 0.5_dp
 
@@ -3911,7 +3911,7 @@ CONTAINS
        IF(.NOT. GotIt) Pow = 1.0_dp
 
        DirectInterpolate = ListGetLogical(Params,'MG Direct Interpolate',GotIt)
-       DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)      
+       DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)
        IF(.NOT. GotIt) THEN
          IF(DirectInterpolate) THEN
            DirectLimit = 0
@@ -3931,10 +3931,10 @@ CONTAINS
        FRows   => Fmat % Rows
        FCols   => Fmat % Cols
        FValues => Fmat % Values
-       
+
        ALLOCATE(CoeffsInds(Fdofs))
        CoeffsInds = 0
- 
+
        ! Calculate the order of the new dofs
        Cdofs = 0
        DO ind = 1,Fdofs
@@ -3943,7 +3943,7 @@ CONTAINS
            CF(ind) = Cdofs
          END IF
        END DO
-       
+
        ! Initialize stuff before allocations
        AllocationsDone = .FALSE.
        ALLOCATE( PRows(Fdofs+1) )
@@ -3953,7 +3953,7 @@ CONTAINS
        ! Go through the fine dofs and make a projection based on the strongly coupled nodes
        ! The first time only compute the structure of matrix to be allocated
 10     inds = 0
-       coeffs = 0.0d0      
+       coeffs = 0.0d0
        posinds = 0
        poscoeffs = 0.0
 
@@ -3961,7 +3961,7 @@ CONTAINS
 
          node = (ind-Component1) / Components + 1
 
-         Debug = (node == InfoNode .OR. Level == InfoLevel) 
+         Debug = (node == InfoNode .OR. Level == InfoLevel)
          IF(Debug) PRINT *,'Debug is on',ind,CF(ind)
 
          ! For C-nodes use 1-to-1 mapping
@@ -3971,10 +3971,10 @@ CONTAINS
            projnodes = 1
            IF(AllocationsDone) THEN
              PCols(PRows(node)) = CF(ind)
-             Pvalues(PRows(node)) = 1.0d0            
+             Pvalues(PRows(node)) = 1.0d0
            END IF
 
-         ELSE           
+         ELSE
            no = 0
            posmax = 0.0d0
            projnodes = 0
@@ -3988,11 +3988,11 @@ CONTAINS
            x0 = Mesh % Nodes % x(k)
            y0 = Mesh % Nodes % y(k)
            z0 = Mesh % Nodes % z(k)
-                      
+
            DO i=FRows(ind),FRows(ind+1)-1
              ci = Fcols(i)
 
-             IF(ci == ind) CYCLE             
+             IF(ci == ind) CYCLE
              IF(MOD(ci-Component1,Components) /= 0) CYCLE
              IF(CF(ci) <= 0) CYCLE
 
@@ -4020,17 +4020,17 @@ CONTAINS
            IF(no < DirectLimit) THEN
              DO i=FRows(ind),FRows(ind+1)-1
                ci = Fcols(i)
-               
-               IF(ci == ind) CYCLE             
+
+               IF(ci == ind) CYCLE
                IF(MOD(ci-Component1,Components) /= 0) CYCLE
 
                DO j=FRows(ci),FRows(ci+1)-1
                  cj = Fcols(j)
-                 
-                 IF(cj == ind) CYCLE             
+
+                 IF(cj == ind) CYCLE
                  IF(MOD(cj-Component1,Components) /= 0) CYCLE
                  IF(CF(cj) <= 0) CYCLE
-                
+
                  IF ( Level == Solver % MultiGridTotal ) THEN
                    k = cj
                  ELSE
@@ -4052,10 +4052,10 @@ CONTAINS
              END DO
 
              ! Eliminate redundancy in the list of course neighbours
-             CALL SortF( no, inds, coeffs) 
+             CALL SortF( no, inds, coeffs)
              DO i=1, no-1
                IF( inds(i+1) == inds(i)) coeffs(i+1) = 0.0d0
-             END DO             
+             END DO
 
            END IF
 
@@ -4066,9 +4066,9 @@ CONTAINS
 
            IF(no == 0) THEN
              projnodes =  0
-             GOTO 20 
+             GOTO 20
            END IF
-         
+
            possum = 0.0d0
            DO i=1,no
              val = coeffs(i)
@@ -4079,10 +4079,10 @@ CONTAINS
                possum = possum + val
              END IF
            END DO
-           
+
            IF(AllocationsDone) THEN
              DO i=1,projnodes
-               val =  poscoeffs(i) / possum 
+               val =  poscoeffs(i) / possum
                ci = posinds(i)
                IF(Debug) PRINT *,'Pij',ind,CF(ci),val
                PCols(Prows(node)+i-1) = CF(ci)
@@ -4104,20 +4104,20 @@ CONTAINS
          Projector => AllocateMatrix()
          Projector % NumberOfRows = Fdofs/Components
 
-         ALLOCATE( PCols(PRows(Fdofs/Components+1)-1), PValues(PRows(Fdofs/Components+1)-1) )           
+         ALLOCATE( PCols(PRows(Fdofs/Components+1)-1), PValues(PRows(Fdofs/Components+1)-1) )
          AllocationsDone = .TRUE.
          PCols   = 0
          PValues = 0
-         
+
          Projector % Rows   => PRows
-         Projector % Cols   => PCols 
+         Projector % Cols   => PCols
          Projector % Values => PValues
-         
+
          GOTO 10
        END IF
 
        DEALLOCATE(CoeffsInds)
-       
+
      END FUNCTION InterpolateF2CDistance
 !-------------------------------------------------------------------------
 
@@ -4125,7 +4125,7 @@ CONTAINS
 
 !-----------------------------------------------------------------------------
 !>     As the previous one but expects complex valued equation.
-!>     The projector is built using only the absolute values. 
+!>     The projector is built using only the absolute values.
 !------------------------------------------------------------------------------
      FUNCTION ComplexInterpolateF2C( Fmat, CF ) RESULT (Projector)
 !------------------------------------------------------------------------------
@@ -4146,13 +4146,13 @@ CONTAINS
        REAL(KIND=dp) :: wsum, refbond, posmax
 
        REAL(KIND=dp) :: poscoeffs(CSIZE), val, poscsum, possum, diagsum
-       COMPLEX(KIND=dp) :: coeffs(FSIZE), cvalue 
+       COMPLEX(KIND=dp) :: coeffs(FSIZE), cvalue
 
        Debug = .FALSE.
 
        CALL Info('ComplexInterpolateF2C','Starting interpolation')
 
-       
+
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)
        IF(.NOT. GotIt) ProjLim = 0.5_dp
 
@@ -4160,7 +4160,7 @@ CONTAINS
 
        DirectInterpolate = ListGetLogical(Params,'MG Direct Interpolate',GotIt)
 
-       DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)      
+       DirectLimit = ListGetInteger(Params,'MG Direct Interpolate Limit',GotIt)
        IF(.NOT. GotIt) THEN
          IF(DirectInterpolate) THEN
            DirectLimit = 0
@@ -4171,15 +4171,15 @@ CONTAINS
 
        InfoNode = ListGetInteger(Params,'MG Info Node',GotIt)
 
-       Fdofs = Fmat % NumberOfRows 
+       Fdofs = Fmat % NumberOfRows
        FRows   => Fmat % Rows
        FCols   => Fmat % Cols
        FValues => Fmat % Values
-       
+
        ALLOCATE(CoeffsInds(Fdofs))
        CoeffsInds = 0
 
-       ! Calculate the order of the new dofs 
+       ! Calculate the order of the new dofs
        Cdofs = 0
        DO ind = 1,Fdofs,2
          IF(CF(ind) > 0) THEN
@@ -4187,7 +4187,7 @@ CONTAINS
            CF(ind) = Cdofs
          END IF
        END DO
-       
+
        IF(Debug) PRINT *,'cdofs',cdofs,'fdofs',fdofs
 
        ! Initialize stuff before allocations
@@ -4206,7 +4206,7 @@ CONTAINS
 
          ind = 2*node-1
 
-!         Debug = (node == InfoNode) 
+!         Debug = (node == InfoNode)
 
          IF(debug) PRINT *,'ind',ind
 
@@ -4215,14 +4215,14 @@ CONTAINS
            projnodes = 1
            IF(AllocationsDone) THEN
              PCols(PRows(node)) = CF(ind)
-             Pvalues(PRows(node)) = 1.0d0            
+             Pvalues(PRows(node)) = 1.0d0
            END IF
          ELSE
-           
+
            no = 0
            projnodes = 0
            j = 0
-           
+
            IF(DirectInterpolate) THEN
              DO i=FRows(ind),FRows(ind+1)-1,2
                ci = Fcols(i)
@@ -4255,7 +4255,7 @@ CONTAINS
 
                IF(CF(ci) > 0 .OR. ci == ind) THEN
                  cvalue = CMPLX(FValues(i),-Fvalues(i+1),KIND=dp)
-                 IF(ABS(cvalue) < 1.0d-50) CYCLE 
+                 IF(ABS(cvalue) < 1.0d-50) CYCLE
                  no = no + 1
                  inds(no) = ci
                  coeffs(no) = cvalue
@@ -4264,23 +4264,23 @@ CONTAINS
                END IF
              END DO
 
-             
+
              ! Then go though the F-neigbours and express them with linear combinations
              DO i=FRows(ind),FRows(ind+1)-1,2
                ci = Fcols(i)
 
                IF(CF(ci) > 0 .OR. ci == ind) CYCLE
-               
+
                DO j=FRows(ci),FRows(ci+1)-1,2
                  cj = Fcols(j)
                  IF(ci == cj) CYCLE
-                                  
+
                  cvalue = CMPLX(Fvalues(i), -Fvalues(i+1),KIND=dp) * &
                           CMPLX(Fvalues(j), -Fvalues(j+1),KIND=dp) / &
                           CMPLX(Fvalues(Fmat % diag(ci)),-Fvalues(Fmat % diag(ci)+1),KIND=dp)
                  IF(ABS(cvalue) < 1.0d-50) CYCLE
-                 
-                 k = CoeffsInds(cj) 
+
+                 k = CoeffsInds(cj)
                  IF(k == 0) THEN
                    no = no + 1
                    inds(no) = cj
@@ -4295,12 +4295,12 @@ CONTAINS
                  coeffs(k) = coeffs(k) - cvalue
                END DO
              END DO
-             
+
 !             IF(debug) PRINT *,'no',no,'inds',inds(1:no)
-           
+
              CoeffsInds(inds(1:no)) = 0
            END IF
-             
+
 !          IF(Debug) THEN
 !             PRINT *,'ind no diag',ind,no,diag
 !             PRINT *,'coeffs',coeffs(1:no)
@@ -4315,12 +4315,12 @@ CONTAINS
                projnodes =  0
                inds(1:no) = 0
                coeffs(1:no) = 0.0
-               GOTO 20 
+               GOTO 20
              END IF
            END IF
 
-          
-           ! Calculate the bond limit and the total sums 
+
+           ! Calculate the bond limit and the total sums
            possum = 0.0
            posmax = 0.0
            posi = 0
@@ -4333,7 +4333,7 @@ CONTAINS
              val = ABS(coeffs(i))
              IF(i == diag) THEN
                diagsum = val
-             ELSE 
+             ELSE
                possum = possum + val
                ci = inds(i)
                IF(CF(ci) > 0) THEN
@@ -4344,7 +4344,7 @@ CONTAINS
            END DO
 
            IF(posi == 0) THEN
-             PRINT *,'The node is not connected to c-neighbours' 
+             PRINT *,'The node is not connected to c-neighbours'
              PRINT *,'inds',inds(1:no)
              PRINT *,'cf',CF(inds(1:no))
              PRINT *,'coeffs',coeffs(1:no)
@@ -4352,7 +4352,7 @@ CONTAINS
              projnodes =  0
              inds(1:no) = 0
              coeffs(1:no) = 0.0
-             GOTO 20               
+             GOTO 20
            END IF
 
            projnodes = 0
@@ -4365,13 +4365,13 @@ CONTAINS
              IF(ABS(val) > ProjLim * posmax) THEN
                projnodes = projnodes + 1
                posinds(projnodes) = ci
-               poscoeffs(projnodes) = val                 
+               poscoeffs(projnodes) = val
                poscsum = poscsum + val
              END IF
            END DO
 
 !          IF(debug) PRINT *,'bonds',projnodes,poscsum
-           
+
            wsum = 0.0
           ! Compute the weights and store them to a projection matrix
            IF(AllocationsDone) THEN
@@ -4382,9 +4382,9 @@ CONTAINS
                ci = posinds(i)
                IF(Debug) PRINT *,'F+: Pij',node,CF(ci),val,poscoeffs(i)
 
-               PCols(Prows(node)+i-1) = CF(ci) 
+               PCols(Prows(node)+i-1) = CF(ci)
                PValues(Prows(node)+i-1) = val
-               
+
                wsum = wsum + val
              END DO
              IF(Debug) PRINT *,'ind projnodes wsum',ind,projnodes,wsum,diagsum,poscsum,possum
@@ -4406,15 +4406,15 @@ CONTAINS
          Projector => AllocateMatrix()
          Projector % NumberOfRows = Fdofs/2
 
-         ALLOCATE( PCols(PRows(Fdofs/2+1)-1), PValues(PRows(Fdofs/2+1)-1) )           
+         ALLOCATE( PCols(PRows(Fdofs/2+1)-1), PValues(PRows(Fdofs/2+1)-1) )
          AllocationsDone = .TRUE.
          PCols   = 0
          PValues = 0
-         
+
          Projector % Rows   => PRows
-         Projector % Cols   => PCols 
+         Projector % Cols   => PCols
          Projector % Values => PValues
-         
+
          GOTO 10
        END IF
 
@@ -4427,7 +4427,7 @@ CONTAINS
            CF(ind) = Cdofs
          END IF
        END DO
-              
+
      END FUNCTION ComplexInterpolateF2C
 !-------------------------------------------------------------------------
 
@@ -4438,7 +4438,7 @@ CONTAINS
 !>   The list of original nodes for each level is stored in the Cnodes vector.
 !>   For the momont this only works for cases with one DOF and no permutation!
 !------------------------------------------------------------------------------
-    SUBROUTINE AMGTest(direction) 
+    SUBROUTINE AMGTest(direction)
 !------------------------------------------------------------------------------
       INTEGER :: direction
 
@@ -4451,7 +4451,7 @@ CONTAINS
       nods1 = Matrix1 % NumberOfRows
       nods2 = Matrix2 % NumberOfRows
 
-      SaveLimit = ListGetInteger(Params,'MG Coarse Nodes Save Limit',GotIt) 
+      SaveLimit = ListGetInteger(Params,'MG Coarse Nodes Save Limit',GotIt)
       IF(.NOT. GotIt) SaveLimit = nods2
 
       IF(nods2 > SaveLimit) RETURN
@@ -4467,7 +4467,7 @@ CONTAINS
         IF(nods1 < SaveLimit) THEN
           IF ( Level == Solver % MultiGridTotal ) THEN
             Filename = 'nodes'//I2S(Solver % MultiGridTotal-Level)//'.dat'
-            OPEN (10,FILE=Filename)        
+            OPEN (10,FILE=Filename)
             DO i=1,nods1
               WRITE (10,'(3ES17.8E3)') Mesh % Nodes % X(i), Mesh % Nodes % Y(i), Mesh % Nodes % Z(i)
             END DO
@@ -4475,14 +4475,14 @@ CONTAINS
         END IF
 
         Filename='nodes'//I2S(Solver % MultiGridTotal-Level+1)//'.dat'
-        OPEN (10,FILE=Filename)        
+        OPEN (10,FILE=Filename)
         DO i=1,nods2
           WRITE (10,'(3ES17.8E3)') Mesh % Nodes % X(AMG(Level) % InvCF(i)), &
               Mesh % Nodes % Y(AMG(Level) % InvCF(i)), Mesh % Nodes % Z(AMG(Level) % InvCF(i))
         END DO
         CLOSE(10)
       END IF
-  
+
 
       IF(Direction == 1) THEN
         Filename = 'mapping'//I2S(Level)//'to'//I2S(Level-1)//'.dat'
@@ -4499,18 +4499,18 @@ CONTAINS
 
         Outa = 0.0d0
         Outb = 0.0d0
-        
-        CALL CRS_ProjectVector( ProjPN, Ina, Outa, 1, Trans = .FALSE. )
-        CALL CRS_ProjectVector( ProjPN, Inb, Outb, 1, Trans = .FALSE. )        
 
-        OPEN (10,FILE=Filename)        
+        CALL CRS_ProjectVector( ProjPN, Ina, Outa, 1, Trans = .FALSE. )
+        CALL CRS_ProjectVector( ProjPN, Inb, Outb, 1, Trans = .FALSE. )
+
+        OPEN (10,FILE=Filename)
         DO i=1,nods2
           WRITE (10,'(4ES17.8E3)') Mesh % Nodes % X(AMG(Level) % InvCF(i) ), &
               Mesh % Nodes % Y(AMG(Level) % InvCF(i) ) , Outa(i), Outb(i)
         END DO
         CLOSE(10)
       END IF
-      
+
 !      Project the coarse dofs to the fine dofs
 !      ----------------------------------------
 
@@ -4519,7 +4519,7 @@ CONTAINS
         Filename = 'mapping'//I2S(Level-1)//'to'//I2S(Level)//'.dat'
 
         ALLOCATE( Ina(nods2), Inb(nods2), Outa(nods1), Outb(nods1) )
-      
+
         Ina = 0.0d0
         Inb = 0.0d0
 
@@ -4529,20 +4529,20 @@ CONTAINS
         Outa = 0.0d0
         Outb = 0.0d0
 
-        
+
         PRINT *,'Initial Interval x',MINVAL(Ina),MAXVAL(Ina)
         PRINT *,'Initial Interval y',MINVAL(Inb),MAXVAL(Inb)
         PRINT *,'Initial Mean Values',SUM(Ina)/SIZE(Ina),SUM(Inb)/SIZE(Inb)
 
         CALL CRS_ProjectVector( ProjQT, Ina, Outa, 1, Trans = .TRUE. )
-        CALL CRS_ProjectVector( ProjQT, Inb, Outb, 1, Trans = .TRUE. )        
+        CALL CRS_ProjectVector( ProjQT, Inb, Outb, 1, Trans = .TRUE. )
 
         PRINT *,'Final Interval x',MINVAL(Outa),MAXVAL(Outa),SUM(Outa)/SIZE(Outa)
         PRINT *,'Final Interval y',MINVAL(Outb),MAXVAL(Outb),SUM(Outb)/SIZE(Outb)
         PRINT *,'Final Mean Values',SUM(Outa)/SIZE(Outa),SUM(Outb)/SIZE(Outb)
-        
-        OPEN (10,FILE=Filename)        
- 
+
+        OPEN (10,FILE=Filename)
+
         IF ( Level == Solver % MultiGridLevel ) THEN
           DO i=1,nods1
             WRITE (10,'(4ES17.8E3)') Mesh % Nodes % X(i), Mesh % Nodes % Y(i) , Outa(i), Outb(i)
@@ -4553,7 +4553,7 @@ CONTAINS
                 Mesh % Nodes % Y(AMG(Level+1) % InvCF(i) ) , Outa(i), Outb(i)
           END DO
         END IF
-        CLOSE(10)        
+        CLOSE(10)
 
       END IF
 
@@ -4581,7 +4581,7 @@ CONTAINS
        INTEGER :: i,j,k,n
        INTEGER, POINTER :: Rows(:), Cols(:)
        REAL(KIND=dp), POINTER :: Values(:)
-       
+
        n = A % NumberOfRows
        Rows   => A % Rows
        Cols   => A % Cols
@@ -4612,12 +4612,12 @@ CONTAINS
        REAL(KIND=dp) :: s
        INTEGER, POINTER :: Cols(:),Rows(:)
        REAL(KIND=dp), POINTER :: Values(:)
-     
+
        n = A % NumberOfRows
        Rows   => A % Rows
        Cols   => A % Cols
        Values => A % Values
-       
+
        x1 = x0
 
        DO k=1,Rounds
@@ -4646,12 +4646,12 @@ CONTAINS
        REAL(KIND=dp) :: s
        INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
        REAL(KIND=dp), POINTER CONTIG :: Values(:)
-     
+
        n = A % NumberOfRows
        Rows   => A % Rows
        Cols   => A % Cols
        Values => A % Values
-       
+
        x1 = x0
 
        DO k=1,Rounds
@@ -4689,17 +4689,17 @@ CONTAINS
        INTEGER :: i,j,k,j2,diag,l
        INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
        REAL(KIND=dp), POINTER CONTIG :: Values(:)
-     
+
        n = A % NumberOfRows
        Rows   => A % Rows
        Cols   => A % Cols
        Values => A % Values
-              
+
        DO i=1,n/2
          x0(i) = CMPLX( rx0(2*i-1), rx0(2*i),KIND=dp )
        END DO
 
-       x1 = x0      
+       x1 = x0
 
        l = ListGetInteger(Params,'MG Info Node',GotIt)
 
@@ -4707,14 +4707,14 @@ CONTAINS
        DO k=1,Rounds
          DO i=1,n/2
            IF(f(2*i-1) > 0) CYCLE
-           IF(f(2*i) > 0) PRINT *,'f(2*i-1) /= f(2*i)',i 
+           IF(f(2*i) > 0) PRINT *,'f(2*i-1) /= f(2*i)',i
 
            s = 0.0d0
 
            ! Go only through the real part of matrix
-           DO j=Rows(2*i-1),Rows(2*i)-1             
+           DO j=Rows(2*i-1),Rows(2*i)-1
              j2 = j + Rows(2*i) - Rows(2*i-1)
-             
+
              IF(i==l) PRINT *,'i0',i,j2-j,(Cols(j)-1)/2+1,(Cols(j2)-1)/2+1
 
              IF(MOD(Cols(j),2) == 0) CYCLE
@@ -4725,8 +4725,8 @@ CONTAINS
              END IF
            END DO
            j = A % Diag(2*i-1)
-           j2 = j + Rows(2*i) - Rows(2*i-1)          
-           x1(i) = x1(i) - s / CMPLX( Values(j), Values(j2),KIND=dp) 
+           j2 = j + Rows(2*i) - Rows(2*i-1)
+           x1(i) = x1(i) - s / CMPLX( Values(j), Values(j2),KIND=dp)
 
            IF(i == l) THEN
              PRINT *,'diag',i,j,j2,s,CMPLX( Values(j), Values(j2),KIND=dp)
@@ -4742,8 +4742,8 @@ CONTAINS
              s = s + x1((Cols(j)-1)/2+1) * CMPLX( Values(j), Values(j2),KIND=dp)
            END DO
            j = A % Diag(2*i-1)
-           j2 = j + Rows(2*i) - Rows(2*i-1)          
-           x1(i) = x1(i) - s / CMPLX( Values(j), Values(j2),KIND=dp) 
+           j2 = j + Rows(2*i) - Rows(2*i-1)
+           x1(i) = x1(i) - s / CMPLX( Values(j), Values(j2),KIND=dp)
          END DO
 
          IF(k == Rounds-1) x0 = x1
@@ -4782,10 +4782,10 @@ CONTAINS
 
     IF( LTrans ) THEN
       IF(SIZE(u)/DOFS /= n) THEN
-        PRINT *,'dofs',dofs,'u',SIZE(u),'n',n,'u/dofs',SIZE(u)/dofs        
+        PRINT *,'dofs',dofs,'u',SIZE(u),'n',n,'u/dofs',SIZE(u)/dofs
         CALL Fatal('CRS_ProjectVector','Incompatible transpose sizes')
       END IF
-    ELSE      
+    ELSE
       IF(SIZE(v)/DOFS /= n) THEN
         PRINT *,'dofs',dofs,'v',SIZE(v),'n',n,'v/dofs',SIZE(v)/dofs
         CALL Fatal('CRS_ProjectVector','Incompatible sizes')
@@ -4827,7 +4827,7 @@ CONTAINS
             END DO
           END DO
         END DO
-      END IF      
+      END IF
     END IF
 !-------------------------------------------------------------------------------
   END SUBROUTINE CRS_ProjectVector
@@ -4840,7 +4840,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>     Project matrix A to B: B = PAR
 !------------------------------------------------------------------------------
-    SUBROUTINE CRS_ProjectMatrixCreate( A, P, R, B, DOFs ) 
+    SUBROUTINE CRS_ProjectMatrixCreate( A, P, R, B, DOFs )
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A,P,R,B
       INTEGER :: DOFs
@@ -4850,7 +4850,7 @@ CONTAINS
       REAL(KIND=dp), POINTER :: R1(:),R2(:)
       INTEGER :: i,ia,j,k,l,m,n,NA,NB,ci,cj,ck,cl,NoRow,i2,j2
       INTEGER :: TotalNonzeros
-      LOGICAL :: AllocationsDone, GotIt 
+      LOGICAL :: AllocationsDone, GotIt
       INTEGER, ALLOCATABLE :: Ind(:), Row(:)
 !------------------------------------------------------------------------------
 
@@ -4863,11 +4863,11 @@ CONTAINS
       Epsilon = ListGetConstReal(Params,'MG Matrix Create Epsilon',GotIt)
       IF(.NOT. GotIt) Epsilon = SQRT(TINY(Epsilon))
 
-      B => AllocateMatrix()      
+      B => AllocateMatrix()
       B % NumberOfRows = P % NumberOfRows * DOFs
       ALLOCATE( B % Rows( B % NumberOfRows + 1 ), &
           B % Diag( B % NumberOfRows ), &
-          B % RHS( B % NumberOfRows ) )        
+          B % RHS( B % NumberOfRows ) )
       B % RHS = 0.0d0
       B % Diag = 0
       B % Rows(1) = 1
@@ -4878,28 +4878,28 @@ CONTAINS
 
       IF(DOFs == 1) THEN
         DO i=1,P % NumberOfRows
-          
+
           NoRow = 0
-          DO j=P % Rows(i),P % Rows(i+1)-1          
+          DO j=P % Rows(i),P % Rows(i+1)-1
             cj = P % Cols(j)
-            
+
             DO k=A % Rows(cj), A % Rows(cj+1)-1
-              ck = A % Cols(k) 
-              
+              ck = A % Cols(k)
+
               DO l=R % Rows(ck), R % Rows(ck+1)-1
 
-                cl = R % Cols(l)                
+                cl = R % Cols(l)
                 i2 = Row(cl)
-                
+
                 IF ( i2 == 0) THEN
                   NoRow = NoRow + 1
                   Ind(NoRow) = cl
-                  i2 = B % Rows(i) + NoRow - 1                   
+                  i2 = B % Rows(i) + NoRow - 1
                   Row(cl) = i2
-                  
+
                   IF(AllocationsDone) THEN
                     IF(i == cl) B % Diag(cl) = i2
-                    B % Cols(i2) = cl                     
+                    B % Cols(i2) = cl
                     B % Values(i2) = P % Values(j) * A % Values(k) * R % Values(l)
                   END IF
                 ELSE IF(AllocationsDone) THEN
@@ -4908,11 +4908,11 @@ CONTAINS
               END DO
             END DO
           END DO
-          
+
           DO j=1,NoRow
             Row(Ind(j)) = 0
           END DO
-          
+
           B % Rows(i+1) = B % Rows(i) + NoRow
           TotalNonzeros  = TotalNonzeros + NoRow
         END DO
@@ -4921,17 +4921,17 @@ CONTAINS
 
         DO i=1,P % NumberOfRows
           DO m = 1,DOFs
-            ia = DOFs * (i-1) + m 
-            
-            NoRow = 0            
-            DO j=P % Rows(i),P % Rows(i+1)-1          
+            ia = DOFs * (i-1) + m
+
+            NoRow = 0
+            DO j=P % Rows(i),P % Rows(i+1)-1
 
               cj = DOFs * (P % Cols(j)-1) + m
-              
+
               DO k=A % Rows(cj), A % Rows(cj+1)-1
 
                 IF( ABS(A % Values(k)) < Epsilon) CYCLE
- 
+
                 ck = A % Cols(k)
                 n = MOD(ck-1,DOFs)+1
                 ck = (ck-1) / DOFs + 1
@@ -4940,16 +4940,16 @@ CONTAINS
 
                   cl = DOFs * (R % Cols(l)-1) + n
                   i2 = Row(cl)
-                    
+
                   IF ( i2 == 0 ) THEN
                     NoRow = NoRow + 1
                     Ind(NoRow) = cl
                     i2 = B % Rows(ia) + NoRow - 1
                     Row(cl) = i2
-                    
+
                     IF(AllocationsDone) THEN
-                      IF(ia == cl) B % diag(cl) = i2 
-                      B % Cols(i2) = cl                     
+                      IF(ia == cl) B % diag(cl) = i2
+                      B % Cols(i2) = cl
                       B % Values(i2) = P % Values(j) * A % Values(k) * R % Values(l)
                     END IF
                   ELSE
@@ -4960,11 +4960,11 @@ CONTAINS
                 END DO
               END DO
             END DO
-            
+
             DO j=1,NoRow
               Row(Ind(j)) = 0
             END DO
-            
+
             B % Rows(ia+1) = B % Rows(ia) + NoRow
             TotalNonzeros  = TotalNonzeros + NoRow
           END DO
@@ -4976,7 +4976,7 @@ CONTAINS
         B % Cols = 0
         B % Values = 0.0d0
         AllocationsDone = .TRUE.
-        GOTO 10 
+        GOTO 10
       END IF
 
       DEALLOCATE( Row, Ind )
@@ -4987,7 +4987,7 @@ CONTAINS
       WRITE(Message,'(A,F10.3)') 'Coarse matrix reduction factor',&
           1.0 *  SIZE(Matrix1 % Cols) / TotalNonZeros
       CALL Info('CRS_ProjectMatrixCreate',Message)
-       
+
    END SUBROUTINE CRS_ProjectMatrixCreate
 !------------------------------------------------------------------------------
 
@@ -5002,7 +5002,7 @@ CONTAINS
 
     PRINT *,'Saving matrix ',TRIM(FileName),' of size ',A % NumberOfRows
 
-    OPEN (10, FILE=FileName) 
+    OPEN (10, FILE=FileName)
 
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i),A % Rows(i+1)-1
@@ -5026,9 +5026,9 @@ CONTAINS
 !> Subroutine containing agglomeration or cluster multigrid solver.
 !> This provides in princinple an economical approach to multilevel schemes.
 !> The utilization of the routines are still not complete.
-! 
+!
 !       Author: Peter Råback
-!       Modified by: 
+!       Modified by:
 !       Date of modification: 30.10.2007
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE CMGSolve( Matrix1, Solution, &
@@ -5036,7 +5036,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     USE ClusteringMethods, ONLY : ChooseClusterNodes
     IMPLICIT NONE
-    
+
     TYPE(Matrix_t), POINTER :: Matrix1
     INTEGER :: DOFs, Level
     LOGICAL, OPTIONAL :: NewSystem
@@ -5046,13 +5046,13 @@ CONTAINS
     TYPE(Mesh_t), POINTER   :: Mesh
     TYPE(Matrix_t), POINTER :: Matrix2, Pmatrix
     TYPE(Solver_t), POINTER :: PSolver
-   
+
     INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, DirectLimit, &
         MinLevel, OrigSize=0, InvLevel, Sweeps, npar
     LOGICAL :: Condition, Found, Parallel, EliminateDir, CoarseSave, Liter
     INTEGER, POINTER :: CF(:), InvCF(:), Iters(:), ParCF(:)
     CHARACTER(:), ALLOCATABLE :: str,FileName,LowestSolver
-    
+
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:),  Solution2(:)
     REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
     REAL(KIND=dp), POINTER :: TmpArray(:,:)
@@ -5060,16 +5060,16 @@ CONTAINS
     REAL(KIND=dp) :: tt, tmp
     TYPE(ValueList_t), POINTER :: Params
 
-    LOGICAL :: NewLinearSystem, gotit, Normalize 
+    LOGICAL :: NewLinearSystem, gotit, Normalize
 
     SAVE NewLinearSystem, MinLevel, OrigSize
-    
+
 !------------------------------------------------------------------------------
 
     WRITE(Message,'(A,I2)') 'Starting level ',Level
     CALL Info('CMGSolve',Message,Level=10)
 
-    Mesh => Solver % Mesh    
+    Mesh => Solver % Mesh
     Params => Solver % Values
 
     tt = CPUTime()
@@ -5118,15 +5118,15 @@ CONTAINS
 
     ! If at lowest level, choose a solution method and go for it
     !------------------------------------------------------------
-    DirectLimit = ListGetInteger(Params,'MG Lowest Linear Solver Limit',GotIt) 
+    DirectLimit = ListGetInteger(Params,'MG Lowest Linear Solver Limit',GotIt)
     IF(.NOT. GotIt) DirectLimit = 20
-    
-    npar = ParallelReduction(n) 
+
+    npar = ParallelReduction(n)
 
     IF( ParEnv % PEs > 1 ) THEN
       CALL Info('CMGSolve','Number of dofs in parallel: '//I2S(npar),Level=6)
     END IF
-      
+
     IF ( Level <= 1 .OR. npar < DirectLimit) THEN
       CALL Info('CMGSolve','Solving for the lowest level: '//I2S(Level),Level=6)
 
@@ -5138,18 +5138,18 @@ CONTAINS
       LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
 
       IF(.NOT. Found ) LowestSolver = ListGetString(Params,'mglowest: Linear System Solver',Found)
-      
+
       IF ( .NOT. Found ) THEN
         LowestSolver = 'direct'
         LIter = ListGetLogical(Params,'MG Lowest Linear Solver Iterative',Found)
         IF ( .NOT. Found .AND. Parallel ) LIter=.TRUE.
         IF ( LIter ) LowestSolver='iterative'
       END IF
-      
+
       CALL Info('CMGSolve','Solving for the lowest level: '//TRIM(LowestSolver),Level=8)
-       
+
       SELECT CASE( LowestSolver )
-        
+
       CASE('iterative')
         IF ( Parallel ) THEN
           CALL ParallelIter( Matrix1, Matrix1 % ParallelInfo, DOFs, &
@@ -5157,10 +5157,10 @@ CONTAINS
         ELSE
           CALL IterSolver( Matrix1, Solution, ForceVector, Solver )
         END IF
-        
+
       CASE('direct')
         CALL DirectSolver( Matrix1, Solution, ForceVector, Solver )
-        
+
       CASE('smoother')
         IF ( Parallel ) THEN
           CALL ParallelInitSolve( Matrix1, Solution, &
@@ -5169,14 +5169,14 @@ CONTAINS
         PSolver => Solver
         tmp = MGSmooth( PSolver, Matrix1, Solver % Mesh, Solution, &
             ForceVector, Residual, Level, DOFs, LowestSmooth = .TRUE. )
-        
-      CASE('none') 
+
+      CASE('none')
         CALL Info('CMGSolve','Applying no solver for coarsest level')
-                
+
       CASE DEFAULT
         CALL Warn( 'CMGSolve', 'Unknown solver for MG lowest level: '//TRIM(LowestSolver) )
         CALL Warn( 'CMGSolve', 'Using iterative solver' )
-        
+
         IF ( Parallel ) THEN
           CALL ParallelIter( Matrix1, Matrix1 % ParallelInfo, DOFs, &
               Solution, ForceVector, Solver, Matrix1 % ParMatrix )
@@ -5190,8 +5190,8 @@ CONTAINS
         ForceVector(1:n) = ForceVector(1:n) * RHSnorm
       END IF
 
-      DEALLOCATE( Residual ) 
-      
+      DEALLOCATE( Residual )
+
       CALL ListPopNamespace('mglowest:')
 
       CALL Info('CMGSolve','Lowest level solved',Level=9)
@@ -5199,13 +5199,13 @@ CONTAINS
       RETURN
 
     END IF
-    
+
 
 !      Parallel initializations:
 !      -------------------------
     IF ( Parallel ) THEN
       CALL ParallelInitSolve( Matrix1, Solution, ForceVector, Residual )
-      PMatrix => ParallelMatrix( Matrix1 ) 
+      PMatrix => ParallelMatrix( Matrix1 )
     END IF
 
 !      Compute residual:
@@ -5238,12 +5238,12 @@ CONTAINS
       WRITE( Message, '(A,I3)' ) 'Creating a new matrix and projector for level',Level
       CALL Info('CMGSolve', Message)
       MinLevel = MIN(MinLevel,Level)
-      
-      EliminateDir = ListGetLogical(Params,'MG Eliminate Dirichlet',GotIt) 
+
+      EliminateDir = ListGetLogical(Params,'MG Eliminate Dirichlet',GotIt)
       IF(.NOT. GotIt) EliminateDir = .TRUE.
       IF(Level /= Solver % MultiGridTotal) EliminateDir = .FALSE.
-      
-      CALL ChooseClusterNodes(Matrix1, Solver, DOFs, EliminateDir, CF)      
+
+      CALL ChooseClusterNodes(Matrix1, Solver, DOFs, EliminateDir, CF)
 
       IF( ParEnv % PEs > 1 ) THEN
         BLOCK
@@ -5255,17 +5255,17 @@ CONTAINS
           n2 = MAXVAL(CF)
 
           ParInfo => Matrix1 % ParallelInfo
-          
+
           !PRINT *,'Inintial CF range:',ParEnv % MyPe, MINVAL(CF), n2
-          
+
           ! Find out the largest initial global index related to each cluster
-          ALLOCATE(MaxGDofs(n2))                    
+          ALLOCATE(MaxGDofs(n2))
           MaxGDofs = 0
           DO i=1,n1
             j = CF(i)
-            IF(j>0) MaxGDofs(j) = MAX(MaxGDofs(j),ParInfo % GlobalDofs(i))            
+            IF(j>0) MaxGDofs(j) = MAX(MaxGDofs(j),ParInfo % GlobalDofs(i))
           END DO
-          
+
           ! Set the largest initial global index related to the dof
           ALLOCATE(ParCF(n1))
           ParCF = 0
@@ -5277,52 +5277,52 @@ CONTAINS
 
           ! and communicate it in parallel
           CALL ParallelSumVectorInt( Matrix1, ParCF, 2 )
-          
+
           ! Find out the largest initial global index related to the cluster
           j1 = MINVAL(ParCF)
           j2 = MAXVAL(ParCF)
           ALLOCATE(CFPerm(j1:j2))
           CFPerm = 0
           k = 0
-          DO i=1,n1            
+          DO i=1,n1
             j = ParCF(i)
             IF(CFPerm(j)==0) THEN
               k = k + 1
               CFPerm(j) = k
             END IF
           END DO
-         
+
           ! Finally renumber the original clustering with parallel clustering
-          DO i=1,n1            
+          DO i=1,n1
             CF(i) = CFPerm(ParCF(i))
           END DO
           DEALLOCATE(CFPerm)
 
           !PRINT *,'New CF range:',ParEnv % Mype, MINVAL(CF), MAXVAL(CF)
         END BLOCK
-        CALL CRS_ClusterMatrixCreate( Matrix1, CF, Matrix2, DOFs)       
+        CALL CRS_ClusterMatrixCreate( Matrix1, CF, Matrix2, DOFs)
 
 
         IF(.NOT. ASSOCIATED(Matrix2 % Diag)) THEN
           ALLOCATE(Matrix2 % Diag(Matrix2 % NumberOfRows ))
         END IF
-        CALL CRS_SortMatrix( Matrix2, .TRUE. ) 
-        
+        CALL CRS_SortMatrix( Matrix2, .TRUE. )
+
         ! Finalize creation of parallel structures
         Matrix2 % Solver => Solver
-        Matrix2 % ParMatrix => ParInitMatrix( Matrix2, Matrix2 % ParallelInfo )        
-      ELSE              
-        !      CALL CRS_InspectMatrix( Matrix1 )         
-        CALL CRS_ClusterMatrixCreate( Matrix1, CF, Matrix2, DOFs)               
-        !      CALL CRS_InspectMatrix( Matrix2 ) 
+        Matrix2 % ParMatrix => ParInitMatrix( Matrix2, Matrix2 % ParallelInfo )
+      ELSE
+        !      CALL CRS_InspectMatrix( Matrix1 )
+        CALL CRS_ClusterMatrixCreate( Matrix1, CF, Matrix2, DOFs)
+        !      CALL CRS_InspectMatrix( Matrix2 )
       END IF
-        
+
       TmpArray => ListGetConstRealArray(Params,'MG Cluster Alpha', gotIt )
       IF(gotIt) THEN
         Alpha = TmpArray(MIN(InvLevel,SIZE(TmpArray,1)),1)
         Matrix2 % Values = Matrix2 % Values / Alpha
       END IF
- 
+
       WRITE( Message, '(A,F8.3)' ) 'MG coarse matrix creation time (s): ', CPUTime() - tt
       CALL Info( 'CMGSolve', Message, Level=5 )
 
@@ -5338,28 +5338,28 @@ CONTAINS
         InvCF = 0
 
         IF(Level ==  Solver % MultiGridTotal) THEN
-          InvCF = CF 
+          InvCF = CF
         ELSE
           DO i=1,OrigSize
             j = Matrix1 % Child % Grows(i)
             IF(j > 0) InvCF(i) = CF( j )
           END DO
         END IF
-      END IF            
+      END IF
 
     ELSE
       ! .NOT. new linear system
-      Matrix2 => Matrix1 % Parent      
-      CF => Matrix1 %  Gorder 
+      Matrix2 => Matrix1 % Parent
+      CF => Matrix1 %  Gorder
       IF(ALLOCATED(Matrix1 % Grows)) InvCF => Matrix1 % Grows
-   END IF  
- 
+   END IF
+
     n  = Matrix1 % NumberOfRows
     n2 = Matrix2 % NumberOfRows
 
     Residual2 => Matrix2 % RHS
     ALLOCATE( Solution2(n2) )
-    
+
 !------------------------------------------------------------------------------
 !      Global iteration parameters:
 !      ----------------------------
@@ -5380,33 +5380,33 @@ CONTAINS
       END IF
     ELSE
       MaxIter = ListGetInteger( Params,'MG Level Max Iterations', Found )
-      IF ( .NOT. Found ) MaxIter = 1         
+      IF ( .NOT. Found ) MaxIter = 1
       Tolerance = ListGetConstReal( Params,'MG Level Convergence Tolerance', Found )
       IF ( .NOT. Found ) Tolerance = HUGE(Tolerance)
     END IF
-   
+
 !   Smoothing preconditiong, if not given diagonal preconditioning is used:
 !   ----------------------------------------------------------------------
     str = ListGetString( Params, 'MG Preconditioning', Found )
     IF ( .NOT. Found ) THEN
       str = ListGetString( Params,'Linear System Preconditioning', Found )
     END IF
-   
+
     IF ( str == 'ilut' )  THEN
       IF ( NewLinearSystem ) THEN
         ILUTOL = ListGetConstReal( Params,'MG ILUT Tolerance', GotIt )
         IF ( .NOT. GotIt ) THEN
           ILUTOL = ListGetConstReal( Params,'Linear System ILUT Tolerance' )
         END IF
-        
+
         IF ( Parallel ) THEN
           Condition = CRS_ILUT( PMatrix, ILUTOL )
         ELSE
           Condition = CRS_ILUT( Matrix1, ILUTOL )
         END IF
       END IF
-      
-    ELSE IF ( SEQL(str, 'ilu') ) THEN      
+
+    ELSE IF ( SEQL(str, 'ilu') ) THEN
       IF ( NewLinearSystem ) THEN
         k = 0
         IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
@@ -5420,7 +5420,7 @@ CONTAINS
                  'Linear System Symmetric ILU', Found )
           Condition = CRS_IncompleteLU( Matrix1, k,Params )
         END IF
-      END IF      
+      END IF
     END IF
 
 
@@ -5429,7 +5429,7 @@ CONTAINS
 !      ------------
     DO iter = 1,MaxIter
       ResidualNorm = CMGSweep()
-      
+
       WRITE(Message,'(A,I0,A,I0,A,2E20.12E3)') 'MG Residual at level: ', &
           Level, ' iter: ', iter,' is:', ResidualNorm/RHSNorm, ResidualNorm
       CALL Info( 'CMGSolve', Message, Level=5 )
@@ -5438,7 +5438,7 @@ CONTAINS
       IF( ResidualNorm /= ResidualNorm .OR. ResidualNorm > 1.0d50 ) THEN
          CALL Fatal('CMGSolve','We seem to have diverged')
       END IF
-      
+
       IF( Level == Solver % MultiGridTotal ) THEN
         IF ( ResidualNorm/RHSNorm < Tolerance ) EXIT
       ELSE
@@ -5446,12 +5446,12 @@ CONTAINS
       END IF
     END DO
 
-  
+
 !------------------------------------------------------------------------------
 !
 !      Finalize:
 !      ---------
-    IF ( Parallel ) THEN 
+    IF ( Parallel ) THEN
       CALL ParallelUpdateResult( Matrix1, Solution, Residual )
     END IF
 
@@ -5462,7 +5462,7 @@ CONTAINS
 
 
     DEALLOCATE( Residual, Solution2 )
-    
+
     IF ( Level == Solver % MultiGridTotal ) THEN
       WRITE( Message, '(A,F8.2)' ) 'MG iter time: ', CPUTime() - tt
       CALL Info( 'CMGSolve', Message, Level=5 )
@@ -5478,7 +5478,7 @@ CONTAINS
 
   CONTAINS
 
-  
+
 !------------------------------------------------------------------------------
     RECURSIVE FUNCTION CMGSweep() RESULT(RNorm)
 !------------------------------------------------------------------------------
@@ -5495,19 +5495,19 @@ CONTAINS
 !      Presmoothing:
 !      -------------
 
-      
+
       Iters => ListGetIntegerArray( Params,'MG Sweeps',GotIt)
       IF(GotIt) THEN
         Sweeps = Iters(MIN(InvLevel,SIZE(Iters)))
-      ELSE        
+      ELSE
         Sweeps = 1
       END IF
-      
+
       PSolver => Solver
       CALL Info('CMGSweep','Calling presmoother',Level=9)
       RNorm = MGSmooth( PSolver, Matrix1, Solver % Mesh, Solution, ForceVector, &
           Residual, Level, DOFs, PreSmooth = .TRUE., CF = CF)
-      
+
 !------------------------------------------------------------------------------
 !
 !      Solve (PAQ)z = Pr, x = x + Qz:
@@ -5538,7 +5538,7 @@ CONTAINS
 !      -------------------
       R1 => Residual (1:n)
       R2 => Solution2(1:n2)
-      
+
       CALL CRS_ClusterProject( CF, R2, R1, DOFs, Trans = .TRUE. )
 
       Solution(1:n) = Solution(1:n) + Residual(1:n)
@@ -5642,8 +5642,8 @@ CONTAINS
 
 
     IF(DOFs == 1) THEN
-      nu = SIZE(u) 
-      nv = SIZE(v) 
+      nu = SIZE(u)
+      nv = SIZE(v)
       IF( LTrans ) THEN
         ! Only one value for each v is needed
         DO i=1,nv
@@ -5657,7 +5657,7 @@ CONTAINS
           IF(j > 0) v(j) = v(j) + u(i)
         END DO
       END IF
-    ELSE 
+    ELSE
       nu = SIZE(u) / DOFs
       nv = SIZE(v) / DOFs
       IF( LTrans ) THEN
@@ -5724,11 +5724,11 @@ CONTAINS
       Epsilon = ListGetConstReal(Params,'MG Matrix Create Epsilon',GotIt)
       IF(.NOT. GotIt) Epsilon = SQRT(TINY(Epsilon))
 
- 
+
       ! Order the dofs in the order of the clusters
       Sizes = 0
       DO i=1,NnodA
-        j = CF(i) 
+        j = CF(i)
         IF( j > 0 ) THEN
           Sizes( j ) = Sizes( j ) + 1
         END IF
@@ -5736,7 +5736,7 @@ CONTAINS
 
       CumSizes = 0
       DO i=1,NnodB
-        CumSizes(i+1) = CumSizes(i) + Sizes(i) 
+        CumSizes(i+1) = CumSizes(i) + Sizes(i)
       END DO
 
       Sizes = 0
@@ -5750,11 +5750,11 @@ CONTAINS
         ClusterOrder(indi) = i
       END DO
 
-      B => AllocateMatrix()      
-      B % NumberOfRows = NmatB 
+      B => AllocateMatrix()
+      B % NumberOfRows = NmatB
       ALLOCATE( B % Rows( NmatB + 1 ), &
           B % Diag( NmatB ), &
-          B % RHS( NmatB ) )        
+          B % RHS( NmatB ) )
       B % RHS = 0.0d0
       B % Diag = 0
       B % Rows(1) = 1
@@ -5764,7 +5764,7 @@ CONTAINS
         PRINT *,'Initial Matrix'
         DO i=1,NnodA
           PRINT *,'i',i
-          DO j=A % Rows(i),A % Rows(i+1)-1          
+          DO j=A % Rows(i),A % Rows(i+1)-1
             PRINT *,'j',A % Cols(j),A % Values(j)
           END DO
         END DO
@@ -5782,11 +5782,11 @@ CONTAINS
 
         DO indi=1,NA
 
-          i = ClusterOrder(indi) 
+          i = ClusterOrder(indi)
           IF(i == 0) CYCLE
 
-          newrow = CF(i)  
-          IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow        
+          newrow = CF(i)
+          IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
           IF(prevnewrow /= newrow) THEN
             DO j=1,NoRow
               Row(Ind(j)) = 0
@@ -5795,49 +5795,49 @@ CONTAINS
             prevnewrow = newrow
           END IF
 
-          DO j=A % Rows(i),A % Rows(i+1)-1          
+          DO j=A % Rows(i),A % Rows(i+1)-1
             cj = A % Cols(j)
 
             newcol = CF(cj)
             IF(newcol == 0) CYCLE
- 
+
             IF( .FALSE. .AND. ABS(A % Values(j)) < Epsilon) CYCLE
- 
+
             i2 = Row(newcol)
 
             IF ( i2 == 0) THEN
               NoRow = NoRow + 1
               TotalNonzeros = TotalNonzeros + 1
               Ind(NoRow) = newcol
-              i2 = B % Rows(newrow) + NoRow - 1                   
+              i2 = B % Rows(newrow) + NoRow - 1
               Row(newcol) = i2
 
               IF(AllocationsDone) THEN
                 IF(newrow == newcol) B % Diag(newrow) = i2
-                B % Cols(i2) = newcol                     
+                B % Cols(i2) = newcol
                 B % Values(i2) = A % Values(j)
               END IF
             ELSE IF(AllocationsDone) THEN
               B % Values(i2) = B % Values(i2) + A % Values(j)
             END IF
           END DO
-          
+
           B % Rows(newrow+1) = B % Rows(newrow) + NoRow
-         
+
         END DO
       ELSE
- 
-        DO indi=1,NnodB          
+
+        DO indi=1,NnodB
 
           DO comp=1,Components
-            
+
             DO nodi=CumSizes(indi)+1,CumSizes(indi+1)
-              
-              i = ClusterOrder(nodi) 
-              IF(i == 0) CYCLE          
+
+              i = ClusterOrder(nodi)
+              IF(i == 0) CYCLE
               mati = Components*(i-1) + comp
               newrow = Components*(CF(i)-1) + comp
-              
+
               IF(prevnewrow /= newrow) THEN
                 DO j=1,NoRow
                   Row(Ind(j)) = 0
@@ -5845,37 +5845,37 @@ CONTAINS
                 NoRow = 0
                 prevnewrow = newrow
               END IF
-              
-              DO j=A % Rows(mati),A % Rows(mati+1)-1          
+
+              DO j=A % Rows(mati),A % Rows(mati+1)-1
                 cj = A % Cols(j)
                 nodecj = (cj-1)/Components + 1
                 k = CF(nodecj)
                 IF(k == 0) CYCLE
-                
+
                 IF( ABS(A % Values(j)) < Epsilon) CYCLE
-                
+
                 newcol = Components*(k-1) + MOD(cj-1,Components) + 1
-                
+
                 i2 = Row(newcol)
-                
+
                 IF ( i2 == 0) THEN
                   NoRow = NoRow + 1
                   TotalNonzeros = TotalNonzeros + 1
                   Ind(NoRow) = newcol
-                  i2 = B % Rows(newrow) + NoRow - 1                   
+                  i2 = B % Rows(newrow) + NoRow - 1
                   Row(newcol) = i2
-                  
+
                   IF(AllocationsDone) THEN
                     IF(newrow == newcol) B % Diag(newrow) = i2
-                    B % Cols(i2) = newcol                     
+                    B % Cols(i2) = newcol
                     B % Values(i2) = A % Values(j)
                   END IF
                 ELSE IF(AllocationsDone) THEN
                   B % Values(i2) = B % Values(i2) + A % Values(j)
                 END IF
               END DO
-              B % Rows(newrow+1) = B % Rows(newrow) + NoRow         
-              
+              B % Rows(newrow+1) = B % Rows(newrow) + NoRow
+
             END DO
           END DO
         END DO
@@ -5886,7 +5886,7 @@ CONTAINS
         B % Cols = 0
         B % Values = 0.0d0
         AllocationsDone = .TRUE.
-        GOTO 10 
+        GOTO 10
       END IF
 
 
@@ -5894,8 +5894,8 @@ CONTAINS
         BLOCK
           TYPE(ParallelInfo_t), POINTER :: ParInfoA, ParInfoB
           INTEGER, POINTER :: MaxGDofs(:), NeighA(:), NeighB(:)
-          
-          ParInfoA => A % ParallelInfo 
+
+          ParInfoA => A % ParallelInfo
           ALLOCATE(B % ParallelInfo)
           ParInfoB => B % ParallelInfo
 
@@ -5911,10 +5911,10 @@ CONTAINS
 
           MaxGDofs => ParInfoB % GlobalDofs
           DO i=1,A % NumberOfRows
-            j = CF(i)            
+            j = CF(i)
             IF(j>0) THEN
-              MaxGDofs(j) = MAX(MaxGDofs(j),ParInfoA % GlobalDofs(i))            
-              IF(ParInfoA % Ginterface(i)) THEN                
+              MaxGDofs(j) = MAX(MaxGDofs(j),ParInfoA % GlobalDofs(i))
+              IF(ParInfoA % Ginterface(i)) THEN
                 ParInfoB % GInterface(j) = .TRUE.
                 NeighA => ParInfoA % NeighbourList(i) % Neighbours
                 IF(.NOT. ASSOCIATED(NeighA)) CYCLE
@@ -5922,14 +5922,14 @@ CONTAINS
 
                 n = 0
                 NeighB => ParInfoB % NeighbourList(j) % Neighbours
-                IF(ASSOCIATED(NeighB)) n = SIZE(NeighB)                
+                IF(ASSOCIATED(NeighB)) n = SIZE(NeighB)
 
                 IF(n == 0) THEN
                   NULLIFY(NeighB)
                   ALLOCATE(NeighB(SIZE(NeighA)))
-                  NeighB = NeighA 
+                  NeighB = NeighA
                   ParInfoB % NeighbourList(j) % Neighbours => NeighB
-                  NULLIFY(NeighB) 
+                  NULLIFY(NeighB)
                 ELSE
                   n = SIZE(NeighB)
                   DO k=1,SIZE(NeighA)
@@ -5938,7 +5938,7 @@ CONTAINS
                       NULLIFY(NeighB)
                       ALLOCATE(NeighB(n+1))
                       NeighB(1:n) = ParInfoB % NeighbourList(j) % Neighbours(1:n)
-                      n = n+1 
+                      n = n+1
                       NeighB(n) = l
                       DEALLOCATE(ParInfoB % NeighbourList(j) % Neighbours)
                       ParInfoB % NeighbourList(j) % Neighbours => NeighB
@@ -5950,12 +5950,12 @@ CONTAINS
           END DO
         END BLOCK
       END IF
-                       
+
       IF(.FALSE.) THEN
         PRINT *,'Created Matrix'
         DO i=1,NB
           PRINT *,'i',i
-          DO j=B % Rows(i),B % Rows(i+1)-1          
+          DO j=B % Rows(i),B % Rows(i+1)-1
             PRINT *,'j',B % Cols(j),B % Values(j)
           END DO
         END DO
@@ -5968,7 +5968,7 @@ CONTAINS
         DO j = 1, B % NumberOfRows
           rowsum = 0.0_dp
           DO i = B % Rows(j),B % Rows(j+1)-1
-            rowsum = rowsum + B % Values( i ) 
+            rowsum = rowsum + B % Values( i )
           END DO
 
           k = B % Diag(j)
@@ -5982,7 +5982,7 @@ CONTAINS
 
 
       DEALLOCATE(  Sizes, CumSizes, ClusterOrder, Row, Ind )
-      
+
       WRITE(Message,'(A,F10.3)') 'Coarse matrix reduction factor',&
           1.0 *  SIZE(A % Cols) / TotalNonZeros
       CALL Info('CRS_ClusterMatrixCreate',Message)
@@ -5991,7 +5991,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-    SUBROUTINE SaveClusters() 
+    SUBROUTINE SaveClusters()
 !------------------------------------------------------------------------------
 
       LOGICAL :: Visited = .FALSE., GotIt
@@ -6006,7 +6006,7 @@ CONTAINS
       Visited = .TRUE.
 
       PRINT *,'Saving clusters in levels:',Level,Solver % MultiGridTotal
-      
+
       ! Save in ElmerPost
       IF(.TRUE.) THEN
         m = ListGetInteger(Params,'MG Cluster Save Modulo',GotIt)
@@ -6019,9 +6019,9 @@ CONTAINS
 
           IF( .NOT. ALLOCATED(TmpMatrix % Grows)) CYCLE
 
-          NULLIFY( Clustering ) 
+          NULLIFY( Clustering )
           ALLOCATE( Clustering(OrigSize), STAT=istat)
-          IF ( istat /= 0 ) CALL Fatal( 'SaveClusters', 'Memory allocation error.' )           
+          IF ( istat /= 0 ) CALL Fatal( 'SaveClusters', 'Memory allocation error.' )
           IF(m == 0) THEN
             Clustering = 1.0d0 * TmpMatrix % Grows
           ELSE
@@ -6036,13 +6036,13 @@ CONTAINS
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, &
               Solver,TRIM(Message),1,Clustering, Perm)
           TmpMatrix => TmpMatrix % Parent
-        END DO        
+        END DO
 
       END IF
 
-      ! Save in simple dat file (Matlab) 
+      ! Save in simple dat file (Matlab)
       IF(.FALSE.) THEN
-        OPEN (10,FILE='clusters.dat')        
+        OPEN (10,FILE='clusters.dat')
         DO i=1,OrigSize
           WRITE (10,'(3ES17.8E3)',ADVANCE='NO') &
               Mesh % Nodes % X(i), Mesh % Nodes % Y(i), Mesh % Nodes % Z(i)
@@ -6051,7 +6051,7 @@ CONTAINS
             TmpMatrix => TmpMatrix % Parent
             WRITE (10,'(I6)',ADVANCE='NO') TmpMatrix % Grows(i)
           END DO
-          WRITE (10,'(A)') ' ' 
+          WRITE (10,'(A)') ' '
         END DO
         CLOSE(10)
       END IF

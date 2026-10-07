@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -29,7 +29,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *****************************************************************************/
 
@@ -56,7 +56,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   CALL DefaultStart()
-  
+
   maxiter = ListGetInteger( GetSolverParams(),&
       'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
@@ -73,7 +73,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     TotArea = 0.0_dp
     TotLen = 0.0_dp
     TotSrc = 0.0_dp
-    
+
 1   Active = GetNOFActive()
 
     DO t=1,Active
@@ -97,7 +97,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     END DO
 
     IF(DefaultCutFEM()) GOTO 1
-    
+
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
@@ -105,7 +105,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     ! And finally, solve:
     !--------------------
     Norm = DefaultSolve()
-    IF( DefaultConverged() ) EXIT    
+    IF( DefaultConverged() ) EXIT
 
   END DO
 
@@ -113,11 +113,11 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 
   IF( ListGetLogical( GetSolverParams(),'CutFEM',Found) &
       .OR. ListGetLogical( GetSolverParams(),'Integ Test',Found) ) THEN
-    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total area',TotArea ) 
-    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total len',TotLen ) 
-    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total src',TotSrc ) 
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total area',TotArea )
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total len',TotLen )
+    CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total src',TotSrc )
   END IF
- 
+
 CONTAINS
 
 ! Assembly of the matrix entries arising from the bulk elements
@@ -212,7 +212,7 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
-      TotArea = TotArea + Weight 
+      TotArea = TotArea + Weight
       TotSrc = TotSrc + Weight * LoadAtIp
     END DO
 
@@ -257,7 +257,7 @@ CONTAINS
     Coeff(1:n) = GetReal( BC,'robin coefficient', Found )
     Ext_t(1:n) = GetReal( BC,'external field', Found )
 
-        
+
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
@@ -288,7 +288,7 @@ CONTAINS
       END DO
 
       FORCE(1:nd) = FORCE(1:nd) + Weight * (F + C*Ext) * Basis(1:nd)
-      TotLen = TotLen + Weight 
+      TotLen = TotLen + Weight
     END DO
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------

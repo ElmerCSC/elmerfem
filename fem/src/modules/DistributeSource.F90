@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -29,7 +29,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Created: ~2015
 ! *
@@ -42,7 +42,7 @@
 !-------------------------------------------------------------------------------
 SUBROUTINE DistributeSource(Model, Solver, dt, Transient)
 !-------------------------------------------------------------------------------
-  USE DefUtils  
+  USE DefUtils
   IMPLICIT NONE
 !-------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
@@ -71,7 +71,7 @@ SUBROUTINE DistributeSource(Model, Solver, dt, Transient)
 
   MeshLocal => GetMesh()
   MeshGlobal => Model % Meshes
-  
+
   IF( ASSOCIATED( MeshLocal, MeshGlobal ) ) THEN
     CALL Fatal('DistributeSource','Meshes are the same!')
   END IF
@@ -79,7 +79,7 @@ SUBROUTINE DistributeSource(Model, Solver, dt, Transient)
   CALL InterpolateAndIntegrateSource( Model, Solver, MeshLocal, MeshGlobal, 'Local Source','g', .TRUE. )
 
 CONTAINS
-  
+
   !------------------------------------------------------------------------------
   !>    Interpolates and integrates functions of one mesh in another mesh.
   !------------------------------------------------------------------------------
@@ -90,11 +90,11 @@ CONTAINS
     !-------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
-    TYPE(Mesh_t), TARGET  :: LocalMesh   
-    TYPE(Mesh_t), TARGET  :: GlobalMesh  
+    TYPE(Mesh_t), TARGET  :: LocalMesh
+    TYPE(Mesh_t), TARGET  :: GlobalMesh
     CHARACTER(LEN=*) :: LocalSourceName
     CHARACTER(LEN=*) :: GlobalRhsName
-    LOGICAL, OPTIONAL :: UseQuadrantTree  
+    LOGICAL, OPTIONAL :: UseQuadrantTree
     !------------------------------------------------------------------------------
     INTEGER :: dim
     TYPE(Nodes_t) :: ElementNodes, ElementNodesB
@@ -111,10 +111,10 @@ CONTAINS
         WBasis(:,:), dBasisdx(:,:), dBAsisdxb(:,:)
     REAL(KIND=dp), ALLOCATABLE :: LocalSource(:), LocalCurrDens(:,:)
     REAL(KIND=dp) :: BoundingBox(6), detJ, detJb,u,v,w,ub,vb,wb,CurrDensAtip(3)
-    LOGICAL :: UseQTree, TryQTree, Stat, EdgeBasis, PiolaT    
+    LOGICAL :: UseQTree, TryQTree, Stat, EdgeBasis, PiolaT
     TYPE(Quadrant_t), POINTER :: RootQuadrant
     INTEGER, POINTER :: NodeIndexes(:), NodeIndexesB(:)
-    INTEGER :: EdgeBasisDegree 
+    INTEGER :: EdgeBasisDegree
     LOGICAL :: Found
     INTEGER :: eps_tries
     REAL(KIND=dp) :: eps1 = 0.1_dp, eps2, eps_global, eps_local, eps_numeric
@@ -122,19 +122,19 @@ CONTAINS
     TYPE(Solver_t), POINTER :: GSolver
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(*), PARAMETER :: Caller = 'IntegrateSource'
-        
-    
-    SAVE :: ElementNodes, ElementNodesB 
+
+
+    SAVE :: ElementNodes, ElementNodesB
 
     !------------------------------------------------------------------------------
     CALL Info(Caller,'Projecting current sources between meshes')
 
     Params => GetSolverParams(Solver)
-    
+
     ! Check if using the spatial division hierarchy for the search:
     ! -------------------------------------------------------------
     dim = CoordinateSystemDimension()
-    
+
     IF ( .NOT. PRESENT( UseQuadrantTree ) ) THEN
       UseQTree = .TRUE.
     ELSE
@@ -150,27 +150,27 @@ CONTAINS
         BoundingBox(4) = MAXVAL(GlobalMesh % Nodes % x)
         BoundingBox(5) = MAXVAL(GlobalMesh % Nodes % y)
         BoundingBox(6) = MAXVAL(GlobalMesh % Nodes % z)
-        
+
         eps2 = 0.1_dp * MAXVAL(BoundingBox(4:6)-BoundingBox(1:3))
         BoundingBox(1:3) = BoundingBox(1:3) - eps2
         BoundingBox(4:6) = BoundingBox(4:6) + eps2
-        
+
         CALL BuildQuadrantTree( GlobalMesh,BoundingBox,GlobalMesh % RootQuadrant)
         RootQuadrant => GlobalMesh % RootQuadrant
 
         CALL Info(Caller,'Quadrant tree build for interpolation',Level=10)
       END IF
     END IF
-    
-    TryQTree = ASSOCIATED(RootQuadrant) .AND. UseQTree 
-       
+
+    TryQTree = ASSOCIATED(RootQuadrant) .AND. UseQTree
+
     !------------------------------------------------------------------------------
     n = MAX( GlobalMesh % MaxElementDOFs, LocalMesh % MaxElementDOFs )
     ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
     ALLOCATE( ElementNodesB % x(n), ElementNodesB % y(n), ElementNodesB % z(n) )
     ALLOCATE( Basis(n), BasisB(n), LocalSource(n), LocalCurrDens(3,n), FixInd(n), &
              RhsInd(n), WBasis(n,3), RotWBasis(n,3), dBasisdx(n,3), dBasisdxb(n,3) )
-    
+
     eps_global = ListGetConstReal( Model % Simulation,  &
         'Interpolation Global Epsilon', Stat)
     IF(.NOT. Stat) eps_global = 2.0d-10
@@ -178,7 +178,7 @@ CONTAINS
     eps_local = ListGetConstReal( Model % Simulation,  &
         'Interpolation Local Epsilon', Stat )
     IF(.NOT. Stat) eps_local = 1.0d-10
-    
+
     eps_tries = ListGetInteger( Model % Simulation,  &
         'Interpolation Max Iterations', Stat )
     IF(.NOT. Stat) eps_tries = 12
@@ -190,7 +190,7 @@ CONTAINS
     NoFails = 0
     NoFound = 0
 
-        
+
     EdgeBasis = GetLogical( Params,'Edge Basis', Stat )
 
     RhsSol => VariableGet( GlobalMesh % Variables,GlobalRhsName, .TRUE. )
@@ -207,7 +207,7 @@ CONTAINS
     IF(.NOT. ASSOCIATED( GSolver ) ) THEN
       CALL Fatal(Caller,'Could not associate r.h.s. vector to any solver!')
     END IF
-    
+
     EdgeBasis = .FALSE.
     PiolaT = .FALSE.
     n = GlobalMesh % NumberOfNodes
@@ -219,7 +219,7 @@ CONTAINS
       IF(.NOT. ASSOCIATED(FixSol) ) THEN
         CALL Warn(Caller,'Could not find variable: '//TRIM(GlobalRhsName)//' fix')
       END IF
-      CALL EdgeElementStyle(GSolver % Values, PiolaT, BasisDegree = EdgeBasisDegree ) 
+      CALL EdgeElementStyle(GSolver % Values, PiolaT, BasisDegree = EdgeBasisDegree )
     ELSE
       CALL Fatal(Caller,'Currently we assume edge basis!')
     END IF
@@ -229,23 +229,23 @@ CONTAINS
     IF(ASSOCIATED(FixSol)) FixSol % Values = 0.0_dp
 
     ! Create the nodal coordinates for all Gaussian integration points
-    !-----------------------------------------------------------------    
+    !-----------------------------------------------------------------
     CALL Info(Caller,'Integrating over bulk elements of local mesh',Level=8)
 
     DO i=1, LocalMesh % NumberOfBulkElements
       Element => LocalMesh % Elements(i)
-      
+
       Model % CurrentElement => Element
-      n = Element % TYPE % NumberOfNodes        
+      n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
 
       ElementNodes % x(1:n) = LocalMesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = LocalMesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = LocalMesh % Nodes % z(NodeIndexes(1:n))
-      
+
       BodyForce => GetBodyForce(Element)
       IF(.NOT. ASSOCIATED( BodyForce ) ) CYCLE
-      
+
       CALL GetRealVector( BodyForce, LocalCurrDens(1:3,1:n), 'Local Current Density',Found)
       IF(.NOT.Found) CYCLE
 
@@ -257,7 +257,7 @@ CONTAINS
       END IF
 
       DO j=1,IntegStuff % n
-        
+
         u = IntegStuff % u(j)
         v = IntegStuff % v(j)
         w = IntegStuff % w(j)
@@ -273,7 +273,7 @@ CONTAINS
         CurrDensAtIp(3) = SUM( Basis(1:n) * LocalCurrDens(3,1:n) )
 
         !PRINT *,'CurrentDensity',CurrDensAtIp,'at coordinate',Point
-        
+
         !------------------------------------------------------------------------------
         ! Find in which old mesh bulk element the point belongs to
         !------------------------------------------------------------------------------
@@ -286,7 +286,7 @@ CONTAINS
           !------------------------------------------------------------------------------
           Found = .FALSE.
           CALL FindLeafElements(Point, dim, RootQuadrant, LeafQuadrant)
-          
+
           IF ( ASSOCIATED(LeafQuadrant) ) THEN
             ! Go through the bulk elements in the last ChildQuadrant
             ! only.  Try to find matching element with progressively
@@ -326,7 +326,7 @@ CONTAINS
               ElementNodesB % y(1:nb) = GlobalMesh % Nodes % y(NodeIndexesB)
               ElementNodesB % z(1:nb) = GlobalMesh % Nodes % z(NodeIndexesB)
 
-              Found = PointInElement( ElementB, ElementNodesB, Point, LocalCoordinates  ) 
+              Found = PointInElement( ElementB, ElementNodesB, Point, LocalCoordinates  )
               IF( Found ) EXIT
             END DO
           END IF
@@ -349,14 +349,14 @@ CONTAINS
 
         ! Evaluate basis functions at integration point
         stat = ElementInfo(ElementB, ElementNodesB, ub, vb, wb, detJb, Basisb, dBasisdxb,&
-            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = GSolver ) 
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = GSolver )
 
         ! Note that we use the metric of the local mesh but populate it on the global mesh
         IF( ALL( RhsInd(1:ne) > 0 ) ) THEN
           RhsSol % Values( RhsInd(1:ne) ) = RhsSol % Values( RhsInd(1:ne) ) + &
               MATMUL( WBasis(1:ne,:), CurrDensAtIP ) * detJ * IntegStuff % s(j)
         END IF
-          
+
         IF( ASSOCIATED( FixSol ) ) THEN
           FixInd(1:nb) = FixSol % Perm( NodeIndexesB )
           IF( ALL( FixInd(1:nb) > 0 ) ) THEN
@@ -366,9 +366,9 @@ CONTAINS
         END IF
       END DO
     END DO
-    
+
     CALL Info(Caller,'Integration finished',Level=15)
-    
+
     IF( NoFails == 0 ) THEN
       CALL Info(Caller,'Found all nodes '//I2S(NoFound)//&
           ' in the target mesh',Level=6)
@@ -377,12 +377,12 @@ CONTAINS
           //I2S(NoFound)//')')
     END IF
 
-        
-    PRINT *,'Global source sum:',SUM( RhsSol % Values ), SUM( ABS( RhsSol % Values ) ) 
+
+    PRINT *,'Global source sum:',SUM( RhsSol % Values ), SUM( ABS( RhsSol % Values ) )
     IF( ASSOCIATED( FixSol ) ) THEN
       PRINT *,'Global fixing sum:',SUM( FixSol % Values ), SUM( ABS( FixSol % Values ) )
     END IF
-      
+
   END SUBROUTINE InterpolateAndIntegrateSource
 
 

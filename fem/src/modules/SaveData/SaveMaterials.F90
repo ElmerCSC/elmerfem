@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 20 Nov 2001
 ! *
@@ -46,7 +46,7 @@
 
 !------------------------------------------------------------------------------
 !> Routine for saving material parameters as fields.
-! Written by Thomas Zwinger 
+! Written by Thomas Zwinger
 !------------------------------------------------------------------------------
 SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   USE DefUtils
@@ -79,8 +79,8 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   LOGICAL :: GotCoeff, GotIt, GotOper, GotVar
   INTEGER :: PrevNodes = 0
 
-  SAVE PrevNodes 
-  
+  SAVE PrevNodes
+
   CALL Info('SaveMaterials','Creating selected material parameters as fields')
 
   !-------------------------------------------
@@ -101,53 +101,53 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   END IF
   PrevNodes = LocalNodes
 
-  
+
   n = Mesh % MaxElementNodes
   ALLOCATE( LocalParam(n), STAT=istat )
-  IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 1') 
+  IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 1')
 
   ! Find out how many variables should we saved
   NoParams = 0
   GotVar = .TRUE.
-  
-  DO WHILE(GotVar)  
+
+  DO WHILE(GotVar)
     NoParams = NoParams + 1
     WRITE (Name,'(A,I0)') 'Parameter ',NoParams
     ParamName(NoParams) = ListGetString( Params, TRIM(Name), GotVar )
   END DO
   NoParams = NoParams-1
-  
+
   IF( NoParams == 0) THEN
-    CALL WARN( 'SaveMaterials', 'No parameters found: No fields will be created')       
+    CALL WARN( 'SaveMaterials', 'No parameters found: No fields will be created')
     RETURN
   END IF
- 
+
   BodyForceParams = ListGetInteger( Params,'Body Force Parameters',GotIt)
- 
+
   !------------------
   ! Add new Variables
   ! -----------------
   DO ParamNo = 1, NoParams
-    Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
+    Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)
     IF( ASSOCIATED( Var ) ) CYCLE
-    
+
     ALLOCATE(FieldPerm(LocalNodes),STAT=istat)
-    IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 2') 
-    
+    IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 2')
+
     FieldPerm = 0
-    
+
     DO elementNumber=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      
+
       CurrentElement => Mesh % Elements(elementNumber)
       !------------------------------------------------------------------
       ! do nothing, if we are dealing with a halo-element in parallel run
       !------------------------------------------------------------------
       !IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
-      
+
       n = GetElementNOFNodes(CurrentElement)
-      NodeIndexes => CurrentElement % NodeIndexes           
+      NodeIndexes => CurrentElement % NodeIndexes
       Model % CurrentElement => CurrentElement
-      
+
       IF( ParamNo > BodyForceParams ) THEN
         ValueList => GetMaterial(CurrentElement)
       ELSE
@@ -159,14 +159,14 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
 
-    j = 0 
+    j = 0
     DO i=1,LocalNodes
       IF( FieldPerm(i) > 0 ) THEN
         j = j + 1
         FieldPerm(i) = j
       END IF
     END DO
-    
+
     IF( j == 0 ) THEN
       CALL Warn('SaveMaterials',&
           'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
@@ -177,16 +177,16 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
 
     IF( j > 0 ) THEN
       ALLOCATE(Field(j),STAT=istat)
-      IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 3') 
+      IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 3')
       Field = 0.0_dp
     END IF
 
     IF( j > 0 .OR. ParEnv % PEs > 1 ) THEN
-      ! Add this always in parallel since the variable may be active in some partition 
+      ! Add this always in parallel since the variable may be active in some partition
       CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
-          TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
+          TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )
     END IF
-      
+
     NULLIFY( Field )
     NULLIFY( FieldPerm )
   END DO
@@ -194,27 +194,27 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   !-----------------------------------
   ! loop all parameters to be exported
   !-------------------------------------
-  DO ParamNo=1,NoParams 
-    
-    Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
+  DO ParamNo=1,NoParams
+
+    Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)
     IF( .NOT. ASSOCIATED( Var ) ) CYCLE
 
     Field => Var % Values
     IF( .NOT. ASSOCIATED( Field ) ) CYCLE
-    
+
     FieldPerm => Var % Perm
     IF( .NOT. ASSOCIATED( FieldPerm ) ) CYCLE
-    
+
     IF( MAXVAL( FieldPerm ) <= 0 ) CYCLE
-    
+
     DO elementNumber=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      
+
       CurrentElement => Mesh % Elements(elementNumber)
       IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
-      
+
       n = GetElementNOFNodes(CurrentElement)
-      NodeIndexes => CurrentElement % NodeIndexes           
-      
+      NodeIndexes => CurrentElement % NodeIndexes
+
       IF( Var % TYPE == Variable_on_nodes ) THEN
         Indexes(1:n) = NodeIndexes(1:n)
       ELSE IF( Var % Type == Variable_on_nodes_on_elements ) THEN
@@ -224,7 +224,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
         CALL Fatal('SaveMaterials','Only implemented for nodal and dg fields: '//TRIM(ParamName(ParamNo)))
       END IF
       IF( .NOT. ALL(FieldPerm(Indexes(1:n)) > 0) ) CYCLE
-      
+
       Model % CurrentElement => CurrentElement
 
       IF( ParamNo > BodyForceParams ) THEN
@@ -236,8 +236,8 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       LocalParam(1:n) = ListGetReal(ValueList, TRIM(ParamName(ParamNo)), &
           n, NodeIndexes, GotIt)
       IF(.NOT. GotIt) CYCLE
-      
-      Field(FieldPerm(Indexes(1:n))) = LocalParam(1:n)      
+
+      Field(FieldPerm(Indexes(1:n))) = LocalParam(1:n)
     END DO
   END DO
 

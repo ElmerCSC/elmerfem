@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -61,7 +61,7 @@ SUBROUTINE HeatSolverLegacy_init( Model,Solver,dt,Transient )
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver_init'
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found
-  
+
   Params => GetSolverParams()
 
   ! Default variable name
@@ -83,7 +83,7 @@ SUBROUTINE HeatSolverLegacy_init( Model,Solver,dt,Transient )
 #ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
-  
+
 END SUBROUTINE HeatSolverLegacy_Init
 
 
@@ -107,7 +107,7 @@ END SUBROUTINE HeatSolverLegacy_Init
      INTEGER, PARAMETER :: PHASE_SPATIAL_1 = 1
      INTEGER, PARAMETER :: PHASE_SPATIAL_2 = 2
      INTEGER, PARAMETER :: PHASE_TEMPORAL  = 3
-    
+
      TYPE(Model_t)  :: Model
      TYPE(Solver_t), TARGET :: Solver
 
@@ -182,7 +182,7 @@ END SUBROUTINE HeatSolverLegacy_Init
 
      REAL(KIND=dp), ALLOCATABLE :: Areas(:), Emiss(:), Reflect(:)
      LOGICAL :: Spectral, Radiosity
-     
+
      SAVE U, V, W, MU, MASS, STIFF, LOAD, PressureCoeff, &
        FORCE, ElementNodes, HeatConductivity, HeatCapacity, HeatTransferCoeff, &
        Enthalpy, EnthalpyFraction, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
@@ -235,7 +235,7 @@ END SUBROUTINE HeatSolverLegacy_Init
        CALL Warn('HeatSolver','The old way of dealing with HeatGap is obsolite!!')
      END IF
 
-     
+
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
@@ -244,7 +244,7 @@ END SUBROUTINE HeatSolverLegacy_Init
 
      SolverParams => GetSolverParams()
 
-     Radiosity = GetLogical( SolverParams,'Radiosity Model',Found ) 
+     Radiosity = GetLogical( SolverParams,'Radiosity Model',Found )
      Spectral = GetLogical( SolverParams,'Spectral Model',Found )
      IF( Spectral ) Radiosity = .TRUE.
 
@@ -256,15 +256,15 @@ END SUBROUTINE HeatSolverLegacy_Init
      END IF
 
 !------------------------------------------------------------------------------
-!    The View and Gebhart factors may change. If this is necessary, this is 
+!    The View and Gebhart factors may change. If this is necessary, this is
 !    done within this subroutine. The routine is called in the
 !    start as it may affect the matrix topology.
 !    Newton lineariarization option is needed only when there is radiation.
 !------------------------------------------------------------------------------
      IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
-     
+
      IF( IsRadiation .AND. .NOT. Radiosity ) THEN
-       CALL RadiationFactors( Solver, .FALSE., .FALSE.)       
+       CALL RadiationFactors( Solver, .FALSE., .FALSE.)
      END IF
 
      ! The solver matrix, permutation etc. may change because radiation factors are recomputed
@@ -273,13 +273,13 @@ END SUBROUTINE HeatSolverLegacy_Init
      TempSol => Solver % Variable
      TempPerm    => TempSol % Perm
      Temperature => TempSol % Values
-     VarName = GetVarName( TempSol ) 
-  
+     VarName = GetVarName( TempSol )
+
      LocalNodes = COUNT( TempPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
      IF(SIZE(Temperature) < LocalNodes) LocalNodes = SIZE(Temperature)
-     
-     
+
+
      NeedFlowSol = .FALSE.
      DO i=1,Model % NumberOfEquations
        ConvectionFlag = GetString( Model % Equations(i) % Values, 'Convection', Found )
@@ -291,13 +291,13 @@ END SUBROUTINE HeatSolverLegacy_Init
 
      FlowSol => NULL()
      IF( NeedFlowSol ) THEN
-       ConvectionField = GetString( SolverParams, 'Temperature Convection Field', Found )     
-       IF ( Found ) THEN       
+       ConvectionField = GetString( SolverParams, 'Temperature Convection Field', Found )
+       IF ( Found ) THEN
          FlowSol => VariableGet( Solver % Mesh % Variables, ConvectionField )
        ELSE
          FlowSol => VariableGet( Solver % Mesh % Variables, 'Flow Solution' )
        END IF
-      
+
        IF ( ASSOCIATED( FlowSol ) ) THEN
          FlowPerm     => FlowSol % Perm
          NSDOFs       =  FlowSol % DOFs
@@ -306,13 +306,13 @@ END SUBROUTINE HeatSolverLegacy_Init
          CALL Fatal('HeatSolver','Flow is "computed" but not flow field available!')
        END IF
      END IF
-       
+
      DensitySol => VariableGet( Solver % Mesh % Variables, 'Density' )
 
-     ! Check whether we have some heater controls. This will affect initialization stuff. 
+     ! Check whether we have some heater controls. This will affect initialization stuff.
      SmartHeaterControl = ListCheckPresentAnyBodyForce( Model,'Smart Heater Control')
      IntegralHeaterControl = ListCheckPresentAnyBodyForce( Model,'Integral Heat Source')
-   
+
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -392,7 +392,7 @@ END SUBROUTINE HeatSolverLegacy_Init
        END IF
 
 
-       IF ( SmartHeaterControl .OR. IntegralHeaterControl) THEN          
+       IF ( SmartHeaterControl .OR. IntegralHeaterControl) THEN
           n = Model % NumberOfBodyForces
           IF ( AllocationsDone ) DEALLOCATE( HeaterArea, HeaterDensity, HeaterSource, &
                HeaterScaling, HeaterTarget, SmartHeaters, IntegralHeaters )
@@ -405,7 +405,7 @@ END SUBROUTINE HeatSolverLegacy_Init
           SmartHeaters = .FALSE.
           IntegralHeaters = .FALSE.
        END IF
-       
+
        IF( SmartHeaterControl ) THEN
           IF ( AllocationsDone ) DEALLOCATE( XX, YY, ForceHeater  )
           n = SIZE( Temperature )
@@ -413,11 +413,11 @@ END SUBROUTINE HeatSolverLegacy_Init
           IF ( istat /= 0 ) THEN
              CALL Fatal( 'HeatSolve', 'Memory allocation error' )
           END IF
-          XX = 0.0d0 
+          XX = 0.0d0
           YY = 0.0d0
           ForceHeater = 0.0d0
        END IF
-       
+
        NULLIFY( Hwrk )
        AllocationsDone = .TRUE.
     END IF
@@ -480,47 +480,47 @@ END SUBROUTINE HeatSolverLegacy_Init
 
      IF(Found .AND. dt > dt0) TransientAssembly = .FALSE.
 
-     
-     AnyMultiply = ListCheckPresentAnyMaterial( Model, 'Heat Transfer Multiplier' ) 
+
+     AnyMultiply = ListCheckPresentAnyMaterial( Model, 'Heat Transfer Multiplier' )
 
 !------------------------------------------------------------------------------
 
      TransientHeaterControl = .FALSE.
      IF(SmartHeaterControl) THEN
 
-       ! Mark the smart heaters 
+       ! Mark the smart heaters
        SmartHeaters = .FALSE.
        bf_id = 0
        DO i = 1,Model % NumberOfBodyForces
          IF( ListGetLogical( Model % BodyForces(i) % Values, &
              'Smart Heater Control', Found ) ) THEN
-           SmartHeaters(i) = .TRUE.	     
+           SmartHeaters(i) = .TRUE.
            bf_id = i
          END IF
        END DO
 
-       ! Find the BC that controls the heater 
-       ! If not found assume that smart heater is related to phase change 
+       ! Find the BC that controls the heater
+       ! If not found assume that smart heater is related to phase change
        MeltPoint = GetCReal( Model % BodyForces(bf_id) % Values,&
-           'Smart Heater Temperature',GotMeltPoint)           
-              
+           'Smart Heater Temperature',GotMeltPoint)
+
        SmartHeaterAverage = .FALSE.
        SmartHeaterNode = ListGetInteger( Model % BodyForces(bf_id) % Values,&
-           'Smart Heater Control Node',GotIt) 
+           'Smart Heater Control Node',GotIt)
        IF(.NOT. GotIt) THEN
          RealWork => ListGetConstRealArray( Model % BodyForces(bf_id) % Values,&
-             'Smart Heater Control Point',GotIt) 
+             'Smart Heater Control Point',GotIt)
          IF( GotIt ) THEN
            ControlPoint(1:3) = RealWork(1:3,1)
-           
+
            mindist = HUGE( mindist )
            DO l=1,Model % NumberOfNodes
              IF( TempPerm(l) == 0 ) CYCLE
-             
+
              jx = Model % Mesh % Nodes % x(l)
              jy = Model % Mesh % Nodes % y(l)
              jz = Model % Mesh % Nodes % z(l)
-             
+
              dist = (ControlPoint(1)-jx)**2 + (ControlPoint(2)-jy)**2 + (ControlPoint(3)-jz)**2
              IF( dist < mindist ) THEN
                mindist = dist
@@ -532,16 +532,16 @@ END SUBROUTINE HeatSolverLegacy_Init
          WRITE(Message,*) 'Found Control Point at distance:',SQRT(mindist)
          CALL Info('HeatSolve',Message)
          WRITE(Message,*) 'Control Point Index:',SmartHeaterNode
-         CALL Info('HeatSolve',Message)        
+         CALL Info('HeatSolve',Message)
        END IF
-       
+
        IF( .NOT. GotMeltPoint .OR. SmartHeaterNode == 0) THEN
          GotIt = .FALSE.
          Found = .FALSE.
          SmartHeaterBC = 0
-         
+
          DO i=1,Model % NumberOfBCs
-           GotIt = ListGetLogical( Model % BCs(i) % Values,'Smart Heater Boundary', Found ) 
+           GotIt = ListGetLogical( Model % BCs(i) % Values,'Smart Heater Boundary', Found )
            IF(GotIt) THEN
              SmartHeaterBC = i
              EXIT
@@ -549,7 +549,7 @@ END SUBROUTINE HeatSolverLegacy_Init
          END DO
          IF(.NOT. GotIt) THEN
            DO i=1,Model % NumberOfBCs
-             GotIt = ListGetLogical( Model % BCs(i) % Values,'Phase Change', Found ) 
+             GotIt = ListGetLogical( Model % BCs(i) % Values,'Phase Change', Found )
              IF(GotIt) THEN
                SmartHeaterBC = i
                EXIT
@@ -559,7 +559,7 @@ END SUBROUTINE HeatSolverLegacy_Init
          IF(SmartHeaterBC == 0) THEN
            CALL Fatal('HeatSolve','Smart Heater Boundary / Phase Change is undefined')
          END IF
-         
+
          MeltPoint = GetCReal( Model % BCs(SmartHeaterBC) % Values,&
              'Smart Heater Temperature',Found)
          IF(.NOT. Found) THEN
@@ -572,20 +572,20 @@ END SUBROUTINE HeatSolverLegacy_Init
              CALL Fatal('HeatSolver','Smart Heater Temperature / Melting Point is undefined')
            END IF
          END IF
-         
-         ! Find the node related to temperature control 
+
+         ! Find the node related to temperature control
          SmartHeaterAverage = ListGetLogical(Solver % Values,'Smart Heater Average', Found)
          IF(.NOT. SmartHeaterAverage) THEN
            jx = -HUGE(jx)
            DO k = Model % Mesh % NumberOfBulkElements + 1, &
                Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements
-             
+
              Element => Model % Mesh % Elements(k)
-             
+
              IF ( Element % BoundaryInfo % Constraint == SmartHeaterBC ) THEN
                DO l=1,Element % TYPE % NumberOfNodes
                  IF ( Model % Mesh % Nodes % x(Element % NodeIndexes(l)) >= jx ) THEN
-                   j = Element % NodeIndexes(l) 
+                   j = Element % NodeIndexes(l)
                    jx = Model % Mesh % Nodes % x(Element % NodeIndexes(l))
                  END IF
                END DO
@@ -600,8 +600,8 @@ END SUBROUTINE HeatSolverLegacy_Init
         IF(.NOT. Found) THEN
           SmartTolReached = .TRUE.
           SmartTol = 1.0
-        END IF   
-     
+        END IF
+
         PowerTimeScale = ListGetConstReal(Solver % Values, &
              'Smart Heater Time Scale',Found)
 
@@ -612,7 +612,7 @@ END SUBROUTINE HeatSolverLegacy_Init
            TransientHeaterControl = .FALSE.
            CALL Info( 'HeatSolve', 'Using Steady-state Heater Control')
         END IF
-        
+
         IF(Solver % DoneTime /= DoneTime) THEN
            PrevPowerScaling = PowerScaling
            DoneTime = Solver % DoneTime
@@ -620,7 +620,7 @@ END SUBROUTINE HeatSolverLegacy_Init
      END IF
 
      IF( IntegralHeaterControl) THEN
-        CALL Info( 'HeatSolve', 'Using Integral Heater Control')       
+        CALL Info( 'HeatSolve', 'Using Integral Heater Control')
         IntegralHeaters = .FALSE.
         DO i = 1,Model % NumberOfBodyForces
            IntegralHeaters(i) = ListCheckPresent( Model % BodyForces(i) % Values, &
@@ -649,7 +649,7 @@ END SUBROUTINE HeatSolverLegacy_Init
      FirstTime = .TRUE.
 
      ALLOCATE(PrevSolution(LocalNodes))
-     
+
      DO WHILE( CumulativeTime < Timestep-1.0d-12 .OR. .NOT. TransientSimulation )
 !------------------------------------------------------------------------------
 !    The first time around this has been done by the caller...
@@ -665,15 +665,15 @@ END SUBROUTINE HeatSolverLegacy_Init
        PrevTemperature => Solver % Variable % PrevValues(:,1)
      END IF
 !------------------------------------------------------------------------------
-     
+
      totat = 0.0d0
      totst = 0.0d0
 
      Norm = Solver % Variable % Norm
 
      CALL DefaultStart()
-     
-     
+
+
      DO iter=1,NonlinearIter
        at  = CPUTime()
        at0 = RealTime()
@@ -692,18 +692,18 @@ END SUBROUTINE HeatSolverLegacy_Init
          Solver % Matrix % RHS = Solver % Matrix % BulkRHS
          GOTO 1000
        END IF
-            
+
        IF(Radiosity) THEN
-         CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)         
-         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss, Reflect)         
+         CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)
+         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss, Reflect)
        ELSE
-         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss) 
+         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss)
        END IF
-         
+
 !------------------------------------------------------------------------------
        CALL DefaultInitialize()
 !------------------------------------------------------------------------------
- 
+
        IF ( SmartHeaterControl .OR. IntegralHeaterControl ) THEN
           IF( SmartHeaterControl) ForceHeater = 0.0d0
           HeaterArea = 0.0d0
@@ -713,13 +713,13 @@ END SUBROUTINE HeatSolverLegacy_Init
           HeaterTarget = 0.0d0
           HeaterControlLocal = .FALSE.
 
-          DO t=1,Solver % NumberOfActiveElements             
-             Element => GetActiveElement(t)             
+          DO t=1,Solver % NumberOfActiveElements
+             Element => GetActiveElement(t)
              BodyForce => GetBodyForce()
-             
+
              IF ( .NOT. ASSOCIATED( BodyForce ) ) CYCLE
              bf_id = GetBodyForceId()
-             
+
              IF( .NOT. (SmartHeaters(bf_id) .OR. IntegralHeaters(bf_id) ) ) CYCLE
 
              n = GetElementNOFNodes()
@@ -761,10 +761,10 @@ END SUBROUTINE HeatSolverLegacy_Init
        NofActive = GetNOFActive()
 
        DO t=1,NofActive
-         
+
          CALL AdvanceOutput(t,NofActive)
 !------------------------------------------------------------------------------
-!        Check if this element belongs to a body where temperature 
+!        Check if this element belongs to a body where temperature
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
@@ -872,7 +872,7 @@ END SUBROUTINE HeatSolverLegacy_Init
                                LocalTemperature(1:n)-ReferenceTemperature(1:n)) )
          ELSE IF ( CompressibilityModel == UserDefined1 ) THEN
            IF ( ASSOCIATED( DensitySol ) ) THEN
-             CALL GetScalarLocalSolution( Density, 'Density' ) 
+             CALL GetScalarLocalSolution( Density, 'Density' )
            ELSE
              Density(1:n) = GetReal( Material,'Density' )
            END IF
@@ -957,13 +957,13 @@ END SUBROUTINE HeatSolverLegacy_Init
              END IF
            END DO
          ELSE
-           IF ( ALL(MU==0) ) C1 = 0.0D0 
+           IF ( ALL(MU==0) ) C1 = 0.0D0
          END IF
 
          HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
- 
+
 !------------------------------------------------------------------------------
-!        Check if modelling Phase Change with Eulerian approach 
+!        Check if modelling Phase Change with Eulerian approach
 !------------------------------------------------------------------------------
          PhaseSpatial = .FALSE.
          IF (  PhaseChange ) THEN
@@ -990,7 +990,7 @@ END SUBROUTINE HeatSolverLegacy_Init
            IF(.NOT. Found ) THEN
              Load(1:n) = Density(1:n) *  GetReal( BodyForce, 'Heat Source', Found )
            END IF
-             
+
            IF ( SmartHeaterControl .AND. NewtonLinearization .AND. SmartTolReached) THEN
               IF(  SmartHeaters(bf_id) ) THEN
                HeaterControlLocal = .TRUE.
@@ -1003,29 +1003,29 @@ END SUBROUTINE HeatSolverLegacy_Init
 
            IF ( IntegralHeaterControl ) THEN
               IF( IntegralHeaters(bf_id) ) THEN
-                 Load(1:n) = Load(1:n) * HeaterScaling(bf_id) 
+                 Load(1:n) = Load(1:n) * HeaterScaling(bf_id)
               END IF
            END IF
          END IF
-	
+
          C0 = 0.0_dp
 !------------------------------------------------------------------------------
 ! Note at this point HeatCapacity = \rho * c_p OR \rho * (c_p - R)
 ! and C1 = 0 (diffusion) or 1 (convection)
 !------------------------------------------------------------------------------
-	 
+
 !------------------------------------------------------------------------------
 !          Perfusion (added as suggested by Matthias Zenker)
 !------------------------------------------------------------------------------
          IF( ASSOCIATED(BodyForce) ) THEN
            PerfusionRate(1:n) = GetReal( BodyForce, 'Perfusion Rate', Found )
-         
+
            IF ( Found ) THEN
              PerfusionRefTemperature(1:n) = GetReal( BodyForce, 'Perfusion Reference Temperature' )
              PerfusionDensity(1:n) = GetReal( BodyForce, 'Perfusion Density' )
              PerfusionHeatCapacity(1:n) = GetReal( BodyForce, 'Perfusion Heat Capacity' )
-             C0(1:n) = PerfusionHeatCapacity(1:n) * PerfusionRate(1:n) * PerfusionDensity(1:n) 
-             Load(1:n) = Load(1:n) + C0(1:n) * PerfusionRefTemperature(1:n)           
+             C0(1:n) = PerfusionHeatCapacity(1:n) * PerfusionRate(1:n) * PerfusionDensity(1:n)
+             Load(1:n) = Load(1:n) + C0(1:n) * PerfusionRefTemperature(1:n)
            END IF
          END IF
 
@@ -1080,7 +1080,7 @@ END SUBROUTINE HeatSolverLegacy_Init
          ELSE
             Bubbles = UseBubbles .AND. .NOT.Stabilize .AND. &
             ( ConvectionFlag == 'computed' .OR. ConvectionFlag == 'constant' )
-            
+
 !------------------------------------------------------------------------------
 !           If time dependent simulation add mass matrix to stiff matrix
 !------------------------------------------------------------------------------
@@ -1106,30 +1106,30 @@ END SUBROUTINE HeatSolverLegacy_Init
 !------------------------------------------------------------------------------
       END DO     !  Bulk elements
 !------------------------------------------------------------------------------
-      
+
       CALL DefaultFinishBulkAssembly()
 
 
 1000  CONTINUE
 
-     
+
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
       DO bc_elem = 1, Solver % Mesh % NumberOfBoundaryElements
-        
+
         Element => GetBoundaryElement(bc_elem)
         BC => GetBC()
         IF ( .NOT. ASSOCIATED(BC) ) CYCLE
-        
+
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         n = GetElementNOFNodes()
 
 
-        ! This checks whether there are any Dirichlet conditions on the 
-        ! smart heater boundary. If there are the r.h.s. must be zero as 
+        ! This checks whether there are any Dirichlet conditions on the
+        ! smart heater boundary. If there are the r.h.s. must be zero as
         ! there can possibly not be any effect on temperature.
         !-----------------------------------------------------------------
 	IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
@@ -1174,7 +1174,7 @@ END SUBROUTINE HeatSolverLegacy_Init
       PrevNorm = Norm
 
       IF(SmartHeaterControl .AND. NewtonLinearization .AND. SmartTolReached) THEN
-      
+
         IF(.NOT. TransientHeaterControl) THEN
           ! These are control loops. Do use them to check convergence or advance the
           ! nonlinear iteration flag.
@@ -1182,22 +1182,22 @@ END SUBROUTINE HeatSolverLegacy_Init
           CALL ListAddLogical(SolverParams,'Skip Advance Nonlinear Iter',.TRUE.)
 
           Relax = GetCReal( SolverParams,'Nonlinear System Relaxation Factor', Found )
-          
+
           IF ( Found .AND. Relax /= 1.0d0 ) THEN
             CALL ListAddConstReal( Solver % Values,&
                 'Nonlinear System Relaxation Factor', 1.0d0 )
           ELSE
             Relax = 1.0d0
-          END IF          
+          END IF
 
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
-              ForceHeater, XX, Norm, 1, Solver )         
+              ForceHeater, XX, Norm, 1, Solver )
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
               Solver % Matrix % RHS, YY, Norm, 1, Solver )
 
           CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.FALSE.)
           CALL ListAddLogical(SolverParams,'Skip Advance Nonlinear Iter',.FALSE.)
-        ELSE                    
+        ELSE
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
               Solver % Matrix % RHS, Temperature, Norm, 1, Solver )
           YY = Temperature
@@ -1206,15 +1206,15 @@ END SUBROUTINE HeatSolverLegacy_Init
         IF(.NOT. SmartHeaterAverage) THEN
           xave = XX(TempPerm(SmartHeaterNode))
           yave = YY(TempPerm(SmartHeaterNode))
-        ELSE          
+        ELSE
           xave = 0.0d0
           yave = 0.0d0
           j = 0
-          
-          DO k = Model % Mesh % NumberOfBulkElements + 1, &
-              Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements            
 
-            Element => Model % Mesh % Elements(k)            
+          DO k = Model % Mesh % NumberOfBulkElements + 1, &
+              Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements
+
+            Element => Model % Mesh % Elements(k)
             IF ( Element % BoundaryInfo % Constraint == SmartHeaterBC ) THEN
               l = Element % TYPE % NumberOfNodes
               j = j + l
@@ -1223,7 +1223,7 @@ END SUBROUTINE HeatSolverLegacy_Init
             END IF
           END DO
           xave = xave / j
-          yave = yave / j 
+          yave = yave / j
           CALL ListAddConstReal(Model % Simulation,'res: Smart Heater Temperature',yave)
         END IF
 
@@ -1232,7 +1232,7 @@ END SUBROUTINE HeatSolverLegacy_Init
             Solver % Variable % NonlinValues = Temperature
           END IF
 
-          PowerScaling = (MeltPoint - yave) / xave 
+          PowerScaling = (MeltPoint - yave) / xave
           Temperature = YY + PowerScaling * XX
 
           ! The change is computed separately for the controlled temperature field
@@ -1327,7 +1327,7 @@ END SUBROUTINE HeatSolverLegacy_Init
         IF ( .NOT.TransientSimulation ) PrevSolution=Temperature(1:LocalNodes)
       END IF
 !------------------------------------------------------------------------------
-     
+
       RelativeChange = Solver % Variable % NonlinChange
 
       WRITE( Message, * ) 'Result Norm   : ',Norm
@@ -1347,7 +1347,7 @@ END SUBROUTINE HeatSolverLegacy_Init
           YY = Temperature
         END IF
       END IF
-      
+
 !------------------------------------------------------------------------------
     END DO ! of the nonlinear iteration
 !------------------------------------------------------------------------------
@@ -1356,10 +1356,10 @@ END SUBROUTINE HeatSolverLegacy_Init
       IF(.NOT. GotIt) PowerRelax = 1.0_dp
       PowerSensitivity = ListGetConstReal(Solver % Values,'Smart Heater Power Sensivity',GotIt)
       IF(.NOT. GotIt) PowerSensitivity = 4.0_dp
-      PowerScaling = PowerScaling * (1 + PowerSensitivity * PowerRelax * (MeltPoint/yave - 1.0d0) ) 
+      PowerScaling = PowerScaling * (1 + PowerSensitivity * PowerRelax * (MeltPoint/yave - 1.0d0) )
 
       IF( ListGetLogical( Solver % Values,'Smart Heater Transient Speedup',GotIt ) ) THEN
-        Temperature = Temperature * (1 + PowerRelax * (MeltPoint/yave - 1.0d0)   )     
+        Temperature = Temperature * (1 + PowerRelax * (MeltPoint/yave - 1.0d0)   )
       END IF
       YY = Temperature
     END IF
@@ -1375,7 +1375,7 @@ END SUBROUTINE HeatSolverLegacy_Init
    Solver % dt = Timestep
 
    CALL DefaultFinish()
-   
+
 !------------------------------------------------------------------------------
    CALL  ListAddConstReal( Solver % Values,  &
         'Nonlinear System Relaxation Factor', SaveRelax )
@@ -1390,12 +1390,12 @@ END SUBROUTINE HeatSolverLegacy_Init
            HeatSolverLegacy_Boundary_Residual )
      END IF
    END IF
-     
+
 CONTAINS
 
 
 !------------------------------------------------------------------------------
-! To save some time tabulate data needed for the diffuse gray radiation. 
+! To save some time tabulate data needed for the diffuse gray radiation.
 !------------------------------------------------------------------------------
   SUBROUTINE TabulateBoundaryAverages( Mesh, Emiss, Reflect )
 !------------------------------------------------------------------------------
@@ -1407,10 +1407,10 @@ CONTAINS
     INTEGER :: bindex, nb, n, j, noactive
     INTEGER :: ElemInds(12)
     REAL(KIND=dp) :: NodalVal(12), Absorp
-    
+
      nb = Mesh % NumberOfBoundaryElements
      NoActive = 0
-     
+
      DO j=1,nb
 !      bindex = j + Mesh % NumberOfBulkElements
 !      Element => Mesh % Elements(bindex)
@@ -1500,13 +1500,13 @@ CONTAINS
           IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
         ELSE IF (ElementForThisPartition) THEN
           IF( Radiosity ) THEN
-            CALL RadiosityRadiation( Model, Solver, Element, & 
+            CALL RadiosityRadiation( Model, Solver, Element, &
                 n, Temperature, TempPerm, ForceVector )
             IsRadiosity = .TRUE.
-          ELSE          
-            CALL DiffuseGrayRadiation( Model, Solver, Element, & 
+          ELSE
+            CALL DiffuseGrayRadiation( Model, Solver, Element, &
                 Temperature, TempPerm, ForceVector, VisibleFraction, Text)
-            
+
             IF( GetLogical( BC, 'Radiation Boundary Open', Found) ) THEN
               AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
               IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
@@ -1537,7 +1537,7 @@ CONTAINS
             ELSE
               HeatTransferCoeff(j) = Emissivity * (Temperature(k)**3 +   &
                   Temperature(k)**2*Text+Temperature(k)*Text**2 + Text**3) * &
-                  StefanBoltzmann 
+                  StefanBoltzmann
               LOAD(j) = HeatTransferCoeff(j) * Text
             END IF
           END DO
@@ -1559,7 +1559,7 @@ CONTAINS
       END IF
 
 !------------------------------------------------------------------------------
-!     BC: -k@T/@n = (rho*L)*v.n 
+!     BC: -k@T/@n = (rho*L)*v.n
 !     Heating related to pulling is possible only in ss cases where pull velocity
 !     is desrcibed.
 !------------------------------------------------------------------------------
@@ -1568,7 +1568,7 @@ CONTAINS
          PhaseVelocity(1,1:n) = GetReal( BC,'Phase Velocity 1', Found  )
          PhaseVelocity(2,1:n) = GetReal( BC,'Phase Velocity 2', Found  )
          PhaseVelocity(3,1:n) = GetReal( BC,'Phase Velocity 3', Found  )
-  
+
          ! Ensure that the latent heat and density come from the same side
          LatentHeat(1:n) = GetParentMatProp( 'Latent Heat', &
               UElement = Element, UParent = Parent )
@@ -1579,8 +1579,8 @@ CONTAINS
            Density(1:n) = GetReal( Model % Materials(k) % Values, 'Density' )
          END IF
 
-         ! This could be rather put as a new type of BC into the assembly routine and 
-         ! then the Normal could be taken at the proper Gaussian integration points. 
+         ! This could be rather put as a new type of BC into the assembly routine and
+         ! then the Normal could be taken at the proper Gaussian integration points.
          Normal = NormalVector( Element, ElementNodes, 0.0_dp, 0.0_dp, .TRUE. )
 
          DO i=1,n
@@ -1600,7 +1600,7 @@ CONTAINS
         ! currently only isotropic heat conductivity supported
         HeatConductivityIso(1:n) = GetParentMatProp('Heat Conductivity',Element,GotIt)
         IF(.NOT. GotIt) THEN
-          CALL Fatal( 'HeatSolver','Could not find > Heat Conductivity < for parent!' )           
+          CALL Fatal( 'HeatSolver','Could not find > Heat Conductivity < for parent!' )
         END IF
       END IF
 
@@ -1617,7 +1617,7 @@ CONTAINS
           CALL Fatal('HeatSolver','Infinity BC not implemented only for cartersian case!')
         END IF
         CALL DiffuseConvectiveGenBoundary(STIFF,FORCE,&
-            LOAD,HeatTransferCoeff,Element,n,ElementNodes ) 
+            LOAD,HeatTransferCoeff,Element,n,ElementNodes )
       END IF
 
 !------------------------------------------------------------------------------
@@ -1654,7 +1654,7 @@ CONTAINS
          END DO
          k = SIZE(Solver % Variable % PrevValues,2)
          ALLOCATE( STIFF(1,n),MASS(1,n),X(n,k) )
- 
+
          SaveValues => Solver % Variable % Values
       END IF
 
@@ -1740,7 +1740,7 @@ CONTAINS
               ImplicitFactors = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
 
           IF(j <= ImplicitFactors) THEN
-            
+
             S = (SUM( Temperature( TempPerm( RadiationElement % &
                 NodeIndexes))**4 )/k )**(1._dp/4._dp)
 !------------------------------------------------------------------------------
@@ -1764,14 +1764,14 @@ CONTAINS
           ELSE
             S = (SUM( Temperature( TempPerm( RadiationElement % &
                 NodeIndexes))**4 )/k )
-            
+
             LOAD = Text * S * StefanBoltzmann
-            
+
             DO m=1,n
               k1 = TempPerm( Element % NodeIndexes(m) )
               ForceVector(k1) = ForceVector(k1) + LOAD*Base(m)
-            END DO            
-          END IF 
+            END DO
+          END IF
 
         END DO
 
@@ -1797,7 +1797,7 @@ CONTAINS
       TYPE(Element_t), POINTER :: Element
       INTEGER :: n
       INTEGER :: TempPerm(:)
-      REAL(KIND=dp) :: Temperature(:), ForceVector(:)      
+      REAL(KIND=dp) :: Temperature(:), ForceVector(:)
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Emis1, Refl1, RadCoeffAtIp, RadLoadAtIp, TempAtIp, s, x, y, z, DetJ, &
           Beta, Fact1, Fact2
@@ -1810,16 +1810,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     If linear iteration compute radiation load
 !------------------------------------------------------------------------------
-      
-      pIndexes => Element % NodeIndexes     
-      
+
+      pIndexes => Element % NodeIndexes
+
       ! Fact(1) is the absorbed irradiation, the net flux is Fact(1) - e*sigma*T^4.
       ! For gray surfaces the part (a*e/r)*sigma*T^4 of the radiosity is added to
       ! both terms, so that it is linearized implicitly, which stabilizes the
       ! iteration. For black surfaces (r=0) this is not possible.
       Emis1 = Emissivity
       Fact => Element % BoundaryInfo % RadiationFactors % Factors
-      
+
       TempAtIp = SUM(Temperature(TempPerm(pIndexes(1:n))))/n
 
       Beta = 0.0_dp
@@ -1841,7 +1841,7 @@ CONTAINS
       END IF
 
       IP = GaussPoints( Element )
-      
+
       DO t=1,IP % n
         stat = ElementInfo( Element,ElementNodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
         s = detJ * IP % s(t)
@@ -1860,12 +1860,12 @@ CONTAINS
           ForceVector(k1) = ForceVector(k1) + s *Basis(p) * RadLoadAtIp
         END DO
       END DO
-      
+
     END SUBROUTINE RadiosityRadiation
 !------------------------------------------------------------------------------
 
 
-    
+
 !------------------------------------------------------------------------------
     SUBROUTINE EffectiveHeatCapacity()
       LOGICAL :: Found, Specific, GotFraction
@@ -1873,10 +1873,10 @@ CONTAINS
       REAL(KIND=dp) :: dT0
 
 !------------------------------------------------------------------------------
-!     See if temperature gradient indside the element is large enough 
+!     See if temperature gradient indside the element is large enough
 !     to use  the c_p = SQRT( (dH/dx)^2 / (dT/dx)^2 ), otherwise
 !     use c_p = dH/dT, or if in time dependent simulation, use
-!     c_p = (dH/dt) / (dT/dt), if requested. 
+!     c_p = (dH/dt) / (dT/dt), if requested.
 !------------------------------------------------------------------------------
 
       SELECT CASE(PhaseModel)
@@ -1927,14 +1927,14 @@ CONTAINS
       Specific = ListCheckPresent( Material,'Specific Enthalpy')
 
       EnthalpyFraction(1:n) = ListGetReal(Material,'Enthalpy Fraction',&
-          n,Element % NodeIndexes,GotFraction)          
- 
+          n,Element % NodeIndexes,GotFraction)
+
 
 !-----------------------------------------------------------------------------
       SELECT CASE( PhaseChangeModel )
 
 !------------------------------------------------------------------------------
-! This phase change model is available only for some type of real entries 
+! This phase change model is available only for some type of real entries
 ! that have an implemented analytical derivation rule.
 !-----------------------------------------------------------------------------
       CASE( PHASE_SPATIAL_1 )
@@ -1955,11 +1955,11 @@ CONTAINS
         END IF
 
         IF( GotFraction ) THEN
-          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
+          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n)
         ELSE
-          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
+          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n)
         END IF
-          
+
 !---------------------------------------------------------------------------------------
 ! Note that for the 'spatial 2' model the evaluation of c_p is done in each integration
 ! point and thus Enthalphy and PhaseSpatial flag are used instead of HeatCapacity directly.
@@ -1969,21 +1969,21 @@ CONTAINS
           Enthalpy(1:n) = ListGetReal(Material,'Specific Enthalpy',n,Element % NodeIndexes)
           Enthalpy(1:n) = Density(1:n) * Enthalpy(1:n)
         ELSE
-          Enthalpy(1:n) = ListGetReal(Material,'Enthalpy',n,Element % NodeIndexes)          
+          Enthalpy(1:n) = ListGetReal(Material,'Enthalpy',n,Element % NodeIndexes)
         END IF
-        
+
         IF( GotFraction ) THEN
           CALL Warn('EffectiveHeatCapacity',&
               '> Enthalpy Fraction < not treated yet by spatial 2 phase change')
         END IF
 
-          
+
 !------------------------------------------------------------------------------
       CASE( PHASE_TEMPORAL )
-        ! When retrieving the value of enthalphy on the previous timestep 
+        ! When retrieving the value of enthalphy on the previous timestep
         ! the relevant entries of the Temperature solution in the global vector
-        ! are tampered in order to make the ListGetReal command work as wanted. 
-        ! 1) Values at current temperature     
+        ! are tampered in order to make the ListGetReal command work as wanted.
+        ! 1) Values at current temperature
         !------------------------------------------------------------------------
         IF( Specific ) THEN
           Work(1:n) = ListGetReal( Material,'Specific Enthalpy',n,Element % NodeIndexes )
@@ -1992,12 +1992,12 @@ CONTAINS
         END IF
 
         ! 2) Values at previous temperature
-        Temperature(TempPerm(Element % NodeIndexes)) = & 
-            PrevTemperature(TempPerm(Element % NodeIndexes)) 
+        Temperature(TempPerm(Element % NodeIndexes)) = &
+            PrevTemperature(TempPerm(Element % NodeIndexes))
 
         IF( Specific ) THEN
           Work(1:n) = Work(1:n) - ListGetReal( Material,'Specific Enthalpy', &
-              n,Element % NodeIndexes )          
+              n,Element % NodeIndexes )
           Work(1:n) = Density(1:n) * Work(1:n) / dT(1:n)
         ELSE
           Work(1:n) = Work(1:n) - ListGetReal( Material,'Enthalpy', &
@@ -2006,15 +2006,15 @@ CONTAINS
         END IF
 
         IF( GotFraction ) THEN
-          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
+          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n)
         ELSE
-          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
+          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n)
         END IF
 
 
         ! Revert to current temperature
-        Temperature(TempPerm(Element % NodeIndexes)) = & 
-            PrevTemperature(TempPerm(Element % NodeIndexes)) + dT(1:n)        
+        Temperature(TempPerm(Element % NodeIndexes)) = &
+            PrevTemperature(TempPerm(Element % NodeIndexes)) + dT(1:n)
 
 !------------------------------------------------------------------------------
       END SELECT
@@ -2037,7 +2037,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       DO t=1,Solver % Mesh % NumberOfBulkElements
 !------------------------------------------------------------------------------
-!       Check if this element belongs to a body where temperature 
+!       Check if this element belongs to a body where temperature
 !       has been calculated
 !------------------------------------------------------------------------------
         Element => Solver % Mesh % Elements(t)
@@ -2380,7 +2380,7 @@ CONTAINS
         CASE DEFAULT
            dim = CoordinateSystemDimension()
      END SELECT
-!    
+!
 !    ---------------------------------------------
 
      Element => Edge % BoundaryInfo % Left
@@ -2407,7 +2407,7 @@ CONTAINS
      ALLOCATE( Temperature(nd), Basis(nd), ExtTemperature(nd), &
         TransferCoeff(en), x(en), y(en), z(en), EdgeBasis(nd), &
         dBasisdx(nd,3), NodalConductivity(nd), Flux(nd), &
-        NodalEmissivity(nd), Indexes(nd) ) 
+        NodalEmissivity(nd), Indexes(nd) )
 
      nd = GetElementDOFs(Indexes,Element)
 
@@ -2444,8 +2444,8 @@ CONTAINS
 !
 !       Check if dirichlet BC given:
 !       ----------------------------
-        Dirichlet = ListCheckPresent( Model % BCs(j) % Values,'Temperature')       
-        
+        Dirichlet = ListCheckPresent( Model % BCs(j) % Values,'Temperature')
+
 !       Get various flux bc options:
 !       ----------------------------
 
@@ -2575,7 +2575,7 @@ CONTAINS
                      ( SUM( Temperature(1:nd) * Basis(1:nd) ) ** 4 - &
                        SUM( ExtTemperature(1:en) * EdgeBasis(1:en) ) ** 4 )
 
-!          flux given by the computed solution, and 
+!          flux given by the computed solution, and
 !          force norm for scaling the residual:
 !          -----------------------------------------
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
@@ -2719,7 +2719,7 @@ CONTAINS
            s = IntegStuff % s(t) * detJ * SqrtMetric
         END IF
 
-        ! 
+        !
         ! Compute flux over the edge as seen by elements
         ! on both sides of the edge:
         ! ----------------------------------------------
@@ -2731,7 +2731,7 @@ CONTAINS
                  Element => Edge % BoundaryInfo % Right
            END SELECT
 !
-!          Can this really happen (maybe it can...)  ?      
+!          Can this really happen (maybe it can...)  ?
 !          -------------------------------------------
            IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) CYCLE
 !
@@ -2788,7 +2788,7 @@ CONTAINS
         END DO
 
 !       Compute squre of the flux jump:
-!       -------------------------------   
+!       -------------------------------
         EdgeLength  = EdgeLength + s
         Jump = 0.0d0
         DO k=1,dim
@@ -2996,7 +2996,7 @@ CONTAINS
      NodalSource = 0.0d0
      IF( k > 0 ) THEN
        NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
-           'Volumetric Heat Source',VolSource ) 
+           'Volumetric Heat Source',VolSource )
        IF( .NOT. VolSource ) THEN
          NodalSource(1:n) = GetReal( Model % BodyForces(k) % Values, &
              'Heat Source',  Found )
@@ -3054,7 +3054,7 @@ CONTAINS
         ELSE
           Residual = -Density * SUM( NodalSource(1:n) * Basis(1:n) )
         END IF
-          
+
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
            DO j=1,dim
 !

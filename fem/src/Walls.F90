@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,44 +13,44 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
 !/******************************************************************************
 ! *
-! *  This file contains subroutines for the wall boundary conditions of 
-! *  the k-epsilon turbulence model on walls. 
+! *  This file contains subroutines for the wall boundary conditions of
+! *  the k-epsilon turbulence model on walls.
 ! *
 ! ******************************************************************************
 ! *
 ! *  Authors: Jari H?m?l?inen
 ! *  Address: VTT Energy
 ! *           P.O.Box 1603
-! *           40101 Jyv?skyl?, Finland 
+! *           40101 Jyv?skyl?, Finland
 ! *
 ! *  Authors: Juha Ruokolainen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 19 Jun 1996
 ! *
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
-!> Solve the friction velocity of the previous iteration based 
-!> on the wall law. 
+!> Solve the friction velocity of the previous iteration based
+!> on the wall law.
 !
 !         Input:
 !             DENSIT - Density
-!             VISCOS - Viscosity 
+!             VISCOS - Viscosity
 !             DIST   - Distance from the wall
 !             UT     - Tangential velocity of the previous iteration
 !
@@ -65,10 +65,10 @@
       DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,TAUW,  &
       YPLUS, FX, WALL_LAW, D_WALL_LAW
 
-      INTEGER :: ITER 
+      INTEGER :: ITER
       INTEGER :: MAXITER=100
       DOUBLE PRECISION ::  TOL=1.0D-14
- 
+
 ! Default value:
       TAUW = UT / DIST
       UFRIC = DSQRT( TAUW / DENSIT )
@@ -91,12 +91,12 @@
 
       RETURN
       END
-      
+
 
 
 !----------------------------------------------------------------------------
-!> Give difference between the tangential velocity given by 
-!> Reichardt's wall law and the tangential velocity of the previous 
+!> Give difference between the tangential velocity given by
+!> Reichardt's wall law and the tangential velocity of the previous
 !> iteration.
 !
 !         Input:
@@ -122,7 +122,7 @@
       YPLUS = DENSIT*UFRIC*DIST / VISCOS
 
 ! Log-law:
-!      RAJA=11.2658567D0 
+!      RAJA=11.2658567D0
 !      IF(YPLUS >= RAJA) THEN
 !         WALL_LAW=(UFRIC/DKAPPA)*DLOG(ROUGH*YPLUS)-UT
 !      ELSE
@@ -163,18 +163,18 @@
       YPLUS
 
       DOUBLE PRECISION :: DKAPPA = 0.41D0, RAJA
-      
+
       YPLUS=DENSIT*UFRIC*DIST/VISCOS
 
 ! Log-law:
-!      RAJA=11.2658567D0 
+!      RAJA=11.2658567D0
 !      IF(YPLUS >= RAJA) THEN
 !         D_WALL_LAW=(1.0D0/DKAPPA)* &
-!             ( DLOG(ROUGH*DENSIT*UFRIC*DIST/VISCOS) + 1.0D0 ) 
+!             ( DLOG(ROUGH*DENSIT*UFRIC*DIST/VISCOS) + 1.0D0 )
 !      ELSE
 !         D_WALL_LAW=DENSIT*DIST*2.0D0*UFRIC/VISCOS
 !      ENDIF
- 
+
 ! Reichardts law:
       D_WALL_LAW=DLOG(1.0D0 + 0.4D0*YPLUS)/DKAPPA  &
           + (0.4D0/DKAPPA)*YPLUS/(1.0D0 + 0.4D0*YPLUS) &
@@ -200,7 +200,7 @@
 !             DENSIT - Density
 !
 !         Output:
-!             TK     - Turbulent kinetic energy 
+!             TK     - Turbulent kinetic energy
 !             TEPS   - Turbulent kinetic energy dissipation
 !
 !----------------------------------------------------------------------------

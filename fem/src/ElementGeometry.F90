@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -73,7 +73,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+
 
 !------------------------------------------------------------------------------
 !>     Figure out if given point x,y,z is inside a triangle, whose node
@@ -191,7 +191,7 @@ CONTAINS
     IF ( r >= -1.0d0 .AND. r <= 1.0d0 ) THEN
       v = r
       u = (px - cx*r)/(bx + dx*r)
-        
+
       IF ( u >= -1.0d0 .AND. u <= 1.0d0 ) THEN
         inside = .TRUE.
         RETURN
@@ -308,7 +308,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     map = RESHAPE( [ 0,1,2,   0,2,3,   4,5,6,   4,6,7,   3,2,6,   3,6,7,  &
      1,5,6,   1,6,2,   0,4,7,   0,7,3,   0,1,5,   0,5,4 ], [ 3,12 ] ) + 1
-    
+
     inside = .FALSE.
 
     IF ( MAXVAL(nx) < x .OR. MAXVAL(ny) < y .OR. MAXVAL(nz) < z ) RETURN
@@ -335,7 +335,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Check if the current element has been defined passive.
 !> This is done by inspecting a looking an the values of "varname Passive"
-!> in the Body Force section. It is determined to be passive if it has 
+!> in the Body Force section. It is determined to be passive if it has
 !> more positive than negative hits in an element.
 !------------------------------------------------------------------------------
   FUNCTION CheckPassiveElement( UElement )  RESULT( IsPassive )
@@ -348,31 +348,31 @@ CONTAINS
     INTEGER :: body_id, bf_id, nlen, NbrNodes, PassNodes
     LOGICAL :: Found
     CHARACTER(:), ALLOCATABLE :: PassName
-    LOGICAL :: NoPassiveElements = .FALSE.    
+    LOGICAL :: NoPassiveElements = .FALSE.
     TYPE(Solver_t), POINTER :: pSolver, PrevSolver => NULL()
     TYPE(ValueList_t), POINTER :: BodyForce => NULL()
     INTEGER :: ActiveMin = -1, PassiveMin = -1, prev_body_id = -1
     LOGICAL :: DoCheck = .FALSE.
-    
+
     SAVE Passive, NoPassiveElements, PrevSolver, PassName, prev_body_id, &
         BodyForce, ActiveMin, PassiveMin, DoCheck
     !$OMP THREADPRIVATE(Passive, NoPassiveElements, PrevSolver, PassName, prev_body_id, &
-    !$OMP               BodyForce, ActiveMin, PassiveMin, DoCheck ) 
+    !$OMP               BodyForce, ActiveMin, PassiveMin, DoCheck )
     !------------------------------------------------------------------------------
     IsPassive = .FALSE.
     pSolver => CurrentModel % Solver
-    
+
     IF( .NOT. ASSOCIATED( pSolver, PrevSolver ) ) THEN
-      PrevSolver => pSolver          
+      PrevSolver => pSolver
       nlen = CurrentModel % Solver % Variable % NameLen
-      PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
+      PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'
       NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce(CurrentModel, PassName)
 
       ! Nullify the BodyForce memories also if we have new solver.
       prev_body_id = -1
     END IF
-    
-    IF( NoPassiveElements ) RETURN       
+
+    IF( NoPassiveElements ) RETURN
 
     IF (PRESENT(UElement)) THEN
       tmp => CurrentModel % CurrentElement
@@ -388,13 +388,13 @@ CONTAINS
       Element => CurrentModel % CurrentElement
     END IF
 
-    body_id = Element % BodyId 
+    body_id = Element % BodyId
     IF ( body_id <= 0 )  RETURN   ! body_id == 0 for boundary elements
 
-    ! Do some mundane list operations if we have different body than previously. 
+    ! Do some mundane list operations if we have different body than previously.
     IF(body_id /= prev_body_id ) THEN
       prev_body_id = body_id
-      
+
       bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
           'Body Force', DoCheck , minv=1,maxv=CurrentModel % NumberOfBodyForces )
       IF(DoCheck) THEN
@@ -402,14 +402,14 @@ CONTAINS
         DoCheck = ListCheckPresent( BodyForce, PassName)
       END IF
       IF(DoCheck) THEN
-        PassiveMin = ListGetInteger( pSolver % Values,'Passive Element Min Nodes',Found )      
-        IF(.NOT. Found) PassiveMin = ListGetInteger( BodyForce,'Passive Element Min Nodes',Found )              
-        ActiveMin = ListGetInteger( pSolver % Values,'Active Element Min Nodes',Found )               
+        PassiveMin = ListGetInteger( pSolver % Values,'Passive Element Min Nodes',Found )
+        IF(.NOT. Found) PassiveMin = ListGetInteger( BodyForce,'Passive Element Min Nodes',Found )
+        ActiveMin = ListGetInteger( pSolver % Values,'Active Element Min Nodes',Found )
         IF(.NOT. Found) ActiveMin = ListGetInteger( BodyForce,'Active Element Min Nodes',Found )
       END IF
     END IF
-    
-    IF(DoCheck) THEN 
+
+    IF(DoCheck) THEN
       NbrNodes = Element % TYPE % NumberOfNodes
       IF ( ALLOCATED(Passive) ) THEN
         IF ( SIZE(Passive) < NbrNodes ) THEN
@@ -422,9 +422,9 @@ CONTAINS
       Passive(1:NbrNodes) = ListGetReal( BodyForce, PassName, NbrNodes, Element % NodeIndexes )
       PassNodes = COUNT(Passive(1:NbrNodes)>0)
 
-      ! Go through the extremum cases first, and if the element is not either fully 
-      ! active or passive, then check for some possible given criteria for determining 
-      ! the element active / passive. 
+      ! Go through the extremum cases first, and if the element is not either fully
+      ! active or passive, then check for some possible given criteria for determining
+      ! the element active / passive.
       !------------------------------------------------------------------------------
       IF( PassNodes == 0 ) THEN
         CONTINUE
@@ -470,9 +470,9 @@ CONTAINS
     REAL(KIND=dp) :: Basis(MAX_ELEMENT_NODES)
     LOGICAL :: LPassive
 !------------------------------------------------------------------------------
-    
+
     IF(.NOT. ASSOCIATED( Boundary % BoundaryInfo ) )  RETURN
-    
+
     k = Boundary % BoundaryInfo % OutBody
 
     LeftElement => Boundary % BoundaryInfo % Left
@@ -480,8 +480,8 @@ CONTAINS
     Element => Null()
     IF ( ASSOCIATED(LeftELement) ) THEN
        RightElement => Boundary % BoundaryInfo % Right
-       IF ( ASSOCIATED( RightElement ) ) THEN ! we have a body-body boundary        
-         IF ( k > 0 ) THEN ! declared outbody 
+       IF ( ASSOCIATED( RightElement ) ) THEN ! we have a body-body boundary
+         IF ( k > 0 ) THEN ! declared outbody
            IF ( LeftElement % BodyId == k ) THEN
              Element => RightElement
            ELSE
@@ -493,7 +493,7 @@ CONTAINS
            Element => RightElement
          ELSE ! active/passive boundary
            LPassive = CheckPassiveElement( LeftElement )
-           IF (LPassive .NEQV. CheckPassiveElement( RightElement )) THEN 
+           IF (LPassive .NEQV. CheckPassiveElement( RightElement )) THEN
              IF(LPassive) THEN
                Element => RightElement
              ELSE
@@ -541,15 +541,15 @@ CONTAINS
       v = 1.0d0/3
       w = 0.0d0
     CASE DEFAULT
-      CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
-      
+      CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')
+
     END SELECT
 
     CALL NodalBasisFunctions( n, Basis, Element, u, v, w )
     dCoord(1) = DOT_PRODUCT( Basis(1:n), nx(1:n) ) - x
     dCoord(2) = DOT_PRODUCT( Basis(1:n), ny(1:n) ) - y
     dCoord(3) = DOT_PRODUCT( Basis(1:n), nz(1:n) ) - z
-  
+
     IF ( PRESENT(turn) ) turn = .FALSE.
     IF ( SUM( dCoord * Normal ) > 0 ) THEN
        IF ( Element % BodyId /= k ) THEN
@@ -611,7 +611,7 @@ CONTAINS
     x1 = DOT_PRODUCT( Basis(1:n), nx(1:n) ) - x
     y1 = DOT_PRODUCT( Basis(1:n), ny(1:n) ) - y
     z1 = DOT_PRODUCT( Basis(1:n), nz(1:n) ) - z
-    
+
     ! Swap the sign if the tentative normal points to the center, it should point outward
     IF ( x1*Normal(1) + y1*Normal(2) + z1*Normal(3) > 0 ) THEN
       Normal = -Normal
@@ -623,7 +623,7 @@ CONTAINS
   END SUBROUTINE CheckNormalDirectionParent
 !------------------------------------------------------------------------------
 
-  
+
 !------------------------------------------------------------------------------
 !> Gives the normal vector of a boundary element.
 !> For noncurved elements the normal vector does not depend on the local coordinate
@@ -651,12 +651,12 @@ CONTAINS
     TYPE(Nodes_t) :: ParentNodes
     TYPE(Element_t), POINTER :: pParent
     INTEGER :: n, meshDim, elemDim
-    
+
 !------------------------------------------------------------------------------
 
     nx => BoundaryNodes % x
     ny => BoundaryNodes % y
-    nz => BoundaryNodes % z   
+    nz => BoundaryNodes % z
 
     elemDim = Boundary % TYPE % DIMENSION
 
@@ -665,10 +665,10 @@ CONTAINS
     ELSE
       meshDim = CurrentModel % dimension
     END IF
-      
+
     SELECT CASE ( elemDim )
 
-    CASE ( 0 ) 
+    CASE ( 0 )
       Normal(1) = 1.0_dp
       Normal(2:3) = 0.0_dp
 
@@ -688,7 +688,7 @@ CONTAINS
         dxdu = DOT_PRODUCT( dLBasisdx(1:n,1), nx(1:n) )
         dydu = DOT_PRODUCT( dLBasisdx(1:n,1), ny(1:n) )
         dzdu = DOT_PRODUCT( dLBasisdx(1:n,1), nz(1:n) )
-        
+
         detA = dxdu*dxdu + dydu*dydu + dzdu*dzdu
         IF ( detA <= 0._dp ) THEN
           Normal = 0._dp
@@ -706,19 +706,19 @@ CONTAINS
           pParent => Boundary % BoundaryInfo % Left
           IF(.NOT. ASSOCIATED(pParent) ) THEN
             pParent => Boundary % BoundaryInfo % Right
-          END IF          
+          END IF
         END IF
 
         n = pParent % TYPE % NumberOfNodes
-        ALLOCATE( ParentNodes % x(n), ParentNodes % y(n), ParentNodes % z(n) )        
+        ALLOCATE( ParentNodes % x(n), ParentNodes % y(n), ParentNodes % z(n) )
         ParentNodes % x(1:n) = CurrentModel % Nodes % x(pParent % NodeIndexes)
         ParentNodes % y(1:n) = CurrentModel % Nodes % y(pParent % NodeIndexes)
         ParentNodes % z(1:n) = CurrentModel % Nodes % z(pParent % NodeIndexes)
-        Tangent2 = NormalVector( pParent, ParentNodes) 
+        Tangent2 = NormalVector( pParent, ParentNodes)
         DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z)
-        
-        Normal = CrossProduct( Tangent1, Tangent2 )         
-      ELSE        
+
+        Normal = CrossProduct( Tangent1, Tangent2 )
+      ELSE
         IF( PRESENT( u0 ) ) THEN
           u = u0
         ELSE
@@ -740,8 +740,8 @@ CONTAINS
         Normal(2) =  dxdu * detA
         Normal(3) =  0.0d0
       END IF
-        
-    CASE ( 2 ) 
+
+    CASE ( 2 )
       IF( PRESENT( u0 ) ) THEN
         u = u0
         v = v0
@@ -773,23 +773,23 @@ CONTAINS
       Normal(1) = (dydu * dzdv - dydv * dzdu) * detA
       Normal(2) = (dxdv * dzdu - dxdu * dzdv) * detA
       Normal(3) = (dxdu * dydv - dxdv * dydu) * detA
-    
+
     CASE DEFAULT
       CALL Fatal('NormalVector','No normal for '&
           //I2S(Boundary % TYPE % ElementCode)//' in '//I2S(meshDim)//'dim mesh!')
-      
+
     END SELECT
 
 
     CheckParent = .FALSE.
-    IF( PRESENT( Parent ) ) CheckParent = ASSOCIATED( Parent ) 
-    
+    IF( PRESENT( Parent ) ) CheckParent = ASSOCIATED( Parent )
+
     CheckBody = .FALSE.
     IF ( PRESENT(Check) ) CheckBody = Check
 
     IF ( .NOT. ( CheckBody .OR. CheckParent ) ) RETURN
-   
-    SELECT CASE( Boundary % TYPE % ElementCode / 100 ) 
+
+    SELECT CASE( Boundary % TYPE % ElementCode / 100 )
 
     CASE(1)
       x = nx(1)
@@ -812,7 +812,7 @@ CONTAINS
     END SELECT
 
     IF( CheckParent ) THEN
-      CALL CheckNormalDirectionParent( Boundary, Normal, x, y, z, Parent,Turn )   
+      CALL CheckNormalDirectionParent( Boundary, Normal, x, y, z, Parent,Turn )
     ELSE
       CALL CheckNormalDirection( Boundary,Normal,x,y,z,Turn )
     END IF
@@ -833,10 +833,10 @@ CONTAINS
     REAL(KIND=dp) :: Normal(3)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
-    REAL(KIND=dp) :: vec0(3), vec1(3), vec2(3), vec3(3) 
+    REAL(KIND=dp) :: vec0(3), vec1(3), vec2(3), vec3(3)
     TYPE(Element_t), POINTER :: pParent
     INTEGER :: i,i1,i2,i3,i4,n,m,ElemDim,MeshDim
-    
+
 !------------------------------------------------------------------------------
 
     x => CurrentModel % Nodes % x
@@ -852,13 +852,13 @@ CONTAINS
       END IF
     END IF
 
-    ElemDim = Boundary % Type % Dimension 
-    MeshDim = CurrentModel % Mesh % MeshDim 
-    
+    ElemDim = Boundary % Type % Dimension
+    MeshDim = CurrentModel % Mesh % MeshDim
+
     IF(ElemDim <= MeshDim-1 .OR. .NOT. (ASSOCIATED(pParent)) ) THEN
-      SELECT CASE ( ElemDim ) 
-        
-      CASE ( 0 ) 
+      SELECT CASE ( ElemDim )
+
+      CASE ( 0 )
         Normal(1) = 1.0_dp
         Normal(2:3) = 0.0_dp
 
@@ -876,8 +876,8 @@ CONTAINS
 
         Normal = Normal / SQRT(SUM(Normal**2))
 
-      CASE( 2 ) 
-        n = Boundary % TYPE % ElementCode / 100 
+      CASE( 2 )
+        n = Boundary % TYPE % ElementCode / 100
 
         i1 = Boundary % NodeIndexes(1)
         IF(n==4) THEN
@@ -889,15 +889,15 @@ CONTAINS
           i3 = Boundary % NodeIndexes(3)
           i4 = i1
         END IF
-        
+
         vec1(1) = x(i3) - x(i1)
         vec1(2) = y(i3) - y(i1)
         vec1(3) = z(i3) - z(i1)
-        
+
         vec2(1) = x(i4) - x(i2)
         vec2(2) = y(i4) - y(i2)
         vec2(3) = z(i4) - z(i2)
-          
+
         Normal = CrossProduct( vec1, vec2 )
         Normal = Normal / SQRT(SUM(Normal**2))
 
@@ -905,15 +905,15 @@ CONTAINS
         CALL Fatal('NormalVector','Invalid dimension for determining normal!')
 
       END SELECT
-      
-    ELSE 
 
-      SELECT CASE ( ElemDim ) 
-        
-      CASE ( 0 )                
+    ELSE
+
+      SELECT CASE ( ElemDim )
+
+      CASE ( 0 )
         i1 = pParent % NodeIndexes(1)
         i2 = pParent % NodeIndexes(2)
-        
+
         Normal(1) = x(i2) - x(i1)
         Normal(2) = y(i2) - y(i1)
         Normal(3) = 0.0_dp
@@ -922,7 +922,7 @@ CONTAINS
         IF( i1 == Boundary % NodeIndexes(1) ) THEN
           Normal = -Normal
         END IF
-                       
+
       CASE ( 1 )
         i1 = Boundary % NodeIndexes(1)
         i2 = Boundary % NodeIndexes(2)
@@ -934,11 +934,11 @@ CONTAINS
         vec2(1) = x(i2)
         vec2(2) = y(i2)
         vec2(3) = z(i2)
-               
+
         vec0 = vec1-vec2
         vec0 = vec0 / SQRT(SUM(vec0**2))
-        
-        n = pParent % TYPE % ElementCode / 100 
+
+        n = pParent % TYPE % ElementCode / 100
 
         vec2 = 0.0_dp
         DO i=1,n
@@ -946,21 +946,21 @@ CONTAINS
           IF(i3 == i1 .OR. i3 == i2 ) CYCLE
 
           ! Vector stretching from edge center to the other nodes
-          ! of the parent element. 
-          vec2(1) = vec3(1) + x(i3) 
-          vec3(1) = vec3(1) + x(i3) 
-          vec3(1) = vec3(1) + x(i3) 
+          ! of the parent element.
+          vec2(1) = vec3(1) + x(i3)
+          vec3(1) = vec3(1) + x(i3)
+          vec3(1) = vec3(1) + x(i3)
         END DO
-        ! Subtract the average 
-        vec3 = vec3 - (n-2)*(vec1+vec2)/2 
-        
+        ! Subtract the average
+        vec3 = vec3 - (n-2)*(vec1+vec2)/2
+
         ! Remove projection in the direction of the line
         Normal = vec3 - SUM(vec0*vec3)*vec0
         Normal = -Normal / SQRT(SUM(Normal**2))
 
-      CASE( 2 ) 
-        n = Boundary % TYPE % ElementCode / 100 
-        
+      CASE( 2 )
+        n = Boundary % TYPE % ElementCode / 100
+
         i1 = Boundary % NodeIndexes(1)
         IF(n==4) THEN
           i2 = Boundary % NodeIndexes(2)
@@ -971,19 +971,19 @@ CONTAINS
           i3 = Boundary % NodeIndexes(3)
           i4 = i1
         END IF
-          
+
         vec1(1) = x(i3) - x(i1)
         vec1(2) = y(i3) - y(i1)
         vec1(3) = z(i3) - z(i1)
-        
+
         vec2(1) = x(i4) - x(i2)
         vec2(2) = y(i4) - y(i2)
         vec2(3) = z(i4) - z(i2)
-          
+
         Normal = CrossProduct( vec1, vec2 )
         Normal = Normal / SQRT(SUM(Normal**2))
 
-        m = pParent % TYPE % ElementCode / 100 
+        m = pParent % TYPE % ElementCode / 100
         vec1 = 0.0_dp
         vec2 = 0.0_dp
         DO i=1,m
@@ -991,7 +991,7 @@ CONTAINS
           IF( ANY( Boundary % NodeIndexes == i1 ) ) THEN
             vec1(1) = vec1(1) + x(i1)
             vec1(2) = vec1(2) + y(i1)
-            vec1(3) = vec1(3) + z(i1)            
+            vec1(3) = vec1(3) + z(i1)
           ELSE
             vec2(1) = vec2(1) + x(i1)
             vec2(2) = vec2(2) + y(i1)
@@ -1005,20 +1005,20 @@ CONTAINS
         IF( SUM( (vec1-vec2)*Normal ) < 0.0_dp ) THEN
           Normal = -Normal
         END IF
-        
+
       CASE DEFAULT
         CALL Fatal('NormalVector','Invalid dimension for determining normal!')
-        
+
       END SELECT
     END IF
-      
+
 !------------------------------------------------------------------------------
   END FUNCTION NormalVectorLinear
 !------------------------------------------------------------------------------
 #endif
 
 
-  
+
 !------------------------------------------------------------------------------
 !> Returns a point that is most importantly supposed to be on the surface
 !> For noncurved elements this may simply be the mean while otherwise
@@ -1064,10 +1064,10 @@ CONTAINS
 
 
 !---------------------------------------------------------------------------
-!> This subroutine tests where the intersection between the line defined by two 
+!> This subroutine tests where the intersection between the line defined by two
 !> points and a plane (or line) defined by a boundary element meet. There is
-!> an intersection if ( 0 < Lambda < 1 ). Of all intersections the first one is 
-!> that with the smallest positive lambda. 
+!> an intersection if ( 0 < Lambda < 1 ). Of all intersections the first one is
+!> that with the smallest positive lambda.
 !---------------------------------------------------------------------------
   FUNCTION LineFaceIntersection(FaceElement,FaceNodes,&
       Rinit,Rfin,u,v) RESULT ( Lambda )
@@ -1118,15 +1118,15 @@ CONTAINS
 
       Normal(1) = Surface(2) - FaceNodes % y(2)
       Normal(2) = FaceNodes % x(2) - Surface(1)
-      Normal(3) = 0.0_dp      
+      Normal(3) = 0.0_dp
     END IF
 
     ! Project of the line to the face normal
     Rproj = SUM( (Rfin - Rinit) * Normal )
-    
+
     IF( ABS( Rproj ) < TINY( Rproj ) ) THEN
       ! if the intersection cannot be defined make it an impossible one
-      Lambda = -HUGE( Lambda ) 
+      Lambda = -HUGE( Lambda )
     ELSE
       Lambda = SUM( ( Surface - Rinit ) * Normal ) / Rproj
     END IF
@@ -1138,19 +1138,19 @@ CONTAINS
         GOTO 100
       END IF
       IF( ABS( Lambda0 ) < ABS( Lambda) ) THEN
-        Lambda = Lambda0 
+        Lambda = Lambda0
       END IF
    END IF
 
 
   END FUNCTION LineFaceIntersection
-  
+
 
 !---------------------------------------------------------------------------
-!> This subroutine performs a similar test as above using slightly different 
+!> This subroutine performs a similar test as above using slightly different
 !> strategy.
 !---------------------------------------------------------------------------
-  FUNCTION LineFaceIntersection2(FaceElement,FaceNodes,Rinit,Rfin,Intersect) RESULT ( Lambda ) 
+  FUNCTION LineFaceIntersection2(FaceElement,FaceNodes,Rinit,Rfin,Intersect) RESULT ( Lambda )
 
     TYPE(Nodes_t) :: FaceNodes
     TYPE(Element_t) :: FaceElement
@@ -1161,11 +1161,11 @@ CONTAINS
     INTEGER :: split, i, n, notriangles, triangle, ElemDim
 
     Eps = EPSILON( Eps )
-    Eps2 = SQRT(TINY(Eps2))    
+    Eps2 = SQRT(TINY(Eps2))
     Eps3 = 1.0d-12
     Lambda = -HUGE( Lambda )
     Intersect = .FALSE.
-    ElemDim = FaceElement % TYPE % DIMENSION 
+    ElemDim = FaceElement % TYPE % DIMENSION
 
     ! Then solve the exact points of intersection from a 3x3 or 2x2 linear system
     !--------------------------------------------------------------------------
@@ -1179,14 +1179,14 @@ CONTAINS
       END IF
 
       DO triangle=1,notriangles
-          
+
         A(1:3,1) = Rfin(1:3) - Rinit(1:3)
-        
+
         IF(triangle == 1) THEN
           A(1,2) = FaceNodes % x(1) - FaceNodes % x(2)
           A(2,2) = FaceNodes % y(1) - FaceNodes % y(2)
           A(3,2) = FaceNodes % z(1) - FaceNodes % z(2)
-        ELSE 
+        ELSE
           A(1,2) = FaceNodes % x(1) - FaceNodes % x(4)
           A(2,2) = FaceNodes % y(1) - FaceNodes % y(4)
           A(3,2) = FaceNodes % z(1) - FaceNodes % z(4)
@@ -1195,12 +1195,12 @@ CONTAINS
         A(1,3) = FaceNodes % x(1) - FaceNodes % x(3)
         A(2,3) = FaceNodes % y(1) - FaceNodes % y(3)
         A(3,3) = FaceNodes % z(1) - FaceNodes % z(3)
-        
+
         ! Check for linearly dependent vectors
         detA = A(1,1)*(A(2,2)*A(3,3)-A(2,3)*A(3,2)) &
              - A(1,2)*(A(2,1)*A(3,3)-A(2,3)*A(3,1)) &
              + A(1,3)*(A(2,1)*A(3,2)-A(2,2)*A(3,1))
-        absA = SUM(ABS(A(1,1:3))) * SUM(ABS(A(2,1:3))) * SUM(ABS(A(3,1:3))) 
+        absA = SUM(ABS(A(1,1:3))) * SUM(ABS(A(2,1:3))) * SUM(ABS(A(3,1:3)))
 
         IF(ABS(detA) <= eps * absA + Eps2) CYCLE
 !        print *,'detA',detA
@@ -1208,10 +1208,10 @@ CONTAINS
         B(1) = FaceNodes % x(1) - Rinit(1)
         B(2) = FaceNodes % y(1) - Rinit(2)
         B(3) = FaceNodes % z(1) - Rinit(3)
-        
+
         CALL InvertMatrix( A,3 )
         C(1:3) = MATMUL( A(1:3,1:3),B(1:3) )
-        
+
         IF( ANY(C(2:3) < -Eps3) .OR. ANY(C(2:3) > 1.0_dp + Eps3 ) ) CYCLE
         IF( C(2)+C(3) > 1.0_dp + Eps3 ) CYCLE
 
@@ -1222,20 +1222,20 @@ CONTAINS
         !ELSE IF(corners == 4 .AND. split == 0) THEN
         !  u = 2*(C(2)+C(3))-1
         !  v = 2*C(3)-1
-        !ELSE 
+        !ELSE
         !  ! For the 2nd split of the rectangle the local coordinates switched
         !  v = 2*(C(2)+C(3))-1
-        !  u = 2*C(3)-1        
+        !  u = 2*C(3)-1
         !END IF
-        
+
         Intersect = .TRUE.
         Lambda = C(1)
         EXIT
- 
+
       END DO
     ELSE
       ! In 2D the intersection is between two lines
-      
+
       A(1:2,1) = Rfin(1:2) - Rinit(1:2)
       A(1,2) = FaceNodes % x(1) - FaceNodes % x(2)
       A(2,2) = FaceNodes % y(1) - FaceNodes % y(2)
@@ -1251,7 +1251,7 @@ CONTAINS
 
       CALL InvertMatrix( A,2 )
       C(1:2) = MATMUL(A(1:2,1:2),B(1:2))
-     
+
       IF(C(2) < -Eps3 .OR. C(2) > 1.0_dp + Eps3 ) RETURN
 
       Intersect = .TRUE.
@@ -1265,7 +1265,7 @@ CONTAINS
 
 !    stat = ElementInfo( Element, FaceNodes, U, V, W, SqrtElementMetric, &
 !        Basis, dBasisdx )
-    
+
 !    Weights(1:n) = Basis(1:n)
 !    MaxInd = 1
 !    DO i=2,n
@@ -1273,8 +1273,8 @@ CONTAINS
 !    END DO
 
   END FUNCTION LineFaceIntersection2
-  
- 
+
+
 
 !---------------------------------------------------------------------------
 !> This subroutine computes the signed distance of a point from a surface.
@@ -1308,7 +1308,7 @@ CONTAINS
     Normal = NormalVector( BoundaryElement, BoundaryNodes, u, v, .TRUE. )
 
     ! Project of the line to the face normal
-    Dist = SUM( (Surface - Coord ) * Normal ) 
+    Dist = SUM( (Surface - Coord ) * Normal )
 END FUNCTION PointFaceDistance
 
 
@@ -1340,8 +1340,8 @@ END FUNCTION PointFaceDistance
     scl = MAXVAL(ElementNodes % x(1:n)) - MINVAL(ElementNodes % x(1:n)) + &
         MAXVAL(ElementNodes % y(1:n)) - MINVAL(ElementNodes % y(1:n)) + &
         MAXVAL(ElementNodes % z(1:n)) - MINVAL(ElementNodes % z(1:n))
-        
-    
+
+
     ! @todo Not supported yet
 !   IF (ASSOCIATED(Element % PDefs)) THEN
 !      CALL Fatal('GlobalToLocal','P elements not supported yet!')
@@ -1427,7 +1427,7 @@ END FUNCTION PointFaceDistance
 
       IF( i > 10 ) THEN
         ! If the same values is suggested over and over again, then exit
-        ! This may be a sign that the node is off-plane and cannot be 
+        ! This may be a sign that the node is off-plane and cannot be
         ! described within the element.
         IF( SUM( ABS( delta - prevdelta ) ) < eps ) EXIT
 
@@ -1437,7 +1437,7 @@ END FUNCTION PointFaceDistance
         END IF
 
         ! If the iteration does not proceed try with some relaxation
-        delta = 0.5_dp * delta 
+        delta = 0.5_dp * delta
       END IF
 
       u = u - delta(1)
@@ -1449,7 +1449,7 @@ END FUNCTION PointFaceDistance
     END DO
 !------------------------------------------------------------------------------
 
-    IF ( .NOT. Converged ) THEN        
+    IF ( .NOT. Converged ) THEN
       IF( err > 1.0e-8 ) THEN
         IF( i > MaxIter ) THEN
           CALL Warn( 'GlobalToLocal', 'did not converge.')
@@ -1471,10 +1471,10 @@ END FUNCTION PointFaceDistance
   END SUBROUTINE GlobalToLocal
 !------------------------------------------------------------------------------
 
-  
+
 !------------------------------------------------------------------------------
-!>     Given element and its face map (for some triangular face of element ), 
-!>     this routine returns global direction of triangle face so that 
+!>     Given element and its face map (for some triangular face of element ),
+!>     this routine returns global direction of triangle face so that
 !>     functions are continuous over element boundaries
 !------------------------------------------------------------------------------
   FUNCTION getTriangleFaceDirection( Element, FaceMap, Indexes ) RESULT(globalDir)
@@ -1486,14 +1486,14 @@ END FUNCTION PointFaceDistance
     INTEGER :: Indexes(:)
     INTEGER :: globalDir(3)      !< Global direction of triangular face as local node numbers.
 !------------------------------------------------------------------------------
-    INTEGER :: i, nodes(3)  
-    
+    INTEGER :: i, nodes(3)
+
     ! Put global nodes of face into sorted order
     nodes(1:3) = Indexes( FaceMap )
     CALL sort(3, nodes)
-    
+
     globalDir = 0
-    ! Find local numbers of sorted nodes. These local nodes 
+    ! Find local numbers of sorted nodes. These local nodes
     ! span continuous functions over element boundaries
     DO i=1,Element % TYPE % NumberOfNodes
        IF (nodes(1) == Indexes(i)) THEN
@@ -1508,8 +1508,8 @@ END FUNCTION PointFaceDistance
 
 
 !------------------------------------------------------------------------------
-!>     Given element and its face map (for some square face of element ), 
-!>     this routine returns global direction of square face so that 
+!>     Given element and its face map (for some square face of element ),
+!>     this routine returns global direction of square face so that
 !>     functions are continuous over element boundaries
 !------------------------------------------------------------------------------
   FUNCTION getSquareFaceDirection( Element, FaceMap, Indexes ) RESULT(globalDir)
@@ -1522,7 +1522,7 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
     INTEGER :: i, A,B,C,D, nodes(4), minGlobal
 
-    ! Get global nodes 
+    ! Get global nodes
     nodes(1:4) = Indexes( FaceMap )
 
     ! Find min global node
@@ -1548,7 +1548,7 @@ END FUNCTION PointFaceDistance
     END IF
 
     ! Finally find local numbers of nodes A,B and C. They uniquely
-    ! define a global face so that basis functions are continuous 
+    ! define a global face so that basis functions are continuous
     ! over element boundaries
     globalDir = 0
     DO i=1,Element % TYPE % NumberOfNodes
@@ -1572,7 +1572,7 @@ END FUNCTION PointFaceDistance
   FUNCTION wedgeOrdering( ordering ) RESULT(retVal)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    
+
     INTEGER, DIMENSION(4), INTENT(IN) :: ordering  !< Local ordering of a wedge square face
     LOGICAL :: retVal                              !< .TRUE. iff given ordering is legal for wedge square face.
 
@@ -1586,7 +1586,7 @@ END FUNCTION PointFaceDistance
   END FUNCTION wedgeOrdering
 
   !---------------------------------------------------------
-  !> Computes the 3D rotation matrix for a given 
+  !> Computes the 3D rotation matrix for a given
   !> surface normal vector
   !---------------------------------------------------------
   FUNCTION ComputeRotationMatrix(PlaneVector) RESULT ( RotMat )
@@ -1596,7 +1596,7 @@ END FUNCTION PointFaceDistance
 
     !Ensure PlaneVector is the unit normal
     PlaneVector = PlaneVector / SQRT( SUM(PlaneVector ** 2) )
-    
+
     !The new z-axis is normal to the defined surface
     ez = PlaneVector
 
@@ -1615,7 +1615,7 @@ END FUNCTION PointFaceDistance
 
     ex(MinIndex) = 1.0
     ex(MidIndex) = 0.0
-    
+
     ex(MaxIndex) = -ez(MinIndex)/ez(MaxIndex)
     ex = ex / SQRT( SUM(ex ** 2) )
 
@@ -1645,10 +1645,10 @@ END FUNCTION PointFaceDistance
     INTEGER :: i,i2,n
     REAL(KIND=dp) :: h1,h2,hprod,r
     REAL(KIND=dp), PARAMETER :: Eps=1.0e-3
-    
+
     n = Element % TYPE % ElementCode / 100
     ElemCut(1:2*n) = .FALSE.
-    
+
     h1 = MINVAL(ElemPhi(1:n))
     h2 = MAXVAL(ElemPhi(1:n))
     IF(h1*h2 >= 0.0_dp) RETURN
@@ -1656,16 +1656,16 @@ END FUNCTION PointFaceDistance
     IF( (SIZE(ElemNodes % x) < 2*n) ) THEN
       CALL Fatal('CutSingleElement','ElemNodes too small!')
     END IF
-    
+
     DO i=1, n
       i2 = MODULO(i,n)+1
       h1 = ElemPhi(i)
       h2 = ElemPhi(i2)
-      hprod = h1*h2            
+      hprod = h1*h2
 
-      ! First mark the cut nodes.        
+      ! First mark the cut nodes.
       IF( hprod < 0.0_dp ) THEN
-        r = ABS(h2)/(ABS(h1)+ABS(h2))        
+        r = ABS(h2)/(ABS(h1)+ABS(h2))
         IF( r <= Eps ) THEN
           ElemCut(i2) = .TRUE.
         ELSE IF((1.0-r < Eps) ) THEN
@@ -1673,13 +1673,13 @@ END FUNCTION PointFaceDistance
         ELSE
           ElemCut(n+i) = .TRUE.
 
-          ! We update nodes so that the element on-the-fly can point to then using NodeIndexes. 
+          ! We update nodes so that the element on-the-fly can point to then using NodeIndexes.
           ElemNodes % x(n+i) = (1-r) * ElemNodes % x(i2) + r * ElemNodes % x(i)
           ElemNodes % y(n+i) = (1-r) * ElemNodes % y(i2) + r * ElemNodes % y(i)
           ElemNodes % z(n+i) = (1-r) * ElemNodes % z(i2) + r * ElemNodes % z(i)
         END IF
       ELSE IF( ABS(hprod) < 1.0d-20 ) THEN
-        IF(ABS(h1) < 1.0e-20) ElemCut(i) = .TRUE. 
+        IF(ABS(h1) < 1.0e-20) ElemCut(i) = .TRUE.
         IF(ABS(h2) < 1.0e-20) ElemCut(i2) = .TRUE.
       END IF
     END DO
@@ -1700,37 +1700,37 @@ END FUNCTION PointFaceDistance
     LOGICAL :: IsCut, IsMore
     INTEGER :: LocalInds(:)
     INTEGER :: SgnNode
-    
-    
+
+
     INTEGER :: n,n_split,n_cut,ElemType,SplitCase,iCase,subcase
     INTEGER :: j,j2,j3,j4,mmax
     REAL(KIND=dp) :: s1,s2
-    
+
     SAVE :: subcase, j, j2, j3, j4, mmax, s1, s2
     !$OMP THREADPRIVATE(subcase, j, j2, j3, j4, mmax, s1, s2)
 
     ElemType = Element % TYPE % ElementCode
     n = ElemType / 100
-        
+
     n_split = COUNT( ElemCut(n+1:2*n) )
     n_cut = COUNT( ElemCut(1:n) )
-    
-    IsMore = .FALSE.   
+
+    IsMore = .FALSE.
     IsCut = (n_split > 0)
 
     ! Nothing to do, use original element.
     IF(.NOT. IsCut) RETURN
 
-    ! This allows use case to deal with element types, edge splits and node splits at the same time. 
+    ! This allows use case to deal with element types, edge splits and node splits at the same time.
     ! It is a matter of taste if this is ok or not...
     SplitCase = 100 * ElemType + 10 * n_split + n_cut
     iCase = 0
     LocalInds = 0
-    
-    SELECT CASE( SplitCase ) 
 
-      
-    CASE( 30320, 30321 ) 
+    SELECT CASE( SplitCase )
+
+
+    CASE( 30320, 30321 )
       ! Triangle being cut on two edges.
       IF( m == 1 ) THEN
         ! Find the only edge that is not cut
@@ -1740,18 +1740,18 @@ END FUNCTION PointFaceDistance
         j2 = MODULO(j,3)+1
         j3 = MODULO(j+1,3)+1
         mmax = 3
-        
+
         ! There are two ways to split the triangle.
         ! Choose the one with shorter diameter.
         s1 = (ElemNodes % x(j) - ElemNodes % x(n + j2))**2 + &
             (ElemNodes % y(j) - ElemNodes % y(n + j2))**2 + &
-            (ElemNodes % z(j) - ElemNodes % z(n + j2))**2 
+            (ElemNodes % z(j) - ElemNodes % z(n + j2))**2
         s2 = (ElemNodes % x(j2) - ElemNodes % x(n + j3))**2 + &
             (ElemNodes % y(j2) - ElemNodes % y(n + j3))**2 + &
-            (ElemNodes % z(j2) - ElemNodes % z(n + j3))**2 
+            (ElemNodes % z(j2) - ElemNodes % z(n + j3))**2
 
         LocalInds(1) = j
-        LocalInds(2) = j2                 
+        LocalInds(2) = j2
         IF( s1 < s2 ) THEN
           LocalInds(3) = n + j2
         ELSE
@@ -1763,7 +1763,7 @@ END FUNCTION PointFaceDistance
         IF( s1 < s2 ) THEN
           LocalInds(1) = j
         ELSE
-          LocalInds(1) = j2       
+          LocalInds(1) = j2
         END IF
         LocalInds(2) = n + j2
         LocalInds(3) = n + j3
@@ -1779,8 +1779,8 @@ END FUNCTION PointFaceDistance
         iCase = 3
       END IF
 
-    CASE( 30311 ) 
-      ! Triangle being cut on one edge and one node. 
+    CASE( 30311 )
+      ! Triangle being cut on one edge and one node.
       IF( m == 1 ) THEN
         ! Find the only edge that is cut
         DO j=1,3
@@ -1789,14 +1789,14 @@ END FUNCTION PointFaceDistance
         j2 = MODULO(j,3)+1
         j3 = MODULO(j+1,3)+1
       END IF
-      
+
       ! One cut result to splitted elements only if the opposing node is cut through
       IF( ElemCut(j3) ) THEN
         IF(m==1) THEN
           LocalInds(1) = n + j
           LocalInds(2) = j2
           LocalInds(3) = j3
-          
+
           SgnNode = 2
           iCase = 4
           mmax = 2
@@ -1804,21 +1804,21 @@ END FUNCTION PointFaceDistance
           LocalInds(1) = n + j
           LocalInds(2) = j3
           LocalInds(3) = j
-          
+
           sgnNode = 3
           iCase = 5
         END IF
       ELSE IF(ElemCut(j) .OR. ElemCut(j2)) THEN
-        LocalInds(1:3) = [1,2,3]          
-        
+        LocalInds(1:3) = [1,2,3]
+
         iCase = 6
-        SgnNode = j3          
+        SgnNode = j3
         mmax = 1
       END IF
 
-    CASE( 40420, 40421 ) 
-      ! Quadrilateral being cut on two edges. 
-      
+    CASE( 40420, 40421 )
+      ! Quadrilateral being cut on two edges.
+
       IF( m == 1 ) THEN
         subcase = 0
         IF( ElemCut(n+1) .AND. ElemCut(n+3) ) THEN
@@ -1833,7 +1833,7 @@ END FUNCTION PointFaceDistance
           DO j=1,4
             j2 = MODULO(j,4)+1
             IF( ElemCut(n+j) .AND. ElemCut(n+j2) ) THEN
-              subcase = 2 
+              subcase = 2
               mmax = 3
               EXIT
             END IF
@@ -1844,20 +1844,20 @@ END FUNCTION PointFaceDistance
         END IF
       END IF
 
-      
-      IF( subcase == 1 ) THEN        
+
+      IF( subcase == 1 ) THEN
         mmax = 2
-        
+
         IF( m == 1 ) THEN
           j2 = MODULO(j,4)+1
           j3 = MODULO(j+1,4)+1
           j4 = MODULO(j+2,4)+1
-          
+
           LocalInds(1) = j
           LocalInds(2) = n + j
           LocalInds(3) = n + j3
-          LocalInds(4) = j4          
-          
+          LocalInds(4) = j4
+
           SgnNode = 1
           iCase = 7
         ELSE IF(m==2) THEN
@@ -1865,7 +1865,7 @@ END FUNCTION PointFaceDistance
           LocalInds(2) = j3
           LocalInds(3) = n + j3
           LocalInds(4) = n + j
-          
+
           SgnNode = 1
           iCase = 8
         END IF
@@ -1909,8 +1909,8 @@ END FUNCTION PointFaceDistance
 
       END IF
 
-    CASE( 40411 ) 
-      ! Quadrilateral being cut on one edge and one node.  
+    CASE( 40411 )
+      ! Quadrilateral being cut on one edge and one node.
 
       ! Find the only edge that is cut
       DO j=1,4
@@ -1924,7 +1924,7 @@ END FUNCTION PointFaceDistance
       IF(ElemCut(j) .OR. ElemCut(j2)) THEN
         LocalInds(1:4) = [1,2,3,4]
         iCase = 13
-        SgnNode = j3          
+        SgnNode = j3
         mmax = 1
       ELSE
         mmax = 2
@@ -1965,7 +1965,7 @@ END FUNCTION PointFaceDistance
           END IF
         END IF
       END IF
-      
+
     CASE DEFAULT
       PRINT *,'ElemCut:',ElemCut(1:n*n)
       CALL Fatal('SplitSingleElement','Unknown split case in element divisions: '//I2S(SplitCase))
@@ -1973,7 +1973,7 @@ END FUNCTION PointFaceDistance
 
     IsMore = (m < mmax )
     !IF(iCase>0) nCase(iCase) = nCase(iCase) + 1
-    
+
   END SUBROUTINE SplitSingleElement
 
 END MODULE ElementGeometry

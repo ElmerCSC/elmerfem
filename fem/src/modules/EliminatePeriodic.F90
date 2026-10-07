@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,13 +27,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 13 Sep 2002
 ! *
 ! ****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !------------------------------------------------------------------------------
@@ -49,7 +49,7 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
   USE GeneralUtils
 
   IMPLICIT NONE
-  
+
   TYPE(model_t)  :: Model        !> All model information (mesh,materials,BCs,etc...)
   TYPE(solver_t) :: Solver       !> Linear equation solver options
   TYPE(matrix_t), POINTER :: A   !> Linear equation matrix information
@@ -129,12 +129,12 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
            IF ( ParEnv % PEs <= 1 ) THEN
               Projector => Model % BCs(i) % PMatrix
               IF ( .NOT. ASSOCIATED(Projector) ) CYCLE
- 
+
               DO j=1,Projector % NumberOfRows
                  l = Perm( Projector % InvPerm(j) )
-                 IF ( l > 0 ) THEN 
+                 IF ( l > 0 ) THEN
                     l = DOFs * (l-1) + DOF
-    
+
                     DO k=Projector % Rows(j), Projector % Rows(j+1)-1
                        m = Perm( Projector % Cols(k) )
                        IF ( m > 0 )  THEN
@@ -377,22 +377,22 @@ CONTAINS
 
 !  Ideana oli tehd� matriisit Neumanin reunaehdoilla sek� taulukko
 !  R, jossa on solmuarvojen riippuvuudet tyyliin R(i,1) = R(i,2).
-!  Saa olla p��llekk�isyyksi� ja miss� tahansa j�rjestyksess�. 
+!  Saa olla p��llekk�isyyksi� ja miss� tahansa j�rjestyksess�.
 !  Kutsuin sitten a.o. aliohjelmaa, joka palauttaa listat d ja
 !  Pperm siten, ett� projektori saadaan seuraavasti:
 !
 !   P( i, Pperm( d(i) ) ) = 1
 !
-!  Itseasiassa tuo d on t�ss� ainoa mik� oikeastaan sis�lt�� 
+!  Itseasiassa tuo d on t�ss� ainoa mik� oikeastaan sis�lt��
 !  infoa, eli vapausasteiden lopulliset riippuvuudet tyyliin
 !
 !      i = d(i)
 !
 !  Ei ole en�� N**2 luuppi, vaan ihan N. Testasin aika paljon ja
-!  n�ytt�isi toimivan kyll� ihan hienosti. 
+!  n�ytt�isi toimivan kyll� ihan hienosti.
 !
 !  Tuo 3d on sin�ns� hankala, ett� ongelmia ei tule pelk�st��n
-!  nurkkapisteist� kuten 2d:ss�, vaan my�s kaikista s�rmist�, 
+!  nurkkapisteist� kuten 2d:ss�, vaan my�s kaikista s�rmist�,
 !  eli toiststaan riippuvia rajoitteita on itseasiassa l�j�p�in.
 !
 !  Tuskin tosta edelleenk��n on mit��n lopullista iloa, heit�
@@ -402,65 +402,65 @@ CONTAINS
 !
 !  Mikko
 
-!------------------------------------------------------------------------------ 
-  SUBROUTINE PeriodicCnstr( R, n, NOFRows, d, Perm, IDC ) 
-!------------------------------------------------------------------------------ 
-! Eliminates dependent constraints 
-! 
+!------------------------------------------------------------------------------
+  SUBROUTINE PeriodicCnstr( R, n, NOFRows, d, Perm, IDC )
+!------------------------------------------------------------------------------
+! Eliminates dependent constraints
+!
 ! On input:   R(n,2) = Initial constraint list, R(i,1) = R(i,2)
-!                n   = Number of constraints 
-! 
+!                n   = Number of constraints
+!
 ! On output:     d   = Correct list of dependencies, i = d(i)
-!              Perm = Additional permutation vector 
-!               idc  = number of independent constraints  
-! 
-! The projector for eliminating the dependent constraints is 
-!     
-!                   P(i, Perm( d(i))) = 1 
-! 
-!------------------------------------------------------------------------------ 
-    INTEGER :: R(:,:), n, NOFRows, d(:), Perm(:), IDC 
- 
-    INTEGER :: i, j, k, CountChanges 
-    LOGICAL :: ChangesOccurred 
+!              Perm = Additional permutation vector
+!               idc  = number of independent constraints
+!
+! The projector for eliminating the dependent constraints is
+!
+!                   P(i, Perm( d(i))) = 1
+!
+!------------------------------------------------------------------------------
+    INTEGER :: R(:,:), n, NOFRows, d(:), Perm(:), IDC
+
+    INTEGER :: i, j, k, CountChanges
+    LOGICAL :: ChangesOccurred
 
     DO i = 1, NOFRows
-       d(i) = i 
-    END DO 
- 
-    DO i = 1, n 
-       j = R(i,1) ! MINVAL( R(i,1:2) ) 
-       k = R(i,2) ! MAXVAL( R(i,1:2) ) 
+       d(i) = i
+    END DO
+
+    DO i = 1, n
+       j = R(i,1) ! MINVAL( R(i,1:2) )
+       k = R(i,2) ! MAXVAL( R(i,1:2) )
        d(j) = d(k)
-    END DO 
+    END DO
 
-    ChangesOccurred = .TRUE. 
-    DO WHILE( ChangesOccurred ) 
-       ChangesOccurred = .FALSE. 
-       CountChanges = 0 
+    ChangesOccurred = .TRUE.
+    DO WHILE( ChangesOccurred )
+       ChangesOccurred = .FALSE.
+       CountChanges = 0
        DO i = 1,NOFRows
-          IF( d(i) /= d(d(i)) ) THEN 
-             d(i) = d(d(i)) 
-             ChangesOccurred = .TRUE. 
-             CountChanges = CountChanges+1 
-          END IF 
-       END DO 
-       PRINT *,'Eliminated',CountChanges,' dependent constraints' 
-    END DO 
+          IF( d(i) /= d(d(i)) ) THEN
+             d(i) = d(d(i))
+             ChangesOccurred = .TRUE.
+             CountChanges = CountChanges+1
+          END IF
+       END DO
+       PRINT *,'Eliminated',CountChanges,' dependent constraints'
+    END DO
 
-    j = 0 
-    Perm = 0 
+    j = 0
+    Perm = 0
     DO i = 1, NOFRows
-       IF( d(i) == i ) THEN 
+       IF( d(i) == i ) THEN
           j = j + 1
-          Perm(i) = j 
-       END IF 
-    END DO 
+          Perm(i) = j
+       END IF
+    END DO
 
-    IDC = NOFRows - j 
-!------------------------------------------------------------------------------ 
-  END SUBROUTINE PeriodicCnstr 
-!------------------------------------------------------------------------------ 
+    IDC = NOFRows - j
+!------------------------------------------------------------------------------
+  END SUBROUTINE PeriodicCnstr
+!------------------------------------------------------------------------------
 
 
 
@@ -532,7 +532,7 @@ CONTAINS
     INTEGER :: i,j,k,l
 
     B => AllocateMatrix()
-    
+
     NVals = SIZE( A % Values )
     B % NumberOfRows = MAXVAL( A % Cols )
     ALLOCATE( B % Rows( B % NumberOfRows +1 ), B % Cols( NVals ), &
@@ -559,7 +559,7 @@ CONTAINS
        DO i = 1, A % NumberOfRows
           DO j = A % Rows(i), A % Rows(i+1) - 1
              k = A % Cols(j)
-             IF ( Row(k) < B % Rows(k+1) ) THEN 
+             IF ( Row(k) < B % Rows(k+1) ) THEN
                 B % Cols( Row(k) ) = i
                 B % Values( Row(k) ) = A % Values(j)
                 B % MassValues( Row(k) ) = A % MassValues(j)
@@ -575,7 +575,7 @@ CONTAINS
        DO i = 1, A % NumberOfRows
           DO j = A % Rows(i), A % Rows(i+1) - 1
              k = A % Cols(j)
-             IF ( Row(k) < B % Rows(k+1) ) THEN 
+             IF ( Row(k) < B % Rows(k+1) ) THEN
                 B % Cols( Row(k) ) = i
                 B % Values( Row(k) ) = A % Values(j)
                 Row(k) = Row(k) + 1

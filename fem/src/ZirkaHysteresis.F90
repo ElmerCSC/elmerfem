@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -44,7 +44,7 @@ TYPE, public :: SplineLoop_t  ! {{{
   REAL(KIND=dp), pointer :: r_asc(:) => NULL(), r_desc(:) => NULL() , r_sat(:) => NULL() ! Needs to be pointer required by InterpolateCurve
   real(kind=dp), private :: BLimits(2)
   LOGICAL, private :: newmethod = .false.
-  CONTAINS 
+  CONTAINS
   PROCEDURE, private :: eval_1 => EvalSplineLoop
   procedure, private :: eval_2 => EvalSplineLoopSingle
   generic, public :: eval => eval_1, eval_2
@@ -85,7 +85,7 @@ TYPE, public  :: MasterCurve_t  ! {{{
   procedure, public :: printme => mc_printme
   procedure, public :: addstack => mc_addstack
   procedure, public :: drive => HBDrive
-  procedure, public :: insaturation 
+  procedure, public :: insaturation
 END TYPE MasterCurve_t ! }}}
 
 TYPE, public :: GlobalHysteresisModel_t ! {{{
@@ -178,14 +178,14 @@ END SUBROUTINE ! }}}
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
-!> Initialize spline loop from ascending hysteretic curve and single 
+!> Initialize spline loop from ascending hysteretic curve and single
 !> valued curve for saturation region
-!> BHasc and BHsingle are assumed to be of shape (N,2) 
+!> BHasc and BHsingle are assumed to be of shape (N,2)
 !-------------------------------------------------------------------------------
 FUNCTION InitSplineLoop(BHasc, BHsingle) RESULT(Loop) ! {{{
   !-------------------------------------------------------------------------------
   IMPLICIT NONE
-  REAL(KIND=dp), intent(in) :: BHasc(:,:), BHsingle(:,:) 
+  REAL(KIND=dp), intent(in) :: BHasc(:,:), BHsingle(:,:)
   TYPE(SplineLoop_t), POINTER :: Loop
   !-------------------------------------------------------------------------------
   INTEGER :: N, M
@@ -228,7 +228,7 @@ function init_master_curve(bigloop, ABCParams, &
   mc % ABCParams => ABCParams
   ! allocate(mc)
   allocate(mc % children(1:STACKSIZEINCREMENT))
-  
+
   DO k = 2,UBOUND(mc % children,1)
     mc % children(k) % parent => mc % children(k-1)
     mc % children(k) % bigloop => bigloop
@@ -237,8 +237,8 @@ function init_master_curve(bigloop, ABCParams, &
   allocate(mc % rc_asc, mc % rc_desc)
   mc % children(1) % parent => mc % rc_desc
 
-  rca => mc % rc_asc 
-  rcd => mc % rc_desc 
+  rca => mc % rc_asc
+  rcd => mc % rc_desc
   rca % bigloop => bigloop
   rcd % bigloop => bigloop
 
@@ -255,13 +255,13 @@ function init_master_curve(bigloop, ABCParams, &
   rca % depth = 0
   rca % parent => rcd
   rca % simple_eval => SimpleEvalAscendingSpline
-  
+
   mc % head => rcd
 
   if (present(init) .or. present(initseq)) then
     if (init .or. present(initseq)) then
       if (.not. present(initseq)) then ! {{{
-        block 
+        block
           integer, parameter :: nr = 12
           real :: up
           up = rcd % bigloop % bhasc(N,1)
@@ -319,7 +319,7 @@ RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
 #endif
       exit outer
     end if
-    if (rc % Bq <= B) then 
+    if (rc % Bq <= B) then
 
       if (rc % depth == 0 .and. Ascending(rc)) then ! in positive saturation return descending master
         rc_p => rc % parent
@@ -336,7 +336,7 @@ RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
       rc_p => RecurseDepth(rc % parent % parent, B) ! TODO: Think these through again
       exit outer
     end if
-    if (rc % Bp >= B) then 
+    if (rc % Bp >= B) then
       if (rc % depth == 0 .and. ascending(rc)) then ! in negative saturation return ascending master
         rc_p => rc
 #if DEBUG>1
@@ -361,7 +361,7 @@ RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
 #endif
       exit outer
     end if
-    if (B <= rc%Bq) then 
+    if (B <= rc%Bq) then
       if (rc % depth == 0 .and. descending(rc)) then ! in negative saturation return ascending master
         rc_p => rc % parent
 #if DEBUG>1
@@ -392,8 +392,8 @@ RECURSIVE FUNCTION RecurseDepth(rc, B) result (rc_p)! {{{
       rc_p => RecurseDepth(rc % parent, B)
       exit outer
     end if
-  end if 
-  end block outer 
+  end if
+  end block outer
 
 END FUNCTION ! }}}
 
@@ -408,7 +408,7 @@ SUBROUTINE EvalSplineLoop(this, B, Hasc, Hdesc, dHasc, dHdesc) ! {{{
     if (B < this % blimits(1) .or. B > this % blimits(2)) then ! negative saturation
       call this % eval(B, Hasc)
       Hdesc = Hasc
-      return 
+      return
     end if
   end if
 
@@ -421,7 +421,7 @@ SUBROUTINE EvalSplineLoop(this, B, Hasc, Hdesc, dHasc, dHdesc) ! {{{
       this%BHdesc(:,1),  &
       this%BHdesc(:,2), &
       B, this%r_desc)
-  
+
   if (present(dHasc)) then
     dHasc = DerivateCurve( &
       this%BHasc(:,1),  &
@@ -455,7 +455,7 @@ SUBROUTINE EvalSplineLoopSingle(this, B, HSingle) ! {{{
       B, this % r_sat)
 
   if (neg) Hsingle = -Hsingle
-  
+
 END SUBROUTINE EvalSplineLoopSingle ! }}}
 
 ! Evaluate rc at B. Don't check if B is consistent with rc%Bp and rc%Bq
@@ -467,7 +467,7 @@ RECURSIVE FUNCTION SimpleEvalRevCurve(rc, B) result(H) ! {{{
   REAL(KIND=dp) :: Hap,  Hp, x, dHout, dH, HMAsc, HMDesc
   !-------------------------------------------------------------------------------
 #if 0
-  depthtest: if (rc%depth > 2) then 
+  depthtest: if (rc%depth > 2) then
     Hp = rc % parent % simple_eval(B)
     Hap = rc % parent % parent % simple_eval(B)
   else
@@ -484,12 +484,12 @@ RECURSIVE FUNCTION SimpleEvalRevCurve(rc, B) result(H) ! {{{
     END IF
     IF (rc % depth == 0) H = HMDesc
     IF (rc % depth == -1) H = HMAsc
-  endif depthtest 
+  endif depthtest
 #else
   Hp = rc % parent % simple_eval(B)
   Hap = rc % parent % parent % simple_eval(B)
 #endif
-  if (rc % depth > 0) then 
+  if (rc % depth > 0) then
     x = (rc % Bq - B )/rc % dBrev
     dHout = Hap - Hp
     dH = rc % dHrev*(1.0_dp-rc % b) * x * exp(-rc%a*(1.0_dp-x)) + dHout* rc % b* (x**rc%c)
@@ -511,7 +511,7 @@ RECURSIVE FUNCTION SimpleEvalDescendingSpline(rc, B) result(H) ! {{{
   call rc % bigloop % eval(B, Hasc, H)
 END FUNCTION ! }}}
 
-! Evaluate master curve at B, 
+! Evaluate master curve at B,
 function mc_eval(mc, B, dhdb, cached) result(H) ! {{{
   class(MasterCurve_t) :: mc
   real(kind=dp), intent(in) :: B
@@ -520,7 +520,7 @@ function mc_eval(mc, B, dhdb, cached) result(H) ! {{{
   real(kind=dp) :: dhasc, dhdesc, hasc, hdesc
   logical, optional :: cached
 
-  if (present(cached) .and. cached ) then 
+  if (present(cached) .and. cached ) then
       H = InterpolateCurve( &
           mc % BH(:,1), &
           mc % BH(:,2), &
@@ -585,7 +585,7 @@ SUBROUTINE HBDrive(mc, B, cache) ! {{{
       n = size(rc % bigloop % bhsat,1)
       bmax = rc % bigloop % bhsat(n,1)
       bmin = -rc % bigloop % bhsat(n,1)
-      n_cache = size(rc % bigloop % bhsat,1) / mc % cachesubsample 
+      n_cache = size(rc % bigloop % bhsat,1) / mc % cachesubsample
 
       IF(.not. ALLOCATED(mc % BH)) ALLOCATE(mc % BH(n_cache,2))
       IF(.not. associated(mc % r_bh)) ALLOCATE(mc % r_bh(n_cache))
@@ -643,23 +643,23 @@ SUBROUTINE AddStack(parent, master, B) ! {{{
       return
     end if
     if ( B > parent % Bp ) then ! in positive saturation return descending master
-      master % head => parent 
+      master % head => parent
       return
     end if
   end if
   if (ascending(parent)) then ! ascending master
     if ( B >= parent % Bq ) then !  in positive saturation return descending master
       master % head => parent % parent
-      return 
+      return
     end if
     if ( B < parent % Bp ) then ! in negative saturation return ascending master
-      master % head => parent  
+      master % head => parent
       return
     end if
   end if
 #endif
 
-  
+
   ! Not in saturation
   parent => check_reallocate(parent, parent % depth + 1)
   x => master % children(parent % depth + 1)
@@ -743,7 +743,7 @@ SUBROUTINE rc_printeval(rc, B, rc0) ! {{{
   implicit none
   class(revcurve_t), pointer, intent(in) :: rc
   class(revcurve_t), pointer, intent(in), optional :: rc0
-  real(kind=dp), intent(in) :: B 
+  real(kind=dp), intent(in) :: B
   real(kind=dp) :: X, X0
   class(revcurve_t), pointer :: rc_p, rc0_p
   integer :: k
@@ -849,7 +849,7 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
     BHSingle => NULL()
 
     hystvar => GetZirkaVariable(Material)
-    
+
     if (.not. associated(hystvar)) HystVar => CreateZirkaVariable(Material)
     ! call fatal('InitHysteresis', 'hystvar > ' // trim(str) //' < not available')
 
@@ -865,12 +865,12 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
     ZirkaEntry % PROCEDURE = TRANSFER(c_loc(zirkamodel), ZirkaEntry % PROCEDURE)
 
     ! Initialize saturation loops and saturation curve
-    call GetConstRealArray(Material, BHasc, 'Ascending BH curve', found) 
+    call GetConstRealArray(Material, BHasc, 'Ascending BH curve', found)
     if(.not. Found) call fatal('InitHysteresis', 'Ascending BH curve not found')
     call GetConstRealArray(Material, BHSingle, 'Single valued BH curve', found)
     if(.not. Found) call fatal('InitHysteresis', 'Single valued BH curve not found')
 
-    zirkamodel % masterloop => InitSplineLoop(BHasc, BHSingle) 
+    zirkamodel % masterloop => InitSplineLoop(BHasc, BHSingle)
     zirkamodel % CacheSubSample = ListGetInteger(Material, 'Zirka Spline Cache Subsample', Found)
     if(.not. Found) Zirkamodel % CacheSubSample = 2
 
@@ -883,7 +883,7 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
        ABCparams % coeffs(1:4) = zcoeff(1:4,1)
        end if
     end if
-    
+
     b_mult = GetCReal(Material, 'Zirka model b multiplier', found)
     if(found) zirkamodel % abcparams % b_mult = b_mult
 
@@ -908,7 +908,7 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
       IP = GaussPoints(element)
 
       inithystblock: block ! {{{
-        REAL(KIND=dp) :: phi 
+        REAL(KIND=dp) :: phi
         integer :: i
 
         zirkamodel => GetZirkaPointer(material)
@@ -953,9 +953,9 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
   end do ! }}}
   write(message, '(A,I0,A,I0)') 'Found ',n_zirka_mat,' Zirka hysteresis models and skipped initialization of ', n_initialized
   call Info('InitHysteresis',message,level=10)
-  
+
 !-------------------------------------------------------------------------------
-END SUBROUTINE InitHysteresis ! }}} 
+END SUBROUTINE InitHysteresis ! }}}
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
@@ -992,7 +992,7 @@ FUNCTION CreateZirkaVariable(Material) RESULT(var)
 
   mesh => getmesh()
 
-  str = ListGetString(material, 'Zirka variable', found) 
+  str = ListGetString(material, 'Zirka variable', found)
   if(.not. found) str = default_zirka_variable_name !'zirka'
   var => VariableGet(mesh % variables, str)
   if(associated(var)) THEN
@@ -1040,11 +1040,11 @@ FUNCTION GetZirkaVariable(Material) RESULT(ZirkaVariable) ! {{{
 
   mesh => getmesh()
 
-  str = ListGetString(material, 'Zirka variable', found) 
+  str = ListGetString(material, 'Zirka variable', found)
   if(.not. found) str = default_zirka_variable_name! 'zirka'
   ZirkaVariable => VariableGet(mesh % variables, str)
   if(associated(zirkaVariable)) return
-  
+
 !-------------------------------------------------------------------------------
 END FUNCTION ! }}}
 !-------------------------------------------------------------------------------
@@ -1070,7 +1070,7 @@ SUBROUTINE DriveHysteresis(model, solver) ! {{{
   logical :: found
 !-------------------------------------------------------------------------------
 #if DEBUG>0
-  integer :: printed 
+  integer :: printed
   printed =  0
 #endif
 
@@ -1106,7 +1106,7 @@ drivehystblock: block
 #endif
 
       counter = counter + 1
-      einfostat = ElementInfo( & 
+      einfostat = ElementInfo( &
           Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
       ! B_ip(1) = -SUM(POT*dBasisdx(:,2))
@@ -1120,7 +1120,7 @@ drivehystblock: block
 #if DEBUG>0
       if (printed < 2) then ! DEBUG
         print *, 'B_ip = ', B_ip, printed
-        printed = printed + 1 
+        printed = printed + 1
       end if
 #endif
 
@@ -1180,7 +1180,7 @@ SUBROUTINE GetHystereticMFS(Element, Force, pSolver, HasZirka, CSymmetry) ! {{{
   n  = GetElementNOFNodes(Element)
   nd = GetElementNOFDOFs(Element)
   IP = GaussPoints(element)
-  block 
+  block
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ, B_ip(2), POT(nd),H_ip(2), &
         Agrad(3), x, Alocal
     integer :: p, ipindex
@@ -1192,7 +1192,7 @@ SUBROUTINE GetHystereticMFS(Element, Force, pSolver, HasZirka, CSymmetry) ! {{{
       ipindex = getipindex(t, usolver=psolver, element=element, ipvar=hystvar)
       if (ipindex == 0) cycle
       H_ip = 0.0_dp
-      einfostat = ElementInfo( & 
+      einfostat = ElementInfo( &
           Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
 

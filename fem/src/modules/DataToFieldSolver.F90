@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,23 +27,23 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16.06.2011
 ! *
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
-!> Solves by Galerkin method the problem where a continuous field is 
-!> fitted to data. The data may be created in advance or it may be 
+!> Solves by Galerkin method the problem where a continuous field is
+!> fitted to data. The data may be created in advance or it may be
 !> given as a property of discrete particles. The data has a contribution
 !> on the r.h.s. of the equation only. Regularization (i.e. diffusion) may be
 !> added to reduce noise from the fitting of the data. Also data may be used
-!> only selectively as defined by some mask variable. 
+!> only selectively as defined by some mask variable.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
-  
+
   USE DefUtils
   USE Interpolation
   USE MeshBasics
@@ -56,11 +56,11 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
-  
+
 ! local variables
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-  TYPE(Variable_t), POINTER :: Var 
+  TYPE(Variable_t), POINTER :: Var
   REAL(KIND=dp), POINTER :: WeightVector(:),ForceVector(:),MaskVector(:),FieldVector(:)
   INTEGER, POINTER :: WeightPerm(:),ForcePerm(:),MaskPerm(:),FieldPerm(:)
   REAL(KIND=dp) :: Norm, MinMaskVal, MaxMaskVal, GlobalWeight
@@ -70,12 +70,12 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
 
 
   CALL Info('DataToFieldSolver','-----------------------------------------', Level=4 )
-  CALL Info('DataToFieldSolver','Resolving field from given data',Level=4) 
+  CALL Info('DataToFieldSolver','Resolving field from given data',Level=4)
 
-  
+
   Var => Solver % Variable
   FieldVector => Var % Values
-  FieldPerm => Var % Perm 
+  FieldPerm => Var % Perm
   CALL Info('DataToFieldSolver','Fitting to variable: '//TRIM(Var % Name),Level=6)
 
   ! The variable containing the field contributions
@@ -88,11 +88,11 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   Var => VariableGet(Solver % Mesh % Variables, VarName )
-  IF( ASSOCIATED( Var ) ) THEN    
+  IF( ASSOCIATED( Var ) ) THEN
     ForceVector => Var % Values
     ForcePerm => Var % Perm
   ELSE
-    CALL Fatal('DataToFieldSolver','Variable not present:'//TRIM(VarName))      
+    CALL Fatal('DataToFieldSolver','Variable not present:'//TRIM(VarName))
   END IF
 
   ! If normalization is requested then need the vector of weights as well
@@ -108,22 +108,22 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
     IF(.NOT. Found) VarName = GetString( Params,'Weight Variable',Found)
     IF(.NOT. Found ) THEN
       CALL Fatal('DataToFieldSolver','> Weight Variable < must exist for the solver!')
-    END IF    
+    END IF
     Var => VariableGet(Solver % Mesh % Variables, VarName )
-    IF( ASSOCIATED( Var ) ) THEN    
+    IF( ASSOCIATED( Var ) ) THEN
       WeightVector => Var % Values
       WeightPerm => Var % Perm
     ELSE
-      CALL Fatal('DataToFieldSolver','Variable not present: '//TRIM(VarName))      
+      CALL Fatal('DataToFieldSolver','Variable not present: '//TRIM(VarName))
     END IF
-    CALL Info('DataToFieldSolver','Normalizing source using: '//TRIM(VarName),Level=6) 
+    CALL Info('DataToFieldSolver','Normalizing source using: '//TRIM(VarName),Level=6)
 
     ConstantWeightSum = GetLogical( Params,'Set Constant Weight Sum',Found)
   END IF
-  
-  NodalNormalize = GetLogical( Params,'Normalize by Nodal Weight',Found)    
+
+  NodalNormalize = GetLogical( Params,'Normalize by Nodal Weight',Found)
   IF( NodalNormalize ) THEN
-    CALL Info('DataToFieldSolver','Normalizing source using nodal weight',Level=6) 
+    CALL Info('DataToFieldSolver','Normalizing source using nodal weight',Level=6)
   END IF
 
   IF( GivenNormalize .AND. NodalNormalize ) THEN
@@ -138,33 +138,33 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   IF(.NOT. Mask) VarName = ListGetString( Params,'Mask Variable',Mask )
   IF( Mask ) THEN
     Var => VariableGet(Solver % Mesh % Variables, VarName )
-    IF( ASSOCIATED( Var ) ) THEN    
+    IF( ASSOCIATED( Var ) ) THEN
       MaskVector => Var % Values
       MaskPerm => Var % Perm
     ELSE
-      CALL Fatal('DataToFieldSolver','Variable not present: '//TRIM(VarName))      
+      CALL Fatal('DataToFieldSolver','Variable not present: '//TRIM(VarName))
     END IF
-    CALL Info('DataToFieldSolver','Masking source using: '//TRIM(VarName),Level=6) 
+    CALL Info('DataToFieldSolver','Masking source using: '//TRIM(VarName),Level=6)
 
-    MaxMaskVal = ListGetCReal( Params,'Max Mask Value',Found ) 
+    MaxMaskVal = ListGetCReal( Params,'Max Mask Value',Found )
     IF(.NOT. Found) MaxMaskVal = HUGE( MaxMaskVal )
     MinMaskVal = ListGetCReal( Params,'Min Mask Value',Found2 )
     IF(.NOT. Found2 ) THEN
       IF(.NOT. Found ) THEN
         MinMaskVal = 0.0_dp
       ELSE
-        MinMaskVal = -HUGE(MinMaskVal) 
+        MinMaskVal = -HUGE(MinMaskVal)
       END IF
-    END IF      
+    END IF
     MaskDiffusion = GetLogical( Params,'Mask Diffusion',Found )
     IF( MaskDiffusion ) THEN
-      CALL Info('DataToFieldSolver','Masking diffusion terms',Level=6) 
+      CALL Info('DataToFieldSolver','Masking diffusion terms',Level=6)
     END IF
   END IF
 
 
   ! If the data is retrieved from ascii table then map that into mesh
-  ! Only the r.h.s. is assemblied here. 
+  ! Only the r.h.s. is assemblied here.
   !------------------------------------------------------------------------
   Filename = GetString( Params,'Point Data Filename',Found)
   IF( Found ) THEN
@@ -181,11 +181,11 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   IF( ContinueWithBC ) THEN
     CALL Info('DataToFieldSolver','Using boundary assembly to continue the solution at BCs',Level=6)
   END IF
-  
+
 
   ! Create the matrix equation with r.h.s. data and regularization
   !------------------------------------------------------------------------
-  CALL DefaultInitialize()  
+  CALL DefaultInitialize()
 
   CALL BulkAssembly()
 
@@ -199,17 +199,17 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultDirichletBCs()
 
-  ! Solver the matrix 
+  ! Solver the matrix
   !------------------------------------------------------------------------
 
-  ! If we compute in log scale and revert back then compute the change only 
+  ! If we compute in log scale and revert back then compute the change only
   ! after reverting back to real scale.
   RevertLogScale = GetLogical( Params,'Revert Logarithmic Fitting',Found)
   IF( RevertLogScale ) THEN
     CALL Info('DataToFieldSolver','Reverting from logarithmic scale!',Level=6)
     CALL ListAddLogical( Solver % Values,'Skip Compute Nonlinear Change',.TRUE.)
     Norm = DefaultSolve()
-    FieldVector = EXP( FieldVector ) 
+    FieldVector = EXP( FieldVector )
     CALL ComputeChange( Solver, .FALSE. )
   ELSE
     Norm = DefaultSolve( )
@@ -217,16 +217,16 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
 
   CALL Info('DataToFieldSolver','All done', Level=4 )
   CALL Info('DataToFieldSolver','-----------------------------------------', Level=4 )
-  
-  
-CONTAINS 
-  
+
+
+CONTAINS
+
 
   !------------------------------------------------------------------------
   !> Go through list of given points and add their contribution to FE mesh.
   !-------------------------------------------------------------------------
   SUBROUTINE AsciiPointsToMesh()
-    
+
     INTEGER :: i,j,n,dim,No,ElementIndex=0
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp) :: SqrtElementMetric, Weight,u,v,w,LocalCoords(3),val,InputData(4)
@@ -240,17 +240,17 @@ CONTAINS
 
 
     SAVE :: AllocationsDone, ElementIndex, Basis, dBasisdx, ElementNodes
-    
+
     Mesh => Solver % Mesh
 
     n = Mesh % MaxElementNodes
     ALLOCATE(ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
         Basis(n), dBasisdx(n,3) )
 
-    
+
     GlobalCoords(3) = 0.0_dp
     dim = CoordinateSystemDimension()
-    
+
     DataColumn = ListGetInteger(Params,'Point Data Column',Found )
     IF( .NOT. Found ) DataColumn = dim + 1
 
@@ -261,8 +261,8 @@ CONTAINS
       CALL Info('DataToFieldSolver','Reading data points from file: '//TRIM(FileName),Level=6)
     END IF
 
-    No = 0 
-    DO WHILE(.TRUE.) 
+    No = 0
+    DO WHILE(.TRUE.)
       READ(IOUnit,*,IOSTAT=Success) InputData(1:DataColumn)
       IF( Success /= 0 ) THEN
         CALL Info('DataToFieldSolver','End of file after '//I2S(No)//' values')
@@ -301,28 +301,28 @@ CONTAINS
         ! Note that the weight could be also ~1/r^2 from the nodes etc.
         !-------------------------------------------------------------------------
         weight = Basis(i)
-        
+
         ForceVector( j ) = ForceVector( j ) + weight * val
         IF( GivenNormalize ) THEN
-          WeightVector( j ) = WeightVector( j ) + weight  
+          WeightVector( j ) = WeightVector( j ) + weight
         END IF
 
-      END DO      
+      END DO
     END DO
 
-    CLOSE(IOUnit) 
+    CLOSE(IOUnit)
 
     CALL Info('DataToFieldSolver','Done reading data points',Level=12)
 
   END SUBROUTINE AsciiPointsToMesh
-   
+
 
 
   !------------------------------------------------------------------------
-  ! Assemble the matrix equation 
+  ! Assemble the matrix equation
   !-------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
-    
+
     INTEGER, POINTER :: BoundaryPerm(:), Indexes(:)
     INTEGER :: i,j,p,q,j2,j3,k,t,n,istat,active,BoundaryNodes,dim,MaskActive
     TYPE(Element_t), POINTER :: Element
@@ -336,11 +336,11 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Hwrk(:,:,:) => Null()
     REAL(KIND=dp), POINTER :: DataDiffusivity(:,:,:)
     INTEGER, POINTER :: MatDiag(:)
-    TYPE(Matrix_t), POINTER :: StiffMatrix 
+    TYPE(Matrix_t), POINTER :: StiffMatrix
     LOGICAL :: stat, GlobalDiffuse, LocalDiffuse, Visited = .FALSE.
     TYPE(ValueList_t), POINTER :: Material
-    
-    
+
+
     SAVE Visited, Nodes, STIFF, FORCE, Basis, dBasisdx, NodalWeight, &
         BoundaryPerm, BoundaryNodes, DataDiffusivity
 
@@ -366,11 +366,11 @@ CONTAINS
 
     IF(.NOT. Visited) THEN
       Visited = .TRUE.
-      N = Solver % Mesh % MaxElementNodes 
+      N = Solver % Mesh % MaxElementNodes
       ALLOCATE( Basis(n), dBasisdx(n, 3), FORCE(N), STIFF(N,N), &
           DataDiffusivity( 3,3,N ), STAT=istat )
       IF( istat /= 0) CALL Fatal('DataToFieldSolver','Allocation error 1 in BulkAssembly!')
-      
+
       n = StiffMatrix % NumberOfRows
       ALLOCATE( NodalWeight( n ), STAT=istat )
       IF( istat /= 0) CALL Fatal('DataToFieldSolver','Allocation error 2 in BulkAssembly!')
@@ -391,7 +391,7 @@ CONTAINS
       END IF
 
     END IF
-    
+
     NodalWeight = 0.0_dp
 
     DO t=1,active
@@ -399,11 +399,11 @@ CONTAINS
       Element => GetActiveElement(t)
       n = GetElementNOFNodes(Element)
       Indexes => Element % NodeIndexes
-      
+
       CALL GetElementNodes( Nodes, Element )
       STIFF = 0.0d0
       FORCE = 0.0d0
-      
+
       IF( .NOT. GlobalDiffuse ) THEN
         Material => GetMaterial()
         CALL ListGetRealArray( Material,DiffusivityName,Hwrk,n,Indexes,LocalDiffuse)
@@ -427,7 +427,7 @@ CONTAINS
         END IF
       END IF
 
-      
+
       ! Numerical integration:
       !----------------------
       IP = GaussPoints( Element )
@@ -436,7 +436,7 @@ CONTAINS
         !--------------------------------------------------------------
         stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
             IP % W(k),  detJ, Basis, dBasisdx )
-        
+
         ! Finally, the elemental matrix & vector:
         !----------------------------------------
         DO i=1,n
@@ -444,10 +444,10 @@ CONTAINS
           IF( .NOT. ContinueWithBC .AND. BoundaryNodes > 0 ) THEN
             IF( BoundaryPerm( Indexes(i) ) > 0 ) CYCLE
           END IF
-          
+
           ! Compute the rowsum that is used in the normalization
           !-----------------------------------------------------
-          val = IP % s(k) * DetJ * Basis(i)        
+          val = IP % s(k) * DetJ * Basis(i)
           j = Indexes(i)
           NodalWeight( j ) = NodalWeight( j ) + val
 
@@ -459,10 +459,10 @@ CONTAINS
               DO q=1,dim
                 DiffMatrix(p,q) = SUM( DataDiffusivity(p,q,1:n) * Basis(1:n) )
               END DO
-            END DO            
+            END DO
           END IF
 
-          ! This condition should remove the diffusion for proper data, and 
+          ! This condition should remove the diffusion for proper data, and
           ! use it only for outlier data.
           !----------------------------------------------------------------
           IF( MaskDiffusion ) THEN
@@ -471,8 +471,8 @@ CONTAINS
             val = MaskVector( j2 )
             IF( .NOT. (val < MinMaskVal .OR. val > MaxMaskVal ) ) CYCLE
           END IF
-          
-          ! This condition removes the natural boundary condition that would 
+
+          ! This condition removes the natural boundary condition that would
           ! try to fix the normal gradient of the field to zero.
           ! Does not seem to work though...
           !--------------------------------------------------------------------
@@ -480,36 +480,36 @@ CONTAINS
           IF( GlobalDiffuse ) THEN
             DO j=1,n
               STIFF(i,j) = STIFF(i,j) + IP % s(k) * DetJ * &
-                  Coeff * SUM( dBasisdx(i,1:dim) * dBasisdx(j,1:dim) ) 
+                  Coeff * SUM( dBasisdx(i,1:dim) * dBasisdx(j,1:dim) )
             END DO
-          ELSE IF( LocalDiffuse ) THEN            
+          ELSE IF( LocalDiffuse ) THEN
             DO j=1,n
               STIFF(i,j) = STIFF(i,j) + IP % s(k) * DetJ * &
-                  SUM(MATMUL(DiffMatrix(1:dim,1:dim), dBasisdx(j,1:dim)) * dBasisdx(i,1:dim)) 
+                  SUM(MATMUL(DiffMatrix(1:dim,1:dim), dBasisdx(j,1:dim)) * dBasisdx(i,1:dim))
             END DO
           END IF
 
         END DO
       END DO
-      
+
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
 
     MaskActive = 0
     IF( GivenNormalize .AND. ConstantWeightSum ) THEN
       !-----------------------------------------------------------------------
-      ! Set the weight to the diagonal i.e. make the mass matrix contribution  
-      ! The data is normalized so that if it would be constant it would yield the 
+      ! Set the weight to the diagonal i.e. make the mass matrix contribution
+      ! The data is normalized so that if it would be constant it would yield the
       ! same equation as the normal one and the weights would also be constant.
       ! This way diffusion will not depend on the amount of data, whether
-      ! that is desirable, or not, I don't know. 
+      ! that is desirable, or not, I don't know.
       !-----------------------------------------------------------------------
       BLOCK
         REAL(KIND=dp) :: s1, s2
         s1 = SUM( NodalWeight )
         s2 = SUM( WeightVector )
         s1 = ParallelReduction(s1)
-        s2 = ParallelReduction(s2)        
+        s2 = ParallelReduction(s2)
         WeightCorr = s1 / s2
       END BLOCK
     ELSE
@@ -531,14 +531,14 @@ CONTAINS
           END IF
         END IF
       END IF
-      
+
       ! field to be solved for
       j = FieldPerm(i)
       IF( j == 0 ) CYCLE
 
       ! force vector on the r.h.s.
       j2 = i
-      IF( ASSOCIATED( ForcePerm ) ) j2 = ForcePerm(j2)     
+      IF( ASSOCIATED( ForcePerm ) ) j2 = ForcePerm(j2)
       IF( j2 > 0 ) THEN
         val = ForceVector(j2)
         IF( UseLogScale ) val = LOG( val )
@@ -548,16 +548,16 @@ CONTAINS
 
       IF( GivenNormalize ) THEN
         j3 = i
-        IF( ASSOCIATED( WeightPerm ) ) j3 = WeightPerm(j3)        
+        IF( ASSOCIATED( WeightPerm ) ) j3 = WeightPerm(j3)
         IF( j3 > 0 ) THEN
           Wmat = WeightCorr * WeightVector(j3)
         ELSE
           Wmat = 0.0_dp
         END IF
         Wrhs = WeightCorr * val
-        
+
       ELSE IF( NodalNormalize ) THEN
-        Wmat = NodalWeight(i)        
+        Wmat = NodalWeight(i)
         Wrhs = val
 
       ELSE
@@ -570,7 +570,7 @@ CONTAINS
         Wrhs = GlobalWeight * Wrhs
       END IF
 
-      k = MatDiag(j) 
+      k = MatDiag(j)
       MatValues( k ) = MatValues( k ) + Wmat
       MatRhs(j) = MatRhs(j) + Wrhs
     END DO
@@ -584,7 +584,7 @@ CONTAINS
 
   END SUBROUTINE BulkAssembly
 !------------------------------------------------------------------------------
-  
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE BoundaryAssembly()
@@ -599,15 +599,15 @@ CONTAINS
     CondName = TRIM( CondName ) //' continue'
 
     DO t=1,GetNOFBoundaryElements()
-      
+
       Element => GetBoundaryElement(t)
       IF(.NOT. ActiveBoundaryElement(Element)) CYCLE
-      
-      BC => GetBC( Element ) 
+
+      BC => GetBC( Element )
       IF(.NOT. GetLogical( BC, CondName ,Found)) CYCLE
 
       n  = GetElementNOFNodes(Element)
-      
+
       ParentElement => Element % BoundaryInfo % Left
       IF( .NOT. ASSOCIATED( ParentElement ) ) THEN
         CALL Fatal('DataToFieldSolver','Could not find parent element!')
@@ -631,7 +631,7 @@ CONTAINS
     TYPE(Element_t), TARGET :: Element, ParentElement
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: STIFF(np,np), FORCE(np)
-    REAL(KIND=dp), POINTER :: A(:,:),M(:,:)    
+    REAL(KIND=dp), POINTER :: A(:,:),M(:,:)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), s, DetJ,u,v,w
     REAL(KIND=dp) :: ParentBasis(np),ParentdBasisdx(np,3),DiffMatrix(3,3)
     REAL(KIND=dp) :: Nrm(3),Coeff
@@ -644,8 +644,8 @@ CONTAINS
     LOGICAL :: LocalDiffuse, GlobalDiffuse
     TYPE(ValueList_t), POINTER :: Material
 !------------------------------------------------------------------------------
-    dim = CoordinateSystemDimension()    
-    
+    dim = CoordinateSystemDimension()
+
     Coeff = GetCReal( Solver % Values,'Diffusion Coefficient',GlobalDiffuse)
     LocalDiffuse = .FALSE.
 
@@ -654,7 +654,7 @@ CONTAINS
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    
+
     IF( .NOT. GlobalDiffuse ) THEN
       Material => GetMaterial( ParentElement )
       CALL ListGetRealArray( Material,'Data Diffusivity',Hwrk,np,&
@@ -688,7 +688,7 @@ CONTAINS
       w =  IP % W(t)
 
       stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
-      
+
       s = IP % s(t) * DetJ
       Nrm = NormalVector(Element,Nodes,u,v, .TRUE.)
 
@@ -707,7 +707,7 @@ CONTAINS
           END DO
         END DO
       END IF
-      
+
 
       DO p=1,np
         DO q=1,np
@@ -746,13 +746,13 @@ SUBROUTINE DataToFieldSolver_init( Model,Solver,dt,TransientSimulation )
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
-  
+
 ! local variables
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: GivenNormalize, NodalNormalize, Found, HaveFile
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
-  
+
 
   Params => GetSolverParams()
 
@@ -762,7 +762,7 @@ SUBROUTINE DataToFieldSolver_init( Model,Solver,dt,TransientSimulation )
   IF(.NOT. GivenNormalize) GivenNormalize = GetLogical( Params,'Normalize Data by Weight',Found)
 
   ! If the file is given then the two following fields will be created internally
-  ! and one can allocate them here, if not given otherwise. 
+  ! and one can allocate them here, if not given otherwise.
   !-----------------------------------------------------------------------------
   VarName = GetString( Params,'Target Variable',Found)
   IF(.NOT. Found .AND. HaveFile ) THEN
@@ -788,7 +788,7 @@ SUBROUTINE DataToFieldSolver_init( Model,Solver,dt,TransientSimulation )
   VarName = GetString( Params,'Variable',Found)
   IF(.NOT. Found ) THEN
     IF( HaveFile ) THEN
-      CALL ListAddString( Params,'Variable','Point Fit')     
+      CALL ListAddString( Params,'Variable','Point Fit')
     ELSE
       CALL ListAddString( Params,'Variable','Fit')
     END IF
@@ -796,7 +796,7 @@ SUBROUTINE DataToFieldSolver_init( Model,Solver,dt,TransientSimulation )
 
 
   CALL ListAddInteger( Params, 'Time derivative order', 0 )
-  
+
   ! Add some cheap linear system defaults: bicgstab + none (diagonal when scaled)
   !------------------------------------------------------------------------
   CALL ListAddNewString(Params,'Linear System Solver','Iterative')
@@ -805,5 +805,5 @@ SUBROUTINE DataToFieldSolver_init( Model,Solver,dt,TransientSimulation )
   CALL ListAddNewInteger(Params,'Linear System Max Iterations',1000)
   CALL ListAddNewInteger(Params,'Linear System Residual Output',20)
   CALL ListAddNewConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)
-  
+
 END SUBROUTINE DataToFieldSolver_init

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -32,7 +32,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 28 Sep 1998
 ! *
@@ -55,19 +55,19 @@ MODULE LumpingUtils
   USE ParallelUtils, ONLY : ParallelReduction
   USE VectorHelmholtzUtils, ONLY : ElectricPortModel
   IMPLICIT NONE
-  
-  !COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
+
+  !COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
  CONTAINS
 
-      
+
 !------------------------------------------------------------------------------
 !> Compute reduction operators for a given component with given nodal vector field.
 !> Force is simple sum of nodal forces
 !> Moment is moment of nodal forces about a given center point
 !> Torque is moment of nodal forces about a given rotational axis
-!> If the given field is a elemental (DG) field it may be reduced by 
-!> optional SetPerm reordering for minimal discontinuous set. 
+!> If the given field is a elemental (DG) field it may be reduced by
+!> optional SetPerm reordering for minimal discontinuous set.
 !------------------------------------------------------------------------------
    SUBROUTINE ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
        Force, Moment, Torque, SetPerm )
@@ -92,11 +92,11 @@ MODULE LumpingUtils
      INTEGER :: t, i, j, k, n, dofs, globalnode, AirBody
      LOGICAL :: ElementalVar, Found, NeedLocation
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
-     LOGICAL :: VisitNodeOnlyOnce     
+     LOGICAL :: VisitNodeOnlyOnce
      INTEGER :: FirstElem, LastElem
      LOGICAL :: BcMode, BulkMode, RotorMode, isParallel
      CHARACTER(*), PARAMETER :: Caller = 'ComponentNodalForceReduction'
-    
+
      CALL Info(Caller,'Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
 
@@ -122,20 +122,20 @@ MODULE LumpingUtils
          CALL Fatal(Caller,'"Rotor Mode" requires "Rotor Radius"')
        END IF
      ELSE
-       MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',BulkMode )     
+       MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',BulkMode )
        IF( .NOT. BulkMode ) THEN
-         MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries', BCMode) 
-       END IF                    
+         MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries', BCMode)
+       END IF
        IF(.NOT. (BulkMode .OR. BCMode ) ) THEN
          CALL Warn(Caller,'> Master Bodies < or > Master Boundaries < not given')
          RETURN
        END IF
      END IF
-       
+
      NeedLocation = PRESENT( Moment ) .OR. PRESENT( Torque )
 
      ! User may specific origin and axis for torque computation
-     ! By default (0,0,0) is the origin, and (0,0,1) the axis. 
+     ! By default (0,0,0) is the origin, and (0,0,1) the axis.
      Pwrk => ListGetConstRealArray( CompParams,'Torque Origin',Found )
      IF( Found ) THEN
        IF( SIZE(Pwrk,1) /= 3 .OR. SIZE(Pwrk,2) /= 1 ) THEN
@@ -154,8 +154,8 @@ MODULE LumpingUtils
        ! Normalize axis is it should just be used for the direction
        Axis = Axis / SQRT( SUM( Axis*Axis ) )
      ELSE
-       Axis = 0.0_dp    
-       Axis(3) = 1.0_dp  
+       Axis = 0.0_dp
+       Axis(3) = 1.0_dp
      END IF
 
      ElementalVar = ( NF % TYPE == Variable_on_nodes_on_elements )
@@ -171,7 +171,7 @@ MODULE LumpingUtils
      VisitNodeOnlyOnce = .NOT. ElementalVar .OR. PRESENT(SetPerm)
      IF( VisitNodeOnlyOnce ) THEN
        IF( PRESENT( SetPerm ) ) THEN
-         n = MAXVAL( SetPerm ) 
+         n = MAXVAL( SetPerm )
        ELSE
          n = Mesh % NumberOfNodes
        END IF
@@ -182,22 +182,22 @@ MODULE LumpingUtils
      IF( BcMode ) THEN
        FirstElem = Mesh % NumberOfBulkElements + 1
        LastElem = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-     ELSE       
+     ELSE
        FirstElem = 1
        LastElem = Mesh % NumberOfBulkElements
      END IF
 
      ! This is a special reduction that only applies to rotors that are surrounded by airgap.
      ! Very special operator for electrical machines that removes the bookkeeping of the bodies
-     ! that constitute the rotor. 
+     ! that constitute the rotor.
      AirBody = 0
-     IF(RotorMode ) THEN       
-       AirBody = ListGetInteger( CompParams,'Air Body',Found ) 
+     IF(RotorMode ) THEN
+       AirBody = ListGetInteger( CompParams,'Air Body',Found )
        IF(AirBody == 0) THEN
          DO t=FirstElem,LastElem
            Element => Mesh % Elements(t)
            n = Element % TYPE % NumberOfNodes
-           CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)         
+           CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)
            DO i=1,n
              rad = SQRT(Nodes % x(i)**2 + Nodes % y(i)**2)
              IF(i==1) THEN
@@ -209,14 +209,14 @@ MODULE LumpingUtils
              END IF
            END DO
 
-           ! The body is defined by an element that is at and inside the rotor radius. 
+           ! The body is defined by an element that is at and inside the rotor radius.
            IF(ABS(maxrad-RotorRadius) < eps .AND. minrad < RotorRadius*(1-eps) ) THEN
              AirBody = Element % BodyId
              EXIT
            END IF
          END DO
-         AirBody = ParallelReduction(AirBody,2)         
-         CALL Info(Caller,'Airgap inner body determined to be: '//I2S(AirBody),Level=12)           
+         AirBody = ParallelReduction(AirBody,2)
+         CALL Info(Caller,'Airgap inner body determined to be: '//I2S(AirBody),Level=12)
          IF(AirBody==0) THEN
            CALL Fatal(Caller,'Could not define airgap inner body!')
          ELSE
@@ -225,7 +225,7 @@ MODULE LumpingUtils
        END IF
      END IF
 
-    
+
      DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
 
@@ -235,13 +235,13 @@ MODULE LumpingUtils
          IF( ALL( MasterEntities /= Element % BodyId ) ) CYCLE
        ELSE IF( RotorMode ) THEN
          IF( Element % BodyId == AirBody ) CYCLE
-         CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)         
+         CALL CopyElementNodesFromMesh( Nodes, Mesh, n, Element % NodeIndexes)
          rad = SQRT((SUM(Nodes % x(1:n))/n)**2 + (SUM(Nodes % y(1:n))/n)**2)
-         IF(rad > RotorRadius ) CYCLE         
+         IF(rad > RotorRadius ) CYCLE
        END IF
 
        n = Element % TYPE % NumberOfNodes
-       NodeIndexes => Element % NodeIndexes 
+       NodeIndexes => Element % NodeIndexes
        IF( ElementalVar ) THEN
          DofIndexes => Element % DGIndexes
        ELSE
@@ -249,7 +249,7 @@ MODULE LumpingUtils
        END IF
 
        DO i=1,n
-         j = DofIndexes(i)        
+         j = DofIndexes(i)
          k = NF % Perm(j)
          IF( k == 0 ) CYCLE
 
@@ -266,14 +266,14 @@ MODULE LumpingUtils
            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
 ! This is (probably) not correct, the "nodal forces"-array is partial and should be summed --> comment out.
-!          IF( VisitNodeOnlyOnce ) THEN           
+!          IF( VisitNodeOnlyOnce ) THEN
 !            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
 !          END IF
          END IF
-           
+
          F(1) = NF % Values( dofs*(k-1) + 1)
          F(2) = NF % Values( dofs*(k-1) + 2)
-         IF( dofs == 3 ) THEN 
+         IF( dofs == 3 ) THEN
            F(3) = NF % Values( dofs*(k-1) + 3)
          END IF
 
@@ -289,7 +289,7 @@ MODULE LumpingUtils
 
            v1 = P - Origin
 
-           ! Calculate moment 
+           ! Calculate moment
            IF( PRESENT( Moment ) ) THEN
              Moment = Moment + CrossProduct(v1,F)
            END IF
@@ -298,7 +298,7 @@ MODULE LumpingUtils
            IF( PRESENT( Torque ) ) THEN
              v1 = v1 - SUM(Axis*v1)*Axis
              v2 = CrossProduct(v1,F)
-             Torque = Torque + SUM(Axis*v2)        
+             Torque = Torque + SUM(Axis*v2)
            END IF
          END IF
 
@@ -311,18 +311,18 @@ MODULE LumpingUtils
            Force(i) = ParallelReduction(Force(i))
          END DO
        END IF
-       
+
        IF( PRESENT( Moment ) ) THEN
          DO i=1,3
            Moment(i) = ParallelReduction(Moment(i))
          END DO
        END IF
-       
+
        IF( PRESENT( Torque ) ) THEN
          Torque = ParallelReduction(Torque)
        END IF
      END IF
-       
+
 !------------------------------------------------------------------------------
    END SUBROUTINE ComponentNodalForceReduction
 !------------------------------------------------------------------------------
@@ -351,7 +351,7 @@ MODULE LumpingUtils
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce, Initialized
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode 
+     LOGICAL :: BcMode
 
 
      CALL Info('ComponentNodalReduction','Performing reduction for component: '&
@@ -360,9 +360,9 @@ MODULE LumpingUtils
      OperX = 0.0_dp
 
      BcMode = .FALSE.
-     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )
      IF( .NOT. Found ) THEN
-       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found ) 
+       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found )
        BcMode = .TRUE.
      END IF
 
@@ -376,7 +376,7 @@ MODULE LumpingUtils
        FirstElem = Mesh % NumberOfBulkElements + 1
        LastElem = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
      ELSE
-       FirstElem = 1 
+       FirstElem = 1
        LastElem = Mesh % NumberOfBulkElements
      END IF
 
@@ -386,7 +386,7 @@ MODULE LumpingUtils
 
      ! For nodal field compute only once each node
      ! For DG field each node is visited only once by construction
-     VisitNodeOnlyOnce = .NOT. ElementalVar 
+     VisitNodeOnlyOnce = .NOT. ElementalVar
      IF( VisitNodeOnlyOnce ) THEN
        n = Mesh % NumberOfNodes
        ALLOCATE(VisitedNode( n ) )
@@ -412,7 +412,7 @@ MODULE LumpingUtils
        END IF
 
        n = Element % TYPE % NumberOfNodes
-       NodeIndexes => Element % NodeIndexes 
+       NodeIndexes => Element % NodeIndexes
        IF( ElementalVar ) THEN
          DofIndexes => Element % DGIndexes
        ELSE
@@ -420,7 +420,7 @@ MODULE LumpingUtils
        END IF
 
        DO i=1,n
-         j = DofIndexes(i)        
+         j = DofIndexes(i)
          IF( ASSOCIATED( Var % Perm ) ) THEN
            k = Var % Perm(j)
            IF( k == 0 ) CYCLE
@@ -468,9 +468,9 @@ MODULE LumpingUtils
         IF(ABS(x) < ABS(AbsMinimum) ) AbsMinimum = x
       END DO
     END DO
-    
-    
-    sumi = ParallelReduction(sumi) 
+
+
+    sumi = ParallelReduction(sumi)
     IF( sumi == 0 ) THEN
       CALL Warn('ComponentNodalReduction','No active nodes to reduced!')
       RETURN
@@ -478,7 +478,7 @@ MODULE LumpingUtils
 
 
     SELECT CASE(OperName)
-      
+
     CASE ('sum')
       sumx = ParallelReduction(sumx)
       operx = sumx
@@ -486,7 +486,7 @@ MODULE LumpingUtils
     CASE ('sum abs')
       sumx = ParallelReduction(sumabsx)
       operx = sumabsx
-      
+
     CASE ('min')
       minimum = ParallelReduction(minimum,1)
       operx = Minimum
@@ -494,38 +494,38 @@ MODULE LumpingUtils
     CASE ('max')
       maximum = ParallelReduction(maximum,2)
       operx = Maximum
-      
+
     CASE ('min abs')
-      Absminimum = ParallelReduction(AbsMinimum,1)          
+      Absminimum = ParallelReduction(AbsMinimum,1)
       operx = AbsMinimum
-      
+
     CASE ('max abs')
-      Absmaximum = ParallelReduction(AbsMaximum,2)     
+      Absmaximum = ParallelReduction(AbsMaximum,2)
       operx = AbsMaximum
 
     CASE ('range')
-      minimum = ParallelReduction(minimum,1)     
+      minimum = ParallelReduction(minimum,1)
       maximum = ParallelReduction(maximum,2)
       operx = Maximum - Minimum
-      
+
     CASE ('mean')
       sumx = ParallelReduction(sumx)
-      operx = sumx / sumi 
-      
+      operx = sumx / sumi
+
     CASE ('mean abs')
       sumx = ParallelReduction(sumabsx)
-      operx = sumabsx / sumi 
+      operx = sumabsx / sumi
 
     CASE ('variance')
       sumx = ParallelReduction(sumx)
       sumxx = ParallelReduction(sumxx)
       Operx = SQRT( sumxx/sumi-(sumx*sumx)/(sumi*sumi) )
 
-    CASE DEFAULT 
+    CASE DEFAULT
       CALL Warn('ComponentNodalReduction','Unknown statistical operator!')
 
     END SELECT
-      
+
     CALL Info('ComponentNodalReduction','Reduction operator finished',Level=12)
 
 !------------------------------------------------------------------------------
@@ -564,7 +564,7 @@ MODULE LumpingUtils
      TYPE(Nodes_t), SAVE :: ElementNodes
      LOGICAL, SAVE :: AllocationsDone = .FALSE.
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode 
+     LOGICAL :: BcMode
 
 
      CALL Info('ComponentIntegralReduction','Performing reduction for component: '&
@@ -573,11 +573,11 @@ MODULE LumpingUtils
      OperX = 0.0_dp
      vol = 0.0_dp
      integral = 0.0_dp
-     
+
      BcMode = .FALSE.
-     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )
      IF( .NOT. Found ) THEN
-       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found ) 
+       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found )
        BcMode = .TRUE.
      END IF
 
@@ -591,13 +591,13 @@ MODULE LumpingUtils
        FirstElem = Mesh % NumberOfBulkElements + 1
        LastElem = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
      ELSE
-       FirstElem = 1 
+       FirstElem = 1
        LastElem = Mesh % NumberOfBulkElements
      END IF
 
      IF(.NOT. AllocationsDone ) THEN
        n = Model % MaxElementNodes
-       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )      
+       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
        AllocationsDone = .TRUE.
      END IF
 
@@ -614,7 +614,7 @@ MODULE LumpingUtils
        END IF
 
        n = Element % TYPE % NumberOfNodes
-       NodeIndexes => Element % NodeIndexes 
+       NodeIndexes => Element % NodeIndexes
        IF( ElementalVar ) THEN
          DofIndexes => Element % DGIndexes
        ELSE
@@ -627,24 +627,24 @@ MODULE LumpingUtils
          PermIndexes = DofIndexes
        END IF
 
-       IF ( ANY(PermIndexes == 0 ) ) CYCLE      
+       IF ( ANY(PermIndexes == 0 ) ) CYCLE
 
        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
        ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
-       
+
        IF(GotCoeff) THEN
          k = ListGetInteger( Model % Bodies( Element % BodyId ) % Values, &
              'Material', Found )
          Coeff(1:n) = ListGetReal( Model % Materials(k) % Values, &
              CoeffName, n, NodeIndexes(1:n) )
        END IF
-       
+
 !------------------------------------------------------------------------------
 !    Numerical integration
 !------------------------------------------------------------------------------
        IntegStuff = GaussPoints( Element )
-       
+
        DO i=1,IntegStuff % n
          U = IntegStuff % u(i)
          V = IntegStuff % v(i)
@@ -661,34 +661,34 @@ MODULE LumpingUtils
          IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
            x = 2 * PI * SUM( ElementNodes % x(1:n)*Basis(1:n) )
          END IF
-         
+
          IF( GotCoeff ) THEN
            CoeffAtIp = SUM( Coeff(1:n) * Basis(1:n) )
          END IF
          vol = vol + S
 
          SELECT CASE(OperName)
-           
+
          CASE ('volume')
            integral = integral + coeffAtIp * S
-           
+
          CASE ('int','int mean')
            func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
-           integral = integral + S * coeffAtIp * func 
-           
+           integral = integral + S * coeffAtIp * func
+
          CASE ('int abs','int abs mean')
            func = ABS( SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) ) )
            integral = integral + S * coeffAtIp * func
-           
+
          CASE ('diffusive energy')
            DO j = 1, 3
              Grad(j) = SUM( dBasisdx(1:n,j) *  Var % Values(PermIndexes(1:n) ) )
-           END DO           
+           END DO
            integral = integral + s * CoeffAtIp * SUM( Grad * Grad )
-           
+
          CASE ('convective energy')
            func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
-           
+
            IF(NoDofs == 1) THEN
              func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
              integral = integral + s * coeffAtIp * func**2
@@ -699,12 +699,12 @@ MODULE LumpingUtils
               integral = integral + s * coeffAtIp * func**2
             END DO
           END IF
-          
-        CASE ('potential energy')          
+
+        CASE ('potential energy')
           func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
           integral = integral + s * coeffAtIp * func
-          
-        CASE DEFAULT 
+
+        CASE DEFAULT
           CALL Warn('ComponentIntegralReduction','Unknown operator')
 
         END SELECT
@@ -713,38 +713,38 @@ MODULE LumpingUtils
 
     END DO
 
-    integral = ParallelReduction( integral ) 
+    integral = ParallelReduction( integral )
 
     SELECT CASE(OperName)
-      
-    CASE ('volume')        
+
+    CASE ('volume')
       operx = integral
-      
+
     CASE ('int')
       operx = integral
-      
+
     CASE ('int abs')
       operx = integral
-      
+
     CASE ('int mean')
-      vol = ParallelReduction( vol ) 
-      operx = integral / vol        
-      
+      vol = ParallelReduction( vol )
+      operx = integral / vol
+
     CASE ('int abs mean')
-      vol = ParallelReduction( vol ) 
-      operx = integral / vol        
-      
+      vol = ParallelReduction( vol )
+      operx = integral / vol
+
     CASE ('diffusive energy')
       operx = 0.5d0 * integral
-      
+
     CASE ('convective energy')
       operx = 0.5d0 * integral
-      
+
     CASE ('potential energy')
       operx = integral
-      
+
     END SELECT
-      
+
     CALL Info('ComponentIntegralReduction','Reduction operator finished',Level=12)
 
 !------------------------------------------------------------------------------
@@ -781,24 +781,24 @@ MODULE LumpingUtils
         OperName = ListGetString( CompParams,'Operator '//I2S(NoVar), GotOper)
         VarName = ListGetString( CompParams,'Variable '//I2S(NoVar), GotVar)
         CoeffName = ListGetString( CompParams,'Coefficient '//I2S(NoVar), GotCoeff)
-        
+
         IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
           VarName = 'Potential'
           GotVar = .TRUE.
           CALL Info('UpdateDependentComponents',&
               'Defaulting field to > Potential < for operator: '//TRIM(OperName),Level=8)
         END IF
-        
+
         IF(.NOT. (GotVar .AND. GotOper ) ) EXIT
 
-        Var => VariableGet( CurrentModel % Mesh % Variables, VarName ) 
+        Var => VariableGet( CurrentModel % Mesh % Variables, VarName )
         IF( .NOT. ASSOCIATED( Var ) ) THEN
           CALL Info('UpdateDependentComponents','Variable not available: '//TRIM(VarName))
           CYCLE
         END IF
         VectorResult = .FALSE.
 
-        SELECT CASE( OperName ) 
+        SELECT CASE( OperName )
 
         CASE('electric resistance')
           IF(.NOT. GotCoeff ) THEN
@@ -811,9 +811,9 @@ MODULE LumpingUtils
           TmpOper = 'range'
           Voltage = ComponentNodalReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
               TmpOper )
-          ScalarVal = Voltage**2 / Power 
+          ScalarVal = Voltage**2 / Power
           CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName),ScalarVal )
- 
+
         CASE ('sum','sum abs','min','max','min abs','max abs','range','mean','mean abs','variance')
           ScalarVal = ComponentNodalReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
               OperName )
@@ -835,7 +835,7 @@ MODULE LumpingUtils
               Moment = VectorVal )
           VectorResult = .TRUE.
 
-        CASE('torque')          
+        CASE('torque')
           CALL ComponentNodalForceReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
               Torque = ScalarVal )
 
@@ -850,14 +850,14 @@ MODULE LumpingUtils
                 //I2S(i)//': ',ScalarVal
             CALL Info('UpdateDependentComponents',Message,Level=5)
             CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName)//': '&
-                //TRIM(VarName)//' '//I2S(i),VectorVal(i) )                        
+                //TRIM(VarName)//' '//I2S(i),VectorVal(i) )
           END DO
-        ELSE          
+        ELSE
           WRITE( Message,'(A,ES15.6)') &
               'comp '//I2S(j)//': '//TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
           CALL Info('UpdateDependentComponents',Message,Level=5)
           CALL ListAddConstReal( CurrentModel % Simulation, &
-              'res: comp '//I2S(j)//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
+              'res: comp '//I2S(j)//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )
         END IF
 
       END DO
@@ -869,7 +869,7 @@ MODULE LumpingUtils
 
 !------------------------------------------------------------------------------
 !> Given a vector field compute line integral of Stokes theorem using
-!> some geometric heuristics. 
+!> some geometric heuristics.
 !------------------------------------------------------------------------------
   FUNCTION ComponentStokesTheorem(Model, Mesh, Vlist, AVar, Surf ) RESULT ( FL )
 !------------------------------------------------------------------------------
@@ -879,7 +879,7 @@ MODULE LumpingUtils
     TYPE(Variable_t), TARGET :: aVar
     LOGICAL :: Surf
     REAL(KIND=dp) :: FL
-         
+
     TYPE(Matrix_t), POINTER :: NodeGraph
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
     REAL(KIND=dp) :: Center(3), Coord(3), Coord0(3), Coord1(3), Coord2(3), &
@@ -894,45 +894,45 @@ MODULE LumpingUtils
     INTEGER, POINTER :: TargetBodies(:)
     LOGICAL :: Found, SaveLoop, Debug, GotHtol, GotRtol, BCMode
     TYPE(Element_t), POINTER :: Edge, Element
-    LOGICAL, ALLOCATABLE :: NodeActive(:),Inside(:),Outside(:)       
+    LOGICAL, ALLOCATABLE :: NodeActive(:),Inside(:),Outside(:)
     CHARACTER(*), PARAMETER :: Caller = 'ComponentStokesTheorem'
-   
+
     TargetBodies => ListGetIntegerArray( VList,'Master Bodies',Found )
     IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( VList,'Body',Found )
-    IF( .NOT. Found ) CALL Fatal(Caller,'Stokes theorem requires > Master Bodies <') 
+    IF( .NOT. Found ) CALL Fatal(Caller,'Stokes theorem requires > Master Bodies <')
 
-    HelperArray => ListGetConstRealArray( Vlist, 'Coil Center', UnfoundFatal = .TRUE. ) 
+    HelperArray => ListGetConstRealArray( Vlist, 'Coil Center', UnfoundFatal = .TRUE. )
     Center(1:3) = HelperArray(1:3,1)
 
     HelperArray => ListGetConstRealArray( Vlist, 'Coil normal', UnfoundFatal = .TRUE. )
     Normal(1:3) = HelperArray(1:3,1)
     CALL TangentDirections(Normal, Tangent1, Tangent2)
-      
-    n = Mesh % NumberOfNodes 
+
+    n = Mesh % NumberOfNodes
     ALLOCATE(NodeActive(n))
 
-    InsideBC = ListGetInteger( Vlist,'Inside Boundary', BCMode ) 
-           
+    InsideBC = ListGetInteger( Vlist,'Inside Boundary', BCMode )
+
     CALL SetActiveNodeSet()
-    
+
     IF(Surf) THEN
-      CALL Info(Caller,'Calculating cylinder integral for: '//TRIM(avar % name))    
+      CALL Info(Caller,'Calculating cylinder integral for: '//TRIM(avar % name))
       CALL ComputeCylinderIntegral()
     ELSE
-      CALL Info(Caller,'Calculating line integral for: '//TRIM(avar % name))   
+      CALL Info(Caller,'Calculating line integral for: '//TRIM(avar % name))
       CALL ComputeLineIntegral()
     END IF
 
     FL = ReCirc
-      
-    
+
+
   CONTAINS
 
     ! Set active nodes such that when we try to create a closed circle we will only check the marked
     ! nodes. We need a quick look-up table since otherwise there is no quick way to determine whether
     ! a node is part of a suitable edge. Also compute the height of the domain for other purposes.
     !------------------------------------------------------------------------------------------------
-    
+
     SUBROUTINE SetActiveNodeSet()
 
       IF( BCMode ) THEN
@@ -940,8 +940,8 @@ MODULE LumpingUtils
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           Element => Mesh % Elements(t)
           n = Element % TYPE % NumberOfNodes
-          NodeIndexes => Element % NodeIndexes 
-          
+          NodeIndexes => Element % NodeIndexes
+
           IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
           IF(Element % BoundaryInfo % Constraint == 0) CYCLE
           DO i=1,CurrentModel % NumberOfBCs
@@ -952,11 +952,11 @@ MODULE LumpingUtils
         END DO
       ELSE
         ! No BC elements given, initialize the list of candidate nodes using
-        ! an intersection between inside and outside nodes. 
+        ! an intersection between inside and outside nodes.
         ALLOCATE(Inside(n), Outside(n))
         Inside = .FALSE.
-        Outside = .FALSE.    
-        
+        Outside = .FALSE.
+
         DO t=1,Mesh % NumberOfBulkElements
           Element => Mesh % Elements(t)
           IF( ANY(TargetBodies == Element % BodyId) ) THEN
@@ -965,23 +965,23 @@ MODULE LumpingUtils
             Outside(Element % NodeIndexes) = .TRUE.
           END IF
         END DO
-        
+
         ! We make the stokes theorem on the interface
         NodeActive = Inside .AND. Outside
         DEALLOCATE(Inside,Outside)
       END IF
-        
+
       n = COUNT(NodeActive)
       CALL Info(Caller,'Active nodes for edge patch candidates: '//I2S(n))
 
       ! We may limit the active set of nodes through which path may be drawn.
-      ! The idea could be to choose only the upper or lower surface of the coil. 
+      ! The idea could be to choose only the upper or lower surface of the coil.
       htol = ListGetConstReal( Vlist,'Flux linkage height tolerance',GotHtol )
       rtol = ListGetConstReal( Vlist,'Flux linkage radius tolerance',GotRtol )
 
       ! We always make one round to get the bounding box!
-      IF(.TRUE.) THEN      
-        hgoal = ListGetConstReal( Vlist,'Flux linkage relative height',Found ) 
+      IF(.TRUE.) THEN
+        hgoal = ListGetConstReal( Vlist,'Flux linkage relative height',Found )
         hmin = HUGE(hmin)
         hmax = -HUGE(hmax)
         rmin = HUGE(rmin)
@@ -991,7 +991,7 @@ MODULE LumpingUtils
             IF(.NOT. NodeActive(i)) CYCLE
             Coord(1) = Mesh % Nodes % x(i)
             Coord(2) = Mesh % Nodes % y(i)
-            Coord(3) = Mesh % Nodes % z(i)           
+            Coord(3) = Mesh % Nodes % z(i)
             h = SUM(Coord*Normal)
             r = SQRT(SUM(Coord*Tangent1)**2 + SUM(Coord*Tangent2)**2)
 
@@ -1023,7 +1023,7 @@ MODULE LumpingUtils
               PRINT *,'Radius interval in n-t system: ',hmin,hmax
             END IF
           END IF
-          
+
           IF(.NOT. (GotHTol .OR. GotRTol ) ) EXIT
         END DO
       END IF
@@ -1033,34 +1033,34 @@ MODULE LumpingUtils
         CALL Info(Caller,'Active nodes after tolerance check (out of '&
             //I2S(SIZE(NodeActive))//'): '//I2S(n))
       END IF
-     
+
     END SUBROUTINE SetActiveNodeSet
-      
+
 
     ! This compute a line integral. No line may exist so we go through a line created on-the-fly from
     ! existing node-to-node connections. We rotate through the axis until 360 degrees are passed
     ! going always to the node among the candidate nodes that is as efficient as possible in terms of angle.
-    ! Unfortunately this logic may fail if the circle is not a true circle. 
-    !------------------------------------------------------------------------------------------------------    
+    ! Unfortunately this logic may fail if the circle is not a true circle.
+    !------------------------------------------------------------------------------------------------------
     SUBROUTINE ComputeLineIntegral()
 
       INTEGER :: WhoActive, PrevWhoActive, NoStat, kprev(3)
       LOGICAL :: FileOpen
       REAL(KIND=dp) :: r2min_par
       CHARACTER(:), ALLOCATABLE :: str
-      
+
       FileOpen = .FALSE.
       NoStat = 0
 
-      
+
       ! Create a graph for node-to-edge connectivity
       !----------------------------------------------
       NodeGraph => AllocateMatrix()
-      NodeGraph % FORMAT = MATRIX_LIST         
+      NodeGraph % FORMAT = MATRIX_LIST
       DO i = Mesh % NumberOfEdges, 1, -1
-        Edge => Mesh % Edges(i)    
+        Edge => Mesh % Edges(i)
         IF(ALL(NodeActive(Edge % NodeIndexes))) THEN
-          DO j=1, Edge % TYPE % NumberOfNodes 
+          DO j=1, Edge % TYPE % NumberOfNodes
             CALL List_AddToMatrixElement( NodeGraph % ListMatrix,Edge % NodeIndexes(j),i,1.0_dp )
           END DO
         END IF
@@ -1090,12 +1090,12 @@ MODULE LumpingUtils
 
       WRITE(Message,'(A,ES10.3)') 'Minimum distance (node '//I2S(r2ind)//'):',SQRT(r2min)
       CALL Info(Caller,Message,Level=7)
-      
+
       Debug = .FALSE.
       IF( Debug ) THEN
         PRINT *,'Center:',Center
         PRINT *,'Normal:',Normal
-        PRINT *,'Tangent1:',Tangent1    
+        PRINT *,'Tangent1:',Tangent1
         PRINT *,'Tangent2:',Tangent2
         PRINT *,'Coord0:',Coord0
       END IF
@@ -1106,39 +1106,39 @@ MODULE LumpingUtils
       ImCirc = 0.0_dp
       ssum = 0.0_dp
 
-      Coord1 = Coord0    
-      i1 = r2ind 
+      Coord1 = Coord0
+      i1 = r2ind
 
       ! We have to assume that one partition finds the entire circle.
       ! If this is done in many pieces we should generate an algo that passed on the
-      ! process on a joint node that turns out to be otherwise the end of the path. 
+      ! process on a joint node that turns out to be otherwise the end of the path.
       IF(ParEnv % PEs > 1) THEN
-        WhoActive = -1 
+        WhoActive = -1
         r2min_par = ParallelReduction(r2min,1)
         IF( ABS(r2min_par - r2min) < TINY(r2min)) THEN
           WhoActive = ParEnv % MyPe
         END IF
-        
+
         ! We start from this partition.
-        ! I.e. the largest partition index with the minimum distance. 
+        ! I.e. the largest partition index with the minimum distance.
         WhoActive = ParallelReduction(WhoActive,2)
 
-        ! We need Coord0 always in parallel in each partition. 
+        ! We need Coord0 always in parallel in each partition.
         IF(WhoActive /= ParEnv % MyPe ) THEN
           Coord0 = -HUGE(Coord0)
           r2ind = 0
         END IF
         DO k=1,3
           Coord0(k) = ParallelReduction(Coord0(k),2)
-        END DO          
+        END DO
       ELSE
-        WhoActive = ParEnv % Mype        
+        WhoActive = ParEnv % Mype
       END IF
       PrevWhoActive = WhoActive
-      
+
 10    IF( WhoActive == ParEnv % MyPe ) THEN
         x1 = SUM(Coord1*Tangent1)
-        y1 = SUM(Coord1*Tangent2) 
+        y1 = SUM(Coord1*Tangent2)
         phi1 = (180.0_dp/PI) * ATAN2(y1,x1)
         str = ListGetString( Vlist,'Line Integral File',SaveLoop )
       ELSE
@@ -1148,13 +1148,13 @@ MODULE LumpingUtils
 
       IF( ParEnv % PEs > 1) THEN
         ! If this is not active partition go to wait for the active one for further instructions.
-        IF( WhoActive /= ParEnv % MyPe ) GOTO 20 
+        IF( WhoActive /= ParEnv % MyPe ) GOTO 20
       END IF
-              
+
       IF( SaveLoop ) THEN
         ! Only open the file once!
         IF(.NOT. FileOpen ) THEN
-          IF( ParEnv % PEs > 1 ) THEN            
+          IF( ParEnv % PEs > 1 ) THEN
             OPEN (10, FILE=TRIM(str)//'_'//I2S(ParEnv % MyPe) )
           ELSE
             OPEN (10, FILE=str )
@@ -1166,14 +1166,14 @@ MODULE LumpingUtils
 
       kprev = 0
       DO WHILE(.TRUE.)
-        dsmax = -EPSILON(dsmax) 
+        dsmax = -EPSILON(dsmax)
         kprev(2:3) = kprev(1:2)
         kprev(1) = kmax
         kmax = 0
 
         ! Among the edges related to node "i1" find the one that has makes us further in
         ! minimizing the distance.
-        DO j = NodeGraph % Rows(i1),NodeGraph % Rows(i1+1)-1          
+        DO j = NodeGraph % Rows(i1),NodeGraph % Rows(i1+1)-1
           k = NodeGraph % Cols(j)
 
           ! Do not use any of the previous node again!
@@ -1195,7 +1195,7 @@ MODULE LumpingUtils
           Coord(3) = Mesh % Nodes % z(i2)
 
           x2 = SUM(Coord*Tangent1)
-          y2 = SUM(Coord*Tangent2)           
+          y2 = SUM(Coord*Tangent2)
           phi = (180.0_dp/PI) * ATAN2(y2,x2)
 
           dphi = phi1-phi
@@ -1204,13 +1204,13 @@ MODULE LumpingUtils
           IF(dphi < -180.0_dp) dphi = dphi+360.0_dp
           IF(dphi > 180.0_dp) dphi = dphi-360.0_dp
 
-          IF(phisum < 315.0_dp ) THEN        
+          IF(phisum < 315.0_dp ) THEN
             ! This measure takes the shortest route at least in some case more robustly than some others.
             ds = dphi / SUM((Coord1-Coord)**2)
           ELSE
             ! After we only have ~45 degs left we find the node which approaches the starting node
-            ! as well as possible. 
-            ds = SUM( (Coord1-Coord0)**2 - (Coord-Coord0)**2 ) / SUM((Coord1-Coord)**2) 
+            ! as well as possible.
+            ds = SUM( (Coord1-Coord0)**2 - (Coord-Coord0)**2 ) / SUM((Coord1-Coord)**2)
           END IF
 
           IF( Debug ) THEN
@@ -1245,7 +1245,7 @@ MODULE LumpingUtils
               END IF
             END BLOCK
           END IF
-            
+
           !PRINT *,'Cands:',i1,NodeGraph % Rows(i1),NodeGraph % Rows(i1+1)-1
           NoStat = 1
           CALL Warn(Caller,'We had to stop because no route was found!')
@@ -1256,7 +1256,7 @@ MODULE LumpingUtils
 
         ! Edge that goes to the minimum value
         k = kmax
-        Edge => Mesh % Edges(k)    
+        Edge => Mesh % Edges(k)
         i2 = imax
 
         EdgeVector = Coord2 - Coord1
@@ -1268,7 +1268,7 @@ MODULE LumpingUtils
         IF( MODULO(avar % dofs,3) == 0 ) THEN
           ! Integral over nodal field using the mean value
           j1 = avar % Perm(i1)
-          j2 = avar % Perm(i2)          
+          j2 = avar % Perm(i2)
           IF(j1==0 .OR. j2==0) CALL Fatal(Caller,'Nodal field missing on path!')
           DO k=1,3
             IF( avar % dofs == 3 ) THEN
@@ -1280,17 +1280,17 @@ MODULE LumpingUtils
           END DO
           ReCirc = ReCirc + REAL(SUM(gradv*EdgeVector))
           ImCirc = ImCirc + AIMAG(SUM(gradv*EdgeVector))
-        ELSE                
+        ELSE
           ! Integral over edge field.
 
           ! Check the sign if the direction based on global edge direction rules
           ! If we do the path integral in the wrong direction compared to definition of edge switch the sign
           sgn = 1
-          IF( ParEnv % PEs > 1 ) THEN                            
-            i1 = Mesh % ParallelInfo % GlobalDOFs(i1)             
-            i2 = Mesh % ParallelInfo % GlobalDOFs(i2)             
+          IF( ParEnv % PEs > 1 ) THEN
+            i1 = Mesh % ParallelInfo % GlobalDOFs(i1)
+            i2 = Mesh % ParallelInfo % GlobalDOFs(i2)
           END IF
-          !IF(XOR(Edge % NodeIndexes(1) /= i1, i1 < i2) ) sgn = -sgn         
+          !IF(XOR(Edge % NodeIndexes(1) /= i1, i1 < i2) ) sgn = -sgn
           IF(i1 > i2) sgn = -1
 
           j = avar % Perm(n0 + k)
@@ -1300,7 +1300,7 @@ MODULE LumpingUtils
             ReCirc = ReCirc + sgn * avar % Values(j)
           ELSE
             ReCirc = ReCirc + sgn * avar % Values(2*j-1)
-            ImCirc = ImCirc + sgn * avar % Values(2*j) 
+            ImCirc = ImCirc + sgn * avar % Values(2*j)
           END IF
         END IF
 
@@ -1312,7 +1312,7 @@ MODULE LumpingUtils
         Coord1 = Coord2
         phi1 = phi2
 
-        phisum = phisum + dphimax      
+        phisum = phisum + dphimax
 
         IF(Debug) PRINT *,'phisum:',nsteps,Coord1,phisum,ssum,phi1,ReCirc
 
@@ -1341,7 +1341,7 @@ MODULE LumpingUtils
         WhoActive = ParallelReduction(WhoActive,2)
 
         !PRINT *,'New whoactive:',WhoActive, PrevWhoActive, ParEnv % MyPe
-        
+
         IF(WhoActive /= PrevWhoActive) THEN
           PrevWhoActive = WhoActive
 
@@ -1350,7 +1350,7 @@ MODULE LumpingUtils
             Coord1(k) = ParallelReduction(Coord1(k),2)
           END DO
 
-          ! For the new active partition find a new starting point. 
+          ! For the new active partition find a new starting point.
           IF( WhoActive == ParEnv % MyPe ) THEN
             r2min = HUGE(r2min)
             i1 = 0
@@ -1371,17 +1371,17 @@ MODULE LumpingUtils
             phisum = 0.0_dp
           END IF
 
-          !PRINT *,'WhoIsActice:',ParEnv % MyPe, WhoActive, WhoActive == ParEnv % MyPe          
+          !PRINT *,'WhoIsActice:',ParEnv % MyPe, WhoActive, WhoActive == ParEnv % MyPe
           GOTO 10
         END IF
-      END IF      
+      END IF
 
       IF(ParEnv % PEs > 1 ) THEN
         ReCirc = ParallelReduction(ReCirc)
         ImCirc = ParallelReduction(ImCirc)
-        ssum = ParallelReduction(ssum)        
+        ssum = ParallelReduction(ssum)
       END IF
-      
+
       IF(InfoActive(20)) THEN
         PRINT *,'PathIntegralLine:',ParEnv % MyPe, avar % dofs, targetbodies, nsteps, phisum, ssum, ReCirc
       END IF
@@ -1392,11 +1392,11 @@ MODULE LumpingUtils
         ReCirc = 0.0_dp
         ImCirc = 0.0_dp
       END IF
-      
+
       CALL FreeMatrix(NodeGraph)
       IF(FileOpen) CLOSE(10)
-                   
-    END SUBROUTINE ComputeLineIntegral           
+
+    END SUBROUTINE ComputeLineIntegral
 
 
     SUBROUTINE ComputeCylinderIntegral()
@@ -1413,23 +1413,23 @@ MODULE LumpingUtils
       REAL(KIND=dp), POINTER, SAVE :: Basis(:), SOL(:,:), WBasis(:,:), dBasisdx(:,:), RotWBasis(:,:)
 
       CALL Info(Caller,'Estimating line integral from surface integral!')
-      
+
       IF(.NOT. AllocationsDone ) THEN
         n = 2*Model % MaxElementNodes
         ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
-            Basis(n), dBasisdx(n,3), WBasis(n,3), RotWBasis(n,3), SOL(6,n), Indexes(n) )      
+            Basis(n), dBasisdx(n,3), WBasis(n,3), RotWBasis(n,3), SOL(6,n), Indexes(n) )
         AllocationsDone = .TRUE.
       END IF
-      
+
       Area = 0.0_dp
       ReCirc = 0.0_dp
       ImCirc = 0.0_dp
-      
+
       EdgeBasis = .FALSE.
       IF(avar % dofs <= 2) THEN
         EdgeBasis = .TRUE.
         Params => avar % Solver % Values
-        CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+        CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
       END IF
 
       IF( BCMode ) THEN
@@ -1439,20 +1439,20 @@ MODULE LumpingUtils
         tmin = 1
         tmax = Mesh % NumberOfFaces
       END IF
-      
+
       !PRINT *,'Center:',Center
       !PRINT *,'Normal:',Normal
       !PRINT *,'BCMode:',BCMode,tmin,tmax,InsideBC
-      
+
       DO t=tmin, tmax
         IF(BCMode) THEN
           Element => Mesh % Elements(t)
-        ELSE          
+        ELSE
           Element => Mesh % Faces(t)
         END IF
         n = Element % TYPE % NumberOfNodes
-        NodeIndexes => Element % NodeIndexes 
-        
+        NodeIndexes => Element % NodeIndexes
+
         IF( BCMode ) THEN
           IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
           IF(Element % BoundaryInfo % Constraint == 0) CYCLE
@@ -1463,15 +1463,15 @@ MODULE LumpingUtils
         ELSE
           IF(.NOT. ALL(NodeActive(NodeIndexes))) CYCLE
         END IF
-          
+
         ! Check that we have a parent that is on the boundary.
         k = 0
         DO i=1,2
           IF(i==1) THEN
-            pElem => Element % BoundaryInfo % Left        
+            pElem => Element % BoundaryInfo % Left
           ELSE
-            pElem => Element % BoundaryInfo % Right        
-          END IF           
+            pElem => Element % BoundaryInfo % Right
+          END IF
           IF(ASSOCIATED(pElem)) THEN
             IF( ANY( TargetBodies == pElem % BodyId ) ) THEN
               k=k+1
@@ -1480,7 +1480,7 @@ MODULE LumpingUtils
           END IF
         END DO
         IF(k/=1) CYCLE
-                        
+
         ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
@@ -1501,13 +1501,13 @@ MODULE LumpingUtils
         ds = SQRT(SUM(Coord1**2))
         IF(ds > EPSILON(ds)) Coord1 = Coord1 / ds
 
-        ! If we are not pointing inwards at all then skip the face element. 
+        ! If we are not pointing inwards at all then skip the face element.
         Coeff = -SUM(ParentNormal * Coord1)
         IF(Coeff < EPSILON(Coeff) ) CYCLE
-        
+
         ! Find the maximum distance edge on the boundary in the local coordinates.
-        ! This edge is oriented with the surface having the desired direction. 
-        dsmax = -HUGE(dsmax) 
+        ! This edge is oriented with the surface having the desired direction.
+        dsmax = -HUGE(dsmax)
         DO i=1,n
           Coord1(1) = ElementNodes % x(i)
           Coord1(2) = ElementNodes % y(i)
@@ -1533,20 +1533,20 @@ MODULE LumpingUtils
         IF(SUM(TestVec*EdgeVector) > 0.0_dp) EdgeVector = -EdgeVector
 
         IF( EdgeBasis ) THEN
-          nd = mGetElementDofs( Indexes, Uelement = Element, USolver = avar % Solver ) 
+          nd = mGetElementDofs( Indexes, Uelement = Element, USolver = avar % Solver )
           np = COUNT(Indexes(1:nd) <= Mesh % NumberOfNodes)
           IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
               EdgeBasisDegree=EdgeBasisDegree)
         ELSE
           Indexes(1:n) = NodeIndexes(1:n)
           nd = n
-          IP = GaussPoints( Element )          
+          IP = GaussPoints( Element )
         END IF
-        
-        DO i=1,avar % dofs 
+
+        DO i=1,avar % dofs
           SOL(i,1:nd) = avar % values(avar % dofs*(avar % Perm(Indexes(1:nd))-1)+i)
         END DO
-        
+
 !------------------------------------------------------------------------------
 !    Numerical integration
 !------------------------------------------------------------------------------
@@ -1554,8 +1554,8 @@ MODULE LumpingUtils
         DO l=1,IP % n
           IF(.NOT. EdgeBasis) THEN
             stat = ElementInfo( Element,ElementNodes,&
-                IP % U(l),IP % V(l),IP % W(l), DetJ, Basis )             
-          ELSE 
+                IP % U(l),IP % V(l),IP % W(l), DetJ, Basis )
+          ELSE
             stat = ElementInfo( Element, ElementNodes, IP % U(l), IP % V(l), &
                 IP % W(l), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
                 RotBasis = RotWBasis, USolver = avar % Solver )
@@ -1566,17 +1566,17 @@ MODULE LumpingUtils
           !       BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
           ! ELSE
           !   stat = ElementInfo(Element, ElementNodes, IP % U(l), IP % V(l), IP % W(l), &
-          !       detJ, Basis, dBasisdx)           
+          !       detJ, Basis, dBasisdx)
           !   CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
           ! END IF
-          
-          s = Coeff * DetJ * IP % s(l)            
+
+          s = Coeff * DetJ * IP % s(l)
           Area = Area + S
 
           SELECT CASE( avar % dofs )
           CASE( 1 )
             gradv = MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:))
-          CASE( 2 ) 
+          CASE( 2 )
             gradv = CMPLX( MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)), &
                 MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)), KIND=dp)
           CASE( 3 )
@@ -1587,7 +1587,7 @@ MODULE LumpingUtils
                   SUM(SOL(2*i,1:n)*Basis(1:n)), KIND=dp )
             END DO
           END SELECT
-          
+
           ReCirc = ReCirc + s * REAL(SUM(gradv*EdgeVector))
           ImCirc = ImCirc + s * AIMAG(SUM(gradv*EdgeVector))
         END DO
@@ -1597,25 +1597,25 @@ MODULE LumpingUtils
       Area = ParallelReduction(Area)
       ReCirc = ParallelReduction(ReCirc)
       ImCirc = ParallelReduction(ImCirc)
-      
-      ! Move from surface integral to line integral correspondent by dividing with the height.     
-      ReCirc = ReCirc / (hmax-hmin)       
-      ImCirc = ImCirc / (hmax-hmin)       
+
+      ! Move from surface integral to line integral correspondent by dividing with the height.
+      ReCirc = ReCirc / (hmax-hmin)
+      ImCirc = ImCirc / (hmax-hmin)
 
       IF(InfoActive(20)) THEN
         PRINT *,'PathIntegralCyl:',avar % dofs, targetbodies, area, &
             area/((hmax-hmin)*2*PI), ReCirc, ImCirc
       END IF
-        
+
     END SUBROUTINE ComputeCylinderIntegral
-          
+
   END FUNCTION ComponentStokesTheorem
 
 
 !------------------------------------------------------------------------------
 !> Given vector potential and current density compute the energy in the coil.
 !> This is actually not energy, but twice the energy, since the values are
-!> used to computed inductance matrix. 
+!> used to computed inductance matrix.
 !------------------------------------------------------------------------------
   FUNCTION ComponentCoilEnergy(Model, Mesh, MasterEntities, AVar, CVar, BCMode ) RESULT ( AIintRe )
 !------------------------------------------------------------------------------
@@ -1623,7 +1623,7 @@ MODULE LumpingUtils
     TYPE(Mesh_t) :: Mesh
     INTEGER, POINTER :: MasterEntities(:)
     TYPE(Variable_t) :: AVar, CVar
-    LOGICAL, OPTIONAL :: BCMode 
+    LOGICAL, OPTIONAL :: BCMode
     REAL(KIND=dp) :: AIintRe
 !------------------------------------------------------------------------------
 ! Local variables
@@ -1632,17 +1632,17 @@ MODULE LumpingUtils
     INTEGER :: t, i, j, k, l, n, np, nd, EdgeBasisDegree, t1, t2
     REAL(KIND=dp) :: volume
     LOGICAL :: Found
-    LOGICAL :: Stat, PiolaVersion, EdgeBasis, DoBCs 
+    LOGICAL :: Stat, PiolaVersion, EdgeBasis, DoBCs
     COMPLEX(KIND=dp) :: AIint
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     CHARACTER(*), PARAMETER :: Caller = 'ComponentCoilEnergy'
-        
+
     IF(.NOT. ASSOCIATED(MasterEntities)) THEN
       CALL Fatal(Caller,'"MasterEntities" not associated!')
     END IF
 
     DoBCs = .FALSE.
-    IF(PRESENT(BcMode)) DoBCs = BCMode 
+    IF(PRESENT(BcMode)) DoBCs = BCMode
 
     str = I2S(MasterEntities(1))
     DO i=2,SIZE(MasterEntities)
@@ -1664,8 +1664,8 @@ MODULE LumpingUtils
 
     EdgeBasis = .FALSE.
     IF(avar % dofs <= 2) THEN
-      EdgeBasis = .TRUE.      
-      CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+      EdgeBasis = .TRUE.
+      CALL EdgeElementStyle(avar % Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
     END IF
 
     AIint = 0.0_dp
@@ -1688,17 +1688,17 @@ MODULE LumpingUtils
       CALL LocalIntegElem()
     END DO
 
-    AIint = ParallelReduction( AIint ) 
-    Volume = ParallelReduction( volume ) 
+    AIint = ParallelReduction( AIint )
+    Volume = ParallelReduction( volume )
 
     !PRINT *,'AiInit:',AiInt,Volume
-    
-    AIIntRe = REAL(AIint)    
-    
+
+    AIIntRe = REAL(AIint)
+
     CALL Info(Caller,'Reduction operator finished',Level=12)
 
   CONTAINS
-     
+
     SUBROUTINE LocalIntegElem()
 
       TYPE(GaussIntegrationPoints_t) :: IP
@@ -1709,38 +1709,38 @@ MODULE LumpingUtils
       REAL(KIND=dp) :: DetJ,S,Cip(3)
       COMPLEX(KIND=dp) :: Aip(3)
       REAL(KIND=dp), POINTER, SAVE :: Basis(:), WBasis(:,:), dBasisdx(:,:), RotWBasis(:,:), &
-          Aelem(:,:), Celem(:,:)    
+          Aelem(:,:), Celem(:,:)
       INTEGER :: EdgeBasisDegree
-      
+
       IF(.NOT. AllocationsDone ) THEN
         n = 2*Model % MaxElementNodes
         ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
-            Basis(n), dBasisdx(n,3), WBasis(n,3), RotWBasis(n,3), Aelem(6,n), Celem(3,n), EdgeIndexes(n) )      
+            Basis(n), dBasisdx(n,3), WBasis(n,3), RotWBasis(n,3), Aelem(6,n), Celem(3,n), EdgeIndexes(n) )
         AllocationsDone = .TRUE.
       END IF
 
 
       n = Element % TYPE % NumberOfNodes
-      NodeIndexes => Element % NodeIndexes 
+      NodeIndexes => Element % NodeIndexes
 
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
 
       IF( EdgeBasis ) THEN
-        nd = mGetElementDofs( EdgeIndexes, Uelement = Element, USolver = avar % Solver ) 
+        nd = mGetElementDofs( EdgeIndexes, Uelement = Element, USolver = avar % Solver )
         np = COUNT(EdgeIndexes(1:nd) <= Mesh % NumberOfNodes)
         IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
             EdgeBasisDegree=EdgeBasisDegree)
         pIndexes => EdgeIndexes
       ELSE
         nd = n
-        IP = GaussPoints( Element )          
+        IP = GaussPoints( Element )
         pIndexes => NodeIndexes
       END IF
 
       ! Edge or nodal values of vector potential
-      DO i=1,avar % dofs 
+      DO i=1,avar % dofs
         Aelem(i,1:nd) = avar % values(avar % dofs*(avar % Perm(pIndexes(1:nd))-1)+i)
       END DO
 
@@ -1757,25 +1757,25 @@ MODULE LumpingUtils
       DO l=1,IP % n
         IF(.NOT. EdgeBasis) THEN
           stat = ElementInfo( Element,ElementNodes,&
-              IP % U(l),IP % V(l),IP % W(l), DetJ, Basis )             
-        ELSE 
+              IP % U(l),IP % V(l),IP % W(l), DetJ, Basis )
+        ELSE
           stat = ElementInfo( Element, ElementNodes, IP % U(l), IP % V(l), &
               IP % W(l), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
               RotBasis = RotWBasis, USolver = avar % Solver )
         END IF
 
-        s = DetJ * IP % s(l)            
+        s = DetJ * IP % s(l)
 
         ! Vector potential at IP
         SELECT CASE( avar % dofs )
         CASE( 1 )
           Aip = MATMUL(Aelem(1,np+1:nd), WBasis(1:nd-np,:))
-        CASE( 2 ) 
+        CASE( 2 )
           Aip = CMPLX( MATMUL(Aelem(1,np+1:nd), WBasis(1:nd-np,:)), &
               MATMUL(Aelem(2,np+1:nd), WBasis(1:nd-np,:)), KIND=dp)
         CASE( 3 )
           Aip = MATMUL(Aelem(1:3,1:n),Basis(1:n))
-        CASE( 6 ) 
+        CASE( 6 )
           Aip = CMPLX( MATMUL(Aelem(1:5:2,1:n),Basis(1:n)), &
               MATMUL(Aelem(2:6:2,1:n),Basis(1:n)), KIND=dp )
         END SELECT
@@ -1784,13 +1784,13 @@ MODULE LumpingUtils
         Cip = MATMUL(Celem(1:3,1:n),Basis(1:n))
 
         !PRINT *,'Ai:',s,SQRT(SUM(REAL(Aip)**2)),SQRT(SUM(AIMAG(Aip)**2)),'c',SQRT(SUM(Cip*Cip))
-        
-        AIint = AIint + s * SUM(Aip*Cip) 
+
+        AIint = AIint + s * SUM(Aip*Cip)
         Volume = Volume + s
       END DO
 
     END SUBROUTINE LocalIntegElem
-           
+
 !------------------------------------------------------------------------------
   END FUNCTION ComponentCoilEnergy
 !------------------------------------------------------------------------------
@@ -1825,7 +1825,7 @@ MODULE LumpingUtils
     COMPLEX(KIND=dp) :: int_norm, int_el, vol, curr, port_curr, trans, Zimp
     CHARACTER(*), PARAMETER :: Caller = 'BoundaryWaveFlux'
 
-    
+
     area = 0.0_dp
     int_norm = 0.0_dp
     int_el = 0.0_dp
@@ -1834,51 +1834,51 @@ MODULE LumpingUtils
     curr = 0.0_dp
     port_curr = 0.0_dp
     trans = 0.0_dp
-    
+
     IF(.NOT. ASSOCIATED(MasterEntities)) THEN
       CALL Fatal(Caller,'"MasterEntities" not associated!')
     END IF
-    
+
     str = I2S(MasterEntities(1))
     DO i=2,SIZE(MasterEntities)
       str = TRIM(str)//' '//I2S(MasterEntities(i))
     END DO
     CALL Info(Caller,'Performing reduction for BCs: '//TRIM(str),Level=10)
-    
+
     Omega = ListGetAngularFrequency(Found=Found)
     IF(.NOT. Found) CALL Fatal(Caller,'We need angular frequency!')
-       
+
     t1 = Mesh % NumberOfBulkElements + 1
     t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-    
+
     EdgeBasis = .FALSE.
     UseGaussLaw = .FALSE.
 
     pSolver => avar % Solver
     IF(avar % dofs <= 2) THEN
       EdgeBasis = .TRUE.
-      CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+      CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
       UseGaussLaw = ListGetLogical(pSolver % values, 'Use Gauss Law', Found)
     END IF
-    
+
     OutFlux = 0.0_dp
     area = 0.0_dp
 
     IF( ALL([1,2,3,6] /= Avar % Dofs) ) THEN
       CALL Fatal(Caller,'Invalid number of components for vector potential!')
     END IF
-    
+
     InitHandles = .TRUE.
     DO t=t1, t2
       Element => Mesh % Elements(t)
       bc_id = Element % BoundaryInfo % Constraint
       IF( ALL( MasterEntities /= bc_id ) ) CYCLE
       BC => Model % BCs(bc_id) % Values
-      
+
       IF(EdgeBasis .AND. Element % Type % ElementCode > 300 ) THEN
         k = FindBoundaryFaceIndex(Mesh,Element)
-        Element => Mesh % Faces(k)        
-      END IF      
+        Element => Mesh % Faces(k)
+      END IF
       IF(UseGaussLaw) THEN
         CALL LocalIntegBC_AV(BC, Element, InitHandles)
       ELSE
@@ -1891,7 +1891,7 @@ MODULE LumpingUtils
     Zimp = 1.0_dp / trans
 
     PortImp = Zimp
-    
+
     IF( UseGaussLaw ) THEN
       vol = ParallelReduction(Vol)
       curr = ParallelReduction(curr)
@@ -1900,36 +1900,36 @@ MODULE LumpingUtils
       ! Still testing these!
       curr = -curr
       port_curr = -port_curr
-      
+
       vol = vol / area
 
       PRINT *,'LumpedCurr av:',vol,curr,port_curr,Zimp *curr, CONJG(Zimp) * port_curr
-      
+
       OutFlux = (vol + Zimp * curr) / (2*SQRT(REAL(Zimp)))
-      InFlux = (vol - CONJG(Zimp) * port_curr  ) / (2*SQRT(REAL(Zimp)))      
+      InFlux = (vol - CONJG(Zimp) * port_curr  ) / (2*SQRT(REAL(Zimp)))
 
       ! For now use just the average voltages
-      OutFlux = vol !curr 
-      InFlux = 1.0 !port_curr 
+      OutFlux = vol !curr
+      InFlux = 1.0 !port_curr
       PortImp = Zimp
     ELSE
       int_el = ParallelReduction(int_el)
-      int_norm = ParallelReduction(int_norm)      
+      int_norm = ParallelReduction(int_norm)
       OutFlux = int_el
-      InFlux = int_norm 
-      
+      InFlux = int_norm
+
       IF(ABS(int_norm) < 1.0e-20 ) THEN
         PRINT *,'int_norm:',int_norm,area,EPSILON(area)
         CALL Warn(Caller,'Source seems to be close to zero!')
       END IF
-        
+
       PRINT *,'LumpedCurr e:',int_el,int_norm,area,trans,Zimp,ABS(int_norm)
 
     END IF
-    
-    
+
+
     CALL Info(Caller,'Reduction operator finished',Level=12)
-    
+
   CONTAINS
 
 !-----------------------------------------------------------------------------
@@ -1954,24 +1954,24 @@ MODULE LumpingUtils
       TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h, ElSurfCurr_h
       TYPE(ValueHandle_t), SAVE :: CondCoeff_h, CurrDens_h, EpsCoeff_h
       INTEGER :: nactive
-      
+
       TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h
       INTEGER :: PortTypeIndex, PortDirection
       COMPLEX(KIND=dp) :: PortZ
       REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3)
       LOGICAL :: GotPort
-      
+
       SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, mu0inv, eps0
-      
+
       ndofs = avar % dofs
       IF(.NOT. AllocationsDone ) THEN
         m = Mesh % MaxElementDOFs
         ALLOCATE( ElementNodes % x(m), ElementNodes % y(m), ElementNodes % z(m), EdgeIndexes(m), &
             ParentNodes % x(m), ParentNodes % y(m), ParentNodes % z(m), &
-            WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(ndofs,m) )      
+            WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(ndofs,m) )
         AllocationsDone = .TRUE.
       END IF
-      
+
       IF( InitHandles ) THEN
         CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
         CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
@@ -1981,13 +1981,13 @@ MODULE LumpingUtils
         CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
         CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
 
-        CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+        CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
         CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
         CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
 
         ! Lumped ports
         CALL ElectricPortModel(1,pSolver)
-        
+
         Found = .FALSE.
         IF( ASSOCIATED( Model % Constants ) ) THEN
           mu0inv = ListGetConstReal( Model % Constants,'Permeability of Vacuum', Found )
@@ -1998,15 +1998,15 @@ MODULE LumpingUtils
         IF( ASSOCIATED( Model % Constants ) ) THEN
           eps0 = ListGetConstReal ( Model % Constants,'Permittivity of Vacuum', Found )
         END IF
-        IF(.NOT. Found ) eps0 = 8.854187817d-12           
+        IF(.NOT. Found ) eps0 = 8.854187817d-12
         InitHandles = .FALSE.
       END IF
 
       imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp)
       rob0 = Omega * SQRT( eps0 / mu0inv )
-      
+
       n = Element % TYPE % NumberOfNodes
-      NodeIndexes => Element % NodeIndexes 
+      NodeIndexes => Element % NodeIndexes
 
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
@@ -2020,10 +2020,10 @@ MODULE LumpingUtils
       IF(.NOT. ASSOCIATED( Parent ) ) THEN
         CALL Fatal(Caller,'Model lumping requires parent element!')
       END IF
-      
+
       ! If the source of the incident field is not in the plane of the port we have to use the parent!
       IF( EdgeBasis ) THEN
-        nd = mGetElementDofs( EdgeIndexes, Uelement = Element, USolver = avar % Solver ) 
+        nd = mGetElementDofs( EdgeIndexes, Uelement = Element, USolver = avar % Solver )
         np = COUNT(EdgeIndexes(1:nd) <= Mesh % NumberOfNodes)
         pIndexes => EdgeIndexes
 
@@ -2031,35 +2031,35 @@ MODULE LumpingUtils
             EdgeBasisDegree=EdgeBasisDegree)
       ELSE
         nd = n
-        IP = GaussPoints( Element )          
+        IP = GaussPoints( Element )
         IF( avar % TYPE == Variable_on_nodes_on_elements ) THEN
           pIndexes => Element % DGIndexes
-        ELSE         
+        ELSE
           pIndexes => NodeIndexes
         END IF
       END IF
 
       ! Edge or nodal values of vector potential
-      DO i=1,avar % dofs 
+      DO i=1,avar % dofs
         e_local(i,1:nd) = avar % values(avar % dofs*(avar % Perm(pIndexes(1:nd))-1)+i)
       END DO
 
       CALL ElectricPortModel(2,pSolver,Element,GotPort)
-      
+
       ! Numerical integration:
-      !-----------------------      
-      DO t=1,IP % n  
-        
+      !-----------------------
+      DO t=1,IP % n
+
         stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )              
+            IP % W(t), detJ, Basis, dBasisdx )
         weight = IP % s(t) * detJ
 
         ! Get material properties from parent element.
         !----------------------------------------------
-        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )
         IF( .NOT. Found ) mur = 1.0_dp
         muinv = mur * mu0inv
-        
+
         Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
 
         ! If we need EdgeBasis get it already here since it is needed in evaluation of some port models
@@ -2069,19 +2069,19 @@ MODULE LumpingUtils
               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = avar % Solver )
         END IF
 
-        L = (0_dp, 0_dp)          
+        L = (0_dp, 0_dp)
         IF(GotPort) THEN
           CALL ElectricPortModel(3,pSolver,Element,GotPort,B,L,Basis,dBasisdx,WBasis)
 
           !IF(t==1) PRINT *,'B1:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         ELSE IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-          epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+          epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )
           IF( .NOT. Found ) epsr = 1.0_dp
-          B = imu * rob0 * SQRT( epsr / mur ) 
+          B = imu * rob0 * SQRT( epsr / mur )
 
-        ELSE        
+        ELSE
           B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-                  
+
           MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
           ElSurfCurr = ListGetElementComplex3D( ElSurfCurr_h, Basis, Element, Found, GaussPoint = t)
 
@@ -2089,14 +2089,14 @@ MODULE LumpingUtils
               ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
 
           L = MagLoad + TemGrad - (0_dp, 1_dp)*omega/muinv*ElSurfCurr
-                   
+
           !IF(t==1) PRINT *,'B2:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         END IF
-        
+
         IF (ABS(B) > AEPS) THEN
-          L = L / ( 2*B) 
+          L = L / ( 2*B)
         END IF
-                
+
         IF( EdgeBasis ) THEN
           e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)), KIND=dp)
         ELSE
@@ -2104,17 +2104,17 @@ MODULE LumpingUtils
             e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ), KIND=dp )
           END DO
         END IF
-        
-        ! Integral over electric field: This gives the phase
-        int_el = int_el + weight * SUM(e_ip * CONJG(L) )         
-        
-        ! Norm of electric field used for normalization
-        int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) ) 
 
-        trans = trans + B * weight / Omega                
-        area = area + weight        
+        ! Integral over electric field: This gives the phase
+        int_el = int_el + weight * SUM(e_ip * CONJG(L) )
+
+        ! Norm of electric field used for normalization
+        int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) )
+
+        trans = trans + B * weight / Omega
+        area = area + weight
       END DO
-      
+
 !------------------------------------------------------------------------------
     END SUBROUTINE LocalIntegBC_E
 !------------------------------------------------------------------------------
@@ -2139,8 +2139,8 @@ MODULE LumpingUtils
       COMPLEX(KIND=dp) :: tc_ip, cd_ip, v_ip, ep_ip, mu0inv, muinv, mur, &
           cond_ip, imu
       REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),v_local(:,:)
-      REAL(KIND=dp) :: weight, DetJ 
-      TYPE(Nodes_t), SAVE :: ElementNodes 
+      REAL(KIND=dp) :: weight, DetJ
+      TYPE(Nodes_t), SAVE :: ElementNodes
       INTEGER, POINTER :: NodeIndexes(:), pIndexes(:), ParentIndexes(:)
       LOGICAL :: Found
       TYPE(GaussIntegrationPoints_t) :: IP
@@ -2149,9 +2149,9 @@ MODULE LumpingUtils
       TYPE(Element_t), POINTER :: Parent, MatElement
       TYPE(ValueHandle_t), SAVE :: MuCoeff_h, CondCoeff_h, ExtPot_h
       TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, BCMat_h
-      
+
       SAVE AllocationsDone, Basis, dBasisdx, v_local, mu0inv
-      
+
       ndofs = avar % dofs
       IF(.NOT. AllocationsDone ) THEN
         m = Mesh % MaxElementDOFs
@@ -2161,12 +2161,12 @@ MODULE LumpingUtils
       END IF
 
       ! BC given with these:
-      ! Electric Transfer Coefficient      
+      ! Electric Transfer Coefficient
       ! Electric Current Density / Incident Voltage
       IF( InitHandles ) THEN
-        CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+        CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
         CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
-        
+
         CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
         CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
         CALL ListInitElementKeyword( ExtPot_h,'Boundary Condition','Incident Voltage',InitIm=.TRUE.)
@@ -2183,9 +2183,9 @@ MODULE LumpingUtils
       END IF
 
       imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp)
-      
+
       n = Element % TYPE % NumberOfNodes
-      NodeIndexes => Element % NodeIndexes 
+      NodeIndexes => Element % NodeIndexes
 
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
@@ -2204,31 +2204,31 @@ MODULE LumpingUtils
       ELSE
         MatElement => Parent
       END IF
-              
+
       nd = n
-      IP = GaussPoints( Element )          
+      IP = GaussPoints( Element )
       pIndexes => NodeIndexes
 
       ! Nodal values of scalar potential
-      DO i=1,avar % dofs 
+      DO i=1,avar % dofs
         v_local(i,1:nd) = avar % values(avar % dofs*(avar % Perm(pIndexes(1:nd))-1)+i)
       END DO
-      
+
       ! Numerical integration:
-      !-----------------------      
-      DO t=1,IP % n  
-        
+      !-----------------------
+      DO t=1,IP % n
+
         stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx )              
+            IP % W(t), detJ, Basis, dBasisdx )
         weight = IP % s(t) * detJ
 
         ! Get material properties from parent element.
         !----------------------------------------------
-        mur = ListGetElementComplex( MuCoeff_h, Basis, MatElement, Found, GaussPoint = t )      
+        mur = ListGetElementComplex( MuCoeff_h, Basis, MatElement, Found, GaussPoint = t )
         IF( .NOT. Found ) mur = 1.0_dp
         muinv = mur * mu0inv
 
-        cond_ip = ListGetElementReal( CondCoeff_h, Basis, MatElement, Found, GaussPoint = t )        
+        cond_ip = ListGetElementReal( CondCoeff_h, Basis, MatElement, Found, GaussPoint = t )
         cd_ip = ListGetElementComplex( ElCurrent_h, Basis, Element, Found, GaussPoint = t )
 
         tc_ip = ListGetElementComplex( TransferCoeff_h, Basis, Element, Found, GaussPoint = t )
@@ -2237,25 +2237,25 @@ MODULE LumpingUtils
           IF(Found) cd_ip = cd_ip + 2 * tc_ip * ep_ip
         END IF
         v_ip = CMPLX( SUM( Basis(1:n) * v_local(1,1:n) ), SUM( Basis(1:n) * v_local(2,1:n) ), KIND=dp )
-                
+
         area = area + weight
 
         curr = curr - tc_ip * v_ip * weight
         port_curr = port_curr + cd_ip * weight
-        trans = trans + tc_ip * weight         
-        vol = vol + v_ip * weight          
+        trans = trans + tc_ip * weight
+        vol = vol + v_ip * weight
       END DO
-      
+
 !------------------------------------------------------------------------------
     END SUBROUTINE LocalIntegBC_AV
 !------------------------------------------------------------------------------
-    
+
   END FUNCTION BoundaryWaveFlux
 
 
 
 
-  
+
 END MODULE LumpingUtils
 !------------------------------------------------------------------------------
 

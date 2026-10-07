@@ -3,20 +3,20 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
 ! *  of the License, or (at your option) any later version.
-! * 
+! *
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! *  GNU General Public License for more details.
 ! *
 ! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
@@ -35,7 +35,7 @@
 ! *  Original Date: 9.3.2017
 ! *
 ! *****************************************************************************/
- 
+
 !> \ingroup Solvers
 !> \{
 !------------------------------------------------------------------------------
@@ -74,7 +74,7 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput SF_dummy' )
   CALL ListAddInteger( SolverParams, 'Number of Fields', NofFields)
 
-  ScanSolverInt = GetInteger(SolverParams,'Scan Solver',Found) 
+  ScanSolverInt = GetInteger(SolverParams,'Scan Solver',Found)
   IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Scan Solver not found.')
 
   ScanMax = GetInteger(Model % Solvers(ScanSolverInt) % Values, 'Scanning Loops', Found)
@@ -83,10 +83,10 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
   CALL ListAddInteger(SolverParams, 'Scan Max', ScanMax)
 
   DO FieldInt = 1, NofFields
-    FieldName = GetString(SolverParams,'Field Name '//i2s(FieldInt),Found) 
+    FieldName = GetString(SolverParams,'Field Name '//i2s(FieldInt),Found)
     IF (.NOT. Found) CALL Fatal('ScannedFieldSolver_Init','Field Name '//i2s(FieldInt)//' not found.')
 
-    DO ScanInt = 1, ScanMax 
+    DO ScanInt = 1, ScanMax
       CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
         'Scan '//i2s(ScanInt)//" "//TRIM(FieldName))
       i=i+1
@@ -95,7 +95,7 @@ SUBROUTINE ScannedFieldSolver_Init( Model,Solver,dt,TransientSimulation )
     CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
       '-nooutput '//TRIM(FieldName)//' Dummy')
     i=i+1
- 
+
   END DO
 
 !------------------------------------------------------------------------------
@@ -124,19 +124,19 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
   TYPE(VariablePtr_t), POINTER :: FieldVars(:)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: ASolver => NULL()
-  INTEGER :: N, ScanInt, istat, NofFields, FieldInt, ScanMax 
+  INTEGER :: N, ScanInt, istat, NofFields, FieldInt, ScanMax
   LOGICAL :: Found, First=.TRUE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: FieldNames(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: ScanFieldName, SumFieldName 
- 
+  CHARACTER(LEN=MAX_NAME_LEN) :: ScanFieldName, SumFieldName
+
   TYPE(ValueList_t), POINTER :: SolverParam
 
   SAVE FieldVars, FieldNames, NofFields, Mesh
 !------------------------------------------------------------------------------
- 
+
   IF (First) THEN
     First = .FALSE.
- 
+
     Mesh => Model % Mesh
     N = Mesh % MaxElementDOFs
 
@@ -144,7 +144,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 
     ALLOCATE(FieldNames(NofFields), FieldVars(NofFields), STAT=istat)
     IF ( istat /= 0 ) CALL Fatal('ScannedFieldSolver','Memory allocation error')
-    
+
     DO FieldInt = 1, NofFields
       FieldNames(FieldInt) = ListGetString(GetSolverParams(), 'Field Name '//i2s(FieldInt))
       FieldVars(FieldInt) % Var => VariableGet( Mesh % Variables, FieldNames(FieldInt))
@@ -154,20 +154,20 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
     END DO
 
   END IF
- 
+
   CALL Info('ScannedFieldSolver','-------------------------------------------',Level=6)
   CALL Info('ScannedFieldSolver','Computing the scan field solutions. ',Level=5)
   CALL Info('ScannedFieldSolver','-------------------------------------------',Level=6)
 
   ScanVar => VariableGet(Solver % Mesh % Variables, 'scan')
   IF (.NOT. ASSOCIATED(ScanVar)) CALL Fatal('ScannedFieldSolver', 'Scan variable not found.')
-  ScanInt = INT( ScanVar % Values(1) ) 
+  ScanInt = INT( ScanVar % Values(1) )
 
   ScanMax = GetInteger(GetSolverParams(), 'Scan Max', Found)
   IF (.NOT. Found) CALL Fatal('ScannedFieldSolver', 'The maximum number of scan loops not found.')
 
   DO FieldInt = 1, NofFields
-    FieldVar => FieldVars(FieldInt) % Var 
+    FieldVar => FieldVars(FieldInt) % Var
     CALL Info('ScannedFieldSolver','Field '//TRIM(FieldNames(FieldInt))//'.',Level=5)
     ScanFieldName = 'scan '//i2s(ScanInt)//" "//TRIM(FieldNames(FieldInt))
     ScanFieldVar => VariableGet( Mesh % Variables, ScanFieldName)
@@ -175,7 +175,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
       CALL Fatal('ScannedFieldSolver', TRIM(ScanFieldName)//' not associated!')
     END IF
 
-    CALL MakeVarSimilarToModelVar(ScanFieldVar, FieldVar) 
+    CALL MakeVarSimilarToModelVar(ScanFieldVar, FieldVar)
     IF (SIZE(ScanFieldVar % Values) /= SIZE(FieldVar % Values)) &
       CALL Fatal('ScannedFieldSolver','Scanned fields are of different size than &
       the defined Scan Field Variable.')
@@ -186,7 +186,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
       CALL Fatal('ScannedFieldSolver', TRIM(SumFieldName)//' not associated')
     END IF
 
-    CALL MakeVarSimilarToModelVar(SumFieldVar, FieldVar) 
+    CALL MakeVarSimilarToModelVar(SumFieldVar, FieldVar)
     IF (SIZE(ScanFieldVar % Values) /= SIZE(SumFieldVar % Values)) &
       CALL Fatal('ScannedFieldSolver','Summed fields are of different size than &
       the defined Sum Field Variable.')
@@ -196,7 +196,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
       SumFieldVar % Values = FieldVar % Values
     ELSE
       SumFieldVar % Values = FieldVar % Values + SumFieldVar % Values
-    END IF 
+    END IF
 
     IF ( ScanInt == ScanMax ) THEN
       FieldVar % Values = SumFieldVar % Values
@@ -206,7 +206,7 @@ SUBROUTINE ScannedFieldSolver( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
-  SUBROUTINE MakeVarSimilarToModelVar(Var, ModelVar) 
+  SUBROUTINE MakeVarSimilarToModelVar(Var, ModelVar)
     TYPE(Variable_t), TARGET :: Var, ModelVar
     INTEGER :: istat
 
@@ -221,7 +221,7 @@ CONTAINS
     IF ( Var % TYPE /= ModelVar % TYPE ) Var % TYPE = ModelVar % TYPE
 
   END SUBROUTINE MakeVarSimilarToModelVar
- 
+
 !------------------------------------------------------------------------------
 END SUBROUTINE ScannedFieldSolver
 !------------------------------------------------------------------------------

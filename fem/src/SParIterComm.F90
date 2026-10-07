@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2000
 ! *
@@ -51,7 +51,7 @@ MODULE SParIterComm
   USE LoadMod, ONLY : RealTime
   USE Messages
   USE SParIterGlobals
-  
+
 #ifdef HAVE_XIOS
   USE XIOS
 #endif
@@ -120,7 +120,7 @@ CONTAINS
      INTEGER :: n, i, sz, ierr
      LOGICAL :: isfine
      INTEGER(KIND=1), ALLOCATABLE, SAVE :: send_buffer(:)
-     INTERFACE 
+     INTERFACE
         SUBROUTINE MPI_BUFFER_ATTACH( buf, n, ierr)
            INTEGER(KIND=1) :: buf(*)
            INTEGER :: n, ierr
@@ -185,7 +185,7 @@ CONTAINS
 !------------------------------------------------------------------------
 !> Initialize parallel execution environment
 !-----------------------------------------------------------------------
-   FUNCTION ParCommInit( ) RESULT ( ParallelEnv ) 
+   FUNCTION ParCommInit( ) RESULT ( ParallelEnv )
 !-----------------------------------------------------------------------
      TYPE (ParEnv_t), POINTER :: ParallelEnv
 
@@ -244,17 +244,17 @@ CONTAINS
 #define ELMER_COLOUR 0
 #endif
       CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
-           ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+           ParEnv % MyPE,ELMER_COMM_WORLD,ierr)
     ENDIF
 #else
     ! The colour could be set to be some different if we want to couple ElmerSolver with some other
-    ! software having MPI colour set to zero. 
+    ! software having MPI colour set to zero.
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0
 #endif
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
-         ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
-#endif  
+         ParEnv % MyPE,ELMER_COMM_WORLD,ierr)
+#endif
     ParEnv % ActiveComm = ELMER_COMM_WORLD
 
 !ELMER_COMM_WORLD=MPI_COMM_WORLD
@@ -270,7 +270,7 @@ CONTAINS
          WRITE( Message,'(A,I0)') 'Initialize #PEs: ', ParEnv % PEs
          CALL Info( 'ParCommInit',Message, Level=5 )
        END IF
-         
+
        IF ( ierr /= 0 ) THEN
           WRITE( Message,'(A,I0,A)') 'MPI Initialization failed ! (ierr=', ierr, ')'
           CALL Fatal( 'ParCommInit', Message )
@@ -354,7 +354,7 @@ CONTAINS
 
     ! Local variables
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
-    
+
     INTEGER :: i, j, k, m, ii, n, sz, ierr, proc, MinActive
     INTEGER, ALLOCATABLE :: Active(:), buf(:)
     LOGICAL :: L, Interf
@@ -693,7 +693,7 @@ CONTAINS
     list % clist(list % count) = val
 !-----------------------------------------------------------------------
   END SUBROUTINE AddToCommonList2
-!-----------------------------------------------------------------------  
+!-----------------------------------------------------------------------
 
 !-----------------------------------------------------------------------
  SUBROUTINE SyncNeighbours(ParEnv)
@@ -723,9 +723,9 @@ CONTAINS
   END SUBROUTINE SyncNeighbours
 !-----------------------------------------------------------------------
 
-!-----------------------------------------------------------------------  
+!-----------------------------------------------------------------------
   FUNCTION MeshNeighbours(Mesh,IsNeighbour) RESULT(num)
-!-----------------------------------------------------------------------  
+!-----------------------------------------------------------------------
       INTEGER :: i,j,num
       TYPE(Mesh_t) :: Mesh
       LOGICAL :: IsNeighbour(:)
@@ -741,19 +741,19 @@ CONTAINS
       END DO
       IsNeighbour(ParEnv % myPE+1) = .FALSE.
       num = COUNT(IsNeighbour)
-!-----------------------------------------------------------------------  
+!-----------------------------------------------------------------------
   END FUNCTION MeshNeighbours
-!-----------------------------------------------------------------------  
+!-----------------------------------------------------------------------
 
 
-!-----------------------------------------------------------------------  
+!-----------------------------------------------------------------------
    SUBROUTINE SParEdgeNumbering( Mesh, Allmesh )
      USE GeneralUtils
      TYPE(Mesh_t) :: Mesh
      LOGICAL, OPTIONAL :: Allmesh
 !-----------------------------------------------------------------------
 
-     TYPE Edgen_t 
+     TYPE Edgen_t
        INTEGER :: n = 0
        LOGICAL :: interface = .FALSE.
        INTEGER, POINTER :: neighbours(:) => NULL()
@@ -780,7 +780,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      real(kind=dp) :: tt
 !-------------------------------------------------------------------------------
-     
+
     IF ( .NOT. ASSOCIATED(Mesh % Edges) ) RETURN
     IF ( Mesh % NumberOfEdges <= 0 ) RETURN
 
@@ -863,21 +863,21 @@ CONTAINS
         DO p = 1,SIZE(list1)
            DO q = 1,SIZE(list2)
               IF( list1(p) == list2(q)) &
-                 CALL AddToCommonList( commonlist, list1(p) ) 
+                 CALL AddToCommonList( commonlist, list1(p) )
            END DO
         END DO
-        
+
         ! in 3D add the rest of the PE's
         ! ----------------------------------
         IF ( Mesh % MeshDim==3 ) THEN
           DO p=1,SIZE(list1)
             IF (.NOT. ANY(List1(p) == CommonList) ) THEN
-              CALL AddToCommonList(commonlist, list1(p)) 
+              CALL AddToCommonList(commonlist, list1(p))
             END IF
           END DO
           DO p=1,SIZE(list2)
             IF (.NOT. ANY(List2(p) == CommonList) ) THEN
-              CALL AddToCommonList(commonlist, list2(p)) 
+              CALL AddToCommonList(commonlist, list2(p))
             END IF
           END DO
         END IF
@@ -938,7 +938,7 @@ CONTAINS
     j = Parenv % MyPE
     DO i=1,n
       Edgen(i) % n = 0
-      l = Edgen(i) % Neighbours(1) 
+      l = Edgen(i) % Neighbours(1)
       IF (l==j) owned_edges(j+1)=owned_edges(j+1)+1
     END DO
 
@@ -1100,7 +1100,7 @@ CONTAINS
          proc, 201, ELMER_COMM_WORLD, status, ierr )
 
       DO k_intf=1,n_intf
-        j=Iedges(k_intf) 
+        j=Iedges(k_intf)
         DO k=1,Datasize
           IF (Edgen(j) % n==gindices(k)) THEN
             l = SIZE(Edgen(j) % Neighbours)
@@ -1127,7 +1127,7 @@ CONTAINS
       IF (Edgen(j) % n==0 ) CYCLE
       IF (Edgen(j) % Neighbours(1)/=ParEnv % MyPE) CYCLE
 
-      mm=COUNT(Edgen(j) % Neighbours>=0) 
+      mm=COUNT(Edgen(j) % Neighbours>=0)
       commonlist=>Edgen(j) % Neighbours
       ALLOCATE(Edgen(j) % Neighbours(mm))
 
@@ -1405,19 +1405,19 @@ CONTAINS
     DEALLOCATE( gorder, grevorder, gdofs, edgen, tosend )
     IF ( AllM ) DEALLOCATE(IsNeighbour)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
   END SUBROUTINE SParEdgeNumbering
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
 
 
-!-----------------------------------------------------------------------  
+!-----------------------------------------------------------------------
    SUBROUTINE SParFaceNumbering( Mesh, Allmesh )
      USE GeneralUtils
      TYPE(Mesh_t) :: Mesh
      LOGICAL, OPTIONAL :: Allmesh
 !-----------------------------------------------------------------------
 
-     TYPE Facen_t 
+     TYPE Facen_t
        INTEGER :: n = 0
        LOGICAL :: interface = .FALSE.
        INTEGER, POINTER :: neighbours(:) => NULL()
@@ -1574,7 +1574,7 @@ CONTAINS
     j = Parenv % MyPE
     DO i=1,n
       Facen(i) % n = 0
-      l = Facen(i) % Neighbours(1) 
+      l = Facen(i) % Neighbours(1)
       IF (l==j) owned_faces(j+1)=owned_faces(j+1)+1
     END DO
 
@@ -1816,7 +1816,7 @@ CONTAINS
 
     !
     ! Order the whole of the facal structure
-    ! according to the changed order of the 
+    ! according to the changed order of the
     ! global numbers:
     ! --------------------------------------
     DO i=1,n
@@ -1917,7 +1917,7 @@ CONTAINS
       CALL MPI_RECV( DataSize, 1, MPI_INTEGER, &
          MPI_ANY_SOURCE, 400, ELMER_COMM_WORLD, status, ierr )
 
-      proc = status(MPI_SOURCE) 
+      proc = status(MPI_SOURCE)
       IF( datasize > 0 ) THEN
         ALLOCATE( buf(DataSize*2) )
         CALL MPI_RECV( buf, DataSize*2, MPI_INTEGER, &
@@ -1941,12 +1941,12 @@ CONTAINS
     DEALLOCATE( gorder, grevorder, gdofs, facen )
     IF ( ALLM ) DEALLOCATE(IsNeighbour)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
   END SUBROUTINE SParFaceNumbering
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
 
 
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
    SUBROUTINE SParGlobalNumbering( Mesh, OldMesh, NewNodeCnt, Reorder )
 !-----------------------------------------------------------------------
     USE GeneralUtils
@@ -1991,7 +1991,7 @@ tstart = realtime()
 
      Iterate = 0
 ! XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-! YOU, YES YOU  DO SOMETHING ABOUT THIS 
+! YOU, YES YOU  DO SOMETHING ABOUT THIS
 !     The size of the biggest pack to send is:
 !     3*sizeof(int)*Number of new interface nodes
      CALL CheckBuffer(10000000)
@@ -2032,7 +2032,7 @@ tstart = realtime()
           tosend( ParEnv % PEs ), &
           toreceive( ParEnv % PEs ), &
           parentnodes( Mesh % NumberOfNodes,2 ) )
-     
+
      newnodes    = 0
      newnodes2   = 0
      oldnodes    = 0
@@ -2055,7 +2055,7 @@ tstart = realtime()
 !    DO i = 1,Mesh % NumberOfNodes
 !       Node(i) % ElementIndexes => NULL()
 !    END DO
-     
+
      DO i = 1,Mesh % NumberOfBulkElements
         Element => Mesh % Elements(i)
         DO j = 1,SIZE( Element % NodeIndexes )
@@ -2121,14 +2121,14 @@ tstart = realtime()
               ! Construct the parent table:
               !----------------------------
               IF( parentnodes(i,1)==0 ) THEN
-                 parentnodes(i,1) = l 
+                 parentnodes(i,1) = l
                  ! This is the list of PEs sharing parent node 1:
                  list1 => Mesh % ParallelInfo % NeighbourList(l) % Neighbours
               ELSE
-                 parentnodes(i,2) = l 
+                 parentnodes(i,2) = l
                  ! This is the list of PEs sharing parent node 2:
                  list2 => Mesh % ParallelInfo % NeighbourList(l) % Neighbours
-              END IF         
+              END IF
            END DO
         END DO
         !
@@ -2140,7 +2140,7 @@ tstart = realtime()
            DO p = 1,SIZE(list1)
               DO q = 1,SIZE(list2)
                  IF( list1(p) == list2(q)) &
-                      CALL AddToCommonList2( commonlist, list1(p) ) 
+                      CALL AddToCommonList2( commonlist, list1(p) )
               END DO
            END DO
            !
@@ -2220,11 +2220,11 @@ tstart = realtime()
      ! Distribute the knowledge about ownerships (here, assumig all active):
      !----------------------------------------------------------------------
      oldnodes2 = 0
-     CALL MPI_ALLREDUCE( oldnodes, oldnodes2, ParEnv % PEs, &   ! <- fix 
+     CALL MPI_ALLREDUCE( oldnodes, oldnodes2, ParEnv % PEs, &   ! <- fix
           MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
 
      newnodes2 = 0
-     CALL MPI_ALLREDUCE( newnodes, newnodes2, ParEnv % PEs, &   ! <- fix 
+     CALL MPI_ALLREDUCE( newnodes, newnodes2, ParEnv % PEs, &   ! <- fix
           MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr )
      !
      ! Number the new nodes:
@@ -2292,7 +2292,7 @@ tstart = realtime()
         END DO
 
         CALL MPI_BSEND( gindices, DataSize, MPI_INTEGER, i-1, 400, ELMER_COMM_WORLD, ierr )
-        
+
         DEALLOCATE( gindices )
      END DO
      !
@@ -2316,7 +2316,7 @@ tstart = realtime()
         DO k = n, Mesh % NumberOfnodes
            IF( .NOT. Mesh % ParallelInfo % GInterface(k) ) CYCLE
            IF( Mesh % ParallelInfo % GlobalDOFs(k) > 0 ) CYCLE
-           
+
            DO l = 1, DataSize
               m = 3*l-2
               IF( Mesh % ParallelInfo % GlobalDOFs(parentnodes(k,1)) == gindices(m+1) .AND. &
@@ -2329,7 +2329,7 @@ tstart = realtime()
               END IF
            END DO
         END DO
-        
+
         !
         ! PROBLEM CASE 1: Received too much data
         ! =======================================
@@ -2370,7 +2370,7 @@ tstart = realtime()
           !     ' Did not receive global number for node(loc):', i, ' Parents nodes(glob):', &
           !     Mesh % ParallelInfo % GlobalDOFs( parentnodes(i,:) )
           !PRINT *,'Have to inform the following PEs:', &
-          !     Mesh % ParallelInfo % NeighbourList(i) % Neighbours +1 
+          !     Mesh % ParallelInfo % NeighbourList(i) % Neighbours +1
 
           DO j = 1,SIZE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
              k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)
@@ -2390,7 +2390,7 @@ tstart = realtime()
      ! Send the query (CASE 2):
      !--------------------------
 !ddd = 0
-     DO i = 1, ParEnv % PEs              
+     DO i = 1, ParEnv % PEs
         IF( i-1 == ParEnv % MyPE ) CYCLE
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
@@ -2415,7 +2415,7 @@ tstart = realtime()
 
         CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 900, ELMER_COMM_WORLD, status, ierr )
         IF( DataSize < 1 ) CYCLE
-        
+
         ALLOCATE( IntArray(DataSize) )
         CALL MPI_RECV( IntArray, DataSize, MPI_INTEGER, i-1, 950, ELMER_COMM_WORLD, status, ierr )
 
@@ -2457,7 +2457,7 @@ tstart = realtime()
      !
      ! Send the removal requests to all neighbours (CASE 1):
      !------------------------------------------------------
-     DO i = 1, ParEnv % PEs              
+     DO i = 1, ParEnv % PEs
         IF( i-1 == ParEnv % MyPE ) CYCLE
         IF( .NOT. IsNeighbour(i) ) CYCLE
 
@@ -2479,10 +2479,10 @@ tstart = realtime()
 
         CALL MPI_RECV( DataSize, 1, MPI_INTEGER, i-1, 700, ELMER_COMM_WORLD, status, ierr )
         IF( DataSize < 1 ) CYCLE
-        
+
         ALLOCATE( IntArray(DataSize) )
         CALL MPI_RECV( IntArray, DataSize, MPI_INTEGER, i-1, 1800, ELMER_COMM_WORLD, status, ierr )
-        
+
         mm = DataSize/3
         DO nn = 1,mm
            TmpArray = IntArray(3*nn-2:3*nn)
@@ -2519,7 +2519,7 @@ tstart = realtime()
            END DO
         END DO
         IF(ASSOCIATED(Intarray)) DEALLOCATE( IntArray )
-     END DO     
+     END DO
      !
      ! Make sure that all nodes have a global number:
      !-----------------------------------------------
@@ -2583,7 +2583,7 @@ tstart = realtime()
      !------------------------
      DEALLOCATE( oldnodes, oldnodes2, newnodes, newnodes2, &
           parentnodes, tosend, toreceive )
-     
+
      DO i = 1,Mesh % NumberOfNodes
 !      DEALLOCATE( Node(i) % ElementIndexes )
        IF (ASSOCIATED( Node(i) % ElementIndexes % Clist)) &
@@ -2624,7 +2624,7 @@ tstart = realtime()
      Reorder(n:) = IntCnts + n - 1
 !
 !    Order the whole of the nodal structure
-!    according to the changed order of the 
+!    according to the changed order of the
 !    global numbers:
 !    --------------------------------------
      DO i=1,NewNodeCnt
@@ -2664,11 +2664,11 @@ CONTAINS
         swapz =  Mesh % Nodes % z(i)
         swapi =  Mesh % ParallelInfo % GInterface(i)
         swapl => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
- 
+
         Mesh % Nodes % x(i) = Mesh % Nodes % x(k)
         Mesh % Nodes % y(i) = Mesh % Nodes % y(k)
         Mesh % Nodes % z(i) = Mesh % Nodes % z(k)
-        Mesh % ParallelInfo % GInterface(i) = Mesh % ParallelInfo % GInterface(k) 
+        Mesh % ParallelInfo % GInterface(i) = Mesh % ParallelInfo % GInterface(k)
         Mesh % ParallelInfo % NeighbourList(i) % Neighbours => &
                  Mesh % ParallelInfo % NeighbourList(k) % Neighbours
 
@@ -2795,7 +2795,7 @@ END  SUBROUTINE SParIterAllReduceOR
            destproc, 2000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
-   
+
 !----------------------------------------------------------------------
 
   req_cnt = 0
@@ -2820,7 +2820,7 @@ END  SUBROUTINE SParIterAllReduceOR
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
-  
+
   !----------------------------------------------------------------------
   !
   ! Receive the interface parts
@@ -3615,7 +3615,7 @@ END SUBROUTINE ExchangeIfValues
 
 !---------------------------------------------------------------------
 ! This routine sums up (or takes min or max) of parallel matrices that
-! have multiple contributions at the interfaces. 
+! have multiple contributions at the interfaces.
 !*********************************************************************
 SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
             ParallelInfo, SourceVec, op )
@@ -3714,7 +3714,7 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
           3000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
-  
+
 ! --------------------------------------------------------------------
 
   req_cnt = 0
@@ -3806,7 +3806,7 @@ END SUBROUTINE ExchangeSourceVec
 !---------------------------------------------------------------------
 ! This routine is exactly as the previous one but instead of being for
 ! double precision vectors it is for integers. If you find bug in either
-! remember to harmonize the routine. 
+! remember to harmonize the routine.
 !*********************************************************************
 SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
             ParallelInfo, SourceVec, op )
@@ -3902,7 +3902,7 @@ SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
           3000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
-  
+
 ! --------------------------------------------------------------------
 
   req_cnt = 0
@@ -3996,7 +3996,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
   INTEGER, OPTIONAL :: op
 
   TYPE(vBuff_t), ALLOCATABLE :: recv_buf(:), send_buf(:)
-  
+
   ! Local variables
   INTEGER :: i, j, k, n, datalen, ierr, sproc, destproc, ind, req_cnt,oper
   INTEGER :: owner, request, totalsize
@@ -4012,7 +4012,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
   IF ( PRESENT(op) ) oper=op
 
   ALLOCATE( neigh(n) )
-  
+
   n = 0
   DO i=1,ParEnv % PEs
     IF ( ParEnv % IsNeighbour(i) ) THEN
@@ -4026,9 +4026,9 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
   DO i=1,n
     OwnerPerm(neigh(i))=i
   END DO
-  
+
   ALLOCATE( send_size(n), recv_buf(n), send_buf(n) )
-  
+
   send_size = 0
   DO i = 1,SIZE(ParallelInfo % NeighbourList)
     IF( Perm(i) == 0 ) CYCLE
@@ -4063,7 +4063,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
       END IF
     END DO
   END DO
-  
+
   totalsize = SUM(send_size)
   CALL CheckBuffer( 3*totalsize+n*MPI_BSEND_OVERHEAD )
 
@@ -4084,7 +4084,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
         3000, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
-  
+
 ! --------------------------------------------------------------------
 
   req_cnt = 0
@@ -4098,7 +4098,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
           3001, ELMER_COMM_WORLD, requests(req_cnt), ierr )
     END IF
   END DO
-  
+
   DO i = 1, n
     destproc = neigh(i)
     datalen = send_size(i)
@@ -4108,7 +4108,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
     END IF
   END DO
   CALL MPI_WaitAll( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
-  
+
 ! --------------------------------------------------------------------
 
   req_cnt = 0
@@ -4122,7 +4122,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
           sproc, 3002, ELMER_COMM_WORLD, requests(req_cnt), ierr )
     END IF
   END DO
-  
+
   DO i = 1, n
     destproc = neigh(i)
     datalen = send_size(i)
@@ -4154,7 +4154,7 @@ SUBROUTINE ExchangeNodalVec( ParallelInfo, Perm, SourceVec, op )
       END IF
     END DO
   END DO
-  
+
   DO i=1,n
     IF (send_size(i)>0) DEALLOCATE(send_buf(i) % Ind, send_buf(i) % Vec)
     IF (recv_size(i)>0) DEALLOCATE(recv_buf(i) % Ind, recv_buf(i) % Vec)
@@ -4260,7 +4260,7 @@ SUBROUTINE ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
          3100, ELMER_COMM_WORLD, ierr )
   END DO
   CALL MPI_WaitAll( n, requests, MPI_STATUSES_IGNORE, ierr )
-  
+
 ! --------------------------------------------------------------------
 
   req_cnt = 0
@@ -4566,7 +4566,7 @@ tt = realTime()
   DO i = 1, n
      CurrIf => SplittedMatrix % IfMatrix(neigh(i)+1)
      DO j=1,n
-        destproc = neigh(j) 
+        destproc = neigh(j)
         DO k=1,CurrIf % NumberOfRows
            IF ( CurrIf % RowOwner(k) == destproc ) THEN
               L(j) = L(j) + 1
@@ -4583,7 +4583,7 @@ tt = realTime()
   DO i = 1, n
      CurrIf => SplittedMatrix % IfMatrix(neigh(i)+1)
      DO j=1,n
-        destproc = neigh(j) 
+        destproc = neigh(j)
         DO k=1,CurrIf % NumberOfRows
            IF ( CurrIf % RowOwner(k) == destproc ) THEN
               L(j) = L(j) + 1
@@ -4630,7 +4630,7 @@ tt = realTime()
       END DO
 !print*,parenv % mype, ' <<<<-----', sproc, realtime()-tt; flush(6)
       DEALLOCATE( Gindices )
-    END IF 
+    END IF
   END DO
 
 !print*,parenv % mype, 'first recv: ', realTime()-tt
@@ -4735,12 +4735,12 @@ SUBROUTINE SParActiveSUM(tsum, oper)
 
    comm = ParEnv % ActiveComm
    nact = COUNT(ParEnv % Active)
-   
+
    IF( nact <= 0 ) THEN
      comm = ELMER_COMM_WORLD
      nact = ParEnv % PEs
    END IF
-     
+
    ssum = tsum
    SELECT CASE(oper)
    CASE(0)
@@ -4772,12 +4772,12 @@ SUBROUTINE SParActiveSUMInt(tsum, oper)
 
    comm = ParEnv % ActiveComm
    nact = COUNT(ParEnv % Active)
-   
+
    IF( nact <= 0 ) THEN
      comm = ELMER_COMM_WORLD
      nact = ParEnv % PEs
    END IF
-     
+
    isum = tsum
    SELECT CASE(oper)
    CASE(0)
@@ -4804,12 +4804,12 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
 
    comm = ParEnv % ActiveComm
    nact = COUNT(ParEnv % Active)
-   
+
    IF( nact <= 0 ) THEN
      comm = ELMER_COMM_WORLD
      nact = ParEnv % PEs
    END IF
-     
+
    SELECT CASE(oper)
    CASE(0)
      ssum = tsum
@@ -4827,7 +4827,7 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
        iser = -1
      END IF
      CALL MPI_ALLREDUCE( iser, ipar, 1, MPI_INTEGER, MPI_MAX, comm, ierr )
-     
+
      ! Set the ssum so that MPI_SUM gives the desired result
      IF(iser == ipar ) THEN
        ssum = tsum
@@ -4846,7 +4846,7 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
        iser = -1
      END IF
      CALL MPI_ALLREDUCE( iser, ipar, 1, MPI_INTEGER, MPI_MAX, comm, ierr )
-     
+
      IF(iser == ipar ) THEN
        ssum = tsum
      ELSE
@@ -4857,7 +4857,7 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
    ! We have defined "ssum" such that MPI_SUM gives the desired operation always.
    CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
        MPI_SUM, comm, ierr )
-     
+
 !*********************************************************************
 END SUBROUTINE SParActiveSUMComplex
 !*********************************************************************
@@ -4947,12 +4947,12 @@ END FUNCTION SParDotProd
           END IF
         END IF
       END DO
-      
+
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelVectorL
 !-------------------------------------------------------------------------------
 
-    
+
 
 !*********************************************************************
 FUNCTION MaskedSParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
@@ -4972,12 +4972,12 @@ FUNCTION MaskedSParDotProd( ndim, x, xind, y, yind ) RESULT(dres)
   INTEGER :: i
   TYPE(Matrix_t), POINTER :: A
   LOGICAL, ALLOCATABLE :: SkipMask(:)
-  
+
   A => CurrentModel % Solver % Matrix
   IF(.NOT. ASSOCIATED(A % SkipMask)) THEN
     CALL Fatal('MaskedSParDotProd','SkipMask not associated but here we are!?')
   END IF
-    
+
   ALLOCATE(SkipMask(ndim))
   SkipMask = .FALSE.
   CALL ParallelVectorL(A,SkipMask,A % SkipMask)
@@ -5097,16 +5097,16 @@ FUNCTION MaskedSParNorm( ndim, x, xind ) RESULT(dres)
   INTEGER :: i
   TYPE(Matrix_t), POINTER :: A
   LOGICAL, ALLOCATABLE :: SkipMask(:)
-  
+
   A => CurrentModel % Solver % Matrix
   IF(.NOT. ASSOCIATED(A % SkipMask)) THEN
     CALL Fatal('MaskedSParNorm','SkipMask not associated but here we are!?')
   END IF
-    
+
   ALLOCATE(SkipMask(ndim))
   SkipMask = .FALSE.
   CALL ParallelVectorL(A,SkipMask,A % SkipMask)
-  
+
   !*********************************************************************
   ! Deterministic reduction: see the note above the inner products in
   ! IterSolve.F90 for why REDUCTION(+:) is not reproducible here.

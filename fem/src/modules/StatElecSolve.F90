@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -120,8 +120,8 @@ SUBROUTINE StatElecSolver_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 END SUBROUTINE StatElecSolver_Init0
 !------------------------------------------------------------------------------
-  
-  
+
+
 !------------------------------------------------------------------------------
 !> Initialization of the primary solver, i.e. StatElecSolver.
 !> \ingroup Solvers
@@ -154,9 +154,9 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   ELSE
     CALL ListAddNewString( Params,'Variable','Potential')
   END IF
-    
+
   PostActive = .FALSE.
-  
+
   CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
   CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
 
@@ -165,7 +165,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   END IF
 
   IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
-    IF( CalculateElemental ) & 
+    IF( CalculateElemental ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         '-dg Electric Energy Density e' )
     IF( CalculateNodal ) &
@@ -175,20 +175,20 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   END IF
 
   IF( ListGetLogical(Params,'Calculate Electric Flux',Found) ) THEN
-    IF( CalculateElemental ) & 
+    IF( CalculateElemental ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         '-dg Electric Flux e[Electric Flux e:'//I2S(dim)//']' )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Electric Flux[Electric Flux:'//I2S(dim)//']' )       
+        'Electric Flux[Electric Flux:'//I2S(dim)//']' )
     PostActive = .TRUE.
   END IF
 
   IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
-    IF( CalculateElemental ) & 
+    IF( CalculateElemental ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         '-dg Electric Field e[Electric Field e:'//I2S(dim)//']' )
-    IF( CalculateNodal ) & 
+    IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Electric Field[Electric Field:'//I2S(dim)//']' )
     PostActive = .TRUE.
@@ -216,8 +216,8 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     CALL ListAddNewLogical( Params,'Constraint Modes Matrix Symmetric',.TRUE.)
     IF( ListCheckPresent( Params,'Capacitance Matrix Filename') ) THEN
       CALL ListRename( Params,'Capacitance Matrix Filename',&
-          'Constraint Modes Matrix Filename', Found ) 
-    ELSE     
+          'Constraint Modes Matrix Filename', Found )
+    ELSE
       CALL ListAddNewString( Params,'Constraint Modes Matrix Filename',&
           'CapacitanceMatrix.dat',.FALSE.)
     END IF
@@ -228,12 +228,12 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   END IF
 
   CALL ListAddInteger( Params,'Time Derivative Order', 0 )
-  
+
   CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
   IF( ListCheckPresentAnyBC(Model,'infinity bc') ) THEN
     CALL Fatal('StatElecSolver_init','Use "Electric Infinity BC" instead of "Infinity BC"')
   END IF
-  
+
   ! If no fields need to be computed do not even call the _post solver!
   CALL ListAddLogical(Params,'PostSolver Active',PostActive)
 
@@ -241,13 +241,13 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
 #ifdef LIBRARY_ADAPTIVITY
   CALL ListAddNewLogical(Params,'Library Adaptivity',.TRUE.)
 #endif
-  
+
 END SUBROUTINE StatElecSolver_Init
 
 
 !-----------------------------------------------------------------------------
 !> A modern version for static current conduction supporting multithreading and
-!> SIMD friendly ElmerSolver kernels. 
+!> SIMD friendly ElmerSolver kernels.
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
@@ -301,7 +301,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Boundary_Residual
-    
+
     SUBROUTINE StatElecSolver_Edge_Residual(Model, Edge, Mesh, Quant, Perm,Indicator)
       USE Types
       TYPE(Element_t) :: Edge
@@ -310,7 +310,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolver_Edge_Residual
-    
+
     SUBROUTINE StatElecSolver_Inside_Residual(Model, Element, Mesh, Quant, Perm, Fnorm,Indicator)
       USE Types
       TYPE(Element_t) :: Element
@@ -359,15 +359,15 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   CVersion = Solver % Variable % DOFs == 2
   IF (CVersion) CALL Info(Caller, &
       'Performing assembly for a complex-valued system',Level=7)
-  
+
   IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
-    CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
+    CALL FollowCurvedBoundary( Model, Mesh, .TRUE. )
   END IF
-      
+
   CALL DefaultStart()
 
-  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
-  dim = CoordinateSystemDimension() 
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
+  dim = CoordinateSystemDimension()
 
   maxiter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations',Found,minv=1)
@@ -397,17 +397,17 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   IF(.NOT. Found ) THEN
     VecAsm = (nColours > 1) .OR. (nthr > 1)
   END IF
-  
+
 
   IF (CVersion) VecAsm = .FALSE.
-  
+
   IF( VecAsm ) THEN
     CALL Info(Caller,'Performing vectorized bulk element assembly',Level=7)
   ELSE
-    CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)      
+    CALL Info(Caller,'Performing non-vectorized bulk element assembly',Level=7)
   END IF
 
-  RelOrder = GetInteger( Params,'Relative Integration Order',Found ) 
+  RelOrder = GetInteger( Params,'Relative Integration Order',Found )
 
   ! Nonlinear iteration loop:
   !--------------------------
@@ -428,9 +428,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     !$OMP PRIVATE(t, Element, n, nd, nb,col, InitHandles) &
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     InitHandles = .TRUE.
-      
+
     DO col=1,nColours
-      
+
       !$OMP SINGLE
       CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
       Active = GetNOFActive(Solver)
@@ -451,7 +451,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
       END DO
       !$OMP END DO
     END DO
-    !$OMP END PARALLEL 
+    !$OMP END PARALLEL
 
     CALL CheckTimer(Caller//'BulkAssembly',Delete=.TRUE.)
     totelem = 0
@@ -460,7 +460,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 
     ! If a complex-valued problem, the assembly for boundaries is not yet ready
     IF (CVersion) GOTO 201
-    
+
     nColours = GetNOFBoundaryColours(Solver)
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
@@ -468,9 +468,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 
     !$OMP PARALLEL &
     !$OMP SHARED(Active, Solver, nColours, VecAsm) &
-    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
+    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) &
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
-    InitHandles = .TRUE. 
+    InitHandles = .TRUE.
     DO col=1,nColours
       !$OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
@@ -680,7 +680,7 @@ CONTAINS
     ELSE
       IP = GaussPoints( Element )
     END IF
-      
+
     ngp = IP % n
 
     ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
@@ -751,7 +751,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
-    LOGICAL, INTENT(IN) :: CVersion 
+    LOGICAL, INTENT(IN) :: CVersion
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
@@ -829,7 +829,7 @@ CONTAINS
         CSTIFF(1:nd,1:nd) = CSTIFF(1:nd,1:nd) + Weight * &
             Eps0 * CEpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
       ELSE
-        EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )      
+        EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )
         STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
             Eps0 * EpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
       END IF
@@ -913,25 +913,25 @@ CONTAINS
       IF( .NOT. Found ) Eps0 = PhysicalEps0   ! real physical value (SI units) by default; see file header
       InitHandles = .FALSE.
     END IF
-    
+
     dim = CoordinateSystemDimension()
 
     CALL GetElementNodes( Nodes, UElement=Element )
     STIFF = 0._dp
     FORCE = 0._dp
     LOAD = 0._dp
-           
+
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
-    
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis )
       Weight = IP % s(t) * DetJ
-      
+
       IF ( AxiSymmetric ) THEN
         Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
       END IF
@@ -955,11 +955,11 @@ CONTAINS
         Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
         Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
         Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
-        
+
         Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
         Ext = ListGetElementReal( Farfield_h, Basis, Element, Found )
 
-        Alpha = Eps0 * SUM( Coord * Normal ) / SUM( Coord * Coord )         
+        Alpha = Eps0 * SUM( Coord * Normal ) / SUM( Coord * Coord )
         Beta = Beta + Alpha * Ext
       ELSE
         ! Boundary condition for electrostatic layer on the boundary.
@@ -970,16 +970,16 @@ CONTAINS
           LayerH = ListGetElementReal( LayerH_h, Basis, Element, Found )
           IF ( .NOT. Found) THEN
             CALL Fatal( Caller,'Charge > Layer thickness < not given!' )
-          END IF 
+          END IF
           LayerV = ListGetElementReal( LayerV_h, Basis, Element, Found )
           LayerRho = ListGetElementReal( LayerRho_h, Basis, Element, Found )
 
-          Alpha = LayerEps / LayerH          
+          Alpha = LayerEps / LayerH
           Beta = Beta + Alpha * LayerV + 0.5_dp * LayerRho * LayerH / Eps0
         END IF
       END IF
 
-      IF( GotSome ) THEN      
+      IF( GotSome ) THEN
         DO p=1,nd
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + Weight * Alpha * Basis(q) * Basis(p)
@@ -989,7 +989,7 @@ CONTAINS
       END IF
 
     END DO
-    
+
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 
     END ASSOCIATE
@@ -1054,24 +1054,24 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
 
   CALL Info(Caller,'------------------------------------------------')
   CALL Info(Caller,'Calculating postprocessing fields')
-  
+
   Mesh => GetMesh()
   Params => GetSolverParams()
-    
-  ConstantWeights = ListGetLogical( Params,'Constant Weights',Found ) 
 
-  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )     
+  ConstantWeights = ListGetLogical( Params,'Constant Weights',Found )
+
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
 
   CalcAvePotential = ListGetLogical( Params,'Calculate Average Potential',Found )
-  DoAve = ListGetLogical( Params,'Average Within Materials',Found ) 
-  
-  IF( CalcAvePotential ) THEN   
-    n = Model % NumberOfBodies 
+  DoAve = ListGetLogical( Params,'Average Within Materials',Found )
+
+  IF( CalcAvePotential ) THEN
+    n = Model % NumberOfBodies
     ALLOCATE( PotInteg(n), PotVol(n) )
     PotInteg = 0.0_dp
     PotVol = 0.0_dp
   END IF
-  
+
   ! Joule losses: type 1, component 1
   PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Energy Density')
   PostVars(1) % NodalField = .TRUE.
@@ -1084,12 +1084,12 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   PostVars(4) % NodalField = .TRUE.
   PostVars(5) % Var => VariableGet( Mesh % Variables, 'Electric Flux')
   PostVars(6) % Var => VariableGet( Mesh % Variables, 'Electric Flux e')
-  PostVars(4:6) % FieldType = 2 
+  PostVars(4:6) % FieldType = 2
 
   ! Electric field: type 3, components 5-7
   PostVars(7) % Var => VariableGet( Mesh % Variables, 'Electric Field')
   PostVars(8) % Var => VariableGet( Mesh % Variables, 'Electric Field e')
-  PostVars(7:8) % FieldType = 3 
+  PostVars(7:8) % FieldType = 3
 
   ! Do this since the "associated" command cannot handle vectors!
   ! Also initialize the field to zero since some of these are additive
@@ -1097,14 +1097,14 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
     PostVars(i) % HaveVar = ASSOCIATED( PostVars(i) % Var )
     IF( PostVars(i) % HaveVar ) PostVars(i) % Var % Values = 0.0_dp
   END DO
-  
-  CalcElectricDisp = ANY( PostVars(1:3) % HaveVar ) 
-  CalcCurrent = ANY( PostVars(4:6) % HaveVar ) 
-  CalcField = ANY( PostVars(7:8) % HaveVar ) 
+
+  CalcElectricDisp = ANY( PostVars(1:3) % HaveVar )
+  CalcCurrent = ANY( PostVars(4:6) % HaveVar )
+  CalcField = ANY( PostVars(7:8) % HaveVar )
 
   n = COUNT( PostVars(1:8) % HaveVar )
   CALL Info(Caller,'Number of '//I2S(n)//' postprocessing fields',Level=8)
-    
+
   ! Only create the nodal weights if we need to scale some nodal field
   NeedScaling = .FALSE.
   DO i=1,8
@@ -1113,7 +1113,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
     IF( PostVars(i) % Var % TYPE == Variable_on_nodes ) THEN
       CALL Info(Caller,'Creating a weighting for scaling purposes from '//I2S(i),Level=10)
       NeedScaling = .TRUE.
-      WeightPerm => PostVars(i) % Var % Perm 
+      WeightPerm => PostVars(i) % Var % Perm
       ALLOCATE( WeightVector( MAXVAL( WeightPerm ) ) )
       WeightVector = 0.0_dp
       EXIT
@@ -1172,18 +1172,18 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   END IF
 
   IF( CalcAvePotential ) THEN
-    BLOCK        
+    BLOCK
       REAL(KIND=dp), ALLOCATABLE:: PotTmp(:)
-      INTEGER :: ierr      
+      INTEGER :: ierr
       REAL(KIND=dp) :: PotAve
       n = Model % NumberOfBodies
       IF( ParEnv % PEs > 1 ) THEN
-        ALLOCATE( PotTmp(n) )        
+        ALLOCATE( PotTmp(n) )
         CALL MPI_ALLREDUCE(PotVol,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
         PotVol = PotTmp
         CALL MPI_ALLREDUCE(PotInteg,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
         PotInteg = PotTmp
-        DEALLOCATE( PotTmp ) 
+        DEALLOCATE( PotTmp )
       END IF
 
       DO i = 1, n
@@ -1196,13 +1196,13 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
       END DO
     END BLOCK
   END IF
-    
+
   CALL Info(Caller,'All done',Level=12)
 
-  
+
 
 CONTAINS
-   
+
   SUBROUTINE LocalPostAssembly( Element, n, nd, InitHandles, MASS, FORCE )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1249,14 +1249,14 @@ CONTAINS
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element, USolver=Solver )
-    CALL GetScalarLocalSolution( ElementPot, UElement=Element, USolver=Solver) 
-    
+    CALL GetScalarLocalSolution( ElementPot, UElement=Element, USolver=Solver)
+
     ! Initialize
     MASS  = 0._dp
     FORCE = 0._dp
 
     IP = GaussPoints( Element )
-    
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -1267,20 +1267,20 @@ CONTAINS
       IF ( AxiSymmetric ) THEN
         Weight = Weight * 2 * PI * SUM( Nodes % x(1:n)*Basis(1:n) )
       END IF
-       
+
       DO i=1,n
         DO j=1,n
           MASS(i,j) = MASS(i,j) + Weight * Basis(i) * Basis(j)
         END DO
       END DO
 
-      ! Compute the integration weights 
+      ! Compute the integration weights
       !----------------------------------------------------------------------------
       FORCE(1,1:n) = FORCE(1,1:n) + Weight * Basis(1:n)
 
       EpsAtIp = Eps0 * ListGetElementReal( EpsCoeff_h, Basis, Element, Found, &
          GaussPoint = t )
-        
+
       ! Compute the electric field from the potential: E = -grad Phi
       !------------------------------------------------------------------------------
       DO j = 1, DIM
@@ -1304,7 +1304,7 @@ CONTAINS
 
       ! Compute the Joule heating: H,tot = Integral (E . D)dV
       !------------------------------------------------------------------------------
-      Heat = SUM( Grad(1:dim) * EpsGrad(1:dim) )      
+      Heat = SUM( Grad(1:dim) * EpsGrad(1:dim) )
       IF( CalcElectricDisp ) THEN
         Force(2,1:n) = Force(2,1:n) + Heat * Weight * Basis(1:n)
       END IF
@@ -1360,7 +1360,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: pVar
     LOGICAL :: LocalSolved, Erroneous
 !------------------------------------------------------------------------------
-    
+
     CALL LUdecomp(A,n,pivot,Erroneous)
     IF (Erroneous) CALL Fatal('LocalPostSolve', 'LU-decomposition fails')
 
@@ -1375,19 +1375,19 @@ CONTAINS
         ! Current and electric field has three components
         dofs = 3
       END IF
-     
+
       DO m=1,dofs
         dofcount = dofcount+1
         x = b(dofcount,1:n)
         LocalSolved = .FALSE.
-        
+
         DO Vari = 1, 8
           pVar => PostVars(Vari) % Var
           IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
           IF( PostVars(Vari) % FieldType /= FieldType ) CYCLE
 
           IF( m > pVar % Dofs ) CYCLE
-          
+
           ! The nodal fields need not be solved for.
           ! Note the nodal field should come before the distributed fields!!
           IF( PostVars(Vari) % NodalField ) THEN
@@ -1401,7 +1401,7 @@ CONTAINS
           ! and nodal fields the convention is not assumed here.
           IF( pVar % TYPE == variable_on_nodes_on_elements ) THEN
             ind = pVar % dofs * (pVar % Perm(Element % DGIndexes(1:n))-1)+m
-            pVar % Values(ind(1:n)) = x(1:n)          
+            pVar % Values(ind(1:n)) = x(1:n)
           ELSE IF( pVar % TYPE == variable_on_nodes ) THEN
             ! Nodes are shared between elements, so different threads can
             ! accumulate into the same pVar % Values entries here — guard
@@ -1422,7 +1422,7 @@ CONTAINS
           END IF
         END DO
       END DO
-    END DO   
+    END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalPostSolve
 !------------------------------------------------------------------------------
@@ -1434,7 +1434,7 @@ CONTAINS
    TYPE(Variable_t), POINTER :: pVar
    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
    REAL(KIND=dp) :: PotDiff, Capacitance, ControlTarget, ControlScaling, val
-   
+
    VolTot = ParallelReduction(VolTot)
    EnergyTot = ParallelReduction(EnergyTot)
 
@@ -1450,17 +1450,17 @@ CONTAINS
    WRITE( Message,'(A,ES12.3)') 'Total Electric Energy:', Energytot
    CALL Info( Caller, Message, Level=6 )
    CALL ListAddConstReal( Model % Simulation,'res: Electric Energy', Energytot )
-   
-   PotDiff = DirichletDofsRange( Solver )     
+
+   PotDiff = DirichletDofsRange( Solver )
    IF( PotDiff > TINY( PotDiff ) ) THEN
      CALL ListAddConstReal( Model % Simulation,'res: Potential Difference', PotDiff )
-     Capacitance = 2 * EnergyTot / PotDiff**2 
+     Capacitance = 2 * EnergyTot / PotDiff**2
      WRITE( Message,'(A,ES12.3)') 'Effective Capacitance:', Capacitance
      CALL Info(Caller, Message, Level=6 )
      CALL ListAddConstReal( Model % Simulation,&
          'RES: Effective Capacitance', Capacitance )
    END IF
-         
+
    ! If we need to scale then also communicate the weight
    IF (ParEnv % PEs>1 .AND. NeedScaling) THEN
      CALL ParallelSumVector(Solver % Matrix, WeightVector )
@@ -1470,19 +1470,19 @@ CONTAINS
      pVar => PostVars(Vari) % Var
      IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
      IF( PostVars(Vari) % NodalField ) CYCLE
-     
+
      ! This is the only type of variable needing scaling!
      IF( pVar % TYPE /= variable_on_nodes ) CYCLE
 
      dofs = pVar % Dofs
-     
+
      IF ( ParEnv % PEs > 1) THEN
        IF( dofs == 1 ) THEN
          CALL ParallelSumVector(Solver % Matrix, pVar % Values )
        ELSE
          IF(.NOT. ALLOCATED( tmp ) ) THEN
-           ALLOCATE( tmp( SIZE( WeightVector ) ) )         
-         END IF         
+           ALLOCATE( tmp( SIZE( WeightVector ) ) )
+         END IF
          DO i=1,dofs
            tmp = pVar % Values(i::dofs)
            CALL ParallelSumVector(Solver % Matrix, tmp)
@@ -1490,7 +1490,7 @@ CONTAINS
          END DO
        END IF
      END IF
-     
+
      DO i=1,dofs
        WHERE( ABS( WeightVector ) > TINY( val ) ) &
            pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
@@ -1506,45 +1506,45 @@ CONTAINS
    END IF
 
    IF( .NOT. Found ) THEN
-     ControlTarget = GetCReal( Params,'Charge Control', Found ) 
+     ControlTarget = GetCReal( Params,'Charge Control', Found )
      IF( Found ) THEN
-       CALL Info( Caller,'Scaling charge to desired value',Level=6)      
+       CALL Info( Caller,'Scaling charge to desired value',Level=6)
        IF( PotDiff < TINY( PotDiff ) ) THEN
          CALL Fatal(Caller,'Charge cannot be controlled without pot. difference')
        END IF
        ControlScaling = ControlTarget / ( EnergyTot / PotDiff )
      END IF
    END IF
-     
+
    IF( Found ) THEN
      WRITE( Message,'(A,ES12.3)') 'Control Scaling:', ControlScaling
      CALL Info(Caller, Message, Level=4 )
      CALL ListAddConstReal( Model % Simulation,'RES: StatElec Scaling',ControlScaling )
 
      Solver % Variable % Values = ControlScaling * Solver % Variable % Values
-          
-     DO Vari = 1, 8 
+
+     DO Vari = 1, 8
        pVar => PostVars(Vari) % Var
        IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
        IF( PostVars(Vari) % FieldType == 1 ) THEN
          ! Energy density scales quadratically
          pVar % Values = (ControlScaling**2) * pVar % Values
        ELSE
-         ! other fields scave linearly         
+         ! other fields scave linearly
          pVar % Values = ControlScaling * pVar % Values
        END IF
      END DO
    END IF
 
 #if 0
-   DO Vari = 1, 8 
+   DO Vari = 1, 8
      pVar => PostVars(Vari) % Var
      IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
      ! check this
-     CALL InvalidateVariable( Model % Meshes, Solver % Mesh,PostVars(Vari) % Var % Name ) 
+     CALL InvalidateVariable( Model % Meshes, Solver % Mesh,PostVars(Vari) % Var % Name )
    END DO
 #endif
-   
+
 !------------------------------------------------------------------------------
  END SUBROUTINE GlobalPostScale
 !------------------------------------------------------------------------------
@@ -1599,7 +1599,7 @@ SUBROUTINE StatElecSolver_boundary_Residual(Model, Edge, Mesh, Quant, Perm, Gnor
   REAL(KIND=dp) :: SqrtMetric, Metric(3, 3), Symb(3, 3, 3), dSymb(3, 3, 3, 3)
   REAL(KIND=dp), ALLOCATABLE :: NodalPermittivity(:), &
       EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
-      dBasisdx(:, :), Potential(:), Flux(:)  
+      dBasisdx(:, :), Potential(:), Flux(:)
   REAL(KIND=dp) :: Normal(3), EdgeLength, gx, gy, gz, Permittivity
   REAL(KIND=dp) :: u, v, w, s, detJ
   REAL(KIND=dp) :: Residual, ResidualNorm
@@ -2031,7 +2031,7 @@ SUBROUTINE StatElecSolver_Inside_residual(Model, Element, Mesh, &
   REAL(KIND=dp), ALLOCATABLE :: NodalSource(:), Potential(:), PrevPot(:)
   REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:, :), ddBasisddx(:, :, :)
   REAL(KIND=dp) :: u, v, w, s, detJ
-  REAL(KIND=dp) :: Permittivity, dt 
+  REAL(KIND=dp) :: Permittivity, dt
   REAL(KIND=dp) :: Residual, ResidualNorm, Area
   TYPE(ValueList_t), POINTER :: Material
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff

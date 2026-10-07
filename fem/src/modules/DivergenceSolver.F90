@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 14.02.2008
 ! *
@@ -35,7 +35,7 @@
 
 
 !------------------------------------------------------------------------------
-!> Subroutine computes the divergence of vector fields using Galerkin method. 
+!> Subroutine computes the divergence of vector fields using Galerkin method.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
@@ -61,9 +61,9 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm
   REAL(KIND=dp) :: at0,at1,at2
   TYPE(Variable_t), POINTER :: DivergenceSol
-  
+
   SAVE Visited
- 
+
   CALL Info( 'DivergenceSolver', '-------------------------------------',Level=4 )
   CALL Info( 'DivergenceSolver','Computing the divergence field',Level=4 )
   CALL Info( 'DivergenceSolver', '-------------------------------------',Level=4 )
@@ -88,7 +88,7 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
     Dofs = DivergenceSol % DOFs
     IF(Dofs /= 1) CALL Fatal('DivergenceSolver','Divergence should have 1 component')
   ELSE
-     CALL Fatal('DivergenceSolver','Variable does not exist!')      
+     CALL Fatal('DivergenceSolver','Variable does not exist!')
   END IF
 
   CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -100,15 +100,15 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
 
   ! For future use
   CondName = ListGetString(SolverParams,'Divergence Coefficient',GotCoeff )
-  
+
   at0 = RealTime()
-  
+
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', GotIt )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
 
   Relative = ListGetLogical(SolverParams,'Relative Divergence',GotIt)
-  
+
   CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   CALL BulkAssembly()
@@ -124,27 +124,27 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
   at1 = RealTime()
   WRITE(Message,* ) 'Assembly Time: ',at1-at0
   CALL Info( 'DivergenceSolver', Message, Level=5 )
-        
-!------------------------------------------------------------------------------     
+
+!------------------------------------------------------------------------------
 
   Norm = DefaultSolve()
 
-!------------------------------------------------------------------------------     
-  
+!------------------------------------------------------------------------------
+
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1
   CALL Info( 'DivergenceSolver', Message, Level=5 )
-  
+
   WRITE( Message, * ) 'Result Norm: ',Norm
   CALL Info( 'DivergenceSolver', Message, Level=4 )
-  
+
 CONTAINS
 
 
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-       
+
     INTEGER :: elem,t,i,j,p,q,n,nd, Rank
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -155,15 +155,15 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Vx(:), Vy(:), Vz(:), Coeff(:)
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Material
-    
+
     SAVE Coeff, Nodes
-    
+
     n = MAX( Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes )
     ALLOCATE( STIFF(n,n), FORCE(n), Coeff(n) )
     ALLOCATE( Vx(n), Vy(n), Vz(n), Basis(n), dBasisdx(n,3) )
 
     DO elem = 1,Solver % NumberOFActiveElements
-         
+
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
@@ -177,27 +177,27 @@ CONTAINS
       CALL GetScalarLocalSolution( Vy, ComponentName(VarName,2) )
       IF(dim == 3) CALL GetScalarLocalSolution( Vz, ComponentName(VarName,3) )
 
-      IF( Relative ) THEN        
+      IF( Relative ) THEN
         Velo(1) = SUM( Vx(1:nd) ) / nd
         Velo(2) = SUM( Vy(1:nd) ) / nd
         IF(dim==3) Velo(3) = SUM( Vz(1:nd) ) / nd
         Vabs = MAX( SQRT( SUM( Velo(1:dim)**2 ) ), EPSILON( Vabs ) )
       END IF
-        
+
       IntegStuff = GaussPoints( Element )
       STIFF  = 0.0_dp
       FORCE  = 0.0_dp
-      
+
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
                 IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
-        
+
         Weight = IntegStuff % s(t) * detJ
         IF ( CSymmetry ) THEN
-          x = SUM( Basis(1:n) * Nodes % x(1:n) ) 
+          x = SUM( Basis(1:n) * Nodes % x(1:n) )
           Weight = Weight * x
         END IF
-        
+
         IF ( .NOT. ConstantBulkMatrixInUse ) THEN
           DO p=1,nd
             DO q=1,nd
@@ -205,7 +205,7 @@ CONTAINS
             END DO
           END DO
         END IF
-        
+
         Source = SUM( dBasisdx(1:nd,1) * Vx(1:nd) )
         Source = Source + SUM( dBasisdx(1:nd,2) * Vy(1:nd) )
         IF(DIM == 3) Source = Source + SUM( dBasisdx(1:nd,3) * Vz(1:nd) )
@@ -217,18 +217,18 @@ CONTAINS
 
         FORCE(1:nd) = FORCE(1:nd) + Basis(1:nd) * Weight * Source
       END DO
-      
+
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
 
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         CALL DefaultUpdateEquations( STIFF, FORCE(1:nd) )
       ELSE
-        CALL DefaultUpdateForce( FORCE(1:nd) )        
+        CALL DefaultUpdateForce( FORCE(1:nd) )
       END IF
     END DO
-    
+
     DEALLOCATE( STIFF, FORCE, Basis, dBasisdx, Coeff, Vx, Vy, Vz )
 
 !------------------------------------------------------------------------------
@@ -281,7 +281,7 @@ END SUBROUTINE DivergenceSolver
     CALL ListAddNewString(SolverParams,'Linear System Solver','Iterative')
     CALL ListAddNewString(SolverParams,'Linear System Iterative Method','cg')
     CALL ListAddNewString(SolverParams,'Linear System Preconditioning','ILU0')
-    
+
     CALL ListAddNewInteger(SolverParams,'Linear System Max Iterations',500)
     CALL ListAddNewConstReal(SolverParams,'Linear System Convergence Tolerance',1.0e-8_dp)
 

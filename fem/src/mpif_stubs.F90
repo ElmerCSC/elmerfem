@@ -185,7 +185,7 @@ SUBROUTINE mpi_get_count
   RETURN
 END SUBROUTINE mpi_get_count
 
-! Parpack 
+! Parpack
 SUBROUTINE pdseupd
   IMPLICIT NONE
   RETURN

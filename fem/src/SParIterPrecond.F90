@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2000
 ! *
@@ -50,11 +50,11 @@ MODULE SParIterPrecond
   USE SParIterComm
 
   IMPLICIT NONE
-  
+
 CONTAINS
 
   !----------------------------------------------------------------------
-  !> Parallel diagonal preconditioning 
+  !> Parallel diagonal preconditioning
   !----------------------------------------------------------------------
   SUBROUTINE ParDiagPrec ( u, v, ipar )
 
@@ -64,7 +64,7 @@ CONTAINS
     INTEGER, DIMENSION(*) :: ipar
 
     ! Local parameters
-    
+
     INTEGER :: i
 
     !*********************************************************************
@@ -80,7 +80,7 @@ CONTAINS
   !> This routines performs a forward and backward solve for ILU
   !> factorization, i.e. solves (LU)u = v.
   !> Diagonal values of U must be already inverted
-  !------------------------------------------------------------------------  
+  !------------------------------------------------------------------------
   SUBROUTINE ParLUPrec ( u, v, ipar )
 
     ! Input parameters
@@ -107,7 +107,7 @@ CONTAINS
     CALL LUPrec( HUTI_NDIM, SIZE(Cols), Rows,Cols,Diag,Vals,u,v )
 
 CONTAINS
-    
+
     SUBROUTINE LUPrec( n,m,Rows,Cols,Diag,Vals,u,v )
     INTEGER :: n,m,Rows(n+1),Cols(m),Diag(n)
     DOUBLE PRECISION :: Vals(m),u(n),v(n)
@@ -125,7 +125,7 @@ CONTAINS
     END DO
 
     ! Backward solve, u = inv(U) u
-    
+
     DO i = n, 1, -1
 
        ! Compute u(i) = u(i) - sum U(i,j) u(j)
@@ -150,14 +150,14 @@ CONTAINS
   !> Diagonal values of U must be already inverted
   !------------------------------------------------------------------------
   SUBROUTINE ParLPrec ( u, v, ipar )
-    
+
     ! Input parameters
 
     DOUBLE PRECISION, DIMENSION(*) :: u, v
     INTEGER, DIMENSION(*) :: ipar
 
     ! Local parameters
-    
+
     INTEGER :: i, k
 
     !*********************************************************************
@@ -167,7 +167,7 @@ CONTAINS
     DO i = 1, HUTI_NDIM
 
        ! Compute u(i) = v(i) - sum L(i,j) u(j)
-       
+
        u(i) = v(i)
        DO k = PIGpntr % SplittedMatrix % InsideMatrix % Rows(i), &
                  PIGpntr % SplittedMatrix % InsideMatrix % Diag(i) - 1
@@ -194,7 +194,7 @@ CONTAINS
     INTEGER, DIMENSION(*) :: ipar
 
     ! Local parameters
-    
+
     INTEGER :: i, k
 
     !*********************************************************************
@@ -211,7 +211,7 @@ CONTAINS
           u(i) = u(i) - PIGpntr % SplittedMatrix % InsideMatrix % ILUValues(k) &
                * u(PIGpntr % SplittedMatrix % InsideMatrix % Cols(k))
        END DO
-       
+
        ! Compute u(i) = u(i) / U(i,i)
 
        u(i) = PIGpntr % SplittedMatrix % InsideMatrix % ILUValues( &
@@ -228,7 +228,7 @@ CONTAINS
   !> Incomplete LU factorization is saved to Matrix % ILUValues.
   !> Diagonal entries are inverted.
   !-----------------------------------------------------------------------
-  
+
   SUBROUTINE ParILU0 ( Matrix )
 
     ! Input parameters
@@ -240,7 +240,7 @@ CONTAINS
     INTEGER :: i, j, k, l
     DOUBLE PRECISION :: tl
     PARAMETER ( tl = 1.0d-15 )
-  
+
     !*********************************************************************
 
     ! Initialize the ILUValues
@@ -266,7 +266,7 @@ CONTAINS
           END IF
 
           ! Compute a_ik = a_ik / a_kk
-          
+
           Matrix % ILUValues(k) = Matrix % ILUValues (k) &
                / Matrix % ILUValues(Matrix % Diag( Matrix % Cols(k)))
 
@@ -286,7 +286,7 @@ CONTAINS
              END DO
 
           END DO
-          
+
        END DO
 
     END DO
@@ -297,7 +297,7 @@ CONTAINS
     END DO
 
   END SUBROUTINE ParILU0
-  
+
 END MODULE SParIterPrecond
 
 !> \{

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 3.3.2008
 ! *
@@ -47,18 +47,18 @@ SUBROUTINE StructuredMeshMapper_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
 
-  Params => GetSolverParams()  
+  Params => GetSolverParams()
   CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
-  
+
 END SUBROUTINE StructuredMeshMapper_init
 
 
 !------------------------------------------------------------------------------
 !>  Subroutine for mapping the mesh between given top and bottom surfaces.
-!>  This solver assumes that the mesh is structural so that it could have 
-!>  been obtained by extrusion in the direction of interest. For the given 
+!>  This solver assumes that the mesh is structural so that it could have
+!>  been obtained by extrusion in the direction of interest. For the given
 !>  direction the corresponding top and bottom node is computed for every node
-!>  and this information is used to perform linear mapping in between.  
+!>  and this information is used to perform linear mapping in between.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
@@ -108,7 +108,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   CHARACTER(*), PARAMETER :: Caller = 'StructuredMeshMapper'
 
-  
+
   SAVE Visited,Initialized,UnitVector,Coord,MaskExists,MaskPerm,TopPointer,BotPointer,&
       TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,Surface,nsize,nnodes,OrigCoord, &
       ComputeTangledMask, MidPointer, MidLayerExists,&
@@ -120,7 +120,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   CALL Info( Caller,'---------------------------------------',Level=4 )
 
   !------------------------------------------------------------------------------
-  !   Initialize the pointers to top and bottom nodes 
+  !   Initialize the pointers to top and bottom nodes
   !------------------------------------------------------------------------------
 
   SolverParams => GetSolverParams()
@@ -128,13 +128,13 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   Mesh => Solver % Mesh
 
   dim = Mesh % MeshDim
-  
+
   Reinitialize = ListGetLogical(SolverParams, "Always Detect Structure", Found)
   IF( Reinitialize ) THEN
     IF( ALLOCATED(Field)) DEALLOCATE(Field)
     IF( ALLOCATED(Surface)) DEALLOCATE(Surface)
   END IF
-  
+
   RecompStab = ListGetLogical(SolverParams, "Recompute Stabilization", Found)
   IF(.NOT. Found) THEN
     CALL Info(Caller,'Defaulting "Recompute Stabilization" to True.',Level=8)
@@ -153,7 +153,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   ELSE
     RecompStabExe = .FALSE.
   END IF
-    
+
   FixedLayers => ListGetIntegerArray( SolverParams,'Fixed Layer Indexes',MultiLayer)
   IF(ASSOCIATED(FixedLayers)) THEN
     NumberOfFixedLayers = SIZE( FixedLayers )
@@ -161,22 +161,22 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     NumberOfFixedLayers = 0
   END IF
 
-  BotProj = ListGetLogical(SolverParams,'Project To Bottom',Found ) 
-  
+  BotProj = ListGetLogical(SolverParams,'Project To Bottom',Found )
+
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
     IF(ASSOCIATED(TopPointer)) DEALLOCATE(TopPointer)
     IF(ASSOCIATED(UpPointer)) DEALLOCATE(UpPointer)
     IF(ASSOCIATED(DownPointer)) DEALLOCATE(DownPointer)
-    IF(ASSOCIATED(NodeLayer)) DEALLOCATE(NodeLayer)    
+    IF(ASSOCIATED(NodeLayer)) DEALLOCATE(NodeLayer)
     IF( MultiLayer ) THEN
       CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = Var, &
           TopNodePointer = TopPointer, BotNodePointer = BotPointer, &
           UpNodePointer = UpPointer, DownNodePointer = DownPointer, &
           NumberOfLayers = NumberOfLayers, NodeLayer = NodeLayer )
       NumberOfLayers = NumberOfLayers + 1
-      
-      i = FixedLayers(1) 
+
+      i = FixedLayers(1)
       IF( i /= 1 ) THEN
         CALL Warn(Caller,'Enforcing first fixed layer to: 1 (was '//I2S(i)//')')
         FixedLayers(1) = 1
@@ -200,8 +200,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     nnodes = Mesh % NumberOfNodes
     nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
     Initialized = .TRUE.
-   
-    MaskExists = ASSOCIATED( Var % Perm )     
+
+    MaskExists = ASSOCIATED( Var % Perm )
     IF( MaskExists ) THEN
       MaskPerm => Var % Perm
     ELSE
@@ -219,13 +219,13 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       CALL Fatal( Caller, 'Memory allocation error' )
     END IF
   END IF
-  
+
   OrigCoord(1:nsize) = Coord(1:nsize)
   at0 = CPUTime()
 
   ! End of initialization
   !-------------------------------------------------------
-  
+
   GotBaseVar = .FALSE.
   VarName = GetString( SolverParams,'Base Displacement Variable',Found)
   IF( Found ) THEN
@@ -235,18 +235,18 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       CALL Fatal(Caller,'The variable does not exist: '//TRIM(VarName))
     END IF
 
-    BaseDisplaceFirst = GetLogical( SolverParams,'Base Displacement First',Found ) 
+    BaseDisplaceFirst = GetLogical( SolverParams,'Base Displacement First',Found )
     IF( BaseDisplaceFirst ) THEN
       CALL Info(Caller,'Applying base displacement before structural mapping')
     END IF
   END IF
-  
 
-  ! Get the velocity variable component. 
+
+  ! Get the velocity variable component.
   !-------------------------------------------------------------------
   VarName = GetString( SolverParams,'Mesh Velocity Variable',GotVeloVar)
   IF( GotVeloVar ) THEN
-    VeloVar => VariableGet( Mesh % Variables, VarName )    
+    VeloVar => VariableGet( Mesh % Variables, VarName )
     IF( ASSOCIATED( VeloVar ) ) THEN
       IF( VeloVar % Dofs /= 1 ) THEN
         CALL Fatal(Caller,'The size of mesh velocity must be one')
@@ -259,18 +259,18 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       ! Create full vector if the field is given by component
       IF( VERIFY( VarName(n:n),'123') == 0 ) THEN
         CALL DefaultVariableAdd( VarName(1:n-1), dofs = dim, Perm = MaskPerm )
-        VeloVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. ) 
+        VeloVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. )
       ELSE
-        CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = VeloVar ) 
+        CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = VeloVar )
       END IF
     END IF
   END IF
 
-  ! Get the mesh update variable component. 
+  ! Get the mesh update variable component.
   !-------------------------------------------------------------------
   VarName = GetString( SolverParams,'Mesh Update Variable',GotUpdateVar)
   IF( GotUpdateVar ) THEN
-    UpdateVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. ) 
+    UpdateVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. )
     IF( ASSOCIATED( UpdateVar ) ) THEN
       IF( UpdateVar % Dofs /= 1 ) THEN
         CALL Fatal(Caller,'The size of mesh update must be one')
@@ -283,27 +283,27 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       ! Create full vector if the field is given by component
       IF( VERIFY( VarName(n:n),'123') == 0 ) THEN
         CALL DefaultVariableAdd( VarName(1:n-1), dofs = dim, Perm = MaskPerm )
-        UpdateVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. ) 
+        UpdateVar => VariableGet( Mesh % Variables, VarName, ThisOnly=.TRUE. )
       ELSE
         CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = UpdateVar )
       END IF
     END IF
   END IF
-  
+
   DisplacementMode = GetLogical(SolverParams,'Displacement Mode',Found)
 
   MinHeight = GetCReal(SolverParams,'Minimum Mesh Height',GotIt)
   IF(.NOT. GotIt) MinHeight = GetCReal(SolverParams,'Minimum Height', GotIt)
-  IF(.NOT. GotIt) MinHeight = EPSILON( MinHeight ) 
+  IF(.NOT. GotIt) MinHeight = EPSILON( MinHeight )
 
   WRITE(Message,'(A,E11.4)') 'Adjusting upper surface to maintain minimum height to:', MinHeight
   CALL Info(Caller,Message,Level=6)
 
   TangledCount = 0
   LimitedCount = 0
-  
+
   IF( GotBaseVar ) THEN
-    IF( BaseDisplaceFirst ) CALL BaseVarDisplace() 
+    IF( BaseDisplaceFirst ) CALL BaseVarDisplace()
   END IF
 
   IF( MultiLayer ) THEN
@@ -312,9 +312,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     CALL BinaryLayerMapper()
   END IF
 
-  LimitedCount = ParallelReduction(LimitedCount) 
-  TangledCount = ParallelReduction(TangledCount) 
-  
+  LimitedCount = ParallelReduction(LimitedCount)
+  TangledCount = ParallelReduction(TangledCount)
+
   IF( LimitedCount > 0 ) THEN
     CALL Info(Caller,'There seems to be '&
         //I2S(LimitedCount)//' (out of '//I2S(nsize)//&
@@ -324,15 +324,15 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     CALL Info(Caller,'There seems to be '&
         //I2S(TangledCount)//' (out of '//I2S(nsize)//&
         ') tangled nodes!',Level=5)
-  END IF    
- 
+  END IF
+
   IF(ListGetLogical( SolverParams,'Mesh Mapping Passive',Found ) ) THEN
     CALL Info(Caller,'Taking back the suggested mapping!',Level=5)
     Coord(1:nsize) = OrigCoord(1:nsize)
   END IF
- 
+
   ! If there is a mask then the coordinate is not directly linked to the real coordinate.
-  ! Hence we need to do it here for the real coordinate. 
+  ! Hence we need to do it here for the real coordinate.
   IF( MaskExists ) THEN
     ActiveDirection = ListGetInteger( Solver % Values,'Active Coordinate')
     IF( ActiveDirection == 1 ) THEN
@@ -353,9 +353,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   END IF
 
   IF( GotBaseVar ) THEN
-    IF (.NOT. BaseDisplaceFirst ) CALL BaseVarDisplace() 
+    IF (.NOT. BaseDisplaceFirst ) CALL BaseVarDisplace()
   END IF
-    
+
   IF( GotVeloVar .AND. .NOT. Visited ) THEN
     IF( GetLogical(SolverParams,'Mesh Velocity First Zero',Found ) ) THEN
       VeloVar % Values = 0.0_dp
@@ -365,7 +365,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   at1 = CPUTime()
   WRITE(Message,* ) 'Active coordinate mapping time: ',at1-at0
   CALL Info(Caller,Message)
-  
+
   IF(.NOT. Visited ) THEN
     MappedMeshName = GetString(SolverParams,'Mapped Mesh Name', WriteMappedMeshToDisk)
     IF( WriteMappedMeshToDisk ) THEN
@@ -374,7 +374,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   END IF
 
   Visited = .TRUE.
-  
+
   IF(RecompStabExe) CALL MeshStabParams(Mesh)
 
 CONTAINS
@@ -394,7 +394,7 @@ CONTAINS
       IF(MapHeight) THEN
         CALL Info(Caller,'Using function to map heights',Level=5)
       END IF
-      
+
       TangledMaskVarName = GetString(SolverParams,'Correct Surface Mask', ComputeTangledMask)
       IF (ComputeTangledMask) THEN
         TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName), ThisOnly=.TRUE. )
@@ -406,16 +406,16 @@ CONTAINS
             TmpPerm(i) = i
           END DO
           CALL DefaultVariableAdd( TangledMaskVarname, Perm = TmpPerm, Var = TangledMaskVar )
-          NULLIFY( TmpPerm ) 
+          NULLIFY( TmpPerm )
         END IF
 
-        IF(TangledMaskVar % DOFs /= 1) THEN 
+        IF(TangledMaskVar % DOFs /= 1) THEN
           CALL Fatal(Caller,'> Correct Surface Mask < variable should have only 1 dof')
         END IF
         TangledMask => TangledMaskVar % Values
         TangledMask = 1.0_dp
         TangledMaskPerm => TangledMaskVar % Perm
-        WRITE(Message,'(A,A)') 
+        WRITE(Message,'(A,A)')
         CALL Info(Caller,&
             'Output of > Correct Surface Mask < to: '//TRIM(TangledMaskVarName),Level=6 )
       END IF
@@ -465,13 +465,13 @@ CONTAINS
           n = GetElementNOFNodes()
           Surface(1:n) = GetReal( BC,'Top Surface',Found )
           IF(.NOT. Found) CYCLE
-          
+
           IF( MaskExists ) THEN
             IF( ALL( MaskPerm(NodeIndexes(1:n)) > 0 ) ) THEN
-              Field(MaskPerm(NodeIndexes(1:n))) = Surface(1:n) 
+              Field(MaskPerm(NodeIndexes(1:n))) = Surface(1:n)
             END IF
           ELSE
-            Field(NodeIndexes(1:n)) = Surface(1:n)              
+            Field(NodeIndexes(1:n)) = Surface(1:n)
           END IF
         END DO
       ELSE
@@ -508,7 +508,7 @@ CONTAINS
 
 
     IF( BotMode == 0) THEN
-      IF( ListCheckPresentAnyBC( Model,'Bottom Surface') ) THEN  
+      IF( ListCheckPresentAnyBC( Model,'Bottom Surface') ) THEN
         BotMode = 3
         IF(.NOT. ALLOCATED(Field)) THEN
           N = Mesh % MaxElementNodes
@@ -528,10 +528,10 @@ CONTAINS
 
           IF( MaskExists ) THEN
             IF( ALL( MaskPerm(NodeIndexes(1:n)) > 0 ) ) THEN
-              Field(MaskPerm(NodeIndexes(1:n))) = Surface(1:n) 
+              Field(MaskPerm(NodeIndexes(1:n))) = Surface(1:n)
             END IF
           ELSE
-            Field(NodeIndexes(1:n)) = Surface(1:n)              
+            Field(NodeIndexes(1:n)) = Surface(1:n)
           END IF
         END DO
       END IF
@@ -554,18 +554,18 @@ CONTAINS
           NodeIndexes => Element % NodeIndexes
           n = GetElementNOFNodes()
           Surface(1:n) = GetReal( BC,'Mid Surface',Found )
-          IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
+          IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n)
         END IF
       END DO
     END IF
-    
+
     ! Get the new mapping using linear interpolation from bottom and top
     !-------------------------------------------------------------------
     DO i=1,nnodes
-      
+
       j = i
       IF( MaskExists ) THEN
-        j = MaskPerm(i) 
+        j = MaskPerm(i)
         IF( j == 0) CYCLE
       END IF
       itop = TopPointer(j)
@@ -582,7 +582,7 @@ CONTAINS
       ELSE
         x0top = OrigCoord(itop)
         x0bot = OrigCoord(ibot)
-        x0loc = OrigCoord(i)      
+        x0loc = OrigCoord(i)
       END IF
 
       IF( TopMode == 1 ) THEN
@@ -607,13 +607,13 @@ CONTAINS
       END IF
 
       IF( BotMode == 1 ) THEN
-        BotVal = BotVal0 
+        BotVal = BotVal0
       ELSE IF(BotMode == 2) THEN
         IF( BotPerm( ibot ) == 0 ) THEN
           CALL Fatal(Caller,'Bottom surface variable perm is zero!')
         END IF
         BotVal = BotField(BotPerm(ibot))
-      ELSE IF(BotMode == 3) THEN    
+      ELSE IF(BotMode == 3) THEN
         IF( MaskExists ) THEN
           BotVal = Field(MaskPerm(ibot))
         ELSE
@@ -642,19 +642,19 @@ CONTAINS
       IF( DisplacementMode ) THEN
         dx = TopVal + x0top - MidVal - x0mid
       ELSE
-        dx = TopVal - MidVal 
+        dx = TopVal - MidVal
       END IF
-      Tangled = ( dx < MinHeight ) 
-      
+      Tangled = ( dx < MinHeight )
+
       IF( MaskExists .AND. Tangled ) THEN
         IF( DeTangle ) CALL Warn(Caller,'Cancelling tanglement when mask exists!')
         Tangled = .FALSE.
       END IF
 
       ! If the mesh is tangled then take some action.
-      ! Here the lower surface stays intact. This is due to the main application field, 
-      ! computational glaciology, where the lower surface of ice is usually nicely constrained. 
-      IF( Tangled ) THEN        
+      ! Here the lower surface stays intact. This is due to the main application field,
+      ! computational glaciology, where the lower surface of ice is usually nicely constrained.
+      IF( Tangled ) THEN
         IF( dx < TINY( MinHeight ) ) THEN
           TangledCount = TangledCount + 1
         END IF
@@ -677,7 +677,7 @@ CONTAINS
         END IF
 
         IF (ComputeTangledMask) THEN
-          TangledMask(TangledMaskPerm(i)) = -1.0_dp 
+          TangledMask(TangledMaskPerm(i)) = -1.0_dp
         END IF
         IF( .FALSE. ) THEN
           WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
@@ -692,7 +692,7 @@ CONTAINS
         ! With middle layer in two parts, first the upper part
         IF( (x0top - x0mid ) * ( x0loc - x0mid ) > 0.0_dp ) THEN
           wtop = (x0loc-x0mid)/(x0top-x0mid);
-          xloc = wtop * TopVal + (1.0_dp - wtop) * MidVal         
+          xloc = wtop * TopVal + (1.0_dp - wtop) * MidVal
         ELSE
           wtop = (x0loc-x0bot)/(x0mid-x0bot);
           xloc = wtop * MidVal + (1.0_dp - wtop) * BotVal
@@ -702,7 +702,7 @@ CONTAINS
         wtop = (x0loc-x0bot)/(x0top-x0bot);
         xloc = wtop * TopVal + (1.0_dp - wtop) * BotVal
       END IF
-      
+
       IF(DisplacementMode) THEN
         IF( GotVeloVar ) THEN
           IF(Velovar % Perm(i)>0) &
@@ -719,19 +719,19 @@ CONTAINS
       IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(j) - OrigCoord(j)
     END DO
 
-    
+
   END SUBROUTINE BinaryLayerMapper
 
-  
+
   SUBROUTINE MultiLayerMapper()
     REAL(KIND=dp), ALLOCATABLE :: Proj(:,:), StrideCoord(:),FixedCoord(:)
     INTEGER, ALLOCATABLE :: StrideInd(:),StridePerm(:)
     INTEGER :: ierr, PEs
     LOGICAL :: Hit
     REAL(KIND=dp) :: q
-    TYPE(Variable_t), POINTER :: FixedVar    
+    TYPE(Variable_t), POINTER :: FixedVar
     INTEGER :: status(MPI_STATUS_SIZE)
-        
+
     ! Get the new mapping using linear interpolation from bottom and top
     !-------------------------------------------------------------------
     CALL Info(Caller,'Mapping using '//I2S(NumberOfFixedLayers)//' fixed layers',Level=6)
@@ -739,11 +739,11 @@ CONTAINS
     IF( MaskExists ) THEN
       CALL Fatal(Caller,'Mask not available yet for multiple layers!')
     END IF
-    
+
     DeTangle = GetLogical(SolverParams,'Correct Surface',GotIt )
-    
+
     VarName = ListGetString( SolverParams,'Fixed Layer Variable',UnfoundFatal = .TRUE. )
-    FixedVar => VariableGet( Mesh % Variables, VarName ) 
+    FixedVar => VariableGet( Mesh % Variables, VarName )
     IF(.NOT. ASSOCIATED( FixedVar ) ) THEN
       CALL Fatal(Caller,'Could not find variable: '//TRIM(VarName) )
     END IF
@@ -756,7 +756,7 @@ CONTAINS
         StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),&
         FixedCoord(NumberOfFixedLayers))
     Proj = 0.0_dp
-    
+
     ! Go through all 1D strides and perform mapping for mesh
     DO i=1,nnodes
       ibot = BotPointer(i)
@@ -776,7 +776,7 @@ CONTAINS
       END DO
 
       ! Create a new projection matrix for this column
-      j = 1    
+      j = 1
       DO k = 1, NumberOfLayers
         Hit = .FALSE.
         DO j = 1, NumberOfFixedLayers+1
@@ -796,7 +796,7 @@ CONTAINS
           CALL Fatal(Caller,'Could not find mapping for layer: '//I2S(k))
         END IF
       END DO
-      
+
       ! We can either have the fixed layer variable at top or bottom, not elsewhere!
       k = FixedVar % Perm(ibot)
       IF( k == 0 ) k = FixedVar % Perm(itop)
@@ -804,9 +804,9 @@ CONTAINS
 
       ! Get the given layers
       FixedCoord = FixedVar % Values(NumberOfFixedLayers*(k-1)+1:NumberOfFixedLayers*k)
-      
+
       IF( DisplacementMode ) THEN
-        StrideCoord = StrideCoord + MATMUL( Proj, FixedCoord ) 
+        StrideCoord = StrideCoord + MATMUL( Proj, FixedCoord )
       ELSE
         StrideCoord = MATMUL( Proj, FixedCoord )
       END IF
@@ -818,7 +818,7 @@ CONTAINS
           IF( k > 0 ) THEN
             LimitedCount = LimitedCount + k
             TangledCount = TangledCount + &
-                COUNT( StrideCoord(1:NumberOfLayers-1)-StrideCoord(2:NumberOfLayers) < TINY(MinHeight) )  
+                COUNT( StrideCoord(1:NumberOfLayers-1)-StrideCoord(2:NumberOfLayers) < TINY(MinHeight) )
             DO k = 2,NumberOfLayers
               StrideCoord(k) = MIN( StrideCoord(k), StrideCoord(k-1)-MinHeight )
             END DO
@@ -826,7 +826,7 @@ CONTAINS
         ELSE
           k = COUNT( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < MinHeight )
           IF( k > 0 ) THEN
-            LimitedCount = LimitedCount + k    
+            LimitedCount = LimitedCount + k
             TangledCount = TangledCount + &
                 COUNT( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < TINY(MinHeight) )
             DO k = 2,NumberOfLayers
@@ -835,35 +835,35 @@ CONTAINS
           END IF
         END IF
       END IF
-              
+
       Coord(StrideInd) = StrideCoord
 
       IF( GotVeloVar ) THEN
-        StridePerm = VeloVar % Perm( StrideInd ) 
-        WHERE( StridePerm > 0 ) 
+        StridePerm = VeloVar % Perm( StrideInd )
+        WHERE( StridePerm > 0 )
           VeloVar % Values( StridePerm ) = ( Coord(StrideInd) - OrigCoord(StrideInd) ) / dt
         END WHERE
       END IF
-        
+
       IF( GotUpdateVar ) THEN
-        StridePerm = UpdateVar % Perm( StrideInd ) 
-        WHERE( StridePerm > 0 ) 
+        StridePerm = UpdateVar % Perm( StrideInd )
+        WHERE( StridePerm > 0 )
           UpdateVar % Values( StridePerm ) = Coord(StrideInd) - OrigCoord(StrideInd)
         END WHERE
       END IF
     END DO
 
     CALL Info(Caller,'Finished multilayer mapping',Level=8)
-    
+
 
   END SUBROUTINE MultiLayerMapper
 
-  
-  
+
+
   SUBROUTINE BaseVarDisplace()
 
     INTEGER :: dofs
-    
+
     CALL Info(Caller,'Adding base displacement to the displacements!')
 
     dofs = BaseVar % Dofs
@@ -874,24 +874,24 @@ CONTAINS
     DO i=1,nsize
       j = i
       IF( MaskExists ) THEN
-        j = MaskPerm(i) 
+        j = MaskPerm(i)
         IF( j == 0) CYCLE
       END IF
       ibot = BotPointer(i)
-      
+
       Mesh % Nodes % x(i) = Mesh % Nodes % x(i) + &
-          BaseVar % Values( dofs*(BaseVar % Perm(ibot)-1)+1 )  
+          BaseVar % Values( dofs*(BaseVar % Perm(ibot)-1)+1 )
       Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + &
-          BaseVar % Values( dofs*(BaseVar % Perm(ibot)-1)+2 )  
+          BaseVar % Values( dofs*(BaseVar % Perm(ibot)-1)+2 )
       IF( dofs == 3 ) THEN
         Mesh % Nodes % z(i) = Mesh % Nodes % z(i) + &
-            BaseVar % Values( dofs*BaseVar % Perm(ibot) )  
+            BaseVar % Values( dofs*BaseVar % Perm(ibot) )
       END IF
     END DO
-       
+
   END SUBROUTINE BaseVarDisplace
-  
-  
+
+
   !------------------------------------------------------------------------------
 END SUBROUTINE StructuredMeshMapper
 !------------------------------------------------------------------------------

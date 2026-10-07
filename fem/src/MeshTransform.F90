@@ -53,7 +53,7 @@ CONTAINS
       TopNodePointer, BotNodePointer, UpNodePointer, DownNodePointer, &
       MidNodePointer, MidLayerExists, NumberOfLayers, NodeLayer, &
       MaskVar )
-    
+
     USE CoordinateSystems
     IMPLICIT NONE
 
@@ -86,17 +86,17 @@ CONTAINS
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(:), ALLOCATABLE :: VarName, CoordTransform
     CHARACTER(*), PARAMETER :: Caller="DetectExtrudedStructure"
-   
+
     CALL Info(Caller,'Determining extruded structure',Level=6)
     at0 = CPUTime()
 
     DIM = Mesh % MeshDim
     Params => Solver % Values
-    
+
     ActiveDirection = ListGetInteger(Params,'Active Coordinate')
     IF( ActiveDirection < 1 .OR. ActiveDirection > 3 ) THEN
       CALL Fatal('StructuredMeshMapper','Invalid value for Active Coordinate')
-    END IF  
+    END IF
     UnitVector = 0.0_dp
     UnitVector(ActiveDirection) = 1.0_dp
 
@@ -105,7 +105,7 @@ CONTAINS
     ELSE
       MeshNodes => Mesh % Nodes
     END IF
-    
+
     IF( ListGetLogical(Params,'Project To Bottom',GotIt) ) &
         UnitVector = -1.0_dp * UnitVector
 
@@ -123,7 +123,7 @@ CONTAINS
     Var => NULL()
     IF( PRESENT(MaskVar) ) THEN
       Var => MaskVar
-    ELSE          
+    ELSE
       VarName = ListGetString(Params,'Mapping Mask Variable',GotIt )
       IF(GotIt) THEN
         Var => VariableGet( Mesh % Variables,  VarName )
@@ -132,14 +132,14 @@ CONTAINS
     MaskExists = ASSOCIATED(Var)
     IF( MaskExists ) THEN
       ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
-      MaskPerm = Var % Perm 
-      nsize = MAXVAL( MaskPerm ) 
+      MaskPerm = Var % Perm
+      nsize = MAXVAL( MaskPerm )
       CALL Info(Caller,'Using variable as mask: '//TRIM(Var % Name),Level=8)
     ELSE
       VarName = ListGetString(Params,'Mapping Mask Name',MaskExists )
       IF( MaskExists ) THEN
         CALL Info(Caller,'Using name as mask: '//TRIM(VarName),Level=8)
-        MaskPerm => NULL() 
+        MaskPerm => NULL()
         CALL MakePermUsingMask( CurrentModel, Solver, Mesh, VarName, &
             .FALSE., MaskPerm, nsize )
         !PRINT *,'nsize:',nsize,SIZE(MaskPerm),MAXVAL(MaskPerm(1:nnodes))
@@ -150,14 +150,14 @@ CONTAINS
       CALL Info(Caller,'Applying mask of size: '//I2S(nsize),Level=10)
     ELSE
       CALL Info(Caller,'Applying extrusion on the whole mesh',Level=10)
-    END IF 
+    END IF
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )
     IF( DoCoordTransform .OR. MaskExists) THEN
       Var => VariableGet( Mesh % Variables,'Extruded Coordinate')
       IF( ASSOCIATED( Var ) ) THEN
         CALL Info(Caller,'Reusing > Extruded Coordinate < variable',Level=12 )
-        Values => Var % Values        
+        Values => Var % Values
       ELSE
         NULLIFY( Values )
         ALLOCATE( Values( nsize ) )
@@ -173,7 +173,7 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 1')
     ELSE IF( ActiveDirection == 2 ) THEN
       Var => VariableGet( Mesh % Variables,'Coordinate 2')
-    ELSE 
+    ELSE
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
     END IF
 
@@ -195,12 +195,12 @@ CONTAINS
       END DO
     END IF
     IF( PRESENT( ExtVar ) ) ExtVar => Var
-    
+
     ! Check which direction is active
     !---------------------------------------------------------------------
-    UpActive = PRESENT( UpNodePointer) .OR. PRESENT ( TopNodePointer ) 
-    DownActive = PRESENT( DownNodePointer) .OR. PRESENT ( BotNodePointer ) 
-    
+    UpActive = PRESENT( UpNodePointer) .OR. PRESENT ( TopNodePointer )
+    DownActive = PRESENT( DownNodePointer) .OR. PRESENT ( BotNodePointer )
+
     IF( PRESENT( NumberOfLayers) .OR. PRESENT( NodeLayer ) ) THEN
       UpActive = .TRUE.
       DownActive = .TRUE.
@@ -219,7 +219,7 @@ CONTAINS
         j = i
         IF( MaskExists ) THEN
           j = MaskPerm(i)
-          IF( j == 0 ) CYCLE 
+          IF( j == 0 ) CYCLE
         END IF
         TopPointer(j) = i
         UpPointer(j) = i
@@ -227,66 +227,66 @@ CONTAINS
     END IF
     IF( DownActive ) THEN
       ALLOCATE(BotPointer(nsize),DownPointer(nsize))
-      DO i=1,nnodes        
+      DO i=1,nnodes
         j = i
         IF( MaskExists ) THEN
           j = MaskPerm(i)
-          IF( j == 0 ) CYCLE 
+          IF( j == 0 ) CYCLE
         END IF
         BotPointer(j) = i
         DownPointer(j) = i
       END DO
     END IF
-    
+
     CALL Info(Caller,'Determine up and down pointers',Level=15)
 
     ! Determine the up and down pointers using dot product as criterion
     !-----------------------------------------------------------------
     n = Mesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
-    
+
     IF( MaskExists ) THEN
       elemmax = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
     ELSE
-      elemmax = Mesh % NumberOfBulkElements 
+      elemmax = Mesh % NumberOfBulkElements
     END IF
 
-    
+
     DO elem = 1,elemmax
-      
+
       Element => Mesh % Elements(elem)
       NodeIndexes => Element % NodeIndexes
       CurrentModel % CurrentElement => Element
-      
+
       n = Element % TYPE % NumberOfNodes
       Nodes % x(1:n) = MeshNodes % x(NodeIndexes)
       Nodes % y(1:n) = MeshNodes % y(NodeIndexes)
       Nodes % z(1:n) = MeshNodes % z(NodeIndexes)
-      
-      ! This is probably a copy-paste error, I comment it away for time being.   
+
+      ! This is probably a copy-paste error, I comment it away for time being.
       ! IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
 
       IF( MaskExists ) THEN
         IF( ANY(MaskPerm(NodeIndexes) == 0) ) CYCLE
       END IF
-      
+
       DO i=1,n
         ii = NodeIndexes(i)
-        
+
         Vector(1) = Nodes % x(i)
-        Vector(2) = Nodes % y(i) 
+        Vector(2) = Nodes % y(i)
         Vector(3) = Nodes % z(i)
-        
+
         IF( DoCoordTransform ) THEN
           CALL CoordinateTransformationNodal( CoordTransform, Vector )
         END IF
 
         MaxDotPro = -1.0_dp
         MinDotPro = 1.0_dp
-        
+
         DO j=i+1,n
           jj = NodeIndexes(j)
-          
+
           Vector2(1) = Nodes % x(j)
           Vector2(2) = Nodes % y(j)
           Vector2(3) = Nodes % z(j)
@@ -294,7 +294,7 @@ CONTAINS
           IF( DoCoordTransform ) THEN
             CALL CoordinateTransformationNodal( CoordTransform, Vector2 )
           END IF
-          
+
           ElemVector = Vector2 - Vector
 
           Length = SQRT(SUM(ElemVector*ElemVector))
@@ -307,26 +307,26 @@ CONTAINS
           IF( DotPro < MinDotPro ) THEN
             MinDotPro = DotPro
             jmin = jj
-          END IF          
+          END IF
         END DO
-          
-        IF(MaxDotPro > 1.0_dp - Eps) THEN 
+
+        IF(MaxDotPro > 1.0_dp - Eps) THEN
           IF( MaskExists ) THEN
             IF( UpActive ) UpPointer(MaskPerm(ii)) = jmax
-            IF( DownActive ) DownPointer(MaskPerm(jmax)) = ii              
+            IF( DownActive ) DownPointer(MaskPerm(jmax)) = ii
           ELSE
             IF( UpActive ) UpPointer(ii) = jmax
             IF( DownActive ) DownPointer(jmax) = ii
           END IF
         END IF
-            
+
         IF(MinDotPro < Eps - 1.0_dp) THEN
           IF( MaskExists ) THEN
             IF( DownActive ) DownPointer(MaskPerm(ii)) = jmin
             IF( UpActive ) UpPointer(MaskPerm(jmin)) = ii
           ELSE
             IF( DownActive ) DownPointer(ii) = jmin
-            IF( UpActive ) UpPointer(jmin) = ii              
+            IF( UpActive ) UpPointer(jmin) = ii
           END IF
         END IF
 
@@ -334,7 +334,7 @@ CONTAINS
     END DO
     DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
 
-    
+
     ! Pointer to top and bottom are found recursively using up and down
     !------------------------------------------------------------------
     CALL Info(Caller,'determine top and bottom pointers',Level=9)
@@ -342,7 +342,7 @@ CONTAINS
     DO Rounds = 1, nsize
       DownHit = 0
       UpHit = 0
-      
+
       DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0) CYCLE
@@ -377,13 +377,13 @@ CONTAINS
           END IF
         END IF
       END DO
-      
+
       IF( UpHit == 0 .AND. DownHit == 0 ) EXIT
     END DO
 
     ! The last round is always a check
     Rounds = Rounds - 1
-    
+
     CALL Info(Caller,'Layered structure detected in '//I2S(Rounds)//' cycles',Level=9)
     IF( Rounds == 0 ) THEN
       CALL Info(Caller,'Try to increase value for > Dot Product Tolerance < ')
@@ -395,7 +395,7 @@ CONTAINS
     ! of layers to save some time.
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
-      CALL Info(Caller,'Compute number of layers',Level=15)    
+      CALL Info(Caller,'Compute number of layers',Level=15)
       DO i=1,nsize
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0 ) CYCLE
@@ -403,12 +403,12 @@ CONTAINS
         EXIT
       END DO
 
-      j = BotPointer(1)      
+      j = BotPointer(1)
       CALL Info(Caller,'Starting from node: '//I2S(j),Level=15)
 
       NumberOfLayers = 0
       DO WHILE(.TRUE.)
-        jj = j 
+        jj = j
         IF( MaskExists ) THEN
           jj = MaskPerm(j)
         END IF
@@ -431,18 +431,18 @@ CONTAINS
           'Extruded structure layers: '//I2S(NumberOfLayers),Level=6)
     END IF
 
-    
+
     ! Create layer index if requested
     !------------------------------------------------------------------
     IF( PRESENT( NodeLayer ) ) THEN
-      CALL Info(Caller,'creating layer index',Level=9)        
+      CALL Info(Caller,'creating layer index',Level=9)
 
       NULLIFY(Layer)
       ALLOCATE( Layer(nsize) )
       Layer = 1
       IF( MaskExists ) THEN
         WHERE( MaskPerm == 0 ) Layer = 0
-        
+
         DO i=1,nnodes
           IF( MaskPerm(i) == 0 ) CYCLE
           Rounds = 1
@@ -450,46 +450,46 @@ CONTAINS
           Layer(MaskPerm(j)) = Rounds
           DO WHILE(.TRUE.)
             k = UpPointer(MaskPerm(j))
-            IF( k == j ) EXIT          
+            IF( k == j ) EXIT
             Rounds = Rounds + 1
             j = k
             Layer(MaskPerm(j)) = Rounds
           END DO
         END DO
-      ELSE        
+      ELSE
         DO i=1,nsize
           Rounds = 1
           j = BotPointer(i)
           Layer(j) = Rounds
           DO WHILE(.TRUE.)
             k = UpPointer(j)
-            IF( k == j ) EXIT          
+            IF( k == j ) EXIT
             Rounds = Rounds + 1
             j = k
             Layer(j) = Rounds
           END DO
         END DO
       END IF
-        
+
       NodeLayer => Layer
       WRITE(Message,'(A,I0,A,I0,A)') 'Layer range: [',MINVAL(Layer),',',MAXVAL(Layer),']'
       CALL Info(Caller,Message,Level=6)
       NULLIFY(Layer)
     END IF
 
-    
+
     IF( PRESENT( MidNodePointer ) ) THEN
       ALLOCATE( MidPointer( nsize ) )
-      MidPointer = 0 
+      MidPointer = 0
       MidLayerExists = .FALSE.
 
-      DO elem = Mesh % NumberOfBulkElements + 1, &       
-          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements  
-        
+      DO elem = Mesh % NumberOfBulkElements + 1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
         Element => Mesh % Elements(elem)
         NodeIndexes => Element % NodeIndexes
-        
-        DO bc_ind = 1, CurrentModel % NumberOfBCs 
+
+        DO bc_ind = 1, CurrentModel % NumberOfBCs
           IF( Element % BoundaryInfo % Constraint == &
               CurrentModel % BCs(bc_ind) % Tag ) THEN
             IF( ListCheckPresent( CurrentModel % BCs(bc_ind) % Values,'Mid Surface') ) THEN
@@ -502,8 +502,8 @@ CONTAINS
       END DO
 
       IF( MidLayerExists ) THEN
-        CALL Info(Caller,'determine mid pointers',Level=15)       
-                
+        CALL Info(Caller,'determine mid pointers',Level=15)
+
         DO Rounds = 1, nsize
           DownHit = 0
           UpHit = 0
@@ -534,7 +534,7 @@ CONTAINS
                 IF( MidPointer(MaskPerm(j)) == 0 ) THEN
                   DownHit = DownHit + 1
                   MidPointer(MaskPerm(j)) = MidPointer(MaskPerm(i))
-                END IF           
+                END IF
               ELSE
                 IF( MidPointer(j) == 0 ) THEN
                   DownHit = DownHit + 1
@@ -550,22 +550,22 @@ CONTAINS
             'Mid layer structure detected in '//I2S(Rounds-1)//' cycles',Level=9)
         MidNodePointer => MidPointer
       ELSE
-        DEALLOCATE( MidPointer ) 
+        DEALLOCATE( MidPointer )
         MidNodePointer => NULL()
       END IF
     END IF
 
-  
+
     ! Count the number of top and bottom nodes, for information only
     !---------------------------------------------------------------
-    CALL Info(Caller,'Counting top and bottom nodes',Level=15)        
+    CALL Info(Caller,'Counting top and bottom nodes',Level=15)
     IF( UpActive ) THEN
       TopNodes = 0
-      MinTop = HUGE( MinTop ) 
+      MinTop = HUGE( MinTop )
       MaxTop = -HUGE( MaxTop )
       DO i=1,nnodes
         IF( MaskExists ) THEN
-          j = MaskPerm(i) 
+          j = MaskPerm(i)
           IF( j == 0 ) CYCLE
           IF(TopPointer(j) == i) THEN
             MinTop = MIN( MinTop, Var % Values(j) )
@@ -584,7 +584,7 @@ CONTAINS
 
     IF( DownActive ) THEN
       BotNodes = 0
-      MinBot = HUGE( MinBot ) 
+      MinBot = HUGE( MinBot )
       MaxBot = -HUGE( MaxBot )
       DO i=1,nnodes
         IF( MaskExists ) THEN
@@ -595,7 +595,7 @@ CONTAINS
             MaxBot = MAX( MaxBot, Var % Values(j))
             BotNodes = BotNodes + 1
           END IF
-        ELSE          
+        ELSE
           IF(BotPointer(i) == i) THEN
             MinBot = MIN( MinBot, Var % Values(i))
             MaxBot = MAX( MaxBot, Var % Values(i))
@@ -608,16 +608,16 @@ CONTAINS
 
     ! Return the requested pointer structures, otherwise deallocate
     !---------------------------------------------------------------
-    CALL Info(Caller,'Setting pointer structures',Level=15)        
+    CALL Info(Caller,'Setting pointer structures',Level=15)
     IF( UpActive ) THEN
       IF( PRESENT( TopNodePointer ) ) THEN
-        TopNodePointer => TopPointer 
+        TopNodePointer => TopPointer
         NULLIFY( TopPointer )
       ELSE
         DEALLOCATE( TopPointer )
       END IF
       IF( PRESENT( UpNodePointer ) ) THEN
-        UpNodePointer => UpPointer 
+        UpNodePointer => UpPointer
         NULLIFY( UpPointer )
       ELSE
         DEALLOCATE( UpPointer )
@@ -625,21 +625,21 @@ CONTAINS
     END IF
     IF( DownActive ) THEN
       IF( PRESENT( BotNodePointer ) ) THEN
-        BotNodePointer => BotPointer 
-        NULLIFY( BotPointer ) 
+        BotNodePointer => BotPointer
+        NULLIFY( BotPointer )
       ELSE
         DEALLOCATE( BotPointer )
       END IF
       IF( PRESENT( DownNodePointer ) ) THEN
-        DownNodePointer => DownPointer 
-        NULLIFY( DownPointer ) 
+        DownNodePointer => DownPointer
+        NULLIFY( DownPointer )
       ELSE
         DEALLOCATE( DownPointer )
       END IF
     END IF
 
     !---------------------------------------------------------------
-    at1 = CPUTime()  
+    at1 = CPUTime()
     WRITE(Message,* ) 'Top and bottom pointer init time: ',at1-at0
     CALL Info(Caller,Message,Level=6)
     CALL Info(Caller,&
@@ -656,20 +656,20 @@ CONTAINS
         CALL Fatal(Caller, 'Something wrong: top and bottom node counts differ!')
       END IF
     END IF
-    
+
 
   CONTAINS
-    
-    
+
+
     !---------------------------------------------------------------
     SUBROUTINE CoordinateTransformationNodal( CoordTransform, R )
       CHARACTER(LEN=*) :: CoordTransform
       REAL(KIND=dp) :: R(3)
       !---------------------------------------------------------------
       REAL(KIND=dp) :: Rtmp(3)
-      REAL(KIND=dp), SAVE :: Coeff 
+      REAL(KIND=dp), SAVE :: Coeff
       LOGICAL, SAVE :: Visited = .FALSE.
-      
+
 
       IF( .NOT. Visited ) THEN
         IF( ListGetLogical( Params,'Angles in Degrees') ) THEN
@@ -679,28 +679,28 @@ CONTAINS
         END IF
         Visited = .TRUE.
       END IF
-      
+
       SELECT CASE ( CoordTransform )
-        
+
       CASE('cartesian to cylindrical')
         Rtmp(1) = SQRT( R(1)**2 + R(2)**2)
-        Rtmp(2) = Coeff * ATAN2( R(2), R(1)  ) 
-        Rtmp(3) = R(3) 
-        
+        Rtmp(2) = Coeff * ATAN2( R(2), R(1)  )
+        Rtmp(3) = R(3)
+
       CASE('cylindrical to cartesian')
         Rtmp(1) = COS( R(2) / Coeff ) * R(1)
         Rtmp(2) = SIN( R(2) / Coeff ) * R(1)
         Rtmp(3) = R(3)
-        
+
       CASE DEFAULT
         CALL Fatal('CoordinateTransformationNodal','Unknown transformation: '//TRIM(CoordTransform) )
-        
+
       END SELECT
-      
+
       R = Rtmp
 
     END SUBROUTINE CoordinateTransformationNodal
-   
+
 
   END SUBROUTINE DetectExtrudedStructure
  !---------------------------------------------------------------
@@ -716,7 +716,7 @@ CONTAINS
   SUBROUTINE DetectExtrudedElements( Mesh, Solver, ExtVar, &
       TopElemPointer, BotElemPointer, UpElemPointer, DownElemPointer, &
       NumberOfLayers, ElemLayer )
-    
+
     USE CoordinateSystems
     IMPLICIT NONE
 
@@ -746,7 +746,7 @@ CONTAINS
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     INTEGER :: TestCounter(3),ElementIndex(2)
     CHARACTER(*),PARAMETER :: Caller="DetectExtrudedElements"
-         
+
     CALL Info(Caller,'Determining extruded element structure',Level=6)
     at0 = CPUTime()
 
@@ -760,10 +760,10 @@ CONTAINS
       CALL FindMeshFaces3D( Mesh )
     END IF
 
-    
+
     Params => Solver % Values
     TestCounter = 0
-    
+
     ActiveDirection = ListGetInteger(Params,'Active Coordinate')
     IF( ActiveDirection < 1 .OR. ActiveDirection > 3 ) THEN
       CALL Fatal(Caller,'Invalid value for Active Coordinate')
@@ -774,7 +774,7 @@ CONTAINS
     ELSE
       MeshNodes => Mesh % Nodes
     END IF
-    
+
     ! Set the dot product tolerance
     !-----------------------------------------------------------------
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
@@ -788,16 +788,16 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 1')
     ELSE IF( ActiveDirection == 2 ) THEN
       Var => VariableGet( Mesh % Variables,'Coordinate 2')
-    ELSE 
+    ELSE
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
-    END IF      
+    END IF
 
     IF( PRESENT( ExtVar ) ) ExtVar => Var
 
     ! Check which direction is active
     !---------------------------------------------------------------------
-    UpActive = PRESENT( UpElemPointer) .OR. PRESENT ( TopElemPointer ) 
-    DownActive = PRESENT( DownElemPointer) .OR. PRESENT ( BotElemPointer ) 
+    UpActive = PRESENT( UpElemPointer) .OR. PRESENT ( TopElemPointer )
+    DownActive = PRESENT( DownElemPointer) .OR. PRESENT ( BotElemPointer )
 
     IF( PRESENT( NumberOfLayers) .OR. PRESENT( ElemLayer ) ) THEN
       UpActive = .TRUE.
@@ -832,8 +832,8 @@ CONTAINS
     !-----------------------------------------------------------------
     n = Mesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
-    
-    DO elem = 1,Mesh % NumberOfFaces 
+
+    DO elem = 1,Mesh % NumberOfFaces
 
       Element => Mesh % Faces(elem)
       NodeIndexes => Element % NodeIndexes
@@ -847,22 +847,22 @@ CONTAINS
       IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
       IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
       IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right ) ) CYCLE
-      
+
       FaceCenter(1) = SUM( Nodes % x(1:n) ) / n
       FaceCenter(2) = SUM( Nodes % y(1:n) ) / n
       FaceCenter(3) = SUM( Nodes % z(1:n) ) / n
 
-      FaceDx(1) = SUM( ABS( Nodes % x(1:n) - FaceCenter(1) ) ) 
-      FaceDx(2) = SUM( ABS( Nodes % y(1:n) - FaceCenter(2) ) ) 
-      FaceDx(3) = SUM( ABS( Nodes % z(1:n) - FaceCenter(3) ) ) 
-      
+      FaceDx(1) = SUM( ABS( Nodes % x(1:n) - FaceCenter(1) ) )
+      FaceDx(2) = SUM( ABS( Nodes % y(1:n) - FaceCenter(2) ) )
+      FaceDx(3) = SUM( ABS( Nodes % z(1:n) - FaceCenter(3) ) )
+
       Diam = SQRT( SUM( FaceDx**2 ) )
 
       ! This is not a face that separates extruded elements
-      IF( FaceDx(ActiveDirection) > Eps * Diam ) CYCLE      
+      IF( FaceDx(ActiveDirection) > Eps * Diam ) CYCLE
 
-      TestCounter(1) = TestCounter(1) + 1      
-      
+      TestCounter(1) = TestCounter(1) + 1
+
       DO k = 1, 2
         IF( k == 1 ) THEN
           Parent => Element % BoundaryInfo % Left
@@ -870,13 +870,13 @@ CONTAINS
           Parent => Element % BoundaryInfo % Right
         END IF
         IF( .NOT. ASSOCIATED( Parent ) ) CYCLE
-               
+
         n = Parent % TYPE % NumberOfNodes
-        NodeIndexes => Parent % NodeIndexes        
+        NodeIndexes => Parent % NodeIndexes
 
         ElementIndex(k) = Parent % ElementIndex
         Height(k) = SUM( Var % Values(NodeIndexes) ) / n
-      END DO      
+      END DO
 
       IF( Height(1) > Height(2) ) THEN
         IF( UpActive ) UpPointer(ElementIndex(2)) = ElementIndex(1)
@@ -885,11 +885,11 @@ CONTAINS
         IF( UpActive ) UpPointer(ElementIndex(1)) = ElementIndex(2)
         IF( DownActive ) DownPointer(ElementIndex(2)) = ElementIndex(1)
       END IF
-    END DO  
-        
+    END DO
+
     DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
 
-    
+
     ! Pointer to top and bottom are found recursively using up and down
     !------------------------------------------------------------------
     CALL Info(Caller,'determine top and bottom pointers',Level=9)
@@ -928,16 +928,16 @@ CONTAINS
     END IF
 
 
-    ! Compute the number of layers. The Rounds above may in some cases 
+    ! Compute the number of layers. The Rounds above may in some cases
     ! be too small. Here just one layer is used to determine the number
     ! of layers to save some time.
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
-      CALL Info(Caller,'Compute number of layers',Level=15)    
+      CALL Info(Caller,'Compute number of layers',Level=15)
 
       ! We start from any bottom row entry
       j = BotPointer(1)
-      
+
       NumberOfLayers = 0
       DO WHILE(.TRUE.)
         k = UpPointer(j)
@@ -948,7 +948,7 @@ CONTAINS
           NumberOfLayers = NumberOfLayers + 1
           j = k
         END IF
-      END DO      
+      END DO
 
       IF( NumberOfLayers < Rounds ) THEN
         WRITE( Message,'(A,I0,A,I0)') 'There seems to be varying number of layers: ',&
@@ -959,42 +959,42 @@ CONTAINS
       CALL Info(Caller,'Extruded structure layers: '//I2S(NumberOfLayers),Level=6)
     END IF
 
-    
+
     ! Create layer index if requested
     !------------------------------------------------------------------
     IF( PRESENT( ElemLayer ) ) THEN
-      CALL Info(Caller,'creating layer index',Level=9)        
+      CALL Info(Caller,'creating layer index',Level=9)
 
       NULLIFY(Layer)
       ALLOCATE( Layer(nsize) )
       Layer = 1
-      
+
       DO i=1,nsize
         Rounds = 1
         j = BotPointer(i)
         Layer(j) = Rounds
         DO WHILE(.TRUE.)
           k = UpPointer(j)
-          IF( k == j ) EXIT          
+          IF( k == j ) EXIT
           Rounds = Rounds + 1
           j = k
           Layer(j) = Rounds
         END DO
       END DO
-      
+
       ElemLayer => Layer
       WRITE(Message,'(A,I0,A,I0,A)') 'Layer range: [',MINVAL(Layer),',',MAXVAL(Layer),']'
       CALL Info(Caller,Message,Level=6)
       NULLIFY(Layer)
     END IF
 
-  
+
     ! Count the number of top and bottom elements, for information only
     !---------------------------------------------------------------
-    CALL Info(Caller,'Counting top and bottom elements',Level=15)        
+    CALL Info(Caller,'Counting top and bottom elements',Level=15)
     IF( UpActive ) THEN
       TopNodes = 0
-      MinTop = HUGE( MinTop ) 
+      MinTop = HUGE( MinTop )
       MaxTop = -HUGE( MaxTop )
       DO i=1,nsize
         IF(TopPointer(i) == i) THEN
@@ -1008,7 +1008,7 @@ CONTAINS
 
     IF( DownActive ) THEN
       BotNodes = 0
-      MinBot = HUGE( MinBot ) 
+      MinBot = HUGE( MinBot )
       MaxBot = -HUGE( MaxBot )
       DO i=1,nsize
         IF(BotPointer(i) == i) THEN
@@ -1022,16 +1022,16 @@ CONTAINS
 
     ! Return the requested pointer structures, otherwise deallocate
     !---------------------------------------------------------------
-    CALL Info(Caller,'Setting pointer structures',Level=15)        
+    CALL Info(Caller,'Setting pointer structures',Level=15)
     IF( UpActive ) THEN
       IF( PRESENT( TopElemPointer ) ) THEN
-        TopElemPointer => TopPointer 
+        TopElemPointer => TopPointer
         NULLIFY( TopPointer )
       ELSE
         DEALLOCATE( TopPointer )
       END IF
       IF( PRESENT( UpElemPointer ) ) THEN
-        UpElemPointer => UpPointer 
+        UpElemPointer => UpPointer
         NULLIFY( UpPointer )
       ELSE
         DEALLOCATE( UpPointer )
@@ -1039,21 +1039,21 @@ CONTAINS
     END IF
     IF( DownActive ) THEN
       IF( PRESENT( BotElemPointer ) ) THEN
-        BotElemPointer => BotPointer 
-        NULLIFY( BotPointer ) 
+        BotElemPointer => BotPointer
+        NULLIFY( BotPointer )
       ELSE
         DEALLOCATE( BotPointer )
       END IF
       IF( PRESENT( DownElemPointer ) ) THEN
-        DownElemPointer => DownPointer 
-        NULLIFY( DownPointer ) 
+        DownElemPointer => DownPointer
+        NULLIFY( DownPointer )
       ELSE
         DEALLOCATE( DownPointer )
       END IF
     END IF
 
     !---------------------------------------------------------------
-    at1 = CPUTime()  
+    at1 = CPUTime()
     WRITE(Message,'(A,ES12.3)') 'Top and bottom pointer init time: ',at1-at0
     CALL Info(Caller,Message,Level=6)
 
@@ -1071,7 +1071,7 @@ CONTAINS
         CALL Fatal(Caller, 'Something wrong: top and bottom element counts differ!')
       END IF
     END IF
-    
+
 
   END SUBROUTINE DetectExtrudedElements
  !---------------------------------------------------------------
@@ -1098,7 +1098,7 @@ CONTAINS
 
     ALLOCATE( NewCoords(3*n) )
 
-    ALLOCATE( Mesh % NodesOrig ) 
+    ALLOCATE( Mesh % NodesOrig )
     Mesh % NodesOrig % x => NewCoords(1:n)
     Mesh % NodesOrig % y => NewCoords(n+1:2*n)
     Mesh % NodesOrig % z => NewCoords(2*n+1:3*n)
@@ -1110,15 +1110,15 @@ CONTAINS
     Mesh % NodesMapped => Mesh % Nodes
 
     CALL Info('StoreOriginalCoordinates','Original coordinates stored',Level=6)
-    
+
   END SUBROUTINE StoreOriginalCoordinates
 
-    
-   
+
+
   !----------------------------------------------------------------
   !> Maps coordinates from the original nodes into a new coordinate
-  !> system while optionally maintaining the original coordinates. 
-  !> Note that this may be called 
+  !> system while optionally maintaining the original coordinates.
+  !> Note that this may be called
   !---------------------------------------------------------------
   SUBROUTINE CoordinateTransformation( Mesh, CoordTransform, Params, &
       IrreversibleTransformation )
@@ -1126,7 +1126,7 @@ CONTAINS
     CHARACTER(LEN=*) :: CoordTransform
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL, OPTIONAL :: IrreversibleTransformation
-    !---------------------------------------------------------------   
+    !---------------------------------------------------------------
     REAL(KIND=dp) :: R0(3),R1(3),Coeff,Rad0
     LOGICAL :: Irreversible,FirstTime,Reuse,UpdateNodes,Found
     REAL(KIND=dp), POINTER :: x0(:),y0(:),z0(:),x1(:),y1(:),z1(:)
@@ -1135,9 +1135,9 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
 
     ! The coordinate transformation may either be global for all the solvers
-    ! and this overrides the original nodes permanently. 
-    ! Or it can be a solver specific transformation which saves the initial 
-    ! coordinates. 
+    ! and this overrides the original nodes permanently.
+    ! Or it can be a solver specific transformation which saves the initial
+    ! coordinates.
     CALL Info('CoordinateTransformation','Starting')
 
     IF(.NOT. ASSOCIATED(Mesh) ) THEN
@@ -1150,12 +1150,12 @@ CONTAINS
       Irreversible = .FALSE.
     END IF
 
-    n = Mesh % NumberOfNodes 
+    n = Mesh % NumberOfNodes
 
     x0 => Mesh % Nodes % x
     y0 => Mesh % Nodes % y
     z0 => Mesh % Nodes % z
-    
+
     IF( Irreversible ) THEN
       UpdateNodes = .TRUE.
       ! Map to the same nodes
@@ -1163,7 +1163,7 @@ CONTAINS
       y1 => Mesh % Nodes % y
       z1 => Mesh % Nodes % z
     ELSE
-      ReUse = ListGetLogical(Params,'Coordinate Transformation Reuse',Found ) 
+      ReUse = ListGetLogical(Params,'Coordinate Transformation Reuse',Found )
       FirstTime = .NOT. ASSOCIATED( Mesh % NodesMapped )
       IF( FirstTime ) THEN
         ALLOCATE( Mesh % NodesMapped )
@@ -1189,31 +1189,31 @@ CONTAINS
         ReUse = .TRUE.
       END IF
 
-      ! Note that if many solvers reutilize the same coordinates then they must 
-      ! also have the same coordinate mapping. 
+      ! Note that if many solvers reutilize the same coordinates then they must
+      ! also have the same coordinate mapping.
       !------------------------------------------------------------------------
-      UpdateNodes = FirstTime .OR. .NOT. ReUse 
+      UpdateNodes = FirstTime .OR. .NOT. ReUse
       ! Map different nodes if the original ones are kept
       x1 => Mesh % NodesMapped % x
       y1 => Mesh % NodesMapped % y
-      z1 => Mesh % NodesMapped % z      
+      z1 => Mesh % NodesMapped % z
 
       IF( FirstTime ) THEN
         IF( ListGetLogical(Params,'Coordinate Transformation Save',Found ) ) THEN
           CALL Info('CoordinateTranformation',&
               'Creating variables for > Transformed Coordinate < ')
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
-              'Transformed Coordinate 1',1,x1) 
+              'Transformed Coordinate 1',1,x1)
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
-              'Transformed Coordinate 2',1,y1) 
+              'Transformed Coordinate 2',1,y1)
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
-              'Transformed Coordinate 3',1,z1) 
+              'Transformed Coordinate 3',1,z1)
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
               'Transformed Coordinate',3,NewCoords)
         END IF
       END IF
     END IF
-      
+
     IF( UpdateNodes ) THEN
       IF( ListGetLogical( Params,'Coordinate Transformation Use Degrees',Found) ) THEN
         Coeff = 180.0_dp / PI
@@ -1223,9 +1223,9 @@ CONTAINS
       END IF
 
       Rad0 = ListGetConstReal( Params,'Coordinate Transformation Radius',Found )
-  
-      SELECT CASE ( CoordTransform ) 
-        
+
+      SELECT CASE ( CoordTransform )
+
       CASE('cartesian to polar')
         Mode = 1
       CASE('cartesian to cylindrical')
@@ -1234,26 +1234,26 @@ CONTAINS
         Mode = -1
       CASE('cylindrical to cartesian')
         Mode = -1
-        
+
       CASE DEFAULT
         CALL Fatal('CoordinateTransformation','Unknown transformation: '//TRIM(CoordTransform) )
-        
+
       END SELECT
 
-      DO i=1,n    
+      DO i=1,n
         R0(1) = x0(i)
         R0(2) = y0(i)
         R0(3) = z0(i)
-        
+
         IF( Mode == 1 ) THEN
           R1(1) = Rad0 + SQRT( R0(1)**2 + R0(2)**2)
-          R1(2) = Coeff * ATAN2( R0(2), R0(1)  ) 
-          R1(3) = R0(3)    
-       
+          R1(2) = Coeff * ATAN2( R0(2), R0(1)  )
+          R1(3) = R0(3)
+
         ELSE IF( Mode == -1 ) THEN
           R1(1) = COS( R0(2) / Coeff ) * ( R0(1) + Rad0 )
           R1(2) = SIN( R0(2) / Coeff ) * ( R0(1) + Rad0 )
-          R1(3) = R0(3)          
+          R1(3) = R0(3)
         END IF
 
         x1(i) = R1(1)
@@ -1288,9 +1288,9 @@ CONTAINS
 !> Perform rigid mesh mapping given by body force section translate,
 !> Rotate and scale. This is copy-pasted from RigidMeshMapper solver
 !> and intended use is when the solver cannot be used i.e. in
-!> conjunction of view factor computation. 
+!> conjunction of view factor computation.
 !---------------------------------------------------------------
-  SUBROUTINE RigidMeshMapping( Model, Mesh, VFMode ) 
+  SUBROUTINE RigidMeshMapping( Model, Mesh, VFMode )
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh
@@ -1303,7 +1303,7 @@ CONTAINS
     INTEGER, POINTER :: NodeIndex(:), IntArray(:) => NULL()
     REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4), TrsMatrix(4,4), SclMatrix(4,4), &
         TrfMatrix(4,4), Identity(4,4), Origin(4), Angles(3), Scaling(3), alpha, Coord(3), &
-        dCoord(3), Norm, dx(3) 
+        dCoord(3), Norm, dx(3)
     REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff
     REAL(KIND=dp), POINTER :: X(:),Y(:),Z(:),PArray(:,:) => NULL()
     LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
@@ -1312,7 +1312,7 @@ CONTAINS
         AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
     LOGICAL, POINTER :: NodeDone(:), FixedNode(:)
     TYPE(Element_t), POINTER :: Element
-    TYPE(ValueList_t),POINTER :: ValueList, PrevValueList     
+    TYPE(ValueList_t),POINTER :: ValueList, PrevValueList
     CHARACTER(LEN=MAX_NAME_LEN) :: sname
     CHARACTER(*), PARAMETER :: Caller = 'RigidMeshMapping'
 
@@ -1322,15 +1322,15 @@ CONTAINS
     CALL Info( Caller,'---------------------------------------',Level=4 )
 
     at0 = CPUTime()
-       
-    ! First check if this is called by view factors and we use the definitions from a solver. 
+
+    ! First check if this is called by view factors and we use the definitions from a solver.
     SolverParams => NULL()
     IF( VFMode ) THEN
       ! In view factor mode we usually expect the rigid mesh mapping to be given by a separate code
-      ! that holds definitions for how to perform the mapping. 
+      ! that holds definitions for how to perform the mapping.
       DO i=Model % NumberOfSolvers,1,-1
-        sname = ListGetString(Model % Solvers(i) % Values, 'Procedure', Found)      
-        j = INDEX( sname,'RigidMeshMapper') 
+        sname = ListGetString(Model % Solvers(i) % Values, 'Procedure', Found)
+        j = INDEX( sname,'RigidMeshMapper')
         IF( j > 0 ) THEN
           CALL Info(Caller,'Using rigid body mapping definitions from Solver '//I2S(i),Level=15)
           SolverParams => Model % Solvers(i) % Values
@@ -1338,13 +1338,13 @@ CONTAINS
         END IF
       END DO
     END IF
-      
+
     ! Do we have rigid mesh mapping requested ins simulation section.
     IF(.NOT. ASSOCIATED(SolverParams)) THEN
       SolverParams => Model % Simulation
       CALL Info(Caller,'Using rigid body mapping from Simulation section',Level=15)
     END IF
-    
+
     IF( ListGetLogical( Model % Simulation,'Rotate in Radians',Found ) ) THEN
       AngleCoeff = 1.0_dp
     ELSE
@@ -1366,23 +1366,23 @@ CONTAINS
       END DO
     END IF
 
-    WholeMode = ListGetLogical( SolverParams,'Whole Mesh Mode',Found ) 
+    WholeMode = ListGetLogical( SolverParams,'Whole Mesh Mode',Found )
     IF( WholeMode ) THEN
       CALL Info(Caller,'Moving the whole mesh with keywords from same section!')
     END IF
 
     IF( WholeMode ) THEN
-      ValueList => SolverParams      
-      AnyMeshMatrix = ListCheckPresent( ValueList,'Mesh Matrix')   
+      ValueList => SolverParams
+      AnyMeshMatrix = ListCheckPresent( ValueList,'Mesh Matrix')
       AnyMeshRotate = ListCheckPrefix( ValueList,'Mesh Rotate')
       AnyMeshTranslate = ListCheckPrefix( ValueList,'Mesh Translate')
-      AnyMeshScale = ListCheckPrefix( ValueList,'Mesh Scale') 
+      AnyMeshScale = ListCheckPrefix( ValueList,'Mesh Scale')
       AnyMeshOrigin = ListCheckPrefix( ValueList,'Mesh Origin')
     ELSE
-      AnyMeshMatrix = ListCheckPresentAnyBodyForce( Model,'Mesh Matrix')   
+      AnyMeshMatrix = ListCheckPresentAnyBodyForce( Model,'Mesh Matrix')
       AnyMeshRotate = ListCheckPrefixAnyBodyForce( Model,'Mesh Rotate')
       AnyMeshTranslate = ListCheckPrefixAnyBodyForce( Model,'Mesh Translate')
-      AnyMeshScale = ListCheckPrefixAnyBodyForce( Model,'Mesh Scale') 
+      AnyMeshScale = ListCheckPrefixAnyBodyForce( Model,'Mesh Scale')
       AnyMeshOrigin = ListCheckPrefixAnyBodyForce( Model,'Mesh Origin')
     END IF
 
@@ -1395,8 +1395,8 @@ CONTAINS
     Identity = 0.0d0
     DO i=1,4
       Identity(i,i) = 1.0d0
-    END DO    
-        
+    END DO
+
     X => Mesh % Nodes % x
     Y => Mesh % Nodes % y
     Z => Mesh % Nodes % z
@@ -1404,7 +1404,7 @@ CONTAINS
     ! These are used to save time in creating the projection matrices.
     PrevValueList => NULL()
     GotMap = .FALSE.
-    ConstantMap = ListGetLogical( SolverParams,'Constant Mapping',Found ) 
+    ConstantMap = ListGetLogical( SolverParams,'Constant Mapping',Found )
 
     GotRotate = .FALSE.
     GotTranslate = .FALSE.
@@ -1430,31 +1430,31 @@ CONTAINS
           END IF
         END IF
       END IF
-        
-      IF(elem > Mesh % NumberOfBulkElements ) THEN        
-        DO i = 1, CurrentModel % NumberOfBCs 
+
+      IF(elem > Mesh % NumberOfBulkElements ) THEN
+        DO i = 1, CurrentModel % NumberOfBCs
           IF( Element % BoundaryInfo % Constraint == CurrentModel % BCs(i) % Tag ) THEN
             IF( ListGetLogical( CurrentModel % BCs(i) % Values,'Fixed Boundary',Found ) ) THEN
               FixedNode(Element % NodeIndexes) = .TRUE.
             END IF
             EXIT
-          END IF            
+          END IF
         END DO
       END IF
     END DO
 
-    n = COUNT(FixedNode) 
+    n = COUNT(FixedNode)
     IF(n>0) CALL Info(Caller,'Number of Fixed nodes: '//I2S(n))
-    
-    
-    DO elem = 1,Mesh % NumberOfBulkElements      
+
+
+    DO elem = 1,Mesh % NumberOfBulkElements
 
       Element => Mesh % Elements(elem)
       Model % CurrentElement => Element
       n = Element % Type % NumberOfNodes
 
       IF( WholeMode ) THEN
-        ! If we are doing the whole mesh then do all elements. 
+        ! If we are doing the whole mesh then do all elements.
         CONTINUE
       ELSE
         bf_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found )
@@ -1472,8 +1472,8 @@ CONTAINS
 
         IF(NodeDone(NodeI)) CYCLE
 
-        IF(FixedNode(NodeI)) CYCLE 
-        
+        IF(FixedNode(NodeI)) CYCLE
+
         ! This is to save time. If we have exactly same mapping as last time then
         ! there is no use doing the same ListGet operation things again.
         !-------------------------------------------------------------------------
@@ -1496,17 +1496,17 @@ CONTAINS
 
         IF(.NOT. GotMatrix ) THEN
           ! Rotations around main axis:
-          !----------------------------        
+          !----------------------------
           GotRotate = .FALSE.
           Angles = 0.0_dp
 
           IF( AnyMeshRotate ) THEN
-            Parray => ListGetConstRealArray( ValueList,'Mesh Rotate', GotRotate )                
+            Parray => ListGetConstRealArray( ValueList,'Mesh Rotate', GotRotate )
             IF ( GotRotate ) THEN
               DO i=1,SIZE(Parray,1)
-                Angles(i) = Parray(i,1) 
+                Angles(i) = Parray(i,1)
               END DO
-            ELSE 
+            ELSE
               Angles(1:1) = ListGetReal( ValueList,'Mesh Rotate 1', 1, NodeIndex, Found )
               IF( Found ) GotRotate = .TRUE.
               Angles(2:2) = ListGetReal( ValueList,'Mesh Rotate 2', 1, NodeIndex, Found )
@@ -1527,13 +1527,13 @@ CONTAINS
               DO i=1,SIZE(Parray,1)
                 Scaling(i) = Parray(i,1)
               END DO
-            ELSE 
-              Scaling(1:1) = ListGetReal( ValueList,'Mesh Scale 1',1,NodeIndex,GotScale) 
+            ELSE
+              Scaling(1:1) = ListGetReal( ValueList,'Mesh Scale 1',1,NodeIndex,GotScale)
               IF(.NOT. GotScale ) Scaling(1) = 1.0_dp
-              Scaling(2:2) = ListGetReal( ValueList,'Mesh Scale 2',1,NodeIndex,Found) 
+              Scaling(2:2) = ListGetReal( ValueList,'Mesh Scale 2',1,NodeIndex,Found)
               IF(.NOT. Found ) Scaling(2) = 1.0_dp
               GotScale = GotScale .OR. Found
-              Scaling(3:3) = ListGetReal( ValueList,'Mesh Scale 3',1,NodeIndex,Found) 
+              Scaling(3:3) = ListGetReal( ValueList,'Mesh Scale 3',1,NodeIndex,Found)
               IF(.NOT. Found ) Scaling(3) = 1.0_dp
               GotScale = GotScale .OR. Found
             END IF
@@ -1549,11 +1549,11 @@ CONTAINS
               DO i=1,SIZE(Parray,1)
                 dCoord(i) = Parray(i,1)
               END DO
-            ELSE 
-              dCoord(1:1) = ListGetReal( ValueList,'Mesh Translate 1', 1, NodeIndex, GotTranslate) 
-              dCoord(2:2) = ListGetReal( ValueList,'Mesh Translate 2', 1, NodeIndex, Found) 
+            ELSE
+              dCoord(1:1) = ListGetReal( ValueList,'Mesh Translate 1', 1, NodeIndex, GotTranslate)
+              dCoord(2:2) = ListGetReal( ValueList,'Mesh Translate 2', 1, NodeIndex, Found)
               GotTranslate = GotTranslate .OR. Found
-              dCoord(3:3) = ListGetReal( ValueList,'Mesh Translate 3', 1, NodeIndex, Found) 
+              dCoord(3:3) = ListGetReal( ValueList,'Mesh Translate 3', 1, NodeIndex, Found)
               GotTranslate = GotTranslate .OR. Found
             END IF
           END IF
@@ -1571,7 +1571,7 @@ CONTAINS
 
               DO i=1,3
                 j = RotateOrder(i)
-                Alpha = Angles(j) 
+                Alpha = Angles(j)
 
                 IF( ABS(Alpha) < TINY(Alpha) ) CYCLE
                 TrfMatrix = Identity
@@ -1603,8 +1603,8 @@ CONTAINS
               END DO
             END IF
 
-            ! It may be easier to first translate the matrix to origin 
-            ! and only the do the rotation than vice versa. 
+            ! It may be easier to first translate the matrix to origin
+            ! and only the do the rotation than vice versa.
             IF( TranslateBeforeRotate ) THEN
               TrfMatrix = MATMUL( RotMatrix, TrsMatrix )
             ELSE
@@ -1631,20 +1631,20 @@ CONTAINS
               Origin(i) = Parray(i,1)
             END DO
           ELSE
-            Origin(1:1) = ListGetReal( ValueList,'Mesh Origin 1', 1, NodeIndex, Found) 
-            Origin(2:2) = ListGetReal( ValueList,'Mesh Origin 2', 1, NodeIndex, Found) 
-            Origin(3:3) = ListGetReal( ValueList,'Mesh Origin 3', 1, NodeIndex, Found) 
+            Origin(1:1) = ListGetReal( ValueList,'Mesh Origin 1', 1, NodeIndex, Found)
+            Origin(2:2) = ListGetReal( ValueList,'Mesh Origin 2', 1, NodeIndex, Found)
+            Origin(3:3) = ListGetReal( ValueList,'Mesh Origin 3', 1, NodeIndex, Found)
           END IF
         END IF
 
-100     IF( GotMatrix ) THEN                         
+100     IF( GotMatrix ) THEN
           x0(1) = X(NodeI)
           x0(2) = Y(NodeI)
           x0(3) = Z(NodeI)
           x0(4) = 1.0_dp
-          x1 = MATMUL( TrfMatrix, x0 - Origin ) + Origin          
+          x1 = MATMUL( TrfMatrix, x0 - Origin ) + Origin
           dx(1:3) = x1(1:3) / x1(4) - x0(1:3)
-        ELSE IF( GotTranslate ) THEN        
+        ELSE IF( GotTranslate ) THEN
           dx(1:3) = dCoord(1:3)
         ELSE
           CYCLE
@@ -1655,11 +1655,11 @@ CONTAINS
         Y(NodeI) = dx(2) + Y(NodeI)
         Z(NodeI) = dx(3) + Z(NodeI)
 
-        ! Mark the done so that we do not revisit it again. 
+        ! Mark the done so that we do not revisit it again.
         NodeDone(NodeI) = .TRUE.
       END DO
     END DO
-    
+
     CALL Info(Caller,'Number of nodes mapped: '//I2S(COUNT(NodeDone)),Level=7)
     at1 = CPUTime()
     WRITE(Message,* ) 'Coordinate mapping time: ',at1-at0
@@ -1668,13 +1668,13 @@ CONTAINS
     DEALLOCATE( NodeDone, FixedNode )
 
     CALL Info(Caller,'Performed internal rigid mesh mapping!',Level=10)
-    
+
   END SUBROUTINE RigidMeshMapping
-    
-  
+
+
 
 !---------------------------------------------------------------
-!> Return back to the original coordinate system. 
+!> Return back to the original coordinate system.
 !---------------------------------------------------------------
   SUBROUTINE BackCoordinateTransformation( Mesh, DeleteTemporalMesh )
     TYPE(Mesh_t) :: Mesh
@@ -1686,7 +1686,7 @@ CONTAINS
       IF( DeleteTemporalMesh ) THEN
         DEALLOCATE( Mesh % NodesMapped % x, &
             Mesh % NodesMapped % y, &
-            Mesh % NodesMapped % z ) 
+            Mesh % NodesMapped % z )
         DEALLOCATE( Mesh % NodesMapped )
       END IF
     END IF
@@ -1699,7 +1699,7 @@ CONTAINS
 
     Var => VariableGet( CurrentModel % Variables,'Coordinate 1')
     Var % Values => Mesh % Nodes % x
-    
+
     Var => VariableGet( CurrentModel % Variables,'Coordinate 2')
     Var % Values => Mesh % Nodes % y
 

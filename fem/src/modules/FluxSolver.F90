@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 20.06.2007
 ! *
@@ -36,7 +36,7 @@
 
 
 !------------------------------------------------------------------------------
-!> Subroutine for computing fluxes and gradients of scalar fields. 
+!> Subroutine for computing fluxes and gradients of scalar fields.
 !> For example, one may compute the heat flux as the negative gradient of temperature
 !> field multiplied by the heat conductivity.
 !> \ingroup Solvers
@@ -59,7 +59,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CondName, PotName
   INTEGER :: i,j,k,dim,DOFs,firstmag
-  LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry, GotIt  
+  LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry, GotIt
   LOGICAL :: CalculateFluxMag, CalculateFlux, CalculateGradMag, CalculateGrad, &
       EnforcePositiveMagnitude, UsePot, AutoNorm
   REAL(KIND=dp) :: Unorm, Totnorm, val
@@ -68,11 +68,11 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: at0,at1,at2
   TYPE(Variable_t), POINTER :: FluxSol
   TYPE FieldTable_t
-    REAL(KIND=dp), POINTER :: Values(:) 
+    REAL(KIND=dp), POINTER :: Values(:)
   END TYPE FieldTable_t
   TYPE(FieldTable_t) :: Fields(8)
-  
- 
+
+
   CALL Info( 'FluxSolver', '-------------------------------------',Level=4 )
   CALL Info( 'FluxSolver', 'Computing the flux and/or gradient',Level=4 )
   CALL Info( 'FluxSolver', '-------------------------------------',Level=4 )
@@ -84,15 +84,15 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN
-  
+
   SolverParams => GetSolverParams()
 
   CalculateGradMag = GetLogical(SolverParams,'Calculate Grad Magnitude',GotIt)
-  CalculateGrad = GetLogical(SolverParams,'Calculate Grad',GotIt) 
-  
+  CalculateGrad = GetLogical(SolverParams,'Calculate Grad',GotIt)
+
   CalculateFluxMag = GetLogical(SolverParams,'Calculate Flux Magnitude',GotIt)
-  CalculateFlux = GetLogical(SolverParams,'Calculate Flux',GotIt) 
-  
+  CalculateFlux = GetLogical(SolverParams,'Calculate Flux',GotIt)
+
   Dofs = 0
   IF( CalculateFlux ) Dofs = Dofs + Dim
   IF( CalculateFluxMag ) Dofs = Dofs + 1
@@ -100,20 +100,20 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   IF( CalculateGradMag ) Dofs = Dofs + 1
 
   IF( Dofs == 0 ) THEN
-    CALL Warn('FluxSolver','No field computation requested, exiting...')     
+    CALL Warn('FluxSolver','No field computation requested, exiting...')
     RETURN
   END IF
-  
+
 !-------------------------------------------------------------------------------
 ! If only one component is used use the scalar equation, otherwise use an
 ! auxiliary variable to store all the dimensions
 !-------------------------------------------------------------------------------
 
-  AutoNorm = .NOT. ListCheckPresent( SolverParams,'Skip Compute Nonlinear Change') 
+  AutoNorm = .NOT. ListCheckPresent( SolverParams,'Skip Compute Nonlinear Change')
   IF( AutoNorm ) THEN
-    CALL ListAddLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.) 
-  END IF  
-  
+    CALL ListAddLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
+  END IF
+
   VarName = GetString(SolverParams,'Flux Variable',GotIt )
   UsePot = .FALSE.
   IF(.NOT. GotIt) VarName = GetString(SolverParams,'Target Variable',GotIt )
@@ -142,7 +142,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
 
     FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Flux 2' )
     Fields(2) % Values => FluxSol % Values
-    
+
     IF( dim == 3 ) THEN
       FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Flux 3' )
       Fields(3) % Values => FluxSol % Values
@@ -179,19 +179,19 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
 
   CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric
-  
+
   at0 = RealTime()
-  
+
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', GotIt )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
-  
+
   CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
-  
-  ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),DOFs))  
+
+  ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),DOFs))
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
-  
+
   CALL BulkAssembly()
 
   IF ( ConstantBulkMatrix ) THEN
@@ -205,21 +205,21 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   END IF
 
   CALL DefaultFinishAssembly()
-  
+
   at1 = RealTime()
   WRITE(Message,* ) 'Assembly Time: ',at1-at0
   CALL Info( 'FluxSolver', Message, Level=5 )
-!        
-!------------------------------------------------------------------------------     
+!
+!------------------------------------------------------------------------------
 
   EnforcePositiveMagnitude = GetLogical( SolverParams,'Enforce Positive Magnitude',GotIt )
-      
+
   TotNorm = 0.0_dp
   DO i=1,Dofs
     Solver % Matrix % RHS => ForceVector(:,i)
 
     ! If nothing else specified, then consider only the last component
-    ! for norm comparison. Then the coupled system norm also converges. 
+    ! for norm comparison. Then the coupled system norm also converges.
     IF( i == Dofs .AND. AutoNorm ) THEN
       CALL ListRemove( SolverParams,'Skip Compute Nonlinear Change')
     END IF
@@ -227,15 +227,15 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     UNorm = DefaultSolve()
 
     Fields(i) % Values = Solver % Variable % Values
-      
+
     IF( EnforcePositiveMagnitude .AND. i >= firstmag ) THEN
-      DO j=1,SIZE( Fields(i) % Values ) 
+      DO j=1,SIZE( Fields(i) % Values )
         Fields(i) % Values(j) = MAX( Fields(i) % Values(j), 0.0_dp )
       END DO
     END IF
   END DO
-  
-  DEALLOCATE( ForceVector )  
+
+  DEALLOCATE( ForceVector )
   Solver % Matrix % RHS => SaveRHS
 
   ! Only the last component is asked for a nonlinear change, as above, so UNorm is
@@ -251,8 +251,8 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   IF( ASSOCIATED( FluxSol ) ) THEN
     DO j = 1,SIZE( FluxSol % Values )
       val = Fields(1) % Values(j)**2 + Fields(2) % Values(j)**2
-      IF( dim == 3 ) val = val + Fields(3) % Values(j)**2 
-      FluxSol % Values(j) = SQRT( val ) 
+      IF( dim == 3 ) val = val + Fields(3) % Values(j)**2
+      FluxSol % Values(j) = SQRT( val )
     END DO
   END IF
 
@@ -262,18 +262,18 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     IF( CalculateFlux ) k = dim
     DO j = 1,SIZE( FluxSol % Values )
       val = Fields(k+1) % Values(j)**2 + Fields(k+2) % Values(j)**2
-      IF( dim == 3 ) val = val + Fields(k+3) % Values(j)**2 
-      FluxSol % Values(j) = SQRT( val ) 
+      IF( dim == 3 ) val = val + Fields(k+3) % Values(j)**2
+      FluxSol % Values(j) = SQRT( val )
     END DO
   END IF
 
 
-!------------------------------------------------------------------------------     
+!------------------------------------------------------------------------------
 
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1
   CALL Info( 'FluxSolver', Message, Level=5 )
-  
+
   WRITE( Message, * ) 'Result Norm: ',TotNorm
   CALL Info( 'FluxSolver', Message, Level=4 )
 
@@ -281,14 +281,14 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   CALL Info( 'FluxSolver', '-------------------------------------',Level=6 )
 
 
-  
+
 CONTAINS
 
 
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-       
+
     INTEGER :: elem,t,i,j,k,p,q,n,nd, Rank
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:,:)
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -300,15 +300,15 @@ CONTAINS
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Material
     REAL(KIND=dp), POINTER :: Conductivity(:,:,:)=>NULL()
-    
+
     SAVE Conductivity, Nodes
-    
+
     n = 2*MAX( Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes )
     ALLOCATE( STIFF(n,n), FORCE(dofs,n) )
     ALLOCATE( LocalPotential(n), Basis(n), dBasisdx(n,3) )
 
     DO elem = 1,Solver % NumberOFActiveElements
-         
+
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
@@ -316,7 +316,7 @@ CONTAINS
       CALL GetElementNodes( Nodes )
       nd = GetElementNOFDOFs()
       n  = GetElementNOFNodes()
-      
+
       ! Integrate local stresses:
       ! -------------------------
       IntegStuff = GaussPoints( Element )
@@ -327,7 +327,7 @@ CONTAINS
         CALL GetRealArray( Material, Conductivity, CondName, Found )
         Rank = 0
         IF ( Found ) Rank = GetTensorRank(Conductivity)
-        
+
         C = 0.0_dp
         FluxAtIp = 0.0_dp
         DO i=1,dim
@@ -336,7 +336,7 @@ CONTAINS
       END IF
 
       IF( UsePot ) THEN
-        LocalPotential(1:n) = GetReal( Material, PotName ) 
+        LocalPotential(1:n) = GetReal( Material, PotName )
       ELSE
         CALL GetScalarLocalSolution( LocalPotential, VarName )
       END IF
@@ -344,10 +344,10 @@ CONTAINS
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
-        
+
         Weight = IntegStuff % s(t) * detJ
         IF ( CSymmetry ) Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
-        
+
         IF ( .NOT. ConstantBulkMatrixInUse ) THEN
           DO p=1,nd
             DO q=1,nd
@@ -355,10 +355,10 @@ CONTAINS
             END DO
           END DO
         END IF
-        
+
         GradAtIp(1:dim) = MATMUL( LocalPotential(1:nd), dBasisdx(1:nd,1:dim) )
-        
-        IF( CalculateFlux .OR. CalculateFluxMag ) THEN          
+
+        IF( CalculateFlux .OR. CalculateFluxMag ) THEN
           SELECT CASE(Rank)
           CASE(0)
           CASE(1)
@@ -376,7 +376,7 @@ CONTAINS
               END DO
             END DO
           END SELECT
-          
+
           DO i=1,dim
             FluxAtIp(i) = SUM( C(i,1:dim) * GradAtIp(1:dim) )
           END DO
@@ -391,7 +391,7 @@ CONTAINS
           END DO
           k = k + dim
         END IF
-      
+
         IF( CalculateGrad ) THEN
           DO i=1,dim
             Coeff = Weight * GradAtIp(i)
@@ -405,7 +405,7 @@ CONTAINS
           k = k + 1
           FORCE(k,1:nd) = FORCE(k,1:nd) + Coeff * Basis(1:nd)
         END IF
-        
+
         IF( CalculateGradMag ) THEN
           Coeff = Weight * SQRT( SUM( GradAtIp ** 2) )
           k = k + 1
@@ -415,7 +415,7 @@ CONTAINS
       END DO
 
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         Solver % Matrix % Rhs => SaveRHS
@@ -547,14 +547,14 @@ CONTAINS
     END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
 
-      
+
 
 !------------------------------------------------------------------------------
   FUNCTION GetTensorRank( Tensor ) RESULT ( Rank )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Tensor(:,:,:)
     INTEGER :: Rank
-    
+
     IF ( SIZE(Tensor,1) == 1 ) THEN
       Rank = 1
     ELSE IF ( SIZE(Tensor,2) == 1 ) THEN
@@ -574,7 +574,7 @@ END SUBROUTINE FluxSolver
 
 
 !------------------------------------------------------------------------------
-!> Initialization for the primary solver, FluxSolver. 
+!> Initialization for the primary solver, FluxSolver.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
   SUBROUTINE FluxSolver_Init( Model,Solver,dt,Transient )
@@ -595,19 +595,19 @@ END SUBROUTINE FluxSolver
 !------------------------------------------------------------------------------
     SolverParams => GetSolverParams()
     dim = CoordinateSystemDimension()
-    
+
     IF( dim < 2 .OR. dim > 3 ) THEN
       CALL Fatal('FluxSolver_init','Flux computation makes sense only in 2D and 3D')
     END IF
 
     CalculateGradMag = GetLogical(SolverParams,'Calculate Grad Magnitude',GotIt)
-    CalculateGrad = GetLogical(SolverParams,'Calculate Grad',GotIt) 
+    CalculateGrad = GetLogical(SolverParams,'Calculate Grad',GotIt)
 
     CalculateFluxMag = GetLogical(SolverParams,'Calculate Flux Magnitude',GotIt)
-    CalculateFlux = GetLogical(SolverParams,'Calculate Flux',GotIt) 
+    CalculateFlux = GetLogical(SolverParams,'Calculate Flux',GotIt)
 
 
-    IF(.NOT. (CalculateFlux .OR. CalculateFluxMag .OR. CalculateGrad .OR. CalculateGradMag) ) THEN 
+    IF(.NOT. (CalculateFlux .OR. CalculateFluxMag .OR. CalculateGrad .OR. CalculateGradMag) ) THEN
       IF(.NOT. GotIt ) THEN
         CALL Warn('FluxSolver_init','No field computation requested, setting > Calculate Flux = True <')
       ELSE
@@ -623,7 +623,7 @@ END SUBROUTINE FluxSolver
     IF(.NOT. GotIt) VarName = GetString(SolverParams,'Target Variable',GotIt )
     IF(.NOT. gotIt) THEN
       IF( .NOT. GotIt ) THEN
-        VarName = GetString( SolverParams,'Target Expression',GotIt ) 
+        VarName = GetString( SolverParams,'Target Expression',GotIt )
       END IF
       IF( .NOT. GotIt ) THEN
         CALL Warn('FluxSolver','> Target Variable < not given, using Temperature')
@@ -635,62 +635,62 @@ END SUBROUTINE FluxSolver
       EqName = ListGetString( SolverParams,'Equation')
       CALL ListAddString( SolverParams, 'Variable','-nooutput '//TRIM(EqName)//'_temp' )
     END IF
-    
+
 
     IF( CalculateFlux ) THEN
       FluxName = TRIM(VarName)//' Flux'
-      CALL Info('FluxSolver_init','Saving flux to: '//TRIM(FluxName), Level=5) 
+      CALL Info('FluxSolver_init','Saving flux to: '//TRIM(FluxName), Level=5)
       IF(dim == 2) THEN
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable',SolverParams),&
-	TRIM(FluxName)//'['//TRIM(FluxName)//':2]')
+        TRIM(FluxName)//'['//TRIM(FluxName)//':2]')
       ELSE IF(dim == 3) THEN
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable',SolverParams),&
-	TRIM(FluxName)//'['//TRIM(FluxName)//':3]')
+        TRIM(FluxName)//'['//TRIM(FluxName)//':3]')
       END IF
       IF( GetLogical( SolverParams,'Calculate Flux Abs',GotIt) ) THEN
         FluxName = TRIM(VarName)//' Flux_abs'
-        CALL Info('FluxSolver_init','Saving flux abs to: '//FluxName) 
+        CALL Info('FluxSolver_init','Saving flux abs to: '//FluxName)
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable',SolverParams),TRIM(FluxName))
       END IF
     END IF
     IF( CalculateFluxMag ) THEN
       FluxName = TRIM(VarName)//' Flux_mag'
-      CALL Info('FluxSolver_init','Saving flux magnitude to: '//FluxName) 
+      CALL Info('FluxSolver_init','Saving flux magnitude to: '//FluxName)
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable',SolverParams),TRIM(FluxName))
     END IF
 
     IF( CalculateGrad ) THEN
       GradName = TRIM(VarName)//' Grad'
-      CALL Info('FluxSolver_init','Saving gradient to: '//GradName) 	
+      CALL Info('FluxSolver_init','Saving gradient to: '//GradName)
       IF(dim == 2) THEN
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable',SolverParams),&
-	TRIM(GradName)//'['//TRIM(GradName)//':2]')
+        TRIM(GradName)//'['//TRIM(GradName)//':2]')
       ELSE IF(dim == 3) THEN
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable',SolverParams),&
-	TRIM(GradName)//'['//TRIM(GradName)//':3]')
+        TRIM(GradName)//'['//TRIM(GradName)//':3]')
       END IF
       IF( GetLogical( SolverParams,'Calculate Grad Abs',GotIt) ) THEN
         GradName = TRIM(VarName)//' Grad_abs'
-        CALL Info('FluxSolver_init','Saving gradient abs to: '//GradName) 	
+        CALL Info('FluxSolver_init','Saving gradient abs to: '//GradName)
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable',SolverParams),TRIM(GradName))
       END IF
     END IF
     IF( CalculateGradMag ) THEN
       GradName = TRIM(VarName)//' Grad_mag'
-      CALL Info('FluxSolver_init','Saving gradient magnitude to: '//GradName) 		
+      CALL Info('FluxSolver_init','Saving gradient magnitude to: '//GradName)
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable',SolverParams),TRIM(GradName))
     END IF
 
     CALL ListAddInteger( SolverParams, 'Time derivative order', 0 )
-      
+
     ! Add linear system defaults: cg+diagonal
     CALL ListAddNewString(SolverParams,'Linear System Solver','Iterative')
     CALL ListAddNewString(SolverParams,'Linear System Iterative Method','cg')
@@ -698,7 +698,7 @@ END SUBROUTINE FluxSolver
     CALL ListAddNewInteger(SolverParams,'Linear System Max Iterations',500)
     CALL ListAddNewInteger(SolverParams,'Linear System Residual Output',10)
     CALL ListAddNewConstReal(SolverParams,'Linear System Convergence Tolerance',1.0e-10_dp)
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE FluxSolver_Init
 !------------------------------------------------------------------------------

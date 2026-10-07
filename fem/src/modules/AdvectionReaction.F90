@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 04 Apr 2004
 ! *
@@ -39,20 +39,20 @@
      USE DefUtils
      IMPLICIT NONE
 !------------------------------------------------------------------------------
-     TYPE(Model_t) :: Model            
-     TYPE(Solver_t), TARGET :: Solver  
-     REAL(KIND=dp) :: dt               
-     LOGICAL :: Transient    
-!------------------------------------------------------------------------------     
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t), TARGET :: Solver
+     REAL(KIND=dp) :: dt
+     LOGICAL :: Transient
+!------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: SolverParams
-     LOGICAL :: Found 
+     LOGICAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) ::  VariableName
-     
+
      SolverParams => GetSolverParams()
-     
-     CALL ListAddLogical( SolverParams,'Discontinuous Galerkin',.TRUE.) 
-     
-     CALL ListAddNewString( SolverParams,'Variable','Tracer')     
+
+     CALL ListAddLogical( SolverParams,'Discontinuous Galerkin',.TRUE.)
+
+     CALL ListAddNewString( SolverParams,'Variable','Tracer')
      VariableName = ListGetString(SolverParams,'Variable')
 
      IF( ListGetLogical( SolverParams,'Calculate Nodal Average',Found ) ) THEN
@@ -60,9 +60,9 @@
            "-nodal "//TRIM(VariableName)//"_nodal" )
        CALL ListAddLogical( SolverParams,'PostSolver Active',.TRUE.)
      END IF
-       
+
    END SUBROUTINE AdvectionReactionSolver_init
-     
+
 
 !------------------------------------------------------------------------------
 !>  Advection-reaction equation solver for scalar fields with discontinuous Galerkin method.
@@ -132,7 +132,7 @@
         ALLOCATE( FORCE(N), MASS(n,n), STIFF(N,N), LOAD(N),  &
                   Velo(3,N), MeshVelo( 3,N ), Gamma(n), &
                   UpperLimit(n), LowerLimit(n), STAT = istat )
-        
+
        IF ( istat /= 0 ) THEN
           CALL Fatal(SolverName,'Memory allocation error.' )
        ELSE
@@ -143,7 +143,7 @@
      END IF
 
      !------------------------------------------------------------------------------
-     !    Read physical and numerical constants and initialize 
+     !    Read physical and numerical constants and initialize
      !------------------------------------------------------------------------------
      Constants => GetConstants()
      SolverParams => GetSolverParams()
@@ -157,7 +157,7 @@
 
      NonlinearIterMin = GetInteger(   SolverParams, &
                      'Nonlinear System Min Iterations', Found )
-     IF ( .NOT.Found ) THEN        
+     IF ( .NOT.Found ) THEN
         CALL Warn(SolverName,'No >Nonlinear System Min Iterations< found. Setting 1')
         NonlinearIterMin = 1
      ELSE IF (NonlinearIterMin > NonlinearIterMax) THEN
@@ -217,7 +217,7 @@
            END IF
            !------------------------------------------------------------------------------
            ! assign pointers and get number of nodes in element
-           !------------------------------------------------------------------------------  
+           !------------------------------------------------------------------------------
            Element => GetActiveElement( t )
            n = GetElementNOfNodes( Element )
            Material => GetMaterial()
@@ -243,8 +243,8 @@
            END IF
            !------------------------------------------------------------------------------
            ! the body force (r.h.s) = source
-           !------------------------------------------------------------------------------         
-           LOAD(1:n) = GetReal( BodyForce, TRIM(VariableName) // ' Source', Found )    
+           !------------------------------------------------------------------------------
+           LOAD(1:n) = GetReal( BodyForce, TRIM(VariableName) // ' Source', Found )
 
            !------------------------------------------------------------------------------
            ! Get convection and mesh velocity
@@ -255,8 +255,8 @@
            ! get reaction constant
            !-----------------------
            Gamma(1:n)  = GetReal( Material, TRIM(VariableName) // ' Gamma', Found )
-           
-           CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, Velo, MeshVelo, Gamma, Element, n ) 
+
+           CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, Velo, MeshVelo, Gamma, Element, n )
            IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
            CALL DefaultUpdateEquations( STIFF, FORCE )
         END DO
@@ -276,9 +276,9 @@
 
               !------------------------------------------------------------------------------
               ! Get convection and mesh velocity
-              !------------------------------------------------------------------------------ 
+              !------------------------------------------------------------------------------
               Material => GetMaterial( LeftParent )
-              Equation => GetEquation( LeftParent )          
+              Equation => GetEquation( LeftParent )
               CALL GetLocalALEVelocity(Velo,MeshVelo,SolverName,Material,&
                    Equation,Solver,Model,Face)
 
@@ -305,9 +305,9 @@
 
            !------------------------------------------------------------------------------
            ! Get convection and mesh velocity
-           !------------------------------------------------------------------------------ 
+           !------------------------------------------------------------------------------
            Material => GetMaterial( ParentElement )
-           Equation => GetEquation( ParentElement )        
+           Equation => GetEquation( ParentElement )
            CALL GetLocalALEVelocity(Velo,MeshVelo,SolverName,Material,&
                 Equation,Solver,Model,Element)
 
@@ -347,9 +347,9 @@
         WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
         CALL Info( SolverName, Message, Level=4 )
 
-        RelativeChange = Solver % Variable % NonlinChange 
-        
-        IF ( Solver % Variable % NonlinConverged == 1 )  THEN 
+        RelativeChange = Solver % Variable % NonlinChange
+
+        IF ( Solver % Variable % NonlinConverged == 1 )  THEN
            WRITE(Message,'(A,I0,A,I0,A)') &
                 'Nonlinear iteration converged after ', iter, &
                 ' out of max ',NonlinearIterMax,' iterations'
@@ -401,10 +401,10 @@
 
 
 
-     
+
    CONTAINS
 
-!------------------------------------------------------------------------------      
+!------------------------------------------------------------------------------
      SUBROUTINE LocalMatrix(MASS, STIFF, FORCE, LOAD, Velo, Mvelo, Gamma, Element, n)
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:), &
@@ -429,7 +429,7 @@
 !      Numerical integration
 !------------------------------------------------------------------------------
        IntegStuff = GaussPoints( Element )
- 
+
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
          V = IntegStuff % v(t)
@@ -444,7 +444,7 @@
          S = S * detJ
          L = SUM( LOAD(1:n) *  Basis(1:n) )
          g = SUM( Basis(1:n) * Gamma(1:n) )
-         
+
          ! This term was missing for the ALE formulation
          divMVelo = 0.0_dp
          DO i=1,dim
@@ -590,11 +590,11 @@
      dim = CoordinateSystemDimension()
      FORCE = 0.0d0
      STIFF = 0.0d0
- 
+
      CALL GetElementNodes( Nodes, Element )
      CALL GetElementNodes( ParentNodes, ParentElement )
 
-     Normal = NormalVector( Element, Nodes, 0.0d0, 0.0d0, .TRUE. ) 
+     Normal = NormalVector( Element, Nodes, 0.0d0, 0.0d0, .TRUE. )
      DO i=1,3
        cu(i) = SUM( Velo(i,1:n) ) / n
      END DO
@@ -610,7 +610,7 @@
        W = IntegStuff % w(t)
        S = IntegStuff % s(t)
 
-       Normal = NormalVector( Element, Nodes, U, V, .TRUE. ) 
+       Normal = NormalVector( Element, Nodes, U, V, .TRUE. )
 
        ! Basis function values & derivatives at the integration point:
        ! -------------------------------------------------------------
@@ -677,7 +677,7 @@
         !------------------Equation => GetEquation()
      ELSE IF (ConvectionFlag == 'computed' ) THEN
         FlowSolName =  GetString( Equation,'Flow Solution Name', Found)
-        IF(.NOT.Found) THEN        
+        IF(.NOT.Found) THEN
            CALL Warn(SolverName,'Keyword >Flow Solution Name< not found in section >Equation<')
            CALL Warn(SolverName,'Taking default value >Flow Solution<')
            WRITE(FlowSolName,'(A)') 'Flow Solution'
@@ -690,7 +690,7 @@
         ELSE
            WRITE(Message,'(A,A,A)') &
                 'Convection flag set to >computed<, but no variable >',FlowSolName,'< found'
-           CALL Fatal(SolverName,Message)              
+           CALL Fatal(SolverName,Message)
         END IF
 
 
@@ -698,7 +698,7 @@
            k = FlowPerm(Element % NodeIndexes(i))
            IF ( k > 0 ) THEN
               ! Pressure = FlowSolution(FlowDOFs*k)
-              
+
               SELECT CASE( FlowDOFs )
               CASE(2)
                  Velo(1,i) = FlowSolution( FlowDOFs*k-1 )
@@ -717,9 +717,9 @@
         END DO
      ELSE IF (ConvectionFlag == 'none' ) THEN
         Velo = 0.0d0
-     ELSE  
+     ELSE
         WRITE(Message,'(A,A,A)') 'Convection flag >', ConvectionFlag ,'< not recognised'
-        CALL Fatal(SolverName,Message) 
+        CALL Fatal(SolverName,Message)
      END IF
 
      !-------------------------------------------------
@@ -745,12 +745,12 @@
    USE DefUtils
    IMPLICIT NONE
 !------------------------------------------------------------------------------
-   TYPE(Model_t) :: Model            
-   TYPE(Solver_t), TARGET :: Solver  
-   REAL(KIND=dp) :: dt               
-   LOGICAL :: Transient    
-!------------------------------------------------------------------------------     
-   LOGICAL :: Found 
+   TYPE(Model_t) :: Model
+   TYPE(Solver_t), TARGET :: Solver
+   REAL(KIND=dp) :: dt
+   LOGICAL :: Transient
+!------------------------------------------------------------------------------
+   LOGICAL :: Found
    CHARACTER(LEN=MAX_NAME_LEN) ::  VariableName
    INTEGER :: i,j,k,n,t,Active
    INTEGER, ALLOCATABLE :: Cnt(:)
@@ -758,7 +758,7 @@
    TYPE(Variable_t), POINTER :: Var
    CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName = 'AdvectionReaction_post'
    TYPE(Mesh_t), POINTER :: Mesh
-   
+
    ! Average the elemental results to nodal values:
    !-----------------------------------------------
    Mesh => GetMesh()
@@ -773,17 +773,17 @@
    END IF
 
    IF(.NOT. ASSOCIATED( Var ) ) RETURN
-      
-   CALL Info(SolverName,'Using "'//TRIM(VariableName)//'" for the nodal average output field',Level=7)  
+
+   CALL Info(SolverName,'Using "'//TRIM(VariableName)//'" for the nodal average output field',Level=7)
    ALLOCATE( Cnt(SIZE(Var % Values)) )
 
    Cnt = 0
    Var % Values = 0.0_dp
 
    Active = GetNOFActive()
-   
+
    DO t=1,Active
-     Element => GetActiveElement(t) 
+     Element => GetActiveElement(t)
      n = GetElementNOFNodes()
      DO i=1,n
        j = Element % DGIndexes(i)
@@ -793,7 +793,7 @@
        IF(j==0) CYCLE
        k = Var % Perm(k)
        IF(k==0) CYCLE
-       
+
        Var % Values(k) = Var % Values(k) + Solver % Variable % Values(j)
        Cnt(k) = Cnt(k) + 1
      END DO
@@ -803,6 +803,6 @@
      Var % Values = Var % Values / Cnt
    END WHERE
    DEALLOCATE( Cnt )
-   
+
  END SUBROUTINE AdvectionReactionSolver_post
- 
+

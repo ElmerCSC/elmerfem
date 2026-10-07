@@ -653,7 +653,7 @@ static int DoLinSolveProcs(
    Call lin. solver routines at given address
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix, 
+int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix,
                   void *b, void *x, void *n, void *DOFs, void *Norm )
 #else
 int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)

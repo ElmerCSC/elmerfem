@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -35,7 +35,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Created: 28.01.2019
 ! *
@@ -128,7 +128,7 @@ CONTAINS
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, ntot, dim, nb
     LOGICAL, INTENT(IN) :: DivCurlForm, GradPVersion, SpecificLoad, StokesFlow
-    REAL(KIND=dp), INTENT(IN) :: dt   
+    REAL(KIND=dp), INTENT(IN) :: dt
     LOGICAL, INTENT(IN) :: LinearAssembly, Newton, Transient
     LOGICAL, INTENT(INOUT) :: InitHandles
     TYPE(Solver_t), POINTER :: SchurSolver
@@ -240,7 +240,7 @@ CONTAINS
     ngp = IP % n
 
     ElemDim = Element % Type % Dimension
-    
+
     ! Storage size depending ngp
     !-------------------------------------------------------------------------------
 
@@ -589,7 +589,7 @@ CONTAINS
               dbasisdxvec(:,:,i), dbasisdxvec(:,:,j), weight_c, stifford(:,:,i,j))
 
           IF (i == j) THEN
-            ! Diagonal terms for curl-curl 
+            ! Diagonal terms for curl-curl
             DO k = 1, dim
               IF (k /= i) THEN
                 CALL LinearForms_UdotV(ngp, ntot, elemdim, &
@@ -597,7 +597,7 @@ CONTAINS
               END IF
             END DO
           ELSE
-            ! Off-diagonal terms: Cross derivatives for curl-curl 
+            ! Off-diagonal terms: Cross derivatives for curl-curl
             CALL LinearForms_UdotV(ngp, ntot, elemdim, &
                 dbasisdxvec(:,:,j), dbasisdxvec(:,:,i), weight_b, stifford(:,:,i,j))
           END IF
@@ -982,7 +982,7 @@ CONTAINS
     END IF
 
     ! Masses (use symmetry)
-    ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
+    ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u)
     IF ( .NOT. StokesFlow ) THEN
       CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, VelocityMass, rhovec)
 
@@ -1086,9 +1086,9 @@ CONTAINS
 
     ELSE IF (nb > 0 .AND. nd==n .AND. Transient) THEN
       !-------------------------------------------------------------------------
-      ! This branch is primarily intended to handle the (enhanced) MINI element 
+      ! This branch is primarily intended to handle the (enhanced) MINI element
       ! approximation together with the static condensation for the velocity
-      ! bubbles. The subroutine LCondensate constructs the time derivative of 
+      ! bubbles. The subroutine LCondensate constructs the time derivative of
       ! the bubble-augmented part and performs the static condensation.
       !-------------------------------------------------------------------------
       CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE, PrevNodalSol, &
@@ -1169,7 +1169,7 @@ CONTAINS
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
 
     IF( ASSOCIATED( SchurSolver ) ) THEN
-      ! Preconditioner for pressure block when using block preconditioning               
+      ! Preconditioner for pressure block when using block preconditioning
       weight_a(1:ngp) = -1.0_dp / muvec(1:ngp) * detJVec(1:ngp)
       PressureMass = 0.0_dp
       FORCE = 0.0_dp
@@ -1238,49 +1238,49 @@ CONTAINS
       IF(InitHandles ) THEN
         CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
 
-        CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
-        CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
+        CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')
+        CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')
 
         IF( ListGetElementSomewhere( ViscModel_h) ) THEN
           ViscCond = ListGetCReal( CurrentModel % Solver % Values,&
-              'Newtonian Viscosity Condition',Found )      
-          ConstantVisc = ( Found .AND. ViscCond > 0.0_dp ) 
-          
+              'Newtonian Viscosity Condition',Found )
+          ConstantVisc = ( Found .AND. ViscCond > 0.0_dp )
+
           IF( ListGetLogical( CurrentModel % Solver % Values,&
-              'Constant-Viscosity Start', Found) ) ConstantVisc = (.NOT. Visited ) 
-          
-          CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
-          CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
-          CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
-          CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')      
-          CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')      
-          CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')      
+              'Constant-Viscosity Start', Found) ) ConstantVisc = (.NOT. Visited )
+
+          CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')
+          CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')
+          CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')
+          CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')
+          CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')
+          CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')
 
           ! Do these initializations for glen's model only
           IF ( ListCompareElementAnyString( ViscModel_h,'glen') ) THEN
             CALL ListInitElementKeyword( ViscGlenExp_h,'Material','Glen Exponent',DefRValue=3.0_dp)
-            CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Enhancement Factor',DefRValue=1.0_dp)           
+            CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Enhancement Factor',DefRValue=1.0_dp)
             CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor',DefLValue=.FALSE.)
-            CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')            
+            CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')
             CALL ListInitElementKeyword( ViscTLimit_h,'Material','Limit Temperature',DefRValue=-10.0_dp)
             CALL ListInitElementKeyword( ViscRate1_h,'Material','Rate Factor 1',DefRValue=3.985d-13)
             CALL ListInitElementKeyword( ViscRate2_h,'Material','Rate Factor 2',DefRValue=1.916d3)
             CALL ListInitElementKeyword( ViscEne1_h,'Material','Activation Energy 1',DefRValue=60.0d03)
-            CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
-            CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')            
+            CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)
+            CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')
 
             IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN                
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
                 CALL Warn(Caller,'Replace >Constant Temperature< with >Relative Temperature<')
               END IF
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN             
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
                 CALL Warn(Caller,'Replace >Temperature Field Variable< with >Relative Temperature = Equals ...<')
               END IF
             END IF
             IF (ViscArrSet_h % NotPresentAnywhere .AND. ViscTemp_h % NotPresentAnywhere ) THEN
               CALL Fatal(Caller,'>Relative Temperature< not given for viscosity model "glen"')
-            END IF            
-            
+            END IF
+
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
               CALL Fatal(Caller,'No Glen function API yet!')
             END IF
@@ -1310,7 +1310,7 @@ CONTAINS
         END IF
 
         NSHandles(tid) % ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
-        SaveVisc = ASSOCIATED(NSHandles(tid) % ViscVar)        
+        SaveVisc = ASSOCIATED(NSHandles(tid) % ViscVar)
         IF(SaveVisc) THEN
           IF(NSHandles(tid) % ViscVar % TYPE == Variable_on_gauss_points ) THEN
             CALL Info(Caller,'Saving "Viscosity" on ip points!',Level=10)
@@ -1335,8 +1335,8 @@ CONTAINS
             SaveWeight = .TRUE.
             IF(.NOT. ViscVarsZeroed) NSHandles(tid) % WeightVar % Values = 0.0_dp
           END IF
-        END IF        
-          
+        END IF
+
         Visited = .TRUE.
       END IF
 
@@ -1354,12 +1354,12 @@ CONTAINS
         ViscDerVec(1:ngp) = 0.0_dp
       END IF
 
-      ! This reverts the viscosity model to linear 
+      ! This reverts the viscosity model to linear
       IF( ConstantVisc ) THEN
-        EffViscVec => ViscVec0        
-        RETURN      
+        EffViscVec => ViscVec0
+        RETURN
       END IF
-        
+
       ALLOCATE(ss(ngp), s(ngp), ArrheniusFactorVec(ngp), DensVec(ngp))
       DensVec(1:ngp) = Density
       IF( .NOT. ALLOCATED( ViscWork ) ) THEN
@@ -1410,15 +1410,15 @@ CONTAINS
           END IF
         END IF
       END IF
-            
-      
-      SELECT CASE( ViscModel )       
+
+
+      SELECT CASE( ViscModel )
 
       CASE('glen')
         c2 = ListGetElementReal( ViscGlenExp_h,Element=Element,Found=Found)
 
         ! the second invariant is not taken from the strain rate tensor,
-        ! but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
+        ! but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)
         s(1:ngp) = ss(1:ngp)/4.0_dp
 
         c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
@@ -1429,13 +1429,13 @@ CONTAINS
 
         IF( ListGetElementLogical( ViscArrSet_h,Element,Found=Found) ) THEN
           ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
-          ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);                    
-          
+          ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+
           IF( ViscNewton ) THEN
             WHERE( s(1:ngp) > c3 ) ViscDerVec(1:ngp) = 0.5_dp * ArrheniusFactor**(-1.0_dp/c2) &
                 * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
           END IF
-        ELSE         
+        ELSE
           ! lets for the time being have this hardcoded
           Tlimit = ListGetElementReal( ViscTlimit_h,Element=Element)
           A1 = ListGetElementReal( ViscRate1_h,Element=Element)
@@ -1445,44 +1445,44 @@ CONTAINS
 
           ! WHERE is faster than DO + IF
           TempVec => ListGetElementRealVec( ViscTemp_h, ngp, BasisVec, Element )
-          
+
           WHERE( TempVec(1:ngp ) < Tlimit )
             ArrheniusFactorVec(1:ngp) = A1 * EXP( -Q1/(R * (273.15_dp + TempVec(1:ngp))))
-          ELSE WHERE( TempVec(1:ngp) > 0.0_dp ) 
+          ELSE WHERE( TempVec(1:ngp) > 0.0_dp )
             ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp)))
           ELSE WHERE
             ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp + TempVec(1:ngp))))
           END WHERE
-          
+
           EhfVec => ListGetElementRealVec( ViscGlenFactor_h, ngp, BasisVec,Element=Element )
           ViscVec(1:ngp) = 0.5_dp * (EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) * &
               s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
-          
+
           IF( ViscNewton ) THEN
-            WHERE( s(1:ngp) > c3 ) 
+            WHERE( s(1:ngp) > c3 )
               ViscDerVec(1:ngp) = 0.5_dp * (  EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) &
                     * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
             END WHERE
-          END IF                      
+          END IF
         END IF
-        
+
 
       CASE('power law')
         c2 = ListGetElementReal( ViscExp_h,Element=Element)
 
-        c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)       
+        c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
         IF( Found ) THEN
           c3 = c3**2
           WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
         END IF
-        
+
         ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
-       
+
         IF (ViscNewton ) THEN
           WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
               ViscVec0(1:ngp) * (c2-1)/2 * ss(1:ngp)**((c2-1)/2-1)
         END IF
-        
+
         c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
         IF( Found ) THEN
           ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
@@ -1492,27 +1492,27 @@ CONTAINS
         END IF
 
       CASE('power law too')
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)           
+        c2 = ListGetElementReal( ViscExp_h,Element=Element)
         ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
 
         IF (ViscNewton ) THEN
           ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
         END IF
-                
-      CASE ('carreau')      
+
+      CASE ('carreau')
         c1 = ListGetElementReal( ViscDiff_h,Element=Element)
         c2 = ListGetElementReal( ViscExp_h,Element=Element)
         c3 = ListGetElementReal( ViscTrans_h,Element=Element)
         c4 = ListGetElementReal( ViscYasuda_h,Element=Element,Found=Found)
         IF( Found ) THEN
-          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
-          
+          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4)
+
           IF( ViscNewton ) THEN
             ViscDerVec(1:ngp) = c1*(1+c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*&
                 ss(1:ngp)**(c4/2-1)
           END IF
         ELSE
-          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
+          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2)
 
           IF( ViscNewton ) THEN
             ViscDerVec(1:ngp) = c1*(c2-1)/2*c3**2*(1+c3**2*ss(1:ngp))**((c2-1)/2-1)
@@ -1529,19 +1529,19 @@ CONTAINS
         IF( ViscNewton ) THEN
           ViscDerVec(1:ngp) = -c1*c3*ss(1:ngp)**(c2/2)*c2 / (2*(1+c3*ss(1:ngp)**(c2/2))**2*ss(1:ngp))
         END IF
-          
+
       CASE ('powell eyring')
         c1 = ListGetElementReal( ViscDiff_h,Element=Element)
         c2 = ListGetElementReal( ViscTrans_h,Element=Element)
 
         s(1:ngp) = SQRT(ss(1:ngp))
 
-        IF( ViscNewton ) THEN          
+        IF( ViscNewton ) THEN
           WHERE( c2*s(1:ngp) < 1.0d-5 )
             ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
             ViscDerVec(1:ngp) = 0.0_dp
           ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))
             ViscDerVec(1:ngp) = c1*(c2/(2*s(1:ngp))+c2**2/(2*SQRT(c2**2*ss(1:ngp)+1)))/ &
                 ((c2*s(1:ngp)+SQRT(c2*ss(1:ngp)+1))*c2*s(1:ngp)) - &
                 c1*LOG(c2*s(1:ngp)+SQRT(c2**2*ss(1:ngp)+1))/(c2*s(1:ngp)**3)/2
@@ -1550,7 +1550,7 @@ CONTAINS
           WHERE( c2*s(1:ngp) < 1.0d-5 )
             ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
           ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))
           END WHERE
         END IF
 
@@ -1568,8 +1568,8 @@ CONTAINS
       IF( ViscNewton ) THEN
         IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
       END IF
-      
-      ! If requested, save viscosity field (on nodes, ip points or elements). 
+
+      ! If requested, save viscosity field (on nodes, ip points or elements).
       IF(SaveVisc .AND. .NOT. NSProbe % Override ) THEN
         IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_nodes ) THEN
           DO i=1,n
@@ -1580,7 +1580,7 @@ CONTAINS
         ELSE
           i = Element % ElementIndex
           IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_gauss_points ) THEN
-            j = NSHandles(tid) % ViscVar % Perm(i+1) - NSHandles(tid) % ViscVar % Perm(i) 
+            j = NSHandles(tid) % ViscVar % Perm(i+1) - NSHandles(tid) % ViscVar % Perm(i)
             IF(j /= ngp) THEN
               CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
             END IF
@@ -1604,16 +1604,16 @@ CONTAINS
       END ASSOCIATE
 
     END FUNCTION EffectiveViscosityVec
-      
 
-    
+
+
     !------------------------------------------------------------------------------
     ! A special subroutine for performing static condensation when the velocity
     ! (the first dim components of the solution) is augmented by a bubble part.
     ! The speciality is that the bubble part at the previous time level
     ! is retrieved to approximate the first time derivative in a consistent manner.
     ! This version works only with the BDF(1) method, as higher-order versions have
-    ! not yet been implemented.    
+    ! not yet been implemented.
     !------------------------------------------------------------------------------
     SUBROUTINE LCondensate( N, nb, dim, M, K, F, xprev, x, Element_id )
       !------------------------------------------------------------------------------
@@ -1622,12 +1622,12 @@ CONTAINS
 
       INTEGER, INTENT(IN) :: N   ! The number of retained DOFs per scalar field
       INTEGER, INTENT(IN) :: nb  ! The number of eliminated DOFs per scalar field
-      INTEGER, INTENT(IN) :: dim ! The number of bubble-augmented fields 
+      INTEGER, INTENT(IN) :: dim ! The number of bubble-augmented fields
       REAL(KIND=dp), INTENT(IN) :: M(:,:)
       REAL(KIND=dp), INTENT(INOUT) :: K(:,:), F(:)
-      REAL(KIND=dp), INTENT(IN), OPTIONAL :: x(:,:)     ! The solution without 
+      REAL(KIND=dp), INTENT(IN), OPTIONAL :: x(:,:)     ! The solution without
       ! bubbles
-      REAL(KIND=dp), INTENT(IN), OPTIONAL :: xprev(:,:) ! The previous solution 
+      REAL(KIND=dp), INTENT(IN), OPTIONAL :: xprev(:,:) ! The previous solution
       ! without bubbles
       INTEGER, INTENT(IN), OPTIONAL :: Element_id       ! The element identifier
 
@@ -1649,10 +1649,10 @@ CONTAINS
   !------------------------------------------------------------------------------
       ComputeBubblePart = PRESENT(x) .AND. PRESENT(xprev) .AND. PRESENT(Element_id)
 
-      DOFs = dim + 1 
+      DOFs = dim + 1
 
       ! Vectorize the input array x and
-      ! create xlprev that contains the full previous solution including 
+      ! create xlprev that contains the full previous solution including
       ! the bubble DOFs. First insert the DOFs that are retained:
       q = 0
       DO p = 1,n
@@ -1671,7 +1671,7 @@ CONTAINS
         END DO
       END DO
 
-      ! The following only works for the BDF(1) method: 
+      ! The following only works for the BDF(1) method:
       IF (ComputeBubblePart) THEN
         xlprev = 0
         q = 0
@@ -1756,7 +1756,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: dt
     LOGICAL, INTENT(IN) :: SpecificLoad, FrictionNewton
     LOGICAL, INTENT(INOUT) :: InitHandles
-!------------------------------------------------------------------------------    
+!------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
@@ -1783,35 +1783,35 @@ CONTAINS
     END INTERFACE
     TYPE(VariableHandle_t), SAVE :: Velo_v
     TYPE(Variable_t), POINTER, SAVE :: NrmSol, VeloSol
-    TYPE(ValueList_t), POINTER :: BC    
+    TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp) :: TanFder,JAC(nd*(dim+1),nd*(dim+1)),SOL(nd*(dim+1)),NodalSol(dim+1,nd)
     TYPE(Variable_t), POINTER, SAVE :: SlipCoeffVar, SlipSpeedVar, SlipWeightVar
     LOGICAL, SAVE :: SaveSlipSpeed, SaveSlipCoeff, SaveSlipWeight
-    
+
     SAVE Basis, HaveNormal, GotRelax, NewtonRelax
-    
+
 !------------------------------------------------------------------------------
-    
+
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','Normal Surface Traction')
       IF( .NOT. ListGetElementSomewhere( ExtPressure_h) ) THEN
-        CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','External Pressure')      
+        CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','External Pressure')
       END IF
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( NormalSlipCoeff_h,'Boundary Condition','Normal Slip Coefficient')
-      
+
       CALL ListInitElementKeyword( FrictionCoeff_h,'Boundary Condition','Friction Coefficient',&
-          EvaluateAtIp=.TRUE., DummyCount=1)     
-      CALL ListInitElementKeyword( FrictionNormal_h,'Boundary Condition','Friction Normal Velocity Zero')     
+          EvaluateAtIp=.TRUE., DummyCount=1)
+      CALL ListInitElementKeyword( FrictionNormal_h,'Boundary Condition','Friction Normal Velocity Zero')
       CALL ListInitElementKeyword( FrictionUt0_h,'Boundary Condition','Friction Linear Velocity')
       IF(FrictionUt0_h % NotPresentAnywhere) THEN
         CALL ListInitElementKeyword( FrictionUt0_h,'Boundary Condition','Weertman Linear Velocity')
       END IF
-        
+
       CALL ListInitElementKeyword( WeertmanCoeff_h,'Boundary Condition','Weertman Friction Coefficient')
       CALL ListInitElementKeyword( WeertmanExp_h,'Boundary Condition','Weertman Exponent')
-      
+
       CALL ListInitElementKeyword( NormalTangentialVelo_h,'Boundary Condition',&
           'Normal-Tangential Velocity' )
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
@@ -1820,10 +1820,10 @@ CONTAINS
            'FSSA Theta')
       str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
       IF(.NOT. Found) str = 'Normal Vector'
-      NrmSol => VariableGet( CurrentModel % Solver % Mesh % Variables, str, ThisOnly = .TRUE.) 
-      
+      NrmSol => VariableGet( CurrentModel % Solver % Mesh % Variables, str, ThisOnly = .TRUE.)
+
       VeloSol => CurrentModel % Solver % Variable
-      
+
       !CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
 
       CALL ListInitElementKeyword( WallLayerThickness_h,'Boundary Condition','Boundary Layer Thickness')
@@ -1832,7 +1832,7 @@ CONTAINS
       CALL ListInitElementVariable( Velo_v )
       CALL ListInitElementKeyword( Dens_h,'Material','Density')
       CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')
-      DO i=1,dim 
+      DO i=1,dim
         CALL ListInitElementKeyword( Load_h(i),'Body Force','Flow Bodyforce '//I2S(i))
       END DO
       CALL ListInitElementKeyword( FSSAaccum_h,'Boundary Condition','FSSA Accumulation')
@@ -1840,7 +1840,7 @@ CONTAINS
       NewtonRelax = ListGetCReal( CurrentModel % Solver % Values,&
           'Friction Newton Relaxation Factor',GotRelax )
       IF(.NOT. GotRelax) NewtonRelax = 1.0_dp
-      
+
       SlipCoeffVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
       SaveSlipCoeff = ASSOCIATED(SlipCoeffVar)
       IF(SaveSlipCoeff) SlipCoeffVar % Values = 0.0_dp
@@ -1850,26 +1850,26 @@ CONTAINS
         SlipSpeedVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Speed',ThisOnly=.TRUE.)
         SaveSlipSpeed = ASSOCIATED(SlipSpeedVar)
         IF(SaveSlipSpeed) SlipSpeedVar % Values = 0.0_dp
-        
+
         SlipWeightVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Weight',ThisOnly=.TRUE.)
         SaveSlipWeight = ASSOCIATED(SlipWeightVar)
-        IF(SaveSlipWeight) SlipWeightVar % Values = 0.0_dp        
+        IF(SaveSlipWeight) SlipWeightVar % Values = 0.0_dp
       END IF
-      
+
       InitHandles = .FALSE.
     END IF
-    
+
     BC => GetBC()
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
-        DEALLOCATE( Basis ) 
+        DEALLOCATE( Basis )
       END IF
     END IF
 
     IF( .NOT. ALLOCATED( Basis ) ) THEN
       ALLOCATE( Basis(nd) )
     END IF
-          
+
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
     JAC = 0.0d0
@@ -1880,7 +1880,7 @@ CONTAINS
     !-----------------------
     IP = GaussPoints( Element )
     ngp = IP % n
-    
+
     LocalNewton = .FALSE.
     NormalTangential = ListGetElementLogical( NormalTangentialVelo_h, Element, Found )
     IF (.NOT.Found) THEN
@@ -1890,12 +1890,12 @@ CONTAINS
     FrictionNormal = .FALSE.
     TanFder=0._dp
     no_slip_comp = 0
-    
+
     ! There is no elemental routine for this.
     ! So whereas this breaks the beauty it does not cost too much.
     FSSAFlag = GetString(BC, 'FSSA Flag', Found)
     IF (.NOT.Found) FSSAFlag = 'none'
-    
+
     HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient')
     HaveFrictionU = ListCheckPresent( BC,'Friction Coefficient')
     HaveFriction = HaveFrictionU .OR. HaveFrictionW
@@ -1909,9 +1909,9 @@ CONTAINS
 
     IF( HaveFriction .OR. HaveWallLaw ) THEN
       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
-      FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element ) 
+      FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element )
     END IF
-    
+
     DO t=1,ngp
 !------------------------------------------------------------------------------
 !    Basis function values & derivatives at the integration point
@@ -1966,7 +1966,7 @@ CONTAINS
           HaveFSSA = .FALSE.
         END IF
       END IF
-      
+
       ! Nothing to do, exit the routine
       !---------------------------------
       IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveNormalSlip .OR. &
@@ -2042,19 +2042,19 @@ CONTAINS
           TanFrictionCoeff = rho * FrictionVelocity**2 / MAX(ut,1.0d-9)
         END IF
 
-        ! We Do not set the slip in normal direction if given by friction model only. 
+        ! We Do not set the slip in normal direction if given by friction model only.
         DO i=1,dim
           IF(i /= norm_comp) SlipCoeff(i) = TanFrictionCoeff
         END DO
-         
+
         IF(.NOT. HaveNormalSlip) THEN
           no_slip_comp = norm_comp
         END IF
 
         ! We initially have friction given and translate it to terms of slip coefficient.
-        ! The code is then continued as if we would have slip coefficients. 
+        ! The code is then continued as if we would have slip coefficients.
         HaveSlip = .TRUE.
-        
+
         IF(SaveSlipSpeed) THEN
           DO i=1,n
             j = SlipSpeedVar % Perm(Element % NodeIndexes(i))
@@ -2089,27 +2089,27 @@ CONTAINS
         ELSE
           SurfaceTraction = SurfaceTraction + ExtPressure * Normal
         END IF
-        HaveForce = .TRUE. 
+        HaveForce = .TRUE.
       END IF
-      
+
       ! Calculate directions for N-T system
-      IF( NormalTangential ) THEN       
-        SELECT CASE( dim ) 
+      IF( NormalTangential ) THEN
+        SELECT CASE( dim )
         CASE(2)
           Tangent(1) =  Normal(2)
           Tangent(2) = -Normal(1)
           Tangent(3) =  0.0_dp
           Tangent2   =  0.0_dp
         CASE(3)
-          CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+          CALL TangentDirections( Normal, Tangent, Tangent2 )
         END SELECT
       END IF
 
       ! Assemble the slip coefficients to the stiffness matrix
-      IF( HaveSlip ) THEN               
+      IF( HaveSlip ) THEN
         IF ( NormalTangential ) THEN
           DO i=1,dim
-            ! We know by construction that if only friction models are given there is no normal slip. 
+            ! We know by construction that if only friction models are given there is no normal slip.
             IF(i==no_slip_comp) CYCLE
             SELECT CASE(i)
             CASE(1)
@@ -2118,10 +2118,10 @@ CONTAINS
               Vect = Tangent
             CASE(3)
               Vect = Tangent2
-            END SELECT            
-            
+            END SELECT
+
             DO p=1,nd
-              DO q=1,nd               
+              DO q=1,nd
                 DO j=1,dim
                   DO k=1,dim
                     STIFF( (p-1)*c+j,(q-1)*c+k ) = &
@@ -2140,7 +2140,7 @@ CONTAINS
               END DO
             END DO
           END DO
-        ELSE       
+        ELSE
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
@@ -2163,10 +2163,10 @@ CONTAINS
         END IF
       END IF
 
-           
+
       ! Assemble given forces to r.h.s.
       IF( HaveForce .OR. HavePres .OR. HaveFSSA ) THEN
-        FSSAaccum = ListGetElementReal( FSSAaccum_h, Basis, Element, GaussPoint = t )        
+        FSSAaccum = ListGetElementReal( FSSAaccum_h, Basis, Element, GaussPoint = t )
         IF ( NormalTangential ) THEN
           DO i=1,dim
             SELECT CASE(i)
@@ -2183,12 +2183,12 @@ CONTAINS
                 l = (q-1)*c + j
                 FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
                 IF(HaveFSSA) THEN
-                  IF (i==1) FORCE(l) = FORCE(l) + s * FSSAtheta * dt * FSSAaccum * Basis(q) * LoadVec(j) 
+                  IF (i==1) FORCE(l) = FORCE(l) + s * FSSAtheta * dt * FSSAaccum * Basis(q) * LoadVec(j)
                 END IF
               END DO
             END DO
           END DO
-        ELSE       
+        ELSE
           DO i=1,dim
             DO q=1,nd
               k = (q-1)*c + i
@@ -2200,10 +2200,10 @@ CONTAINS
           END DO
         END IF
       END IF
-      
+
       !FSSA stabilization: sum_i <u_i*n_i*v_z> * StabCoeff, i=1,..,dim
       !---------------------------------------------------------------
-     
+
       IF ( HaveFSSA ) THEN
         SELECT CASE(FSSAFlag)
           ! version 1,  approximation with normal pointing into z-direction
@@ -2220,25 +2220,25 @@ CONTAINS
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
-                STIFF( (p-1)*c+i,(q-1)*c+dim ) = & 
+                STIFF( (p-1)*c+i,(q-1)*c+dim ) = &
                      STIFF( (p-1)*c+i,(q-1)*c+dim )  &
                      - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
               END DO
             END DO
-          END DO        
+          END DO
         CASE ('full') ! full entry matrix FSSA
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
                 DO j=1,dim
-                  STIFF( (p-1)*c+j,(q-1)*c+i ) = & 
+                  STIFF( (p-1)*c+j,(q-1)*c+i ) = &
                      STIFF( (p-1)*c+j,(q-1)*c+i )  &
                      - s * FSSAtheta * dt * LoadVec(j) * Basis(q) * Basis(p) * Normal(i)
                 !PRINT *, "K(",p,q,i,")=", s * FSSAtheta * Basis(q) * Basis(p) * Normal(i), STIFF( (p-1)*c+dim,(q-1)*c+i )
                 END DO
               END DO
             END DO
-          END DO          
+          END DO
         CASE DEFAULT
 
         END SELECT
@@ -2255,16 +2255,16 @@ CONTAINS
       END DO
 
       IF(GotRelax) JAC = NewtonRelax * JAC
-      
+
       STIFF=STIFF+JAC
       FORCE=FORCE + MATMUL(JAC,SOL)
     END IF
-      
+
     CALL DefaultUpdateEquations( STIFF, FORCE )
-        
+
   END SUBROUTINE LocalBoundaryMatrix
 
-  
+
 END MODULE IncompressibleLocalForms
 
 
@@ -2278,7 +2278,7 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
   LOGICAL :: Found, Serendipity
 
   ! Equal-order stabilisation asks for the opposite element to everything below:
@@ -2317,7 +2317,7 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
 
   Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
   IF(.NOT.Found) Serendipity = .TRUE.
-  
+
   IF(Serendipity) THEN
     CALL ListAddNewString(GetSolverParams(),'Element', &
       'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
@@ -2369,14 +2369,14 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
-!------------------------------------------------------------------------------  
-  TYPE(ValueList_t), POINTER :: Params 
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found, GotIt
   INTEGER :: dim
   CHARACTER(:), ALLOCATABLE :: str
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver_init'
-!------------------------------------------------------------------------------ 
-  Params => GetSolverParams() 
+!------------------------------------------------------------------------------
+  Params => GetSolverParams()
 
   IF( ListCheckPresentAnyBC( Model, 'Pressure 1' ) ) THEN
     CALL Fatal( Caller,'Use >Surface Traction 1< instead of >Pressure 1<')
@@ -2387,9 +2387,9 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   IF( ListCheckPresentAnyBC( Model, 'Pressure 3' ) ) THEN
     CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 3<')
   END IF
-  
+
   dim = CoordinateSystemDimension()
-  
+
   IF ( dim == 2 ) THEN
     CALL ListAddNewString(Params, 'Variable', &
         'Flow Solution[Velocity:2 Pressure:1]')
@@ -2408,7 +2408,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
   CALL ListAddNewLogical(Params, 'Div-Curl Discretization', .FALSE.)
 
-  
+
   ! It makes sense to eliminate the bubbles to save memory and time
   CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
 
@@ -2500,8 +2500,8 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
 
   CALL ListAddNewLogical(Params,'schur: Variable Output',.FALSE.)
 
-  
-!------------------------------------------------------------------------------ 
+
+!------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init
 !------------------------------------------------------------------------------
 
@@ -2512,7 +2512,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   USE IncompressibleLocalForms
   USE MainUtils
 
-  
+
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -2523,7 +2523,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t), POINTER :: Element
-  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -2547,7 +2547,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 ! Local variables to be accessed by the contained subroutines:
 !------------------------------------------------------------------------------
   LOGICAL :: LinearAssembly, Newton
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
 
   CALL DefaultStart()
 
@@ -2601,7 +2601,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   !-----------------------------------------------------------------------------
   IF (Transient .AND. Mesh % MaxBDOFs > 0) CALL DefaultBubbleHistoryUpdate( Dofs=dim )
 
-  Params => GetSolverParams() 
+  Params => GetSolverParams()
 
   ! The integration rule probe. Reporting only -- see IntegRuleProbeReport for
   ! why it may not simply adopt what it finds.
@@ -2611,7 +2611,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! Output the number of integration points as information.
   ! This in not fully informative if several element types are present.
   !-----------------------------------------------------------------------------
-  Element => Mesh % Elements( Solver % ActiveElements(1) ) 
+  Element => Mesh % Elements( Solver % ActiveElements(1) )
   ! PReferenceElement only where there is a p-element to take the reference from.
   ! Asking for it unconditionally reads Element % PDefs, which a plain nodal
   ! element does not have, and segfaults in GaussPoints. It never showed because
@@ -2620,9 +2620,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   IP = GaussPointsAdapt( Element, PReferenceElement = isActivePElement(Element) )
   CALL Info('IncompressibleNSSolver', &
       'Number of 1st integration points: '//I2S(IP % n), Level=5)
-  
+
   !-----------------------------------------------------------------------------
-  ! Set the flags/parameters which define how the system is assembled: 
+  ! Set the flags/parameters which define how the system is assembled:
   !-----------------------------------------------------------------------------
   LinearAssembly = GetLogical(Params, 'Linear Equation', Found )
   StokesFlow = GetLogical(Params, 'Stokes Flow', Found )
@@ -2720,7 +2720,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! difficulty -- SUPG and PSPG carry it -- and the time derivative is no longer
     ! one either, so nothing here is refused on these grounds any more.
   END IF
-  
+
   Maxiter = GetInteger(Params, 'Nonlinear system max iterations', Found)
   IF (.NOT.Found) Maxiter = 1
 
@@ -2750,7 +2750,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   BlockPrec = GetLogical(Params,'Block Preconditioner',Found )
   IF(BlockPrec) THEN
-    ! Do not create the Schur complement approximation if some other means are used. 
+    ! Do not create the Schur complement approximation if some other means are used.
     IF( ListGetLogical( Params,'Create Schur Matrix Approximation',Found ) ) THEN
       CALL Info(Caller,'Schur complement not created, matrix approximation used instead!')
       BlockPrec = .FALSE.
@@ -2771,12 +2771,12 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     ! Create solver that only acts as a container for the schur complement
     ! matrix used in the block preconditioning solver of the library.
     IF( .NOT. ASSOCIATED( SchurSolver ) ) THEN
-      SchurSolver => CreateChildSolver( Solver,'schur', 1,'schur:') 
+      SchurSolver => CreateChildSolver( Solver,'schur', 1,'schur:')
     END IF
   END IF
-  
-  
-  
+
+
+
   DO iter=1,maxiter
 
     CALL Info(Caller,'--------------------------------------------------------', Level=4)
@@ -2785,13 +2785,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL Info(Caller,'--------------------------------------------------------', Level=4)
 
 100 CONTINUE
-    
+
     Active = GetNOFActive()
     CALL DefaultInitialize()
     IF (ASSOCIATED(SchurSolver)) THEN
       CALL DefaultInitialize(USolver=SchurSolver)
     END IF
-    
+
     Newton = GetNewtonActive( Solver )
 
     ! Zeroing happens in this serial pass and nowhere else; see ViscVarsZeroed.
@@ -2806,7 +2806,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       !
       nb = GetElementNOFBDOFs(Element)
       nd = GetElementNOFDOFs(Element)
-      
+
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
@@ -2840,13 +2840,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver, &
     !$OMP                 PStab, PStabCoeff, PStabHmode ) &
     !$OMP PRIVATE(Element, Element_id, n, nd, nb) FIRSTPRIVATE(InitHandles) DEFAULT(None)
-    !$OMP DO    
+    !$OMP DO
     DO Element_id=2,Active
       Element => GetActiveElement(Element_id)
       n  = GetElementNOFNodes(Element)
       nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
       nd = GetElementNOFDOFs(Element)
-      
+
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
@@ -2881,10 +2881,10 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     END IF
 
     CALL DefaultFinishBulkAssembly()
-    
+
     Active = GetNOFBoundaryElements()
-    InitBCHandles = .TRUE.  
-    
+    InitBCHandles = .TRUE.
+
     DO Element_id=1,Active
       Element => GetBoundaryElement(Element_id)
       IF (ActiveBoundaryElement()) THEN
@@ -2892,8 +2892,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
         nd = GetElementNOFDOFs()
 
         ! Skip 101 elements in 2D, and additionally 202's in 3D.
-        IF ( GetElementFamily() < dim ) CYCLE        
-        
+        IF ( GetElementFamily() < dim ) CYCLE
+
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
         CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, Newton)
@@ -2902,11 +2902,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     END DO
 
     CALL DefaultFinishBoundaryAssembly()
-    
+
     ! This is a matrix level routine for setting friction such that tangential
     ! traction is the normal traction multiplied by a coefficient.
     CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient')
-    
+
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
@@ -2915,7 +2915,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     !------------------------------------------------------------------------------
     IF( DefaultLinesearch( Converged ) ) GOTO 100
     IF( Converged .AND. iter >= Miniter ) EXIT
-    
+
     Norm = DefaultSolve()
 
     IF ( Solver % Variable % NonlinConverged == 1 .AND. iter >= Miniter ) EXIT
@@ -2927,18 +2927,18 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     minw = 1.0e-20
     DO i=1,4
       SELECT CASE(i)
-      CASE( 1 ) 
+      CASE( 1 )
         wVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Weight',ThisOnly=.TRUE.)
         pVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Coefficient',ThisOnly=.TRUE.)
-      CASE( 2 ) 
+      CASE( 2 )
         pVar => VariableGet( CurrentModel % Mesh % Variables,'Slip Speed',ThisOnly=.TRUE.)
-      CASE( 3 )         
+      CASE( 3 )
         wVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity Weight',ThisOnly=.TRUE.)
         pVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
-      CASE( 4 ) 
+      CASE( 4 )
         pVar => VariableGet( CurrentModel % Mesh % Variables,'Strainrate',ThisOnly=.TRUE.)
       END SELECT
-      IF(ASSOCIATED(wVar) .AND. ASSOCIATED(pVar) ) THEN     
+      IF(ASSOCIATED(wVar) .AND. ASSOCIATED(pVar) ) THEN
         CALL Info('IncompressibleNSSolver','Normalizing field number: '//I2S(i),Level=15)
         WHERE(wVar % Values > minw )
           pVar % Values = pVar % Values / wVar % Values
@@ -2948,9 +2948,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   END BLOCK
 
   CALL IntegRuleProbeReport( NSProbe, Caller )
-  
+
   CALL DefaultFinish()
-  
+
   CALL Info( Caller,'All done',Level=10)
 
 CONTAINS

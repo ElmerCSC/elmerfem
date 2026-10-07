@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -64,7 +64,7 @@
   END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
 !>  Solve the Reissner-Mindlin facet shell equations!
 !> \ingroup Solvers
@@ -76,10 +76,10 @@
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      TYPE(Solver_t), TARGET :: Solver
- 
+
      REAL(KIND=DP) :: dt
      LOGICAL :: TransientSimulation
- 
+
      TYPE(Solver_t), POINTER :: PSolver
      TYPE(Matrix_t),POINTER  :: StiffMatrix
      TYPE(Nodes_t)   :: ElementNodes
@@ -96,7 +96,7 @@
          StabilityAnalysis = .FALSE., StressComputation = .FALSE.
 
      INTEGER, POINTER :: NodeIndexes(:), DeflectionPerm(:)
-  
+
      REAL(KIND=dp), POINTER :: PlyEng(:,:), PointLoad(:,:)
 
      REAL(KIND=dp), POINTER :: Deflection(:), ForceVector(:), &
@@ -189,7 +189,7 @@
                  LocalDeflection( 6*N ), &
                  LoadVector( 6, N ), &
                  STAT=istat )
- 
+
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'ShellSolver',  'Memory allocation error, Aborting.' )
        END IF
@@ -261,7 +261,7 @@
          CALL Info( 'ShellSolver', 'Using default value 1.0',Level=6 )
          StabParam2 = 1.0d0
       END IF
-       
+
 !      Get element local matrix, and rhs vector:
 !      -----------------------------------------
        Nvector = 0.0d0
@@ -276,7 +276,7 @@
 
 
 !------------------------------------------------------------------------------
- 
+
    CONTAINS
 
 !------------------------------------------------------------------------------
@@ -287,7 +287,7 @@
        WRITE( Message,'(A,I4)') 'Newton iteration',nonliniter
        CALL Info('ShellSolver',Message)
        CALL Info('ShellSolver','--------------------------------------------------------')
-	   
+
        IF ( StabilityAnalysis ) THEN
          SELECT CASE( NonLinIter )
          CASE( 1 )
@@ -366,7 +366,7 @@
        WRITE(Message,'(a,F8.2)') 'Solve: (s)', st
        CALL Info('ShellSolve',Message)
 
-       WRITE(Message,'(a,2F8.3)') 'Relative Change = ',RelChange, RelUChange 
+       WRITE(Message,'(a,2F8.3)') 'Relative Change = ',RelChange, RelUChange
        CALL Info('ShellSolve',Message)
 
        IF( RelChange < NonlinConvTol ) EXIT
@@ -426,7 +426,7 @@
        IF( .NOT.( ( n == 3 ) .OR. ( n == 4 ) ) ) THEN
           CALL Fatal( 'ShellSolver', 'Illegal number of nodes. Aborting.' )
        END IF
-  
+
        CALL GetElementNodes( ElementNodes )
 
        LoadN(1:n) = GetReal( SolverParams, 'Load Scale Factor', GotIt )
@@ -445,14 +445,14 @@
          LoadZ(1:n) = GetReal( BodyForce, 'Body Force 3', GotIt )
          LoadN(1:n) = GetReal( BodyForce, 'Pressure', GotIt )
          LoadN(1:n) = LoadN(1:n) + GetReal( BodyForce, 'Normal Pressure', GotIt )
-       ELSE         
+       ELSE
          LoadX(1:n) = 0.0_dp
          LoadY(1:n) = 0.0_dp
          LoadZ(1:n) = 0.0_dp
          LoadN(1:n) = 0.0_dp
          LoadN(1:n) = 0.0_dp
        END IF
-         
+
 
 !      Material data:
 !      --------------
@@ -513,7 +513,7 @@
 !     Neumann & Newton boundary conditions:
 !     -------------------------------------
       DO t = 1, Solver % Mesh % NumberOfBoundaryElements
-        
+
         CurrentElement => GetBoundaryElement( t )
         IF( .NOT. ActiveBoundaryElement() ) CYCLE
         IF ( CurrentElement % TYPE % ElementCode == 101 ) CYCLE
@@ -547,7 +547,7 @@
 
         CALL StressBoundary( STIFF, FORCE, LoadVector, &
              CurrentElement, n, ElementNodes )
-                    
+
         CALL DefaultUpdateEquations( STIFF, FORCE )
      END DO
 !-----------------------------------------------------------------------------
@@ -567,7 +567,7 @@
      IF( .NOT. GotIt ) RETURN
 
      nPL = SIZE( PointLoad ) / 9
-       
+
      WRITE( Message,'(A,I9)' ) 'Number of point loads set',nPL
      CALL Info('ShellSolve',Message)
 
@@ -634,7 +634,7 @@
        ALLOCATE( Weights( n, NumberOfElementNodes ) )
        Weights = 0.0d0
 
-    
+
        ALLOCATE( SxxElement( n ), SyyElement( n ), SzzElement( n ), &
                  SxyElement( n ), SxzElement( n ), SyzElement( n ) )
 
@@ -657,7 +657,7 @@
 
 
 !      Then, compute the element stresses:
-!      ----------------------------------- 
+!      -----------------------------------
 
        DO t = 1, Solver % NumberOfActiveElements
 
@@ -672,7 +672,7 @@
           CurrentElement => GetActiveElement(t)
           n = GetElementNOFNodes( CurrentElement )
           NodeIndexes => CurrentElement % NodeIndexes
-  
+
           CALL GetElementNodes( ElementNodes )
 
           LocalDeflection = 0.0d0
@@ -683,7 +683,7 @@
              END DO
           END DO
 
-!         Compute the local stresses (constant for each element):  
+!         Compute the local stresses (constant for each element):
 !         -------------------------------------------------------
           CALL LocalStress( CurrentElement, n, ElementNodes, &
             StabParam1, StabParam2, LocalDeflection, Weight3, Weight4, &
@@ -697,7 +697,7 @@
             SxyElement(t) = Nten(1,2)
             SxzElement(t) = Nten(1,3)
             SyzElement(t) = Nten(2,3)
-             
+
             EpsxxElement(t) = Eps(1,1)
             EpsyyElement(t) = Eps(2,2)
             EpszzElement(t) = Eps(3,3)
@@ -713,7 +713,7 @@
             SxyElement(t) = Mten(1,2)
             SxzElement(t) = Mten(1,3)
             SyzElement(t) = Mten(2,3)
-             
+
             EpsxxElement(t) = Kap(1,1)
             EpsyyElement(t) = Kap(2,2)
             EpszzElement(t) = Kap(3,3)
@@ -733,7 +733,7 @@
 
 
         isz = MAXVAL( DeflectionPerm )
-        
+
         IF( .NOT.ASSOCIATED( VariableGet( Solver % Mesh % Variables, &
             'Stress.xx') ) ) THEN
 
@@ -850,7 +850,7 @@
         CALL Info('ShellSolver',Message)
 
 !       Finally, release the auxiliary arrays:
-!       -------------------------------------- 
+!       --------------------------------------
         DEALLOCATE( SxxElement, SyyElement, SzzElement, SxyElement, &
              SxzElement, SyzElement, Weights, Referenced, &
              EpsxxElement, EpsyyElement, EpszzElement, EpsxyElement, &
@@ -963,7 +963,7 @@
        Kappa          = 0.0d0
        EPS            = 0.0d0
        Gammaa         = 0.0d0
-       Omega          = 0.0d0 
+       Omega          = 0.0d0
        GradDeflection = 0.0d0
        ZetaStrain     = 0.0d0
 
@@ -987,7 +987,7 @@
 !      The transformation Xglob -> Xloc is the transpose of the local basis:
 !      ---------------------------------------------------------------------
        Transformation = TRANSPOSE( LocalBasis( Nodes, n ) )
-       
+
 !      Take a copy of the global node points and switch to the local system:
 !      ---------------------------------------------------------------------
        CALL SwitchToLocal( Nodes, CopyOfNodes, Transformation, n )
@@ -1078,10 +1078,10 @@
                   DO j = 1,2
                      dUdx(i,j) = dUdx(i,j) &
                           + LocalDeflection(6*(p-1)+i) * dBasisdx(p,j)
-                     
+
                      dRdx(i,j) = dRdx(i,j) &
                           + LocalDeflection(6*(p-1)+i+3) * dBasisdx(p,j)
-                     
+
                   END DO
                END DO
             END DO
@@ -1099,13 +1099,13 @@
             DO p=1,n
                LV1(1,1) = LV1(1,1) + LocalDeflection(6*(p-1)+1) * dBasisdx(p,1)
                LV1(2,1) = LV1(2,1) + LocalDeflection(6*(p-1)+2) * dBasisdx(p,2)
-               LV1(3,1) = LV1(3,1) + LocalDeflection(6*(p-1)+1) * dBasisdx(p,2) & 
-                                   + LocalDeflection(6*(p-1)+2) * dBasisdx(p,1) 
+               LV1(3,1) = LV1(3,1) + LocalDeflection(6*(p-1)+1) * dBasisdx(p,2) &
+                                   + LocalDeflection(6*(p-1)+2) * dBasisdx(p,1)
 
                LV2(1,1) = LV2(1,1) + LocalDeflection(6*(p-1)+4) * dBasisdx(p,1)
                LV2(2,1) = LV2(2,1) + LocalDeflection(6*(p-1)+5) * dBasisdx(p,2)
-               LV2(3,1) = LV2(3,1) + LocalDeflection(6*(p-1)+4) * dBasisdx(p,2) & 
-                                   + LocalDeflection(6*(p-1)+5) * dBasisdx(p,1)  
+               LV2(3,1) = LV2(3,1) + LocalDeflection(6*(p-1)+4) * dBasisdx(p,2) &
+                                   + LocalDeflection(6*(p-1)+5) * dBasisdx(p,1)
             END DO
 
             ! Nonlinear terms:
@@ -1120,7 +1120,7 @@
                LV2(2,1) = LV2(2,1) + dUdx(q,2) * dRdx(q,2)
                LV2(3,1) = LV2(3,1) + dUdx(q,1) * dRdx(q,2) &
                                    + dUdx(q,2) * dRdx(q,1)
-               
+
                LV3(1,1) = LV3(1,1) + 0.5d0 * dRdx(q,1)**2
                LV3(2,1) = LV3(2,1) + 0.5d0 * dRdx(q,2)**2
                LV3(3,1) = LV3(3,1) + dRdx(q,1) * dRdx(q,2)
@@ -1133,7 +1133,7 @@
             ! Normal force:
             !--------------
             TempVec = MATMUL( Amatrix, LV1 ) + MATMUL( Bmatrix, LV2 )
-            
+
             NormalForce(1,1) = TempVec(1,1)
             NormalForce(2,2) = TempVec(2,1)
             NormalForce(1,2) = TempVec(3,1)
@@ -1142,7 +1142,7 @@
             ! Bending moment:
             !----------------
             TempVec = MATMUL( Bmatrix, LV1 ) + MATMUL( Dmatrix, LV2 )
-            
+
             Moment(1,1) = TempVec(1,1)
             Moment(2,2) = TempVec(2,1)
             Moment(1,2) = TempVec(3,1)
@@ -1200,18 +1200,18 @@
 !        -------------------
          EPS = 0.0d0
          DO p=1,n
-            EPS(1,6*p-5) = dBasisdx(p,1)  
-            EPS(2,6*p-4) = dBasisdx(p,2)  
-            EPS(3,6*p-5) = dBasisdx(p,2)  
-            EPS(3,6*p-4) = dBasisdx(p,1)  
+            EPS(1,6*p-5) = dBasisdx(p,1)
+            EPS(2,6*p-4) = dBasisdx(p,2)
+            EPS(3,6*p-5) = dBasisdx(p,2)
+            EPS(3,6*p-4) = dBasisdx(p,1)
 
             IF( LargeDeflection ) THEN
                DO i = 1,3
                   j = 6*(p-1)+i
-                  EPS(1,j) = EPS(1,j) + dUdx(i,1) * dBasisdx(p,1)        
-                  EPS(2,j) = EPS(2,j) + dUdx(i,2) * dBasisdx(p,2)        
+                  EPS(1,j) = EPS(1,j) + dUdx(i,1) * dBasisdx(p,1)
+                  EPS(2,j) = EPS(2,j) + dUdx(i,2) * dBasisdx(p,2)
                   EPS(3,j) = EPS(3,j) + dUdx(i,1) * dBasisdx(p,2) &
-                                      + dUdx(i,2) * dBasisdx(p,1) 
+                                      + dUdx(i,2) * dBasisdx(p,1)
                END DO
             END IF
          END DO
@@ -1307,7 +1307,7 @@
                END DO
             END DO
          END DO
-         
+
 !        Load vector (only translation):
 !        -------------------------------
          DO p=1,n
@@ -1361,7 +1361,7 @@
             TempVec = MATMUL( Bmatrix, LV1 ) + MATMUL( Dmatrix, LV2 )
             DO p = 1,6*n
                DO q = 1,3
-                  NonLinForce(p) = NonlinForce(p) + TempVec(q,1) * Kappa(q,p) * s   
+                  NonLinForce(p) = NonlinForce(p) + TempVec(q,1) * Kappa(q,p) * s
                END DO
             END DO
 
@@ -1395,7 +1395,7 @@
 
                         NonLinForce( pk ) = NonLinForce( pk ) &
                              + Moment(i,j) * dRdx(k,j) * dBasisdx(p,i) * s
-                        
+
                         NonLinForce( pk+3 ) = NonLinForce( pk+3 ) &
                            + Moment(i,j) * dUdx(k,j) * dBasisdx(p,i) * s
 
@@ -1435,10 +1435,10 @@
                DO q = 1,n
                   GradBasis(1:2) = dBasisdx(q,1:2)
                   GradBasis = MATMUL( NtenMaterial, GradBasis )
-                  
+
                   MASS(6*p-3,6*q-3) = MASS(6*p-3,6*q-3) &
                        + SUM( GradTest(1:2) * GradBasis(1:2) ) * s
-                  
+
                END DO
             END DO
          END IF
@@ -1582,7 +1582,7 @@
 !      Take a copy of the node points and switch to the local system:
 !      --------------------------------------------------------------
        CALL SwitchToLocal( Nodes, CopyOfNodes, Transformation, n )
-       
+
 !      Let us first perform some transformations:
 !      ------------------------------------------
 
@@ -1676,7 +1676,7 @@
        EPSILO = MATMUL( InPlaneStrain(1:3,1:6*n), LocalDeflection(1:6*n) )
        GammaVector = MATMUL( Gammaa(1:2,1:6*n), LocalDeflection(1:6*n) )
 
-!      VonKarman strains:         
+!      VonKarman strains:
 !========================
 
        IF( LargeDeflection ) THEN
@@ -1705,13 +1705,13 @@
          DO p = 1,n
            LV1(1,1) = LV1(1,1) + LocalDeflection(6*(p-1)+1) * dBasisdx(p,1)
            LV1(2,1) = LV1(2,1) + LocalDeflection(6*(p-1)+2) * dBasisdx(p,2)
-           LV1(3,1) = LV1(3,1) + LocalDeflection(6*(p-1)+1) * dBasisdx(p,2) & 
-               + LocalDeflection(6*(p-1)+2) * dBasisdx(p,1) 
+           LV1(3,1) = LV1(3,1) + LocalDeflection(6*(p-1)+1) * dBasisdx(p,2) &
+               + LocalDeflection(6*(p-1)+2) * dBasisdx(p,1)
 
            LV2(1,1) = LV2(1,1) + LocalDeflection(6*(p-1)+4) * dBasisdx(p,1)
            LV2(2,1) = LV2(2,1) + LocalDeflection(6*(p-1)+5) * dBasisdx(p,2)
-           LV2(3,1) = LV2(3,1) + LocalDeflection(6*(p-1)+4) * dBasisdx(p,2) & 
-               + LocalDeflection(6*(p-1)+5) * dBasisdx(p,1)  
+           LV2(3,1) = LV2(3,1) + LocalDeflection(6*(p-1)+4) * dBasisdx(p,2) &
+               + LocalDeflection(6*(p-1)+5) * dBasisdx(p,1)
          END DO
 
 ! Non-linear part of strain and curvature
@@ -1725,7 +1725,7 @@
            LV2(2,1) = LV2(2,1) + dUdx(q,2) * dRdx(q,2)
            LV2(3,1) = LV2(3,1) + dUdx(q,1) * dRdx(q,2) &
                + dUdx(q,2) * dRdx(q,1)
-    
+
            LV3(1,1) = LV3(1,1) + 0.5d0 * dRdx(q,1)**2
            LV3(2,1) = LV3(2,1) + 0.5d0 * dRdx(q,2)**2
            LV3(3,1) = LV3(3,1) + dRdx(q,1) * dRdx(q,2)
@@ -1751,12 +1751,12 @@
 
        CALL IsotropicElasticity( Dmatrix, Astarmatrix, NodalPoisson, &
                  NodalYoung, NodalThickness, Basis, n )
-          
+
        Bmatrix = 0.0d0
-          
+
        CALL IsotropicInPlaneElasticity( Amatrix, NodalPoisson, &
             NodalYoung, NodalThickness, Basis, n )
-     
+
        Gdrilling(1,1) = StabParam2*(Astarmatrix(1,1)+Astarmatrix(2,2))
 
 !      Normaalivoima- ja momenttivektorit (per pituusyksikk�) lokaalissa koord.:
@@ -1871,7 +1871,7 @@
        weight3(3) = SUM( side1 * side2 )
 
        DO i = 1,3
-          weight3(i) = ACOS( weight3(i) ) 
+          weight3(i) = ACOS( weight3(i) )
        END DO
 !------------------------------------------------------------------------------
      END SUBROUTINE AveragingWeights3
@@ -1926,7 +1926,7 @@
        weight4(4) = SUM( side1 * side2 )
 
        DO i = 1,4
-          weight4(i) = ACOS( weight4(i) ) 
+          weight4(i) = ACOS( weight4(i) )
        END DO
 !------------------------------------------------------------------------------
      END SUBROUTINE AveragingWeights4
@@ -1989,9 +1989,9 @@
        BasisVectors(1:3,2) = Tangent2 - SUM( Tangent1 * Tangent2 ) * Tangent1
        BasisVectors(1:3,2) = BasisVectors(1:3,2) / SQRT( SUM( BasisVectors(1:3,2)**2 ) )
        BasisVectors(1:3,3) = CrossProduct( BasisVectors(1:3,1), BasisVectors(1:3,2) )
-!------------------------------------------------------------------------------       
+!------------------------------------------------------------------------------
      END FUNCTION LocalBasis
-!------------------------------------------------------------------------------       
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
      SUBROUTINE IsotropicInPlaneElasticity( Ematrix, &
@@ -2056,7 +2056,7 @@
 !------------------------------------------------------------------------------
      SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n)
 !------------------------------------------------------------------------------
-       USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4 
+       USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4
        REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V
        INTEGER :: n
 !------------------------------------------------------------------------------
@@ -2136,7 +2136,7 @@
           Tau(2) = 0.0d0
 
           CALL Jacobi4(Jmat,invJ,detJ,0.0d0,-1.0d0,x,y)
-          
+
           Sdofs = 0.0d0
           Sdofs(4) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
           Sdofs(5) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))

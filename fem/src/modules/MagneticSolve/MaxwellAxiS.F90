@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -123,7 +123,7 @@ MODULE MaxwellAxiS
      INTEGER :: i,j,k,c,p,q,t,DIM
 
      REAL(KIND=dp) :: s,u,v,w,r
-  
+
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      INTEGER :: N_Integ
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
@@ -145,7 +145,7 @@ MODULE MaxwellAxiS
      W_Integ => IntegStuff % w
      S_Integ => IntegStuff % s
      N_Integ =  IntegStuff % n
- 
+
 !------------------------------------------------------------------------------
 !   Now we start integrating
 !------------------------------------------------------------------------------
@@ -191,11 +191,11 @@ MODULE MaxwellAxiS
         dVelodx(1,i) = SUM( Ux(1:n)*dBasisdx(1:n,i) )
         dVelodx(2,i) = SUM( Uy(1:n)*dBasisdx(1:n,i) )
         dVelodx(3,i) = r * SUM( Uz(1:n)*dBasisdx(1:n,i) )
-      END DO   
+      END DO
       dVelodx(3,1) = Velo(3) + dVelodx(3,1)
 
       Velo(3) = r * Velo(3)
-   
+
 !------------------------------------------------------------------------------
 !     Force at integration point
 !------------------------------------------------------------------------------
@@ -267,7 +267,7 @@ MODULE MaxwellAxiS
          Load(i) = Load(i) + s * Force(i) * Basis(p)
        END DO
 
-       ! nabla ^ 2 B_0 / sigma mu  goes here 
+       ! nabla ^ 2 B_0 / sigma mu  goes here
 
 !------------------------------------------------------------------------------
 !    The curl(u x B) terms
@@ -280,8 +280,8 @@ MODULE MaxwellAxiS
              - Velo(2) * dMFielddx(i,2) ) * Basis(p)
        END DO
 
-       Load(3) = Load(3) + s * ( MField(3) * Velo(1) - & 
-           MField(1) * Velo(3) ) * Basis(p) / r 
+       Load(3) = Load(3) + s * ( MField(3) * Velo(1) - &
+           MField(1) * Velo(3) ) * Basis(p) / r
 
      END DO
    END DO

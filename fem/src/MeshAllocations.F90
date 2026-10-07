@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,12 +28,12 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 02 Apr 2001
 ! *
 ! *****************************************************************************/
-  
+
 !> \ingroup ElmerLib
 !> \{
 
@@ -56,7 +56,7 @@ MODULE MeshAllocations
   IMPLICIT NONE
 
 CONTAINS
-  
+
 !> Allocate mesh structure and return handle to it.
 !------------------------------------------------------------------------------
    FUNCTION AllocateMesh(NumberOfBulkElements, NumberOfBoundaryElements, &
@@ -68,7 +68,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: istat, i, n
      CHARACTER(*), PARAMETER :: Caller = 'AllocateMesh'
-     
+
      ALLOCATE( Mesh, STAT=istat )
      IF ( istat /= 0 ) CALL Fatal( Caller, 'Unable to allocate a few bytes of memory?' )
 
@@ -96,7 +96,7 @@ CONTAINS
      Mesh % NumberOfBulkElements = 0
      Mesh % NumberOfBoundaryElements = 0
      Mesh % Elements => NULL()
-     
+
      Mesh % DiscontMesh = .FALSE.
      Mesh % SingleMesh  = .FALSE.
      Mesh % InvPerm => NULL()
@@ -114,13 +114,13 @@ CONTAINS
 
      ALLOCATE( Mesh % Nodes, STAT=istat )
      IF ( istat /= 0 ) CALL Fatal( Caller, 'Unable to allocate a few bytes of memory?' )
-     
+
      NULLIFY( Mesh % Nodes % x )
      NULLIFY( Mesh % Nodes % y )
      NULLIFY( Mesh % Nodes % z )
      Mesh % Nodes % NumberOfNodes = 0
      Mesh % NumberOfNodes = 0
-       
+
      Mesh % NodesOrig => Mesh % Nodes
      NULLIFY( Mesh % NodesMapped )
 
@@ -129,18 +129,18 @@ CONTAINS
      Mesh % BodyForceWeight => NULL()
      Mesh % BodyWeight => NULL()
      Mesh % MaterialWeight => NULL()
-    
-     Mesh % ParallelInfo % NumberOfIfDOFs =  0        
+
+     Mesh % ParallelInfo % NumberOfIfDOFs =  0
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
      NULLIFY( Mesh % ParallelInfo % GInterface )
-     NULLIFY( Mesh % ParallelInfo % NeighbourList )     
+     NULLIFY( Mesh % ParallelInfo % NeighbourList )
 
      i = 0
-     IF( PRESENT( NumberOfBulkElements ) ) THEN       
+     IF( PRESENT( NumberOfBulkElements ) ) THEN
        Mesh % NumberOfBulkElements = NumberOfBulkElements
        i = i + 1
      END IF
-     
+
      IF( PRESENT( NumberOfBoundaryElements ) ) THEN
        Mesh % NumberOfBoundaryElements = NumberOfBoundaryElements
        i = i + 1
@@ -150,28 +150,28 @@ CONTAINS
        Mesh % NumberOfNodes = NumberOfNodes
        i = i + 1
      END IF
-     
+
      IF( i > 0 ) THEN
        IF( i < 3 ) CALL Fatal(Caller,'Either give all or no optional parameters!')
-       CALL InitializeMesh( Mesh, InitParallel )         
-     END IF       
-     
+       CALL InitializeMesh( Mesh, InitParallel )
+     END IF
+
 !------------------------------------------------------------------------------
    END FUNCTION AllocateMesh
 !------------------------------------------------------------------------------
 
-   ! Initialize mesh structures after the size information has been 
+   ! Initialize mesh structures after the size information has been
    ! retrieved.
    !----------------------------------------------------------------
    SUBROUTINE InitializeMesh(Mesh, InitParallel)
      TYPE(Mesh_t), TARGET :: Mesh
      LOGICAL, OPTIONAL :: InitParallel
-     
+
      INTEGER :: i,j,k,NoElems,istat
      TYPE(Element_t), POINTER :: Element
      CHARACTER(*), PARAMETER :: Caller = 'InitializeMesh'
      LOGICAL :: DoParallel
-     
+
      IF( Mesh % NumberOfNodes == 0 ) THEN
        CALL Warn(Caller,'Mesh has zero nodes!')
        RETURN
@@ -181,12 +181,12 @@ CONTAINS
      END IF
 
      CALL Info(Caller,'Number of bulk elements in mesh: '&
-         //I2S(Mesh % NumberOfBulkElements),Level=8)        
+         //I2S(Mesh % NumberOfBulkElements),Level=8)
 
      CALL Info(Caller,'Number of boundary elements in mesh: '&
-         //I2S(Mesh % NumberOfBoundaryElements),Level=8)        
+         //I2S(Mesh % NumberOfBoundaryElements),Level=8)
 
-     Mesh % Nodes % NumberOfNodes = Mesh % NumberOfNodes          
+     Mesh % Nodes % NumberOfNodes = Mesh % NumberOfNodes
 
      NoElems = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
@@ -206,14 +206,14 @@ CONTAINS
      Mesh % DisContNodes = 0
 
      CALL Info(Caller,'Initial number of max element nodes: '&
-         //I2S(Mesh % MaxElementNodes),Level=10) 
+         //I2S(Mesh % MaxElementNodes),Level=10)
 
      ! Allocate the elements
      !-------------------------------------------------------------------------
      CALL AllocateVector( Mesh % Elements, NoElems, Caller )
 
-     DO j=1,NoElems        
-       Element => Mesh % Elements(j)        
+     DO j=1,NoElems
+       Element => Mesh % Elements(j)
 
        Element % DGDOFs = 0
        Element % BodyId = 0
@@ -231,12 +231,12 @@ CONTAINS
      CALL AllocateVector( Mesh % Nodes % x, Mesh % NumberOfNodes, Caller )
      CALL AllocateVector( Mesh % Nodes % y, Mesh % NumberOfNodes, Caller )
      CALL AllocateVector( Mesh % Nodes % z, Mesh % NumberOfNodes, Caller )
-     
+
      IF( .NOT. PRESENT( InitParallel ) ) RETURN
      IF( .NOT. InitParallel ) RETURN
-     
+
      CALL Info( Caller,'Allocating parallel info',Level=12)
-     
+
      ALLOCATE(Mesh % ParallelInfo % GlobalDOFs(Mesh % NumberOfNodes), STAT=istat )
      IF ( istat /= 0 ) &
          CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
@@ -249,7 +249,7 @@ CONTAINS
      DO i=1,Mesh % NumberOfNodes
        NULLIFY(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
      END DO
-     
+
    END SUBROUTINE InitializeMesh
 
 
@@ -266,7 +266,7 @@ CONTAINS
     LOGICAL :: GotIt
     REAL(KIND=dp), POINTER :: ptr(:)
 !------------------------------------------------------------------------------
- 
+
 !    Deallocate mesh variables:
 !    --------------------------
 
@@ -289,7 +289,7 @@ CONTAINS
     IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
         DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
 
-    IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
+    IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN
       DO i=1,Mesh % NumberOfNodes
         IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
             DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
@@ -303,7 +303,7 @@ CONTAINS
     IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeInterface ) ) &
         DEALLOCATE( Mesh % ParallelInfo % EdgeInterface )
 
-    IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
+    IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN
       DO i=1,Mesh % NumberOfNodes
         IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
             DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
@@ -322,7 +322,7 @@ CONTAINS
       DEALLOCATE( Mesh % ParallelInfo % FaceNeighbourList )
     END IF
 
-    IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN 
+    IF ( ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList ) ) THEN
       DO i=1,Mesh % NumberOfNodes
         IF(ASSOCIATED( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) ) &
            DEALLOCATE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours )
@@ -373,14 +373,14 @@ CONTAINS
       Mesh % RootQuadrant => NULL()
     END IF
 
-    CALL ReleaseMeshElements( Mesh ) 
-         
+    CALL ReleaseMeshElements( Mesh )
+
     Mesh % NumberOfNodes = 0
     Mesh % NumberOfBulkElements = 0
     Mesh % NumberOfBoundaryElements = 0
-    
+
     CALL Info('ReleaseMesh','Releasing mesh finished',Level=15)
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMesh
 !------------------------------------------------------------------------------
@@ -397,7 +397,7 @@ CONTAINS
       RETURN
     END IF
 
-    n = SIZE( Mesh % Elements )     
+    n = SIZE( Mesh % Elements )
     CALL Info('ReleaseMeshElements','Releasing number of elements: '//I2S(n),Level=30)
 
 
@@ -437,17 +437,17 @@ CONTAINS
       !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
       !   DEALLOCATE( Mesh % Elements(i) % PDefs )
 
-      Mesh % Elements(i) % PDefs => NULL() 
+      Mesh % Elements(i) % PDefs => NULL()
     END DO
 
     DEALLOCATE( Mesh % Elements )
     Mesh % Elements => NULL()
 
-    
+
   END SUBROUTINE ReleaseMeshElements
 
 
-  
+
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMeshEdgeTables( Mesh )
 !------------------------------------------------------------------------------
@@ -459,7 +459,7 @@ CONTAINS
     IF ( ASSOCIATED( Mesh % Edges ) ) THEN
       CALL Info('ReleaseMeshEdgeTables','Releasing number of edges: '&
           //I2S(Mesh % NumberOfEdges),Level=30)
-      
+
        DO i=1,Mesh % NumberOfEdges
           Edge => Mesh % Edges(i)
           IF ( ASSOCIATED( Edge % NodeIndexes ) ) THEN
@@ -474,8 +474,8 @@ CONTAINS
        NULLIFY( Mesh % Edges )
        IF( Mesh % NumberOfEdges == 0 ) RETURN
        Mesh % NumberOfEdges = 0
-       
-       IF( ASSOCIATED( Mesh % Elements ) ) THEN      
+
+       IF( ASSOCIATED( Mesh % Elements ) ) THEN
          DO i=1,SIZE(Mesh % Elements)
            IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) THEN
              DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
@@ -484,7 +484,7 @@ CONTAINS
          END DO
        END IF
      END IF
-       
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMeshEdgeTables
 !------------------------------------------------------------------------------
@@ -519,7 +519,7 @@ CONTAINS
        DEALLOCATE( Mesh % Faces )
        NULLIFY( Mesh % Faces )
        IF( Mesh % NumberOfFaces == 0 ) RETURN
-       
+
        Mesh % NumberOfFaces = 0
 
        IF( ASSOCIATED( Mesh % Elements ) ) THEN
@@ -531,7 +531,7 @@ CONTAINS
          END DO
        END IF
      END IF
-       
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMeshFaceTables
 !------------------------------------------------------------------------------
@@ -559,4 +559,4 @@ END MODULE MeshAllocations
 
 
 
-  
+

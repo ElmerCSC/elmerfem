@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,34 +13,34 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !------------------------------------------------------------------------------
-!> Module for saving result in the VTK legacy output ascii format. 
+!> Module for saving result in the VTK legacy output ascii format.
 !------------------------------------------------------------------------------
 MODULE VtkLegacyFile
 
   USE MeshBasics
   USE ElementDescription
   USE SaveUtils, ONLY : SolverOutputDirectory
-  
+
   IMPLICIT NONE
   !   PRIVATE
   SAVE
-  
+
   PUBLIC :: WriteVtkLegacyFile
-  
+
   TYPE :: VtkCell_t
     INTEGER :: nNodes
     ! FIXME: POINTER -> ALLOCATABLE when more compilers support it
     INTEGER, POINTER :: NodeIndex(:)
   END TYPE VtkCell_t
-  
+
   INTEGER, PARAMETER :: VtkUnit = 58
 
 
@@ -48,54 +48,54 @@ CONTAINS
 
   SUBROUTINE WriteVtkLegacyFile( VtkFile, Model, SubtractDisp )
     CHARACTER(LEN=*), INTENT(IN) :: VtkFile
-    TYPE(Model_t) :: Model 
+    TYPE(Model_t) :: Model
     LOGICAL, INTENT(IN) :: SubtractDisp
     TYPE(Variable_t), POINTER :: Var,Var1
     CHARACTER(LEN=512) :: str, VarName
     INTEGER :: i,j,k
-    
+
     OPEN( UNIT=VtkUnit, FILE=VtkFile, STATUS='UNKNOWN' )
-    
+
     CALL WriteGrid( VtkUnit, Model, SubtractDisp )
-    
+
     WRITE( VtkUnit,'("POINT_DATA ",I0)' ) Model % NumberOfNodes
-    
+
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )
       IF ( .NOT.Var % Output ) THEN
         Var => Var % Next
         CYCLE
       END IF
-      
+
       IF ( SIZE( Var % Values ) == Var % DOFs ) THEN
         Var => Var % Next
         CYCLE
       END IF
-      
-      
+
+
       SELECT CASE( Var % Name(1:Var % NameLen) )
-        
+
       CASE( 'mesh update' )
         Var1 => Model % Variables
-        
+
         DO WHILE( ASSOCIATED( Var1 ) )
           IF ( TRIM( Var1 % Name ) == 'displacement' ) EXIT
           Var1 => Var1 % Next
         END DO
-        
+
         IF ( .NOT.ASSOCIATED( Var1 ) ) THEN
           CALL WriteVector("Mesh.Update", Var, Model % NumberOfNodes,&
               3, VtkUnit)
         END IF
-        
+
       CASE( 'mesh update 1','mesh update 2', 'mesh update 3' )
-        
+
       CASE( 'displacement' )
         WRITE( VtkUnit,'("VECTORS ",A," double")' ) "Displacement"
         DO i = 1, Model % NumberOfNodes
           k = i
           IF ( ASSOCIATED( Var % Perm ) ) k = Var % Perm(k)
-          
+
           IF ( k > 0 ) THEN
             DO j=1,Var % DOFs
               WRITE( VtkUnit,'(ES16.7E3)',ADVANCE='NO' ) &
@@ -104,7 +104,7 @@ CONTAINS
             IF ( Var % DOFs < 3 ) THEN
               WRITE( VtkUnit,'(" 0.0")',ADVANCE='NO' )
             END IF
-            WRITE( VtkUnit, * ) 
+            WRITE( VtkUnit, * )
           ELSE
             Var1 => Model % Variables
             DO WHILE( ASSOCIATED( Var1 ) )
@@ -122,7 +122,7 @@ CONTAINS
                 IF ( Var1 % DOFs < 3 ) THEN
                   WRITE( VtkUnit,'(" 0.0")', ADVANCE='NO' )
                 END IF
-                WRITE( VtkUnit, * ) 
+                WRITE( VtkUnit, * )
               ELSE
                 WRITE( VtkUnit,'(" 0.0 0.0 0.0")' )
               END IF
@@ -131,9 +131,9 @@ CONTAINS
             END IF
           END IF
         END DO
-        
+
       CASE( 'displacement 1','displacement 2','displacement 3' )
-        
+
       CASE( 'flow solution' )
         CALL WriteVector( "Velocity", Var, Model % NumberOfNodes, 4, &
             VtkUnit )
@@ -145,16 +145,16 @@ CONTAINS
           WRITE( VtkUnit,'(ES16.7E3)' ) &
               Var % Values(Var % DOFs*(k-1)+Var % DOFs)
         END DO
-        
+
       CASE( 'velocity 1','velocity 2','velocity 3','pressure' )
-        
+
       CASE( 'magnetic field' )
         CALL WriteVector( "MagField", Var, Model % NumberOfNodes, 3, &
             VtkUnit)
       CASE( 'magnetic field 1','magnetic field 2', 'magnetic field 3' )
-        
+
       CASE( 'coordinate 1','coordinate 2','coordinate 3' )
-        
+
       CASE DEFAULT
         IF ( Var % DOFs == 1 ) THEN
           DO i=1,Var % NameLen
@@ -162,7 +162,7 @@ CONTAINS
             IF (str(i:i) == ' ') str(i:i) = '.'
           END DO
           str(1:1) = CHAR(ICHAR(str(1:1))-ICHAR('a')+ICHAR('A'))
-          
+
           WRITE(VtkUnit,'("SCALARS ",A," double")') str(1:Var%NameLen)
           WRITE( VtkUnit,'("LOOKUP_TABLE default")' )
           DO i = 1, Model % NumberOfNodes
@@ -178,20 +178,20 @@ CONTAINS
       END SELECT
       Var => Var % Next
     END DO
-    
+
 
     CLOSE( VtkUnit )
   END SUBROUTINE WriteVtkLegacyFile
-  
+
 
   SUBROUTINE WriteVector( VarName, Var, nNodes, MaxDOF, IOUnit )
     CHARACTER(*), INTENT(IN) :: VarName
     TYPE(Variable_t), INTENT(IN) :: Var
     INTEGER, INTENT(IN) :: nNodes, MaxDOF, IOUnit
     INTEGER :: i, j, k, n
-    
+
     n = Var % DOFs - (MaxDOF - 3)
-    
+
     WRITE( IOUnit, '("VECTORS ",A," double")' ) TRIM( VarName )
     DO i = 1, nNodes
       k = i
@@ -204,19 +204,19 @@ CONTAINS
         IF ( n < 3 ) THEN
           WRITE( IOUnit,'(" 0.0")',ADVANCE='NO' )
         END IF
-        WRITE( IOUnit, * ) 
+        WRITE( IOUnit, * )
       ELSE
         WRITE( IOUnit,'(" 0.0 0.0 0.0")' )
       END IF
     END DO
   END SUBROUTINE WriteVector
-  
+
 
   LOGICAL FUNCTION FreeSurface( Model )
     TYPE(Model_t), INTENT(IN) :: Model
     LOGICAL :: MoveBoundary, GotIt
     INTEGER :: i
-    
+
     FreeSurface = .FALSE.
     MoveBoundary = .FALSE.
     DO i = 1, Model % NumberOfBCs
@@ -226,16 +226,16 @@ CONTAINS
       IF ( FreeSurface ) THEN
         MoveBoundary = ListGetLogical( Model % BCs(i) % Values, &
             'Internal Move Boundary', GotIt )
-        
+
         IF ( .NOT.GotIt ) MoveBoundary = .TRUE.
-        
+
         FreeSurface = FreeSurface .AND. MoveBoundary
       END IF
-      
+
       IF ( FreeSurface ) EXIT
     END DO
   END FUNCTION FreeSurface
-  
+
 
     SUBROUTINE WriteGrid ( IOUnit, Model, SubtractDisp )
         USE DefUtils
@@ -250,25 +250,25 @@ CONTAINS
         TYPE(VtkCell_t), POINTER :: VtkCells(:)
         REAL(KIND=dp), POINTER :: TmpArray(:,:)
         REAL(KIND=dp) :: CoordScale(3)
-               
+
         CoordScale = 1.0_dp
         IF( ListGetLogical( Model % Solver % Values,'Coordinate Scaling Revert', Found ) ) THEN
-          TmpArray => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )    
-          IF( Found ) THEN            
-            DO i=1,Model % Mesh % MaxDim 
+          TmpArray => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )
+          IF( Found ) THEN
+            DO i=1,Model % Mesh % MaxDim
               j = MIN( i, SIZE(TmpArray,1) )
               CoordScale(i) = 1.0_dp / TmpArray(j,1)
             END DO
           END IF
         END IF
-    
-        WRITE ( IOUnit, '("# vtk DataFile Version 3.0")' ) 
+
+        WRITE ( IOUnit, '("# vtk DataFile Version 3.0")' )
         WRITE ( IOUnit, '("ElmerSolver output; started at ", A)' ) TRIM( FormatDate() )
-        WRITE ( IOUnit, '("ASCII")' ) 
-        WRITE ( IOUnit, '("DATASET UNSTRUCTURED_GRID")' ) 
+        WRITE ( IOUnit, '("ASCII")' )
+        WRITE ( IOUnit, '("DATASET UNSTRUCTURED_GRID")' )
 
         !
-        ! Coordinates: 
+        ! Coordinates:
         !
         WRITE ( IOUnit, '("POINTS ", I0, " double")' ) Model % NumberOfNodes
 
@@ -314,10 +314,10 @@ CONTAINS
           IF( SubtractDisp ) THEN
             k = 0
             IF( ASSOCIATED(Displacement)) k = Displacement % Perm(i)
-            
+
             l = 0
             IF ( ASSOCIATED( MeshUpdate ) ) l = MeshUpdate % Perm(i)
-            
+
             IF ( k > 0 ) THEN
               k = Displacement % DOFs * (k-1)
               Coord(1) = Coord(1) - Displacement % Values(k+1)
@@ -337,11 +337,11 @@ CONTAINS
           END IF
 
           Coord = CoordScale * Coord
-          
+
           IF( dim <= 2 ) THEN
-            WRITE( IOUnit,'(2ES16.7E3,A)' ) Coord(1:2),' 0.0' 
+            WRITE( IOUnit,'(2ES16.7E3,A)' ) Coord(1:2),' 0.0'
           ELSE
-            WRITE( IOUnit,'(3ES16.7E3)' ) Coord 
+            WRITE( IOUnit,'(3ES16.7E3)' ) Coord
           END IF
         END DO
 
@@ -351,7 +351,7 @@ CONTAINS
         ! CELLS
         !
         CALL GetNVtkCells ( Model, nVtkCells, nVtkCellNum )
-        
+
         WRITE( IOUnit,'("CELLS ",I0," ",I0)' ) nVtkCells, nVtkCellNum
         DO i = 1, Model%NumberOfBulkElements + Model%NumberOfBoundaryElements
 
@@ -392,9 +392,9 @@ CONTAINS
         END DO
 
         BCOffset = 100
-        DO WHILE( BCOffset <= Model % NumberOfBodies ) 
+        DO WHILE( BCOffset <= Model % NumberOfBodies )
           BCOffset = 10 * BCOffset
-        END DO       
+        END DO
         DO i=Model % NumberOfBulkElements+1, &
             Model % NumberOFBulkElements+Model % NumberOfBoundaryElements
           WRITE( IOUnit, * ) BCOffset+GetBCId( Model % Elements(i) )
@@ -538,46 +538,46 @@ END MODULE VtkLegacyFile
 
 
 !------------------------------------------------------------------------------
-!> Subroutine for legacy VTK output. 
+!> Subroutine for legacy VTK output.
 !> Note that this has been replaced by the more concurrent XML VTK cased formats.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  
-  USE DefUtils 
+
+  USE DefUtils
   USE VtkLegacyFile
-  
+
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(dp) :: dt
   LOGICAL :: TransientSimulation
-  
+
   INTEGER, SAVE :: nTime = 0
   LOGICAL :: GotIt
   CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
   CHARACTER(:), ALLOCATABLE, SAVE :: OutputDirectory
-  
+
   ! Avoid compiler warings about unused variables
   IF ( TransientSimulation ) CONTINUE
   IF ( dt > 0.0 ) CONTINUE
-      
+
   IF ( nTime == 0 ) THEN
     FilePrefix = GetString( Solver % Values,'Output File Name',GotIt )
     IF ( .NOT.GotIt ) FilePrefix = "Output"
 
     CALL SolverOutputDirectory( Solver, FilePrefix, OutputDirectory, &
         UseMeshDir = .TRUE. )
-    FilePrefix = TRIM(OutputDirectory)// '/' //TRIM(FilePrefix)        
+    FilePrefix = TRIM(OutputDirectory)// '/' //TRIM(FilePrefix)
   END IF
   nTime = nTime + 1
 
   CALL WriteData( TRIM(FilePrefix), Model, nTime )
-      
+
 
     CONTAINS
-      
+
       SUBROUTINE WriteData( Prefix, Model, nTime )
         USE GeneralUtils, ONLY : ComplexValues
         CHARACTER(*), INTENT(IN) :: Prefix
@@ -591,11 +591,11 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
         REAL(dp), POINTER :: OrigValues(:)
         COMPLEX(dp), POINTER :: cValues(:)
         INTEGER :: OrigDOFs
-        
+
         Mesh => Model % Mesh
-                    
+
         EigAnal = .FALSE.
-        
+
         Solvers: DO i = 1, Model % NumberOfSolvers
           EigAnal = ListGetLogical( Model % Solvers(i) % Values, &
               "Eigen Analysis", GotIt )
@@ -604,7 +604,7 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
             DO j = 1, Model % Solvers(i) % NOfEigenValues
               OrigValues => Var % Values
               OrigDOFs = Var % DOFs
-              
+
               IF ( Model % Solvers(i) % Matrix % COMPLEX ) THEN
                 Var % DOFs = Var % DOFs*2
                 ALLOCATE( Var % Values(2*SIZE(Var%EigenVectors,2)) )
@@ -614,11 +614,11 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
                 ALLOCATE( Var % Values(SIZE(Var % EigenVectors,2)) )
                 Var % Values = Var % EigenVectors(j,:)
               END IF
-              
+
               WRITE( VtkFile, '(A,I4.4,"_",I3.3,".vtk")' ) &
                   Prefix, nTime, j
               CALL WriteVtkLegacyFile( VtkFile, Model, .FALSE. )
-              
+
               DEALLOCATE( Var % Values )
               Var % Values => OrigValues
               Var % DOFs = OrigDOFs
@@ -626,13 +626,13 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
             EXIT Solvers
           END IF
         END DO Solvers
-        
+
         IF ( .NOT.EigAnal ) THEN
           WRITE( VtkFile,'(A,I4.4,".vtk")' ) Prefix,nTime
           CALL WriteVtkLegacyFile( VtkFile, Model, .TRUE. )
         END IF
-        
+
       END SUBROUTINE WriteData
-      
+
     END SUBROUTINE VtkOutputSolver
 

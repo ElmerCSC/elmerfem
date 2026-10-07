@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -35,7 +35,7 @@ PROGRAM Solver
    USE GeneralUtils, ONLY : FormatDate
    USE LoadMod, ONLY : CPUTime, RealTime, envir
    USE SParIterGlobals, ONLY : ParEnv
-   
+
    IMPLICIT NONE
 
    REAL(KIND=dp) :: CT, RT
@@ -75,13 +75,13 @@ PROGRAM Solver
    nargs = COMMAND_ARGUMENT_COUNT()
 
    ! Collect command line arguments
-   IF( nargs > 0 ) THEN 
+   IF( nargs > 0 ) THEN
      ALLOCATE(args(nargs))
      ALLOCATE(CHARACTER(MAX_PATH_LEN)::buf)
 
      iargc = 0
      DO WHILE( iargc < nargs )
-       iargc = iargc + 1 
+       iargc = iargc + 1
        CALL GET_COMMAND_ARGUMENT(iargc, buf, length=arglen)
        args(iargc) % astr = buf(1:arglen)
      END DO
@@ -101,7 +101,7 @@ PROGRAM Solver
        CALL FLUSH(6)
      END IF
    END IF
-   
+
 END PROGRAM Solver
 
 ! ******************************************************************************

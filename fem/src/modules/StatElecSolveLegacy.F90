@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 20 Jun 2002
 ! *
@@ -72,13 +72,13 @@ SUBROUTINE StatElecSolverLegacy_Init( Model,Solver,dt,TransientSimulation)
     IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Electric Energy Density' )
-    
+
     Calculate = ListGetLogical(Params,'Calculate Electric Field',Found)
     IF( Calculate ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
           '-dofs '//I2S(dim)//' electric field' )
     END IF
-    
+
     Calculate = ListGetLogical(Params,'Calculate Electric Flux',Found)
     IF( Calculate ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
@@ -91,14 +91,14 @@ SUBROUTINE StatElecSolverLegacy_Init( Model,Solver,dt,TransientSimulation)
           'p-elements are supported by the modernized StatElecSolveVec module',Level=3)
       IF(str(1:2) == 'p:') CALL Fatal('StatElecSolver_init','No support for p-elements in solver!')
     END IF
-        
-    ! If computation of capacitance matrix is requested then compute 
+
+    ! If computation of capacitance matrix is requested then compute
     ! set the flag for load computation also.
     !------------------------------------------------------------------
     CalculateCapMatrix = ListGetLogical( Params, &
         'Calculate Capacitance Matrix', Found )
     IF(.NOT. Found ) THEN
-      DO i = 1, Model % NumberOfEquations 
+      DO i = 1, Model % NumberOfEquations
         CalculateCapMatrix = ListGetLogical( Model % Equations(i) % Values, &
             'Calculate Capacitance Matrix', Found )
         IF ( CalculateCapMatrix ) THEN
@@ -120,10 +120,10 @@ END SUBROUTINE StatElecSolverLegacy_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solves the Poisson equation for the electric potential and compute the 
+!>  Solves the Poisson equation for the electric potential and compute the
 !>  electric field, flux, energy and capacitance as requested using nodal averaging.
 !
-!>  Note that the permittivity of vacuum is divided into the right hand side of the 
+!>  Note that the permittivity of vacuum is divided into the right hand side of the
 !>  equation. This has to be accounted for in setting the body forces and
 !>  assigning flux boundary conditions
 !> \ingroup Solvers
@@ -131,7 +131,7 @@ END SUBROUTINE StatElecSolverLegacy_Init
 SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE Types
-  USE Lists 
+  USE Lists
   USE Integration
   USE ElementDescription
   USE Differentials
@@ -140,15 +140,15 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
   USE Adaptive
   USE DefUtils
 !$ USE omp_lib ! Include module conditionally
-  
+
   IMPLICIT NONE
 !------------------------------------------------------------------------------
- 
+
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET:: Solver
   REAL (KIND=DP) :: dt
   LOGICAL :: TransientSimulation
-      
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -194,7 +194,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
       CapBodies, CalculateCapMatrix, CapBodyIndex, &
       CapMatrix, CalculateField, CapMatrixFile, ConstantWeights, &
       ConstantBulk, AssemblyDone, Charges
-  
+
   INTERFACE
     SUBROUTINE StatElecSolverLegacy_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
@@ -204,7 +204,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
       REAL(KIND=dp) :: Quant(:), Indicator(2), Gnorm
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolverLegacy_Boundary_Residual
-    
+
     SUBROUTINE StatElecSolverLegacy_Edge_Residual( Model,Edge,Mesh,Quant,Perm,Indicator)
       USE Types
       TYPE(Element_t) :: Edge
@@ -213,7 +213,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
       REAL(KIND=dp) :: Quant(:), Indicator(2)
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolverLegacy_Edge_Residual
-    
+
     SUBROUTINE StatElecSolverLegacy_Inside_Residual( Model,Element,Mesh,Quant,Perm, Fnorm,Indicator)
       USE Types
       TYPE(Element_t) :: Element
@@ -223,14 +223,14 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
       INTEGER :: Perm(:)
     END SUBROUTINE StatElecSolverLegacy_Inside_Residual
   END INTERFACE
-  
+
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
 
-  
+
   Params => GetSolverParams()
 
   PotentialPerm => Solver % Variable % Perm
@@ -244,7 +244,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 
   Norm = Solver % Variable % Norm
   dim = CoordinateSystemDimension()
-  
+
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -296,7 +296,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
 !  Get the result fields
-!  These should have been automatically created by the 
+!  These should have been automatically created by the
 !  'Exported Variables' defined in the _init section
 !------------------------------------------------------------------------------
 
@@ -305,7 +305,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
     IF( .NOT. ASSOCIATED( Var) ) CALL Fatal(Caller,'"Electric Field" does not exist')
     Field => Var % Values
   END IF
-  
+
   IF ( CalculateFlux ) THEN
     Var => VariableGet( Solver % Mesh % Variables,'Electric Flux')
     IF( .NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'"Electric Flux" does not exist')
@@ -317,7 +317,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
     IF( .NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'"Electric Energy Density" does not exist')
     Energy => Var % Values
   END IF
-   
+
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
@@ -325,13 +325,13 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
   PermittivityOfVacuum = ListGetConstReal( Model % Constants, &
       'Permittivity Of Vacuum', GotIt )
   IF ( .NOT. GotIt ) PermittivityOfVacuum = 1.0_dp
-  
+
   NonlinearIter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT. GotIt ) NonlinearIter = 1
- 
+
   IF(CalculateCapMatrix) NonlinearIter = CapBodies
-  
+
 !------------------------------------------------------------------------------
   CALL Info( Caller, '-------------------------------------',Level=4 )
   CALL Info( Caller, 'Electrostatics solver:  ', Level=4 )
@@ -339,13 +339,13 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultStart()
 
-  
+
   DO iter = 1, NonlinearIter
      at  = CPUTime()
      at0 = RealTime()
 
      CALL DefaultInitialize()
-  
+
      IF ( NonlinearIter > 1 ) THEN
        CALL Info( Caller,'Electrostatic iteration: '//I2S(iter) , Level=5 )
      END IF
@@ -364,7 +364,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
     END IF
 
     CALL BoundaryAssembly()
- 
+
 !------------------------------------------------------------------------------
 !    Solve the system and we are done.
 !------------------------------------------------------------------------------
@@ -387,7 +387,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF ( CalculateEnergy ) THEN
-      Wetot = ParallelReduction(Wetot)      
+      Wetot = ParallelReduction(Wetot)
       WRITE( Message, * ) 'Tot. Electric Energy  :', Wetot
       CALL Info( Caller, Message, Level=4 )
       CALL ListAddConstReal( Model % Simulation,'res: Electric Energy', Wetot )
@@ -396,7 +396,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !    Try to find a potential difference for scalar capacitance calculation
 !------------------------------------------------------------------------------
-    IF ( .NOT. CalculateCapMatrix ) THEN      
+    IF ( .NOT. CalculateCapMatrix ) THEN
       PotentialDifference = ListGetConstReal( Params, &
            'Potential Difference',gotIt )
       IF ( .NOT.gotIt )  PotentialDifference = ListGetConstReal( &
@@ -409,32 +409,32 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
           IF ( GotIt )  EXIT
         END DO
       END IF
-      
+
       IF(.NOT. GotIt) THEN
         ! parallel reduction needed
         MinPotential = ParallelReduction(MinPotential,1)
         MaxPotential = ParallelReduction(MaxPotential,2)
         PotentialDifference = MaxPotential - MinPotential
       END IF
-      
+
       IF(PotentialDifference > TINY(PotentialDifference)) THEN
         CALL ListAddConstReal( Model % Simulation, &
             'res: Potential Difference', PotentialDifference )
-        
+
         IF(CalculateEnergy) THEN
           Capacitance = 2*Wetot / (PotentialDifference*PotentialDifference)
           WRITE( Message,* ) 'Potential difference: ',PotentialDifference
           CALL Info( Caller, Message, Level=8 )
-          
+
           WRITE( Message, * ) 'Capacitance           :', Capacitance
           CALL Info( Caller, Message, Level=4 )
-          
+
           CALL ListAddConstReal( Model % Simulation, &
               'res: Capacitance', Capacitance )
         END IF
       END IF
     END IF
-    
+
 !------------------------------------------------------------------------------
 
     IF(CalculateCapMatrix) THEN
@@ -465,17 +465,17 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
       WRITE( Message, * ) 'Result Norm   : ',Norm
       CALL Info( Caller, Message, Level=4 )
       WRITE( Message, * ) 'Relative Change : ',RelativeChange
-      CALL Info( Caller, Message, Level=4 )       
-      
+      CALL Info( Caller, Message, Level=4 )
+
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END IF
-    
+
   END DO
-   
+
    IF(CalculateCapMatrix) THEN
      ! Symmetrisize the capacitance matrix as we know from physics it should be symmetric!
      ! This is a way also to get more accuracy.
-     
+
      IF( ParEnv % PEs > 1 ) THEN
        ALLOCATE( CapMatrixPara( CapBodies, CapBodies ) )
        CapMatrixPara = CapMatrix
@@ -486,15 +486,15 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 
      IF( ParEnv % MyPE == 0 ) THEN
        CapMatrix = 0.5_dp * (CapMatrix + TRANSPOSE(CapMatrix))
-       
+
        CALL Info(Caller,'Capacitance matrix computation performed (i,j,C_ij)',Level=4)
-       DO i=1, CapBodies 
+       DO i=1, CapBodies
          DO j = i, CapBodies
            WRITE( Message, '(I3,I3,ES15.5)' ) i,j,CapMatrix(i,j)
            CALL Info( Caller, Message, Level=4 )
          END DO
        END DO
-      
+
        CapMatrixFile = ListGetString(Params,'Capacitance Matrix Filename',GotIt )
        IF( GotIt ) THEN
          OPEN (10, FILE=CapMatrixFile)
@@ -504,7 +504,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
            END DO
            WRITE(10,'(A)') ' '
          END DO
-         CLOSE(10)     
+         CLOSE(10)
          WRITE(Message,'(A,A)') 'Capacitance matrix was saved to file ',CapMatrixFile
          CALL Info(Caller,Message)
        END IF
@@ -518,26 +518,26 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
        StatElecSolverLegacy_Boundary_Residual )
      END IF
    END IF
-   
+
    CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Potential')
 
    IF ( CalculateField ) THEN
      CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Field')
    END IF
-   
+
    IF ( CalculateFlux ) THEN
      CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Flux')
    END IF
-   
+
    IF ( CalculateEnergy ) THEN
      CALL InvalidateVariable( Model % Meshes, Solver % Mesh, 'Electric Energy Density')
    END IF
 
    CALL DefaultFinish()
 
-   
+
 !------------------------------------------------------------------------------
- 
+
    CONTAINS
 
 !------------------------------------------------------------------------------
@@ -546,7 +546,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
        INTEGER :: Nelem
 
        Nelem = GetNOFActive()
-       
+
        Var => VariableGet( Model % Variables, 'Displacement' )
 
        !------------------------------------------------------------------------------
@@ -615,10 +615,10 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
                NodeIndexes => CurrentElement % NodeIndexes
                DO j=1,GetElementNOFNodes()
                  l = PotentialPerm(NodeIndexes(j))
-                 
+
                  ! IF ( Done(l) ) CYCLE
                  ! Done(l) = .TRUE.
-                                
+
                  ! NOTE: critical could be replace by atomic capture
                  !$omp critical(StatElecSolvePermDone)
                  DoneL = Done(l)
@@ -632,7 +632,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
                  DO k=Solver % Matrix % Rows(l),Solver % Matrix % Rows(l+1)-1
                    DO WHILE(m<CM % Rows(2))
                      IF ( CM % Cols(m)>=Solver % Matrix % Cols(k) ) EXIT
-                     m = m+1  
+                     m = m+1
                    END DO
                    IF ( m>=CM % Rows(2) ) EXIT
                    IF ( CM % Cols(m) == Solver % Matrix % Cols(k) ) THEN
@@ -964,7 +964,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
      IF(CalculateEnergy) Energy = 0.0_dp
      IF(CalculateFlux) Flux = 0.0_dp
      IF(CalculateField) Field = 0.0_dp
-     
+
      dim = CoordinateSystemDimension()
      Wetot = 0.0_dp
 
@@ -972,7 +972,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
      IF (istat /= 0) CALL Fatal('GeneralElectricFlux',&
                                 'Memory allocation failed 1')
      SumOfWeights = 0.0_dp
-     
+
      PermittivityOfVacuum = ListGetConstReal( Model % Constants, &
            'Permittivity Of Vacuum',gotIt )
      IF ( .NOT.gotIt ) PermittivityOfVacuum = 1
@@ -1177,12 +1177,12 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 
      END DO ! element loop
      !$omp end do
-     
+
 
 !------------------------------------------------------------------------------
 !   Finally, compute average of the fluxes at nodes
 !------------------------------------------------------------------------------
-     !$omp do 
+     !$omp do
      DO j = 1, SIZE( Potential )
        IF ( ABS( SumOfWeights(j) ) > 0.0_dp ) THEN
          IF ( CalculateEnergy )  Energy(j) = &
@@ -1217,7 +1217,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
    END SUBROUTINE GeneralElectricFlux
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
      SUBROUTINE StatElecCompose( StiffMatrix,Force,PiezoMaterial, PiezoCoeff, &
                             Permittivity,Load,Element,n,ntot,Nodes, Displacement, &
@@ -1345,8 +1345,8 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 
 
 !------------------------------------------------------------------------------
-!> To compute the capacitance matrix for m bodies, also m permutations are 
-!> required. This subroutine sets at permutation i, the body i to 1, 
+!> To compute the capacitance matrix for m bodies, also m permutations are
+!> required. This subroutine sets at permutation i, the body i to 1,
 !> and all else to 0.
 !------------------------------------------------------------------------------
   SUBROUTINE SetPermutationBoundaries( Model, StiffMatrix, ForceVector, &
@@ -1356,7 +1356,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
     TYPE(Model_t) :: Model
     TYPE(Matrix_t), POINTER :: StiffMatrix
     REAL(KIND=dp) :: ForceVector(:)
-    CHARACTER(LEN=*) :: Name 
+    CHARACTER(LEN=*) :: Name
     INTEGER :: Perm(:), Permutation
 !------------------------------------------------------------------------------
 
@@ -1374,23 +1374,23 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
     DO i=1,Model % NumberOfBCs
       BC => Model % BCs(i) % Values
       Body = ListGetInteger( BC, Name, gotIt )
-      
-      IF ( gotIt ) THEN           
+
+      IF ( gotIt ) THEN
         IF(Body == Permutation) THEN
           val = 1.0_dp
         ELSE
           val = 0.0_dp
         END IF
-        
+
         CALL ListAddConstReal( BC,TRIM(VarName),val)
-        MaxBody = MAX( MaxBody, Body ) 
+        MaxBody = MAX( MaxBody, Body )
       END IF
     END DO
 
     IF( Permutation == 1 ) THEN
       DO t = Mesh % NumberOfBulkElements + 1, &
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-        
+
         CurrentElement => Mesh % Elements(t)
 !------------------------------------------------------------------------------
 !      Set the current element pointer in the model structure to
@@ -1400,11 +1400,11 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
-        
+
         DO i=1,Model % NumberOfBCs
           IF ( CurrentElement % BoundaryInfo % Constraint == &
               Model % BCs(i) % Tag ) THEN
-            
+
             BC => Model % BCs(i) % Values
             Body = ListGetInteger( BC, Name, gotIt )
             IF( GotIt ) CapBodyIndex(NodeIndexes) = Body
@@ -1484,21 +1484,21 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
         y = SUM( Nodes % y(1:n)*Basis(1:n) )
         z = SUM( Nodes % z(1:n)*Basis(1:n) )
       END IF
-      
+
       CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
-      
+
       s = S_Integ(t) * SqrtElementMetric * SqrtMetric
-      
+
       AlphaAtIP = SUM( Basis(1:n) * Alpha(1:n))
       BetaAtIp = SUM( Basis(1:n) * Beta(1:n))
 
       IF( OpenBC ) THEN
-        PermAtIP = SUM( Basis(1:n) * Permittivity(1:n) ) 
+        PermAtIP = SUM( Basis(1:n) * Permittivity(1:n) )
         Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
         Coord(1) = x
         Coord(2) = y
         Coord(3) = z
-        AlphaAtIP = PermAtIP * SUM( Coord * Normal ) / SUM( Coord * Coord ) 
+        AlphaAtIP = PermAtIP * SUM( Coord * Normal ) / SUM( Coord * Coord )
       END IF
 
 !------------------------------------------------------------------------------
@@ -1510,7 +1510,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
               s * AlphaAtIp * Basis(q) * Basis(p)
         END DO
       END DO
-      
+
       DO q=1,N
         BoundaryVector(q) = BoundaryVector(q) + s * Basis(q) * Force
       END DO
@@ -1575,7 +1575,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
         CASE DEFAULT
            dim = CoordinateSystemDimension()
      END SELECT
-!    
+!
 !    ---------------------------------------------
 
      Element => Edge % BoundaryInfo % Left
@@ -1691,7 +1691,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
               u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
               v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
               w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
-      
+
               CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                          Symb, dSymb, u, v, w )
 
@@ -1718,7 +1718,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
            Residual = -SUM( Flux(1:En) * EdgeBasis(1:En) )
 
 
-!          flux given by the computed solution, and 
+!          flux given by the computed solution, and
 !          force norm for scaling the residual:
 !          -----------------------------------------
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
@@ -1874,7 +1874,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
            s = IntegStuff % s(t) * detJ * SqrtMetric
         END IF
 
-        ! 
+        !
         ! Compute flux over the edge as seen by elements
         ! on both sides of the edge:
         ! ----------------------------------------------
@@ -1886,7 +1886,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
                  Element => Edge % BoundaryInfo % Right
            END SELECT
 !
-!          Can this really happen (maybe it can...)  ?      
+!          Can this really happen (maybe it can...)  ?
 !          -------------------------------------------
            IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) CYCLE
 !
@@ -1946,7 +1946,7 @@ SUBROUTINE StatElecSolverLegacy( Model,Solver,dt,TransientSimulation )
         END DO
 
 !       Compute square of the flux jump:
-!       -------------------------------   
+!       -------------------------------
         EdgeLength  = EdgeLength + s
         Jump = 0.0_dp
         DO k=1,dim

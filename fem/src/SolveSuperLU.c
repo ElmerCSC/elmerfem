@@ -27,12 +27,12 @@ typedef struct {
 } factors_t;
 
 void
-FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n, 
+FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n,
   int *nnz, int *nrhs, double *values, int *rowind, int *colptr,
       double *b, int *ldb, fptr *f_factors, int *info)
 
 {
-/* 
+/*
  * This routine can be called from Fortran.
  *
  * iopt (input) int
@@ -41,13 +41,13 @@ FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n,
  *      = 2, performs triangular solve
  *      = 3, free all the storage in the end
  *
- * f_factors (input/output) fptr* 
+ * f_factors (input/output) fptr*
  *      If iopt == 1, it is an output and contains the pointer pointing to
  *                    the structure of the factored matrices.
  *      Otherwise, it it an input.
  *
  */
- 
+
     SuperMatrix A, AC, B;
     SuperMatrix *L, *U;
     int *perm_r; /* row permutations from partial pivoting */
@@ -80,7 +80,7 @@ FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n,
         /* Initialize the statistics variables. */
         StatAlloc(*n, *nprocs, panel_size, relax, &stat);
         StatInit(*n, *nprocs, &stat);
- 
+
         /* Adjust to 0-based indexing */
         for (i = 0; i < *nnz; ++i) --rowind[i];
         for (i = 0; i <= *n; ++i)  --colptr[i];
@@ -94,7 +94,7 @@ FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n,
 
         /*
          * Get column permutation vector perm_c[], according to permc_spec:
-         *   permc_spec = 0: natural ordering 
+         *   permc_spec = 0: natural ordering
          *   permc_spec = 1: minimum degree on structure of A'*A
          *   permc_spec = 2: minimum degree on structure of A'+A
          *   permc_spec = 3: approximate minimum degree for unsymmetric matrices

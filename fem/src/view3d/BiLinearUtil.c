@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -290,7 +290,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double BiLinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl, 
+double BiLinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     double FX,double FY,double FZ, double NFX,double NFY,double NFZ )
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
@@ -337,7 +337,7 @@ double BiLinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     {
        U = U_Integ[i];
        V = V_Integ[i];
-        
+
        NTX = BiLinearValue(U,V,NBX);
        NTY = BiLinearValue(U,V,NBY);
        NTZ = BiLinearValue(U,V,NBZ);
@@ -402,13 +402,13 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
 
     int i,j;
 
-    if ( LevelA & 1 ) 
+    if ( LevelA & 1 )
     {
         Fa = 0; Fb = 1;
         goto subdivide;
     }
 
-    if ( (LevelB & 1) && (GB->GeometryType != GEOMETRY_TRIANGLE) ) 
+    if ( (LevelB & 1) && (GB->GeometryType != GEOMETRY_TRIANGLE) )
     {
         Fa = 1; Fb = 0;
         goto subdivide;
@@ -425,7 +425,7 @@ void BiLinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Lev
 
     Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
 
-    if ( GA != GB ) 
+    if ( GA != GB )
     {
        U = V = 0.5;
        if ( GB->GeometryType == GEOMETRY_TRIANGLE ) U = V = 1.0/3.0;
@@ -653,7 +653,7 @@ subdivide:
         if ( !GB->Left ) (*Subdivide[GB->GeometryType])( GB,LevelB,1 );
 
         if ( GB->Flags & GEOMETRY_FLAG_LEAF )
-        {    
+        {
             GB->Flags &= ~GEOMETRY_FLAG_LEAF;
 
             GB->Left->Flags  |= GEOMETRY_FLAG_LEAF;

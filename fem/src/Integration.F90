@@ -365,9 +365,9 @@ MODULE Integration
 !------------------------------------------------------------------------------
 ! Tetrahedron - 24 point rule; exact integration of x^py^qz^r, p+q+r<=6
 ! The 24-point rule is reproduced from datasets available at
-!   
+!
 ! https://people.sc.fsu.edu/~jburkardt/datasets/quadrature_rules_tet/quadrature_rules_tet.html
-!   
+!
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(24), PRIVATE :: UTetra24P =  &
     (/ 0.3561913862225449d0, 0.2146028712591517d0, 0.2146028712591517d0, &
@@ -408,8 +408,8 @@ MODULE Integration
        0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
        0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
        0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1 /)
-   
-   
+
+
 !------------------------------------------------------------------------------
 ! A SELECTION OF QUADRATURE RULES UP TO A HIGH ORDER DESIGNED FOR ECONOMIC
 ! INTEGRATION OF COMPLETE POLYNOMIALS
@@ -440,7 +440,7 @@ MODULE Integration
 ! Quadrilateral - 12-point rule for complete polynomials of order p<=7
 ! NOTE: It seems that this rule may give somehow faulty results at least
 !       for some serendipity polynomials of degree 3. Therefore
-!       we never use it. 
+!       we never use it.
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(12), PRIVATE :: UPQuad12 = &
        (/ 0.925820099772551d0, -0.925820099772551d0,  0.000000000000000d0, &
@@ -2100,7 +2100,7 @@ CONTAINS
          p % v(1:n) = VTetra24P
          p % w(1:n) = WTetra24P
          p % s(1:n) = STetra24P / 6.0D0
-         p % n = 24        
+         p % n = 24
       CASE DEFAULT
 !        CALL Error( 'GaussPointsTetra', 'Invalid number of points requested.' )
 !        p % n = 0
@@ -2273,7 +2273,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   
+
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D wedge element
 !------------------------------------------------------------------------------
@@ -2637,12 +2637,12 @@ CONTAINS
          p % u(1:n) = UWedge5P
          p % v(1:n) = VWedge5P
          p % w(1:n) = WWedge5P
-         p % s(1:n) = SWedge5P 
+         p % s(1:n) = SWedge5P
       CASE (6)
          p % u(1:n) = UWedge6P
          p % v(1:n) = VWedge6P
          p % w(1:n) = WWedge6P
-         p % s(1:n) = SWedge6P 
+         p % s(1:n) = SWedge6P
       CASE (7)
          p % u(1:n) = UWedge7P
          p % v(1:n) = VWedge7P
@@ -2652,22 +2652,22 @@ CONTAINS
          p % u(1:n) = UWedge10P
          p % v(1:n) = VWedge10P
          p % w(1:n) = WWedge10P
-         p % s(1:n) = SWedge10P 
+         p % s(1:n) = SWedge10P
       CASE (11)
          p % u(1:n) = UWedge11P
          p % v(1:n) = VWedge11P
          p % w(1:n) = WWedge11P
-         p % s(1:n) = SWedge11P 
+         p % s(1:n) = SWedge11P
       CASE (14)
          p % u(1:n) = UWedge14P
          p % v(1:n) = VWedge14P
          p % w(1:n) = WWedge14P
-         p % s(1:n) = SWedge14P 
+         p % s(1:n) = SWedge14P
       CASE (15)
          p % u(1:n) = UWedge15P
          p % v(1:n) = VWedge15P
          p % w(1:n) = WWedge15P
-         p % s(1:n) = SWedge15P 
+         p % s(1:n) = SWedge15P
       CASE (16)
          p % u(1:n) = UWedge16P
          p % v(1:n) = VWedge16P
@@ -2678,7 +2678,7 @@ CONTAINS
          p % v(1:n) = VWedge24P
          p % w(1:n) = WWedge24P
          p % s(1:n) = SWedge24P
-         
+
       CASE DEFAULT
         CALL Fatal( 'GaussPointsWedgeEconomic',&
             'Invalid number of points requested')
@@ -2687,8 +2687,8 @@ CONTAINS
       p % n = n
 
       IF (ConvertToPWedge ) THEN
-        DO i=1,P % n  
-          uq = P % u(i) 
+        DO i=1,P % n
+          uq = P % u(i)
           vq = P % v(i)
           sq = P % s(i)
 
@@ -2698,13 +2698,13 @@ CONTAINS
 
           ! then to p-convention
           P % u(i) = -1.0d0 + 2.0d0*uq + vq
-          P % v(i) = SQRT(3.0d0) * vq            
+          P % v(i) = SQRT(3.0d0) * vq
           P % s(i) = SQRT(3.0d0) * sq / 2.0d0
         END DO
       ELSE
         ! Map to classical Elmer local coordinates in [0,1]
         p % u(1:n) = ( p % u(1:n)+1.0d0 ) / 2.0d0
-        p % v(1:n) = ( p % v(1:n)+1.0d0 ) / 2.0d0 
+        p % v(1:n) = ( p % v(1:n)+1.0d0 ) / 2.0d0
         p % s(1:n) = p % s(1:n) / 4.0d0
       END IF
       IP = p
@@ -2712,7 +2712,7 @@ CONTAINS
     END FUNCTION GaussPointsWedgeEconomic
 !------------------------------------------------------------------------------
 
-    
+
 
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D brick element for
@@ -2784,14 +2784,14 @@ CONTAINS
         n = 4
       CASE DEFAULT
         n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
-        
+
         IF ( n < 1 .OR. n > MAXN ) THEN
           p % n = 0
           WRITE( Message, * ) 'Invalid number of points: ', n
           CALL Fatal( 'GaussPointsBrick', Message )
         END IF
       END SELECT
-        
+
       t = 0
       DO i=1,n
         DO j=1,n
@@ -2902,7 +2902,7 @@ CONTAINS
      ELSE
        Hcurl = PRESENT(EdgeBasisDegree)
      END IF
-     
+
      IF (Hcurl) THEN
        UsePRefElement = .TRUE.
        IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
@@ -2919,7 +2919,7 @@ CONTAINS
      ELSE
        pElement = isActivePElement(elm)
      END IF
-     
+
      IF ( PRESENT(np) ) THEN
        n = np
      ELSE IF( PRESENT( RelOrder ) ) THEN
@@ -3046,7 +3046,7 @@ CONTAINS
            ! An explicit bubble augmentation with lower-order methods switches to
            ! the standard rule:
            IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
-           ! The economic 12-point rule appears to be somehow faulty, so we 
+           ! The economic 12-point rule appears to be somehow faulty, so we
            ! shall never call it
          END IF
 
@@ -3170,11 +3170,11 @@ CONTAINS
            IntegStuff = GaussPointsWedge(n)
         END IF
 
-     CASE (8)       
+     CASE (8)
        IntegStuff = GaussPointsBrick(n)
-       
+
      END SELECT
-       
+
    END FUNCTION GaussPoints
 
 
@@ -3187,8 +3187,8 @@ CONTAINS
      USE PElementMaps, ONLY : isActivePElement
      TYPE( Element_t ) :: elm
      LOGICAL, OPTIONAL :: EdgeBasis
-     LOGICAL, OPTIONAL :: PReferenceElement 
-     TYPE( GaussIntegrationPoints_t ) :: CornerStuff   
+     LOGICAL, OPTIONAL :: PReferenceElement
+     TYPE( GaussIntegrationPoints_t ) :: CornerStuff
 !------------------------------------------------------------------------------
      LOGICAL :: pElement
      INTEGER :: n, i, j, k, t, ecode
@@ -3211,14 +3211,14 @@ CONTAINS
      IF( n >= 5 .AND. n <= 7 ) n = n-1
      ip % n = n
      ip % s(1:n) = 1.0_dp / n
-     
+
      SELECT CASE( ecode  / 100 )
 
      CASE( 3 )
        ip % u(1) = 0.0_dp; ip % v(1) = 0.0_dp
        ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp
        ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp
-       
+
      CASE( 4 )
        t = 0
        DO i=1,2
@@ -3234,7 +3234,7 @@ CONTAINS
        ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp; ip % w(2) = 0.0_dp
        ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp; ip % w(3) = 0.0_dp
        ip % u(4) = 0.0_dp; ip % v(4) = 0.0_dp; ip % w(4) = 1.0_dp
-       
+
      CASE( 8 )
        t = 0
        DO i=1,2
@@ -3255,19 +3255,19 @@ CONTAINS
 
      IF( pElement ) THEN
        DO i=1,n
-         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))            
+         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))
        END DO
      END IF
-     
+
 #if 0
      PRINT *,'Corner Gauss Points:',n
      PRINT *,'u:',IP % u(1:n)
      PRINT *,'v:',IP % v(1:n)
      IF(ecode > 500) PRINT *,'w:',IP % w(1:n)
 #endif
-     
+
      CornerStuff = ip
-     
+
    END FUNCTION CornerGaussPoints
 
 
@@ -3279,8 +3279,8 @@ CONTAINS
      USE PElementMaps, ONLY : isActivePElement
      TYPE( Element_t ) :: elm
      LOGICAL, OPTIONAL :: EdgeBasis
-     LOGICAL, OPTIONAL :: PReferenceElement 
-     TYPE( GaussIntegrationPoints_t ) :: CornerStuff   
+     LOGICAL, OPTIONAL :: PReferenceElement
+     TYPE( GaussIntegrationPoints_t ) :: CornerStuff
 !------------------------------------------------------------------------------
      LOGICAL :: pElement
      INTEGER :: n, i, j, k, t, ecode
@@ -3303,19 +3303,19 @@ CONTAINS
      IF( n >= 5 .AND. n <= 7 ) n = n-1
      ip % n = 1
      ip % s(1:n) = 1.0_dp
-     
+
      SELECT CASE( ecode  / 100 )
 
      CASE( 3 )
        ip % u(1) = 1.0_dp/3.0_dp; ip % v(1) = 1.0_dp/3.0_dp
-       
+
      CASE( 4 )
        ip % u(1) = 0.0_dp
        ip % v(1) = 0.0_dp
 
      CASE( 5 )
        ip % u(1) = 1.0_dp/4.0_dp; ip % v(1) = 1.0_dp/4.0_dp; ip % w(1) = 1.0_dp/4.0_dp
-       
+
      CASE( 8 )
        ip % u(1) = 0.0_dp
        ip % v(1) = 0.0_dp
@@ -3328,23 +3328,23 @@ CONTAINS
 
      IF( pElement ) THEN
        DO i=1,n
-         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))            
+         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))
        END DO
      END IF
-     
+
 #if 0
      PRINT *,'Corner Gauss Points:',n
      PRINT *,'u:',IP % u(1:n)
      PRINT *,'v:',IP % v(1:n)
      IF(ecode > 500) PRINT *,'w:',IP % w(1:n)
 #endif
-     
+
      CornerStuff = ip
-     
+
    END FUNCTION CenterGaussPoints
 
-   
-   
+
+
 !----------------------------------------------------------------------------------
 !>  Return a suitable version of the Gaussian numerical integration method for
 !>  H(curl)-conforming finite elements. The default here is that the edge basis
@@ -3445,44 +3445,44 @@ CONTAINS
      INTEGER :: ElementCode
      REAL(KIND=dp) :: u,v,w
      REAL(KIND=dp), OPTIONAL :: s
-          
-     
+
+
      SELECT CASE( ElementCode / 100 )
 
      CASE(1,2,4,8)
        ! Nothing to do, reference element is the same
-       
+
      CASE(3)
        ! triangle
        u = 2*u + v - 1
        v = SQRT(3.0_dp)*v
        IF( PRESENT(s) ) s = SQRT(3.0_dp)*2*s
-        
+
      CASE(5)
        ! tetrahedron
        u = 2*u + v + w - 1
        v = SQRT(3._dp)*v + 1/SQRT(3._dp)*w
        w = 2*SQRT(2/3._dp)*w
-       IF(PRESENT(s)) s = 4*SQRT(2.0d0)*s       
+       IF(PRESENT(s)) s = 4*SQRT(2.0d0)*s
 
-     CASE(6) 
+     CASE(6)
        ! pyramid
        w = SQRT(2._dp)*w
        ! scaling of s??
-       
+
      CASE(7)
        ! wedge / prism
        u = 2*u + v - 1
        v = SQRT(3._dp)*v
-       IF(PRESENT(s)) s = 2*SQRT(3.0d0) * s       
+       IF(PRESENT(s)) s = 2*SQRT(3.0d0) * s
 
      CASE DEFAULT
        CALL Fatal('Integration::ConvertToPReference','Unsupported element type')
      END SELECT
-            
-     
+
+
    END SUBROUTINE ConvertToPReference
-   
+
 
 !---------------------------------------------------------------------------
 END MODULE Integration

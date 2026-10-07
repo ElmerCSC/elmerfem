@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 20.06.2007
 ! *
@@ -38,7 +38,7 @@
 !> For real meshes the direction of the normal is discrete for curved surfaces
 !> and this solution should give a smoother normal direction. Solver may also be used
 !> to compute the normal component of displacement or velocity field. Then this
-!> will be the result of the computation. 
+!> will be the result of the computation.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
@@ -70,10 +70,10 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE :: Values(:)
   CHARACTER(*), PARAMETER :: Caller = 'NormalSolver'
 
-  
+
   SAVE Visited
 
- 
+
   CALL Info( Caller, '-------------------------------------',Level=4 )
   CALL Info( Caller, 'Computing the normals',Level=4 )
   CALL Info( Caller, '-------------------------------------',Level=4 )
@@ -88,7 +88,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 
   SolverParams => GetSolverParams()
   Mesh => Solver % Mesh
-  
+
   VarName = GetString(SolverParams,'Normals Result Variable',GotIt )
   IF(.NOT. GotIt) THEN
     CALL Fatal(Caller,'> Normals Result Variable < not found!')
@@ -101,22 +101,22 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
        CALL Fatal(Caller,'The normals should have DOFs equal to DIM')
      END IF
   ELSE
-    CALL DefaultVariableAdd( VarName, dim, Var = NrmSol ) 
+    CALL DefaultVariableAdd( VarName, dim, Var = NrmSol )
   END IF
-  
+
 
   CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric
-  
+
   at0 = RealTime()
-  
+
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', GotIt )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
-  
+
   CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
-  ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),dim))  
+  ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),dim))
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
 
@@ -133,8 +133,8 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   at1 = RealTime()
   WRITE(Message,* ) 'Assembly Time: ',at1-at0
   CALL Info( Caller, Message, Level=5 )
-!        
-!------------------------------------------------------------------------------     
+!
+!------------------------------------------------------------------------------
   SetD = GetLogical(SolverParams, 'Set Dirichlet Conditions',GotIt)
   IF ( SetD ) THEN
     ALLOCATE(Values(SIZE(Solver % Matrix % Values)))
@@ -178,8 +178,8 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
       END DO
     END IF
   END DO
-!------------------------------------------------------------------------------     
- 
+!------------------------------------------------------------------------------
+
   DEALLOCATE( ForceVector )
 
   ! Optionally use the solver to project a vector field to normal direction
@@ -187,11 +187,11 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
     TYPE(Variable_t), POINTER :: Var1,Var2,Var3
     REAL(KIND=dp) :: nvec(3),dvec(3),dvec0(3)
     REAL(KIND=dp) :: maxd, limd, coeff
-    INTEGER :: id,in      
+    INTEGER :: id,in
     LOGICAL :: ScaleDt
-    
+
     Vname = ListGetString( SolverParams,'Vector Field to Project',GotIt )
-    IF(GotIt ) THEN 
+    IF(GotIt ) THEN
       ScaleDt = ListGetLogical(SolverParams,'Vector Field Timestep scaling',GotIt )
     ELSE
       IF( ListGetLogical( SolverParams,'Project Displacement',GotIt ) ) THEN
@@ -202,8 +202,8 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
         ScaleDt = .TRUE.
       END IF
     END IF
-    
-    IF( GotIt ) THEN       
+
+    IF( GotIt ) THEN
       CALL Info(Caller,'Projecting field "'//TRIM(Vname)//'" to normal direction',Level=5)
 
       ! We deal with displacement or velocity field with component-wise since
@@ -219,8 +219,8 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 
       dvec0(1) = ListGetCReal( SolverParams,'Vector Field Offset 1',GotIt)
       dvec0(2) = ListGetCReal( SolverParams,'Vector Field Offset 2',GotIt)
-      dvec0(3) = ListGetCReal( SolverParams,'Vector Field Offset 3',GotIt)      
-      
+      dvec0(3) = ListGetCReal( SolverParams,'Vector Field Offset 3',GotIt)
+
       nvec = 0.0_dp; dvec = 0.0_dp
       maxd = 0.0_dp
       DO i=1, Mesh % NumberOfNodes
@@ -242,7 +242,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
         dvec = SUM(dvec*nvec)*nvec
 
         maxd = MAX(maxd,SQRT(SUM(dvec(1:dim)**2)))
-        
+
         DO j=1,dim
           k = DOFs*(in-1)+j
           NrmSol % Values(k) = dvec(j)
@@ -262,30 +262,30 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
           coeff = limd / maxd
           WRITE(Message,'(A,ES12.3)') 'Limiting displacements with factor: ',coeff
           CALL Info(Caller,Message)
-          NrmSol % Values = coeff *  NrmSol % Values         
+          NrmSol % Values = coeff *  NrmSol % Values
         END IF
-      END IF            
+      END IF
     END IF
-      
+
   END BLOCK
 
 
-  IF( ListGetLogical(SolverParams,'Enforce Symmetry',GotIt) ) THEN 
-    CALL EnforceSymmetry()    
+  IF( ListGetLogical(SolverParams,'Enforce Symmetry',GotIt) ) THEN
+    CALL EnforceSymmetry()
   END IF
 
-  
+
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1
   CALL Info( Caller, Message, Level=5 )
-  
+
 CONTAINS
 
 
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-       
+
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:,:), Basis(:)
     REAL(KIND=dp), POINTER :: ArrayPtr(:) => NULL()
     REAL(KIND=dp) :: Weight, Normal(3), detJ, Point(3), r(3)
@@ -297,7 +297,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    
+
     n = MAX( Mesh % MaxElementDOFs, Mesh % MaxElementNodes )
     ALLOCATE( STIFF(n,n), FORCE(dim,n), Basis(n) )
 
@@ -326,11 +326,11 @@ CONTAINS
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
            IntegStuff % v(t), IntegStuff % w(t), detJ, Basis )
-        
+
         Weight = IntegStuff % s(t) * detJ
         IF ( CSymmetry ) Weight = Weight * &
               SUM( Basis(1:n) * Nodes % x(1:n) )
-        
+
         IF ( .NOT. ConstantBulkMatrixInUse ) THEN
           DO p=1,nd
             DO q=1,nd
@@ -338,7 +338,7 @@ CONTAINS
             END DO
           END DO
         END IF
-        
+
         Normal = NormalVector( Element, Nodes, &
            IntegStuff % u(t), IntegStuff % v(t), .TRUE. )
         IF (CheckOrientation) THEN
@@ -351,9 +351,9 @@ CONTAINS
           FORCE(i,1:nd) = FORCE(i,1:nd) + Weight*Normal(i)*Basis(1:nd)
         END DO
       END DO
-      
+
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         Solver % Matrix % RHS => SaveRHS
@@ -365,7 +365,7 @@ CONTAINS
         CALL DefaultUpdateForce( FORCE(i,1:nd) )
       END DO
     END DO
-    
+
     DEALLOCATE( STIFF, FORCE, Basis )
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
@@ -373,11 +373,11 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE EnforceSymmetry()
-!------------------------------------------------------------------------------       
-    LOGICAL :: Found    
+!------------------------------------------------------------------------------
+    LOGICAL :: Found
     INTEGER :: elem,t,i,j,n,nd,m
     TYPE(Element_t), POINTER :: Element
-    TYPE(Nodes_t), SAVE :: Nodes    
+    TYPE(Nodes_t), SAVE :: Nodes
 
     CALL Info(Caller,'Enforcing symmetry of normal field',Level=6)
 
@@ -397,14 +397,14 @@ CONTAINS
           EXIT
         END IF
       END DO
-      
+
       IF( Found ) THEN
         j = 3-i
 
         !PRINT *,'Indeces:',i,j,Element % NodeIndexes
         j = Element % NodeIndexes(j)
         i = Element % NodeIndexes(i)
-        
+
         j = NrmSol % Perm(j)
         i = NrmSol % Perm(i)
 
@@ -422,7 +422,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE NormalSolver
 !------------------------------------------------------------------------------
@@ -450,7 +450,7 @@ END SUBROUTINE NormalSolver
     dim = CoordinateSystemDimension()
 
     CALL ListAddNewString( SolverParams, 'Variable','-nooutput nrm_temp' )
-    
+
     VarName = GetString(SolverParams,'Normals Result Variable', Found )
     IF( .NOT. Found ) THEN
       CALL ListAddString( SolverParams,'Normals Result Variable','Normals')

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -30,17 +30,17 @@
 ! *  in a 2-D region corresponding to an electromagnetic port. Here P_z and
 ! *  the component of the electric field corresponding to the perpendicular
 ! *  direction to the plane are related in terms of the eigenvalue lambda
-! *  by the equation P_z = sqrt(lambda) E_z 
+! *  by the equation P_z = sqrt(lambda) E_z
 ! *
 ! *  This has been modified to be able to deal with multiple ports within the
-! *  same solver, and to combine them into one single field.  
-! * 
+! *  same solver, and to combine them into one single field.
+! *
 ! *  Authors: Mika Malinen & Peter Råback
 ! *  Email:   mika.malinen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Created: Sep 9, 2024
 ! *
@@ -68,23 +68,23 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: c
   CHARACTER(:), ALLOCATABLE :: sname, ndef
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
-  
+
   Params => GetSolverParams()
 
   UseV = GetLogical(Params, 'Use Potential', Found)
-  
+
   CALL ListAddNewLogical(Params, 'Linear System Complex', .TRUE.)
   CALL ListAddNewInteger(Params, 'Variable DOFs', 2)
-  CALL ListAddNewLogical(Params, 'Eigen Analysis', .TRUE.)  
+  CALL ListAddNewLogical(Params, 'Eigen Analysis', .TRUE.)
   CALL ListAddNewInteger(Params, 'Nonlinear System Max Iterations', 1)
 
-  soln = ListGetInteger( Params,'Primary Solver index', Found ) 
+  soln = ListGetInteger( Params,'Primary Solver index', Found )
   IF( soln == 0 ) THEN
     DO i=1,Model % NumberOfSolvers
       sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
       j = INDEX( sname,'VectorHelmholtzSolver')
       IF( j > 0 ) THEN
-        soln = i 
+        soln = i
         EXIT
       END IF
     END DO
@@ -95,10 +95,9 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     CALL ListCompareAndCopy(PrimaryParams, Params,'Use Piola Transform')
     CALL ListCompareAndCopy(PrimaryParams, Params,'Quadratic Approximation')
     CALL ListCompareAndCopy(PrimaryParams, Params,'Second Kind Basis')
-    CALL ListCompareAndCopy(PrimaryParams, Params,'Gradient Basis Functions')    
+    CALL ListCompareAndCopy(PrimaryParams, Params,'Gradient Basis Functions')
   END IF
- 
-  
+
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
 
@@ -132,14 +131,14 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     ELSE IF( SecondFamily ) THEN
       ! A background mesh of 6-node triangles or 8-node quads is needed to have
       ! quadratic nodal DOFs
-      sname = ndef//" e:2" 
+      sname = ndef//" e:2"
     ELSE IF (PiolaVersion) THEN
       sname = ndef//" e:1 -quad_face b:2 -quad b:2 -brick b:3"
     ELSE
       sname = ndef//" e:1"
     END IF
     CALL Info(Caller, 'Setting element type: '//TRIM(sname), Level=5)
-    CALL ListAddString(Params, "Element", TRIM(sname) )      
+    CALL ListAddString(Params, "Element", TRIM(sname) )
   END IF
 
   ! Set the port field to zero at BCs which are defined as port ground
@@ -159,7 +158,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
         CALL Info(Caller,'Enforcing unit scalar potential where "Unit Voltage" is True',Level=10)
         c = 1.0_dp
       END IF
-      
+
       IF (UseV) THEN
         CALL ListAddConstReal(BC, 'Eport re {n} 1', 0.0_dp)
         CALL ListAddConstReal(BC, 'Eport re {n} 2', c)
@@ -173,7 +172,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
       CALL ListAddConstReal(BC, 'Eport im {e}', 0.0_dp)
     END IF
   END DO
-  
+
   CALL ListAddNewString(Params, 'Variable', 'Eport[Eport re:1 Eport im:1]')
   CALL ListAddLogical(Params, 'Linear System refactorize', .TRUE.)
 
@@ -235,12 +234,12 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver'
 
   ! Let contained routines use the same handles for material parameters:
-  TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, NuCoeff_h  
-  
+  TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, NuCoeff_h
+
   SAVE :: SavePerm, SaveEigenVectors
 !------------------------------------------------------------------------------
 
- 
+
   CALL Info(Caller,'',Level=6)
   CALL Info(Caller,'-----------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving electromagnetic port equations over a surface',Level=4)
@@ -248,22 +247,22 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
   CALL ListInitElementKeyword(NuCoeff_h, 'Material', 'Relative Reluctivity', InitIm=.TRUE.)
   CALL ListInitElementKeyword(EpsCoeff_h, 'Material', 'Relative Permittivity', InitIm=.TRUE.)
-  
-  SolverPtr => Solver  
+
+  SolverPtr => Solver
   Mesh => GetMesh()
   Params => GetSolverParams()
 
-  IF ( CurrentCoordinateSystem() /= Cartesian ) THEN 
+  IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
     CALL Fatal(Caller,'Implemented only for Cartesian problems!')
   END IF
-  
+
   DOFs = Solver % Variable % Dofs
   IF (DOFs /= 2) THEN
     CALL Fatal(Caller, 'Complex field, specify two DOFs instead of '//I2S(DOFs))
   END IF
 
   UseV = GetLogical(Params, 'Use Potential', Found)
-  
+
   MaxPort = 0
   BetaSum = 0.0_dp
   DO i = 1,Model % NumberOfBCs
@@ -281,7 +280,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       MaxPort = MAX(MaxPort,j)
     END IF
   END DO
- 
+
   EMVar => Solver % Variable
   IF( MaxPort > 1) THEN
     CALL Info(Caller,'Creating separate matrices for each of '//I2S(MaxPort)//' ports!', Level=5)
@@ -291,7 +290,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
     ! Let's store the original permutation vector.
     ALLOCATE( SavePerm(SIZE(EMVar % Perm)))
-    SavePerm = EMVar % Perm     
+    SavePerm = EMVar % Perm
 
     ! Allocate a collector for the several BCs
     n = SIZE(EMVar % EigenVectors,1)
@@ -306,9 +305,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   ! nodal basis functions need a quadrature for integrands of degree 4
   QuadDegree = EdgeBasisDegree
   IF (SecondFamily .AND. EdgeBasisDegree == 1) QuadDegree = 2
-  
+
   EigenProblem = EigenOrHarmonicAnalysis(Solver)
-  
+
   CALL DefaultStart()
   CALL InitStuff()
 
@@ -316,26 +315,26 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   maxeps = 0.0_dp
 
   Active = GetNOFActive(Solver)
-  
+
   PORTWISE_SOLUTION: DO PortInd=1,MAX(MaxPort,1)
     CALL Info(Caller,'Solving for port: '//I2S(PortInd),Level=10)
     IF( MaxPort > 1 ) THEN
-      EMVar % Perm = 0 
+      EMVar % Perm = 0
       Solver % Matrix => CreateMatrix( Model, Solver, Solver % Mesh, EMVar % Perm, &
           EMVar % Dofs, MATRIX_CRS, .FALSE.,"Port Label "//I2S(PortInd), &
-          GlobalBubbles = Solver % GlobalBubbles, BcMode = .TRUE.)     
+          GlobalBubbles = Solver % GlobalBubbles, BcMode = .TRUE.)
 
       IF(ParEnv % PEs > 1 ) THEN
         MeActive = .FALSE.
         IF(ASSOCIATED(Solver % Matrix)) THEN
-          MeActive = ( Solver % Matrix % NumberOfRows > 0 )       
+          MeActive = ( Solver % Matrix % NumberOfRows > 0 )
         END IF
 
         IF ( MeActive ) THEN
           ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)))
           Solver % Matrix % MassValues = 0
         END IF
-        
+
         CALL ParallelActiveSubset(MeActive)
 
         IF(.NOT. MeActive) THEN
@@ -356,23 +355,23 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
     IF(MaxPort==0) THEN
       ModeIndex = ListGetInteger(Params, 'Eigenfunction Index', Found)
-      IF(.NOT. Found ) ModeIndex = 1            
+      IF(.NOT. Found ) ModeIndex = 1
     END IF
 
     DO t=1,Active
       Element => GetActiveElement(t,Solver)
-      
-      ! When we have several ports, then assemble only the correct one. 
+
+      ! When we have several ports, then assemble only the correct one.
       IF(MaxPort>0) THEN
         BC => GetBC(Element)
         IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
         ModeIndex = ListGetInteger(BC, 'Eigenfunction Index', Found)
-        IF(.NOT. Found ) ModeIndex = 1            
+        IF(.NOT. Found ) ModeIndex = 1
       END IF
-      
+
       EFamily = GetElementFamily(Element)
       IF (EFamily > 4) CYCLE
-      
+
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
 
@@ -391,7 +390,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       ELSE IF (EdgeBasisDegree == 1) THEN
         IF (n /= EFamily) CALL Fatal(Caller, 'A background mesh must have linear elements!')
       ELSE
-        SELECT CASE(EFamily)    
+        SELECT CASE(EFamily)
         CASE(3)
           IF (n < 6) CALL Fatal(Caller, 'A background mesh needs 6-node triangles')
         CASE(4)
@@ -406,16 +405,17 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         CALL LocalMatrix(Element, n, nd)
       END IF
     END DO
-  
+
     CALL DefaultFinishBulkAssembly()
 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
-    
+
     IF(ListGetLogical( Params,'Eigen System Shift Automatic',Found ) ) THEN
       maxeps = ParallelReduction(maxeps, 2)
       maxmu = ParallelReduction(maxmu, 2)
-      betalim = Omega * SQRT(maxeps*maxmu)    
+
+      betalim = Omega * SQRT(maxeps*maxmu)
       ! All eigenvalues lambda corresponding to propagating modes satisfy lambda > -betalim^2.
       ! Here the shift is placed somewhat beyond -betalim**2, since with the shift paramemeter
       ! sigma = -betalim**2 the diagonal entries of A - sigma*M vanish for gradient basis
@@ -432,12 +432,12 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
     Beta = SQRT(-Solver % Variable % EigenValues(ModeIndex))
     WRITE(Message,'(A,2ES15.6)') 'Propagation constant beta: ',REAL(Beta),AIMAG(Beta)
-    CALL Info(Caller,Message,Level=5)      
+    CALL Info(Caller,Message,Level=5)
     CALL ListAddConstReal( Model % Simulation,'res: Port Beta '//I2S(PortInd),REAL(Beta))
-    
+
     ! Use the sum of all propagation constants as a reference value for consistency
     BetaSum = BetaSum + REAL(Beta)
-    
+
     ! Assign the propagation constant to all BCs associated with this port.
     DO i = 1,Model % NumberOfBCs
       BC => Model % BCs(i) % Values
@@ -460,22 +460,22 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     IF (ListGetLogical(Params, 'Eigenvector Normalization by Power', Found)) THEN
 
       Power = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
-      
+
       DO t=1,Active
         Element => GetActiveElement(t,Solver)
         EFamily = GetElementFamily(Element)
         IF (EFamily > 4) CYCLE
-        
+
         IF (CoordinateSystemDimension() == 2) THEN
           CONTINUE
         ELSE
-          ! If we have several ports, then handle the correct one.  
+          ! If we have several ports, then handle the correct one.
           IF (MaxPort>0) THEN
             BC => GetBC(Element)
             IF (ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
           END IF
         END IF
-          
+
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
 
@@ -486,30 +486,30 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
       WRITE(Message,'(A,2ES15.6)') 'Scaling by (average) port power: ', 0.5_dp*REAL(Power)
       CALL Info(Caller, Message, Level=5)
-      
+
       Solver % Variable % EigenVectors(ModeIndex,:) = Solver % Variable % EigenVectors(ModeIndex,:)/ &
-          CMPLX(SQRT(REAL(Power)/2.0_dp), 0.0_dp, KIND=dp)       
+          CMPLX(SQRT(REAL(Power)/2.0_dp), 0.0_dp, KIND=dp)
     END IF
-    
+
     ! The standard eigenmodes always satisfy homogeneous BCs. Solving a nonhomogeneous
     ! problem needs an additional step.
     !
     i = ListGetInteger(Params, 'Number of Nonhomogeneous Modes', Found, &
         maxv = SIZE(Solver % Variable % EigenValues))
     IF (i > 0) THEN
-      CALL Info(Caller, 'Solving an additional component to satisfy nonhomogeneous BCs', Level=5) 
+      CALL Info(Caller, 'Solving an additional component to satisfy nonhomogeneous BCs', Level=5)
       CALL ListAddLogical(Params, 'Eigen Analysis', .FALSE.)
 
       IF (ParEnv % PEs > 1 ) THEN
         m = Solver % Matrix % NumberOfRows
         ALLOCATE(u_part(m), v_part(m))
       END IF
-      
+
       m = Solver % Matrix % NumberOfRows/2
       DO j=1,i
         Solver % Matrix % Values = Solver % Matrix % Values - &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
-        
+
         Solver % Variable % Values = 0.0_dp
         Norm = DefaultSolve()
 
@@ -536,20 +536,20 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         END IF
 
 !        PRINT *, 'Parallel component = ', udotv/udotu
-        
+
         Solver % Variable % EigenVectors(j,1:m) = cValues(1:m) - &
             udotv/udotu * Solver % Variable % EigenVectors(j,1:m)
-          
+
         Solver % Matrix % Values = Solver % Matrix % Values + &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
       END DO
-      
+
       IF (ParEnv % PEs > 1 ) THEN
         DEALLOCATE(u_part, v_part)
       END IF
       CALL ListAddLogical(Params, 'Eigen Analysis', .TRUE.)
     END IF
-    
+
     ! Integrations to evaluate the impedance:
     !
     IF (ListCheckPresentAnyBC(Model, 'Calculate Impedance') .OR. &
@@ -562,7 +562,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         Element => GetActiveElement(t,Solver)
         EFamily = GetElementFamily(Element)
         IF (EFamily > 4) CYCLE
-        
+
         IF (CoordinateSystemDimension() == 2) THEN
           CONTINUE
         ELSE
@@ -570,10 +570,10 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
             BC => GetBC(Element)
             IF (ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
           END IF
-          
+
           IF (.NOT. ListGetLogical(BC, 'Calculate Impedance', Found)) CYCLE
         END IF
-          
+
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
 
@@ -583,7 +583,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
       Power = ParallelReduction(Power)
       E2 = ParallelReduction(E2)
-      
+
       IF (Output_Z) THEN
 
         WRITE(Message,'(A,2ES15.6)') 'Port power (average): ', 0.5_dp*REAL(Power)
@@ -595,8 +595,8 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
         WRITE(Message,'(A,2ES15.6)') 'Port impedance (Re): ', REAL(1.0_dp /CONJG(Power))
         CALL Info(Caller, Message, Level=5)
         WRITE(Message,'(A,2ES15.6)') 'Port impedance (Im): ', AIMAG(1.0_dp /CONJG(Power))
-        CALL Info(Caller, Message, Level=5)        
-        
+        CALL Info(Caller, Message, Level=5)
+
         CALL ListAddConstReal(Model % Simulation,'res: Port Power '//I2S(PortInd), 0.5_dp*REAL(Power))
         CALL ListAddConstReal(Model % Simulation,'res: Port Power Im '//I2S(PortInd), 0.5_dp*AIMAG(Power))
         CALL ListAddConstReal(Model % Simulation,'res: Port Impedance '//I2S(PortInd), REAL(1.0_dp /CONJG(Power)))
@@ -604,14 +604,14 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
       END IF
     END IF
-    
+
     CalculateNodal = ListGetLogical( Params,'Calculate Nodal Field', Found )
     IF(CalculateNodal) THEN
       CALL EMPortPost(PortInd, MaxPort)
     END IF
 
     IF( MaxPort > 1 ) THEN
-      CALL FreeMatrix(Solver % Matrix)      
+      CALL FreeMatrix(Solver % Matrix)
       Solver % Matrix => Null()
 
       ! Copy only the values that were actually computed for this port
@@ -628,13 +628,13 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
   IF(ParEnv % PEs > 1) CALL ParallelActive(.TRUE.)
 
-  
+
   CALL DefaultFinish()
 
   IF(MaxPort > 1) THEN
     EMVar % Perm = SavePerm
     ! Eigenvectors are most likely of different sizes.
-    ! Use the original full eigenvectors. 
+    ! Use the original full eigenvectors.
     DEALLOCATE(EMVar % EigenVectors)
     EMVar % EigenVectors => SaveEigenVectors
     NULLIFY(SaveEigenVectors)
@@ -645,25 +645,25 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
   CALL Info(Caller, 'All done', Level=12)
 
-  
+
 CONTAINS
 
 
   SUBROUTINE ParallelActiveSubset(MeActive)
 
-    LOGICAL :: MeActive    
+    LOGICAL :: MeActive
     INTEGER :: n
     INTEGER, ALLOCATABLE :: memb(:)
     TYPE(Matrix_t), POINTER :: M
     INTEGER :: comm_active, group_active, group_world, ierr
 
     IF(ParEnv % PEs == 1 ) RETURN
-    
+
     CALL ParallelActive(MeActive)
-    n = COUNT( ParEnv % Active ) 
+    n = COUNT( ParEnv % Active )
 
     M => Solver % Matrix
-    
+
     IF ( n>0 .AND. n<ParEnv % PEs ) THEN
       IF ( ASSOCIATED(Solver % Matrix) ) THEN
         IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
@@ -693,22 +693,22 @@ CONTAINS
 
       IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
         ! If any of the active output partitions in active just use it.
-        ! Typically the 1st one. Others are passive. 
-        IF( ParEnv % MyPe >= MinOutputPE .AND. ParEnv % MyPe <= MaxOutputPE ) THEN 
+        ! Typically the 1st one. Others are passive.
+        IF( ParEnv % MyPe >= MinOutputPE .AND. ParEnv % MyPe <= MaxOutputPE ) THEN
           OutputPE = ParEnv % MyPE
         ELSE
           OutputPE = -1
         END IF
-      ELSE         
+      ELSE
         ! Otherwise find the 1st active partition and if found use it.
-        ! Otherwise use the 0:th partition. 
+        ! Otherwise use the 0:th partition.
         DO i=1,ParEnv % PEs
           IF ( ParEnv % Active(i) ) EXIT
         END DO
 
         OutputPE = -1
         IF ( i-1 == ParEnv % MyPE ) THEN
-          OutputPE = i-1 
+          OutputPE = i-1
         ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
           OutputPE = 0
         END IF
@@ -722,9 +722,9 @@ CONTAINS
 
       IF(.NOT.ASSOCIATED(Solver % Matrix)) ParEnv % Active = .TRUE.
 
-      ! Here set the default partitions active. 
+      ! Here set the default partitions active.
       IF( ParEnv % MyPe >= MinOutputPE .AND. &
-          ParEnv % MyPe <= MaxOutputPE ) THEN 
+          ParEnv % MyPe <= MaxOutputPE ) THEN
         OutputPE = ParEnv % MyPE
       ELSE
         OutputPE = -1
@@ -738,7 +738,7 @@ CONTAINS
 
           IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) then
             CALL ParallelInitMatrix(Solver, Solver % Matrix )
-          END IF 
+          END IF
           ParEnv % ActiveComm = Solver % Matrix % Comm
         END IF
      END IF
@@ -746,7 +746,7 @@ CONTAINS
 
 
   END SUBROUTINE ParallelActiveSubset
-  
+
 
   ! Initialization of some parameters
   !--------------------------------------------------------------------
@@ -758,20 +758,20 @@ CONTAINS
           mu0inv = 1.0_dp / GetConstReal( Model % Constants, 'Permeability of Vacuum', Found )
     END IF
     IF (.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
-    
+
     Found = .FALSE.
     IF( ASSOCIATED( Model % Constants ) ) THEN
       IF (ListCheckPresent(Model % Constants, 'Permittivity of Vacuum')) &
-          eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found ) 
+          eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
     END IF
     IF(.NOT. Found ) eps0 = 8.854187817d-12
-    
+
     Omega = GetAngularFrequency(Found=Found)
     IF (.NOT. Found) CALL Fatal(Caller, 'Angular frequency required')
-    
+
   END SUBROUTINE InitStuff
 
-    
+
 !------------------------------------------------------------------------------
 ! Non-vectorized assembly of the matrix entries arising from the bulk elements
 !------------------------------------------------------------------------------
@@ -782,7 +782,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(GaussIntegrationPoints_t) :: IP    
+    TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: m, allocstat, t
     INTEGER :: i, j, p, q, vdofs
     LOGICAL :: Stat, Found, GotNu, GotEps
@@ -791,15 +791,15 @@ CONTAINS
     REAL(KIND=dp) :: weight, DetJ, CondAtIp
     COMPLEX(KIND=dp) :: Nu, Eps
 !------------------------------------------------------------------------------
-    
+
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
         EdgeBasisDegree = QuadDegree)
-      
+
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
       ALLOCATE(WBasis(m,3), CurlWBasis(m,3), Basis(m), dBasisdx(m,3), Stiff(m,m), Mass(m,m), &
-          Force(m), STAT=allocstat)      
+          Force(m), STAT=allocstat)
       IF (allocstat /= 0) CALL Fatal(Caller, 'Local storage allocation failed')
     END IF
 
@@ -810,8 +810,8 @@ CONTAINS
     Force = CMPLX(0.0_dp, 0.0_dp, kind=dp)
     GotNu = .FALSE.
     GotEps = .FALSE.
-    
-    ! The number of DOFs for one vector FE field  
+
+    ! The number of DOFs for one vector FE field
     vdofs = nd - n
 
     DO t=1,IP % n
@@ -824,9 +824,9 @@ CONTAINS
 
       ! This is a little strange since we may have the parameters defined either in the material
       ! related to the boundary or its parent.
-      ! For the 2nd etc. integration points we should be consistent. 
+      ! For the 2nd etc. integration points we should be consistent.
       IF(t==1 .OR. GotNu) THEN
-        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)      
+        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)
       END IF
       IF(.NOT. GotNu) Nu = ListGetElementRealParent(NuCoeff_h, Basis, Element, Found )
       IF( GotNu .OR. Found ) THEN
@@ -836,18 +836,18 @@ CONTAINS
       END IF
 
       IF(t==1 .OR. GotEps) THEN
-        Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, GotEps, GaussPoint = t)        
+        Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, GotEps, GaussPoint = t)
       END IF
-      IF(.NOT. GotEps ) Eps = ListGetElementRealParent( EpsCoeff_h, Basis, Element, Found ) 
+      IF(.NOT. GotEps ) Eps = ListGetElementRealParent( EpsCoeff_h, Basis, Element, Found )
       IF( GotEps .OR. Found ) THEN
-        Eps = Eps0 * Eps 
+        Eps = Eps0 * Eps
       ELSE
-        Eps = Eps0 
+        Eps = Eps0
       END IF
-      
+
       maxmu = MAX(maxmu, REAL(1/Nu))
       maxeps = MAX(maxeps, REAL(eps))
-      
+
       DO p = 1,n
         DO q = 1,n
           ! The operator -eps I for the scalar variable:
@@ -863,7 +863,7 @@ CONTAINS
           Stiff(j,i) = Stiff(j,i) + Nu * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
         END DO
       END DO
-      
+
       DO p = 1,vdofs
         i = n + p
         DO q = 1,vdofs
@@ -878,7 +878,7 @@ CONTAINS
     END DO
 
     !Mass = -Mass
-    
+
     CALL DefaultUpdateEquations(Stiff, Force)
     CALL DefaultUpdateMass(Mass)
 !------------------------------------------------------------------------------
@@ -896,7 +896,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd
 !------------------------------------------------------------------------------
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(GaussIntegrationPoints_t) :: IP    
+    TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: m, allocstat, t
     INTEGER :: i, j, p, q, vdofs
     LOGICAL :: Stat, Found, GotNu, GotEps
@@ -907,15 +907,15 @@ CONTAINS
 
     INTEGER :: ndofs, np
 !------------------------------------------------------------------------------
-    
+
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
         EdgeBasisDegree = QuadDegree)
-      
+
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
       ALLOCATE(WBasis(m,3), CurlWBasis(m,3), Basis(m), dBasisdx(m,3), Stiff(m,m), Mass(m,m), &
-          Force(m), STAT=allocstat)      
+          Force(m), STAT=allocstat)
       IF (allocstat /= 0) CALL Fatal(Caller, 'Local storage allocation failed')
     END IF
 
@@ -929,8 +929,8 @@ CONTAINS
 
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     np = n * ndofs
-    
-    ! The number of DOFs for one vector FE field  
+
+    ! The number of DOFs for one vector FE field
     vdofs = nd - np
 
     DO t=1,IP % n
@@ -943,9 +943,9 @@ CONTAINS
 
       ! This is a little strange since we may have the parameters defined either in the material
       ! related to the boundary or its parent.
-      ! For the 2nd etc. integration points we should be consistent. 
+      ! For the 2nd etc. integration points we should be consistent.
       IF(t==1 .OR. GotNu) THEN
-        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)      
+        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)
       END IF
       IF(.NOT. GotNu) Nu = ListGetElementRealParent(NuCoeff_h, Basis, Element, Found )
       IF( GotNu .OR. Found ) THEN
@@ -955,18 +955,18 @@ CONTAINS
       END IF
 
       IF(t==1 .OR. GotEps) THEN
-        Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, GotEps, GaussPoint = t)        
+        Eps = ListGetElementComplex(EpsCoeff_h, Basis, Element, GotEps, GaussPoint = t)
       END IF
-      IF(.NOT. GotEps ) Eps = ListGetElementRealParent( EpsCoeff_h, Basis, Element, Found ) 
+      IF(.NOT. GotEps ) Eps = ListGetElementRealParent( EpsCoeff_h, Basis, Element, Found )
       IF( GotEps .OR. Found ) THEN
-        Eps = Eps0 * Eps 
+        Eps = Eps0 * Eps
       ELSE
-        Eps = Eps0 
+        Eps = Eps0
       END IF
-      
+
       maxmu = MAX(maxmu, REAL(1/Nu))
       maxeps = MAX(maxeps, REAL(eps))
-      
+
       DO p = 1,n
         i = (p-1)*ndofs + 1
         DO q = 1,n
@@ -974,14 +974,14 @@ CONTAINS
 
           ! The scalar wave equation operator for the scaled E_z:
           Stiff(i,j) = Stiff(i,j) + (Nu * SUM(dBasisdx(q,:) * dBasisdx(p,:)) - &
-              Omega**2 * Eps * Basis(q) * Basis(p)) * weight 
-          
+              Omega**2 * Eps * Basis(q) * Basis(p)) * weight
+
           ! The operator -eps I for the scalar variable related to E_z
           !Mass(i,j) = Mass(i,j) + weight * Eps * &
           !    Basis(p) * Basis(q)
 
         END DO
-        
+
         ! The coupling between the vector field and the scalar variable E_z
         DO q = 1,vdofs
           j = np + q
@@ -1001,14 +1001,14 @@ CONTAINS
           Stiff(i,j) = Stiff(i,j) - weight * Omega**2 * Eps / Nu * &
               Basis(p) * Basis(q)
         END DO
-        
+
         DO q = 1,vdofs
           j = np + q
           Stiff(i,j) = Stiff(i,j) + SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
         END DO
-        
+
       END DO
-      
+
       DO p = 1,vdofs
         i = np + p
         DO q = 1,vdofs
@@ -1023,7 +1023,7 @@ CONTAINS
         DO q = 1,n
           j = (q-1)*ndofs + 1
           Mass(i,j) = Mass(i,j) - weight * Nu * SUM(dBasisdx(q,:) * WBasis(p,:))
-          
+
           j = (q-1)*ndofs + 2
           Stiff(i,j) = Stiff(i,j) + weight * Omega**2 * Eps * SUM(dBasisdx(q,:) * WBasis(p,:))
           Mass(i,j) = Mass(i,j) - weight * Nu * SUM(dBasisdx(q,:) * WBasis(p,:))
@@ -1032,7 +1032,7 @@ CONTAINS
     END DO
 
     !Mass = -Mass
-    
+
     CALL DefaultUpdateEquations(Stiff, Force)
     CALL DefaultUpdateMass(Mass)
 !------------------------------------------------------------------------------
@@ -1041,9 +1041,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 ! Calculate integrals over an element lying on a port surface so that impedance
-! can be evaluated. 
+! can be evaluated.
 !------------------------------------------------------------------------------
-  SUBROUTINE CalculatePortPower(Element, n, nd, ModeIndex, Beta, P, E2, A) 
+  SUBROUTINE CalculatePortPower(Element, n, nd, ModeIndex, Beta, P, E2, A)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -1055,23 +1055,23 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
-    LOGICAL :: Stat, Found, GotNu 
+    LOGICAL :: Stat, Found, GotNu
     INTEGER :: m, allocstat, vdofs, np, ndofs
     INTEGER :: t, i, j
     REAL(KIND=dp), ALLOCATABLE, SAVE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Re_local_field(:), Im_local_field(:)
     REAL(KIND=dp) :: weight, DetJ
     COMPLEX(KIND=dp) :: Nu, EF(3), gradEz(3), V
-!------------------------------------------------------------------------------    
+!------------------------------------------------------------------------------
 
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
         EdgeBasisDegree = QuadDegree)
-      
+
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
       ALLOCATE(WBasis(m,3), CurlWBasis(m,3), Basis(m), dBasisdx(m,3), &
-          Re_local_field(m), Im_local_field(m), STAT=allocstat)      
+          Re_local_field(m), Im_local_field(m), STAT=allocstat)
       IF (allocstat /= 0) CALL Fatal(Caller, 'Local storage allocation failed')
     END IF
 
@@ -1079,17 +1079,17 @@ CONTAINS
 
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     np = n * ndofs
-    
-    ! The number of DOFs for one vector FE field  
+
+    ! The number of DOFs for one vector FE field
     vdofs = nd - np
 
     CALL GetScalarLocalEigenmode(Re_local_field, UElement = Element, &
           USolver = SolverPtr, NoEigen = ModeIndex, ComplexPart=.FALSE.)
     CALL GetScalarLocalEigenmode(Im_local_field, UElement = Element, &
         USolver = Solver, NoEigen = ModeIndex, ComplexPart=.TRUE.)
-    
+
     GotNu = .FALSE.
-    
+
     DO t=1,IP % n
       !--------------------------------------------------------------
       ! Basis function values & derivatives at the integration point:
@@ -1099,7 +1099,7 @@ CONTAINS
       Weight = IP % s(t) * DetJ
 
       IF(t==1 .OR. GotNu) THEN
-        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)      
+        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)
       END IF
       IF(.NOT. GotNu) Nu = ListGetElementRealParent(NuCoeff_h, Basis, Element, Found )
       IF( GotNu .OR. Found ) THEN
@@ -1135,7 +1135,7 @@ CONTAINS
         END DO
         gradEz(:) = gradEz(:) / (im * Beta)
       END IF
-      
+
       P = P + Nu/Omega * (Beta * SUM(EF*CONJG(EF)) - im * SUM(EF*CONJG(gradEz))) * weight
       IF (PRESENT(E2)) E2 = E2 + SUM(EF*CONJG(EF)) * weight
       IF (PRESENT(A)) A = A + weight
@@ -1143,10 +1143,10 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE CalculatePortPower
 !------------------------------------------------------------------------------
-    
+
 !-----------------------------------------------------------------------------
 !> A postprocessing solver for EMPortSolver
-!> Create the mass matrix on-the-fly and computes one component at a time. 
+!> Create the mass matrix on-the-fly and computes one component at a time.
 !------------------------------------------------------------------------------
   SUBROUTINE EMPortPost(PortInd, MaxPort)
     !------------------------------------------------------------------------------
@@ -1154,18 +1154,18 @@ CONTAINS
     IMPLICIT NONE
 
     INTEGER :: PortInd, MaxPort
-    
+
     TYPE(Variable_t), POINTER :: EF, ReVar, ImVar, Var
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     INTEGER :: i, j, k, n, p, q, nd, normal_ind(1), DOFs, vdofs, np, ndofs
     INTEGER :: Active, t
-    REAL(KIND=dp), ALLOCATABLE, TARGET :: Mass(:,:), LForce(:,:), GForce(:,:)  
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: Mass(:,:), LForce(:,:), GForce(:,:)
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: re_local_field(:), im_local_field(:)
     REAL(KIND=dp), POINTER :: FSave(:) => NULL()
-    CHARACTER(:), ALLOCATABLE :: eqname    
+    CHARACTER(:), ALLOCATABLE :: eqname
     REAL(KIND=dp) :: u, v, w, detJ, s, xq, Norm, TotNorm
     REAL(KIND=dp) :: ReEz, ImEz, ReE(3), ImE(3), Normal(3), ReL(3), ImL(3)
     REAL(KIND=dp) :: ReV, ImV
@@ -1177,18 +1177,18 @@ CONTAINS
     TYPE(Solver_t), POINTER :: pSolver=>NULL(), PostSolver=>NULL()
     INTEGER, ALLOCATABLE :: PermIndexes(:)
     LOGICAL :: AllocDone = .FALSE.
-    
+
     SAVE PostSolver, MASS, LFORCE, WBasis, CurlWBasis, Basis, dBasisdx, PermIndexes, &
         Re_local_field, Im_local_field, dofs, EF, GForce, FSave, AllocDone, NodalPerm
-    
+
     !------------------------------------------------------------------------------
 
 !   IF(PortInd > 1) GOTO 10
-    
+
     IF(.NOT. AllocDone ) THEN
       ALLOCATE(PostSolver)
       CALL ListCopyPrefixedKeywords( Solver % Values, PostSolver % Values,'post:')
-      
+
       PostSolver % Mesh => Mesh
       i = SIZE(Solver % Def_Dofs,1)
       j = SIZE(Solver % Def_Dofs,2)
@@ -1196,20 +1196,20 @@ CONTAINS
       ALLOCATE(PostSolver % Def_Dofs(i,j,k))
       PostSolver % Def_Dofs = 0
       PostSolver % Def_Dofs(:,:,1) = 1
-      
-      n = Mesh % MaxElementDOFs   
+
+      n = Mesh % MaxElementDOFs
       IF (UseV) THEN
         dofs = 8
       ELSE
         dofs = 6
       END IF
-      
+
       ALLOCATE(MASS(n,n), LFORCE(n,DOFs), WBasis(n,3), &
           CurlWBasis(n,3), Basis(n), dBasisdx(n,3), PermIndexes(n), &
           Re_Local_field(n), Im_Local_field(n))
     END IF
 
-    ! If allocations are done and mesh is unchanged no need to do anything. 
+    ! If allocations are done and mesh is unchanged no need to do anything.
     IF(AllocDone ) THEN
       IF( SIZE( NodalPerm) == SIZE( Solver % Variable % Perm ) ) THEN
         GOTO 10
@@ -1219,11 +1219,11 @@ CONTAINS
       END IF
     END IF
     AllocDone = .TRUE.
-        
+
     ALLOCATE(NodalPerm(SIZE(Solver % Variable % Perm)))
 
     ! Creating matrix structure using the mask of the primary equation.
-    ! Note that this matrix only has nodal dofs. 
+    ! Note that this matrix only has nodal dofs.
     NodalPerm = 0
     eqname = ListGetString( Params,'Equation')
     CALL ListAddString( PostSolver % Values,'Equation',TRIM(eqname)//'_post')
@@ -1232,7 +1232,7 @@ CONTAINS
 
     PostSolver % Matrix % Values = 0.0_dp
 
-    ! Temporal vector for solving one nodal component at a time.    
+    ! Temporal vector for solving one nodal component at a time.
     CALL VariableAddVector( Mesh % Variables,Mesh,PostSolver,&
         'EM2D tmp',1,Perm = NodalPerm, Output = .FALSE. )
     PostSolver % Variable => VariableGet( Mesh % Variables,'EM2D tmp')
@@ -1248,7 +1248,7 @@ CONTAINS
     END IF
     EF => VariableGet( Mesh % Variables,'EF2D')
     IF(.NOT. ASSOCIATED(EF) ) CALL Fatal(Caller,'Could not find field: EF2D!')
-    
+
     ! Allocate the rhs vectors for each component
     n = PostSolver % Matrix % NumberOfRows
     ALLOCATE( PostSolver % Matrix % RHS(n) )
@@ -1257,17 +1257,17 @@ CONTAINS
 
     ! Use the original communicator
     PostSolver % Matrix % Comm = Solver % Matrix % Comm
-    
+
     ! The default mode is the 1st mode because of default ordering it should be ok
 10  pSolver => Solver
     Active = GetNOFActive(Solver)
-        
+
     n = PostSolver % Matrix % NumberOfRows
     IF(.NOT. ALLOCATED(GForce)) THEN
       ALLOCATE( GForce(n,dofs-1))
       GForce = 0.0_dp
     END IF
-    
+
     DO k=1, Active
       Element => GetActiveElement(k,Solver)
 
@@ -1275,35 +1275,35 @@ CONTAINS
         BC => GetBC(Element)
         IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
       END IF
-      
+
       n = GetElementNOFNodes()
       nd = GetElementNOFDOFs(USolver=Solver)
 
       ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
       np = n * ndofs
-      
-      ! The number of DOFs for one vector FE field  
+
+      ! The number of DOFs for one vector FE field
       vdofs = nd - np
       CALL GetElementNodes( Nodes, Element, Solver )
 
       ! At the moment we assume that the wave propagates in the direction of some
       ! coordinate axis. Then the following check should be enough to get the positive
-      ! direction of wave propagation: 
+      ! direction of wave propagation:
       Normal = NormalVector(Element, Nodes)
       normal_ind = MAXLOC(ABS(Normal))
       IF (Normal(normal_ind(1)) < 0.0_dp) Normal = -Normal
-      
+
       CALL GetScalarLocalEigenmode(re_local_field, UElement = Element, &
           USolver = Solver, NoEigen = ModeIndex, ComplexPart=.FALSE.)
       CALL GetScalarLocalEigenmode(im_local_field, UElement = Element, &
           USolver = Solver, NoEigen = ModeIndex, ComplexPart=.TRUE.)
-      
+
       Mass = 0.0_dp
       LForce = 0.0_dp
 
       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
           EdgeBasisDegree = QuadDegree)
-      
+
       DO i=1, IP % n
         u = IP % U(i)
         v = IP % V(i)
@@ -1339,7 +1339,7 @@ CONTAINS
           ReV = SUM(Re_local_field(2:np:ndofs)*Basis(1:n))
           ImV = SUM(Im_local_field(2:np:ndofs)*Basis(1:n))
         END IF
-        
+
         ReL = ReE + Normal * ReEz
         IML = ImE + Normal * ImEz
 
@@ -1361,10 +1361,10 @@ CONTAINS
       ELSE
         PermIndexes(1:n) = PostSolver % Variable % Perm(Element % NodeIndexes)
       END IF
-        
-      ! Assemble mass matrix and the 1st component      
+
+      ! Assemble mass matrix and the 1st component
       CALL UpdateGlobalEquations( PostSolver % Matrix, Mass, PostSolver % Matrix % rhs, &
-          LForce(1:n,1),n,1,PermIndexes(1:n), UElement=Element)      
+          LForce(1:n,1),n,1,PermIndexes(1:n), UElement=Element)
 
       ! Assemble the remaining r.h.s. vectors
       DO j=2,Dofs
@@ -1376,16 +1376,16 @@ CONTAINS
 
     ! We will assemble until the last mode has been added.
     IF(PortInd < MaxPort) RETURN
-    
+
     TotNorm = 0.0_dp
     DO j=1,Dofs
       CALL Info(Caller,'Solving for component: '//I2S(j),Level=10)
       IF(j==1) THEN
-        FSave => PostSolver % Matrix % RHS 
+        FSave => PostSolver % Matrix % RHS
       ELSE
         PostSolver % Matrix % rhs => GForce(:,j-1)
       END IF
-      PostSolver % Variable % Values = 0.0_dp    
+      PostSolver % Variable % Values = 0.0_dp
 
       Norm = DefaultSolve(PostSolver)
       TotNorm = TotNorm + Norm**2
@@ -1394,14 +1394,14 @@ CONTAINS
       CALL ListAddLogical(PostSolver % Values, 'Linear System refactorize', .FALSE.)
     END DO
     PostSolver % Variable % Norm = SQRT(TotNorm)
-    
+
     PostSolver % Matrix % RHS => FSave
     TotNorm = SQRT(TotNorm)
     PostSolver % Variable % Norm = TotNorm
-    
+
     PostSolver % Matrix % rhs => FSave
     DEALLOCATE(GForce)
-    
+
   END SUBROUTINE EMPortPost
 
 !------------------------------------------------------------------------------
@@ -1416,8 +1416,8 @@ END SUBROUTINE EMPortSolver
 ! *  It is assumed that the equation is real valued with real valued permittivity
 ! *  as the only material parameter. The only special feature of the solver is that
 ! *  it looks for the material parameter in the parent elements if it does not find
-! *  it in the boudary element. This is derived from thet StatElecSolverVec. 
-! * 
+! *  it in the boudary element. This is derived from thet StatElecSolverVec.
+! *
 ! *  Authors: Peter Råback
 ! *  Email:   peter.raback@csc.fi
 ! *
@@ -1444,13 +1444,13 @@ SUBROUTINE EMPortPotential_init( Model,Solver,dt,Transient )
   INTEGER :: i
   CHARACTER(:), ALLOCATABLE :: varname
   CHARACTER(*), PARAMETER :: Caller = 'EMPortPotential_init'
-  
+
   Params => GetSolverParams()
   CALL ListAddNewString( Params,'Variable','Port Potential')
-  
+
   ! Set the port field to zero at BCs which are defined as port ground
-  ! and to one where there is a port feed. 
-  varname = ListGetString( Params,'Variable', Found )  
+  ! and to one where there is a port feed.
+  varname = ListGetString( Params,'Variable', Found )
   DO i = 1,Model % NumberOfBCs
     BC => Model % BCs(i) % Values
     IF( ListGetLogical( BC,"Port Ground", Found ) ) THEN
@@ -1461,7 +1461,7 @@ SUBROUTINE EMPortPotential_init( Model,Solver,dt,Transient )
       CALL ListAddConstReal( BC,TRIM(VarName),1.0_dp)
     END IF
   END DO
-  
+
 END SUBROUTINE EMPortPotential_Init
 !------------------------------------------------------------------------------
 
@@ -1482,9 +1482,9 @@ SUBROUTINE EMPortPotential( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm
   INTEGER :: n, nb, nd, t, active
   LOGICAL :: Found, InitHandles
-  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
-  CHARACTER(*), PARAMETER :: Caller = 'EMPortPotential'    
+  CHARACTER(*), PARAMETER :: Caller = 'EMPortPotential'
 !------------------------------------------------------------------------------
 
   CALL Info(Caller,'------------------------------------------------',Level=7)
@@ -1492,12 +1492,12 @@ SUBROUTINE EMPortPotential( Model,Solver,dt,Transient )
 
   Mesh => GetMesh()
   Params => GetSolverParams()
-      
-  CALL DefaultStart()  
+
+  CALL DefaultStart()
   CALL DefaultInitialize()
 
   InitHandles = .TRUE.
-  
+
   Active = GetNOFActive(Solver)
   DO t=1,Active
     Element => GetActiveElement(t)
@@ -1506,12 +1506,12 @@ SUBROUTINE EMPortPotential( Model,Solver,dt,Transient )
     nb = GetElementNOFBDOFs(Element)
     CALL LocalMatrix(  Element, n, nd+nb, nb, InitHandles )
   END DO
-  
+
   CALL DefaultFinishBulkAssembly()
   CALL DefaultFinishBoundaryAssembly()
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
-  
+
   ! And finally, solve:
   !--------------------
   Norm = DefaultSolve()
@@ -1547,7 +1547,7 @@ CONTAINS
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Charge Density')
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity')
-      
+
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
@@ -1559,17 +1559,17 @@ CONTAINS
       ! Allocate storage if needed
       IF (.NOT. ALLOCATED(Basis)) THEN
         m = Mesh % MaxElementDofs
-        ALLOCATE(Basis(m), dBasisdx(m,3), ParentBasis(m), STIFF(m,m), FORCE(m), STAT=allocstat)      
+        ALLOCATE(Basis(m), dBasisdx(m,3), ParentBasis(m), STIFF(m,m), FORCE(m), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal(Caller,'Local storage allocation failed')
-      END IF      
+      END IF
     END IF
-    
-    IP = GaussPoints( Element )          
+
+    IP = GaussPoints( Element )
     CALL GetElementNodes( Nodes, UElement=Element )
 
     STIFF = 0._dp
     FORCE = 0._dp
-    
+
     Parent => NULL()
     IF(ASSOCIATED(Element % BoundaryInfo)) THEN
       Parent => Element % BoundaryInfo % Left
@@ -1577,14 +1577,14 @@ CONTAINS
         Parent => Element % BoundaryInfo % Right
       END IF
     END IF
-          
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
       Weight = IP % s(t) * DetJ
-      
+
       EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )
       IF(.NOT. Found) THEN
         IF( ASSOCIATED(Parent) ) THEN
@@ -1596,19 +1596,19 @@ CONTAINS
           EpsAtIp = 1.0_dp
         END IF
       END IF
-      
+
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
           Eps0 * EpsAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
-      
-      SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found ) 
+
+      SourceAtIP = ListGetElementReal( SourceCoeff_h, Basis, Element, Found )
       IF( Found ) THEN
         FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
       END IF
     END DO
-    
+
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element)
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------

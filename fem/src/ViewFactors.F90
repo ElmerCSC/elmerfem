@@ -3,20 +3,20 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
 ! *  of the License, or (at your option) any later version.
-! * 
+! *
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! *  GNU General Public License for more details.
 ! *
 ! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
@@ -32,7 +32,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 02 Jun 1997
 ! *
@@ -50,20 +50,20 @@
    END MODULE ViewFactorGlobals
 
 !------------------------------------------------------------------------------
-!> A separate program that computes the view factors to an external file. 
+!> A separate program that computes the view factors to an external file.
 !> This file is later used within the ElmerSolver. If the view factor files
-!> do not exist, a system call for this program is performed. 
+!> do not exist, a system call for this program is performed.
 !------------------------------------------------------------------------------
-      
+
    PROGRAM ViewFactors
-   
+
      USE ViewUtils
      USE DefUtils
      USE ParallelUtils, ONLY : ParallelInit, ParallelFinalize
      USE ViewFactorGlobals
      USE MeshTransform, ONLY : RigidMeshMapping
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, SingleSolver
-     
+
      IMPLICIT NONE
 
 !------------------------------------------------------------------------------
@@ -76,7 +76,7 @@
      TYPE(Nodes_t) :: ElementNodes
      TYPE(ValueList_t), POINTER :: BC, Params, RadList
      TYPE(Solver_t), POINTER :: RadSolver
-     
+
      ! parameters for the actual vf/radiator computations
      !---------------------------------------------------
      INTEGER :: divide, LineFlag, LineInteg, TriInteg, QuadInteg, NSymmetry
@@ -100,7 +100,7 @@
      LOGICAL :: RadiationOpen, UseSymmetry
      INTEGER :: RadiationBody, MaxRadiationBody
      TYPE(Element_t), POINTER :: RadElements(:)
- 
+
      REAL(KIND=dp) :: at, rt, at2, rt2
      INTEGER :: i,j,k,l,t,n,Ni,istat
 
@@ -168,7 +168,7 @@
 
         SUBROUTINE ViewFactorsAxis(n, surf, crd, vf, idiv, fast) BIND(C)
             USE, INTRINSIC :: ISO_C_BINDING
-            IMPLICIT NONE 
+            IMPLICIT NONE
             INTEGER, PARAMETER :: dp = 8
             REAL(KIND=dp) :: crd(*), vf(*)
             INTEGER :: n, surf(*), idiv, fast
@@ -201,25 +201,25 @@
 
 !------------------------------------------------------------------------------
 
-     ! Lets do mapping if requested. 
+     ! Lets do mapping if requested.
      CALL SetCurrentMesh( Model,Mesh )
-     
+
      DoMapping = .FALSE.
      ! We can execute the radiation solver in a true way
      DO i=1,Model % NumberOfSolvers
-       IF(ListGetLogical(Model % Solvers(i) % Values,'Viewfactor Mapping Solver',Found ) ) THEN           
+       IF(ListGetLogical(Model % Solvers(i) % Values,'Viewfactor Mapping Solver',Found ) ) THEN
          DoMapping = .TRUE.
          CALL AddAndExecuteSingleSolver(i)
        END IF
      END DO
-     ! Or only use the rigid mesh mapping of the bodies/boundaries 
+     ! Or only use the rigid mesh mapping of the bodies/boundaries
      IF(.NOT. DoMapping) THEN
        IF(GetLogical( RadSolver % Values,'Viewfactor Rigid Mesh Mapping', Found ) ) THEN
          DoMapping = .TRUE.
          CALL RigidMeshMapping( Model, Mesh, .TRUE. )
        END IF
      END IF
-               
+
 !------------------------------------------------------------------------------
 
      ! Check if computing radiator factors (as opposed to view factors)
@@ -237,7 +237,7 @@
                I2S(NofRadiators) // ' radiative sources', LEVEL=5 )
      END IF
 
-     
+
 !------------------------------------------------------------------------------
      CALL SymmetryDuplication(Mesh,Nsymmetry)
 !------------------------------------------------------------------------------
@@ -259,7 +259,7 @@
      ALLOCATE( ElementNodes % x(Model % MaxElementNodes), &
          ElementNodes % y(Model % MaxElementNodes), &
          ElementNodes % z(Model % MaxElementNodes),STAT=istat )
-     
+
      IF ( CylindricSymmetry ) THEN
        ALLOCATE( Coord(2 * Mesh % NumberOfNodes), STAT=istat )
        DO i=1,Mesh % NumberOfNodes
@@ -327,7 +327,7 @@
          CALL Info(Caller,'Computing view factors for radiation body' // I2S(RadiationBody), Level=3)
        END IF
        at2 = CPUTime(); rt2 = RealTime()
-         
+
        ! loop to get the surfaces participating in radiation, discard the rest
        ! of the elements...
        !------------------------------------------------------------------------------
@@ -347,7 +347,7 @@
 
        Ni = N
        IF ( DoRadiators ) Ni = NofRadiators
-       
+
        ! Allocate arrays
        ! ---------------
        ALLOCATE( Areas(n), STAT=istat )
@@ -360,7 +360,7 @@
        IF ( istat /= 0 ) THEN
          CALL Fatal( Caller, 'Memory allocation error. Aborting' )
        END IF
-       
+
        ! go through all surfaces participating in radiation for normal direction:
        ! ------------------------------------------------------------------------
        DO i=1,n
@@ -369,9 +369,9 @@
 
          k = GetElementNOFNodes()
          CALL GetElementNodes(ElementNodes)
-                  
+
          Areas(i) = ElementArea(Mesh, Element, Element % Type % NumberOfNodes)
-         
+
          ! Figure out normal direction
          ! ---------------------------
 
@@ -398,22 +398,22 @@
 
        CALL Info( Caller, 'Computing viewfactors/radiator factors...', Level=4 )
        at = CPUTime(); rt = RealTime()
-       
+
        ! Keyword common to cyl symm & cartesian 2d (handled by different codes)
        ! ----------------------------------------------------------------------
        CombineInt = 0
        Combine3D = .FALSE.
 
        Combine = GetLogical( Params, 'Viewfactor combine elements',GotIt)
-       IF( Mesh % MeshDim == 2 ) THEN         
+       IF( Mesh % MeshDim == 2 ) THEN
          IF ( .NOT. GotIt ) Combine = .TRUE.
          IF( Combine ) CombineInt = 1
        ELSE
          Combine3D = Combine
        END IF
-       
+
        ElimBB = .NOT. GetLogical( Params,'Viewfactor BBox Shadow', GotIt)
-       
+
        IF ( CylindricSymmetry ) THEN
          ! Axisymmetric case (radiators not implemented).
          ! MPI row decomposition is not yet implemented for this path;
@@ -456,11 +456,11 @@
            nLocal = n
            iStart_local = 0
            IF(UseSymmetry) THEN
-             ! When we use symmetry the only compute the n/2 first rows             
+             ! When we use symmetry the only compute the n/2 first rows
              nLocal = n / 2
            ELSE
              nLocal = n
-           END IF            
+           END IF
          END IF
 
          ! Allocate local Factors for C kernel (nLocal rows × n_global cols)
@@ -498,12 +498,12 @@
            IF (Combine3D) THEN
              ! All ranks have the full mesh (LoadModel uses 1,0), so PlanarReduce
              ! is available in MPI mode — every rank produces the same result.
-             FlattenBody = ListGetInteger( Params,'Viewfactor Flatten Body', GotIt )             
-             FlattenDir = ListGetInteger( Params,'Viewfactor Flatten Direction', GotIt ) 
+             FlattenBody = ListGetInteger( Params,'Viewfactor Flatten Body', GotIt )
+             FlattenDir = ListGetInteger( Params,'Viewfactor Flatten Direction', GotIt )
              IF(FlattenBody > 0 .AND. .NOT. GotIt ) THEN
                CALL Fatal(Caller,'Give "Viewfactor Flatten Direction" too!')
              END IF
-               
+
              RT_Mesh => PlanarReduce(n, Normals, Coord, Mesh, FlattenBody, FlattenDir )
            ELSE
              ! Given surface OR volume shadow mesh from disk
@@ -549,11 +549,11 @@
              IF ( GetLogical( Params,'Shadow Mesh Save', GotIt) ) THEN
                str = "ShadowMesh"
                CALL MakeDirectory(TRIM(str) // CHAR(0))
-               CALL WriteMeshToDisk2(Model, RT_Mesh, str )               
+               CALL WriteMeshToDisk2(Model, RT_Mesh, str )
                CALL Info(Caller,'Saved shadow mesh to file: '//TRIM(str))
                IF ( GetLogical( Params,'Shadow Mesh Stop', GotIt) ) STOP
              END IF
-             
+
            END IF
 
            ! ... and finally the beef:
@@ -634,7 +634,7 @@
            END IF
          END BLOCK
        END IF  ! CylindricSymmetry
-       
+
        WRITE (Message,'(A,2F8.2)') 'View factors/radiator factors computed in time (s):',&
            CPUTime()-at2, Realtime()-rt2
        CALL Info( Caller,Message, Level=3 )
@@ -646,7 +646,7 @@
          IF(.NOT. UseSymmetry) THEN
            CALL SymmetryReduction(DoRadiators,NofRadiators,n,Ni,Factors)
          END IF
-           
+
          CALL FindInitialMinMax(Ni,N,Factors,RadiationOpen)
          CALL NormalizeFactors(Model,DoRadiators,NofRadiators,n,Factors,RadiationOpen)
          CALL FindNormalizedMinMax(Ni,n,Factors)
@@ -688,13 +688,13 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Adds flags for active solvers. 
+!> Adds flags for active solvers.
 !------------------------------------------------------------------------------
   SUBROUTINE AddAndExecuteSingleSolver(Solver_ind)
 !------------------------------------------------------------------------------
     INTEGER :: Solver_ind
 
-    INTEGER :: i,j,nlen 
+    INTEGER :: i,j,nlen
     LOGICAL :: Found
     INTEGER, POINTER :: ActiveSolvers(:)
     CHARACTER(:), ALLOCATABLE :: eq
@@ -702,21 +702,21 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
 
     CALL Info(Caller,'Running Viewfactor Mapping Solver: '//I2S(Solver_ind),Level=5)
-    
+
     CALL Info(Caller,'Setting mesh coordinates and time',Level=12)
 
     CALL SetCurrentMesh( Model,Mesh )
-    
+
     CALL VariableAdd( Mesh % Variables, Mesh, &
-        Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )    
+        Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )
     CALL VariableAdd(Mesh % Variables,Mesh, &
-        Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )    
+        Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )
     CALL VariableAdd(Mesh % Variables,Mesh, &
         Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
-         
+
     ALLOCATE(sTime(1),sStep(1))
     sTime = 0.0_dp
-    sStep = 1.0_dp    
+    sStep = 1.0_dp
     CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
     CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
 
@@ -724,7 +724,7 @@ CONTAINS
     CALL Info('AddSolver','Setting up solver: '//I2S(Solver_ind),Level=10)
     Solver => Model % Solvers(Solver_ind)
 
-    eq = ListGetString( Solver % Values,'Equation', Found )     
+    eq = ListGetString( Solver % Values,'Equation', Found )
     IF ( Found ) THEN
       nlen = LEN_TRIM(eq)
       DO j=1,Model % NumberOFEquations
@@ -741,7 +741,7 @@ CONTAINS
       END DO
     END IF
 
-    Solver % Mesh => Mesh         
+    Solver % Mesh => Mesh
     Model % Solver => Solver
     CALL AddEquationBasics( Solver, eq, Transient = .FALSE.)
     CALL AddEquationSolution( Solver, Transient = .FALSE.)
@@ -756,7 +756,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+
 !------------------------------------------------------------------------------
 !> Thin wrapper around ParallelInit() so TYPE(ParEnv_t) stays out of the
 !> PROGRAM specification section (avoids parser confusion near INTERFACE).
@@ -798,12 +798,12 @@ CONTAINS
      CALL Info( Caller, 'Reading Model... ', Level=3 )
 !------------------------------------------------------------------------------
      Model => LoadModel( ModelName,.FALSE.,1,0 )
-     CurrentModel => Model     
+     CurrentModel => Model
 !------------------------------------------------------------------------------
-          
+
      Mesh => NULL()
      RadSolver => NULL()
-     
+
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
        Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
@@ -815,7 +815,7 @@ CONTAINS
          EXIT
        ENDIF
      END DO
-          
+
      IF ( .NOT. ASSOCIATED(Mesh) ) THEN
        CALL Fatal(Caller,'No heat equation definition. Cannot compute factors.')
      END IF
@@ -944,7 +944,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Provide useful information on the boundary-to-boundary view factors that is
 ! obtained as the area-weigted average of elemental view factor sums.
-! In case of radiators provide summed up radiator-to-boundary factors.   
+! In case of radiators provide summed up radiator-to-boundary factors.
 !------------------------------------------------------------------------------
    SUBROUTINE ViewFactorsLumping()
 !------------------------------------------------------------------------------
@@ -952,14 +952,14 @@ CONTAINS
      INTEGER, ALLOCATABLE :: BCNumbering(:), VFPerm(:)
      REAL(KIND=dp), ALLOCATABLE :: LumpedVF(:,:), LumpedAreas(:)
 !------------------------------------------------------------------------------
-      
+
      ALLOCATE(BCNumbering(Model % NumberOfBCs),VFPerm(N))
      BCNumbering = 0
      VFPerm = 0
-              
+
      DO i=1,N
        Element => RadElements(i)
-       bc_id = GetBCId( Element ) 
+       bc_id = GetBCId( Element )
        IF(bc_id < 0 .OR. bc_id > Model % NumberOfBCs) THEN
          CALL Warn(Caller,'BC index out of bounds: '//I2S(bc_id))
          CYCLE
@@ -975,7 +975,7 @@ CONTAINS
          j = j+1
          BCNumbering(i) = j
          CALL Info(Caller,'BC '//I2S(i)//' with '//I2S(m)//' elems perm: '//I2S(j))
-       END IF         
+       END IF
      END DO
      MaxRadBC = j
 
@@ -985,7 +985,7 @@ CONTAINS
 
      IF(DoRadiators) THEN
        CALL Info(Caller,'Printing lumped information on radiator factors')
-       NoRows = NofRadiators       
+       NoRows = NofRadiators
        ALLOCATE(LumpedVF(NoRows,MaxRadBC))
        LumpedVF = 0.0_dp
 
@@ -1001,20 +1001,20 @@ CONTAINS
      ELSE
        CALL Info(Caller,'Printing lumped information of view factors')
        NoRows = MaxRadBC
-       ALLOCATE(LumpedVF(MaxRadBC,MaxRadBC),LumpedAreas(MaxRadBC))             
+       ALLOCATE(LumpedVF(MaxRadBC,MaxRadBC),LumpedAreas(MaxRadBC))
        LumpedVF = 0.0_dp
        LumpedAreas = 0.0_dp
-       
+
        DO i=1,N
          IF(VFPerm(i) > 0) THEN
            LumpedAreas(VFPerm(i)) = LumpedAreas(VFPerm(i)) + Areas(i)
          END IF
        END DO
-         
+
        CALL Info(Caller,'Lumped areas:')
        WRITE(Message,*) LumpedAreas(:)
-       CALL Info(Caller, Message ) 
-       
+       CALL Info(Caller, Message )
+
        DO i=1,N
          DO j=1,N
            k = (i-1)*N+j
@@ -1023,7 +1023,7 @@ CONTAINS
            END IF
          END DO
        END DO
-       
+
        DO i=1,MaxRadBC
          DO j=1,MaxRadBC
            LumpedVF(i,j) = LumpedVF(i,j) / LumpedAreas(i)
@@ -1031,20 +1031,20 @@ CONTAINS
        END DO
        CALL Info(Caller,'Lumped View Factor Matrix:')
      END IF
-     
+
      DO i=1,NoRows
        WRITE(Message,*) LumpedVF(i,:)
-       CALL Info(Caller, Message ) 
+       CALL Info(Caller, Message )
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE ViewFactorsLumping
 !------------------------------------------------------------------------------
 
 
-     
-!> View factors are normalized in order to improve the numerical accuracy. With 
-!> normalization it is ensured that all boundary elements see exactly half 
-!> space. 
+
+!> View factors are normalized in order to improve the numerical accuracy. With
+!> normalization it is ensured that all boundary elements see exactly half
+!> space.
 !------------------------------------------------------------------------------
    SUBROUTINE NormalizeFactors( Model, DoRadiators, NofRadiators, &
                     N, Factors, RadiationOpen )
@@ -1090,27 +1090,27 @@ CONTAINS
      itmax = 20
      it = 0
      cum = 0.0_dp
-        
+
 !------------------------------------------------------------------------------
 !    First force the matrix (before dividing by area) to be symmetric
 !------------------------------------------------------------------------------
-        
+
 !$omp parallel do private(s,si,sj,li,lj,i,j)
      DO i=1,n
        DO j=i,n
          si = Areas(i) * Factors((i-1)*n+j)
          sj = Areas(j) * Factors((j-1)*n+i)
 
-         li = (ABS(si) < HUGE(si)) 
-         lj = (ABS(sj) < HUGE(sj)) 
+         li = (ABS(si) < HUGE(si))
+         lj = (ABS(sj) < HUGE(sj))
 
-         IF(li .AND. lj) THEN 
+         IF(li .AND. lj) THEN
            s = (si+sj)/2.0
          ELSE IF(li) THEN
            s = si
          ELSE IF(lj) THEN
            s = sj
-         ELSE 
+         ELSE
            s = 0.0
          END IF
 
@@ -1126,7 +1126,7 @@ CONTAINS
 !    tricks...)
 !------------------------------------------------------------------------------
      IF(.NOT. RadiationOpen ) THEN
-       
+
        ALLOCATE( RHS(n),SOL(n),PSOL(n),Jdiag(n),Jacobian(n,n),STAT=istat )
        IF ( istat /= 0 ) THEN
          CALL Fatal( Caller,'Memory allocation error in NormalizeFactors for RHS etc.' )
@@ -1134,7 +1134,7 @@ CONTAINS
 
        SOL = 1.0_dp
        cum = 1.0_dp
-       
+
        DO it=1,itmax
 !$omp parallel do private(cum,i,j)
          DO i=1,n
@@ -1148,11 +1148,11 @@ CONTAINS
 !$omp end parallel do
 
          cum = SUM( RHS*RHS/Areas(1:n) ) / n
-            
+
          WRITE (Message,'(A,ES12.3)') &
              'Normalization iteration '//I2S(it)//': ',cum;
          CALL Info( Caller,Message, Level=3 );
-            
+
          IF ( cum <= eps ) EXIT
 
 !------------------------------------------------------------------------------
@@ -1177,7 +1177,7 @@ CONTAINS
          CALL IterSolv( n,SOL,RHS )
          SOL = PSOL + PSOL*SOL
        END DO
-          
+
 !------------------------------------------------------------------------------
 !    Normalize the factors and (re)divide by areas
 !------------------------------------------------------------------------------
@@ -1235,19 +1235,19 @@ CONTAINS
      ! Mirroring is easier when we don't need to eliminate the double nodes at the symmetry axis.
      ! However, if we don't eliminate them, the shadow mesh inverstigation fails to recognize
      ! continuity of elements over symmetry axis as they do not share any node.
-     ! Hence this flag could save some resources. 
+     ! Hence this flag could save some resources.
      !---------------------------------------------------------------------------------------
      IF(NoDoubles) THEN
        ALLOCATE(SymNode(nd),SymPerm(nd))
        SymNode = .FALSE.
-       Eps = 1.0e-8              
+       Eps = 1.0e-8
        SELECT CASE(c)
        CASE(1,2)
-         SymNode = ( ABS( ox(1:nd) - Plane) < eps ) 
+         SymNode = ( ABS( ox(1:nd) - Plane) < eps )
        CASE(3,4)
-         SymNode = ( ABS( oy(1:nd) - Plane) < eps ) 
+         SymNode = ( ABS( oy(1:nd) - Plane) < eps )
        CASE(5,6)
-         SymNode = ( ABS( oz(1:nd) - Plane) < eps ) 
+         SymNode = ( ABS( oz(1:nd) - Plane) < eps )
        END SELECT
 
        ns = COUNT(SymNode)
@@ -1270,8 +1270,8 @@ CONTAINS
 
      ALLOCATE(Mesh % Nodes % x(nd+nd2), Mesh % Nodes % y(nd+nd2), Mesh % Nodes % z(nd+nd2), STAT=istat )
      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh nodes.')
-     
-       
+
+
      DO i=1,nd
        Mesh % Nodes % x(i) = ox(i)
        Mesh % Nodes % y(i) = oy(i)
@@ -1303,7 +1303,7 @@ CONTAINS
      el => Mesh % Elements
      ALLOCATE(Mesh % Elements(2*ne), STAT=istat)
      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh elements.')
-     
+
      DO i=1,nv
        Mesh % Elements(i)    = el(i)
        Mesh % Elements(i+nv) = el(i)
@@ -1324,15 +1324,15 @@ CONTAINS
        Mesh % Elements(j)    = el(i)
        Mesh % Elements(j+nb) = el(i)
        nn = el(i) % TYPE % NumberOfNodes
-       
+
        ALLOCATE(Mesh % Elements(j+nb) % NodeIndexes(nn),STAT=istat)
-       IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh NodeIndexes.')         
+       IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh NodeIndexes.')
        IF(NoDoubles) THEN
          Mesh % Elements(j+nb) % NodeIndexes = SymPerm(el(i) % NodeIndexes)
        ELSE
          Mesh % Elements(j+nb) % NodeIndexes = el(i) % NodeIndexes+nd
        END IF
-         
+
        ALLOCATE(Mesh % Elements(j) % BoundaryInfo)
        Mesh % Elements(j) % BoundaryInfo    = el(i) % BoundaryInfo
 
@@ -1398,10 +1398,10 @@ CONTAINS
        IF(.NOT. Found ) CYCLE
 
        NoDoubles = ListGetLogical( Params,'Viewfactor Symmetry Eliminate Nodes', GotIt )
-       
+
        CALL Info(Caller,'Duplicating mesh in coordinate direction: '//I2S((i+1)/2))
        IF(PRESENT(NSymmetry)) NSymmetry = NSymmetry + 1
-       
+
        CALL MirrorMesh(Mesh, i, Plane, NoDoubles )
      END DO
 !------------------------------------------------------------------------------
@@ -1441,7 +1441,7 @@ CONTAINS
        IF(.NOT.Found) CYCLE
 
        CALL Info(Caller,'Symmetry reduction in coordinate direction: '//I2S((l+1)/2))
-       
+
        k = 0
        IF (DoRadiators) THEN
          m = NofRadiators
@@ -1512,7 +1512,7 @@ CONTAINS
 
      IF ( RadBody < 0 ) RadBody = 0
      IF ( RadBody>0 .AND. (RadBody /= Rbody .AND. RadBody /= Lbody) ) THEN
-       BcId = GetBCId( Element ) 
+       BcId = GetBCId( Element )
        Message = 'BC: '//I2S(BCId)//', Target: '//I2S(RadBody)//', Left: '//I2S(Lbody)//', Right: '//I2S(Rbody)
        CALL Error( Caller, Message )
        Lid = 0; Rid = 0
@@ -1537,12 +1537,12 @@ CONTAINS
 
      ! All the above complicated stuff has been done to provide a "Lnode" that is in the body where
      ! we are radiating to. However, if we have mesh deformation it is more reliable to use the
-     ! body that is radiating as it probably more rigid. So here we do the swap. 
+     ! body that is radiating as it probably more rigid. So here we do the swap.
      IF(Lnode > 0 .AND. Rnode > 0 ) THEN
        Lnode = Rnode
        Normal_in = -Normal_in
      END IF
-     
+
      ! The center of the boundary element
      r1(1) = SUM(ElementNodes % x)/k
      r1(2) = SUM(ElementNodes % y)/k
@@ -1559,7 +1559,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION DirectedNormalVector
 !------------------------------------------------------------------------------
-         
+
 !------------------------------------------------------------------------------
    FUNCTION CheckShadowMeshGiven() RESULT(RT_Mesh)
 !------------------------------------------------------------------------------
@@ -1591,21 +1591,21 @@ CONTAINS
        ! are loaded.
        ! -------------------------------------------------------------------------------
        IF ( UseShadowMesh ) THEN
-         BoundaryOnly = .NOT. DoMapping          
+         BoundaryOnly = .NOT. DoMapping
          ! Load as non-distributed (1,0) so every MPI rank gets the complete
          ! shadow mesh independently — all ranks need it for ray testing.
          RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, BoundaryOnly, 1, 0 )
 
-         ! For the shading mesh we will do rigid mesh mapping also if we use internal mapping         
-         ! since for this coarse mesh the mapping has not been performed. 
+         ! For the shading mesh we will do rigid mesh mapping also if we use internal mapping
+         ! since for this coarse mesh the mapping has not been performed.
          IF( DoMapping .OR. GetLogical( Model % Simulation,'Internal Rigid Mesh Mapping', Found ) ) THEN
-           Model % Mesh => RT_Mesh 
+           Model % Mesh => RT_Mesh
            CALL RigidMeshMapping( Model, RT_Mesh, .TRUE. )
-           Model % Mesh => Mesh 
-         END IF         
+           Model % Mesh => Mesh
+         END IF
 
          CALL SymmetryDuplication(RT_Mesh)
-           
+
          i0 = RT_Mesh % NumberOfBulkElements
          j = 0
          DO i=1,RT_Mesh % NumberOfBoundaryElements
@@ -1641,14 +1641,14 @@ CONTAINS
      DO i=1,Ni
        s = 0.0_dp
        DO j=1,N
-         IF(Factors((i-1)*N+j) < MinFactor) Factors((i-1)*N+j) = 0.0d0         
+         IF(Factors((i-1)*N+j) < MinFactor) Factors((i-1)*N+j) = 0.0d0
          s = s + Factors((i-1)*N+j)
        END DO
-         
+
        IF( .NOT. RadiationOpen .AND. s < 0.5 ) nprob = nprob + 1
 
        IF(i == 1) THEN
-         Fmin = s 
+         Fmin = s
          Fmax = s
          k = 1
        ELSE
@@ -1662,8 +1662,8 @@ CONTAINS
        j = CEILING(100*s)
        j = MIN(100,MAX(1,j))
        VF_cohorts(j) = VF_cohorts(j) + 1
-         
-       Fave = Fave + s         
+
+       Fave = Fave + s
      END DO
      Fave = Fave / Ni
 
@@ -1677,7 +1677,7 @@ CONTAINS
      CALL Info( Caller, Message )
      IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
          //I2S(nprob)//' (out of '//I2S(n)//')')
-     
+
      IF( InfoActive(10) ) THEN
        ! Report on the most problematic element which has too small viewfactors.
        IF( Fmin < 0.5 .AND. .NOT. RadiationOpen .OR. InfoActive(20) ) THEN
@@ -1693,7 +1693,7 @@ CONTAINS
            PRINT *,'r:',sqrt(model % nodes % x(j)**2 + model % nodes % y(j)**2 + model % nodes % z(j)**2)
          END DO
        END IF
-       
+
        DO i=1,100
          j = VF_cohorts(i)
          IF(j==0) CYCLE
@@ -1711,7 +1711,7 @@ CONTAINS
      REAL(KIND=dP) :: Factors(:)
 !------------------------------------------------------------------------------
      INTEGER :: i
-     REAL(KIND=dp) :: s, Fmin,Fmax 
+     REAL(KIND=dp) :: s, Fmin,Fmax
 !------------------------------------------------------------------------------
 
      Fmin = HUGE(Fmin); Fmax = 0
@@ -1723,7 +1723,7 @@ CONTAINS
        Fmin = MIN(Fmin,s)
        Fmax = MAX(Fmax,s)
      END DO
-       
+
      CALL Info( Caller, ' ', Level=3 )
      CALL info( Caller, 'Viewfactors/Radiator factors after manipulation: ')
      WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',Fmin
@@ -1735,7 +1735,7 @@ CONTAINS
      END IF
      IF( Fmin < 0.999_dp ) THEN
        ! For open BCs the view factor sum may be much less than one, otherwise not.
-       IF(.NOT. ListCheckPresentAnyBC( Model,'Radiation Boundary Open') ) THEN          
+       IF(.NOT. ListCheckPresentAnyBC( Model,'Radiation Boundary Open') ) THEN
          CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
        END IF
      END IF
@@ -1757,7 +1757,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      INTEGER :: i,j,t
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: BC
-     CHARACTER(:), ALLOCATABLE :: str 
+     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
      RadiationSurf = 0
      RadiationOpen = .FALSE.
@@ -1767,7 +1767,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
        BC => GetBC()
        IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
-         
+
        IF ( DoRadiators ) THEN
          IF (GetLogical( BC, 'Radiator BC', Found )) THEN
            RadiationBC(GetBCId()) = .TRUE.
@@ -1820,17 +1820,17 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
     REAL(KIND=dp), ALLOCATABLE :: pR(:)
 !------------------------------------------------------------
     IF ( .NOT. ASSOCIATED(Mesh) ) RETURN
-    
+
     n = Mesh % NumberOfBulkElements
     m = Mesh % NumberOfNodes
     nActive = n
-    
+
     ! Compact renumbering of nodes.
     ALLOCATE( Ref(m) )
     Ref = 0
-    
+
     ! We can save some extra time in checks when we eliminate the extremum elements
-    ! that form the bounding box. They can never be shadowing elements. 
+    ! that form the bounding box. They can never be shadowing elements.
     SkipBBox = .FALSE.
     IF(PRESENT(ElimBBox)) SkipBBox = ElimBBox
     IF(SkipBBox) THEN
@@ -1850,13 +1850,13 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
           pX => Mesh % Nodes % x
         CASE ( 2 )
           pX => Mesh % Nodes % y
-        CASE( 3 ) 
+        CASE( 3 )
           pX => Mesh % Nodes % z
         END SELECT
-        minx = MINVAL(pX(1:m),Ref>0) 
-        maxx = MAXVAL(pX(1:m),Ref>0) 
+        minx = MINVAL(pX(1:m),Ref>0)
+        maxx = MAXVAL(pX(1:m),Ref>0)
         xeps = EPSILON(xeps) +  1.0e-8 * ( maxx - minx )
-        
+
         ! Nodes need to be on the same boundary in order them to be applicable
         ! for being at bounding box boundary.
         WHERE(ABS(pX(1:m) - minx) < xeps)
@@ -1869,22 +1869,22 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
 #if 0
       ! Assume cylindrical BB
-      ! We give it a shot without playing with keywords...      
+      ! We give it a shot without playing with keywords...
       pX => Mesh % Nodes % x
       pY => Mesh % Nodes % y
 
-      ALLOCATE(pR(m))      
+      ALLOCATE(pR(m))
       pR = SQRT(pX(1:m)**2+pY(1:m)**2)
 
-      maxx = MAXVAL(pR(1:m),Ref>0)       
+      maxx = MAXVAL(pR(1:m),Ref>0)
       xeps = EPSILON(xeps) +  1.0e-8 * maxx
 
-      WHERE(ABS(pR - maxx) < xeps ) 
+      WHERE(ABS(pR - maxx) < xeps )
         NodeAtBBox(:,7) = .TRUE.
       END WHERE
       DEALLOCATE(pR)
 #endif
-      
+
       IF(InfoActive(10)) THEN
         DO i=1,7
           j = COUNT(NodeAtBBox(:,i))
@@ -1892,8 +1892,8 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
         END DO
       END IF
 
-          
-      ! We skip the elements at bounding box boundaries from the active set. 
+
+      ! We skip the elements at bounding box boundaries from the active set.
       nActive = 0
       DO i=1,n
         Element => Mesh % Elements(i)
@@ -1910,10 +1910,10 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
         CALL Info(Caller,'Number of shading elements: '//I2S(nActive)//' (vs. '//I2S(n)//')')
       END IF
 
-      ! Set this to zero, next time the bounding box is not used. 
-      Ref = 0      
+      ! Set this to zero, next time the bounding box is not used.
+      Ref = 0
     END IF
-    
+
     ALLOCATE( TYPE(nActive) )
     Type = 0
     cnt = 0
@@ -1940,10 +1940,10 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 !    Mesh % NumberOfBulkElements = l
 
 
-    
+
     IF ( .NOT.ALLOCATED(Surf) ) ALLOCATE(Surf(4*nActive))
     ALLOCATE(Coord(3*mActive))
-    
+
     IF ( PRESENT(data) .AND. cnt>0 ) THEN
       ! if planar circles found ....
       ALLOCATE(data(8*cnt), Perm(n))
@@ -1951,7 +1951,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
       j = 0
       DO i=1,n
         IF ( Type(i)==101 ) THEN
-          j = j+1 
+          j = j+1
           Perm(i) = j
         END IF
       END DO
@@ -1959,7 +1959,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
     j = 0
     DO i=1,m
-      IF ( Ref(i)>0 ) THEN        
+      IF ( Ref(i)>0 ) THEN
         j = j + 1
         Ref(i) = j
         Coord(3*(j-1)+1) = Mesh % Nodes % x(i)
@@ -2016,7 +2016,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
     END DO
 
     Mesh % NumberOfBulkElements = nActive
-          
+
 !------------------------------------------------------------------------------
    END SUBROUTINE ExtractMeshInfo
 !------------------------------------------------------------------------------
@@ -2057,19 +2057,19 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
      IF(k /= Element % Type % NumberOfNodes ) THEN
        CALL Fatal(Caller,'Boundary element '//I2S(Element % ElementIndex - Mesh % NumberOfBulkElements)//&
-             ' not included in parent '//I2S(parent % ElementIndex)//'!')               
+             ' not included in parent '//I2S(parent % ElementIndex)//'!')
      END IF
 
-     IF( body > 0 ) THEN 
+     IF( body > 0 ) THEN
        rad  = ListGetLogical(Model % Bodies(body) % Values,'Radiative Body', GotIt )
        IF ( .NOT. GotIt ) THEN
          MatId = GetInteger( Model % Bodies(body) % Values,'Material', GotIt)
          IF( MatId == 0 ) THEN
             CALL Fatal(Caller,'Invalid material index in body, perhaps none')
-         END IF 
-         rad = ListGetLogical(Model % Materials(MatId) % Values,'Radiative Body', GotIt) 
+         END IF
+         rad = ListGetLogical(Model % Materials(MatId) % Values,'Radiative Body', GotIt)
          IF ( .NOT. GotIt ) THEN
-           rad = ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
+           rad = ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity')
          END IF
        END IF
      ELSE
@@ -2174,7 +2174,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
      ! We may cheat with the symmetry by only counting the first half of the symmetric elements.
      UseSymmetry = .FALSE.
      IF(.NOT. DoRadiators) THEN
-       UseSymmetry = GetLogical( Params, 'Viewfactor use symmetry',GotIt)       
+       UseSymmetry = GetLogical( Params, 'Viewfactor use symmetry',GotIt)
        IF(UseSymmetry) THEN
          IF(NSymmetry == 0) THEN
            UseSymmetry = .FALSE.
@@ -2185,7 +2185,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
          END IF
        END IF
      END IF
-         
+
 !------------------------------------------------------------------------------
    END SUBROUTINE GetCartParameters
 !------------------------------------------------------------------------------
@@ -2211,7 +2211,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        ViewFactorsFile = GetString( GetSimulation(),'View Factors',GotIt)
        IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
      END IF
-     
+
      IF( LEN(FactorsSuffix) > 0 ) THEN
        i = INDEX(ViewFactorsFile,'.',BACK=.TRUE.)
        IF( i > 0 ) THEN
@@ -2225,37 +2225,37 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        TempString = ViewFactorsFile
        ViewFactorsFile = TRIM(TempString)//I2S(RadiationBody)
      END IF
-       
+
      IF (LEN_TRIM(MeshDirName) > 0) THEN
        OutputName = TRIM(OutputPath)//'/'//TRIM(MeshDirName)//'/'//TRIM(ViewFactorsFile)
      ELSE
        OutputName = TRIM(ViewFactorsFile)
      END IF
-       
+
      ! Only the first Ni rows of length n are saved; Factors may still have its
      ! pre-symmetry-reduction size.
      ALLOCATE( SaveMask(Ni*n), STAT=istat)
      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for SaveMask.')
-         
-     ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
+
+     ! Use loser constraint for MinFactor as the errors can't be renormalized any more
      MinFactor = MinFactor / 10.0_dp
-         
-     BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+
+     BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found )
      SinglePrec = getLogical( Params,'Viewfactor single precision',GotIt)
-     
+
      SaveMask = ( Factors(1:Ni*n) > MinFactor )
-     
+
      IF( BinaryMode ) THEN
        CALL Info(Caller,'Saving view factors in binary mode',Level=5)
 
        OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
            ACCESS = 'stream', STATUS='replace', ACTION='write' )
-       
+
        WRITE( VFUnit ) n
 
        DO i=1,Ni
          k = COUNT( SaveMask((i-1)*n+1:i*n) )
-         WRITE( VFUnit ) k 
+         WRITE( VFUnit ) k
          DO j=1,n
            IF( SaveMask((i-1)*N+j ) ) THEN
              IF(SinglePrec) THEN
@@ -2269,7 +2269,7 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
        END DO
      ELSE
        CALL Info(Caller,'Saving view factors in ascii mode',Level=5)
-       
+
        OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), STATUS='unknown', ACTION='write' )
        DO i=1,Ni
          k = COUNT( SaveMask((i-1)*n+1:i*n) )
@@ -2286,16 +2286,16 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
          END DO
        END DO
      END IF
-       
+
      CLOSE(VFUnit)
-     DEALLOCATE( SaveMask ) 
+     DEALLOCATE( SaveMask )
 !------------------------------------------------------------------------------
    END SUBROUTINE WriteOutputFile
 !------------------------------------------------------------------------------
 
 #include "huti_fdefs.h"
 
-!> Local handle to the iterative methods for linear systems. 
+!> Local handle to the iterative methods for linear systems.
 !------------------------------------------------------------------------------
     SUBROUTINE IterSolv( N,x,b )
       IMPLICIT NONE
@@ -2312,27 +2312,27 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 !------------------------------------------------------------------------------
       HUTI_NDIM = N
       dProc = 0
-    
+
       ipar = 0
       dpar = 0.0_dp
 
       HUTI_WRKDIM = HUTI_CG_WORKSIZE
       wsize = HUTI_WRKDIM
-          
+
       HUTI_NDIM     = N
       HUTI_DBUGLVL  = 10
       HUTI_MAXIT    = 100
- 
+
       ALLOCATE( work(N, wsize), STAT=istat )
       IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for IterSolv work.')
 
-      
+
       work = 0.0_dp
       HUTI_TOLERANCE = 1.0d-6
       HUTI_MAXTOLERANCE = 1.0d20
       HUTI_INITIALX = HUTI_USERSUPPLIEDX
       HUTI_STOPC = HUTI_TRESID_SCALED_BYB
-      
+
       iterProc  = AddrFunc(HUTI_D_CG)
 
       fm_G => Jacobian
@@ -2342,14 +2342,14 @@ FUNCTION ExtractSurfaces(Mesh,DoRadiators,RadElements,RadiationBC, &
 
       CALL IterCall( iterProc,x,b,ipar,dpar,work,mvProc,pcondProc, &
                 dProc, dProc, dProc, dProc )
-          
+
       DEALLOCATE( work )
-    END SUBROUTINE IterSolv 
+    END SUBROUTINE IterSolv
 
 
   END PROGRAM ViewFactors
 
 !> \}
-!> \}  
+!> \}
 
 

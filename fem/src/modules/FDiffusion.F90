@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 04 Oct 2000
 ! *
@@ -37,13 +37,13 @@
 !>  A solver for the Fourier transformed time-dependent diffusion equation
 !>  with a constant frequency forcing term,
 !>  (nabla^2 - iw) B(x) = -f(x,w)
-! 
+!
 !>  Here we are solving specifically the magnetic problem
 !>  (nabla^2/(mu*sigma) - iw) B(x) = iw B_ac(x)
-!  
+!
 !>  This version solves for a scalar field, i.e., the AC field is
 !>  B_ac(x,y,z,t) = B_ac(x,y,z) exp(iwt) e_z
-! 
+!
 !>  If requested, the time-averaged Lorentz force due to induced field B,
 !>  < 1/mu (curl B) x B >, is calculated and written in the result files.
 !> \ingroup Solvers
@@ -147,7 +147,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
           LocalStiffMatrix( 2*N,2*N ), &
           Conductivity( N ),  &
           Permeability( N ),  &
-          LrF(3 * Model % NumberOfNodes), & 
+          LrF(3 * Model % NumberOfNodes), &
           Load( 2,N ), STAT=istat )
 
      IF ( istat /= 0 ) THEN
@@ -220,7 +220,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
           WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
            (Solver % Mesh % NumberOfBulkElements-t) / &
               (1.0*Solver % Mesh % NumberOfBulkElements)), ' % done'
-                      
+
           CALL Info( 'FourierDiffusionSolve', Message, Level=5 )
           at0 = RealTime()
         END IF
@@ -480,7 +480,7 @@ CONTAINS
           s = s * SqrtMetric
        END IF
 !------------------------------------------------------------------------------
-!      The source term and the coefficient of the time derivative and 
+!      The source term and the coefficient of the time derivative and
 !      diffusion terms at the integration point
 
 !------------------------------------------------------------------------------
@@ -646,7 +646,7 @@ CONTAINS
      INTEGER :: Reorder(:)
 
      TYPE(Element_t), POINTER :: Element
-     TYPE(Nodes_t) :: Nodes 
+     TYPE(Nodes_t) :: Nodes
 
 
      LOGICAL :: Stat
@@ -733,7 +733,7 @@ CONTAINS
                    BacIm(p) ) / Permeability(p)
 
               Visited(q) = Visited(q) + 1
-           
+
            END DO
         END IF
       END DO

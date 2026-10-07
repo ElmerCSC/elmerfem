@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -30,7 +30,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 13.04.2011
 ! *
@@ -69,7 +69,7 @@
 
     IF( GetLogical( SolverParams,'Calculate Viscosity',GotIt ) ) THEN
       FieldName = 'Viscosity '//TRIM(VarName)
-      CALL ListAddString( SolverParams,&	
+      CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable',SolverParams),FieldName)
     END IF
 
@@ -115,10 +115,10 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER CONTIG :: ForceVector(:), ViscVector(:), SaveRHS(:)
   REAL(KIND=dp), POINTER :: ShearrateField(:), ViscField(:)
   TYPE(Variable_t), POINTER :: ShearrateSol, ViscSol
-  LOGICAL :: AllocationsDone = .FALSE. 
+  LOGICAL :: AllocationsDone = .FALSE.
 
-  SAVE ViscVector, AllocationsDone 
- 
+  SAVE ViscVector, AllocationsDone
+
   CALL Info( 'ShearrateSolver', '-------------------------------------',Level=4 )
   CALL Info( 'ShearrateSolver','Computing the shearrate field',Level=4 )
   CALL Info( 'ShearrateSolver', '-------------------------------------',Level=4 )
@@ -129,7 +129,7 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN
-  
+
   SolverParams => GetSolverParams()
 
   ShearrateSol => Solver % Variable
@@ -137,14 +137,14 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
   IF(Dofs /= 1) THEN
     CALL Fatal('ShearrateSolver','Shearrate should have just 1 component')
   END IF
-  
+
   VarName = GetString(SolverParams,'Target Variable',GotIt )
   IF(.NOT. gotIt) VarName = TRIM('Velocity')
 
   CalculateViscosity = GetLogical( SolverParams,'Calculate Viscosity',GotIt)
   IF( CalculateViscosity ) THEN
-    IF( .NOT. AllocationsDone ) THEN 
-      ALLOCATE(ViscVector(SIZE(Solver % Matrix % RHS)))  
+    IF( .NOT. AllocationsDone ) THEN
+      ALLOCATE(ViscVector(SIZE(Solver % Matrix % RHS)))
       AllocationsDone = .TRUE.
     END IF
     ViscVector = 0.0_dp
@@ -155,7 +155,7 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', GotIt )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
-  ForceVector => Solver % Matrix % rhs 
+  ForceVector => Solver % Matrix % rhs
   ShearrateField => Solver % Variable % Values
 
   CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
@@ -168,10 +168,10 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
     CALL DefaultFinishBulkAssembly()
   END IF
 
-  ! No Flux BCs 
+  ! No Flux BCs
   CALL DefaultFinishAssembly()
-        
-!------------------------------------------------------------------------------     
+
+!------------------------------------------------------------------------------
   IF( CalculateViscosity ) THEN
     CALL Info( 'ShearrateSolver','Solving for viscosity',Level=5 )
     Solver % Matrix % RHS => ViscVector
@@ -180,19 +180,19 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
     Solver % Variable % Values => ShearrateField
     Solver % Matrix % RHS => ForceVector
   END IF
-  
+
   CALL Info( 'ShearrateSolver','Solving for shearrare',Level=5 )
   UNorm = DefaultSolve()
 
-!------------------------------------------------------------------------------     
-  
+!------------------------------------------------------------------------------
+
 CONTAINS
 
 
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-       
+
     INTEGER :: elem,t,i,j,p,q,n,nd, Rank
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), FORCE2(:)
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -209,9 +209,9 @@ CONTAINS
 
     SAVE Nodes, STIFF, FORCE, FORCE2, Vx, Vy, Vz, Basis, dBasisdx, &
         NodalRho, NodalVisc, AllocationsDone
-    
+
     IF(.NOT. AllocationsDone ) THEN
-      n = Solver % Mesh % MaxElementNodes 
+      n = Solver % Mesh % MaxElementNodes
       ALLOCATE( STIFF(n,n), FORCE(n), FORCE2(n), Vx(n), Vy(n), Vz(n), &
           Basis(n), NodalVisc(n), NodalRho(n), dBasisdx(n,3) )
       Vx = 0.0_dp
@@ -222,7 +222,7 @@ CONTAINS
 
 
     DO elem = 1,Solver % NumberOFActiveElements
-         
+
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
@@ -237,7 +237,7 @@ CONTAINS
       END IF
 
       CALL GetScalarLocalSolution( Vx, ComponentName(VarName,1) )
-      CALL GetScalarLocalSolution( Vy, ComponentName(VarName,2) )      
+      CALL GetScalarLocalSolution( Vy, ComponentName(VarName,2) )
       IF( dim > 2 ) THEN
         CALL GetScalarLocalSolution( Vz, ComponentName(VarName,3) )
       END IF
@@ -286,17 +286,17 @@ CONTAINS
             END DO
           END DO
         END IF
-        
+
         DO j=1,3
           dVelodx(1,j) = SUM( Vx(1:nd)*dBasisdx(1:nd,j) )
           dVelodx(2,j) = SUM( Vy(1:nd)*dBasisdx(1:nd,j) )
           dVelodx(3,j) = SUM( Vz(1:nd)*dBasisdx(1:nd,j) )
         END DO
-        
+
         Velo(1) = SUM( Basis(1:nd) * Vx(1:nd) )
         Velo(2) = SUM( Basis(1:nd) * Vy(1:nd) )
         Velo(3) = SUM( Basis(1:nd) * Vz(1:nd) )
-        
+
         ShearRate = SQRT( SecondInvariant(Velo,dVelodx,Metric,Symb)/2 )
 
         FORCE(1:nd) = FORCE(1:nd) + Basis(1:nd) * s * ShearRate
@@ -305,15 +305,15 @@ CONTAINS
           FORCE2(1:nd) = FORCE2(1:nd) + Basis(1:nd) * s * mu
         END IF
       END DO
-      
+
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
 
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         CALL DefaultUpdateEquations( STIFF, FORCE(1:nd) )
       ELSE
-        CALL DefaultUpdateForce( FORCE(1:nd) )        
+        CALL DefaultUpdateForce( FORCE(1:nd) )
       END IF
 
       IF( CalculateViscosity ) THEN
@@ -324,7 +324,7 @@ CONTAINS
 
 
     END DO
-    
+
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *  Modified by: Jussi Heikonen, Ville Savolainen, Peter Raback
@@ -68,7 +68,7 @@ END SUBROUTINE PhaseChangeSolve_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solve the free surface in the phase change problem using Lagrangian techniques. 
+!>  Solve the free surface in the phase change problem using Lagrangian techniques.
 !> \deprecated This had been replaced by separate versions for transient and steady state phase change.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -88,10 +88,10 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t), POINTER :: CurrentElement, Parent, Element
   TYPE(Variable_t), POINTER :: SurfSol, TempSol, HelpSol, HelpSol2
   TYPE(Nodes_t) :: Nodes, PNodes
-  TYPE(GaussIntegrationPoints_t) :: IntegStuff  
+  TYPE(GaussIntegrationPoints_t) :: IntegStuff
   TYPE(Matrix_t),POINTER  :: StiffMatrix
   TYPE(ValueList_t), POINTER :: Material
-  TYPE(Solver_t), POINTER :: PSolver 
+  TYPE(Solver_t), POINTER :: PSolver
 
   REAL(KIND=dp) :: Normal(3), u, v, w, UPull(3), PrevUpull(3), &
       Density, Update, MaxUpdate, MaxTempDiff, Relax, LocalRelax, AverageRelax, &
@@ -109,9 +109,9 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       Normals(:), Weights(:), SurfaceMove(:), SurfaceMoveAve(:)
   REAL (KIND=dp), ALLOCATABLE :: PrevTemp(:), IsoSurf(:,:)
 
-  REAL(KIND=dp), ALLOCATABLE :: &          
+  REAL(KIND=dp), ALLOCATABLE :: &
       LocalStiffMatrix(:,:), LocalForceVector(:), LocalMassMatrix(:,:)
-  
+
   INTEGER :: i,j,k,t,n,nn,pn,DIM,kl,kr,l, bc, Trip_node, NoBNodes, NonlinearIter, istat, &
        NElems,ElementCode,Next,Vertex,ii,imin,NewtonAfterIter,Node, iter, LiquidInd, Visited = -1, &
        SubroutineVisited = 0, NormalDir, TangentDirection, CoordMini(3), CoordMaxi(3), &
@@ -133,7 +133,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       x, y, z, Basis, dBasisdx, norm, Axis_node, PullVelocitySet, &
       Normals, Weights, NormalsPerm, AverageNormal, SurfaceMove, SurfaceMoveAve, &
       SurfaceVelocitySet, CoordMax, CoordMin, CoordMaxi, CoordMini, UPull
-  
+
   !------------------------------------------------------------------------------
   ! Decide which kind of algorithm to use for the current timestep size
   !------------------------------------------------------------------------------
@@ -143,11 +143,11 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     SteadyDt = ListGetConstReal(Solver % Values,'Steady Transition Timestep',Stat)
     IF(Stat) TransientAlgo = (dt < SteadyDt)
   END IF
-  SteadyAlgo = .NOT. TransientAlgo    
+  SteadyAlgo = .NOT. TransientAlgo
 
   CALL Info('PhaseChangeSolve',                  '--------------------------------------------')
-  IF(SteadyAlgo) CALL Info('PhaseChangeSolve',   'Using steady algorithm to find the isotherm')      
-  IF(TransientAlgo) CALL Info('PhaseChangeSolve','Using transient algorithm for surface update')          
+  IF(SteadyAlgo) CALL Info('PhaseChangeSolve',   'Using steady algorithm to find the isotherm')
+  IF(TransientAlgo) CALL Info('PhaseChangeSolve','Using transient algorithm for surface update')
   CALL Info('PhaseChangeSolve',                  '--------------------------------------------')
 
   SubroutineVisited = SubroutineVisited + 1
@@ -181,12 +181,12 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     CALL Fatal('PhaseChangeSolve','Temperature field needed for Phase Change')
   END IF
 
-  Relax = GetCReal( Solver % Values,  & 
+  Relax = GetCReal( Solver % Values,  &
       'Nonlinear System Relaxation Factor', stat )
   IF ( .NOT. stat ) Relax = 1.0d0
   NonlinearIter = ListGetInteger( Solver % Values, &
       'Nonlinear System Max Iterations', stat )
-  IF ( .NOT. stat ) NonlinearIter = 1    
+  IF ( .NOT. stat ) NonlinearIter = 1
   NonlinearTol  = ListGetConstReal( Solver % Values, &
       'Nonlinear System Convergence Tolerance', stat )
 
@@ -197,13 +197,13 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 ! The first time the main axis of the free surface is determined
 ! and some permanent vectors related to the surface are allocated.
 !---------------------------------------------------------------------------------
-  
+
   IF(FirstTime) THEN
     UPull = 0.0
-    NoBNodes = 0    
+    NoBNodes = 0
     CoordMax = -HUGE(CoordMax)
     CoordMin = HUGE(CoordMin)
-    
+
     DO k=1, Model % Mesh % NumberOfNodes
       IF( SurfPerm(k) <= 0) CYCLE
       NoBnodes = NoBnodes + 1
@@ -222,7 +222,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
     END DO
-    
+
     ! Direction of minimum change
     j = 1
     DO i=1,DIM
@@ -231,7 +231,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
     NormalDir = j
-    
+
     ! Direction of maximum change
     j = 1
     DO i=1,DIM
@@ -246,7 +246,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     Trip_node = CoordMaxi(TangentDirection)
     Axis_node = CoordMini(TangentDirection)
 
-    n = Solver % Mesh % MaxElementNodes  
+    n = Solver % Mesh % MaxElementNodes
 
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
         PNodes % x(n), PNodes % y(n), PNodes % z(n), &
@@ -255,8 +255,8 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         LocalStiffMatrix(n,n), LocalForceVector(n), LocalMassMatrix(n,n), &
         PrevTemp(NobNodes), &
         STAT=istat)
-    IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error 1.' )     
-    
+    IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error 1.' )
+
     Nodes % x = 0.0d0
     Nodes % y = 0.0d0
     Nodes % z = 0.0d0
@@ -264,8 +264,8 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 
     IF( SteadyAlgo ) THEN
       ALLOCATE( NodeDone( NobNodes ), STAT=istat)
-      IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error 3.' )          
-    END IF  
+      IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error 3.' )
+    END IF
 
     VariableName = ListGetString( Solver % Values, 'Normal Variable', Stat )
     IF(Stat) THEN
@@ -287,7 +287,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       SurfaceMove => HelpSol % Values
     ELSE
       ALLOCATE( SurfaceMove(SIZE(Surface)), STAT=istat)
-      IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )           
+      IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )
       SurfaceMove = 0.0d0
       CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, &
           PSolver,TRIM(ComponentName(Solver % Variable))//'Move',1, &
@@ -301,7 +301,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         SurfaceMoveAve => HelpSol % Values
       ELSE
         ALLOCATE( SurfaceMoveAve(SIZE(Surface)), STAT=istat)
-        IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )           
+        IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )
         SurfaceMoveAve = 0.0d0
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, &
             PSolver,TRIM(ComponentName(Solver % Variable))//'MoveAve', &
@@ -309,13 +309,13 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    AllocationsDone = .TRUE.    
+    AllocationsDone = .TRUE.
   END IF
 
   ! Find triple point temperature
   !-------------------------------
 
-  Trip_Temp =  Temperature( TempPerm(Trip_node) )    
+  Trip_Temp =  Temperature( TempPerm(Trip_node) )
 
 
   i =  ListGetInteger( Solver % Values,'Passive Steps',Stat)
@@ -328,7 +328,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
   n = CurrentElement % TYPE % NumberOfNodes
   NodeIndexes => CurrentElement % NodeIndexes
   k = ListGetInteger(Model % Bodies(CurrentElement % BodyId) % Values,'Material')
-  Material => Model % Materials(k) % Values   
+  Material => Model % Materials(k) % Values
   MeltPoint = ListGetConstReal( Material,'Melting Point' )
   Density = ListGetConstReal( Material, 'Density' )
 
@@ -341,10 +341,10 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
   END IF
 
 !--------------------------------------------------------------------
-! The transient algorithm 
-! In the transient algorithm a heat flux over the interface is computed and 
-! it is assumed to be used solely in the melting of the solid into liquid. 
-! This melting speed gives an estimate for the melting speed that may be 
+! The transient algorithm
+! In the transient algorithm a heat flux over the interface is computed and
+! it is assumed to be used solely in the melting of the solid into liquid.
+! This melting speed gives an estimate for the melting speed that may be
 ! improved by iteration.
 !--------------------------------------------------------------------
 
@@ -352,20 +352,20 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     StiffMatrix => Solver % Matrix
     ForceVector => Solver % Matrix % RHS
 
-    UseLoads = ListGetLogical( Solver % Values,'Use Heat Load',Stat) 
+    UseLoads = ListGetLogical( Solver % Values,'Use Heat Load',Stat)
     IF(UseLoads) THEN
       HelpSol => VariableGet( Solver % Mesh % Variables, 'Nodal Heat Load' )
     END IF
-    
+
     PrevUpull = Upull
     PrevTemp = SurfaceMove
-    
+
     ! nonlinear iteration could only be associated if normal is computed from the solution
     DO iter = 1, NonlinearIter
-      
+
       ! First solve the velocity field
       CALL InitializeToZero( StiffMatrix, ForceVector )
-      
+
       IF(UseLoads) THEN
         DO t=1,Solver % Mesh % NumberOfNodes
           i = SurfPerm(t)
@@ -373,33 +373,33 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
           ForceVector(i) = HelpSol % Values(HelpSol % Perm(t))
         END DO
       END IF
-      
-      DO t = 1, Solver % NumberOfActiveElements         
+
+      DO t = 1, Solver % NumberOfActiveElements
         CurrentElement => Solver % Mesh % Elements(Solver % ActiveElements (t))
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
-        
+
         k = ListGetInteger(Model % Bodies(CurrentElement % BodyId) % Values,'Material')
         Material => Model % Materials(k) % Values
-        
+
         LatentHeat(1:n) = ListGetReal( Material, 'Latent Heat', n, NodeIndexes )
-        Conductivity(1:n) = ListGetReal( Material,'Heat Conductivity', n, NodeIndexes )                
+        Conductivity(1:n) = ListGetReal( Material,'Heat Conductivity', n, NodeIndexes )
         TempDiff(1:n) = Temperature( TempPerm(NodeIndexes) ) - MeltPoint
-        
+
         CALL VelocityLocalMatrix( LocalStiffMatrix, LocalMassMatrix, LocalForceVector,&
             CurrentElement, n, Nodes )
-        
+
         CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
             ForceVector, LocalForceVector, n, 1, SurfPerm(NodeIndexes) )
       END DO
-      
+
       CALL FinishAssembly( Solver, ForceVector )
 
-      ! No Dirihtlet conditions here since       
-      ! One should not really try to force the phase change at some point, 
+      ! No Dirihtlet conditions here since
+      ! One should not really try to force the phase change at some point,
       ! rather use feedback to tune the pull velocity
-      
-      CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, SurfaceMove, Norm, 1, Solver )        
+
+      CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, SurfaceMove, Norm, 1, Solver )
       RelativeChange = Solver % Variable % NonlinChange
 
       WRITE( Message, * ) 'Result Norm     : ',Norm
@@ -410,11 +410,11 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 
       IF ( RelativeChange < NonLinearTol ) EXIT
     END DO
-            
+
     IF(ListGetLogical(Solver % Values,'Use Average Velocity',Stat)) THEN
-      IF(SurfaceVelocitySet) THEN            
+      IF(SurfaceVelocitySet) THEN
         LocalRelax = GetCReal(Solver % Values,'Velocity Averaging Factor')
-        SurfaceMoveAve = LocalRelax * SurfaceMove + (1-LocalRelax) * SurfaceMoveAve               
+        SurfaceMoveAve = LocalRelax * SurfaceMove + (1-LocalRelax) * SurfaceMoveAve
       ELSE
         SurfaceMoveAve = SurfaceMove
         SurfaceVelocitySet = .TRUE.
@@ -428,15 +428,15 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       SurfaceMove = LocalRelax * SurfaceMove + (1-LocalRelax) * PrevTemp
     END IF
 
-    IF(PullControl .OR. TriplePointFixed) THEN      
+    IF(PullControl .OR. TriplePointFixed) THEN
       Upull(NormalDir) = -SurfaceMove(SurfPerm(Trip_node))
       IF(PullControl) THEN
         WRITE(Message,*) 'Pull velocity: ', Upull(NormalDir)
-        CALL Info('PhaseChangeSolve',Message) 
+        CALL Info('PhaseChangeSolve',Message)
       END IF
     END IF
 
-      
+
     ! Then solve the corresponding update in displacement field
     SpeedUp = ListGetConstReal( solver % Values,'Transient SpeedUp',Stat)
     IF(.NOT. Stat) SpeedUp = 1.0d0
@@ -448,26 +448,26 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       Surface = Surface + SpeedUp * dt * ( SurfaceMove + Upull(NormalDir))
     ELSE
       CALL InitializeToZero( StiffMatrix, ForceVector )
-      
-      DO t = 1, Solver % NumberOfActiveElements       
+
+      DO t = 1, Solver % NumberOfActiveElements
         CurrentElement => Solver % Mesh % Elements(Solver % ActiveElements (t))
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
-        
+
         CALL SurfaceLocalMatrix( LocalStiffMatrix, LocalMassMatrix, LocalForceVector,&
             CurrentElement, n, Nodes )
-        
+
         CALL Add1stOrderTime( LocalMassMatrix, LocalStiffMatrix, &
             LocalForceVector, dt, n, 1, SurfPerm(NodeIndexes), Solver )
-        
+
         CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
             ForceVector, LocalForceVector, n, 1, SurfPerm(NodeIndexes) )
       END DO
-      
-      CALL FinishAssembly( Solver, ForceVector )    
-      CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, Surface, Norm, 1, Solver )        
+
+      CALL FinishAssembly( Solver, ForceVector )
+      CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, Surface, Norm, 1, Solver )
     END IF
- 
+
     IF(PullControl .OR. TriplePointFixed) THEN
       IF(Visited /= Solver % DoneTime) THEN
         IF(Solver % DoneTime == 1) THEN
@@ -477,12 +477,12 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         END IF
         Visited = Solver % DoneTime
       END IF
-      
+
       pos0 = prevpos0 + UPull(NormalDir) * dt
-      
+
       IF(PullControl) THEN
         ! This sets the maximum position of the crystal side that is still
-        ! aligned with the pull direction. 
+        ! aligned with the pull direction.
         CALL FindPullBoundary()
       END IF
 
@@ -495,8 +495,8 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 
 
 !----------------------------------------------------------------------------
-! The Steady State the simulation is based on a geometric determination of the 
-! isotherm. The solution may be accelerated using local or global Newton 
+! The Steady State the simulation is based on a geometric determination of the
+! isotherm. The solution may be accelerated using local or global Newton
 ! type of iteration. It is activated only after the solution is quite accurate.
 !-----------------------------------------------------------------------------
 
@@ -509,7 +509,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       HelpSol => VariableGet( Solver % Mesh % Variables, 'Taverage' )
       IF(.NOT. ASSOCIATED (HelpSol)) THEN
         ALLOCATE( Taverage( Model % NumberOfNodes ), STAT=istat )
-        IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )     
+        IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, &
             PSolver, 'Taverage', 1, Taverage, TempPerm)
         HelpSol => VariableGet( Solver % Mesh % Variables, 'Taverage' )
@@ -521,7 +521,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         HelpSol2 => VariableGet( Solver % Mesh % Variables, 'Taverage Slow' )
         IF(.NOT. ASSOCIATED (HelpSol2)) THEN
           ALLOCATE( Taverage2( Model % NumberOfNodes ), STAT=istat )
-          IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )     
+          IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error.' )
           CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, &
               PSolver, 'Taverage Slow', 1, Taverage2, TempPerm)
           HelpSol2 => VariableGet( Solver % Mesh % Variables, 'Taverage Slow' )
@@ -530,8 +530,8 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 
       IF(dt >= AveragingDt) THEN
         HelpSol % Values = TempSol % Values
-        IF(ASSOCIATED(HelpSol2)) HelpSol2 % Values = TempSol % Values        
-      ELSE      
+        IF(ASSOCIATED(HelpSol2)) HelpSol2 % Values = TempSol % Values
+      ELSE
         AverageRelax = GetCReal( Solver % Values,'Temperature Relaxation Factor')
         IF(.NOT. ASSOCIATED(HelpSol2)) THEN
           HelpSol % Values = (1.0d0-AverageRelax) * HelpSol % Values + AverageRelax * TempSol % Values
@@ -545,7 +545,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     END IF
 
     NewtonAfterIter = ListGetInteger( Solver % Values, &
-        'Nonlinear System Newton After Iterations', stat )    
+        'Nonlinear System Newton After Iterations', stat )
     IF ( stat .AND. SubroutineVisited > NewtonAfterIter ) Newton = .TRUE.
 
     NewtonAfterTol = ListGetConstReal( Solver % Values, &
@@ -561,9 +561,9 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 !-----------------------
 
     IF( TriplePointFixed ) THEN
-      MeltPoint = Temperature( TempPerm(Trip_node) )        
+      MeltPoint = Temperature( TempPerm(Trip_node) )
       WRITE(Message,*) 'Melting point set to triple point temperature',MeltPoint,Trip_node
-      CALL Info('PhaseChangeSolve',Message)        
+      CALL Info('PhaseChangeSolve',Message)
     END IF
 
 
@@ -571,21 +571,21 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 !------------------------------
 
     IF(.NOT. Newton) THEN
-      
+
       IsoSurfAllocated = .FALSE.
       xmin = HUGE(xmin)
       xmax = -HUGE(xmax)
 
 100   NElems = 0
-      
-      DO t=1,Solver % Mesh % NumberOfBulkElements 
-        
+
+      DO t=1,Solver % Mesh % NumberOfBulkElements
+
         CurrentElement => Solver % Mesh % Elements(t)
-        
+
         n = CurrentElement % TYPE % NumberOfNodes
-        NodeIndexes => CurrentElement % NodeIndexes 
+        NodeIndexes => CurrentElement % NodeIndexes
         ElementCode = CurrentElement % TYPE % ElementCode
-        
+
         k = ListGetInteger(Model % Bodies(CurrentElement % BodyId) % Values,'Material')
         IF (.NOT. (ListGetLogical(Model % Materials(k) % Values, 'Solid', stat) .OR. &
             ListGetLogical(Model % Materials(k) % Values, 'Liquid', stat) )) CYCLE
@@ -596,7 +596,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         TempDiff(1:n) = Temperature(TempPerm(NodeIndexes(1:n))) - MeltPoint
 
         IF( ALL ( TempDiff(1:n) < 0.0 ) ) CYCLE
-        IF( ALL ( TempDiff(1:n) > 0.0 ) ) CYCLE       
+        IF( ALL ( TempDiff(1:n) > 0.0 ) ) CYCLE
 
         Nodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
         Nodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
@@ -605,25 +605,25 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         n=0
         DO nn=1,Vertex
           next  = MODULO(nn,Vertex) + 1
-          
+
           temp1 = TempDiff(nn)
           temp2 = TempDiff(next)
-                    
+
           IF ( ( (temp1 < 0.0) .AND. (0.0 <= temp2) ) .OR. &
               ( (temp2 <= 0.0) .AND. (0.0 < temp1) ) ) THEN
-            
+
             n = n + 1
-            
+
             IF ( n <= 2 ) THEN
-              NElems = NElems + 1              
+              NElems = NElems + 1
               IF(IsoSurfAllocated) THEN
                 IsoSurf(NElems,1) = Nodes % x(nn) + &
-                    temp1 * ((Nodes % x(next) - Nodes % x(nn)) / (temp1-temp2))              
+                    temp1 * ((Nodes % x(next) - Nodes % x(nn)) / (temp1-temp2))
                 IsoSurf(NElems,2) = Nodes % y(nn) + &
                     temp1 * ((Nodes % y(next) - Nodes % y(nn)) / (temp1-temp2))
 
-                xmin = MIN( IsoSurf(Nelems,1), xmin ) 
-                xmax = MAX( IsoSurf(Nelems,1), xmax )                 
+                xmin = MIN( IsoSurf(Nelems,1), xmin )
+                xmax = MAX( IsoSurf(Nelems,1), xmax )
               END IF
             ELSE
               CALL Warn('PhaseChangeSolve','Wiggly Isotherm')
@@ -634,14 +634,14 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
               PRINT *,'Nodes % x',Nodes % x(n)
               PRINT *,'Nodes % y',Nodes % y(n)
             END IF
-          END IF          
+          END IF
         END DO
-        
+
         IF ( n == 1 ) THEN
           NElems = NElems - 1
           CYCLE
         END IF
-        
+
         IF (IsoSurfAllocated .AND. n == 2) THEN
           IF ( IsoSurf(Nelems-1,TangentDirection) > IsoSurf(Nelems,TangentDirection) ) THEN
             Temppi = IsoSurf(Nelems-1,1)
@@ -652,10 +652,10 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
             IsoSurf(Nelems,2) = Temppi
           END IF
         END IF
-        
-      END DO 
 
-      IF(Nelems == 0) CALL Fatal('PhaseChangeSolve','Isotherm is empty thus cannot map phase change surface') 
+      END DO
+
+      IF(Nelems == 0) CALL Fatal('PhaseChangeSolve','Isotherm is empty thus cannot map phase change surface')
 
       IF(.NOT. IsoSurfAllocated) THEN
         ALLOCATE( IsoSurf(Nelems+1,2))
@@ -663,7 +663,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         WRITE(Message,*) 'Isotherm created with number of segments',Nelems
         CALL Info('PhaseChangeSolve',Message)
         GOTO 100
-      END IF      
+      END IF
     END IF
 
     area = 0.0
@@ -675,7 +675,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     MaxTempDiff = 0.0
 
 
-    DO t = 1, Solver % NumberOfActiveElements 
+    DO t = 1, Solver % NumberOfActiveElements
 
       CurrentElement => Solver % Mesh % Elements(Solver % ActiveElements(t))
       n = CurrentElement % TYPE % NumberOfNodes
@@ -693,10 +693,10 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
       Nodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
 
       TempDiff(1:n) = Temperature( TempPerm(NodeIndexes(1:n)) ) - MeltPoint
-      MaxTempDiff = MAX(MaxTempDiff, MAXVAL(ABS(TempDiff(1:n)))) 
+      MaxTempDiff = MAX(MaxTempDiff, MAXVAL(ABS(TempDiff(1:n))))
 
       DO nn=1,n
- 
+
         k = SurfPerm(NodeIndexes(nn))
         IF ( NodeDone(k) ) CYCLE
         NodeDone(k) = .TRUE.
@@ -704,7 +704,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         IF( TriplePointFixed .AND. NodeIndexes(nn) == trip_node) THEN
           SurfaceMove(k) = 0.0d0
           PRINT *,'triple point fixed by construction'
-          CYCLE 
+          CYCLE
         END IF
 
         IF ( nn == 3 ) THEN
@@ -721,14 +721,14 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
         END IF
 
 
-        IF ( .NOT. Newton ) THEN          
-          
+        IF ( .NOT. Newton ) THEN
+
           ! Find the contour element that has the x-coordinate in closest to that of the
           ! free surface
 
           Eps = 1.0d-6 * ( xmax - xmin )
 
-          dxmin = HUGE(dxmin)          
+          dxmin = HUGE(dxmin)
           dymin = HUGE(dymin)
           stat = .FALSE.
 
@@ -736,7 +736,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 
             IF ( (xx > IsoSurf(i,TangentDirection) - Eps) .AND. (xx < IsoSurf(i+1,TangentDirection) + Eps)) THEN
               dxmin = 0.0
-              d = MIN( ABS(yy - IsoSurf(i,NormalDir)), ABS(yy - IsoSurf(i+1,NormalDir)) )              
+              d = MIN( ABS(yy - IsoSurf(i,NormalDir)), ABS(yy - IsoSurf(i+1,NormalDir)) )
 
               ! Punish for overlapping the boundaries
               d = d + MAX(0.0d0, IsoSurf(i,TangentDirection) - xx)
@@ -759,7 +759,7 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
           END DO
 
           i = imin
-          
+
           ! There may be a problem if the boundary cannot be mapped on an isotherm
           IF (.NOT. stat) THEN
             IF(dxmin > 1.0d-2* ABS(IsoSurf(i,TangentDirection)- IsoSurf(i+1,TangentDirection))) THEN
@@ -782,54 +782,54 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
           END IF
 
         END IF
-              
-        TTemp = Temperature( TempPerm(NodeIndexes(nn)) )        
-       
+
+        TTemp = Temperature( TempPerm(NodeIndexes(nn)) )
+
         IF ( Newton ) THEN
-          dTdz = TTemp - PrevTemp(k) 
+          dTdz = TTemp - PrevTemp(k)
           IF ( ABS(dTdz) < AEPS ) THEN
             CALL Warn( 'PhaseChangeSolve', 'Very small temperature update.' )
             dTdz = 1
           END IF
           Update = SurfaceMove(k) * ( MeltPoint - TTemp ) / dTdz
         END IF
-         
+
         ! This enforcing is rather than by setting meltpoint to triple point temperature
         ! IF ( NodeIndexes(nn) == Trip_node ) Update = 0
-     
+
         PrevTemp(k) = TTemp
         SurfaceMove(k) = Update
       END DO
 
-      IntegStuff = GaussPoints( CurrentElement )      
-      DO i=1,IntegStuff % n        
-        
+      IntegStuff = GaussPoints( CurrentElement )
+      DO i=1,IntegStuff % n
+
         u = IntegStuff % u(i)
         v = IntegStuff % v(i)
         w = IntegStuff % w(i)
-        
+
         stat = ElementInfo( CurrentElement, Nodes, u, v, w, detJ, Basis, dBasisdx )
-        
+
         s = IntegStuff % s(i) * detJ
-        
+
         IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
           s = s * SUM(Basis(1:n) * Nodes % x(1:n)) * 2.0 * PI
         END IF
-        
+
         area = area + S
         volume = volume + S * SUM(Basis(1:n) * SurfaceMove(SurfPerm(NodeIndexes(1:n))))
         tave = tave + S * SUM(Basis(1:n) * TempDiff(1:n) )
         volabs = volabs + S * SUM(Basis(1:n) * ABS(SurfaceMove(SurfPerm(NodeIndexes(1:n)))))
         tabs = tabs + S * SUM(Basis(1:n) * ABS(TempDiff(1:n)) )
       END DO
-      
+
     END DO
 
 
 !    IF(.NOT. UseTAverage .AND. dt < SteadyDt) THEN
 !      LocaRelax = Relax * GetCReal( Solver % Values,'Temperature Relaxation Factor')
 !    ELSE
-      LocalRelax = Relax 
+      LocalRelax = Relax
 !    END IF
 
     ! There are several different acceleration methods which are mainly inactive
@@ -837,52 +837,52 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     tabs = tabs / area
     volume = volume / area
     volabs = volabs / area
-    
+
     i = ListGetInteger(Solver % Values,'Lumped Newton After Iterations', Stat)
     IF(Stat .AND. SubroutineVisited > i) THEN
-      
+
       j = ListGetInteger(Solver % Values,'Lumped Newton Mode', Stat)
-      SELECT CASE( j ) 
+      SELECT CASE( j )
       CASE( 1 )
         cvol = 0.5*(prevtave+tave)/(prevtave-tave)
-        
+
       CASE( 2 )
         cvol = 0.5*(prevvolabs+volabs)/(prevvolabs-volabs)
-        
+
       CASE( 3 )
         cvol = 0.5*(prevtabs+tabs)/(prevtabs-tabs)
-        
+
       CASE DEFAULT
         cvol = 0.5*(prevvolume+volume)/(prevvolume-volume)
 
       END SELECT
-      
+
       IF(cvol < 0.0) THEN
         cvol = 1.0
         ccum = 1.0
       END IF
-      
+
       clim = ListGetConstReal(Solver % Values,'Lumped Newton Limiter', Stat)
       IF(.NOT. Stat) clim = 100.0
       cvol = MIN(clim,cvol)
       cvol = MAX(1.0/clim,cvol)
-      
+
       ccum = ccum * cvol
-      
+
       WRITE(Message,*) 'Lumped Newton relaxation: ', ccum
       CALL Info('PhaseChangeSolve',Message)
-      
+
       LocalRelax = LocalRelax * ccum
     END IF
 
     SurfaceMove = LocalRelax * SurfaceMove
     Surface = Surface + SurfaceMove
-    
+
     dpos = SurfaceMove(SurfPerm(Trip_node))
 
     MaxUpdate = MAXVAL(ABS(SurfaceMove)) / MAXVAL(ABS(Surface))
 
-    IF ( ABS(MaxUpdate) < NewtonAfterTol ) Newton = .TRUE.    
+    IF ( ABS(MaxUpdate) < NewtonAfterTol ) Newton = .TRUE.
     WRITE(Message,*) 'Maximum surface update: ', MaxUpdate
     CALL Info('PhaseChangeSolve',Message)
 
@@ -893,12 +893,12 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
     WRITE( Message, * ) 'Result Norm     : ',Norm
     CALL Info( 'PhaseChangeSolve', Message, Level=4 )
     Solver % Variable % Norm = Norm
-    
+
     prevvolume = volume
     prevtave = tave
     prevtabs = tabs
     prevvolabs = volabs
-    
+
     IF(IsoSurfAllocated) THEN
       IsoSurfAllocated = .FALSE.
       DEALLOCATE(IsoSurf)
@@ -909,21 +909,21 @@ SUBROUTINE PhaseChangeSolve( Model,Solver,dt,TransientSimulation )
 ! Steady algorithm end
 !--------------------------------------------------------------------
 
-  
+
 200 CALL ListAddConstReal(Model % Simulation,'res: Triple point temperature',Trip_temp)
   CALL ListAddConstReal( Model % Simulation,'res: triple point movement',dpos)
-  CALL ListAddConstReal(Model % Simulation,'res: Pull Position',pos0)       
+  CALL ListAddConstReal(Model % Simulation,'res: Pull Position',pos0)
 
   IF(PullControl) THEN
     IF(NormalDir == 1) THEN
       CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity 1',UPull(NormalDir))
-    ELSE         
-      CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity 2',UPull(NormalDir))        
+    ELSE
+      CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity 2',UPull(NormalDir))
     END IF
   END IF
 
   FirstTime = .FALSE.
-  
+
 !------------------------------------------------------------------------------
 CONTAINS
 
@@ -936,10 +936,10 @@ CONTAINS
     INTEGER :: nCoord
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), TARGET :: Element
-    
+
     ! internal variables:
     TYPE(Nodes_t) :: PNodes
-    TYPE(Element_t), POINTER :: Parent      
+    TYPE(Element_t), POINTER :: Parent
     REAL(KIND=dp) :: Basis(3*nCoord),dBasisdx(3*nCoord,3), &
         X,Y,Z,U,V,W,S,detJ, TGrad(3,3),Flux,pu,pv,pw,pull, LocalHeat, &
         NodalTemp(3*nCoord), xx(10),yy(10),zz(10),  NodalSurf(nCoord), NodalNormal(2,nCoord)
@@ -947,7 +947,7 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER :: i,j,k,l,t,p,q, n, pn
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
- 
+
 !------------------------------------------------------------------------------
 
     ForceVector = 0.0d0
@@ -960,7 +960,7 @@ CONTAINS
     Nodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
     Nodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
     NodalSurf(1:n) = Surface( SurfPerm(NodeIndexes) )
-   
+
     IF(AverageNormal) THEN
       NodalNormal(1,1:n) = Normals(2*NormalsPerm(NodeIndexes(1:n))-1)
       NodalNormal(2,1:n) = Normals(2*NormalsPerm(NodeIndexes(1:n)))
@@ -974,69 +974,69 @@ CONTAINS
 !      ----------------------
 
     IntegStuff = GaussPoints( Element )
-    
+
     DO t = 1,IntegStuff % n
-      
+
       u = IntegStuff % u(t)
       v = IntegStuff % v(t)
       w = IntegStuff % w(t)
       s = IntegStuff % s(t)
-      
+
 !        Basis function values & derivatives at the integration point:
 !        -------------------------------------------------------------
       stat = ElementInfo( Element,Nodes,U,V,W,detJ,Basis,dBasisdx)
       s = s * detJ
       xcoord = SUM( Nodes % x(1:nCoord) * Basis(1:nCoord) )
-     
+
 !      IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
 !        s = s * xcoord
 !      END IF
-      
+
       IF(AverageNormal) THEN
         Normal(1) = SUM( Basis(1:n) * NodalNormal(1,1:n))
         Normal(2) = SUM( Basis(1:n) * NodalNormal(2,1:n))
         Normal(3) = 0.0d0
       ELSE
-        Normal = NormalVector( Element, Nodes, u, v, .TRUE. )         
+        Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
       END IF
 
       LocalHeat = SUM(Basis(1:n) * LatentHeat(1:n))
-      StabCoeff = StabFactor * LocalHeat * Density 
-      
- 
+      StabCoeff = StabFactor * LocalHeat * Density
+
+
       IF(UseLoads) THEN
         ! do nothing, loads already computed
 
-      ELSE 
+      ELSE
         ! Compute the flux from normal derivatives
-        TGrad = 0.0d0          
+        TGrad = 0.0d0
         l = 0
         DO i=1,2
-          
+
           IF( i == 1) THEN
             Parent => Element % BoundaryInfo % Left
           ELSE
             Parent => Element % BoundaryInfo % Right
           END IF
-          
+
           k = ListGetInteger(Model % Bodies(Parent % BodyId) % Values,'Material')
           IF (ListGetLogical(Model % Materials(k) % Values,'Solid',stat)) THEN
             IF(l == 2) CALL Fatal('PhaseChangeSolve','Both materials cannot be solid!')
             l = 2
-          ELSE 
+          ELSE
             IF(l == 1) CALL Fatal('PhaseChangeSolve','Both materials cannot be liquid!')
             l = 1
           END IF
-          
+
           pn = Parent % TYPE % NumberOfNodes
           k = ListGetInteger(Model % Bodies(Parent % BodyId) % Values,'Material')
-          
+
           Conductivity(1:pn) = ListGetReal( Model % Materials(k) % Values, &
-              'Heat Conductivity', pn, Parent % NodeIndexes )                     
+              'Heat Conductivity', pn, Parent % NodeIndexes )
           NodalTemp(1:pn) = Temperature( TempPerm(Parent % NodeIndexes) )
-          
+
           stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
-          
+
           !           Calculate the basis functions for the parent element:
           !           -----------------------------------------------------
           DO j = 1,n
@@ -1049,53 +1049,53 @@ CONTAINS
               END IF
             END DO
           END DO
-          
+
           pu = SUM( Basis(1:n) * xx(1:n) )
           pv = SUM( Basis(1:n) * yy(1:n) )
           pw = SUM( Basis(1:n) * zz(1:n) )
-          
+
           PNodes % x(1:pn) = Solver % Mesh % Nodes % x(Parent % NodeIndexes)
           PNodes % y(1:pn) = Solver % Mesh % Nodes % y(Parent % NodeIndexes)
           PNodes % z(1:pn) = Solver % Mesh % Nodes % z(Parent % NodeIndexes)
-          
+
           stat = ElementInfo( Parent, PNodes, pu, pv, pw, detJ, Basis, dBasisdx )
-          
+
           DO j=1,DIM
             TGrad(l,j) = SUM( Conductivity(1:pn) * Basis(1:pn) ) * &
                 SUM( dBasisdx(1:pn,j) * NodalTemp(1:pn) )
           END DO
         END DO
-        
-        Flux = SUM( (TGrad(1,:) - TGrad(2,:)) *  Normal)       
+
+        Flux = SUM( (TGrad(1,:) - TGrad(2,:)) *  Normal)
         stat = ElementInfo( Element,Nodes,U, V, W, detJ, Basis, dBasisdx )
       END IF
 
       ! Assembly the matrix
-      DO p=1,n        
+      DO p=1,n
         DO q=1,n
           StiffMatrix(p,q) = StiffMatrix(p,q) + s * Basis(p) * Basis(q) * &
-              Normal(NormalDir) * Density * LocalHeat            
+              Normal(NormalDir) * Density * LocalHeat
           IF(NodeIndexes(p) /= Trip_node) THEN
             StiffMatrix(p,q) = StiffMatrix(p,q) + &
-                s * StabCoeff * dBasisdx(q,TangentDirection) * dBasisdx(p,TangentDirection)            
+                s * StabCoeff * dBasisdx(q,TangentDirection) * dBasisdx(p,TangentDirection)
           END IF
 
-          ! BC for tipple node 
+          ! BC for tipple node
 !          IF(NodeIndexes(p) == Trip_node) THEN
 !            StiffMatrix(p,q) = StiffMatrix(p,q) - &
-!                StabCoeff * Basis(p) * dBasisdx(q,TangentDirection)            
+!                StabCoeff * Basis(p) * dBasisdx(q,TangentDirection)
 !          END IF
         END DO
-                
+
         ! transient part of heat flux
         IF(.NOT. (UseLoads)) THEN
-          ForceVector(p) = ForceVector(p) - s * Basis(p) * Flux 
+          ForceVector(p) = ForceVector(p) - s * Basis(p) * Flux
         END IF
-        
+
       END DO
 
     END DO
-    
+
     IF(TransientAlgo) DEALLOCATE( PNodes % x, PNodes % y, PNodes % z )
 
 !------------------------------------------------------------------------------
@@ -1106,13 +1106,13 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SurfaceLocalMatrix( StiffMatrix, MassMatrix, ForceVector,&
       Element, nCoord, Nodes )
-        
+
     ! external variables:
-    REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:), ForceVector(:)      
+    REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:), ForceVector(:)
     INTEGER :: nCoord
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
-    
+
     ! internal variables:
     REAL(KIND=dp) :: Basis(3*nCoord),dBasisdx(3*nCoord,3), &
         X,Y,Z,U,V,W,S,detJ,pull, NodalVelo(nCoord), xcoord, NodalNormal(2,nCoord)
@@ -1120,7 +1120,7 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER :: i,j,k,l,t,p,q, n, pn
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
- 
+
 !------------------------------------------------------------------------------
 
     ForceVector = 0.0d0
@@ -1145,44 +1145,44 @@ CONTAINS
 !      ----------------------
 
     IntegStuff = GaussPoints( Element )
-    
+
     DO t = 1,IntegStuff % n
-      
+
       u = IntegStuff % u(t)
       v = IntegStuff % v(t)
       w = IntegStuff % w(t)
       s = IntegStuff % s(t)
-      
+
 !        Basis function values & derivatives at the integration point:
 !        -------------------------------------------------------------
       stat = ElementInfo( Element,Nodes,U,V,W,detJ,Basis,dBasisdx)
       s = s * detJ
       xcoord = SUM( Nodes % x(1:nCoord) * Basis(1:nCoord) )
-      
+
       IF(AverageNormal) THEN
         Normal(1) = SUM( Basis(1:n) * NodalNormal(1,1:n) )
-        Normal(2) = SUM( Basis(1:n) * NodalNormal(2,1:n) ) 
+        Normal(2) = SUM( Basis(1:n) * NodalNormal(2,1:n) )
         Normal(3) = 0.0d0
       ELSE
-        Normal = NormalVector( Element, Nodes, u, v, .TRUE. )         
+        Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
       END IF
-      
-      Velo = SUM( Basis(1:n) * NodalVelo(1:n)) + Upull(NormalDir)        
-      Velo = SpeedUp * Velo 
 
-      DO p=1,n        
+      Velo = SUM( Basis(1:n) * NodalVelo(1:n)) + Upull(NormalDir)
+      Velo = SpeedUp * Velo
+
+      DO p=1,n
         DO q=1,n
-          MassMatrix(p,q) = MassMatrix(p,q) + s * Basis(p) * Basis(q)  
+          MassMatrix(p,q) = MassMatrix(p,q) + s * Basis(p) * Basis(q)
           StiffMatrix(p,q) = StiffMatrix(p,q) + &
-              s * StabCoeff * dBasisdx(q,TangentDirection) * dBasisdx(p,TangentDirection)            
-          
-          ! BC for tipple node 
+              s * StabCoeff * dBasisdx(q,TangentDirection) * dBasisdx(p,TangentDirection)
+
+          ! BC for tipple node
           IF(NodeIndexes(p) == Trip_node) THEN
             StiffMatrix(p,q) = StiffMatrix(p,q) - &
-                StabCoeff * Basis(p) * dBasisdx(q,TangentDirection)            
+                StabCoeff * Basis(p) * dBasisdx(q,TangentDirection)
           END IF
-        END DO        
-        ForceVector(p) = ForceVector(p) + s * Basis(p) * Velo         
+        END DO
+        ForceVector(p) = ForceVector(p) + s * Basis(p) * Velo
       END DO
 
     END DO
@@ -1207,15 +1207,15 @@ CONTAINS
       Ymax = MAXVAL(Solver % Mesh % Nodes % y)
       Ytop = Ymax
       Xtrip = Solver % Mesh % Nodes % x(Trip_node)
-      
+
       DO t = Solver % Mesh % NumberOfBulkElements + 1, &
-          Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements        
-        
+          Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements
+
         CurrentElement => Solver % Mesh % Elements(t)
         Model % CurrentElement => CurrentElement
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
-        
+
         DO k=1, Model % NumberOfBCs
           IF ( Model % BCs(k) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
           IF( ListGetLogical(Model % BCs(k) % Values,'Pull Boundary',stat ) ) THEN
@@ -1228,7 +1228,7 @@ CONTAINS
           END IF
         END DO
       END DO
-      
+
       IF (PullBoundary) THEN
         CALL ListAddConstReal(Model % Simulation,'res: Triple point position',Ybot)
         CALL ListAddConstReal(Model % Simulation,'res: Full pull position',Ytop)
@@ -1244,8 +1244,8 @@ CONTAINS
 !-------------------------------------------------------------------------------
   FUNCTION MeltingHeat(Model, Node, t) RESULT(Flux)
 !-------------------------------------------------------------------------------
-! This subroutine computes the heat flux resulting from solidification 
-! This 
+! This subroutine computes the heat flux resulting from solidification
+! This
 !-------------------------------------------------------------------------------
   USE Types
   USE Lists
@@ -1258,14 +1258,14 @@ CONTAINS
 !-------------------------------------------------------------------------------
   TYPE(Variable_t), POINTER :: NormalSol
   INTEGER:: k,n,i
-  INTEGER, POINTER :: NodeIndexes(:), NormalsPerm(:) 
+  INTEGER, POINTER :: NodeIndexes(:), NormalsPerm(:)
   REAL (KIND=dp):: NodeLatentHeat, Density, NormalPull, u, v
   REAL (KIND=dp):: UPull(3) = (/ 0,0,0 /), Normal(3), ElemLatentHeat(4)
   REAL (KIND=dp), POINTER :: Normals(:)
   LOGICAL:: stat, NormalExist = .FALSE., Visited = .FALSE.
   TYPE(Nodes_t) :: Nodes
   TYPE(Element_t), POINTER :: CurrentElement, Parent
-  
+
 !------------------------------------------------------------------------------
 
   SAVE NormalExist, Normals, NormalsPerm, Nodes
@@ -1278,7 +1278,7 @@ CONTAINS
       Normals => NormalSol % Values
       NormalExist = .TRUE.
     ELSE
-      n = Model % Mesh % MaxElementNodes  
+      n = Model % Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
     END IF
     Visited = .TRUE.
@@ -1287,28 +1287,28 @@ CONTAINS
   CurrentElement => Model % CurrentElement
   NodeIndexes => CurrentElement % NodeIndexes
   n = CurrentElement % TYPE % NumberOfNodes
-  
+
   k = ListGetInteger(Model % Bodies(CurrentElement % BodyId) % Values,'Material')
   ElemLatentHeat(1:n) = ListGetReal( Model % Materials(k) % Values, 'Latent Heat', n, NodeIndexes )
-  
+
   DO i=1,n
     IF(NodeIndexes(i) == Node) EXIT
   END DO
   IF(NodeIndexes(i) /= Node) CALL Fatal('PhaseProcs','Node not found')
   NodeLatentHeat = ElemLatentHeat(i)
-  
-  UPull = 0.0
-  UPull(1) = ListGetConstReal(Model % Simulation,'res: Pull Velocity 1',stat) 
-  IF(.NOT. stat) UPull(1) = ListGetConstReal(Model % Materials(k) % Values,'Convection Velocity 1',stat) 
 
-  UPull(2) = ListGetConstReal(Model % Simulation,'res: Pull Velocity 2',stat) 
-  IF(.NOT. stat) UPull(2) = ListGetConstReal(Model % Materials(k) % Values,'Convection Velocity 2',stat) 
- 
+  UPull = 0.0
+  UPull(1) = ListGetConstReal(Model % Simulation,'res: Pull Velocity 1',stat)
+  IF(.NOT. stat) UPull(1) = ListGetConstReal(Model % Materials(k) % Values,'Convection Velocity 1',stat)
+
+  UPull(2) = ListGetConstReal(Model % Simulation,'res: Pull Velocity 2',stat)
+  IF(.NOT. stat) UPull(2) = ListGetConstReal(Model % Materials(k) % Values,'Convection Velocity 2',stat)
+
   Parent => CurrentElement % BoundaryInfo % Left
   k = ListGetInteger(Model % Bodies(Parent % BodyId) % Values,'Material')
   IF (ListGetLogical(Model % Materials(k) % Values, 'Solid', stat)) THEN
     Density = ListGetConstReal( Model % Materials(k) % Values, 'Density' )
-  ELSE   
+  ELSE
     Parent => CurrentElement % BoundaryInfo % Right
     k = ListGetInteger(Model % Bodies(Parent % BodyId) % Values,'Material')
     Density = ListGetConstReal( Model % Materials(k) % Values, 'Density' )
@@ -1325,13 +1325,13 @@ CONTAINS
     Nodes % x(1:n) = Model % Nodes % x(NodeIndexes)
     Nodes % y(1:n) = Model % Nodes % y(NodeIndexes)
     Nodes % z(1:n) = Model % Nodes % z(NodeIndexes)
-    
+
     ! For line segments the normal in the center is usually sufficient
     u = 0.0d0
     v = 0.0d0
-    
-    ! If inner boundary, Normal Target Body should be defined for the boundary 
-    ! (if not, material density will be used to determine then normal direction 
+
+    ! If inner boundary, Normal Target Body should be defined for the boundary
+    ! (if not, material density will be used to determine then normal direction
     ! and should be defined for bodies on both sides):
 
     Normal = NormalVector( CurrentElement, Nodes, u, v, .TRUE. )

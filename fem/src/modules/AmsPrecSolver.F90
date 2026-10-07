@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 3.9.2025
 ! *
@@ -66,32 +66,32 @@ SUBROUTINE AmsVectorSolver_Init( Model,Solver,dt,Transient ) ! {{{
   !CALL ListAddLogical(Params,'Linear System Refactorize',.TRUE.)
   !CALL ListAddLogical(Params,'Mortar BCs Fixed',.FALSE.)
 
-  
-  IsMonolithic = ListGetLogical( Params,'Monolithic Solver',Found )  
+
+  IsMonolithic = ListGetLogical( Params,'Monolithic Solver',Found )
   IsComplex = ListGetLogical( Params, 'Linear System Complex', Found )
-  
+
   IF( IsMonolithic ) THEN
     ! We solve the equation as monolithic system
     IF( IsComplex ) THEN
       CALL ListAddNewString( Params,'Variable',&
-          'AmsVec[amsx re:1 amsx im:1 amsy re:1 amsy im:1 amsz re:1 amsz im:1]') 
+          'AmsVec[amsx re:1 amsx im:1 amsy re:1 amsy im:1 amsz re:1 amsz im:1]')
     ELSE
       CALL ListAddNewString( Params,'Variable',&
-          'AmsVec[amsx:1 amsy:1 amsz:1]') 
+          'AmsVec[amsx:1 amsy:1 amsz:1]')
     END IF
-  ELSE    
+  ELSE
     ! We solve the equation component-wise. Hence the primary variable is a temporary one.
-    CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)   
+    CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)
     IF( IsComplex ) THEN
       CALL ListAddNewString( Params,'Variable','Amstmp[amst re:1 amst im:1]')
       CALL ListAddString( Params,&
           NextFreeKeyword('Exported Variable', Params), &
-          'AmsVec[amsx re:1 amsx im:1 amsy re:1 amsy im:1 amsz re:1 amsz im:1]') 
+          'AmsVec[amsx re:1 amsx im:1 amsy re:1 amsy im:1 amsz re:1 amsz im:1]')
     ELSE
       CALL ListAddNewString( Params,'Variable','amstmp')
       CALL ListAddString( Params,&
           NextFreeKeyword('Exported Variable', Params), &
-          'AmsVec[amsx:1 amsy:1 amsz:1]') 
+          'AmsVec[amsx:1 amsy:1 amsz:1]')
     END IF
   END IF
 
@@ -102,7 +102,7 @@ SUBROUTINE AmsVectorSolver_Init( Model,Solver,dt,Transient ) ! {{{
     CALL ListAddString( Params,&
         NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal amsa rhs')
   END IF
-    
+
 !------------------------------------------------------------------------------
 END SUBROUTINE AmsVectorSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -213,7 +213,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   REAL(KIND=dp), POINTER :: b(:)
   CHARACTER(*), PARAMETER :: Caller = 'AmsVectorSolver'
 
-  
+
 !------------------------------------------------------------------------------
 
   CALL Info( Caller,'-------------------------------------------------------', Level=10 )
@@ -228,19 +228,19 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   b => A % Rhs
 
   IsMonolithic = ListGetLogical( SolverParams,'Monolithic Solver', Found )
-  
+
   NodeResVar => VariableGet( Mesh % Variables,'nodal amsa rhs',&
       ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
   allrhs => NodeResVar % Values
 
   ns = 1
   IF( ListGetLogical( SolverParams,'Linear System Complex',Found ) ) ns = 2
-  
+
   IF(IsMonolithic) THEN
     ! Solve all 3 components at the same time!
     ! Note that the current assembly in AVSolver is not compatible with this!
     comps = 1
-  ELSE   
+  ELSE
     ! Solve one component at a time -> faster!
     comps = 3
     IF(.NOT. ASSOCIATED(A % BulkValues)) THEN
@@ -248,11 +248,11 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     END IF
     A % BulkValues = A % Values
   END IF
-  
+
   IF(IsMonolithic) THEN
     AVar => SVar
   ELSE
-    Avar => VariableGet( Mesh % Variables,'AmsVec',ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)        
+    Avar => VariableGet( Mesh % Variables,'AmsVec',ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
     IF(SVar % dofs /= ns) THEN
       CALL Fatal(Caller,'Componentwise solver size should be: '//I2S(ns))
     END IF
@@ -263,7 +263,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     CALL Fatal(Caller,'Full solution size should be: '//I2S(2*ns))
   END IF
   AVar % Values = 0.0_dp
-  
+
   sname = ListGetString( SolverParams, 'Edge Update Name', Found)
   IF(.NOT. Found) sname = "ams update"
   EdgeSolVar => VariableGet(Mesh % Variables, sname, ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
@@ -277,10 +277,10 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   IF(n0 > 0) THEN
     CALL Info(Caller,'Number of nodal dofs: '//I2S(n0),Level=20)
   END IF
-  
+
   EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
   CALL EdgeElementStyle(EdgeSolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
-  IF (SecondOrder) CALL Fatal(Caller, 'The lowest-order edge basis must be assumed') 
+  IF (SecondOrder) CALL Fatal(Caller, 'The lowest-order edge basis must be assumed')
 
   IF (.NOT. ASSOCIATED(Proj)) THEN
     CALL Info(Caller,'Creating projection matrix to map a nodal solution into vector element space', Level=10)
@@ -288,11 +288,11 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Avar, EdgeSolVar, Proj, cdim=3, &
         SkipFaces = SkipFaces, NodalOffset = n0)
     IF(InfoActive(20)) THEN
-      CALL VectorValuesRange(Proj % Values,SIZE(Proj % Values),'Proj')       
-    END IF       
+      CALL VectorValuesRange(Proj % Values,SIZE(Proj % Values),'Proj')
+    END IF
   END IF
 
-  ExtrudedSol = ListGetLogical( SolverParams,'Extruded Solution',Found ) 
+  ExtrudedSol = ListGetLogical( SolverParams,'Extruded Solution',Found )
 
   ! Now EdgeResVar represents the residual with respect
   ! to the basis for H(curl). We need to apply a transformation so that
@@ -303,13 +303,13 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
       AVar % Perm, dofs, EdgeResVar % Values, allrhs )
 
   IF(InfoActive(20)) THEN
-    CALL VectorValuesRange(Allrhs,SIZE(Allrhs),'allrhs')       
+    CALL VectorValuesRange(Allrhs,SIZE(Allrhs),'allrhs')
   END IF
-  
-  ! Potentially create a mask that avoids residual values being applied on the mortar BC. 
+
+  ! Potentially create a mask that avoids residual values being applied on the mortar BC.
   IF(.NOT. Visited ) THEN
     n = SIZE(SVar % Values) / SVar % dofs
-    ALLOCATE(NodeSkip(n))    
+    ALLOCATE(NodeSkip(n))
     NodeSkip = .FALSE.
     CALL CreateNodeSkipMask(NodeSkip,SVar)
     n = COUNT(NodeSkip)
@@ -321,7 +321,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     END IF
   END IF
 
-  ! By construction do not apply any residual to the mortar boundary. 
+  ! By construction do not apply any residual to the mortar boundary.
   IF(ASSOCIATED(NodeSkip)) THEN
     DO i=1,SIZE(NodeSkip)
       IF(NodeSkip(i)) THEN
@@ -332,40 +332,40 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
 
   IF(IsMonolithic) THEN
     ! If we use N-T coordinate system to make periodic/rotational BC's easier than we must map the
-    ! original residual vector into N-T system. 
-    
+    ! original residual vector into N-T system.
+
     IF( Solver % NormalTangential % NormalTangentialNOFNodes > 0 ) THEN
       CALL Info(Caller,'Mapping residual vector into normal-tangential system',Level=10)
       CALL RotateNtVector( allrhs, Solver )
     END IF
 
-#if 0 
+#if 0
     IF(ListCheckPrefixAnyBodyForce( Model,'Test Load') ) THEN
-      CALL SetTestRhs()    
+      CALL SetTestRhs()
       NodeResVar % Values = allrhs
     END IF
 #endif
 
     Solver % Matrix % rhs = allrhs
-    
+
     IF(ALLOCATED(Solver % Matrix % ConstrainedDOF ) ) &
         Solver % Matrix % ConstrainedDOF = .FALSE.
     CALL DefaultDirichletBCs()
-    
-    Norm = DefaultSolve()    
+
+    Norm = DefaultSolve()
   ELSE
     DO compi = 1, comps
       IF(ExtrudedSol .AND. compi /= comps ) CYCLE
-      
+
       A % Values = A % BulkValues
-      IF( ns == 1 ) THEN      
+      IF( ns == 1 ) THEN
         b = allrhs(compi::comps)
       ELSE
-        ! Picking a stride is not so easy when we want to pick a pair of components from a set of six. 
+        ! Picking a stride is not so easy when we want to pick a pair of components from a set of six.
         b(1::2) = allrhs(2*compi-1::2*comps)
         b(2::2) = allrhs(2*compi::2*comps)
       END IF
-        
+
       ! Nullify the previous Dirichlet conditions to be on the safe side.
       IF(ALLOCATED(A % ConstrainedDOF ) ) A % ConstrainedDOF = .FALSE.
 
@@ -376,8 +376,8 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
         sname = ComponentName(AVar % Name,ns*(compi-1)+dof)
 
         pVar => VariableGet( Model % Variables, sname)
-        
-        CALL SetDirichletBoundaries( CurrentModel, A, b, sname, & 
+
+        CALL SetDirichletBoundaries( CurrentModel, A, b, sname, &
             dof, ns, SVar % Perm )
       END DO
 
@@ -389,14 +389,14 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
         pVar % Values = SVar % Values
       ELSE
         AVar % Values(2*compi-1::2*comps) = SVar % Values(1::2)
-        AVar % Values(2*compi::2*comps) = SVar % Values(2::2)        
+        AVar % Values(2*compi::2*comps) = SVar % Values(2::2)
       END IF
     END DO
     A % Values = A % BulkValues
   END IF
 
   IF(IsMonolithic .OR. ExtrudedSol ) THEN
-    CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.) 
+    CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.)
   END IF
   CALL ListAddLogical( SolverParams,'Mortar BCs Fixed',.TRUE.)
 
@@ -404,21 +404,21 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   CALL CRS_MatrixVectorMultiply(Proj, Avar % Values, EdgeSolVar % Values )
 
   IF(InfoActive(20)) THEN
-    CALL VectorValuesRange(Avar % Values,SIZE(Avar % Values),'VecPotNodal')       
-    CALL VectorValuesRange(EdgeSolVar % Values,SIZE(EdgeSolVar % Values),'VecPotEdge')       
+    CALL VectorValuesRange(Avar % Values,SIZE(Avar % Values),'VecPotNodal')
+    CALL VectorValuesRange(EdgeSolVar % Values,SIZE(EdgeSolVar % Values),'VecPotEdge')
   END IF
 
   Visited = .TRUE.
   CALL Info(Caller,'Auxiliary space nodal vector solution finished!',Level=10)
 
-  
+
 CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE RotateNtVector( Vector,Solver )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Vector(:)
-    TYPE(Solver_t) :: Solver    
+    TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,dofs,dim
     REAL(KIND=dp) :: s,Q(3),N1(3),T1(3),T2(3),R(3,3)
@@ -432,11 +432,11 @@ CONTAINS
     dim = Mesh % MeshDim
 
     IF(dim /= dofs) CALL Fatal('RotateNtVector','Currently assuming that dim == dofs !')
-    
+
     Normal => Solver % NormalTangential % BoundaryNormals
     Tangent1 => Solver % NormalTangential % BoundaryTangent1
     Tangent2 => Solver % NormalTangential % BoundaryTangent2
-    
+
     DO i=1,Mesh % NumberOfNodes
       j = Solver % NormalTangential % BoundaryReorder(i)
       k = Solver % Variable % Perm(i)
@@ -450,7 +450,7 @@ CONTAINS
       ! Create rotation matrix "R" on this node.
       R = 0.0_dp
       N1 = Normal( j,: )
-      
+
       SELECT CASE(DIM)
       CASE (2)
         R(1,1) =  N1(1)
@@ -466,8 +466,8 @@ CONTAINS
         R(2,1:3) = T1(1:3)
         R(3,1:3) = T2(1:3)
       END SELECT
-      
-      ! Rotate the local vector to N-T coordinates. 
+
+      ! Rotate the local vector to N-T coordinates.
       Q = 0.0_dp
       DO l=1,DOFs
         s = 0.0_dp
@@ -482,7 +482,7 @@ CONTAINS
   END SUBROUTINE RotateNtVector
 !------------------------------------------------------------------------------
 
-#if 0 
+#if 0
   SUBROUTINE SetTestRhs()
 
     INTEGER :: n
@@ -505,7 +505,7 @@ CONTAINS
       ALLOCATE( FORCE(3*n), LOAD(3,n), Basis(n),dBasisdx(n,3) )
       Visited = .TRUE.
     END IF
-    
+
     DO elem=1,Mesh % NumberOfBulkElements
       Element => Mesh % Elements(elem)
 
@@ -521,12 +521,12 @@ CONTAINS
       Load(3,1:n) = GetReal( BodyForce,'Test Load 3', Found )
 
       IP = GaussPoints( Element )
-      
+
       DO t=1,IP % n
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx )
         Weight = IP % s(t) * DetJ
-        DO i=1,3      
+        DO i=1,3
           LoadAtIP = SUM( Basis(1:n) * LOAD(i,1:n) )
           FORCE(i:3*n:3) = FORCE(i:3*n:3) + Weight * LoadAtIP * Basis(1:n)
         END DO
@@ -535,10 +535,10 @@ CONTAINS
       CALL DefaultUpdateForce(FORCE,Element,Solver)
 
     END DO
-    
+
   END SUBROUTINE SetTestRhs
 #endif
-  
+
 END SUBROUTINE AmsVectorSolver
 !------------------------------------------------------------------------------
 
@@ -564,13 +564,13 @@ SUBROUTINE AmsScalarSolver_Init( Model,Solver,dt,Transient ) ! {{{
   CALL ListAddNewString( Params,'Exec Solver','never')
   CALL ListAddNewLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
   CALL ListAddNewInteger( Params,'Nonlinear System Max Iterations', 1)
-  
+
   IF( ListGetLogical( Params,'Linear System Complex', Found ) ) THEN
     CALL ListAddNewString( Params,'Variable','amss[amss re:1 amss im:1]' )
   ELSE
     CALL ListAddNewString( Params,'Variable','amss' )
   END IF
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE AmsScalarSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -617,15 +617,15 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   TYPE(Matrix_t), POINTER :: A
   REAL(KIND=dp), POINTER :: allrhs(:) => NULL()
   CHARACTER(*), PARAMETER :: Caller = 'AmsScalarSolver'
-  
+
 !------------------------------------------------------------------------------
-  
-  Mesh => Solver % Mesh 
+
+  Mesh => Solver % Mesh
   SolverParams => Solver % Values
   VVar => Solver % Variable
   vdofs = VVar % dofs
   A => Solver % Matrix
-  
+
   CALL Info( Caller,'-------------------------------------------------------', Level=10 )
   CALL Info( Caller,'Solving preconditioning equation for AMS scalar', Level=6 )
   CALL Info( Caller,'-------------------------------------------------------', Level=10 )
@@ -639,21 +639,21 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   IF(.NOT. Found) sname = "ams update"
   EdgeSolVar => VariableGet(Mesh % Variables, sname, ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
   EdgeSolVar % Values = 0.0_dp
-  
+
   sname = ListGetString( SolverParams,'Edge Residual Name',Found)
   IF(.NOT. Found) sname = "ams res"
   EdgeResVar => VariableGet( Mesh % Variables, sname, ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
-  
+
   EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
   CALL EdgeElementStyle(EdgeSolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
-  IF (SecondOrder) CALL Fatal(Caller, 'The lowest-order edge basis must be assumed') 
+  IF (SecondOrder) CALL Fatal(Caller, 'The lowest-order edge basis must be assumed')
 
   IF (.NOT. ASSOCIATED(Proj)) THEN
     CALL Info(Caller,'Creating projection matrix to map a nodal solution into gradient space', Level=10)
-    SkipFaces = ListGetLogical( SolverParams,'Skip Faces in Projection',Found ) 
+    SkipFaces = ListGetLogical( SolverParams,'Skip Faces in Projection',Found )
     CALL NodalGradientToNedelecInterpolation_GlobalMatrix(Mesh, VVar, EdgeResVar, Proj)
   END IF
-    
+
   ! Now EdgeResVar represents the residual with respect
   ! to the basis for H(curl). We need to apply a transformation so that
   ! we may solve the residual correction equation by using the nodal basis.
@@ -665,14 +665,14 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   ! Potentially create a mask that avoids residual values being applied on the mortar BC.
   IF(.NOT. Visited  ) THEN
     n = SIZE(VVar % Values) / vdofs
-    ALLOCATE(NodeSkip(n))    
+    ALLOCATE(NodeSkip(n))
     NodeSkip = .FALSE.
     CALL CreateNodeSkipMask(NodeSkip,VVar)
     n = COUNT(NodeSkip)
     IF(n==0) DEALLOCATE(NodeSkip)
   END IF
 
-  ! By construction do not apply any residual to the mortar boundary. 
+  ! By construction do not apply any residual to the mortar boundary.
   IF(ASSOCIATED(NodeSkip)) THEN
     allrhs => A % rhs
     DO i=1,SIZE(NodeSkip)
@@ -685,11 +685,11 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   IF(ALLOCATED(A % ConstrainedDOF ) ) A % ConstrainedDOF = .FALSE.
   DO dof=1,vdofs
     IF( vdofs > 1 ) THEN
-      sname = ComponentName(VVar,dof)    
+      sname = ComponentName(VVar,dof)
     ELSE
       sname = VVar % Name
     END IF
-    CALL SetDirichletBoundaries( CurrentModel, A, A % rhs, sname, & 
+    CALL SetDirichletBoundaries( CurrentModel, A, A % rhs, sname, &
         dof, vdofs, VVar % Perm )
   END DO
   CALL EnforceDirichletConditions( Solver, A, A % rhs )
@@ -710,14 +710,14 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   END IF
 
   IF(InfoActive(20)) THEN
-    CALL VectorValuesRange(Vvar % Values,SIZE(Vvar % Values),'ScalarPotNodal')       
-    CALL VectorValuesRange(EdgeSolVar % Values,SIZE(EdgeSolVar % Values),'VecPotEdge')       
+    CALL VectorValuesRange(Vvar % Values,SIZE(Vvar % Values),'ScalarPotNodal')
+    CALL VectorValuesRange(EdgeSolVar % Values,SIZE(EdgeSolVar % Values),'VecPotEdge')
   END IF
 
   Visited = .TRUE.
   CALL Info(Caller,'Auxiliary space nodal scalar solution finished!',Level=10)
-    
-  
+
+
 END SUBROUTINE AmsScalarSolver
 !------------------------------------------------------------------------------
 
@@ -743,13 +743,13 @@ SUBROUTINE AmsVSolver_Init( Model,Solver,dt,Transient ) ! {{{
   CALL ListAddNewString( Params,'Exec Solver','never')
   CALL ListAddNewLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
   CALL ListAddNewInteger( Params,'Nonlinear System Max Iterations', 1)
-  
+
   IF( ListGetLogical( Params,'Linear System Complex', Found ) ) THEN
     CALL ListAddNewString( Params,'Variable','amsv[amsv re:1 amsv im:1]' )
   ELSE
     CALL ListAddNewString( Params,'Variable','amsv' )
   END IF
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE AmsVSolver_Init ! }}}
 !------------------------------------------------------------------------------
@@ -782,14 +782,14 @@ SUBROUTINE AmsVSolver( Model,Solver,dt,Transient ) ! {{{
   LOGICAL, SAVE :: Visited = .FALSE., IsComplex
   LOGICAL, POINTER, SAVE :: NodeSkip(:)
   TYPE(Matrix_t), POINTER :: VMat, AVMat
-  CHARACTER(*), PARAMETER :: Caller = 'AmsVSolver'  
+  CHARACTER(*), PARAMETER :: Caller = 'AmsVSolver'
 !------------------------------------------------------------------------------
-  
-  Mesh => Solver % Mesh 
+
+  Mesh => Solver % Mesh
   SolverParams => Solver % Values
   VVar => Solver % Variable
   VMat => Solver % Matrix
-  
+
   CALL Info( Caller,'-------------------------------------------------------', Level=10 )
   CALL Info( Caller,'Solving preconditioning equation for AMS V', Level=6 )
   CALL Info( Caller,'-------------------------------------------------------', Level=10 )
@@ -803,41 +803,41 @@ SUBROUTINE AmsVSolver( Model,Solver,dt,Transient ) ! {{{
   IF(.NOT. Found) sname = "ams update"
   EdgeSolVar => VariableGet(Mesh % Variables, sname, ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
   EdgeSolVar % Values = 0.0_dp
-  
+
   sname = ListGetString( SolverParams,'Edge Residual Name',Found)
   IF(.NOT. Found) sname = "ams res"
   EdgeResVar => VariableGet( Mesh % Variables, sname, ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
-  
+
   EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
   AVMat => EdgeResVar % Solver % Matrix
-  
+
   CALL PickNodalSubmatrix(AVMat,VMat,EdgeSolVar,VVar)
 
   IF(InfoActive(20)) THEN
-    CALL VectorValuesRange(VMat % Values,SIZE(VMat % Values),'Vmat values')       
+    CALL VectorValuesRange(VMat % Values,SIZE(VMat % Values),'Vmat values')
   END IF
 
-  
+
   ! Now EdgeResVar has first residual related to "V" and then to "A".
   ! We pick just the "V" values.
   n = VMat % NumberOfRows
   VMat % rhs(1:n) = EdgeResVar % Values(1:n)
 
   IF(InfoActive(20)) THEN
-    CALL VectorValuesRange(VMat % rhs,SIZE(VMat % Rhs),'Vrhs')       
+    CALL VectorValuesRange(VMat % rhs,SIZE(VMat % Rhs),'Vrhs')
   END IF
 
-  
-  ! Potentially create a mask that avoids residual values being applied on the mortar BC. 
+
+  ! Potentially create a mask that avoids residual values being applied on the mortar BC.
   IF(.NOT. Visited  ) THEN
-    ALLOCATE(NodeSkip(n))    
+    ALLOCATE(NodeSkip(n))
     NodeSkip = .FALSE.
     CALL CreateNodeSkipMask(NodeSkip,VVar)
     n = COUNT(NodeSkip)
     IF(n==0) DEALLOCATE(NodeSkip)
   END IF
 
-  ! By construction do not apply any residual to the mortar boundary. 
+  ! By construction do not apply any residual to the mortar boundary.
   IF(ASSOCIATED(NodeSkip)) THEN
     WHERE(NodeSkip)
       VMat % rhs = 0.0_dp
@@ -846,14 +846,14 @@ SUBROUTINE AmsVSolver( Model,Solver,dt,Transient ) ! {{{
 
   ! No Dirichlet conditions etc. need to be set since the whole matrix is inherited from
   ! the large matrix.
-  Norm = DefaultSolve()    
-  
+  Norm = DefaultSolve()
+
   CALL ListAddLogical( SolverParams,'Mortar BCs Fixed',.TRUE.)
-    
+
   EdgeSolVar % Values(1:n) = VVar % Values(1:n)
-  
+
   IF(InfoActive(20)) THEN
-    CALL VectorValuesRange(Vvar % Values,SIZE(Vvar % Values),'VNodal')       
+    CALL VectorValuesRange(Vvar % Values,SIZE(Vvar % Values),'VNodal')
   END IF
 
   Visited = .TRUE.
@@ -868,16 +868,16 @@ CONTAINS
     TYPE(Matrix_t) :: TotMat, SubMat
     TYPE(Variable_t) :: TotVar, SubVar
 
-    INTEGER, ALLOCATABLE :: TotInvPerm(:),SubInvPerm(:)    
+    INTEGER, ALLOCATABLE :: TotInvPerm(:),SubInvPerm(:)
     INTEGER :: i,i1,i2,j1,j2,k1,k2,m,k
-    
+
     SubMat % Values = 0.0_dp
 
     m = SIZE(TotVar % Perm)
     ALLOCATE(TotInvPerm(m),SubInvPerm(m))
     TotInvPerm = 0
     SubInvPerm = 0
-    
+
     m = Mesh % NumberOfNodes
     DO i=1,m
       i1 = SubVar % Perm(i)
@@ -893,9 +893,9 @@ CONTAINS
       IF(i1==0 .OR. i2==0) CYCLE
 
       DO j1=SubMat % Rows(i1),SubMat % Rows(i1+1)-1
-        k1 = SubInvPerm(SubMat % Cols(j1)) 
+        k1 = SubInvPerm(SubMat % Cols(j1))
         DO j2=TotMat % Rows(i2),TotMat % Rows(i2+1)-1
-          k2 = TotInvPerm(TotMat % Cols(j2)) 
+          k2 = TotInvPerm(TotMat % Cols(j2))
           IF(k1==k2) THEN
             SubMat % Values(j1) = TotMat % Values(j2)
             k = k+1
@@ -907,10 +907,10 @@ CONTAINS
     IF(k<SIZE(SubMat % Values)) THEN
       CALL Fatal(Caller,'Not all values found for matrix!')
     END IF
-    
+
   END SUBROUTINE PickNodalSubmatrix
-    
-  
+
+
 END SUBROUTINE AmsVSolver
 !------------------------------------------------------------------------------
 
