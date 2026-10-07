@@ -215,7 +215,7 @@ CONTAINS
         IF ( Shifted ) THEN
           ShiftC = Shift
           DiagTol = ListGetCReal(Solver % Values, 'Linear System Scaling Diagonal Tolerance', &
-              Found, minv = 0.0_dp, DefValue = 1.0_dp)
+              Found, minv = 0.0_dp, DefValue = 1.0d-10)
           ALLOCATE(MDiag(n))
           MDiag(1:n) = 0._dp
         END IF
