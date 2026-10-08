@@ -721,7 +721,7 @@ END SUBROUTINE SaveGridData
     IF ( nTime == 1 ) THEN
       FilePrefix = ListGetString( Params,'Filename Prefix')
       CALL Info('ParticleOutputNetCDF','Saving in NetCDF format to file: ' &
-	//TRIM(FilePrefix)//'.nc')
+        //TRIM(FilePrefix)//'.nc')
     END IF
 
     Partitions = ParEnv % PEs

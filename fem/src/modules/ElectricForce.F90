@@ -126,9 +126,9 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 
   n = Mesh % MaxElementNodes
   ALLOCATE( ElementNodes % x( n ), &
-	ElementNodes % y(n), ElementNodes % z(n) )
+        ElementNodes % y(n), ElementNodes % z(n) )
   ALLOCATE( ParentNodes % x( n ), &
-	ParentNodes % y(n), ParentNodes % z(n) )
+        ParentNodes % y(n), ParentNodes % z(n) )
   ALLOCATE( LocalPotential( n ), Permittivity( 3, 3, n ) )
   ALLOCATE( NodalWeight( Mesh % NumberOfNodes ) )
 

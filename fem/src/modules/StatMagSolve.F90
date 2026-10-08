@@ -263,7 +263,7 @@
          Permeability(1:n) = ListGetReal(Material, &
              'Relative Permeability',n,NodeIndexes,GotIt)
          IF( GotIt ) THEN
-	   Permeability(1:n) = PermeabilityOfVacuum * Permeability(1:n)
+           Permeability(1:n) = PermeabilityOfVacuum * Permeability(1:n)
          ELSE
            Permeability(1:n) = ListGetReal(Material, &
              'Magnetic Permeability',n,NodeIndexes,GotIt)

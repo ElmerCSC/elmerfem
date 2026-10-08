@@ -783,7 +783,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
 
   IF( ParticleInfo ) THEN
     CALL ParticleInformation(Particles, ParticleStepsTaken, &
-	TimeStepsTaken, tottime )
+        TimeStepsTaken, tottime )
   END IF
 
   CALL PseudoNorm()

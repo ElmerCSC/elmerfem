@@ -69,7 +69,7 @@
             GotTargetSurface, GotGradSol
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:),PoissonRatio(:), &
-		Alpha(:,:), Beta(:), Gamma(:), RefSurface(:)
+                Alpha(:,:), Beta(:), Gamma(:), RefSurface(:)
   REAL(KIND=dp), POINTER CONTIG :: OrigX(:), OrigY(:), OrigZ(:), &
       TrueX(:), TrueY(:), TrueZ(:)
   REAL(KIND=dp) :: at,at0
@@ -469,7 +469,7 @@
                 A(i,j) = A(i,j) + s * Lame2 * dBasisdx(q,i) * dBasisdx(p,j)
              END DO
              A(i,i) = A(i,i) + s * Coeff * dBasisdx(q,i) * dBasisdx(p,i)
-	  END DO
+          END DO
        END DO
        END DO
      END DO
@@ -499,7 +499,7 @@
 
 !------------------------------------------------------------------------------
  SUBROUTINE MeshBoundary( STIFF,FORCE,LOAD,NodalAlpha,NodalBeta,NodalGamma,&
-	NodalRefSurface,Element,n,nd,nb )
+        NodalRefSurface,Element,n,nd,nb )
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: STIFF(:,:),FORCE(:)
    REAL(KIND=dp) :: NodalAlpha(:,:),NodalBeta(:),NodalGamma(:),NodalRefSurface(:),LOAD(:,:)

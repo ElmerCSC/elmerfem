@@ -222,7 +222,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
       DispEigen => DispSol % EigenVectors(NoEigen,:)
       IF( GetLogical( SolverParams,'Displacement Variable Frequency',Found) ) THEN
         AngularFrequency = SQRT( DispSol % EigenValues(NoEigen))
-	GotFrequency = .TRUE.
+        GotFrequency = .TRUE.
       END IF
       IF( DispDofs < dim ) THEN
         CALL Fatal('HelmholtzSolver','Eigenmode displacement field should have at least 1*dim components')
@@ -391,7 +391,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
             Impedance(2,1:n) = 0.0_dp
           END IF
 
-	  IF( UseConvection ) THEN
+          IF( UseConvection ) THEN
             ConvVelo(1,1:n) = GetParentMatProp( 'Convection Velocity 1', Element, Found )
             ConvVelo(2,1:n) = GetParentMatProp( 'Convection Velocity 2', Element, Found )
             IF( dim == 3 ) THEN

@@ -529,7 +529,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(ASSOCIATED(OldVar)) THEN
         Var => OldVar
         VariableName = OldVariableName
-	GotOldVar = .TRUE.
+        GotOldVar = .TRUE.
       END IF
     END IF
 
@@ -1602,7 +1602,7 @@ CONTAINS
 
       ! These operators should already be more of less parallel
     CASE('partitions','cpu time','wall time','cpu memory','norm','nonlin change','steady state change',&
-	'nonlin iter','nonlin converged','steady converged','threads',&
+        'nonlin iter','nonlin converged','steady converged','threads',&
         'mean','mean abs','mean square','variance','deviation','int mean','int square mean', &
         'int abs mean','int variance')
       ParOper = 'none'
@@ -1713,7 +1713,7 @@ CONTAINS
     IF( ParallelReduce ) THEN
       GotParOper = .FALSE.
       IF( PRESENT(ParallelOperator)) THEN
-	ParOper = ParallelOperator
+        ParOper = ParallelOperator
         GotParOper = .TRUE.
       ELSE
 
@@ -1772,7 +1772,7 @@ CONTAINS
       IF(.NOT. ASSOCIATED(TargetVar)) THEN
         WrkPntr => Null()
         ALLOCATE(WrkPntr(1),STAT=istat)
-	IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 5')
+        IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 5')
 
         CALL VariableAdd( Model % Variables, Mesh, Solver, &
             TRIM(VariableName), 1, WrkPntr )

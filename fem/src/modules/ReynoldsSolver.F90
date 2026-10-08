@@ -1239,7 +1239,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         END IF
 
         body_id =  Element % Bodyid
-	IF( body_id <= 0 ) CYCLE
+        IF( body_id <= 0 ) CYCLE
 
         ent_id = ListGetInteger( Model % Bodies(body_id) % Values,'Equation')
         Equation => Model % Equations(ent_id) % Values

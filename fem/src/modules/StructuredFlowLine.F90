@@ -64,7 +64,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, MaskName
   INTEGER :: i,j,k,l,n,dim,DOFs,itop,ibot,ii,jj,Rounds,BotMode,TopMode,nsize, &
       ActiveDirection,elem,FlowDofs,DispDofs,Hits,Shots, VisitedTimes = 0, &
-	  AveMode, AveOrder
+          AveMode, AveOrder
   INTEGER, POINTER :: TopPerm(:),BotPerm(:),TopPointer(:),MaskPerm(:),&
       BotPointer(:),UpPointer(:),DownPointer(:),NodeIndexes(:),FlowPerm(:),&
       DispPerm(:), HitPerm(:)
@@ -480,11 +480,11 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
       END IF
 
       Mesh % Nodes % x(k) = Mesh % Nodes % x(k) + &
-	      HardDisp( DispDofs*(DispPerm(k)-1)+1)
+              HardDisp( DispDofs*(DispPerm(k)-1)+1)
       Mesh % Nodes % y(k) = Mesh % Nodes % y(k) + &
-	      HardDisp( DispDofs*(DispPerm(k)-1)+2)
+              HardDisp( DispDofs*(DispPerm(k)-1)+2)
       IF(dim == 3) Mesh % Nodes % z(k) = Mesh % Nodes % z(k) + &
-	      HardDisp( DispDofs*(DispPerm(k)-1)+3)
+              HardDisp( DispDofs*(DispPerm(k)-1)+3)
     END DO
   END IF
 
@@ -540,8 +540,8 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
        n = Solver % Mesh % MaxElementNodes
        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n))
        ALLOCATE( Basis(n), dBasisdx(n, 3) )
-	   ALLOCATE( Elements(Mesh % NumberOfNodes) )
-	   NULLIFY( CurrentElement )
+           ALLOCATE( Elements(Mesh % NumberOfNodes) )
+           NULLIFY( CurrentElement )
        Visited = .TRUE.
     END IF
 

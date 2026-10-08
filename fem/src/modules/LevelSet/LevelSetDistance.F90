@@ -477,7 +477,7 @@ CONTAINS
               WRITE(IOUnit,'(I4)',ADVANCE='NO') Solver % DoneTime
             END IF
 
-	    m = 0
+            m = 0
             Var => Model % Variables
             DO WHILE( ASSOCIATED( Var ) )
 
@@ -485,7 +485,7 @@ CONTAINS
                 Var => Var % Next
                 CYCLE
               END IF
-	      m = m + 1
+              m = m + 1
 
               fval = 0.0d0
               DO k=1,3
@@ -506,7 +506,7 @@ CONTAINS
             WRITE(IOUnit,'(A)') ' '
 
           END DO
-	END IF
+        END IF
 
       END DO
 
@@ -519,11 +519,11 @@ CONTAINS
       CLOSE(IOUnit)
 
       IF( m /= NumberOfFields ) THEN
-	IF( NumberOfFields > 0 ) THEN
-  	  CALL Warn('ExtractZeroLevel','Mismacth in number of fields')
+        IF( NumberOfFields > 0 ) THEN
+          CALL Warn('ExtractZeroLevel','Mismacth in number of fields')
           PRINT *,m,' vs. ',NumberOfFields
-	END IF
-	NumberOfFields = m
+        END IF
+        NumberOfFields = m
 
         OPEN(NEWUNIT=IOUnit, FILE=TRIM(Filename)//TRIM(".names") )
         WRITE(IOUnit,'(A,A)') 'Variables in file: ',TRIM(Filename)

@@ -1305,7 +1305,7 @@ CONTAINS
         ! so that the value loop above needs no lookup per node.
         !----------------------------------------------------------------
         CALL GetIsoInterpolants()
-	j = 0
+        j = 0
 
         IF( ALLOCATED( InvPerm ) ) DEALLOCATE( InvPerm, Interpolant )
         ALLOCATE( InvPerm( 2, NoIsonodes ), Interpolant( NoIsoNodes) )
@@ -1472,7 +1472,7 @@ CONTAINS
 
        IF( IsAllocated == 0 ) THEN
 
-	 NoSurfaces = k
+         NoSurfaces = k
 
          ALLOCATE( Isomesh % Elements(k) )
 

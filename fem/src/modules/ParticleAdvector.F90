@@ -267,7 +267,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   !---------------------------------------------------------------
   IF( ParticleInfo ) THEN
     CALL ParticleInformation(Particles, ParticleStepsTaken, &
-	TimeStepsTaken, tottime )
+        TimeStepsTaken, tottime )
   END IF
 
   IF( ReverseTime ) THEN
@@ -330,11 +330,11 @@ CONTAINS
 
     IF( SomeBC ) THEN
       DO j=Mesh % NumberOfBulkElements+1,&
-  	Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         Element => Mesh % Elements(j)
         Model % CurrentElement => Element
         BC => GetBC( Element )
-	n = GetElementNOFNodes()
+        n = GetElementNOFNodes()
 
         PCond(1:n) = GetReal( BC,'Particle Fixed Condition',Found)
         IF(.NOT. Found ) CYCLE
@@ -344,14 +344,14 @@ CONTAINS
         DO i=1,n
           IF( PCond(i) < 0.0_dp ) CYCLE
 
-	  k = Element % NodeIndexes(i)
+          k = Element % NodeIndexes(i)
           IF( Particles % Status( k ) == PARTICLE_FIXEDCOORD ) CYCLE
 
           Particles % Status( k ) = PARTICLE_FIXEDCOORD
           FixedCount = FixedCount + 1
-	  IF(.NOT. GotTime ) CYCLE
+          IF(.NOT. GotTime ) CYCLE
 
-	  IF( Found ) THEN
+          IF( Found ) THEN
             PTimeVar % Values( k ) = PTime(i)
           ELSE
             PTimeVar % Values( k ) = PTimeConst
@@ -366,7 +366,7 @@ CONTAINS
         Element => Mesh % Elements(j)
         Model % CurrentElement => Element
         BodyForce => GetBodyForce( Element )
-	n = GetElementNOFNodes()
+        n = GetElementNOFNodes()
 
         PCond(1:n) = GetReal( BodyForce,'Particle Fixed Condition',Found)
         IF(.NOT. Found ) CYCLE
@@ -376,14 +376,14 @@ CONTAINS
         DO i=1,n
           IF( PCond(i) < 0.0_dp ) CYCLE
 
-	  k = Element % NodeIndexes(i)
+          k = Element % NodeIndexes(i)
           IF( Particles % Status( k ) == PARTICLE_FIXEDCOORD ) CYCLE
 
           Particles % Status( k ) = PARTICLE_FIXEDCOORD
           FixedCount = FixedCount + 1
           IF(.NOT. GotTime ) CYCLE
 
-	  IF( Found ) THEN
+          IF( Found ) THEN
             PTimeVar % Values( k ) = PTime(i)
           ELSE
             PTimeVar % Values( k ) = PTimeConst
@@ -493,7 +493,7 @@ CONTAINS
 
 
     SAVE :: Visited, Mesh, Basis, dBasisdx, Params, VeloVar, UseGradvelo, DtVar, &
-	SpeedMin, NewLost
+        SpeedMin, NewLost
 
     IF( .NOT. Visited ) THEN
       Mesh => GetMesh()
@@ -551,7 +551,7 @@ CONTAINS
           Status == PARTICLE_FIXEDCOORD .OR. &
           Status == PARTICLE_WALLBOUNDARY ) THEN
         OldLost = OldLost + 1
-	CYCLE
+        CYCLE
       END IF
 
       ElementIndex = GetParticleElement( Particles, No )
@@ -592,7 +592,7 @@ CONTAINS
       IF( UseGradVelo ) THEN
         CALL GetVectorFieldInMesh(VeloVar,BulkElement, Basis, VeloAtPoint, &
             dBasisdx, GradVeloAtPoint )
-	IF( .NOT. Particles % DtConstant ) THEN
+        IF( .NOT. Particles % DtConstant ) THEN
           dtime = Particles % DtSign * DtVar % Values(No)
         END IF
         DO i=1,dim
@@ -601,12 +601,12 @@ CONTAINS
         END DO
       ELSE
         CALL GetVectorFieldInMesh(VeloVar, BulkElement, Basis, VeloAtPoint )
-	Velo(1:dim) = VeloAtPoint(1:dim)
+        Velo(1:dim) = VeloAtPoint(1:dim)
       END IF
 
       Speed = SQRT( SUM( Velo(1:dim) ** 2 ) )
       IF( Speed < SpeedMin ) THEN
- 	Particles % Status(No) = PARTICLE_FIXEDCOORD
+        Particles % Status(No) = PARTICLE_FIXEDCOORD
         Velocity( No, 1:dim ) = 0.0_dp
         FixedLost = FixedLost + 1
       ELSE

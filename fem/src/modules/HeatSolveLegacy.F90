@@ -143,7 +143,7 @@ END SUBROUTINE HeatSolverLegacy_Init
         PhaseChange=.FALSE., CheckLatentHeatRelease=.FALSE., FirstTime, &
         SmartHeaterControl, IntegralHeaterControl, HeaterControlLocal, SmartTolReached=.FALSE., &
         TransientHeaterControl, SmartHeaterAverage, ConstantBulk, SaveBulk, &
-	TransientAssembly, Converged, AnyMultiply, NeedFlowSol
+        TransientAssembly, Converged, AnyMultiply, NeedFlowSol
      LOGICAL, POINTER :: SmartHeaters(:), IntegralHeaters(:)
 
      TYPE(Variable_t), POINTER :: TempSol,FlowSol,HeatSol,CurrentSol, MeshSol, DensitySol
@@ -156,7 +156,7 @@ END SUBROUTINE HeatSolverLegacy_Init
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
-	    dist, mindist, ControlPoint(3), HeatTransferMultiplier
+            dist, mindist, ControlPoint(3), HeatTransferMultiplier
 
      REAL(KIND=dp), POINTER :: Temperature(:),PrevTemperature(:),FlowSolution(:), &
        ElectricCurrent(:), PhaseChangeIntervals(:,:),ForceVector(:), &
@@ -1132,7 +1132,7 @@ END SUBROUTINE HeatSolverLegacy_Init
         ! smart heater boundary. If there are the r.h.s. must be zero as
         ! there can possibly not be any effect on temperature.
         !-----------------------------------------------------------------
-	IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
+        IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
           IF( ListCheckPresent(BC, Varname) ) THEN
              nd = GetElementDOFs(Indexes)
              ForceHeater(TempPerm(Indexes(1:nd))) = 0.0_dp

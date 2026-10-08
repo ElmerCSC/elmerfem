@@ -158,7 +158,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
      IF ( CurrentElement % TYPE % ElementCode == 101 ) CYCLE
 
      DO k=1, Model % NumberOfBCs
-	BC => Model % BCs(k) % Values
+        BC => Model % BCs(k) % Values
         IF ( Model % BCs(k) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
         IF ( .NOT. ListGetLogical(BC,'Calculate Fluidic Force',stat ) ) CYCLE
 
@@ -192,7 +192,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
               minv=1, maxv=Model % NumberOFMaterials )
         Material => Model % Materials(j) % Values
 
-	Model % CurrentElement => Parent
+        Model % CurrentElement => Parent
         Compressible = .FALSE.
         CompressibilityFlag = ListGetString( Material, &
              'Compressibility Model', stat)
@@ -201,7 +201,7 @@ SUBROUTINE ForceCompute( Model,Solver,dt,TransientSimulation )
 
         Viscosity(1:pn) = ListGetReal( Material, 'Viscosity', pn, Parent % NodeIndexes )
 
-	mWork => ListGetConstRealArray( BC,'Moment About',CalculateMoment)
+        mWork => ListGetConstRealArray( BC,'Moment About',CalculateMoment)
         IF( CalculateMoment ) THEN
           MomentAbout(1:dim) = mWork(1:dim,1)
         ELSE

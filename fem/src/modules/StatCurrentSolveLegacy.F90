@@ -472,7 +472,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
              !             Update global matrices from local matrices
              !------------------------------------------------------------------------------
 
-	     CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
+             CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
 
       !------------------------------------------------------------------------------
            END IF ! of currentelement bc == bcs(i)

@@ -943,9 +943,9 @@
 
            IF( .NOT. GotIt ) THEN
              Drag( 1,1:n) = GetReal( Material,'Porous Resistivity 1',GotIt )
-	     Drag( 2,1:n) = GetReal( Material,'Porous Resistivity 2',GotIt )
+             Drag( 2,1:n) = GetReal( Material,'Porous Resistivity 2',GotIt )
              IF( NSDOFs -1 > 2 ) THEN
-   	       Drag( 3,1:n) = GetReal( Material,'Porous Resistivity 3',GotIt )
+               Drag( 3,1:n) = GetReal( Material,'Porous Resistivity 3',GotIt )
              END IF
            ELSE IF ( SIZE(Pwrk,1) == 1 ) THEN
              DO i=1,NSDOFs-1

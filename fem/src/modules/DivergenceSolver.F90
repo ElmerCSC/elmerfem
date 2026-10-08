@@ -210,7 +210,7 @@ CONTAINS
         Source = Source + SUM( dBasisdx(1:nd,2) * Vy(1:nd) )
         IF(DIM == 3) Source = Source + SUM( dBasisdx(1:nd,3) * Vz(1:nd) )
 
-	IF( CSymmetry ) THEN
+        IF( CSymmetry ) THEN
           Source = Source + SUM( Basis(1:nd) * Vx(1:nd) ) / x
         END IF
         IF( Relative ) Source = Source / vabs

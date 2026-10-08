@@ -255,7 +255,7 @@
           IF ( PRESENT(ONOEfound) ) CYCLE
         END IF
 
-	VarName(1:1) = CHAR(ICHAR(VarName(1:1))-ICHAR('a')+ICHAR('A'))
+        VarName(1:1) = CHAR(ICHAR(VarName(1:1))-ICHAR('a')+ICHAR('A'))
         k = LEN_TRIM(VarName)
         DO j=1,k
           IF ( VarName(j:j) == ' ' ) VarName(j:j) = '.'
@@ -277,7 +277,7 @@
         END IF
 
 
-	VarName(1:1) = CHAR(ICHAR(VarName(1:1))-ICHAR('a')+ICHAR('A'))
+        VarName(1:1) = CHAR(ICHAR(VarName(1:1))-ICHAR('a')+ICHAR('A'))
         k = LEN_TRIM(VarName)
         DO j=1,k
           IF ( VarName(j:j) == ' ' ) VarName(j:j) = '.'

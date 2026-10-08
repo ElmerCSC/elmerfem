@@ -277,7 +277,7 @@ SUBROUTINE FreeSurfaceReduced( Model,Solver,dt,TransientSimulation )
 
        ! Go through all the free surface points
        !------------------------------------------
-	   DO t=tfirst,Model%NumberOfNodes+tfirst-1
+           DO t=tfirst,Model%NumberOfNodes+tfirst-1
 
          iend = t
          IF(iend > Model%NumberOfNodes) iend = iend - Model%NumberOfNodes
@@ -380,7 +380,7 @@ SUBROUTINE FreeSurfaceReduced( Model,Solver,dt,TransientSimulation )
          ! For the first node set the desired flux,
          ! For other nodes move the whole chain to the corrected positions.
          !-----------------------------------------------------------------
-		 IF(DonePoints == 0) THEN
+                 IF(DonePoints == 0) THEN
            fsum0 = fsum
 
            xnew = x2

@@ -457,12 +457,12 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             END DO
           ELSE
             Scaling(1:1) = ListGetReal( ValueList,'Mesh Scale 1',1,NodeIndex,GotScale)
-	    IF(.NOT. GotScale ) Scaling(1) = 1.0_dp
+            IF(.NOT. GotScale ) Scaling(1) = 1.0_dp
             Scaling(2:2) = ListGetReal( ValueList,'Mesh Scale 2',1,NodeIndex,Found)
-	    IF(.NOT. Found ) Scaling(2) = 1.0_dp
+            IF(.NOT. Found ) Scaling(2) = 1.0_dp
             GotScale = GotScale .OR. Found
             Scaling(3:3) = ListGetReal( ValueList,'Mesh Scale 3',1,NodeIndex,Found)
-	    IF(.NOT. Found ) Scaling(3) = 1.0_dp
+            IF(.NOT. Found ) Scaling(3) = 1.0_dp
             GotScale = GotScale .OR. Found
           END IF
         END IF
@@ -598,13 +598,13 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         k = NodeI
         IF( ASSOCIATED( VeloPerm) ) k = VeloPerm(NodeI)
         IF( k > 0 ) THEN
-	  IF( dim == 2 ) THEN
-	    VeloVal(2*k-1) = ( Xorig(NodeI) + dx(1) - Xnew(NodeI) ) / dt
-	    VeloVal(2*k) = ( Yorig(NodeI) + dx(2) - Ynew(NodeI) ) / dt
+          IF( dim == 2 ) THEN
+            VeloVal(2*k-1) = ( Xorig(NodeI) + dx(1) - Xnew(NodeI) ) / dt
+            VeloVal(2*k) = ( Yorig(NodeI) + dx(2) - Ynew(NodeI) ) / dt
           ELSE
-	    VeloVal(3*k-2) = ( Xorig(NodeI) + dx(1) - Xnew(NodeI) ) / dt
-	    VeloVal(3*k-1) = ( Yorig(NodeI) + dx(2) - Ynew(NodeI) ) / dt
-	    VeloVal(3*k) = ( Zorig(NodeI) + dx(3) - Znew(NodeI) ) / dt
+            VeloVal(3*k-2) = ( Xorig(NodeI) + dx(1) - Xnew(NodeI) ) / dt
+            VeloVal(3*k-1) = ( Yorig(NodeI) + dx(2) - Ynew(NodeI) ) / dt
+            VeloVal(3*k) = ( Zorig(NodeI) + dx(3) - Znew(NodeI) ) / dt
           END IF
         END IF
       END IF

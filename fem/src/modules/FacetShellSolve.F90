@@ -741,7 +741,7 @@
                     SxyNodal( isz ), SxzNodal( isz ), SyzNodal( isz ) )
 
           ALLOCATE( EpsxxNodal( isz ), EpsyyNodal( isz ), EpszzNodal( isz ), &
-	            EpsxyNodal( isz ), EpsxzNodal( isz ), EpsyzNodal( isz ) )
+                    EpsxyNodal( isz ), EpsxzNodal( isz ), EpsyzNodal( isz ) )
 
 
           PSolver => Solver
