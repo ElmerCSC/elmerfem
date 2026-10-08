@@ -126,7 +126,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: V(3)
   INTEGER,SAVE :: NTOT=-1,NTOT_S
   INTEGER :: AI
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
   INTEGER,PARAMETER :: IO=12
   INTEGER :: ok
   LOGICAL :: WarnActive

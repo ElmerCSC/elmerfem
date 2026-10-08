@@ -110,7 +110,7 @@ SUBROUTINE Adjoint_CostContSolver( Model,Solver,dt,TransientSimulation )
 
   INTEGER, SAVE :: DIM
 
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
 
   SolverParams => GetSolverParams()

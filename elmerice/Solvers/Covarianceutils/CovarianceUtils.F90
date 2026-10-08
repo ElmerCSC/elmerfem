@@ -107,7 +107,7 @@
 
           REAL(KIND=dp),DIMENSION(n) :: x1
           TYPE(ValueList_t), POINTER :: SolverParams
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
           REAL(KIND=dp) :: std
 
           SolverParams => GetSolverParams(Solver)
@@ -134,7 +134,7 @@
 
           REAL(KIND=dp),DIMENSION(n) :: x1
           TYPE(ValueList_t), POINTER :: SolverParams
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
           REAL(KIND=dp) :: std
 
           SolverParams => GetSolverParams(Solver)
@@ -160,7 +160,7 @@
           REAL(KIND=dp),DIMENSION(n),INTENT(OUT) :: y
 
           TYPE(ValueList_t), POINTER :: SolverParams
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
           REAL(KIND=dp) :: std
 
           SolverParams => GetSolverParams(Solver)
@@ -545,7 +545,7 @@
           INTEGER :: p
 
           CHARACTER(LEN=MAX_NAME_LEN) :: SolverName="CovarianceInit"
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
 
           LOGICAL :: Parallel
 
