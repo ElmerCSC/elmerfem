@@ -237,8 +237,8 @@ Boundary Condition 1
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
 
-  amsx = Real 0.0
-  amsy = Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
   amss = Real 0.0
 End
 
@@ -249,8 +249,8 @@ Boundary Condition 2
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
 
-  amsx = Real 0.0
-  amsy = Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
   amss = Real 0.0
 End
 
@@ -263,8 +263,8 @@ Boundary Condition 3
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
 
-  amsx = Real 0.0
-  amsy= Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
   amss = Real 0.0
 End
 
@@ -276,8 +276,8 @@ Boundary Condition 4
   AV {e} 1 = Real 0.0
   AV {e} 2 = Real 0.0
 
-  amsx = Real 0.0
-  amsy= Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
   amss = Real 0.0
 End
 
@@ -304,9 +304,9 @@ Boundary Condition 7
 
   AV {e} = Real 0.0
 
-  amsx = Real 0.0
-  amsy = Real 0.0
-  amsz = Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
+  amsa 3 = Real 0.0
   amss = Real 0.0
 End
 

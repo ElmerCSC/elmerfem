@@ -54,7 +54,8 @@ SUBROUTINE AmsVectorSolver_Init( Model,Solver,dt,Transient ) ! {{{
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found, IsMonolithic, IsComplex
   CHARACTER(*), PARAMETER :: Caller = 'AmsVectorSolver_Init'
-
+  INTEGER :: adofs,vdofs
+  
   Params => GetSolverParams()
   CALL ListAddLogical( Params,'AMS Vector Solver',.TRUE.)
   CALL ListAddNewLogical( Params,'Apply Mortar BCs',.TRUE.)
@@ -70,38 +71,29 @@ SUBROUTINE AmsVectorSolver_Init( Model,Solver,dt,Transient ) ! {{{
   IsMonolithic = ListGetLogical( Params,'Monolithic Solver',Found )
   IsComplex = ListGetLogical( Params, 'Linear System Complex', Found )
 
+  IF( IsComplex ) THEN
+    vdofs = 2
+  ELSE
+    vdofs = 1
+  END IF
+  adofs = 3 * vdofs
+
+  
   IF( IsMonolithic ) THEN
     ! We solve the equation as monolithic system
-    IF( IsComplex ) THEN
-      CALL ListAddNewString( Params,'Variable',&
-          'AmsVec[amsx re:1 amsx im:1 amsy re:1 amsy im:1 amsz re:1 amsz im:1]')
-    ELSE
-      CALL ListAddNewString( Params,'Variable',&
-          'AmsVec[amsx:1 amsy:1 amsz:1]')
-    END IF
+    CALL ListAddNewString( Params,'Variable','-dofs '//I2S(adofs)//' amsa' )
   ELSE
     ! We solve the equation component-wise. Hence the primary variable is a temporary one.
     CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)
-    IF( IsComplex ) THEN
-      CALL ListAddNewString( Params,'Variable','Amstmp[amst re:1 amst im:1]')
-      CALL ListAddString( Params,&
-          NextFreeKeyword('Exported Variable', Params), &
-          'AmsVec[amsx re:1 amsx im:1 amsy re:1 amsy im:1 amsz re:1 amsz im:1]')
-    ELSE
-      CALL ListAddNewString( Params,'Variable','amstmp')
-      CALL ListAddString( Params,&
-          NextFreeKeyword('Exported Variable', Params), &
-          'AmsVec[amsx:1 amsy:1 amsz:1]')
-    END IF
+    CALL ListAddNewString( Params,'Variable','-dofs '//I2S(vdofs)//' amstmp')
+
+    ! Additional exported variable for the full solution. 
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable', Params),'-dofs '//I2S(adofs)//' amsa')
   END IF
 
-  IF( IsComplex ) THEN
-    CALL ListAddString( Params,&
-        NextFreeKeyword('Exported Variable', Params),'-dofs 6 nodal amsa rhs')
-  ELSE
-    CALL ListAddString( Params,&
-        NextFreeKeyword('Exported Variable', Params),'-dofs 3 nodal amsa rhs')
-  END IF
+  CALL ListAddString( Params,&
+      NextFreeKeyword('Exported Variable', Params),'-dofs '//I2S(adofs)//' nodal amsa rhs')
 
 !------------------------------------------------------------------------------
 END SUBROUTINE AmsVectorSolver_Init ! }}}
@@ -252,7 +244,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   IF(IsMonolithic) THEN
     AVar => SVar
   ELSE
-    Avar => VariableGet( Mesh % Variables,'AmsVec',ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
+    Avar => VariableGet( Mesh % Variables,'amsa',ThisOnly=.TRUE.,UnfoundFatal=.TRUE.)
     IF(SVar % dofs /= ns) THEN
       CALL Fatal(Caller,'Componentwise solver size should be: '//I2S(ns))
     END IF
@@ -350,7 +342,17 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
 
     IF(ALLOCATED(Solver % Matrix % ConstrainedDOF ) ) &
         Solver % Matrix % ConstrainedDOF = .FALSE.
-    CALL DefaultDirichletBCs()
+    
+    DO compi = 1, 3      
+      sname = ComponentName(AVar,compi)
+      DO dof=1,ns
+        !We use same name for real and complex since this is homogeneous BC!
+        !sname = ComponentName(SVar % Name,ns*(compi-1)+dof)
+        CALL SetDirichletBoundaries( CurrentModel, A, b, sname, &
+            (compi-1)*ns+dof, 3*ns, SVar % Perm )
+      END DO
+    END DO
+    CALL EnforceDirichletConditions( Solver, A, b )
 
     Norm = DefaultSolve()
   ELSE
@@ -370,23 +372,17 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
       IF(ALLOCATED(A % ConstrainedDOF ) ) A % ConstrainedDOF = .FALSE.
 
       ! Setting Dirichlet conditions is not possible with the Default routine.
-      ! We can still pick the name of the component but just need to potentially
-      ! cycle over the Re and Im parts.
+      sname = ComponentName(AVar,compi)
       DO dof=1,ns
-        sname = ComponentName(AVar % Name,ns*(compi-1)+dof)
-
-        pVar => VariableGet( Model % Variables, sname)
-
         CALL SetDirichletBoundaries( CurrentModel, A, b, sname, &
             dof, ns, SVar % Perm )
       END DO
 
       CALL EnforceDirichletConditions( Solver, A, b )
-
       Norm = DefaultSolve()
 
       IF( ns == 1 ) THEN
-        pVar % Values = SVar % Values
+        AVar % Values(compi::comps) = SVar % Values
       ELSE
         AVar % Values(2*compi-1::2*comps) = SVar % Values(1::2)
         AVar % Values(2*compi::2*comps) = SVar % Values(2::2)
@@ -565,10 +561,10 @@ SUBROUTINE AmsScalarSolver_Init( Model,Solver,dt,Transient ) ! {{{
   CALL ListAddNewLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
   CALL ListAddNewInteger( Params,'Nonlinear System Max Iterations', 1)
 
+  
+  CALL ListAddNewString( Params,'Variable','amss' )
   IF( ListGetLogical( Params,'Linear System Complex', Found ) ) THEN
-    CALL ListAddNewString( Params,'Variable','amss[amss re:1 amss im:1]' )
-  ELSE
-    CALL ListAddNewString( Params,'Variable','amss' )
+    CALL ListAddNewInteger( Params,'Variable dofs',2 )
   END IF
 
 !------------------------------------------------------------------------------
@@ -683,12 +679,9 @@ SUBROUTINE AmsScalarSolver( Model,Solver,dt,Transient ) ! {{{
   END IF
 
   IF(ALLOCATED(A % ConstrainedDOF ) ) A % ConstrainedDOF = .FALSE.
+
+  sname = 'amss'
   DO dof=1,vdofs
-    IF( vdofs > 1 ) THEN
-      sname = ComponentName(VVar,dof)
-    ELSE
-      sname = VVar % Name
-    END IF
     CALL SetDirichletBoundaries( CurrentModel, A, A % rhs, sname, &
         dof, vdofs, VVar % Perm )
   END DO
@@ -744,10 +737,9 @@ SUBROUTINE AmsVSolver_Init( Model,Solver,dt,Transient ) ! {{{
   CALL ListAddNewLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
   CALL ListAddNewInteger( Params,'Nonlinear System Max Iterations', 1)
 
+  CALL ListAddNewString( Params,'Variable','amsv' )
   IF( ListGetLogical( Params,'Linear System Complex', Found ) ) THEN
-    CALL ListAddNewString( Params,'Variable','amsv[amsv re:1 amsv im:1]' )
-  ELSE
-    CALL ListAddNewString( Params,'Variable','amsv' )
+    CALL ListAddInteger( Params,'Variable Dofs', 2 )
   END IF
 
 !------------------------------------------------------------------------------
