@@ -3395,6 +3395,15 @@ CONTAINS
             END IF
           END IF
 #endif
+          ! In parallel the local values of a shared row are contributions which are
+          ! summed over the partitions. Set the share of this partition so that the
+          ! total equals the value used in serial computation. Otherwise the diagonal
+          ! entry would be multiplied by the number of partitions sharing the row and,
+          ! as the scaling is obtained from the matrix, could grow when the conditions
+          ! are enforced repeatedly without reassembly.
+          IF( Parallel ) THEN
+            s = s / SIZE( A % ParallelInfo % NeighbourList(k) % Neighbours )
+          END IF
           CALL SetMatrixElement(A,k,k,s)
           b(k) = s * dval
         END IF

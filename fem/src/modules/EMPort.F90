@@ -66,7 +66,7 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Found, PiolaVersion, SecondFamily, SecondOrder
   LOGICAL :: UseV, Ground, UnitVoltage
   REAL(KIND=dp) :: c
-  CHARACTER(:), ALLOCATABLE :: sname
+  CHARACTER(:), ALLOCATABLE :: sname, ndef
   CHARACTER(*), PARAMETER :: Caller = 'EMPortSolver_Init0'
 
   Params => GetSolverParams()
@@ -98,37 +98,44 @@ SUBROUTINE EMPortSolver_Init0(Model, Solver, dt, Transient)
     CALL ListCompareAndCopy(PrimaryParams, Params,'Gradient Basis Functions')
   END IF
 
-
   IF (.NOT. ListCheckPresent(Params, "Element") ) THEN
     CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
 
+    ! The scalar variable must be approximated by the Lagrange basis of degree k+1 when
+    ! the vector field is approximated by the Nedelec element NED2_k of the second family.
+    ! Otherwise the variational formulation does not control all gradient fields
+    ! and spurious eigenvalues are obtained. Presently the case NED2_1 is supported by using
+    ! a background mesh of 6-node triangles and/or 8-node quadrilaterals (in the case of
+    ! quadrilaterals the gradients of the 8-node serendipity basis span the gradient
+    ! subspace of the lowest-order edge element of the second kind).
+    IF (SecondFamily .AND. SecondOrder) THEN
+      CALL Warn(Caller, 'The formulation for Second Kind Basis of degree 2 is not well-posed')
+    END IF
+
+    ! The formulation in terms of potentials has two nodal fields, otherwise one nodal
+    ! approximation is employed. The DOFs for the H(curl) part are the same in both cases.
     IF (UseV) THEN
-      IF (PiolaVersion) THEN
-        sname = "n:2 e:1 -quad_face b:2 -quad b:2 -brick b:3"
-      ELSE
-        sname = "n:2 e:1"
-      END IF
+      ndef = "n:2"
     ELSE
+      ndef = "n:1"
+    END IF
 
+    ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
+    ! utilized by the vector Helmholtz model:
+    IF (SecondOrder) THEN
       IF (SecondFamily) THEN
-        CALL Warn(Caller, 'The formulation for Second Kind Basis seems numerically unstable')
-      END IF
-
-      ! Share the DOFs definition with the vector Helmholtz model so that the solution might be
-      ! utilized by the vector Helmholtz model:
-      IF (SecondOrder) THEN
-        IF (SecondFamily) THEN
-          sname = "n:1 e:3 -tri b:3 -tri_face b:3"
-        ELSE
-          sname = "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
-        END IF
-      ELSE IF( SecondFamily ) THEN
-        sname = "n:1 e:2"
-      ELSE IF (PiolaVersion) THEN
-        sname = "n:1 e:1 -quad_face b:2 -quad b:2 -brick b:3"
+        sname = ndef//" e:3 -tri b:3 -tri_face b:3"
       ELSE
-        sname = "n:1 e:1"
+        sname = ndef//" e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
       END IF
+    ELSE IF( SecondFamily ) THEN
+      ! A background mesh of 6-node triangles or 8-node quads is needed to have
+      ! quadratic nodal DOFs
+      sname = ndef//" e:2"
+    ELSE IF (PiolaVersion) THEN
+      sname = ndef//" e:1 -quad_face b:2 -quad b:2 -brick b:3"
+    ELSE
+      sname = ndef//" e:1"
     END IF
     CALL Info(Caller, 'Setting element type: '//TRIM(sname), Level=5)
     CALL ListAddString(Params, "Element", TRIM(sname) )
@@ -210,9 +217,9 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: Params, BC
   TYPE(Element_t), POINTER :: Element
-  LOGICAL :: PiolaVersion, EigenProblem, CalculateNodal, Found, MeActive
+  LOGICAL :: PiolaVersion, SecondFamily, EigenProblem, CalculateNodal, Found, MeActive
   LOGICAL :: Output_Z, UseV
-  INTEGER :: DOFs, EdgeBasisDegree, Active, i, j, k, t, m, n, nd, &
+  INTEGER :: DOFs, EdgeBasisDegree, QuadDegree, Active, i, j, k, t, m, n, nd, &
       EFamily, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: Beta
@@ -292,7 +299,12 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     SaveEigenVectors = 0.0_dp
   END IF
 
-  CALL EdgeElementStyle(Params, PiolaVersion, BasisDegree = EdgeBasisDegree )
+  CALL EdgeElementStyle(Params, PiolaVersion, SecondFamily, BasisDegree = EdgeBasisDegree )
+
+  ! The scalar variable of NED2_1 approximation is quadratic, so the products of
+  ! nodal basis functions need a quadrature for integrands of degree 4
+  QuadDegree = EdgeBasisDegree
+  IF (SecondFamily .AND. EdgeBasisDegree == 1) QuadDegree = 2
 
   EigenProblem = EigenOrHarmonicAnalysis(Solver)
 
@@ -364,7 +376,18 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       nd = GetElementNOFDOFs(Element)
 
 #if 1
-      IF (EdgeBasisDegree == 1) THEN
+      IF (SecondFamily .AND. EdgeBasisDegree == 1) THEN
+        SELECT CASE(EFamily)
+        CASE(3)
+          IF (n /= 6) CALL Fatal(Caller, &
+              'Second Kind Basis needs a background mesh of 6-node triangles')
+        CASE(4)
+          IF (n /= 8) CALL Fatal(Caller, &
+              'Second Kind Basis needs a background mesh of 8-node quadrilaterals')
+        CASE DEFAULT
+          CALL Fatal(Caller, 'Second Kind Basis needs a background mesh of triangles or quadrilaterals')
+        END SELECT
+      ELSE IF (EdgeBasisDegree == 1) THEN
         IF (n /= EFamily) CALL Fatal(Caller, 'A background mesh must have linear elements!')
       ELSE
         SELECT CASE(EFamily)
@@ -391,9 +414,15 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     IF(ListGetLogical( Params,'Eigen System Shift Automatic',Found ) ) THEN
       maxeps = ParallelReduction(maxeps, 2)
       maxmu = ParallelReduction(maxmu, 2)
+
       betalim = Omega * SQRT(maxeps*maxmu)
-      CALL ListAddConstReal( Params,'Eigen System Shift', -betalim**2 )
-      WRITE(Message,'(A,ES15.6)') 'Eigen System Shift set to ', -betalim**2
+      ! All eigenvalues lambda corresponding to propagating modes satisfy lambda > -betalim^2.
+      ! Here the shift is placed somewhat beyond -betalim**2, since with the shift paramemeter
+      ! sigma = -betalim**2 the diagonal entries of A - sigma*M vanish for gradient basis
+      ! functions within the region where eps is maximal, which spoils the diagonal scaling applied
+      ! in the eigen solution.
+      CALL ListAddConstReal( Params,'Eigen System Shift', -1.1_dp * betalim**2 )
+      WRITE(Message,'(A,ES15.6)') 'Eigen System Shift set to ', -1.1_dp * betalim**2
       CALL Info(Caller, Message, Level=7)
     END IF
 
@@ -764,7 +793,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-        EdgeBasisDegree = EdgeBasisDegree)
+        EdgeBasisDegree = QuadDegree)
 
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
@@ -880,7 +909,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-        EdgeBasisDegree = EdgeBasisDegree)
+        EdgeBasisDegree = QuadDegree)
 
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
@@ -1036,7 +1065,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-        EdgeBasisDegree = EdgeBasisDegree)
+        EdgeBasisDegree = QuadDegree)
 
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
@@ -1273,7 +1302,7 @@ CONTAINS
       LForce = 0.0_dp
 
       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-          EdgeBasisDegree = EdgeBasisDegree)
+          EdgeBasisDegree = QuadDegree)
 
       DO i=1, IP % n
         u = IP % U(i)
