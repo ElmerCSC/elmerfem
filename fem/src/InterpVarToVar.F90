@@ -638,7 +638,9 @@ CONTAINS
   SUBROUTINE InterpolateVarToVarReducedQ( OldMesh, NewMesh,HeightName,HeightDimensions, &
        FoundNodes, LocalDistances, OldNodeMask, NewNodeMask, OldElemMask, &
        Variables, GlobalEps, LocalEps, NumericalEps)
-    !This subroutine takes each boundary node on the specified boundary of the new mesh and finds its height (y coord in 2D) by performing (DIM - 1) interpolaton through boundary elements of the old mesh.
+    ! This subroutine takes each boundary node on the specified boundary of the new mesh and 
+    ! finds its height (y coord in 2D) by performing (DIM - 1) interpolaton through boundary
+    ! elements of the old mesh.
 
     !-------------------------------------------------------------------------------
     TYPE(Mesh_t), TARGET, INTENT(IN)  :: OldMesh
