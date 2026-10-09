@@ -13,9 +13,9 @@ IF(CMAKE_CROSSCOMPILING)
 ENDIF()
 
 SET(elmergrid_SRCS egdef.h egparallel.h egnative.h egconvert.h
-  egexport.h egextra.h egmesh.h 
+  egexport.h egextra.h egmesh.h
   egtypes.h egutils.h egparallel.c egnative.c egconvert.c egexport.c
-  egextra.c egmesh.c fempre.c 
+  egextra.c egmesh.c fempre.c
   egutils.c)
 
 ADD_EXECUTABLE(ElmerGrid ${elmergrid_SRCS})

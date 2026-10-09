@@ -1,6 +1,6 @@
 INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
-CONFIGURE_FILE(sif/london.sif sif/london.sif COPYONLY) 
+CONFIGURE_FILE(sif/london.sif sif/london.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 file(COPY sif/circuits_london.definitions DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sif")
 file(COPY inductor/mesh.boundary inductor/mesh.header inductor/mesh.nodes inductor/mesh.elements inductor/mesh.names DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/inductor")
