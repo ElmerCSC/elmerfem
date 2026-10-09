@@ -37,15 +37,14 @@ Solver 3
 
 !  MG Smoother = "masked jacobi"
 
+!  Preconditioning Alternate = Logical True
+!  MG Post Smoothing Iterations = 5
+
+
 ! Standard parameter for outer iteration
   Linear System Scaling = True
   Linear System Nullify First Guess = Logical True
   Optimize Bandwidth = False
-
- 
-  Preconditioning Alternate = Logical True
-  MG Post Smoothing Iterations = 5
-
 End
 
 

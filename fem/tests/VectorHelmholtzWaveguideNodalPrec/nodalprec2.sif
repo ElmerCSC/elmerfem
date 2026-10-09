@@ -81,6 +81,7 @@ Solver 1
 ! For some reason alternating the correction space we get faster
 ! convergence. 
   Preconditioning Alternate = Logical True
+!  Preconditioning Symmetric = Logical True
 
 !  curl-curl Form = Logical True
 !  Linear System Preconditioning Damp Coefficient = 0.5
@@ -203,7 +204,7 @@ Boundary Condition 1
     Real MATC "2*beta0*sin(kc*tx)"
 
   amsa 3 = Real 0.0
-  amss = Real 0.0
+!  amss = Real 0.0
 End
 
 Boundary Condition 2
@@ -218,7 +219,7 @@ Boundary Condition 2
 !  amsa 2 = Real 0
 
   amsa 3 = Real 0
-  amss = Real 0
+!  amss = Real 0
 End
 
 Boundary Condition 3

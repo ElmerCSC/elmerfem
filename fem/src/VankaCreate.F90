@@ -1364,9 +1364,9 @@
     COMPLEX(KIND=dp), POINTER :: cres(:), cdx(:)
     INTEGER, POINTER :: PrecSolvers(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS, AdditiveSmoother, AlternatePrec
+    LOGICAL :: Found, ScaleRHS, AdditiveSmoother, AlternatePrec, SymmetricPrec
     CHARACTER(MAX_NAME_LEN) :: str
-    INTEGER :: SlaveInd, SlaveMaxCnt
+    INTEGER :: SlaveInd, SlaveMaxCnt, SymmetricCnt, PrecInd
     INTEGER :: n, DOFs
     INTEGER, SAVE :: SlaveCnt = 0
 !-------------------------------------------------------------------------------
@@ -1413,6 +1413,13 @@
     ! Shall we do smoother after each preconitioner step, or after all?
     AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
 
+    SymmetricPrec = ListGetLogical(Params,'Preconditioning Symmetric', Found )
+    IF(SymmetricPrec) THEN
+      SymmetricCnt = SlaveMaxCnt - 1
+    ELSE
+      SymmetricCnt = 0
+    END IF
+    
     AlternatePrec = ListGetLogical(Params,'Preconditioning Alternate', Found )
     IF(AlternatePrec ) THEN
       SlaveCnt = MODULO( SlaveCnt, SlaveMaxCnt ) + 1
@@ -1421,14 +1428,22 @@
     ELSE
       SlaveCnt = 1 
     END IF
+
+
     
     ALLOCATE(r(n))
 
     
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
-    DO SlaveInd = 1, SlaveMaxCnt
+    DO PrecInd = 1, SlaveMaxCnt + SymmetricCnt 
 
+      IF( PrecInd > SlaveMaxCnt ) THEN        
+        SlaveInd = PrecInd - SlaveMaxCnt  
+      ELSE
+        SlaveInd = PrecInd
+      END IF
+              
       IF( AlternatePrec ) THEN
         ! If we alternative the prec solver we only do one at a time. 
         IF( SlaveCnt /= SlaveInd ) CYCLE
@@ -1475,7 +1490,7 @@
       END IF
 
       ! At final solver revert the cumulative solution back to origonal vectors.
-      IF(SlaveInd == SlaveMaxCnt) THEN
+      IF(SlaveInd == SlaveMaxCnt + SymmetricCnt ) THEN
         dx(1:n) = z(1:n)
         cres(1:n/2) = v(1:n/2)
         DEALLOCATE(z)
