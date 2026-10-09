@@ -1,0 +1,258 @@
+! A case to test a nodal solver as a preconditioner for the corresponding
+! wave equation approximated in H(curl)
+!
+! M.M. & P.R. 8.10.26
+
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "shoebox_tets"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+!  Mesh Levels = 2
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+$ beta0=41.9332032192090
+$ k0=52.3961255469564
+$ kc=31.4159265358979 
+$ w=2*pi*(2.5e9)
+$ mu0=4e-7*pi
+
+
+Material 1
+  Relative Permittivity = Real 1
+End
+
+Equation 1
+  Active Solvers(4) = 1 2 3 4 
+  Angular Frequency = Real $w
+End
+
+Solver 1
+  Equation = "VectorHelmholtz"
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+  Use Piola Transform = False
+  Second Kind Basis = False
+  Linear System Symmetric = False
+  Linear System Scaling = False
+  Linear System Row Equilibration = False
+
+  Linear System Solver = String "Iterative"
+  Linear System Iterative Method = String "gcr"
+  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Residual Output = 1
+  Linear system abort not converged = false
+  Linear System Max Iterations = 100
+  Linear System Complex = True
+  Linear System Preconditioning = "auxiliary space solver"
+
+! Needed for auxiliary space preconditioning
+  Edge Basis = True
+  Optimize Bandwidth = False
+
+  Exported Variable 1 = -dofs 2 ams res
+  Exported Variable 2 = -dofs 2 ams update
+  Prec Solvers(2) = Integer 2 3
+
+  Preconditioning Residual = String "ams res"
+  Preconditioning Update = String "ams update"
+
+  MG Smoother = wjacobi
+!  MG Smoother Normalize Guess = Logical True
+
+  MG Post Smoothing Iterations(2) = 5 5
+  MG Smoother Relaxation Factor = Real 0.5
+
+  Additive Smoother = Logical True
+
+! For some reason alternating the correction space we get faster
+! convergence. 
+  Preconditioning Alternate = Logical True
+
+!  curl-curl Form = Logical True
+!  Linear System Preconditioning Damp Coefficient = 0.5
+End
+
+
+
+Solver 2
+! used as slave solver only  
+  exec solver = never
+
+  Linear System Complex = True
+
+  Equation = "AmsVectorSolver"
+  Procedure = "AmsPrecSolver" "AmsVectorSolver"
+
+  Monolithic Solver = Logical False 
+  Curl-Curl form = Logical False
+
+  Edge Residual Name = String "ams res"
+  Edge Update Name = String "ams update"
+
+  Linear System Scaling = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+
+  BiCGstabl polynomial degree = 4  
+  Linear System Preconditioning = "ILU2"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = mumps
+
+! Essential for performance!
+  No Precondition Recompute = True
+End
+
+
+Solver 3
+! used as slave solver only  
+  exec solver = never
+
+  Linear System Complex = True
+
+  Equation = "AmsScalarSolver"
+  Procedure = "AmsPrecSolver" "AmsScalarSolver"
+
+  Edge Residual Name = String "ams res"
+  Edge Update Name = String "ams update"
+
+  Linear System Scaling = False
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstab2"
+
+  BiCGstabl polynomial degree = 4  
+  Linear System Preconditioning = "ILU2"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = mumps 
+
+! Essential for performance!
+  No Precondition Recompute = True
+  Optimize Bandwidth = False
+End
+
+
+
+
+Solver 4
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+
+  Calculate Nodal fields = True
+  Calculate Elemental Fields = False
+  Calculate Magnetic Field Strength = False
+  Calculate Magnetic Flux Density = False
+  Calculate Electric field = True
+  Calculate Energy Functional = True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 5
+  Equation = "VtuOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = nodal-prec
+  Vtu Format = Logical True
+  Save Geometry Ids = True
+  Ascii Output = True
+
+  Exec Solver = never
+End 
+
+Boundary Condition 1
+  Name = "ConstZ-Inlet"
+  Target Boundaries(1) = 1
+  
+  Electric Robin Coefficient im = Real $ beta0
+  Magnetic Boundary Load Im 2 = Variable Coordinate 1
+    Real MATC "2*beta0*sin(kc*tx)"
+
+  amsa 3 = Real 0.0
+  amss = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "ConstZ-Outlet"
+  Target Boundaries(1) = 6
+  Absorbing BC = Logical True
+
+!  E re {e} = Real 0
+!  E im {e} = Real 0
+ 
+!  amsa 1 = Real 0
+!  amsa 2 = Real 0
+
+  amsa 3 = Real 0
+  amss = Real 0
+End
+
+Boundary Condition 3
+  Name = "ConstY" 
+  Target Boundaries(2) = 3 5
+  E re {e} = Real 0
+  E im {e} = Real 0
+
+! tangential 
+  amsa 1 = Real 0.0
+  amsa 3 = Real 0.0
+
+! normal
+!  amsa 2 = Real 0
+  amss = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "ConstX" 
+  Target Boundaries(2) = 2 4
+  E re {e} = Real 0.0
+  E im {e} = Real 0.0
+
+! tangential
+  amsa 2 = Real 0.0
+  amsa 3 = Real 0.0 
+
+! normal
+!  amsa 1 = Real 0.0 
+  amss = Real 0.0
+End
+
+
+Solver 1 :: Reference Norm = 3.08826394E-03
+Solver 1 :: Reference Norm Tolerance = 1e-3
+Solver 4 :: Reference Norm = 2.30555257E-02
+Solver 4 :: Reference Norm Tolerance = 1e-3
