@@ -2816,6 +2816,11 @@ CONTAINS
       i = i + 1
     END DO
 
+    ! Number the solvers only now: the *_Init0 solvers above may have added more.
+    DO i=1,Model % NumberOfSolvers
+      Model % Solvers(i) % SolverId = i
+    END DO
+
     ALLOCATE(MeshSolvers(MAX_MESHES, Model % NumberOfSolvers))
     MeshSolvers = .FALSE.
 

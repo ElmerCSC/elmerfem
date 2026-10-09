@@ -555,23 +555,30 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
 
   INTEGER, SAVE :: nTime = 0
+  INTEGER :: ExtCount
   LOGICAL :: GotIt
-  CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
-  CHARACTER(:), ALLOCATABLE, SAVE :: OutputDirectory
+  CHARACTER(MAX_NAME_LEN) :: FilePrefix
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
 
   ! Avoid compiler warings about unused variables
   IF ( TransientSimulation ) CONTINUE
   IF ( dt > 0.0 ) CONTINUE
 
-  IF ( nTime == 0 ) THEN
-    FilePrefix = GetString( Solver % Values,'Output File Name',GotIt )
-    IF ( .NOT.GotIt ) FilePrefix = "Output"
-
-    CALL SolverOutputDirectory( Solver, FilePrefix, OutputDirectory, &
-        UseMeshDir = .TRUE. )
-    FilePrefix = TRIM(OutputDirectory)// '/' //TRIM(FilePrefix)
+  ! The output count is kept per solver instance by ResultOutputSolver; the
+  ! SAVEd counter is shared by all instances and is just a fallback.
+  ExtCount = GetInteger( Solver % Values,'Output Count',GotIt )
+  IF( GotIt ) THEN
+    nTime = ExtCount
+  ELSE
+    nTime = nTime + 1
   END IF
-  nTime = nTime + 1
+
+  FilePrefix = GetString( Solver % Values,'Output File Name',GotIt )
+  IF ( .NOT.GotIt ) FilePrefix = "Output"
+
+  CALL SolverOutputDirectory( Solver, FilePrefix, OutputDirectory, &
+      UseMeshDir = .TRUE. )
+  FilePrefix = TRIM(OutputDirectory)// '/' //TRIM(FilePrefix)
 
   CALL WriteData( TRIM(FilePrefix), Model, nTime )
 

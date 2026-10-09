@@ -1390,6 +1390,7 @@
 
        pSolver % PROCEDURE = C_NULL_FUNPTR
        pSolver % NumberOfActiveElements = 0
+       pSolver % SolverId = n
        j = CurrentModel % NumberOfBodies
        ALLOCATE( pSolver % Def_Dofs(10,j,6),STAT=AllocStat)
        IF( AllocStat /= 0 ) CALL Fatal('AppendNewSolver','Allocation error 3')

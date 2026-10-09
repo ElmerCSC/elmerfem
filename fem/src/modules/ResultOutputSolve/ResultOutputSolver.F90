@@ -41,16 +41,16 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
 
   LOGICAL :: SaveGid, SaveVTK, SaveOpenDx, SaveGmsh, &
-      SaveVTU, SaveEP, SaveSTL, SaveAny, ListSet = .FALSE., ActiveMesh, &
+      SaveVTU, SaveEP, SaveSTL, SaveAny, ActiveMesh, &
       SomeMeshSaved, SaveAllMeshes
-  INTEGER :: i,nInterval=1, nstep=0, OutputCount(7) = 0, MeshDim,&
+  INTEGER :: i,nInterval=1, nstep=0,&
       MinMeshDim,MaxMeshDim,MeshLevel,nlen,NoMeshes, m
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
   TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh
   CHARACTER(10) :: OutputFormat
-  CHARACTER(LEN=MAX_PATH_LEN) :: FilePrefix, MeshName, iMeshName, ListMeshName, PrimVar
-  LOGICAL :: SubroutineVisited=.FALSE.,Found, SaveThisMesh, NowSave
+  CHARACTER(LEN=MAX_PATH_LEN) :: FilePrefix, MeshName, iMeshName, PrimVar
+  LOGICAL :: SubroutineVisited,Found, SaveThisMesh, NowSave
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: ModelVariables
   CHARACTER(*), PARAMETER :: Caller = 'ResultOutputSolver'
@@ -60,7 +60,18 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: RefResults(:,:), ThisResults(:,:)
 
 
-  SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMeshName
+  ! State that must persist between calls is kept per solver instance:
+  ! SAVEd data is shared by all instances using this module.
+  TYPE OutputState_t
+    INTEGER :: OutputCount(7) = 0, MeshDim = 0
+    LOGICAL :: ListSet = .FALSE.
+    CHARACTER(LEN=MAX_PATH_LEN) :: ListMeshName = ' '
+  END TYPE OutputState_t
+  TYPE(OutputState_t), ALLOCATABLE, TARGET :: States(:), TmpStates(:)
+  TYPE(OutputState_t), POINTER :: State
+  INTEGER :: SolverId
+
+  SAVE States
 
   INTERFACE
     RECURSIVE SUBROUTINE ElmerPostOutputSolver( Model, Solver,dt,TransientSimulation,ONOEfound )
@@ -76,6 +87,19 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   END INTERFACE
 
   CALL Info( Caller, '-------------------------------------')
+
+  SubroutineVisited = ( Solver % TimesVisited > 0 )
+
+  SolverId = Solver % SolverId
+  IF( SolverId < 1 ) CALL Fatal(Caller,'Solver index not set!')
+  IF( .NOT. ALLOCATED(States) ) THEN
+    ALLOCATE( States(MAX(SolverId,Model % NumberOfSolvers)) )
+  ELSE IF( SIZE(States) < SolverId ) THEN
+    ALLOCATE( TmpStates(SolverId) )
+    TmpStates(1:SIZE(States)) = States
+    CALL MOVE_ALLOC( TmpStates, States )
+  END IF
+  State => States(SolverId)
 
   Params => GetSolverParams()
   SaveGid = GetLogical(Params,'Gid Format',Found)
@@ -158,13 +182,13 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   ! The idea of this is that the independent subroutines may be called
   ! with different data sets and still maintaining the standard output calling convention
-  IF(SaveVtu)  OutputCount(1) = OutputCount(1) + 1
-  IF(SaveGmsh) OutputCount(2) = OutputCount(2) + 1
-  IF(SaveVTK)  OutputCount(3) = OutputCount(3) + 1
-  IF(SaveEp)   OutputCount(4) = OutputCount(4) + 1
-  IF(SaveGid)  OutputCount(5) = OutputCount(5) + 1
-  IF(SaveOpenDx) OutputCount(6) = OutputCount(6) + 1
-  IF(SaveSTL) OutputCount(7) = OutputCount(7) + 1
+  IF(SaveVtu)  State % OutputCount(1) = State % OutputCount(1) + 1
+  IF(SaveGmsh) State % OutputCount(2) = State % OutputCount(2) + 1
+  IF(SaveVTK)  State % OutputCount(3) = State % OutputCount(3) + 1
+  IF(SaveEp)   State % OutputCount(4) = State % OutputCount(4) + 1
+  IF(SaveGid)  State % OutputCount(5) = State % OutputCount(5) + 1
+  IF(SaveOpenDx) State % OutputCount(6) = State % OutputCount(6) + 1
+  IF(SaveSTL) State % OutputCount(7) = State % OutputCount(7) + 1
 
   ! Finally go for it and write desired data
   ! Some formats requite that the list of variables is explicitly given
@@ -263,17 +287,18 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     Model % Variables => iMesh % variables
 
 
-    IF( .NOT. ListSet ) THEN
+    IF( .NOT. State % ListSet ) THEN
       CALL Info(Caller,'Creating list for saving - if not present',Level=7)
       CALL CreateListForSaving( Model, Params,.TRUE. )
-      ListSet = .TRUE.
-    ELSE IF( MeshDim /= Model % Mesh % MeshDim .OR. (iMeshName(1:nlen) /= TRIM(ListMeshName))) THEN
+      State % ListSet = .TRUE.
+    ELSE IF( State % MeshDim /= Model % Mesh % MeshDim .OR. &
+        (iMeshName(1:nlen) /= TRIM(State % ListMeshName))) THEN
       CALL Info(Caller,'Mesh name changed - recreating list for saving',Level=7)
       CALL CreateListForSaving( Model, Params,.TRUE.,.TRUE.)
     END IF
 
-    MeshDim = Model % Mesh % MeshDim
-    nlen = StringToLowerCase( ListMeshName, iMesh % Name)
+    State % MeshDim = Model % Mesh % MeshDim
+    nlen = StringToLowerCase( State % ListMeshName, iMesh % Name)
 
     Mesh => iMesh
 
@@ -291,38 +316,38 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
       IF( SaveVTU ) THEN
         CALL Info( Caller,'Saving in unstructured VTK XML (.vtu) format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(1))
+        CALL ListAddInteger( Params,'Output Count',State % OutputCount(1))
         CALL VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveGmsh ) THEN
         CALL Info( Caller,'Saving in gmsh 2.0 (.msh) format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(2))
+        CALL ListAddInteger( Params,'Output Count',State % OutputCount(2))
         ! For other call uses this recides in SaveUtils.
         CALL SaveGmshOutput( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveVTK ) THEN
         CALL Info( Caller,'Saving in legacy VTK (.vtk) format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(3))
+        CALL ListAddInteger( Params,'Output Count',State % OutputCount(3))
         CALL VtkOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveEP ) THEN
         CALL Info( Caller,'Saving in ElmerPost (.ep) format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(4))
+        CALL ListAddInteger( Params,'Output Count',State % OutputCount(4))
         CALL ElmerPostOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveGid ) THEN
         CALL Info( Caller,'Saving in GiD format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(5))
+        CALL ListAddInteger( Params,'Output Count',State % OutputCount(5))
         CALL GiDOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveOpenDx ) THEN
         CALL Info( Caller,'Saving in OpenDX (.dx) format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(6))
+        CALL ListAddInteger( Params,'Output Count',State % OutputCount(6))
         CALL DXOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
       IF( SaveSTL ) THEN
         CALL Info( Caller,'Saving surface mesh in STL format' )
-        CALL ListAddInteger( Params,'Output Count',OutputCount(7))
+        CALL ListAddInteger( Params,'Output Count',State % OutputCount(7))
         CALL SaveSTLSurface( Mesh, Params )
       END IF
 
@@ -340,11 +365,9 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( .NOT. SomeMeshSaved ) THEN
-    OutputCount = OutputCount - 1
+    State % OutputCount = State % OutputCount - 1
   END IF
   Model % Variables => ModelVariables
-
-  SubroutineVisited = .TRUE.
 
   IF( CalcNrm ) THEN
     IF( SaveVtu ) THEN

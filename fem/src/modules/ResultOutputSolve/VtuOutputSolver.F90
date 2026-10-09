@@ -2182,22 +2182,47 @@ CONTAINS
   !--------------------------------------------------------------
   SUBROUTINE WritePvdFile( PvdFile, DataSetFile, nTime, Model )
     CHARACTER(LEN=*), INTENT(IN) :: PvdFile, DataSetFile
-    INTEGER :: nTime, RecLen = 0
+    INTEGER :: nTime, RecLen
     TYPE(Model_t) :: Model
     INTEGER, PARAMETER :: VtuUnit = 58
-    INTEGER :: n, nLine = 0, iostat
+    INTEGER :: n, nLine, iostat, iFile
     REAL(KIND=dp) :: time
     CHARACTER :: lf
     CHARACTER(LEN=MAX_NAME_LEN) :: Str
     LOGICAL :: Found
 
-    SAVE RecLen, nLine
+    ! Record length and line count of each pvd file being written. There may
+    ! be several: one per mesh, and one per instance of the calling solver.
+    TYPE PvdState_t
+      CHARACTER(LEN=MAX_PATH_LEN) :: FileName = ' '
+      INTEGER :: RecLen = 0, nLine = 0
+    END TYPE PvdState_t
+    TYPE(PvdState_t), ALLOCATABLE :: PvdStates(:), TmpStates(:)
+    SAVE PvdStates
 
     lf = CHAR(10)
 
     IF( ParEnv % PEs > 1 ) THEN
       IF( ParEnv % MyPE > 0 ) RETURN
     END IF
+
+    IF( .NOT. ALLOCATED(PvdStates) ) ALLOCATE( PvdStates(0) )
+    iFile = 0
+    DO n=1,SIZE(PvdStates)
+      IF( PvdStates(n) % FileName == PvdFile ) THEN
+        iFile = n
+        EXIT
+      END IF
+    END DO
+    IF( iFile == 0 ) THEN
+      ALLOCATE( TmpStates(SIZE(PvdStates)+1) )
+      TmpStates(1:SIZE(PvdStates)) = PvdStates
+      CALL MOVE_ALLOC( TmpStates, PvdStates )
+      iFile = SIZE(PvdStates)
+      PvdStates(iFile) % FileName = PvdFile
+    END IF
+    RecLen = PvdStates(iFile) % RecLen
+    nLine = PvdStates(iFile) % nLine
     time = GetTime()
     IF( GetLogical( Params,'Vtu time previous',Found) ) THEN
       time = time - GetTimestepSize()
@@ -2241,6 +2266,9 @@ CONTAINS
     WRITE( VtuUnit,'(A)',REC=nLine+1) lf//'</Collection></VTKFile>'
 
     CLOSE( VtuUnit )
+
+    PvdStates(iFile) % RecLen = RecLen
+    PvdStates(iFile) % nLine = nLine
 
     Visited = .TRUE.
 

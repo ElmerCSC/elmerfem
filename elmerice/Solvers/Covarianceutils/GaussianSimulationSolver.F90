@@ -56,20 +56,9 @@
 
       INTEGER :: i,k
 
-      TYPE(Solver_t), POINTER, SAVE :: MSolver,KMSolver
-      REAL(kind=dp),allocatable,save :: aap(:) ! matrix in packed format
-      REAL(kind=dp),allocatable,save :: x(:),y(:)
-      REAL(kind=dp),allocatable,SAVE :: rr(:,:)
-
-      INTEGER,SAVE  :: nn
-      INTEGER, ALLOCATABLE, SAVE :: ActiveNodes(:),InvPerm(:)
-      INTEGER,SAVE :: PbDim
-
-      CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CovType
-      REAL(kind=dp),SAVE :: std
       INTEGER :: Op
 
-      LOGICAL, SAVE :: Firsttime=.TRUE.
+      TYPE(CovarianceState_t), POINTER :: State
       Logical :: Parallel
       LOGICAL :: Found
 
@@ -82,6 +71,7 @@
       Parallel=(ParEnv % PEs > 1)
 
       SolverParams => GetSolverParams()
+      State => GetCovarianceState(Solver)
 
       Var => Solver % Variable
       IF (.NOT.ASSOCIATED(Var)) &
@@ -99,18 +89,18 @@
          CALL FATAL(SolverName,'DoFs for mean variable should be 1')
 
       !! some initialisation
-      IF (Firsttime) THEN
-        CALL GetActiveNodesSet(Solver,nn,ActiveNodes,InvPerm,PbDim)
+      IF (.NOT. State % Initialized) THEN
+        CALL GetActiveNodesSet(Solver,State % nn,State % ActiveNodes,State % InvPerm,State % PbDim)
 
         !Sanity check
-        IF (ANY(Perm_b(ActiveNodes(1:nn)).LT.0)) &
+        IF (ANY(Perm_b(State % ActiveNodes(1:State % nn)).LT.0)) &
           CALL FATAL(SolverName,"Pb with background variable perm")
 
         !! The covariance type
-        CovType = ListGetString(SolverParams,"Covariance type",UnFoundFatal=.TRUE.)
-        std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
+        State % CovType = ListGetString(SolverParams,"Covariance type",UnFoundFatal=.TRUE.)
+        State % std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
 
-        SELECT CASE (CovType)
+        SELECT CASE (State % CovType)
 
           CASE('diagonal')
             CALL INFO(SolverName,"Using diagonal covariance",level=3)
@@ -119,19 +109,19 @@
             CALL INFO(SolverName,"Using full matrix covariance",level=3)
 
             Op=2
-            ALLOCATE(aap(nn*(nn+1)/2))
-            CALL CovarianceInit(Solver,nn,InvPerm,aap,Op,PbDim)
+            ALLOCATE(State % aap(State % nn*(State % nn+1)/2))
+            CALL CovarianceInit(Solver,State % nn,State % InvPerm,State % aap,Op,State % PbDim)
 
           CASE('diffusion operator')
             CALL INFO(SolverName,"Using diffusion operator covariance",level=3)
 
-            CALL CovarianceInit(Solver,MSolver,KMSolver)
+            CALL CovarianceInit(Solver,State % MSolver,State % KMSolver)
 
         END SELECT
 
-       allocate(x(nn),y(nn),rr(nn,DOFs))
+       allocate(State % x(State % nn),State % y(State % nn),State % rr(State % nn,DOFs))
 
-       Firsttime=.FALSE.
+       State % Initialized = .TRUE.
       END IF
 
      !  CALL random_seed()
@@ -143,30 +133,30 @@
       deallocate(seed)
 
        !Create DOFs random vectors of size n
-       rr=0._dp
+       State % rr=0._dp
        DO k=1,DOFs
-         DO i=1,nn
-          rr(i,k)=NormalRandom()
+         DO i=1,State % nn
+          State % rr(i,k)=NormalRandom()
          END DO
        END DO
 
        DO k=1,DOFs
-         x(Perm(ActiveNodes(1:nn)))=rr(ActiveNodes(1:nn),k)
+         State % x(Perm(State % ActiveNodes(1:State % nn)))=State % rr(State % ActiveNodes(1:State % nn),k)
 
-        SELECT CASE (CovType)
+        SELECT CASE (State % CovType)
           CASE('diagonal')
-              y(:) = std*x(:)
+              State % y(:) = State % std*State % x(:)
 
           CASE('full matrix')
-              CALL SqrCovarianceVectorMultiply(Solver,nn,aap,x,y)
+              CALL SqrCovarianceVectorMultiply(Solver,State % nn,State % aap,State % x,State % y)
 
           CASE('diffusion operator')
-             CALL SqrCovarianceVectorMultiply(Solver,MSolver,KMSolver,nn,x,y)
+             CALL SqrCovarianceVectorMultiply(Solver,State % MSolver,State % KMSolver,State % nn,State % x,State % y)
 
         END SELECT
 
-        Values(DOFs*(Perm(ActiveNodes(1:nn))-1)+k)=Values_b(Perm_b(ActiveNodes(1:nn)))+&
-                y(Perm(ActiveNodes(1:nn)))
+        Values(DOFs*(Perm(State % ActiveNodes(1:State % nn))-1)+k)=Values_b(Perm_b(State % ActiveNodes(1:State % nn)))+&
+                State % y(Perm(State % ActiveNodes(1:State % nn)))
        END DO
 
 
