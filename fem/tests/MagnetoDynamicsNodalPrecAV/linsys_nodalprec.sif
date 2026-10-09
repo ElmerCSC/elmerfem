@@ -41,6 +41,11 @@ Solver 3
   Linear System Scaling = True
   Linear System Nullify First Guess = Logical True
   Optimize Bandwidth = False
+
+ 
+  Preconditioning Alternate = Logical True
+  MG Post Smoothing Iterations = 5
+
 End
 
 

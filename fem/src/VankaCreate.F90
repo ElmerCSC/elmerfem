@@ -1113,11 +1113,13 @@
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
     REAL(KIND=dp), ALLOCATABLE :: zshort(:), rshort(:)
     REAL(KIND=dp) :: rnorm, coeff
-    LOGICAL :: Found, ScaleRHS, DoMask, AdditiveSmoother
+    INTEGER, POINTER :: PrecSolvers(:)
+    LOGICAL :: Found, ScaleRHS, DoMask, AdditiveSmoother, AlternatePrec
     CHARACTER(MAX_NAME_LEN) :: str
-    INTEGER :: SlaveInd, SlaveCnt
+    INTEGER :: SlaveInd, SlaveMaxCnt
     INTEGER :: n, m, i, DOFs
-
+    INTEGER, SAVE :: SlaveCnt = 0
+    
 !-------------------------------------------------------------------------------
 
     Solver => CurrentModel % Solver
@@ -1130,6 +1132,9 @@
     str = ListGetString( Params,'Preconditioning Residual',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
+    PrecSolvers => ListGetIntegerArray( Params,'Prec Solvers', UnfoundFatal=.TRUE.)
+    SlaveMaxCnt = SIZE(PrecSolvers)
+    
     IF(pVar % Dofs /= dofs ) THEN
       CALL Fatal('SlavePrec','Residual should have the same count of DOFs as primary variable!')
     END IF
@@ -1167,15 +1172,28 @@
     ! Shall we do smoother after each preconitioner step, or after all?
     AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
 
+    AlternatePrec = ListGetLogical(Params,'Preconditioning Alternate', Found )
+    IF(AlternatePrec ) THEN
+      CALL Info('SlavePrec','Solving only preconditioning solver: '//I2S(SlaveCnt))
+      AdditiveSmoother = .FALSE.
+      SlaveCnt = MODULO( SlaveCnt, SlaveMaxCnt ) + 1
+    ELSE
+      SlaveCnt = 1
+    END IF
+    
     ALLOCATE(r(n))
     IF( ParEnv % PEs > 1 ) ALLOCATE(zshort(m), rshort(m))
 
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
-    DO SlaveInd = 1, 10
+    DO SlaveInd = 1, SlaveMaxCnt
 
-      ! Calculate remaining residual, if we have just one slave we just need the initial residual.
-      IF( SlaveInd > 1 ) THEN
+      IF( AlternatePrec ) THEN
+        ! If we alternative the prec solver we only do one at a time. 
+        IF( SlaveCnt /= SlaveInd ) CYCLE
+        
+      ELSE IF( SlaveInd > 1 ) THEN
+        ! Calculate remaining residual, if we have just one slave we just need the initial residual.
         r(1:n) = 0.0_dp
         IF( ParEnv % PEs > 1 ) THEN
           ! The serial matvec, mimicked with its parallel equivalent: the local
@@ -1203,7 +1221,7 @@
 
       ! (dx,res) are the vectors that should go in here by their name
       dx(1:n) = 0.0_dp
-      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd, SlaveCnt = SlaveCnt  )
+      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
 
       IF (ScaleRHS) THEN
         ! Transform the search direction so that it corresponds to the scaled linear system
@@ -1227,7 +1245,7 @@
       CALL ExperimentalStuff()
 
       ! If we just have one solver, no need to cumulative summation etc.
-      IF( SlaveCnt == 1 ) EXIT
+      IF( SlaveMaxCnt == 1 .OR. AlternatePrec ) EXIT
 
       ! Sum up cumulative solution
       IF(SlaveInd == 1) THEN
@@ -1238,7 +1256,7 @@
       END IF
 
       ! At final solver revert the cumulative solution back to origonal vectors.
-      IF(SlaveInd == SlaveCnt) THEN
+      IF(SlaveInd == SlaveMaxCnt) THEN
         dx(1:n) = z(1:n)
         IF( ParEnv % PEs > 1 ) THEN
           CALL PartitionVector( Amat, res, v(1:m) )
@@ -1255,7 +1273,7 @@
 
     ! If we want to perform smoothing only once at the very end.
     IF( .NOT. AdditiveSmoother ) THEN
-      CALL TailoredSmooth(dx,res,1)
+      CALL TailoredSmooth(dx,res,SlaveCnt)
       CALL ExperimentalStuff()
     END IF
 
@@ -1344,11 +1362,13 @@
     ! the transfers to and from the complex vectors v and u are contiguous
     ! copies rather than pairs of stride-2 gathers and scatters.
     COMPLEX(KIND=dp), POINTER :: cres(:), cdx(:)
+    INTEGER, POINTER :: PrecSolvers(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS, AdditiveSmoother
+    LOGICAL :: Found, ScaleRHS, AdditiveSmoother, AlternatePrec
     CHARACTER(MAX_NAME_LEN) :: str
-    INTEGER :: SlaveInd, SlaveCnt
+    INTEGER :: SlaveInd, SlaveMaxCnt
     INTEGER :: n, DOFs
+    INTEGER, SAVE :: SlaveCnt = 0
 !-------------------------------------------------------------------------------
 
     Solver => CurrentModel % Solver
@@ -1361,6 +1381,9 @@
     str = ListGetString( Params,'Preconditioning Residual', UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
+    PrecSolvers => ListGetIntegerArray( Params,'Prec Solvers', UnfoundFatal=.TRUE.)
+    SlaveMaxCnt = SIZE(PrecSolvers)
+    
     IF(pVar % Dofs /= dofs ) THEN
       CALL Fatal('SlavePrecComplex','Residual should have the same count of DOFs as primary variable!')
     END IF
@@ -1390,16 +1413,28 @@
     ! Shall we do smoother after each preconitioner step, or after all?
     AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
 
-
-
+    AlternatePrec = ListGetLogical(Params,'Preconditioning Alternate', Found )
+    IF(AlternatePrec ) THEN
+      SlaveCnt = MODULO( SlaveCnt, SlaveMaxCnt ) + 1
+      CALL Info('SlavePrecComplex','Solving only preconditioning solver: '//I2S(SlaveCnt))
+      AdditiveSmoother = .FALSE.
+    ELSE
+      SlaveCnt = 1 
+    END IF
+    
     ALLOCATE(r(n))
 
+    
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
-    DO SlaveInd = 1, 10
+    DO SlaveInd = 1, SlaveMaxCnt
 
-      ! Calculate remaining residual, if we have just one slave we just need the initial residual.
-      IF( SlaveInd > 1 ) THEN
+      IF( AlternatePrec ) THEN
+        ! If we alternative the prec solver we only do one at a time. 
+        IF( SlaveCnt /= SlaveInd ) CYCLE
+            
+      ELSE IF( SlaveInd > 1 ) THEN
+        ! Calculate remaining residual, if we have just one slave we just need the initial residual.
         r(1:n) = 0.0_dp
         CALL MatrixVectorMultiply(Amat, z, r)
         cres(1:n/2) = v(1:n/2)
@@ -1413,7 +1448,7 @@
 
       ! (dx,res) are the vectors that should go in here by their name
       dx(1:n) = 0.0_dp
-      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd, SlaveCnt = SlaveCnt  )
+      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
 
       IF (ScaleRHS) THEN
         ! Transform the search direction so that it corresponds to the scaled linear system
@@ -1421,8 +1456,7 @@
       END IF
 
       IF( AdditiveSmoother ) THEN
-        r = 0.0_dp
-        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SlaveInd, dofs )
+        CALL TailoredSmoothZ(dx,res,SlaveInd)
       END IF
 
       ! This is just to test that the suggested search direction is a good one.
@@ -1430,7 +1464,7 @@
       CALL ExperimentalStuffZ()
 
       ! If we just have one solver, no need to cumulative summation etc.
-      IF( SlaveCnt == 1 ) EXIT
+      IF( SlaveMaxCnt == 1 .OR. AlternatePrec ) EXIT
 
       ! Sum up cumulative solution
       IF(SlaveInd == 1) THEN
@@ -1441,7 +1475,7 @@
       END IF
 
       ! At final solver revert the cumulative solution back to origonal vectors.
-      IF(SlaveInd == SlaveCnt) THEN
+      IF(SlaveInd == SlaveMaxCnt) THEN
         dx(1:n) = z(1:n)
         cres(1:n/2) = v(1:n/2)
         DEALLOCATE(z)
@@ -1454,8 +1488,7 @@
 
     ! If we want to perform smoothing only once at the very end.
     IF( .NOT. AdditiveSmoother ) THEN
-      r = 0.0_dp
-      RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, 1, dofs )
+      CALL TailoredSmoothZ(dx,res,SlaveCnt) 
       CALL ExperimentalStuffZ()
     END IF
 
@@ -1466,6 +1499,37 @@
   CONTAINS
 
 
+
+    SUBROUTINE TailoredSmoothZ(dx,res,Level)
+      REAL(KIND=dp) :: dx(:), res(:)
+      LOGICAL :: DoMask
+      INTEGER :: Level
+
+      DoMask = .FALSE.
+      str = ListGetString(Params,'MG Smoother')
+      IF(len_TRIM(str) >= 6 ) THEN
+        DoMask = (str(1:6) == 'masked')
+      END IF
+      IF(.NOT. DoMask) THEN
+        DoMask = ListGetLogical(Params,'Linear System Skip Mask', Found )
+      END IF
+
+      r(1:n) = 0.0_dp
+      IF(DoMask) THEN
+        BLOCK
+          IF(.NOT. ASSOCIATED(Amat % SkipMask)) THEN
+            CALL Fatal('TailoredSmoothZ','SkipMask not associated but here we are!?')
+          END IF
+          RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
+              Level, dofs, SkipMask = Amat % SkipMask )
+        END BLOCK
+      ELSE
+        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, Level, dofs )
+      END IF
+
+    END SUBROUTINE TailoredSmoothZ
+
+    
     SUBROUTINE ExperimentalStuffZ()
 
       REAL(KIND=dp) :: rn, bnre, bnim

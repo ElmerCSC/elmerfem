@@ -103,9 +103,9 @@ Solver 2
   Linear System Solver = "Iterative"
   Linear System Iterative Method = String "bicgstab2"
 
-  BiCGstabl polynomial degree = Integer 4  
-  Linear System Preconditioning = String "ILU2"
-  Linear System Max Iterations = Integer 1000
+  BiCGstabl polynomial degree = 4  
+  Linear System Preconditioning = "ILU2"
+  Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-7
   Linear system abort not converged = false
   Linear System Residual Output = 10
@@ -135,11 +135,11 @@ Solver 3
 
   Linear System Scaling = False
   Linear System Solver = "Iterative"
-  Linear System Iterative Method = String "bicgstab2"
+  Linear System Iterative Method = "bicgstab2"
 
-  BiCGstabl polynomial degree = Integer 4  
-  Linear System Preconditioning = String "ILU2"
-  Linear System Max Iterations = Integer 1000
+  BiCGstabl polynomial degree = 4  
+  Linear System Preconditioning = "ILU2"
+  Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-7
   Linear system abort not converged = false
   Linear System Residual Output = 10
