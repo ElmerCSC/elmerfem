@@ -202,8 +202,8 @@ END SUBROUTINE EMPortSolver_Init0
 SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE ParallelUtils, ONLY : ParallelCdot
   USE GeneralUtils, ONLY : ComplexVariableValues
+  USE LinearAlgebra, ONLY : ComplexInvertMatrix
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
@@ -219,15 +219,17 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
   TYPE(Element_t), POINTER :: Element
   LOGICAL :: PiolaVersion, SecondFamily, EigenProblem, CalculateNodal, Found, MeActive
   LOGICAL :: Output_Z, UseV
-  INTEGER :: DOFs, EdgeBasisDegree, QuadDegree, Active, i, j, k, t, m, n, nd, &
-      EFamily, MaxPort, PortInd, t1, t2, ModeIndex, Ierr
+  INTEGER :: DOFs, EdgeBasisDegree, QuadDegree, Active, i, j, k, l, t, m, n, nd, &
+      EFamily, MaxPort, PortInd, t1, t2, ModeIndex, Ierr, nev, ncl
   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   COMPLEX(KIND=dp) :: Beta
   COMPLEX(KIND=dp), POINTER :: SaveEigenVectors(:,:)
-  COMPLEX(KIND=dp), POINTER :: cValues(:), cu(:), cv(:)
-  REAL(KIND=dp), ALLOCATABLE, TARGET :: u_part(:), v_part(:)
-  REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum
-  COMPLEX(KIND=dp) :: E2, Power, udotu, udotv
+  COMPLEX(KIND=dp), POINTER :: cValues(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: OrigVecs(:,:), Gram(:,:), GramInv(:,:), Coeff(:)
+  INTEGER, ALLOCATABLE :: Cluster(:)
+  LOGICAL, ALLOCATABLE :: Handled(:)
+  REAL(KIND=dp) :: mu0inv, eps0, omega, maxeps, maxmu, betalim, Norm, BetaSum, ClusterTol
+  COMPLEX(KIND=dp) :: E2, Power
 
   TYPE(Variable_t), POINTER :: EMVar
   INTEGER, ALLOCATABLE :: SavePerm(:)
@@ -354,8 +356,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     maxeps = 0.0_dp
 
     IF(MaxPort==0) THEN
-      ModeIndex = ListGetInteger(Params, 'Eigenfunction Index', Found)
-      IF(.NOT. Found ) ModeIndex = 1
+      ModeIndex = ListGetInteger(Params, 'Eigenfunction Index', Found, DefValue = 1)
     END IF
 
     DO t=1,Active
@@ -365,8 +366,7 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       IF(MaxPort>0) THEN
         BC => GetBC(Element)
         IF(ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
-        ModeIndex = ListGetInteger(BC, 'Eigenfunction Index', Found)
-        IF(.NOT. Found ) ModeIndex = 1
+        ModeIndex = ListGetInteger(BC, 'Eigenfunction Index', Found, DefValue = 1)
       END IF
 
       EFamily = GetElementFamily(Element)
@@ -375,7 +375,6 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
 
-#if 1
       IF (SecondFamily .AND. EdgeBasisDegree == 1) THEN
         SELECT CASE(EFamily)
         CASE(3)
@@ -397,7 +396,6 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
           IF (n < 9) CALL Fatal(Caller, 'A background mesh needs 9-node quads')
         END SELECT
       END IF
-#endif
 
       IF (UseV) THEN
         CALL LocalMatrix_With_Potentials(Element, n, nd)
@@ -497,16 +495,46 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
     i = ListGetInteger(Params, 'Number of Nonhomogeneous Modes', Found, &
         maxv = SIZE(Solver % Variable % EigenValues))
     IF (i > 0) THEN
-      CALL Info(Caller, 'Solving an additional component to satisfy nonhomogeneous BCs', Level=5)
+      CALL Info(Caller, 'Creating solutions which satisfy nonhomogeneous BCs', Level=5)
       CALL ListAddLogical(Params, 'Eigen Analysis', .FALSE.)
 
-      IF (ParEnv % PEs > 1 ) THEN
-        m = Solver % Matrix % NumberOfRows
-        ALLOCATE(u_part(m), v_part(m))
-      END IF
+      ! Eigenvalues which agree within the following relative tolerance are treated as a cluster
+      ! (a repeated eigenvalue up to a discretization error):
+      ClusterTol = ListGetConstReal(Params, 'Eigenvalue Cluster Tolerance', Found, DefValue = 1.0d-3)
 
+      nev = SIZE(Solver % Variable % EigenValues)
       m = Solver % Matrix % NumberOfRows/2
+
+      ! The eigenvectors are overwritten below, so save the homogeneous modes:
+      ALLOCATE(OrigVecs(nev,m), Cluster(nev), Handled(nev), Coeff(nev), Gram(nev+1,nev+1))
+      OrigVecs(1:nev,1:m) = Solver % Variable % EigenVectors(1:nev,1:m)
+      Handled = .FALSE.
+
       DO j=1,i
+        CALL Info(Caller, 'Generating a particular solution associated with the mode '//I2S(j), Level=5)
+
+        ! Identify the indices k of the eigenvectors which are associated with the same eigenvalue:
+        ncl = 0
+        DO k=1,nev
+          IF (ABS(Solver % Variable % EigenValues(k) - Solver % Variable % EigenValues(j)) <= &
+              ClusterTol * ABS(Solver % Variable % EigenValues(j))) THEN
+            ncl = ncl + 1
+            Cluster(ncl) = k
+          END IF
+        END DO
+
+        ! The particular solution related to a cluster is the same for all its members.
+        ! If it has already been obtained, keep this mode homogeneous.
+        IF (ANY(Handled(Cluster(1:ncl)))) THEN
+          CALL Info(Caller, 'Mode '//I2S(j)//' belongs to an eigenvalue cluster already handled, '//&
+              'keeping it homogeneous', Level=5)
+          CYCLE
+        END IF
+
+        IF (ncl > 1) CALL Info(Caller, 'The eigenvalue cluster of mode '//I2S(j)//' has size '//I2S(ncl), Level=5)
+        IF (Cluster(ncl) == nev) CALL Warn(Caller, 'The eigenvalue cluster of mode '//I2S(j)//&
+            ' may be incomplete: increase Eigen System Values')
+
         Solver % Matrix % Values = Solver % Matrix % Values - &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
 
@@ -515,38 +543,64 @@ SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 
         cValues => ComplexVariableValues( Solver % Variable )
 
-        ! Overwrite the standard eigenvector by inserting the particular solution. We could also blend
-        ! the original eigenfunction and the particular solution to obtain another solution to the nonhomogeneous
-        ! problem, so this step is a matter of choice. Remove the component along the homogeneous eigenvector to
-        ! obtain uniqueness:
-        IF (ParEnv % PEs > 1 ) THEN
-          DO k = 1,m
-            v_part(2*k-1) = REAL(Solver % Variable % EigenVectors(j,k))
-            v_part(2*k) = AIMAG(Solver % Variable % EigenVectors(j,k))
+        ! The particular solution is determined only up to a field in the span of the eigenfunctions
+        ! associated with the cluster. Obtain uniqueness by making the particular solution orthogonal to
+        ! this span with respect to the Nu-weighted L2 inner product of the vector fields expressed 
+        ! in terms of the edge basis functions, i.e. the inner product corresponds to that associated
+        ! with the (1,1)-block of the mass matrix. This inner product does not depend on the mesh in
+        ! the way the Euclidean product of discrete solution vectors does. The Gram matrix of the cluster
+        ! eigenfunctions is generated in Gram(1:ncl,1:ncl) and their inner products with the current
+        ! particular solution given by the linear solver in Gram(1:ncl,ncl+1).
+        
+        Gram = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+        DO t=1,Active
+          Element => GetActiveElement(t,Solver)
+          EFamily = GetElementFamily(Element)
+          IF (EFamily > 4) CYCLE
+
+          IF (CoordinateSystemDimension() /= 2 .AND. MaxPort>0) THEN
+            BC => GetBC(Element)
+            IF (ListGetInteger(BC,'Port Index',Found ) /= PortInd) CYCLE
+          END IF
+
+          n  = GetElementNOFNodes(Element)
+          nd = GetElementNOFDOFs(Element)
+
+          CALL EigenfieldInnerProducts(Element, n, nd, ncl, Cluster, OrigVecs, cValues, Gram)
+        END DO
+
+        DO k=1,ncl
+          DO l=1,ncl+1
+            Gram(k,l) = ParallelReduction(Gram(k,l))
           END DO
-          CALL PartitionVector(Solver % Matrix, u_part, v_part)
-          cu => ComplexValues(u_part, m)
-          CALL PartitionVector(Solver % Matrix, v_part, Solver % Variable % Values)
-          cv => ComplexValues(v_part, m)
-          udotv = ParallelCdot(m, cu, cv)
-          udotu = ParallelCdot(m, cu, cu)
-        ELSE
-          udotv = SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * cValues(1:m))
-          udotu = SUM(CONJG(Solver % Variable % EigenVectors(j,1:m)) * Solver % Variable % EigenVectors(j,1:m))
-        END IF
+        END DO
 
-!        PRINT *, 'Parallel component = ', udotv/udotu
+        ALLOCATE(GramInv(ncl,ncl))
+        GramInv(1:ncl,1:ncl) = Gram(1:ncl,1:ncl)
+        CALL ComplexInvertMatrix(GramInv, ncl)
+        Coeff(1:ncl) = MATMUL(GramInv(1:ncl,1:ncl), Gram(1:ncl,ncl+1))
+        DEALLOCATE(GramInv)
 
-        Solver % Variable % EigenVectors(j,1:m) = cValues(1:m) - &
-            udotv/udotu * Solver % Variable % EigenVectors(j,1:m)
+        DO k=1,ncl
+          WRITE(Message,'(A,I0,A,2ES15.6)') 'Component along homogeneous mode ', Cluster(k), &
+              ' removed: ', REAL(Coeff(k)), AIMAG(Coeff(k))
+          CALL Info(Caller, Message, Level=7)
+        END DO
+
+        ! Overwrite the standard eigenvector by inserting the particular solution which is
+        ! orthogonal to the eigenfunctions associated with the cluster:
+        Solver % Variable % EigenVectors(j,1:m) = cValues(1:m)
+        DO k=1,ncl
+          Solver % Variable % EigenVectors(j,1:m) = Solver % Variable % EigenVectors(j,1:m) - &
+              Coeff(k) * OrigVecs(Cluster(k),1:m)
+        END DO
+        Handled(j) = .TRUE.
 
         Solver % Matrix % Values = Solver % Matrix % Values + &
             Solver % Variable % EigenValues(j) * Solver % Matrix % MassValues
       END DO
 
-      IF (ParEnv % PEs > 1 ) THEN
-        DEALLOCATE(u_part, v_part)
-      END IF
+      DEALLOCATE(OrigVecs, Cluster, Handled, Coeff, Gram)
       CALL ListAddLogical(Params, 'Eigen Analysis', .TRUE.)
     END IF
 
@@ -1142,6 +1196,117 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE CalculatePortPower
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add the element contributions to the Gram matrix H of the cluster eigenfunctions,
+!> with the inner product defined by <u,v> = <Re(Nu) u*,v>. The inner products with
+!> the current particular solution described by u are saved in H(1:ncl,ncl+1).
+!> Note that only the part expressed in terms of edge basis functions contributes
+!> to the inner products. The array Cluster describes which of the available
+!> eigenfunctions Vecs contribute to the Gram matrix.
+!------------------------------------------------------------------------------
+  SUBROUTINE EigenfieldInnerProducts(Element, n, nd, ncl, Cluster, Vecs, u, H)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: n, nd, ncl
+    INTEGER, INTENT(IN) :: Cluster(:)
+    COMPLEX(KIND=dp), INTENT(IN) :: Vecs(:,:), u(:)
+    COMPLEX(KIND=dp), INTENT(INOUT) :: H(:,:)
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+    LOGICAL :: Stat, Found, GotNu
+    INTEGER :: m, allocstat, vdofs, np, ndofs, nind
+    INTEGER :: t, i, j, p, r, s
+    INTEGER, ALLOCATABLE, SAVE :: Indexes(:)
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: WBasis(:,:), CurlWBasis(:,:), Basis(:), dBasisdx(:,:)
+!    REAL(KIND=dp), ALLOCATABLE, SAVE :: WBasis(:,:), Basis(:)
+    REAL(KIND=dp) :: weight, DetJ
+    COMPLEX(KIND=dp) :: Nu
+    COMPLEX(KIND=dp), ALLOCATABLE :: LocalVals(:,:), EF(:,:)
+!------------------------------------------------------------------------------
+
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+        EdgeBasisDegree = QuadDegree)
+
+    ! Allocate storage if needed
+    IF (.NOT. ALLOCATED(Basis)) THEN
+      m = Mesh % MaxElementDofs
+      ALLOCATE(WBasis(m,3), CurlWBasis(m,3), Basis(m), dBasisdx(m,3), Indexes(m), STAT=allocstat)
+!      ALLOCATE(WBasis(m,3), Basis(m), Indexes(m), STAT=allocstat)
+      IF (allocstat /= 0) CALL Fatal(Caller, 'Local storage allocation failed')
+    END IF
+    ALLOCATE(LocalVals(nd,ncl+1), EF(3,ncl+1))
+
+    CALL GetElementNodes(Nodes, Element)
+
+    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    np = n * ndofs
+
+    ! The number of DOFs for one vector FE field
+    vdofs = nd - np
+
+    ! Gather the local values of the vectors:
+    LocalVals = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+    nind = GetElementDOFs(Indexes, Element, Solver)
+    IF (nind /= nd) CALL Fatal(Caller, 'Inconsistent element DOF counts: '//I2S(nind)//' vs '//I2S(nd))
+    DO i=1,nd
+      j = Indexes(i)
+      p = Solver % Variable % Perm(j)
+      DO r=1,ncl
+        LocalVals(i,r) = Vecs(Cluster(r),p)
+      END DO
+      LocalVals(i,ncl+1) = u(p)
+    END DO
+
+    GotNu = .FALSE.
+
+    DO t=1,IP % n
+      !--------------------------------------------------------------
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+          detJ, Basis, dBasisdx, EdgeBasis = Wbasis, RotBasis = CurlWBasis, USolver = SolverPtr)
+!
+! TO DO: We cannot use the following simple call, since without Use Piola Transform = True 
+!        this leads to an error
+!      
+!      stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+!          detJ, Basis, EdgeBasis = Wbasis, USolver = SolverPtr)
+!
+      Weight = IP % s(t) * DetJ
+
+      IF(t==1 .OR. GotNu) THEN
+        Nu = ListGetElementComplex(NuCoeff_h, Basis, Element, GotNu, GaussPoint = t)
+      END IF
+      IF(.NOT. GotNu) Nu = ListGetElementRealParent(NuCoeff_h, Basis, Element, Found )
+      IF( GotNu .OR. Found ) THEN
+        Nu = mu0inv * Nu
+      ELSE
+        Nu = mu0inv
+      END IF
+
+      ! The real part of Nu is used to obtain a Hermitian inner product:
+      Weight = Weight * REAL(Nu)
+
+      DO r=1,ncl+1
+        EF(:,r) = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+        DO i=1,vdofs
+          EF(:,r) = EF(:,r) + LocalVals(np+i,r) * WBasis(i,:)
+        END DO
+      END DO
+
+      DO r=1,ncl
+        DO s=1,ncl+1
+          H(r,s) = H(r,s) + SUM(CONJG(EF(:,r)) * EF(:,s)) * weight
+        END DO
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE EigenfieldInnerProducts
 !------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------
