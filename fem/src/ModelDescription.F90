@@ -2720,8 +2720,7 @@ CONTAINS
       ! Get path to defaults.lua file
       ! 1) ELMER_HOME environment variable
       ! only if ELMER_HOME is unset or empty:
-      ! 2) ELMER_SOLVER_HOME preprocessor macro
-      ! 3) GetSolverHome function
+      ! 2) GetSolverHome function (returns the ELMER_SOLVER_HOME macro except on Windows)
 
       ! FIXME: The fixed-length elmer_home buffer might be too short for the
       !        actual length of the ELMER_HOME environment variable.
@@ -2735,15 +2734,9 @@ CONTAINS
         defaults_lua = elmer_home(1:k) // '/share/elmersolver/lua-scripts/defaults.lua'
         INQUIRE(FILE=TRIM(defaults_lua), EXIST=fexist)
       ELSE
-        IF (.NOT. fexist) THEN
-          defaults_lua = ELMER_SOLVER_HOME // '/lua-scripts/defaults.lua'
-          INQUIRE(FILE=TRIM(defaults_lua), EXIST=fexist)
-        END IF
-        IF (.NOT. fexist) THEN
-          CALL GetSolverHome(elmer_home, k)
-          defaults_lua = elmer_home(1:k) // '/lua-scripts/defaults.lua'
-          INQUIRE(FILE=TRIM(defaults_lua), EXIST=fexist)
-        END IF
+        CALL GetSolverHome(elmer_home, k)
+        defaults_lua = elmer_home(1:k) // '/lua-scripts/defaults.lua'
+        INQUIRE(FILE=TRIM(defaults_lua), EXIST=fexist)
       END IF
       IF (.NOT. fexist) THEN
         CALL Fatal(Caller, 'defaults.lua not found at ' // defaults_lua)
