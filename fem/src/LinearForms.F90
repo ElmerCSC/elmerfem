@@ -44,7 +44,8 @@
 #include "../config.h"
 
 MODULE LinearForms
-  USE Types, ONLY: dp, VECTOR_BLOCK_LENGTH, VECTOR_SMALL_THRESH
+  USE Types, ONLY: dp, VECTOR_BLOCK_LENGTH, VECTOR_SMALL_THRESH, &
+                   VECTOR_DGEMM_MIN_BLK, VECTOR_DGEMM_MIN_N
   USE Messages
   IMPLICIT NONE
   PRIVATE
@@ -82,7 +83,8 @@ CONTAINS
       iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
       blklen=iin-ii+1
 
-      IF (blklen < VECTOR_SMALL_THRESH) THEN
+      IF (blklen < VECTOR_SMALL_THRESH .AND. &
+          (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
         ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
         IF (noAlphaWeight) THEN
           DO j=1,n
@@ -164,7 +166,8 @@ CONTAINS
       iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
       blklen=iin-ii+1
 
-      IF (blklen < VECTOR_SMALL_THRESH) THEN
+      IF (blklen < VECTOR_SMALL_THRESH .AND. &
+          (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
         ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
         IF (noAlphaWeight .AND. noBetaWeight) THEN
           DO j=1,n
@@ -285,7 +288,8 @@ CONTAINS
        iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
        blklen=iin-ii+1
 
-       IF (blklen < VECTOR_SMALL_THRESH) THEN
+       IF (blklen < VECTOR_SMALL_THRESH .AND. &
+           (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
           ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
           IF (noAlphaWeight) THEN
              DO j=1,n
@@ -357,7 +361,8 @@ CONTAINS
        iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
        blklen=iin-ii+1
 
-       IF (blklen < VECTOR_SMALL_THRESH) THEN
+       IF (blklen < VECTOR_SMALL_THRESH .AND. &
+           (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
           ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
           IF (noAlphaWeight) THEN
              DO j=1,n

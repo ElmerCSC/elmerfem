@@ -59,6 +59,9 @@ MODULE Types
    INTEGER, PARAMETER :: VECTOR_BLOCK_LENGTH = 128
    ! Parameter for internally avoiding calls to BLAS
    INTEGER, PARAMETER :: VECTOR_SMALL_THRESH = 9
+   ! DGEMM beats the hand loop below VECTOR_SMALL_THRESH from this block length and basis count up
+   INTEGER, PARAMETER :: VECTOR_DGEMM_MIN_BLK = 4
+   INTEGER, PARAMETER :: VECTOR_DGEMM_MIN_N = 16
 
 #if defined(ARCH_32_BITS)
    INTEGER, PARAMETER :: AddrInt = SELECTED_INT_KIND(9)
