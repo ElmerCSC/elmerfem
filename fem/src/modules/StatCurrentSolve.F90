@@ -449,6 +449,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp), POINTER  :: CondAtIpVec(:), EpsAtIpVec(:), SourceAtIpVec(:)
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: CondGvec(:,:)
     REAL(KIND=dp) :: weight, A, CondScalarDummy
     LOGICAL :: Stat,Found, Pref
     INTEGER :: i,j,t,p,q,dim,ngp,allocstat,tid,CondRank
@@ -496,7 +497,7 @@ CONTAINS
     ngp = IP % n
 
     ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
+        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), CondGvec(nd,3), STAT=allocstat)
     IF (allocstat /= 0) THEN
       CALL Fatal(Caller,'Local storage allocation failed')
     END IF
@@ -543,6 +544,17 @@ CONTAINS
         DO t=1,ngp
           CondScalarDummy = ListGetElementReal( CondScalarCoeff_h, Basis(t,:), Element, Found, &
               GaussPoint=t, Rdim=CondRank, Rtensor=CondTensor )
+          ! C^T dB(p) does not depend on q. Inline since dBasisdx(t,:,:) is strided.
+          IF( CondRank /= 1 ) THEN
+            DO j=1,dim
+              DO p=1,nd
+                CondGvec(p,j) = 0._dp
+                DO i=1,dim
+                  CondGvec(p,j) = CondGvec(p,j) + CondTensor(i,j) * dBasisdx(t,p,i)
+                END DO
+              END DO
+            END DO
+          END IF
           DO q=1,nd
             DO p=1,nd
               A = 0._dp
@@ -551,10 +563,8 @@ CONTAINS
                   A = A + CondTensor(i,1) * dBasisdx(t,p,i) * dBasisdx(t,q,i)
                 END DO
               ELSE
-                DO i=1,dim
-                  DO j=1,dim
-                    A = A + CondTensor(i,j) * dBasisdx(t,p,i) * dBasisdx(t,q,j)
-                  END DO
+                DO j=1,dim
+                  A = A + CondGvec(p,j) * dBasisdx(t,q,j)
                 END DO
               END IF
               STIFF(p,q) = STIFF(p,q) + DetJVec(t) * A
@@ -605,6 +615,7 @@ CONTAINS
     REAL(KIND=dp) :: weight
     REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ, A
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: CondG(:,:)
     LOGICAL :: Stat,Found
     INTEGER :: i,j,t,p,q,dim,m,allocstat,CondRank,tid
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -641,7 +652,7 @@ CONTAINS
 
     m = Mesh % MaxElementDofs
     ALLOCATE(Basis(m), dBasisdx(m,3), &
-        MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)
+        MASS(m,m), STIFF(m,m), FORCE(m), CondG(m,3), STAT=allocstat)
     IF (allocstat /= 0) THEN
       CALL Fatal(Caller,'Local storage allocation failed')
     END IF
@@ -672,6 +683,7 @@ CONTAINS
         STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
             CondAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
       ELSE
+        IF( CondRank /= 1 ) CALL GradDotTensor( nd, dim, dBasisdx, CondTensor, CondG )
         DO p=1,nd
           DO q=1,nd
             A = 0.0_dp
@@ -680,10 +692,8 @@ CONTAINS
                 A = A + CondTensor(i,1) * dBasisdx(p,i) * dBasisdx(q,i)
               END DO
             ELSE
-              DO i=1,dim
-                DO j=1,dim
-                  A = A + CondTensor(i,j) * dBasisdx(p,i) * dBasisdx(q,j)
-                END DO
+              DO j=1,dim
+                A = A + CondG(p,j) * dBasisdx(q,j)
               END DO
             END IF
             STIFF(p,q) = STIFF(p,q) + Weight * A

@@ -875,6 +875,7 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
        REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
+       REAL(KIND=dp) :: Cg(n,3)
        LOGICAL :: Stat
 
        INTEGER :: i,p,q,t,DIM
@@ -935,13 +936,12 @@ END SUBROUTINE StatCurrentSolverLegacy_Init
 !------------------------------------------------------------------------------
 !        The Poisson equation
 !------------------------------------------------------------------------------
+         CALL GradDotTensor( N, DIM, dBasisdx, C, Cg )
          DO p=1,N
            DO q=1,N
              A = 0.d0
-             DO i=1,DIM
-               DO J=1,DIM
-                 A = A + C(i,j) * dBasisdx(p,i) * dBasisdx(q,j)
-               END DO
+             DO J=1,DIM
+               A = A + Cg(p,j) * dBasisdx(q,j)
              END DO
              StiffMatrix(p,q) = StiffMatrix(p,q) + S*A
            END DO
