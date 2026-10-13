@@ -1092,13 +1092,19 @@ CONTAINS
            IF( EdgeBasis ) THEN
              BLOCK
                LOGICAL :: SecondKind
+               INTEGER :: n0
 
                SecondKind = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
+
+               ! The edge DOFs follow the nodal DOFs. Note that the number of nodal DOFs per
+               ! node may be greater than one if another solver uses the same mesh (e.g. "n:2"
+               ! in some solver), so the offset must be the same as in mGetElementDOFs:
+               n0 = Solver % Mesh % MaxNDOFs * Solver % Mesh % NumberOfNodes
 
                ! Default degree is 2
                Degree = 2
 
-               DO i=1,Solver % Mesh % NumberOfNodes
+               DO i=1,n0
                  ! Set all nodes to 1st degree
                  j2 = Permutation(i)
                  IF(j2>0) THEN
@@ -1112,7 +1118,7 @@ CONTAINS
                  ! Set one dof per each edge to 1st degree
                  IF (SecondKind) THEN
                    DO j=1,2
-                     j2 = Solver % Mesh % NumberOfNodes + 3*(i-1)+j
+                     j2 = n0 + 3*(i-1)+j
                      j2 = Permutation(j2)
                      IF(j2>0) THEN
                        DO k=1,DOFs
@@ -1121,7 +1127,7 @@ CONTAINS
                      END IF
                    END DO
                  ELSE
-                   j2 = Solver % Mesh % NumberOfNodes + 2*(i-1)+1
+                   j2 = n0 + 2*(i-1)+1
                    j2 = Permutation(j2)
                    IF(j2>0) THEN
                      DO k=1,DOFs

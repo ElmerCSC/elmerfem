@@ -1868,7 +1868,10 @@ CONTAINS
       BlockTag = 2
     END IF
 
-    n0 = Mesh % NumberOfNodes
+    ! The edge DOFs follow the nodal DOFs. Note that the number of nodal DOFs per node
+    ! may be greater than one if another solver uses the same mesh (e.g. "n:2" in some
+    ! solver), so the offset must be the same as in mGetElementDOFs:
+    n0 = Mesh % MaxNDOFs * Mesh % NumberOfNodes
     DO i=1, Mesh % NumberOfEdges
       DO l=1,EDOFs_Order1
         ! This corresponds to the lowest-order DOF over an edge
