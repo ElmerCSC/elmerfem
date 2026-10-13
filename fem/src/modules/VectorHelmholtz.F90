@@ -961,11 +961,12 @@ CONTAINS
               END IF
 
               IF( ASSOCIATED( AmsScalMat ) ) THEN
-                am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:))
+                am = -omega**2 * eps  * SUM(dBasisdx(p,:)*dBasisdx(q,:))
+                ac = -im * Omega * Cond * SUM(dBasisdx(p,:)*dBasisdx(q,:))
                 IF(HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
                   am = am * (1.0 + PrecDampCoeff)
                 END IF
-                AmsSTIFF2(p,q) = weight * ( am + aw + ac )
+                AmsSTIFF2(p,q) = weight * ( am + ac )
               END IF
             END DO
           END DO
