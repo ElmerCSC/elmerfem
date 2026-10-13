@@ -966,7 +966,7 @@ CONTAINS
                 IF(HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
                   am = am * (1.0 + PrecDampCoeff)
                 END IF
-                AmsSTIFF2(p,q) = weight * ( am + ac )
+                AmsSTIFF2(p,q) = AmsSTIFF2(p,q) + weight * ( am + ac )
               END IF
             END DO
           END DO
