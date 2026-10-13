@@ -161,6 +161,7 @@ MODULE DiffuseConvective
                       Pcoeff, minl, maxl, SSCond
 
      REAL(KIND=dp) :: C0,C00,C1,CT,CL,C2(3,3),dC2dx(3,3,3),SU(n),SW(n)
+     REAL(KIND=dp), ALLOCATABLE :: dcG(:,:)
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
@@ -219,7 +220,8 @@ MODULE DiffuseConvective
        Bubbles = .TRUE.
      END IF
 
-     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3) )
+     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3), &
+               dcG(MAX(2*n,nd),3) )
 
 !------------------------------------------------------------------------------
 !    Integration stuff
@@ -557,6 +559,8 @@ MODULE DiffuseConvective
           END IF
         END IF
 
+        CALL GradDotTensor( NBasis, dim, dBasisdx, C2, dcG )
+
 !------------------------------------------------------------------------------
 !       Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -570,11 +574,17 @@ MODULE DiffuseConvective
 !------------------------------------------------------------------------------
 !         The diffusion term
 !------------------------------------------------------------------------------
-          DO i=1,dim
+          SELECT CASE(dim)
+          CASE(3)
+            A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2) + &
+                    dcG(q,3) * dBasisdx(p,3)
+          CASE(2)
+            A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2)
+          CASE DEFAULT
             DO j=1,dim
-              A = A + C2(i,j) * dBasisdx(q,i) * dBasisdx(p,j)
+              A = A + dcG(q,j) * dBasisdx(p,j)
             END DO
-          END DO
+          END SELECT
 
           IF ( Convection ) THEN
 !------------------------------------------------------------------------------
