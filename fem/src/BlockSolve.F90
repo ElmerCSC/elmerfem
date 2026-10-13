@@ -942,10 +942,13 @@ CONTAINS
 
     CALL Info('BlockPickHdiv','Picking block matrix for mixed hdiv solver',Level=10)
 
+    ! The sizes of the index blocks for nodal, edge and face DOFs. These must be
+    ! consistent with mGetElementDOFs, since another solver using the same mesh may
+    ! need more DOFs per entity than this solver.
     Mesh => Solver % Mesh
-    nn = Mesh % NumberOfNodes
-    ne = Mesh % NumberOfEdges
-    nf = Mesh % NumberOfFaces
+    nn = Mesh % MaxNDOFs * Mesh % NumberOfNodes
+    ne = Mesh % MaxEdgeDOFs * Mesh % NumberOfEdges
+    nf = Mesh % MaxFaceDOFs * Mesh % NumberOfFaces
     nb = Mesh % NumberOfBulkElements
 
     ! true/false flags whether dof type exists
@@ -1019,10 +1022,13 @@ CONTAINS
 
     SplitPiola = ListGetLogical( Solver % Values,'Block Split Piola',Found )
 
+    ! The sizes of the index blocks for nodal, edge and face DOFs. These must be
+    ! consistent with mGetElementDOFs, since another solver using the same mesh may
+    ! need more DOFs per entity than this solver.
     Mesh => Solver % Mesh
-    nn = Mesh % NumberOfNodes
-    ne = Mesh % NumberOfEdges
-    nf = Mesh % NumberOfFaces
+    nn = Mesh % MaxNDOFs * Mesh % NumberOfNodes
+    ne = Mesh % MaxEdgeDOFs * Mesh % NumberOfEdges
+    nf = Mesh % MaxFaceDOFs * Mesh % NumberOfFaces
     nb = Mesh % NumberOfBulkElements
 
     ! true/false flags whether dof type exists
@@ -1973,8 +1979,10 @@ CONTAINS
       BlockTag = 2
     END IF
 
-    DO i=1, Mesh % NumberOfNodes
-      k = Solver % Variable % Perm(j)
+    ! Note that there may be several nodal DOFs per node if another solver uses
+    ! the same mesh
+    DO i=1, Mesh % MaxNDOFs * Mesh % NumberOfNodes
+      k = Solver % Variable % Perm(i)
       IF(k==0) CYCLE
 
       IF( dofs == 1 ) THEN
