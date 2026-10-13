@@ -1047,7 +1047,7 @@ CONTAINS
         AmsSTIFF(:,:), AmsSTIFF2(:,:), AmsForce(:)
     COMPLEX(KIND=dp) :: ElSurfCurr(3), B, L(3), muinv, TemGrad(3), MagLoad(3), BetaPar, &
         PortBeta, jn, Cond, SurfImp, epsr, mur, ep
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),dBt(:,:),WBasis(:,:),RotWBasis(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ, weight, TestVec(3), TrialVec(3), Normal(3)
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, GoodConductor, Absorb
     LOGICAL :: LineElement, DegenerateElement, Regularize, Consistent
@@ -1062,7 +1062,7 @@ CONTAINS
     LOGICAL :: GotPort
 
 
-    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, dBt, FORCE, STIFF, MASS, &
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, &
         AmsSTIFF, AmsSTIFF2, AmsForce
 
     IF(.NOT. AllocationsDone ) THEN
@@ -1070,7 +1070,7 @@ CONTAINS
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3),&
           FORCE(m),STIFF(m,m),MASS(m,m))
       IF(AmsAny) THEN
-        ALLOCATE(dBt(m,3),AmsSTIFF(3*m,3*m),AmsSTIFF2(m,m), AmsForce(3*m))
+        ALLOCATE(AmsSTIFF(3*m,3*m),AmsSTIFF2(m,m), AmsForce(3*m))
         AmsForce = 0.0_dp
       END IF
       AllocationsDone = .TRUE.
@@ -1254,15 +1254,10 @@ CONTAINS
         BLOCK
           COMPLEX(KIND=dp) :: ar, atot
 
-          Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
-
-          ! tangential gradients of the basis functions
-          IF( ASSOCIATED( AmsScalMat ) ) THEN
-            DO p = 1, n
-              dBt(p,:) = dBasisdx(p,:) - SUM(dBasisdx(p,:)*Normal) * Normal
-            END DO
+          IF( AmsCurlCurlForm ) THEN
+            Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
           END IF
-                     
+            
           DO p = 1,n
             DO q = 1,n
               ar = -muinv * B * Basis(q) * Basis(p)
@@ -1295,7 +1290,7 @@ CONTAINS
               END IF
 
               IF(ASSOCIATED(AmsScalMat)) THEN
-                AmsSTIFF2(p,q) = AmsSTIFF2(p,q) + weight * muinv * B * SUM( dBt(p,:) * dBt(q,:) )
+                AmsSTIFF2(p,q) = AmsSTIFF2(p,q) + weight * muinv * B * SUM( dBasisdx(p,:) * dBasisdx(q,:) )
               END IF
 
             END DO
