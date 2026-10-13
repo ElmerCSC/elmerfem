@@ -3202,6 +3202,14 @@ CONTAINS
     ! If residual mode is requested make change of variables:
     ! Ax=b -> Adx = b-Ax0 = r
     IF( ResidualMode ) THEN
+      ! The residual is computed only once here, while the constraint modes driver
+      ! modifies the original RHS vector b separately for each mode.
+      IF( Solver % NumberOfConstraintModes > 0 ) THEN
+        IF( .NOT. ListGetLogical( Params,'Constraint Modes Analysis Frozen',Found ) ) THEN
+          CALL Fatal(Caller,'"Linear System Residual Mode" is not supported with constraint modes')
+        END IF
+      END IF
+
       CALL Info(Caller,'Changing the equation to residual based mode',Level=10)
       ALLOCATE( Res(n) )
 
