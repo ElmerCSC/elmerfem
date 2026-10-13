@@ -4243,6 +4243,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: grad_svec(3,3), grad_tvec(3,3), grad_hvec(3,3), grad_gvec(3,3)
        REAL(KIND=dp) :: WorkWeight(2), grad_weight(2,1:3)
        REAL(KIND=dp) :: Wrk(4,3), WrkCurl(4,3)
+       REAL(KIND=dp) :: BaryBasis(4), dBaryBasis(4,3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder, ThirdOrder, ApplyTraceMapping, Found
        LOGICAL :: ReverseSign(4)
@@ -5341,6 +5342,15 @@ END SUBROUTINE PickActiveFace
 
            IF (Create2ndKindBasis .OR. GradVersion .AND. &
                (SecondOrder .OR. ThirdOrder)) THEN
+             !
+             ! The construction below needs the barycentric coordinates. Note that
+             ! Basis and dLBasisdx cannot be used for this purpose, since they contain
+             ! the quadratic Lagrange basis if the background mesh is of type 510.
+             !
+             DO q=1,4
+               BaryBasis(q) = TetraNodalPBasis(q, u, v, w)
+               dBaryBasis(q,1:3) = dTetraNodalPBasis(q, u, v, w)
+             END DO
 
              BDOFs = 0
              IF (Create2ndKindBasis) THEN
@@ -5376,22 +5386,22 @@ END SUBROUTINE PickActiveFace
                i = EdgeMap(k,1)
                j = EdgeMap(k,2)
 
-               tvec(1:3) = Basis(i) * dLBasisdx(j,1:3)
-               svec(1:3) = Basis(j) * dLBasisdx(i,1:3)
+               tvec(1:3) = BaryBasis(i) * dBaryBasis(j,1:3)
+               svec(1:3) = BaryBasis(j) * dBaryBasis(i,1:3)
 
-               grad_svec(1,2) = dLBasisdx(j,2) * dLBasisdx(i,1)
-               grad_svec(1,3) = dLBasisdx(j,3) * dLBasisdx(i,1)
-               grad_svec(2,1) = dLBasisdx(j,1) * dLBasisdx(i,2)
-               grad_svec(2,3) = dLBasisdx(j,3) * dLBasisdx(i,2)
-               grad_svec(3,1) = dLBasisdx(j,1) * dLBasisdx(i,3)
-               grad_svec(3,2) = dLBasisdx(j,2) * dLBasisdx(i,3)
+               grad_svec(1,2) = dBaryBasis(j,2) * dBaryBasis(i,1)
+               grad_svec(1,3) = dBaryBasis(j,3) * dBaryBasis(i,1)
+               grad_svec(2,1) = dBaryBasis(j,1) * dBaryBasis(i,2)
+               grad_svec(2,3) = dBaryBasis(j,3) * dBaryBasis(i,2)
+               grad_svec(3,1) = dBaryBasis(j,1) * dBaryBasis(i,3)
+               grad_svec(3,2) = dBaryBasis(j,2) * dBaryBasis(i,3)
 
-               grad_tvec(1,2) = dLBasisdx(i,2) * dLBasisdx(j,1)
-               grad_tvec(1,3) = dLBasisdx(i,3) * dLBasisdx(j,1)
-               grad_tvec(2,1) = dLBasisdx(i,1) * dLBasisdx(j,2)
-               grad_tvec(2,3) = dLBasisdx(i,3) * dLBasisdx(j,2)
-               grad_tvec(3,1) = dLBasisdx(i,1) * dLBasisdx(j,3)
-               grad_tvec(3,2) = dLBasisdx(i,2) * dLBasisdx(j,3)
+               grad_tvec(1,2) = dBaryBasis(i,2) * dBaryBasis(j,1)
+               grad_tvec(1,3) = dBaryBasis(i,3) * dBaryBasis(j,1)
+               grad_tvec(2,1) = dBaryBasis(i,1) * dBaryBasis(j,2)
+               grad_tvec(2,3) = dBaryBasis(i,3) * dBaryBasis(j,2)
+               grad_tvec(3,1) = dBaryBasis(i,1) * dBaryBasis(j,3)
+               grad_tvec(3,2) = dBaryBasis(i,2) * dBaryBasis(j,3)
 
                WorkBasis(1,1:3) = svec(1:3)
                WorkBasis(2,1:3) = tvec(1:3)
@@ -5406,11 +5416,11 @@ END SUBROUTINE PickActiveFace
 
                IF (Create2ndKindBasis .AND. SecondOrder .OR. &
                    GradVersion .AND. ThirdOrder) THEN
-                 WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
-                 WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+                 WorkWeight(1) = 2.0d0*BaryBasis(i) - BaryBasis(j)
+                 WorkWeight(2) = 2.0d0*BaryBasis(j) - BaryBasis(i)
 
-                 grad_weight(1,1:3) = 2.0d0*dLBasisdx(i,1:3) - dLBasisdx(j,1:3)
-                 grad_weight(2,1:3) = 2.0d0*dLBasisdx(j,1:3) - dLBasisdx(i,1:3)
+                 grad_weight(1,1:3) = 2.0d0*dBaryBasis(i,1:3) - dBaryBasis(j,1:3)
+                 grad_weight(2,1:3) = 2.0d0*dBaryBasis(j,1:3) - dBaryBasis(i,1:3)
                END IF
 
                IF (GIndexes(j) < GIndexes(i)) THEN
@@ -5475,50 +5485,50 @@ END SUBROUTINE PickActiveFace
                  I2 = TriangleFaceMap(2)
                  I3 = TriangleFaceMap(3)
 
-                 WorkBasis(1,1:3) = Basis(I2) * Basis(I3) * dLBasisdx(I1,1:3)
-                 WorkBasis(2,1:3) = Basis(I1) * Basis(I3) * dLBasisdx(I2,1:3)
-                 WorkBasis(3,1:3) = Basis(I1) * Basis(I2) * dLBasisdx(I3,1:3)
+                 WorkBasis(1,1:3) = BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I1,1:3)
+                 WorkBasis(2,1:3) = BaryBasis(I1) * BaryBasis(I3) * dBaryBasis(I2,1:3)
+                 WorkBasis(3,1:3) = BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I3,1:3)
 
                  ! The gradient of each row of WorkBasis:
 
-                 grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) + &
-                     Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,1)
-                 grad_svec(1,3) = (dLBasisdx(I2,3) * Basis(I3) + &
-                     Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I1,1)
-                 grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) + &
-                     Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,2)
-                 grad_svec(2,3) = (dLBasisdx(I2,3) * Basis(I3) + &
-                     Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I1,2)
-                 grad_svec(3,1) = (dLBasisdx(I2,1) * Basis(I3) + &
-                     Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I1,3)
-                 grad_svec(3,2) = (dLBasisdx(I2,2) * Basis(I3) + &
-                     Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I1,3)
+                 grad_svec(1,2) = (dBaryBasis(I2,2) * BaryBasis(I3) + &
+                     BaryBasis(I2) * dBaryBasis(I3,2)) * dBaryBasis(I1,1)
+                 grad_svec(1,3) = (dBaryBasis(I2,3) * BaryBasis(I3) + &
+                     BaryBasis(I2) * dBaryBasis(I3,3)) * dBaryBasis(I1,1)
+                 grad_svec(2,1) = (dBaryBasis(I2,1) * BaryBasis(I3) + &
+                     BaryBasis(I2) * dBaryBasis(I3,1)) * dBaryBasis(I1,2)
+                 grad_svec(2,3) = (dBaryBasis(I2,3) * BaryBasis(I3) + &
+                     BaryBasis(I2) * dBaryBasis(I3,3)) * dBaryBasis(I1,2)
+                 grad_svec(3,1) = (dBaryBasis(I2,1) * BaryBasis(I3) + &
+                     BaryBasis(I2) * dBaryBasis(I3,1)) * dBaryBasis(I1,3)
+                 grad_svec(3,2) = (dBaryBasis(I2,2) * BaryBasis(I3) + &
+                     BaryBasis(I2) * dBaryBasis(I3,2)) * dBaryBasis(I1,3)
 
-                 grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
-                     Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,1)
-                 grad_tvec(1,3) = (dLBasisdx(I1,3) * Basis(I3)  + &
-                     Basis(I1) * dLBasisdx(I3,3)) * dLBasisdx(I2,1)
-                 grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
-                     Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,2)
-                 grad_tvec(2,3) = (dLBasisdx(I1,3) * Basis(I3)  + &
-                     Basis(I1) * dLBasisdx(I3,3)) * dLBasisdx(I2,2)
-                 grad_tvec(3,1) = (dLBasisdx(I1,1) * Basis(I3)  + &
-                     Basis(I1) * dLBasisdx(I3,1)) * dLBasisdx(I2,3)
-                 grad_tvec(3,2) = (dLBasisdx(I1,2) * Basis(I3)  + &
-                     Basis(I1) * dLBasisdx(I3,2)) * dLBasisdx(I2,3)
+                 grad_tvec(1,2) = (dBaryBasis(I1,2) * BaryBasis(I3)  + &
+                     BaryBasis(I1) * dBaryBasis(I3,2)) * dBaryBasis(I2,1)
+                 grad_tvec(1,3) = (dBaryBasis(I1,3) * BaryBasis(I3)  + &
+                     BaryBasis(I1) * dBaryBasis(I3,3)) * dBaryBasis(I2,1)
+                 grad_tvec(2,1) = (dBaryBasis(I1,1) * BaryBasis(I3)  + &
+                     BaryBasis(I1) * dBaryBasis(I3,1)) * dBaryBasis(I2,2)
+                 grad_tvec(2,3) = (dBaryBasis(I1,3) * BaryBasis(I3)  + &
+                     BaryBasis(I1) * dBaryBasis(I3,3)) * dBaryBasis(I2,2)
+                 grad_tvec(3,1) = (dBaryBasis(I1,1) * BaryBasis(I3)  + &
+                     BaryBasis(I1) * dBaryBasis(I3,1)) * dBaryBasis(I2,3)
+                 grad_tvec(3,2) = (dBaryBasis(I1,2) * BaryBasis(I3)  + &
+                     BaryBasis(I1) * dBaryBasis(I3,2)) * dBaryBasis(I2,3)
 
-                 grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
-                     Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,1)
-                 grad_hvec(1,3) = (dLBasisdx(I1,3) * Basis(I2)  + &
-                     Basis(I1) * dLBasisdx(I2,3)) * dLBasisdx(I3,1)
-                 grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
-                     Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,2)
-                 grad_hvec(2,3) = (dLBasisdx(I1,3) * Basis(I2)  + &
-                     Basis(I1) * dLBasisdx(I2,3)) * dLBasisdx(I3,2)
-                 grad_hvec(3,1) = (dLBasisdx(I1,1) * Basis(I2)  + &
-                     Basis(I1) * dLBasisdx(I2,1)) * dLBasisdx(I3,3)
-                 grad_hvec(3,2) = (dLBasisdx(I1,2) * Basis(I2)  + &
-                     Basis(I1) * dLBasisdx(I2,2)) * dLBasisdx(I3,3)
+                 grad_hvec(1,2) = (dBaryBasis(I1,2) * BaryBasis(I2)  + &
+                     BaryBasis(I1) * dBaryBasis(I2,2)) * dBaryBasis(I3,1)
+                 grad_hvec(1,3) = (dBaryBasis(I1,3) * BaryBasis(I2)  + &
+                     BaryBasis(I1) * dBaryBasis(I2,3)) * dBaryBasis(I3,1)
+                 grad_hvec(2,1) = (dBaryBasis(I1,1) * BaryBasis(I2)  + &
+                     BaryBasis(I1) * dBaryBasis(I2,1)) * dBaryBasis(I3,2)
+                 grad_hvec(2,3) = (dBaryBasis(I1,3) * BaryBasis(I2)  + &
+                     BaryBasis(I1) * dBaryBasis(I2,3)) * dBaryBasis(I3,2)
+                 grad_hvec(3,1) = (dBaryBasis(I1,1) * BaryBasis(I2)  + &
+                     BaryBasis(I1) * dBaryBasis(I2,1)) * dBaryBasis(I3,3)
+                 grad_hvec(3,2) = (dBaryBasis(I1,2) * BaryBasis(I2)  + &
+                     BaryBasis(I1) * dBaryBasis(I2,2)) * dBaryBasis(I3,3)
 
                  WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
                  WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
@@ -5552,9 +5562,9 @@ END SUBROUTINE PickActiveFace
                        J2 = TriangleFaceMap(2)
                        J3 = TriangleFaceMap(3)
 
-                       WorkBasis(1,1:3) = Basis(J2) * Basis(J3) * dLBasisdx(J1,1:3)
-                       WorkBasis(2,1:3) = Basis(J1) * Basis(J3) * dLBasisdx(J2,1:3)
-                       WorkBasis(3,1:3) = Basis(J1) * Basis(J2) * dLBasisdx(J3,1:3)
+                       WorkBasis(1,1:3) = BaryBasis(J2) * BaryBasis(J3) * dBaryBasis(J1,1:3)
+                       WorkBasis(2,1:3) = BaryBasis(J1) * BaryBasis(J3) * dBaryBasis(J2,1:3)
+                       WorkBasis(3,1:3) = BaryBasis(J1) * BaryBasis(J2) * dBaryBasis(J3,1:3)
 
                        WorkCurlBasis(1,1) = grad_svec(3,2) - grad_svec(2,3)
                        WorkCurlBasis(1,2) = grad_svec(1,3) - grad_svec(3,1)
@@ -5612,62 +5622,62 @@ END SUBROUTINE PickActiveFace
                      ! This creates the basis function (L_A - L_B) L_B W_{AC} + (L_C - L_A) L_C W_{AB}
                      !
                      IF (UseWForms) THEN
-                       sfun = Basis(C0) - Basis(A0)
-                       tfun = Basis(A0) - Basis(B0)
+                       sfun = BaryBasis(C0) - BaryBasis(A0)
+                       tfun = BaryBasis(A0) - BaryBasis(B0)
                        hfun = 0.0d0
-                       grad_sfun(1:3) = dLBasisdx(C0,1:3) - dLBasisdx(A0,1:3)
-                       grad_tfun(1:3) = dLBasisdx(A0,1:3) - dLBasisdx(B0,1:3)
+                       grad_sfun(1:3) = dBaryBasis(C0,1:3) - dBaryBasis(A0,1:3)
+                       grad_tfun(1:3) = dBaryBasis(A0,1:3) - dBaryBasis(B0,1:3)
                        grad_hfun(1:3) = 0.0d0
                      ELSE
-                       grad_sfun(1:3) = dLBasisdx(I2,1:3) - dLBasisdx(I3,1:3)
-                       grad_tfun(1:3) = dLBasisdx(I3,1:3) - dLBasisdx(I1,1:3)
-                       grad_hfun(1:3) = dLBasisdx(I1,1:3) - dLBasisdx(I2,1:3)
+                       grad_sfun(1:3) = dBaryBasis(I2,1:3) - dBaryBasis(I3,1:3)
+                       grad_tfun(1:3) = dBaryBasis(I3,1:3) - dBaryBasis(I1,1:3)
+                       grad_hfun(1:3) = dBaryBasis(I1,1:3) - dBaryBasis(I2,1:3)
                      END IF
                    CASE(5)
                      !
                      ! This creates the basis function (-80 L_A - 393 L_B + 212 L_C) L_C W_{AB} + (-313 L_A + 313 L_B) L_B W_{AC}
                      !
                      IF (UseWForms) THEN
-                       sfun = -393.0d0 * Basis(B0) - 80.0d0 * Basis(A0) + 212.0d0 * Basis(C0)
-                       tfun = -313.0d0 * Basis(A0) + 313.0d0 * Basis(B0)
+                       sfun = -393.0d0 * BaryBasis(B0) - 80.0d0 * BaryBasis(A0) + 212.0d0 * BaryBasis(C0)
+                       tfun = -313.0d0 * BaryBasis(A0) + 313.0d0 * BaryBasis(B0)
                        hfun = 0.0d0
 
-                       grad_sfun(1:3) = -393.0d0 * dLBasisdx(B0,1:3) - 80.0d0 * dLBasisdx(A0,1:3) + 212.0d0 * dLBasisdx(C0,1:3)
-                       grad_tfun(1:3) = -313.0d0 * dLBasisdx(A0,1:3) + 313.0d0 * dLBasisdx(B0,1:3)
+                       grad_sfun(1:3) = -393.0d0 * dBaryBasis(B0,1:3) - 80.0d0 * dBaryBasis(A0,1:3) + 212.0d0 * dBaryBasis(C0,1:3)
+                       grad_tfun(1:3) = -313.0d0 * dBaryBasis(A0,1:3) + 313.0d0 * dBaryBasis(B0,1:3)
                        grad_hfun(1:3) = 0.0d0
                      ELSE
                        ! Note that hfun contains a correction to the basis proposed by Sun, Lee, Cendes
                        ! so that the weight functions form a partition of the unity.
-                       sfun = 393.0d0 * Basis(I1) + 80.0d0 * Basis(I2) - 212.0d0 * Basis(I3)
-                       tfun = -393.0d0 * Basis(I2) - 80.0d0 * Basis(I1) + 212.0d0 * Basis(I3)
-                       hfun = -313.0d0 * Basis(I1) + 313.0d0 * Basis(I2)
+                       sfun = 393.0d0 * BaryBasis(I1) + 80.0d0 * BaryBasis(I2) - 212.0d0 * BaryBasis(I3)
+                       tfun = -393.0d0 * BaryBasis(I2) - 80.0d0 * BaryBasis(I1) + 212.0d0 * BaryBasis(I3)
+                       hfun = -313.0d0 * BaryBasis(I1) + 313.0d0 * BaryBasis(I2)
 
-                       grad_sfun(1:3) = 393.0d0 * dLBasisdx(I1,1:3) + 80.0d0 * dLBasisdx(I2,1:3) - 212.0d0 * dLBasisdx(I3,1:3)
-                       grad_tfun(1:3) = -393.0d0 * dLBasisdx(I2,1:3) - 80.0d0 * dLBasisdx(I1,1:3) + 212.0d0 * dLBasisdx(I3,1:3)
-                       grad_hfun(1:3) = -313.0d0 * dLBasisdx(I1,1:3) + 313.0d0 * dLBasisdx(I2,1:3)
+                       grad_sfun(1:3) = 393.0d0 * dBaryBasis(I1,1:3) + 80.0d0 * dBaryBasis(I2,1:3) - 212.0d0 * dBaryBasis(I3,1:3)
+                       grad_tfun(1:3) = -393.0d0 * dBaryBasis(I2,1:3) - 80.0d0 * dBaryBasis(I1,1:3) + 212.0d0 * dBaryBasis(I3,1:3)
+                       grad_hfun(1:3) = -313.0d0 * dBaryBasis(I1,1:3) + 313.0d0 * dBaryBasis(I2,1:3)
                      END IF
                    CASE(6)
                      !
                      ! This creates the basis function (168 L_A - 131 L_B - 124 L_C) L_C W_{AB} + (-37 L_A - 37 L_B + 248 L_C) L_B W_{AC}
                      !
                      IF (UseWForms) THEN
-                       sfun = -131.0d0 * Basis(B0) + 168.0d0 * Basis(A0) - 124.0d0 * Basis(C0)
-                       tfun = -37.0d0 * Basis(A0) - 37.0d0 * Basis(B0) + 248.0d0 * Basis(C0)
+                       sfun = -131.0d0 * BaryBasis(B0) + 168.0d0 * BaryBasis(A0) - 124.0d0 * BaryBasis(C0)
+                       tfun = -37.0d0 * BaryBasis(A0) - 37.0d0 * BaryBasis(B0) + 248.0d0 * BaryBasis(C0)
                        hfun = 0.0d0
 
-                       grad_sfun(1:3) = -131.0d0 * dLBasisdx(B0,1:3) + 168.0d0 * dLBasisdx(A0,1:3) - 124.0d0 * dLBasisdx(C0,1:3)
-                       grad_tfun(1:3) = -37.0d0 * dLBasisdx(A0,1:3) - 37.0d0 * dLBasisdx(B0,1:3) + 248.0d0 * dLBasisdx(C0,1:3)
+                       grad_sfun(1:3) = -131.0d0 * dBaryBasis(B0,1:3) + 168.0d0 * dBaryBasis(A0,1:3) - 124.0d0 * dBaryBasis(C0,1:3)
+                       grad_tfun(1:3) = -37.0d0 * dBaryBasis(A0,1:3) - 37.0d0 * dBaryBasis(B0,1:3) + 248.0d0 * dBaryBasis(C0,1:3)
                        grad_hfun(1:3) = 0.0d0
                      ELSE
                        ! Note that hfun contains a correction to the basis proposed by Sun, Lee, Cendes
                        ! so that the weight functions form a partition of the unity
-                       sfun = -131.0d0 * Basis(I1) + 168.0d0 * Basis(I2) - 124.0d0 * Basis(I3)
-                       tfun = -131.0d0 * Basis(I2) + 168.0d0 * Basis(I1) - 124.0d0 * Basis(I3)
-                       hfun = -37.0d0 * Basis(I1) - 37.0d0 * Basis(I2) + 248.0d0 * Basis(I3)
+                       sfun = -131.0d0 * BaryBasis(I1) + 168.0d0 * BaryBasis(I2) - 124.0d0 * BaryBasis(I3)
+                       tfun = -131.0d0 * BaryBasis(I2) + 168.0d0 * BaryBasis(I1) - 124.0d0 * BaryBasis(I3)
+                       hfun = -37.0d0 * BaryBasis(I1) - 37.0d0 * BaryBasis(I2) + 248.0d0 * BaryBasis(I3)
 
-                       grad_sfun(1:3) = -131.0d0 * dLBasisdx(I1,1:3) + 168.0d0 * dLBasisdx(I2,1:3) - 124.0d0 * dLBasisdx(I3,1:3)
-                       grad_tfun(1:3) = -131.0d0 * dLBasisdx(I2,1:3) + 168.0d0 * dLBasisdx(I1,1:3) - 124.0d0 * dLBasisdx(I3,1:3)
-                       grad_hfun(1:3) = -37.0d0 * dLBasisdx(I1,1:3) - 37.0d0 * dLBasisdx(I2,1:3) + 248.0d0 * dLBasisdx(I3,1:3)
+                       grad_sfun(1:3) = -131.0d0 * dBaryBasis(I1,1:3) + 168.0d0 * dBaryBasis(I2,1:3) - 124.0d0 * dBaryBasis(I3,1:3)
+                       grad_tfun(1:3) = -131.0d0 * dBaryBasis(I2,1:3) + 168.0d0 * dBaryBasis(I1,1:3) - 124.0d0 * dBaryBasis(I3,1:3)
+                       grad_hfun(1:3) = -37.0d0 * dBaryBasis(I1,1:3) - 37.0d0 * dBaryBasis(I2,1:3) + 248.0d0 * dBaryBasis(I3,1:3)
                      END IF
 
                    END SELECT
@@ -5723,88 +5733,88 @@ END SUBROUTINE PickActiveFace
                I3 = 3
                I4 = 4
 
-               WorkBasis(1,1:3) = Basis(I2) * Basis(I3) * Basis(I4) * dLBasisdx(I1,1:3)
-               WorkBasis(2,1:3) = Basis(I1) * Basis(I3) * Basis(I4) * dLBasisdx(I2,1:3)
-               WorkBasis(3,1:3) = Basis(I1) * Basis(I2) * Basis(I4) * dLBasisdx(I3,1:3)
-               WorkBasis(4,1:3) = Basis(I1) * Basis(I2) * Basis(I3) * dLBasisdx(I4,1:3)
+               WorkBasis(1,1:3) = BaryBasis(I2) * BaryBasis(I3) * BaryBasis(I4) * dBaryBasis(I1,1:3)
+               WorkBasis(2,1:3) = BaryBasis(I1) * BaryBasis(I3) * BaryBasis(I4) * dBaryBasis(I2,1:3)
+               WorkBasis(3,1:3) = BaryBasis(I1) * BaryBasis(I2) * BaryBasis(I4) * dBaryBasis(I3,1:3)
+               WorkBasis(4,1:3) = BaryBasis(I1) * BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I4,1:3)
 
                ! The gradient of each row of WorkBasis (TO DO: Restructure as a loop)
 
-               grad_svec(1,2) = (dLBasisdx(I2,2) * Basis(I3) * Basis(I4) + &
-                   Basis(I2) * dLBasisdx(I3,2) * Basis(I4) + &
-                   Basis(I2) * Basis(I3) * dLBasisdx(I4,2)) * dLBasisdx(I1,1)
-               grad_svec(1,3) = (dLBasisdx(I2,3) * Basis(I3) * Basis(I4) + &
-                   Basis(I2) * dLBasisdx(I3,3) * Basis(I4) + &
-                   Basis(I2) * Basis(I3) * dLBasisdx(I4,3)) * dLBasisdx(I1,1)
-               grad_svec(2,1) = (dLBasisdx(I2,1) * Basis(I3) * Basis(I4) + &
-                   Basis(I2) * dLBasisdx(I3,1) * Basis(I4) + &
-                   Basis(I2) * Basis(I3) * dLBasisdx(I4,1)) * dLBasisdx(I1,2)
-               grad_svec(2,3) = (dLBasisdx(I2,3) * Basis(I3) * Basis(I4) + &
-                   Basis(I2) * dLBasisdx(I3,3) * Basis(I4) + &
-                   Basis(I2) * Basis(I3) * dLBasisdx(I4,3)) * dLBasisdx(I1,2)
-               grad_svec(3,1) = (dLBasisdx(I2,1) * Basis(I3) * Basis(I4) + &
-                   Basis(I2) * dLBasisdx(I3,1) * Basis(I4) + &
-                   Basis(I2) * Basis(I3) * dLBasisdx(I4,1)) * dLBasisdx(I1,3)
-               grad_svec(3,2) = (dLBasisdx(I2,2) * Basis(I3) * Basis(I4) + &
-                   Basis(I2) * dLBasisdx(I3,2) * Basis(I4) + &
-                   Basis(I2) * Basis(I3) * dLBasisdx(I4,2)) * dLBasisdx(I1,3)
+               grad_svec(1,2) = (dBaryBasis(I2,2) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * dBaryBasis(I3,2) * BaryBasis(I4) + &
+                   BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I4,2)) * dBaryBasis(I1,1)
+               grad_svec(1,3) = (dBaryBasis(I2,3) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * dBaryBasis(I3,3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I4,3)) * dBaryBasis(I1,1)
+               grad_svec(2,1) = (dBaryBasis(I2,1) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * dBaryBasis(I3,1) * BaryBasis(I4) + &
+                   BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I4,1)) * dBaryBasis(I1,2)
+               grad_svec(2,3) = (dBaryBasis(I2,3) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * dBaryBasis(I3,3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I4,3)) * dBaryBasis(I1,2)
+               grad_svec(3,1) = (dBaryBasis(I2,1) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * dBaryBasis(I3,1) * BaryBasis(I4) + &
+                   BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I4,1)) * dBaryBasis(I1,3)
+               grad_svec(3,2) = (dBaryBasis(I2,2) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I2) * dBaryBasis(I3,2) * BaryBasis(I4) + &
+                   BaryBasis(I2) * BaryBasis(I3) * dBaryBasis(I4,2)) * dBaryBasis(I1,3)
 
-               grad_tvec(1,2) = (dLBasisdx(I1,2) * Basis(I3) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I3,2) * Basis(I4) + &
-                   Basis(I1) * Basis(I3) * dLBasisdx(I4,2)) * dLBasisdx(I2,1)
-               grad_tvec(1,3) = (dLBasisdx(I1,3) * Basis(I3) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I3,3) * Basis(I4) + &
-                   Basis(I1) * Basis(I3) * dLBasisdx(I4,3)) * dLBasisdx(I2,1)
-               grad_tvec(2,1) = (dLBasisdx(I1,1) * Basis(I3) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I3,1) * Basis(I4) + &
-                   Basis(I1) * Basis(I3) * dLBasisdx(I4,1)) * dLBasisdx(I2,2)
-               grad_tvec(2,3) = (dLBasisdx(I1,3) * Basis(I3) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I3,3) * Basis(I4) + &
-                   Basis(I1) * Basis(I3) * dLBasisdx(I4,3)) * dLBasisdx(I2,2)
-               grad_tvec(3,1) = (dLBasisdx(I1,1) * Basis(I3) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I3,1) * Basis(I4) + &
-                   Basis(I1) * Basis(I3) * dLBasisdx(I4,1)) * dLBasisdx(I2,3)
-               grad_tvec(3,2) = (dLBasisdx(I1,2) * Basis(I3) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I3,2) * Basis(I4) + &
-                   Basis(I1) * Basis(I3) * dLBasisdx(I4,2)) * dLBasisdx(I2,3)
+               grad_tvec(1,2) = (dBaryBasis(I1,2) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I3,2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I3) * dBaryBasis(I4,2)) * dBaryBasis(I2,1)
+               grad_tvec(1,3) = (dBaryBasis(I1,3) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I3,3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I3) * dBaryBasis(I4,3)) * dBaryBasis(I2,1)
+               grad_tvec(2,1) = (dBaryBasis(I1,1) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I3,1) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I3) * dBaryBasis(I4,1)) * dBaryBasis(I2,2)
+               grad_tvec(2,3) = (dBaryBasis(I1,3) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I3,3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I3) * dBaryBasis(I4,3)) * dBaryBasis(I2,2)
+               grad_tvec(3,1) = (dBaryBasis(I1,1) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I3,1) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I3) * dBaryBasis(I4,1)) * dBaryBasis(I2,3)
+               grad_tvec(3,2) = (dBaryBasis(I1,2) * BaryBasis(I3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I3,2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I3) * dBaryBasis(I4,2)) * dBaryBasis(I2,3)
 
-               grad_hvec(1,2) = (dLBasisdx(I1,2) * Basis(I2) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I2,2) * Basis(I4) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I4,2)) * dLBasisdx(I3,1)
-               grad_hvec(1,3) = (dLBasisdx(I1,3) * Basis(I2) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I2,3) * Basis(I4) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I4,3)) * dLBasisdx(I3,1)
-               grad_hvec(2,1) = (dLBasisdx(I1,1) * Basis(I2) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I2,1) * Basis(I4) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I4,1)) * dLBasisdx(I3,2)
-               grad_hvec(2,3) = (dLBasisdx(I1,3) * Basis(I2) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I2,3) * Basis(I4) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I4,3)) * dLBasisdx(I3,2)
-               grad_hvec(3,1) = (dLBasisdx(I1,1) * Basis(I2) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I2,1) * Basis(I4) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I4,1)) * dLBasisdx(I3,3)
-               grad_hvec(3,2) = (dLBasisdx(I1,2) * Basis(I2) * Basis(I4) + &
-                   Basis(I1) * dLBasisdx(I2,2) * Basis(I4) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I4,2)) * dLBasisdx(I3,3)
+               grad_hvec(1,2) = (dBaryBasis(I1,2) * BaryBasis(I2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I2,2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I4,2)) * dBaryBasis(I3,1)
+               grad_hvec(1,3) = (dBaryBasis(I1,3) * BaryBasis(I2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I2,3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I4,3)) * dBaryBasis(I3,1)
+               grad_hvec(2,1) = (dBaryBasis(I1,1) * BaryBasis(I2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I2,1) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I4,1)) * dBaryBasis(I3,2)
+               grad_hvec(2,3) = (dBaryBasis(I1,3) * BaryBasis(I2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I2,3) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I4,3)) * dBaryBasis(I3,2)
+               grad_hvec(3,1) = (dBaryBasis(I1,1) * BaryBasis(I2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I2,1) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I4,1)) * dBaryBasis(I3,3)
+               grad_hvec(3,2) = (dBaryBasis(I1,2) * BaryBasis(I2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * dBaryBasis(I2,2) * BaryBasis(I4) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I4,2)) * dBaryBasis(I3,3)
 
-               grad_gvec(1,2) = (dLBasisdx(I1,2) * Basis(I2) * Basis(I3) + &
-                   Basis(I1) * dLBasisdx(I2,2) * Basis(I3) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I4,1)
-               grad_gvec(1,3) = (dLBasisdx(I1,3) * Basis(I2) * Basis(I3) + &
-                   Basis(I1) * dLBasisdx(I2,3) * Basis(I3) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I4,1)
-               grad_gvec(2,1) = (dLBasisdx(I1,1) * Basis(I2) * Basis(I3) + &
-                   Basis(I1) * dLBasisdx(I2,1) * Basis(I3) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I4,2)
-               grad_gvec(2,3) = (dLBasisdx(I1,3) * Basis(I2) * Basis(I3) + &
-                   Basis(I1) * dLBasisdx(I2,3) * Basis(I3) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I3,3)) * dLBasisdx(I4,2)
-               grad_gvec(3,1) = (dLBasisdx(I1,1) * Basis(I2) * Basis(I3) + &
-                   Basis(I1) * dLBasisdx(I2,1) * Basis(I3) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I3,1)) * dLBasisdx(I4,3)
-               grad_gvec(3,2) = (dLBasisdx(I1,2) * Basis(I2) * Basis(I3) + &
-                   Basis(I1) * dLBasisdx(I2,2) * Basis(I3) + &
-                   Basis(I1) * Basis(I2) * dLBasisdx(I3,2)) * dLBasisdx(I4,3)
+               grad_gvec(1,2) = (dBaryBasis(I1,2) * BaryBasis(I2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * dBaryBasis(I2,2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I3,2)) * dBaryBasis(I4,1)
+               grad_gvec(1,3) = (dBaryBasis(I1,3) * BaryBasis(I2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * dBaryBasis(I2,3) * BaryBasis(I3) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I3,3)) * dBaryBasis(I4,1)
+               grad_gvec(2,1) = (dBaryBasis(I1,1) * BaryBasis(I2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * dBaryBasis(I2,1) * BaryBasis(I3) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I3,1)) * dBaryBasis(I4,2)
+               grad_gvec(2,3) = (dBaryBasis(I1,3) * BaryBasis(I2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * dBaryBasis(I2,3) * BaryBasis(I3) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I3,3)) * dBaryBasis(I4,2)
+               grad_gvec(3,1) = (dBaryBasis(I1,1) * BaryBasis(I2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * dBaryBasis(I2,1) * BaryBasis(I3) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I3,1)) * dBaryBasis(I4,3)
+               grad_gvec(3,2) = (dBaryBasis(I1,2) * BaryBasis(I2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * dBaryBasis(I2,2) * BaryBasis(I3) + &
+                   BaryBasis(I1) * BaryBasis(I2) * dBaryBasis(I3,2)) * dBaryBasis(I4,3)
 
                WorkCurlBasis(I1,1) = grad_svec(3,2) - grad_svec(2,3)
                WorkCurlBasis(I1,2) = grad_svec(1,3) - grad_svec(3,1)
