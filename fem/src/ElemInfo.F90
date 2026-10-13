@@ -4789,6 +4789,16 @@ END SUBROUTINE PickActiveFace
                END IF
              END IF
 
+             !
+             ! The construction below needs the barycentric coordinates. Note that
+             ! Basis and dLBasisdx cannot be used for this purpose, since they contain
+             ! the quadratic Lagrange basis if the background mesh is of type 306.
+             !
+             DO q=1,3
+               BaryBasis(q) = TriangleNodalPBasis(q, u, v)
+               dBaryBasis(q,1:2) = dTriangleNodalPBasis(q, u, v)
+             END DO
+
              DO k=1,3
 
                i = EdgeMap(k,1)
@@ -4798,11 +4808,11 @@ END SUBROUTINE PickActiveFace
 
                IF (Create2ndKindBasis .AND. SecondOrder .OR. &
                    GradVersion .AND. ThirdOrder) THEN
-                 WorkWeight(1) = 2.0d0*Basis(i) - Basis(j)
-                 WorkWeight(2) = 2.0d0*Basis(j) - Basis(i)
+                 WorkWeight(1) = 2.0d0*BaryBasis(i) - BaryBasis(j)
+                 WorkWeight(2) = 2.0d0*BaryBasis(j) - BaryBasis(i)
 
-                 grad_weight(1,1:2) = 2.0d0*dLBasisdx(i,1:2) - dLBasisdx(j,1:2)
-                 grad_weight(2,1:2) = 2.0d0*dLBasisdx(j,1:2) - dLBasisdx(i,1:2)
+                 grad_weight(1,1:2) = 2.0d0*dBaryBasis(i,1:2) - dBaryBasis(j,1:2)
+                 grad_weight(2,1:2) = 2.0d0*dBaryBasis(j,1:2) - dBaryBasis(i,1:2)
                END IF
 
                IF (GIndexes(j) < GIndexes(i)) THEN
@@ -4868,29 +4878,29 @@ END SUBROUTINE PickActiveFace
                    tfun = 1.0d0
                    hfun = 1.0d0
                  CASE(4)
-                   sfun = Basis(I2) - Basis(I3)
-                   tfun = Basis(I3) - Basis(I1)
-                   hfun = Basis(I1) - Basis(I2)
+                   sfun = BaryBasis(I2) - BaryBasis(I3)
+                   tfun = BaryBasis(I3) - BaryBasis(I1)
+                   hfun = BaryBasis(I1) - BaryBasis(I2)
 
-                   grad_sfun(1:2) = dLBasisdx(I2,1:2) - dLBasisdx(I3,1:2)
-                   grad_tfun(1:2) = dLBasisdx(I3,1:2) - dLBasisdx(I1,1:2)
-                   grad_hfun(1:2) = dLBasisdx(I1,1:2) - dLBasisdx(I2,1:2)
+                   grad_sfun(1:2) = dBaryBasis(I2,1:2) - dBaryBasis(I3,1:2)
+                   grad_tfun(1:2) = dBaryBasis(I3,1:2) - dBaryBasis(I1,1:2)
+                   grad_hfun(1:2) = dBaryBasis(I1,1:2) - dBaryBasis(I2,1:2)
                  CASE(5)
-                   sfun = 393.0d0 * Basis(I1) + 80.0d0 * Basis(I2) - 212.0d0 * Basis(I3)
-                   tfun = -393.0d0 * Basis(I2) - 80.0d0 * Basis(I1) + 212.0d0 * Basis(I3)
-                   hfun = -313.0d0 * Basis(I1) + 313.0d0 * Basis(I2)
+                   sfun = 393.0d0 * BaryBasis(I1) + 80.0d0 * BaryBasis(I2) - 212.0d0 * BaryBasis(I3)
+                   tfun = -393.0d0 * BaryBasis(I2) - 80.0d0 * BaryBasis(I1) + 212.0d0 * BaryBasis(I3)
+                   hfun = -313.0d0 * BaryBasis(I1) + 313.0d0 * BaryBasis(I2)
 
-                   grad_sfun(1:2) = 393.0d0 * dLBasisdx(I1,1:2) + 80.0d0 * dLBasisdx(I2,1:2) - 212.0d0 * dLBasisdx(I3,1:2)
-                   grad_tfun(1:2) = -393.0d0 * dLBasisdx(I2,1:2) - 80.0d0 * dLBasisdx(I1,1:2) + 212.0d0 * dLBasisdx(I3,1:2)
-                   grad_hfun(1:2) = -313.0d0 * dLBasisdx(I1,1:2) + 313.0d0 * dLBasisdx(I2,1:2)
+                   grad_sfun(1:2) = 393.0d0 * dBaryBasis(I1,1:2) + 80.0d0 * dBaryBasis(I2,1:2) - 212.0d0 * dBaryBasis(I3,1:2)
+                   grad_tfun(1:2) = -393.0d0 * dBaryBasis(I2,1:2) - 80.0d0 * dBaryBasis(I1,1:2) + 212.0d0 * dBaryBasis(I3,1:2)
+                   grad_hfun(1:2) = -313.0d0 * dBaryBasis(I1,1:2) + 313.0d0 * dBaryBasis(I2,1:2)
                  CASE(6)
-                   sfun = -131.0d0 * Basis(I1) + 168.0d0 * Basis(I2) - 124.0d0 * Basis(I3)
-                   tfun = -131.0d0 * Basis(I2) + 168.0d0 * Basis(I1) - 124.0d0 * Basis(I3)
-                   hfun = -37.0d0 * Basis(I1) - 37.0d0 * Basis(I2) + 248.0d0 * Basis(I3)
+                   sfun = -131.0d0 * BaryBasis(I1) + 168.0d0 * BaryBasis(I2) - 124.0d0 * BaryBasis(I3)
+                   tfun = -131.0d0 * BaryBasis(I2) + 168.0d0 * BaryBasis(I1) - 124.0d0 * BaryBasis(I3)
+                   hfun = -37.0d0 * BaryBasis(I1) - 37.0d0 * BaryBasis(I2) + 248.0d0 * BaryBasis(I3)
 
-                   grad_sfun(1:2) = -131.0d0 * dLBasisdx(I1,1:2) + 168.0d0 * dLBasisdx(I2,1:2) - 124.0d0 * dLBasisdx(I3,1:2)
-                   grad_tfun(1:2) = -131.0d0 * dLBasisdx(I2,1:2) + 168.0d0 * dLBasisdx(I1,1:2) - 124.0d0 * dLBasisdx(I3,1:2)
-                   grad_hfun(1:2) = -37.0d0 * dLBasisdx(I1,1:2) - 37.0d0 * dLBasisdx(I2,1:2) + 248.0d0 * dLBasisdx(I3,1:2)
+                   grad_sfun(1:2) = -131.0d0 * dBaryBasis(I1,1:2) + 168.0d0 * dBaryBasis(I2,1:2) - 124.0d0 * dBaryBasis(I3,1:2)
+                   grad_tfun(1:2) = -131.0d0 * dBaryBasis(I2,1:2) + 168.0d0 * dBaryBasis(I1,1:2) - 124.0d0 * dBaryBasis(I3,1:2)
+                   grad_hfun(1:2) = -37.0d0 * dBaryBasis(I1,1:2) - 37.0d0 * dBaryBasis(I2,1:2) + 248.0d0 * dBaryBasis(I3,1:2)
                  END SELECT
 
                  EdgeBasis(3*EDOFs + l,1:2) = sfun * WorkBasis(I1,1:2) + tfun * WorkBasis(I2,1:2) + &
