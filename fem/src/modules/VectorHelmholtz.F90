@@ -1290,7 +1290,7 @@ CONTAINS
               END IF
 
               IF(ASSOCIATED(AmsScalMat)) THEN
-                AmsSTIFF2(p,q) = AmsSTIFF2(p,q) + weight * muinv * B * SUM( dBasisdx(p,:) * dBasisdx(q,:) )
+                AmsSTIFF2(p,q) = AmsSTIFF2(p,q) - weight * muinv * B * SUM( dBasisdx(p,:) * dBasisdx(q,:) )
               END IF
 
             END DO
