@@ -10237,6 +10237,8 @@ BLOCK
      REAL(KIND=dp) :: s
      INTEGER :: cdim,dim,i,j,k,l,n,ip, jj, kk
      INTEGER :: ldbasis, ldxyz, utind
+     INTEGER :: nc_eff
+     LOGICAL :: Affine
 !DIR$ ATTRIBUTES ALIGN:64::Metric
 !DIR$ ATTRIBUTES ALIGN:64::dx
 !DIR$ ATTRIBUTES ALIGN:64::G
@@ -10255,19 +10257,37 @@ BLOCK
      ldbasis = SIZE(dLBasisdx, 1)
      ldxyz = SIZE(Nodes % xyz, 1)
 
-     ! For linear, extruded and otherwise regular elements mapping has to be computed
-     ! only once, the problem is to identify these cases...
+     ! The mapping of a linear simplex is the same at every point of the
+     ! element, so dx, G, DetJ and LtoGMap are too. Check the input for that
+     ! instead of guessing from the element code: equal gradients at every
+     ! point make one point plus a copy exact, not an approximation.
+     nc_eff = nc
+     IF (nc > 1) THEN
+       Affine = .TRUE.
+       affine_scan: DO k=1,n
+         DO l=1,dim
+           DO i=2,nc
+             IF (dLBasisdx(i,k,l) /= dLBasisdx(1,k,l)) THEN
+               Affine = .FALSE.
+               EXIT affine_scan
+             END IF
+           END DO
+         END DO
+       END DO affine_scan
+       IF (Affine) nc_eff = 1
+     END IF
+
      !------------------------------------------------------------------------------
      !       Partial derivatives of global coordinates with respect to local coordinates
      !------------------------------------------------------------------------------
-     ! Avoid DGEMM calls for nc small
-     IF (nc < VECTOR_SMALL_THRESH) THEN
+     ! Avoid DGEMM calls when there are few points to map
+     IF (nc_eff < VECTOR_SMALL_THRESH) THEN
        DO l=1,dim
          DO j=1,3
-           dx(1:nc,j,l)=REAL(0,dp)
+           dx(1:nc_eff,j,l)=REAL(0,dp)
            DO k=1,n
 !DIR$ UNROLL
-             DO i=1,nc
+             DO i=1,nc_eff
                dx(i,j,l)=dx(i,j,l)+dLBasisdx(i,k,l)*Nodes % xyz(k,j)
              END DO
            END DO
@@ -10275,7 +10295,7 @@ BLOCK
        END DO
      ELSE
        DO i=1,dim
-         CALL DGEMM('N','N',nc, 3, n, &
+         CALL DGEMM('N','N',nc_eff, 3, n, &
                  REAL(1,dp), dLbasisdx(1,1,i), ldbasis, &
                  Nodes % xyz, ldxyz, REAL(0, dp), dx(1,1,i), VECTOR_BLOCK_LENGTH)
        END DO
@@ -10297,17 +10317,17 @@ BLOCK
          SELECT CASE (cdim)
          CASE(1)
            !_ELMER_OMP_SIMD
-           DO l=1,nc
+           DO l=1,nc_eff
              G(l,utind)=dx(l,1,i)*dx(l,1,j)
            END DO
          CASE(2)
            !_ELMER_OMP_SIMD
-           DO l=1,nc
+           DO l=1,nc_eff
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)
            END DO
          CASE(3)
            !_ELMER_OMP_SIMD
-           DO l=1,nc
+           DO l=1,nc_eff
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)+dx(l,3,i)*dx(l,3,j)
            END DO
          END SELECT
@@ -10323,10 +10343,10 @@ BLOCK
        !------------------------------------------------------------------------------
      CASE (1)
        ! Determinants
-       ! DetJ(1:nc)  = G(1:nc,1,1)
-       DetJ(1:nc)  = G(1:nc,1)
+       ! DetJ(1:nc_eff)  = G(1:nc_eff,1,1)
+       DetJ(1:nc_eff)  = G(1:nc_eff,1)
 
-       DO i=1,nc
+       DO i=1,nc_eff
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
            AllSuccess = .FALSE.
            EXIT
@@ -10335,12 +10355,12 @@ BLOCK
 
        IF (AllSuccess) THEN
          !_ELMER_OMP_SIMD
-         DO i=1,nc
+         DO i=1,nc_eff
            ! Metric(i,1,1) = REAL(1,dp)/DetJ(i)
            Metric(i,1) = REAL(1,dp)/DetJ(i)
          END DO
          !_ELMER_OMP_SIMD
-         DO i=1,nc
+         DO i=1,nc_eff
            DetJ(i) = SQRT( DetJ(i))
          END DO
        END IF
@@ -10352,13 +10372,13 @@ BLOCK
      CASE (2)
        ! Determinants
        !_ELMER_OMP_SIMD
-       DO i=1,nc
+       DO i=1,nc_eff
          ! DetJ(i) = ( G(i,1,1)*G(i,2,2) - G(i,1,2)*G(i,2,1) )
          ! G is symmetric
          DetJ(i) = G(i,1)*G(i,3)-G(i,2)*G(i,2)
        END DO
 
-       DO i=1,nc
+       DO i=1,nc_eff
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
            AllSuccess = .FALSE.
            EXIT
@@ -10368,7 +10388,7 @@ BLOCK
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
          !_ELMER_OMP_SIMD
-         DO i=1,nc
+         DO i=1,nc_eff
            s = REAL(1,dp)/DetJ(i)
            ! G is symmetric
            ! All in one go, with redundancies eliminated
@@ -10377,7 +10397,7 @@ BLOCK
            Metric(i,3) =  s*G(i,1)
          END DO
          !_ELMER_OMP_SIMD
-         DO i=1,nc
+         DO i=1,nc_eff
            DetJ(i) = SQRT(DetJ(i))
          END DO
 
@@ -10388,7 +10408,7 @@ BLOCK
      CASE (3)
        ! Determinants
        !_ELMER_OMP_SIMD
-       DO i=1,nc
+       DO i=1,nc_eff
          ! DetJ(i) = G(i,1,1) * ( G(i,2,2)*G(i,3,3) - G(i,2,3)*G(i,3,2) ) + &
          !           G(i,1,2) * ( G(i,2,3)*G(i,3,1) - G(i,2,1)*G(i,3,3) ) + &
          !           G(i,1,3) * ( G(i,2,1)*G(i,3,2) - G(i,2,2)*G(i,3,1) )
@@ -10398,7 +10418,7 @@ BLOCK
                  G(i,4)*(G(i,2)*G(i,5)-G(i,3)*G(i,4))
        END DO
 
-       DO i=1,nc
+       DO i=1,nc_eff
          IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
            AllSuccess = .FALSE.
            EXIT
@@ -10408,7 +10428,7 @@ BLOCK
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
          !_ELMER_OMP_SIMD
-         DO i=1,nc
+         DO i=1,nc_eff
            s = REAL(1,dp) / DetJ(i)
            ! Metric(i,1,1) =  s * (G(i,2,2)*G(i,3,3) - G(i,3,2)*G(i,2,3))
            ! Metric(i,2,1) = -s * (G(i,2,1)*G(i,3,3) - G(i,3,1)*G(i,2,3))
@@ -10425,7 +10445,7 @@ BLOCK
          END DO
 
          !_ELMER_OMP_SIMD
-         DO i=1,nc
+         DO i=1,nc_eff
            DetJ(i) = SQRT(DetJ(i))
          END DO
 
@@ -10438,7 +10458,7 @@ BLOCK
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
            !_ELMER_OMP_SIMD
-           DO l=1,nc
+           DO l=1,nc_eff
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1)
            END DO
          END DO
@@ -10446,7 +10466,7 @@ BLOCK
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
            !_ELMER_OMP_SIMD
-           DO l=1,nc
+           DO l=1,nc_eff
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3)
            END DO
@@ -10455,7 +10475,7 @@ BLOCK
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
            !_ELMER_OMP_SIMD
-           DO l=1,nc
+           DO l=1,nc_eff
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2) + dx(l,i,3)*Metric(l,4)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3) + dx(l,i,3)*Metric(l,5)
              LtoGMap(l,i,3) = dx(l,i,1)*Metric(l,4) + dx(l,i,2)*Metric(l,5) + dx(l,i,3)*Metric(l,6)
@@ -10478,6 +10498,20 @@ BLOCK
          WRITE( Message,'(A,I0,A,I0)') 'Element dim larger than meshdim: ',dim,' vs. ',cdim
          CALL Info( 'ElementMetricVec', Message, Level=3 )
        END IF
+     END IF
+
+     ! The remaining points reuse the mapping computed above
+     IF ( nc_eff < nc .AND. AllSuccess ) THEN
+       DO i=2,nc
+         DetJ(i) = DetJ(1)
+       END DO
+       DO i=2,nc
+         DO j=1,3
+           DO l=1,3
+             LtoGMap(i,j,l) = LtoGMap(1,j,l)
+           END DO
+         END DO
+       END DO
      END IF
 
    CONTAINS
