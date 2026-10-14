@@ -221,8 +221,8 @@ DMat % GRows = SMat2 % GRows(1:SMat2 % NumberOfRows)
 ...
 
 ! AFTER
-! nvhpcICE workaround: nrows2 is a plain local scalar used instead
-! of Smat2 % NumberOfRows as an array bound — derived-type component accesses
+! nvhpc ICE workaround: nrows2 is a plain local scalar used instead
+! of Smat2 % NumberOfRows as an array bound; derived-type component accesses
 ! as bounds trigger "array numelm is not a symbol" Lowering Error.
 INTEGER :: i, j, k, i1, i2, j1, j2, ind, ind1, ind2, DRows, DCols, row, col, nrows2
 ! nvhpc ICE workaround: ALLOCATE of a POINTER(:) with a non-trivial
@@ -323,7 +323,7 @@ The same pattern is applied in `rc_printeval` wherever `% simple_eval(B)` appear
 
 ## Change 4: `VariableAdd` called with positional `NULL()` solver argument
 
-**File changed:** `elmerice/Solvers/ValvingGeometry.F90`
+**File changed:** `elmerice/Solvers/CalvingGeometry.F90`
 
 ### Compiler Error
 
@@ -343,50 +343,35 @@ The solver argument is simply omitted (relying on its `OPTIONAL` or default-poin
 
 ## Change 5: `ISNAN` intrinsic not recognised by nvfortran
 
-**Files changed:** `elmerice/Solvers/GlaDSCoupledSolver.F90`, `fem/src/modules/MagnetoDynamics2D.F90`, `fem/src/modules/CoordinateTransform.F90`
+**Files changed:** `elmerice/Solvers/GlaDSCoupledSolver.F90`, `elmerice/Solvers/ScatteredDataInterpolator/Scattered2DDataInterpolator.F90`, `fem/src/modules/CoordinateTransform.F90`, `fem/src/modules/MagnetoDynamics/PlatiseFerroModel.F90`, `fem/src/modules/MagnetoDynamics2D.F90`, `fem/src/modules/SaveData/SaveLine.F90`
 
 ### Compiler Error
 
-`nvfortran` does not provide `ISNAN` as a built-in intrinsic. `ISNAN` is a GNU extension available in `gfortran` but not guaranteed by the Fortran standard and not implemented in `nvfortran`. 
-The standard-conforming replacement is `IEEE_IS_NAN` from the `IEEE_ARITHMETIC` intrinsic module (Fortran 2003+), which is supported by all modern compilers including `gfortran`, Intel, and `nvfortran`.
+`nvfortran` does not provide `ISNAN` as a built-in intrinsic.
+`ISNAN` is a GNU extension available in `gfortran` (and Intel), but it is not part of the Fortran standard.
+The standard-conforming equivalent is `IEEE_IS_NAN` from the `IEEE_ARITHMETIC` intrinsic module (Fortran 2003+).
 
-### Fix: `GlaDSCoupledSolver.F90`
+### Fix
 
-Add the module `USE` at the top of the subroutine and replace the call:
-
-```fortran
-! BEFORE
-IF(ISNAN(AreaSolution(k))) AreaSolution(k) = 0.0
-
-! AFTER
-USE IEEE_ARITHMETIC, ONLY: IEEE_IS_NAN
-...
-IF(IEEE_IS_NAN(AreaSolution(k))) AreaSolution(k) = 0.0
-```
-
-### Fix: `MagnetoDynamics2D.F90`
-
-Add the module `USE` inside `BulkAssembly` and replace all occurrences:
+The `ISNAN` call sites stay unchanged.
+For `nvfortran` only (detected via the predefined `__NVCOMPILER` macro), each unit that calls `ISNAN` imports `IEEE_IS_NAN` under that name:
 
 ```fortran
-! BEFORE
-IF (ISNAN(BodyLorentzForcesRe(i, j))) THEN
-  BodyLorentzForcesRe(i, j) = 0._dp
-END IF
-IF (ISNAN(BodyLorentzForcesIm(i, j))) THEN
-  BodyLorentzForcesIm(i, j) = 0._dp
-END IF
-
-! AFTER
-USE IEEE_ARITHMETIC, ONLY: IEEE_IS_NAN
-...
-IF (IEEE_IS_NAN(BodyLorentzForcesRe(i, j))) THEN
-  BodyLorentzForcesRe(i, j) = 0._dp
-END IF
-IF (IEEE_IS_NAN(BodyLorentzForcesIm(i, j))) THEN
-  BodyLorentzForcesIm(i, j) = 0._dp
-END IF
+#ifdef __NVCOMPILER
+  USE IEEE_ARITHMETIC, ONLY : ISNAN => IEEE_IS_NAN
+#endif
 ```
+
+| File | Unit with the import |
+|---|---|
+| `GlaDSCoupledSolver.F90` | `GlaDSCoupledsolver` |
+| `Scattered2DDataInterpolator.F90` | `Scattered2DDataInterpolator` |
+| `CoordinateTransform.F90` | `RotMSolver` (covers its internal `ComputeRotM` and `PolarDecomposition`) |
+| `PlatiseFerroModel.F90` | `PlatiseFerroModel` |
+| `MagnetoDynamics2D.F90` | `BulkAssembly` (internal to `Bsolver`) |
+| `SaveLine.F90` | `WriteFieldsAtElement` (internal to `SaveLine`) |
+
+Other compilers keep using their `ISNAN` intrinsic.
 
 ## Change 6: Missing explicit `USE` for `GetString` and `GaussPointsAdapt` in nested subroutines
 
@@ -528,8 +513,7 @@ Quad precision support is disabled at the CMake configuration level:
 | 1 | `fem/src/SParIterComm.F90` | Add explicit `IF (.NOT.ASSOCIATED) ParEnv => ParEnv_Common` guard | nvhpc |
 | 2 | `fem/src/SParIterSolver.F90` | Replace structure assignment and whole-array ops with explicit scalar/element loops to avoid ICE in lowering pass | nvhpc 24.7 |
 | 3 | `fem/src/ZirkaHysteresis.F90` | Extract procedure pointer components before calling; pass object explicitly | nvhpc, gfortran 11 |
-| 4 | `elmerice/Solvers/ValvingGeometry.F90` | Use keyword arguments to `VariableAdd` instead of positional `NULL()` | nvhpc |
-| 5 | `elmerice/Solvers/GlaDSCoupledSolver.F90` | Replace `ISNAN` (GNU extension) with `IEEE_IS_NAN` | nvhpc |
-| 5 | `fem/src/modules/MagnetoDynamics2D.F90` | Replace `ISNAN` with `IEEE_IS_NAN`; add `USE IEEE_ARITHMETIC` | nvhpc |
+| 4 | `elmerice/Solvers/CalvingGeometry.F90` | Use keyword arguments to `VariableAdd` instead of positional `NULL()` | nvhpc |
+| 5 | `GlaDSCoupledSolver.F90`, `Scattered2DDataInterpolator.F90`, `CoordinateTransform.F90`, `PlatiseFerroModel.F90`, `MagnetoDynamics2D.F90`, `SaveLine.F90` | Under `#ifdef __NVCOMPILER`, import `IEEE_IS_NAN` as `ISNAN` where it is called | nvhpc |
 | 6 | `fem/src/modules/HeatSolveVec.F90` | Add explicit `USE DefUtils` in nested subroutines | nvhpc |
 | 7 | `fem/src/modules/MagnetoDynamics2D.F90` | Pass `Solver`/`Mesh` explicitly to `SetMagneticFluxDensityBC`; convert fixed-size arrays to `ALLOCATABLE` | nvhpc |

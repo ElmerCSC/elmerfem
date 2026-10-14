@@ -43,7 +43,6 @@
 MODULE VecUtils
  
   USE DefUtils
-  USE IEEE_ARITHMETIC, ONLY: ISNAN => IEEE_IS_NAN
   IMPLICIT NONE
  
   CONTAINS
@@ -142,6 +141,9 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE VecUtils
+#ifdef __NVCOMPILER
+  USE IEEE_ARITHMETIC, ONLY : ISNAN => IEEE_IS_NAN
+#endif
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options

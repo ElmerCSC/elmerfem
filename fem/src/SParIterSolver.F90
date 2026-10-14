@@ -3069,7 +3069,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
   ! Local variables
 
   ! nvhpc ICE workaround: nrows2 is a plain local scalar used instead
-  ! of Smat2 % NumberOfRows as an array bound — derived-type component accesses
+  ! of Smat2 % NumberOfRows as an array bound; derived-type component accesses
   ! as bounds trigger "array numelm is not a symbol" Lowering Error.
   INTEGER :: i, j, k, i1, i2, j1, j2, ind, ind1, ind2, DRows, DCols, row, col, nrows2
 
