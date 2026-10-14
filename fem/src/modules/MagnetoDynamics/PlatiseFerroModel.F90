@@ -129,3 +129,4 @@ FUNCTION PlatiseFerroModel( model, n, B ) RESULT( H )
   END IF
 
 END FUNCTION PlatiseFerroModel
+
