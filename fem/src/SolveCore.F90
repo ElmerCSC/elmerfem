@@ -3113,7 +3113,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode, &
-        RestrictionMode, BlockMode, GloNum, FirstLoop
+        RestrictionMode, BlockMode, GloNum, FirstLoop, CalcLoads, BackRotation
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
     TYPE(C_FUNPTR) :: Proc
@@ -3282,6 +3282,33 @@ CONTAINS
           Acoll => NULL()
         ELSE
           CALL BlockSolveExt( A, x, bb, Solver )
+        END IF
+
+        ! The block solver does not compute the nodal loads (the linear solves of the
+        ! blocks skip them) and does not rotate the N-T components back, so do these
+        ! here as in SolveLinearSystem:
+        NodalLoads => NULL()
+        IF( .NOT. ListGetLogical( Params,'Linear System Skip Loads',Found ) ) THEN
+          NodalLoads => VariableGet( Solver % Mesh % Variables, &
+              GetVarName(Solver % Variable) // ' Loads' )
+          IF( ASSOCIATED( NodalLoads ) ) THEN
+            CalcLoads = ListGetLogical( Params,'Calculate Loads',Found,DefValue = .TRUE. )
+            IF( CalcLoads ) THEN
+              CALL Info(Caller,'Calculating nodal loads for: '//&
+                  GetVarName(Solver % Variable),Level=6)
+              CALL CalculateLoads( Solver, A, x, DOFs, .TRUE., NodalLoads )
+            ELSE
+              NodalLoads => NULL()
+            END IF
+          END IF
+        END IF
+
+        BackRotation = ListGetLogical( Params,'Back Rotate N-T Solution',Found,DefValue=.TRUE. )
+        IF( BackRotation .AND. ASSOCIATED(Solver % Variable % Perm) ) THEN
+          CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
+          IF( ASSOCIATED( NodalLoads ) ) THEN
+            CALL BackRotateNTSystem( NodalLoads % Values, NodalLoads % Perm, DOFs )
+          END IF
         END IF
       ELSE IF ( RestrictionMode ) THEN
         CALL Info(Caller,'Solving linear system with linear restrictions!',Level=10)
