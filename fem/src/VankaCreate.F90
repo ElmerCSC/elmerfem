@@ -1405,6 +1405,12 @@
         AmsCycle = [0,2,0,1,0,2,0]
       CASE (8) 
         AmsCycle = [0,11,2,0]
+      CASE (11) 
+        AmsCycle = [0,1,3,4,5,4,3,1,0]
+      CASE (12) 
+        AmsCycle = [10,11,13,14,15]
+      CASE (13) 
+        AmsCycle = [0,3,4,5,1,5,4,3,0]
       CASE DEFAULT
         CALL Fatal('SlavePrecComplex','Unknown "Ams Cycle Type": '//I2S(AmsCycleType))
       END SELECT
@@ -1465,6 +1471,13 @@
       ! residual is not updated after the phase.
       Additive = ( SlaveInd/10 > 0)
       SlaveInd = MODULO(SlaveInd,10)
+
+      ! This is a rather dirty way to solve just one component at a time
+      IF(SlaveInd > SlaveMaxCnt ) THEN
+        i = SlaveInd - SlaveMaxCnt
+        CALL ListAddInteger(CurrentModel % Simulation,'Ams Active Component',i)
+        SlaveInd = SlaveMaxCnt         
+      END IF
 
       dx(1:n) = 0.0_dp
 

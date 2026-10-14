@@ -199,7 +199,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   LOGICAL, SAVE :: Visited = .FALSE., SkipFaces, PrecMatNt
   REAL(KIND=dp), POINTER :: allrhs(:) => NULL()
-  INTEGER :: comps, compi, dofs, dof
+  INTEGER :: comps, compi, dofs, dof, ActiveComp
   LOGICAL, POINTER, SAVE :: NodeSkip(:)
   TYPE(Matrix_t), POINTER :: A
   REAL(KIND=dp), POINTER :: b(:)
@@ -228,6 +228,8 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
   ns = 1
   IF( ListGetLogical( SolverParams,'Linear System Complex',Found ) ) ns = 2
 
+  ActiveComp = ListGetInteger( Model % Simulation,'Ams Active Component', Found ) 
+  
   IF(IsMonolithic) THEN
     ! Solve all 3 components at the same time!
     ! Note that the current assembly in AVSolver is not compatible with this!
@@ -359,6 +361,8 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     DO compi = 1, comps
       IF(ExtrudedSol .AND. compi /= comps ) CYCLE
 
+      IF(ActiveComp > 0 .AND. compi /= ActiveComp ) CYCLE
+      
       A % Values = A % BulkValues
       IF( ns == 1 ) THEN
         b = allrhs(compi::comps)
