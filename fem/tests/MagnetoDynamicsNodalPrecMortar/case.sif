@@ -20,7 +20,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -314,4 +314,4 @@ include linsys_nodalprec.sif
 !End
 
 Solver 2 :: Reference Norm = 3.26276951E-03
-Solver 3 :: Reference Norm = 4.52556252E-07
+Solver 3 :: Reference Norm = 4.51596333E-07

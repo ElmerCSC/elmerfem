@@ -1110,13 +1110,14 @@
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: pVar
     TYPE(Matrix_t), POINTER :: Amat
-    REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
+    REAL(KIND=dp), POINTER :: res(:), dx(:), r(:), z(:)
     REAL(KIND=dp), ALLOCATABLE :: zshort(:), rshort(:)
     REAL(KIND=dp) :: rnorm, coeff
-    INTEGER, POINTER :: PrecSolvers(:)
-    LOGICAL :: Found, ScaleRHS, DoMask, AdditiveSmoother, AlternatePrec
+    INTEGER, POINTER :: PrecSolvers(:), TmpArray(:)
+    INTEGER, ALLOCATABLE :: AmsCycle(:)
+    LOGICAL :: Found, ScaleRHS, DoMask, Additive
     CHARACTER(MAX_NAME_LEN) :: str
-    INTEGER :: SlaveInd, SlaveMaxCnt
+    INTEGER :: SlaveInd, SlaveMaxCnt, AmsCycleType, PrecIndMax, PrecInd, SmoothCnt 
     INTEGER :: n, m, i, DOFs
     INTEGER, SAVE :: SlaveCnt = 0
     
@@ -1128,12 +1129,58 @@
     Amat => Solver % Matrix
     n = SIZE(Solver % Variable % Values)
     DOFs = Solver % Variable % dofs
-
+    NULLIFY(r)
+    
     str = ListGetString( Params,'Preconditioning Residual',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
     PrecSolvers => ListGetIntegerArray( Params,'Prec Solvers', UnfoundFatal=.TRUE.)
     SlaveMaxCnt = SIZE(PrecSolvers)
+
+    ! Note: cycles 4 and 6 are quite not the same as in Hypre AMS!
+    ! The residual gets updated after the first smoother step.
+    AmsCycleType = ListGetInteger( Params,'Ams Cycle Type', Found )
+    IF( Found ) THEN
+      SELECT CASE ( AmsCycleType )
+      CASE (1)
+        AmsCycle = [0,1,2,1,0]
+      CASE (2) 
+        AmsCycle = [10,11,2]
+      CASE (3)
+        AmsCycle = [0,2,1,2,0]
+      CASE (4)
+        AmsCycle = [12,0,1,0]
+      CASE (5)
+        AmsCycle = [0,1,0,2,0,1,0]
+      CASE (6) 
+        AmsCycle = [11,0,2,0]
+      CASE (7)
+        AmsCycle = [0,2,0,1,0,2,0]
+      CASE (8) 
+        AmsCycle = [0,11,2,0]
+      CASE (11) 
+        AmsCycle = [0,1,3,4,5,4,3,1,0]
+      CASE (12) 
+        AmsCycle = [10,11,13,14,15]
+      CASE (13) 
+        AmsCycle = [0,3,4,5,1,5,4,3,0]
+      CASE DEFAULT
+        CALL Fatal('SlavePrecComplex','Unknown "Ams Cycle Type": '//I2S(AmsCycleType))
+      END SELECT
+    ELSE    
+      TmpArray => ListGetIntegerArray( Params,'Ams Cycle', Found)
+      IF( Found ) THEN
+        AmsCycle = TmpArray
+      ELSE       
+        ! If not given initialize to simple multiplicative scheme: 0120
+        ALLOCATE(AmsCycle(SlaveMaxCnt+2))
+        AmsCycle = 0
+        DO i=1,SlaveMaxCnt 
+          AmsCycle(1+i) = i
+        END DO
+      END IF
+    END IF
+    PrecIndMax = SIZE(AmsCycle)
     
     IF(pVar % Dofs /= dofs ) THEN
       CALL Fatal('SlavePrec','Residual should have the same count of DOFs as primary variable!')
@@ -1169,31 +1216,75 @@
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
 
-    ! Shall we do smoother after each preconitioner step, or after all?
-    AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
-
-    AlternatePrec = ListGetLogical(Params,'Preconditioning Alternate', Found )
-    IF(AlternatePrec ) THEN
-      CALL Info('SlavePrec','Solving only preconditioning solver: '//I2S(SlaveCnt))
-      AdditiveSmoother = .FALSE.
-      SlaveCnt = MODULO( SlaveCnt, SlaveMaxCnt ) + 1
-    ELSE
-      SlaveCnt = 1
-    END IF
+    ! This is a counter such that we have have different parameters for different cycles.
+    SmoothCnt = 0
     
     ALLOCATE(r(n))
     IF( ParEnv % PEs > 1 ) ALLOCATE(zshort(m), rshort(m))
 
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
-    DO SlaveInd = 1, SlaveMaxCnt
+    DO PrecInd = 1, PrecIndMax
 
-      IF( AlternatePrec ) THEN
-        ! If we alternative the prec solver we only do one at a time. 
-        IF( SlaveCnt /= SlaveInd ) CYCLE
+      SlaveInd = AmsCycle(PrecInd)
+      
+      ! If the value of operator is >=10 then we assume the operator to be additive i.e.
+      ! residual is not updated after the phase.
+      Additive = ( SlaveInd/10 > 0)
+      SlaveInd = MODULO(SlaveInd,10)
+
+      ! This is a rather dirty way to solve just one component at a time
+      IF(SlaveInd > SlaveMaxCnt ) THEN
+        i = SlaveInd - SlaveMaxCnt
+        CALL ListAddInteger(CurrentModel % Simulation,'Ams Active Component',i)
+        SlaveInd = SlaveMaxCnt         
+      END IF
+      
+      dx(1:n) = 0.0_dp
+      
+      IF( SlaveInd == 0 ) THEN
+        CALL TailoredSmooth(dx,res)
+        ! MGSmooth only updates dx at owned rows; broadcast the fresh value to
+        ! every partition holding a non-owned copy, or it stays frozen at
+        ! whatever it was before this sweep.
+        IF( ParEnv % PEs > 1 ) THEN
+          CALL ParallelVector( Amat, zshort, dx )
+          CALL PartitionVector( Amat, dx, zshort )
+          CALL ParallelSumVector( Amat, dx )
+        END IF
+      ELSE
+        IF (ScaleRHS) THEN
+          ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
+          CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
+        END IF
         
-      ELSE IF( SlaveInd > 1 ) THEN
-        ! Calculate remaining residual, if we have just one slave we just need the initial residual.
+        ! (dx,res) are the vectors that should go in here by their name
+        CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
+        
+        IF (ScaleRHS) THEN
+          ! Transform the search direction so that it corresponds to the scaled linear system
+          CALL ScaleLinearSystemVectors(AMat, res, n, dx)
+        END IF
+      END IF
+      
+      ! If we just have one step in the cycle
+      IF( PrecIndMax == 1) EXIT
+      
+      ! This is just to test that the suggested search direction is a good one.
+      ! Ideally we need to multiply by "1" to get minimum norm.
+      !CALL ExperimentalStuff()
+
+      ! Sum up cumulative solution
+      IF(PrecInd == 1) THEN
+        ALLOCATE(z(n))
+        z(1:n) = dx(1:n)
+      ELSE
+        z(1:n) = z(1:n) + dx(1:n)
+      END IF
+      
+      ! If the solution is multiplicative we need to modify the residual
+      IF(.NOT. Additive .AND. PrecInd < PrecIndMax ) THEN 
+        ! Calculate remaining residual by using the cumulative solution
         r(1:n) = 0.0_dp
         IF( ParEnv % PEs > 1 ) THEN
           ! The serial matvec, mimicked with its parallel equivalent: the local
@@ -1210,77 +1301,28 @@
           res(1:n) = res(1:n) - r(1:n)
         ELSE
           CALL MatrixVectorMultiply(Amat, z, r)
+!          res(1:n) = res(1:n) - r(1:n)
           res(1:n) = v(1:n) - r(1:n)
         END IF
       END IF
-
-      IF (ScaleRHS) THEN
-        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
-        CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
-      END IF
-
-      ! (dx,res) are the vectors that should go in here by their name
-      dx(1:n) = 0.0_dp
-      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
-
-      IF (ScaleRHS) THEN
-        ! Transform the search direction so that it corresponds to the scaled linear system
-        CALL ScaleLinearSystemVectors(AMat, res, n, dx)
-      END IF
-
-      IF( AdditiveSmoother ) THEN
-        CALL TailoredSmooth(dx,res,SlaveInd)
-        ! MGSmooth only updates dx at owned rows; broadcast the fresh value to
-        ! every partition holding a non-owned copy, or it stays frozen at
-        ! whatever it was before this sweep.
-        IF( ParEnv % PEs > 1 ) THEN
-          CALL ParallelVector( Amat, zshort, dx )
-          CALL PartitionVector( Amat, dx, zshort )
-          CALL ParallelSumVector( Amat, dx )
-        END IF
-      END IF
-
-      ! This is just to test that the suggested search direction is a good one.
-      ! Ideally we need to multiply by "1" to get minimum norm.
-      CALL ExperimentalStuff()
-
-      ! If we just have one solver, no need to cumulative summation etc.
-      IF( SlaveMaxCnt == 1 .OR. AlternatePrec ) EXIT
-
-      ! Sum up cumulative solution
-      IF(SlaveInd == 1) THEN
-        ALLOCATE(z(n))
-        z(1:n) = dx(1:n)
-      ELSE
-        z(1:n) = z(1:n) + dx(1:n)
-      END IF
-
-      ! At final solver revert the cumulative solution back to origonal vectors.
-      IF(SlaveInd == SlaveMaxCnt) THEN
-        dx(1:n) = z(1:n)
-        IF( ParEnv % PEs > 1 ) THEN
-          CALL PartitionVector( Amat, res, v(1:m) )
-        ELSE
-          res(1:n) = v(1:n)
-        END IF
-        DEALLOCATE(z)
-        EXIT
-      END IF
-
     END DO
     !--------------------------------------------------------------------------
 
+    DEALLOCATE(r)
 
-    ! If we want to perform smoothing only once at the very end.
-    IF( .NOT. AdditiveSmoother ) THEN
-      CALL TailoredSmooth(dx,res,SlaveCnt)
-      CALL ExperimentalStuff()
+    ! At final solver revert the cumulative solution back to origonal vectors.
+    IF(PrecIndMax > 1) THEN
+      dx(1:n) = z(1:n)
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL PartitionVector( Amat, res, v(1:m) )
+      ELSE
+        res(1:n) = v(1:n)
+      END IF
+      DEALLOCATE(z)
     END IF
 
-    DEALLOCATE(r)
-    IF( ParEnv % PEs > 1 ) DEALLOCATE(zshort, rshort)
-
     IF( ParEnv % PEs > 1 ) THEN
+      DEALLOCATE(zshort, rshort)
       CALL ParallelVector( Amat, u(1:m), dx )
     ELSE
       u(1:n) = dx(1:n)
@@ -1288,11 +1330,32 @@
 
   CONTAINS
 
-    SUBROUTINE TailoredSmooth(dx,res,Level)
+
+    SUBROUTINE ExperimentalStuff(dx,res)
+      REAL(KIND=dp) :: dx(:), res(:)
+      REAL(KIND=dp) :: rn, bn
+
+      IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
+        CALL MatrixVectorMultiply( Amat, dx, r)
+        rn = SUM( r(1:n)**2 )
+        bn = SUM( r(1:n) * res(1:n) )
+        IF( rn > TINY( rn ) ) THEN
+          bn = bn / rn
+          dx(1:n) = dx(1:n) * bn
+          WRITE( Message,'(A,ES12.3)') 'Preconditioning Normalizing Factor: ',bn
+          CALL Info('SlavePrec',Message,Level=6)
+        END IF
+
+      END IF
+    END SUBROUTINE ExperimentalStuff
+
+    
+    SUBROUTINE TailoredSmooth(dx,res)
       REAL(KIND=dp) :: dx(:), res(:)
       LOGICAL :: DoMask
-      INTEGER :: Level
 
+      SmoothCnt = SmoothCnt + 1
+      
       DoMask = .FALSE.
       str = ListGetString(Params,'MG Smoother')
       IF(len_TRIM(str) >= 6 ) THEN
@@ -1309,32 +1372,15 @@
             CALL Fatal('TailoredSmooth','SkipMask not associated but here we are!?')
           END IF
           RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
-              Level, dofs, SkipMask = Amat % SkipMask )
+              SmoothCnt, dofs, SkipMask = Amat % SkipMask )
         END BLOCK
       ELSE
-        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, Level, dofs )
+        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SmoothCnt, dofs )
       END IF
 
     END SUBROUTINE TailoredSmooth
 
 
-    SUBROUTINE ExperimentalStuff()
-
-      REAL(KIND=dp) :: rn, bn
-
-      IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
-        CALL MatrixVectorMultiply( Amat, dx, r)
-        rn = SUM( r(1:n)**2 )
-        bn = SUM( r(1:n) * res(1:n) )
-        IF( rn > TINY( rn ) ) THEN
-          bn = bn / rn
-          dx(1:n) = dx(1:n) * bn
-          WRITE( Message,'(A,ES12.3)') 'Preconditioning Normalizing Factor: ',bn
-          CALL Info('SlavePrec',Message,Level=6)
-        END IF
-
-      END IF
-    END SUBROUTINE ExperimentalStuff
 !-------------------------------------------------------------------------------
   END SUBROUTINE SlavePrec
 !-------------------------------------------------------------------------------
@@ -1548,7 +1594,7 @@
 
         IF( rn > TINY( rn ) ) THEN
           bnre = bnre / rn
-          bnim = bnim / rn
+          bnim = bnim / rn 
 #if 0
           ! This does not seem to help ...
           res(1:n) = dx(1:n)
