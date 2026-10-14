@@ -65,23 +65,21 @@ Solver 1
 
   Exported Variable 1 = -dofs 2 ams res
   Exported Variable 2 = -dofs 2 ams update
-  Prec Solvers(2) = Integer 2 3
+
+! In Hypre AMS convention 1st solver should be gradient-space correction
+! and 2nd solver vector nodal space correction.
+  Prec Solvers(2) = Integer 3 2
 
   Preconditioning Residual = String "ams res"
   Preconditioning Update = String "ams update"
 
   MG Smoother = wjacobi
-!  MG Smoother Normalize Guess = Logical True
 
-  MG Post Smoothing Iterations(2) = 5 5
+  Ams Cycle Type = Integer 1
+!  Ams Cycle(5) = Integer 0 1 2 1 0
+
+  MG Post Smoothing Iterations(2) = 5 5 
   MG Smoother Relaxation Factor = Real 0.5
-
-  Additive Smoother = Logical True
-
-! For some reason alternating the correction space we get faster
-! convergence. 
-  Preconditioning Alternate = Logical True
-!  Preconditioning Symmetric = Logical True
 
 !  curl-curl Form = Logical True
 !  Linear System Preconditioning Damp Coefficient = 0.5
@@ -152,8 +150,8 @@ Solver 3
   Linear System Scaling = True
   Optimize Bandwidth = False
 
-!  Linear System Solver = Direct
-!  Linear System Direct Method = mumps 
+  Linear System Solver = Direct
+  Linear System Direct Method = mumps 
 
 ! Essential for performance!
   No Precondition Recompute = True

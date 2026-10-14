@@ -1362,13 +1362,13 @@
     ! the transfers to and from the complex vectors v and u are contiguous
     ! copies rather than pairs of stride-2 gathers and scatters.
     COMPLEX(KIND=dp), POINTER :: cres(:), cdx(:)
-    INTEGER, POINTER :: PrecSolvers(:)
+    INTEGER, POINTER :: PrecSolvers(:), TmpArray(:)
+    INTEGER, ALLOCATABLE :: AmsCycle(:)
     REAL(KIND=dp) :: rnorm
-    LOGICAL :: Found, ScaleRHS, AdditiveSmoother, AlternatePrec, SymmetricPrec
+    LOGICAL :: Found, ScaleRHS, Additive
     CHARACTER(MAX_NAME_LEN) :: str
-    INTEGER :: SlaveInd, SlaveMaxCnt, SymmetricCnt, PrecInd
-    INTEGER :: n, DOFs
-    INTEGER, SAVE :: SlaveCnt = 0
+    INTEGER :: SlaveInd, SlaveMaxCnt, PrecInd, PrecIndMax, AmsCycleType, SmoothCnt, SolveInd
+    INTEGER :: i, n, DOFs
 !-------------------------------------------------------------------------------
 
     Solver => CurrentModel % Solver
@@ -1383,6 +1383,45 @@
 
     PrecSolvers => ListGetIntegerArray( Params,'Prec Solvers', UnfoundFatal=.TRUE.)
     SlaveMaxCnt = SIZE(PrecSolvers)
+
+    ! Note: cycles 4 and 6 are quite not the same as in Hypre AMS!
+    ! The residual gets updated after the first smoother step.
+    AmsCycleType = ListGetInteger( Params,'Ams Cycle Type', Found )
+    IF( Found ) THEN
+      SELECT CASE ( AmsCycleType )
+      CASE (1)
+        AmsCycle = [0,1,2,1,0]
+      CASE (2) 
+        AmsCycle = [10,11,2]
+      CASE (3)
+        AmsCycle = [0,2,1,2,0]
+      CASE (4)
+        AmsCycle = [12,0,1,0]
+      CASE (5)
+        AmsCycle = [0,1,0,2,0,1,0]
+      CASE (6) 
+        AmsCycle = [11,0,2,0]
+      CASE (7)
+        AmsCycle = [0,2,0,1,0,2,0]
+      CASE (8) 
+        AmsCycle = [0,11,2,0]
+      CASE DEFAULT
+        CALL Fatal('SlavePrecComplex','Unknown "Ams Cycle Type": '//I2S(AmsCycleType))
+      END SELECT
+    ELSE    
+      TmpArray => ListGetIntegerArray( Params,'Ams Cycle', Found)
+      IF( Found ) THEN
+        AmsCycle = TmpArray
+      ELSE       
+        ! If not given initialize to simple multiplicative scheme: 0120
+        ALLOCATE(AmsCycle(SlaveMaxCnt+2))
+        AmsCycle = 0
+        DO i=1,SlaveMaxCnt 
+          AmsCycle(1+i) = i
+        END DO
+      END IF
+    END IF
+    PrecIndMax = SIZE(AmsCycle)
     
     IF(pVar % Dofs /= dofs ) THEN
       CALL Fatal('SlavePrecComplex','Residual should have the same count of DOFs as primary variable!')
@@ -1410,143 +1449,81 @@
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
 
-    ! Shall we do smoother after each preconitioner step, or after all?
-    AdditiveSmoother = ListGetLogical(Params, 'Additive Smoother', Found )
-
-    SymmetricPrec = ListGetLogical(Params,'Preconditioning Symmetric', Found )
-    IF(SymmetricPrec) THEN
-      SymmetricCnt = SlaveMaxCnt - 1
-    ELSE
-      SymmetricCnt = 0
-    END IF
-    
-    AlternatePrec = ListGetLogical(Params,'Preconditioning Alternate', Found )
-    IF(AlternatePrec ) THEN
-      SlaveCnt = MODULO( SlaveCnt, SlaveMaxCnt ) + 1
-      CALL Info('SlavePrecComplex','Solving only preconditioning solver: '//I2S(SlaveCnt))
-      AdditiveSmoother = .FALSE.
-    ELSE
-      SlaveCnt = 1 
-    END IF
-
-
-    
+    ! This is a counter such that we have have different parameters for different cycles.
+    SmoothCnt = 0
+     
     ALLOCATE(r(n))
-
+    NULLIFY(z)
     
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
-    DO PrecInd = 1, SlaveMaxCnt + SymmetricCnt 
+    DO PrecInd = 1, PrecIndMax
 
-      IF( PrecInd > SlaveMaxCnt ) THEN        
-        SlaveInd = PrecInd - SlaveMaxCnt  
-      ELSE
-        SlaveInd = PrecInd
-      END IF
-              
-      IF( AlternatePrec ) THEN
-        ! If we alternative the prec solver we only do one at a time. 
-        IF( SlaveCnt /= SlaveInd ) CYCLE
-            
-      ELSE IF( SlaveInd > 1 ) THEN
-        ! Calculate remaining residual, if we have just one slave we just need the initial residual.
-        r(1:n) = 0.0_dp
-        CALL MatrixVectorMultiply(Amat, z, r)
-        cres(1:n/2) = v(1:n/2)
-        res(1:n) = res(1:n) - r(1:n)
-      END IF
+      SlaveInd = AmsCycle(PrecInd)
+      
+      ! If the value of operator is >=10 then we assume the operator to be additive i.e.
+      ! residual is not updated after the phase.
+      Additive = ( SlaveInd/10 > 0)
+      SlaveInd = MODULO(SlaveInd,10)
 
-      IF (ScaleRHS) THEN
-        ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
-        CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
-      END IF
-
-      ! (dx,res) are the vectors that should go in here by their name
       dx(1:n) = 0.0_dp
-      CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
 
-      IF (ScaleRHS) THEN
-        ! Transform the search direction so that it corresponds to the scaled linear system
-        CALL ScaleLinearSystemVectors(AMat, res, n, dx)
+      IF( SlaveInd == 0 ) THEN
+        ! This can deal with a separate independent smoother step
+        CALL TailoredSmoothZ(dx,res)
+                          
+      ELSE
+        IF (ScaleRHS) THEN
+          ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
+          CALL ScaleLinearSystemVectors(AMat, res, n, BackScaling = .TRUE.)
+        END IF
+
+        ! (dx,res) are the vectors that should go in here by their name
+        CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = MODULO(SlaveInd,10) )
+
+        IF (ScaleRHS) THEN
+          ! Transform the search direction so that it corresponds to the scaled linear system
+          CALL ScaleLinearSystemVectors(AMat, res, n, dx)
+        END IF
       END IF
-
-      IF( AdditiveSmoother ) THEN
-        CALL TailoredSmoothZ(dx,res,SlaveInd)
-      END IF
-
-      ! This is just to test that the suggested search direction is a good one.
-      ! Ideally we need to multiply by "1" to get minimum norm.
-      CALL ExperimentalStuffZ()
-
-      ! If we just have one solver, no need to cumulative summation etc.
-      IF( SlaveMaxCnt == 1 .OR. AlternatePrec ) EXIT
+        
+      ! If we just have one step in the cycle
+      IF( PrecIndMax == 1) EXIT
 
       ! Sum up cumulative solution
-      IF(SlaveInd == 1) THEN
+      IF(.NOT. ASSOCIATED(z)) THEN
         ALLOCATE(z(n))
         z(1:n) = dx(1:n)
       ELSE
         z(1:n) = z(1:n) + dx(1:n)
       END IF
 
-      ! At final solver revert the cumulative solution back to origonal vectors.
-      IF(SlaveInd == SlaveMaxCnt + SymmetricCnt ) THEN
-        dx(1:n) = z(1:n)
+      ! If the solution is multiplicative we need to modify the residual
+      IF(.NOT. Additive .AND. PrecInd < PrecIndMax ) THEN 
+        ! Calculate remaining residual by using the cumulative solution
+        r(1:n) = 0.0_dp
+        CALL MatrixVectorMultiply(Amat, z, r)
         cres(1:n/2) = v(1:n/2)
-        DEALLOCATE(z)
-        EXIT
+        res(1:n) = res(1:n) - r(1:n)      
       END IF
-
     END DO
     !--------------------------------------------------------------------------
-
-
-    ! If we want to perform smoothing only once at the very end.
-    IF( .NOT. AdditiveSmoother ) THEN
-      CALL TailoredSmoothZ(dx,res,SlaveCnt) 
-      CALL ExperimentalStuffZ()
-    END IF
-
     DEALLOCATE(r)
+
+    ! At final solver revert the cumulative solution back to origonal vectors.
+    IF(SlaveMaxCnt > 1) THEN
+      dx(1:n) = z(1:n)
+      cres(1:n/2) = v(1:n/2)
+      DEALLOCATE(z)
+    END IF    
 
     u(1:n/2) = cdx(1:n/2)
 
   CONTAINS
 
 
-
-    SUBROUTINE TailoredSmoothZ(dx,res,Level)
+    SUBROUTINE ExperimentalStuffZ(dx,res)
       REAL(KIND=dp) :: dx(:), res(:)
-      LOGICAL :: DoMask
-      INTEGER :: Level
-
-      DoMask = .FALSE.
-      str = ListGetString(Params,'MG Smoother')
-      IF(len_TRIM(str) >= 6 ) THEN
-        DoMask = (str(1:6) == 'masked')
-      END IF
-      IF(.NOT. DoMask) THEN
-        DoMask = ListGetLogical(Params,'Linear System Skip Mask', Found )
-      END IF
-
-      r(1:n) = 0.0_dp
-      IF(DoMask) THEN
-        BLOCK
-          IF(.NOT. ASSOCIATED(Amat % SkipMask)) THEN
-            CALL Fatal('TailoredSmoothZ','SkipMask not associated but here we are!?')
-          END IF
-          RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
-              Level, dofs, SkipMask = Amat % SkipMask )
-        END BLOCK
-      ELSE
-        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, Level, dofs )
-      END IF
-
-    END SUBROUTINE TailoredSmoothZ
-
-    
-    SUBROUTINE ExperimentalStuffZ()
-
       REAL(KIND=dp) :: rn, bnre, bnim
 
       IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
@@ -1573,6 +1550,43 @@
       END IF
 
     END SUBROUTINE ExperimentalStuffZ
+
+
+    SUBROUTINE TailoredSmoothZ(dx,res)
+      REAL(KIND=dp) :: dx(:), res(:)
+      LOGICAL :: DoMask
+      
+      DoMask = .FALSE.
+      str = ListGetString(Params,'MG Smoother')
+      IF(len_TRIM(str) >= 6 ) THEN
+        DoMask = (str(1:6) == 'masked')
+      END IF
+      IF(.NOT. DoMask) THEN
+        DoMask = ListGetLogical(Params,'Linear System Skip Mask', Found )
+      END IF
+
+      SmoothCnt = SmoothCnt + 1
+      
+      r(1:n) = 0.0_dp
+      IF(DoMask) THEN
+        BLOCK
+          IF(.NOT. ASSOCIATED(Amat % SkipMask)) THEN
+            CALL Fatal('TailoredSmoothZ','SkipMask not associated but here we are!?')
+          END IF
+          RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, &
+              SmoothCnt, dofs, SkipMask = Amat % SkipMask )
+        END BLOCK
+      ELSE
+        RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SmoothCnt, dofs )
+      END IF
+
+      ! This is just to test that the suggested search direction is a good one.
+      ! Ideally we need to multiply by "1" to get minimum norm.
+      CALL ExperimentalStuffZ(dx,res)
+      
+    END SUBROUTINE TailoredSmoothZ
+
+    
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE SlavePrecComplex
