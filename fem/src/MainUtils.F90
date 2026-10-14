@@ -2485,7 +2485,10 @@ CONTAINS
         ALLOCATE( Solver % Matrix % RHS(Solver % Matrix % NumberOFRows), STAT=AllocStat )
         IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for Rhs')
         Solver % Matrix % RHS = 0.0d0
-
+#ifdef HAVE_PERMON
+        Solver % Matrix % RHS_cptr = C_LOC( Solver % Matrix % RHS(1) )
+#endif
+        
         Solver % Matrix % RHS_im => NULL()
         IF ( HarmonicAnal .OR. HarmonicMode ) THEN
           ALLOCATE( Solver % Matrix % RHS_im(Solver % Matrix % NumberOFRows), STAT=AllocStat)

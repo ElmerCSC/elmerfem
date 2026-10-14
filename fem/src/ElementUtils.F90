@@ -54,7 +54,8 @@ MODULE ElementUtils
     USE BandwidthOptimize
     USE ElementDescription, ONLY : getEdgeDOFs,GetBubbleDOFs,getFaceDOFs, &
       CrossProduct, NormalVector, InterpolateInElement, mGetElementDOFs
-
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC
+            
     IMPLICIT NONE
     ! Not re-exported: the external procedure itself USEs modules that would
     ! then import its own name (see module IpFieldInterface).
@@ -2339,6 +2340,9 @@ CONTAINS
        IF( istat /= 0 ) THEN
          CALL Fatal(Caller,'Allocation error for CRS matrix topology: '//I2S(n))
        END IF
+#ifdef HAVE_PERMON
+       A % RHS_cptr = C_LOC( A % RHS(1) )
+#endif
 
        DO i=1,n
          A % RHS(i:i) = ListGetConstReal( Solver % Values,  &

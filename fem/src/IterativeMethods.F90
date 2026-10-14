@@ -1948,6 +1948,10 @@ CONTAINS
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
     USE huti_interfaces
+!#ifdef HAVE_PERMON
+!      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC, C_NULL_PTR, C_F_POINTER, C_PTR, C_INTPTR_T, C_INT
+!      USE PermonInterface
+!#endif
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
@@ -1968,8 +1972,13 @@ CONTAINS
     LOGICAL :: Converged, Diverged, UseStopCFun
     INTEGER :: ncg, ne, np, iters
     REAL(KIND=dp) :: final_norm_gp
-
+    LOGICAL :: Found, UsePermon
+    
     INTEGER :: n
+    INTEGER :: NumberOfCols
+
+    INTEGER :: kmax, kk
+    CHARACTER(LEN=100) :: msg
 
     ! MPRGP parameters (passed from calling routine)
     REAL(KIND=dp) :: Gamma, TolFactor
@@ -1979,9 +1988,24 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A, Aser
 
     REAL(KIND=dp), POINTER :: x(:),b(:),c(:),cser(:)
+#ifdef HAVE_PERMON
+  TYPE(C_PTR) :: rows_cptr, cols_cptr, vals_cptr
+  TYPE(C_PTR) :: b_cptr, limits_cptr, x_cptr
+  INTEGER(C_INTPTR_T) :: rhs_addr
+  CHARACTER(LEN=200) :: dbgmsg
+  INTEGER :: iprint
+  ! Debug dump variables
+  INTEGER(C_INT), POINTER :: rows_from_cptr(:)
+  INTEGER(C_INT), POINTER :: cols_from_cptr(:)
+  INTEGER, POINTER :: rows_fortran(:)
+  INTEGER, POINTER :: cols_fortran(:)
+  INTEGER :: nrowslen, iu, rank, ncolslen, rr
+  CHARACTER(LEN=256) :: fname
+#endif
 
     A => GlobalMatrix
     ndim = HUTI_NDIM
+
 
     x => xvec
     b => rhsvec
@@ -2027,19 +2051,35 @@ CONTAINS
       END DO
     END IF
 
+    ! Check if Permon should be used
+!    UsePermon = .FALSE.
+!#ifdef HAVE_PERMON
+!    IF (ListGetLogical(CurrentModel % Solver % Values, 'Linear System Use Permon', Found) .AND. Found) THEN
+!      UsePermon = .TRUE.
+!    END IF
+!#else
+!    IF (ListGetLogical(CurrentModel % Solver % Values, 'Linear System Use Permon', Found) .AND. Found) THEN
+!      CALL Fatal('itermethod_mprgp','Permon requested but not compiled with!')
+!    END IF
+!#endif
+
+
+
 
     Converged = .FALSE.
     Diverged = .FALSE.
     n = ndim
-    CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, TolFactor, &
-        ncg, ne, np, iters, Converged, final_norm_gp )
 
-    CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
-          ', ncg='//I2S(ncg)//', ne='//I2S(ne)//', np='//I2S(np), Level=10)
 
-    IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
-    IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
-    IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
+!#ifdef HAVE_PERMON
+!    IF (UsePermon) THEN
+!      CALL solve_with_permon()
+!    ELSE
+!      CALL solve_with_elmer()
+!    END IF
+!#else
+    CALL solve_with_elmer()
+!#endif
 
 
     IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
@@ -2067,7 +2107,7 @@ CONTAINS
       INTEGER, INTENT(IN) :: maxit
       REAL(KIND=dp), INTENT(IN) :: Gamma
       LOGICAL, INTENT(IN) :: adapt
-      INTEGER, INTENT(IN) :: bound      ! 'lower' or 'upper'
+      INTEGER, INTENT(IN) :: bound      ! 'lower' (0) or 'upper' (1)
       REAL(KIND=dp), INTENT(IN) :: TolFactor
       INTEGER, INTENT(OUT) :: ncg, ne, np, iters
       LOGICAL, INTENT(OUT) :: converged
@@ -2085,7 +2125,7 @@ CONTAINS
       ! Local declarations (all here)
       ! ---------------------------
       REAL(KIND=dp), ALLOCATABLE :: g(:), gf(:), gc(:), gr(:), gp(:)
-      REAL(KIND=dp), ALLOCATABLE :: z(:), p(:), Ap(:), yy(:), D(:), Agr(:)
+      REAL(KIND=dp), ALLOCATABLE :: p(:), Ap(:), yy(:), D(:), Agr(:)
       LOGICAL, ALLOCATABLE :: J(:)
       LOGICAL, ALLOCATABLE :: p_mask(:)
       INTEGER :: bs
@@ -2094,7 +2134,7 @@ CONTAINS
       REAL(KIND=dp) :: rtp, pAp, acg, beta
       REAL(KIND=dp) :: grg, grAgr
       REAL(KIND=dp) :: eps_local
-      TYPE(Matrix_t), POINTER :: MatA
+      TYPE(Matrix_t), POINTER :: MatA, MatB
       REAL(KIND=dp) :: tol
 
       REAL(KIND=dp), ALLOCATABLE :: v(:),w(:)
@@ -2104,7 +2144,7 @@ CONTAINS
       ! ---------------------------
       ! Allocate scratch vectors
       ! ---------------------------
-      ALLOCATE(g(n), gf(n), gc(n), gr(n), gp(n), z(n), p(n), Ap(n), yy(n), J(n), Agr(n), STAT=allocstat)
+      ALLOCATE(g(n), gf(n), gc(n), gr(n), gp(n), p(n), Ap(n), yy(n), J(n), Agr(n), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('itermethod_mprgp','Allocation failed for scratch vectors')
       END IF
@@ -2165,13 +2205,7 @@ CONTAINS
       END IF
 
       gp = gf + gc
-      ! preconditioning: z = M^{-1} * g on free set
-      z = g
-      CALL pcondrsubr( g, z, ipar )
-      WHERE (.NOT. J)
-        z = 0.0_dp
-      END WHERE
-      p = z
+      p = gf
 
       ! counters
       ncg = 0
@@ -2188,8 +2222,8 @@ CONTAINS
         iters = iters + 1
         IF ( dotprodfun(n, gc, 1, gc, 1) <= (Gamma**2) * dotprodfun(n, gr, 1, gf, 1) ) THEN
           ! CG step
-          CALL matvecsubr( p, Ap, ipar )
-          rtp = dotprodfun(n, z, 1, g, 1) ! residual * p
+          CALL matvecsubr( p, Ap, ipar )        
+          rtp = dotprodfun(n, p, 1, g, 1) ! residual * p
           pAp = dotprodfun(n, p, 1, Ap, 1)
 
           IF (ABS(pAp) < eps_local) THEN
@@ -2226,18 +2260,10 @@ CONTAINS
               J = (x < c - tol)
             END IF
 
-            ! precondition
-            z = g
-            CALL pcondrsubr( g, z, ipar )
-            WHERE (.NOT. J)
-              z = 0.0_dp
-            END WHERE
-
-            beta = dotprodfun(n, z, 1, Ap, 1) / pAp
-            p = z - beta * p
-
             ! update gf,gc,gr,gp
             gf = MERGE(g, 0.0_dp, J)
+            beta = dotprodfun(n, gf, 1, Ap, 1) / pAp
+            p = gf - beta * p
 
             IF (bs == 1) THEN
               gc = 0.0_dp
@@ -2283,7 +2309,7 @@ CONTAINS
               J = (x < c - tol)
             END IF
             g = g - a_f * Ap
-
+            gf = MERGE(g, 0.0_dp, J)
             ! adaptive alpha
             IF (adapt) THEN
               CALL matvecsubr( gr, Agr, ipar )
@@ -2297,30 +2323,24 @@ CONTAINS
                 IF (alpha <= 0.0_dp .OR. alpha > 1.0_dp / lAl) alpha = 1.0_dp / lAl
               END IF
             END IF
+            
 
             IF (bs == 1) THEN
               WHERE (J)
-                x = MAX(x - alpha * g, c)
+                x = MAX(x - alpha * gf, c)
               END WHERE
             ELSE
               WHERE (J)
-                x = MIN(x - alpha * g, c)
+                x = MIN(x - alpha * gf, c)
               END WHERE
             END IF
 
             CALL matvecsubr( x, g, ipar )
             g = g - b
 
-            ! recompute z and p
-            z = g
-            CALL pcondrsubr( g, z, ipar )
-            WHERE (.NOT. J)
-              z = 0.0_dp
-            END WHERE
-            p = z
-
             ! update gf,gc,gr,gp
             gf = MERGE(g, 0.0_dp, J)
+            p = gf
 
             IF (bs == 1) THEN
               gc = 0.0_dp
@@ -2371,16 +2391,10 @@ CONTAINS
             J = (x < c - tol)
           END IF
           g = g - acg * Ap
-
-          z = g
-          CALL pcondrsubr( g, z, ipar )
-          WHERE (.NOT. J)
-            z = 0.0_dp
-          END WHERE
-          p = z
-
+          
           ! update gf,gc,gr,gp
           gf = MERGE(g, 0.0_dp, J)
+          p = gf
 
           IF (bs == 1) THEN
             gc = 0.0_dp
@@ -2410,7 +2424,7 @@ CONTAINS
 
       ! cleanup
       IF (ALLOCATED(D)) DEALLOCATE(D)
-      DEALLOCATE(g, gf, gc, gr, gp, z, p, Ap, yy, J)
+      DEALLOCATE(g, gf, gc, gr, gp, p, Ap, yy, J)
 
     !----------------------------------------------------------
     END SUBROUTINE MPRGP
@@ -2445,6 +2459,291 @@ CONTAINS
       out_norm = normfun(nloc, w, 1)
       DEALLOCATE(v, w)
     END SUBROUTINE estimate_matrix_norm
+
+!#ifdef HAVE_PERMON
+!    SUBROUTINE solve_with_permon()
+!      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_LOC, C_NULL_PTR
+!      INTEGER :: nloc, i, nrows
+!      LOGICAL :: HasParallelInfo
+!      INTEGER, ALLOCATABLE, TARGET :: PermonOwner(:), PermonGdofs(:)
+!      TYPE(ParallelInfo_t), POINTER :: ParInfo
+!      TYPE(C_PTR) :: owner_cptr, gdofs_cptr
+!      ! Variables for writing PermonGdofs to a file for debugging
+!      CHARACTER(len=200) :: permon_fname
+!      INTEGER :: permon_unit, ierr, idx
+!      TYPE(Matrix_t), POINTER :: MatB
+!
+!      CALL Info('itermethod_mprgp', 'HAVE_PERMON defined, calling permon_solve', Level=12)
+!      IF (ASSOCIATED(A%Cols) .AND. SIZE(A%Cols) > 0) THEN
+!        NumberOfCols = MAXVAL(A%Cols)  ! Max column index = number of columns (1-based indexing)
+!      ELSE
+!        CALL FATAL('itermethod_mprgp', 'A%Cols is not associated or empty')
+!      END IF
+!
+!      IF (ASSOCIATED(CurrentModel % Solver % Variable % UpperLimit)) THEN
+!        limits_cptr = CurrentModel % Solver % Variable % UpperLimit_cptr
+!      ELSE IF (ASSOCIATED(CurrentModel % Solver % Variable % LowerLimit)) THEN
+!        limits_cptr = CurrentModel % Solver % Variable % LowerLimit_cptr
+!      ELSE
+!        CALL FATAL('itermethod_mprgp', 'No limit found')
+!      END IF
+!
+!
+!
+!      x_cptr = C_NULL_PTR
+!      IF (SIZE(xvec) > 0) THEN 
+!        x_cptr = C_LOC(xvec(1))
+!      END IF
+!      
+!
+!      IF (ASSOCIATED(c)) THEN
+!        kmax = MIN(10, SIZE(c))
+!        IF (kmax > 0) THEN
+!          WRITE(msg,'(A,I0,A)') 'First ', kmax, ' entries of c:'
+!          CALL Info('itermethod_mprgp',TRIM(msg))
+!          DO kk = 1, kmax
+!            WRITE(msg,'(I3,2X,ES12.5)') kk, c(kk)
+!            CALL Info('itermethod_mprgp',TRIM(msg))
+!          END DO
+!        END IF
+!        WRITE(msg,'(A,ES12.5)') 'norm of c = ', normfun(ndim, c, 1)
+!        CALL Info('itermethod_mprgp',TRIM(msg))
+!      END IF
+!      CALL Info('itermethod_mprgp', 'Using Permon solver', Level=12)
+!      
+!      WRITE(msg,'(A,I0,A,I0)') 'permon_solve: nrows=', A%NumberOfRows, ', ncols=', NumberOfCols
+!      CALL Info('itermethod_mprgp', TRIM(msg))
+!
+!      ! Ensure C pointers for CRS arrays and RHS are initialized when possible
+!      IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
+!      IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
+!      IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
+!      IF ( ASSOCIATED(A%RHS) .AND. .NOT. C_ASSOCIATED(A%RHS_cptr) ) A%RHS_cptr = C_LOC(A%RHS(1))
+!
+!      ! Prepare global dofs (APerm) and owner arrays required by Permon
+!      ! Use matrix' ParallelInfo if present, otherwise fall back to ParMatrix%ParallelInfo
+!      
+!      !TODO check and refactor, had probles with this running before
+!      
+!      ParInfo => NULL()
+!      WRITE(msg,'(A)') 'Checking ParallelInfo associations:'
+!      CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+!      WRITE(msg,'(A)') '  A%ParallelInfo associated = '//TRIM(I2S( MERGE(1,0,ASSOCIATED(A%ParallelInfo)) ))
+!      CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+!      WRITE(msg,'(A)') '  A%ParMatrix associated = '//TRIM(I2S( MERGE(1,0,ASSOCIATED(A%ParMatrix)) ))
+!      CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+!      IF ( ASSOCIATED(A%ParMatrix) ) THEN
+!        WRITE(msg,'(A)') '  A%ParMatrix%ParallelInfo associated = '//TRIM(I2S( MERGE(1,0,ASSOCIATED(A%ParMatrix%ParallelInfo)) ))
+!        CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+!      END IF
+!      IF ( ASSOCIATED(A%ParallelInfo) ) THEN
+!        ParInfo => A%ParallelInfo
+!      ELSE IF ( ASSOCIATED(A%ParMatrix) ) THEN
+!        IF ( ASSOCIATED(A%ParMatrix%ParallelInfo) ) ParInfo => A%ParMatrix%ParallelInfo
+!      ELSE
+!        ! Some code paths use a split InsideMatrix as GlobalMatrix; try the original
+!        ! matrix referenced by the current solver (SourceMatrix) which often holds ParMatrix
+!        IF ( ASSOCIATED(CurrentModel % Solver % Matrix) ) THEN
+!          IF ( ASSOCIATED(CurrentModel % Solver % Matrix % ParallelInfo) ) THEN
+!            ParInfo => CurrentModel % Solver % Matrix % ParallelInfo
+!          ELSE IF ( ASSOCIATED(CurrentModel % Solver % Matrix % ParMatrix) ) THEN
+!            IF ( ASSOCIATED(CurrentModel % Solver % Matrix % ParMatrix%ParallelInfo) ) THEN
+!              ParInfo => CurrentModel % Solver % Matrix % ParMatrix%ParallelInfo
+!            END IF
+!          END IF
+!        END IF
+!      END IF
+!
+!      HasParallelInfo = ASSOCIATED(ParInfo) .AND. ASSOCIATED(ParInfo%GlobalDOFs)
+!      IF ( HasParallelInfo ) THEN
+!        nloc = SIZE(ParInfo%GlobalDOFs)
+!
+!        nrows = CurrentModel % Solver % Matrix % NumberOfRows
+!        WRITE(msg,'(A,I0,A,I0)') 'rank=', ParEnv%Mype, ', nrows=', nrows
+!        CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+!
+!        ALLOCATE(PermonOwner(nloc), PermonGdofs(nloc))
+!        WRITE(msg,'(A,I0,A,I0)') 'rank=', ParEnv%Mype, ', nloc=', nloc
+!        CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+!        CALL ContinuousNumbering(ParInfo, A%Perm, PermonGdofs, PermonOwner)
+!
+!        ! Newer hypre/permon libraries expect zero-based indexing for global dofs
+!        PermonGdofs = PermonGdofs - 1
+!
+!        ! Save PermonGdofs to a per-rank text file for debugging
+!        WRITE(permon_fname,'(A,I0,A)') 'permonGdofs_rank', ParEnv%Mype, '.txt'
+!        OPEN(NEWUNIT=permon_unit, FILE=TRIM(permon_fname), ACTION='write', STATUS='replace', FORM='formatted', IOSTAT=ierr)
+!        IF (ierr == 0) THEN
+!          WRITE(permon_unit, '(A)') '# PermonGdofs (zero-based) for rank '//I2S(ParEnv%Mype)
+!          WRITE(permon_unit, '(I0)') SIZE(PermonGdofs)
+!          DO idx = 1, SIZE(PermonGdofs)
+!            WRITE(permon_unit,'(I12)') PermonGdofs(idx)
+!          END DO
+!          CLOSE(permon_unit)
+!        ELSE
+!          CALL Info('itermethod_mprgp','Failed to write '//TRIM(permon_fname)//' IOSTAT='//I2S(ierr), Level=1)
+!        END IF
+!
+!        CALL Info('itermethod_mprgp', 'debug parallel', Level=1)
+!      ELSE
+!        nloc = A%NumberOfRows
+!        ALLOCATE(PermonOwner(nloc), PermonGdofs(nloc))
+!        DO i = 1, nloc
+!          PermonGdofs(i) = i - 1
+!        END DO
+!        PermonOwner = 1
+!        WRITE(msg,'(A,I0,A,I0)') 'rank=', ParEnv%Mype, ', nloc=', nloc
+!        CALL Info('itermethod_mprgp', TRIM(msg), Level=1)
+!        CALL Info('itermethod_mprgp', 'debug serial', Level=1)
+!      END IF
+!
+!      ! Ensure C pointers for the global dofs and owner arrays
+!      IF ( .NOT. C_ASSOCIATED(gdofs_cptr) .AND. ALLOCATED(PermonGdofs) ) gdofs_cptr = C_LOC(PermonGdofs(1))
+!      IF ( .NOT. C_ASSOCIATED(owner_cptr) .AND. ALLOCATED(PermonOwner) ) owner_cptr = C_LOC(PermonOwner(1))
+!
+!      ! Ensure C pointers for CRS arrays and RHS are initialized when possible
+!      IF ( ASSOCIATED(A%Rows) .AND. .NOT. C_ASSOCIATED(A%Rows_cptr) ) A%Rows_cptr = C_LOC(A%Rows(1))
+!      IF ( ASSOCIATED(A%Cols) .AND. .NOT. C_ASSOCIATED(A%Cols_cptr) ) A%Cols_cptr = C_LOC(A%Cols(1))
+!      IF ( ASSOCIATED(A%Values) .AND. .NOT. C_ASSOCIATED(A%Values_cptr) ) A%Values_cptr = C_LOC(A%Values(1))
+!      b_cptr = C_LOC(rhsvec(1))
+!      ! --- Dump A%Rows and contents pointed by A%Rows_cptr for comparison ---
+!      IF (ParEnv%PEs >= 1) THEN
+!        nrowslen = A%NumberOfRows + 1
+!        rank = ParEnv%Mype
+!
+!        IF (C_ASSOCIATED(A%Rows_cptr)) THEN
+!          CALL C_F_POINTER(A%Rows_cptr, rows_from_cptr, [nrowslen])
+!        ELSE
+!          NULLIFY(rows_from_cptr)
+!        END IF
+!
+!        IF (ASSOCIATED(A%Rows)) THEN
+!          rows_fortran => A%Rows
+!        ELSE
+!          NULLIFY(rows_fortran)
+!        END IF
+!
+!        ! Map cols C pointer and Fortran cols
+!        IF (C_ASSOCIATED(A%Cols_cptr)) THEN
+!          ncolslen = 0
+!          IF (ASSOCIATED(rows_fortran)) THEN
+!            ncolslen = rows_fortran(A%NumberOfRows+1)
+!          END IF
+!          IF (ncolslen > 0) THEN
+!            CALL C_F_POINTER(A%Cols_cptr, cols_from_cptr, [ncolslen])
+!          ELSE
+!            NULLIFY(cols_from_cptr)
+!          END IF
+!        ELSE
+!          NULLIFY(cols_from_cptr)
+!        END IF
+!
+!        IF (ASSOCIATED(A%Cols)) THEN
+!          cols_fortran => A%Cols
+!        ELSE
+!          NULLIFY(cols_fortran)
+!        END IF
+!
+!        ! write Fortran Rows
+!        WRITE(fname, '(A,I0)') 'rows_fortran_rank', rank
+!        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+!        IF (ierr == 0) THEN
+!          IF (ASSOCIATED(rows_fortran)) THEN
+!            WRITE(iu, '(A)') '# A%Rows '
+!            DO i = 1, nrowslen
+!              WRITE(iu, '(I0)') rows_fortran(i)
+!            END DO
+!          ELSE
+!            WRITE(iu, '(A)') '# A%Rows not associated'
+!          END IF
+!          CLOSE(iu)
+!        END IF
+!
+!        ! write rows from C pointer
+!        WRITE(fname, '(A,I0)') 'rows_cptr_rank', rank
+!        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+!        IF (ierr == 0) THEN
+!          IF (ASSOCIATED(rows_from_cptr)) THEN
+!            WRITE(iu, '(A)') '# A%Rows_cptr mapped to integer(C_INT)'
+!            DO i = 1, nrowslen
+!              WRITE(iu, '(I0)') rows_from_cptr(i)
+!            END DO
+!          ELSE
+!            WRITE(iu, '(A)') '# A%Rows_cptr not associated'
+!          END IF
+!          CLOSE(iu)
+!        END IF
+!
+!        ! --- write Fortran Cols ---
+!        WRITE(fname, '(A,I0)') 'cols_fortran_rank', rank
+!        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+!        IF (ierr == 0) THEN
+!          IF (ASSOCIATED(cols_fortran)) THEN
+!            WRITE(iu, '(A)') '# A%Cols '
+!            IF (ASSOCIATED(rows_fortran)) THEN
+!              DO rr = 1, A%NumberOfRows
+!                DO j = rows_fortran(rr), rows_fortran(rr+1)-1
+!                  WRITE(iu, '(I0)') cols_fortran(j)
+!                END DO
+!              END DO
+!            ELSE
+!              WRITE(iu, '(A)') '# A%Rows not associated; cannot iterate'
+!            END IF
+!          ELSE
+!            WRITE(iu, '(A)') '# A%Cols not associated'
+!          END IF
+!          CLOSE(iu)
+!        END IF
+!
+!        ! --- write Cols from C pointer ---
+!        WRITE(fname, '(A,I0)') 'cols_cptr_rank', rank
+!        OPEN(NEWUNIT=iu, FILE=TRIM(fname)//'.txt', STATUS='REPLACE', ACTION='WRITE', IOSTAT=ierr)
+!        IF (ierr == 0) THEN
+!          IF (ASSOCIATED(cols_from_cptr)) THEN
+!            WRITE(iu, '(A)') '# A%Cols_cptr mapped to integer(C_INT)'
+!            IF (ASSOCIATED(rows_from_cptr)) THEN
+!              DO rr = 1, A%NumberOfRows
+!                DO j = rows_from_cptr(rr), rows_from_cptr(rr+1)-1
+!                  WRITE(iu, '(I0)') cols_from_cptr(j)
+!                END DO
+!              END DO
+!            ELSE
+!              WRITE(iu, '(A)') '# A%Rows_cptr not associated; cannot iterate'
+!            END IF
+!          ELSE
+!            WRITE(iu, '(A)') '# A%Cols_cptr not associated'
+!          END IF
+!          CLOSE(iu)
+!        END IF
+!
+!      END IF
+!
+!
+!
+!        MatB => CurrentModel % Solver % Matrix
+!        CALL permon_solve(MatB%Rows_cptr, MatB%Cols_cptr, MatB%Values_cptr, &
+!          INT(MatB%NumberOfRows, KIND=C_INT), INT(NumberOfCols, KIND=C_INT), &
+!          b_cptr, limits_cptr, x_cptr, INT(bound, KIND=C_INT), &
+!          gdofs_cptr, owner_cptr, A % Comm, nloc)
+!
+!        ! free temporary arrays
+!        IF (ALLOCATED(PermonGdofs)) DEALLOCATE(PermonGdofs)
+!        IF (ALLOCATED(PermonOwner)) DEALLOCATE(PermonOwner)
+!      ! TODO pass convergence info from Permon to Elmer
+!      HUTI_INFO = HUTI_CONVERGENCE
+!    END SUBROUTINE solve_with_permon
+!#endif
+
+    SUBROUTINE solve_with_elmer()
+      CALL Info('itermethod_mprgp', 'Permon not requested, calling MPRGP', Level=12)
+      CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, TolFactor, &
+          ncg, ne, np, iters, Converged, final_norm_gp )
+      CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
+            ', ncg='//I2S(ncg)//', ne='//I2S(ne)//', np='//I2S(np), Level=10)
+      IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
+      IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
+      IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
+    END SUBROUTINE solve_with_elmer
 
 !--------------------------------------------------------------
   END SUBROUTINE itermethod_mprgp
