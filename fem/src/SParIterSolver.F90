@@ -2009,7 +2009,7 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 
   IF (ListGetLogical(Params,'Linear System Use Permon', Found )) THEN
 #ifdef HAVE_PERMON
-    CALL INFO(Caller,'Using permon from sparitersolver',Level=1)
+    CALL INFO(Caller,'Using permon from sparitersolver',Level=5)
     CALL SolvePermon(SourceMatrix,XVec,RHSVec,Solver,&
         ParallelInfo,SplittedMatrix)    
     RETURN
@@ -2753,7 +2753,7 @@ SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatri
   TYPE (SplittedMatrixT), POINTER, OPTIONAL :: SplittedMatrix
 
 
-  CHARACTER(*), PARAMETER :: Caller = 'HypreSolver' 
+  CHARACTER(*), PARAMETER :: Caller = 'PermonSolver' 
 
 #ifndef HAVE_PERMON
   CALL Fatal(Caller,'Permon requested but the library is not linked in!')
@@ -2936,7 +2936,7 @@ SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatri
   CALL SParIterActiveBarrier()
   DEALLOCATE( Owner, Aperm )
 
-  CALL Info(Caller,'Finished solving linear system with HYPRE',Level=12)
+  CALL Info(Caller,'Finished solving linear system with PERMON',Level=12)
 
 
 !CONTAINS

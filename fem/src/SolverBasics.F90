@@ -70,6 +70,7 @@ MODULE SolverBasics
    ! Additional subroutines made visible but not used here:
    USE MatrixAssembly, ONLY: ZeroRow, MoveRow, SetMatrixElement
    USE MatrixScaling, ONLY : ScaleLinearSystemVectors
+   USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_LOC
 
    IMPLICIT NONE
    ! Not re-exported: the external procedure itself USEs modules that would
@@ -1241,24 +1242,36 @@ CONTAINS
            IF(ASSOCIATED(Var % LowerLimit)) THEN
              IF(SIZE(Var % LowerLimit) /= totsize) THEN
                DEALLOCATE(Var % LowerLimit)
+#ifdef HAVE_PERMON
+               Var % LowerLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED(Var % LowerLimit ) ) THEN
              CALL Info(Caller,'Allocating LowerLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % LowerLimit( totsize ) )
              Var % LowerLimit = -bigval
+#ifdef HAVE_PERMON
+             Var % LowerLimit_cptr = C_LOC( Var % LowerLimit(1) )
+#endif
            END IF
            LimitValues => Var % LowerLimit
          ELSE
            IF(ASSOCIATED(Var % UpperLimit)) THEN
              IF(SIZE(Var % UpperLimit) /= totsize) THEN
                DEALLOCATE(Var % UpperLimit)
+#ifdef HAVE_PERMON
+               Var % UpperLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED( Var % UpperLimit ) ) THEN
              CALL Info(Caller,'Allocating UpperLimit for variable: '//TRIM(Name),Level=10)
              ALLOCATE( Var % UpperLimit( totsize ) )
              Var % UpperLimit = bigval
+#ifdef HAVE_PERMON
+             Var % UpperLimit_cptr = C_LOC( Var % UpperLimit(1) )
+#endif
            END IF
            LimitValues => Var % UpperLimit
          END IF
