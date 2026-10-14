@@ -115,7 +115,7 @@ FUNCTION PlatiseFerroModel( model, n, B ) RESULT( H )
       B_ii_    = SUM( Bs*Hm_sqr*HHm_sqrt/(HHm_sqr**2) ) + u0
       H        = H - B_ii / B_ii_
 
-      IF (ISNAN(H)) THEN
+      IF (IsNaN(H)) THEN
         CALL Fatal('PlatiseFerroModel', 'Inverse of Double Term Method diverged')
       END IF
       IF (ABS(B_ii) < tol_abs) THEN
