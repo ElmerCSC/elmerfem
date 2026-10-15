@@ -6089,6 +6089,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
       IF( niter > 1 ) THEN
         CALL Info(Caller,'Changing the equation to residual based mode',Level=10)
         ALLOCATE( Res(SIZE(CollectionSolution)) )
+        ! The previous solution has been rotated back to the Cartesian components,
+        ! so move it to the N-T coordinate system of the matrix before computing
+        ! the residual.
+        IF (ASSOCIATED(Solver % Variable % Perm)) &
+            CALL RotateNTSystemAll(CollectionSolution, Solver % Variable % Perm, DOFs)
         CALL LinearSystemResidual( CollectionMatrix, CollectionVector, CollectionSolution, res )
         CollectionVector = Res
         CollectionSolution = 0.0_dp
