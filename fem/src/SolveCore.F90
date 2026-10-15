@@ -5616,13 +5616,15 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:), AddVector(:)
   REAL(KIND=dp), POINTER  :: MultiplierValues(:), pSol(:),DiagScaling(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
+  REAL(KIND=dp), ALLOCATABLE :: PrevSolution(:)
+  TYPE(Variable_t), POINTER :: NodalLoads
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows
   INTEGER :: i, j, k, l, m, n, p,q, ix, Loop, colj, nIter
   TYPE(Variable_t), POINTER :: MultVar, iterV
   REAL(KIND=dp) :: scl, rowsum, Relax, val
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
       NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
-      SkipConstraints, ResidualMode
+      SkipConstraints, ResidualMode, BackRotation, SkipLoads, CalcLoads
   INTEGER, POINTER :: UseIPerm(:), UsePerm(:)
   REAL(KIND=dp), POINTER :: UseDiag(:)
   LOGICAL  :: Parallel, UseTreeGauge, NeedMassDampValues, DoOwnScaling
@@ -5670,6 +5672,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   EliminateConstraints = ListGetLogical( Params, 'Eliminate Linear Constraints', Found)
 
   NumberOfRows = StiffMatrix % NumberOfRows
+  IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
+  IF(ASSOCIATED(RestMatrix)) THEN
+    IF(.NOT.EliminateConstraints) NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
+  END IF
 
   CollectionMatrix => StiffMatrix % CollectionMatrix
   Refactorize = ListGetLogical(Params,'Linear System Refactorize',Found)
@@ -5677,11 +5683,22 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     Refactorize = .NOT. ( ResidualMode .AND. nIter > 1)
   END IF
 
+  IF(ASSOCIATED(CollectionMatrix) .AND. .NOT. Refactorize .AND. .NOT. NotExplicit) THEN
+    ! The previous matrix can be reused only if the size of the system has not
+    ! changed (e.g. the number of constraints may change in contact problems).
+    IF( CollectionMatrix % NumberOfRows /= NumberOfRows ) THEN
+      CALL Info(Caller,'The size of the system has changed, previous collection matrix cannot be kept',&
+          Level=8)
+      Refactorize = .TRUE.
+    END IF
+  END IF
+
   IF(ASSOCIATED(CollectionMatrix)) THEN
     IF(Refactorize .AND. .NOT.NotExplicit) THEN
       CALL Info( Caller,'Freeing previous collection matrix structures',Level=10)
       CALL FreeMatrix(CollectionMatrix)
       CollectionMatrix => NULL()
+      StiffMatrix % CollectionMatrix => NULL()
       CALL Info( Caller,'Refactoring requested, creating fully new matrix',Level=10)
     ELSE
       CALL Info( Caller,'Trying to keep previous collection matrix structures',Level=10)
@@ -5703,12 +5720,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     END IF
   END IF
   IF(NotExplicit) CollectionMatrix % ConstraintMatrix => StiffMatrix % ConstraintMatrix
-
-  NumberOfRows = StiffMatrix % NumberOfRows
-  IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
-  IF(ASSOCIATED(RestMatrix)) THEN
-    IF(.NOT.EliminateConstraints) NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
-  END IF
 
   ALLOCATE( CollectionMatrix % RHS( NumberOfRows ), &
        CollectionSolution( NumberOfRows ), STAT = istat )
@@ -6094,6 +6105,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
         ! the residual.
         IF (ASSOCIATED(Solver % Variable % Perm)) &
             CALL RotateNTSystemAll(CollectionSolution, Solver % Variable % Perm, DOFs)
+        ALLOCATE( PrevSolution(StiffMatrix % NumberOfRows) )
+        PrevSolution = CollectionSolution(1:StiffMatrix % NumberOfRows)
         CALL LinearSystemResidual( CollectionMatrix, CollectionVector, CollectionSolution, res )
         CollectionVector = Res
         CollectionSolution = 0.0_dp
@@ -6123,7 +6136,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   IF(DoOwnScaling) THEN
     CALL Info(Caller,'Performing special scaling with constraints',Level=10)
     DiagScaling => CollectionMatrix % DiagScaling
-    IF(Niter == 1 ) THEN
+    ! The scaling is kept as long as the matrix is kept.
+    IF(Niter == 1 .OR. .NOT. ASSOCIATED(DiagScaling) ) THEN
       IF(.NOT. ASSOCIATED(DiagScaling) ) THEN
         ALLOCATE( DiagScaling(SIZE(CollectionVector)))
         CollectionMatrix % DiagScaling => DiagScaling
@@ -6156,8 +6170,18 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
   CALL Info(Caller,'Now solving the linear system with constraints!',Level=10)
   Collectionmatrix % DGMatrix = StiffMatrix %  DGMatrix
 
+  ! The nodal loads and the back rotation of N-T components must be done for
+  ! the complete (unscaled) solution, so they are done here later.
+  BackRotation = ListGetLogical(Params,'Back Rotate N-T Solution',Found,DefValue=.TRUE.)
+  SkipLoads = ListGetLogical(Params,'Linear System Skip Loads',Found)
+  CALL ListAddLogical(Params,'Back Rotate N-T Solution',.FALSE.)
+  CALL ListAddLogical(Params,'Linear System Skip Loads',.TRUE.)
+
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
      CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
+
+  CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRotation)
+  CALL ListAddLogical(Params,'Linear System Skip Loads',SkipLoads)
 
 
   IF(DoOwnScaling) THEN
@@ -6213,11 +6237,36 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
 
     j = StiffMatrix % NumberOfRows
 
-    IF( ResidualMode .AND. nIter > 1) THEN
-      Solution(1:j) = Solution(1:j) + CollectionSolution(1:j)
-    ELSE
-      Solution(1:j) = CollectionSolution(1:j)
+    IF( ALLOCATED(PrevSolution) ) THEN
+      CollectionSolution(1:j) = PrevSolution(1:j) + CollectionSolution(1:j)
+      DEALLOCATE(PrevSolution)
     END IF
+
+    NodalLoads => NULL()
+    IF(.NOT. SkipLoads ) THEN
+      NodalLoads => VariableGet( Solver % Mesh % Variables, &
+          GetVarName(Solver % Variable) // ' Loads' )
+      IF( ASSOCIATED( NodalLoads ) ) THEN
+        CalcLoads = ListGetLogical( Params,'Calculate Loads',Found )
+        IF( .NOT. Found ) CalcLoads = .TRUE.
+        IF( CalcLoads ) THEN
+          CALL Info(Caller,'Calculating nodal loads for: '//&
+              GetVarName(Solver % Variable),Level=6)
+          CALL CalculateLoads( Solver, StiffMatrix, CollectionSolution, DOFs, .TRUE., NodalLoads )
+        ELSE
+          NodalLoads => NULL()
+        END IF
+      END IF
+    END IF
+
+    IF( BackRotation .AND. ASSOCIATED(Solver % Variable % Perm) ) THEN
+      CALL BackRotateNTSystem( CollectionSolution, Solver % Variable % Perm, DOFs )
+      IF( ASSOCIATED( NodalLoads ) ) THEN
+        CALL BackRotateNTSystem( NodalLoads % Values, NodalLoads % Perm, DOFs )
+      END IF
+    END IF
+
+    Solution(1:j) = CollectionSolution(1:j)
 
     IF ( ExportMultiplier ) THEN
       CALL Info(Caller,'Separating Lagrange multiplier from collection solution',Level=10)
