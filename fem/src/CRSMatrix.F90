@@ -724,7 +724,7 @@ CONTAINS
                                           !! (to matrix rows and columns, if Dofs = 1)
      REAL(KIND=dp), OPTIONAL, TARGET :: GlobalValues(:)
 !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,l,c,Row,Col
+     INTEGER :: i,j,k,l,c,cp,Row,Col
      REAL(KIND=dp), POINTER :: Values(:)
      INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
@@ -764,15 +764,25 @@ CONTAINS
              Row  = Dofs * Indeces(i) - k
              IF ( Diag(Row) <= 0)  CYCLE
              DO j=1,N
+                cp = 0
                 DO l=0,Dofs-1
                    IF ( Indeces(j) <= 0 ) CYCLE
                    Col  = Dofs * Indeces(j) - l
-                   IF ( Col >= Row ) THEN
-                     c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
-                   ELSE
-                     c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+                   ! A node's columns are adjacent in the row, so try the slot
+                   ! next to the previous hit before searching.
+                   c = 0
+                   IF ( cp > Rows(Row) ) THEN
+                     IF ( Cols(cp-1)==Col ) c = cp-1
+                   END IF
+                   IF ( c == 0 ) THEN
+                     IF ( Col >= Row ) THEN
+                       c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
+                     ELSE
+                       c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+                     END IF
                    END IF
                    IF (c > 0) THEN
+                     cp = c
 !$omp atomic
                      Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
                    END IF
