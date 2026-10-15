@@ -544,11 +544,15 @@ FUNCTION RecurEvalCurve(rc, B) result (H) ! {{{
   CLASS(RevCurve_t), POINTER :: rc_p
   real(kind=dp) :: H
   integer :: d
+  PROCEDURE(SimpleEvalRevCurve), POINTER :: eval_fn
 
   rc_p => rc
   d = rc_p % depth
   rc_p => RecurseDepth(rc_p, B)
-  H = rc_p % simple_eval(B)
+  ! Portable fix: extract procedure pointer and call directly (no % syntax)
+  ! so neither gfortran nor nvfortran adds an implicit pass-object.
+  eval_fn => rc_p % simple_eval
+  H = eval_fn(rc_p, B)
 
 END FUNCTION ! }}}
 
@@ -623,6 +627,10 @@ SUBROUTINE AddStack(parent, master, B) ! {{{
   !-------------------------------------------------------------------------------
   real(KIND=dp) :: HMAsc, HMDesc, Hpp, hp, dBout
   integer :: d, d_add
+  ! Hoisted from BLOCK to avoid GCC 11 ICE in lower_nested_functions
+  ! (GCC 11 segfaults on PROCEDURE pointers inside BLOCK in subroutines with CONTAINS)
+  CLASS(RevCurve_t), POINTER :: tmp
+  PROCEDURE(SimpleEvalRevCurve), POINTER :: eval_fn
 
   ! TODO: This looks weird
   ! print *, 'recurse: ', parent % depth
@@ -672,8 +680,14 @@ SUBROUTINE AddStack(parent, master, B) ! {{{
   x % dBrev = x%Bq - x%Bp
   dBout = x % Bq - parent % parent % Bp
   call master % ABCparams % GetABC(abs(dBout), abs(x % dBrev), x%a, x%b, x%c)
-  Hpp = x % parent % parent % simple_eval(B)
-  Hp = x % parent % simple_eval(B)
+  ! Portable fix: extract procedure pointer and call directly (no % syntax)
+  ! so neither gfortran nor nvfortran adds an implicit pass-object.
+  tmp => x % parent % parent
+  eval_fn => tmp % simple_eval
+  Hpp = eval_fn(tmp, B)
+  tmp => x % parent
+  eval_fn => tmp % simple_eval
+  Hp = eval_fn(tmp, B)
   x % dHrev = Hpp - Hp;
   ! parent => x
   master % head  => x
@@ -747,19 +761,29 @@ SUBROUTINE rc_printeval(rc, B, rc0) ! {{{
   real(kind=dp) :: X, X0
   class(revcurve_t), pointer :: rc_p, rc0_p
   integer :: k
+  PROCEDURE(SimpleEvalRevCurve), POINTER :: eval_fn, eval_fn0
   rc_p => rc
   if (present(rc0)) rc0_p => rc0
   k = rc_p % depth
   do while (.not. associated(rc_p, rc_p % parent % parent))
-    if(present(rc0)) X0 = rc0_p % simple_eval(B)
-    X = rc_p % simple_eval(B)
+    ! Portable fix: extract procedure pointer and call directly.
+    if(present(rc0)) THEN
+      eval_fn0 => rc0_p % simple_eval
+      X0 = eval_fn0(rc0_p, B)
+    END IF
+    eval_fn => rc_p % simple_eval
+    X = eval_fn(rc_p, B)
     if (present(rc0)) print *, X, X0, X-X0
     if (.not. present(rc0)) print *, X, rc_p % depth ! , c_loc(rc_p), c_loc(rc_p % parent)
     rc_p => rc_p % parent
     if(present(rc0)) rc0_p => rc0_p % parent
   end do
-  X = rc_p % simple_eval(B)
-  if(present(rc0)) X0 = rc0_p % simple_eval(B)
+  eval_fn => rc_p % simple_eval
+  X = eval_fn(rc_p, B)
+  if(present(rc0)) THEN
+    eval_fn0 => rc0_p % simple_eval
+    X0 = eval_fn0(rc0_p, B)
+  END IF
   if (present(rc0)) print *, X, X0, X-X0
   if (.not. present(rc0)) print *, X, rc_p % depth ! , c_loc(rc_p), c_loc(rc_p % parent)
 END SUBROUTINE rc_printeval ! }}}

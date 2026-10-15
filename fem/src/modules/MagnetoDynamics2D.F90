@@ -312,7 +312,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
 
-    CALL SetMagneticFluxDensityBC()
+    CALL SetMagneticFluxDensityBC(Solver, Mesh)
     CALL DefaultDirichletBCs()
 
     IF( ListGetLogical( SolverParams,'Constant Mass Matrix',Found ) ) THEN
@@ -1580,7 +1580,7 @@ END SUBROUTINE ! }}}
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SetMagneticFluxDensityBC()
+  SUBROUTINE SetMagneticFluxDensityBC(LSolver, LMesh)
 !------------------------------------------------------------------------------
 ! P. Lombard, G. Meunier, "A general purpose method for electric and magnetic
 ! combined problems for 2D, axisymmetric and transient systems", IEEE Trans.
@@ -1588,19 +1588,21 @@ END SUBROUTINE ! }}}
 ! -ettaka-
 !------------------------------------------------------------------------------
     IMPLICIT NONE
+    TYPE(Solver_t) :: LSolver
+    TYPE(Mesh_t), POINTER :: LMesh
     TYPE(Matrix_t), POINTER :: A
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), POINTER :: b(:)
     INTEGER :: i, n, j, k
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
-    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementDofs), &
-        By(Solver % Mesh % MaxElementDofs)
+    REAL(KIND=dp), ALLOCATABLE :: Bx(:), By(:)
     REAL(KIND=dp) :: x, y
     INTEGER, POINTER :: Perm(:)
 
-    Perm => Solver % Variable % Perm
-    A => Solver % Matrix
+    ALLOCATE(Bx(LSolver % Mesh % MaxElementDofs), By(LSolver % Mesh % MaxElementDofs))
+    Perm => LSolver % Variable % Perm
+    A => LSolver % Matrix
     b => A % RHS
 
     DO i=1,GetNofBoundaryElements()
@@ -1617,8 +1619,8 @@ END SUBROUTINE ! }}}
 
           DO j = 1,n
             k = Element % NodeIndexes(j)
-            x = Mesh % Nodes % x(k)
-            y = Mesh % Nodes % y(k)
+            x = LMesh % Nodes % x(k)
+            y = LMesh % Nodes % y(k)
             k = Perm(k)
 
             CALL UpdateDirichletDof( A, k, y * Bx(j) - x * By(j) )
@@ -1843,7 +1845,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
 
-    CALL SetMagneticFluxDensityBC()
+    CALL SetMagneticFluxDensityBC(Solver, Mesh)
     CALL DefaultDirichletBCs()
     Norm = DefaultSolve()
 
@@ -2732,7 +2734,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SetMagneticFluxDensityBC()
+  SUBROUTINE SetMagneticFluxDensityBC(LSolver, LMesh)
 !------------------------------------------------------------------------------
 ! P. Lombard, G. Meunier, "A general purpose method for electric and magnetic
 ! combined problems for 2D, axisymmetric and transient systems", IEEE Trans.
@@ -2740,21 +2742,22 @@ CONTAINS
 ! -ettaka-
 !------------------------------------------------------------------------------
     IMPLICIT NONE
+    TYPE(Solver_t) :: LSolver
+    TYPE(Mesh_t), POINTER :: LMesh
     TYPE(Matrix_t), POINTER :: A
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), POINTER :: b(:)
     INTEGER :: i, n, j, k
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
-    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementDofs), &
-                      Bxim(Solver % Mesh % MaxElementDofs), &
-                      By(Solver % Mesh % MaxElementDofs), &
-                      Byim(Solver % Mesh % MaxElementDofs)
+    REAL(KIND=dp), ALLOCATABLE :: Bx(:), Bxim(:), By(:), Byim(:)
     REAL(KIND=dp) :: x, y
     INTEGER, POINTER :: Perm(:)
 
-    Perm => Solver % Variable % Perm
-    A => Solver % Matrix
+    ALLOCATE(Bx(LSolver % Mesh % MaxElementDofs), Bxim(LSolver % Mesh % MaxElementDofs), &
+             By(LSolver % Mesh % MaxElementDofs), Byim(LSolver % Mesh % MaxElementDofs))
+    Perm => LSolver % Variable % Perm
+    A => LSolver % Matrix
     b => A % RHS
     DO i=1,GetNofBoundaryElements()
       Element => GetBoundaryElement(i)
@@ -2774,8 +2777,8 @@ CONTAINS
 
           DO j = 1,n
             k = Element % NodeIndexes(j)
-            x = Mesh % Nodes % x(k)
-            y = Mesh % Nodes % y(k)
+            x = LMesh % Nodes % x(k)
+            y = LMesh % Nodes % y(k)
             k = Perm(k)
 
             CALL UpdateDirichletDof( A, 2*k-1, y * Bx(j) - x * By(j) )
@@ -3075,6 +3078,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
+#ifdef __NVCOMPILER
+    USE IEEE_ARITHMETIC, ONLY : ISNAN => IEEE_IS_NAN
+#endif
 
     INTEGER :: elem,t,i,j,k,p,q,n,nd,BodyId
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
