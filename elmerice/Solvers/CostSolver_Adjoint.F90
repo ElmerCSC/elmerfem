@@ -102,7 +102,7 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
   real(kind=dp) :: Bu,Bv,u,v,w,s,coeff,SqrtElementMetric,x
   REAL(KIND=dp) :: NodeCost(Model % MaxElementNodes),Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
   REAL(KIND=dp) :: NodeCostb(Model % MaxElementNodes),NodeCost_der(3,Model %MaxElementNodes)
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
   save Firsttime,Parallel 
   save SolverName,CostSolName,VarSolName,Lambda,CostFile
