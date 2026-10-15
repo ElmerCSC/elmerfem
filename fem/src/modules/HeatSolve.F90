@@ -1030,6 +1030,7 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
+    USE DefUtils, ONLY: GetStringThreadSafe, GaussPointsAdapt
     USE Differentials, ONLY: JouleHeat
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE
@@ -1940,6 +1941,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
+    USE DefUtils, ONLY: GetStringThreadSafe, GaussPointsAdapt
     USE Differentials, ONLY: JouleHeat
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE

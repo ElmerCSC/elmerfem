@@ -105,9 +105,29 @@ CONTAINS
     ! The environment is built for this matrix and owned by it. Aim > ParEnv <
     ! at it while ParEnvInit determines the active partitions and the
     ! neighbours, see SetMatrixParEnv().
-    SParMatrixDesc % ParEnv = ParEnv
+    ! nvhpc ICE workaround: structure assignment of a derived type with
+    ! pointer array components triggers "Lowering Error" in the compiler backend.
+    ! Copy scalar fields explicitly; Active and IsNeighbour are handled below.
+    SParMatrixDesc % ParEnv % PEs             = ParEnv % PEs
+    SParMatrixDesc % ParEnv % MyPE            = ParEnv % MyPE
+    SParMatrixDesc % ParEnv % Initialized     = ParEnv % Initialized
+    SParMatrixDesc % ParEnv % ActiveComm      = ParEnv % ActiveComm
+    SParMatrixDesc % ParEnv % NumOfNeighbours = ParEnv % NumOfNeighbours
+    SParMatrixDesc % ParEnv % NumberOfThreads = ParEnv % NumberOfThreads
+    SParMatrixDesc % ParEnv % ExternalInit    = ParEnv % ExternalInit
+
     ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
-    SParMatrixDesc % ParEnv % Active = ParEnv % Active
+    ! nvhpc ICE workaround: whole-array assignment of a DIMENSION(:),POINTER
+    ! component triggers "array upper bound is not a symbol" Lowering Error.
+    ! SIZE() produces a concrete integer symbol the compiler backend can handle.
+    BLOCK
+      INTEGER :: npes
+      INTEGER :: i
+      npes = SIZE(ParEnv % Active)
+      DO i = 1, npes
+        SParMatrixDesc % ParEnv % Active(i) = ParEnv % Active(i)
+      END DO
+    END BLOCK
     SParMatrixDesc % ParEnv % IsNeighbour => Null()
     ParEnv => SParMatrixDesc % ParEnv
 
@@ -3336,10 +3356,16 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 
   ! Local variables
 
-  INTEGER :: i, j, k, i1, i2, j1, j2, ind, ind1, ind2, DRows, DCols, row, col
+  ! nvhpc ICE workaround: nrows2 is a plain local scalar used instead
+  ! of Smat2 % NumberOfRows as an array bound; derived-type component accesses
+  ! as bounds trigger "array numelm is not a symbol" Lowering Error.
+  INTEGER :: i, j, k, i1, i2, j1, j2, ind, ind1, ind2, DRows, DCols, row, col, nrows2
 
-  INTEGER, POINTER :: cols(:)
-  LOGICAL, POINTER :: done(:)
+  ! nvhpc ICE workaround: ALLOCATE of a POINTER(:) with a non-trivial
+  ! extent expression triggers "array numelm is not a symbol" Lowering Error.
+  ! ALLOCATABLE has the same semantics here and avoids the compiler bug.
+  INTEGER, ALLOCATABLE :: cols(:)
+  LOGICAL, ALLOCATABLE :: done(:)
 
   !*******************************************************************
 
@@ -3349,31 +3375,47 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
 
   ELSE IF ( SMat1 % NumberOfRows == 0 ) THEN
 
-     ALLOCATE( DMat % Rows(  SMat2 % NumberOfRows + 1) )
-     ALLOCATE( DMat % GRows( SMat2 % NumberOfRows ) )
-     ALLOCATE( DMat % RowOwner( SMat2 % NumberOfRows ) )
-     ALLOCATE( DMat % Cols( SMat2 % Rows(SMat2 % NumberOfRows + 1)-1 ) )
-
-     DMat % NumberOfRows = SMat2 % NumberOfRows
-     DMat % Rows = SMat2 % Rows(1:SMat2 % NumberOfRows+1)
-     DMat % GRows = SMat2 % GRows(1:SMat2 % NumberOfRows)
-     DMat % Cols = SMat2 % Cols(1:SIZE(DMat % Cols))
-     DMat % RowOwner = SMat2 % RowOwner(1:SMat2 % NumberOfRows)
+     ! nvhpc ICE workaround: whole-array assignments to derived-type
+     ! POINTER array components trigger "array numelm" Lowering Error.
+     ! Use local scalars and element-wise loops instead.
+     nrows2 = SMat2 % NumberOfRows
+     ALLOCATE( DMat % Rows(  nrows2 + 1) )
+     ALLOCATE( DMat % GRows( nrows2 ) )
+     ALLOCATE( DMat % RowOwner( nrows2 ) )
+     ALLOCATE( DMat % Cols( SMat2 % Rows(nrows2 + 1)-1 ) )
+     DMat % NumberOfRows = nrows2
+     DO i = 1, nrows2+1
+       DMat % Rows(i) = SMat2 % Rows(i)
+     END DO
+     DO i = 1, nrows2
+       DMat % GRows(i)    = SMat2 % GRows(i)
+       DMat % RowOwner(i) = SMat2 % RowOwner(i)
+     END DO
+     DO i = 1, SIZE(DMat % Cols)
+       DMat % Cols(i) = SMat2 % Cols(i)
+     END DO
 
      RETURN
 
   ELSE IF ( SMat2 % NumberOfRows == 0 ) THEN
 
-     ALLOCATE( DMat % Rows( SMat1 % NumberOfRows + 1) )
-     ALLOCATE( DMat % GRows( SMat1 % NumberOfRows ) )
-     ALLOCATE( DMat % RowOwner( SMat1 % NumberOfRows ) )
-     ALLOCATE( DMat % Cols( SMat1 % Rows(SMat1 % NumberOfRows + 1)-1 ) )
-
-     DMat % NumberOfRows = SMat1 % NumberOfRows
-     DMat % Rows = SMat1 % Rows(1:SMat1 % NumberOfRows+1)
-     DMat % GRows = SMat1 % GRows(1:SMat1 % NumberOfRows)
-     DMat % Cols = SMat1 % Cols(1:SIZE(DMat % Cols))
-     DMat % RowOwner = SMat1 % RowOwner(1:SMat1 % NumberOfRows)
+     ! nvhpc ICE workaround: same as above for SMat1 branch.
+     nrows2 = SMat1 % NumberOfRows
+     ALLOCATE( DMat % Rows( nrows2 + 1) )
+     ALLOCATE( DMat % GRows( nrows2 ) )
+     ALLOCATE( DMat % RowOwner( nrows2 ) )
+     ALLOCATE( DMat % Cols( SMat1 % Rows(nrows2 + 1)-1 ) )
+     DMat % NumberOfRows = nrows2
+     DO i = 1, nrows2+1
+       DMat % Rows(i) = SMat1 % Rows(i)
+     END DO
+     DO i = 1, nrows2
+       DMat % GRows(i)    = SMat1 % GRows(i)
+       DMat % RowOwner(i) = SMat1 % RowOwner(i)
+     END DO
+     DO i = 1, SIZE(DMat % Cols)
+       DMat % Cols(i) = SMat1 % Cols(i)
+     END DO
      RETURN
 
   END IF
@@ -3407,8 +3449,13 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
   !----------------------------------------------------------------------
 
   row = 1; col = 1; i1 = 1; i2 = 1
-  ALLOCATE( Done( Smat2 % NumberOfRows ) )
-  done = .FALSE.
+  ! nvhpc ICE workaround: any whole-array assignment to an ALLOCATABLE
+  ! triggers "array numelm is not a symbol" Lowering Error. Use a scalar loop.
+  nrows2 = Smat2 % NumberOfRows
+  ALLOCATE( Done( nrows2 ) )
+  DO i = 1, nrows2
+    Done(i) = .FALSE.
+  END DO
 
   DO WHILE ( i1 <= SMat1 % NumberOfRows .OR. &
              i2 <= SMat2 % NumberOfRows )
