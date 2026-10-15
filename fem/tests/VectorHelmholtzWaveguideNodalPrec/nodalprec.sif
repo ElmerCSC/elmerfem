@@ -114,11 +114,11 @@ Solver 2
   Linear system abort not converged = false
   Linear System Residual Output = 10
 
-  Linear System Scaling = False
+  Linear System Scaling = True
   Optimize Bandwidth = False
 
-  Linear System Solver = Direct
-  Linear System Direct Method = mumps
+!  Linear System Solver = Direct
+!  Linear System Direct Method = mumps
 
 ! Essential for performance!
   No Precondition Recompute = True
@@ -151,8 +151,8 @@ Solver 3
   Linear System Scaling = True
   Optimize Bandwidth = False
 
-  Linear System Solver = Direct
-  Linear System Direct Method = mumps 
+!  Linear System Solver = Direct
+!  Linear System Direct Method = mumps 
 
 ! Essential for performance!
   No Precondition Recompute = True

@@ -1118,7 +1118,7 @@
     LOGICAL :: Found, ScaleRHS, DoMask, Additive
     CHARACTER(MAX_NAME_LEN) :: str
     INTEGER :: SlaveInd, SlaveMaxCnt, AmsCycleType, PrecIndMax, PrecInd, SmoothCnt 
-    INTEGER :: n, m, i, DOFs
+    INTEGER :: n, m, i, j, DOFs
     INTEGER, SAVE :: SlaveCnt = 0
     
 !-------------------------------------------------------------------------------
@@ -1190,18 +1190,7 @@
     END IF
     res => pVar % Values
 
-    IF( ParEnv % PEs > 1 ) THEN
-      ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs).
-      !res(1:n) = v(1:n)
-      m = 0
-      DO i=1,n
-        IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) m=m+1
-      END DO
-      res = 0
-      CALL PartitionVector( Amat, res, v(1:m) )
-    ELSE
-      res(1:n) = v(1:n)
-    END IF
+    CALL ShortRealToLongReal(v,res,m)
 
     str = ListGetString( Params,'Preconditioning Update',UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
@@ -1221,7 +1210,8 @@
     
     ALLOCATE(r(n))
     IF( ParEnv % PEs > 1 ) ALLOCATE(zshort(m), rshort(m))
-
+    NULLIFY(z)
+    
     ! If we have more than one precondioning solvers assume that they are additive.
     !------------------------------------------------------------------------------
     DO PrecInd = 1, PrecIndMax
@@ -1244,14 +1234,6 @@
       
       IF( SlaveInd == 0 ) THEN
         CALL TailoredSmooth(dx,res)
-        ! MGSmooth only updates dx at owned rows; broadcast the fresh value to
-        ! every partition holding a non-owned copy, or it stays frozen at
-        ! whatever it was before this sweep.
-        IF( ParEnv % PEs > 1 ) THEN
-          CALL ParallelVector( Amat, zshort, dx )
-          CALL PartitionVector( Amat, dx, zshort )
-          CALL ParallelSumVector( Amat, dx )
-        END IF
       ELSE
         IF (ScaleRHS) THEN
           ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
@@ -1301,7 +1283,6 @@
           res(1:n) = res(1:n) - r(1:n)
         ELSE
           CALL MatrixVectorMultiply(Amat, z, r)
-!          res(1:n) = res(1:n) - r(1:n)
           res(1:n) = v(1:n) - r(1:n)
         END IF
       END IF
@@ -1313,11 +1294,7 @@
     ! At final solver revert the cumulative solution back to origonal vectors.
     IF(PrecIndMax > 1) THEN
       dx(1:n) = z(1:n)
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL PartitionVector( Amat, res, v(1:m) )
-      ELSE
-        res(1:n) = v(1:n)
-      END IF
+      CALL ShortRealToLongReal(v,res)
       DEALLOCATE(z)
     END IF
 
@@ -1330,7 +1307,36 @@
 
   CONTAINS
 
+    SUBROUTINE ShortRealToLongReal(v,res,m)
+      REAL(KIND=dp) v(*)
+      REAL(KIND=dp) :: res(:)
+      INTEGER, OPTIONAL :: m
 
+      INTEGER :: i,j,n
+      
+      n = Amat % NumberOfRows
+      
+      IF( ParEnv % PEs > 1 ) THEN
+        ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs).
+        !res(1:n) = v(1:n)
+        j = 0
+        DO i=1,n
+          IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) THEN
+            j=j+1
+            res(i) = v(j)
+          ELSE
+            res(i) = 0.0_dp
+          END IF
+        END DO        
+      ELSE
+        res(1:n) = v(1:n)
+        j = n
+      END IF
+      IF(PRESENT(m)) m = j
+      
+    END SUBROUTINE ShortRealToLongReal
+      
+    
     SUBROUTINE ExperimentalStuff(dx,res)
       REAL(KIND=dp) :: dx(:), res(:)
       REAL(KIND=dp) :: rn, bn
@@ -1378,6 +1384,15 @@
         RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SmoothCnt, dofs )
       END IF
 
+      ! MGSmooth only updates dx at owned rows; broadcast the fresh value to
+      ! every partition holding a non-owned copy, or it stays frozen at
+      ! whatever it was before this sweep.
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL ParallelVector( Amat, zshort, dx )
+        CALL PartitionVector( Amat, dx, zshort )
+        CALL ParallelSumVector( Amat, dx )
+      END IF
+      
     END SUBROUTINE TailoredSmooth
 
 
@@ -1407,14 +1422,14 @@
     ! Complex views of the interleaved (Re,Im) reals behind res and dx, so that
     ! the transfers to and from the complex vectors v and u are contiguous
     ! copies rather than pairs of stride-2 gathers and scatters.
-    COMPLEX(KIND=dp), POINTER :: cres(:), cdx(:)
-    INTEGER, POINTER :: PrecSolvers(:), TmpArray(:)
+    REAL(KIND=dp), ALLOCATABLE :: zshort(:), rshort(:)
+    INTEGER, POINTER :: PrecSolvers(:), TmpArray(:) 
     INTEGER, ALLOCATABLE :: AmsCycle(:)
     REAL(KIND=dp) :: rnorm
     LOGICAL :: Found, ScaleRHS, Additive
     CHARACTER(MAX_NAME_LEN) :: str
     INTEGER :: SlaveInd, SlaveMaxCnt, PrecInd, PrecIndMax, AmsCycleType, SmoothCnt, SolveInd
-    INTEGER :: i, n, DOFs
+    INTEGER :: i, n, m, DOFs
 !-------------------------------------------------------------------------------
 
     Solver => CurrentModel % Solver
@@ -1483,9 +1498,8 @@
     END IF
 
     res => pVar % Values
-    cres => ComplexVariableValues( pVar )
-    cres(1:n/2) = v(1:n/2)
-
+    CALL CmplxShortToRealLong(v,res,m)
+        
     str = ListGetString( Params,'Preconditioning Update', UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
@@ -1496,7 +1510,6 @@
       CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
     END IF
     dx => pVar % Values
-    cdx => ComplexVariableValues( pVar )
 
     ! Check whether the residual corresponds to a scaled linear system
     ScaleRHS = ListGetLogical(Params, 'Linear System Scaling', Found, DefValue = .TRUE.)
@@ -1505,6 +1518,7 @@
     SmoothCnt = 0
      
     ALLOCATE(r(n))
+    IF( ParEnv % PEs > 1 ) ALLOCATE(zshort(m), rshort(m))
     NULLIFY(z)
     
     ! If we have more than one precondioning solvers assume that they are additive.
@@ -1528,9 +1542,7 @@
       dx(1:n) = 0.0_dp
 
       IF( SlaveInd == 0 ) THEN
-        ! This can deal with a separate independent smoother step
-        CALL TailoredSmoothZ(dx,res)
-                          
+        CALL TailoredSmoothZ(dx,res)        
       ELSE
         IF (ScaleRHS) THEN
           ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
@@ -1560,9 +1572,15 @@
       ! If the solution is multiplicative we need to modify the residual
       IF(.NOT. Additive .AND. PrecInd < PrecIndMax ) THEN 
         ! Calculate remaining residual by using the cumulative solution
-        r(1:n) = 0.0_dp
-        CALL MatrixVectorMultiply(Amat, z, r)
-        cres(1:n/2) = v(1:n/2)
+        r(1:n) = 0.0_dp        
+        IF( ParEnv % PEs > 1 ) THEN
+          CALL ParallelVector( Amat, zshort, z )
+          CALL SParMatrixVectorVals( zshort, rshort, .FALSE. )
+          CALL PartitionVector( Amat, r, rshort )
+        ELSE
+          CALL MatrixVectorMultiply(Amat, z, r)
+        END IF
+        CALL CmplxShortToRealLong(v,res)
         res(1:n) = res(1:n) - r(1:n)      
       END IF
     END DO
@@ -1570,17 +1588,83 @@
     DEALLOCATE(r)
 
     ! At final solver revert the cumulative solution back to origonal vectors.
-    IF(SlaveMaxCnt > 1) THEN
+    IF(PrecIndMax > 1) THEN
       dx(1:n) = z(1:n)
-      cres(1:n/2) = v(1:n/2)
+      CALL CmplxShortToRealLong(v,res)
       DEALLOCATE(z)
     END IF    
 
-    u(1:n/2) = cdx(1:n/2)
+    CALL RealLongToCmplxShort(u,dx)
 
   CONTAINS
 
+    SUBROUTINE CmplxShortToRealLong(v,res,m)
+      COMPLEX(KIND=dp) v(*)
+      REAL(KIND=dp) :: res(:)
+      INTEGER, OPTIONAL :: m
+      
+      INTEGER :: i,j,n
 
+      n = Amat % NumberOfRows
+      
+      IF( ParEnv % PEs > 1 ) THEN
+        ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs).
+        !res(1:n) = v(1:n)
+        j = 0
+        DO i=1,n
+          IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) THEN
+            j=j+1
+            IF(MOD(j,2)==1) THEN
+              res(i) = REAL(v((j+1)/2))
+            ELSE
+              res(i) = AIMAG(v((j+1)/2))
+            END IF
+          ELSE
+            res(i) = 0.0_dp
+          END IF
+        END DO
+      ELSE
+        DO i=1,n/2
+          res(2*i-1) = REAL(v(i))
+          res(2*i) = AIMAG(v(i))
+        END DO
+        j = n
+      END IF
+
+      IF(PRESENT(m)) m = j
+           
+    END SUBROUTINE CmplxShortToRealLong
+
+
+    SUBROUTINE RealLongToCmplxShort(v,res)
+      COMPLEX(KIND=dp) v(*)
+      REAL(KIND=dp) :: res(:)
+      
+      INTEGER :: i,j,n
+
+      n = Amat % NumberOfRows
+      
+      IF( ParEnv % PEs > 1 ) THEN
+        ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs).
+        j = 0
+        DO i=1,n/2
+          ! We assume same neighbours for "2*i-1" and "2*i" dofs.
+          IF( Amat % ParallelInfo % Neighbourlist(2*i-1) % Neighbours(1) == Parenv % Mype ) THEN
+            j=j+1
+            v(j)=CMPLX(res(2*i-1),res(2*i))
+          ELSE
+            v(j)=CMPLX(0.0_dp,0.0_dp)
+          END IF
+        END DO
+      ELSE
+        DO i=1,n/2
+          v(i) = CMPLX(res(2*i-1),res(2*i))
+        END DO
+      END IF
+
+    END SUBROUTINE RealLongToCmplxShort
+
+    
     SUBROUTINE ExperimentalStuffZ(dx,res)
       REAL(KIND=dp) :: dx(:), res(:)
       REAL(KIND=dp) :: rn, bnre, bnim
@@ -1611,6 +1695,8 @@
     END SUBROUTINE ExperimentalStuffZ
 
 
+    ! This is just to test that the suggested search direction is a good one.
+    ! Ideally we need to multiply by "1" to get minimum norm.
     SUBROUTINE TailoredSmoothZ(dx,res)
       REAL(KIND=dp) :: dx(:), res(:)
       LOGICAL :: DoMask
@@ -1639,9 +1725,14 @@
         RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SmoothCnt, dofs )
       END IF
 
-      ! This is just to test that the suggested search direction is a good one.
-      ! Ideally we need to multiply by "1" to get minimum norm.
-      CALL ExperimentalStuffZ(dx,res)
+      ! MGSmooth only updates dx at owned rows; broadcast the fresh value to
+      ! every partition holding a non-owned copy, or it stays frozen at
+      ! whatever it was before this sweep.
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL ParallelVector( Amat, zshort, dx )
+        CALL PartitionVector( Amat, dx, zshort )
+        CALL ParallelSumVector( Amat, dx )
+      END IF
       
     END SUBROUTINE TailoredSmoothZ
 
