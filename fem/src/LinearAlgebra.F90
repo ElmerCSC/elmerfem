@@ -892,6 +892,44 @@ MODULE LinearAlgebra
   END FUNCTION Det3x3
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> G(p,j) = sum_i dB(p,i) C(i,j) for p=1..n, i.e. the gradients of n basis
+!> functions contracted with a dim x dim tensor.
+!------------------------------------------------------------------------------
+  SUBROUTINE GradDotTensor( n, dim, dB, C, G )
+!------------------------------------------------------------------------------
+    INTEGER :: n, dim
+    REAL(KIND=dp), CONTIGUOUS :: dB(:,:), C(:,:), G(:,:)
+    INTEGER :: p, i, j
+!------------------------------------------------------------------------------
+    ! Written out for dim 2 and 3 because a run-time trip count keeps the
+    ! compiler from vectorising over p.
+    SELECT CASE( dim )
+    CASE( 3 )
+      DO p=1,n
+        G(p,1) = C(1,1)*dB(p,1) + C(2,1)*dB(p,2) + C(3,1)*dB(p,3)
+        G(p,2) = C(1,2)*dB(p,1) + C(2,2)*dB(p,2) + C(3,2)*dB(p,3)
+        G(p,3) = C(1,3)*dB(p,1) + C(2,3)*dB(p,2) + C(3,3)*dB(p,3)
+      END DO
+    CASE( 2 )
+      DO p=1,n
+        G(p,1) = C(1,1)*dB(p,1) + C(2,1)*dB(p,2)
+        G(p,2) = C(1,2)*dB(p,1) + C(2,2)*dB(p,2)
+      END DO
+    CASE DEFAULT
+      DO j=1,dim
+        DO p=1,n
+          G(p,j) = 0.0_dp
+          DO i=1,dim
+            G(p,j) = G(p,j) + C(i,j)*dB(p,i)
+          END DO
+        END DO
+      END DO
+    END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE GradDotTensor
+!------------------------------------------------------------------------------
+
   ! --------------------------------------------------
   !> Solve eigenvalues of a nonsymmetric matrix A(n,n)
   !> The matrix is modified in the process.
