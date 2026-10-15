@@ -35,6 +35,7 @@
 ! ****************************************************************************/
 
 #include "huti_fdefs.h"
+#include "../config.h"
 
 !> \ingroup ElmerLib
 !> \{
@@ -393,6 +394,8 @@ END FUNCTION MaskedNorm
 
     IF( nthr <= 1 ) THEN
       dres = 0
+      ! The masked and complex variants below do not vectorize as well, so they stay plain
+      !_ELMER_OMP_SIMD REDUCTION(+:dres)
       DO i=1,ndim
         dres = dres + x(i) * y(i)
       END DO
