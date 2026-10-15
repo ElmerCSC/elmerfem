@@ -231,9 +231,39 @@ MACRO(RUN_ELMER_TEST)
       ENDIF()
     ENDIF()
 
-    EXECUTE_PROCESS(COMMAND "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
-      OUTPUT_VARIABLE TEST_STDOUT_VARIABLE
-      ERROR_VARIABLE TEST_STDERR_VARIABLE)
+    # MS-MPI's mpiexec drives the job through a private smpd over RPC, and
+    # that channel intermittently fails on the Windows CI runners ("Failed to
+    # post close command error 1726" / "unable to tear down the job tree"),
+    # killing a solver run that had nothing wrong with it. A single task needs
+    # no launcher: MS-MPI programs start as a singleton without mpiexec, which
+    # takes smpd out of the picture for the bulk of the test suite.
+    IF(WIN32 AND MPIEXEC_NTASKS EQUAL 1)
+      SET(_elmer_cmd ${ELMERSOLVER_BIN})
+    ELSE()
+      SET(_elmer_cmd "${MPIEXEC}" ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS})
+    ENDIF()
+
+    # The multi-task tests still go through mpiexec, so a launcher failure of
+    # that exact kind is retried once. Nothing else is: a solver that crashes
+    # or misses its tolerance fails on the first attempt as before.
+    FOREACH(_attempt 1 2)
+      EXECUTE_PROCESS(COMMAND ${_elmer_cmd}
+        RESULT_VARIABLE TEST_RESULT_VARIABLE
+        OUTPUT_VARIABLE TEST_STDOUT_VARIABLE
+        ERROR_VARIABLE TEST_STDERR_VARIABLE)
+      IF(_attempt EQUAL 1 AND TEST_STDERR_VARIABLE MATCHES
+          "Failed to post close command|unable to tear down the job tree")
+        MESSAGE(STATUS "mpiexec launcher failure (exit ${TEST_RESULT_VARIABLE}), "
+          "retrying once:\n${TEST_STDERR_VARIABLE}")
+        IF(${MPIEXEC_NTASKS} GREATER 1)
+          FILE(REMOVE TEST.PASSED_${MPIEXEC_NTASKS})
+        ELSE()
+          FILE(REMOVE TEST.PASSED)
+        ENDIF()
+      ELSE()
+        BREAK()
+      ENDIF()
+    ENDFOREACH()
       FILE(WRITE "test-stdout_${MPIEXEC_NTASKS}.log" "${TEST_STDOUT_VARIABLE}")
       FILE(WRITE "test-stderr_${MPIEXEC_NTASKS}.log" "${TEST_STDERR_VARIABLE}")
   ELSE()
