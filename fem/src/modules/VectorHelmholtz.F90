@@ -1686,7 +1686,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   LOGICAL :: UseGaussLaw, LorenzCondition
+   LOGICAL :: UseGaussLaw, LorenzCondition, EigenAnalysis
+   INTEGER :: NOFEigen, iEigen
    TYPE(ValueList_t), POINTER :: SolverParams
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
    ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
@@ -1730,7 +1731,26 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    UseGaussLaw = GetLogical(pSolver % Values, 'Use Gauss Law', Found)
    LorenzCondition = GetLogical(pSolver % Values, 'Lorenz Condition', Found)
 
-   Omega = GetAngularFrequency(pSolver % Values)
+   ! In the case of eigen analysis the fields are computed for each eigenmode in turn,
+   ! with the angular frequency obtained from the eigenvalue. The derived fields are
+   ! stored as complex eigenvectors of the field variables so that they can be saved
+   ! similarly to the eigenmodes of the primary variable.
+   EigenAnalysis = GetLogical(pSolver % Values, 'Eigen Analysis', Found)
+   IF (EigenAnalysis) THEN
+     NOFEigen = pSolver % NOFEigenValues
+     IF (NOFEigen < 1 .OR. .NOT. ASSOCIATED(TargetVar % EigenVectors)) THEN
+       CALL Fatal(Caller, 'No eigenvectors available for variable: '//TRIM(Pname))
+     END IF
+     ! The eigenvectors are expected to be complex-valued with one entry per a pair of
+     ! real and imaginary components:
+     IF (SIZE(TargetVar % EigenVectors,2) /= SIZE(TargetVar % Values)/2) THEN
+       CALL Fatal(Caller, 'Unexpected size of eigenvectors for variable: '//TRIM(Pname))
+     END IF
+     CALL Info(Caller,'Computing fields for '//I2S(NOFEigen)//' eigenmodes',Level=7)
+   ELSE
+     NOFEigen = 1
+     Omega = GetAngularFrequency(pSolver % Values)
+   END IF
 
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN
@@ -1805,7 +1825,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    ! This piece of code effectively does what keyword "Calculate Energy Norm" would but
    ! it treats the system complex valued.
-   IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
+   IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found) .AND. EigenAnalysis) THEN
+     CALL Warn(Caller, 'Energy functional is not computed in the case of eigen analysis')
+   ELSE IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
      IF( pSolver % Variable % dofs /= 2 ) THEN
        CALL Fatal(Caller,'Cannot compute energy norm if dofs not 2!')
      END IF
@@ -1838,12 +1860,21 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional im', hdotE_i)
    END IF
 
-   CALL DefaultInitialize()
-
    ! CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
    CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
    CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
    CALL ListInitElementKeyword( CurrDens_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
+
+   ! Without eigen analysis this loop is taken just once
+   EIGEN_MODES: DO iEigen = 1, NOFEigen
+
+   IF (EigenAnalysis) THEN
+     CALL SetEigenmodeFrequency()
+     Energy = 0._dp; Energy_im = 0._dp
+     IF (NodalFields) GForce = 0._dp
+   END IF
+
+   CALL DefaultInitialize()
 
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
@@ -1952,6 +1983,24 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      Solver % Matrix % RHS => Fsave
    END IF
 
+   IF (EigenAnalysis) THEN
+     CALL StoreEigenmode(MFD)
+     CALL StoreEigenmode(MFS)
+     CALL StoreEigenmode(EF)
+     CALL StoreEigenmode(PV)
+     CALL StoreEigenmode(DIVPV)
+     CALL StoreEigenmode(EW)
+     CALL StoreEigenmode(EL_MFD)
+     CALL StoreEigenmode(EL_MFS)
+     CALL StoreEigenmode(EL_EF)
+     CALL StoreEigenmode(EL_PV)
+     CALL StoreEigenmode(EL_DIVPV)
+     CALL StoreEigenmode(EL_EW)
+     CALL StoreEigenmode(ELPOT)
+   END IF
+
+   END DO EIGEN_MODES
+
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Pivot)
 
@@ -1961,11 +2010,130 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 CONTAINS
 
 
+!------------------------------------------------------------------------------
+!> Set the angular frequency of the current eigenmode. The eigenproblem is
+!> curl(mu^-1 curl E) = lambda eps E, so that lambda = omega^2.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetEigenmodeFrequency()
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: EigenValue
+!------------------------------------------------------------------------------
+    EigenValue = pSolver % Variable % EigenValues(iEigen)
+    IF (REAL(EigenValue) > 0.0_dp) THEN
+      Omega = SQRT(REAL(EigenValue))
+    ELSE
+      Omega = 0.0_dp
+      CALL Warn(Caller, 'Eigenvalue '//I2S(iEigen)//' is not positive, magnetic fields are set to zero')
+    END IF
+    WRITE(Message,'(A,I0,A,ES12.5)') 'Computing fields for eigenmode ',iEigen,' with angular frequency: ',Omega
+    CALL Info(Caller, Message, Level=6)
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetEigenmodeFrequency
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Get the real and imaginary parts of the solution in the current element.
+!> In the case of eigen analysis the current eigenmode is returned.
+!------------------------------------------------------------------------------
+  SUBROUTINE GetLocalMode()
+!------------------------------------------------------------------------------
+    IF (EigenAnalysis) THEN
+      CALL GetScalarLocalEigenmode(SOL(1,:), Pname, USolver=pSolver, NoEigen=iEigen)
+      CALL GetScalarLocalEigenmode(SOL(2,:), Pname, USolver=pSolver, NoEigen=iEigen, &
+          ComplexPart=.TRUE.)
+    ELSE
+      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetLocalMode
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Copy the field computed for the current eigenmode to the eigenvectors of
+!> the field variable. A field with 2*m components [re_1,...,re_m,im_1,...,im_m]
+!> gets complex eigenvectors with m components, which is the convention used by
+!> the eigenmode output of ElmerSolver. The scalar components of the real and
+!> imaginary parts (such as "Electric field re 1") get real-valued eigenvectors
+!> similarly to the components of the primary variable, as these are what the
+!> vtu output writes.
+!------------------------------------------------------------------------------
+  SUBROUTINE StoreEigenmode(Var)
+!------------------------------------------------------------------------------
+    TYPE(Variable_t), POINTER :: Var
+!------------------------------------------------------------------------------
+    TYPE(Variable_t), POINTER :: CompVar
+    CHARACTER(:), ALLOCATABLE :: BaseName, Suffix, PartName, CompName
+    INTEGER :: k, l, m, nn, Part
+!------------------------------------------------------------------------------
+    IF (.NOT. ASSOCIATED(Var)) RETURN
+
+    m = Var % DOFs / 2
+    nn = SIZE(Var % Values) / Var % DOFs
+
+    IF (.NOT. ASSOCIATED(Var % EigenVectors)) THEN
+      ALLOCATE(Var % EigenValues(NOFEigen), Var % EigenVectors(NOFEigen, m*nn))
+      Var % EigenValues = pSolver % Variable % EigenValues
+      Var % EigenVectors = 0.0_dp
+    END IF
+
+    DO k=1,nn
+      DO l=1,m
+        Var % EigenVectors(iEigen,m*(k-1)+l) = CMPLX( Var % Values(2*m*(k-1)+l), &
+            Var % Values(2*m*(k-1)+m+l), KIND=dp )
+      END DO
+    END DO
+
+    ! The parts of an elemental field "X E" are named as "X re E" and "X im E"
+    BaseName = TRIM(ComponentName(Var % Name))
+    k = LEN(BaseName)
+    Suffix = ''
+    IF (Var % TYPE == Variable_on_nodes_on_elements .AND. k > 2) THEN
+      IF (BaseName(k-1:k) == ' e') THEN
+        BaseName = BaseName(1:k-2)
+        Suffix = ' e'
+      END IF
+    END IF
+
+    DO Part=1,2
+      IF (Part == 1) THEN
+        PartName = BaseName//' re'//Suffix
+      ELSE
+        PartName = BaseName//' im'//Suffix
+      END IF
+
+      DO l=1,m
+        IF (m > 1) THEN
+          CompName = ComponentName(PartName, l)
+        ELSE
+          CompName = PartName
+        END IF
+        CompVar => VariableGet(Mesh % Variables, CompName, ThisOnly=.TRUE.)
+        IF (.NOT. ASSOCIATED(CompVar)) CYCLE
+
+        IF (.NOT. ASSOCIATED(CompVar % EigenVectors)) THEN
+          ALLOCATE(CompVar % EigenVectors(NOFEigen, nn))
+          CompVar % EigenVectors = 0.0_dp
+          CompVar % EigenValues => Var % EigenValues
+        END IF
+        IF (Part == 1) THEN
+          CompVar % EigenVectors(iEigen,:) = REAL(Var % EigenVectors(iEigen,l::m))
+        ELSE
+          CompVar % EigenVectors(iEigen,:) = AIMAG(Var % EigenVectors(iEigen,l::m))
+        END IF
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE StoreEigenmode
+!------------------------------------------------------------------------------
+
+
   SUBROUTINE CalcFieldsLocalAssembly()
 
     nd = GetElementNOFDOFs(uSolver=pSolver)
     CALL GetElementNodes( Nodes )
-    CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+    CALL GetLocalMode()
 
     ! Calculate nodal fields:
     ! -----------------------
@@ -1985,8 +2153,13 @@ CONTAINS
       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
 
-      B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
-          MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:)) / (-Omega), KIND=dp)
+      IF (Omega > 0.0_dp) THEN
+        B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
+            MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:)) / (-Omega), KIND=dp)
+      ELSE
+        ! An eigenmode without a positive eigenvalue has no well-defined frequency
+        B = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      END IF
 
       ! The conductivity as a tensor not implemented yet
       !C_ip = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = j )
@@ -2074,7 +2247,7 @@ CONTAINS
 
     nd = GetElementNOFDOFs(uSolver=pSolver)
     CALL GetElementNodes( Nodes )
-    CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+    CALL GetLocalMode()
 
     ! Calculate nodal fields:
     ! -----------------------
