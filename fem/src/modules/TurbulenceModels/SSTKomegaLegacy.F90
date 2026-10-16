@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 10 Nov 1997
 ! *
@@ -326,7 +326,7 @@
 !     Dirichlet boundary conditions
 !------------------------------------------------------------------------------
       DO t=1,Solver % Mesh % NumberOfBoundaryElements
-        Element => GetBoundaryElement(t) 
+        Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
         n = GetElementNOFNodes()
         BC => GetBC()
@@ -411,7 +411,7 @@ CONTAINS
 
        CALL UpdateDirichletDof( Solver % Matrix, k+1, Kin )
        CALL UpdateDirichletDof( Solver % Matrix, k+2, Omega )
-       
+
        !Solver % Matrix % RHS(k+2) = Omega
        !CALL ZeroRow( Solver % Matrix,k+2 )
        !CALL SetMatrixElement( Solver % Matrix,k+2,k+2,1.0d0 )
@@ -636,7 +636,7 @@ CONTAINS
 !      F4 = 1._dp / (1+3.6_dp*F4)
        F4 = 1
 
-       Beta   = 0.075_dp*F1 + 0.0828_dp*(1-F1) 
+       Beta   = 0.075_dp*F1 + 0.0828_dp*(1-F1)
        SigmaK = 1.176_dp*F1 + 1.0000_dp*(1-F1)
        SigmaO = 2.000_dp*F1 + 1.1680_dp*(1-F1)
 

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -30,7 +30,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: Oct 8, 2020
 ! *
@@ -44,12 +44,12 @@ MODULE SolidMechanicsUtils
 CONTAINS
 
 !------------------------------------------------------------------------------
-!> Integrate and assemble the local stiffness matrix corresponding to the 
-!> one-dimensional Timoshenko beam equations. The local DOFs always 
+!> Integrate and assemble the local stiffness matrix corresponding to the
+!> one-dimensional Timoshenko beam equations. The local DOFs always
 !> correspond to the displacement components along the tangent direction and the
 !> principal axes of the cross section. The transformation to global DOFs is done
-!> within this subroutine. The stiffness matrix K corresponding to the global 
-!> DOFs is thus obtained as K = R^T k R and the RHS vector F is obtained as 
+!> within this subroutine. The stiffness matrix K corresponding to the global
+!> DOFs is thus obtained as K = R^T k R and the RHS vector F is obtained as
 !> F = R^T f.
 !------------------------------------------------------------------------------
   SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation, &
@@ -65,7 +65,7 @@ CONTAINS
     LOGICAL, OPTIONAL, INTENT(IN) :: LargeDeflection  ! To activate nonlinear terms
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: LocalSol(:,:) ! The previous solution iterate
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: RHSForce(:)  ! Local RHS vector corresponding to external loads
-    LOGICAL, OPTIONAL, INTENT(IN) :: CombineWithShell    ! Set .TRUE. if the caller is the shell solver 
+    LOGICAL, OPTIONAL, INTENT(IN) :: CombineWithShell    ! Set .TRUE. if the caller is the shell solver
     LOGICAL, OPTIONAL, INTENT(IN) :: ApplyRotation    ! Rotate DOFs in the context of shell analysis
     LOGICAL, OPTIONAL, INTENT(IN) :: DrillingDOFs     ! Assume drilling DOFs in the context of shell analysis
     !------------------------------------------------------------------------------
@@ -77,7 +77,7 @@ CONTAINS
     LOGICAL :: NonlinAssembly, RotationNeeded
     LOGICAL :: ApplyOffset
     LOGICAL :: DampingBetaWarning = .FALSE.
-    
+
     INTEGER :: DOFs
     INTEGER :: i, t, p, q
     INTEGER :: i0, p0, q0
@@ -93,14 +93,14 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd), dBasis(nd,3), DetJ, Weight
     REAL(KIND=dp) :: Youngs_Modulus(n), Shear_Modulus(n), Area(n), Density(n)
     REAL(KIND=dp) :: Form_Factor(n)
-    REAL(KIND=dp) :: Torsional_Constant(n) 
+    REAL(KIND=dp) :: Torsional_Constant(n)
     REAL(KIND=dp) :: Area_Moment_2(n), Area_Moment_3(n)
     REAL(KIND=dp) :: Offset_2, Offset_3
     REAL(KIND=dp) :: Mass_Inertia_Moment(n), Damping(n), RayleighBeta(n)
     REAL(KIND=dp) :: Load(3,n), f(3)
     REAL(KIND=dp) :: PrevSolVec(6*nd)
     REAL(KIND=dp) :: E, A, G, rho, DampCoef, FormFact
-    REAL(KIND=dp) :: EA, GA, MOI, Mass_per_Length 
+    REAL(KIND=dp) :: EA, GA, MOI, Mass_per_Length
     REAL(KIND=dp) :: E_diag(3)
 
     REAL(KIND=dp) :: p1(3), p2(3), e1(3), e2(3), e3(3)
@@ -132,7 +132,7 @@ CONTAINS
           'Previous solution iterate needed')
       DO i=1,DOFs
         PrevSolVec(i:DOFs*(nd-nb):DOFs) = LocalSol(i,1:(nd-nb))
-      END DO  
+      END DO
     END IF
 
 
@@ -170,7 +170,7 @@ CONTAINS
       Area_Moment_3(1:n) = GetReal(Material, 'Second Moment of Area 3', Found)
       IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Second Moment of Area 3 needed')
     END IF
-      
+
     IF (MassAssembly) THEN
       Density(1:n) = GetReal(Material, 'Density', Found)
       IF (.NOT. Found) CALL Fatal('BeamStiffnessMatrix', 'Density needed')
@@ -195,7 +195,7 @@ CONTAINS
     L = SQRT(SUM(e1(:)**2))
     e1 = 1.0_dp/L * e1
     !
-    ! Cross section parameters are given with respect to a local frame. 
+    ! Cross section parameters are given with respect to a local frame.
     ! Determine its orientation:
     !
     ArrayPtr => ListGetConstRealArray(Material, 'Director', Found)
@@ -217,7 +217,7 @@ CONTAINS
           e2(i) = ArrayPtr(i,1)
         END DO
         Norm = SQRT(SUM(e2(:)**2))
-        e2 = 1.0_dp/Norm * e2     
+        e2 = 1.0_dp/Norm * e2
         e3 = CrossProduct(e1, e2)
       ELSE
         IF (ANY( ABS(Area_Moment_3(1:n) - Area_Moment_2(1:n)) > 5.0_dp * AEPS )) THEN
@@ -226,19 +226,19 @@ CONTAINS
         END IF
         !e2 = -ZBasis
         !e3 = CrossProduct(e1, e2)
-        CALL TangentDirections( e1, e2, e3 ) 
+        CALL TangentDirections( e1, e2, e3 )
       END IF
       IF (ABS(DOT_PRODUCT(e1,e2)) > 100.0_dp * AEPS) CALL Fatal('BeamStiffnessMatrix', &
           'Principal Direction 2 should be orthogonal to the beam axis')
     END IF
 
- 
+
     !
     ! Allocate an additional variable so as to write nodes data with respect to
     ! the local frame.
     !
     IF (.NOT. ASSOCIATED(LocalNodes % x)) THEN
-      ALLOCATE(LocalNodes % x(n), LocalNodes % y(n), LocalNodes % z(n) ) 
+      ALLOCATE(LocalNodes % x(n), LocalNodes % y(n), LocalNodes % z(n) )
       LocalNodes % NumberOfNodes = n
       LocalNodes % y(:) = 0.0_dp
       LocalNodes % z(:) = 0.0_dp
@@ -273,7 +273,7 @@ CONTAINS
       !------------------------------------------
       f(1) = SUM(Basis(1:n) * Load(1,1:n))
       f(2) = SUM(Basis(1:n) * Load(2,1:n))
-      f(3) = SUM(Basis(1:n) * Load(3,1:n))      
+      f(3) = SUM(Basis(1:n) * Load(3,1:n))
 
       ! TO DO: Add option to give the applied moment load
 
@@ -284,7 +284,7 @@ CONTAINS
 
       E_diag(1) = G * SUM(Basis(1:n) * Torsional_Constant(1:n))
       E_diag(2) = E * SUM(Basis(1:n) * Area_Moment_2(1:n))
-      E_diag(3) = E * SUM(Basis(1:n) * Area_Moment_3(1:n)) 
+      E_diag(3) = E * SUM(Basis(1:n) * Area_Moment_3(1:n))
 
       IF (MassAssembly) THEN
         rho = SUM(Basis(1:n) * Density(1:n))
@@ -316,7 +316,7 @@ CONTAINS
               GA * dBasis(q,1) * dBasis(p,1) * Weight
           StiffBlock(3,3) = StiffBlock(3,3) + &
               GA * dBasis(q,1) * dBasis(p,1) * Weight
-  
+
           IF (MassAssembly) THEN
             MassBlock(1,1) = MassBlock(1,1) + &
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
@@ -324,7 +324,7 @@ CONTAINS
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
             MassBlock(3,3) = MassBlock(3,3) + &
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
-            
+
             DampBlock(1,1) = DampBlock(1,1) + &
                 DampCoef * Mass_per_Length * Basis(q) * Basis(p) * Weight
             DampBlock(2,2) = DampBlock(2,2) + &
@@ -342,7 +342,7 @@ CONTAINS
           StiffBlock(3,5) = StiffBlock(3,5) + &
               GA * Basis(q) * dBasis(p,1) * Weight
         END DO
-        
+
         Force(p0+1) = Force(p0+1) + Weight * DOT_PRODUCT(f,e1)* Basis(p)
         Force(p0+2) = Force(p0+2) + Weight * DOT_PRODUCT(f,e2)* Basis(p)
         Force(p0+3) = Force(p0+3) + Weight * DOT_PRODUCT(f,e3)* Basis(p)
@@ -388,7 +388,7 @@ CONTAINS
     END DO
 
     CALL BeamCondensate(nd-nb, nb, DOFs, 3, Stiff, Force)
-    
+
     IF (PRESENT(CombineWithShell)) THEN
       IF (CombineWithShell) THEN
 
@@ -418,7 +418,7 @@ CONTAINS
               MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
           DOFs = 6
         END IF
-        
+
         IF (PRESENT(ApplyRotation)) THEN
           RotationNeeded = ApplyRotation
         ELSE
@@ -428,7 +428,7 @@ CONTAINS
         IF (PRESENT(DrillingDOFs)) THEN
           IF (DrillingDOFs) RotationNeeded = .FALSE.
         END IF
-        
+
         IF (RotationNeeded) THEN
           !
           ! Switch to rotation variables which conform with the rotated moments - M x d:
@@ -460,7 +460,7 @@ CONTAINS
         !
         MomentFreeAxis = GetInteger(Material, 'Moment-free Axis', Found)
         IF (.NOT. Found) MomentFreeAxis = 3
-          
+
         DO p=1,nd-nb
           i = (p-1)*DOFs + 3 + MomentFreeAxis
           Stiff(i,:) = 0.0d0
@@ -521,7 +521,7 @@ CONTAINS
   END SUBROUTINE BeamStiffnessMatrix
 !------------------------------------------------------------------------------
 
-    
+
 !------------------------------------------------------------------------------
   SUBROUTINE BeamCondensate(n, nb, dofs, dim, K, F, F1 )
 !------------------------------------------------------------------------------
@@ -537,10 +537,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Kbl(nb*dim,n*dofs), Kbb(nb*dim,nb*dim), Fb(nb*dim)
     REAL(KIND=dp) :: Klb(n*dofs,nb*dim)
-    
+
     INTEGER :: i, m, p, Cdofs(dofs*n), Bdofs(dim*nb)
 !------------------------------------------------------------------------------
-    
+
     Cdofs(1:n*dofs) = (/ (i, i=1,n*dofs) /)
 
     m = 0
@@ -569,7 +569,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE BeamCondensate
 !------------------------------------------------------------------------------
-  
+
 !------------------------------------------------------------------------------
 !> Perform the operation
 !>
@@ -589,12 +589,12 @@ CONTAINS
     INTEGER, INTENT(IN) :: m, n
     REAL(KIND=dp), INTENT(IN) :: s
 !------------------------------------------------------------------------------
-    A(1:n,1:n) = A(1:n,1:n) + s * MATMUL(TRANSPOSE(C(1:m,1:n)),MATMUL(B(1:m,1:m),C(1:m,1:n))) 
+    A(1:n,1:n) = A(1:n,1:n) + s * MATMUL(TRANSPOSE(C(1:m,1:n)),MATMUL(B(1:m,1:m),C(1:m,1:n)))
 !------------------------------------------------------------------------------
   END SUBROUTINE StrainEnergyDensity
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
   SUBROUTINE Jacobi3(Jmat, invJ, detJ, x, y)
 !------------------------------------------------------------------------------
@@ -635,7 +635,7 @@ CONTAINS
     dNdeta(2) = -(1+xi)/4.0d0
     dNdeta(3) =  (1+xi)/4.0d0
     dNdeta(4) =  (1-xi)/4.0d0
-       
+
     Jmat = 0.0d0
     DO i=1,4
       Jmat(1,1) = Jmat(1,1) + dNdxi(i)*x(i)
@@ -732,7 +732,7 @@ CONTAINS
     Ematrix(3,3) = (1.0d0-Puvw)/2.0d0
 
     Ematrix = Ematrix* Euvw * (Tuvw**3) / (12.0d0*(1.0d0-Puvw**2))
-    
+
     Gmatrix = 0.0d0
     Gmatrix(1,1) = Guvw*Tuvw
     Gmatrix(2,2) = Guvw*Tuvw
@@ -740,6 +740,6 @@ CONTAINS
   END SUBROUTINE IsotropicElasticity
 !------------------------------------------------------------------------------
 
-  
+
 END MODULE SolidMechanicsUtils
 

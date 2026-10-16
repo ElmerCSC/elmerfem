@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -75,7 +75,7 @@ CONTAINS
       INTEGER :: n
       TYPE(ElementType_t), POINTER :: et
 !------------------------------------------------------------------------------
-      
+
       et => ElementTypeList
       DO WHILE(ASSOCIATED(et))
         n = et % NumberOfNodes
@@ -107,7 +107,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE AddElementDescription( element,BasisTerms )
 !------------------------------------------------------------------------------
-      INTEGER, DIMENSION(:) :: BasisTerms  !< List of terms in the basis function that should be included for this element type. 
+      INTEGER, DIMENSION(:) :: BasisTerms  !< List of terms in the basis function that should be included for this element type.
                                            ! BasisTerms(i) is an integer from 1-27 according to the list below.
       TYPE(ElementType_t), TARGET :: element !< Structure holding element type description
 !------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ CONTAINS
              ELSE
                 A(i,j) = u**upow
              END IF
-             element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,upow) 
+             element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,upow)
            END DO
          END DO
 
@@ -165,7 +165,7 @@ CONTAINS
             v = element % NodeV(i)
             DO j = 1,n
               k = BasisTerms(j) - 1
-              vpow = k / MaxDeg 
+              vpow = k / MaxDeg
               upow = MOD(k,MaxDeg)
 
               IF ( upow == 0 ) THEN
@@ -178,8 +178,8 @@ CONTAINS
                  A(i,j) = A(i,j) * v**vpow
               END IF
 
-              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,upow) 
-              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,vpow) 
+              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,upow)
+              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,vpow)
             END DO
          END DO
 
@@ -214,9 +214,9 @@ CONTAINS
                  A(i,j) = A(i,j) * w**wpow
               END IF
 
-              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,upow) 
-              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,vpow) 
-              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,wpow) 
+              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,upow)
+              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,vpow)
+              element % BasisFunctionDegree = MAX(element % BasisFunctionDegree,wpow)
             END DO
          END DO
 
@@ -248,11 +248,11 @@ CONTAINS
         DO j = 1,n
           k = BasisTerms(j) - 1
 
-          SELECT CASE( Element % DIMENSION ) 
+          SELECT CASE( Element % DIMENSION )
           CASE(1)
              upow = k
           CASE(2)
-             vpow = k / MaxDeg 
+             vpow = k / MaxDeg
              upow = MOD(k,MaxDeg)
           CASE(3)
              upow = MOD( k,MaxDeg )
@@ -298,24 +298,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       SELECT CASE( Element % ElementCode / 100 )
-        CASE(2) 
+        CASE(2)
            Element % NumberOfEdges = 1
-        CASE(3) 
+        CASE(3)
            Element % NumberOfFaces = 1
            Element % NumberOfEdges = 3
-        CASE(4) 
+        CASE(4)
            Element % NumberOfFaces = 1
            Element % NumberOfEdges = 4
-        CASE(5) 
+        CASE(5)
            Element % NumberOfFaces = 4
            Element % NumberOfEdges = 6
-        CASE(6) 
+        CASE(6)
            Element % NumberOfFaces = 5
            Element % NumberOfEdges = 8
-        CASE(7) 
+        CASE(7)
            Element % NumberOfFaces = 5
            Element % NumberOfEdges = 9
-        CASE(8) 
+        CASE(8)
            Element % NumberOfFaces = 6
            Element % NumberOfEdges = 12
       END SELECT
@@ -415,7 +415,7 @@ CONTAINS
  END SUBROUTINE Compute1DPBasis
 !--------------------------------------------------------------------------
 
-   END SUBROUTINE AddElementDescription 
+   END SUBROUTINE AddElementDescription
 !------------------------------------------------------------------------------
 
 
@@ -464,8 +464,8 @@ CONTAINS
       ALLOCATE(CHARACTER(MAX_PATH_LEN)::elmer_home)
 
       tstr = 'ELMER_LIB'
-      CALL envir( tstr,elmer_home,k ) 
-      
+      CALL envir( tstr,elmer_home,k )
+
       fexist = .FALSE.
       IF (  k > 0 ) THEN
          tstr = elmer_home(1:k) // '/elements.def'
@@ -473,7 +473,7 @@ CONTAINS
       END IF
       IF (.NOT. fexist) THEN
         tstr = 'ELMER_HOME'
-        CALL envir( tstr,elmer_home,k ) 
+        CALL envir( tstr,elmer_home,k )
         IF ( k > 0 ) THEN
            tstr = elmer_home(1:k)//'/share/elmersolver/lib/elements.def'
            INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
@@ -535,7 +535,7 @@ CONTAINS
 
               Element % GaussPoints2 = 0
               READ( str(13:), *,END=10 ) element % GaussPoints,&
-                  element % GaussPoints2, element % GaussPoints0 
+                  element % GaussPoints2, element % GaussPoints0
 
 10            CONTINUE
 
@@ -544,7 +544,7 @@ CONTAINS
 
               IF ( Element % GaussPoints0 <= 0 ) &
                    Element % GaussPoints0 = Element % GaussPoints
-             
+
             ELSE IF ( str == 'end element' ) THEN
               gotit = .TRUE.
               EXIT
@@ -682,7 +682,7 @@ CONTAINS
 !>   Given element structure return value of the first partial derivative with
 !>   respect to local coordinate of a quantity x given at element nodes at local
 !>   coordinate point u inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   compute the value.
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivative1D( element,x,u ) RESULT(y)
 !------------------------------------------------------------------------------
@@ -712,7 +712,7 @@ CONTAINS
 
           s = 0.0d0
           DO i=1,BasisFunctions(n) % n
-             IF ( p(i) >= 1 ) THEN 
+             IF ( p(i) >= 1 ) THEN
                 s = s + p(i) * Coeff(i) * u**(p(i)-1)
              END IF
           END DO
@@ -762,7 +762,7 @@ CONTAINS
 !>   Given element structure return value of the second partial derivative with
 !>   respect to local coordinate of a quantity x given at element nodes at local
 !>   coordinate point u inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   compute the value.
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives1D( element,x,u ) RESULT(y)
 !------------------------------------------------------------------------------
@@ -907,7 +907,7 @@ CONTAINS
 !>   Given element structure return the value of the first partial derivative with
 !>   respect to local coordinate u of a quantity x given at element nodes at local
 !>   coordinate point u,v inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   compute the value.
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInU2D( element,x,u,v ) RESULT(y)
 !------------------------------------------------------------------------------
@@ -954,7 +954,7 @@ CONTAINS
 !>   Given element structure return value of the first partial derivative with
 !>   respect to local coordinate v of i quantity x given at element nodes at local
 !>   coordinate point u,v inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   compute the value.
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInV2D( element,x,u,v ) RESULT(y)
 !------------------------------------------------------------------------------
@@ -1015,7 +1015,7 @@ CONTAINS
       INTEGER :: i,n
 
       REAL(KIND=dp) :: ult(0:6), vlt(0:6)
- 
+
       elt => element % TYPE
       BasisFunctions => elt % BasisFunctions
 
@@ -1052,9 +1052,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given an element structure return the second partial derivatives of 
+!>   Given an element structure return the second partial derivatives of
 !>   a quantity x given at the element nodes with respect to the local coordinates
-!>   u,v of the element. The element basis functions are used to compute the value. 
+!>   u,v of the element. The element basis functions are used to compute the value.
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives2D( element,x,u,v ) RESULT(ddx)
 !------------------------------------------------------------------------------
@@ -1257,7 +1257,7 @@ CONTAINS
 
      elt => element % TYPE
      BasisFunctions => elt % BasisFunctions
- 
+
      ult(0) = 1
      ult(1) = u
 
@@ -1293,7 +1293,7 @@ CONTAINS
 !>   Given element structure return value of the first partial derivative with
 !>   respect to local coordinate u of a quantity x given at element nodes at
 !>   local coordinate point u,v,w inside the element. Element basis functions
-!>   are used to compute the value. 
+!>   are used to compute the value.
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInU3D( element,x,u,v,w ) RESULT(y)
 !------------------------------------------------------------------------------
@@ -1403,7 +1403,7 @@ CONTAINS
 !>   Given element structure return value of the first partial derivative with
 !>   respect to local coordinate v of a quantity x given at element nodes at
 !>   local coordinate point u,v,w inside the element. Element basis functions
-!>   are used to compute the value. 
+!>   are used to compute the value.
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInV3D( element,x,u,v,w ) RESULT(y)
 !------------------------------------------------------------------------------
@@ -1515,7 +1515,7 @@ CONTAINS
 !>   Given element structure return value of the first partial derivatives with
 !>   respect to local coordinate w of a quantity x given at element nodes at
 !>   local coordinate point u,v,w inside the element. Element basis functions
-!>   are used to compute the value. 
+!>   are used to compute the value.
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInW3D( element,x,u,v,w ) RESULT(y)
 !------------------------------------------------------------------------------
@@ -1645,16 +1645,16 @@ CONTAINS
       TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
       INTEGER :: i,n
       REAL(KIND=dp) :: ult(0:6), vlt(0:6), wlt(0:6)
- 
+
       elt => element % TYPE
       BasisFunctions => elt % BasisFunctions
- 
+
       ult(0) = 1
       ult(1) = u
 
       vlt(0) = 1
       vlt(1) = v
- 
+
       wlt(0) = 1
       wlt(1) = w
 
@@ -1688,10 +1688,10 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given the element structure return the second partial derivatives of 
+!>   Given the element structure return the second partial derivatives of
 !>   a quantity x given at element nodes with respect to local coordinates
 !>   at a point with local coordinates (u,v,w) inside the element. Element basis
-!>   functions are used to compute the value. 
+!>   functions are used to compute the value.
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives3D( element,x,u,v,w ) RESULT(ddx)
 !------------------------------------------------------------------------------
@@ -1699,7 +1699,7 @@ CONTAINS
 !  ARGUMENTS:
 !   Type(Element_t) :: element
 !     INPUT: element structure
-!     
+!
 !    REAL(KIND=dp) :: x(:)
 !     INPUT: Nodal values of the quantity whose partial derivatives we want to know
 !
@@ -1709,7 +1709,7 @@ CONTAINS
 !  FUNCTION VALUE:
 !     REAL(KIND=dp) :: s
 !      value of the quantity s = @^2x(u,v)/@v^2
-!    
+!
 !------------------------------------------------------------------------------
    !
    !  Return matrix of second partial derivatives.
@@ -1825,7 +1825,7 @@ CONTAINS
           ddx(1,2) = ddx(1,2) + t
 
           t = 0
-          SELECT CASE(n) 
+          SELECT CASE(n)
           CASE(1)
             t = t - x(1)  * (-1 + u*v*s**2) / 4
             t = t + x(1)  * (-u-v-1) * (v*s**2) / 4
@@ -2142,7 +2142,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>  Return the values of the reference element basis functions. In the case of
-!>  p-element, the values of the lowest-order basis functions corresponding 
+!>  p-element, the values of the lowest-order basis functions corresponding
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
    SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w, USolver)
@@ -2156,11 +2156,11 @@ CONTAINS
      INTEGER   :: i, q, dim, elemcode
      REAL(KIND=dp) :: NodalBasis(n)
      LOGICAL :: pElem
-     
+
      dim = Element % TYPE % DIMENSION
      elemcode = element % Type % ElementCode
-     pElem = isActivePElement( Element, USolver ) 
-     
+     pElem = isActivePElement( Element, USolver )
+
      ! Fast path for all standard (non-pyramid) elements and P-elements.
      IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
        SELECT CASE(elemcode/100)
@@ -2191,7 +2191,7 @@ CONTAINS
        END SELECT
        RETURN
      END IF
-     
+
      IF ( pElem ) THEN
        SELECT CASE(elemcode / 100 )
        CASE(2)
@@ -2200,7 +2200,7 @@ CONTAINS
          DO q=1,n
            Basis(q) = TriangleNodalPBasis(q, u, v)
          END DO
-       CASE(4) 
+       CASE(4)
          DO q=1,n
            Basis(q) = QuadNodalPBasis(q, u, v)
          END DO
@@ -2208,7 +2208,7 @@ CONTAINS
          DO q=1,n
            Basis(q) = TetraNodalPBasis(q, u, v, w)
          END DO
-       CASE(6) 
+       CASE(6)
          DO q=1,n
            Basis(q) = PyramidNodalPBasis(q, u, v, w)
          END DO
@@ -2216,7 +2216,7 @@ CONTAINS
          DO q=1,n
            Basis(q) = WedgeNodalPBasis(q, u, v, w)
          END DO
-       CASE(8) 
+       CASE(8)
          DO q=1,n
            Basis(q) = BrickNodalPBasis(q, u, v, w)
          END DO
@@ -2247,7 +2247,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>  Return the gradient of the reference element basis functions, with the
 !>  gradient taken with respect to the reference element coordinates. In the case
-!>  of p-element, the gradients of the lowest-order basis functions corresponding 
+!>  of p-element, the gradients of the lowest-order basis functions corresponding
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
    SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w, USolver )
@@ -2264,8 +2264,8 @@ CONTAINS
 !------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
      elemcode = element % TYPE % ElementCode
-     pElem = isActivePElement( Element, USolver ) 
-     
+     pElem = isActivePElement( Element, USolver )
+
      ! Fast path for all standard (non-pyramid) elements and P-elements.
      IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
        SELECT CASE(elemcode/100)
@@ -2296,7 +2296,7 @@ CONTAINS
        END SELECT
        RETURN
      END IF
-     
+
      IF ( IsActivePElement(Element, USolver ) ) THEN
        SELECT CASE(elemcode / 100 )
        CASE(2)
@@ -2317,11 +2317,11 @@ CONTAINS
          DO q=1,n
            dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
          END DO
-       CASE( 7 ) 
+       CASE( 7 )
          DO q=1,n
            dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
          END DO
-       CASE( 8 ) 
+       CASE( 8 )
          DO q=1,n
            dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
          END DO
@@ -2360,7 +2360,7 @@ CONTAINS
      IMPLICIT NONE
 
      TYPE(Element_t), TARGET :: Element   !< Element structure
-     INTEGER :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
+     INTEGER :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector.
      TYPE(Solver_t), TARGET, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
 !    Local variables
@@ -2397,7 +2397,7 @@ CONTAINS
 
        BodyId = Element % BodyId
        IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
-         Parent => Element % PDefs % LocalParent         
+         Parent => Element % PDefs % LocalParent
          IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
          IF( BodyId == 0 ) THEN
            Parent => Element % BoundaryInfo % Left
@@ -2422,7 +2422,7 @@ CONTAINS
 
        SerendipityPBasis = Element % PDefs % Serendipity
 !------------------------------------------------------------------------------
-     SELECT CASE( Element % TYPE % ElementCode ) 
+     SELECT CASE( Element % TYPE % ElementCode )
 !------------------------------------------------------------------------------
 
      ! P element code for line element:
@@ -2452,16 +2452,16 @@ CONTAINS
            DO i=1,3
               Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
 
-              ! For each dof in edge get value of p basis function 
+              ! For each dof in edge get value of p basis function
               DO k=1,Edge % BDOFs
                  IF (q >= SIZE(BasisDegree)) CYCLE
                  q = q + 1
                  BasisDegree(q) = 1+k
               END DO
-           END DO 
+           END DO
         END IF
 
-        ! Bubbles of p triangle      
+        ! Bubbles of p triangle
 
         p = pSolver % Def_Dofs(3,BodyId,6)
         nb = pSolver % Def_Dofs(3,BodyId,5)
@@ -2479,11 +2479,11 @@ CONTAINS
            END DO
         END IF
 !------------------------------------------------------------------------------
-! P element code for quadrilateral edges and bubbles 
+! P element code for quadrilateral edges and bubbles
      CASE(404)
         ! Edges of p quadrilateral
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge begin node calculate values of edge functions 
+           ! For each edge begin node calculate values of edge functions
            DO i=1,4
               Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
               ! For each DOF in edge calculate value of p basis function
@@ -2491,8 +2491,8 @@ CONTAINS
                  IF ( q >= SIZE(BasisDegree) ) CYCLE
                  q = q + 1
                  BasisDegree(q) = 1+k
-              END DO              
-           END DO         
+              END DO
+           END DO
         END IF
 
         ! Bubbles of p quadrilateral
@@ -2502,7 +2502,7 @@ CONTAINS
         IF ( BDOFs > 0 ) THEN
           ! Get element P
            p = getEffectiveBubbleP(element,p,bdofs)
-          
+
            IF(SerendipityPBasis) THEN
              DO i=2,(p-2)
                DO j=2,(p-i)
@@ -2523,9 +2523,9 @@ CONTAINS
         END IF
 !------------------------------------------------------------------------------
 ! P element code for tetrahedron edges, faces and bubbles
-     CASE(504) 
+     CASE(504)
         ! Edges of p tetrahedron
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN   
+        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge calculate value of edge functions
            DO i=1,6
               Edge => CurrentModel % Solver % Mesh % Edges (Element % EdgeIndexes(i))
@@ -2533,7 +2533,7 @@ CONTAINS
               ! Do not solve edge DOFS if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
 
-              ! For each DOF in edge calculate value of edge functions 
+              ! For each DOF in edge calculate value of edge functions
               ! and their derivatives for edge=i, i=k+1
               DO k=1, Edge % BDOFs
                  IF (q >= SIZE(BasisDegree)) CYCLE
@@ -2552,16 +2552,16 @@ CONTAINS
               ! Do not solve face DOFs if there is not any
               IF (Face % BDOFs <= 0) CYCLE
 
-              ! Get face p 
+              ! Get face p
               p = Face % PDefs % P
 
-              ! For each DOF in face calculate value of face functions and 
-              ! their derivatives for face=F and index pairs 
+              ! For each DOF in face calculate value of face functions and
+              ! their derivatives for face=F and index pairs
               ! i,j=0,..,p-3, i+j=0,..,p-3
               DO i=0,p-3
                  DO j=0,p-i-3
                     IF (q >= SIZE(BasisDegree)) CYCLE
-                    q = q + 1 
+                    q = q + 1
                     BasisDegree(q) = 3+i+j
                  END DO
               END DO
@@ -2584,7 +2584,7 @@ CONTAINS
                  END DO
               END DO
            END DO
-           
+
         END IF
 !------------------------------------------------------------------------------
 ! P element code for pyramid edges, faces and bubbles
@@ -2597,7 +2597,7 @@ CONTAINS
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
-              
+
               ! For each DOF in edge calculate values of edge functions
               ! and their derivatives for edge=i and i=k+1
               DO k=1,Edge % BDOFs
@@ -2607,7 +2607,7 @@ CONTAINS
               END DO
            END DO
         END IF
-        
+
         ! Faces of P Pyramid
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in pyramid, calculate values of face functions
@@ -2616,10 +2616,10 @@ CONTAINS
 
               ! Do not solve face dofs, if there is not any
               IF ( Face % BDOFs <= 0) CYCLE
-              
+
               ! Get face p
-              p = Face % PDefs % P 
-              
+              p = Face % PDefs % P
+
               ! Handle triangle and square faces separately
               SELECT CASE(F)
               CASE (1)
@@ -2645,7 +2645,7 @@ CONTAINS
                        BasisDegree(q) = 3+i+j
                     END DO
                  END DO
-              END SELECT    
+              END SELECT
            END DO
         END IF
 
@@ -2653,7 +2653,7 @@ CONTAINS
         p = pSolver % Def_Dofs(6,BodyId,6)
         nb = pSolver % Def_Dofs(6,BodyId,5)
         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
-        IF (BDOFs > 0) THEN 
+        IF (BDOFs > 0) THEN
            ! Get element p
            p = getEffectiveBubbleP(element,p,bdofs)
 
@@ -2669,7 +2669,7 @@ CONTAINS
               END DO
            END DO
         END IF
-        
+
 !------------------------------------------------------------------------------
 ! P element code for wedge edges, faces and bubbles
      CASE(706)
@@ -2681,7 +2681,7 @@ CONTAINS
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
-              
+
               ! For each DOF in edge calculate values of edge functions
               ! and their derivatives for edge=i and i=k+1
               DO k=1,Edge % BDOFs
@@ -2692,7 +2692,7 @@ CONTAINS
            END DO
         END IF
 
-        ! Faces of P Wedge 
+        ! Faces of P Wedge
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in wedge, calculate values of face functions
            DO F=1,5
@@ -2701,8 +2701,8 @@ CONTAINS
               ! Do not solve face dofs, if there is not any
               IF ( Face % BDOFs <= 0) CYCLE
 
-              p = Face % PDefs % P 
-              
+              p = Face % PDefs % P
+
               ! Handle triangle and square faces separately
               SELECT CASE(F)
               CASE (1,2)
@@ -2736,7 +2736,7 @@ CONTAINS
                    END DO
                  END IF
               END SELECT
-                           
+
            END DO
         END IF
 
@@ -2775,16 +2775,16 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 ! P element code for brick edges, faces and bubbles
-     CASE(808) 
+     CASE(808)
         ! Edges of P brick
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge in brick, calculate values of edge functions 
+           ! For each edge in brick, calculate values of edge functions
            DO i=1,12
               Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
-              
+
               ! For each DOF in edge calculate values of edge functions
               ! and their derivatives for edge=i and i=k+1
               DO k=1,Edge % BDOFs
@@ -2792,7 +2792,7 @@ CONTAINS
                  q = q + 1
                  BasisDegree(q) = 1+k
               END DO
-           END DO 
+           END DO
         END IF
 
         ! Faces of P brick
@@ -2800,10 +2800,10 @@ CONTAINS
            ! For each face in brick, calculate values of face functions
            DO F=1,6
               Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
-                          
+
               ! Do not calculate face values if no dofs
               IF (Face % BDOFs <= 0) CYCLE
-              
+
               ! Get p for face
               p = Face % PDefs % P
 
@@ -2834,7 +2834,7 @@ CONTAINS
         nb = pSolver % Def_Dofs(7,BodyId,5)
         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
         IF ( BDOFs > 0 ) THEN
-           ! Get p from bubble DOFs 
+           ! Get p from bubble DOFs
            p = getEffectiveBubbleP(element,p,bdofs)
 
            ! For each bubble calculate value of basis function and its derivative
@@ -2883,7 +2883,7 @@ CONTAINS
 !  ARGUMENTS:
 !   Type(Element_t) :: element
 !     INPUT: element structure
-!     
+!
 !    REAL(KIND=dp) :: f(:)
 !     INPUT: Nodal values of the quantity whose value we want to know
 !
@@ -2893,11 +2893,11 @@ CONTAINS
 !    REAL(KIND=dp), OPTIONAL :: Basis(:)
 !      INPUT: Values of the basis functions at the point u,v,w can be given here,
 !      if known, otherwise the will be computed from the definition
-!                 
+!
 !  FUNCTION VALUE:
 !     REAL(KIND=dp) :: y
 !       value of the quantity y = x(u,v,w)
-!    
+!
 !------------------------------------------------------------------------------
 
      TYPE(Element_t) :: elm
@@ -2932,7 +2932,7 @@ CONTAINS
            val = InterpolateInElement3D( elm,f,u,v,w )
        END SELECT
      END IF
-  
+
    END FUNCTION InterpolateInElement
  FUNCTION GetEdgeMap( ElementFamily ) RESULT(EdgeMap)
 !------------------------------------------------------------------------------
@@ -2949,7 +2949,7 @@ CONTAINS
     INTEGER, TARGET :: Brick(12,2)
 
     LOGICAL :: Initialized(8) = .FALSE.
-  
+
     SAVE Line, Triangle, Wedge, Brick, Tetra, Quad, Pyramid, Initialized
     !$OMP THREADPRIVATE(Line, Triangle, Wedge, Brick, Tetra, Quad, Pyramid, Initialized)
 
@@ -2960,21 +2960,21 @@ CONTAINS
       EdgeMap => Line
     CASE(3)
       EdgeMap => Triangle
-    CASE(4) 
+    CASE(4)
       EdgeMap => Quad
-    CASE(5) 
+    CASE(5)
       EdgeMap => Tetra
-    CASE(6) 
+    CASE(6)
       EdgeMap => Pyramid
-    CASE(7) 
+    CASE(7)
       EdgeMap => Wedge
-    CASE(8) 
+    CASE(8)
       EdgeMap => Brick
     CASE DEFAULT
       WRITE( Message,'(A,I0,A)') 'Element family ',ElementFamily,' is not known!'
       CALL Fatal( 'GetEdgeMap', Message )
     END SELECT
- 
+
     IF ( .NOT. Initialized(ElementFamily) ) THEN
        Initialized(ElementFamily) = .TRUE.
        SELECT CASE(ElementFamily)
@@ -3012,7 +3012,7 @@ CONTAINS
          EdgeMap(6,:) = [ 2,5 ]
          EdgeMap(7,:) = [ 3,5 ]
          EdgeMap(8,:) = [ 4,5 ]
- 
+
        CASE(7)
          EdgeMap(1,:) = [ 1,2 ]
          EdgeMap(2,:) = [ 2,3 ]
@@ -3080,7 +3080,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !       Triangular element
 !------------------------------------------------------------------------------
-       CASE(3) 
+       CASE(3)
          J11 = X(2) - X(1)
          J12 = Y(2) - Y(1)
          J13 = Z(2) - Z(1)

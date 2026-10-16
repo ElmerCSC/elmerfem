@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -74,7 +74,7 @@
          Work(:,:), M1(:),M2(:),M3(:),E1(:),E2(:),E3(:), &
          ForceVector(:), divB(:),ExB(:), LrF(:), LrF1(:), LrF2(:), LrF3(:), &
          ElecField(:), Field1(:), Field2(:), Field3(:)
-     
+
      LOGICAL :: Stabilize,GotForceBC,GotIt
 
      INTEGER :: body_id,bf_id,eq_id
@@ -98,7 +98,7 @@
          Conductivity, AllocationsDone,LocalNodes, &
          Permeability, divB, ExBx,ExBy,ExBz,B1,B2,B3,MU,MV,MW, &
          VelocityVarOne, VelocityVarTwo, VelocityVarDre
-     
+
 
 
 
@@ -127,8 +127,8 @@
        mu0 = GetConstReal( Model % Constants,'Permeability of Vacuum', GotIt )
        IF(.NOT. GotIt ) CALL Fatal('MagneticSolve','> Permeability of Vacuum < is required')
      END IF
-            
-     
+
+
      UNorm = Solver % Variable % Norm
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -220,7 +220,7 @@
            WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
             (Model % NumberOfBulkElements-t) / &
                (1.0*Solver % NumberOfActiveElements)), ' % done'
-                       
+
            CALL Info( 'MagneticSolve', Message, Level=5 )
            at0 = RealTime()
          END IF
@@ -236,7 +236,7 @@
 
          UserDefinedVelo = .FALSE.
          UserDefinedVelo = GetLogical(Equation,'User Defined Velocity', gotIt)
-         
+
          ElementNodes % x(1:n) = Model % Nodes % x(NodeIndexes)
          ElementNodes % y(1:n) = Model % Nodes % y(NodeIndexes)
          ElementNodes % z(1:n) = Model % Nodes % z(NodeIndexes)
@@ -282,7 +282,7 @@
          MW = 0.0d0
 ! For high-f part (in time-domain), leave velocity contribution out.
 !#if 1
-         IF ( UserDefinedVelo ) THEN     
+         IF ( UserDefinedVelo ) THEN
            ! check for given constant velocity
            U(1:n) = GetReal( Material, 'MHD Velocity 1', gotIt )
            V(1:n) = GetReal( Material, 'MHD Velocity 2', gotIt )
@@ -304,7 +304,7 @@
 !        Set body forces
 !------------------------------------------------------------------------------
          BF => getBodyForce()
- 
+
          LoadVector = 0.0D0
          IF ( ASSOCIATED(BF) ) THEN
            LoadVector(1,1:n) = LoadVector(1,1:n) + GetReal( &
@@ -327,7 +327,7 @@
                 MASS,STIFF,FORCE, &
                     LoadVector,Conductivity*Permeability,Mx,My,Mz,U,V,W, &
                        Element,n,ElementNodes )
-         ELSE 
+         ELSE
             CALL MaxwellGeneralCompose( &
                 MASS,STIFF,FORCE, &
                     LoadVector,Conductivity*Permeability,Mx,My,Mz,U,V,W, &
@@ -335,7 +335,7 @@
          END IF
 
 !------------------------------------------------------------------------------
-!        If time dependent simulation, add mass matrix to global 
+!        If time dependent simulation, add mass matrix to global
 !        matrix and global RHS vector
 !------------------------------------------------------------------------------
          IF ( TransientSimulation ) CALL Default1stOrderTime(MASS,STIFF,FORCE)
@@ -537,7 +537,7 @@
       INTEGER :: p,q,i,t,n, M
 
       LOGICAL :: gotit
- 
+
 !------------------------------------------------------------------------------
 
      ALLOCATE( Visited(Model % NumberOfNodes) )
@@ -576,7 +576,7 @@
            Material => GetMaterial( Element )
            EConductivity(1:n) = GetReal( Material, 'Electrical Conductivity', &
                 gotit, Element )
-           IF( GotIt ) THEN 
+           IF( GotIt ) THEN
              CALL Warn('MagenticSolve','Use electric conductivity instead of electrical')
            ELSE
              EConductivity(1:n) = GetReal( Material, 'Electric Conductivity', &
@@ -621,7 +621,7 @@
            MV = 0.0d0
            MW = 0.0d0
 
-           IF ( UserDefinedVelo ) THEN     
+           IF ( UserDefinedVelo ) THEN
               ! check for given constant velocity
               U(1:n) = GetReal( Material, 'MHD Velocity 1', gotIt )
               V(1:n) = GetReal( Material, 'MHD Velocity 2', gotIt )
@@ -655,7 +655,7 @@
 
                  CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,&
                       Nodes % x(p), Nodes % y(p), Nodes % z(p) )
- 
+
                  EF(1) = W(p)*TotBy(p) - V(p)*TotBz(p)
                  EF(2) = U(p)*TotBz(p) - W(p)*TotBx(p)
                  ! You might want to use SI units for the azimuthal component,
@@ -672,7 +672,7 @@
 !#endif
 
               ELSE
-                 CALL Warn( 'MagneticSolve', & 
+                 CALL Warn( 'MagneticSolve', &
                       'Unsupported coordinate system in computing electric field' )
 
                  EF = 0.0d0
@@ -686,7 +686,7 @@
                    Ji3(q) / ( EConductivity(p) * MPermeability(p) ) - EF(3)
 
               Visited(q) = Visited(q) + 1
-           
+
            END DO
         END IF
      END DO
@@ -721,7 +721,7 @@
      INTEGER :: Reorder(:)
 
      TYPE(Element_t), POINTER :: Element
-     TYPE(Nodes_t) :: Nodes 
+     TYPE(Nodes_t) :: Nodes
 
      LOGICAL :: Stat, Averaged
 
@@ -814,7 +814,7 @@
               END IF
 
               Visited(q) = Visited(q) + 1
-           
+
            END DO
         END IF
       END DO

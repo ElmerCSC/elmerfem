@@ -452,7 +452,7 @@ End
 
 Solver 12
   Equation = "Free Surface Sea/Shelf"
-  Procedure =  "FreeSurfaceSolver1" "FreeSurfaceSolver"
+  Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
   Variable = "Zs Bottom"
   Variable DOFS =  1
   Exported Variable 1 = "Zs Bottom Residual"
@@ -486,7 +486,7 @@ End
 Solver 13
   Equation = "Vert Mesh Update"
   !Exec Solver = "Before TimeStep"
-  Procedure =  File "MeshSolve1" "MeshSolver"
+  Procedure =  File "MeshSolve" "MeshSolver"
   Variable = "Vert Mesh Update"
   Variable DOFs = 2
 

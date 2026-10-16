@@ -1,5 +1,5 @@
 PROGRAM ReadTest
-    
+
     USE BinIO
 
     IMPLICIT NONE

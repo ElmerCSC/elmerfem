@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -26,14 +26,14 @@
 !    Address: CSC - IT Center for Science Ltd.
 !             Keilaranta 14
 !             02101 Espoo, Finland
-!  
+!
 !    Original Date: 09 Nov 2007
 !
 !/*****************************************************************************/
 
 
 !------------------------------------------------------------------------------
-!> Solves the equation: (grad(d),grad(d))=1. The solution of this 
+!> Solves the equation: (grad(d),grad(d))=1. The solution of this
 !> gives the closest distance a to boundary where distance is forced to zero.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -224,10 +224,10 @@ SUBROUTINE DistanceSolver_init( Model,Solver,dt,TransientSimulation )
   SolverParams => GetSolverParams()
 
   IF( .NOT. ListCheckPresent(SolverParams,'Nonlinear System Convergence Tolerance') ) THEN
-    CALL ListAddConstReal(SolverParams,'Nonlinear System Convergence Tolerance',1.0d-8) 
-  END IF	
+    CALL ListAddConstReal(SolverParams,'Nonlinear System Convergence Tolerance',1.0d-8)
+  END IF
 
-END SUBROUTINE DistanceSolver_init	
+END SUBROUTINE DistanceSolver_init
 
 
 
@@ -260,7 +260,7 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
       condition(:), work(:)
   REAL(KIND=dp), POINTER :: distance(:)
   INTEGER, POINTER :: gPerm(:), ibuf(:), aperm(:),bperm(:),cperm(:)
-  LOGICAL :: DummyDistance 
+  LOGICAL :: DummyDistance
 
   SAVE STIFF, FORCE
 !------------------------------------------------------------------------------
@@ -287,7 +287,7 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
 
   SolverParams => GetSolverParams()
 
-  DummyDistance = GetLogical( SolverParams,'Dummy Distance Computation',Found ) 
+  DummyDistance = GetLogical( SolverParams,'Dummy Distance Computation',Found )
 
 
   nb = 0
@@ -301,8 +301,8 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
        Work(1:nd) = ListGetReal(BodyForce, TRIM(Solver % Variable % Name), &
            nd, Element % NodeIndexes, Found )
        IF ( Found) THEN
-          condition(1:nd) = GetReal(BodyForce, TRIM(Solver % Variable % Name) // " Condition", Found )        
-          DO i=1,nd             
+          condition(1:nd) = GetReal(BodyForce, TRIM(Solver % Variable % Name) // " Condition", Found )
+          DO i=1,nd
              j = Element % NodeIndexes(i)
 
              IF (Found .AND. condition(i) < 0.0) CYCLE
@@ -340,12 +340,12 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
     END IF
   END DO
 
-  
+
   IF( ParEnv % PEs == 1 ) THEN
     IF( nb == 0 ) THEN
       CALL Warn('DistanceSolver1','No known distances given for the distance solver!')
       RETURN
-    ELSE 
+    ELSE
       WRITE( Message,'(A,I0)') 'Number of fixed nodes on bulk: ',nb
       CALL Info('DistanceSolver1',Message,Level=8)
     END IF
@@ -424,7 +424,7 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
   DEALLOCATE(xp,yp,zp,aperm,bperm,condition)
   Solver % Variable % Norm = SQRT(SUM(distance**2))
 
-  CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, Solver % Variable % Name )	
+  CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, Solver % Variable % Name )
 
   CALL CheckTimer('DistanceSolver1',Delete=.TRUE.)
   CALL Info('DistanceSolver1','All done')
@@ -440,7 +440,7 @@ CONTAINS
     DO i=1,n
       k = Solver % Variable % Perm(i)
       IF ( k <= 0 ) CYCLE
- 
+
       IF ( bperm(i) /= 0 ) THEN
           distance(k) = 0._dp
       ELSE
@@ -477,7 +477,7 @@ CONTAINS
     yyp(n+1:nnb) = yp
     zzp(n+1:nnb) = zp
     bbd(n+1:nnb) = bd
- 
+
     xl = MAXVAL(xxp)-MINVAL(xxp)
     yl = MAXVAL(yyp)-MINVAL(yyp)
     zl = MAXVAL(zzp)-MINVAL(zzp)

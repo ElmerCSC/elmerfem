@@ -25,13 +25,13 @@ SUBROUTINE ElectrolyteCons_init( Model,Solver,dt,Transient )
     CALL ListAddNewLogical( Params,'Calculate Ce Sensitivity',.TRUE.)
   END IF
 
-  
+
 END SUBROUTINE ElectrolyteCons_Init
 
 
 !-----------------------------------------------------------------------------
 !> This is the conservation of species in electrolyte phase.
-!> Eq. (3.6) in [1]. 
+!> Eq. (3.6) in [1].
 !------------------------------------------------------------------------------
 SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
@@ -51,7 +51,7 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
   INTEGER :: n, nb, nd, t, active, dim, iter, maxiter
   INTEGER :: VisitedTimes = 0
   LOGICAL :: Found, Newton, InitHandles
-  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(*), PARAMETER :: Caller = 'ElectrolyteCons'
   TYPE(Variable_t), POINTER, SAVE :: SensVar
@@ -60,7 +60,7 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
   CALL Info(Caller,'------------------------------------------------')
   CALL Info(Caller,'Solving concentration of electrolyte phase')
   CALL Info(Caller,'------------------------------------------------')
-  
+
   CALL InitializeBattery()
 
   CALL DefaultStart()
@@ -76,25 +76,25 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
   maxiter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
-  
-  Newton = ListGetLogical( Params,'Linearize Flux',Found )  
-  
+
+  Newton = ListGetLogical( Params,'Linearize Flux',Found )
+
   CeVar => Solver % Variable
 
   ! We may skip doing stuff on the solver for some iteration to let the potentials
   ! settle down. The concentrations are extremely sensitive to the potentials but
-  ! not vice versa. 
+  ! not vice versa.
   VisitedTimes = VisitedTimes + 1
   IF( VisitedTimes < GetInteger( Params,'Number of Passive Visits',Found ) ) THEN
     RETURN
   END IF
 
-  IF( ListGetLogical( Params,'Use Solid Phase Relaxation',Found ) ) THEN 
+  IF( ListGetLogical( Params,'Use Solid Phase Relaxation',Found ) ) THEN
     SSRelax = ListGetConstReal( Model % Simulation,'res: concentration relax')
     CALL ListAddConstReal( Params,'Nonlinear system relaxation factor',SSRelax )
   END IF
-    
-  
+
+
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
@@ -106,10 +106,10 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
     IF( n > 0 ) THEN
       CALL Fatal(Caller,'Number of negative concentrations: '//I2S(n))
     END IF
-      
+
     CALL ButlerVolmerUpdate(Solver)
 
-    ! On the 1st iteration save the flux 
+    ! On the 1st iteration save the flux
     IF( UseMeanFlux ) THEN
       Jli0 = JliVar % Values
     END IF
@@ -120,7 +120,7 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
         CALL Fatal('ButlerVolmer','Variable "dJli dCe" not present!')
       END IF
     END IF
-        
+
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
@@ -139,10 +139,10 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
 
 #if 0
     ! Currently only natural BCs are considered since the electrolyte cannot
-    ! flow out of the battery. 
+    ! flow out of the battery.
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
     Active = GetNOFBoundaryActive(Solver)
-    InitHandles = .TRUE. 
+    InitHandles = .TRUE.
     DO t=1,Active
       Element => GetBoundaryElement(t)
       IF(ActiveBoundaryElement(Element)) THEN
@@ -153,19 +153,19 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
       END IF
     END DO
 #endif
-    
+
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 
     ! And finally, solve:
-    !--------------------       
+    !--------------------
     Norm = DefaultSolve()
 
     IF( DefaultConverged() ) EXIT
 
     CALL VariableRange( CeVar, 8)
-     
+
   END DO
 
   CALL DefaultFinish()
@@ -206,14 +206,14 @@ CONTAINS
 
     Material => GetMaterial( Element )
     dim = CoordinateSystemDimension()
-    IP = GaussPointsAdapt( Element ) 
+    IP = GaussPointsAdapt( Element )
 
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementDofs
       ALLOCATE(Basis(m), dBasisdx(m,3), MASS(m,m), STIFF(m,m), FORCE(m), &
           ElemSource(m), ElemSource0(m), ElemSens(m), ElemCe(m), &
-          STAT=allocstat)      
+          STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
       END IF
@@ -235,15 +235,15 @@ CONTAINS
             JliVar % Values( JliVar % Perm( Element % NodeIndexes ) ) &
             + Jli0( JliVar % Perm( Element % NodeIndexes ) ) )
       ELSE
-        ElemSource(1:n) = JliVar % Values( JliVar % Perm( Element % NodeIndexes ) )          
+        ElemSource(1:n) = JliVar % Values( JliVar % Perm( Element % NodeIndexes ) )
       END IF
 
       IF( Newton ) THEN
-        ElemSens(1:n) = SensVar % Values( SensVar % Perm( Element % NodeIndexes ) )      
+        ElemSens(1:n) = SensVar % Values( SensVar % Perm( Element % NodeIndexes ) )
         ElemCe(1:n) = CeVar % Values( CeVar % Perm( Element % NodeIndexes ) )
       END IF
     END IF
-    
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -252,11 +252,11 @@ CONTAINS
       Weight = IP % s(t) * DetJ
 
       ! electrolyte volume fraction
-      EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element )            
-      
+      EpsAtIp = ListGetElementReal( EpsCoeff_h, Basis, Element )
+
        ! diffusion term
       DiffAtIp = ListGetElementReal( DiffCoeff_h, Basis, Element )
-      
+
       ! If we multiply with EpsAtIp, the second term in PhiE solver can create difficulties
       ! So alternatively we can ignore the EpstAtIp to shorten the computational time and
       ! to increase stability
@@ -266,25 +266,25 @@ CONTAINS
         DiffCe = DiffAtIp
       END IF
 
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight &       
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight &
           * DiffCe * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
-      
+
       ! time derivative term
       DO p=1,nd
         DO q=1,nd
-          MASS(p,q) = MASS(p,q) + Weight * EpsAtIp * Basis(p) * Basis(q) 
+          MASS(p,q) = MASS(p,q) + Weight * EpsAtIp * Basis(p) * Basis(q)
         END DO
       END DO
-      
+
       ! source  term
       IF( HaveSource ) THEN
         SourceAtIp = SUM( Basis(1:n) * ElemSource(1:n) )
-        
+
         IF( Newton ) THEN
-          SensAtIp = SUM( Basis(1:n) * ElemSens(1:n) )          
+          SensAtIp = SUM( Basis(1:n) * ElemSens(1:n) )
           IF( UseMeanFlux .OR. UseTimeAveFlux ) SensAtIp = 0.5_dp * SensAtIp
-          CeAtIp = SUM( Basis(1:n) * ElemCe(1:n) ) 
-          SourceAtIp = SourceAtIp - SensAtIp * CeAtIp 
+          CeAtIp = SUM( Basis(1:n) * ElemCe(1:n) )
+          SourceAtIp = SourceAtIp - SensAtIp * CeAtIp
           DO p=1,nd
             DO q=1,nd
               STIFF(p,q) = STIFF(p,q) - Weight * FluxCoeff * SensAtIp * &
@@ -292,11 +292,11 @@ CONTAINS
             END DO
           END DO
         END IF
-        FORCE(1:nd) = FORCE(1:nd) + Weight * FluxCoeff * SourceAtIP * Basis(1:nd)       
+        FORCE(1:nd) = FORCE(1:nd) + Weight * FluxCoeff * SourceAtIP * Basis(1:nd)
       END IF
-      
+
     END DO
-    
+
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
 
@@ -305,7 +305,7 @@ CONTAINS
   END SUBROUTINE LocalMatrix
   !------------------------------------------------------------------------------
 
-#if 0  
+#if 0
   ! Assembly of the matrix entries arising from the Neumann and Robin conditions.
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd, nb, InitHandles )
@@ -320,7 +320,7 @@ CONTAINS
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BC       
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h
 
@@ -342,7 +342,7 @@ CONTAINS
     STIFF = 0._dp
     FORCE = 0._dp
     LOAD = 0._dp
-    
+
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
@@ -378,7 +378,7 @@ CONTAINS
   END SUBROUTINE LocalMatrixBC
   !------------------------------------------------------------------------------
 #endif
-  
+
   !------------------------------------------------------------------------------
 END SUBROUTINE ElectrolyteCons
 !------------------------------------------------------------------------------

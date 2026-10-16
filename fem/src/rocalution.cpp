@@ -371,7 +371,7 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
 }
 
 
-extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout, 
+extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout,
    double *bnrm, int *gOffset,int *fcomm, int *imethod, int *prec, int *maxiter, double *TOL )
 {
     int i, *Lrows, *Lcols, rank, nranks;
@@ -462,7 +462,7 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
 
     // move solution back from device to host
     x.MoveToHost();
-    
+
     for(i=0; i<*n; i++ ) x_inout[i]=x[i];
 
     ls->Clear();
@@ -595,7 +595,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
       case(4): ls = &ls_fgmres; ls_fgmres.SetBasisSize(50); break;
       default: ls = &ls_bcg; break;
     }
-     
+
     switch(*prec) {
       case(0): ls->SetPreconditioner(prec_j); break;
       case(1): ls->SetPreconditioner(prec_g); break;
@@ -668,7 +668,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
 
     // Stop rocALUTION platform
     stop_rocalution();
-} 
+}
 #else
 #include <stdio.h>
 #include <stdlib.h>
@@ -678,7 +678,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
   exit(0);
 }
 
-extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout, 
+extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout,
                         int *gOffset,int *fcomm )
 {
   fprintf( stderr, "No parallel ROCALUTION library included.\n" );

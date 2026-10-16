@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -43,7 +43,7 @@
 #define AEPS 1.0e-15
 
 #define ALLOCMEM( s ) calloc( s, 1 )
-#define FREEMEM( p ) free( p ) 
+#define FREEMEM( p ) free( p )
 
 #define A( i, j ) a[n * ( i ) + ( j )]
 
@@ -55,7 +55,7 @@ void mtrinv( double *a, int n )
     int *pivot;
 
     double s;
-  
+
     pivot = (int *)ALLOCMEM(n*sizeof(int));
 
     /*
@@ -73,7 +73,7 @@ void mtrinv( double *a, int n )
         A(i,i) = 1.0/A(i,i);
     }
 
-    /*  
+    /*
      *  INV(U)
      */
     for( i=n-2; i>=0; i-- )
@@ -94,8 +94,8 @@ void mtrinv( double *a, int n )
             for( k=i+1; k<=j; k++ ) s -= A(j,k)*A(k,i);
             A(j,i) = A(i,i)*s;
         }
-  
-    /* 
+
+    /*
      * A  = INV(AP)
      */
     for( i=0; i<n; i++ )
@@ -130,7 +130,7 @@ void mtrinv( double *a, int n )
 
 /*
  * LU- decomposition by gaussian elimination. Row pivoting is used.
- * 
+ *
  * result : AP = L'U ; L' = LD; pivot[i] is the swapped column number
  * for column i.
  *
@@ -154,7 +154,7 @@ void ludecomp( double *a, int n, int *pivot )
         }
 
         pivot[i] = j;
-    
+
         if ( j != i )
             for( k=0; k<=i; k++ )
             {
@@ -164,20 +164,20 @@ void ludecomp( double *a, int n, int *pivot )
             }
 
         for( k=i+1; k<n; k++ ) A(i,k) /= A(i,i);
-    
+
         for( k=i+1; k<n; k++ )
         {
             if ( j != i )
             {
                 swap = A(k,i);
-                A(k,i) = A(k,j); 
+                A(k,i) = A(k,j);
                 A(k,j) = swap;
             }
 
             for( l=i+1; l<n; l++ ) A(k,l) -= A(k,i) * A(i,l);
         }
     }
-  
+
     pivot[n-1] = n-1;
     if ( ABS(A(n-1,n-1))<AEPS )
     {

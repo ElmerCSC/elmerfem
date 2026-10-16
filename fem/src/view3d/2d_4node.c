@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -41,7 +41,7 @@ void mtrinv(double *,int);
  *
  * shape functions: N0 = (1-u)(1-v)/4       3--------2
  *                  N1 = (1+u)(1-v)/4       |        |
- *                  N2 = (1+u)(1+v)/4     v |        | 
+ *                  N2 = (1+u)(1+v)/4     v |        |
  *                  N3 = (1-u)(1+v)/4       0--------1
  *                                            u
  */
@@ -133,7 +133,7 @@ double dNdU_Fvalue_2node( double *F, double u)
 {
      return 0.5*(F[1] - F[0]);
 }
-     
+
 double dNdU_Fvalue_4node( double *F, double u, double v )
 {
      double R;
@@ -317,7 +317,7 @@ void derivates_to_global_4node( double *X,double *Y,double *Z,
         dFdX[i] = dXdU*a + dXdV*b;
         dFdY[i] = dYdU*a + dYdV*b;
         dFdZ[i] = dZdU*a + dZdV*b;
-    } 
+    }
 }
 
 void dNdXYZ_Nvalue_4node( int *Topology, double *dFdX, double *dFdY, double *dFdZ, double u, double v )

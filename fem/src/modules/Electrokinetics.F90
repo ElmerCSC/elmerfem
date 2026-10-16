@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 13 Apr 2005
 ! *
@@ -54,8 +54,8 @@
 ! *                                Helmholtz-Smoluchowski velocity for
 ! *                                electro-osmotic velocity slip condition
 ! *
-! *        getJouleHeat: computes inductive heat source as a function of 
-! *                       electric field. Needs conductivity as material 
+! *        getJouleHeat: computes inductive heat source as a function of
+! *                       electric field. Needs conductivity as material
 ! *                       parameter input
 !----------------------------------------------------------------------------------
 
@@ -72,7 +72,7 @@ FUNCTION helmholtz_smoluchowski1( Model, NodeNumber, dummyargument) RESULT(hs_ve
   INTEGER :: NodeNumber
   REAL(KIND=dp) :: dummyargument, hs_velocity1
 
-  INTERFACE 
+  INTERFACE
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
        IMPLICIT NONE
@@ -104,7 +104,7 @@ FUNCTION helmholtz_smoluchowski2( Model, NodeNumber, dummyargument) RESULT(hs_ve
   INTEGER :: NodeNumber
   REAL(KIND=dp) :: dummyargument, hs_velocity2
 
-  INTERFACE 
+  INTERFACE
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
        IMPLICIT NONE
@@ -137,7 +137,7 @@ FUNCTION helmholtz_smoluchowski3( Model, NodeNumber, dummyargument) RESULT(hs_ve
   INTEGER :: NodeNumber
   REAL(KIND=dp) :: dummyargument, hs_velocity3
 
-  INTERFACE 
+  INTERFACE
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
        IMPLICIT NONE
@@ -170,7 +170,7 @@ FUNCTION helmholtz_smoluchowski( Model, NodeNumber, dummyargument) RESULT(hs_vel
   INTEGER :: NodeNumber
   REAL(KIND=dp) :: dummyargument, hs_velocity_tang
 
-  INTERFACE 
+  INTERFACE
      FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_velocity_comp)
        USE DefUtils
        IMPLICIT NONE
@@ -212,17 +212,17 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
        electricField(3), tang_electricField(3), norm_electricField,&
        U, V, W, Normal(3), Tangent(3), Tangent2(3), hs_velocity(3), eoMobility
   CHARACTER(LEN=MAX_NAME_LEN) :: ElectricFieldMethod, ValueName
-  LOGICAL :: GotIt, ElectricFieldExists, FirstTime=.TRUE., SkipThisTime=.FALSE.,& 
+  LOGICAL :: GotIt, ElectricFieldExists, FirstTime=.TRUE., SkipThisTime=.FALSE.,&
        CalcMobility
   TYPE(ValueList_t), POINTER :: ParentMaterial, BC
-  TYPE(Element_t), POINTER :: BoundaryElement, ParentElement  
+  TYPE(Element_t), POINTER :: BoundaryElement, ParentElement
   TYPE(Nodes_t) :: Nodes
   TYPE(Variable_t), POINTER :: EFieldComp
 ! remember this
 ! -------------
   SAVE Nodes, DIM, FirstTime, vacuumPerm, SkipThisTime
 
-! provide arrays to let the ListGetReal/Integer function 
+! provide arrays to let the ListGetReal/Integer function
 ! work with just a nodal value to be read in
 ! -------------------------------------------------------
   NodeNumberTarget(1) = NodeNumber
@@ -233,7 +233,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
   !-----------------------------------------------------------------
   hs_velocity_comp = 0.0d00
   eoMobility = 0.0d00
-  SkipThisTime = ListGetLogical(Model % Simulation, 'Initializaton Phase', GotIt)  
+  SkipThisTime = ListGetLogical(Model % Simulation, 'Initializaton Phase', GotIt)
   IF (SkipThisTime) RETURN
 
   !-----------------------------------------------------------------
@@ -252,7 +252,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
            'The tangential velocity may only be defined in 2D')
      END IF
 
-     N = Model % MaxElementNodes 
+     N = Model % MaxElementNodes
      ALLOCATE(Nodes % x(N), Nodes % y(N), Nodes % z(N),&
           STAT = istat)
      IF (istat /= 0) THEN
@@ -316,13 +316,13 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
 
   !-----------------------------------------------------------------
   ! get material parameters from boundary
-  !-----------------------------------------------------------------  
+  !-----------------------------------------------------------------
   dummyArray = ListGetReal( BC, 'Zeta Potential', 1, NodeNumberArray, CalcMobility )
 
   IF( CalcMobility ) THEN
     zetapotential = dummyArray(1)
 
-    ! get material parameters from bulk 
+    ! get material parameters from bulk
     !-----------------------------------------------------------------
     Model % CurrentElement => ParentElement ! we need this in case of the material parameter being a function
     dummyArray  = ListGetReal( ParentMaterial, 'Viscosity', 1, NodeNumberArray, GotIt)
@@ -363,7 +363,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
   !-----------------------------------------------------------------
   ElectricFieldMethod = ListGetString( Model % Equations(eq_id) % &
          Values, 'Electric Field', GotIt )
-  IF ( .NOT.GotIt ) THEN 
+  IF ( .NOT.GotIt ) THEN
     WRITE(Message,'(a,i0)' )'No external electric field defined for Equation no. ', eq_id
     CALL Info('electrokinetics (helmholtz_smoluchowski)',Message, level=4)
     ElectricFieldExists = .FALSE.
@@ -373,37 +373,37 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
     IF ( ElectricFieldMethod == 'constant') THEN ! read field components from Material section
       ElectricFieldExists = .FALSE.
       ElectricField = 0.0_dp
-      
+
       DO i=1,dim
         WRITE(ValueName,'(a,i2)' ) 'Electric Field',i
         dummyArray =  ListGetReal( ParentMaterial,ValueName, 1, NodeNumberArray, GotIt )
         IF( GotIt ) THEN
-          electricField(i) = dummyArray(1) 
+          electricField(i) = dummyArray(1)
           ElectricFieldExists = .TRUE.
         END IF
       END DO
-      
+
       IF (.NOT. ElectricFieldExists) THEN
         WRITE(Message,'(a,i0)' )'No component for >Electric Field {1,2,3}< found in Material ',&
             material_id, ' although defined as constant'
         CALL Warn('electrokinetics (helmholtz_smoluchowski)',Message)
       END IF
     ELSE IF ( ElectricFieldMethod == 'computed') THEN ! get Electric Field from Electrostatic Solver
-      electricField = 0.0_dp      
+      electricField = 0.0_dp
       DO i=1,dim
         WRITE(ValueName,'(a,i2)' ) 'Electric Field',i
-        EFieldComp => VariableGet( Model % Variables, ValueName ) 
+        EFieldComp => VariableGet( Model % Variables, ValueName )
         IF (ASSOCIATED(EFieldComp)) THEN
           electricField(i) = EFieldComp%Values(EFieldComp%Perm(NodeNumber))
           ElectricFieldExists = .TRUE.
         END IF
       END DO
-    ELSE         
+    ELSE
       WRITE(Message,'(a,a,a,i0)' ) 'Unknown entry, ', ElectricFieldMethod,&
           ',for keyword >Electric Field< for Equation no. ', eq_id
       CALL Warn('electrokinetics (helmholtz_smoluchowski)',Message)
       ElectricFieldExists = .FALSE.
-      hs_velocity = 0.0D00        
+      hs_velocity = 0.0D00
     END IF
   END IF
   Model % CurrentElement => BoundaryElement  ! restore correct pointer
@@ -411,11 +411,11 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
   !---------------------------------------------
   ! compute the Helmholtz-Smoluchowski velocity
   !---------------------------------------------
-  IF (ElectricFieldExists) THEN     
+  IF (ElectricFieldExists) THEN
     norm_electricField = SUM(electricField(1:3)*Normal(1:3))
     tang_electricField = electricField - norm_electricField * Normal
     hs_velocity = tang_electricField * eoMobility
-    
+
     IF( direction == 0 ) THEN
       CALL TangentDirections( Normal,Tangent,Tangent2)
       hs_velocity_comp = SUM(hs_velocity * Tangent )
@@ -423,7 +423,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
       hs_velocity_comp = hs_velocity(direction)
     END IF
   END IF
-  
+
 END FUNCTION helmholtz_smoluchowski_comp
 
 
@@ -462,7 +462,7 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
   DIM = CoordinateSystemDimension()
   jouleHeat = 0.0_dp
 
-! provide arrays to let the ListGetReal/Integer function 
+! provide arrays to let the ListGetReal/Integer function
 ! work with just a nodal value to be read in
 ! -------------------------------------------------------
   NodeNumberTarget(1) = NodeNumber
@@ -497,12 +497,12 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
   dummyArray = ListGetReal( Material,'Density', 1, NodeNumberArray, GotIt )
   IF (.NOT. GotIt) THEN
     WRITE(Message, '(a,i0)' )'No >Density< found in Material section ',&
-        material_id 
+        material_id
     CALL Warn('electrokinetics (getJouleHeat)',Message)
     CALL Warn('electrokinetics (getJouleHeat)','setting reference density to 1')
     density = 1.0D00
   ELSE
-    density = dummyArray(1) 
+    density = dummyArray(1)
   END IF
 
   !-----------------------------------------------------------------
@@ -510,7 +510,7 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
   !-----------------------------------------------------------------
   ElectricFieldMethod = ListGetString( Model % Equations(eq_id) % &
       Values, 'Electric Field', GotIt )
-  IF ( .NOT.GotIt ) THEN 
+  IF ( .NOT.GotIt ) THEN
     WRITE(Message,'(a,i3)' )'No external electric field defined for Equation no.', eq_id
     CALL Info('electrokinetics (helmholtz_smoluchowski)',Message, level=4)
     ElectricFieldExists = .FALSE.
@@ -519,32 +519,32 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
     IF ( ElectricFieldMethod == 'constant') THEN ! read field components from Material section
       ElectricFieldExists = .FALSE.
       ElectricField = 0.0_dp
-      
+
       DO i=1,dim
         WRITE(ValueName,'(a,i2)' ) 'Electric Field',i
         dummyArray =  ListGetReal( Material,ValueName, 1, NodeNumberArray, GotIt )
         IF( GotIt ) THEN
-          electricField(i) = dummyArray(1) 
+          electricField(i) = dummyArray(1)
           ElectricFieldExists = .TRUE.
         END IF
       END DO
-      
+
       IF (.NOT. ElectricFieldExists) THEN
         WRITE(Message,'(a,i3)' )'No component for >Electric Field {1,2,3}< found in Material',&
             material_id, ' although defined as constant'
         CALL Warn('electrokinetics (getJouleHeat)',Message)
       END IF
     ELSE IF ( ElectricFieldMethod == 'computed') THEN ! get Electric Field from Electrostatic Solver
-      electricField = 0.0_dp      
+      electricField = 0.0_dp
       DO i=1,dim
         WRITE(ValueName,'(a,i2)' ) 'Electric Field',i
-        EFieldComp => VariableGet( Model % Variables, ValueName ) 
+        EFieldComp => VariableGet( Model % Variables, ValueName )
         IF (ASSOCIATED(EFieldComp)) THEN
           electricField(i) = EFieldComp%Values(EFieldComp%Perm(NodeNumber))
           ElectricFieldExists = .TRUE.
         END IF
       END DO
-    ELSE         
+    ELSE
       WRITE(Message,'(a,a,a,i3)' ) 'Unknown entry, ', ElectricFieldMethod,&
           ',for keyword >Electric Field< for Equation no.', eq_id
       CALL Warn('electrokinetics (getJouleHeat)',Message)

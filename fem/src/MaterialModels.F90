@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 24 Apr 1997
 ! *
@@ -43,7 +43,7 @@
 
 
 MODULE MaterialModels
- 
+
    USE DefUtils
 
    IMPLICIT NONE
@@ -54,7 +54,7 @@ MODULE MaterialModels
 CONTAINS
 
 
- 
+
 !------------------------------------------------------------------------------
 !> Return second invariant.
 !> Note: Actually SQUARE of the second invariant of velocity is returned
@@ -180,8 +180,8 @@ this ise not in USE
 
 
 !------------------------------------------------------------------------------
-!> Returns effective viscosity for Navier-Stokes equation. 
-!> The viscosity model may be either some nonnewtonian material law, 
+!> Returns effective viscosity for Navier-Stokes equation.
+!> The viscosity model may be either some nonnewtonian material law,
 !> or from turbulence models, but not from both at the same time.
 !------------------------------------------------------------------------------
    FUNCTION EffectiveViscosity( Viscosity,Density,Ux,Uy,Uz,Element, &
@@ -214,7 +214,7 @@ this ise not in USE
 
      REAL(KIND=dp), ALLOCATABLE :: c1n(:), c2n(:), c3n(:), c4n(:), NodalEhF(:), Vals(:)
      ! Temperature is needed for thermal models
-     TYPE(Variable_t), POINTER :: TempSol 
+     TYPE(Variable_t), POINTER :: TempSol
      REAL(KIND=dp), POINTER :: Temperature(:)
      INTEGER, POINTER :: TempPerm(:)
      TYPE(C_FUNPTR) :: Fnc
@@ -233,7 +233,7 @@ this ise not in USE
      Material => CurrentModel % Materials(k) % Values
 
      ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt)
-     
+
      IF(.NOT. gotIt) RETURN
      !------------------------------------------------------------------------------
      !    Basis function values & derivatives at the calculation point
@@ -258,7 +258,7 @@ this ise not in USE
      Velo(2) = SUM( Basis(1:nd) * Uy(1:nd) )
      Velo(3) = SUM( Basis(1:nd) * Uz(1:nd) )
 
-     ! This is the square of shearrate which results to 1/2 in exponent 
+     ! This is the square of shearrate which results to 1/2 in exponent
      ! Also the derivative is taken with respect to the square
      !-------------------------------------------------------------------
      ss = 0.5_dp * SecondInvariant(Velo,dVelodx,Metric,Symb)
@@ -271,8 +271,8 @@ this ise not in USE
         c2n = ListGetReal( Material, 'Glen Exponent', n, Element % NodeIndexes, GotIt ) ! this is the real exponent, n, not 1/n
         IF (.NOT.GotIt) c2n(1:n) = 3.0_dp
         c2 = SUM( Basis(1:n) * c2n(1:n) )
-        s = ss/4.0_dp ! the second invariant is not taken from the strain rate tensor, but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
-        
+        s = ss/4.0_dp ! the second invariant is not taken from the strain rate tensor, but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)
+
         SetArrheniusFactor = GetLogical(Material, 'Set Arrhenius Factor', GotIt)
         IF ( (.NOT.GotIt) .OR. .NOT.(SetArrheniusFactor)) THEN
            NodalTemperature(1:n) = ListGetReal(Material, 'Constant Temperature', n, Element % NodeIndexes, GotIt) !we are happy as is
@@ -283,18 +283,18 @@ this ise not in USE
               TempSol => VariableGet( CurrentModel % Variables,TRIM(TemperatureName))
               IF ( ASSOCIATED( TempSol) ) THEN
                  TempPerm    => TempSol % Perm
-                 Temperature => TempSol % Values   
+                 Temperature => TempSol % Values
                  Temp =  SUM(Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes(1:n))))
               ELSE
                  WRITE(Message, '(A,A,A)') 'Could not find variable ',&
                       TRIM(TemperatureName),' to inquire temperature field for Glen'
                  CALL FATAL('EffectiveViscosity',Message)
               END IF
-           
+
            ELSE
               Temp = SUM(Basis(1:n) * NodalTemperature(1:n))
            END IF
-        
+
            R = GetConstReal( CurrentModel % Constants,'Gas Constant',GotIt)
            IF (.NOT.GotIt) R = 8.314_dp
            ! lets for the time being have this hardcoded
@@ -323,7 +323,7 @@ this ise not in USE
               Q2 = 139.0d03
               CALL INFO('EffectiveViscosity','Activation Energy 2 not found. Setting to 139.0d03', Level=5)
            END IF
-        
+
            IF (Temp <=  Tlimit) THEN
               ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15_dp + Temp)))
            ELSE IF((Tlimit<Temp) .AND. (Temp <= 0.0_dp)) THEN
@@ -335,7 +335,7 @@ this ise not in USE
            END IF
         ELSE
           ArrheniusFactor = GetConstReal(Material,'Arrhenius Factor', GotIt)
-          IF (.NOT.(GotIt)) THEN 
+          IF (.NOT.(GotIt)) THEN
             CALL FATAL('EffectiveViscosity',&
                  '<Set Arrhenius Factor> is TRUE, but no value <Arrhenius Factor> found')
           END IF
@@ -354,7 +354,7 @@ this ise not in USE
           IF (GotIt) &
                EhF = SUM(Basis(1:n) * NodalEhF(1:n))
         END IF
-        
+
         IF (PRESENT(muder)) muder = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
              * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
 
@@ -417,11 +417,11 @@ this ise not in USE
         c4 = ListGetConstReal( Material, 'Yasuda Exponent',gotIt)
         IF(gotIt) THEN
            s = SQRT(ss)
-           mu = Viscosity + c1 * (1 + c3**c4*ss**(c4/2))**((c2-1)/c4) 
+           mu = Viscosity + c1 * (1 + c3**c4*ss**(c4/2))**((c2-1)/c4)
            IF ( PRESENT(muder ) ) muder =  &
                 c1*(1+c3**c4*ss**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*ss**(c4/2-1)
         ELSE
-           mu = Viscosity + c1 * (1 + c3*c3*ss)**((c2-1)/2) 
+           mu = Viscosity + c1 * (1 + c3*c3*ss)**((c2-1)/2)
            IF ( PRESENT(muder) ) muder = &
                 c1*(c2-1)/2*c3**2*(1+c3**2*ss)**((c2-1)/2-1)
         END IF
@@ -493,7 +493,7 @@ this ise not in USE
            c3 = 0.75d0 * (Temp - Temp**3/3) + 0.5d0
         END IF
 
-        mu = Viscosity + c3 * c1 
+        mu = Viscosity + c3 * c1
 
      CASE( 'user function' )
         str = ListGetString( Material, 'Viscosity Function' )
@@ -501,7 +501,7 @@ this ise not in USE
         mu = MaterialUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
              Basis, dBasisdx, Viscosity, Velo, dVelodx )
 
-     CASE DEFAULT 
+     CASE DEFAULT
         CALL WARN('EffectiveViscosity','Unknown material model')
 
      END SELECT
@@ -669,7 +669,7 @@ this ise not in USE
                       mu, Tmu, DetJ
 
      ! Temperature is needed for thermal models
-     TYPE(Variable_t), POINTER :: TempSol 
+     TYPE(Variable_t), POINTER :: TempSol
 
      TYPE(C_FUNPTR) :: Fnc
      CHARACTER(:), ALLOCATABLE :: str
@@ -711,11 +711,11 @@ this ise not in USE
          DO i=1,3
             dTempdx(i,1) = SUM( dBasisdx(1:nd,i) * Temperature(1:nd) )
          END DO
-       
+
          PCond = MaterialUserFunction( Fnc, CurrentModel, Element, Nodes, n, nd, &
               Basis, dBasisdx, Conductivity, Temp, dTempdx )
 
-     CASE DEFAULT 
+     CASE DEFAULT
        CALL WARN('EffectiveConductivity','Unknown material model')
 
      END SELECT

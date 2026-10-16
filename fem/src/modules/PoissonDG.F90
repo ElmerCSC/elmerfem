@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08.06.1997
 ! *
@@ -59,7 +59,7 @@
      REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), &
               FORCE(:), EpsilonBoundary(:)
      REAL(KIND=dp) :: Beta, Gamma, Norm
-     
+
      SAVE STIFF, LOAD, FORCE, AllocationsDone, EpsilonBoundary
 !------------------------------------------------------------------------------
      TYPE( Element_t ), POINTER :: Edges(:), Faces(:), p(:), elm
@@ -86,7 +86,7 @@
         N = 2 * Mesh % MaxElementDOFs
         ALLOCATE( FORCE(N), STIFF(2*N,2*N), LOAD(N), EpsilonBoundary(N), &
              LocalSolution(N), STAT = istat )
-        
+
        IF ( istat /= 0 ) CALL FATAL('PoissonDG','Memory allocation error.' )
 
        AllocationsDone = .TRUE.
@@ -98,13 +98,13 @@
      Active = GetNOFActive()
      CALL DefaultInitialize()
      DO t = 1, Active
-        Element => GetActiveElement( t ) 
+        Element => GetActiveElement( t )
         n = GetElementNOfNodes( Element )
-        
+
         BodyForce => GetBodyForce( Element )
         LOAD(1:n) = GetReal( BodyForce, 'Source', GotIt )
-        
-        CALL LocalMatrix( STIFF, FORCE, LOAD, Element, n ) 
+
+        CALL LocalMatrix( STIFF, FORCE, LOAD, Element, n )
         CALL DefaultUpdateEquations( STIFF, FORCE )
      END DO
 !------------------------------------------------------------------------------
@@ -128,7 +128,7 @@
     DO t = 1, np
        elm => p(t)
        IF ( .NOT. ActiveBoundaryElement(elm, DGBoundary=.TRUE.) ) CYCLE
-       
+
        LeftParent  => elm % BoundaryInfo % Left
        RightParent => elm  % BoundaryInfo % Right
        IF ( .NOT. ASSOCIATED(RightParent) ) CYCLE
@@ -151,7 +151,7 @@
 !------------------------------------------------------------------------------
     Gamma = ListGetConstReal( Solver % Values, 'gamma2', GotIt )
     IF( .NOT. GotIt ) Gamma = 1.0d-3
-    
+
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 !    PRINT*,'Assembly (s): ',CPUTime()-at
@@ -182,7 +182,7 @@
        REAL(KIND=dp) :: hE, Normal(3), LeftOut(3)
 
        TYPE(Nodes_t) ::Nodes, LeftParentNodes, RightParentNodes
-       SAVE Nodes, LeftParentNodes, RightParentNodes 
+       SAVE Nodes, LeftParentNodes, RightParentNodes
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
        STIFF = 0.0d0
@@ -204,7 +204,7 @@
 !      Numerical integration over the edge
 !------------------------------------------------------------------------------
        IntegStuff = GaussPoints(elm)
- 
+
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
          V = IntegStuff % v(t)
@@ -282,7 +282,7 @@
        REAL(KIND=dp) :: hE, Normal(3), LeftOut(3)
 
        TYPE(Nodes_t) ::Nodes, LeftParentNodes, RightParentNodes
-       SAVE Nodes, LeftParentNodes, RightParentNodes 
+       SAVE Nodes, LeftParentNodes, RightParentNodes
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
        STIFF = 0.0d0
@@ -304,7 +304,7 @@
 !      Numerical integration over the edge
 !------------------------------------------------------------------------------
        IntegStuff = GaussPoints(elm)
- 
+
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
          V = IntegStuff % v(t)
@@ -364,7 +364,7 @@
 
 
 
-!------------------------------------------------------------------------------      
+!------------------------------------------------------------------------------
      SUBROUTINE LocalMatrix( STIFF, FORCE, LOAD, Element, n  )
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:)
@@ -379,9 +379,9 @@
 
        TYPE(Nodes_t) :: Nodes
        SAVE Nodes
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
- 
+
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
        FORCE = 0.0d0
@@ -391,7 +391,7 @@
 !      Numerical integration
 !------------------------------------------------------------------------------
        IntegStuff = GaussPoints( Element )
- 
+
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
          V = IntegStuff % v(t)
@@ -456,14 +456,14 @@
 !      Numerical integration
 !------------------------------------------------------------------------------
        IntegStuff = GaussPoints( Element )
- 
+
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
          V = IntegStuff % v(t)
          W = IntegStuff % w(t)
          S = IntegStuff % s(t)
 
-         Normal = NormalVector( Element, Nodes, U, V, .TRUE. ) 
+         Normal = NormalVector( Element, Nodes, U, V, .TRUE. )
 
 !------------------------------------------------------------------------------
 !        Basis function values & derivatives at the integration point

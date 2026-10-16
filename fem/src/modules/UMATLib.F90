@@ -25,8 +25,8 @@
 !  
 !------------------------------------------------------------------------------
 ! The template for including a material model definition written in the form of
-! an Abaqus user subroutine (UMAT). The arguments which can be supposed to be 
-! supported by Elmer are capitalized. 
+! an Abaqus user subroutine (UMAT). The arguments which can be supposed to be
+! supported by Elmer are capitalized.
 !------------------------------------------------------------------------------
   SUBROUTINE UMAT_template(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
        rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
@@ -41,29 +41,29 @@
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
     ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
+    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the
+    ! current approximation of the strain increment (DSTRAN) must be returned.
     ! If the strain increment is defined to be zero in the beginning of the
     ! nonlinear iteration, Elmer will generate a candidate for the strain increment
     ! by assuming purely elastic increment characterized by DDSDDE.
 
     REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
+    ! Requirement for Elmer: The state variables Q_n as specified at the
     ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
+    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to
+    ! the current approximation of the strain increment must be returned. If
+    ! convergence is attained, these values will be saved and associated with the
     ! converged solution (cf. the input values)
 
     REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
+    ! The derivative of (Cauchy) stress response function with respect to the
     ! strain evaluated for the current approximation must be returned
 
     REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
+    ! Requirement for Elmer: Provide specific strain energy (sse), plastic
+    ! dissipation (spd) and creep dissipation (scd) at the previous time/load
     ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
+    ! Requirement for umat:  The values of the energy variables corresponding to
     ! the current approximation may be returned
 
     REAL(KIND=dp), INTENT(OUT) :: rpl
@@ -75,12 +75,12 @@
     ! This gives the strains before the time/load increment.
     ! The strain can be computed from the deformation gradient, so this
     ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
+    ! this information anyway. Abaqus assumes that the logarithmic strain
     ! is used, but Elmer may also use other strain measures.
 
     REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
+    ! The current candidate for the strain increment to obtain the current
+    ! candidate for the stress. In principle this could be computed from the
     ! deformation gradient; cf. the variable stran.
 
     REAL(KIND=dp), INTENT(IN) :: TIME(2)
@@ -109,7 +109,7 @@
     INTEGER, INTENT(IN) :: NSHR
     ! The number of the engineering shear strain components
 
-    INTEGER, INTENT(IN) :: NTENS 
+    INTEGER, INTENT(IN) :: NTENS
     ! The size of the array containing the stress or strain components
 
     INTEGER, INTENT(IN) :: NSTATEV
@@ -125,7 +125,7 @@
     ! The coordinates of the current point could be specified
 
     REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
+    ! No support for keeping track of rigid body rotations
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
@@ -135,12 +135,12 @@
     ! The element size is not yet provided by Elmer
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
+    ! The deformation gradient before the time/load increment (at the previous
     ! time/load level for converged solution)
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
     ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
+    ! (cf. the return value of STRESS variable)
 
     INTEGER, INTENT(IN) :: NOEL
     ! The element number
@@ -177,29 +177,29 @@
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
     ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
+    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the
+    ! current approximation of the strain increment (DSTRAN) must be returned.
     ! If the strain increment is defined to be zero in the beginning of the
     ! nonlinear iteration, Elmer will generate a candidate for the strain increment
     ! by assuming purely elastic increment characterized by DDSDDE.
 
     REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
+    ! Requirement for Elmer: The state variables Q_n as specified at the
     ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
+    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to
+    ! the current approximation of the strain increment must be returned. If
+    ! convergence is attained, these values will be saved and associated with the
     ! converged solution (cf. the input values)
 
     REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
+    ! The derivative of (Cauchy) stress response function with respect to the
     ! strain evaluated for the current approximation must be returned
 
     REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
+    ! Requirement for Elmer: Provide specific strain energy (sse), plastic
+    ! dissipation (spd) and creep dissipation (scd) at the previous time/load
     ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
+    ! Requirement for umat:  The values of the energy variables corresponding to
     ! the current approximation may be returned
 
     REAL(KIND=dp), INTENT(OUT) :: rpl
@@ -211,12 +211,12 @@
     ! This gives the strains before the time/load increment.
     ! The strain can be computed from the deformation gradient, so this
     ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
+    ! this information anyway. Abaqus assumes that the logarithmic strain
     ! is used, but Elmer may also use other strain measures.
 
     REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
+    ! The current candidate for the strain increment to obtain the current
+    ! candidate for the stress. In principle this could be computed from the
     ! deformation gradient; cf. the variable stran.
 
     REAL(KIND=dp), INTENT(IN) :: TIME(2)
@@ -245,7 +245,7 @@
     INTEGER, INTENT(IN) :: NSHR
     ! The number of the engineering shear strain components
 
-    INTEGER, INTENT(IN) :: NTENS 
+    INTEGER, INTENT(IN) :: NTENS
     ! The size of the array containing the stress or strain components
 
     INTEGER, INTENT(IN) :: NSTATEV
@@ -261,7 +261,7 @@
     ! The coordinates of the current point could be specified
 
     REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
+    ! No support for keeping track of rigid body rotations
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
@@ -271,12 +271,12 @@
     ! The element size is not yet provided by Elmer
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
+    ! The deformation gradient before the time/load increment (at the previous
     ! time/load level for converged solution)
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
     ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
+    ! (cf. the return value of STRESS variable)
 
     INTEGER, INTENT(IN) :: NOEL
     ! The element number
@@ -296,7 +296,7 @@
     ! Get Young's modulus and the Poisson ratio:
     E = Props(2)
     nu = Props(3)
-    
+
     LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
     MuLame = E / (2.0d0 * (1.0d0 + nu))
 
@@ -317,7 +317,7 @@
     ! or
     !        stress = stress_response_function(dfrgrd1)
     !
-    ! which may be the precise definition of the functionality required. 
+    ! which may be the precise definition of the functionality required.
     stress = stress + MATMUL(ddsdde,dstran)
     ! So, for this model, the other way to return the stress:
     !stress = MATMUL(ddsdde,stran+dstran)
@@ -340,29 +340,29 @@
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
     ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
+    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the
+    ! current approximation of the strain increment (DSTRAN) must be returned.
     ! If the strain increment is defined to be zero in the beginning of the
     ! nonlinear iteration, Elmer will generate a candidate for the strain increment
     ! by assuming purely elastic increment characterized by DDSDDE.
 
     REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
+    ! Requirement for Elmer: The state variables Q_n as specified at the
     ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
+    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to
+    ! the current approximation of the strain increment must be returned. If
+    ! convergence is attained, these values will be saved and associated with the
     ! converged solution (cf. the input values)
 
     REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
+    ! The derivative of (Cauchy) stress response function with respect to the
     ! strain evaluated for the current approximation must be returned
 
     REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
+    ! Requirement for Elmer: Provide specific strain energy (sse), plastic
+    ! dissipation (spd) and creep dissipation (scd) at the previous time/load
     ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
+    ! Requirement for umat:  The values of the energy variables corresponding to
     ! the current approximation may be returned
 
     REAL(KIND=dp), INTENT(OUT) :: rpl
@@ -374,12 +374,12 @@
     ! This gives the strains before the time/load increment.
     ! The strain can be computed from the deformation gradient, so this
     ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
+    ! this information anyway. Abaqus assumes that the logarithmic strain
     ! is used, but Elmer may also use other strain measures.
 
     REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
+    ! The current candidate for the strain increment to obtain the current
+    ! candidate for the stress. In principle this could be computed from the
     ! deformation gradient; cf. the variable stran.
 
     REAL(KIND=dp), INTENT(IN) :: TIME(2)
@@ -408,7 +408,7 @@
     INTEGER, INTENT(IN) :: NSHR
     ! The number of the engineering shear strain components
 
-    INTEGER, INTENT(IN) :: NTENS 
+    INTEGER, INTENT(IN) :: NTENS
     ! The size of the array containing the stress or strain components
 
     INTEGER, INTENT(IN) :: NSTATEV
@@ -424,7 +424,7 @@
     ! The coordinates of the current point could be specified
 
     REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
+    ! No support for keeping track of rigid body rotations
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
@@ -434,12 +434,12 @@
     ! The element size is not yet provided by Elmer
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
+    ! The deformation gradient before the time/load increment (at the previous
     ! time/load level for converged solution)
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
     ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
+    ! (cf. the return value of STRESS variable)
 
     INTEGER, INTENT(IN) :: NOEL
     ! The element number
@@ -465,7 +465,7 @@
 
     SymBasis(1,1:3,1:3) = RESHAPE((/ 1,0,0,0,0,0,0,0,0 /),(/ 3,3 /))
     SymBasis(2,1:3,1:3) = RESHAPE((/ 0,0,0,0,1,0,0,0,0 /),(/ 3,3 /))
-    SymBasis(3,1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /)) 
+    SymBasis(3,1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /))
     SymBasis(4,1:3,1:3) = RESHAPE((/ 0.0d0,0.5d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0 /),(/ 3,3 /))
     SymBasis(5,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.0d0 /),(/ 3,3 /))
     SymBasis(6,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.5d0,0.0d0 /),(/ 3,3 /))
@@ -475,7 +475,7 @@
     C = MATMUL(TRANSPOSE(dfrgrd1), dfrgrd1)
     ! This example uses the Lagrangian (Green-St Venant) strain tensor:
     Strain = 0.5d0 * (C - Identity)
-      
+
     DO i=1,ndi
       StrainVec(i) = Strain(i,i)
     END DO
@@ -497,25 +497,25 @@
     ! Get Young's modulus and the Poisson ratio:
     E = Props(2)
     nu = Props(3)
-    
+
     LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
     MuLame = E / (2.0d0 * (1.0d0 + nu))
 
     ! --------------------------------------------------------------------------------
-    ! Here we compute the current stress directly by using the 
-    ! supplied deformation gradient, so that the strain increment is not used. 
-    ! In addition, since it seems that the exact differentiation of the response function 
+    ! Here we compute the current stress directly by using the
+    ! supplied deformation gradient, so that the strain increment is not used.
+    ! In addition, since it seems that the exact differentiation of the response function
     ! for the Cauchy stress cannot be done in a straightforward manner, we now make only
     ! a partial approximation. The Cauchy stress is given by
-    ! 
+    !
     !     sigma(F) = 1/det(F) F S(E(F)) F^T
     !
     ! We however consider only the depedence on the strain as
     !
     !     sigma(.) = 1/det(F) F S(.) F^T
     !
-    ! This simplification makes the nonlinear iteration to be an inexact Newton 
-    ! method whose performance may deteriorate for large strains. If the convergence is 
+    ! This simplification makes the nonlinear iteration to be an inexact Newton
+    ! method whose performance may deteriorate for large strains. If the convergence is
     ! attained, the solution nevertheless obeys the St. Venant-Kirchhoff law since
     ! there are no approximations in the computation of the residual.
     ! --------------------------------------------------------------------------------
@@ -630,29 +630,29 @@
     REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
     ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
     ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
+    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the
+    ! current approximation of the strain increment (DSTRAN) must be returned.
     ! If the strain increment is defined to be zero in the beginning of the
     ! nonlinear iteration, Elmer will generate a candidate for the strain increment
     ! by assuming purely elastic increment characterized by DDSDDE.
 
     REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
+    ! Requirement for Elmer: The state variables Q_n as specified at the
     ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
+    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to
+    ! the current approximation of the strain increment must be returned. If
+    ! convergence is attained, these values will be saved and associated with the
     ! converged solution (cf. the input values)
 
     REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
+    ! The derivative of (Cauchy) stress response function with respect to the
     ! strain evaluated for the current approximation must be returned
 
     REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
+    ! Requirement for Elmer: Provide specific strain energy (sse), plastic
+    ! dissipation (spd) and creep dissipation (scd) at the previous time/load
     ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
+    ! Requirement for umat:  The values of the energy variables corresponding to
     ! the current approximation may be returned
 
     REAL(KIND=dp), INTENT(OUT) :: rpl
@@ -664,12 +664,12 @@
     ! This gives the strains before the time/load increment.
     ! The strain can be computed from the deformation gradient, so this
     ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
+    ! this information anyway. Abaqus assumes that the logarithmic strain
     ! is used, but Elmer may also use other strain measures.
 
     REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
+    ! The current candidate for the strain increment to obtain the current
+    ! candidate for the stress. In principle this could be computed from the
     ! deformation gradient; cf. the variable stran.
 
     REAL(KIND=dp), INTENT(IN) :: TIME(2)
@@ -698,7 +698,7 @@
     INTEGER, INTENT(IN) :: NSHR
     ! The number of the engineering shear strain components
 
-    INTEGER, INTENT(IN) :: NTENS 
+    INTEGER, INTENT(IN) :: NTENS
     ! The size of the array containing the stress or strain components
 
     INTEGER, INTENT(IN) :: NSTATEV
@@ -714,7 +714,7 @@
     ! The coordinates of the current point could be specified
 
     REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
+    ! No support for keeping track of rigid body rotations
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
@@ -724,12 +724,12 @@
     ! The element size is not yet provided by Elmer
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
+    ! The deformation gradient before the time/load increment (at the previous
     ! time/load level for converged solution)
 
     REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
     ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
+    ! (cf. the return value of STRESS variable)
 
     INTEGER, INTENT(IN) :: NOEL
     ! The element number
@@ -756,7 +756,7 @@
 
     SymBasis(1,1:3,1:3) = RESHAPE((/ 1,0,0,0,0,0,0,0,0 /),(/ 3,3 /))
     SymBasis(2,1:3,1:3) = RESHAPE((/ 0,0,0,0,1,0,0,0,0 /),(/ 3,3 /))
-    SymBasis(3,1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /)) 
+    SymBasis(3,1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /))
     SymBasis(4,1:3,1:3) = RESHAPE((/ 0.0d0,0.5d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0 /),(/ 3,3 /))
     SymBasis(5,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.0d0 /),(/ 3,3 /))
     SymBasis(6,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.5d0,0.0d0 /),(/ 3,3 /))
@@ -776,16 +776,16 @@
     END DO
     CALL DSYEV('V', 'U', 3, WorkMat, 3, EigenVals, PriWork, PriLWork, PriInfo)
     IF (PriInfo /= 0) THEN
-      CALL Fatal( 'UMAT', 'DSYEV cannot generate eigen basis')          
+      CALL Fatal( 'UMAT', 'DSYEV cannot generate eigen basis')
     END IF
 
     Strain = 0.0d0
     Strain(1,1) = LOG(SQRT(EigenVals(1)))
-    Strain(2,2) = LOG(SQRT(EigenVals(2)))       
+    Strain(2,2) = LOG(SQRT(EigenVals(2)))
     Strain(3,3) = LOG(SQRT(EigenVals(3)))
     ! Transform back to the original coordinates:
     Strain = MATMUL(WorkMat, MATMUL(Strain,TRANSPOSE(WorkMat)))
-      
+
     DO i=1,ndi
       StrainVec(i) = Strain(i,i)
     END DO
@@ -807,25 +807,25 @@
     ! Get Young's modulus and the Poisson ratio:
     E = Props(2)
     nu = Props(3)
-    
+
     LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
     MuLame = E / (2.0d0 * (1.0d0 + nu))
 
     ! --------------------------------------------------------------------------------
-    ! Here we compute the current stress directly by using the 
-    ! supplied deformation gradient, so that the strain increment is not used. 
-    ! In addition, since it seems that the exact differentiation of the response function 
+    ! Here we compute the current stress directly by using the
+    ! supplied deformation gradient, so that the strain increment is not used.
+    ! In addition, since it seems that the exact differentiation of the response function
     ! for the Cauchy stress cannot be done in a straightforward manner, we now make only
     ! a partial approximation. The Cauchy stress is given by
-    ! 
+    !
     !     sigma(F) = 1/det(F) F S(E(F)) F^T
     !
     ! We however consider only the depedence on the strain as
     !
     !     sigma(.) = 1/det(F) F S(.) F^T
     !
-    ! This simplification makes the nonlinear iteration to be an inexact Newton 
-    ! method whose performance may deteriorate for large strains. If the convergence is 
+    ! This simplification makes the nonlinear iteration to be an inexact Newton
+    ! method whose performance may deteriorate for large strains. If the convergence is
     ! attained, the solution nevertheless obeys the St. Venant-Kirchhoff law since
     ! there are no approximations in the computation of the residual.
     ! --------------------------------------------------------------------------------

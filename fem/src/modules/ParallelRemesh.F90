@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,11 +27,11 @@
 ! ******************************************************************************
 ! *
 ! *  Authors:
-! *  Email:   
+! *  Email:
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 6/4/22
 ! *
@@ -120,15 +120,15 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
     FinalMesh => OutMesh
   END IF
 
-  MeshDir = ListGetString(SolverParams,"Save Mesh Name", Found ) 
+  MeshDir = ListGetString(SolverParams,"Save Mesh Name", Found )
   IF(.NOT. Found) MeshDir = SaveMeshName
 
-  WRITE(MeshName, '(A,i0)') TRIM(MeshDir), time  
+  WRITE(MeshName, '(A,i0)') TRIM(MeshDir), time
   OutMesh => NULL()
   FinalMesh % Name = TRIM(MeshName)
   FinalMesh % OutputActive = .TRUE.
   FinalMesh % Changed = .TRUE.
-  
+
 
   !MakeDirectory seems unable to create multi/level/directories
   !so create the top level first, then the lower
@@ -149,7 +149,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
   CALL WriteMeshToDisk2(Model, FinalMesh, MeshDir, ParEnv % MyPE)
-    
+
   CALL SwapMesh(Model, Mesh, FinalMesh % Name)
   Model % Mesh % Name = TRIM(SaveMeshName)
 
@@ -190,15 +190,15 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
     TotalBCs = SIZE(Boundaries)
     ALLOCATE(Counts(TotalBCs))
     counts = 0
-    
+
     ALLOCATE(BdryNodes(TotalBCs,3,100))
 
     DO i=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         Element => Mesh % Elements(i)
-      
+
       ElementNodes = Element % NodeIndexes
       BoundaryNumber = Element % BoundaryInfo % constraint
-        
+
       NumNodes = Element % TYPE % NumberOfNodes
       IF (NumNodes /= 3) CALL FATAL(Solvername, "BoundaryElements must be 303s")
 
@@ -211,14 +211,14 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
             CALL DoubleBdryArraySize(BdryNodes)
           END IF
           BdryNodes(BoundaryID,:,Counts(BoundaryID)) = ElementNodes
-        END IF    
+        END IF
       END DO
     END DO
 
     !set counts for calving and other boundary shared nodes
     ALLOCATE(CountPairs(TotalBCs-1,TotalBCs-1))
     CountPairs(:,:) = 0
-      
+
     !set allocatables
     ALLOCATE(SharedPairs(TotalBCs-1,TotalBCs-1,2,100))
 
@@ -279,7 +279,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
         END DO
       END IF
     END DO
-      
+
     TotalCount=0
     DO i=1,TotalBCs-1
       IF(.NOT. Boundaries(i)) CYCLE
@@ -307,14 +307,14 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
     INTEGER, OPTIONAL :: fill
     !----------------------------------------
     INTEGER, ALLOCATABLE :: WorkVec(:,:,:,:), D(:)
-    
+
     ALLOCATE(D(3))
     d = SHAPE(Vec)
 
     ALLOCATE(WorkVec(d(1),d(2),d(3),d(4)))
 
     WorkVec = Vec
-    
+
     DEALLOCATE(Vec)
     ALLOCATE(Vec(d(1),d(2),d(3),2*d(4)))
 
@@ -334,14 +334,14 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
     INTEGER, OPTIONAL :: fill
     !----------------------------------------
     INTEGER, ALLOCATABLE :: WorkVec(:,:,:), D(:)
-    
+
     ALLOCATE(D(3))
     d = SHAPE(Vec)
 
     ALLOCATE(WorkVec(d(1), d(2),d(3)))
 
     WorkVec = Vec
-    
+
     DEALLOCATE(Vec)
     ALLOCATE(Vec(d(1),d(2),2*d(3)))
 

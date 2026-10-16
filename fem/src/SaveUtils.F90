@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,10 +28,10 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *****************************************************************************/
-  
+
 !> \ingroup ElmerLib
 !> \{
 
@@ -49,7 +49,7 @@ MODULE SaveUtils
   USE ElementUtils, ONLY: FindParentUVW
   USE Interpolation, ONLY: CopyElementNodesFromMesh
   USE ElementDescription
-  
+
   IMPLICIT NONE
 
 CONTAINS
@@ -61,7 +61,7 @@ CONTAINS
     INTEGER :: ElmerCode
     LOGICAL :: SaveLinear
     INTEGER :: VTKCode
-    
+
     SELECT CASE (ElmerCode)
     CASE( 101 )
       VTKCode = 1
@@ -70,7 +70,7 @@ CONTAINS
     CASE( 203 )
       VTKCode = 21
     CASE( 204 )
-      VTKCode = 35  ! VTK_CUBIC_LINE but 68, VTK_LAGRANGE_CURVE, tested to work as well 
+      VTKCode = 35  ! VTK_CUBIC_LINE but 68, VTK_LAGRANGE_CURVE, tested to work as well
     CASE( 205, 206, 207, 208, 209 )
       VTKCode = 68
     CASE( 303 )
@@ -99,9 +99,9 @@ CONTAINS
       VTKCode = 27
     CASE( 706 )
       VTKCode = 13
-    CASE( 715 ) 
+    CASE( 715 )
       VTKCode = 26
-    CASE( 718, 740, 775 ) 
+    CASE( 718, 740, 775 )
       VTKCode = 73  ! VTK_LAGRANGE_WEDGE
     CASE( 808 )
       VTKCode = 12
@@ -170,20 +170,20 @@ CONTAINS
       IF( ASSOCIATED( Element % DGIndexes ) ) THEN
         UseIndexes => Element % DGIndexes
       ELSE IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
-        n = Element % TYPE % NumberOfNodes 
-                
+        n = Element % TYPE % NumberOfNodes
+
         DO right=0,1
           hits = 0
-          IF(right==0) THEN 
+          IF(right==0) THEN
             Parent => Element % BoundaryInfo % Left
           ELSE
-            Parent => Element % BoundaryInfo % Right        
+            Parent => Element % BoundaryInfo % Right
           END IF
           IF(.NOT. ASSOCIATED(Parent)) CYCLE
-          
+
           IF (.NOT. ASSOCIATED(Parent % DGIndexes) ) THEN
             ! This could happen if we have parents of parents i.e. the original element
-            ! is a line element, has parents that are face elements, having parents being volume elements. 
+            ! is a line element, has parents that are face elements, having parents being volume elements.
             IF( ASSOCIATED( Parent % BoundaryInfo ) ) THEN
               IF( ASSOCIATED( Parent % BoundaryInfo % Left ) ) THEN
                 Parent => Parent % BoundaryInfo % Left
@@ -197,21 +197,21 @@ CONTAINS
             DO j=1,n
               DO k=1,Parent % TYPE % NumberOfNodes
                 IF(Element % NodeIndexes(j) == Parent % NodeIndexes(k)) THEN
-                  BCIndexes(j) = Parent % DGIndexes(k) 
+                  BCIndexes(j) = Parent % DGIndexes(k)
                   hits = hits + 1
                   EXIT
                 END IF
               END DO
-            END DO            
+            END DO
           END IF
 
-          
+
           IF(Hits == n ) THEN
             UseIndexes => BCIndexes
             EXIT
           END IF
         END DO
-          
+
         IF( Hits < n ) THEN
           PRINT *,'Element:',n, Element % TYPE % ElementCode, Element % NodeIndexes
           PRINT *,'Parent:',Hits,Parent % TYPE % ElementCode, Parent % NodeIndexes
@@ -220,17 +220,17 @@ CONTAINS
       ENDIF
 
       IF(.NOT. ASSOCIATED( UseIndexes ) ) THEN
-        CALL Warn('Elmer2VtkIndexes','Could not set DG indexes for boundary element!')        
+        CALL Warn('Elmer2VtkIndexes','Could not set DG indexes for boundary element!')
         UseIndexes => Element % NodeIndexes
       END IF
     ELSE
       UseIndexes => Element % NodeIndexes
     END IF
 
-    n = Element % TYPE % NumberOfNodes 
+    n = Element % TYPE % NumberOfNodes
 
 
-    ! Linear elements never require reordering 
+    ! Linear elements never require reordering
     IF( .NOT. SaveLinear ) THEN
       SELECT CASE (ElmerCode)
 
@@ -242,7 +242,7 @@ CONTAINS
         Order => Order820
         DoReOrder = .TRUE.
 
-      CASE( 827 ) 
+      CASE( 827 )
         Order => Order827
         DoReOrder = .TRUE.
 
@@ -289,44 +289,44 @@ CONTAINS
     reorder = .FALSE.
 
     SELECT CASE( Code )
-      
+
     CASE (510)
       reorder = .TRUE.
       order => order510
-      
+
     CASE (613)
       reorder = .TRUE.
       order => order613
-      
+
     CASE (715, 718)
       reorder = .TRUE.
       order => order718
-      
+
     CASE (820)
       reorder = .TRUE.
       order => order820
-     
+
     CASE DEFAULT
-      
+
     END SELECT
 
-    n = MOD(Code,100) 
+    n = MOD(Code,100)
     IF( reorder ) THEN
-      DO i=1,n 
+      DO i=1,n
         GmshIndexes(order(i)+1) = ElmerIndexes(i)
       END DO
     ELSE
-      GmshIndexes(1:n) = ElmerIndexes(1:n)      
+      GmshIndexes(1:n) = ElmerIndexes(1:n)
     END IF
 
 
   END SUBROUTINE ElmerToGmshIndex
 
-  
-  
+
+
   ! Given different criteria for saving create a geometrical mask for elements
   ! and continuous numbering for the associated nodes.
-  !------------------------------------------------------------------------------  
+  !------------------------------------------------------------------------------
   SUBROUTINE GenerateSaveMask(Mesh,Params,Parallel,GroupId,SaveLinear,&
       NodePerm,ActiveElem,NumberOfGeomNodes,NumberOfElements, &
       ElemFirst,ElemLast)
@@ -351,25 +351,25 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, LeftElem, RightElem
     TYPE(Model_t), POINTER :: Model
     CHARACTER(*), PARAMETER :: Caller = 'GenerateSaveMask'
-    
+
     Model => CurrentModel
 
-    GroupCollection = ( GroupId > 0 ) 
-    
+    GroupCollection = ( GroupId > 0 )
+
     IF(.NOT. ALLOCATED( NodePerm ) ) THEN
       n = Mesh % NumberOfNodes
       CALL Info(Caller,'Allocating NodePerm of size: '//I2S(n),Level=15)
       ALLOCATE(NodePerm(n))
     END IF
     NodePerm = 0
-    
+
     IF(.NOT. ALLOCATED(ActiveElem) ) THEN
       n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       CALL Info(Caller,'Allocating ActiveElem of size: '//I2S(n),Level=15)
       ALLOCATE(ActiveElem(n) )
     END IF
     ActiveElem = .FALSE.
-    
+
     IF( Parallel ) THEN
       SkipHalo = ListGetLogical( Params,'Skip Halo Elements', GotIt )
       IF(.NOT. GotIt) SkipHalo = .TRUE.
@@ -392,11 +392,11 @@ CONTAINS
       ! Check if there is an additional mask name given
       GotIt = .FALSE.
       IF( Mesh % MeshDim == 2 ) THEN
-        MaskName = ListGetString( Params,'2D Mask Name',GotIt)    
-      ELSE IF( Mesh % MeshDim == 3 ) THEN  
-        MaskName = ListGetString( Params,'3D Mask Name',GotIt)    
+        MaskName = ListGetString( Params,'2D Mask Name',GotIt)
+      ELSE IF( Mesh % MeshDim == 3 ) THEN
+        MaskName = ListGetString( Params,'3D Mask Name',GotIt)
       END IF
-      IF(.NOT. GotIt) MaskName = ListGetString( Params,'Mask Name',GotIt) 
+      IF(.NOT. GotIt) MaskName = ListGetString( Params,'Mask Name',GotIt)
       GotMaskName = GotIt
       IF(GotMaskName) THEN
         CALL Info(Caller,'Using "Mask Name" to select elements: '//TRIM(MaskName),Level=8)
@@ -413,17 +413,17 @@ CONTAINS
         MaskCond = 0.0_dp
       END IF
     END IF
-    
-    SaveBoundariesOnly = ListGetLogical( Params,'Save Boundaries Only',GotIt ) 
+
+    SaveBoundariesOnly = ListGetLogical( Params,'Save Boundaries Only',GotIt )
     IF( SaveBoundariesOnly ) CALL Info(Caller,'Saving only boundary elements!',Level=8)
-    
-    SaveBulkOnly = ListGetLogical( Params,'Save Bulk Only',GotIt ) 
+
+    SaveBulkOnly = ListGetLogical( Params,'Save Bulk Only',GotIt )
     IF( SaveBulkOnly ) CALL Info(Caller,'Saving only bulk elements!',Level=8)
-    
+
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
-      NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 
-      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)      
+      NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 )
+      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)
       IF( NumberOfGeomNodes == 0 ) THEN
         CALL Info(Caller,'Leaving early since mask not active anywhere')
         RETURN
@@ -432,14 +432,14 @@ CONTAINS
 
     NumberOfElements = 0
     ElemFirst = HUGE( ElemFirst )
-    ElemLast = 0 
-    
+    ElemLast = 0
+
     ! Count the true number of elements and mark the 1st and last element
     !-----------------------------------------------------------------------
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
       IsBoundaryElement = ( i > Mesh % NumberOfBulkElements )
-      
+
       IF( IsBoundaryElement ) THEN
         IF( SaveBulkOnly ) CYCLE
       ELSE
@@ -459,7 +459,7 @@ CONTAINS
         END IF
       END IF
 
-      IF( Element % Type % ElementCode < 200 ) CYCLE          
+      IF( Element % Type % ElementCode < 200 ) CYCLE
       !IF (.NOT. IsBoundaryElement .AND. Element % BodyId < 1) CYCLE
 
       IF( SkipHalo .OR. SaveOnlyHalo ) THEN
@@ -520,7 +520,7 @@ CONTAINS
         ELSE
           DO l=1, Model % NumberOfBCs
             IF ( Model % BCs(l) % Tag /= Element % BoundaryInfo % Constraint ) CYCLE
-            Hit = ListGetLogical(Model % BCs(l) % Values, MaskName, GotIt ) 
+            Hit = ListGetLogical(Model % BCs(l) % Values, MaskName, GotIt )
             EXIT
           END DO
         END IF
@@ -531,7 +531,7 @@ CONTAINS
         n = Element % TYPE % NumberOfNodes
         Indexes => Element % NodeIndexes
         GotIt = .FALSE.
-        
+
         IF( .NOT. IsBoundaryElement ) THEN
           l = Element % BodyId
           k = ListGetInteger( Model % Bodies(l) % Values,'Body Force',GotIt)
@@ -552,7 +552,7 @@ CONTAINS
             DO l=1, Model % NumberOfBCs
               IF ( Model % BCs(l) % Tag /= Element % BoundaryInfo % Constraint ) CYCLE
               MaskCond(1:n) = ListGetReal(Model % BCs(l) % Values, MaskName, &
-                  n, Indexes, GotIt ) 
+                  n, Indexes, GotIt )
               EXIT
             END DO
           END IF
@@ -582,22 +582,22 @@ CONTAINS
 
     END DO
 
-    NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
+    NumberOfGeomNodes = COUNT( NodePerm > 0 )
     IF( NumberOfElements == 0 ) THEN
       CALL Info(Caller,'No active elements for this mask',Level=12)
     ELSE
       CALL Info(Caller,'Number of active elements '//I2S(NumberOfElements)//&
-          ' out of '//I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements),Level=10)      
+          ' out of '//I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements),Level=10)
       CALL Info(Caller,'Number of geometry nodes '//I2S(NumberOfGeomNodes)//&
           ' out of '//I2S(Mesh % NumberOfNodes),Level=10)
     END IF
-      
+
   END SUBROUTINE GenerateSaveMask
-    
-  
+
+
   ! Given the geometric permutation, create the dof permutation used in saving
   ! the different parts.
-  !-----------------------------------------------------------------------------  
+  !-----------------------------------------------------------------------------
   SUBROUTINE GenerateSavePermutation(Mesh,DG,DN,LagN,SaveLinear,ActiveElem,NumberOfGeomNodes,&
       NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
     TYPE(Mesh_t) :: Mesh
@@ -613,13 +613,13 @@ CONTAINS
     INTEGER :: Sweep
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER, ALLOCATABLE :: pIndexes(:)
-    TYPE(Element_t), POINTER :: Element 
+    TYPE(Element_t), POINTER :: Element
     TYPE(Model_t), POINTER :: Model
     CHARACTER(*), PARAMETER :: Caller = 'GenerateSavePermutation'
 
-    
+
     Model => CurrentModel
-            
+
     NumberOfDofNodes = 0
     IF( DG .OR. DN ) THEN
       NoPermutation = .FALSE.
@@ -627,8 +627,8 @@ CONTAINS
       IF( LagN > 0 ) THEN
         CALL Fatal(Caller,'Cannot combine DG and higher order Lagrange elements!')
       END IF
-      
-      IF( DN ) THEN      
+
+      IF( DN ) THEN
         CALL Info(Caller,'Saving results as discontinuous over bodies',Level=15)
         ALLOCATE( BodyVisited( Mesh % NumberOfNodes ) )
       ELSE
@@ -637,7 +637,7 @@ CONTAINS
 
       IF( .NOT. ALLOCATED( DgPerm ) ) THEN
         k = 0
-        DO i=1,Mesh % NumberOfBulkElements         
+        DO i=1,Mesh % NumberOfBulkElements
           Element => Mesh % Elements(i)
           k = k + Element % TYPE % NumberOfNodes
         END DO
@@ -645,11 +645,11 @@ CONTAINS
         ALLOCATE( DgPerm(k) )
       END IF
       DgPerm = 0
-        
+
       DO Sweep=1,2
         l = 0
         IF( DG ) THEN
-          DO i=1,Mesh % NumberOfBulkElements         
+          DO i=1,Mesh % NumberOfBulkElements
             IF( .NOT. ActiveElem(i) ) CYCLE
             Element => Mesh % Elements(i)
             NodeIndexes => Element % NodeIndexes
@@ -671,10 +671,10 @@ CONTAINS
               END IF
             END DO
           END DO
-        ELSE      
+        ELSE
           DO i=1,Model % NumberOfBodies
             BodyVisited = 0
-            DO j=1,Mesh % NumberOfBulkElements         
+            DO j=1,Mesh % NumberOfBulkElements
               IF(.NOT. ActiveElem(j) ) CYCLE
               Element => Mesh % Elements(j)
               IF( Element % BodyId /= i ) CYCLE
@@ -709,14 +709,14 @@ CONTAINS
           CALL Info(Caller,'Independent dofs in discontinuous mesh: '//I2S(l),Level=10)
           NumberOfDofNodes = l
           IF(ALLOCATED(InvNodePerm)) DEALLOCATE( InvNodePerm )
-          IF(ALLOCATED(InvDgPerm)) DEALLOCATE( InvDgPerm ) 
-          ALLOCATE( InvNodePerm(l), InvDgPerm(l) ) 
+          IF(ALLOCATED(InvDgPerm)) DEALLOCATE( InvDgPerm )
+          ALLOCATE( InvNodePerm(l), InvDgPerm(l) )
           InvNodePerm = 0
           InvDgPerm = 0
         END IF
       END DO
 
-      IF( DN ) DEALLOCATE( BodyVisited ) 
+      IF( DN ) DEALLOCATE( BodyVisited )
 
     ELSE IF( LagN > 0 ) THEN
       CALL Info(Caller,'Creating permutation for order '//I2S(LagN)//' Lagrange nodes!', Level=12)
@@ -724,9 +724,9 @@ CONTAINS
       ! Calling without Element as argument returns the max. index value
       n = GetLagrangeIndexes( Mesh, LagN )
       ALLOCATE(DgPerm(n), pIndexes(n))
-      DgPerm = 0        
-      pIndexes = 0 
-      
+      DgPerm = 0
+      pIndexes = 0
+
       ! Now call and then number the indexes!
       ! We use the same elemental subroutine to get the indexes as is done in the interpolation
       ! to avoid problems related to code inconsistency. There could be faster global ways too...
@@ -746,37 +746,37 @@ CONTAINS
 
       ! Both the number of nodes and number of dofs will now follow the new higher order L-elements
       ! We will use no permutation for dofs or coordinates since we create a permutation-free temporal
-      ! solution vectors and coordinates. 
+      ! solution vectors and coordinates.
       NumberOfDofNodes = m
       NumberOfGeomNodes = m
       NoPermutation = .TRUE.
-      
+
       CALL Info(Caller,'Number of dofs for higher order Lagrange elements: '//I2S(m),Level=12)
     ELSE
-      NoPermutation = ( NumberOfGeomNodes == Mesh % NumberOfNodes )    
+      NoPermutation = ( NumberOfGeomNodes == Mesh % NumberOfNodes )
       IF( NoPermutation ) THEN
-        DEALLOCATE( NodePerm ) 
+        DEALLOCATE( NodePerm )
       ELSE
         CALL Info(Caller,'Not saving all nodes, creating permutation!',Level=12)
-        IF( ALLOCATED( InvNodePerm ) ) DEALLOCATE( InvNodePerm ) 
-        
-        ALLOCATE( InvNodePerm( NumberOfGeomNodes ) ) 
+        IF( ALLOCATED( InvNodePerm ) ) DEALLOCATE( InvNodePerm )
+
+        ALLOCATE( InvNodePerm( NumberOfGeomNodes ) )
         CALL Info(Caller,'Allocating InvNodePerm of size: '//I2S(NumberOfGeomNodes),Level=15)
-        
+
         InvNodePerm = 0
         j = 0
         DO i=1,Mesh % NumberOfNodes
           IF( NodePerm(i) > 0 ) THEN
-            j = j + 1       
+            j = j + 1
             NodePerm(i) = j
             InvNodePerm(j) = i
           END IF
         END DO
-        
+
       END IF
-      NumberOfDofNodes = NumberOfGeomNodes 
+      NumberOfDofNodes = NumberOfGeomNodes
     END IF
-    
+
   END SUBROUTINE GenerateSavePermutation
 
 
@@ -788,8 +788,8 @@ CONTAINS
   SUBROUTINE SolverOutputDirectory( Solver, Filename, OutputDirectory, &
       MakeDir, UseMeshDir  )
 
-    USE ModelDescription 
-    
+    USE ModelDescription
+
     TYPE(Solver_t) :: Solver
     LOGICAL, OPTIONAL :: MakeDir, UseMeshDir
     CHARACTER(*) :: Filename
@@ -809,29 +809,29 @@ CONTAINS
     ! 1) solver section
     ! 2) simulation section
     ! 3) header section
-    OutputDirectory = ListGetString( Solver % Values,'Output Directory',Found) 
+    OutputDirectory = ListGetString( Solver % Values,'Output Directory',Found)
     IF(.NOT. Found) OutputDirectory = ListGetString( CurrentModel % Simulation,&
-        'Output Directory',Found) 
+        'Output Directory',Found)
 
-    IF(.NOT. Found) OutputDirectory = TRIM(OutputPath)          
+    IF(.NOT. Found) OutputDirectory = TRIM(OutputPath)
     nd = LEN_TRIM(OutputDirectory)
 
     ! If the path is just working directory then that is not an excude
-    ! to not use the mesh name, or directory that comes with the filename 
+    ! to not use the mesh name, or directory that comes with the filename
     IF(.NOT. Found .AND. nd == 1 .AND. OutputDirectory(1:1)=='.') nd = 0
 
     ! If requested by the optional parameter use the mesh directory when
-    ! no results directory given. This is an old convection used in some solvers. 
+    ! no results directory given. This is an old convection used in some solvers.
     IF( nd == 0 .AND. PRESENT( UseMeshDir ) ) THEN
       IF( UseMeshDir ) THEN
         OutputDirectory = TRIM(CurrentModel % Mesh % Name)
-        nd = LEN_TRIM(OutputDirectory)       
+        nd = LEN_TRIM(OutputDirectory)
       END IF
     END IF
 
     ! Use may have given part or all of the path in the filename.
     ! This is not preferred, but we cannot trust the user.
-    nf = LEN_TRIM(Filename)        
+    nf = LEN_TRIM(Filename)
     n = INDEX(Filename(1:nf),'/')
     AbsPathInName = INDEX(FileName,':')>0 .OR. (Filename(1:1)=='/') &
         .OR. (Filename(1:1)==Backslash)
@@ -849,16 +849,16 @@ CONTAINS
       ! To be on the safe side create the directory. If it already exists no harm done.
       ! Note that only one directory may be created. Hence if there is a path with many subdirectories
       ! that will be a problem. Fortran does not have a standard ENQUIRE for directories hence
-      ! we just try to make it. 
+      ! we just try to make it.
       IF( DoDir ) THEN
         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
-        CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )      
+        CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )
       END IF
     END IF
 
     ! In this case the filename includes also path and we remove it from there and
-    ! add it to the directory. 
-    IF( n > 2 ) THEN    
+    ! add it to the directory.
+    IF( n > 2 ) THEN
       CALL Info('SolverOutputDirectory','Parcing path from filename: '//TRIM(Filename(1:n)),Level=10)
       IF( AbsPathInName .OR. nd == 0) THEN
         ! If the path is absolute then it overruns the given path!
@@ -866,10 +866,10 @@ CONTAINS
         nd = n-1
       ELSE
         ! If path is relative we add it to the OutputDirectory and take it away from Filename
-        OutputDirectory = OutputDirectory(1:nd)//'/'//Filename(1:n-1)        
-        nd = nd + n 
+        OutputDirectory = OutputDirectory(1:nd)//'/'//Filename(1:n-1)
+        nd = nd + n
       END IF
-      Filename = Filename(n+1:nf)      
+      Filename = Filename(n+1:nf)
 
       IF( DoDir ) THEN
         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
@@ -884,7 +884,7 @@ CONTAINS
     END IF
     IF( PartitioningSubDir ) THEN
       OutputDirectory = TRIM(OutputDirectory)//'/np'//I2S(ParEnv % PEs)
-      nd = LEN_TRIM(OutputDirectory)             
+      nd = LEN_TRIM(OutputDirectory)
       IF( DoDir ) THEN
         CALL Info('SolverOutputDirectory','Creating directory: '//TRIM(OutputDirectory(1:nd)),Level=8)
         CALL MakeDirectory( OutputDirectory(1:nd) // CHAR(0) )
@@ -928,13 +928,13 @@ CONTAINS
     INTEGER :: Tag, NumberOfAllElements, BCOffSet
     INTEGER, PARAMETER :: MaxElemCode = 827
     INTEGER :: ElmerToGmshType(MaxElemCode), GmshToElmerType(21), &
-        ElmerIndexes(27), GmshIndexes(27) 
+        ElmerIndexes(27), GmshIndexes(27)
     INTEGER, POINTER :: NodeIndexes(:)
 
     INTEGER, ALLOCATABLE :: NodePerm(:),DgPerm(:)
     INTEGER, ALLOCATABLE, TARGET :: InvDgPerm(:), InvNodePerm(:)
     LOGICAL, ALLOCATABLE :: ActiveElem(:)
-    LOGICAL :: NoPermutation, Numbering 
+    LOGICAL :: NoPermutation, Numbering
     INTEGER :: NumberOfGeomNodes, NumberOfDofNodes,NumberOfElements, ElemFirst, ElemLast,bc_id
     INTEGER, POINTER :: InvFieldPerm(:), DGInvPerm(:)
 
@@ -963,13 +963,13 @@ CONTAINS
     END IF
 
     IF( VisitedTimes > 1 ) THEN
-      IF(ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) RETURN    
+      IF(ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) RETURN
     END IF
 
-    
-    Numbering = ListGetLogical( Params,'Filename Numbering',Found ) 
+
+    Numbering = ListGetLogical( Params,'Filename Numbering',Found )
     IF(.NOT. Found) Numbering = .TRUE.
-    
+
     GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
         510, 827, 718, 0, 101, 408, 820, 715, 613, 0, 310 /)
     ElmerToGmshType = 0
@@ -1011,7 +1011,7 @@ CONTAINS
     ELSE
       IF( NumberOfElements == 0 ) THEN
         CALL Warn(Caller,'Notging to save, this is suspicious')
-        RETURN      
+        RETURN
       END IF
     END IF
 
@@ -1026,22 +1026,22 @@ CONTAINS
       IF( AlterTopology ) THEN
         IF( Numbering ) THEN
           OutputFile = NextFreeFilename( OutputFile )
-        END IF        
+        END IF
         CALL Info(Caller,'Writing mesh and data to a new file: '//TRIM(OutputFile))
-      ELSE IF( FileAppend ) THEN      
+      ELSE IF( FileAppend ) THEN
         CALL Info(Caller,'Appending data to the same file: '//TRIM(OutputFile))
-        OPEN(NEWUNIT=GmshUnit, FILE=OutputFile, POSITION='APPEND' )      
+        OPEN(NEWUNIT=GmshUnit, FILE=OutputFile, POSITION='APPEND' )
         GOTO 10
       ELSE
         IF( Numbering ) THEN
           OutputFile = NextFreeFilename( OutputFile )
-        END IF        
+        END IF
         CALL Info(Caller,'Writing data to a new file: '//TRIM(OutputFile))
         OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
         WRITE(GmshUnit,'(A)') '$MeshFormat'
         WRITE(GmshUnit,'(A)') '2.0 0 8'
-        WRITE(GmshUnit,'(A)') '$EndMeshFormat'          
-        GOTO 10    
+        WRITE(GmshUnit,'(A)') '$EndMeshFormat'
+        GOTO 10
       END IF
     END IF
 
@@ -1053,7 +1053,7 @@ CONTAINS
 
     WRITE(GmshUnit,'(A)') '$MeshFormat'
     WRITE(GmshUnit,'(A)') '2.0 0 8'
-    WRITE(GmshUnit,'(A)') '$EndMeshFormat'    
+    WRITE(GmshUnit,'(A)') '$EndMeshFormat'
 
 
     ! Save the mesh nodes
@@ -1064,17 +1064,17 @@ CONTAINS
     ! Save the mesh elements
     !-------------------------------------------------
     CALL Info(Caller,'Writing the mesh elements')
-    CALL WriteGmshElements() 
+    CALL WriteGmshElements()
 
     ! With a mask the list of physical entities should be checked
     !-------------------------------------------------------------
     IF(.NOT. MaskExists ) THEN
-      !    CALL WritePhysicalNames() 
+      !    CALL WritePhysicalNames()
     END IF
 
 10  CONTINUE
 
-    IF(.NOT. ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) THEN    
+    IF(.NOT. ListGetLogical(Params,'Gmsh Save Mesh Only', Found ) ) THEN
       CALL Info(Caller,'Writing the nodal data')
       CALL WriteGmshData()
 
@@ -1088,7 +1088,7 @@ CONTAINS
         WRITE(GmshUnit,'(A)') '$EndElementNodeData'
       END IF
     END IF
-      
+
     CLOSE(GmshUnit)
 
     IF(ALLOCATED(DgPerm)) DEALLOCATE(DgPerm)
@@ -1110,7 +1110,7 @@ CONTAINS
       WRITE(GmshUnit,'(I8)') nsize
       DO i = 1, nsize
         IF( NoPermutation ) THEN
-          j = i 
+          j = i
         ELSE
           j = InvNodePerm(i)
         END IF
@@ -1118,7 +1118,7 @@ CONTAINS
         IF( dim == 3 ) THEN
           WRITE(GmshUnit,'(I8,3ES16.7E3)') i,Mesh % Nodes % x(j),Mesh % Nodes % y(j), Mesh % Nodes % z(j)
         ELSE
-          WRITE(GmshUnit,'(I8,2ES16.7E3,A)') i,Mesh % Nodes % x(j),Mesh % Nodes % y(j),' 0.0' 
+          WRITE(GmshUnit,'(I8,2ES16.7E3,A)') i,Mesh % Nodes % x(j),Mesh % Nodes % y(j),' 0.0'
         END IF
       END DO
       WRITE(GmshUnit,'(A)') '$EndNodes'
@@ -1127,10 +1127,10 @@ CONTAINS
 
     SUBROUTINE WriteGmshElements()
 
-      nsize = NumberOfElements 
+      nsize = NumberOfElements
 
       BCOffSet = 100
-      DO WHILE( BCOffset <= Model % NumberOfBodies ) 
+      DO WHILE( BCOffset <= Model % NumberOfBodies )
         BCOffset = 10 * BCOffset
       END DO
 
@@ -1186,12 +1186,12 @@ CONTAINS
       nsize = Model % NumberOfBodies + Model % NumberOfBCs
       WRITE(GmshUnit,'(A)') '$PhysicalNames'
       WRITE(GmshUnit,'(I8)') nsize
-      DO i=1,Model % NumberOfBodies 
+      DO i=1,Model % NumberOfBodies
         Txt = ListGetString( Model % Bodies(i) % Values,'Name',Found)
         IF( Found ) THEN
           WRITE(GmshUnit,'(I8,A)') i,'"'//TRIM(Txt)//'"'
         ELSE
-          WRITE(GmshUnit,'(I8,A,I0,A)') i,'"Body ',i,'"'       
+          WRITE(GmshUnit,'(I8,A,I0,A)') i,'"Body ',i,'"'
         END IF
       END DO
       DO i=1,Model % NumberOfBCs
@@ -1199,7 +1199,7 @@ CONTAINS
         IF( Found ) THEN
           WRITE(GmshUnit,'(I8,A)') i+BCOffset,'"'//TRIM(Txt)//'"'
         ELSE
-          WRITE(GmshUnit,'(I8,A,I0,A)') i+BCOffset,'"Boundary Condition ',i,'"'               
+          WRITE(GmshUnit,'(I8,A,I0,A)') i+BCOffset,'"Boundary Condition ',i,'"'
         END IF
       END DO
       WRITE(GmshUnit,'(A)') '$EndPhysicalNames'
@@ -1231,7 +1231,7 @@ CONTAINS
       dofs = Solution % dofs
 
       n = Mesh % NumberOfNodes
-      ALLOCATE( NodalPerm(n), NodalCnt(n), NodalVals(n*dofs) ) 
+      ALLOCATE( NodalPerm(n), NodalCnt(n), NodalVals(n*dofs) )
       NodalPerm = 0
       NodalCnt = 0
       NodalVals = 0.0_dp
@@ -1240,23 +1240,23 @@ CONTAINS
         Element => Mesh % Elements(t)
 
         ! This is just a quick hack to not consider those element in averaging that don't
-        ! even have one face on the active set of nodes. 
+        ! even have one face on the active set of nodes.
         IF( ALLOCATED(NodePerm) ) THEN
-          ElemFam = Element % TYPE % ElementCode / 100 
+          ElemFam = Element % TYPE % ElementCode / 100
           l = COUNT( NodePerm(Element % NodeIndexes ) > 0 )
-          SELECT CASE(ElemFam)          
+          SELECT CASE(ElemFam)
           CASE(3,4)
             IF(l<2) CYCLE
           CASE(5,6,7)
             IF(l<3) CYCLE
           CASE(8)
-            IF(l<4) CYCLE          
+            IF(l<4) CYCLE
           END SELECT
         END IF
 
         DO i=1,Element % TYPE % NumberOfNodes
           j = Element % DGIndexes(i)
-          k = Element % NodeIndexes(i)  
+          k = Element % NodeIndexes(i)
 
           NodalCnt(k) = NodalCnt(k) + 1
           NodalPerm(k) = k
@@ -1272,7 +1272,7 @@ CONTAINS
 
       DO i=1,dofs
         WHERE ( NodalCnt > 0 )
-          NodalVals(i::dofs) = NodalVals(i::dofs) / NodalCnt 
+          NodalVals(i::dofs) = NodalVals(i::dofs) / NodalCnt
         END WHERE
       END DO
 
@@ -1295,7 +1295,7 @@ CONTAINS
 
       ! Time is needed
       !-------------------------------------------------
-      TimeVariable => VariableGet( Model % Variables, 'Time' )        
+      TimeVariable => VariableGet( Model % Variables, 'Time' )
       Time = TimeVariable % Values(1)
 
       ! Loop over different type of variables
@@ -1307,7 +1307,7 @@ CONTAINS
           IF(Rank==2) WRITE(Txt,'(A,I0)') 'Tensor Field ',Vari
 
           FieldName = ListGetString( Params, TRIM(Txt), Found )
-          IF(.NOT. Found) EXIT 
+          IF(.NOT. Found) EXIT
           IF( Rank == 2) THEN
             CALL Warn(Caller,'Not implemented yet for tensors!')
             CYCLE
@@ -1318,7 +1318,7 @@ CONTAINS
           DGVar = .FALSE.
 
           IF(ASSOCIATED(Solution)) THEN
-            DGVar = ( Solution % TYPE == Variable_on_nodes_on_elements )          
+            DGVar = ( Solution % TYPE == Variable_on_nodes_on_elements )
             IF(DgVar) CALL CreateTemporalNodalField(Mesh,Solution)
 
             Values => Solution % Values
@@ -1351,7 +1351,7 @@ CONTAINS
           END IF
 
           CALL Info(Caller,'Saving nodal variable: '//TRIM(FieldName),Level=12)
-                   
+
           IF( ASSOCIATED(Solution % EigenVectors) ) THEN
             CALL Warn(Caller,'Eigenvectors related to field: '//TRIM(FieldName))
             CALL Warn(Caller,'Eigenvectors saving yet not supported')
@@ -1377,16 +1377,16 @@ CONTAINS
             WRITE(GmshUnit,'(A)') '1'
           ELSE IF(Rank == 1) THEN
             WRITE(GmshUnit,'(A)') '3'
-          ELSE 
+          ELSE
             WRITE(GmshUnit,'(A)') '9'
           END IF
           WRITE(GmshUnit,'(I8)') nsize
 
           DO ii = 1, NumberOfGeomNodes
             IF( NoPermutation ) THEN
-              i = ii 
+              i = ii
             ELSE
-              i = InvFieldPerm(ii) 
+              i = InvFieldPerm(ii)
             END IF
 
             IF( ASSOCIATED( Perm ) ) THEN
@@ -1399,7 +1399,7 @@ CONTAINS
               WRITE(GmshUnit,'(I8,ES16.7E3)') ii,Values(j)
             ELSE IF(Rank == 1) THEN
               IF( j == 0 ) THEN
-                WRITE(GmshUnit,'(I8,A)') ii,' 0.0 0.0 0.0'                
+                WRITE(GmshUnit,'(I8,A)') ii,' 0.0 0.0 0.0'
               ELSE IF( ComponentVector ) THEN
                 IF( truedim == 2 ) THEN
                   WRITE(GmshUnit,'(I8,2ES16.7E3,A)') ii,&
@@ -1432,7 +1432,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  ! Saves a loop in STL format. 
+  ! Saves a loop in STL format.
   ! This is still not general.
   ! We should sort out the direction of the normal for true 3D meshes.
   !-------------------------------------------------------------------
@@ -1454,9 +1454,9 @@ CONTAINS
     LOGICAL :: Found, CalcNrm
     INTEGER :: GeoUnit, iostat
     INTEGER :: i,j,k,kmax,n,ReverseCnt, ElemCnt, t_start, t_end, StlInds(3), &
-        BodyId, MinBody, MaxBody 
-    INTEGER, POINTER :: NodeInds(:)    
-    TYPE(Nodes_t) :: Nodes 
+        BodyId, MinBody, MaxBody
+    INTEGER, POINTER :: NodeInds(:)
+    TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp) :: Normal(3), MeshCenter(3), ElemCenter(3), dVec(3), NormalP(3)
     LOGICAL :: DoBodies, DoBCs
     CHARACTER(:), ALLOCATABLE :: Str
@@ -1491,11 +1491,11 @@ CONTAINS
     ! Should we compute reference results for unit testing.
     CalcNrm = ListCheckPresent( Params,'Reference Values')
     IF( CalcNrm ) THEN
-      ALLOCATE( ArrayResults(6,1) )    
+      ALLOCATE( ArrayResults(6,1) )
       ArrayResults = 0.0_dp
       ThisResults => ArrayResults(:,1)
     END IF
-      
+
     n = 4
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n))
 
@@ -1523,14 +1523,14 @@ CONTAINS
       DoBCs = ( j > 0 )
     END IF
 
-    IF(DoBodies .OR. DoBCs ) THEN    
+    IF(DoBodies .OR. DoBCs ) THEN
       MinBody = MAX(1,ListGetInteger(Params,'STL Min Entity',Found ))
       MaxBody = ListGetInteger(Params,'STL Max Entity',Found )
       IF(.NOT. Found ) THEN
         IF(DoBodies) MaxBody = CurrentModel % NumberOfBodies
       ELSE
-        MaxBody = CurrentModel % NumberOfBCs                
-      END IF        
+        MaxBody = CurrentModel % NumberOfBCs
+      END IF
       t_start = Mesh % NumberOfBulkElements + 1
       t_end = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
     ELSE
@@ -1559,7 +1559,7 @@ CONTAINS
       END IF
       IF( n > 0 ) MeshCenter = CenterSum / n
     END IF
-    
+
     ElemCnt = 0
     ReverseCnt = 0
     MeshCenter = 0.0_dp
@@ -1589,7 +1589,7 @@ CONTAINS
     END IF
     nFacet = 0
 
-    DO i=t_start,t_end 
+    DO i=t_start,t_end
       Element => Mesh % Elements(i)
 
       n = Element % TYPE % ElementCode / 100
@@ -1600,9 +1600,9 @@ CONTAINS
       ELSE
         CYCLE
       END IF
-      
+
       NodeInds => Element % NodeIndexes
-      CALL CopyElementNodesFromMesh(Nodes,Mesh,n,NodeInds) 
+      CALL CopyElementNodesFromMesh(Nodes,Mesh,n,NodeInds)
 
       IF( DoBodies ) THEN
         IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
@@ -1636,13 +1636,13 @@ CONTAINS
         IF(.NOT. ASSOCIATED(Parent) ) THEN
           Parent => Element % BoundaryInfo % Right
         END IF
-        Normal = NormalVector( Element, Nodes, Parent = Parent )  
-        !Normal = NormalVector( Element, Nodes )  
+        Normal = NormalVector( Element, Nodes, Parent = Parent )
+        !Normal = NormalVector( Element, Nodes )
         !Normal = -Normal
-        
+
         ! Normal points differently than the normal pointing outward of parent, then reverse.
         Vote = 1.0_dp !(SUM(Normal*NormalP) > 0.0)
-      ELSE                
+      ELSE
         ElemCenter(1) = SUM(Nodes % x(1:n)) / n
         ElemCenter(2) = SUM(Nodes % y(1:n)) / n
         ElemCenter(3) = SUM(Nodes % z(1:n)) / n
@@ -1660,8 +1660,8 @@ CONTAINS
         ! ParallelInfo.
         dVec = ElemCenter - MeshCenter
 
-        ! If the normal points differently than dVec then reverse nodes. 
-        Normal = NormalVector( Element, Nodes )  
+        ! If the normal points differently than dVec then reverse nodes.
+        Normal = NormalVector( Element, Nodes )
         Vote = SUM(Normal*dVec)
       END IF
 
@@ -1762,8 +1762,8 @@ CONTAINS
     END IF
     DEALLOCATE( FacetAll )
 
-    BodyId = BodyId + 1 
-    IF(BodyId <= MaxBody ) GOTO 10 
+    BodyId = BodyId + 1
+    IF(BodyId <= MaxBody ) GOTO 10
 
     IF( Master ) CLOSE( GeoUnit )
     DEALLOCATE( FacetBuf )
@@ -1778,7 +1778,7 @@ CONTAINS
     CALL Info('SaveSTLSurface','Number of triangular elements in STL file: '//I2S(ElemCnt))
     CALL Info('SaveSTLSurface','Number of element with reversed normal: '//I2S(ReverseCnt))
     CALL Info('SaveSTLSurface','Finished writing the STL file!')
-    
+
     IF(CalcNrm) THEN
       ! Only the master saw the whole file, so hand the checksums round and
       ! every partition reports the same pseudonorm.
@@ -2017,9 +2017,9 @@ CONTAINS
       FacetBuf(:,1:nAlloc) = Tmp
       nAlloc = 2*nAlloc
     END SUBROUTINE GrowFacetBuf
-    
+
   END SUBROUTINE SaveSTLSurface
 
-  
+
 END MODULE SaveUtils
-  
+

@@ -52,7 +52,7 @@ jobs:
         # re-installed.
         run: |
           brew update
-          brew install --overwrite python@3.12 python@3.13
+          brew install --overwrite openssl@3 python@3.14
           brew reinstall gcc
           brew install \
             cmake \

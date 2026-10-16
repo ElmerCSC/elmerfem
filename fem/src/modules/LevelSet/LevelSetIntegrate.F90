@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,14 +27,14 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16.11.2005
 ! *
 ! *****************************************************************************/
 !------------------------------------------------------------------------------
-!>  Compute the volume and area in 3D or area and line integral in 2D over the 
-!>  levelset function. This is better done within a dedicated solver since 
+!>  Compute the volume and area in 3D or area and line integral in 2D over the
+!>  levelset function. This is better done within a dedicated solver since
 !>  it is crucial for the accuracy that the Heaviside and Delta functions are
 !>  computed at Gaussian integration points.
 !> \ingroup Solvers
@@ -44,12 +44,12 @@
      USE DefUtils
      IMPLICIT NONE
 !------------------------------------------------------------------------------
- 
+
      TYPE(Model_t), TARGET :: Model
      TYPE(Solver_t) :: Solver
      REAL(KIND=dp) :: Timestep
      LOGICAL :: Transient
- 
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -77,10 +77,10 @@
      Params => GetSolverParams()
 
      ! The variable that should be renormalized
-     LevelSetVariableName = ListGetString(Params,'Level Set Variable',GotIt) 
+     LevelSetVariableName = ListGetString(Params,'Level Set Variable',GotIt)
      IF(GotIt) THEN
        SurfSol => VariableGet( Solver % Mesh % Variables, TRIM(LevelSetVariableName) )
-     ELSE  
+     ELSE
        SurfSol => VariableGet( Solver % Mesh % Variables, 'Surface' )
      END IF
      IF(ASSOCIATED(SurfSol)) THEN
@@ -90,15 +90,15 @@
        CALL Warn('LevelSetIntegrate','Surface variable does not exist')
      END IF
 
-#if 0 
+#if 0
      IF ( ALL( SurfPerm == 0) ) THEN
        CALL Warn('LevelSetIntegrate','Nothing to compute')
        RETURN
      END IF
 #endif
-     
+
      dim = CoordinateSystemDimension()
- 
+
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -110,7 +110,7 @@
            ElementNodes % y( N ),   &
            ElementNodes % z( N ),   &
            STAT=istat )
- 
+
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'LevelSetIntegrate', 'Memory allocation error.' )
        END IF
@@ -122,37 +122,37 @@
      TotVolume = 0.0d0
      TotArea = 0.0d0
      Moment = 0.0d0
-     
-     Alpha = ListGetConstReal(Model % Simulation,'Levelset Bandwidth',GotIt) 
-     IF(.NOT. GotIt) Alpha = ListGetConstReal(Params,'Levelset Bandwidth')      
-       
+
+     Alpha = ListGetConstReal(Model % Simulation,'Levelset Bandwidth',GotIt)
+     IF(.NOT. GotIt) Alpha = ListGetConstReal(Params,'Levelset Bandwidth')
+
      CALL Info( 'LevelSetIntegrate','-------------------------------------', Level=4 )
      CALL Info( 'LevelSetIntegrate', 'Integrating over levelset function', Level=4 )
      CALL Info( 'LevelSetIntegrate','-------------------------------------', Level=4 )
 
      DO t=1,Solver % Mesh % NumberOfBulkElements
-       
+
        CurrentElement => Solver % Mesh % Elements(t)
        n = CurrentElement % TYPE % NumberOfNodes
        NodeIndexes => CurrentElement % NodeIndexes
        IF( ANY(SurfPerm(NodeIndexes) == 0)) CYCLE
-       
+
        Model % CurrentElement => CurrentElement
-       body_id = CurrentElement % Bodyid    
+       body_id = CurrentElement % Bodyid
        k = ListGetInteger( Model % Bodies( body_id ) % Values, 'Material' )
        Material => Model % Materials(k) % Values
-       
+
 !-----------------------------------------------------------------------------
 !        Get element nodal coordinates
 !------------------------------------------------------------------------------
        ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
        ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
        ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
-         
+
        NodalSurf(1:n) = Surface( SurfPerm(NodeIndexes) )
 
        CALL HeavisideIntegrate( NodalSurf, CurrentElement, n, ElementNodes, &
-           Alpha, TotVolume, TotArea, Moment)      
+           Alpha, TotVolume, TotArea, Moment)
      END DO
 
      IF( ParEnv % PEs > 1 ) THEN
@@ -162,31 +162,31 @@
        TotVolume = ParallelReduction(TotVolume)
        TotArea = ParallelReduction(TotArea)
      END IF
-     
+
      IF( TotVolume > 0.0d0 ) Moment = Moment / TotVolume
-     
+
      IF(dim == 3) THEN
        WRITE(Message,'(a,ES12.3)') 'Center 3',Moment(3)
        CALL Info( 'LevelSetIntegrate',Message, Level=4 )
 
        WRITE(Message,'(a,ES12.3)') 'Inside Volume',TotVolume
        CALL Info( 'LevelSetIntegrate',Message, Level=4 )
-     
+
        WRITE(Message,'(a,ES12.3)') 'Interface Area',TotArea
        CALL Info( 'LevelSetIntegrate',Message, Level=4 )
-       
+
        CALL ListAddConstReal(Model % Simulation,'res: LevelSet Center 3',Moment(3))
        CALL ListAddConstReal(Model % Simulation,'res: LevelSet Volume',TotVolume)
        CALL ListAddConstReal(Model % Simulation,'res: LevelSet Area',TotArea)
-     ELSE       
+     ELSE
        WRITE(Message,'(a,ES12.3)') 'Inside Area',TotVolume
        CALL Info( 'LevelSetIntegrate',Message, Level=4 )
-     
+
        WRITE(Message,'(a,ES12.3)') 'Interface length',TotArea
        CALL Info( 'LevelSetIntegrate',Message, Level=4 )
-       
+
        CALL ListAddConstReal(Model % Simulation,'res: LevelSet Area',TotVolume)
-       CALL ListAddConstReal(Model % Simulation,'res: LevelSet Length',TotArea)       
+       CALL ListAddConstReal(Model % Simulation,'res: LevelSet Length',TotArea)
      END IF
 
      WRITE(Message,'(a,ES12.3)') 'Center 2',Moment(2)
@@ -194,7 +194,7 @@
 
      WRITE(Message,'(a,ES12.3)') 'Center 1',Moment(1)
      CALL Info( 'LevelSetIntegrate',Message, Level=4 )
-     
+
      CALL ListAddConstReal(Model % Simulation,'res: LevelSet Center 2',Moment(2))
      CALL ListAddConstReal(Model % Simulation,'res: LevelSet Center 1',Moment(1))
 
@@ -206,7 +206,7 @@
 
        Relax = ListGetConstReal(Params,'Conserve Volume Relaxation',GotIt)
        IF(.NOT. GotIt) Relax = 1.0d0
-      
+
        IF( TotArea <= 0.0d0 ) THEN
          dSurface = 0.0d0
        ELSE
@@ -230,7 +230,7 @@
          Solver % Variable % Values = Solver % Variable % Norm
        END IF
      END IF
-     
+
 
 !------------------------------------------------------------------------------
 
@@ -312,23 +312,23 @@
        ELSE
          Heavi = (1.0d0 + SIN( (Val/Alpha) * (PI/2) ) ) / 2.0d0
          Delta = (1.0d0 + COS( (Val/Alpha) * PI ) ) / (2.0d0 * Alpha)
-         
+
          DO i=1,dim
            Grad(i) = SUM( dBasisdx(1:n,i) * Surf(1:n) )
          END DO
-         GradAbs = SQRT( SUM( Grad(1:dim) * Grad(1:dim) ) )          
-         
+         GradAbs = SQRT( SUM( Grad(1:dim) * Grad(1:dim) ) )
+
          Area = Area + s * Delta * GradAbs
        END IF
 
        Volume = Volume + s * Heavi
        Moment(1) = Moment(1) + s * Heavi * x
        Moment(2) = Moment(2) + s * Heavi * y
-       IF(dim == 3) Moment(3) = Moment(3) + s * Heavi * z       
+       IF(dim == 3) Moment(3) = Moment(3) + s * Heavi * z
 
      END DO
 
-     
+
 !------------------------------------------------------------------------------
    END SUBROUTINE HeavisideIntegrate
 !------------------------------------------------------------------------------
@@ -336,13 +336,13 @@
  END SUBROUTINE LevelSetIntegrate
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
  SUBROUTINE LevelSetIntegrate_init( Model,Solver,Timestep,Transient )
 !------------------------------------------------------------------------------
    USE DefUtils
    IMPLICIT NONE
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
    TYPE(Model_t), TARGET :: Model
    TYPE(Solver_t) :: Solver
    REAL(KIND=dp) :: Timestep
@@ -352,7 +352,7 @@
 
    Params => GetSolverParams()
    CALL ListAddNewString(Params,'Variable','-nooutput LevelsetIntegVar')
-   
+
  END SUBROUTINE LevelSetIntegrate_init
 !------------------------------------------------------------------------------
-   
+

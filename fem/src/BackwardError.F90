@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -25,7 +25,7 @@
 #include "huti_fdefs.h"
 
 !------------------------------------------------------------------------------
-!> The normwise relative backward error err = ||b-Ax||/(||A|| ||x|| + ||b||) 
+!> The normwise relative backward error err = ||b-Ax||/(||A|| ||x|| + ||b||)
 !> where ||.|| is the 2-norm
 !------------------------------------------------------------------------------
 FUNCTION NormwiseBackwardError2( x,b,r,ipar,dpar ) RESULT(err)
@@ -35,9 +35,9 @@ FUNCTION NormwiseBackwardError2( x,b,r,ipar,dpar ) RESULT(err)
   USE SParIterSolve, ONLY : SParMatrixVector
   USE CRSMatrix, ONLY : CRS_MatrixVectorMultiply
   USE SParIterGlobals, ONLY : ParEnv
-  
+
   IMPLICIT NONE
-  
+
   INTEGER :: ipar(*),n
   DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
   DOUBLE PRECISION :: res(HUTI_NDIM)
@@ -62,8 +62,8 @@ END FUNCTION NormwiseBackwardError2
 
 
 !------------------------------------------------------------------------------
-!> The normwise relative backward error err = ||r||/(||A|| ||x|| + ||b||) 
-!> where ||.|| is the supremum norm and A is assumed to be scaled such that its 
+!> The normwise relative backward error err = ||r||/(||A|| ||x|| + ||b||)
+!> where ||.|| is the supremum norm and A is assumed to be scaled such that its
 !> norm is the unity (setting Linear System Row Equilibration = Logical True).
 !> Here the residual r = b - Ax should be known when calling this function.
 !------------------------------------------------------------------------------
@@ -71,7 +71,7 @@ FUNCTION NormwiseBackwardError( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
   USE ParallelUtils, ONLY : ParallelReduction
   IMPLICIT NONE
-  
+
   INTEGER :: ipar(*),n
   DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
 
@@ -89,24 +89,24 @@ END FUNCTION NormwiseBackwardError
 !> The complex-valued version of the normwise relative backward error err =
 !> ||r||/(||A|| ||x|| + ||b||) where ||.|| is the supremum norm and A is
 !> assumed to be scaled such that its norm is the unity (setting Linear System
-!> Row Equilibration = Logical True). Here the residual r = b - Ax should 
+!> Row Equilibration = Logical True). Here the residual r = b - Ax should
 !> be known when calling this function.
 !------------------------------------------------------------------------------
 FUNCTION NormwiseBackwardError_Z( x,b,r,ipar,dpar ) RESULT(err)
 !------------------------------------------------------------------------------
   USE ParallelUtils, ONLY : ParallelReduction
   IMPLICIT NONE
-  
+
   DOUBLE COMPLEX :: x(*),b(*),r(*)
   INTEGER :: ipar(*)
   DOUBLE PRECISION :: dpar(*)
   DOUBLE PRECISION :: err
 
   INTEGER :: n
-  
+
 !  n = HUTI_NDIM
   n = ipar(3)
-  
+
   err = ParallelReduction(MAXVAL(ABS(r(1:n))),2) / &
       (ParallelReduction(MAXVAL(ABS(x(1:n))),2)   + &
       ParallelReduction(MAXVAL(ABS(b(1:n))),2))
@@ -116,7 +116,7 @@ END FUNCTION NormwiseBackwardError_Z
 
 
 !------------------------------------------------------------------------------
-!> The normwise relative backward error err = ||b-Ax||/(||A|| ||x|| + ||b||) 
+!> The normwise relative backward error err = ||b-Ax||/(||A|| ||x|| + ||b||)
 !> where ||.|| is the supremum norm. The matrix norm of A is computed within
 !> this subroutine.
 !------------------------------------------------------------------------------
@@ -129,7 +129,7 @@ FUNCTION NormwiseBackwardErrorGeneralized( x,b,r,ipar,dpar ) RESULT(err)
   USE SParIterGlobals, ONLY : ParEnv
 
   IMPLICIT NONE
-  
+
   INTEGER :: ipar(*),n
   DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
   DOUBLE PRECISION :: res(HUTI_NDIM)
@@ -174,12 +174,12 @@ FUNCTION ComponentwiseBackwardError( x,b,r,ipar,dpar ) RESULT(err)
   USE SParIterSolve, ONLY : SParMatrixVector, SParABSMatrixVector
   USE CRSMatrix, ONLY : CRS_MatrixVectorMultiply, CRS_ABSMatrixVectorMultiply
   USE SParIterGlobals, ONLY : ParEnv
-  
+
   IMPLICIT NONE
-  
+
   INTEGER :: i, ipar(*),n
   DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err
-  DOUBLE PRECISION :: d(HUTI_NDIM),res(HUTI_NDIM)    
+  DOUBLE PRECISION :: d(HUTI_NDIM),res(HUTI_NDIM)
 
   n = HUTI_NDIM
 
@@ -189,13 +189,13 @@ FUNCTION ComponentwiseBackwardError( x,b,r,ipar,dpar ) RESULT(err)
     CALL CRS_MatrixVectorMultiply(GlobalMatrix,x,res)
   END IF
   res = res - b(1:n)
-     
+
   IF(ParEnv % PEs>1) THEN
     CALL SParABSMatrixVector(ABS(x),d,ipar)
   ELSE
     CALL CRS_ABSMatrixVectorMultiply(GlobalMatrix,ABS(x),d)
   END IF
-     
+
   d = d + ABS(b(1:n))
 
   err = 0.0d0

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,15 +27,15 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 25 Aug 2018
-! * 
+! *
 ! *  Heavily inspired from the MagnetoDynamics and VectorHelmholtz modules.
 ! *****************************************************************************/
-    
+
 !------------------------------------------------------------------------------
-!>  Solve time-dependent Maxwell equations using the curl-curl equation 
+!>  Solve time-dependent Maxwell equations using the curl-curl equation
 !>  using curl-conforming edge elements.
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
@@ -69,16 +69,16 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: mu0, eps0
   INTEGER :: mat_id
   TYPE(ValueList_t), POINTER  :: List
-  
-  SolverParams => GetSolverParams()  
+
+  SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondKind, SecondOrder, Check = .TRUE. )
     IF( SecondOrder ) THEN
       CALL ListAddString( SolverParams, "Element", &
-          "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
-    ELSE IF (SecondKind) THEN    
+          "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+    ELSE IF (SecondKind) THEN
       CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
-    ELSE IF (PiolaVersion) THEN    
+    ELSE IF (PiolaVersion) THEN
       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
     ELSE
       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
@@ -89,13 +89,13 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
   IF( ListGetLogical( SolverParams,'Constant Bulk Matrix',Found ) .OR. &
       ListGetLogical( SolverParams,'Eigen Analysis',Found ) ) THEN
-    CALL ListAddNewLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)    
+    CALL ListAddNewLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
   END IF
-  
+
   CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
   CALL ListAddNewString( SolverParams,'Variable','E')
   CALL ListAddNewLogical( SolverParams,'Linear System Complex', .FALSE.)
-  
+
   CALL ListAddNewInteger( SolverParams,'Time derivative order', 2 )
 
   ! Set a multiplier for the relative keywords
@@ -106,14 +106,14 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
   mu0 = GetConstReal( Model % Constants,'Permeability of Vacuum', Found )
   IF(.NOT. Found ) CALL Fatal('EMWaveSolver_Init0','> Permeability of Vacuum < is required')
 
-  ! does not seem to work? 
+  ! does not seem to work?
   ! the idea is that relative values would be automatically replaced by absolute ones with scaling
   !DO mat_id = 1, Model % NumberOfMaterials
-  !  List => Model % Materials(mat_id) % Values  
+  !  List => Model % Materials(mat_id) % Values
   !  CALL ListSetCoefficients( list,'Relative Permittivity', eps0 )
   !  CALL ListSetCoefficients( list,'Relative Permeability', mu0 )
   !END DO
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE EMWaveSolver_Init0
 !------------------------------------------------------------------------------
@@ -121,10 +121,10 @@ END SUBROUTINE EMWaveSolver_Init0
 
 !------------------------------------------------------------------------------
 !> Solve the electric field E from the curl-curl equation
-! 
+!
 !> curl (1/mu) curl E + d^2 (epsilon E)/dt^2 + d/dt (sigma E) = -d/dt J
 !
-!> using edge elements (curl-conforming vector finite elements at most degree 2) 
+!> using edge elements (curl-conforming vector finite elements at most degree 2)
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
@@ -151,38 +151,38 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   INTEGER, POINTER :: Perm(:)
   TYPE(ValueList_t), POINTER :: SolverParams
   REAL(KIND=dp) :: mu0, eps0
-  TYPE(Solver_t), POINTER :: pSolver 
-  
+  TYPE(Solver_t), POINTER :: pSolver
+
   SAVE STIFF, DAMP, MASS, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
 
   CALL Info('EMWaveSolver','Solving electromagnetic waves in time',Level=5)
 
   SolverParams => GetSolverParams()
-  
-  CALL EdgeElementStyle(SolverParams, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+
+  CALL EdgeElementStyle(SolverParams, PiolaVersion, BasisDegree = EdgeBasisDegree )
 
   IF (CoordinateSystemDimension() == 2 .AND. .NOT. PiolaVersion) THEN
     CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
   END IF
 
   TimeOrder = ListGetInteger( SolverParams,'Time derivative order')
-  
+
   dofs = Solver % Variable % Dofs
 
   eps0 = GetConstReal( Model % Constants,'Permittivity of Vacuum')
   mu0 = GetConstReal( Model % Constants,'Permeability of Vacuum')
-  
+
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
   nNodes = Mesh % NumberOfNodes
   Perm => Solver % Variable % Perm
   pSolver => Solver
-  
+
   IF ( .NOT. AllocationsDone ) THEN
     IF( dofs /= 1 ) CALL Fatal ('EMWaveSolver', 'Invalid variable size:'//I2S(dofs) )
-    n = Mesh % MaxElementDOFs  
+    n = Mesh % MaxElementDOFs
     ALLOCATE( FORCE(n), STIFF(n,n), MASS(n,n), DAMP(n,n), STAT=istat )
     IF ( istat /= 0 ) CALL Fatal( 'EMWaveSolver', 'Memory allocation error.' )
     AllocationsDone = .TRUE.
@@ -196,14 +196,14 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
   EdgeBasis = .NOT. ListCheckPresent( SolverParams,'Linear System Refactorize' ) .AND. &
       GetLogical( SolverParams, 'Edge Basis', Found )
-  
+
   CALL DefaultStart()
-  
+
   DO i=1,NoIterationsMax
     CALL DoBulkAssembly()
 
     CALL DoBoundaryAssembly()
-    
+
     ! Default routines for finishing assembly and solving the system
     Norm = DefaultSolve()
     IF( DefaultConverged() ) EXIT
@@ -213,11 +213,11 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
   CALL DefaultFinish()
-  
-  CALL Info('EMWaveSolver','All done',Level=10)
-  
 
-  
+  CALL Info('EMWaveSolver','All done',Level=10)
+
+
+
 CONTAINS
 
 !---------------------------------------------------------------------------------------------
@@ -226,16 +226,16 @@ CONTAINS
     INTEGER :: n,nd,t
     LOGICAL :: Found, ConstantBulkInUse = .FALSE.
 !---------------------------------------------------------------------------------------------
-        
+
     ! use matrix from previous round
     !-----------------------------------------------
     IF( ConstantBulkInUse ) THEN
       CALL DefaultInitialize(UseConstantBulk = ConstantBulkInUse )
       RETURN
     END IF
-    
+
     CALL DefaultInitialize()
-   
+
     Active = GetNOFActive()
     DO t=1,active
       Element => GetActiveElement(t)
@@ -248,7 +248,7 @@ CONTAINS
           Element, n, nd, PiolaVersion, t==1 )
 
       ! Update global matrix and rhs vector from local matrix & vector:
-      !---------------------------------------------------------------       
+      !---------------------------------------------------------------
       IF( TimeOrder == 2 ) THEN
         CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
       ELSE IF( TimeOrder == 1 ) THEN
@@ -259,8 +259,8 @@ CONTAINS
 
     CALL DefaultFinishBulkAssembly()
 
-    ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )       
-    
+    ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBulkAssembly
 !------------------------------------------------------------------------------
@@ -295,12 +295,12 @@ CONTAINS
 
       nd = GetElementNOFDOFs(Element)
       n  = GetElementNOFNodes(Element)
-        
+
       dummy_element => SetCurrentElement(Element)
-      
+
       CALL LocalMatrixBC(MASS,DAMP,STIFF,FORCE,&
           Element,n,nd,PiolaVersion,InitHandles)
-      
+
       IF( TimeOrder == 2 ) THEN
         CALL Default2ndOrderTimeR( MASS, DAMP, STIFF, FORCE(1:nd), UElement=Element)
       ELSE IF( TimeOrder == 1 ) THEN
@@ -310,17 +310,17 @@ CONTAINS
 
       InitHandles = .FALSE.
     END DO
-      
+
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
-    CALL DefaultDirichletBCs()   
+    CALL DefaultDirichletBCs()
 
 !------------------------------------------------------------------------------
   END SUBROUTINE DoBoundaryAssembly
 !------------------------------------------------------------------------------
 
 
-  
+
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, &
       Element, n, nd, PiolaVersion, InitHandles )
@@ -338,14 +338,14 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t) :: CD_h(3), Mu_h, Eps_h, Cond_h
     LOGICAL :: AllocationsDone = .FALSE.
-    
+
     SAVE Cd_h, Mu_h, Eps_h, Cond_h, AllocationsDone
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density Rate 1')
       CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density Rate 2')
       CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density Rate 3')
-        
+
       ! These have been normalized by mu0 and eps0 in _init section
       CALL ListInitElementKeyword( Mu_h,'Material','Relative Permeability')
       CALL ListInitElementKeyword( Eps_h,'Material','Relative Permittivity')
@@ -359,38 +359,38 @@ CONTAINS
     DAMP = 0.0_dp
     FORCE = 0.0_dp
     MASS  = 0.0_dp
-       
+
     ! Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis = .TRUE., PReferenceElement = PiolaVersion)
 
-    
+
     DO t=1,IP % n
       stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
-      
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
+
       weight = detJ * IP%s(t)
-      
+
       eps = eps0 * ListGetElementReal( eps_h, Basis, Element, Found )
       mu = mu0 * ListGetElementReal( mu_h, Basis, Element, Found )
       muinv = 1.0_dp / mu
-      
-      cond = ListGetElementReal( cond_h, Basis, Element, Found ) 
-      
+
+      cond = ListGetElementReal( cond_h, Basis, Element, Found )
+
       L(1) = ListGetElementReal( CD_h(1), Basis, Element, Found )
       L(2) = ListGetElementReal( CD_h(2), Basis, Element, Found )
       L(3) = ListGetElementReal( CD_h(3), Basis, Element, Found )
-      
+
       ! Compute element stiffness matrix and force vector:
       ! --------------------------------------------------
       DO i = 1,nd
         FORCE(i) = FORCE(i) - SUM(L*WBasis(i,:)) * weight
-        
+
         DO j = 1,nd
-          ! the mu^-1 curl E . curl v 
+          ! the mu^-1 curl E . curl v
           STIFF(i,j) = STIFF(i,j) + muinv * &
               SUM(RotWBasis(i,:) * RotWBasis(j,:)) * weight
-          
+
           ! the term d^2 ( \epsilon E) / dt^2 . v
           MASS(i,j) = MASS(i,j) +  &
               eps * SUM(WBasis(j,:) * WBasis(i,:)) * weight
@@ -417,7 +417,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ, Tem(n)
     REAL(KIND=dp) :: B, L(3), muinv, mu, weight, tanWBasis(3)
-    REAL(KIND=dp) :: Basis(n), WBasis(nd,3), RotWBasis(nd,3), dBasisdx(n,3) 
+    REAL(KIND=dp) :: Basis(n), WBasis(nd,3), RotWBasis(nd,3), dBasisdx(n,3)
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, p, q
@@ -426,7 +426,7 @@ CONTAINS
     LOGICAL :: Visited = .FALSE., GotTem
     TYPE(Element_t), POINTER :: Parent
     LOGICAL :: AllocationsDone = .FALSE.
-    
+
     SAVE Visited, BL_h, Damp_h, Mu_h, Eps_h
 
 !------------------------------------------------------------------------------
@@ -442,8 +442,8 @@ CONTAINS
       CALL ListInitElementKeyword( Eps_h,'Material','Relative Permittivity')
     END IF
 
-    BC => GetBC() 
-    Parent => GetBulkElementAtBoundary(Element) 
+    BC => GetBC()
+    Parent => GetBulkElementAtBoundary(Element)
 
     TEM(1:n) = GetReal( BC,'TEM Potential', GotTem )
 
@@ -460,7 +460,7 @@ CONTAINS
 
     DO t=1,IP % n
       !
-      ! We need to branch as the only way to get the traces of 2D vector finite elements 
+      ! We need to branch as the only way to get the traces of 2D vector finite elements
       ! is to call EdgeElementInfo:
       !
       IF (GetElementFamily(Element) == 2) THEN
@@ -469,7 +469,7 @@ CONTAINS
             ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
-            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
       END IF
 
 !      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
@@ -479,16 +479,16 @@ CONTAINS
       muinv = 1.0_dp / mu
 
       L(1) = ListGetElementReal( Bl_h(1), Basis, Element, Found )
-      L(2) = ListGetElementReal( Bl_h(2), Basis, Element, Found ) 
-      L(3) = ListGetElementReal( Bl_h(3), Basis, Element, Found ) 
+      L(2) = ListGetElementReal( Bl_h(2), Basis, Element, Found )
+      L(3) = ListGetElementReal( Bl_h(3), Basis, Element, Found )
 
       ! We don't yet have a method for getting grad at ip
       IF( GotTem ) THEN
         L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )
       END IF
       DO i = 1,nd
-!        NOTE that the edge basis function 
-!             which has been received here is automatically tangential to the 
+!        NOTE that the edge basis function
+!             which has been received here is automatically tangential to the
 !             boundary, so computing tangential projection is unnecessary
 !
 !        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
@@ -497,7 +497,7 @@ CONTAINS
         FORCE(i) = FORCE(i) - muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
       END DO
 
-      B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
+      B = ListGetElementReal( Damp_h, Basis, Element, Found )
       IF( Found ) THEN
         DO i = 1,nd
 !          Again, computing tangential projection is unnecessary here
@@ -533,7 +533,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
-  LOGICAL :: Found, ElementalFields, EigenAnalysis 
+  LOGICAL :: Found, ElementalFields, EigenAnalysis
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,n,m,vDOFs,soln
   TYPE(ValueList_t), POINTER :: SolverParams
@@ -544,29 +544,29 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   ! Find the solver index of the primary solver by the known procedure name.
   ! (the solver is defined here in the same module so not that dirty...)
   soln = 0
-  
+
   DO i=1,Model % NumberOfSolvers
     sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
     j = INDEX( sname,'EMWaveSolver')
     IF( j > 0 ) THEN
-      soln = i 
+      soln = i
       EXIT
     END IF
   END DO
-     
+
   IF( soln == 0 ) THEN
-    CALL Fatal('EMWaveCalcFields_Init0','Cannot locate the primary solver: '//I2S(soln))      
+    CALL Fatal('EMWaveCalcFields_Init0','Cannot locate the primary solver: '//I2S(soln))
   ELSE
     CALL Info('EMWaveCalcFields_Init0','The primary solver index is: '//I2S(soln),Level=12)
-    CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
+    CALL ListAddInteger( SolverParams,'Primary Solver Index',soln )
   END IF
 
-  EigenAnalysis = ListGetLogical( Model % Solvers(soln) % Values,'Eigen Analysis', Found ) 
+  EigenAnalysis = ListGetLogical( Model % Solvers(soln) % Values,'Eigen Analysis', Found )
   IF( EigenAnalysis ) THEN
     CALL ListAddNewLogical( SolverParams,'Eigen Analysis',.TRUE.)
     CALL ListAddNewLogical( Solverparams,'Constant Bulk Matrix',.TRUE.)
   END IF
-        
+
   ! In case we are solving truly discontinuous Galerkin fields then we do it by assembling
   ! normal linear system. Here we allocate for the DG type of fields that are computed elementwise
   ! while the FE fields are solved using standard Galerkin. Hence unintuitively we exit here
@@ -583,7 +583,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   END DO
 
   ! Here we add a DG solver instance in a dirty way by extending the list of solvers
-  ! and adding the new solver as an active one. 
+  ! and adding the new solver as an active one.
   n = Model % NumberOfSolvers
   DO i=1,Model % NumberOFEquations
     Active => ListGetIntegerArray(Model % Equations(i) % Values, &
@@ -617,8 +617,8 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   ! Electric field is always computed
   CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
-      "Elfield E[Elfield E:3]");    
-  
+      "Elfield E[Elfield E:3]");
+
   IF( .NOT. EigenAnalysis ) THEN
     ! When requested we may also compute the 1st and 2nd time derivative.
     ! They exist by default as whitney fields but also needs to be projected
@@ -630,10 +630,10 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
           "dEdt E[dEdt E:3]");
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable', SolverParams), &
-          "ddEddt E[ddEddt E:3]");    
+          "ddEddt E[ddEddt E:3]");
     END IF
   END IF
-    
+
   DEALLOCATE(Model % Solvers)
   Model % Solvers => Solvers
   Model % NumberOfSolvers = n+1
@@ -662,23 +662,23 @@ SUBROUTINE EMWaveCalcFields_Init(Model,Solver,dt,Transient)
   SolverParams => GetSolverParams()
 
   ! We compute the fields one component at a time.
-  ! This is the dummy variable used for the computation. It is not saved. 
+  ! This is the dummy variable used for the computation. It is not saved.
   CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )
 
   ! The matrix is constant hence do not ever refactorize.
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
 
   CALL ListAddNewLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
-  
+
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
   IF(Found .AND. .NOT. NodalFields ) RETURN
 
-  EigenAnalysis = ListGetLogical( SolverParams,'Eigen Analysis', Found ) 
+  EigenAnalysis = ListGetLogical( SolverParams,'Eigen Analysis', Found )
 
   CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Elfield[Elfield:3]");
-  
+
   IF( .NOT. EigenAnalysis ) THEN
     IF (GetLogical(SolverParams,'Calculate Electric field derivatives',Found)) THEN
       CALL ListAddString( SolverParams,&
@@ -686,17 +686,17 @@ SUBROUTINE EMWaveCalcFields_Init(Model,Solver,dt,Transient)
           "dEdt[dEdt:3]");
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable', SolverParams), &
-          "ddEddt[ddEddt:3]");    
+          "ddEddt[ddEddt:3]");
     END IF
   END IF
-    
+
 !------------------------------------------------------------------------------
 END SUBROUTINE EMWaveCalcFields_Init
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-!> Calculate fields resulting from the edge element formulation 
+!> Calculate fields resulting from the edge element formulation
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
  SUBROUTINE EMWaveCalcFields(Model,Solver,dt,Transient)
@@ -713,7 +713,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    TYPE(Variable_t), POINTER :: pVar
    TYPE(Variable_t), POINTER :: EF, dEF, ddEF
    TYPE(Variable_t), POINTER :: EF_e, dEF_e, ddEF_e
-                              
+
    INTEGER :: i,j,k,l,t,n,nd,p,q,dofs,dofcount,vDOFs
 
    TYPE(Solver_t), POINTER :: pSolver
@@ -727,14 +727,14 @@ END SUBROUTINE EMWaveCalcFields_Init
 
    REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
-   REAL(KIND=dp), ALLOCATABLE, TARGET :: MASS(:,:), FORCE(:,:), GForce(:,:) 
+   REAL(KIND=dp), ALLOCATABLE, TARGET :: MASS(:,:), FORCE(:,:), GForce(:,:)
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer
    LOGICAL :: ConstantBulkMatrix, ConstantBulkInUse, Erroneous, EigenAnalysis
    INTEGER :: soln, NofEigen, iEigen, cdofs
-   TYPE(ValueList_t), POINTER :: SolverParams 
+   TYPE(ValueList_t), POINTER :: SolverParams
 
    REAL(KIND=dp) :: mu, eps, mu0, eps0
-   
+
 !-------------------------------------------------------------------------------------------
    CALL Info('EMWaveCalcFields','Computing postprocessing fields')
 
@@ -743,35 +743,35 @@ END SUBROUTINE EMWaveCalcFields_Init
    eps0 = GetConstReal( Model % Constants,'Permittivity of Vacuum')
    mu0 = GetConstReal( Model % Constants,'Permeability of Vacuum')
 
-   soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
+   soln = ListGetInteger( SolverParams,'Primary Solver Index', Found)
    IF( soln == 0 ) THEN
      CALL Fatal('EMWaveCalcFields','We should know > Primary Solver Index <')
    END IF
 
    ! Pointer to primary solver
    pSolver => Model % Solvers(soln)
-   pVar => pSolver % Variable   
+   pVar => pSolver % Variable
    Pname = getVarName(pVar)
    CALL Info('EMWaveCalcFields','Name of potential variable: '//TRIM(pName),Level=10)
-   
+
    ! Inherit the solution basis from the primary solver
    vDOFs = pVar % DOFs
    IF( vDofs /= 1 ) THEN
      CALL Fatal('EMWaveCalcFields','Primary variable should have 1 dofs: '//I2S(vDofs))
    END IF
    dofs = 3
-   
+
    CALL EdgeElementStyle(pSolver % Values, PiolaVersion )
    IF (PiolaVersion) CALL Info('EMWaveCalcFields', &
        'Using Piola transformed finite elements', Level=5)
 
    NOFeigen = 1
-   EigenAnalysis = GetLogical( PSolver % Values,'Eigen Analysis',Found ) 
+   EigenAnalysis = GetLogical( PSolver % Values,'Eigen Analysis',Found )
    IF(EigenAnalysis) THEN
      NOFeigen = SIZE(pSolver % Variable % EigenValues)
      CALL Info('EMWaveCalcFields','Computing fields for '//I2S(NOFeigen)//' eigen vectors',Level=7)
    END IF
-       
+
    Mesh => GetMesh()
 
    EF => VariableGet( Mesh % Variables, 'Elfield')
@@ -787,17 +787,17 @@ END SUBROUTINE EMWaveCalcFields_Init
          dEF => EF_e
        END IF
        IF(ASSOCIATED(dEF) ) THEN
-         n = SIZE( dEF % Values ) 
+         n = SIZE( dEF % Values )
          IF(.NOT. ASSOCIATED(dEF % EigenVectors ) ) THEN
            ALLOCATE( dEF % EigenVectors(NofEigen,n) )
            dEF % EigenVectors = 0.0_dp
            ! Eigenvalues are copied as some postprocessing solvers may use
-           ! these to dertemine sizes etc. 
+           ! these to dertemine sizes etc.
            ALLOCATE( dEF % EigenValues(NofEigen) )
-           dEF % EigenValues = pVar % EigenValues 
+           dEF % EigenValues = pVar % EigenValues
          END IF
        END IF
-     END DO     
+     END DO
      dEF => NULL(); dEF_e => NULL()
      ddEF => NULL(); ddEF_e => NULL()
      AnyTimeDer = .FALSE.
@@ -809,11 +809,11 @@ END SUBROUTINE EMWaveCalcFields_Init
      ddEF => VariableGet( Mesh % Variables, 'ddEddt')
      ddEF_e => VariableGet( Mesh % Variables, 'ddEddt E')
    END IF
-     
-   AnyTimeDer = ASSOCIATED( dEF ) .OR. ASSOCIATED( ddEF ) .OR. &       
-       ASSOCIATED( dEF_e ) .OR. ASSOCIATED( ddEF_e ) 
-     
-   i = 0 
+
+   AnyTimeDer = ASSOCIATED( dEF ) .OR. ASSOCIATED( ddEF ) .OR. &
+       ASSOCIATED( dEF_e ) .OR. ASSOCIATED( ddEF_e )
+
+   i = 0
    IF ( ASSOCIATED(EF)  ) i=i+cdofs*3
    IF ( ASSOCIATED(dEF)  ) i=i+3
    IF ( ASSOCIATED(ddEF)  ) i=i+3
@@ -822,19 +822,19 @@ END SUBROUTINE EMWaveCalcFields_Init
    IF(NodalFields) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),i)); Gforce=0._dp
    END IF
-      
-   j = 0 
+
+   j = 0
    IF ( ASSOCIATED(EF_e)  ) j=j+cdofs*3
    IF ( ASSOCIATED(dEF_e)  ) j=j+3
    IF ( ASSOCIATED(ddEF_e)  ) j=j+3
    ElementalFields = ( j > 0 )
-   
+
    dofs = MAX( i,j )
-   
-   n = Mesh % MaxElementDOFs   
+
+   n = Mesh % MaxElementDOFs
    ALLOCATE( MASS(n,n), FORCE(n,dofs), Pivot(n) )
 
-   ConstantBulkMatrix = ListGetLogical(SolverParams, 'Constant Bulk Matrix', Found)   
+   ConstantBulkMatrix = ListGetLogical(SolverParams, 'Constant Bulk Matrix', Found)
    ConstantBulkInUse = ASSOCIATED(Solver % Matrix % BulkValues) .AND. &
        ConstantBulkMatrix
 
@@ -850,7 +850,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    IF(EigenAnalysis) THEN
      CALL Info('EMwaveCalcFields','Computing fields for eigen vector: '//I2S(iEigen),Level=10)
    END IF
-   
+
    DO t = 1, GetNOFActive()
      Element => GetActiveElement(t)
      n = GetElementNOFNodes()
@@ -881,11 +881,11 @@ END SUBROUTINE EMWaveCalcFields_Init
      END IF
    END DO
 
-     
+
    ! Assembly of the face terms in case we have DG method where we
    ! want to average the fields within materials making them continuous.
    !-----------------------------------------------------------------
-   DoAve = GetLogical( SolverParams,'Average Within Materials',Found) 
+   DoAve = GetLogical( SolverParams,'Average Within Materials',Found)
 
    ! For DG averaging means adding glue terms
    IF( DoAve ) THEN
@@ -896,7 +896,7 @@ END SUBROUTINE EMWaveCalcFields_Init
        END IF
      END IF
    END IF
-        
+
    IF (NodalFields .OR. DoAve ) THEN
      ! For DG fields without real DG solver averaging is done a posteriori within GlobalSol
      IF (ConstantBulkMatrix .AND. .NOT. ConstantBulkInUse) THEN
@@ -917,14 +917,14 @@ END SUBROUTINE EMWaveCalcFields_Init
      ConstantBulkInUse = ASSOCIATED(Solver % Matrix % BulkValues)
      GOTO 10
    END IF
-    
+
    CALL Info('EMCalcFields','Done computing postprocessed fields!',Level=10)
 
-   
+
 CONTAINS
 
 
-  SUBROUTINE LocalAssembly(InitHandles, IntegrateMass) 
+  SUBROUTINE LocalAssembly(InitHandles, IntegrateMass)
 
     LOGICAL :: InitHandles, IntegrateMass
 
@@ -936,23 +936,23 @@ CONTAINS
     REAL(KIND=dp) :: detJ, s, u, v, w
     REAL(KIND=dp) :: EF_ip(3), dEF_ip(3), ddEF_ip(3)
     LOGICAL :: AllocationsDone = .FALSE.
-    TYPE(ValueHandle_t) :: Mu_h, Eps_h, Cd_h(3)    
+    TYPE(ValueHandle_t) :: Mu_h, Eps_h, Cd_h(3)
     INTEGER :: i,j,k,n
-    
+
     SAVE Cd_h, Mu_h, Eps_h, sol, dsol, ddsol, &
         Indexes, WBasis, RotWBasis, Basis, dBasisdx
 
     IF(.NOT. AllocationsDone ) THEN
       N = Mesh % MaxElementDOFs
       ALLOCATE( SOL(n), dsol(n), ddsol(n), &
-          Indexes(n), WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3))      
+          Indexes(n), WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3))
       sol = 0.0_dp
       dsol = 0.0_dp
       ddsol = 0.0_dp
       AllocationsDone = .TRUE.
     END IF
 
-    
+
     IF( InitHandles ) THEN
       ! These have been normalized by mu0 and eps0 in _init section
       CALL ListInitElementKeyword( Mu_h,'Material','Relative Permeability')
@@ -963,9 +963,9 @@ CONTAINS
       CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density 3')
     END IF
 
-    
+
     CALL GetElementNodes( Nodes )
-    
+
     n = GetElementDOFs( Indexes, Element, pSolver )
 
     sol(1:n) = 0.0_dp
@@ -993,7 +993,7 @@ CONTAINS
         END IF
       END DO
     END IF
-      
+
     ! Calculate nodal fields:
     ! -----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
@@ -1007,9 +1007,9 @@ CONTAINS
       w = IP % W(j)
 
       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
- 
-      ! Not currently used as only trivial fields are computed. 
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
+
+      ! Not currently used as only trivial fields are computed.
       !----------------------------------------------------------
       !eps = eps0 * ListGetElementReal( eps_h, Basis, Element, Found )
       !mu = mu0 * ListGetElementReal( mu_h, Basis, Element, Found )
@@ -1017,13 +1017,13 @@ CONTAINS
       !curr(1) = ListGetElementReal( Cd_h(1), Basis, Element, Found )
       !curr(2) = ListGetElementReal( Cd_h(2), Basis, Element, Found )
       !curr(3) = ListGetElementReal( Cd_h(3), Basis, Element, Found )
-      
+
       EF_ip = MATMUL(sol(1:nd),WBasis(1:nd,:))
       IF( AnyTimeDer .OR. EigenAnalysis ) THEN
         dEF_ip = MATMUL(dsol(1:nd),WBasis(1:nd,:))
         ddEF_ip = MATMUL(ddsol(1:nd),WBasis(1:nd,:))
       END IF
-        
+
       s = IP % s(j) * detJ
 
       IF (IntegrateMass) THEN
@@ -1050,9 +1050,9 @@ CONTAINS
         END IF
       END DO
     END DO
-    
+
   END SUBROUTINE LocalAssembly
-    
+
 
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
@@ -1073,7 +1073,7 @@ CONTAINS
        El_Var % DgAveraged = .FALSE.
        IF( DoAve ) THEN
          CALL Info('EMWaveSolver','Averaging for field: '//TRIM(El_Var % Name),Level=10)
-         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
+         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)
        END IF
        IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN
          dofs = dofs+m
@@ -1083,16 +1083,16 @@ CONTAINS
    END IF
 
    IF(.NOT. ASSOCIATED(Var) ) RETURN
-   
-   CALL Info('EMWaveSolver','Solving for field: '//TRIM(Var % Name),Level=6)   
+
+   CALL Info('EMWaveSolver','Solving for field: '//TRIM(Var % Name),Level=6)
    DO i=1,m
      dofs = dofs+1
      Solver % Matrix % RHS => b(:,dofs)
      Solver % Variable % Values = 0.0_dp
      Norm = DefaultSolve()
-     
+
      IF(EigenAnalysis ) THEN
-       IF(i<=3) THEN         
+       IF(i<=3) THEN
          Var % EigenVectors(iEigen,i::m/2) = Solver % Variable % Values
        ELSE
          Var % EIgenVectors(iEigen,i-3::m/2) = &
@@ -1124,7 +1124,7 @@ CONTAINS
       dofs = dofs+1
       x = b(1:n,dofs)
       CALL LUSolve(n,A,x,pivot)
-      
+
       IF(EigenAnalysis ) THEN
         IF(i<=3) THEN
           Var % EigenVectors(iEigen,ind(1:n)+i) = x

@@ -4374,7 +4374,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	double coords[3];
 	float scoords[3];
 	
-	fwrite(&ind,sizeof(int),1,out); 
+	fwrite(&ind,sizeof(int),1,outfiles[nofile]); 
 	/* Note that in binary format we don't save the obsolite "-1". */
 	if(singleprec) {
 	  /* We save the coordinates in single precidion format */

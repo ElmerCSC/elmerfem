@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,15 +13,15 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 !
 !------------------------------------------------------------------------------
@@ -74,7 +74,7 @@ CONTAINS
     INTEGER, PARAMETER :: MAX_BRICK_DEGREE = 8
     INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
 
-    INTEGER, PARAMETER :: MAX_DEGREE = 8  ! The maximal polynomial degree over any element shape 
+    INTEGER, PARAMETER :: MAX_DEGREE = 8  ! The maximal polynomial degree over any element shape
 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Nodes_t) :: PNodes
@@ -172,7 +172,7 @@ CONTAINS
         delta = 2.0d0/k
         ut = -1.0d0
         DO i=1,k-1
-          ut = ut + delta 
+          ut = ut + delta
           VTKLineU(k,i+2) = ut
         END DO
       END DO
@@ -257,9 +257,9 @@ CONTAINS
           vt = vt + delta
           ut = -1.0d0
           DO j=1,k-1
-            ut = ut + delta 
+            ut = ut + delta
             VTKQuadU(k,j+Offsets(k)) = ut
-            VTKQuadV(k,j+Offsets(k)) = vt         
+            VTKQuadV(k,j+Offsets(k)) = vt
             QuadNodeCounts(k) = QuadNodeCounts(k) + 1
           END DO
           Offsets(k) = QuadNodeCounts(k)
@@ -272,7 +272,7 @@ CONTAINS
       ! --------------------------------------------------------------------------
       LElement % Type => GetElementType(504, .FALSE.)
       CALL GetRefPElementNodes(LElement % Type, VTKTetraU(1,1:4), &
-          VTKTetraV(1,1:4), VTKTetraW(1,1:4)) 
+          VTKTetraV(1,1:4), VTKTetraW(1,1:4))
 
       DO k=2,MAX_TETRA_DEGREE
         VTKTetraU(k,1:4) = VTKTetraU(1,1:4)
@@ -293,7 +293,7 @@ CONTAINS
               Offsets, TetraNodeCounts, VTKTetraW)
         END IF
       END DO
-      
+
       ! The faces:
       Offsets(1:MAX_TETRA_DEGREE) = TetraNodeCounts(1:MAX_TETRA_DEGREE)
       VTKTetraFaceMap(1,:) = (/ 1,2,4 /)
@@ -316,7 +316,7 @@ CONTAINS
 
         DO k=1,4
           DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
+            ! Pick the positions of face nodes from a lower dimensional element
             r(1) = VTKTriangleU(j,i+i_start-1)
             r(2) = VTKTriangleV(j,i+i_start-1)
             ut = 0.0d0
@@ -353,7 +353,7 @@ CONTAINS
       ! --------------------------------------------------------------------------
       LElement % Type => GetElementType(605, .FALSE.)
       CALL GetRefPElementNodes(LElement % Type, VTKPyramidU(1,1:5), &
-          VTKPyramidV(1,1:5), VTKPyramidW(1,1:5)) 
+          VTKPyramidV(1,1:5), VTKPyramidW(1,1:5))
 
       DO k=2,MAX_PYRAMID_DEGREE
         VTKPyramidU(k,1:5) = VTKPyramidU(1,1:5)
@@ -387,7 +387,7 @@ CONTAINS
         n = i_end - i_start + 1 ! The number of new nodes per face
 
         DO i=1,n
-          ! Pick the positions of face nodes from a lower dimensional element 
+          ! Pick the positions of face nodes from a lower dimensional element
           r(1) = VTKQuadU(j,i+i_start-1)
           r(2) = VTKQuadV(j,i+i_start-1)
           ut = 0.0d0
@@ -404,7 +404,7 @@ CONTAINS
           VTKPyramidW(j,i+Offsets(j)) = wt
           PyramidNodeCounts(j) = PyramidNodeCounts(j) + 1
         END DO
-        Offsets(j) = PyramidNodeCounts(j) 
+        Offsets(j) = PyramidNodeCounts(j)
       END DO
 
       ! The triangular faces (TO DO: support for degrees p > 3):
@@ -423,7 +423,7 @@ CONTAINS
       ! --------------------------------------------------------------------------
       LElement % Type => GetElementType(706, .FALSE.)
       CALL GetRefPElementNodes(LElement % Type, VTKPrismU(1,1:6), &
-          VTKPrismV(1,1:6), VTKPrismW(1,1:6)) 
+          VTKPrismV(1,1:6), VTKPrismW(1,1:6))
 
       DO k=2,MAX_PRISM_DEGREE
         VTKPrismU(k,1:6) = VTKPrismU(1,1:6)
@@ -457,7 +457,7 @@ CONTAINS
         DO k=1,2
           Face = GetWedgeFaceMap(k)
           DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
+            ! Pick the positions of face nodes from a lower dimensional element
             r(1) = VTKTriangleU(j,i+i_start-1)
             r(2) = VTKTriangleV(j,i+i_start-1)
             ut = 0.0d0
@@ -487,7 +487,7 @@ CONTAINS
         DO k=3,5
           Face = GetWedgeFaceMap(k)
           DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
+            ! Pick the positions of face nodes from a lower dimensional element
             r(1) = VTKQuadU(j,i+i_start-1)
             r(2) = VTKQuadV(j,i+i_start-1)
             ut = 0.0d0
@@ -504,7 +504,7 @@ CONTAINS
             VTKPrismW(j,i+Offsets(j)) = wt
             PrismNodeCounts(j) = PrismNodeCounts(j) + 1
           END DO
-          Offsets(j) = PrismNodeCounts(j) 
+          Offsets(j) = PrismNodeCounts(j)
         END DO
       END DO
 
@@ -526,7 +526,7 @@ CONTAINS
       ! --------------------------------------------------------------------------
       LElement % Type => GetElementType(808, .FALSE.)
       CALL GetRefPElementNodes(LElement % Type, VTKBrickU(1,1:8), &
-          VTKBrickV(1,1:8), VTKBrickW(1,1:8)) 
+          VTKBrickV(1,1:8), VTKBrickW(1,1:8))
 
       DO k=2,MAX_BRICK_DEGREE
         VTKBrickU(k,1:8) = VTKBrickU(1,1:8)
@@ -579,7 +579,7 @@ CONTAINS
 
         DO k=1,6
           DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
+            ! Pick the positions of face nodes from a lower dimensional element
             r(1) = VTKQuadU(j,i+i_start-1)
             r(2) = VTKQuadV(j,i+i_start-1)
             ut = 0.0d0
@@ -626,12 +626,12 @@ CONTAINS
     ELSE
       PVersion = IsPElement(PElement)
     END IF
-    
+
     IF (.NOT. PVersion) THEN
       CALL Warn(Caller, 'The input element is not a p-element, returning')
       RETURN
     END IF
-    
+
     PNodes % x(:) = 0.0d0
     PNodes % y(:) = 0.0d0
     PNodes % z(:) = 0.0d0
@@ -639,7 +639,7 @@ CONTAINS
     ! NOTE: We shall not need the derivatives of basis functions or
     ! the determinant of the element mapping. Hence using the following
     ! nodal coordinates is sufficient, although in principle we
-    ! might disregard some values 
+    ! might disregard some values
     !
     n = PElement % TYPE % NumberOfNodes
     PNodes % x(1:n) = Mesh % Nodes % x(PElement % NodeIndexes(1:n))
@@ -721,7 +721,7 @@ CONTAINS
       vt = NodesV(t)
       wt = NodesW(t)
 
-      !PRINT *, 'CALLING AT POINT ', t,ut,vt,wt      
+      !PRINT *, 'CALLING AT POINT ', t,ut,vt,wt
 
       ! It seems that the p-basis for pyramids cannot be evaluated at the fifth node,
       ! so we make a small "error":
@@ -730,11 +730,11 @@ CONTAINS
       stat = ElementInfo(PElement, PNodes, ut, vt, wt, detJ, PBasis, BasisDegree=BasisDegree, &
           USolver=PSolver)
       IF (t == 1) THEN
-        nd = COUNT(BasisDegree > 0) 
+        nd = COUNT(BasisDegree > 0)
         IF (nd == 0) CALL Fatal(Caller, 'p-basis needed but the classical basis returned')
         ! PRINT *, 'p-basis dimension ', nd, SUM( PBasis(1:nd)), SUM(PBasis(1:PElement % Type % NumberOfNodes))
       END IF
-        
+
       DO k = 1,Fields
         LSol(k,t) = SUM(PBasis(1:nd) * PSol(k,1:nd))
       END DO
@@ -754,7 +754,7 @@ CONTAINS
         NodeCounts, NodesW)
 
       IMPLICIT NONE
-      REAL(KIND=dp), INTENT(INOUT):: NodesU(:,:), NodesV(:,:) 
+      REAL(KIND=dp), INTENT(INOUT):: NodesU(:,:), NodesV(:,:)
       INTEGER, INTENT(IN) :: ind_start, ind_end
       INTEGER, INTENT(IN) :: MaxDegree
       INTEGER, INTENT(IN) :: OffSets(:)

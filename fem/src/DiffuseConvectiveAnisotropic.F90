@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -52,7 +52,7 @@ MODULE DiffuseConvective
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RHS vector for diffusion-convection
-!>  equation: 
+!>  equation:
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveCompose( MassMatrix,StiffMatrix,ForceVector,  &
       LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,PhaseChange,NodalTemperature, &
@@ -161,6 +161,7 @@ MODULE DiffuseConvective
                       Pcoeff, minl, maxl, SSCond
 
      REAL(KIND=dp) :: C0,C00,C1,CT,CL,C2(3,3),dC2dx(3,3,3),SU(n),SW(n)
+     REAL(KIND=dp), ALLOCATABLE :: dcG(:,:)
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
@@ -168,7 +169,7 @@ MODULE DiffuseConvective
           FrictionHeat
      TYPE(ValueList_t), POINTER :: BodyForce, Material
      LOGICAL :: GotCondModel
-     
+
 !------------------------------------------------------------------------------
 
      VectH = GetLogical( GetSolverParams(), 'VectH', Found )
@@ -219,7 +220,8 @@ MODULE DiffuseConvective
        Bubbles = .TRUE.
      END IF
 
-     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3) )
+     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3), &
+               dcG(MAX(2*n,nd),3) )
 
 !------------------------------------------------------------------------------
 !    Integration stuff
@@ -259,7 +261,7 @@ MODULE DiffuseConvective
           v = Element % TYPE % NodeV(p)
           w = Element % TYPE % NodeW(p)
           stat = ElementInfo( Element, Nodes, u,v,w, detJ, Basis, dBasisdx )
- 
+
           dNodalBasisdx(1:n,p,:) = dBasisdx(1:n,:)
           GradNodal(p,1:dim,1:dim) = MATMUL( NodalVelo(1:dim,1:n), dBasisdx(1:n,1:dim) )
           GradNodal(p,dim+1,1:dim) = MATMUL( NodalVelo(dim+1,1:n), dBasisdx(1:n,1:dim) )
@@ -275,9 +277,9 @@ MODULE DiffuseConvective
        IF ( Transient ) THEN
          dt = CurrentModel % Solver % dt
          Order = MIN(CurrentModel % Solver % DoneTime,CurrentModel % Solver % Order)
- 
+
          CALL GetVectorLocalSolution( NodalPVelo, 'Flow Solution', tStep=-1 )
- 
+
          IF ( Order<2 ) THEN
            NodalPVelo(1:dim,1:n)=(NodalVelo(1:dim,1:n)-NodalPVelo(1:dim,1:n))/dt
          ELSE
@@ -374,7 +376,7 @@ MODULE DiffuseConvective
 !      Coefficient of the diffusion term & it s derivatives at the
 !      integration point
 !------------------------------------------------------------------------------
-       rho = SUM( Nodalrho(1:n) * Basis(1:n) ) 
+       rho = SUM( Nodalrho(1:n) * Basis(1:n) )
 
        DO i=1,dim
          DO j=1,dim
@@ -382,13 +384,13 @@ MODULE DiffuseConvective
          END DO
        END DO
 
-       IF( GotCondModel ) THEN       
+       IF( GotCondModel ) THEN
          DO i=1,dim
            C2(i,i) = EffectiveConductivity( C2(i,i), rho, Element, &
                NodalTemperature, UX,UY,UZ, Nodes, n, n, u, v, w )
          END DO
        END IF
-         
+
 !------------------------------------------------------------------------------
 !      If there's no convection term we don't need the velocities, and
 !      also no need for stabilization
@@ -557,6 +559,8 @@ MODULE DiffuseConvective
           END IF
         END IF
 
+        CALL GradDotTensor( NBasis, dim, dBasisdx, C2, dcG )
+
 !------------------------------------------------------------------------------
 !       Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -570,11 +574,17 @@ MODULE DiffuseConvective
 !------------------------------------------------------------------------------
 !         The diffusion term
 !------------------------------------------------------------------------------
-          DO i=1,dim
+          SELECT CASE(dim)
+          CASE(3)
+            A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2) + &
+                    dcG(q,3) * dBasisdx(p,3)
+          CASE(2)
+            A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2)
+          CASE DEFAULT
             DO j=1,dim
-              A = A + C2(i,j) * dBasisdx(q,i) * dBasisdx(p,j)
+              A = A + dcG(q,j) * dBasisdx(p,j)
             END DO
-          END DO
+          END SELECT
 
           IF ( Convection ) THEN
 !------------------------------------------------------------------------------
@@ -664,7 +674,7 @@ MODULE DiffuseConvective
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for boundary conditions
-!>  of diffusion convection equation: 
+!>  of diffusion convection equation:
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveBoundary( BoundaryMatrix,BoundaryVector, &
                LoadVector,NodalAlpha,OpenBC,NodalCond,NodalExt,Element,n,Nodes )
@@ -750,14 +760,14 @@ MODULE DiffuseConvective
        IF( OpenBC ) THEN
          x = SUM( Nodes % x(1:n)*Basis(1:n) )
          y = SUM( Nodes % y(1:n)*Basis(1:n) )
-         z = SUM( Nodes % z(1:n)*Basis(1:n) )         
+         z = SUM( Nodes % z(1:n)*Basis(1:n) )
 
          Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
          Coord(1) = x
          Coord(2) = y
          Coord(3) = z
          Alpha = SUM( Basis(1:n) * NodalCond(1:n) ) *  &
-             SUM( Coord * Normal ) / SUM( Coord * Coord ) 
+             SUM( Coord * Normal ) / SUM( Coord * Coord )
          Force = Alpha * SUM( Basis(1:n) * NodalExt(1:n) )
        END IF
 

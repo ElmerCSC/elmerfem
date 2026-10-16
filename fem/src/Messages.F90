@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2002
 ! *
@@ -56,7 +56,7 @@ MODULE Messages
 #endif
 
    IMPLICIT NONE
-   
+
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
@@ -65,25 +65,25 @@ MODULE Messages
    INTEGER :: MaxOutputThread=0, MaxThreads=1
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
    INTEGER :: InfoOutUnit = stdout
-   INTEGER, PARAMETER :: InfoToFileUnit = 33   
+   INTEGER, PARAMETER :: InfoToFileUnit = 33
    LOGICAL :: InfoToFile = .FALSE.
-   
+
    INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
 
 #ifdef HAVE_XIOS
-   LOGICAL :: USE_XIOS = .FALSE. 
+   LOGICAL :: USE_XIOS = .FALSE.
 #endif
 
 
 CONTAINS
 
 !-----------------------------------------------------------------------
-!> Prints information on the standard output if the requested or 
+!> Prints information on the standard output if the requested or
 !> default output level does not surpass the maximum output level.
 !-----------------------------------------------------------------------
    SUBROUTINE Info( Caller, String, noAdvance, Level )
 !-----------------------------------------------------------------------
-#define MEMDEBUG 0     
+#define MEMDEBUG 0
 #if MEMDEBUG
      INTERFACE
        FUNCTION cpumemory() RESULT(dbl) BIND(C,name='cpumemory')
@@ -93,7 +93,7 @@ CONTAINS
      END INTERFACE
      INTEGER(KIND=8) :: CurrUse
 #endif
-     
+
      CHARACTER(LEN=*) :: Caller, String
      INTEGER, OPTIONAL :: Level
      LOGICAL, OPTIONAL :: noAdvance
@@ -104,10 +104,10 @@ CONTAINS
      LOGICAL :: StdoutSet = .FALSE.
      INTEGER :: nthread, omp_get_thread_num
 
-     
+
      SAVE nadv1
 
-!-----------------------------------------------------------------------          
+!-----------------------------------------------------------------------
      IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
@@ -128,10 +128,10 @@ CONTAINS
        !$ nthread = omp_get_thread_num()+1
        IF(nthread > MaxOutputThread ) RETURN
      END IF
-     
+
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
-     
+
      IF(.NOT. nadv1 ) THEN
        IF ( OutputPrefix ) THEN
          WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' ) 'INFO:: '
@@ -150,7 +150,7 @@ CONTAINS
            WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '//TRIM(String)
          END IF
        ELSE
-         IF( MaxOutputThread > 1 ) THEN 
+         IF( MaxOutputThread > 1 ) THEN
            WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'NO' ) 'Thread',nthread,': '//TRIM(String)
          ELSE
            WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' ) TRIM(String)
@@ -158,7 +158,7 @@ CONTAINS
        END IF
      ELSE
 #if MEMDEBUG
-       CurrUse = NINT( CPUMemory() ) 
+       CurrUse = NINT( CPUMemory() )
        IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
          WRITE( InfoOutUnit,'(A,I0,A,A,T50,A,I0)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String), &
              'MEM: ',CurrUse
@@ -173,7 +173,7 @@ CONTAINS
            WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': '//TRIM(String)
          END IF
        ELSE
-         IF( MaxOutputThread > 1 ) THEN 
+         IF( MaxOutputThread > 1 ) THEN
            WRITE( InfoOutUnit,'(A,I0,A)', ADVANCE = 'YES' ) 'Thread',nthread,': '//TRIM(String)
          ELSE
            WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
@@ -185,7 +185,7 @@ CONTAINS
 
      CALL FLUSH(InfoOutUnit)
 
-          
+
 !-----------------------------------------------------------------------
    END SUBROUTINE Info
 !-----------------------------------------------------------------------
@@ -193,7 +193,7 @@ CONTAINS
 !-----------------------------------------------------------------------
 !> May be used to skip computation that only relates to printing info.
 !-----------------------------------------------------------------------
-   FUNCTION InfoActive( Level ) RESULT( Show ) 
+   FUNCTION InfoActive( Level ) RESULT( Show )
 !-----------------------------------------------------------------------
      INTEGER, OPTIONAL :: Level
      LOGICAL :: Show
@@ -204,7 +204,7 @@ CONTAINS
      IF ( PRESENT( Level ) ) THEN
        Show = OutputLevelMask(Level)
      ELSE
-       Show = OutputLevelMask(DefLevel) 
+       Show = OutputLevelMask(DefLevel)
      END IF
 
 !-----------------------------------------------------------------------
@@ -334,7 +334,7 @@ CONTAINS
        CALL xios_context_finalize()
        CALL xios_finalize()
      ENDIF
-#endif 
+#endif
 !-----------------------------------------------------------------------
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------
@@ -393,7 +393,7 @@ CONTAINS
    END SUBROUTINE Assert
 !-----------------------------------------------------------------------
 
-   
+
 END MODULE Messages
 
 !> \}

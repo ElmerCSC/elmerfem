@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,14 +28,14 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 09 Aug 1998   (Original C-version) Genesis
 ! *  Original Date: 25 Oct 2000   Fortran 90/95 version
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !-------------------------------------------------------
@@ -76,17 +76,17 @@ MODULE HashTable
 CONTAINS
 
 !-----------------------------------------------------------------------
-! 
+!
 !  Call: TYPE(HashTable_t), POINTER hash = HashCreate( &
 !       InitialBucketSize, MaxAvgEntries, EqualKeys )
-! 
+!
 !> Initialize a hash table given initial bucket size. The size of the
 !> bucket is rounded up to next power of two. The bucket grows fourfold
 !> whenever the size of the hash table grows over "MaxAvgEntries"
 !> entries / bucket on the average. Keep the "MaxAvgEntries" small enough
 !> (ordinarily from 3 entries up ?) to keep the hash table build & lookup
 !> reasonably quick.
-! 
+!
 !> The hash table entries contain a "key" and an associated "value".
 !> Currently the value structures are not copied to the hash table,
 !> but only pointers to them are being stored. So one should not alter the
@@ -95,7 +95,7 @@ CONTAINS
 !> among others, automatic variables in functions. (C-Version: Bright side
 !> is, that the "value" entries may be whatsoever as you manage them
 !> yourself...)
-! 
+!
 !-----------------------------------------------------------------------
   FUNCTION HashCreate( InitialBucketSize, MaxAvgEntries ) RESULT(hash)
     TYPE(HashTable_t), POINTER :: Hash
@@ -147,7 +147,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------
 !  Call:index = HashStringFunc( key, mask )
-! 
+!
 !> Generate index to a hash table from given string. Hash table size
 !> is assumed to be a power of two.
 !--------------------------------------------------------------------------
@@ -172,9 +172,9 @@ CONTAINS
    END FUNCTION HashStringFunc
 
 !--------------------------------------------------------------------------
-! 
+!
 ! Call: equal = HashEqualKeys( key1, key2 )
-! 
+!
 !> Return equality of given two strings.
 !> This is for internal use only.
 !--------------------------------------------------------------------------
@@ -195,7 +195,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------
 !  Call: entry = HashFind( hash, key, bucket )
-! 
+!
 !> Search for a key from a hash table, return value is pointer to
 !> the entry or NULL if not found. Bucket number of the entry
 !> (if found) is given in int *bucket.
@@ -227,10 +227,10 @@ CONTAINS
 
 !--------------------------------------------------------------------------
 ! Call:  HashAdd( HashTable_t *hash, void *key,void *value )
-! 
+!
 !> Add an entry to a hash table. If the key is already in the table
 !> just change the "value" pointer.
-! 
+!
 !> The hash table entries contain a "key" and an associated "value".
 !> Currently the (key) and value entries are not copied to the hash table,
 !> but only pointers to them are being stored. So one should not alter the
@@ -239,7 +239,7 @@ CONTAINS
 !> example, automatic variables in functions.
 !>
 !  Return value is success or not...
-! 
+!
 !--------------------------------------------------------------------------
   RECURSIVE FUNCTION HashAdd( hash, key, value ) RESULT(Success)
     TYPE(HashTable_t), POINTER :: hash
@@ -283,7 +283,7 @@ CONTAINS
 
        Hash % Bucket(n) % Head => Entry
        Hash % TotalEntries = Hash % TotalEntries + 1
-       
+
        IF ( Hash % TotalEntries > Hash % MaxAvgEntries*Hash % BucketSize ) THEN
           Success = HashRebuild( Hash )
        END IF
@@ -292,7 +292,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------
 !  Call: HashRemove( HashTable_t *hash, void *key )
-! 
+!
 !> Remove an entry from a hash table given key of the entry.
 !--------------------------------------------------------------------------
   SUBROUTINE HashRemove( Hash, key )
@@ -344,7 +344,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------
 ! Call: HashClean( HashTable_t *hash )
-! 
+!
 !> Clean all entries from the hash table, the bucket array is kept.
 !> One may start refilling the hash table directly after cleaning.
 !--------------------------------------------------------------------------
@@ -390,7 +390,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------
 ! Call: HashRebuild( HashTable_t *hash )
-! 
+!
 !> Rebuild a hash table using a larger bucket array.
 !> This is for internal use only.
 !--------------------------------------------------------------------------
@@ -425,7 +425,7 @@ CONTAINS
 
 !--------------------------------------------------------------------------
 ! Call: void *value = HashValue( HashTable_t *hash, void *key )
-! 
+!
 !> Given a "key" to hash table return pointer to the "value" memory or
 !> NULL if not found in the table.
 !--------------------------------------------------------------------------

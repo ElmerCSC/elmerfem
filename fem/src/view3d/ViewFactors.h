@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -81,7 +81,7 @@ EXT double ShapeFunctionMatrix[16][16],ShapeFunctionMatrix4[4][4],
 
 EXT double *U_Integ3,*V_Integ3,*S_Integ3;
 
-EXT double XMin,XMax,YMin,YMax,ZMin,ZMax; 
+EXT double XMin,XMax,YMin,YMax,ZMin,ZMax;
 EXT char str[512];
 
 typedef double Matrix_t[3][3];
@@ -105,7 +105,7 @@ typedef struct
 typedef struct
 {
     /*
-     * You can have a circle segment (area between RMin,RMax) 
+     * You can have a circle segment (area between RMin,RMax)
      */
     double RMin,RMax;
 
@@ -114,7 +114,7 @@ typedef struct
      * the point MUST be the centerpoint of the circle.
      */
     Point_t Axis;
-    Point_t CenterPoint; 
+    Point_t CenterPoint;
 
     int IdentMatrix;
     Matrix_t RotationMatrix;
@@ -233,7 +233,7 @@ typedef struct Geometry
     int Flags;
     int N;
     double Area,B,E,M;
-	
+
     GeometryList_t *Link;
     struct Geometry *Left,*Right;
 }  Geometry_t;
@@ -347,7 +347,7 @@ void LinearComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, dou
 void BiLinearComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
 void TriangleComputeRadiatorFactors(Geometry_t *GA,int,double, double, double, double, double, double, int );
 
-void elm_4node_quad_shape_functions(double B[4][4]); 
+void elm_4node_quad_shape_functions(double B[4][4]);
 
 static double FunctionValue( Geometry_t *Geom,double U,double V,int N )
 {
@@ -363,7 +363,7 @@ static double FunctionValue( Geometry_t *Geom,double U,double V,int N )
 		   return BiLinearValue(U,V,Geom->BiLinear->PolyFactors[N]);
 
   	   case GEOMETRY_BICUBIC:
-		   return BiCubicValue(U,V,Geom->BiCubic->PolyFactors[N]); 
+		   return BiCubicValue(U,V,Geom->BiCubic->PolyFactors[N]);
 
   	   case GEOMETRY_BIQUADRATIC:
 		   return BiQuadraticValue(U,V,Geom->BiQuadratic->PolyFactors[N]);

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,20 +28,20 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !------------------------------------------------------------------------------
 !>  Module containing the direct solvers for linear systems given in CRS format.
 !> Included are Lapack band matrix solver, multifrontal Umfpack, MUMPS, SuperLU,
 !> Pardiso, and NVIDIA's GPU-based cuDSS. Note that many of these are linked in with ElmerSolver only
-!> if they are made available at the compilation time. 
+!> if they are made available at the compilation time.
 !------------------------------------------------------------------------------
 
 #include "../config.h"
@@ -75,7 +75,7 @@ CONTAINS
      REAL(KIND=dp) :: x(*),b(*)
 !------------------------------------------------------------------------------
 
-   
+
      INTEGER :: i,j,k,istat,Subband,N
      COMPLEX(KIND=dp), ALLOCATABLE :: BA(:,:)
 
@@ -178,7 +178,7 @@ CONTAINS
 
      END IF
 !------------------------------------------------------------------------------
-  END SUBROUTINE ComplexBandSolver 
+  END SUBROUTINE ComplexBandSolver
 !------------------------------------------------------------------------------
 
 
@@ -298,7 +298,7 @@ CONTAINS
      END IF
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE BandSolver 
+  END SUBROUTINE BandSolver
 !------------------------------------------------------------------------------
 
 
@@ -422,7 +422,7 @@ CONTAINS
   INTEGER(KIND=UMFPACK_LONG_FORTRAN_TYPE), ALLOCATABLE :: LRows(:), LCols(:)
 
   SAVE iInfo, Control
- 
+
   LOGICAL :: Factorize, FreeFactorize, stat, BigMode
 
   IF ( PRESENT(Free_Fact) ) THEN
@@ -517,7 +517,7 @@ CONTAINS
     PRINT*, 'Error occurred in umf4sol: ', iinfo(1)
     ERROR STOP EXIT_ERROR
   END IF
- 
+
   FreeFactorize = ListGetLogical( Solver % Values, &
       'Linear System Free Factorization', stat )
   IF ( .NOT. stat ) FreeFactorize = .TRUE.
@@ -627,7 +627,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Solves a linear system using NVIDIA's GPU cuDSS (CUDA direct sparse solver).
-!> Single-GPU only, single MPI. Upper-triangle extraction only for SPD systems. 
+!> Single-GPU only, single MPI. Upper-triangle extraction only for SPD systems.
 !> Complex systems always use the general matrix type for factorization (LU).
 !> CUDSS_SolveSystem subroutine was written by D. Reeves.
 !------------------------------------------------------------------------------
@@ -724,7 +724,7 @@ CONTAINS
     END IF
 
     ! Linear System Matrix Type Positive Definite keyword (as Pardiso_SolveSystem),
-    ! mapped to cuDSS's own matrix types. cuDSS also supports Hermitian matrices, 
+    ! mapped to cuDSS's own matrix types. cuDSS also supports Hermitian matrices,
     ! HPD and Real Symmetric factorization, not implemented, check docs
     mat_type = ListGetString(Solver % Values,'Linear System Matrix Type',Found)
     IF ( Found ) THEN
@@ -799,7 +799,7 @@ CONTAINS
       IF ( A % Cudss == 0 ) THEN
         CALL Fatal('CUDSS_SolveSystem','cuDSS analysis/factorization failed.')
       END IF
-    ! real general system, 
+    ! real general system,
     ELSE IF ( mtype == 0 ) THEN
       Rows => A % Rows
       Cols => A % Cols
@@ -2797,7 +2797,7 @@ CONTAINS
      IF (Factorize .OR. .NOT. ASSOCIATED(A % mumpsIDL)) THEN
        CALL MumpsLocal_Factorize(Solver, A)
      END IF
-       
+
      ! Set RHS
      A % mumpsIDL % NRHS = 1
      A % mumpsIDL % LRHS = A % mumpsIDL % n
@@ -3147,10 +3147,10 @@ CONTAINS
     ! Check if matrix is symmetric or spd
     matsym = ListGetLogical(Solver % Values, &
         'Linear System Symmetric', stat)
- 
+
     matspd = ListGetLogical(Solver % Values, &
         'Linear System Positive Definite', stat)
- 
+
     A % ZmumpsIDL % SYM = 0
 !   IF (matsym) THEN
 !     IF (matspd) THEN
@@ -3503,7 +3503,7 @@ CONTAINS
       x(1:n) = b(1:n)
       nnz = A % Rows(n+1)-1
 
-      nprocs = ListGetInteger( Solver % Values, & 
+      nprocs = ListGetInteger( Solver % Values, &
               'Linear System Number of Threads', stat )
       IF ( .NOT. stat ) nprocs = 1
 !
@@ -3524,7 +3524,7 @@ CONTAINS
         iopt = 1
         call Solve_SuperLU( iopt, nprocs, n, nnz, nrhs, A % Values, A % Cols, &
               A % Rows, x, n, A % SuperLU_Factors, iinfo )
- 
+
         if (iinfo .eq. 0) then
            write (*,*) 'Factorization succeeded'
         else
@@ -3555,7 +3555,7 @@ CONTAINS
                     A % Rows, x, n, A % SuperLU_Factors, iinfo )
         A % SuperLU_Factors = 0
       END IF
-#endif      
+#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE SuperLU_SolveSystem
 !------------------------------------------------------------------------------
@@ -3599,7 +3599,7 @@ CONTAINS
   n_dof_partition = A % NumberOfRows
 
 !  INTERFACE
-!     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals, n_n, n_ranks) RESULT(handle) BIND(c,name='permon_initsolve') 
+!     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals, n_n, n_ranks) RESULT(handle) BIND(c,name='permon_initsolve')
 !        USE, INTRINSIC :: ISO_C_BINDING
 !        TYPE(C_PTR) :: handle
 !        INTEGER(C_INT), VALUE :: n, nd, n_n
@@ -3735,7 +3735,7 @@ CONTAINS
 
     ! Set matrix type for Pardiso
     mat_type = ListGetString(Solver % Values,'Linear System Matrix Type',Found)
-    
+
     IF (Found) THEN
       SELECT CASE(mat_type)
       CASE('positive definite')
@@ -3801,7 +3801,7 @@ CONTAINS
       DO i=1,n
         nzutd = nzutd + A % Rows(i+1)-A % Diag(i)
       END DO
-      
+
       ALLOCATE( values(nzutd), cols(nzutd), rows(n+1), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('Pardiso_SolveSystem', &
@@ -3819,7 +3819,7 @@ CONTAINS
           Values(Rows(i)+j)=A % Values(A%Diag(i)+j)
         END DO
       END DO
-      
+
     ELSE
       Cols => A % Cols
       Rows => A % Rows
@@ -3854,7 +3854,7 @@ CONTAINS
       iparm => A % PardisoParam
       iparm = 0
       A % PardisoId = 0
- 
+
       ! Set up scaling values for solver based on matrix type
       CALL pardisoinit(A % PardisoId, mtype, iparm)
 
@@ -4366,14 +4366,14 @@ CONTAINS
     lrow = 1      ! Next row to add
     rptr = 1      ! Pointer to next row to add, equals ia(lrow)
     lind = Order(1)-1 ! Row pointer for the first round
-    
-    ! Add rows of matrix 
+
+    ! Add rows of matrix
     DO i=1,n
       ! Add empty rows until the beginning of the row to add
       ! (first round adds nothing due to choice of lind)
       tind = Order(i)
       rsize = (tind-lind)-1
-      
+
       ! Put zeroes to the diagonal
       DO j=1,rsize
         ia(lrow+j)=rptr+j
@@ -4383,7 +4383,7 @@ CONTAINS
       ! Set up row pointers
       rptr = rptr + rsize
       lrow = lrow + rsize
-      
+
       ! Add next row
       rind = iperm(i)
       lind = A % rows(rind)
@@ -4406,10 +4406,10 @@ CONTAINS
           aa(rptr+(j-lind))=A % values(j)
         END DO
       END IF
-        
+
       ! Sort column indices
       CALL SortF(rsize, ja(rptr:rptr+rsize), aa(rptr:rptr+rsize))
-        
+
       ! Set up row pointers
       rptr = rptr + rsize
       lrow = lrow + 1
@@ -4449,7 +4449,7 @@ CONTAINS
       iparm(11)=0       ! Do not use scalings from symmetric weighted matching
       iparm(13)=0       ! Do not use permutations from symmetric weighted matching
     END IF
-    
+
     iparm(21)=1         ! Do not use Bunch Kaufman pivoting
     iparm(27)=0         ! Do not check sparse matrix representation
     iparm(28)=0         ! Use double precision
@@ -4583,8 +4583,8 @@ CONTAINS
 
     Method=ListGetString(Solver % Values,'Linear System Direct Method',GotIt)
     IF ( .NOT. GotIt ) Method = 'banded'
-    
-    
+
+
     CALL Info('DirectSolver','Using direct method: '//Method,Level=9)
 
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
@@ -4631,7 +4631,7 @@ CONTAINS
         ELSE
           CALL MumpsLocal_SolveSystem( Solver, A, x, b )
         END IF
-          
+
       CASE( 'superlu' )
         CALL SuperLU_SolveSystem( Solver, A, x, b )
 
@@ -4656,7 +4656,7 @@ CONTAINS
     IF( ASSOCIATED( Solver % Variable ) ) THEN
       Solver % Variable % LinConverged = 1
     END IF
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DirectSolver
 !------------------------------------------------------------------------------

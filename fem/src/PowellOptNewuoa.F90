@@ -24,23 +24,23 @@
 !    derivatives](http://www.damtp.cam.ac.uk/user/na/NA_papers/NA2004_08.pdf)",
 !    2004/NA08
 !  * "[The NEWUOA software for unconstrained minimization
-!    without derivatives](http://link.springer.com/chapter/10.1007%2F0-387-30065-1_16)", 
+!    without derivatives](http://link.springer.com/chapter/10.1007%2F0-387-30065-1_16)",
 !    in Large-Scale Nonlinear Optimization, editors G. Di
 !    Pillo and M. Roma, Springer (2006), pages 255-297.
-!  
+!
 !# History
 !  * M.J.D. Powell, December 16th, 2004 : It is hoped that the software will
 !    be helpful to much future research and to many applications. There are no
-!    restrictions on or charges for its use. 
+!    restrictions on or charges for its use.
 !  * Jacob Williams, July 2015 : refactoring of the code into modern Fortran.
 
 module newuoa_module
- 
+
 !    use kind_module, only: wp
     USE minpack_kinds, ONLY: wp   ! changed for Elmer compilation
- 
+
     private
-    
+
     abstract interface
     subroutine func (n, x, f)  !! calfun interface
         import :: wp
@@ -53,9 +53,9 @@ module newuoa_module
 
     public :: func
     public :: newuoa
-    
+
 contains
- 
+
 !*****************************************************************************************
 !>
 !  This subroutine seeks the least value of a function of many variables,
@@ -65,9 +65,9 @@ contains
 !  derivative of the quadratic model, beginning with a zero matrix.
 
     subroutine newuoa (n, npt, x, rhobeg, rhoend, iprint, maxfun, calfun)
-    
+
         implicit none
-        
+
         integer,intent(in)                  :: n       !! the number of variables. must be at least 2.
         integer,intent(in)                  :: npt     !! The number of interpolation conditions.
                                                        !! Its value must be in the interval `[N+2,(N+1)(N+2)/2]`.
@@ -82,7 +82,7 @@ contains
                                                        !! region radius, so both must be positive with RHOEND<=RHOBEG. Typically
                                                        !! RHOBEG should be about one tenth of the greatest expected change to a
                                                        !! variable, and RHOEND should indicate the accuracy that is required in
-                                                       !! the final values of the variables. 
+                                                       !! the final values of the variables.
         integer,intent(in)                  :: iprint  !! The value of IPRINT should be set to 0, 1, 2 or 3, which controls the
                                                        !! amount of printing. Specifically, there is no output if IPRINT=0 and
                                                        !! there is output only at the return if IPRINT=1. Otherwise, each new
@@ -90,12 +90,12 @@ contains
                                                        !! the corresponding value of the objective function. Further, each new
                                                        !! value of F with its variables are output if IPRINT=3.
         integer,intent(in)                  :: maxfun  !! an upper bound on the number of calls of CALFUN.
-        procedure(func)                     :: calfun  !! It must set F to the value of the objective function 
+        procedure(func)                     :: calfun  !! It must set F to the value of the objective function
                                                        !! for the variables `X(1),X(2),...,X(N)`.
 
         real(wp),dimension(:),allocatable :: w
         integer :: np,nptm,ndim,ixb,ixo,ixn,ixp,ifv,igq,ihq,ipq,ibmat,izmat,id,ivl,iw
-        
+
         ! Partition the working space array, so that different parts of it can be
         ! treated separately by the subroutine that performs the main calculation.
 
@@ -105,10 +105,10 @@ contains
             write(*,*) 'Return from NEWUOA because NPT is not in the required interval'
             return
         end if
-        
+
         ! The array W will be used for working space
         allocate(w((NPT+13)*(NPT+N)+3*N*(N+3)/2))
-        
+
         ndim = npt + n
         ixb = 1
         ixo = ixb + n
@@ -139,9 +139,9 @@ contains
 
     subroutine newuob (n, npt, x, rhobeg, rhoend, iprint, maxfun, xbase, xopt, xnew, xpt, &
      fval, gq, hq, pq, bmat, zmat, ndim, d, vlag, w, calfun)
-     
+
         implicit real (wp) (a-h, o-z)
-     
+
         dimension x (*), xbase (*), xopt (*), xnew (*), xpt (npt,*), fval (*), gq (*), hq &
          (*), pq (*), bmat (ndim,*), zmat (npt,*), d (*), vlag (*), w (*)
         procedure (func) :: calfun
@@ -753,10 +753,10 @@ contains
         end if
 
     end subroutine newuob
- 
+
     subroutine bigden (n, npt, xopt, xpt, bmat, zmat, idz, ndim, kopt, knew, d, w, vlag, &
                        beta, s, wvec, prod)
-                       
+
         implicit real (wp) (a-h, o-z)
 
         dimension xopt (*), xpt (npt,*), bmat (ndim,*), zmat (npt,*), d (*), w (*), vlag &
@@ -1111,10 +1111,10 @@ contains
         vlag (kopt) = vlag (kopt) + one
 
     end subroutine bigden
- 
+
     subroutine biglag (n, npt, xopt, xpt, bmat, zmat, idz, ndim, knew, delta, d, alpha, &
                        hcol, gc, gd, s, w)
-                       
+
         implicit real (wp) (a-h, o-z)
 
         dimension xopt (*), xpt (npt,*), bmat (ndim,*), zmat (npt,*), d (*), hcol (*), &
@@ -1305,11 +1305,11 @@ contains
         if (iterc < n) go to 80
 160     return
     end subroutine biglag
- 
+
     subroutine trsapp (n, npt, xopt, xpt, gq, hq, pq, delta, step, d, g, hd, hs, crvmin)
-    
+
         implicit real (wp) (a-h, o-z)
-    
+
         dimension xopt (*), xpt (npt,*), gq (*), hq (*), pq (*), step (*), d (*), g (*), &
                   hd (*), hs (*)
 !
@@ -1528,11 +1528,11 @@ contains
         if (iterc <= itersw) go to 50
         go to 120
     end subroutine trsapp
- 
+
     subroutine update (n, npt, bmat, zmat, idz, ndim, vlag, beta, knew, w)
-    
+
         implicit real (wp) (a-h, o-z)
-    
+
         dimension bmat (ndim,*), zmat (npt,*), vlag (*), w (*)
 !
 !     The arrays BMAT and ZMAT with IDZ are updated, in order to shift the

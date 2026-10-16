@@ -3,20 +3,20 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
 ! *  of the License, or (at your option) any later version.
-! * 
+! *
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! *  GNU General Public License for more details.
 ! *
 ! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
@@ -32,20 +32,20 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 02 Jun 1997
 ! *
 ! *****************************************************************************/
 
-!> \ingroup Programs 
+!> \ingroup Programs
 !> \{
 
 !> \defgroup ResultToResult Program ResultToResult
 !> \{
 
 !------------------------------------------------------------------------------
-!>  Stand-alone program for Elmer results file to Elmer results processing 
+!>  Stand-alone program for Elmer results file to Elmer results processing
 !> file conversion. The meshes may be different for the two result files.
 !------------------------------------------------------------------------------
 
@@ -133,7 +133,7 @@ PROGRAM ResultToResult
      IF ( nproc > 1 ) THEN
        ParallelEnv => ParCommInit()
      ELSE
-       ParEnv % PEs  = 1 
+       ParEnv % PEs  = 1
        ParEnv % MyPE = 0
      END IF
 
@@ -250,7 +250,7 @@ PROGRAM ResultToResult
 !    Add coordinates to list of variables so that coordinate dependent
 !    parameter computing routines can ask for them...
 !------------------------------------------------------------------------------
-     Mesh => OldModel % Meshes 
+     Mesh => OldModel % Meshes
      NULLIFY( Solver )
      DO WHILE( ASSOCIATED( Mesh ) )
        CALL VariableAdd(Mesh % Variables,Mesh,Solver,'Coordinate 1',1,Mesh % Nodes % x )
@@ -269,7 +269,7 @@ PROGRAM ResultToResult
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step intervals must be defined.'
          ERROR STOP
-       END IF 
+       END IF
 
        TimestepSizes => ListGetConstRealArray( OldModel % Simulation, &
                              'Timestep Sizes', GotIt )
@@ -277,7 +277,7 @@ PROGRAM ResultToResult
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step sizes must be defined.'
          ERROR STOP
-       END IF 
+       END IF
 
        TimeIntervals = SIZE(Timesteps)
 
@@ -335,7 +335,7 @@ PROGRAM ResultToResult
        k = ListGetInteger( OldModel % Simulation,'Restart Position',GotIt )
 
        Mesh => OldModel % Meshes
-       DO WHILE( ASSOCIATED(Mesh) ) 
+       DO WHILE( ASSOCIATED(Mesh) )
          IF ( LEN_TRIM(Mesh % Name) > 0 ) THEN
            OutputName = TRIM(Mesh % Name) // '/' // TRIM(RestartFile)
          ELSE
@@ -429,7 +429,7 @@ PROGRAM ResultToResult
 !    Add coordinates to list of variables so that coordinate dependent
 !    parameter computing routines can ask for them...
 !------------------------------------------------------------------------------
-     Mesh => NewModel % Meshes 
+     Mesh => NewModel % Meshes
      NULLIFY( Solver )
      DO WHILE( ASSOCIATED( Mesh ) )
        CALL VariableAdd(Mesh % Variables,Mesh,Solver,'Coordinate 1',1,Mesh % Nodes % x )
@@ -448,7 +448,7 @@ PROGRAM ResultToResult
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step intervals must be defined.'
          ERROR STOP
-       END IF 
+       END IF
 
        TimestepSizes => ListGetConstRealArray( NewModel % Simulation, &
                              'Timestep Sizes', GotIt )
@@ -456,7 +456,7 @@ PROGRAM ResultToResult
        IF ( .NOT.GotIt ) THEN
          PRINT*,'Solver Input error: Time step sizes must be defined.'
          ERROR STOP
-       END IF 
+       END IF
 
        TimeIntervals = SIZE(Timesteps)
 
@@ -543,7 +543,7 @@ CONTAINS
      INTEGER :: i
      LOGICAL :: BinaryOutput, SaveAll
      CHARACTER(:), ALLOCATABLE :: Simul, OutputName
- 
+
      Simul = ListGetString( CurrentModel % Simulation, &
                      'Simulation Type' )
 
@@ -555,7 +555,7 @@ CONTAINS
      IF ( .NOT.GotIt ) SaveAll = .TRUE.
 
      Mesh => CurrentModel % Meshes
-     DO WHILE( ASSOCIATED( Mesh ) ) 
+     DO WHILE( ASSOCIATED( Mesh ) )
        IF ( LEN_TRIM(Mesh % Name )>0 ) THEN
          OutputName = TRIM(Mesh % Name) // '/' // TRIM(OutputFile)
        ELSE
@@ -564,7 +564,7 @@ CONTAINS
        IF ( Simul == 'eigen analysis' ) THEN
          DO i=1,CurrentModel % Solvers(1) % NOFEigenValues
            Var => Mesh % Variables
-           DO WHILE( ASSOCIATED( Var ) ) 
+           DO WHILE( ASSOCIATED( Var ) )
              IF ( Var % Name  /= 'time' .AND. &
                      Var % Name /= 'coordinate' ) THEN
                Var % Values = REAL(Var % EigenVectors(i,:))
@@ -586,14 +586,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE SaveToPost 
+   SUBROUTINE SaveToPost
 !------------------------------------------------------------------------------
 !    Convert results file to post processing file, if requested
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Var
      INTEGER :: i, TotalTimeSteps = 1
      CHARACTER(:), ALLOCATABLE :: Simul, PostFile, PostName, OutputName
- 
+
      Simul = ListGetString( CurrentModel % Simulation, &
                      'Simulation Type' )
 
@@ -615,7 +615,7 @@ CONTAINS
          IF ( Simul == 'eigen analysis' ) THEN
            DO i=1,CurrentModel % Solvers(1) % NOFEigenValues
              Var => Mesh % Variables
-             DO WHILE( ASSOCIATED( Var ) ) 
+             DO WHILE( ASSOCIATED( Var ) )
                IF ( Var % Name  /= 'time' .AND. &
                        Var % Name /= 'coordinate' ) THEN
                  Var % Values = REAL(Var % EigenVectors(i,:))

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12 Feb 2007
 ! *
@@ -75,19 +75,19 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
   CALL Info( 'FilterTimeSeries', '-----------------------------------------', Level=4 )
 
   IF(.NOT. SubroutineVisited) THEN
-    CumWeight = 0.0_dp    
+    CumWeight = 0.0_dp
     SubroutineVisited = .TRUE.
   END IF
   TimesVisited = TimesVisited + 1
 
   Var => VariableGet( Model % Variables, 'Time' )
   IF( ASSOCIATED(Var) ) time = Var % Values(1)
-    
+
   !------------------------------------------------------------------------------
   ! Go through the variables and compute the desired statistical data
   !------------------------------------------------------------------------------
   NULLIFY(OldVar)
-  
+
   DO NoVar = 1,99
 
     GotOper = .FALSE.
@@ -96,7 +96,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
 
     Name = ParameterName('Variable',NoVar)
     VarName = ListGetString( Solver % Values, TRIM(Name), Found )
-    IF(Found) THEN      
+    IF(Found) THEN
       Var => VariableGet( Model % Variables, TRIM(VarName) )
       IF ( .NOT. ASSOCIATED( Var ) )  THEN
         CALL Warn('SaveData','The desired variable '//TRIM(VarName)//' does not exist!')
@@ -112,7 +112,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
     ELSE
       EXIT
     END IF
-   
+
     ! Other powers than ^1
     Name = ParameterName('Operator',NoVar)
     Oper = ListGetString(Solver % Values,TRIM(Name),Found)
@@ -129,7 +129,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
           ratio = 0.0_dp
        END IF
     END IF
-    
+
     ! Start after relative given wall-clock time
     q = GetCReal(Solver % Values,'Real Time Max Fraction', Found )
     IF( Found ) THEN
@@ -251,7 +251,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
             ratio = (time - t0) / dt
          END IF
       END IF
-      
+
       ! Stop watch time
       Name = ParameterName('Stop Cycle',NoVar)
       t1 = GetCReal(Solver % Values,TRIM(Name), Found )
@@ -263,7 +263,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
             ratio = (t1+dt-time) / dt
             EndRatio = .TRUE.
          END IF
-      END IF           
+      END IF
     END IF
 
 
@@ -300,19 +300,19 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
         MeanDofs = InstDofs
         IF( InstDofs > 1 .AND. Nseries > 0 ) THEN
           CALL Fatal('FilterTimeSeries',&
-              'Sine and Cosine series are implemented for scalars only!')          
+              'Sine and Cosine series are implemented for scalars only!')
         END IF
 
       CASE('length')
         MeanDofs = 1
 
-      CASE DEFAULT         
+      CASE DEFAULT
         IF(GotOper) THEN
           WRITE (Message,'(A,A)') 'Unknown operator: ',TRIM(Oper)
           CALL WARN('FilterTimeSeries',Message)
         END IF
 
-      END SELECT        
+      END SELECT
       IF(Nseries > 0) MeanDofs = Nseries
 
       nsize = SIZE(InstField) * ( MeanDofs / InstDofs)
@@ -331,7 +331,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
                 Var % Solver, tmpname, 1, Component, Perm )
           END DO
         END IF
-      ELSE 
+      ELSE
         CALL VariableAdd( Var % PrimaryMesh % Variables, Var % PrimaryMesh, &
             Var % Solver, TRIM(MeanVarName), MeanDofs, MeanField )
       END IF
@@ -339,7 +339,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
       MeanVar => VariableGet( Model % Variables,TRIM( MeanVarName ) )
     END IF
 
-    Weight = dt * ratio 
+    Weight = dt * ratio
     CumWeight(NoVar) = Relax * CumWeight(NoVar)
 
     IF( ABS(Weight) < TINY(Weight) ) CYCLE
@@ -347,12 +347,12 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
 
     ! weight for the filtered set
     cold = CumWeight(NoVar)/(CumWeight(NoVar)+Weight)
- 
+
     ! For fourier series normalize the component appropriately as <sin^2>=<cos^2>=1/2
     IF(Nseries > 0) THEN
       fcoeff = 2*PI*freq*(time-t0)
       ! weight for the current timestep
-      cnew = 2 * Weight/(CumWeight(NoVar)+Weight) 
+      cnew = 2 * Weight/(CumWeight(NoVar)+Weight)
       Loopsize = Nsize / Nseries
     ELSE
       ! weight for the current timestep
@@ -360,18 +360,18 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
       LoopSize = Nsize
     END IF
 
-   
+
     DO i=1,LoopSize
-      
+
       SELECT CASE(Oper)
-        
+
       CASE('square')
         val = InstField(i)**2
         IF( PrevFieldExists ) prevval = PrevField(i,1)**2
 
       CASE('abs')
         val = ABS(InstField(i))
-       
+
       CASE('length')
         val = 0.0d0
         DO k=1,InstDofs
@@ -387,12 +387,12 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
            prevval = SQRT(prevval)
         END IF
 
-      CASE DEFAULT 
+      CASE DEFAULT
         val = InstField(i)
         IF( PrevFieldExists ) prevval = PrevField(i,1)
-        
+
       END SELECT
-           
+
       ! Use 1st order integration scheme to account for the previous timestep
       !----------------------------------------------------------------------
       IF( PrevFieldExists ) THEN
@@ -407,26 +407,26 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
       ! Compute the mean fields
       !------------------------
       IF(Nseries == 0) THEN
-        MeanField(i) = cold * MeanField(i) + cnew * val 
-      ELSE        
+        MeanField(i) = cold * MeanField(i) + cnew * val
+      ELSE
         IF(Nsine > 0) THEN
           DO j=1,Nsine
             MeanField(Nsine*(i-1)+j) = cold * MeanField(Nsine*(i-1)+j) + &
-                cnew * SIN(j*fcoeff) * val         
+                cnew * SIN(j*fcoeff) * val
           END DO
         ELSE
           DO j=1,Ncosine
             MeanField(Ncosine*(i-1)+j) = cold * MeanField(Ncosine*(i-1)+j) + &
-                cnew * COS(j*fcoeff) * val                     
+                cnew * COS(j*fcoeff) * val
           END DO
         END IF
       END IF
 
     END DO
-    
+
     CumWeight(NoVar) = CumWeight(NoVar) + Weight
     NULLIFY(MeanField)
-  
+
   END DO
 
 
@@ -448,7 +448,7 @@ CONTAINS
   END FUNCTION ParameterName
 !------------------------------------------------------------------------------
 
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE FilterTimeSeries
 !------------------------------------------------------------------------------

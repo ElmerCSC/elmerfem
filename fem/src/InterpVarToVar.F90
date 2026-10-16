@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -638,7 +638,9 @@ CONTAINS
   SUBROUTINE InterpolateVarToVarReducedQ( OldMesh, NewMesh,HeightName,HeightDimensions, &
        FoundNodes, LocalDistances, OldNodeMask, NewNodeMask, OldElemMask, &
        Variables, GlobalEps, LocalEps, NumericalEps)
-    !This subroutine takes each boundary node on the specified boundary of the new mesh and finds its height (y coord in 2D) by performing (DIM - 1) interpolaton through boundary elements of the old mesh.
+    ! This subroutine takes each boundary node on the specified boundary of the new mesh and 
+    ! finds its height (y coord in 2D) by performing (DIM - 1) interpolaton through boundary
+    ! elements of the old mesh.
 
     !-------------------------------------------------------------------------------
     TYPE(Mesh_t), TARGET, INTENT(IN)  :: OldMesh
@@ -752,7 +754,7 @@ CONTAINS
     ELSE
        eps_global_limit = ListGetConstReal( CurrentModel % Simulation,  &
             'Interpolation Global Epsilon', Found)
-       IF(.NOT. Found) eps_global_limit = 1.0e-10
+       IF(.NOT. Found) eps_global_limit = 1.0d-10
     END IF
 
     IF(PRESENT(LocalEps)) THEN
@@ -760,7 +762,7 @@ CONTAINS
     ELSE
        eps_local_limit = ListGetConstReal( CurrentModel % Simulation,  &
             'Interpolation Local Epsilon', Found )
-       IF(.NOT. Found) eps_local_limit = 1.0e-10
+       IF(.NOT. Found) eps_local_limit = 1.0d-10
     END IF
 
     IF(PRESENT(NumericalEps)) THEN

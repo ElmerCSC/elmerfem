@@ -44,7 +44,7 @@
 MODULE ParallelUtils
      USE SparIterSolve
      USE SparIterComm
-     
+
      IMPLICIT NONE
 
      INTERFACE ParallelReduction
@@ -116,15 +116,15 @@ CONTAINS
        IF(.NOT. ASSOCIATED(Perm)) THEN
          CALL Fatal('ParallelInitMatrix','Cannot initialize matrix without Perm vector!')
        END IF
-       
+
 
        n = SIZE(Perm)
        k = n*DOFs + Matrix % ExtraDOFs
-                   
+
        i = 0
        IF(ASSOCIATED( Matrix % Perm) ) i=i+1
        IF(ASSOCIATED( Matrix % InvPerm) ) i=i+1
-       
+
        IF(i==1) THEN
          CALL Fatal('ParallelInitMatrix','Only Perm or InvPerm is associated!')
        ELSE IF(i==0) THEN
@@ -184,7 +184,7 @@ CONTAINS
 
        IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
          CALL Fatal('ParallelInitMatrix','ParallelInfo already created!')
-       END IF               
+       END IF
        ALLOCATE( Matrix % ParallelInfo )
 
 
@@ -207,7 +207,7 @@ CONTAINS
        END DO
        CALL SortI( n,Ind, Matrix % ParallelInfo % Gorder )
 
-       
+
        ! This is used for a rare condition:
        !
        ! o Linear system solved using Hypre
@@ -216,11 +216,11 @@ CONTAINS
        BLOCK
          INTEGER :: NameSpaceI
          LOGICAL :: DoIt
-         
+
          DoIt = .FALSE.
          IF( ListGetLogical( Solver % Values,'Linear System Trialing', Found ) ) THEN
            NameSpaceI = MAX( 1, NINT( ListGetCReal( &
-               Solver % Values,'Linear System Namespace Number', Found ) ))           
+               Solver % Values,'Linear System Namespace Number', Found ) ))
            IF( ListGetLogical( Solver % Values, 'linsys' // &
                I2S(NameSpaceI)//': Linear System Use Hypre', Found) ) DoIt = .TRUE.
          ELSE
@@ -232,7 +232,7 @@ CONTAINS
            CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
          END IF
        END BLOCK
-       
+
        BLOCK
          LOGICAL :: SkipActiveCheck, Found
 
@@ -244,13 +244,13 @@ CONTAINS
          Matrix % Solver => Solver
          Matrix % ParMatrix => ParInitMatrix(Matrix, Matrix % ParallelInfo, SkipActiveCheck)
        END BLOCK
-       
+
        ! We can make many routines quicker if we know there is nothing to share.
-       ! Still we might want to operate in parallel using parallel norms etc. 
+       ! Still we might want to operate in parallel using parallel norms etc.
        i = COUNT( Matrix % ParallelInfo % GInterface )
        CALL MPI_ALLREDUCE( i, j, 1, MPI_INTEGER, MPI_SUM, Matrix % comm, ierr )
        Matrix % ParallelInfo % NothingShared = (j==0)
-              
+
 !if(parenv%mype==0) print*,'MATRIX INIT TIME: ', realtime()-tt
 #endif
   END SUBROUTINE ParallelInitMatrix
@@ -275,7 +275,7 @@ CONTAINS
       Mesh => Solver % Mesh
 
       CALL Info('MatrixParallelInfoCutFEM','Creating ParallelInfo assuming CutFEM mesh!',Level=12)
-      
+
       MeshPI => Mesh % ParallelInfo
       MatrixPI => Matrix % ParallelInfo
       n = MAXVAL(Matrix % Perm)
@@ -285,13 +285,13 @@ CONTAINS
 
       ALLOCATE( MatrixPI % GInterface(n) )
       MatrixPI % GInterface = .FALSE.
-      
+
       ALLOCATE(MatrixPI % NeighbourList(n) )
       DO i=1,n
         NULLIFY(MatrixPI % NeighbourList(i) % Neighbours)
       END DO
-      
-      
+
+
       BLOCK
         INTEGER :: n0, nn, ne
         nn = Mesh % NumberOfNodes
@@ -304,31 +304,31 @@ CONTAINS
           DO j=1,DOFs
             k = Matrix % Perm((i-1)*DOFs+j)
             IF ( k<=0 ) CYCLE
-                        
+
             IF(i<=nn) THEN
               MatrixPI % GInterface(k) = Mesh % ParallelInfo % GInterface(i)
               MatrixPI % GlobalDOFs(k) = DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
-              
+
               l = SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
               ALLOCATE(MatrixPI % NeighbourList(k) % Neighbours(l))
               MatrixPI % NeighbourList(k) % Neighbours = &
-                  Mesh % ParallelInfo % NeighbourList(i) % Neighbours            
+                  Mesh % ParallelInfo % NeighbourList(i) % Neighbours
             ELSE
               MatrixPI % GInterface(k) = Mesh % ParallelInfo % EdgeInterface(i-nn)
               MatrixPI % GlobalDOFs(k) = DOFs*n0 + DOFs*(Mesh % Edges(i-nn) % GElementIndex-1)+j
-              
+
               l = SIZE(Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours)
               ALLOCATE(MatrixPI % NeighbourList(k) % Neighbours(l))
               MatrixPI % NeighbourList(k) % Neighbours = &
-                  Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours                                
+                  Mesh % ParallelInfo % EdgeNeighbourList(i-nn) % Neighbours
             END IF
           END DO
         END DO
-      END BLOCK       
+      END BLOCK
 
       CALL Info('MatrixParallelInfoCutFEM','Done ParallelInfo assuming CutFEM mesh!',Level=12)
 
-      
+
 !-------------------------------------------------------------------------------
     END SUBROUTINE MatrixParallelInfoCutFEM
 !-------------------------------------------------------------------------------
@@ -485,7 +485,7 @@ CONTAINS
              CALL AllocateVector( MtrxN % Neighbours,  SIZE(MeshN % Neighbours) )
 
              MtrxN % Neighbours = MeshN % Neighbours
-             IF(.NOT.DGReduced) THEN 
+             IF(.NOT.DGReduced) THEN
                DO m=1,SIZE(MeshN % Neighbours)
                 IF ( MeshN % Neighbours(m) == Element % PartIndex ) THEN
                   MtrxN % Neighbours(1) = MeshN % Neighbours(m)
@@ -506,7 +506,7 @@ CONTAINS
         END IF
       END DO
 
-      
+
 !-------------------------------------------------------------------------------
     END SUBROUTINE MatrixParallelInfoDG
 !-------------------------------------------------------------------------------
@@ -534,7 +534,7 @@ CONTAINS
       Mesh => Solver % Mesh
       ! Default parallel numbering, not CutFEM or Discontinuous Galerkin!
       !--------------------------------------------------------------------
-      
+
       n = Matrix % NumberOfRows
       ALLOCATE( Matrix % ParallelInfo % NeighbourList(n) )
       CALL AllocateVector( Matrix % ParallelInfo % GInterface, n)
@@ -554,7 +554,7 @@ CONTAINS
              CALL Fatal('MatrixParallelInfoDefault','Matrix % ParallelInfo % GlobalDOFs bounds error.'//&
                  ' Matrix vs Solver perm scope conflict is a possible cause.')
            END IF
-           
+
            Matrix % ParallelInfo % GlobalDOFs(k) = &
              DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
 
@@ -988,7 +988,7 @@ CONTAINS
      END DO
      CALL MPI_ALLREDUCE(L1, L, np, MPI_LOGICAL, MPI_LAND, comm ,ierr)
 
-     
+
      IF(ANY(L(0:np-1))) THEN
 
        IF(L(imemb(ParEnv % MyPE))) THEN

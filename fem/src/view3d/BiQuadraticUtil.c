@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -72,7 +72,7 @@ void BiQuadraticMonomialToBezier(double *MonomialFactors,double *BezierFactors)
      for( j=0; j<3; j++ )
      {
          s = 0.0;
-         for( k=0; k<3; k++ ) s += CMatrix[i][k]*MonomialFactors[3*k+j]; 
+         for( k=0; k<3; k++ ) s += CMatrix[i][k]*MonomialFactors[3*k+j];
          A[i][j] = s;
      }
 
@@ -109,7 +109,7 @@ void BiQuadraticBezierToMonomial(double *MonomialFactors,double *BezierFactors)
      for( j=0; j<3; j++ )
      {
          s = 0.0;
-         for( k=0; k<3; k++ ) s += BezierFactors[3*i+k]*CMatrix[k][j]; 
+         for( k=0; k<3; k++ ) s += BezierFactors[3*i+k]*CMatrix[k][j];
          A[i][j] = s;
      }
 
@@ -342,7 +342,7 @@ void BiQuadraticSubdivide( Geometry_t *Geometry, int SubLev,int Where )
                            Geometry->Right->BiQuadratic->BezierFactors[2] ) )
          Geometry->Right->Flags |= GEOMETRY_FLAG_PLANE;
 }
- 
+
 /*******************************************************************************
 
 Compute element of (iso)line for a (bi)quadratic polynomial.
@@ -495,7 +495,7 @@ double BiQuadraticIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     {
         U = U_Integ[i];
         V = V_Integ[i];
-        
+
         DX  = BiQuadraticValue(U,V,BX) - FX;
         DY  = BiQuadraticValue(U,V,BY) - FY;
         DZ  = BiQuadraticValue(U,V,BZ) - FZ;
@@ -651,7 +651,7 @@ void BiQuadraticComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int 
         if ( !GB->Left ) BiQuadraticSubdivide( GB, LevelB,1 );
 
         if ( GB->Flags & GEOMETRY_FLAG_LEAF )
-        {    
+        {
             GB->Flags &= ~GEOMETRY_FLAG_LEAF;
             GB->Left->Flags  |= GEOMETRY_FLAG_LEAF;
             GB->Right->Flags |= GEOMETRY_FLAG_LEAF;

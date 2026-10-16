@@ -103,7 +103,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   INTEGER,SAVE :: NTOT=-1,NTOT_S
   integer,SAVE :: nobs
   LOGICAL,SAVE :: FirstRound=.True.,SAVE_USED_DATA=.False.
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
   INTEGER,PARAMETER :: IO=12
   LOGICAL :: WarnActive
 
